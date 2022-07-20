@@ -27,17 +27,17 @@ test_verify_one_file! {
 // -- e02 --
 
 test_verify_one_file! {
-    #[test] e02_pass code! {
+    #[test] e02_pass verus_code! {
         fn e02(p: int) {
-            assert(true >>= true);
+            assert(true ==> true);
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] e02_fail code! {
+    #[test] e02_fail verus_code! {
         fn e02(p: int) {
-            assert(true >>= false); // FAILS
+            assert(true ==> false); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }

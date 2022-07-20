@@ -2921,51 +2921,65 @@ test_verify_one_file! {
             if x == y { post.z == z } else { post.z == z + 1 }
         }
 
-        #[spec]
-        fn rel_tr1(pre: X::State, post: X::State, b: bool, c: bool) -> bool {
-            b && (pre.y <= pre.z >>= (
-                c
-                && post.z == pre.z + 1
-                && post.x == pre.x
-                && post.y == pre.y))
+        verus2! {
+
+        spec fn rel_tr1(pre: X::State, post: X::State, b: bool, c: bool) -> bool {
+            &&& b
+            &&& pre.y <= pre.z ==> {
+                &&& c
+                &&& post.z == pre.z + 1
+                &&& post.x == pre.x
+                &&& post.y == pre.y
+            }
         }
 
-        #[spec]
-        fn rel_tr1_strong(pre: X::State, post: X::State, b: bool, c: bool) -> bool {
-            b && (pre.y <= pre.z && (
-                c
-                && post.z == pre.z + 1
-                && post.x == pre.x
-                && post.y == pre.y))
+        spec fn rel_tr1_strong(pre: X::State, post: X::State, b: bool, c: bool) -> bool {
+            &&& b
+            &&& pre.y <= pre.z && {
+                &&& c
+                &&& post.z == pre.z + 1
+                &&& post.x == pre.x
+                &&& post.y == pre.y
+            }
         }
 
-        #[spec]
-        fn rel_tr2(pre: X::State, post: X::State, b: bool, c: bool) -> bool {
-            (if b { post.z == pre.z + 1 } else { pre.y <= pre.z >>= post.z == pre.z })
-            && ((!b >>= pre.y <= pre.z) >>=
-                c && pre.x == post.x && pre.y == post.y)
+        spec fn rel_tr2(pre: X::State, post: X::State, b: bool, c: bool) -> bool {
+            &&& (if b { post.z == pre.z + 1 } else { pre.y <= pre.z ==> post.z == pre.z })
+            &&& (!b ==> pre.y <= pre.z) ==> {
+                &&& c
+                &&& pre.x == post.x
+                &&& pre.y == post.y
+            }
         }
 
-        #[spec]
-        fn rel_tr2_strong(pre: X::State, post: X::State, b: bool, c: bool) -> bool {
-            (if b { post.z == pre.z + 1 } else { post.z == pre.z })
-            && ((!b >>= pre.y <= pre.z) &&
-                c && pre.x == post.x && pre.y == post.y)
+        spec fn rel_tr2_strong(pre: X::State, post: X::State, b: bool, c: bool) -> bool {
+            &&& (if b { post.z == pre.z + 1 } else { post.z == pre.z })
+            &&& (!b ==> pre.y <= pre.z) && {
+                &&& c
+                &&& pre.x == post.x
+                &&& pre.y == post.y
+            }
         }
 
-        #[spec]
-        fn rel_tr3(pre: X::State, post: X::State, b: bool, c: bool) -> bool {
-            (if !b { post.z == pre.z + 1 } else { pre.y <= pre.z >>= post.z == pre.z })
-            && ((b >>= pre.y <= pre.z) >>=
-                c && pre.x == post.x && pre.y == post.y)
+        spec fn rel_tr3(pre: X::State, post: X::State, b: bool, c: bool) -> bool {
+            &&& (if !b { post.z == pre.z + 1 } else { pre.y <= pre.z ==> post.z == pre.z })
+            &&& (b ==> pre.y <= pre.z) ==> {
+                &&& c
+                &&& pre.x == post.x
+                &&& pre.y == post.y
+            }
         }
 
-        #[spec]
-        fn rel_tr3_strong(pre: X::State, post: X::State, b: bool, c: bool) -> bool {
-            (if !b { post.z == pre.z + 1 } else { post.z == pre.z })
-            && ((b >>= pre.y <= pre.z) &&
-                c && pre.x == post.x && pre.y == post.y)
+        spec fn rel_tr3_strong(pre: X::State, post: X::State, b: bool, c: bool) -> bool {
+            &&& (if !b { post.z == pre.z + 1 } else { post.z == pre.z })
+            &&& (b ==> pre.y <= pre.z) && {
+                &&& c
+                &&& pre.x == post.x
+                &&& pre.y == post.y
+            }
         }
+
+        } // verus2!
 
 
         #[proof]
@@ -3098,31 +3112,39 @@ test_verify_one_file! {
             fn tr1_inductive(pre: Self, post: Self, foo: Foo, c: bool) { }
         }}
 
-        #[spec]
-        fn rel_init(post: X::State, x: int, y: int, z: int, foo: Foo) -> bool {
-            post.x == x && post.y == y && y <= z &&
-            match foo {
+        verus2! {
+
+        spec fn rel_init(post: X::State, x: int, y: int, z: int, foo: Foo) -> bool {
+            &&& post.x == x
+            &&& post.y == y
+            &&& y <= z
+            &&& match foo {
                 Foo::Bar(a) => { post.z == z }
                 Foo::Qax(b) => { post.z == z + 1 }
                 Foo::Duck(d) => { post.z == z + 2 }
             }
         }
 
-        #[spec]
-        fn rel_tr1(pre: X::State, post: X::State, foo: Foo, c: bool) -> bool {
-            (match foo {
+        spec fn rel_tr1(pre: X::State, post: X::State, foo: Foo, c: bool) -> bool {
+            &&& (match foo {
                 Foo::Bar(a) => { post.z == pre.z + 1 }
-                Foo::Qax(b) if b == 20 => { pre.y <= pre.z >>= post.z == pre.z }
+                Foo::Qax(b) if b == 20 => { pre.y <= pre.z ==> post.z == pre.z }
                 Foo::Duck(d) => { post.z == pre.z }
                 _ => { post.z == pre.z }
-            }) && ((match foo {
+            })
+            &&& ((match foo {
                 Foo::Bar(a) => { true }
                 Foo::Qax(b) if b == 20 => { pre.y <= pre.z }
                 Foo::Duck(d) => { true }
                 _ => { true }
-            }) >>=
-                c && pre.x == post.x && pre.y == post.y)
+            }) ==> {
+                &&& c
+                &&& pre.x == post.x
+                &&& pre.y == post.y
+            })
         }
+
+        } // verus2!
 
         #[spec]
         fn rel_tr1_strong(pre: X::State, post: X::State, foo: Foo, c: bool) -> bool {
@@ -3237,105 +3259,101 @@ test_verify_one_file! {
         }}
 
 
-        #[spec]
-        fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
-            equal(pre.opt, Option::Some(5))
-            && pre.map.contains_pair(0, 1)
-            && pre.map.remove(0).contains_pair(2, 3)
-            && (!pre.map.remove(0).dom().contains(4)
-              >>=  pre.mset.count(10) >= 1
+        verus2! {
+
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt === Option::Some(5)
+            &&& pre.map.contains_pair(0, 1)
+            &&& pre.map.remove(0).contains_pair(2, 3)
+            &&& !pre.map.remove(0).dom().contains(4)
+              ==> pre.mset.count(10) >= 1
               && pre.mset.remove(10).count(11) >= 1
-              && (equal(pre.storage_opt, Option::Some(13))
-                >>= (pre.storage_map.contains_pair(15, 16)
-                  >>= (!pre.storage_map.remove(15).dom().contains(17)
-                    >>= equal(post.storage_map, pre.storage_map.remove(15).insert(17, 18))
-                     && equal(post.opt, Option::Some(8))
-                     && equal(post.map, pre.map.remove(0).insert(4, 5))
-                     && equal(post.mset, pre.mset.remove(10).insert(12))
-                     && equal(post.storage_opt, Option::Some(14))
-                  ))))
+              && (pre.storage_opt === Option::Some(13)
+                ==> (pre.storage_map.contains_pair(15, 16)
+                  ==> (!pre.storage_map.remove(15).dom().contains(17)
+                    ==> post.storage_map === pre.storage_map.remove(15).insert(17, 18)
+                     && post.opt === Option::Some(8)
+                     && post.map === pre.map.remove(0).insert(4, 5)
+                     && post.mset === pre.mset.remove(10).insert(12)
+                     && post.storage_opt === Option::Some(14)
+                  )))
         }
 
-        #[spec]
-        fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
-            equal(pre.opt, Option::Some(5))
-            && equal(post.opt, Option::Some(8))
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt === Option::Some(5)
+            &&& post.opt === Option::Some(8)
 
-            && pre.map.contains_pair(0, 1)
-            && pre.map.remove(0).contains_pair(2, 3)
-            && !pre.map.remove(0).dom().contains(4)
-            && equal(post.map, pre.map.remove(0).insert(4, 5))
+            &&& pre.map.contains_pair(0, 1)
+            &&& pre.map.remove(0).contains_pair(2, 3)
+            &&& !pre.map.remove(0).dom().contains(4)
+            &&& post.map === pre.map.remove(0).insert(4, 5)
 
-            && pre.mset.count(10) >= 1
-            && pre.mset.remove(10).count(11) >= 1
-            && equal(post.mset, pre.mset.remove(10).insert(12))
+            &&& pre.mset.count(10) >= 1
+            &&& pre.mset.remove(10).count(11) >= 1
+            &&& post.mset === pre.mset.remove(10).insert(12)
 
-            && equal(pre.storage_opt, Option::Some(13))
-            && equal(post.storage_opt, Option::Some(14))
+            &&& pre.storage_opt === Option::Some(13)
+            &&& post.storage_opt === Option::Some(14)
 
-            && pre.storage_map.contains_pair(15, 16)
-            && !pre.storage_map.remove(15).dom().contains(17)
-            && equal(post.storage_map, pre.storage_map.remove(15).insert(17, 18))
+            &&& pre.storage_map.contains_pair(15, 16)
+            &&& !pre.storage_map.remove(15).dom().contains(17)
+            &&& post.storage_map === pre.storage_map.remove(15).insert(17, 18)
         }
 
-        #[spec]
-        fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
-            equal(pre.opt, Option::Some(7))
-            && (!pre.map.dom().contains(4) >>=
-                   equal(post.map, pre.map.insert(4, 5))
-                && equal(post.opt, pre.opt)
-                && equal(post.storage_opt, pre.storage_opt)
-                && equal(post.storage_map, pre.storage_map)
-                && equal(post.mset, pre.mset)
+        spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt === Option::Some(7)
+            &&& !pre.map.dom().contains(4) ==> {
+                &&& post.map === pre.map.insert(4, 5)
+                &&& post.opt === pre.opt
+                &&& post.storage_opt === pre.storage_opt
+                &&& post.storage_map === pre.storage_map
+                &&& post.mset === pre.mset
+            }
+        }
+
+        spec fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt === Option::Some(7)
+            &&& !pre.map.dom().contains(4)
+            &&& post.map === pre.map.insert(4, 5)
+            &&& post.opt === pre.opt
+            &&& post.storage_opt === pre.storage_opt
+            &&& post.storage_map === pre.storage_map
+            &&& post.mset === pre.mset
+        }
+
+        spec fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt === Option::Some(7)
+            &&& pre.storage_opt === Option::Some(12)
+              ==> post.storage_opt === Option::None
+                && post.map === pre.map
+                && post.storage_map === pre.storage_map
+                && post.mset === pre.mset
+                && post.opt === Option::None
+        }
+
+        spec fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt === Option::Some(7)
+            &&& post.opt === Option::None
+            &&& pre.storage_opt === Option::Some(12)
+            &&& post.storage_opt === Option::None
+            &&& post.map === pre.map
+            &&& post.storage_map === pre.storage_map
+            &&& post.mset === pre.mset
+        }
+
+        spec fn rel_tr4(pre: Y::State, post: Y::State) -> bool {
+            pre.opt === Option::None ==> (
+              (pre.storage_opt === Option::None ==> {
+                &&& post.storage_opt === Option::Some(12)
+                &&& post.map === pre.map
+                &&& post.storage_map === pre.storage_map
+                &&& post.mset === pre.mset
+                &&& post.opt === Option::Some(7)
+              })
             )
         }
 
-        #[spec]
-        fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
-            equal(pre.opt, Option::Some(7))
-            && !pre.map.dom().contains(4)
-            && equal(post.map, pre.map.insert(4, 5))
-            && equal(post.opt, pre.opt)
-            && equal(post.storage_opt, pre.storage_opt)
-            && equal(post.storage_map, pre.storage_map)
-            && equal(post.mset, pre.mset)
-        }
-
-        #[spec]
-        fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
-            equal(pre.opt, Option::Some(7))
-            && (equal(pre.storage_opt, Option::Some(12))
-              >>= equal(post.storage_opt, Option::None)
-                && equal(post.map, pre.map)
-                && equal(post.storage_map, pre.storage_map)
-                && equal(post.mset, pre.mset)
-                && equal(post.opt, Option::None)
-            )
-        }
-
-        #[spec]
-        fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
-            equal(pre.opt, Option::Some(7))
-            && equal(post.opt, Option::None)
-            && equal(pre.storage_opt, Option::Some(12))
-            && equal(post.storage_opt, Option::None)
-            && equal(post.map, pre.map)
-            && equal(post.storage_map, pre.storage_map)
-            && equal(post.mset, pre.mset)
-        }
-
-        #[spec]
-        fn rel_tr4(pre: Y::State, post: Y::State) -> bool {
-            equal(pre.opt, Option::None) >>= (
-              (equal(pre.storage_opt, Option::None) >>= (
-                equal(post.storage_opt, Option::Some(12))
-                && equal(post.map, pre.map)
-                && equal(post.storage_map, pre.storage_map)
-                && equal(post.mset, pre.mset)
-                && equal(post.opt, Option::Some(7))
-              ))
-            )
-        }
+        } // verus2!
 
         #[spec]
         fn rel_tr4_strong(pre: Y::State, post: Y::State) -> bool {
@@ -3509,124 +3527,131 @@ test_verify_one_file! {
             }
         }}
 
-        #[spec]
-        fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
-            equal(pre.opt, Option::Some(5))
+        verus2! {
 
-            && map![0 => 1].le(pre.map)
-            && map![2 => 3].le(pre.map.remove_keys(map![0 => 1].dom()))
-            && (pre.map.remove_keys(map![0 => 1].dom()).dom().disjoint(map![4 => 5].dom()) >>=
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt === Option::Some(5)
 
-            Multiset::singleton(10).le(pre.mset)
-            && Multiset::singleton(11).le(pre.mset.sub(Multiset::singleton(10)))
+            &&& map![0 => 1].le(pre.map)
+            &&& map![2 => 3].le(pre.map.remove_keys(map![0 => 1].dom()))
+            &&& pre.map.remove_keys(map![0 => 1].dom()).dom().disjoint(map![4 => 5].dom())
 
-            && (equal(pre.storage_opt, Option::Some(13)) >>=
+            ==> {
 
-            (map![15 => 16].le(pre.storage_map) >>=
-            (pre.storage_map.remove_keys(map![15 => 16].dom()).dom().disjoint(map![17 => 18].dom()) >>=
-            equal(post.opt, Option::Some(8))
-            && equal(post.map, pre.map.remove_keys(map![0 => 1].dom()).union_prefer_right(map![4 => 5]))
-            && equal(post.mset,
-                pre.mset.sub(Multiset::singleton(10)).add(Multiset::singleton(12)))
-            && equal(post.storage_opt, Option::Some(14))
-            && equal(post.storage_map,
-                pre.storage_map.remove_keys(map![15 => 16].dom()).union_prefer_right(map![17 => 18]))
-            ))))
+            &&& Multiset::singleton(10).le(pre.mset)
+            &&& Multiset::singleton(11).le(pre.mset.sub(Multiset::singleton(10)))
+
+            &&& (pre.storage_opt === Option::Some(13)
+
+            ==>
+
+            (map![15 => 16].le(pre.storage_map)
+
+            ==>
+
+            (pre.storage_map.remove_keys(map![15 => 16].dom()).dom().disjoint(map![17 => 18].dom())
+
+            ==> {
+
+            &&& post.opt === Option::Some(8)
+            &&& post.map === pre.map.remove_keys(map![0 => 1].dom()).union_prefer_right(map![4 => 5])
+            &&& post.mset ===
+                pre.mset.sub(Multiset::singleton(10)).add(Multiset::singleton(12))
+            &&& post.storage_opt === Option::Some(14)
+            &&& post.storage_map ===
+                pre.storage_map.remove_keys(map![15 => 16].dom()).union_prefer_right(map![17 => 18])
+            })))}
         }
 
-        #[spec]
-        fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
-            equal(pre.opt, Option::Some(5))
-            && equal(post.opt, Option::Some(8))
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt === Option::Some(5)
+            &&& post.opt === Option::Some(8)
 
-            && map![0 => 1].le(pre.map)
-            && map![2 => 3].le(pre.map.remove_keys(map![0 => 1].dom()))
-            && pre.map.remove_keys(map![0 => 1].dom()).dom().disjoint(map![4 => 5].dom())
-            && equal(post.map, pre.map.remove_keys(map![0 => 1].dom()).union_prefer_right(map![4 => 5]))
+            &&& map![0 => 1].le(pre.map)
+            &&& map![2 => 3].le(pre.map.remove_keys(map![0 => 1].dom()))
+            &&& pre.map.remove_keys(map![0 => 1].dom()).dom().disjoint(map![4 => 5].dom())
+            &&& post.map === pre.map.remove_keys(map![0 => 1].dom()).union_prefer_right(map![4 => 5])
 
-            && Multiset::singleton(10).le(pre.mset)
-            && Multiset::singleton(11).le(pre.mset.sub(Multiset::singleton(10)))
-            && equal(post.mset,
-                pre.mset.sub(Multiset::singleton(10)).add(Multiset::singleton(12)))
+            &&& Multiset::singleton(10).le(pre.mset)
+            &&& Multiset::singleton(11).le(pre.mset.sub(Multiset::singleton(10)))
+            &&& post.mset ===
+                pre.mset.sub(Multiset::singleton(10)).add(Multiset::singleton(12))
 
-            && equal(pre.storage_opt, Option::Some(13))
-            && equal(post.storage_opt, Option::Some(14))
+            &&& pre.storage_opt === Option::Some(13)
+            &&& post.storage_opt === Option::Some(14)
 
-            && map![15 => 16].le(pre.storage_map)
-            && pre.storage_map.remove_keys(map![15 => 16].dom()).dom().disjoint(map![17 => 18].dom())
-            && equal(post.storage_map,
-                pre.storage_map.remove_keys(map![15 => 16].dom()).union_prefer_right(map![17 => 18]))
+            &&& map![15 => 16].le(pre.storage_map)
+            &&& pre.storage_map.remove_keys(map![15 => 16].dom()).dom().disjoint(map![17 => 18].dom())
+            &&& post.storage_map ===
+                pre.storage_map.remove_keys(map![15 => 16].dom()).union_prefer_right(map![17 => 18])
         }
 
-        #[spec]
-        fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
-            equal(pre.opt, Option::Some(7))
-            && (!pre.map.dom().contains(4) >>=
-                   equal(post.map, pre.map.union_prefer_right(map![4 => 5]))
-                && equal(post.opt, pre.opt)
-                && equal(post.storage_opt, pre.storage_opt)
-                && equal(post.storage_map, pre.storage_map)
-                && equal(post.mset, pre.mset)
-            )
+        spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt === Option::Some(7)
+            &&& !pre.map.dom().contains(4) ==> {
+                &&& post.map === pre.map.union_prefer_right(map![4 => 5])
+                &&& post.opt === pre.opt
+                &&& post.storage_opt === pre.storage_opt
+                &&& post.storage_map === pre.storage_map
+                &&& post.mset === pre.mset
+            }
         }
 
-        #[spec]
-        fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
-            equal(pre.opt, Option::Some(7))
-            && !pre.map.dom().contains(4)
-            && equal(post.map, pre.map.union_prefer_right(map![4 => 5]))
-            && equal(post.opt, pre.opt)
-            && equal(post.storage_opt, pre.storage_opt)
-            && equal(post.storage_map, pre.storage_map)
-            && equal(post.mset, pre.mset)
+        spec fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt === Option::Some(7)
+            &&& !pre.map.dom().contains(4)
+            &&& post.map === pre.map.union_prefer_right(map![4 => 5])
+            &&& post.opt === pre.opt
+            &&& post.storage_opt === pre.storage_opt
+            &&& post.storage_map === pre.storage_map
+            &&& post.mset === pre.mset
         }
 
         #[spec]
         fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
-            equal(pre.opt, Option::Some(7))
-            && (equal(pre.storage_opt, Option::Some(12))
-              >>= equal(post.storage_opt, Option::None)
-                && equal(post.map, pre.map)
-                && equal(post.storage_map, pre.storage_map)
-                && equal(post.mset, pre.mset)
-                && equal(post.opt, Option::None)
+            &&& pre.opt === Option::Some(7)
+            &&& pre.storage_opt === Option::Some(12) ==> {
+                &&& post.storage_opt === Option::None
+                &&& post.map === pre.map
+                &&& post.storage_map === pre.storage_map
+                &&& post.mset === pre.mset
+                &&& post.opt === Option::None
+            }
+        }
+
+        spec fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt === Option::Some(7)
+            &&& post.opt === Option::None
+            &&& pre.storage_opt === Option::Some(12)
+            &&& post.storage_opt === Option::None
+            &&& post.map === pre.map
+            &&& post.storage_map === pre.storage_map
+            &&& post.mset === pre.mset
+        }
+
+        spec fn rel_tr4(pre: Y::State, post: Y::State) -> bool {
+            pre.opt === Option::None ==> (
+              (pre.storage_opt === Option::None ==> {
+                &&& post.storage_opt === Option::Some(12)
+                &&& post.map === pre.map
+                &&& post.storage_map === pre.storage_map
+                &&& post.mset === pre.mset
+                &&& post.opt === Option::Some(7)
+              })
             )
         }
 
-        #[spec]
-        fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
-            equal(pre.opt, Option::Some(7))
-            && equal(post.opt, Option::None)
-            && equal(pre.storage_opt, Option::Some(12))
-            && equal(post.storage_opt, Option::None)
-            && equal(post.map, pre.map)
-            && equal(post.storage_map, pre.storage_map)
-            && equal(post.mset, pre.mset)
+        spec fn rel_tr4_strong(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt === Option::None
+            &&& post.opt === Option::Some(7)
+            &&& pre.storage_opt === Option::None
+            &&& post.storage_opt === Option::Some(12)
+            &&& post.map === pre.map
+            &&& post.storage_map === pre.storage_map
+            &&& post.mset === pre.mset
         }
 
-        #[spec]
-        fn rel_tr4(pre: Y::State, post: Y::State) -> bool {
-            equal(pre.opt, Option::None) >>= (
-              (equal(pre.storage_opt, Option::None) >>= (
-                equal(post.storage_opt, Option::Some(12))
-                && equal(post.map, pre.map)
-                && equal(post.storage_map, pre.storage_map)
-                && equal(post.mset, pre.mset)
-                && equal(post.opt, Option::Some(7))
-              ))
-            )
-        }
-
-        #[spec]
-        fn rel_tr4_strong(pre: Y::State, post: Y::State) -> bool {
-            equal(pre.opt, Option::None)
-            && equal(post.opt, Option::Some(7))
-            && equal(pre.storage_opt, Option::None)
-            && equal(post.storage_opt, Option::Some(12))
-            && equal(post.map, pre.map)
-            && equal(post.storage_map, pre.storage_map)
-            && equal(post.mset, pre.mset)
-        }
+        } // verus2!
 
         #[proof]
         fn correct_tr1(pre: Y::State, post: Y::State) {
@@ -4192,8 +4217,8 @@ test_verify_one_file! {
 
             #[invariant]
             pub fn maps_6(&self) -> bool {
-                forall(|k| self.storage_map.dom().contains(k) >>=
-                    self.storage_map.index(k) == 6)
+                forall(|k| imply(self.storage_map.dom().contains(k),
+                    self.storage_map.index(k) == 6))
             }
 
             transition!{
@@ -4257,19 +4282,21 @@ test_verify_one_file! {
             && equal(post.storage_map, pre.storage_map)
         }
 
+        verus2! {
         #[spec]
         fn rel_tr2(pre: Y::State, post: Y::State, key: int) -> bool {
-            pre.map.dom().contains(key)
-            && pre.map.index(key) == 5
+            &&& pre.map.dom().contains(key)
+            &&& pre.map.index(key) == 5
 
-            && (
+            &&& (
               (pre.storage_map.dom().contains(key) && pre.storage_map.index(key) == 6)
-              >>= (
-                   equal(post.map, pre.map.remove(key))
-                && equal(post.storage_map, pre.storage_map.remove(key))
-                && equal(post.opt, pre.opt)
-              )
+              ==> {
+                &&& post.map === pre.map.remove(key)
+                &&& post.storage_map === pre.storage_map.remove(key)
+                &&& post.opt === pre.opt
+              }
            )
+        }
         }
 
         #[spec]
@@ -4287,19 +4314,20 @@ test_verify_one_file! {
            )
         }
 
-        #[spec]
-        fn rel_tr3(pre: Y::State, post: Y::State, key: int) -> bool {
-            pre.map.dom().contains(key)
-            && pre.map.index(key) == 5
+        verus2! {
+        spec fn rel_tr3(pre: Y::State, post: Y::State, key: int) -> bool {
+            &&& pre.map.dom().contains(key)
+            &&& pre.map.index(key) == 5
 
-            && (
+            &&& (
               (pre.storage_map.dom().contains(key) && pre.storage_map.index(key) == 6)
-              >>= (
-                   equal(post.map, pre.map)
-                && equal(post.storage_map, pre.storage_map)
-                && equal(post.opt, pre.opt)
-              )
+              ==> {
+                &&& post.map === pre.map
+                &&& post.storage_map === pre.storage_map
+                &&& post.opt === pre.opt
+              }
            )
+        }
         }
 
         #[spec]
@@ -4542,12 +4570,12 @@ test_verify_one_file! {
 
             #[invariant]
             pub fn the_inv(&self) -> bool {
-                self.opt1.is_Some() >>= (
+                imply(self.opt1.is_Some(), (
                     self.opt2.is_Some()
                         && self.opt4.is_Some()
                         && equal(self.opt2, self.opt4)
                         && self.opt3.is_None()
-                )
+                ))
             }
 
             #[inductive(initialize)]
@@ -4557,18 +4585,18 @@ test_verify_one_file! {
             fn tr1_inductive(pre: Self, post: Self) { }
         }}
 
-        #[spec]
-        fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+        verus2! {
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
             match (pre.opt1, pre.opt2) {
                 (Option::Some(x), Option::Some(y)) => {
                     match (pre.opt3, pre.opt4) {
                         (Option::None, Option::Some(z)) => {
-                            y == z >>= (
-                                equal(post.opt1, Option::None) &&
-                                equal(post.opt2, pre.opt2) &&
-                                equal(post.opt3, Option::Some(x + y + z)) &&
-                                equal(post.opt4, pre.opt4)
-                           )
+                            y == z ==> {
+                                &&& post.opt1 === Option::None
+                                &&& post.opt2 === pre.opt2
+                                &&& post.opt3 === Option::Some(x + y + z)
+                                &&& post.opt4 === pre.opt4
+                            }
                         }
                         _ => {
                             true
@@ -4580,6 +4608,7 @@ test_verify_one_file! {
                 }
             }
         }
+        } // verus2!
 
         #[spec]
         fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
@@ -4874,47 +4903,46 @@ test_verify_one_file! {
             fn tr3_inductive(pre: Self, post: Self) { }
         }}
 
-        #[spec]
-        fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
-            equal(pre.d, Option::Some(7))
-            && (
+        verus2! {
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.d === Option::Some(7)
+            &&& (
                 (match pre.c {
                     Option::Some(x) => x == 3,
                     Option::None => true,
                 })
-                >>= (
-                    equal(pre.d, post.d)
-                    && equal(post.c, Option::Some(3))
-                )
+                ==> {
+                    &&& pre.d === post.d
+                    &&& post.c === Option::Some(3)
+                }
             )
         }
 
-        #[spec]
-        fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
-            equal(pre.d, Option::Some(7))
-            && (
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.d === Option::Some(7)
+            &&& (
                 (match pre.c {
                     Option::Some(x) => x == 3,
                     Option::None => true,
                 })
-                && (
-                    equal(pre.d, post.d)
-                    && equal(post.c, Option::Some(3))
-                )
+                && {
+                    &&& pre.d === post.d
+                    &&& post.c === Option::Some(3)
+                }
             )
         }
 
-        #[spec]
-        fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+        spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
             (match pre.c {
                 Option::Some(x) => x == 3,
                 Option::None => true,
             })
-            >>= (
-                equal(pre.d, post.d)
-                && equal(post.c, Option::Some(3))
-            )
+            ==> {
+                &&& pre.d === post.d
+                &&& post.c === Option::Some(3)
+            }
         }
+        } // verus2!
 
         #[spec]
         fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
@@ -5021,11 +5049,11 @@ test_verify_one_file! {
 
             #[invariant]
             pub fn the_inv(&self) -> bool {
-                (self.c.dom().contains(5) >>= self.c.index(5) == 9)
+                imply(self.c.dom().contains(5), self.c.index(5) == 9)
                 &&
-                (self.c.dom().contains(12) >>= self.c.index(12) == 15)
+                imply(self.c.dom().contains(12), self.c.index(12) == 15)
                 &&
-                (self.c.dom().contains(3) >>= self.c.index(3) == 4)
+                imply(self.c.dom().contains(3), self.c.index(3) == 4)
             }
 
             #[inductive(initialize)]
@@ -5041,47 +5069,43 @@ test_verify_one_file! {
             fn tr3_inductive(pre: Self, post: Self) { }
         }}
 
-        #[spec]
-        fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
-            pre.c.dom().contains(1)
-            && pre.c.index(1) == 2
-            && (
-              (pre.c.dom().contains(3) >>= pre.c.index(3) == 4)
-              >>= (
-                equal(post.c, pre.c.insert(3, 4))
+        verus2!{
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.c.dom().contains(1)
+            &&& pre.c.index(1) == 2
+            &&& (
+              (pre.c.dom().contains(3) ==> pre.c.index(3) == 4)
+              ==> (
+                post.c === pre.c.insert(3, 4)
               )
             )
         }
 
-        #[spec]
-        fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
-            pre.c.dom().contains(1)
-            && pre.c.index(1) == 2
-            && (
-              (pre.c.dom().contains(3) >>= pre.c.index(3) == 4)
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.c.dom().contains(1)
+            &&& pre.c.index(1) == 2
+            &&& (
+              (pre.c.dom().contains(3) ==> pre.c.index(3) == 4)
               && (
-                equal(post.c, pre.c.insert(3, 4))
+                post.c === pre.c.insert(3, 4)
               )
             )
         }
 
-        #[spec]
-        fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
-            ((pre.c.dom().contains(5) >>= pre.c.index(5) == 9)
-            && (pre.c.dom().contains(12) >>= pre.c.index(12) == 15))
-            >>= equal(post.c,
+        spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+            ((pre.c.dom().contains(5) ==> pre.c.index(5) == 9)
+            && (pre.c.dom().contains(12) ==> pre.c.index(12) == 15))
+            ==> post.c ===
                   pre.c.insert(5, 9).insert(12, 15)
-                )
         }
 
-        #[spec]
-        fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
-            ((pre.c.dom().contains(5) >>= pre.c.index(5) == 9)
-            && (pre.c.dom().contains(12) >>= pre.c.index(12) == 15))
-            && equal(post.c,
+        spec fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+            ((pre.c.dom().contains(5) ==> pre.c.index(5) == 9)
+            && (pre.c.dom().contains(12) ==> pre.c.index(12) == 15))
+            && post.c ===
                   pre.c.insert(5, 9).insert(12, 15)
-                )
         }
+        } // verus2!
 
         #[spec]
         fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
@@ -5403,18 +5427,18 @@ test_verify_one_file! {
             }
         }
 
-        #[spec]
-        fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+        verus2! {
+        spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
             match pre.opt {
                 Option::Some(Goo::Qux(i1)) => {
                     match pre.storage_opt {
                         Option::Some(Goo::Qux(j1)) => {
-                            (i1 == j1) >>= (
-                            equal(post.opt, Option::None)
-                            && equal(post.storage_opt, Option::None)
-                            && equal(post.m, pre.m)
-                            && equal(post.storage_m, pre.storage_m)
-                            )
+                            (i1 == j1) ==> {
+                            &&& post.opt === Option::None
+                            &&& post.storage_opt === Option::None
+                            &&& post.m === pre.m
+                            &&& post.storage_m === pre.storage_m
+                            }
                         }
                         _ => true,
                     }
@@ -5423,17 +5447,16 @@ test_verify_one_file! {
             }
         }
 
-        #[spec]
-        fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+        spec fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
             match pre.opt {
                 Option::Some(Goo::Qux(i1)) => {
                     match pre.storage_opt {
                         Option::Some(Goo::Qux(j1)) => {
-                            i1 == j1
-                            && equal(post.opt, Option::None)
-                            && equal(post.storage_opt, Option::None)
-                            && equal(post.m, pre.m)
-                            && equal(post.storage_m, pre.storage_m)
+                            &&& i1 == j1
+                            &&& post.opt === Option::None
+                            &&& post.storage_opt === Option::None
+                            &&& post.m === pre.m
+                            &&& post.storage_m === pre.storage_m
                         }
                         _ => false,
                     }
@@ -5442,18 +5465,17 @@ test_verify_one_file! {
             }
         }
 
-        #[spec]
-        fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
+        spec fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
             match pre.opt {
                 Option::Some(Goo::Tal(i1, i2)) => {
                     match pre.storage_opt {
                         Option::Some(Goo::Tal(j1, j2)) => {
-                            (i1 == j1 && i2 == j2) >>= (
-                            equal(post.opt, Option::None)
-                            && equal(post.storage_opt, Option::None)
-                            && equal(post.m, pre.m)
-                            && equal(post.storage_m, pre.storage_m)
-                            )
+                            (i1 == j1 && i2 == j2) ==> {
+                            &&& post.opt === Option::None
+                            &&& post.storage_opt === Option::None
+                            &&& post.m === pre.m
+                            &&& post.storage_m === pre.storage_m
+                            }
                         }
                         _ => true,
                     }
@@ -5462,17 +5484,16 @@ test_verify_one_file! {
             }
         }
 
-        #[spec]
-        fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
+        spec fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
             match pre.opt {
                 Option::Some(Goo::Tal(i1, i2)) => {
                     match pre.storage_opt {
                         Option::Some(Goo::Tal(j1, j2)) => {
-                            i1 == j1 && i2 == j2
-                            && equal(post.opt, Option::None)
-                            && equal(post.storage_opt, Option::None)
-                            && equal(post.m, pre.m)
-                            && equal(post.storage_m, pre.storage_m)
+                            &&& i1 == j1 && i2 == j2
+                            &&& post.opt === Option::None
+                            &&& post.storage_opt === Option::None
+                            &&& post.m === pre.m
+                            &&& post.storage_m === pre.storage_m
                         }
                         _ => false,
                     }
@@ -5481,18 +5502,17 @@ test_verify_one_file! {
             }
         }
 
-        #[spec]
-        fn rel_tr4(pre: Y::State, post: Y::State, key: int) -> bool {
+        spec fn rel_tr4(pre: Y::State, post: Y::State, key: int) -> bool {
             pre.m.dom().contains(key)
             && match pre.m.index(key) {
                 Goo::Bar => {
                     pre.storage_m.dom().contains(key)
-                    >>= match pre.storage_m.index(key) {
+                    ==> match pre.storage_m.index(key) {
                         Goo::Bar => {
-                            equal(post.opt, pre.opt)
-                            && equal(post.storage_opt, pre.storage_opt)
-                            && equal(post.m, pre.m.remove(key))
-                            && equal(post.storage_m, pre.storage_m.remove(key))
+                            &&& post.opt === pre.opt
+                            &&& post.storage_opt === pre.storage_opt
+                            &&& post.m === pre.m.remove(key)
+                            &&& post.storage_m === pre.storage_m.remove(key)
                         }
                         _ => true,
                     }
@@ -5501,18 +5521,17 @@ test_verify_one_file! {
             }
         }
 
-        #[spec]
-        fn rel_tr4_strong(pre: Y::State, post: Y::State, key: int) -> bool {
+        spec fn rel_tr4_strong(pre: Y::State, post: Y::State, key: int) -> bool {
             pre.m.dom().contains(key)
             && match pre.m.index(key) {
                 Goo::Bar => {
                     pre.storage_m.dom().contains(key)
                     && match pre.storage_m.index(key) {
                         Goo::Bar => {
-                            equal(post.opt, pre.opt)
-                            && equal(post.storage_opt, pre.storage_opt)
-                            && equal(post.m, pre.m.remove(key))
-                            && equal(post.storage_m, pre.storage_m.remove(key))
+                            &&& post.opt === pre.opt
+                            &&& post.storage_opt === pre.storage_opt
+                            &&& post.m === pre.m.remove(key)
+                            &&& post.storage_m === pre.storage_m.remove(key)
                         }
                         _ => false,
                     }
@@ -5521,20 +5540,19 @@ test_verify_one_file! {
             }
         }
 
-        #[spec]
-        fn rel_tr5(pre: Y::State, post: Y::State, key: int) -> bool {
+        spec fn rel_tr5(pre: Y::State, post: Y::State, key: int) -> bool {
             pre.m.dom().contains(key)
             && match pre.m.index(key) {
                 Goo::Qux(i1) => {
                     pre.storage_m.dom().contains(key)
-                    >>= match pre.storage_m.index(key) {
+                    ==> match pre.storage_m.index(key) {
                         Goo::Qux(j1) => {
-                            (i1 == j1) >>= (
-                            equal(post.opt, pre.opt)
-                            && equal(post.storage_opt, pre.storage_opt)
-                            && equal(post.m, pre.m.remove(key))
-                            && equal(post.storage_m, pre.storage_m.remove(key))
-                            )
+                            (i1 == j1) ==> {
+                            &&& post.opt === pre.opt
+                            &&& post.storage_opt === pre.storage_opt
+                            &&& post.m === pre.m.remove(key)
+                            &&& post.storage_m === pre.storage_m.remove(key)
+                            }
                         }
                         _ => true,
                     }
@@ -5543,19 +5561,18 @@ test_verify_one_file! {
             }
         }
 
-        #[spec]
-        fn rel_tr5_strong(pre: Y::State, post: Y::State, key: int) -> bool {
+        spec fn rel_tr5_strong(pre: Y::State, post: Y::State, key: int) -> bool {
             pre.m.dom().contains(key)
             && match pre.m.index(key) {
                 Goo::Qux(i1) => {
                     pre.storage_m.dom().contains(key)
                     && match pre.storage_m.index(key) {
                         Goo::Qux(j1) => {
-                            i1 == j1
-                            && equal(post.opt, pre.opt)
-                            && equal(post.storage_opt, pre.storage_opt)
-                            && equal(post.m, pre.m.remove(key))
-                            && equal(post.storage_m, pre.storage_m.remove(key))
+                            &&& i1 == j1
+                            &&& post.opt === pre.opt
+                            &&& post.storage_opt === pre.storage_opt
+                            &&& post.m === pre.m.remove(key)
+                            &&& post.storage_m === pre.storage_m.remove(key)
                         }
                         _ => false,
                     }
@@ -5564,20 +5581,19 @@ test_verify_one_file! {
             }
         }
 
-        #[spec]
-        fn rel_tr6(pre: Y::State, post: Y::State, key: int) -> bool {
+        spec fn rel_tr6(pre: Y::State, post: Y::State, key: int) -> bool {
             pre.m.dom().contains(key)
             && match pre.m.index(key) {
                 Goo::Tal(i1, i2) => {
                     pre.storage_m.dom().contains(key)
-                    >>= match pre.storage_m.index(key) {
+                    ==> match pre.storage_m.index(key) {
                         Goo::Tal(j1, j2) => {
-                            (i1 == j1 && i2 == j2) >>= (
-                            equal(post.opt, pre.opt)
-                            && equal(post.storage_opt, pre.storage_opt)
-                            && equal(post.m, pre.m.remove(key))
-                            && equal(post.storage_m, pre.storage_m.remove(key))
-                            )
+                            (i1 == j1 && i2 == j2) ==> {
+                            &&& post.opt === pre.opt
+                            &&& post.storage_opt === pre.storage_opt
+                            &&& post.m === pre.m.remove(key)
+                            &&& post.storage_m === pre.storage_m.remove(key)
+                            }
                         }
                         _ => true,
                     }
@@ -5585,6 +5601,7 @@ test_verify_one_file! {
                 _ => false,
             }
         }
+        } // verus2!
 
         #[spec]
         fn rel_tr6_strong(pre: Y::State, post: Y::State, key: int) -> bool {

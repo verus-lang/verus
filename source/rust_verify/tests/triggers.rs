@@ -15,10 +15,13 @@ test_verify_one_file! {
 
         impl Node {
             #[spec] fn inv(&self) -> bool {
-                forall(|i: nat, j: nat| (i < self.nodes.len() && j < self.nodes.index(i as int).values.len()) >>= {
-                    let values = #[trigger] self.nodes.index(i as int).values;
-                    self.base_v <= #[trigger] values.index(j as int)
-                })
+                forall(|i: nat, j: nat|
+                    imply(i < self.nodes.len() && j < self.nodes.index(i as int).values.len(),
+                    {
+                        let values = #[trigger] self.nodes.index(i as int).values;
+                        self.base_v <= #[trigger] values.index(j as int)
+                    }
+                ))
             }
         }
 
@@ -37,14 +40,17 @@ test_verify_one_file! {
 
         impl Node {
             #[spec] fn inv(&self) -> bool {
-                forall(|i: nat, j: nat| with_triggers!([self.nodes.index(i as int).values.index(j as int)] =>
-                                                       (i < self.nodes.len() && j < self.nodes.index(i as int).values.len()) >>= {
-                    let values = self.nodes.index(i as int).values;
-                    self.base_v <= values.index(j as int)
-                }))
+                forall(|i: nat, j: nat|
+                    with_triggers!([self.nodes.index(i as int).values.index(j as int)] =>
+                        imply(i < self.nodes.len() && j < self.nodes.index(i as int).values.len(),
+                        {
+                            let values = self.nodes.index(i as int).values;
+                            self.base_v <= values.index(j as int)
+                        })
+                    )
+                )
             }
         }
-
     } => Ok(())
 }
 

@@ -336,12 +336,12 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_is_variant_get_2 IS_VARIANT_MAYBE.to_string() + code_str! {
-        pub fn test1(m: Maybe<u64>) -> bool {
-            ensures(|res: bool|
-                (m.is_Some() >>= res == (m.get_Some_0() == 3)) &&
-                (m.is_None() >>= !res)
-            );
+    #[test] test_is_variant_get_2 IS_VARIANT_MAYBE.to_string() + verus_code_str! {
+        pub fn test1(m: Maybe<u64>) -> (res: bool)
+            ensures
+                m.is_Some() ==> res == (m.get_Some_0() == 3),
+                m.is_None() ==> !res,
+        {
             match m {
                 Maybe::Some(v) => v == 3,
                 Maybe::None => false,
@@ -354,8 +354,10 @@ test_verify_one_file! {
             assert(res);
         }
 
-        pub fn test3(v: Maybe<u64>) {
-            requires(v.is_Some() && v.get_Some_0() == 5);
+        pub fn test3(v: Maybe<u64>)
+            requires
+                v.is_Some() && v.get_Some_0() == 5,
+        {
             if let Maybe::Some(a) = v {
                 assert(a == 5);
             } else {

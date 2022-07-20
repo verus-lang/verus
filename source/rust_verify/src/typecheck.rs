@@ -132,6 +132,10 @@ impl FormalVerifierTyping for Typecheck {
         lhs_ty: Ty<'tcx>,
         rhs_ty: Ty<'tcx>,
     ) -> Option<(bool, Ty<'tcx>, bool)> {
+        if !self.enhanced_typecheck {
+            return None;
+        }
+
         if is_assign {
             match (op.node, &lhs_ty.kind(), &rhs_ty.kind()) {
                 (BinOpKind::Shr, TyKind::Bool, TyKind::Bool | TyKind::Infer(..)) => {
@@ -139,10 +143,6 @@ impl FormalVerifierTyping for Typecheck {
                 }
                 _ => return None,
             }
-        }
-
-        if !self.enhanced_typecheck {
-            return None;
         }
 
         // For convenience, allow implicit coercions from integral types to int in some situations.

@@ -698,7 +698,7 @@ fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt, pat_opt: &Option<
             ShardableType::Option(_)
             | ShardableType::PersistentOption(_)
             | ShardableType::StorageOption(_) => Expr::Verbatim(quote! {
-                ((#e).is_Some() >>= ::builtin::equal(#cur, #e))
+                ::builtin::imply((#e).is_Some(), ::builtin::equal(#cur, #e))
             }),
 
             ShardableType::Map(_, _)

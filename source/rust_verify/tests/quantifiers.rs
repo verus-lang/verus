@@ -181,10 +181,10 @@ test_verify_one_file! {
 
                 ::builtin::assert_by(::builtin::equal(m1, m2), {
                     ::builtin::assert_forall_by(|key| {
-                        ::builtin::ensures([((#[trigger]
-                        m1.dom().contains(key)) >>= m2.dom().contains(key))
-                            && (m2.dom().contains(key) >>= m1.dom().contains(key))
-                            && (m1.dom().contains(key) && m2.dom().contains(key) >>=
+                        ::builtin::ensures([
+                        imply(#[trigger] m1.dom().contains(key)), m2.dom().contains(key)
+                            && imply(m2.dom().contains(key), m1.dom().contains(key))
+                            imply(m1.dom().contains(key) && m2.dom().contains(key),
                                 ::builtin::equal(m1.index(key), m2.index(key)))]);
                         { {} }
                     });
