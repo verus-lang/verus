@@ -35,6 +35,7 @@ use vir::ast::{
     PathX, PatternX, Quant, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
     VirErr,
 };
+use vir::ast_util::types_equal;
 use vir::ast_util::{ident_binder, path_as_rust_name};
 use vir::def::positional_field_ident;
 
@@ -1795,20 +1796,45 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 let inner =
                     expr_to_vir_inner(bctx, arg, is_expr_typ_mut_ref(bctx, arg, modifier)?)?;
                 if inner.typ.is_ghost_typ() || inner.typ.is_tracked_typ() {
+                    // If we have `*a` where `a` has type Tracked<inner_typ>
+                    // (or Ghost<inner_typ>) then we need to change it to `a.value()`
+                    //
+                    // However, be careful not to trigger this logic for the case
+                    // where `a` has type `&Tracked<inner_typ>`. This case is tricky
+                    // because the VIR conversion strips the `&`, so the case looks
+                    // very similar.
+
+                    let my_typ = expr_typ();
+
                     let (path, typ) = if let TypX::Datatype(path, targs) = &*inner.typ {
                         assert!(targs.len() == 1);
                         (path.clone(), targs[0].clone())
                     } else {
                         panic!("incorrect Ghost/Tracked type")
                     };
-                    let mut segments: Vec<Ident> = (*(path.segments)).clone();
-                    segments.push(Arc::new("value".to_string()));
-                    let segments = Arc::new(segments);
-                    let path = Arc::new(PathX { krate: path.krate.clone(), segments });
-                    let typ_args = Arc::new(vec![typ]);
-                    let fun = Arc::new(FunX { path, trait_path: None });
-                    let target = CallTarget::Static(fun, typ_args);
-                    Ok(mk_expr(ExprX::Call(target, Arc::new(vec![inner]))))
+
+                    // At the _VIR_ level (where & gets stripped), it should be the
+                    // case that if inner.typ is Tracked<V>, then my_typ is either
+                    // Tracked<V> or V. (We sanity-check this assumption here.)
+                    // In the latter case, we need to do the conversion logic.
+
+                    let deref_doesnt_unwrap = types_equal(&my_typ, &inner.typ);
+                    let deref_unwraps = types_equal(&my_typ, &typ);
+
+                    assert!(deref_doesnt_unwrap ^ deref_unwraps);
+
+                    if deref_unwraps {
+                        let mut segments: Vec<Ident> = (*(path.segments)).clone();
+                        segments.push(Arc::new("value".to_string()));
+                        let segments = Arc::new(segments);
+                        let path = Arc::new(PathX { krate: path.krate.clone(), segments });
+                        let typ_args = Arc::new(vec![typ]);
+                        let fun = Arc::new(FunX { path, trait_path: None });
+                        let target = CallTarget::Static(fun, typ_args);
+                        Ok(mk_expr(ExprX::Call(target, Arc::new(vec![inner]))))
+                    } else {
+                        Ok(inner)
+                    }
                 } else {
                     Ok(inner)
                 }
