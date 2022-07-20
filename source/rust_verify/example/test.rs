@@ -3,7 +3,7 @@ use builtin::*;
 mod pervasive;
 use pervasive::*;
 
-verus2! {
+verus! {
 
 pub fn foo(a: u64) -> u64
     requires a < 100

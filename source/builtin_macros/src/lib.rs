@@ -21,17 +21,12 @@ pub fn fndecl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
 #[proc_macro]
 pub fn verus(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    syntax::rewrite_items(input, false)
-}
-
-#[proc_macro]
-pub fn verus1(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    syntax::rewrite_items(input, false)
-}
-
-#[proc_macro]
-pub fn verus2(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     syntax::rewrite_items(input, true)
+}
+
+#[proc_macro]
+pub fn verus_old_todo_replace_this(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    syntax::rewrite_items(input, false)
 }
 
 #[proc_macro]

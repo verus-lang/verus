@@ -6,7 +6,7 @@ mod pervasive;
 #[allow(unused_imports)]
 use crate::pervasive::{*, vec::*, seq::*, modes::*};
 
-verus2! {
+verus! {
 
 fn binary_search(v: &Vec<u64>, k: u64) -> (r: usize)
     requires

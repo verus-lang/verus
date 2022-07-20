@@ -7,7 +7,7 @@ use crate::pervasive::*;
 #[allow(unused_imports)]
 use crate::pervasive::seq::*;
 
-verus2! {
+verus! {
 
 impl<A> Seq<A> {
     /// Applies the function `f` to each element of the sequence, and returns

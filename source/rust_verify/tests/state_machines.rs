@@ -2921,7 +2921,7 @@ test_verify_one_file! {
             if x == y { post.z == z } else { post.z == z + 1 }
         }
 
-        verus2! {
+        verus! {
 
         spec fn rel_tr1(pre: X::State, post: X::State, b: bool, c: bool) -> bool {
             &&& b
@@ -2979,7 +2979,7 @@ test_verify_one_file! {
             }
         }
 
-        } // verus2!
+        } // verus!
 
 
         #[proof]
@@ -3112,7 +3112,7 @@ test_verify_one_file! {
             fn tr1_inductive(pre: Self, post: Self, foo: Foo, c: bool) { }
         }}
 
-        verus2! {
+        verus! {
 
         spec fn rel_init(post: X::State, x: int, y: int, z: int, foo: Foo) -> bool {
             &&& post.x == x
@@ -3144,7 +3144,7 @@ test_verify_one_file! {
             })
         }
 
-        } // verus2!
+        } // verus!
 
         #[spec]
         fn rel_tr1_strong(pre: X::State, post: X::State, foo: Foo, c: bool) -> bool {
@@ -3259,7 +3259,7 @@ test_verify_one_file! {
         }}
 
 
-        verus2! {
+        verus! {
 
         spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
             &&& pre.opt === Option::Some(5)
@@ -3353,7 +3353,7 @@ test_verify_one_file! {
             )
         }
 
-        } // verus2!
+        } // verus!
 
         #[spec]
         fn rel_tr4_strong(pre: Y::State, post: Y::State) -> bool {
@@ -3527,7 +3527,7 @@ test_verify_one_file! {
             }
         }}
 
-        verus2! {
+        verus! {
 
         spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
             &&& pre.opt === Option::Some(5)
@@ -3651,7 +3651,7 @@ test_verify_one_file! {
             &&& post.mset === pre.mset
         }
 
-        } // verus2!
+        } // verus!
 
         #[proof]
         fn correct_tr1(pre: Y::State, post: Y::State) {
@@ -4282,7 +4282,7 @@ test_verify_one_file! {
             && equal(post.storage_map, pre.storage_map)
         }
 
-        verus2! {
+        verus! {
         #[spec]
         fn rel_tr2(pre: Y::State, post: Y::State, key: int) -> bool {
             &&& pre.map.dom().contains(key)
@@ -4314,7 +4314,7 @@ test_verify_one_file! {
            )
         }
 
-        verus2! {
+        verus! {
         spec fn rel_tr3(pre: Y::State, post: Y::State, key: int) -> bool {
             &&& pre.map.dom().contains(key)
             &&& pre.map.index(key) == 5
@@ -4585,7 +4585,7 @@ test_verify_one_file! {
             fn tr1_inductive(pre: Self, post: Self) { }
         }}
 
-        verus2! {
+        verus! {
         spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
             match (pre.opt1, pre.opt2) {
                 (Option::Some(x), Option::Some(y)) => {
@@ -4608,7 +4608,7 @@ test_verify_one_file! {
                 }
             }
         }
-        } // verus2!
+        } // verus!
 
         #[spec]
         fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
@@ -4903,7 +4903,7 @@ test_verify_one_file! {
             fn tr3_inductive(pre: Self, post: Self) { }
         }}
 
-        verus2! {
+        verus! {
         spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
             &&& pre.d === Option::Some(7)
             &&& (
@@ -4942,7 +4942,7 @@ test_verify_one_file! {
                 &&& post.c === Option::Some(3)
             }
         }
-        } // verus2!
+        } // verus!
 
         #[spec]
         fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
@@ -5069,7 +5069,7 @@ test_verify_one_file! {
             fn tr3_inductive(pre: Self, post: Self) { }
         }}
 
-        verus2!{
+        verus!{
         spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
             &&& pre.c.dom().contains(1)
             &&& pre.c.index(1) == 2
@@ -5105,7 +5105,7 @@ test_verify_one_file! {
             && post.c ===
                   pre.c.insert(5, 9).insert(12, 15)
         }
-        } // verus2!
+        } // verus!
 
         #[spec]
         fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
@@ -5427,7 +5427,7 @@ test_verify_one_file! {
             }
         }
 
-        verus2! {
+        verus! {
         spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
             match pre.opt {
                 Option::Some(Goo::Qux(i1)) => {
@@ -5601,7 +5601,7 @@ test_verify_one_file! {
                 _ => false,
             }
         }
-        } // verus2!
+        } // verus!
 
         #[spec]
         fn rel_tr6_strong(pre: Y::State, post: Y::State, key: int) -> bool {

@@ -5,7 +5,7 @@ mod pervasive;
 
 fn main() {}
 
-verus2! {
+verus! {
 
 spec fn f1(i: int, j: int) -> bool {
     i <= j

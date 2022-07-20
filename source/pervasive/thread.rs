@@ -3,7 +3,7 @@
 #[allow(unused_imports)] use crate::pervasive::*;
 #[allow(unused_imports)] use crate::pervasive::result::*;
 
-verus2! {
+verus! {
 
 pub trait Spawnable<Ret: Sized> : Sized {
     spec fn pre(self) -> bool;

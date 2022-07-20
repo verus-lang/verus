@@ -282,7 +282,7 @@ impl VisitMut for Visitor {
         };
 
         let sub_inside_arith = match expr {
-            Expr::Paren(..) | Expr::If(..) | Expr::Match(..) | Expr::Block(..) => self.inside_arith,
+            Expr::Paren(..) | Expr::Block(..) => self.inside_arith,
             Expr::Cast(..) => InsideArith::Widen,
             Expr::Unary(unary) => match unary.op {
                 UnOp::Neg(..) => InsideArith::Widen,

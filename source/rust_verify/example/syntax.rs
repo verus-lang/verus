@@ -11,7 +11,7 @@ use crate::pervasive::modes::*;
 fn main() {
 }
 
-verus2! {
+verus! {
 
 /// functions may be declared exec (default), proof, or spec, which contain
 /// exec code, proof code, and spec code, respectively.

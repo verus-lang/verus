@@ -3,7 +3,7 @@ use builtin::*;
 mod pervasive;
 use pervasive::*;
 
-verus2! {
+verus! {
 
 fn main() {}
 

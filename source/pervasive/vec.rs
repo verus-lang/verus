@@ -7,7 +7,7 @@ use crate::pervasive::*;
 #[allow(unused_imports)]
 use crate::pervasive::seq::*;
 
-verus2! {
+verus! {
 
 #[verifier(external_body)]
 pub struct Vec<#[verifier(strictly_positive)] A> {

@@ -55,7 +55,7 @@ pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> parse::Result<
     let sm_name = &bundle.sm.name;
 
     let final_code = quote! {
-        ::builtin_macros::verus!{
+        ::builtin_macros::verus_old_todo_replace_this!{
             #[allow(unused_parens)]
             mod #sm_name {
                 use super::*;
