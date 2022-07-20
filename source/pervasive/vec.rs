@@ -20,14 +20,14 @@ impl<A> Vec<A> {
     #[verifier(external_body)]
     pub fn new() -> (v: Self)
         ensures
-            v.view() === Seq::empty(),
+            v@ === Seq::empty(),
     {
         Vec { vec: std::vec::Vec::new() }
     }
     
     pub fn empty() -> (v: Self)
         ensures
-            v.view() === Seq::empty(),
+            v@ === Seq::empty(),
     {
         Vec::new()
     }
@@ -35,7 +35,7 @@ impl<A> Vec<A> {
     #[verifier(external_body)]
     pub fn push(&mut self, value: A)
         ensures
-            self.view() === old(self).view().push(value),
+            self@ === old(self)@.push(value),
     {
         self.vec.push(value);
     }
@@ -45,8 +45,8 @@ impl<A> Vec<A> {
         requires
             old(self).len() > 0,
         ensures
-            value === old(self).view()[old(self).view().len() as int - 1],
-            self.view() === old(self).view().subrange(0, old(self).view().len() as int - 1),
+            value === old(self)[old(self).len() - 1],
+            self@ === old(self)@.subrange(0, old(self).len() - 1),
     {
         unsafe {
             self.vec.pop().unwrap_unchecked()  // Safe to unwrap given the precondition above
@@ -55,16 +55,16 @@ impl<A> Vec<A> {
 
     #[verifier(inline)]
     pub open spec fn spec_index(self, i: int) -> A {
-        self.view()[i]
+        self@[i]
     }
 
     #[verifier(external_body)]
     #[verifier(autoview)]
     pub fn index(&self, i: usize) -> (r: &A)
         requires
-            i < self.view().len(),
+            i < self.len(),
         ensures
-            *r === self.view()[i as int],
+            *r === self[i as int],
     {
         &self.vec[i]
     }
@@ -72,9 +72,9 @@ impl<A> Vec<A> {
     #[verifier(external_body)]
     pub fn set(&mut self, i: usize, a: A)
         requires
-            i < old(self).view().len(),
+            i < old(self).len(),
         ensures
-            self.view() === old(self).view().update(i as int, a),
+            self@ === old(self)@.update(i as int, a),
     {
         self.vec[i] = a;
     }
@@ -86,7 +86,7 @@ impl<A> Vec<A> {
     #[verifier(autoview)]
     pub fn len(&self) -> (l: usize)
         ensures
-            l == self.view().len(),
+            l == self.len(),
     {
         self.vec.len()
     }

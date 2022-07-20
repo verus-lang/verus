@@ -472,6 +472,7 @@ impl VisitMut for Visitor {
                 ..
             }) if use_spec_traits => (true, false),
             Expr::Assume(..) | Expr::Assert(..) | Expr::AssertForall(..) => (true, false),
+            Expr::View(..) => (true, false),
             _ => (false, false),
         };
         if do_replace {
@@ -689,6 +690,12 @@ impl VisitMut for Visitor {
                         _ => panic!("binary"),
                     }
                     expr.replace_attrs(attrs);
+                }
+                Expr::View(view) => {
+                    let at_token = view.at_token;
+                    let span = at_token.span;
+                    let base = view.expr;
+                    *expr = parse_quote_spanned!(span => (#base.view()));
                 }
                 Expr::Assume(assume) => {
                     let span = assume.assume_token.span;

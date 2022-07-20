@@ -44,7 +44,7 @@ fn reverse(v: &mut Vec<u64>)
         forall|i: int| 0 <= i < old(v).len() ==> v[i] == old(v)[old(v).len() - i - 1],
 {
     let length = v.len();
-    let v1: Ghost<Seq<u64>> = ghost(v.view());
+    let v1: Ghost<Seq<u64>> = ghost(v@);
     let mut n: usize = 0;
     while n < length / 2
         invariant
@@ -70,12 +70,12 @@ fn pusher() -> Vec<u64> {
     v.push(3);
     v.push(4);
     let goal: Ghost<Seq<u64>> = ghost(Seq::new(5, |i: int| i as u64));
-    assert(v.view().ext_equal(*goal));
+    assert(v@.ext_equal(*goal));
     assert(v[2] == 2);
 
     v.pop();
     v.push(4);
-    assert(v.view().ext_equal(*goal));
+    assert(v@.ext_equal(*goal));
 
     v
 }
