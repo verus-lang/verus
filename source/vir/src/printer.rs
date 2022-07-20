@@ -429,6 +429,7 @@ fn function_to_node(function: &FunctionX) -> Node {
             no_auto_trigger,
             custom_req_err,
             autoview,
+            autospec,
             bit_vector,
             atomic,
             integer_ring,
@@ -461,6 +462,10 @@ fn function_to_node(function: &FunctionX) -> Node {
         }
         if *autoview {
             nodes.push(str_to_node("+autoview"));
+        }
+        if let Some(f) = autospec {
+            nodes.push(str_to_node(":autospec"));
+            nodes.push(fun_to_node(f));
         }
         if *bit_vector {
             nodes.push(str_to_node("+bit_vector"));

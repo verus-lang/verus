@@ -139,6 +139,8 @@ pub(crate) enum Attr {
     NoAutoTrigger,
     // when used in a spec context, promote to spec by inserting .view()
     Autoview,
+    // when used in a ghost context, redirect to a specified spec method
+    Autospec(String),
     // add manual trigger to expression inside quantifier
     Trigger(Option<Vec<u64>>),
     // custom error string to report for precondition failures
@@ -256,6 +258,11 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "autoview" => {
                     v.push(Attr::Autoview)
+                }
+                Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))])
+                    if arg == "when_used_as_spec" =>
+                {
+                    v.push(Attr::Autospec(ident.clone()))
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "unforgeable" => {
                     v.push(Attr::Unforgeable)
@@ -422,6 +429,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) broadcast_forall: bool,
     pub(crate) no_auto_trigger: bool,
     pub(crate) autoview: bool,
+    pub(crate) autospec: Option<String>,
     pub(crate) custom_req_err: Option<String>,
     pub(crate) bit_vector: bool,
     pub(crate) unforgeable: bool,
@@ -449,6 +457,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         broadcast_forall: false,
         no_auto_trigger: false,
         autoview: false,
+        autospec: None,
         custom_req_err: None,
         bit_vector: false,
         unforgeable: false,
@@ -475,6 +484,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::BroadcastForall => vs.broadcast_forall = true,
             Attr::NoAutoTrigger => vs.no_auto_trigger = true,
             Attr::Autoview => vs.autoview = true,
+            Attr::Autospec(method_ident) => vs.autospec = Some(method_ident),
             Attr::CustomReqErr(s) => vs.custom_req_err = Some(s.clone()),
             Attr::BitVector => vs.bit_vector = true,
             Attr::Unforgeable => vs.unforgeable = true,

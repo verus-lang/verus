@@ -61,10 +61,22 @@ pub fn n_types_equal(typs1: &Typs, typs2: &Typs) -> bool {
 
 pub const QUANT_FORALL: Quant = Quant { quant: air::ast::Quant::Forall, boxed_params: true };
 
-pub fn params_equal(param1: &Param, param2: &Param) -> bool {
+pub fn params_equal_opt(
+    param1: &Param,
+    param2: &Param,
+    check_names: bool,
+    check_modes: bool,
+) -> bool {
     let ParamX { name: name1, typ: typ1, mode: mode1, is_mut: is_mut1 } = &param1.x;
     let ParamX { name: name2, typ: typ2, mode: mode2, is_mut: is_mut2 } = &param2.x;
-    name1 == name2 && types_equal(typ1, typ2) && mode1 == mode2 && is_mut1 == is_mut2
+    (!check_names || name1 == name2)
+        && types_equal(typ1, typ2)
+        && (!check_modes || mode1 == mode2)
+        && is_mut1 == is_mut2
+}
+
+pub fn params_equal(param1: &Param, param2: &Param) -> bool {
+    params_equal_opt(param1, param2, true, true)
 }
 
 pub fn generic_bounds_equal(b1: &GenericBound, b2: &GenericBound) -> bool {

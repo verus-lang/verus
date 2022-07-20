@@ -378,23 +378,33 @@ fn fn_call_to_vir<'tcx>(
         def_id_to_vir_path(tcx, f)
     };
 
-    let is_get_variant = {
+    let (is_get_variant, autospec) = {
         match tcx.hir().get_if_local(f) {
             Some(rustc_hir::Node::ImplItem(
                 impl_item @ rustc_hir::ImplItem { kind: rustc_hir::ImplItemKind::Fn(..), .. },
             )) => {
                 let fn_attrs = bctx.ctxt.tcx.hir().attrs(impl_item.hir_id());
                 let fn_vattrs = get_verifier_attrs(fn_attrs)?;
-                if let Some(variant_ident) = fn_vattrs.is_variant {
+                let is_get_variant = if let Some(variant_ident) = fn_vattrs.is_variant {
                     Some((variant_ident, None))
                 } else if let Some((variant_ident, field_ident)) = fn_vattrs.get_variant {
                     Some((variant_ident, Some(field_ident)))
                 } else {
                     None
-                }
+                };
+                let autospec = match (bctx.in_ghost, fn_vattrs.autospec) {
+                    (true, Some(method_name)) => Some(method_name),
+                    _ => None,
+                };
+                (is_get_variant, autospec)
             }
-            _ => None,
+            _ => (None, None),
         }
+    };
+    let path = if let Some(method_name) = autospec {
+        crate::rust_to_vir_func::autospec_fun(&path, method_name)
+    } else {
+        path
     };
 
     let f_name = tcx.def_path_str(f);
@@ -628,7 +638,7 @@ fn fn_call_to_vir<'tcx>(
     }
     if is_requires || is_recommends {
         unsupported_err_unless!(len == 1, expr.span, "expected requires/recommends", &args);
-        let bctx = &BodyCtxt { external_body: false, ..bctx.clone() };
+        let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
         args = extract_array(args[0]);
         for arg in &args {
             if !matches!(bctx.types.node_type(arg.hir_id).kind(), TyKind::Bool) {
@@ -659,7 +669,7 @@ fn fn_call_to_vir<'tcx>(
     }
     if is_ensures {
         unsupported_err_unless!(len == 1, expr.span, "expected ensures", &args);
-        let bctx = &BodyCtxt { external_body: false, ..bctx.clone() };
+        let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
         let header = extract_ensures(&bctx, args[0])?;
         let expr = mk_expr_span(args[0].span, ExprX::Header(header));
         // extract_ensures does most of the necessary work, so we can return at this point
@@ -888,6 +898,9 @@ fn fn_call_to_vir<'tcx>(
                 };
                 let expr = expr_to_vir(bctx, arg_x, ExprModifier { addr_of: true, deref_mut })?;
                 Ok(spanned_typed_new(arg.span, &expr.typ.clone(), ExprX::Loc(expr)))
+            } else if is_decreases || is_invariant {
+                let bctx = &BodyCtxt { in_ghost: true, ..bctx.clone() };
+                expr_to_vir(bctx, arg, is_expr_typ_mut_ref(bctx, arg, ExprModifier::REGULAR)?)
             } else {
                 expr_to_vir(bctx, arg, is_expr_typ_mut_ref(bctx, arg, ExprModifier::REGULAR)?)
             }
@@ -1635,23 +1648,23 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
         ExprKind::Block(body, _) => {
             if is_invariant_block(bctx, expr)? {
                 invariant_block_to_vir(bctx, expr, modifier)
-            } else {
+            } else if let Some(g_attr) = get_ghost_block_opt(bctx.ctxt.tcx.hir().attrs(expr.hir_id))
+            {
+                let bctx = &BodyCtxt { in_ghost: true, ..bctx.clone() };
                 let block = block_to_vir(bctx, body, &expr.span, &expr_typ(), modifier);
-                if let Some(g_attr) = get_ghost_block_opt(bctx.ctxt.tcx.hir().attrs(expr.hir_id)) {
-                    let tracked = match g_attr {
-                        GhostBlockAttr::Proof => false,
-                        GhostBlockAttr::Tracked => true,
-                        GhostBlockAttr::GhostWrapped | GhostBlockAttr::TrackedWrapped => {
-                            return block;
-                        }
-                        GhostBlockAttr::Wrapper => {
-                            return err_span_str(expr.span, "unexpected ghost block wrapper");
-                        }
-                    };
-                    Ok(mk_expr(ExprX::Ghost { alloc_wrapper: None, tracked, expr: block? }))
-                } else {
-                    block
-                }
+                let tracked = match g_attr {
+                    GhostBlockAttr::Proof => false,
+                    GhostBlockAttr::Tracked => true,
+                    GhostBlockAttr::GhostWrapped | GhostBlockAttr::TrackedWrapped => {
+                        return block;
+                    }
+                    GhostBlockAttr::Wrapper => {
+                        return err_span_str(expr.span, "unexpected ghost block wrapper");
+                    }
+                };
+                Ok(mk_expr(ExprX::Ghost { alloc_wrapper: None, tracked, expr: block? }))
+            } else {
+                block_to_vir(bctx, body, &expr.span, &expr_typ(), modifier)
             }
         }
         ExprKind::Call(fun, args_slice) => {

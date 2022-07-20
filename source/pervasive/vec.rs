@@ -79,7 +79,10 @@ impl<A> Vec<A> {
         self.vec[i] = a;
     }
 
+    pub spec fn spec_len(&self) -> usize;
+
     #[verifier(external_body)]
+    #[verifier(when_used_as_spec(spec_len))]
     #[verifier(autoview)]
     pub fn len(&self) -> (l: usize)
         ensures
@@ -87,6 +90,14 @@ impl<A> Vec<A> {
     {
         self.vec.len()
     }
+}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_spec_len<A>(v: Vec<A>)
+    ensures
+        #[trigger] v.spec_len() == v.view().len(),
+{
 }
 
 } // verus!

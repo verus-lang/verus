@@ -479,6 +479,8 @@ pub struct FunctionAttrsX {
     pub custom_req_err: Option<String>,
     /// coerce f(e, ...) to f(e.view(), ...)
     pub autoview: bool,
+    /// When used in a ghost context, redirect to a specified spec function
+    pub autospec: Option<Fun>,
     /// Verify using bitvector theory
     pub bit_vector: bool,
     /// Is atomic (i.e., can be inside an invariant block)
