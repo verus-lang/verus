@@ -12,7 +12,7 @@ use syn_verus::{
     ExprMacro, ExprMatch, ExprMethodCall, ExprParen, ExprPath, ExprRange, ExprReference,
     ExprRepeat, ExprReturn, ExprStruct, ExprTry, ExprTryBlock, ExprTuple, ExprType, ExprUnary,
     ExprUnsafe, ExprWhile, ExprYield, FieldValue, GenericMethodArgument, Index, Label, Member,
-    MethodTurbofish, PathArguments, QSelf, RangeLimits, ReturnType, Stmt, Token, UnOp,
+    MethodTurbofish, PathArguments, QSelf, RangeLimits, ReturnType, Stmt, Token, UnOp, View,
 };
 
 impl Printer {
@@ -58,9 +58,22 @@ impl Printer {
             Expr::Verbatim(expr) => self.expr_verbatim(expr),
             Expr::While(expr) => self.expr_while(expr),
             Expr::Yield(expr) => self.expr_yield(expr),
+
+            // verus
+            // (note: for now, not supporting assert, assume, etc., since we're
+            // only using this for spec expressions at the moment)
+            Expr::View(v) => self.expr_view(v),
+
             #[cfg_attr(all(test, exhaustive), deny(non_exhaustive_omitted_patterns))]
             _ => unimplemented!("unknown Expr"),
         }
+    }
+
+    pub fn expr_view(&mut self, expr: &View) {
+        // Similar to expr_tyr
+        self.outer_attrs(&expr.attrs);
+        self.expr_beginning_of_line(&expr.expr, false);
+        self.word("@");
     }
 
     pub fn expr_beginning_of_line(&mut self, expr: &Expr, beginning_of_line: bool) {
