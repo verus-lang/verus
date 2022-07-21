@@ -68,8 +68,8 @@ assert_by_compute_only({
 ```
 
 While `assert_by_compute` is most useful for concrete values, the interpreter
-also supports symbolic values, and hence it can complete certain proofs symbolically.  
-For example, given variables `a, b, c, d`, the following succeeds:
+also supports symbolic values, and hence it can complete certain proofs 
+symbolically.  For example, given variables `a, b, c, d`, the following succeeds:
 ```
 assert_by_compute_only(seq![a, b, c, d].ext_equal(seq![a, b].add(seq![c, d])));
 ```
@@ -99,5 +99,5 @@ Specifically, the time limit is the number of seconds specified via the
 
 ## See Also
 
-1. The test suite has a variety of small examples in [verus/source/rust_verify/test/assert_by_compute.rs].
-2. More complex examples live in [verus/source/rust_verify/examples/assert_by_compute.rs].
+1. The [test suite](../../rust_verify/tests/assert_by_compute.rs) has a variety of small examples.
+2. We also have several [more complex examples](../../rust_verify/example/assert_by_compute.rs).
