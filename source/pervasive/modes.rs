@@ -35,7 +35,16 @@ impl<A> Tracked<A> {
     #[verifier(external_body)]
     pub fn exec(#[proof] a: A) -> Tracked<A> {
         ensures(|s: Tracked<A>| equal(a, s.value()));
+        opens_invariants_none();
         Tracked { phantom: PhantomData }
+    }
+
+    #[verifier(external_body)]
+    pub fn exec_borrow<'a>(#[proof] a: &'a A) -> &'a Tracked<A> {
+        ensures(|s: Tracked<A>| equal(*a, s.value()));
+        opens_invariants_none();
+
+        unimplemented!(); // REVIEW: is this okay?
     }
 
     #[proof]
@@ -44,6 +53,12 @@ impl<A> Tracked<A> {
     pub fn get(#[proof] self) -> A {
         ensures(|a: A| equal(a, self.value()));
         unimplemented!()
+    }
+
+    #[doc(hidden)]
+    #[verifier(external)]
+    pub fn for_external_body() -> Self {
+        Tracked { phantom: PhantomData }
     }
 }
 
