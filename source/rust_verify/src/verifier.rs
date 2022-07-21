@@ -952,7 +952,12 @@ impl Verifier {
         if self.args.log_all || self.args.log_vir_poly {
             let mut file =
                 self.create_log_file(Some(&module), None, crate::config::VIR_POLY_FILE_SUFFIX)?;
-            let vprinter = vir::printer::Printer::new(self.args.vir_log_config);
+            let vprinter = vir::printer::Printer::new(
+                self.args.vir_log_no_span,
+                self.args.vir_log_no_type,
+                false,
+                self.args.vir_log_no_routinary,
+            );
             vprinter.write_krate(&mut file, &poly_krate);
         }
 
@@ -984,7 +989,12 @@ impl Verifier {
         if self.args.log_all || self.args.log_vir_simple {
             let mut file =
                 self.create_log_file(None, None, crate::config::VIR_SIMPLE_FILE_SUFFIX)?;
-            let vprinter = vir::printer::Printer::new(self.args.vir_log_config);
+            let vprinter = vir::printer::Printer::new(
+                self.args.vir_log_no_span,
+                self.args.vir_log_no_type,
+                false,
+                self.args.vir_log_no_routinary,
+            );
             vprinter.write_krate(&mut file, &krate);
         }
 
@@ -1175,7 +1185,12 @@ impl Verifier {
 
         if self.args.log_all || self.args.log_vir {
             let mut file = self.create_log_file(None, None, crate::config::VIR_FILE_SUFFIX)?;
-            let vprinter = vir::printer::Printer::new(self.args.vir_log_config);
+            let vprinter = vir::printer::Printer::new(
+                self.args.vir_log_no_span,
+                self.args.vir_log_no_type,
+                false,
+                self.args.vir_log_no_routinary,
+            );
             vprinter.write_krate(&mut file, &vir_crate);
         }
         vir::well_formed::check_crate(&vir_crate)?;
