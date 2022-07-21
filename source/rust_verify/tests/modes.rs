@@ -418,3 +418,17 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_vir_error(e)
 }
+
+test_verify_one_file! {
+    #[test] tracked_double_deref code! {
+        use pervasive::modes::*;
+
+        fn foo<V>(x: Tracked<V>) {
+            let y = &x;
+
+            assert(equal((**y), (*x)));
+            assert(equal((**y), x.value()));
+            assert(equal((*y).value(), x.value()));
+        }
+    } => Ok(())
+}
