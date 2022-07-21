@@ -372,6 +372,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] fn_calls_bad3 code! {
         mod privacy_invasion {
+            #[allow(unused_imports)]
             use builtin::assert_by_compute;
 
             mod mostly_private {
