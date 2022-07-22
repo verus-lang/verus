@@ -1,7 +1,7 @@
 use proc_macro2::Span;
 use std::rc::Rc;
 use syn_verus::token;
-use syn_verus::{Block, Expr, FieldsNamed, Generics, Ident, ImplItemMethod, Pat, Type};
+use syn_verus::{Block, Expr, FieldsNamed, Generics, Ident, ImplItemMethod, Item, Pat, Type};
 
 #[derive(Clone, Debug)]
 pub struct SM {
@@ -11,6 +11,8 @@ pub struct SM {
     pub fields_named_ast: FieldsNamed,
     pub transitions: Vec<Transition>,
     pub concurrent: bool,
+    pub transition_label: Option<Item>,
+    pub init_label: Option<Item>,
 }
 
 #[derive(Clone, Debug)]
@@ -18,6 +20,9 @@ pub struct Extras {
     pub invariants: Vec<Invariant>,
     pub lemmas: Vec<Lemma>,
 }
+
+pub const TRANSITION_LABEL_TYPE_NAME: &str = "Label";
+pub const INIT_LABEL_TYPE_NAME: &str = "InitLabel";
 
 #[derive(Clone, Debug)]
 pub struct Field {

@@ -5852,3 +5852,87 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_fails(e, 10)
 }
+
+test_verify_one_file! {
+    #[test] labels_wrong_type_name IMPORTS.to_string() + code_str! {
+        state_machine!{ Y {
+            fields {
+                pub x: int,
+            }
+
+            pub struct AsdfWeirdName { }
+        }}
+    } => Err(e) => assert_error_msg(e, "only supports the declaration of a `Label` and `InitLabel` types")
+}
+
+test_verify_one_file! {
+    #[test] labels_init_missing IMPORTS.to_string() + code_str! {
+        state_machine!{ Y {
+            fields {
+                pub x: int,
+            }
+
+            pub struct Label { }
+            pub struct InitLabel { }
+
+            init!{
+                tr() {
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "the first param to an 'init'")
+}
+
+test_verify_one_file! {
+    #[test] labels_init_missing2 IMPORTS.to_string() + code_str! {
+        state_machine!{ Y {
+            fields {
+                pub x: int,
+            }
+
+            pub struct Label { }
+            pub struct InitLabel { }
+
+            init!{
+                tr(x: int) {
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "the first param to an 'init'")
+}
+
+test_verify_one_file! {
+    #[test] labels_tr_missing IMPORTS.to_string() + code_str! {
+        state_machine!{ Y {
+            fields {
+                pub x: int,
+            }
+
+            pub struct Label { }
+            pub struct InitLabel { }
+
+            transition!{
+                tr(x: int) {
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "the first param to a 'transition'")
+}
+
+test_verify_one_file! {
+    #[test] labels_readonly_missing IMPORTS.to_string() + code_str! {
+        state_machine!{ Y {
+            fields {
+                pub x: int,
+            }
+
+            pub struct Label { }
+            pub struct InitLabel { }
+
+            readonly!{
+                tr(x: int) {
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "the first param to a 'readonly'")
+}
