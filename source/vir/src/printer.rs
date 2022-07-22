@@ -314,9 +314,17 @@ impl Printer {
                     UnaryOpr::TupleField { tuple_arity, field } => {
                         nodes_vec!(tuplefield {str_to_node(":arity")} {str_to_node(&format!("{}", tuple_arity))} {str_to_node(&format!("{}", field))})
                     }
-                    UnaryOpr::Field(FieldOpr { datatype, variant, field }) => {
+                    UnaryOpr::Field(FieldOpr { datatype, variant, field })
+                        if !self.pretty_format =>
+                    {
                         nodes_vec!(field {self.path_to_node(datatype)} {str_to_node(variant)} {str_to_node(field)})
                     }
+                    UnaryOpr::Field(FieldOpr { datatype: _, variant: _, field })
+                        if self.pretty_format =>
+                    {
+                        nodes_vec!(field {str_to_node(field)})
+                    }
+                    _ => unreachable!(),
                 };
                 nodes.push(self.expr_to_node(expr));
                 nodes
@@ -401,12 +409,19 @@ impl Printer {
                 let ts = Node::List(triggers.iter().map(|x| self.exprs_to_node(x)).collect());
                 nodes!(with_triggers {ts} {self.expr_to_node(body)})
             }
-            ExprX::Assign { init_not_mut, lhs: e0, rhs: e1 } => {
+            ExprX::Assign { init_not_mut, lhs: e0, rhs: e1 } if !self.pretty_format => {
                 let mut nodes = nodes_vec!(assign);
                 if *init_not_mut {
                     nodes.push(str_to_node(":init_not_mut"));
                 }
                 nodes.push(self.expr_to_node(e0));
+                nodes.push(self.expr_to_node(e1));
+                Node::List(nodes)
+            }
+            ExprX::Assign { init_not_mut: _, lhs: e0, rhs: e1 } if self.pretty_format => {
+                let mut nodes = vec![];
+                nodes.push(self.expr_to_node(e0));
+                nodes.push(str_to_node(":="));
                 nodes.push(self.expr_to_node(e1));
                 Node::List(nodes)
             }
@@ -427,6 +442,9 @@ impl Printer {
                     self.expr_to_node(e1)
                 });
                 if let Some(els) = e2 {
+                    if self.pretty_format {
+                        nodes.push(str_to_node("else"));
+                    }
                     nodes.push(self.expr_to_node(els));
                 }
                 Node::List(nodes)
@@ -465,13 +483,22 @@ impl Printer {
                 Node::List(stmts.iter().map(|stmt| {
                     let node = match &stmt.x {
                         StmtX::Expr(expr) => self.expr_to_node(expr),
-                        StmtX::Decl { pattern, mode, init } => {
+                        StmtX::Decl { pattern, mode, init }  if !self.pretty_format  => {
                             let mut nodes = nodes_vec!(decl {self.pattern_to_node(pattern)} {str_to_node(":mode")} {str_to_node(&format!("{:?}", mode))});
                             if let Some(inite) = init {
                                 nodes.push(self.expr_to_node(inite));
                             }
                             Node::List(nodes)
                         }
+                        StmtX::Decl { pattern, mode:_, init } if self.pretty_format => {
+                            let mut nodes = nodes_vec!(decl {self.pattern_to_node(pattern)});
+                            if let Some(inite) = init {
+                                nodes.push(str_to_node(":="));
+                                nodes.push(self.expr_to_node(inite));
+                            }
+                            Node::List(nodes)
+                        }
+                        _ => unreachable!(),
                     };
                     self.spanned_node(node, &stmt.span)
                 }).collect())});
