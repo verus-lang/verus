@@ -956,7 +956,7 @@ impl Verifier {
                 self.args.vir_log_no_span,
                 self.args.vir_log_no_type,
                 false,
-                self.args.vir_log_no_routinary,
+                self.args.vir_log_no_encoding,
             );
             vprinter.write_krate(&mut file, &poly_krate);
         }
@@ -993,7 +993,7 @@ impl Verifier {
                 self.args.vir_log_no_span,
                 self.args.vir_log_no_type,
                 false,
-                self.args.vir_log_no_routinary,
+                self.args.vir_log_no_encoding,
             );
             vprinter.write_krate(&mut file, &krate);
         }
@@ -1189,7 +1189,7 @@ impl Verifier {
                 self.args.vir_log_no_span,
                 self.args.vir_log_no_type,
                 false,
-                self.args.vir_log_no_routinary,
+                self.args.vir_log_no_encoding,
             );
             vprinter.write_krate(&mut file, &vir_crate);
         }

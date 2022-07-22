@@ -13,7 +13,7 @@ pub struct Printer {
     no_span: bool,
     no_type: bool,
     no_function_attribute: bool,
-    no_routine_calls: bool, // omit `box`, `unbox`, `clip`s
+    no_encoding: bool, // omit `box`, `unbox`, `clip`s
 }
 
 impl Printer {
@@ -21,9 +21,9 @@ impl Printer {
         no_span: bool,
         no_type: bool,
         no_function_attribute: bool,
-        no_routine_calls: bool,
+        no_encoding: bool,
     ) -> Printer {
-        Printer { no_span, no_type, no_function_attribute, no_routine_calls }
+        Printer { no_span, no_type, no_function_attribute, no_encoding }
     }
 
     fn path_to_node(&self, path: &Path) -> Node {
@@ -263,7 +263,7 @@ impl Printer {
                         nodes
                     }
                     UnaryOp::Clip(range) => {
-                        if self.no_routine_calls {
+                        if self.no_encoding {
                             vec![]
                         } else {
                             nodes_vec!(clip {self.int_range_to_node(range)})
@@ -277,14 +277,14 @@ impl Printer {
             ExprX::UnaryOpr(unary_opr, expr) => Node::List({
                 let mut nodes = match unary_opr {
                     UnaryOpr::Box(typ) => {
-                        if self.no_routine_calls {
+                        if self.no_encoding {
                             vec![]
                         } else {
                             nodes_vec!(box { self.typ_to_node(typ) })
                         }
                     }
                     UnaryOpr::Unbox(typ) => {
-                        if self.no_routine_calls {
+                        if self.no_encoding {
                             vec![]
                         } else {
                             nodes_vec!(unbox {self.typ_to_node(typ)})
