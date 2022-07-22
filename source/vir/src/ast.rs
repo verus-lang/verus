@@ -119,6 +119,8 @@ pub enum UnaryOp {
     Trigger(TriggerAnnotation),
     /// Force integer value into range given by IntRange (e.g. by using mod)
     Clip(IntRange),
+    /// Operations that coerce from/to builtin::Ghost or builtin::Tracked
+    CoerceMode { op_mode: Mode, from_mode: Mode, to_mode: Mode },
     /// Internal consistency check to make sure finalize_exp gets called
     /// (appears only briefly in SST before finalize_exp is called)
     MustBeFinalized,
@@ -388,7 +390,9 @@ pub enum ExprX {
     /// Manually supply triggers for body of quantifier
     WithTriggers { triggers: Arc<Vec<Exprs>>, body: Expr },
     /// Assign to local variable
-    Assign { init_not_mut: bool, lhs: Expr, rhs: Expr },
+    /// init_not_mut = true ==> a delayed initialization of a non-mutable variable
+    /// lhs_type_mode = Some(mode) ==> assignment to Ghost<t> or Tracked<t>
+    Assign { init_not_mut: bool, lhs_type_mode: Option<Mode>, lhs: Expr, rhs: Expr },
     /// Reveal definition of an opaque function with some integer fuel amount
     Fuel(Fun, u32),
     /// Header, which must appear at the beginning of a function or while loop.

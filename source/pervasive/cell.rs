@@ -91,7 +91,7 @@ impl<V> PCell<V> {
         ),
     {
         let p = PCell { ucell: UnsafeCell::new(MaybeUninit::uninit()) };
-        (p, Tracked::for_external_body())
+        (p, Tracked::assume_new())
     }
 
     #[inline(always)]

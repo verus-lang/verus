@@ -360,12 +360,12 @@ impl VisitMut for Visitor {
                     (false, (true, false), Expr::Paren(..)) => {
                         // ghost(...)
                         let inner = take_expr(&mut *unary.expr);
-                        *expr = parse_quote_spanned!(span => #[verifier(ghost_wrapper)] crate::pervasive::modes::Ghost::exec(#[verifier(ghost_block_wrapped)] #inner));
+                        *expr = parse_quote_spanned!(span => #[verifier(ghost_wrapper)] crate::pervasive::modes::ghost_exec(#[verifier(ghost_block_wrapped)] #inner));
                     }
                     (false, (true, true), Expr::Paren(..)) => {
                         // tracked(...)
                         let inner = take_expr(&mut *unary.expr);
-                        *expr = parse_quote_spanned!(span => #[verifier(ghost_wrapper)] crate::pervasive::modes::Tracked::exec(#[verifier(tracked_block_wrapped)] #inner));
+                        *expr = parse_quote_spanned!(span => #[verifier(ghost_wrapper)] crate::pervasive::modes::tracked_exec(#[verifier(tracked_block_wrapped)] #inner));
                     }
                     (true, (true, true), _) => {
                         // tracked ...

@@ -104,6 +104,7 @@ fn check_trigger_expr(
                 ExpX::Old(_, _) => panic!("internal error: Old"),
                 ExpX::Unary(op, _) => match op {
                     UnaryOp::Trigger(_) | UnaryOp::Clip(_) | UnaryOp::BitNot => Ok(()),
+                    UnaryOp::CoerceMode { .. } => Ok(()),
                     UnaryOp::MustBeFinalized => Ok(()),
                     UnaryOp::Not => err_str(&exp.span, "triggers cannot contain boolean operators"),
                 },
@@ -156,7 +157,8 @@ fn check_trigger_expr(
                 ExpX::VarAt(_, VarAt::Pre) => true,
                 ExpX::Old(_, _) => panic!("internal error: Old"),
                 ExpX::Unary(op, _) => match op {
-                    UnaryOp::Trigger(_) | UnaryOp::Clip(_) | UnaryOp::MustBeFinalized => true,
+                    UnaryOp::Trigger(_) | UnaryOp::Clip(_) | UnaryOp::CoerceMode { .. } => true,
+                    UnaryOp::MustBeFinalized => true,
                     UnaryOp::Not | UnaryOp::BitNot => false,
                 },
                 ExpX::Binary(op, _, _) => {

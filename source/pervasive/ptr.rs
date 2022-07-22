@@ -157,7 +157,7 @@ impl<V> PPtr<V> {
         let p = PPtr {
             uptr: Box::leak(box MaybeUninit::uninit()).as_mut_ptr(),
         };
-        (p, Tracked::for_external_body())
+        (p, Tracked::assume_new())
     }
 
     /// Clones the pointer.

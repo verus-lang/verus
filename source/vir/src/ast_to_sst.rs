@@ -215,7 +215,10 @@ impl State {
                         assert!(!substs.contains_key(&unique));
                         substs.insert(unique, arg.clone());
                     }
-                    return Ok(crate::sst_util::subst_exp(typ_substs, substs, body));
+                    let e = crate::sst_util::subst_exp(typ_substs, substs, body);
+                    // keep the original outer span for better trigger messages
+                    let e = SpannedTyped::new(&exp.span, &e.typ, e.x.clone());
+                    return Ok(e);
                 }
                 Ok(exp.clone())
             }
@@ -793,7 +796,7 @@ fn expr_to_stm_opt(
             let e0 = unwrap_or_return_never!(e0, stms);
             Ok((stms, ReturnValue::Some(mk_exp(ExpX::Loc(e0)))))
         }
-        ExprX::Assign { init_not_mut, lhs: lhs_expr, rhs: expr2 } => {
+        ExprX::Assign { init_not_mut, lhs_type_mode: _, lhs: lhs_expr, rhs: expr2 } => {
             let (mut stms, lhs_exp) = expr_to_stm_opt(ctx, state, lhs_expr)?;
             let lhs_exp = lhs_exp.expect_value();
             match expr_must_be_call_stm(ctx, state, expr2)? {

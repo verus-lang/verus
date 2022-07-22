@@ -512,6 +512,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Expr {
                     exp.typ
                 ),
                 UnaryOp::Trigger(_) => exp_to_expr(ctx, exp, expr_ctxt),
+                UnaryOp::CoerceMode { .. } => {
+                    panic!("internal error: TupleField should have been removed before here")
+                }
                 UnaryOp::MustBeFinalized => {
                     panic!("internal error: Exp not finalized: {:?}", exp)
                 }
@@ -541,6 +544,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Expr {
                     IntRange::I(_) | IntRange::ISize => crate::def::I_CLIP,
                 };
                 apply_range_fun(&f_name, &range, vec![expr])
+            }
+            UnaryOp::CoerceMode { .. } => {
+                panic!("internal error: TupleField should have been removed before here")
             }
             UnaryOp::MustBeFinalized => {
                 panic!("internal error: Exp not finalized: {:?}", exp)

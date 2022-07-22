@@ -41,7 +41,7 @@ pub struct UniqueIdent {
 
 pub type Exp = Arc<SpannedTyped<ExpX>>;
 pub type Exps = Arc<Vec<Exp>>;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ExpX {
     Const(Constant),
     Var(UniqueIdent),

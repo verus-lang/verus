@@ -49,9 +49,9 @@ fn reverse(v: &mut Vec<u64>)
     while n < length / 2
         invariant
             length == v.len(),
-            forall|i: int| n <= i && i + n < length ==> v[i] == (*v1)[i],
-            forall|i: int| 0 <= i < n ==> v[i] == (*v1)[length - i - 1],
-            forall|i: int| 0 <= i < n ==> (*v1)[i] == v[length - i - 1],
+            forall|i: int| 0 <= i < n ==> v[i] == v1[length - i - 1],
+            forall|i: int| 0 <= i < n ==> v1[i] == v[length - i - 1],
+            forall|i: int| n <= i && i + n < length ==> #[trigger] v[i] == v1[i],
     {
         let x = *v.index(n);
         let y = *v.index(length - 1 - n);

@@ -278,10 +278,10 @@ impl<S> MyRc<S> {
 
         #[proof] let (inst, mut rc_token, _) = RefCounter::Instance::initialize_empty(Option::None);
         
-        #[proof] let ptr_perm = ptr_perm.get();
+        #[proof] let ptr_perm = tracked_get(ptr_perm);
         #[proof] let reader = inst.do_deposit(ptr_perm, &mut rc_token, ptr_perm);
 
-        #[proof] let g = GhostStuff::<S> { rc_perm: rc_perm.get(), rc_token };
+        #[proof] let g = GhostStuff::<S> { rc_perm: tracked_get(rc_perm), rc_token };
 
         #[proof] let inv = LocalInvariant::new(g,
             |g: GhostStuff<S>|
@@ -299,7 +299,7 @@ impl<S> MyRc<S> {
         #[proof] let perm = self.inst.reader_guard(
             self.reader.value,
             &self.reader);
-        &self.ptr.borrow(Tracked::exec_borrow(perm)).s
+        &self.ptr.borrow(tracked_exec_borrow(perm)).s
     }
 
     fn clone(&self) -> Self {
@@ -309,12 +309,12 @@ impl<S> MyRc<S> {
         #[proof] let perm = self.inst.reader_guard(
             self.reader.value,
             &self.reader);
-        let inner_rc_ref = &self.ptr.borrow(Tracked::exec_borrow(perm));
+        let inner_rc_ref = &self.ptr.borrow(tracked_exec_borrow(perm));
 
         #[proof] let new_reader;
         open_local_invariant!(self.inv.borrow() => g => {
             #[proof] let GhostStuff { rc_perm: rc_perm, rc_token: mut rc_token } = g;
-            let mut rc_perm = Tracked::exec(rc_perm);
+            let mut rc_perm = tracked_exec(rc_perm);
 
             let count = inner_rc_ref.rc_cell.take(&mut rc_perm);
 
@@ -328,7 +328,7 @@ impl<S> MyRc<S> {
                 &mut rc_token,
                 &self.reader);
                 
-            g = GhostStuff { rc_perm: rc_perm.get(), rc_token };
+            g = GhostStuff { rc_perm: tracked_get(rc_perm), rc_token };
         });
 
         MyRc {
@@ -347,11 +347,11 @@ impl<S> MyRc<S> {
         #[proof] let perm = inst.reader_guard(
             reader.value,
             &reader);
-        let inner_rc_ref = &ptr.borrow(Tracked::exec_borrow(perm));
+        let inner_rc_ref = &ptr.borrow(tracked_exec_borrow(perm));
 
         open_local_invariant!(inv.borrow() => g => {
             #[proof] let GhostStuff { rc_perm: rc_perm, rc_token: mut rc_token } = g;
-            let mut rc_perm = Tracked::exec(rc_perm);
+            let mut rc_perm = tracked_exec(rc_perm);
 
             let count = inner_rc_ref.rc_cell.take(&mut rc_perm);
             if count >= 2 {
@@ -367,7 +367,7 @@ impl<S> MyRc<S> {
                     reader.value,
                     &mut rc_token,
                     reader);
-                let mut inner_rc_perm = Tracked::exec(inner_rc_perm);
+                let mut inner_rc_perm = tracked_exec(inner_rc_perm);
 
                 let inner_rc = ptr.take(&mut inner_rc_perm);
 
@@ -380,7 +380,7 @@ impl<S> MyRc<S> {
                 ptr.dispose(inner_rc_perm);
             }
 
-            g = GhostStuff { rc_perm: rc_perm.get(), rc_token };
+            g = GhostStuff { rc_perm: tracked_get(rc_perm), rc_token };
         });
     }
 }

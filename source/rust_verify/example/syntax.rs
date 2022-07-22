@@ -357,17 +357,15 @@ fn test_ghost(x: u32, y: u32)
     assert(*w == x + y + 4);
 }
 
-/* TODO
 fn test_consume(t: Tracked<int>)
     requires *t <= 7
 {
     proof {
-        let tracked x = t.get();
+        let tracked x = tracked_get(tracked t);
         assert(x <= 7);
         consume(tracked x);
     }
 }
-*/
 
 /// Spec functions are not checked for correctness (although they are checked for termination).
 /// However, marking a spec function as "spec(checked)" enables lightweight "recommends checking"

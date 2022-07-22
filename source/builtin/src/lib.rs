@@ -1,6 +1,8 @@
 #![feature(rustc_attrs)]
 #![feature(negative_impls)]
 
+use std::marker::PhantomData;
+
 #[proof]
 pub fn admit() {
     unimplemented!();
@@ -194,6 +196,86 @@ pub fn internal_arbitrary<A>(_: u64) -> A {
     unimplemented!()
 }
 
+//
+// Ghost, Tracked
+//
+
+#[verifier(external_body)]
+pub struct Ghost<#[verifier(strictly_positive)] A> {
+    phantom: PhantomData<A>,
+}
+
+#[verifier(external_body)]
+pub struct Tracked<#[verifier(strictly_positive)] A> {
+    phantom: PhantomData<A>,
+}
+
+impl<A> Ghost<A> {
+    #[spec]
+    pub fn value(self) -> A {
+        unimplemented!()
+    }
+
+    #[spec]
+    #[verifier(external_body)]
+    pub fn new(_a: A) -> Ghost<A> {
+        Ghost { phantom: PhantomData }
+    }
+
+    #[doc(hidden)]
+    #[verifier(external)]
+    #[inline(always)]
+    pub fn assume_new() -> Self {
+        Ghost { phantom: PhantomData }
+    }
+}
+
+impl<A> Tracked<A> {
+    #[spec]
+    pub fn value(self) -> A {
+        unimplemented!()
+    }
+
+    #[doc(hidden)]
+    #[verifier(external)]
+    #[inline(always)]
+    pub fn assume_new() -> Self {
+        Tracked { phantom: PhantomData }
+    }
+}
+
+impl<A> Clone for Ghost<A> {
+    #[verifier(external_body)]
+    #[inline(always)]
+    fn clone(&self) -> Self {
+        Ghost { phantom: PhantomData }
+    }
+}
+
+impl<A> Copy for Ghost<A> {}
+
+impl<A> std::ops::Deref for Ghost<A> {
+    type Target = A;
+    #[spec]
+    #[verifier(external)]
+    fn deref(&self) -> &A {
+        unimplemented!()
+    }
+}
+
+impl<A> std::ops::Deref for Tracked<A> {
+    type Target = A;
+    #[spec]
+    #[verifier(external)]
+    fn deref(&self) -> &A {
+        unimplemented!()
+    }
+}
+
+//
+// int and nat
+//
+
 #[allow(non_camel_case_types)]
 pub struct int;
 
@@ -319,6 +401,10 @@ impl std::cmp::Ord for nat {
     }
 }
 
+//
+// Structural
+//
+
 // TODO(andreal) bake this into the compiler as a lang_item
 #[rustc_diagnostic_item = "builtin::Structural"]
 pub trait Structural {
@@ -382,6 +468,10 @@ pub struct SyncSendIfSend<T> {
 
 unsafe impl<T: Send> Sync for SyncSendIfSend<T> {}
 unsafe impl<T: Send> Send for SyncSendIfSend<T> {}
+
+//
+// Integers
+//
 
 // Marker for integer types (i8 ... u128, isize, usize, nat, int)
 // so that we get reasonable type error messages when someone uses a non-Integer type

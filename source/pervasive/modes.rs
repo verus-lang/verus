@@ -3,98 +3,36 @@
 #[allow(unused_imports)] use crate::pervasive::*;
 use std::marker::PhantomData;
 
+// TODO: the *_exec* and tracked_get functions would be better in builtin,
+// but it's painful to implement the support in erase.rs at the moment.
 #[verifier(external_body)]
-pub struct Ghost<#[verifier(strictly_positive)] A> {
-    phantom: PhantomData<A>,
+pub fn ghost_exec<A>(#[spec] a: A) -> Ghost<A> {
+    ensures(|s: Ghost<A>| equal(a, s.value()));
+    Ghost::assume_new()
 }
 
 #[verifier(external_body)]
-pub struct Tracked<#[verifier(strictly_positive)] A> {
-    phantom: PhantomData<A>,
+pub fn tracked_exec<A>(#[proof] a: A) -> Tracked<A> {
+    ensures(|s: Tracked<A>| equal(a, s.value()));
+    opens_invariants_none();
+    Tracked::assume_new()
 }
 
-impl<A> Ghost<A> {
-    fndecl!(pub fn value(self) -> A);
+#[verifier(external_body)]
+pub fn tracked_exec_borrow<'a, A>(#[proof] a: &'a A) -> &'a Tracked<A> {
+    ensures(|s: Tracked<A>| equal(*a, s.value()));
+    opens_invariants_none();
 
-    #[spec]
-    #[verifier(external_body)]
-    pub fn new(a: A) -> Ghost<A> {
-        Ghost { phantom: PhantomData }
-    }
-
-    #[verifier(external_body)]
-    pub fn exec(#[spec] a: A) -> Ghost<A> {
-        ensures(|s: Ghost<A>| equal(a, s.value()));
-        Ghost { phantom: PhantomData }
-    }
-}
-
-impl<A> Tracked<A> {
-    fndecl!(pub fn value(self) -> A);
-
-    #[verifier(external_body)]
-    pub fn exec(#[proof] a: A) -> Tracked<A> {
-        ensures(|s: Tracked<A>| equal(a, s.value()));
-        opens_invariants_none();
-        Tracked { phantom: PhantomData }
-    }
-
-    #[verifier(external_body)]
-    pub fn exec_borrow<'a>(#[proof] a: &'a A) -> &'a Tracked<A> {
-        ensures(|s: Tracked<A>| equal(*a, s.value()));
-        opens_invariants_none();
-
-        unimplemented!(); // REVIEW: is this okay?
-    }
-
-    #[proof]
-    #[verifier(external_body)]
-    #[verifier(returns(proof))]
-    pub fn get(#[proof] self) -> A {
-        ensures(|a: A| equal(a, self.value()));
-        unimplemented!()
-    }
-
-    #[doc(hidden)]
-    #[verifier(external)]
-    pub fn for_external_body() -> Self {
-        Tracked { phantom: PhantomData }
-    }
+    // TODO: implement this (using unsafe) or mark function as ghost (if supported by Rust)
+    unimplemented!();
 }
 
 #[proof]
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub fn axiom_ghost_new<A>(a: A) {
-    ensures(equal(#[trigger] Ghost::new(a).value(), a));
-}
-
-impl<A> Clone for Ghost<A> {
-    #[verifier(external_body)]
-    fn clone(&self) -> Self {
-        Ghost { phantom: PhantomData }
-    }
-}
-
-impl<A> Copy for Ghost<A> {
-}
-
-impl<A> std::ops::Deref for Ghost<A> {
-    type Target = A;
-    #[spec]
-    #[verifier(external)]
-    fn deref(&self) -> &A {
-        unimplemented!()
-    }
-}
-
-impl<A> std::ops::Deref for Tracked<A> {
-    type Target = A;
-    #[spec]
-    #[verifier(external)]
-    fn deref(&self) -> &A {
-        unimplemented!()
-    }
+#[verifier(returns(proof))]
+pub fn tracked_get<A>(#[proof] t: Tracked<A>) -> A {
+    ensures(|a: A| equal(a, *t));
+    unimplemented!()
 }
 
 verus! {

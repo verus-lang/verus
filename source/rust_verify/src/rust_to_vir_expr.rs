@@ -7,8 +7,8 @@ use crate::erase::ResolvedCall;
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, def_to_path_ident, get_function_def, get_range, hack_get_def_name,
     ident_to_var, is_smt_arith, is_smt_equality, is_type_std_rc_or_arc, mid_ty_simplify,
-    mid_ty_to_vir, mk_range, typ_of_node, typ_of_node_expect_mut_ref,
-    typ_path_and_ident_to_vir_path,
+    mid_ty_to_mode, mid_ty_to_vir, mid_ty_to_vir_ghost, mk_range, typ_of_node,
+    typ_of_node_expect_mut_ref, typ_path_and_ident_to_vir_path,
 };
 use crate::util::{
     err_span_str, err_span_string, slice_vec_map_result, spanned_new, spanned_typed_new,
@@ -32,10 +32,8 @@ use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArmX, AssertQueryMode, BinaryOp, BitwiseOp, CallTarget, Constant, ExprX, FieldOpr,
     FunX, HeaderExpr, HeaderExprX, Ident, InequalityOp, IntRange, InvAtomicity, Mode, MultiOp,
-    PathX, PatternX, Quant, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
-    VirErr,
+    PatternX, Quant, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
-use vir::ast_util::types_equal;
 use vir::ast_util::{ident_binder, path_as_rust_name};
 use vir::def::positional_field_ident;
 
@@ -363,6 +361,7 @@ fn fn_call_to_vir<'tcx>(
     args_slice: &'tcx [Expr<'tcx>],
     autoview_typ: Option<&Typ>,
     defined_locally: bool,
+    deref_ghost: bool,
 ) -> Result<vir::ast::Expr, VirErr> {
     let mut args: Vec<&'tcx Expr<'tcx>> = args_slice.iter().collect();
 
@@ -478,8 +477,13 @@ fn fn_call_to_vir<'tcx>(
     let is_spec_literal_nat = f_name == "builtin::spec_literal_nat";
     let is_spec_cast_integer = f_name == "builtin::spec_cast_integer";
     let is_panic = f_name == "core::panicking::panic";
-    let is_alloc_ghost = f_name == "pervasive::modes::Ghost::<A>::exec";
-    let is_alloc_tracked = f_name == "pervasive::modes::Tracked::<A>::exec";
+    let is_ghost_value = f_name == "builtin::Ghost::<A>::value";
+    let is_ghost_new = f_name == "builtin::Ghost::<A>::new";
+    let is_ghost_exec = f_name == "pervasive::modes::ghost_exec";
+    let is_tracked_value = f_name == "builtin::Tracked::<A>::value";
+    let is_tracked_exec = f_name == "pervasive::modes::tracked_exec";
+    let is_tracked_exec_borrow = f_name == "pervasive::modes::tracked_exec_borrow";
+    let is_tracked_get = f_name == "builtin::Tracked::<A>::get";
     let is_spec = is_admit
         || is_no_method_body
         || is_requires
@@ -515,6 +519,7 @@ fn fn_call_to_vir<'tcx>(
         || is_chained_cmp
         || is_chained_value
         || is_chained_ineq;
+    let is_spec_ghost_tracked = is_ghost_value || is_ghost_new || is_tracked_value;
 
     // These functions are all no-ops in the SMT encoding, so we don't emit any VIR
     let is_ignored_fn = f_name == "std::box::Box::<T>::new"
@@ -595,6 +600,7 @@ fn fn_call_to_vir<'tcx>(
             || is_assert_forall_by
             || is_assert_bit_vector
             || is_old
+            || is_spec_ghost_tracked
             || is_get_variant.is_some(),
         is_implies || is_ignored_fn,
     );
@@ -746,7 +752,7 @@ fn fn_call_to_vir<'tcx>(
         );
     }
 
-    if is_alloc_ghost || is_alloc_tracked {
+    if is_ghost_exec || is_tracked_exec {
         unsupported_err_unless!(len == 1, expr.span, "expected Ghost/Tracked", &args);
         let arg = &args[0];
         if get_ghost_block_opt(bctx.ctxt.tcx.hir().attrs(expr.hir_id))
@@ -754,7 +760,7 @@ fn fn_call_to_vir<'tcx>(
         {
             let vir_arg = expr_to_vir(bctx, arg, ExprModifier::REGULAR)?;
             let alloc_wrapper = Some(name);
-            match (is_alloc_tracked, get_ghost_block_opt(bctx.ctxt.tcx.hir().attrs(arg.hir_id))) {
+            match (is_tracked_exec, get_ghost_block_opt(bctx.ctxt.tcx.hir().attrs(arg.hir_id))) {
                 (false, Some(GhostBlockAttr::GhostWrapped)) => {
                     return Ok(mk_expr(ExprX::Ghost {
                         alloc_wrapper,
@@ -1134,7 +1140,33 @@ fn fn_call_to_vir<'tcx>(
     } else if is_chained_cmp {
         unsupported_err_unless!(len == 1, expr.span, "spec_chained_cmp", args);
         Ok(vir_args[0].clone())
+    } else if is_ghost_value || is_tracked_value || is_ghost_new {
+        assert!(vir_args.len() == 1);
+        let spec = Mode::Spec;
+        let op = UnaryOp::CoerceMode { op_mode: spec, from_mode: spec, to_mode: spec };
+        Ok(mk_expr(ExprX::Unary(op, vir_args[0].clone())))
+    } else if is_ghost_exec {
+        assert!(vir_args.len() == 1);
+        let exec = Mode::Exec;
+        let op = UnaryOp::CoerceMode { op_mode: exec, from_mode: Mode::Spec, to_mode: exec };
+        Ok(mk_expr(ExprX::Unary(op, vir_args[0].clone())))
+    } else if is_tracked_exec || is_tracked_exec_borrow {
+        assert!(vir_args.len() == 1);
+        let exec = Mode::Exec;
+        let op = UnaryOp::CoerceMode { op_mode: exec, from_mode: Mode::Proof, to_mode: exec };
+        Ok(mk_expr(ExprX::Unary(op, vir_args[0].clone())))
+    } else if is_tracked_get {
+        assert!(vir_args.len() == 1);
+        let proof = Mode::Proof;
+        let op = UnaryOp::CoerceMode { op_mode: proof, from_mode: proof, to_mode: proof };
+        Ok(mk_expr(ExprX::Unary(op, vir_args[0].clone())))
     } else {
+        if deref_ghost {
+            assert!(vir_args.len() > 0);
+            let spec = Mode::Spec;
+            let op = UnaryOp::CoerceMode { op_mode: spec, from_mode: spec, to_mode: spec };
+            vir_args[0] = mk_expr(ExprX::Unary(op, vir_args[0].clone()));
+        }
         if !defined_locally {
             unsupported_err!(
                 expr.span,
@@ -1695,6 +1727,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                             args_slice,
                             None,
                             true,
+                            false,
                         )),
                         rustc_hir::def::Res::Local(_) => {
                             None // dynamically computed function, see below
@@ -1793,48 +1826,20 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 )))
             }
             UnOp::Deref => {
+                let typ_mode = mid_ty_to_mode(tcx, tc.node_type(arg.hir_id));
                 let inner =
                     expr_to_vir_inner(bctx, arg, is_expr_typ_mut_ref(bctx, arg, modifier)?)?;
-                if inner.typ.is_ghost_typ() || inner.typ.is_tracked_typ() {
+                if typ_mode.is_some() {
                     // If we have `*a` where `a` has type Tracked<inner_typ>
                     // (or Ghost<inner_typ>) then we need to change it to `a.value()`
                     //
                     // However, be careful not to trigger this logic for the case
-                    // where `a` has type `&Tracked<inner_typ>`. This case is tricky
-                    // because the VIR conversion strips the `&`, so the case looks
-                    // very similar.
+                    // where `a` has type `&Tracked<inner_typ>`.
 
-                    let my_typ = expr_typ();
-
-                    let (path, typ) = if let TypX::Datatype(path, targs) = &*inner.typ {
-                        assert!(targs.len() == 1);
-                        (path.clone(), targs[0].clone())
-                    } else {
-                        panic!("incorrect Ghost/Tracked type")
-                    };
-
-                    // At the _VIR_ level (where & gets stripped), it should be the
-                    // case that if inner.typ is Tracked<V>, then my_typ is either
-                    // Tracked<V> or V. (We sanity-check this assumption here.)
-                    // In the latter case, we need to do the conversion logic.
-
-                    let deref_doesnt_unwrap = types_equal(&my_typ, &inner.typ);
-                    let deref_unwraps = types_equal(&my_typ, &typ);
-
-                    assert!(deref_doesnt_unwrap ^ deref_unwraps);
-
-                    if deref_unwraps {
-                        let mut segments: Vec<Ident> = (*(path.segments)).clone();
-                        segments.push(Arc::new("value".to_string()));
-                        let segments = Arc::new(segments);
-                        let path = Arc::new(PathX { krate: path.krate.clone(), segments });
-                        let typ_args = Arc::new(vec![typ]);
-                        let fun = Arc::new(FunX { path, trait_path: None });
-                        let target = CallTarget::Static(fun, typ_args);
-                        Ok(mk_expr(ExprX::Call(target, Arc::new(vec![inner]))))
-                    } else {
-                        Ok(inner)
-                    }
+                    // implicitly call Ghost::value() or Tracked::value()
+                    let spec = Mode::Spec;
+                    let op = UnaryOp::CoerceMode { op_mode: spec, from_mode: spec, to_mode: spec };
+                    Ok(mk_expr(ExprX::Unary(op, inner)))
                 } else {
                     Ok(inner)
                 }
@@ -2004,7 +2009,20 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         }
                         not_mut
                     }
-                    ExprKind::Field(lhs, _) => init_not_mut(bctx, lhs)?,
+                    ExprKind::Field(lhs, _) => {
+                        let deref_ghost = mid_ty_to_vir_ghost(
+                            bctx.ctxt.tcx,
+                            bctx.types.node_type(lhs.hir_id),
+                            true,
+                        )
+                        .1;
+                        unsupported_err_unless!(
+                            !deref_ghost,
+                            lhs.span,
+                            "assignment through Ghost/Tracked"
+                        );
+                        init_not_mut(bctx, lhs)?
+                    }
                     ExprKind::Unary(UnOp::Deref, _) => false,
                     _ => {
                         unsupported_err!(lhs.span, format!("assign lhs {:?}", lhs))
@@ -2014,13 +2032,21 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             let init_not_mut = init_not_mut(bctx, lhs)?;
             Ok(mk_expr(ExprX::Assign {
                 init_not_mut,
+                lhs_type_mode: mid_ty_to_mode(tcx, tc.node_type(lhs.hir_id)),
                 lhs: expr_to_vir(bctx, lhs, ExprModifier::ADDR_OF)?,
                 rhs: expr_to_vir(bctx, rhs, modifier)?,
             }))
         }
         ExprKind::Field(lhs, name) => {
             let lhs_modifier = is_expr_typ_mut_ref(bctx, lhs, modifier)?;
-            let vir_lhs = expr_to_vir(bctx, lhs, lhs_modifier)?;
+            let mut vir_lhs = expr_to_vir(bctx, lhs, lhs_modifier)?;
+            let deref_ghost = mid_ty_to_vir_ghost(bctx.ctxt.tcx, tc.node_type(lhs.hir_id), true).1;
+            if deref_ghost {
+                // implicitly call Ghost::value() or Tracked::value()
+                let spec = Mode::Spec;
+                let op = UnaryOp::CoerceMode { op_mode: spec, from_mode: spec, to_mode: spec };
+                vir_lhs = mk_expr(ExprX::Unary(op, vir_lhs));
+            }
             let lhs_ty = tc.node_type(lhs.hir_id);
             let lhs_ty = mid_ty_simplify(tcx, lhs_ty, true);
             let (datatype, variant_name, field_name) = if let Some(adt_def) = lhs_ty.ty_adt_def() {
@@ -2275,6 +2301,8 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 _ => panic!("unexpected hir for method impl item"),
             };
             let autoview_typ = bctx.ctxt.autoviewed_call_typs.get(&expr.hir_id);
+            let deref_ghost = all_args.len() > 0
+                && mid_ty_to_vir_ghost(bctx.ctxt.tcx, tc.node_type(all_args[0].hir_id), true).1;
             fn_call_to_vir(
                 bctx,
                 expr,
@@ -2284,6 +2312,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 all_args,
                 autoview_typ,
                 defined_locally,
+                deref_ghost,
             )
         }
         ExprKind::Closure(_, _fn_decl, body_id, _, _) => {
