@@ -955,7 +955,7 @@ impl Verifier {
             let vprinter = vir::printer::Printer::new(
                 self.args.vir_log_no_span,
                 self.args.vir_log_no_type,
-                false,
+                self.args.vir_log_no_fn_details,
                 self.args.vir_log_no_encoding,
                 self.args.vir_log_pretty,
             );
@@ -993,7 +993,7 @@ impl Verifier {
             let vprinter = vir::printer::Printer::new(
                 self.args.vir_log_no_span,
                 self.args.vir_log_no_type,
-                false,
+                self.args.vir_log_no_fn_details,
                 self.args.vir_log_no_encoding,
                 self.args.vir_log_pretty,
             );
@@ -1190,7 +1190,7 @@ impl Verifier {
             let vprinter = vir::printer::Printer::new(
                 self.args.vir_log_no_span,
                 self.args.vir_log_no_type,
-                false,
+                self.args.vir_log_no_fn_details,
                 self.args.vir_log_no_encoding,
                 self.args.vir_log_pretty,
             );

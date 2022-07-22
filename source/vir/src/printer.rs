@@ -12,8 +12,8 @@ fn str_node(s: &str) -> Node {
 pub struct Printer {
     no_span: bool,
     no_type: bool,
-    no_function_attribute: bool,
-    no_encoding: bool, // omit `box`, `unbox`, `clip`s
+    no_fn_details: bool,
+    no_encoding: bool, // omit `box`, `unbox`, `clip`
     pretty_format: bool,
 }
 
@@ -21,11 +21,11 @@ impl Printer {
     pub fn new(
         no_span: bool,
         no_type: bool,
-        no_function_attribute: bool,
+        no_fn_details: bool,
         no_encoding: bool,
         pretty_format: bool,
     ) -> Printer {
-        Printer { no_span, no_type, no_function_attribute, no_encoding, pretty_format }
+        Printer { no_span, no_type, no_fn_details, no_encoding, pretty_format }
     }
 
     fn path_to_node(&self, path: &Path) -> Node {
@@ -244,10 +244,20 @@ impl Printer {
             }
             ExprX::ConstVar(fun) => nodes!(constvar {self.fun_to_node(fun)}),
             ExprX::Loc(expr) => nodes!(loc {self.expr_to_node(expr)}),
-            ExprX::Call(call_target, exprs) => nodes!(call {match call_target {
+            ExprX::Call(call_target, exprs) if !self.pretty_format => {
+                nodes!(call {match call_target {
                 CallTarget::Static(fun, typs) => nodes!(static {self.fun_to_node(fun)} {self.typs_to_node(typs)}),
                 CallTarget::FnSpec(e) => nodes!(fnspec {self.expr_to_node(e)}),
-            }} {self.exprs_to_node(exprs)}),
+            }} {self.exprs_to_node(exprs)})
+            }
+            ExprX::Call(call_target, exprs) if self.pretty_format => match call_target {
+                CallTarget::Static(fun, _) => {
+                    nodes!( {str_to_node(fun.path.segments.last().unwrap())} {self.exprs_to_node(exprs)} )
+                }
+                CallTarget::FnSpec(e) => {
+                    nodes!(fnspec {self.expr_to_node(e)} {self.exprs_to_node(exprs)})
+                }
+            },
             ExprX::Tuple(exprs) => nodes!(tuple {self.exprs_to_node(exprs)}),
             ExprX::Ctor(path, ident, binders, expr) => {
                 let mut nodes = nodes_vec!(ctor {self.path_to_node(path)} {str_to_node(ident)} {self.binders_node(binders, &|x| self.expr_to_node(x))});
@@ -498,6 +508,18 @@ impl Printer {
             body,
             extra_dependencies,
         } = function;
+        let body_nodes: Vec<Node> = if let Some(body) = body {
+            vec![(str_to_node(":body")), self.expr_to_node(body)]
+        } else {
+            vec![]
+        };
+
+        if self.no_fn_details {
+            let mut nodes = vec![str_to_node("function"), self.fun_to_node(name)];
+            nodes.extend(body_nodes);
+            return Node::List(nodes);
+        }
+
         let typ_bounds_node = Node::List(
             typ_bounds
                 .iter()
@@ -526,9 +548,7 @@ impl Printer {
             MaskSpec::NoSpec => node!(NoSpec),
         }});
 
-        let function_attrs_node = if self.no_function_attribute {
-            Node::List(vec![])
-        } else {
+        let function_attrs_node = {
             let FunctionAttrsX {
                 uses_ghost_blocks,
                 inline,
@@ -664,10 +684,7 @@ impl Printer {
             nodes.push(nodes!(publish {Node::Atom(format!("{}", publish))}));
         }
         nodes.push(function_attrs_node);
-        if let Some(body) = body {
-            nodes.push(str_to_node(":body"));
-            nodes.push(self.expr_to_node(body));
-        }
+        nodes.extend(body_nodes);
         Node::List(nodes)
     }
 
