@@ -47,6 +47,7 @@ pub struct Args {
     pub vir_log_no_span: bool,
     pub vir_log_no_type: bool,
     pub vir_log_no_encoding: bool,
+    pub vir_log_pretty: bool,
     pub log_vir_poly: bool,
     pub log_air_initial: bool,
     pub log_air_final: bool,
@@ -91,6 +92,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_VIR_LOG_NO_SPAN: &str = "vir-log-no-span";
     const OPT_VIR_LOG_NO_TYPE: &str = "vir-log-no-type";
     const OPT_VIR_LOG_NO_ENCODING: &str = "vir-log-no-encoding";
+    const OPT_VIR_LOG_PRETTY: &str = "vir-log-pretty";
     const OPT_LOG_AIR_INITIAL: &str = "log-air";
     const OPT_LOG_AIR_FINAL: &str = "log-air-final";
     const OPT_LOG_SMT: &str = "log-smt";
@@ -158,6 +160,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         OPT_VIR_LOG_NO_ENCODING,
         "Omit SMT related encodings(box/unbox/clip) in VIR logs",
     );
+    opts.optflag("", OPT_VIR_LOG_PRETTY, "Pretty print exprs in VIR logs");
     opts.optflag("", OPT_LOG_AIR_INITIAL, "Log AIR queries in initial form");
     opts.optflag("", OPT_LOG_AIR_FINAL, "Log AIR queries in final form");
     opts.optflag("", OPT_LOG_SMT, "Log SMT queries");
@@ -245,6 +248,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         vir_log_no_span: matches.opt_present(OPT_VIR_LOG_NO_SPAN),
         vir_log_no_type: matches.opt_present(OPT_VIR_LOG_NO_TYPE),
         vir_log_no_encoding: matches.opt_present(OPT_VIR_LOG_NO_ENCODING),
+        vir_log_pretty: matches.opt_present(OPT_VIR_LOG_PRETTY),
         log_air_initial: matches.opt_present(OPT_LOG_AIR_INITIAL),
         log_air_final: matches.opt_present(OPT_LOG_AIR_FINAL),
         log_smt: matches.opt_present(OPT_LOG_SMT),

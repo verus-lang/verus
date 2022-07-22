@@ -14,6 +14,7 @@ pub struct Printer {
     no_type: bool,
     no_function_attribute: bool,
     no_encoding: bool, // omit `box`, `unbox`, `clip`s
+    pretty_format: bool,
 }
 
 impl Printer {
@@ -22,8 +23,9 @@ impl Printer {
         no_type: bool,
         no_function_attribute: bool,
         no_encoding: bool,
+        pretty_format: bool,
     ) -> Printer {
-        Printer { no_span, no_type, no_function_attribute, no_encoding }
+        Printer { no_span, no_type, no_function_attribute, no_encoding, pretty_format }
     }
 
     fn path_to_node(&self, path: &Path) -> Node {
@@ -222,7 +224,7 @@ impl Printer {
 
     fn expr_to_node(&self, expr: &Expr) -> Node {
         let node = match &expr.x {
-            ExprX::Const(cnst) => nodes!(
+            ExprX::Const(cnst) if !self.pretty_format => nodes!(
                 const {
                     match cnst {
                         Constant::Bool(val) => str_to_node(&format!("{}", val)),
@@ -230,7 +232,12 @@ impl Printer {
                     }
                 }
             ),
-            ExprX::Var(ident) => nodes!(var {str_to_node(ident)}),
+            ExprX::Const(cnst) if self.pretty_format => match cnst {
+                Constant::Bool(val) => str_to_node(&format!("{}", val)),
+                Constant::Nat(val) => str_to_node(&format!("{}", val)),
+            },
+            ExprX::Var(ident) if !self.pretty_format => nodes!(var {str_to_node(ident)}),
+            ExprX::Var(ident) if self.pretty_format => str_to_node(ident),
             ExprX::VarLoc(ident) => nodes!(varloc {str_to_node(ident)}),
             ExprX::VarAt(ident, var_at) => {
                 nodes!(varat {str_to_node(ident)} {str_to_node(&format!("{:?}", var_at))})
@@ -305,21 +312,65 @@ impl Printer {
                 nodes
             }),
             ExprX::Binary(binary_op, e1, e2) => match binary_op {
-                BinaryOp::Eq(mode) => {
+                BinaryOp::Eq(mode) if !self.pretty_format => {
                     nodes!(eq {str_to_node(":mode")} {str_to_node(&format!("{:?}", mode))} {self.expr_to_node(e1)} {self.expr_to_node(e2)})
                 }
-                BinaryOp::Arith(op, _) => {
+                BinaryOp::Eq(_) if self.pretty_format => {
+                    nodes!({self.expr_to_node(e1)} {str_to_node("==")} {self.expr_to_node(e2)})
+                }
+                BinaryOp::Arith(op, _) if !self.pretty_format => {
                     nodes!({str_to_node(&format!("{:?}", op))} {self.expr_to_node(e1)} {self.expr_to_node(e2)})
                 }
-                BinaryOp::Inequality(op) => {
+                BinaryOp::Arith(op, _) if self.pretty_format => {
+                    let aop = match op {
+                        ArithOp::Add => "+",
+                        ArithOp::Sub => "-",
+                        ArithOp::Mul => "*",
+                        ArithOp::EuclideanDiv => "/",
+                        ArithOp::EuclideanMod => "%",
+                    };
+                    nodes!({self.expr_to_node(e1)} {str_to_node(aop)} {self.expr_to_node(e2)})
+                }
+                BinaryOp::Inequality(op) if !self.pretty_format => {
                     nodes!({str_to_node(&format!("{:?}", op))} {self.expr_to_node(e1)} {self.expr_to_node(e2)})
                 }
-                BinaryOp::Bitwise(op) => {
+                BinaryOp::Inequality(op) if self.pretty_format => {
+                    let aop = match op {
+                        InequalityOp::Le => "<=",
+                        InequalityOp::Ge => ">=",
+                        InequalityOp::Lt => "<",
+                        InequalityOp::Gt => ">",
+                    };
+                    nodes!({self.expr_to_node(e1)} {str_to_node(aop)} {self.expr_to_node(e2)})
+                }
+                BinaryOp::Bitwise(op) if !self.pretty_format => {
                     nodes!({str_to_node(&format!("{:?}", op))} {self.expr_to_node(e1)} {self.expr_to_node(e2)})
                 }
-                _ => {
+                BinaryOp::Bitwise(op) if self.pretty_format => {
+                    let aop = match op {
+                        BitwiseOp::BitXor => "bitxor",
+                        BitwiseOp::BitAnd => "&",
+                        BitwiseOp::BitOr => "bitor",
+                        BitwiseOp::Shr => ">>",
+                        BitwiseOp::Shl => "<<",
+                    };
+                    nodes!({self.expr_to_node(e1)} {str_to_node(aop)} {self.expr_to_node(e2)})
+                }
+                _ if !self.pretty_format => {
                     nodes!({str_to_node(&format!("{:?}", binary_op).to_lowercase())} {self.expr_to_node(e1)} {self.expr_to_node(e2)})
                 }
+                _ if self.pretty_format => {
+                    let aop = match binary_op {
+                        BinaryOp::And => "&&",
+                        BinaryOp::Or => "or",
+                        BinaryOp::Xor => "xor",
+                        BinaryOp::Implies => "==>",
+                        BinaryOp::Ne => "!=",
+                        _ => unreachable!(),
+                    };
+                    nodes!({self.expr_to_node(e1)} {str_to_node(aop)} {self.expr_to_node(e2)})
+                }
+                _ => unreachable!(),
             },
             ExprX::Multi(MultiOp::Chained(ops), es) => {
                 let ops: Vec<Node> =
@@ -419,6 +470,7 @@ impl Printer {
                 }
                 Node::List(nodes)
             }
+            _ => unreachable!(),
         };
         self.spanned_node(node, &expr.span)
     }
