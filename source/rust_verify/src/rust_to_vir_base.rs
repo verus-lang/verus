@@ -381,6 +381,7 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
             Res::PrimTy(PrimTy::Int(IntTy::I64)) => TypX::Int(IntRange::I(64)),
             Res::PrimTy(PrimTy::Int(IntTy::I128)) => TypX::Int(IntRange::I(128)),
             Res::PrimTy(PrimTy::Int(IntTy::Isize)) => TypX::Int(IntRange::ISize),
+
             Res::Def(DefKind::TyParam, def_id) => {
                 let path = def_id_to_vir_path(tcx, def_id);
                 let name = path.segments.last().unwrap();
@@ -413,6 +414,22 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
             Res::SelfTy(None, Some((impl_def_id, false))) => {
                 return impl_def_id_to_self_ty(tcx, impl_def_id);
             }
+
+            Res::Def(DefKind::TyAlias, def_id) => {
+                match &path.segments.last().expect("type must have a segment").args {
+                    None => {}
+                    Some(_) => {
+                        unsupported!(format!(
+                            "use of type alias with generic type args here: {:?}",
+                            span
+                        ));
+                    }
+                }
+
+                let ty = tcx.type_of(def_id);
+                return mid_ty_to_vir(tcx, ty, false);
+            }
+
             _ => {
                 unsupported!(format!("type {:#?} {:?} {:?}", kind, path.res, span))
             }

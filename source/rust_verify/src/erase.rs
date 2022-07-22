@@ -1279,6 +1279,7 @@ fn erase_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &Item) -> Vec<P<Item>> {
             }
         }
         ItemKind::MacroDef(..) => item.kind.clone(),
+        ItemKind::TyAlias(..) => item.kind.clone(),
         ItemKind::Trait(tr) => ItemKind::Trait(erase_trait(ctxt, mctxt, tr)),
         _ => {
             unsupported!("unsupported item", item)
