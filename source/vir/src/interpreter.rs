@@ -10,7 +10,7 @@ use crate::ast::{
     Typ, TypX, UnaryOp, VirErr,
 };
 use crate::ast_util::{err_str, path_as_rust_name};
-use crate::def::{ARCH_SIZE_MIN_BITS};
+use crate::def::ARCH_SIZE_MIN_BITS;
 use crate::func_to_air::{SstInfo, SstMap};
 use crate::sst::{Bnd, BndX, Exp, ExpX, Exps, Trigs, UniqueIdent};
 use air::ast::{Binder, BinderX, Binders};
@@ -141,7 +141,7 @@ struct Ctx<'a> {
 }
 
 /// Interpreter-internal expressions
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub enum InterpExp {
     /// Track free variables (those not introduced inside an assert_by_compute),
     /// so they don't get confused with bound variables.
@@ -794,8 +794,10 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     // Explicitly enumerate UnaryOps, in case more are added
                     match op {
                         Not => bool_new(!b),
-                        BitNot | Clip(_) | Trigger(_) | CoerceMode {..} => ok,
-                        MustBeFinalized => panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp),
+                        BitNot | Clip(_) | Trigger(_) | CoerceMode { .. } => ok,
+                        MustBeFinalized => {
+                            panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
+                        }
                     }
                 }
                 Const(Int(i)) => {
@@ -858,8 +860,10 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 ),
                             }
                         }
-                        MustBeFinalized => panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp),
-                        Not | Trigger(_) | CoerceMode {..} => ok,
+                        MustBeFinalized => {
+                            panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
+                        }
+                        Not | Trigger(_) | CoerceMode { .. } => ok,
                     }
                 }
                 // !(!(e_inner)) == e_inner
@@ -1183,14 +1187,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         Some(seq_fn) => eval_seq(ctx, state, seq_fn, exp, &new_args),
                         None => match ctx.fun_ssts.get(fun) {
                             None => exp_new(Call(fun.clone(), typs.clone(), new_args.clone())),
-                            Some(SstInfo { params, body, ..}) => {
+                            Some(SstInfo { params, body, .. }) => {
                                 state.env.push_scope(true);
                                 for (formal, actual) in params.iter().zip(new_args.iter()) {
-                                    let formal_id = UniqueIdent { name: formal.x.name.clone(), local: Some(0) };
-                                    state
-                                        .env
-                                        .insert(formal_id, actual.clone())
-                                        .unwrap();
+                                    let formal_id =
+                                        UniqueIdent { name: formal.x.name.clone(), local: Some(0) };
+                                    state.env.insert(formal_id, actual.clone()).unwrap();
                                 }
                                 let e = eval_expr_internal(ctx, state, body);
                                 state.env.pop_scope();

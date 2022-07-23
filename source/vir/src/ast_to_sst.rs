@@ -1271,8 +1271,12 @@ fn expr_to_stm_opt(
             // We assert the (hopefully simplified) result of calling the interpreter
             // but assume the original expression, so we get the benefits
             // of any ensures, triggers, etc., that it might provide
-            let interp_expr =
-                eval_expr(&state.finalize_exp(ctx, &state.fun_ssts, &expr)?, &state.fun_ssts, ctx.global.rlimit, *mode)?;
+            let interp_expr = eval_expr(
+                &state.finalize_exp(ctx, &state.fun_ssts, &expr)?,
+                &state.fun_ssts,
+                ctx.global.rlimit,
+                *mode,
+            )?;
             let mut stmts = Vec::new();
             if matches!(mode, ComputeMode::Z3) {
                 let assert = Spanned::new(e.span.clone(), StmX::Assert(None, interp_expr));
