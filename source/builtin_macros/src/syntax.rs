@@ -4,21 +4,26 @@ use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::punctuated::Punctuated;
 use syn_verus::token::{Brace, Bracket, Paren};
 use syn_verus::visit_mut::{
-    visit_expr_loop_mut, visit_expr_mut, visit_expr_while_mut, visit_field_mut,
+    visit_block_mut, visit_expr_loop_mut, visit_expr_mut, visit_expr_while_mut, visit_field_mut,
     visit_impl_item_method_mut, visit_item_enum_mut, visit_item_fn_mut, visit_item_struct_mut,
     visit_local_mut, visit_trait_item_method_mut, VisitMut,
 };
 use syn_verus::{
     braced, bracketed, parenthesized, parse_macro_input, parse_quote_spanned, Attribute, BinOp,
     Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop, ExprPath,
-    ExprTuple, ExprUnary, ExprWhile, Field, FnArgKind, FnMode, ImplItemMethod, Invariant, Item,
-    ItemEnum, ItemFn, ItemStruct, Lit, Local, ModeSpec, ModeSpecChecked, Path, Publish, Recommends,
-    Requires, ReturnType, Signature, Stmt, Token, TraitItemMethod, UnOp, Visibility,
+    ExprTuple, ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Ident, ImplItemMethod, Invariant,
+    Item, ItemEnum, ItemFn, ItemStruct, Lit, Local, ModeSpec, ModeSpecChecked, Pat, Path, Publish,
+    Recommends, Requires, ReturnType, Signature, Stmt, Token, TraitItemMethod, UnOp, Visibility,
 };
 
 fn take_expr(expr: &mut Expr) -> Expr {
     let dummy: Expr = syn_verus::parse_quote!(());
     std::mem::replace(expr, dummy)
+}
+
+fn take_pat(pat: &mut Pat) -> Pat {
+    let dummy: Pat = syn_verus::parse_quote!(());
+    std::mem::replace(pat, dummy)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,6 +65,11 @@ fn data_mode_attrs(mode: &DataMode) -> Vec<Attribute> {
             vec![parse_quote_spanned!(token.exec_token.span => #[exec])]
         }
     }
+}
+
+fn path_is_ident(path: &Path, s: &str) -> bool {
+    let segments = &path.segments;
+    segments.len() == 1 && segments.first().unwrap().ident.to_string() == s
 }
 
 impl Visitor {
@@ -181,6 +191,99 @@ impl Visitor {
         attrs.extend(ext_attrs);
         stmts.extend(unimpl);
         stmts
+    }
+
+    fn exec_ghost_match(
+        &mut self,
+        pat: &mut Pat,
+        splitter: &mut Option<&str>,
+        stmts: &mut Vec<Stmt>,
+        n: &mut u64,
+    ) {
+        let mut replace: Option<Pat> = None;
+        match pat {
+            Pat::TupleStruct(pts)
+                if self.inside_ghost == 0
+                    && pts.pat.elems.len() == 1
+                    && (path_is_ident(&pts.path, "Ghost")
+                        || path_is_ident(&pts.path, "Tracked")) =>
+            {
+                // change
+                //   let Tracked((Trk(x), Gho(y))) = e;
+                // to
+                //   let (x, y) = tracked_split_tuple2(e);
+                //   let x = tracked_unwrap_trk(x);
+                //   let y = tracked_unwrap_gho(y);
+                let mut tuple_pat = take_pat(&mut pts.pat.elems[0]);
+                if let Pat::Tuple(pt) = &mut tuple_pat {
+                    for elem in &mut pt.elems {
+                        match elem {
+                            Pat::TupleStruct(trk)
+                                if trk.pat.elems.len() == 1
+                                    && (path_is_ident(&trk.path, "Gho")
+                                        || path_is_ident(&trk.path, "Trk")) =>
+                            {
+                                if let Pat::Ident(x) = &trk.pat.elems[0] {
+                                    let x = x.ident.clone();
+                                    let span = x.span();
+                                    let f: Path = if path_is_ident(&trk.path, "Gho") {
+                                        parse_quote_spanned!(span => crate::pervasive::modes::tracked_unwrap_gho)
+                                    } else {
+                                        parse_quote_spanned!(span => crate::pervasive::modes::tracked_unwrap_trk)
+                                    };
+                                    stmts.push(parse_quote_spanned!(span => let #x = #f(#x);));
+                                    *elem = trk.pat.elems[0].clone();
+                                }
+                            }
+                            _ => {}
+                        }
+                        *n += 1;
+                    }
+                }
+                if path_is_ident(&pts.path, "Ghost") {
+                    *splitter = Some("ghost_split_tuple");
+                } else {
+                    *splitter = Some("tracked_split_tuple");
+                };
+                replace = Some(tuple_pat);
+            }
+            _ => {}
+        }
+        if let Some(replace) = replace {
+            *pat = replace;
+        }
+    }
+
+    fn visit_local_extend(&mut self, local: &mut Local) -> Vec<Stmt> {
+        let mut splitter: Option<&str> = None;
+        let mut stmts: Vec<Stmt> = Vec::new();
+        let mut n: u64 = 0;
+        match &mut local.pat {
+            Pat::Type(pt) => {
+                self.exec_ghost_match(&mut pt.pat, &mut splitter, &mut stmts, &mut n);
+            }
+            pat => {
+                self.exec_ghost_match(pat, &mut splitter, &mut stmts, &mut n);
+            }
+        }
+        if let Some(splitter) = splitter {
+            if let Some((eq, box_init)) = std::mem::replace(&mut local.init, None) {
+                let span = eq.span;
+                let name = format!("{splitter}{n}");
+                let mut f: Path = parse_quote_spanned!(span => ::builtin::__temp__);
+                f.segments.last_mut().unwrap().ident = Ident::new(&name, span);
+                let init = parse_quote_spanned!(span => #f(#box_init));
+                local.init = Some((eq, Box::new(init)));
+            }
+        }
+        stmts
+    }
+
+    fn visit_stmt_extend(&mut self, stmt: &mut Stmt) -> Vec<Stmt> {
+        match stmt {
+            Stmt::Local(local) => self.visit_local_extend(local),
+            _ => vec![],
+        }
     }
 }
 
@@ -811,6 +914,18 @@ impl VisitMut for Visitor {
         if let Some(tracked) = std::mem::take(&mut local.tracked) {
             local.attrs.push(parse_quote_spanned!(tracked.span => #[proof]));
         }
+    }
+
+    fn visit_block_mut(&mut self, block: &mut Block) {
+        let mut stmts: Vec<Stmt> = Vec::new();
+        let block_stmts = std::mem::replace(&mut block.stmts, vec![]);
+        for mut stmt in block_stmts {
+            let extra_stmts = self.visit_stmt_extend(&mut stmt);
+            stmts.push(stmt);
+            stmts.extend(extra_stmts);
+        }
+        block.stmts = stmts;
+        visit_block_mut(self, block);
     }
 
     fn visit_item_fn_mut(&mut self, fun: &mut ItemFn) {

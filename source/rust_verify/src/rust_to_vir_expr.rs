@@ -484,6 +484,8 @@ fn fn_call_to_vir<'tcx>(
     let is_tracked_exec = f_name == "pervasive::modes::tracked_exec";
     let is_tracked_exec_borrow = f_name == "pervasive::modes::tracked_exec_borrow";
     let is_tracked_get = f_name == "builtin::Tracked::<A>::get";
+    let is_ghost_split_tuple = f_name.starts_with("builtin::ghost_split_tuple");
+    let is_tracked_split_tuple = f_name.starts_with("builtin::tracked_split_tuple");
     let is_spec = is_admit
         || is_no_method_body
         || is_requires
@@ -602,7 +604,7 @@ fn fn_call_to_vir<'tcx>(
             || is_old
             || is_spec_ghost_tracked
             || is_get_variant.is_some(),
-        is_implies || is_ignored_fn,
+        is_implies || is_ignored_fn || is_ghost_split_tuple || is_tracked_split_tuple,
     );
 
     let len = args.len();
@@ -1159,6 +1161,11 @@ fn fn_call_to_vir<'tcx>(
         assert!(vir_args.len() == 1);
         let proof = Mode::Proof;
         let op = UnaryOp::CoerceMode { op_mode: proof, from_mode: proof, to_mode: proof };
+        Ok(mk_expr(ExprX::Unary(op, vir_args[0].clone())))
+    } else if is_ghost_split_tuple || is_tracked_split_tuple {
+        assert!(vir_args.len() == 1);
+        let exec = Mode::Exec;
+        let op = UnaryOp::CoerceMode { op_mode: exec, from_mode: exec, to_mode: exec };
         Ok(mk_expr(ExprX::Unary(op, vir_args[0].clone())))
     } else {
         if deref_ghost {
