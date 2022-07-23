@@ -1,7 +1,7 @@
 use crate::ast::{BinaryOp, Ident, TriggerAnnotation, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr};
 use crate::ast_util::{err_str, err_string};
 use crate::context::Ctx;
-use crate::sst::{BndX, Exp, ExpX, Trig, Trigs};
+use crate::sst::{BndX, Exp, ExpX, Trig, Trigs, UniqueIdent};
 use air::ast::Span;
 use air::scope_map::ScopeMap;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -89,24 +89,23 @@ fn check_trigger_expr(
                     }
                     Ok(())
                 }
-                ExpX::Var((x, None)) => {
+                ExpX::Var(UniqueIdent { name: x, local: None }) => {
+                    if lets.contains(x) {
+                        return err_str(
+                            &exp.span,
+                            "let variables in triggers not supported, use with_triggers! instead",
+                        );
+                    }
                     free_vars.insert(x.clone());
                     Ok(())
                 }
-                ExpX::Var((x, Some(_))) => {
-                    if lets.contains(x) {
-                        err_str(
-                            &exp.span,
-                            "let variables in triggers not supported, use with_triggers! instead",
-                        )
-                    } else {
-                        Ok(())
-                    }
-                }
+                ExpX::Var(UniqueIdent { name: _, local: Some(_) }) => Ok(()),
                 ExpX::VarAt(_, VarAt::Pre) => Ok(()),
                 ExpX::Old(_, _) => panic!("internal error: Old"),
                 ExpX::Unary(op, _) => match op {
                     UnaryOp::Trigger(_) | UnaryOp::Clip(_) | UnaryOp::BitNot => Ok(()),
+                    UnaryOp::CoerceMode { .. } => Ok(()),
+                    UnaryOp::MustBeFinalized => Ok(()),
                     UnaryOp::Not => err_str(&exp.span, "triggers cannot contain boolean operators"),
                 },
                 ExpX::UnaryOpr(op, _) => match op {
@@ -147,24 +146,22 @@ fn check_trigger_expr(
         crate::sst_visitor::exp_visitor_check(exp, &mut scope_map, &mut |exp, _scope_map| {
             if match &exp.x {
                 ExpX::Const(_) | ExpX::Loc(..) | ExpX::VarLoc(..) => true,
-                ExpX::Var((x, None)) => {
+                ExpX::Var(UniqueIdent { name: x, local: None }) => {
+                    if lets.contains(x) {
+                        return err_str(
+                            &exp.span,
+                            "let variables in triggers not supported, use with_triggers! instead",
+                        );
+                    }
                     free_vars.insert(x.clone());
                     true
                 }
-                ExpX::Var((x, Some(_))) => {
-                    if lets.contains(x) {
-                        err_str(
-                            &exp.span,
-                            "let variables in triggers not supported, use with_triggers! instead",
-                        )?
-                    } else {
-                        true
-                    }
-                }
+                ExpX::Var(UniqueIdent { name: _, local: Some(_) }) => true,
                 ExpX::VarAt(_, VarAt::Pre) => true,
                 ExpX::Old(_, _) => panic!("internal error: Old"),
                 ExpX::Unary(op, _) => match op {
-                    UnaryOp::Trigger(_) | UnaryOp::Clip(_) => true,
+                    UnaryOp::Trigger(_) | UnaryOp::Clip(_) | UnaryOp::CoerceMode { .. } => true,
+                    UnaryOp::MustBeFinalized => true,
                     UnaryOp::Not | UnaryOp::BitNot => false,
                 },
                 ExpX::Binary(op, _, _) => {

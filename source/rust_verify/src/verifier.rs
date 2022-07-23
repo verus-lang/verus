@@ -6,9 +6,11 @@ use crate::util::{error, from_raw_span, signalling};
 use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, ValidityResult};
 use air::errors::{Error, ErrorLabel};
+use air::profiler::Profiler;
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
 
+use num_format::{Locale, ToFormattedString};
 use rustc_middle::ty::TyCtxt;
 use rustc_span::source_map::SourceMap;
 use rustc_span::{CharPos, FileName, MultiSpan, Span};
@@ -20,7 +22,8 @@ use std::time::{Duration, Instant};
 
 use vir::ast::{Fun, Function, InferMode, Krate, Mode, VirErr, Visibility};
 use vir::ast_util::{fun_as_rust_dbg, fun_name_crate_relative, is_visible_to};
-use vir::def::{CommandsWithContext, CommandsWithContextX, SnapPos, SstMap};
+use vir::def::{CommandsWithContext, CommandsWithContextX, SnapPos};
+use vir::func_to_air::SstMap;
 use vir::recursion::Node;
 
 const RLIMIT_PER_SECOND: u32 = 3000000;
@@ -102,6 +105,9 @@ trait Diagnostics {
     fn report_error(&self, error: &Error, error_as: ErrorAs);
 }
 
+/// N.B.: The compiler performs deduplication on diagnostic messages, so reporting an error twice,
+/// or emitting the same note twice will be surpressed (even if separated in time by other
+/// errors/notes)
 impl Diagnostics for Compiler {
     fn diagnostic(&self) -> &rustc_errors::Handler {
         self.session().diagnostic()
@@ -230,6 +236,51 @@ impl Verifier {
         }
     }
 
+    fn print_profile_stats(
+        &self,
+        compiler: &Compiler,
+        profiler: Profiler,
+        qid_map: &HashMap<String, vir::sst::BndInfo>,
+    ) {
+        let num_quants = profiler.quant_count();
+        let total = profiler.total_instantiations();
+        let max = 10;
+        let msg = format!(
+            "Observed {} total instantiations of user-level quantifiers",
+            total.to_formatted_string(&Locale::en)
+        );
+        compiler.diagnostic().note_without_error(&msg);
+
+        for (index, cost) in profiler.iter().take(max).enumerate() {
+            // Report the quantifier
+            let bnd_info = qid_map
+                .get(&cost.quant)
+                .expect(format!("Failed to find quantifier {}", cost.quant).as_str());
+            let span = from_raw_span(&bnd_info.span.raw_span);
+            let mut spans = Vec::new();
+            //spans.push(span);
+            let count = cost.instantiations;
+            let msg = format!(
+                "Cost * Instantiations: {} (Instantiated {} times - {}% of the total, cost {}) top {} of {} user-level quantifiers.\n",
+                count * cost.cost,
+                count.to_formatted_string(&Locale::en),
+                100 * count / total,
+                cost.cost,
+                index + 1,
+                num_quants
+            );
+
+            // Summarize the triggers it used
+            let triggers = &bnd_info.trigs;
+            for trigger in triggers.iter() {
+                spans.extend(trigger.iter().map(|e| from_raw_span(&e.span.raw_span)));
+            }
+            let mut multi = MultiSpan::from_spans(spans);
+            multi.push_span_label(span, "Triggers selected for this quantifier".to_string());
+            compiler.diagnostic().span_note_without_error(multi, &msg);
+        }
+    }
+
     /// Check the result of a query that was based on user input.
     /// Success/failure will (eventually) be communicated back to the user.
     /// Returns true if there was at least one Invalid resulting in an error.
@@ -240,6 +291,7 @@ impl Verifier {
         air_context: &mut air::context::Context,
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<std::string::String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
+        qid_map: &HashMap<String, vir::sst::BndInfo>,
         command: &Command,
         context: &(&air::ast::Span, &str),
         is_singular: bool,
@@ -309,15 +361,22 @@ impl Verifier {
                     let mut v = Vec::new();
                     v.push(from_raw_span(&context.0.raw_span));
                     let multispan = MultiSpan::from_spans(v);
-                    compiler
-                        .diagnostic()
-                        .span_err(multispan, &format!("{}: rlimit exceeded", context.1));
+                    let mut msg = format!("{}: Resource limit (rlimit) exceeded", context.1);
+                    if !self.args.profile && !self.args.profile_all {
+                        msg.push_str("; consider rerunning with --profile for more details");
+                    }
+                    compiler.diagnostic().span_err(multispan, &msg);
 
                     self.errors.push(vec![ErrorSpan::new_from_air_span(
                         compiler.session().source_map(),
                         &context.1.to_string(),
                         &context.0,
                     )]);
+
+                    if self.args.profile {
+                        let profiler = Profiler::new();
+                        self.print_profile_stats(compiler, profiler, qid_map);
+                    }
                     break;
                 }
                 ValidityResult::Invalid(air_model, error) => {
@@ -420,6 +479,7 @@ impl Verifier {
         commands_with_context: CommandsWithContext,
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
+        qid_map: &HashMap<String, vir::sst::BndInfo>,
         module: &vir::ast::Path,
         function_name: Option<&Fun>,
         comment: &str,
@@ -447,6 +507,7 @@ impl Verifier {
                 air_context,
                 assign_map,
                 snap_map,
+                qid_map,
                 &command,
                 &(span, desc),
                 *prover_choice == vir::def::ProverChoice::Singular,
@@ -466,6 +527,8 @@ impl Verifier {
         let mut air_context = air::context::Context::new();
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debug);
+        air_context.set_profile(self.args.profile);
+        air_context.set_profile_all(self.args.profile_all);
 
         let rerun_msg = if is_rerun { "_rerun" } else { "" };
         if self.args.log_all || self.args.log_air_initial {
@@ -586,6 +649,7 @@ impl Verifier {
             Some(vir::context::FunctionCtx {
                 checking_recommends,
                 module_for_chosen_triggers: f.x.visibility.owning_module.clone(),
+                current_fun: f.x.name.clone(),
             })
         };
 
@@ -664,7 +728,7 @@ impl Verifier {
                 let (function, _vis_abs) = &funs[f];
 
                 ctx.fun = mk_fun_ctx(&function, false);
-                let decl_commands = vir::func_to_air::func_decl_to_air(ctx, &function)?;
+                let decl_commands = vir::func_to_air::func_decl_to_air(ctx, &fun_ssts, &function)?;
                 ctx.fun = None;
                 let comment = "Function-Specs ".to_string() + &fun_as_rust_dbg(f);
                 self.run_commands(&mut air_context, &decl_commands, &comment);
@@ -704,6 +768,7 @@ impl Verifier {
                     }),
                     &HashMap::new(),
                     &vec![],
+                    &ctx.global.qid_map.borrow(),
                     module,
                     Some(&function.x.name),
                     &("Function-Termination ".to_string() + &fun_as_rust_dbg(f)),
@@ -732,6 +797,7 @@ impl Verifier {
                             command.clone(),
                             &HashMap::new(),
                             &snap_map,
+                            &ctx.global.qid_map.borrow(),
                             module,
                             Some(&function.x.name),
                             &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),
@@ -825,6 +891,7 @@ impl Verifier {
                         command.clone(),
                         &HashMap::new(),
                         &snap_map,
+                        &ctx.global.qid_map.borrow(),
                         module,
                         Some(&function.x.name),
                         &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),
@@ -993,6 +1060,10 @@ impl Verifier {
 
         let verified_modules: HashSet<_> = module_ids_to_verify.iter().collect();
 
+        if self.args.profile_all {
+            let profiler = Profiler::new();
+            self.print_profile_stats(compiler, profiler, &global_ctx.qid_map.borrow());
+        }
         // Log/display triggers
         if self.args.log_all || self.args.log_triggers {
             let mut file = self.create_log_file(None, None, crate::config::TRIGGERS_FILE_SUFFIX)?;
@@ -1058,6 +1129,7 @@ impl Verifier {
         let _ = tcx.formal_verifier_callback.replace(Some(Box::new(crate::typecheck::Typecheck {
             int_ty_id: None,
             nat_ty_id: None,
+            enhanced_typecheck: !self.args.no_enhanced_typecheck,
             exprs_in_spec: Arc::new(std::sync::Mutex::new(HashSet::new())),
             autoviewed_calls: HashSet::new(),
             autoviewed_call_typs: autoviewed_call_typs.clone(),

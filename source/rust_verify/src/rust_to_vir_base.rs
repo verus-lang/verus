@@ -17,7 +17,7 @@ use rustc_span::symbol::{kw, Ident};
 use rustc_span::Span;
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
-use vir::ast::{GenericBoundX, IntRange, Path, PathX, Typ, TypBounds, TypX, Typs, VirErr};
+use vir::ast::{GenericBoundX, IntRange, Mode, Path, PathX, Typ, TypBounds, TypX, Typs, VirErr};
 use vir::ast_util::types_equal;
 
 pub(crate) fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Path {
@@ -226,7 +226,14 @@ pub(crate) fn mid_ty_simplify<'tcx>(
             mid_ty_simplify(tcx, t, allow_mut_ref)
         }
         TyKind::Adt(AdtDef { did, .. }, args) => {
-            if Some(*did) == tcx.lang_items().owned_box() && args.len() == 2 {
+            let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(tcx, *did));
+            let is_box = Some(*did) == tcx.lang_items().owned_box() && args.len() == 2;
+            let is_smart_ptr = (def_name == "alloc::rc::Rc"
+                || def_name == "alloc::sync::Arc"
+                || def_name == "builtin::Ghost"
+                || def_name == "builtin::Tracked")
+                && args.len() == 1;
+            if is_box || is_smart_ptr {
                 if let rustc_middle::ty::subst::GenericArgKind::Type(t) = args[0].unpack() {
                     mid_ty_simplify(tcx, t, false)
                 } else {
@@ -240,45 +247,68 @@ pub(crate) fn mid_ty_simplify<'tcx>(
     }
 }
 
+pub(crate) fn mid_ty_to_mode<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    ty: rustc_middle::ty::Ty<'tcx>,
+) -> Option<Mode> {
+    match ty.kind() {
+        TyKind::Adt(AdtDef { did, .. }, _args) => {
+            let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(tcx, *did));
+            if def_name == "builtin::Ghost" {
+                Some(Mode::Spec)
+            } else if def_name == "builtin::Tracked" {
+                Some(Mode::Proof)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
 // TODO review and cosolidate type translation, e.g. with `ty_to_vir`, if possible
-pub(crate) fn mid_ty_to_vir<'tcx>(
+
+// returns VIR Typ and whether Ghost/Tracked was erased from around the outside of the VIR Typ
+pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
     tcx: TyCtxt<'tcx>,
     ty: rustc_middle::ty::Ty<'tcx>,
     allow_mut_ref: bool,
-) -> Typ {
+) -> (Typ, bool) {
     match ty.kind() {
-        TyKind::Bool => Arc::new(TypX::Bool),
-        TyKind::Uint(_) | TyKind::Int(_) => Arc::new(TypX::Int(mk_range(ty))),
-        TyKind::Ref(_, tys, rustc_ast::Mutability::Not) => mid_ty_to_vir(tcx, tys, allow_mut_ref),
+        TyKind::Bool => (Arc::new(TypX::Bool), false),
+        TyKind::Uint(_) | TyKind::Int(_) => (Arc::new(TypX::Int(mk_range(ty))), false),
+        TyKind::Ref(_, tys, rustc_ast::Mutability::Not) => {
+            mid_ty_to_vir_ghost(tcx, tys, allow_mut_ref)
+        }
         TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) if allow_mut_ref => {
-            mid_ty_to_vir(tcx, tys, allow_mut_ref)
+            mid_ty_to_vir_ghost(tcx, tys, allow_mut_ref)
         }
         TyKind::Param(param) if param.name == kw::SelfUpper => {
-            Arc::new(TypX::TypParam(vir::def::trait_self_type_param()))
+            (Arc::new(TypX::TypParam(vir::def::trait_self_type_param())), false)
         }
-        TyKind::Param(param) => Arc::new(TypX::TypParam(Arc::new(param.name.to_string()))),
+        TyKind::Param(param) => (Arc::new(TypX::TypParam(Arc::new(param.name.to_string()))), false),
         TyKind::Never => {
             // All types are inhabited in SMT; we pick an arbitrary inhabited type for Never
-            Arc::new(TypX::Tuple(Arc::new(vec![])))
+            (Arc::new(TypX::Tuple(Arc::new(vec![]))), false)
         }
         TyKind::Tuple(_) => {
             let typs: Vec<Typ> =
-                ty.tuple_fields().map(|t| mid_ty_to_vir(tcx, t, allow_mut_ref)).collect();
-            Arc::new(TypX::Tuple(Arc::new(typs)))
+                ty.tuple_fields().map(|t| mid_ty_to_vir_ghost(tcx, t, allow_mut_ref).0).collect();
+            (Arc::new(TypX::Tuple(Arc::new(typs))), false)
         }
-        TyKind::Adt(AdtDef { did, .. }, args) => Arc::new({
+        TyKind::Adt(AdtDef { did, .. }, args) => {
             let s = ty.to_string();
             // TODO use lang items instead of string comparisons
             if s == crate::typecheck::BUILTIN_INT {
-                TypX::Int(IntRange::Int)
+                (Arc::new(TypX::Int(IntRange::Int)), false)
             } else if s == crate::typecheck::BUILTIN_NAT {
-                TypX::Int(IntRange::Nat)
+                (Arc::new(TypX::Int(IntRange::Nat)), false)
             } else {
-                let typ_args: Vec<Typ> = args
+                let typ_args: Vec<(Typ, bool)> = args
                     .iter()
                     .filter_map(|arg| match arg.unpack() {
                         rustc_middle::ty::subst::GenericArgKind::Type(t) => {
-                            Some(mid_ty_to_vir(tcx, t, allow_mut_ref))
+                            Some(mid_ty_to_vir_ghost(tcx, t, allow_mut_ref))
                         }
                         rustc_middle::ty::subst::GenericArgKind::Lifetime(_) => None,
                         _ => panic!("unexpected type argument"),
@@ -293,24 +323,38 @@ pub(crate) fn mid_ty_to_vir<'tcx>(
                 {
                     return typ_args[0].clone();
                 }
-                def_id_to_datatype(tcx, *did, Arc::new(typ_args))
+                if (def_name == "builtin::Ghost" || def_name == "builtin::Tracked")
+                    && typ_args.len() == 1
+                {
+                    return (typ_args[0].0.clone(), true);
+                }
+                let typ_args = typ_args.into_iter().map(|(t, _)| t).collect();
+                (Arc::new(def_id_to_datatype(tcx, *did, Arc::new(typ_args))), false)
             }
-        }),
+        }
         TyKind::Closure(_def, substs) => {
             let sig = substs.as_closure().sig();
             let args: Vec<Typ> = sig
                 .inputs()
                 .skip_binder()
                 .iter()
-                .map(|t| mid_ty_to_vir(tcx, t, allow_mut_ref))
+                .map(|t| mid_ty_to_vir_ghost(tcx, t, allow_mut_ref).0)
                 .collect();
-            let ret = mid_ty_to_vir(tcx, sig.output().skip_binder(), allow_mut_ref);
-            Arc::new(TypX::Lambda(Arc::new(args), ret))
+            let ret = mid_ty_to_vir_ghost(tcx, sig.output().skip_binder(), allow_mut_ref).0;
+            (Arc::new(TypX::Lambda(Arc::new(args), ret)), false)
         }
         _ => {
             unsupported!(format!("type {:?}", ty))
         }
     }
+}
+
+pub(crate) fn mid_ty_to_vir<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    ty: rustc_middle::ty::Ty<'tcx>,
+    allow_mut_ref: bool,
+) -> Typ {
+    mid_ty_to_vir_ghost(tcx, ty, allow_mut_ref).0
 }
 
 pub(crate) fn is_type_std_rc_or_arc<'tcx>(
@@ -381,6 +425,7 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
             Res::PrimTy(PrimTy::Int(IntTy::I64)) => TypX::Int(IntRange::I(64)),
             Res::PrimTy(PrimTy::Int(IntTy::I128)) => TypX::Int(IntRange::I(128)),
             Res::PrimTy(PrimTy::Int(IntTy::Isize)) => TypX::Int(IntRange::ISize),
+
             Res::Def(DefKind::TyParam, def_id) => {
                 let path = def_id_to_vir_path(tcx, def_id);
                 let name = path.segments.last().unwrap();
@@ -400,10 +445,12 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
                 } else if Some(def_id) == tcx.lang_items().owned_box()
                     || def_name == "alloc::rc::Rc"
                     || def_name == "alloc::sync::Arc"
+                    || def_name == "builtin::Ghost"
+                    || def_name == "builtin::Tracked"
                 {
-                    match &path.segments[0].args.expect("Box/Rc/Arc arg").args[0] {
+                    match &path.segments[0].args.expect("Box/Rc/Arc/Ghost/Tracked arg").args[0] {
                         rustc_hir::GenericArg::Type(t) => return ty_to_vir(tcx, t),
-                        _ => panic!("unexpected arg to Box/Rc/Arc"),
+                        _ => panic!("unexpected arg to Box/Rc/Arc/Ghost/Tracked"),
                     }
                 } else {
                     def_id_to_datatype_typx(tcx, def_id, &path.segments)
@@ -413,6 +460,22 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
             Res::SelfTy(None, Some((impl_def_id, false))) => {
                 return impl_def_id_to_self_ty(tcx, impl_def_id);
             }
+
+            Res::Def(DefKind::TyAlias, def_id) => {
+                match &path.segments.last().expect("type must have a segment").args {
+                    None => {}
+                    Some(_) => {
+                        unsupported!(format!(
+                            "use of type alias with generic type args here: {:?}",
+                            span
+                        ));
+                    }
+                }
+
+                let ty = tcx.type_of(def_id);
+                return mid_ty_to_vir(tcx, ty, false);
+            }
+
             _ => {
                 unsupported!(format!("type {:#?} {:?} {:?}", kind, path.res, span))
             }
@@ -567,14 +630,17 @@ pub(crate) fn check_generics_bounds<'tcx>(
                 "type parameter cannot be both maybe_negative and strictly_positive",
             );
         }
-        if check_that_external_body_datatype_declares_positivity && !neg && !pos {
-            return err_span_str(
-                param.span,
-                "in external_body datatype, each type parameter must be either #[verifier(maybe_negative)] or #[verifier(strictly_positive)] (maybe_negative is always safe to use)",
-            );
-        }
         let strictly_positive = !neg; // strictly_positive is the default
         let GenericParam { hir_id: _, name, bounds, span, pure_wrt_drop, kind } = param;
+
+        if let GenericParamKind::Type { .. } = kind {
+            if check_that_external_body_datatype_declares_positivity && !neg && !pos {
+                return err_span_str(
+                    param.span,
+                    "in external_body datatype, each type parameter must be either #[verifier(maybe_negative)] or #[verifier(strictly_positive)] (maybe_negative is always safe to use)",
+                );
+            }
+        }
 
         unsupported_err_unless!(!pure_wrt_drop, *span, "generic pure_wrt_drop");
         match (name, kind) {

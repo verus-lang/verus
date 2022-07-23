@@ -232,6 +232,7 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
                 Ok(SpannedTyped::new(&expr.span, &expr.typ, block))
             }
         }
+        ExprX::Unary(UnaryOp::CoerceMode { .. }, expr0) => Ok(expr0.clone()),
         ExprX::UnaryOpr(UnaryOpr::TupleField { tuple_arity, field }, expr0) => {
             let datatype = state.tuple_type_name(*tuple_arity);
             let variant = prefix_tuple_variant(*tuple_arity);

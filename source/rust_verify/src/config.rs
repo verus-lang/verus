@@ -35,6 +35,7 @@ pub struct Args {
     pub no_verify: bool,
     pub no_lifetime: bool,
     pub no_auto_recommends_check: bool,
+    pub no_enhanced_typecheck: bool,
     pub time: bool,
     pub rlimit: u32,
     pub smt_options: Vec<(String, String)>,
@@ -53,6 +54,8 @@ pub struct Args {
     pub print_erased_spec: bool,
     pub ignore_unexpected_smt: bool,
     pub debug: bool,
+    pub profile: bool,
+    pub profile_all: bool,
     pub compile: bool,
 }
 
@@ -72,6 +75,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_NO_VERIFY: &str = "no-verify";
     const OPT_NO_LIFETIME: &str = "no-lifetime";
     const OPT_NO_AUTO_RECOMMENDS_CHECK: &str = "no-auto-recommends-check";
+    const OPT_NO_ENHANCED_TYPECHECK: &str = "no-enhanced-typecheck";
     const OPT_TIME: &str = "time";
     const OPT_RLIMIT: &str = "rlimit";
     const OPT_SMT_OPTION: &str = "smt-option";
@@ -93,6 +97,8 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_PRINT_ERASED_SPEC: &str = "print-erased-spec";
     const OPT_IGNORE_UNEXPECTED_SMT: &str = "ignore-unexpected-smt";
     const OPT_DEBUG: &str = "debug";
+    const OPT_PROFILE: &str = "profile";
+    const OPT_PROFILE_ALL: &str = "profile-all";
     const OPT_COMPILE: &str = "compile";
 
     let mut opts = Options::new();
@@ -118,6 +124,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         OPT_NO_AUTO_RECOMMENDS_CHECK,
         "Do not automatically check recommends after verification failures",
     );
+    opts.optflag("", OPT_NO_ENHANCED_TYPECHECK, "Disable extensions to Rust type checker");
     opts.optflag("", OPT_TIME, "Measure and report time taken");
     opts.optopt(
         "",
@@ -150,6 +157,12 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     opts.optflag("", OPT_PRINT_ERASED_SPEC, "Print code after erasing spec");
     opts.optflag("", OPT_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output");
     opts.optflag("", OPT_DEBUG, "Enable debugging of proof failures");
+    opts.optflag(
+        "",
+        OPT_PROFILE,
+        "Collect and report prover performance data when resource limits are hit",
+    );
+    opts.optflag("", OPT_PROFILE_ALL, "Always collect and report prover performance data");
     opts.optflag("", OPT_COMPILE, "Run Rustc compiler after verification");
     opts.optflag("h", "help", "print this help menu");
 
@@ -189,6 +202,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         no_verify: matches.opt_present(OPT_NO_VERIFY),
         no_lifetime: matches.opt_present(OPT_NO_LIFETIME),
         no_auto_recommends_check: matches.opt_present(OPT_NO_AUTO_RECOMMENDS_CHECK),
+        no_enhanced_typecheck: matches.opt_present(OPT_NO_ENHANCED_TYPECHECK),
         time: matches.opt_present(OPT_TIME),
         rlimit: matches
             .opt_get::<u32>(OPT_RLIMIT)
@@ -234,6 +248,8 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         print_erased_spec: matches.opt_present(OPT_PRINT_ERASED_SPEC),
         ignore_unexpected_smt: matches.opt_present(OPT_IGNORE_UNEXPECTED_SMT),
         debug: matches.opt_present(OPT_DEBUG),
+        profile: matches.opt_present(OPT_PROFILE),
+        profile_all: matches.opt_present(OPT_PROFILE_ALL),
         compile: matches.opt_present(OPT_COMPILE),
     };
 

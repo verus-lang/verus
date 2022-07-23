@@ -106,6 +106,96 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] struct_fails4a code! {
+        struct S {
+            #[spec] i: bool,
+            j: bool,
+        }
+        fn test(s: Ghost<S>) -> bool {
+            s.j
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] struct_fails4b code! {
+        struct S {
+            #[spec] i: bool,
+            j: bool,
+        }
+        fn test(s: &Ghost<S>) -> bool {
+            s.j
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] struct_fails4c code! {
+        struct S {
+            #[spec] i: bool,
+            j: bool,
+        }
+        fn test(s: Ghost<&S>) -> bool {
+            s.j
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] struct_fails5a code! {
+        struct S {
+            #[spec] i: bool,
+            j: bool,
+        }
+        impl S {
+            #[spec]
+            fn get_j(self) -> bool {
+                self.j
+            }
+        }
+        fn test(s: Ghost<S>) -> bool {
+            s.get_j()
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] struct_fails5b code! {
+        struct S {
+            #[spec] i: bool,
+            j: bool,
+        }
+        impl S {
+            #[spec]
+            fn get_j(self) -> bool {
+                self.j
+            }
+        }
+        fn test(s: &Ghost<S>) -> bool {
+            s.get_j()
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] struct_fails5c code! {
+        struct S {
+            #[spec] i: bool,
+            j: bool,
+        }
+        impl S {
+            #[spec]
+            fn get_j(self) -> bool {
+                self.j
+            }
+        }
+        fn test(s: Ghost<&S>) -> bool {
+            s.get_j()
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
     #[test] tuple1 code! {
         fn test1(i: bool, j: bool) {
             let s = (i, j);
@@ -417,4 +507,18 @@ test_verify_one_file! {
             b
         }
     } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] tracked_double_deref code! {
+        use pervasive::modes::*;
+
+        fn foo<V>(x: Tracked<V>) {
+            let y = &x;
+
+            assert(equal((**y), (*x)));
+            assert(equal((**y), x.value()));
+            assert(equal((*y).value(), x.value()));
+        }
+    } => Ok(())
 }

@@ -36,11 +36,13 @@ pub fn parse_transition(mac: Macro) -> parse::Result<Transition> {
     } else if mac.path.is_ident("transition") {
         TransitionKind::Transition
     } else if mac.path.is_ident("readonly") {
-        TransitionKind::Readonly
+        TransitionKind::ReadonlyTransition
+    } else if mac.path.is_ident("property") {
+        TransitionKind::Property
     } else {
         return Err(Error::new(
             mac.span(),
-            "unrecognized macro for definiting a transition: expected `init!`, `transition!`, or `readonly!`",
+            "unrecognized macro for definiting a transition: expected `init!`, `transition!`, `readonly!`, or `property!`",
         ));
     };
 

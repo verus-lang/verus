@@ -174,9 +174,9 @@ macro_rules! assert_sets_equal {
         ::builtin::assert_by(::builtin::equal(s1, s2), {
             ::builtin::assert_forall_by(|$elem $( : $t )?| {
                 ::builtin::ensures(
-                    (s1.contains($elem) >>= s2.contains($elem))
+                    ::builtin::imply(s1.contains($elem), s2.contains($elem))
                     &&
-                    (s2.contains($elem) >>= s1.contains($elem))
+                    ::builtin::imply(s2.contains($elem), s1.contains($elem))
                 );
                 { $bblock }
             });

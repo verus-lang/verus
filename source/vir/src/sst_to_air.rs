@@ -3,27 +3,27 @@ use crate::ast::{
     IntRange, InvAtomicity, MaskSpec, Mode, Params, Path, PathX, SpannedTyped, Typ, TypX, Typs,
     UnaryOp, UnaryOpr, VarAt,
 };
-use crate::ast_util::{bitwidth_from_type, get_field, get_variant};
+use crate::ast_util::{bitwidth_from_type, fun_as_rust_dbg, get_field, get_variant};
 use crate::context::Ctx;
-use crate::def::{fn_inv_name, fn_namespace_name};
+use crate::def::{fn_inv_name, fn_namespace_name, new_user_qid_name};
 use crate::def::{
-    fun_to_string, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_lambda_type,
-    prefix_pre_var, prefix_requires, prefix_unbox, snapshot_ident, suffix_global_id,
-    suffix_local_expr_id, suffix_local_stmt_id, suffix_local_unique_id, suffix_typ_param_id,
-    variant_field_ident, variant_ident, ProverChoice, SnapPos, SpanKind, Spanned, FUEL_BOOL,
-    FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, POLY, SNAPSHOT_ASSIGN,
-    SNAPSHOT_CALL, SNAPSHOT_PRE, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN,
-    SUFFIX_SNAP_WHILE_END,
+    fun_to_string, new_internal_qid, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id,
+    prefix_lambda_type, prefix_pre_var, prefix_requires, prefix_unbox, snapshot_ident,
+    suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id, suffix_local_unique_id,
+    suffix_typ_param_id, unique_local, variant_field_ident, variant_ident, ProverChoice, SnapPos,
+    SpanKind, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE,
+    POLY, SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
+    SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END,
 };
 use crate::def::{CommandsWithContext, CommandsWithContextX};
 use crate::inv_masks::MaskSet;
 use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
-use crate::sst::{BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX, UniqueIdent};
+use crate::sst::{BndInfo, BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX, UniqueIdent};
 use crate::sst_vars::{get_loc_var, AssignMap};
 use crate::util::vec_map;
 use air::ast::{
-    BindX, Binder, BinderX, Binders, CommandX, Constant, Decl, DeclX, Expr, ExprX, MultiOp, Quant,
-    QueryX, Span, Stmt, StmtX, Trigger, Triggers,
+    BindX, Binder, BinderX, Binders, CommandX, Constant, Decl, DeclX, Expr, ExprX, MultiOp, Qid,
+    Quant, QueryX, Span, Stmt, StmtX, Trigger, Triggers,
 };
 use air::ast_util::{
     bool_typ, bv_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and,
@@ -323,10 +323,26 @@ pub(crate) enum ExprMode {
     BodyPre,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct ExprCtxt {
     pub mode: ExprMode,
     pub is_bit_vector: bool,
+    pub bit_vector_typ_hint: Option<Typ>,
+}
+
+impl ExprCtxt {
+    pub(crate) fn new() -> Self {
+        ExprCtxt { mode: ExprMode::Body, is_bit_vector: false, bit_vector_typ_hint: None }
+    }
+    pub(crate) fn new_mode(mode: ExprMode) -> Self {
+        ExprCtxt { mode, is_bit_vector: false, bit_vector_typ_hint: None }
+    }
+    pub(crate) fn new_mode_bv(mode: ExprMode, is_bit_vector: bool) -> Self {
+        ExprCtxt { mode, is_bit_vector, bit_vector_typ_hint: None }
+    }
+    fn set_bit_vector_typ_hint(&self, bit_vector_typ_hint: Option<Typ>) -> Self {
+        ExprCtxt { mode: self.mode, is_bit_vector: self.is_bit_vector, bit_vector_typ_hint }
+    }
 }
 
 pub(crate) fn bv_typ_to_air(typ: &Typ) -> air::ast::Typ {
@@ -366,10 +382,47 @@ fn assert_unsigned(exp: &Exp) {
     };
 }
 
-pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
+// Generate a unique quantifier ID and map it to the quantifier's span
+fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
+    let fun_name = fun_as_rust_dbg(
+        &ctx.fun.as_ref().expect("Expressions are expected to be within a function").current_fun,
+    );
+    let qcount = ctx.quantifier_count.get();
+    let qid = new_user_qid_name(&fun_name, qcount);
+    ctx.quantifier_count.set(qcount + 1);
+    let trigs = match &exp.x {
+        ExpX::Bind(bnd, _) => match &bnd.x {
+            BndX::Quant(_, _, trigs) => trigs,
+            BndX::Choose(_, trigs, _) => trigs,
+            _ => panic!(
+                "internal error: user quantifier expressions should only be Quant or Choose; found {:?}",
+                bnd.x
+            ),
+        },
+        _ => panic!(
+            "internal error: user quantifier expressions should only be Bind expressions; found {:?}",
+            exp.x
+        ),
+    };
+    let bnd_info = BndInfo { span: exp.span.clone(), trigs: trigs.clone() };
+    ctx.global.qid_map.borrow_mut().insert(qid.clone(), bnd_info);
+    Some(Arc::new(qid))
+}
+
+pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Expr {
+    let bit_vector_typ_hint = &expr_ctxt.bit_vector_typ_hint;
+    let expr_ctxt = &expr_ctxt.set_bit_vector_typ_hint(None);
     match (&exp.x, expr_ctxt.is_bit_vector) {
         (ExpX::Const(crate::ast::Constant::Int(i)), true) => {
-            if let Some(width) = bitwidth_from_type(&exp.typ) {
+            let typ = match (&*exp.typ, bit_vector_typ_hint) {
+                (TypX::Int(IntRange::Int | IntRange::Nat), Some(hint))
+                    if crate::ast_util::fixed_integer_const(&i.to_string(), hint) =>
+                {
+                    hint
+                }
+                _ => &exp.typ,
+            };
+            if let Some(width) = bitwidth_from_type(typ) {
                 return Arc::new(ExprX::Const(Constant::BitVec(Arc::new(i.to_string()), width)));
             }
             panic!("error: unable to get bit-width from constant of type {:?}", exp.typ);
@@ -410,6 +463,14 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
             Arc::new(ExprX::Apply(variant, Arc::new(args)))
         }
         (ExpX::Unary(op, exp), true) => {
+            let hint = match op {
+                UnaryOp::BitNot => expr_ctxt.bit_vector_typ_hint.clone(),
+                UnaryOp::Clip(range @ (IntRange::U(..) | IntRange::I(..))) => {
+                    Some(Arc::new(TypX::Int(*range)))
+                }
+                _ => None,
+            };
+            let expr_ctxt = &expr_ctxt.set_bit_vector_typ_hint(hint);
             let bv_e = exp_to_expr(ctx, exp, expr_ctxt);
             match op {
                 UnaryOp::Not => {
@@ -453,6 +514,12 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                     exp.typ
                 ),
                 UnaryOp::Trigger(_) => exp_to_expr(ctx, exp, expr_ctxt),
+                UnaryOp::CoerceMode { .. } => {
+                    panic!("internal error: TupleField should have been removed before here")
+                }
+                UnaryOp::MustBeFinalized => {
+                    panic!("internal error: Exp not finalized: {:?}", exp)
+                }
             }
         }
         (ExpX::Unary(op, exp), false) => match op {
@@ -479,6 +546,12 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                     IntRange::I(_) | IntRange::ISize => crate::def::I_CLIP,
                 };
                 apply_range_fun(&f_name, &range, vec![expr])
+            }
+            UnaryOp::CoerceMode { .. } => {
+                panic!("internal error: TupleField should have been removed before here")
+            }
+            UnaryOp::MustBeFinalized => {
+                panic!("internal error: Exp not finalized: {:?}", exp)
             }
         },
         (ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), exp), true) => {
@@ -523,6 +596,18 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                     assert_unsigned(&rhs);
                 }
             };
+            let hint = match op {
+                BinaryOp::Eq(..)
+                | BinaryOp::Ne
+                | BinaryOp::Inequality(..)
+                | BinaryOp::Arith(..) => match (&*lhs.typ, &*rhs.typ) {
+                    (TypX::Int(IntRange::U(..) | IntRange::I(..)), _) => Some(lhs.typ.clone()),
+                    (_, TypX::Int(IntRange::U(..) | IntRange::I(..))) => Some(rhs.typ.clone()),
+                    _ => None,
+                },
+                _ => None,
+            };
+            let expr_ctxt = &expr_ctxt.set_bit_vector_typ_hint(hint);
             let lh = exp_to_expr(ctx, lhs, expr_ctxt);
             let rh = exp_to_expr(ctx, rhs, expr_ctxt);
             let _ = match op {
@@ -656,9 +741,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
             &exp_to_expr(ctx, e3, expr_ctxt),
         ),
         (ExpX::WithTriggers(_triggers, body), _) => exp_to_expr(ctx, body, expr_ctxt),
-        (ExpX::Bind(bnd, exp), _) => match (&bnd.x, expr_ctxt.is_bit_vector) {
+        (ExpX::Bind(bnd, e), _) => match (&bnd.x, expr_ctxt.is_bit_vector) {
             (BndX::Let(binders), _) => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt);
+                let expr = exp_to_expr(ctx, e, expr_ctxt);
                 let binders = vec_map(&*binders, |b| {
                     Arc::new(BinderX {
                         name: suffix_local_expr_id(&b.name),
@@ -668,7 +753,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 air::ast_util::mk_let(&binders, &expr)
             }
             (BndX::Quant(quant, binders, trigs), _) => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt);
+                let expr = exp_to_expr(ctx, e, expr_ctxt);
                 let mut invs: Vec<Expr> = Vec::new();
                 if !expr_ctxt.is_bit_vector {
                     for binder in binders.iter() {
@@ -705,10 +790,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 let triggers = vec_map(&*trigs, |trig| {
                     Arc::new(vec_map(trig, |x| exp_to_expr(ctx, x, expr_ctxt)))
                 });
-                air::ast_util::mk_quantifier(quant.quant, &binders, &triggers, &expr)
+                let qid = new_user_qid(ctx, &exp);
+                air::ast_util::mk_quantifier(quant.quant, &binders, &triggers, qid, &expr)
             }
             (BndX::Lambda(binders), false) => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt);
+                let expr = exp_to_expr(ctx, e, expr_ctxt);
                 let binders = vec_map(&*binders, |b| {
                     let name = suffix_local_expr_id(&b.name);
                     Arc::new(BinderX { name, a: typ_to_air(ctx, &b.a) })
@@ -728,16 +814,17 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                     bs.push(Arc::new(BinderX { name, a: typ_to_air(ctx, &b.a) }));
                 }
                 let cond_expr = exp_to_expr(ctx, cond, expr_ctxt);
-                let body_expr = exp_to_expr(ctx, exp, expr_ctxt);
+                let body_expr = exp_to_expr(ctx, e, expr_ctxt);
                 invs.push(cond_expr.clone());
                 let cond_expr = mk_and(&invs);
-                let typ = &exp.typ;
+                let typ = &e.typ;
                 let typ_inv = typ_invariant(ctx, typ, &body_expr);
                 let triggers = vec_map(&*trigs, |trig| {
                     Arc::new(vec_map(trig, |x| exp_to_expr(ctx, x, expr_ctxt)))
                 });
                 let binders = Arc::new(bs);
-                let bind = Arc::new(BindX::Choose(binders, Arc::new(triggers), cond_expr));
+                let qid = new_user_qid(ctx, &exp);
+                let bind = Arc::new(BindX::Choose(binders, Arc::new(triggers), qid, cond_expr));
                 let mut choose_expr = Arc::new(ExprX::Bind(bind, body_expr));
                 match typ_inv {
                     Some(_) => {
@@ -892,7 +979,7 @@ fn assume_other_fields_unchanged(
     stm_span: &Span,
     base: &UniqueIdent,
     mutated_fields: &LocFieldInfo<Vec<Vec<FieldOpr>>>,
-    expr_ctxt: ExprCtxt,
+    expr_ctxt: &ExprCtxt,
 ) -> Option<Stmt> {
     let LocFieldInfo { base_typ, base_span, a: updates } = mutated_fields;
     let base_exp = SpannedTyped::new(base_span, base_typ, ExpX::VarLoc(base.clone()));
@@ -914,7 +1001,7 @@ fn assume_other_fields_unchanged_inner(
     stm_span: &Span,
     base: &Exp,
     updates: &Vec<Vec<FieldOpr>>,
-    expr_ctxt: ExprCtxt,
+    expr_ctxt: &ExprCtxt,
 ) -> Vec<Expr> {
     match &updates[..] {
         [f] if f.len() == 0 => vec![],
@@ -967,7 +1054,7 @@ fn assume_other_fields_unchanged_inner(
 }
 
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
-    let expr_ctxt = ExprCtxt { mode: ExprMode::Body, is_bit_vector: false };
+    let expr_ctxt = &ExprCtxt::new();
     match &stm.x {
         StmX::Call(x, mode, typs, args, dest) => {
             let mut stmts: Vec<Stmt> = Vec::new();
@@ -1144,7 +1231,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             // here expr is boxed/unboxed in poly::poly_expr
             // this is for integer version
             // for bitvector part, box/unbox will be completely removed in exp_to_bv_expr
-            let bv_expr_ctxt = ExprCtxt { mode: ExprMode::Body, is_bit_vector: true };
+            let bv_expr_ctxt = &ExprCtxt::new_mode_bv(ExprMode::Body, true);
             let error = error_with_label(
                 "assertion failed".to_string(),
                 &stm.span,
@@ -1369,8 +1456,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             // to a tmp variable
             // to ensure that its value is constant across the entire invariant block.
             // We will be referencing it later.
-            let inv_expr =
-                exp_to_expr(ctx, inv_exp, ExprCtxt { mode: ExprMode::Body, is_bit_vector: false });
+            let inv_expr = exp_to_expr(ctx, inv_exp, &ExprCtxt::new());
 
             // Assert that the namespace of the inv we are opening is in the mask set
             let namespace_expr = call_namespace(inv_expr.clone(), typ, *atomicity);
@@ -1378,11 +1464,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
 
             // add an 'assume' that inv holds
             let inner_var = SpannedTyped::new(&stm.span, typ, ExpX::Var(uid.clone()));
-            let inner_expr = exp_to_expr(
-                ctx,
-                &inner_var,
-                ExprCtxt { mode: ExprMode::Body, is_bit_vector: false },
-            );
+            let inner_expr = exp_to_expr(ctx, &inner_var, &ExprCtxt::new());
             let ty_inv_opt = typ_invariant(ctx, typ, &inner_expr);
             if let Some(ty_inv) = ty_inv_opt {
                 stmts.push(Arc::new(StmtX::Assume(ty_inv)));
@@ -1426,7 +1508,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                     &added_fuel,
                 );
                 let binder = ident_binder(&str_ident(FUEL_PARAM), &str_typ(FUEL_TYPE));
-                stmts.push(Arc::new(StmtX::Assume(mk_exists(&vec![binder], &vec![], &eq))));
+                let qid = None; // Introduces a variable name but shouldn't otherwise be instantiated
+                stmts.push(Arc::new(StmtX::Assume(mk_exists(&vec![binder], &vec![], qid, &eq))));
             }
             if ctx.debug {
                 state.map_span(&stm, SpanKind::Full);
@@ -1448,7 +1531,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
     }
 }
 
-fn set_fuel(local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
+fn set_fuel(ctx: &Ctx, local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
     let fuel_expr = if hidden.len() == 0 {
         str_var(&FUEL_DEFAULTS)
     } else {
@@ -1472,7 +1555,12 @@ fn set_fuel(local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
         let trigger: Trigger = Arc::new(vec![fuel_bool.clone()]);
         let triggers: Triggers = Arc::new(vec![trigger]);
         let binders: Binders<air::ast::Typ> = Arc::new(vec![ident_binder(&id, &str_typ(FUEL_ID))]);
-        let bind = Arc::new(BindX::Quant(Quant::Forall, binders, triggers));
+
+        let fun_name = fun_as_rust_dbg(
+            &ctx.fun.as_ref().expect("Missing a current function value").current_fun,
+        );
+        let qid = new_internal_qid(format!("{}_nondefault_fuel", fun_name));
+        let bind = Arc::new(BindX::Quant(Quant::Forall, binders, triggers, qid));
         let or = Arc::new(ExprX::Multi(air::ast::MultiOp::Or, Arc::new(disjuncts)));
         mk_bind_expr(&bind, &or)
     };
@@ -1527,14 +1615,14 @@ pub fn body_stm_to_air(
         }
     }
 
-    set_fuel(&mut local_shared, hidden);
+    set_fuel(ctx, &mut local_shared, hidden);
 
     let mut declared: HashMap<UniqueIdent, Typ> = HashMap::new();
     let mut assigned: HashSet<UniqueIdent> = HashSet::new();
     let mut has_mut_params = false;
     for param in params.iter() {
-        declared.insert((param.x.name.clone(), Some(0)), param.x.typ.clone());
-        assigned.insert((param.x.name.clone(), Some(0)));
+        declared.insert(unique_local(&param.x.name), param.x.typ.clone());
+        assigned.insert(unique_local(&param.x.name));
         if param.x.is_mut {
             has_mut_params = true;
         }
@@ -1599,7 +1687,7 @@ pub fn body_stm_to_air(
             )
             .secondary_label(&ens.span, "failed this postcondition".to_string());
 
-            let expr_ctxt = ExprCtxt { mode: ExprMode::Body, is_bit_vector: is_bit_vector_mode };
+            let expr_ctxt = &ExprCtxt::new_mode_bv(ExprMode::Body, is_bit_vector_mode);
             let e = mk_let(&trait_typ_bind, &exp_to_expr(ctx, ens, expr_ctxt));
             let ens_stmt = StmtX::Assert(error, e);
             stmts.push(Arc::new(ens_stmt));
@@ -1618,7 +1706,7 @@ pub fn body_stm_to_air(
     }
 
     for req in reqs {
-        let expr_ctxt = ExprCtxt { mode: ExprMode::BodyPre, is_bit_vector: is_bit_vector_mode };
+        let expr_ctxt = &ExprCtxt::new_mode_bv(ExprMode::BodyPre, is_bit_vector_mode);
         let e = mk_let(&trait_typ_bind, &exp_to_expr(ctx, req, expr_ctxt));
         local.push(Arc::new(DeclX::Axiom(e)));
     }
@@ -1641,8 +1729,7 @@ pub fn body_stm_to_air(
                 &req.span,
                 "at the require clause".to_string(),
             );
-            let air_expr =
-                exp_to_expr(ctx, req, ExprCtxt { mode: ExprMode::BodyPre, is_bit_vector: false });
+            let air_expr = exp_to_expr(ctx, req, &ExprCtxt::new_mode(ExprMode::BodyPre));
             let assert_stm = Arc::new(StmtX::Assert(error, air_expr));
             singular_stmts.push(assert_stm);
         }
@@ -1652,8 +1739,7 @@ pub fn body_stm_to_air(
                 &ens.span,
                 "at the ensure clause".to_string(),
             );
-            let air_expr =
-                exp_to_expr(ctx, ens, ExprCtxt { mode: ExprMode::BodyPre, is_bit_vector: false });
+            let air_expr = exp_to_expr(ctx, ens, &ExprCtxt::new_mode(ExprMode::BodyPre));
             let assert_stm = Arc::new(StmtX::Assert(error, air_expr));
             singular_stmts.push(assert_stm);
         }

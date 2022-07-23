@@ -1,9 +1,8 @@
-use crate::ast::{Fun, FunX, InvAtomicity, Params, Path, PathX};
-use crate::sst::{Exp, UniqueIdent};
+use crate::ast::{Fun, FunX, InvAtomicity, Path, PathX};
+use crate::sst::UniqueIdent;
 use crate::util::vec_map;
 use air::ast::{Commands, Ident, Span};
 use air::ast_util::str_ident;
-use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
 
@@ -55,6 +54,7 @@ const PREFIX_TUPLE_PARAM: &str = "T%";
 const PREFIX_TUPLE_FIELD: &str = "field%";
 const PREFIX_LAMBDA_TYPE: &str = "fun%";
 const PREFIX_SNAPSHOT: &str = "snap%";
+const SUBST_RENAME_SEPARATOR: &str = "$$";
 const KRATE_SEPARATOR: &str = "!";
 const PATH_SEPARATOR: &str = ".";
 const PATHS_SEPARATOR: &str = "/";
@@ -123,12 +123,20 @@ pub const UINT_SHR: &str = "uintshr";
 pub const UINT_SHL: &str = "uintshl";
 pub const UINT_NOT: &str = "uintnot";
 
+// List of QID suffixes we add to internally generated quantifiers
+pub const QID_BOX_AXIOM: &str = "box_axiom";
+pub const QID_UNBOX_AXIOM: &str = "unbox_axiom";
+pub const QID_CONSTRUCTOR_INNER: &str = "constructor_inner";
+pub const QID_CONSTRUCTOR: &str = "constructor";
+pub const QID_APPLY: &str = "apply";
+pub const QID_ACCESSOR: &str = "accessor";
+pub const QID_INVARIANT: &str = "invariant";
+pub const QID_HAS_TYPE_ALWAYS: &str = "has_type_always";
+
 // We assume that usize is at least ARCH_SIZE_MIN_BITS wide
 pub const ARCH_SIZE_MIN_BITS: u32 = 32;
 
 pub const SUPPORTED_CRATES: [&str; 2] = ["builtin", "pervasive"];
-
-pub type SstMap = HashMap<Fun, (Params, Exp)>;
 
 pub fn path_to_string(path: &Path) -> String {
     let s = vec_map(&path.segments, |s| s.to_string()).join(PATH_SEPARATOR) + SUFFIX_PATH;
@@ -182,8 +190,16 @@ pub fn suffix_local_stmt_id(ident: &Ident) -> Ident {
     Arc::new(ident.to_string() + SUFFIX_LOCAL_STMT)
 }
 
+pub(crate) fn unique_bound(id: &Ident) -> UniqueIdent {
+    UniqueIdent { name: id.clone(), local: None }
+}
+
+pub(crate) fn unique_local(id: &Ident) -> UniqueIdent {
+    UniqueIdent { name: id.clone(), local: Some(0) }
+}
+
 pub fn suffix_local_unique_id(ident: &UniqueIdent) -> Ident {
-    let (x, id) = ident;
+    let UniqueIdent { name: x, local: id } = ident;
     match id {
         None => suffix_local_expr_id(x),
         Some(0) => suffix_local_stmt_id(x),
@@ -205,6 +221,10 @@ pub fn rm_suffix_local_id(ident: &Ident) -> Ident {
         }
     }
     Arc::new(name)
+}
+
+pub fn subst_rename_ident(x: &Ident, n: u64) -> Ident {
+    Arc::new(format!("{}{}{}", x.to_string(), SUBST_RENAME_SEPARATOR, n))
 }
 
 pub fn suffix_typ_param_id(ident: &Ident) -> Ident {
@@ -348,6 +368,25 @@ pub fn monotyp_apply(datatype: &Path, args: &Vec<Path>) -> Path {
         *last = ident;
         Arc::new(PathX { krate: datatype.krate.clone(), segments: Arc::new(segments) })
     }
+}
+
+// Generate a unique quantifier name
+pub fn new_user_qid_name(fun_name: &str, q_count: u64) -> String {
+    // In SMTLIB, unquoted attribute values cannot contain colons,
+    // and sise cannot handle quoting with vertical bars
+    let fun_name = str::replace(&fun_name, ":", "_");
+    let qid = format!("{}{}_{}", air::profiler::USER_QUANT_PREFIX, fun_name, q_count);
+    qid
+}
+
+// Generate a unique internal quantifier ID
+pub fn new_internal_qid(name: String) -> Option<Ident> {
+    // In SMTLIB, unquoted attribute values cannot contain colons,
+    // and sise cannot handle quoting with vertical bars
+    let name = str::replace(&name, ":", "_");
+    let name = str::replace(&name, "%", "__");
+    let qid = format!("{}{}_definition", air::profiler::INTERNAL_QUANT_PREFIX, name);
+    Some(Arc::new(qid))
 }
 
 pub fn snapshot_ident(name: &str) -> Ident {

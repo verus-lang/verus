@@ -73,7 +73,7 @@ impl<T> Producer<T> {
             if head != next_tail as u64 {
                 // Here's the unsafe part: writing the given `t` value into the `UnsafeCell`.
                 unsafe {
-                    (*self.queue.buffer[self.tail].get()).write(t);
+                    (*tracked_get(self.queue.buffer[self.tail])).write(t);
                 }
 
                 // Update the `tail` (both the shared atomic and our local copy).
@@ -108,7 +108,7 @@ impl<T> Consumer<T> {
                 // (replacing it with "uninitialized" memory).
                 let t = unsafe {
                     let mut tmp = MaybeUninit::uninit();
-                    std::mem::swap(&mut *self.queue.buffer[self.head].get(), &mut tmp);
+                    std::mem::swap(&mut *tracked_get(self.queue.buffer[self.head]), &mut tmp);
                     tmp.assume_init()
                 };
 

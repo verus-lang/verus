@@ -51,7 +51,7 @@ pub mod prune;
 pub mod recursion;
 pub mod recursive_types;
 mod scc;
-mod sst;
+pub mod sst;
 mod sst_to_air;
 mod sst_util;
 mod sst_vars;

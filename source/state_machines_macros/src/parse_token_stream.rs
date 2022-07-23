@@ -1,5 +1,7 @@
 //! Module for the initial processing of the macro tokens, to return an SM AST
 
+use crate::ast::INIT_LABEL_TYPE_NAME;
+use crate::ast::TRANSITION_LABEL_TYPE_NAME;
 use crate::ast::{
     Extras, Invariant, Lemma, LemmaPurpose, LemmaPurposeKind, ShardableType, Transition, SM,
 };
@@ -16,7 +18,7 @@ use syn_verus::spanned::Spanned;
 use syn_verus::Token;
 use syn_verus::{
     braced, AttrStyle, Attribute, Error, FieldsNamed, FnArg, FnArgKind, FnMode, GenericArgument,
-    GenericParam, Generics, Ident, ImplItem, ImplItemMethod, Meta, MetaList, NestedMeta,
+    GenericParam, Generics, Ident, ImplItemMethod, Item, ItemFn, Meta, MetaList, NestedMeta,
     PathArguments, Receiver, ReturnType, Type, TypePath, Visibility, WhereClause,
 };
 
@@ -37,7 +39,7 @@ pub struct SMBundle {
 
 pub struct ParseResult {
     pub name: Ident,
-    pub items: Vec<ImplItem>,
+    pub items: Vec<Item>,
     pub fields: Option<FieldsNamed>,
     pub generics: Option<Generics>,
 }
@@ -106,7 +108,7 @@ impl Parse for ParseResult {
                 fields_opt = Some(fields_named);
             } else {
                 // Otherwise parse a function
-                let item: ImplItem = items_stream.parse()?;
+                let item: Item = items_stream.parse()?;
                 items.push(item);
             }
         }
@@ -578,6 +580,42 @@ fn to_fields(
     return Ok(v);
 }
 
+fn impl_item_method_from_item_fn(item_fn: ItemFn) -> ImplItemMethod {
+    let ItemFn { attrs, vis, sig, block, semi_token } = item_fn;
+    let block = *block;
+    ImplItemMethod { attrs, vis, sig, block, semi_token, defaultness: None }
+}
+
+fn item_type_check_name(ident: &Ident) -> parse::Result<bool> {
+    if ident.to_string() == TRANSITION_LABEL_TYPE_NAME {
+        Ok(false)
+    } else if ident.to_string() == INIT_LABEL_TYPE_NAME {
+        Ok(true)
+    } else {
+        Err(Error::new(
+            ident.span(),
+            format!(
+                "state_machine macro only supports the declaration of a `{TRANSITION_LABEL_TYPE_NAME:}` and `{INIT_LABEL_TYPE_NAME:}` types"
+            ),
+        ))
+    }
+}
+
+fn item_type_check_no_generics(span: Span, generics: &Generics) -> parse::Result<()> {
+    if generics.params.len() > 0 || generics.where_clause.is_some() {
+        Err(Error::new(span, "generics not yet supported here"))
+    } else {
+        Ok(())
+    }
+}
+
+fn item_type_check_vis(span: Span, vis: &Visibility) -> parse::Result<()> {
+    match vis {
+        Visibility::Public(_) => Ok(()),
+        _ => Err(Error::new(span, "type definition should be `pub`")),
+    }
+}
+
 pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> parse::Result<SMBundle> {
     let ParseResult { name, generics, items, fields } = pr;
 
@@ -585,6 +623,8 @@ pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> parse::Result<
     let mut transitions: Vec<Transition> = Vec::new();
     let mut invariants: Vec<Invariant> = Vec::new();
     let mut lemmas: Vec<Lemma> = Vec::new();
+    let mut init_label: Option<Item> = None;
+    let mut transition_label: Option<Item> = None;
 
     let fields_named = match fields {
         None => {
@@ -596,9 +636,10 @@ pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> parse::Result<
         Some(f) => f,
     };
 
-    for item in items {
+    for item in items.into_iter() {
         match item {
-            ImplItem::Method(impl_item_method) => {
+            Item::Fn(item_fn) => {
+                let impl_item_method = impl_item_method_from_item_fn(item_fn);
                 let attr_info = parse_fn_attr_info(&impl_item_method.attrs)?;
                 match attr_info {
                     FnAttrInfo::NoneFound => {
@@ -610,20 +651,71 @@ pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> parse::Result<
                     FnAttrInfo::Lemma(purpose) => lemmas.push(to_lemma(impl_item_method, purpose)?),
                 }
             }
-            ImplItem::Macro(impl_item_macro) => {
-                let t = parse_transition(impl_item_macro.mac)?;
+            Item::Macro(item_macro) => {
+                let t = parse_transition(item_macro.mac)?;
                 transitions.push(t);
             }
+            item @ Item::Type(_) | item @ Item::Enum(_) | item @ Item::Struct(_) => {
+                let is_init = match &item {
+                    Item::Type(item_type) => {
+                        let is_init = item_type_check_name(&item_type.ident)?;
+                        item_type_check_no_generics(item.span(), &item_type.generics)?;
+                        item_type_check_vis(item.span(), &item_type.vis)?;
+                        is_init
+                    }
+                    Item::Struct(item_struct) => {
+                        let is_init = item_type_check_name(&item_struct.ident)?;
+                        item_type_check_no_generics(item.span(), &item_struct.generics)?;
+                        item_type_check_vis(item.span(), &item_struct.vis)?;
+                        is_init
+                    }
+                    Item::Enum(item_enum) => {
+                        let is_init = item_type_check_name(&item_enum.ident)?;
+                        item_type_check_no_generics(item.span(), &item_enum.generics)?;
+                        item_type_check_vis(item.span(), &item_enum.vis)?;
+                        is_init
+                    }
+                    _ => {
+                        panic!("can't get here");
+                    }
+                };
+
+                if is_init {
+                    if init_label.is_some() {
+                        return Err(Error::new(
+                            item.span(),
+                            format!("{INIT_LABEL_TYPE_NAME:} already declared"),
+                        ));
+                    }
+                    init_label = Some(item);
+                } else {
+                    if transition_label.is_some() {
+                        return Err(Error::new(
+                            item.span(),
+                            format!("{TRANSITION_LABEL_TYPE_NAME:} already declared"),
+                        ));
+                    }
+                    transition_label = Some(item);
+                }
+            }
             item => {
-                return Err(Error::new(item.span(), "this impl item is not supported"));
+                return Err(Error::new(item.span(), "this item is not supported"));
             }
         }
     }
 
     let mut fields_named_ast = fields_named;
     let fields = to_fields(&mut fields_named_ast, concurrent)?;
-    let mut sm =
-        SM { name: name.clone(), generics, fields, fields_named_ast, transitions, concurrent };
+    let mut sm = SM {
+        name: name.clone(),
+        generics,
+        fields,
+        fields_named_ast,
+        transitions,
+        concurrent,
+        init_label,
+        transition_label,
+    };
 
     replace_self_sm(&mut sm);
     check_transitions(&mut sm)?;

@@ -1,8 +1,11 @@
 #![feature(box_patterns)]
 #![feature(proc_macro_span)]
+#![feature(proc_macro_tracked_env)]
+
 use synstructure::{decl_attribute, decl_derive};
 mod fndecl;
 mod is_variant;
+mod rustdoc;
 mod structural;
 mod syntax;
 
@@ -18,7 +21,12 @@ pub fn fndecl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
 #[proc_macro]
 pub fn verus(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    syntax::rewrite_items(input)
+    syntax::rewrite_items(input, true)
+}
+
+#[proc_macro]
+pub fn verus_old_todo_replace_this(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    syntax::rewrite_items(input, false)
 }
 
 #[proc_macro]

@@ -23,6 +23,45 @@ test_verify_one_file! {
     } => Err(TestErr { has_vir_error: true, .. })
 }
 
+test_verify_one_file! {
+    #[test] test_needs_pub_abstract2 code! {
+        mod M1 {
+            use builtin::*;
+
+            #[derive(PartialEq, Eq)]
+            pub struct Car {
+                passengers: nat,
+                pub four_doors: bool,
+            }
+
+            #[spec]
+            #[verifier(publish)] // illegal
+            pub fn get_passengers() -> Car {
+                Car { passengers: 0, four_doors: true }
+            }
+        }
+    } => Err(TestErr { has_vir_error: true, .. })
+}
+
+test_verify_one_file! {
+    #[test] test_needs_pub_abstract3 code! {
+        mod M1 {
+            use builtin::*;
+
+            enum E {
+                C()
+            }
+
+            #[spec]
+            #[verifier(publish)] // illegal
+            pub fn get_passengers() -> bool {
+                let _ = E::C();
+                true
+            }
+        }
+    } => Err(TestErr { has_vir_error: true, .. })
+}
+
 const M1: &str = code_str! {
     mod M1 {
         use builtin::*;

@@ -4,24 +4,22 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] test_with_bitvec_nlarith code! {
-        #[proof]
+    #[test] test_with_bitvec_nlarith verus_code! {
         #[verifier(spinoff_prover)]
-        fn test6(x: u32, y: u32, z:u32) {
-            requires(x < 0xfff);
+        proof fn test6(x: u32, y: u32, z: u32)
+            requires
+                x < 0xfff,
+        {
+            assert(x * x + x == x * (x + 1)) by(nonlinear_arith)
+                requires(x < 0xfff)
+            {
+            }
+            assert(x * x + x == x * (x + 1));
 
-            assert_nonlinear_by({
-                requires(x < 0xfff);
-                ensures(x*x + x == x * (x + 1));
-            });
-            assert(x*x + x == x * (x + 1));
+            assert(x < 0xfff ==> x & y < 0xfff) by(bit_vector);
+            assert(x & y < 0xfff);
 
-            assert_bit_vector((x < 0xfff) >>= (x&y < 0xfff));
-            assert(x&y < 0xfff);
-
-            assert_nonlinear_by({
-                ensures(x*y*z == y*x*z);
-            });
+            assert(x * y * z == y * x * z) by(nonlinear_arith);
         }
     } => Ok(())
 }

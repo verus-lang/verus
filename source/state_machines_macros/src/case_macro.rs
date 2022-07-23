@@ -1,35 +1,50 @@
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{quote, quote_spanned};
 use syn_verus::parse;
 use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::parse_macro_input;
 use syn_verus::punctuated::Punctuated;
+use syn_verus::spanned::Spanned;
 use syn_verus::token;
-use syn_verus::{braced, parenthesized, Expr, ExprBlock, Ident, Path, Token};
+use syn_verus::{braced, parenthesized, Error, Expr, ExprBlock, ExprPath, Ident, Path, Token};
 
-pub fn case_on(input: proc_macro::TokenStream, is_init: bool) -> proc_macro::TokenStream {
-    let (pre_post, name, arms) = if is_init {
+pub fn case_on(
+    input: proc_macro::TokenStream,
+    is_init: bool,
+    is_strong: bool,
+) -> proc_macro::TokenStream {
+    assert!(!is_init || !is_strong);
+
+    let (pre_post, label, name, arms) = if is_init {
         let m: MatchPost = parse_macro_input!(input as MatchPost);
-        let MatchPost { post, name, arms } = m;
+        let MatchPost { post, label, name, arms } = m;
         let pre_post = quote! {#post};
-        (pre_post, name, arms)
+        (pre_post, label, name, arms)
     } else {
         let m: MatchPrePost = parse_macro_input!(input as MatchPrePost);
-        let MatchPrePost { pre, post, name, arms } = m;
+        let MatchPrePost { pre, post, label, name, arms } = m;
         let pre_post = quote! {#pre, #post};
-        (pre_post, name, arms)
+        (pre_post, label, name, arms)
     };
 
     let next_by = if is_init {
         quote! { #name::State::init_by }
     } else {
-        quote! { #name::State::next_by }
+        if is_strong {
+            quote! { #name::State::next_strong_by }
+        } else {
+            quote! { #name::State::next_by }
+        }
     };
 
     let next = if is_init {
         quote! { #name::State::init }
     } else {
-        quote! { #name::State::next }
+        if is_strong {
+            quote! { #name::State::next_strong }
+        } else {
+            quote! { #name::State::next }
+        }
     };
 
     let step = if is_init {
@@ -38,13 +53,23 @@ pub fn case_on(input: proc_macro::TokenStream, is_init: bool) -> proc_macro::Tok
         quote! { #name::Step }
     };
 
+    let label_arg = match label {
+        None => TokenStream::new(),
+        Some(l) => quote_spanned! { l.span() => #l , },
+    };
+
     let arms: Vec<TokenStream> = arms
         .into_iter()
         .map(|arm| {
             let Arm { step_name, params, block } = arm;
+            let relation_name = if is_strong {
+                Ident::new(&(step_name.to_string() + "_strong"), step_name.span())
+            } else {
+                step_name.clone()
+            };
             quote! {
                 #step::#step_name(#(#params),*) => {
-                    ::builtin::assert_by(#name::State::#step_name(#pre_post, #(#params),*), {
+                    ::builtin::assert_by(#name::State::#relation_name(#pre_post, #label_arg #(#params),*), {
                         ::builtin::reveal(#next_by);
                     });
                     #block
@@ -57,7 +82,7 @@ pub fn case_on(input: proc_macro::TokenStream, is_init: bool) -> proc_macro::Tok
         ::builtin_macros::verus_proof_expr!{
             {
                 ::builtin::reveal(#next);
-                match ::builtin::choose(|step: #step| #next_by(#pre_post, step)) {
+                match ::builtin::choose(|step: #step| #next_by(#pre_post, #label_arg step)) {
                     #step::dummy_to_use_type_params(_) => {
                         ::builtin::assert_by(false, {
                             ::builtin::reveal(#next_by);
@@ -76,6 +101,7 @@ struct MatchPost {
     post: Expr,
     name: Path,
     arms: Vec<Arm>,
+    label: Option<Expr>,
 }
 
 struct MatchPrePost {
@@ -83,6 +109,7 @@ struct MatchPrePost {
     post: Expr,
     name: Path,
     arms: Vec<Arm>,
+    label: Option<Expr>,
 }
 
 struct Arm {
@@ -95,8 +122,33 @@ impl Parse for MatchPost {
     fn parse(input: ParseStream) -> parse::Result<MatchPost> {
         let post: Expr = input.parse()?;
         let _: Token![,] = input.parse()?;
-        let name: Path = input.parse()?;
-        let _: Token![=>] = input.parse()?;
+
+        let next_arg: Expr = input.parse()?;
+
+        let label;
+        let name;
+
+        if input.peek(Token![,]) {
+            let _: Token![,] = input.parse()?;
+            let path: Path = input.parse()?;
+            let _: Token![=>] = input.parse()?;
+
+            name = path;
+            label = Some(next_arg);
+        } else {
+            let _: Token![=>] = input.parse()?;
+
+            label = None;
+            name = match next_arg {
+                Expr::Path(ExprPath { attrs, qself: None, path }) if attrs.len() == 0 => path,
+                _ => {
+                    return Err(Error::new(
+                        next_arg.span(),
+                        "expected path for the transition system being cased on",
+                    ));
+                }
+            }
+        }
 
         let content;
         let _ = braced!(content in input);
@@ -106,7 +158,7 @@ impl Parse for MatchPost {
             arms.push(arm);
         }
 
-        Ok(MatchPost { post, name, arms })
+        Ok(MatchPost { post, label, name, arms })
     }
 }
 
@@ -116,8 +168,33 @@ impl Parse for MatchPrePost {
         let _: Token![,] = input.parse()?;
         let post: Expr = input.parse()?;
         let _: Token![,] = input.parse()?;
-        let name: Path = input.parse()?;
-        let _: Token![=>] = input.parse()?;
+
+        let next_arg: Expr = input.parse()?;
+
+        let label;
+        let name;
+
+        if input.peek(Token![,]) {
+            let _: Token![,] = input.parse()?;
+            let path: Path = input.parse()?;
+            let _: Token![=>] = input.parse()?;
+
+            name = path;
+            label = Some(next_arg);
+        } else {
+            let _: Token![=>] = input.parse()?;
+
+            label = None;
+            name = match next_arg {
+                Expr::Path(ExprPath { attrs, qself: None, path }) if attrs.len() == 0 => path,
+                _ => {
+                    return Err(Error::new(
+                        next_arg.span(),
+                        "expected path for the transition system being cased on",
+                    ));
+                }
+            }
+        }
 
         let content;
         let _ = braced!(content in input);
@@ -127,7 +204,7 @@ impl Parse for MatchPrePost {
             arms.push(arm);
         }
 
-        Ok(MatchPrePost { pre, post, name, arms })
+        Ok(MatchPrePost { pre, post, label, name, arms })
     }
 }
 

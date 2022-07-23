@@ -254,7 +254,7 @@ macro_rules! atomic_integer_methods {
             ]);
             ensures(|ret: $value_ty| equal(old(perm).value, ret)
                 && perm.patomic == old(perm).patomic
-                && perm.value == $wrap_add(old(perm).value, n)
+                && perm.value as int == $wrap_add(old(perm).value as int, n as int)
             );
             opens_invariants_none();
 
@@ -270,7 +270,7 @@ macro_rules! atomic_integer_methods {
             ]);
             ensures(|ret: $value_ty| equal(old(perm).value, ret)
                 && perm.patomic == old(perm).patomic
-                && perm.value == $wrap_sub(old(perm).value, n)
+                && perm.value as int == $wrap_sub(old(perm).value as int, n as int)
             );
             opens_invariants_none();
 

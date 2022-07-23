@@ -34,7 +34,7 @@ fn label_asserts<'ctx>(
             Arc::new(ExprX::Multi(*op, Arc::new(exprs_vec)))
         }
         ExprX::Bind(bind, body) => match &**bind {
-            BindX::Quant(Quant::Forall, _, _) => Arc::new(ExprX::Bind(
+            BindX::Quant(Quant::Forall, _, _, _) => Arc::new(ExprX::Bind(
                 bind.clone(),
                 label_asserts(context, infos, axiom_infos, body),
             )),

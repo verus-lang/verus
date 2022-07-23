@@ -12,13 +12,18 @@ use crate::ast::{
 };
 use crate::def::Spanned;
 use crate::interpreter::InterpExp;
-use air::ast::{Binders, Ident};
+use air::ast::{Binders, Ident, Span};
 use air::errors::Error;
 use std::fmt;
 use std::sync::Arc;
 
 pub type Trig = Exps;
 pub type Trigs = Arc<Vec<Trig>>;
+
+pub struct BndInfo {
+    pub span: Span,
+    pub trigs: Trigs,
+}
 
 pub type Bnd = Arc<Spanned<BndX>>;
 #[derive(Clone, Debug)]
@@ -29,12 +34,16 @@ pub enum BndX {
     Choose(Binders<Typ>, Trigs, Exp),
 }
 
-// variable name with optional unique id for renaming (equal to unique_id in LocalDeclX)
-pub type UniqueIdent = (Ident, Option<u64>);
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct UniqueIdent {
+    pub name: Ident,
+    // None for bound vars, Some disambiguating integer for local vars
+    pub local: Option<u64>,
+}
 
 pub type Exp = Arc<SpannedTyped<ExpX>>;
 pub type Exps = Arc<Vec<Exp>>;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ExpX {
     Const(Constant),
     Var(UniqueIdent),
@@ -132,7 +141,7 @@ impl fmt::Display for ExpX {
                 Constant::Bool(b) => write!(f, "{}", b),
                 Constant::Int(i) => write!(f, "{}", i),
             },
-            Var(id) => write!(f, "{}", id.0),
+            Var(id) => write!(f, "{}", id.name),
             Call(fun, _, exps) => {
                 let args = exps.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
                 write!(f, "{}({})", fun.path.segments.last().unwrap(), args)
@@ -142,6 +151,8 @@ impl fmt::Display for ExpX {
                 UnaryOp::BitNot => write!(f, "!{}", exp),
                 UnaryOp::Trigger(..) => Ok(()),
                 UnaryOp::Clip(_range) => write!(f, "clip({})", exp),
+                UnaryOp::CoerceMode { .. } => Ok(()),
+                UnaryOp::MustBeFinalized => Ok(()),
             },
             UnaryOpr(op, exp) => {
                 use crate::ast::UnaryOpr::*;
@@ -221,7 +232,7 @@ impl fmt::Display for ExpX {
             Interp(e) => {
                 use InterpExp::*;
                 match e {
-                    FreeVar(id) => write!(f, "{}", id.0),
+                    FreeVar(id) => write!(f, "{}", id.name),
                     Seq(s) => {
                         let v = s.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
                         write!(f, "[{}]", v)

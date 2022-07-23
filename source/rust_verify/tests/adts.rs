@@ -336,12 +336,12 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_is_variant_get_2 IS_VARIANT_MAYBE.to_string() + code_str! {
-        pub fn test1(m: Maybe<u64>) -> bool {
-            ensures(|res: bool|
-                (m.is_Some() >>= res == (m.get_Some_0() == 3)) &&
-                (m.is_None() >>= !res)
-            );
+    #[test] test_is_variant_get_2 IS_VARIANT_MAYBE.to_string() + verus_code_str! {
+        pub fn test1(m: Maybe<u64>) -> (res: bool)
+            ensures
+                m.is_Some() ==> res == (m.get_Some_0() == 3),
+                m.is_None() ==> !res,
+        {
             match m {
                 Maybe::Some(v) => v == 3,
                 Maybe::None => false,
@@ -354,8 +354,10 @@ test_verify_one_file! {
             assert(res);
         }
 
-        pub fn test3(v: Maybe<u64>) {
-            requires(v.is_Some() && v.get_Some_0() == 5);
+        pub fn test3(v: Maybe<u64>)
+            requires
+                v.is_Some() && v.get_Some_0() == 5,
+        {
             if let Maybe::Some(a) = v {
                 assert(a == 5);
             } else {
@@ -744,6 +746,62 @@ test_verify_one_file! {
                      }
             ]);
             assert(h.get_A_Couple_More_0() == 10);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] type_alias_basic code!{
+        struct Foo {
+            u: u64,
+        }
+
+        type X = Foo;
+
+        fn test1(x: X) {
+            requires(x.u == 5);
+
+            let u = x.u;
+            assert(u == 5);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] #[ignore] type_alias_with_params code!{
+        struct Bar<T> {
+            u: T,
+        }
+
+        type Y<T> = Bar<T>;
+
+        fn test2<T>(x: Y<T>, t: T) {
+            requires(equal(x.u, t));
+
+            let u = x.u;
+            assert(equal(u, t));
+        }
+
+        fn test3<S>(x: Y<S>, t: S) {
+            requires(equal(x.u, t));
+
+            let u = x.u;
+            assert(equal(u, t));
+        }
+
+
+        fn test4<T>(x: Y<u64>) {
+            requires(x.u == 5);
+
+            let u = x.u;
+            assert(u == 5);
+        }
+
+        fn test5(x: Y<Bar<u64>>, b: Bar<u64>) {
+            requires(equal(x.u, b));
+
+            let u = x.u;
+            assert(equal(u, b));
         }
     } => Ok(())
 }

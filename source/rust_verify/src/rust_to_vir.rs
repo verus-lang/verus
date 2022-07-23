@@ -332,6 +332,11 @@ fn check_item<'tcx>(
                 }
             }
         }
+        ItemKind::Static(..)
+            if get_verifier_attrs(ctxt.tcx.hir().attrs(item.hir_id()))?.external =>
+        {
+            return Ok(());
+        }
         ItemKind::Const(ty, body_id) => {
             if hack_get_def_name(ctxt.tcx, body_id.hir_id.owner.to_def_id())
                 .starts_with("_DERIVE_builtin_Structural_FOR_")
@@ -415,6 +420,10 @@ fn check_item<'tcx>(
                 typ_params: Arc::new(generics_bnds),
             };
             vir.traits.push(spanned_new(item.span, traitx));
+        }
+        ItemKind::TyAlias(_ty, _generics) => {
+            // type alias (like lines of the form `type X = ...;`
+            // Nothing to do here - we can rely on Rust's type resolution to handle these
         }
         _ => {
             unsupported_err!(item.span, "unsupported item", item);
