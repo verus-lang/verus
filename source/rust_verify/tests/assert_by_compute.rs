@@ -242,36 +242,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] struct_privacy code! {
-        mod hidden {
-            #[derive(PartialEq, Eq)]
-            pub struct Hidden {
-                u1: u32,
-                u2: u64,
-                b: bool,
-            }
-
-            #[spec]
-            #[verifier(publish)] #[verifier(opaque_outside_module)]
-            pub fn get1() -> Hidden {
-                Hidden { u1: 16, u2: 2, b: true }
-            }
-
-            #[spec]
-            #[verifier(publish)] #[verifier(opaque_outside_module)]
-            pub fn get2() -> Hidden {
-                Hidden { u1: 16, u2: 2, b: true }
-            }
-        }
-
-        // Make sure the interpreter doesn't read private fields or private function bodies
-        fn test() {
-            assert_by_compute(equal(hidden::get1(), hidden::get2())); // FAILS
-        }
-    } => Err(err) => assert_one_fails(err)
-}
-
-test_verify_one_file! {
     #[test] closures code! {
 
         fn test(x: u64) {
