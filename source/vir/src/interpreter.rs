@@ -22,6 +22,7 @@ use num_traits::{FromPrimitive, One, Signed, ToPrimitive};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
+use std::thread;
 use std::time::{Duration, Instant};
 
 type Env = ScopeMap<UniqueIdent, Exp>;
@@ -1185,20 +1186,26 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     state.cache_misses += 1;
                     let result = match is_sequence_fn(&fun) {
                         Some(seq_fn) => eval_seq(ctx, state, seq_fn, exp, &new_args),
-                        None => match ctx.fun_ssts.get(fun) {
-                            None => exp_new(Call(fun.clone(), typs.clone(), new_args.clone())),
+                        None => {
+                            println!("About to grab the lock...");
+                            match ctx.fun_ssts.lock().unwrap().get(fun) {
+                            None => {
+                                println!(".. got the the lock and None");
+                                exp_new(Call(fun.clone(), typs.clone(), new_args.clone()))
+                            }
                             Some(SstInfo { params, body, .. }) => {
+                                println!(".. got the the lock and Some");
                                 state.env.push_scope(true);
                                 for (formal, actual) in params.iter().zip(new_args.iter()) {
                                     let formal_id =
                                         UniqueIdent { name: formal.x.name.clone(), local: Some(0) };
                                     state.env.insert(formal_id, actual.clone()).unwrap();
                                 }
-                                let e = eval_expr_internal(ctx, state, body);
+                                let e = eval_expr_internal(ctx, state, &body);
                                 state.env.pop_scope();
                                 e
                             }
-                        },
+                        }},
                     };
                     state.insert_call(fun, &new_args, &result.clone()?);
                     result
@@ -1268,10 +1275,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     Ok(res)
 }
 
-/// Symbolically evaluate an expression, simplifying it as much as possible
-pub fn eval_expr(
-    exp: &Exp,
-    fun_ssts: &SstMap,
+fn eval_expr_launch(
+    exp: Exp,
+    fun_ssts: SstMap,
     rlimit: u32,
     mode: ComputeMode,
 ) -> Result<Exp, VirErr> {
@@ -1280,7 +1286,7 @@ pub fn eval_expr(
     let mut state = State {
         depth: 0,
         env,
-        debug: false,
+        debug: true,
         perf: false,
         cache,
         enable_cache: true,
@@ -1295,9 +1301,8 @@ pub fn eval_expr(
     // Don't run for more than rlimit seconds
     let time_limit = if rlimit == 0 { Duration::MAX } else { Duration::new(rlimit as u64, 0) };
     let time_start = Instant::now();
-    let ctx = Ctx { fun_ssts, time_start, time_limit };
-    //println!("Starting from {}", exp);
-    let res = eval_expr_internal(&ctx, &mut state, exp)?;
+    let ctx = Ctx { fun_ssts: &fun_ssts, time_start, time_limit };
+    let res = eval_expr_internal(&ctx, &mut state, &exp)?;
     display_perf_stats(&state);
     match mode {
         // Send partial result to Z3
@@ -1332,4 +1337,22 @@ pub fn eval_expr(
             _ => err_str(&exp.span, "assert_by_compute_only failed to simplify down to true"),
         },
     }
+}
+
+/// Symbolically evaluate an expression, simplifying it as much as possible
+pub fn eval_expr(
+    exp: &Exp,
+    fun_ssts: &SstMap,
+    rlimit: u32,
+    mode: ComputeMode,
+) -> Result<Exp, VirErr> {
+    //println!("Starting from {}", exp);
+    let builder = thread::Builder::new().name("interpreter".to_string()).stack_size(10 * 1024 * 1024); // 10 MB
+    let handler = {
+      // Create local versions that we own and hence can pass to the closure
+      let exp = exp.clone();
+      let fun_ssts = fun_ssts.clone();
+      builder.spawn(move || eval_expr_launch(exp, fun_ssts, rlimit, mode)).unwrap()
+    };
+    handler.join().unwrap()
 }

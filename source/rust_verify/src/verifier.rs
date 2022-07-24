@@ -23,7 +23,6 @@ use std::time::{Duration, Instant};
 use vir::ast::{Fun, Function, InferMode, Krate, Mode, VirErr, Visibility};
 use vir::ast_util::{fun_as_rust_dbg, fun_name_crate_relative, is_visible_to};
 use vir::def::{CommandsWithContext, CommandsWithContextX, SnapPos};
-use vir::func_to_air::SstMap;
 use vir::recursion::Node;
 
 const RLIMIT_PER_SECOND: u32 = 3000000;
@@ -710,7 +709,7 @@ impl Verifier {
         // Declare them in SCC (strongly connected component) sorted order so that
         // termination checking precedes consequence axioms for each SCC.
         let mut fun_axioms: HashMap<Fun, Commands> = HashMap::new();
-        let mut fun_ssts = SstMap::new();
+        let mut fun_ssts = Arc::new(Mutex::new(HashMap::new()));
         for scc in &ctx.global.func_call_sccs.clone() {
             let scc_nodes = ctx.global.func_call_graph.get_scc_nodes(scc);
             let mut scc_fun_nodes: Vec<Fun> = Vec::new();
