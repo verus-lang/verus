@@ -4,12 +4,12 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] test1 code! {
-        #[spec]
-        fn f() -> int { 1 }
+    #[test] test1 verus_code! {
+        spec fn f() -> int { 1 }
 
-        const C: u64 = 3 + 5;
+        const C: u64 = add(3, 5);
 
+        // TODO: spec const
         #[spec]
         const S: int = C as int + f();
 
@@ -22,14 +22,14 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test1_fails1 code! {
-        #[spec]
-        fn f() -> int { 1 }
+    #[test] test1_fails1 verus_code! {
+        spec fn f() -> int { 1 }
 
-        const C: u64 = 3 + 5;
+        const C: u64 = add(3, 5);
 
+        // TODO: spec const
         #[spec]
-        const S: int = C as int + f();
+        const S: int = C + f();
 
         fn test1() {
             let x = C;
@@ -56,11 +56,12 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test1_fails4 code! {
+    #[test] test1_fails4 verus_code! {
+        // TODO: spec const
         #[spec]
-        const C: u64 = 3 + 5;
+        const C: u64 = add(3, 5);
 
-        const S: int = C as int + 1;
+        const S: int = C + 1;
     } => Err(TestErr { has_vir_error: true, .. })
 }
 

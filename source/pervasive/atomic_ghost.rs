@@ -36,7 +36,7 @@ macro_rules! declare_atomic_type {
                 #[proof] let pair = (perm, g);
                 #[proof] let atomic_inv = AtomicInvariant::new(pair,
                     |p| patomic.id() == p.0.patomic && f(p.0.value, p.1),
-                    0);
+                    spec_literal_int("0"));
 
                 $at_ident {
                     patomic,

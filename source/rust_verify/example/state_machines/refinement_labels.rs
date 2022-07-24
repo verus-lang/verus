@@ -114,7 +114,7 @@ fn next_refines_next_with_macro(pre: A::State, post: A::State, label: B::Label) 
 
     case_on_next!{pre, post, label, A => {
         add(n) => {
-            assert(0 === 0); // test verus syntax
+            assert(0u32 === 0u32); // test verus syntax
             B::show::add(interp(pre), interp(post), label, 2 * n);
         }
     }}

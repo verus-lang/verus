@@ -261,7 +261,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] eq_mode code! {
-        fn eq_mode(#[spec] i: int) {
+        fn eq_mode(#[spec] i: u128) {
             #[spec] let b: bool = i == 13;
         }
     } => Ok(_)
@@ -269,7 +269,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] if_spec_cond code! {
-        fn if_spec_cond(#[spec] i: int) -> u64 {
+        fn if_spec_cond(#[spec] i: u128) -> u64 {
             let mut a: u64 = 2;
             if i == 3 {
                 a = a + 1; // ERROR
@@ -282,7 +282,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] if_spec_cond_proof code! {
         #[proof]
-        fn if_spec_cond_proof(i: int) -> u64 {
+        fn if_spec_cond_proof(i: u128) -> u64 {
             let mut a: u64 = 2;
             if i == 3 {
                 a = a + 1;
@@ -295,14 +295,14 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] regression_int_if code! {
         fn int_if() {
-            #[spec] let a: int = 3;
+            #[spec] let a: u128 = 3;
             if a == 4 {
                 assert(false);
             }; // TODO not require the semicolon here?
         }
 
         #[spec]
-        fn int_if_2(a: int) -> int {
+        fn int_if_2(a: u128) -> u128 {
             if a == 2 {
                 3
             } else if a == 3 {
@@ -317,9 +317,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] ret_mode code! {
         #[verifier(returns(spec))]
-        fn ret_spec() -> int {
-            ensures(|i: int| i == 3);
-            #[spec] let a: int = 3;
+        fn ret_spec() -> u128 {
+            ensures(|i: u128| i == 3);
+            #[spec] let a: u128 = 3;
             a
         }
 
@@ -333,9 +333,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] ret_mode_fail2 code! {
         #[verifier(returns(spec))]
-        fn ret_spec() -> int {
-            ensures(|i: int| i == 3);
-            #[spec] let a: int = 3;
+        fn ret_spec() -> u128 {
+            ensures(|i: u128| i == 3);
+            #[spec] let a: u128 = 3;
             a
         }
 
@@ -421,7 +421,7 @@ test_verify_one_file! {
 const PROOF_FN_COMMON: &str = code_str! {
     #[proof]
     struct Node {
-        v: nat,
+        v: u32,
     }
 };
 

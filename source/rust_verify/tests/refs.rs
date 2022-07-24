@@ -4,9 +4,10 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] test_ref_0 code! {
-        fn test_ref_0(p: int) {
-            requires(p == 12);
+    #[test] test_ref_0 verus_code! {
+        fn test_ref_0(p: int)
+            requires p == 12
+        {
             let b: &int = &p;
             assert(*b == 12);
         }
@@ -261,21 +262,21 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_trigger_0 code! {
+    #[test] test_mut_ref_trigger_0 verus_code! {
         #[verifier(external_body)]
         struct A {
             _p: std::marker::PhantomData<()>,
         }
 
         impl A {
-            #[spec]
             #[verifier(external_body)]
-            fn index(&self, i: nat) -> nat { unimplemented!() }
+            spec fn index(&self, i: nat) -> nat { unimplemented!() }
         }
 
-        #[exec]
-        fn add1(a: &mut A, i: usize) {
-            ensures(forall(|j: nat| a.index(j) == old(a).index(j) + 1));
+        exec fn add1(a: &mut A, i: usize)
+            ensures
+                forall|j: nat| a.index(j) == old(a).index(j) + 1
+        {
             assume(false);
         }
     } => Ok(())

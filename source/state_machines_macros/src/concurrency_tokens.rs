@@ -1176,7 +1176,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                     )
                     && ::builtin::forall(|t: #token_ty|
                         ::builtin::imply(
-                            #[trigger] tokens.count(t) > 0,
+                            #[trigger] tokens.count(t) > ::builtin::spec_literal_nat("0"),
                             ::builtin::equal(t.instance, instance)
                         )
                     )

@@ -1122,14 +1122,17 @@ impl Verifier {
 
     fn construct_vir_crate<'tcx>(&mut self, tcx: TyCtxt<'tcx>) -> Result<bool, VirErr> {
         let autoviewed_call_typs = Arc::new(std::sync::Mutex::new(HashMap::new()));
-        let _ = tcx.formal_verifier_callback.replace(Some(Box::new(crate::typecheck::Typecheck {
-            int_ty_id: None,
-            nat_ty_id: None,
-            enhanced_typecheck: !self.args.no_enhanced_typecheck,
-            exprs_in_spec: Arc::new(std::sync::Mutex::new(HashSet::new())),
-            autoviewed_calls: HashSet::new(),
-            autoviewed_call_typs: autoviewed_call_typs.clone(),
-        })));
+        if !self.args.no_enhanced_typecheck {
+            let _ =
+                tcx.formal_verifier_callback.replace(Some(Box::new(crate::typecheck::Typecheck {
+                    int_ty_id: None,
+                    nat_ty_id: None,
+                    enhanced_typecheck: !self.args.no_enhanced_typecheck,
+                    exprs_in_spec: Arc::new(std::sync::Mutex::new(HashSet::new())),
+                    autoviewed_calls: HashSet::new(),
+                    autoviewed_call_typs: autoviewed_call_typs.clone(),
+                })));
+        }
         match rustc_typeck::check_crate(tcx) {
             Ok(()) => {}
             Err(rustc_errors::ErrorReported {}) => {

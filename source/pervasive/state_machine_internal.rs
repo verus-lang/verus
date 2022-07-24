@@ -4,6 +4,7 @@
 #![doc(hidden)]
 
 use builtin::*;
+use builtin_macros::*;
 use crate::pervasive::*;
 use crate::pervasive::seq::*;
 use crate::pervasive::map::*;
@@ -113,11 +114,14 @@ pub fn assert_general_guard_map(b: bool) { requires(b); ensures(b); }
 // perhaps we'll make our own trait for this purpose some day, but regardless, this suffices
 // for our purposes
 
+verus! {
+
 #[doc(hidden)]
 impl<A> Seq<A> {
-    #[spec] #[verifier(publish)]
-    pub fn update_at_index(self, i: int, a: A) -> Self {
-        recommends(0 <= i && i < self.len() as int);
+    pub open spec fn update_at_index(self, i: int, a: A) -> Self
+        recommends
+            0 <= i < self.len(),
+    {
 
         self.update(i, a)
     }
@@ -127,8 +131,9 @@ impl<A> Seq<A> {
 impl<K, V> Map<K, V> {
     // note that despite the name, this is allowed to insert
 
-    #[spec] #[verifier(publish)]
-    pub fn update_at_index(self, k: K, v: V) -> Self {
+    pub open spec fn update_at_index(self, k: K, v: V) -> Self {
         self.insert(k, v)
     }
 }
+
+} // verus!

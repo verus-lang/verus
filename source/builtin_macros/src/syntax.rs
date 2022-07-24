@@ -5,15 +5,15 @@ use syn_verus::punctuated::Punctuated;
 use syn_verus::token::{Brace, Bracket, Paren};
 use syn_verus::visit_mut::{
     visit_expr_loop_mut, visit_expr_mut, visit_expr_while_mut, visit_field_mut,
-    visit_impl_item_method_mut, visit_item_enum_mut, visit_item_fn_mut, visit_item_struct_mut,
-    visit_local_mut, visit_trait_item_method_mut, VisitMut,
+    visit_impl_item_method_mut, visit_item_const_mut, visit_item_enum_mut, visit_item_fn_mut,
+    visit_item_struct_mut, visit_local_mut, visit_trait_item_method_mut, VisitMut,
 };
 use syn_verus::{
     braced, bracketed, parenthesized, parse_macro_input, parse_quote_spanned, Attribute, BinOp,
     Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop, ExprPath,
     ExprTuple, ExprUnary, ExprWhile, Field, FnArgKind, FnMode, ImplItemMethod, Invariant, Item,
-    ItemEnum, ItemFn, ItemStruct, Lit, Local, ModeSpec, ModeSpecChecked, Path, Publish, Recommends,
-    Requires, ReturnType, Signature, Stmt, Token, TraitItemMethod, UnOp, Visibility,
+    ItemConst, ItemEnum, ItemFn, ItemStruct, Lit, Local, ModeSpec, ModeSpecChecked, Path, Publish,
+    Recommends, Requires, ReturnType, Signature, Stmt, Token, TraitItemMethod, UnOp, Visibility,
 };
 
 fn take_expr(expr: &mut Expr) -> Expr {
@@ -282,7 +282,7 @@ impl VisitMut for Visitor {
         };
 
         let sub_inside_arith = match expr {
-            Expr::Paren(..) | Expr::Block(..) => self.inside_arith,
+            Expr::Paren(..) | Expr::Block(..) | Expr::Group(..) => self.inside_arith,
             Expr::Cast(..) => InsideArith::Widen,
             Expr::Unary(unary) => match unary.op {
                 UnOp::Neg(..) => InsideArith::Widen,
@@ -864,6 +864,11 @@ impl VisitMut for Visitor {
         visit_trait_item_method_mut(self, method);
     }
 
+    fn visit_item_const_mut(&mut self, con: &mut ItemConst) {
+        self.inside_ghost = 1;
+        visit_item_const_mut(self, con);
+    }
+
     fn visit_field_mut(&mut self, field: &mut Field) {
         visit_field_mut(self, field);
         field.attrs.extend(data_mode_attrs(&field.mode));
@@ -1018,6 +1023,7 @@ pub(crate) fn rewrite_items(
     use_spec_traits: bool,
 ) -> proc_macro::TokenStream {
     use quote::ToTokens;
+    let stream = rejoin_tokens(stream);
     let items: Items = parse_macro_input!(stream as Items);
     let mut new_stream = TokenStream::new();
     let mut visitor = Visitor {
@@ -1028,6 +1034,8 @@ pub(crate) fn rewrite_items(
     };
     for mut item in items.items {
         visitor.visit_item_mut(&mut item);
+        visitor.inside_ghost = 0;
+        visitor.inside_arith = InsideArith::None;
         item.to_tokens(&mut new_stream);
     }
     proc_macro::TokenStream::from(new_stream)
@@ -1038,10 +1046,11 @@ pub(crate) fn rewrite_expr(
     stream: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     use quote::ToTokens;
+    let stream = rejoin_tokens(stream);
     let mut expr: Expr = parse_macro_input!(stream as Expr);
     let mut new_stream = TokenStream::new();
     let mut visitor = Visitor {
-        use_spec_traits: false,
+        use_spec_traits: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
         inside_arith: InsideArith::None,
         rustdoc: env_rustdoc(),
@@ -1116,7 +1125,7 @@ pub(crate) fn proof_macro_exprs(
     let mut invoke: MacroInvoke = parse_macro_input!(stream as MacroInvoke);
     let mut new_stream = TokenStream::new();
     let mut visitor = Visitor {
-        use_spec_traits: false,
+        use_spec_traits: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
         inside_arith: InsideArith::None,
         rustdoc: env_rustdoc(),
