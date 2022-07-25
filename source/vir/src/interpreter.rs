@@ -1342,7 +1342,7 @@ pub fn eval_expr(
 ) -> Result<Exp, VirErr> {
     //println!("Starting from {}", exp);
     let builder =
-        thread::Builder::new().name("interpreter".to_string()).stack_size(10 * 1024 * 1024); // 10 MB
+        thread::Builder::new().name("interpreter".to_string()).stack_size(1024 * 1024 * 1024); // 1 GB
     let handler = {
         // Create local versions that we own and hence can pass to the closure
         let exp = exp.clone();
