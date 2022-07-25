@@ -43,8 +43,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test3 verus_code! {
         proof fn test3(b: u32) {
-            assert(mul(2, b) - b == b) by(bit_vector);
-            assert(mul(2, b) - b == b);
+            assert(sub(mul(2, b), b) == b) by(bit_vector);
+            assert(sub(mul(2, b), b) == b);
 
             assert(b <= b) by(bit_vector);
             assert(b >= b) by(bit_vector);
@@ -166,6 +166,15 @@ test_verify_one_file! {
             assert(b << 2 == b * 4);  // FAILS
         }
     } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test6_fails2 verus_code! {
+        proof fn test6(b: u32) {
+            assert(b << 2 == b * 4) by(bit_vector);
+            assert(b << 2 == b * 4);  // FAILS
+        }
+    } => Err(_)
 }
 
 test_verify_one_file! {

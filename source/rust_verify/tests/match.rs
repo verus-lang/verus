@@ -485,11 +485,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_if_let1 code! {
+    #[test] test_if_let1 verus_code! {
         enum E { X(u64), Y(bool) }
 
-        #[proof]
-        fn test_ep(e: &E) {
+        proof fn test_ep(e: &E) {
             if let E::X(u) = e {
                 assert(*u as int >= 0);
             }
@@ -504,11 +503,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_if_let1_fails code! {
+    #[test] test_if_let1_fails verus_code! {
         enum E { X(u64), Y(bool) }
 
-        #[proof]
-        fn test_ep(e: &E) {
+        proof fn test_ep(e: &E) {
             if let E::X(u) = e {
                 assert(*u as int == 5); // FAILS
             }
@@ -517,11 +515,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_if_let2 code! {
+    #[test] test_if_let2 verus_code! {
         enum E { X(u64) }
 
-        #[proof]
-        fn test_ep(e: &E) {
+        proof fn test_ep(e: &E) {
             if let E::X(u) = e {
                 assert(*u as int >= 0);
             } else {
@@ -540,11 +537,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_if_let2_fails1 code! {
+    #[test] test_if_let2_fails1 verus_code! {
         enum E { X(u64), Y(bool) }
 
-        #[proof]
-        fn test_ep(e: &E) {
+        proof fn test_ep(e: &E) {
             if let E::X(u) = e {
                 assert(*u as int >= 0);
             } else {
@@ -555,7 +551,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_if_let2_fails2 code! {
+    #[test] test_if_let2_fails2 verus_code! {
         enum E { X(u64), Y(bool) }
 
         fn test_ee(e: &E) {

@@ -101,4 +101,26 @@ macro_rules! assert_seqs_equal {
     }
 }
 
+#[macro_export]
+macro_rules! assert_seqs_equal_verus {
+    ($s1:expr, $s2:expr) => {
+        assert_seqs_equal_verus!($s1, $s2, idx => { })
+    };
+    ($s1:expr, $s2:expr, $idx:ident => $bblock:block) => {
+        ::builtin_macros::verus_proof_expr! {{
+        let s1 = $s1;
+        let s2 = $s2;
+        ::builtin::assert_by(::builtin::equal(s1, s2), {
+            $crate::pervasive::assert(s1.len() == s2.len());
+            ::builtin::assert_forall_by(|$idx : ::builtin::int| {
+                ::builtin::requires(0 <= $idx && $idx < s1.len());
+                ::builtin::ensures(::builtin::equal(s1.index($idx), s2.index($idx)));
+                { $bblock }
+            });
+            $crate::pervasive::assert(s1.ext_equal(s2));
+        });
+        }}
+    }
+}
+
 } // verus!

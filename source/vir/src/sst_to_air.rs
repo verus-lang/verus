@@ -3,7 +3,9 @@ use crate::ast::{
     IntRange, InvAtomicity, MaskSpec, Mode, Params, Path, PathX, SpannedTyped, Typ, TypX, Typs,
     UnaryOp, UnaryOpr, VarAt,
 };
-use crate::ast_util::{bitwidth_from_type, fun_as_rust_dbg, get_field, get_variant};
+use crate::ast_util::{
+    allowed_bitvector_type, bitwidth_from_type, fun_as_rust_dbg, get_field, get_variant,
+};
 use crate::context::Ctx;
 use crate::def::{fn_inv_name, fn_namespace_name, new_user_qid_name};
 use crate::def::{
@@ -461,6 +463,12 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Expr {
             Arc::new(ExprX::Apply(variant, Arc::new(args)))
         }
         (ExpX::Unary(op, exp), true) => {
+            if !allowed_bitvector_type(&exp.typ) {
+                panic!(
+                    "error: cannot use bit-vector arithmetic on type {:?} {:?}",
+                    exp.typ, exp.span
+                );
+            }
             let hint = match op {
                 UnaryOp::BitNot => expr_ctxt.bit_vector_typ_hint.clone(),
                 UnaryOp::Clip(range @ (IntRange::U(..) | IntRange::I(..))) => {
@@ -585,6 +593,12 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Expr {
             }
         },
         (ExpX::Binary(op, lhs, rhs), true) => {
+            if !allowed_bitvector_type(&exp.typ) {
+                panic!(
+                    "error: cannot use bit-vector arithmetic on type {:?} {:?}",
+                    exp.typ, exp.span
+                );
+            }
             // disallow signed integer from bitvec reasoning. However, allow that for shift
             // TODO: sanity check for shift
             let _ = match op {

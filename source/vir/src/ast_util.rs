@@ -89,6 +89,15 @@ pub fn generic_bounds_equal(b1: &GenericBound, b2: &GenericBound) -> bool {
     }
 }
 
+pub fn allowed_bitvector_type(typ: &Typ) -> bool {
+    match &**typ {
+        TypX::Bool => true,
+        TypX::Int(IntRange::U(_)) | TypX::Int(IntRange::I(_)) => true,
+        TypX::Boxed(typ) => allowed_bitvector_type(typ),
+        _ => false,
+    }
+}
+
 pub fn bitwidth_from_type(et: &Typ) -> Option<u32> {
     match &**et {
         TypX::Int(IntRange::U(size)) | TypX::Int(IntRange::I(size)) => Some(*size),

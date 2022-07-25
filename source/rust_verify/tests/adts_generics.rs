@@ -173,30 +173,32 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_triggers code! {
+    #[test] test_triggers verus_code! {
         struct S {
             i: int,
         }
 
         #[verifier(opaque)]
-        #[spec]
-        fn fi(i: int) -> bool {
+        spec fn fi(i: int) -> bool {
             true
         }
 
         #[verifier(opaque)]
-        #[spec]
-        fn fs(s: S) -> bool {
+        spec fn fs(s: S) -> bool {
             true
         }
 
-        fn test_struct_field_trigger(s: S) {
-            requires(forall(|s: S| fi(s.i)));
+        fn test_struct_field_trigger(s: S)
+            requires
+                forall|s: S| fi(s.i),
+        {
             assert(fi(s.i));
         }
 
-        fn test_struct_constructor_arg_trigger() {
-            requires(forall(|i: int| fs(S {i: i})));
+        fn test_struct_constructor_arg_trigger()
+            requires
+                forall|i: int| fs(S {i: i}),
+        {
             assert(fs(S {i: 5}));
         }
     } => Ok(())

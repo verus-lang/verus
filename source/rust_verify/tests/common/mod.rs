@@ -65,6 +65,7 @@ pub fn verify_files_and_pervasive(
     entry_file: String,
     verify_pervasive: bool,
 ) -> Result<(), TestErr> {
+    let files: Vec<(String, String)> = files.into_iter().collect();
     let mut rustc_args = vec![
         "../../rust/install/bin/rust_verify".to_string(),
         "--edition".to_string(),
@@ -123,7 +124,9 @@ pub fn verify_files_and_pervasive(
         } else {
             Default::default()
         };
-        our_args.no_enhanced_typecheck = true;
+        if !files.iter().any(|(_, body)| body.contains("#[verifier(integer_ring)]")) {
+            our_args.no_enhanced_typecheck = true;
+        }
         if let Ok(path) = std::env::var("VERIFY_LOG_IR_PATH") {
             our_args.log_dir = Some(path);
             our_args.log_all = true;

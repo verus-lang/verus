@@ -111,14 +111,21 @@ impl<V> Permission<V> {
 }
 
 impl<V> PPtr<V> {
+
+    verus! {
+
     /// Cast a pointer to an integer.
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn to_usize(&self) -> usize {
-        ensures(|u: usize| u as int == self.id());
+    pub fn to_usize(&self) -> (u: usize)
+        ensures
+            u as int == self.id(),
+    {
         self.uptr as usize
     }
+
+    } // verus!
 
     /// integer address of the pointer
 

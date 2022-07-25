@@ -1016,6 +1016,9 @@ fn fn_call_to_vir<'tcx>(
         let source_ty = &source_vir.typ;
         let to_ty = expr_typ();
         match (&**source_ty, &*to_ty) {
+            (TypX::Int(IntRange::U(_)), TypX::Int(IntRange::Nat)) => Ok(source_vir),
+            (TypX::Int(IntRange::USize), TypX::Int(IntRange::Nat)) => Ok(source_vir),
+            (TypX::Int(IntRange::Nat), TypX::Int(IntRange::Nat)) => Ok(source_vir),
             (TypX::Int(_), TypX::Int(_)) => return Ok(mk_ty_clip(&to_ty, &source_vir)),
             _ => {
                 return err_span_str(
