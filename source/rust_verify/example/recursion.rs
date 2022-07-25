@@ -1,34 +1,35 @@
 use builtin::*;
+use builtin_macros::*;
 mod pervasive;
 use pervasive::*;
 
-#[spec]
-fn arith_sum_int(i: int) -> int {
-    decreases(i);
+verus! {
 
+spec fn arith_sum_int(i: int) -> int
+    decreases i
+{
     if i <= 0 { 0 } else { i + arith_sum_int(i - 1) }
 }
 
-#[spec]
 #[verifier(opaque)]
-fn arith_sum_u64(i: u64) -> u64 {
-    decreases(i);
-
-    if i == 0 { 0 } else { i + arith_sum_u64(i - 1) }
+spec fn arith_sum_u64(i: u64) -> u64
+    decreases i
+{
+    if i == 0 { 0 } else { (i + arith_sum_u64((i - 1) as u64)) as u64 }
 }
 
-#[proof]
-fn arith_sum_int_nonneg(i: nat) {
-    ensures(arith_sum_int(i) >= 0);
-    decreases(i);
-
+proof fn arith_sum_int_nonneg(i: nat)
+    ensures
+        arith_sum_int(i as int) >= 0,
+    decreases
+        i,
+{
     if i > 0 {
-        arith_sum_int_nonneg(i - 1);
+        arith_sum_int_nonneg((i - 1) as nat);
     }
 }
 
-#[proof]
-fn arith_sum_test1() {
+proof fn arith_sum_test1() {
     assert(arith_sum_int(0) == 0);
     // Recursive functions default to 1 fuel, so without the assert above,
     // the following assert will fail
@@ -37,45 +38,45 @@ fn arith_sum_test1() {
     assert(arith_sum_int(3) == 6);
 }
 
-#[proof]
-fn arith_sum_test2() {
+proof fn arith_sum_test2() {
     // Instead of writing out intermediate assertions, 
     // we can instead boost the fuel setting
     reveal_with_fuel(arith_sum_int, 4);
     assert(arith_sum_int(3) == 6);
 }
 
-#[proof]
-fn arith_sum_test3() {
+proof fn arith_sum_test3() {
     reveal_with_fuel(arith_sum_u64, 4);
     assert(arith_sum_u64(3) == 6);
 }
 
-#[proof]
-fn arith_sum_monotonic(i: nat, j: nat) {
-    requires(i <= j);
-    ensures(arith_sum_int(i) <= arith_sum_int(j));
-    decreases(j);
-
+proof fn arith_sum_monotonic(i: nat, j: nat)
+    requires
+        i <= j,
+    ensures
+        arith_sum_int(i as int) <= arith_sum_int(j as int),
+    decreases j
+{
     if i < j {
-        arith_sum_monotonic(i, j - 1);
+        arith_sum_monotonic(i, (j - 1) as nat);
     }
 }
 
-fn compute_arith_sum(n: u64) -> u64 {
-    requires(n < 100);
-    ensures(|sum: u64| arith_sum_int(n) == sum);
-
+fn compute_arith_sum(n: u64) -> (sum: u64)
+    requires
+        n < 100,
+    ensures
+        arith_sum_int(n as int) == sum,
+{
     let mut i: u64 = 0;
     let mut sum: u64 = 0;
-    while i < n {
-        invariant([
+    while i < n
+        invariant
             n < 100,
             i <= n,
-            arith_sum_int(i) == sum,
+            arith_sum_int(i as int) == sum,
             sum <= 100 * i,
-        ]);
-
+    {
         i = i + 1;
         sum = sum + i;
     }
@@ -99,3 +100,5 @@ fn main() {
         }
     }
 }
+
+} // verus!

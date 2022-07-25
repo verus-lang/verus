@@ -15,6 +15,7 @@ pub(crate) const BUILTIN_NAT: &str = "builtin::nat";
 pub(crate) struct Typecheck {
     pub int_ty_id: Option<DefId>,
     pub nat_ty_id: Option<DefId>,
+    pub enhanced_typecheck: bool,
     pub exprs_in_spec: Arc<Mutex<HashSet<HirId>>>,
     pub autoviewed_calls: HashSet<HirId>,
     pub autoviewed_call_typs: Arc<Mutex<HashMap<HirId, Typ>>>,
@@ -107,6 +108,9 @@ impl FormalVerifierTyping for Typecheck {
         ty: Ty<'tcx>,
         expected_ty: &Option<Ty<'tcx>>,
     ) -> Ty<'tcx> {
+        if !self.enhanced_typecheck {
+            return ty;
+        }
         // For convenience, allow implicit coercions from integral types to int in some situations.
         // This is strictly opportunistic; in many situations you still need "as int".
         match (ty.kind(), expected_ty, allow_widen(expr)) {
@@ -128,6 +132,10 @@ impl FormalVerifierTyping for Typecheck {
         lhs_ty: Ty<'tcx>,
         rhs_ty: Ty<'tcx>,
     ) -> Option<(bool, Ty<'tcx>, bool)> {
+        if !self.enhanced_typecheck {
+            return None;
+        }
+
         if is_assign {
             match (op.node, &lhs_ty.kind(), &rhs_ty.kind()) {
                 (BinOpKind::Shr, TyKind::Bool, TyKind::Bool | TyKind::Infer(..)) => {
@@ -212,6 +220,10 @@ impl FormalVerifierTyping for Typecheck {
         def_id: DefId,
         args: &'tcx [Expr<'tcx>],
     ) -> Option<(PathSegment<'tcx>, &'tcx [Expr<'tcx>])> {
+        if !self.enhanced_typecheck {
+            return None;
+        }
+
         let spec_walk_arg = |arg: &'tcx Expr<'tcx>| {
             let mut visitor = VisitSpec { tcx: tcx, exprs_in_spec: self.exprs_in_spec.clone() };
             visitor.visit_expr(arg);

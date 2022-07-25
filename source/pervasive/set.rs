@@ -241,7 +241,7 @@ pub proof fn axiom_mk_map_index<K, V, F: Fn(K) -> V>(s: Set<K>, f: F, key: K)
     requires
         s.contains(key),
     ensures
-        s.mk_map(f).index(key) === f(key),
+        s.mk_map(f)[key] === f(key),
 {
 }
 
@@ -335,7 +335,7 @@ pub proof fn axiom_set_insert_len<A>(s: Set<A>, a: A)
     requires
         s.finite(),
     ensures
-        #[trigger] s.insert(a).len() == s.len() + (if s.contains(a) { 0 } else { 1 }),
+        #[trigger] s.insert(a).len() == s.len() + (if s.contains(a) { 0int } else { 1 }),
 {
 }
 
@@ -345,7 +345,7 @@ pub proof fn axiom_set_remove_len<A>(s: Set<A>, a: A)
     requires
         s.finite(),
     ensures
-        s.len() == #[trigger] s.remove(a).len() + (if s.contains(a) { 1 } else { 0 }),
+        s.len() == #[trigger] s.remove(a).len() + (if s.contains(a) { 1int } else { 0 }),
 {
 }
 

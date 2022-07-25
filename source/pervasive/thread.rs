@@ -3,7 +3,7 @@
 #[allow(unused_imports)] use crate::pervasive::*;
 #[allow(unused_imports)] use crate::pervasive::result::*;
 
-verus!{
+verus! {
 
 pub trait Spawnable<Ret: Sized> : Sized {
     spec fn pre(self) -> bool;
@@ -13,8 +13,6 @@ pub trait Spawnable<Ret: Sized> : Sized {
     exec fn run(self) -> (r: Ret)
         requires self.pre(),
         ensures self.post(r);
-}
-
 }
 
 #[verifier(external_body)]
@@ -31,7 +29,7 @@ impl<Ret> JoinHandle<Ret>
     pub fn join(self) -> Result<Ret, ()>
     {
         ensures(|r: Result<Ret, ()>|
-            r.is_Ok() >>= self.predicate(r.get_Ok_0()));
+            r.is_Ok() ==> self.predicate(r.get_Ok_0()));
 
         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             match self.handle.join() {
@@ -54,7 +52,7 @@ pub fn spawn<Param: Spawnable<Ret> + Send + 'static, Ret: Send + 'static>(p: Par
 {
     requires(p.pre());
     ensures(|handle: JoinHandle<Ret>|
-        forall(|ret: Ret| handle.predicate(ret) >>= p.post(ret)));
+        forall(|ret: Ret| handle.predicate(ret) ==> p.post(ret)));
 
     let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let handle = std::thread::spawn(move || p.run());
@@ -69,3 +67,4 @@ pub fn spawn<Param: Spawnable<Ret> + Send + 'static, Ret: Send + 'static>(p: Par
     }
 }
 
+} // verus!

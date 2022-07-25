@@ -14,7 +14,7 @@ fn spanned_node(node: Node, span: &Span) -> Node {
 }
 
 fn path_to_node(path: &Path) -> Node {
-    Node::Atom(crate::def::path_to_string(path))
+    Node::Atom(crate::def::path_to_string(path).replace("{", "_$LBRACE_").replace("}", "_$RBRACE_"))
 }
 
 fn visibility_to_node(visibility: &Visibility) -> Node {
@@ -231,6 +231,10 @@ fn expr_to_node(expr: &Expr) -> Node {
                     nodes
                 }
                 UnaryOp::Clip(range) => nodes_vec!(clip {int_range_to_node(range)}),
+                UnaryOp::CoerceMode { op_mode, from_mode, to_mode } => {
+                    nodes_vec!(coerce_mode {str_to_node(&format!("{op_mode}"))} {str_to_node(&format!("{from_mode}"))} {str_to_node(&format!("{to_mode}"))})
+                }
+                UnaryOp::MustBeFinalized => nodes_vec!(MustBeFinalized),
             };
             nodes.push(expr_to_node(expr));
             nodes
@@ -288,10 +292,13 @@ fn expr_to_node(expr: &Expr) -> Node {
             let ts = Node::List(triggers.iter().map(exprs_to_node).collect());
             nodes!(with_triggers {ts} {expr_to_node(body)})
         }
-        ExprX::Assign { init_not_mut, lhs: e0, rhs: e1 } => {
+        ExprX::Assign { init_not_mut, lhs_type_mode, lhs: e0, rhs: e1 } => {
             let mut nodes = nodes_vec!(assign);
             if *init_not_mut {
                 nodes.push(str_to_node(":init_not_mut"));
+            }
+            if let Some(mode) = lhs_type_mode {
+                nodes.push(str_to_node(&format!("{:?}", mode)));
             }
             nodes.push(expr_to_node(e0));
             nodes.push(expr_to_node(e1));
@@ -422,11 +429,13 @@ fn function_to_node(function: &FunctionX) -> Node {
     let function_attrs_node = {
         let FunctionAttrsX {
             uses_ghost_blocks,
+            inline,
             hidden,
             broadcast_forall,
             no_auto_trigger,
             custom_req_err,
             autoview,
+            autospec,
             bit_vector,
             atomic,
             integer_ring,
@@ -444,6 +453,9 @@ fn function_to_node(function: &FunctionX) -> Node {
         if *uses_ghost_blocks {
             nodes.push(str_to_node("+uses_ghost_blocks"));
         }
+        if *inline {
+            nodes.push(str_to_node("+inline"));
+        }
         if *broadcast_forall {
             nodes.push(str_to_node("+broadcast_forall"));
         }
@@ -456,6 +468,10 @@ fn function_to_node(function: &FunctionX) -> Node {
         }
         if *autoview {
             nodes.push(str_to_node("+autoview"));
+        }
+        if let Some(f) = autospec {
+            nodes.push(str_to_node(":autospec"));
+            nodes.push(fun_to_node(f));
         }
         if *bit_vector {
             nodes.push(str_to_node("+bit_vector"));

@@ -13,14 +13,17 @@ state_machine!{
             pub number: int,
         }
 
+        pub struct InitLabel { }
+        pub struct Label { }
+
         init!{
-            initialize() {
+            initialize(label: InitLabel) {
                 init number = 0;
             }
         }
 
         transition!{
-            add(n: int) {
+            add(label: Label, n: int) {
                 require(n % 2 == 0);
                 update number = pre.number + n;
             }
@@ -32,10 +35,10 @@ state_machine!{
         }
 
         #[inductive(initialize)]
-        fn initialize_inductive(post: Self) { }
+        fn initialize_inductive(post: Self, label: InitLabel) { }
 
         #[inductive(add)]
-        fn add_inductive(pre: Self, post: Self, n: int) { }
+        fn add_inductive(pre: Self, post: Self, label: Label, n: int) { }
     }
 }
 
@@ -45,23 +48,26 @@ state_machine!{
             pub number: int,
         }
 
+        pub type Label = B::Label;
+        pub type InitLabel = B::InitLabel;
+
         init!{
-            initialize() {
+            initialize(label: InitLabel) {
                 init number = 0;
             }
         }
 
         transition!{
-            add(n: int) {
+            add(label: Label, n: int) {
                 update number = pre.number + n;
             }
         }
 
         #[inductive(initialize)]
-        fn initialize_inductive(post: Self) { }
+        fn initialize_inductive(post: Self, label: InitLabel) { }
 
         #[inductive(add)]
-        fn add_inductive(pre: Self, post: Self, n: int) { }
+        fn add_inductive(pre: Self, post: Self, label: Label, n: int) { }
     }
 }
 
@@ -73,22 +79,22 @@ fn interp(a: A::State) -> B::State {
 }
 
 #[proof]
-fn next_refines_next(pre: A::State, post: A::State) {
+fn next_refines_next(pre: A::State, post: A::State, label: B::Label) {
     requires(pre.invariant()
         && post.invariant()
         && interp(pre).invariant()
-        && A::State::next(pre, post)
+        && A::State::next(pre, post, label)
     );
 
-    ensures(B::State::next(interp(pre), interp(post)));
+    ensures(B::State::next(interp(pre), interp(post), label));
 
     reveal(A::State::next);
 
-    match choose(|step: A::Step| A::State::next_by(pre, post, step)) {
+    match choose(|step: A::Step| A::State::next_by(pre, post, label, step)) {
         A::Step::add(n) => {
-            assert_by(A::State::add(pre, post, n), { reveal(A::State::next_by); });
+            assert_by(A::State::add(pre, post, label, n), { reveal(A::State::next_by); });
 
-            B::show::add(interp(pre), interp(post), 2 * n);
+            B::show::add(interp(pre), interp(post), label, 2 * n);
         }
         A::Step::dummy_to_use_type_params(_) => {
             assume(false); // TODO
@@ -97,32 +103,32 @@ fn next_refines_next(pre: A::State, post: A::State) {
 }
 
 #[proof]
-fn next_refines_next_with_macro(pre: A::State, post: A::State) {
+fn next_refines_next_with_macro(pre: A::State, post: A::State, label: B::Label) {
     requires(pre.invariant()
         && post.invariant()
         && interp(pre).invariant()
-        && A::State::next(pre, post)
+        && A::State::next(pre, post, label)
     );
 
-    ensures(B::State::next(interp(pre), interp(post)));
+    ensures(B::State::next(interp(pre), interp(post), label));
 
-    case_on_next!{pre, post, A => {
+    case_on_next!{pre, post, label, A => {
         add(n) => {
             assert(0u32 === 0u32); // test verus syntax
-            B::show::add(interp(pre), interp(post), 2 * n);
+            B::show::add(interp(pre), interp(post), label, 2 * n);
         }
     }}
 }
 
 #[proof]
-fn init_refines_init_with_macro(post: A::State) {
-    requires(post.invariant() && A::State::init(post));
+fn init_refines_init_with_macro(post: A::State, label: B::InitLabel) {
+    requires(post.invariant() && A::State::init(post, label));
 
-    ensures(B::State::init(interp(post)));
+    ensures(B::State::init(interp(post), label));
 
-    case_on_init!{post, A => {
+    case_on_init!{post, label, A => {
         initialize() => {
-            B::show::initialize(interp(post));
+            B::show::initialize(interp(post), label);
         }
     }}
 }

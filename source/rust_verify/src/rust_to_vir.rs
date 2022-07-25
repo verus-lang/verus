@@ -421,6 +421,10 @@ fn check_item<'tcx>(
             };
             vir.traits.push(spanned_new(item.span, traitx));
         }
+        ItemKind::TyAlias(_ty, _generics) => {
+            // type alias (like lines of the form `type X = ...;`
+            // Nothing to do here - we can rely on Rust's type resolution to handle these
+        }
         _ => {
             unsupported_err!(item.span, "unsupported item", item);
         }

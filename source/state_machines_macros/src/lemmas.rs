@@ -71,13 +71,19 @@ fn check_each_lemma_valid(bundle: &SMBundle) -> parse::Result<()> {
         };
 
         match &t.kind {
-            TransitionKind::Readonly => {
+            TransitionKind::ReadonlyTransition => {
                 return Err(Error::new(
                     l.func.sig.generics.span(),
                     format!("'inductive' lemma does not make sense for a 'readonly' transition"),
                 ));
             }
-            _ => {}
+            TransitionKind::Property => {
+                return Err(Error::new(
+                    l.func.sig.generics.span(),
+                    format!("'inductive' lemma does not make sense for a 'property' definition"),
+                ));
+            }
+            TransitionKind::Init | TransitionKind::Transition => {}
         }
 
         match &l.func.sig.mode {
@@ -155,7 +161,7 @@ fn get_expected_params(t: &Transition) -> Vec<TransitionParam> {
             });
             v.push(TransitionParam { name: Ident::new("post", self_ty.span()), ty: self_ty });
         }
-        TransitionKind::Readonly => {
+        TransitionKind::ReadonlyTransition | TransitionKind::Property => {
             panic!("case should have been ruled out earlier");
         }
     }
@@ -234,7 +240,7 @@ fn pat_is_ident(pat: &Pat, ident: &Ident) -> bool {
 fn check_lemmas_cover_all_cases(bundle: &SMBundle) -> parse::Result<()> {
     let mut names = HashMap::new();
     for t in bundle.sm.transitions.iter() {
-        if t.kind != TransitionKind::Readonly {
+        if t.kind.requires_invariant_lemma() {
             names.insert(t.name.to_string().clone(), &t.params);
         }
     }
@@ -249,7 +255,7 @@ fn check_lemmas_cover_all_cases(bundle: &SMBundle) -> parse::Result<()> {
     // a deterministic order.
     let mut msgs = vec![];
     for t in bundle.sm.transitions.iter() {
-        if t.kind != TransitionKind::Readonly {
+        if t.kind.requires_invariant_lemma() {
             let name = t.name.to_string();
             match names.get(&name) {
                 None => {}

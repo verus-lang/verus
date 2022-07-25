@@ -73,7 +73,7 @@ tokenized_state_machine!{
 // ANCHOR_END: tr_inc
 
 // ANCHOR: finalize
-        readonly!{
+        property!{
             finalize() {
                 // Equivalent to:
                 //    require(pre.unstamped_tickets >= pre.num_threads);

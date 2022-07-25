@@ -1,10 +1,10 @@
-use crate::ast::{Ident, SpannedTyped, VirErr};
+use crate::ast::{Ident, SpannedTyped, Typ, UnaryOpr, VirErr};
 use crate::def::Spanned;
-use crate::sst::{BndX, Dest, Exp, ExpX, Stm, StmX, Trig, Trigs, UniqueIdent};
-use crate::util::{vec_map, vec_map_result};
+use crate::sst::{BndX, Dest, Exp, ExpX, Exps, Stm, StmX, Trig, Trigs, UniqueIdent};
+use crate::util::vec_map_result;
 use crate::visitor::expr_visitor_control_flow;
 pub(crate) use crate::visitor::VisitorControlFlow;
-use air::ast::{Binder, BinderX};
+use air::ast::{Binder, BinderX, Binders};
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -282,11 +282,9 @@ where
             f(&exp, map)
         }
         ExpX::Ctor(path, ident, binders) => {
-            let mapped_binders = binders
-                .iter()
-                .map(|b| b.map_result(|a| map_exp_visitor_bind(a, map, f)))
-                .collect::<Result<Vec<_>, _>>()?;
-            let exp = exp_new(ExpX::Ctor(path.clone(), ident.clone(), Arc::new(mapped_binders)));
+            let mapped_binders: Result<Vec<_>, _> =
+                binders.iter().map(|b| b.map_result(|a| map_exp_visitor_bind(a, map, f))).collect();
+            let exp = exp_new(ExpX::Ctor(path.clone(), ident.clone(), Arc::new(mapped_binders?)));
             f(&exp, map)
         }
         ExpX::Unary(op, e1) => {
@@ -385,6 +383,14 @@ where
     }
 }
 
+pub(crate) fn map_exp_visitor_result<F>(exp: &Exp, f: &mut F) -> Result<Exp, VirErr>
+where
+    F: FnMut(&Exp) -> Result<Exp, VirErr>,
+{
+    let mut map: VisitorScopeMap = ScopeMap::new();
+    map_exp_visitor_bind(exp, &mut map, &mut |e, _| f(e))
+}
+
 pub(crate) fn map_exp_visitor<F>(exp: &Exp, f: &mut F) -> Exp
 where
     F: FnMut(&Exp) -> Exp,
@@ -402,34 +408,133 @@ pub(crate) fn exp_rename_vars(exp: &Exp, map: &HashMap<UniqueIdent, UniqueIdent>
     })
 }
 
-pub(crate) fn map_stm_visitor<F>(stm: &Stm, f: &mut F) -> Result<Stm, VirErr>
+// non-recursive visitor
+pub(crate) fn map_shallow_exp<E, FT, FE>(
+    exp: &Exp,
+    env: &mut E,
+    ft: &FT,
+    fe: &FE,
+) -> Result<Exp, VirErr>
+where
+    FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
+    FE: Fn(&mut E, &Exp) -> Result<Exp, VirErr>,
+{
+    let typ = ft(env, &exp.typ)?;
+    let ok_exp = |x: ExpX| Ok(SpannedTyped::new(&exp.span, &typ, x));
+    let fs = |env: &mut E, exps: &Exps| -> Result<Exps, VirErr> {
+        let exps: Result<Vec<Exp>, VirErr> = exps.iter().map(|e| fe(env, e)).collect();
+        Ok(Arc::new(exps?))
+    };
+    let ftrigs = |env: &mut E, triggers: &Trigs| -> Result<Trigs, VirErr> {
+        let mut trigs: Vec<Trig> = Vec::new();
+        for trigger in triggers.iter() {
+            trigs.push(fs(env, trigger)?);
+        }
+        Ok(Arc::new(trigs))
+    };
+    let fbndtyps = |env: &mut E, bs: &Binders<Typ>| -> Result<Binders<Typ>, VirErr> {
+        let mut binders: Vec<Binder<Typ>> = Vec::new();
+        for binder in bs.iter() {
+            binders.push(binder.new_a(ft(env, &binder.a)?));
+        }
+        Ok(Arc::new(binders))
+    };
+
+    match &exp.x {
+        ExpX::Const(..) => Ok(exp.clone()),
+        ExpX::Var(..) => Ok(exp.clone()),
+        ExpX::VarLoc(..) => Ok(exp.clone()),
+        ExpX::VarAt(..) => Ok(exp.clone()),
+        ExpX::Loc(e1) => ok_exp(ExpX::Loc(fe(env, e1)?)),
+        ExpX::Old(..) => Ok(exp.clone()),
+        ExpX::Call(fun, typs, es) => {
+            let typs: Result<Vec<Typ>, VirErr> = typs.iter().map(|t| ft(env, t)).collect();
+            ok_exp(ExpX::Call(fun.clone(), Arc::new(typs?), fs(env, es)?))
+        }
+        ExpX::CallLambda(typ, e1, es) => {
+            ok_exp(ExpX::CallLambda(ft(env, typ)?, fe(env, e1)?, fs(env, es)?))
+        }
+        ExpX::Ctor(path, ident, bs) => {
+            let mut binders: Vec<Binder<Exp>> = Vec::new();
+            for b in bs.iter() {
+                binders.push(b.new_a(fe(env, &b.a)?));
+            }
+            ok_exp(ExpX::Ctor(path.clone(), ident.clone(), Arc::new(binders)))
+        }
+        ExpX::Unary(op, e1) => ok_exp(ExpX::Unary(*op, fe(env, e1)?)),
+        ExpX::UnaryOpr(op, e1) => {
+            let op = match op {
+                UnaryOpr::Box(t) => UnaryOpr::Box(ft(env, t)?),
+                UnaryOpr::Unbox(t) => UnaryOpr::Unbox(ft(env, t)?),
+                UnaryOpr::HasType(t) => UnaryOpr::HasType(ft(env, t)?),
+                UnaryOpr::IsVariant { .. } => op.clone(),
+                UnaryOpr::TupleField { .. } => op.clone(),
+                UnaryOpr::Field { .. } => op.clone(),
+            };
+            ok_exp(ExpX::UnaryOpr(op.clone(), fe(env, e1)?))
+        }
+        ExpX::Binary(op, e1, e2) => ok_exp(ExpX::Binary(*op, fe(env, e1)?, fe(env, e2)?)),
+        ExpX::If(e0, e1, e2) => ok_exp(ExpX::If(fe(env, e0)?, fe(env, e1)?, fe(env, e2)?)),
+        ExpX::WithTriggers(ts, body) => {
+            ok_exp(ExpX::WithTriggers(ftrigs(env, ts)?, fe(env, body)?))
+        }
+        ExpX::Bind(bnd, e1) => {
+            let bnd = match &bnd.x {
+                BndX::Let(bs) => {
+                    let mut binders: Vec<Binder<Exp>> = Vec::new();
+                    for b in bs.iter() {
+                        binders.push(b.new_a(fe(env, &b.a)?));
+                    }
+                    let bndx = BndX::Let(Arc::new(binders));
+                    Spanned::new(bnd.span.clone(), bndx)
+                }
+                BndX::Quant(quant, binders, ts) => {
+                    let bndx = BndX::Quant(*quant, fbndtyps(env, binders)?, ftrigs(env, ts)?);
+                    Spanned::new(bnd.span.clone(), bndx)
+                }
+                BndX::Lambda(binders) => {
+                    let bndx = BndX::Lambda(fbndtyps(env, binders)?);
+                    Spanned::new(bnd.span.clone(), bndx)
+                }
+                BndX::Choose(binders, ts, cond) => {
+                    let bndx =
+                        BndX::Choose(fbndtyps(env, binders)?, ftrigs(env, ts)?, fe(env, cond)?);
+                    Spanned::new(bnd.span.clone(), bndx)
+                }
+            };
+            ok_exp(ExpX::Bind(bnd, fe(env, e1)?))
+        }
+    }
+}
+
+pub(crate) fn map_stm_visitor<F>(stm: &Stm, fe: &mut F) -> Result<Stm, VirErr>
 where
     F: FnMut(&Stm) -> Result<Stm, VirErr>,
 {
     match &stm.x {
-        StmX::Call(..) => f(stm),
-        StmX::Assert(_, _) => f(stm),
-        StmX::Assume(_) => f(stm),
-        StmX::Assign { .. } => f(stm),
-        StmX::AssertBV { .. } => f(stm),
-        StmX::Fuel(..) => f(stm),
+        StmX::Call(..) => fe(stm),
+        StmX::Assert(_, _) => fe(stm),
+        StmX::Assume(_) => fe(stm),
+        StmX::Assign { .. } => fe(stm),
+        StmX::AssertBV { .. } => fe(stm),
+        StmX::Fuel(..) => fe(stm),
         StmX::DeadEnd(s) => {
-            let s = map_stm_visitor(s, f)?;
+            let s = map_stm_visitor(s, fe)?;
             let stm = Spanned::new(stm.span.clone(), StmX::DeadEnd(s));
-            f(&stm)
+            fe(&stm)
         }
         StmX::If(cond, lhs, rhs) => {
-            let lhs = map_stm_visitor(lhs, f)?;
-            let rhs = rhs.as_ref().map(|rhs| map_stm_visitor(rhs, f)).transpose()?;
+            let lhs = map_stm_visitor(lhs, fe)?;
+            let rhs = rhs.as_ref().map(|rhs| map_stm_visitor(rhs, fe)).transpose()?;
             let stm = Spanned::new(stm.span.clone(), StmX::If(cond.clone(), lhs, rhs));
-            f(&stm)
+            fe(&stm)
         }
         StmX::While { cond_stms, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
             let mut cs: Vec<Stm> = Vec::new();
             for s in cond_stms.iter() {
-                cs.push(map_stm_visitor(s, f)?);
+                cs.push(map_stm_visitor(s, fe)?);
             }
-            let body = map_stm_visitor(body, f)?;
+            let body = map_stm_visitor(body, fe)?;
             let stm = Spanned::new(
                 stm.span.clone(),
                 StmX::While {
@@ -441,67 +546,67 @@ where
                     modified_vars: modified_vars.clone(),
                 },
             );
-            f(&stm)
+            fe(&stm)
         }
         StmX::AssertQuery { mode, typ_inv_vars, body } => {
-            let body = map_stm_visitor(body, f)?;
+            let body = map_stm_visitor(body, fe)?;
             let stm = Spanned::new(
                 stm.span.clone(),
                 StmX::AssertQuery { mode: *mode, typ_inv_vars: typ_inv_vars.clone(), body },
             );
-            f(&stm)
+            fe(&stm)
         }
         StmX::OpenInvariant(inv, ident, ty, body, atomicity) => {
-            let body = map_stm_visitor(body, f)?;
+            let body = map_stm_visitor(body, fe)?;
             let stm = Spanned::new(
                 stm.span.clone(),
                 StmX::OpenInvariant(inv.clone(), ident.clone(), ty.clone(), body, *atomicity),
             );
-            f(&stm)
+            fe(&stm)
         }
         StmX::Block(ss) => {
             let mut stms: Vec<Stm> = Vec::new();
             for s in ss.iter() {
-                stms.push(map_stm_visitor(s, f)?);
+                stms.push(map_stm_visitor(s, fe)?);
             }
             let stm = Spanned::new(stm.span.clone(), StmX::Block(Arc::new(stms)));
-            f(&stm)
+            fe(&stm)
         }
     }
 }
 
-pub(crate) fn map_stm_exp_visitor<F>(stm: &Stm, f: &F) -> Result<Stm, VirErr>
+pub(crate) fn map_stm_exp_visitor<F>(stm: &Stm, fe: &F) -> Result<Stm, VirErr>
 where
-    F: Fn(&Exp) -> Exp,
+    F: Fn(&Exp) -> Result<Exp, VirErr>,
 {
     map_stm_visitor(stm, &mut |stm| {
         let span = stm.span.clone();
         let stm = match &stm.x {
             StmX::Call(path, mode, typs, exps, dest) => {
-                let exps = Arc::new(vec_map(exps, f));
+                let exps = Arc::new(vec_map_result(exps, fe)?);
                 Spanned::new(
                     span,
                     StmX::Call(path.clone(), *mode, typs.clone(), exps, (*dest).clone()),
                 )
             }
-            StmX::Assert(span2, exp) => Spanned::new(span, StmX::Assert(span2.clone(), f(exp))),
-            StmX::AssertBV(exp) => Spanned::new(span, StmX::AssertBV(f(exp))),
-            StmX::Assume(exp) => Spanned::new(span, StmX::Assume(f(exp))),
+            StmX::Assert(span2, exp) => Spanned::new(span, StmX::Assert(span2.clone(), fe(exp)?)),
+            StmX::AssertBV(exp) => Spanned::new(span, StmX::AssertBV(fe(exp)?)),
+            StmX::Assume(exp) => Spanned::new(span, StmX::Assume(fe(exp)?)),
             StmX::Assign { lhs: Dest { dest, is_init }, rhs } => {
-                let dest = f(dest);
-                let rhs = f(rhs);
+                let dest = fe(dest)?;
+                let rhs = fe(rhs)?;
                 Spanned::new(span, StmX::Assign { lhs: Dest { dest, is_init: *is_init }, rhs })
             }
             StmX::AssertQuery { .. } => stm.clone(),
             StmX::Fuel(..) => stm.clone(),
             StmX::DeadEnd(..) => stm.clone(),
             StmX::If(exp, s1, s2) => {
-                let exp = f(exp);
+                let exp = fe(exp)?;
                 Spanned::new(span, StmX::If(exp, s1.clone(), s2.clone()))
             }
             StmX::While { cond_stms, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
-                let cond_exp = f(cond_exp);
-                let invs = Arc::new(vec_map(invs, f));
+                let cond_exp = fe(cond_exp)?;
+                let invs = Arc::new(vec_map_result(invs, fe)?);
                 Spanned::new(
                     span,
                     StmX::While {
@@ -515,7 +620,7 @@ where
                 )
             }
             StmX::OpenInvariant(inv, ident, ty, body, atomicity) => {
-                let inv = f(inv);
+                let inv = fe(inv)?;
                 Spanned::new(
                     span,
                     StmX::OpenInvariant(inv, ident.clone(), ty.clone(), body.clone(), *atomicity),
