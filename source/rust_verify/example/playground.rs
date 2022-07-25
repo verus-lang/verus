@@ -1,17 +1,20 @@
 mod pervasive;
-use builtin::*;
-use builtin_macros::*;
 
-/* const GREETING: StrSlice<'static> = StrSlice::new("Hello World");
-fn myconstfn() {
-    let _:() = GREETING.reveal();
-}
- */
+#[allow(unused_imports)]
+use builtin::*;
+#[allow(unused_imports)]
+use builtin_macros::*;
+#[allow(unused_imports)]
+use pervasive::string::*;
 
 verus! {
-
-fn example_proof() {
-    let constbytedata = [0,1,2];
+// const GREETING: StrSlice = StrSlice::new("Hello World");
+const MYVALUE: u64 = 58421;
+fn myconstfn() -> u64 {
+    /* let _:() = GREETING.reveal();
+    let m = GREETING.len(); */
+    let x = MYVALUE + 23;
+    x
 }
 
 }

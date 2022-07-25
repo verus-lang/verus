@@ -744,7 +744,13 @@ impl Verifier {
                     continue;
                 }
                 let decl_commands = &fun_axioms[f];
-                let comment = "Function-Axioms ".to_string() + &fun_as_rust_dbg(f);
+                let comment = "Function-Axioms ".to_string() + &fun_as_rust_dbg(f); 
+                if decl_commands.len() > 0 { 
+                    dbg!("---------------------------------------------------------------");
+                    dbg!(&f);
+                    dbg!(&decl_commands);
+                    dbg!("---------------------------------------------------------------");
+                }
                 self.run_commands(&mut air_context, &decl_commands, &comment);
                 function_axiom_commands.push((decl_commands.clone(), comment.clone()));
                 funs.remove(f);
