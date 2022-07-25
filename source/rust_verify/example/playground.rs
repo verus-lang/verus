@@ -8,15 +8,31 @@ use builtin_macros::*;
 use pervasive::string::*;
 
 verus! {
-// const GREETING: StrSlice = StrSlice::new("Hello World");
-const MYVALUE: u64 = 58421;
-fn myconstfn() -> u64 {
-    /* let _:() = GREETING.reveal();
-    let m = GREETING.len(); */
-    let x = MYVALUE + 23;
-    x
+    use pervasive::string::*; 
+    const GREETING: StrSlice<'static> = StrSlice::new("Hello World");
+    const PARTIAL_GREETING: StrSlice<'static> = StrSlice::new("Hello");
+
+    fn string_lit<'a>() {
+        GREETING.reveal();
+        PARTIAL_GREETING.reveal();
+
+        assert(GREETING.is_ascii());
+        assert(PARTIAL_GREETING.is_ascii());
+        let part = GREETING.substring(0, 5);
+        assert(part.view().ext_equal(PARTIAL_GREETING.view()));
+        assert(part.view() === PARTIAL_GREETING.view());
+    }
+
+    // fn str_1<'a>(s1: StrSlice<'a>, s2: StrSlice<'a>)
+    //     requires
+    //         s1.view() === s2.view(),
+    //         s1.view().len() == 10,
+    // {
+    //     let a1 = s1.substring(3, 5);
+    //     let a2 = s2.substring(3, 5);
+    //     assert(a1.view() === a2.view());
+    // }
 }
 
-}
 fn main() {}
 

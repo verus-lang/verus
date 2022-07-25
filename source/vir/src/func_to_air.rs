@@ -647,6 +647,21 @@ pub fn func_def_to_air(
             }
             let enss = Arc::new(enss);
 
+            if function.x.is_const && function.x.is_string_literal {
+                if let crate::ast::ExprX::Const(crate::ast::Constant::StrSlice(s)) = &function.x.body.as_ref().expect("string_literal always has a body").x {
+                    let spanned = &*function.clone();
+                    let x = &spanned.x;
+
+                    return Ok(string_to_air(fun_to_air_ident(&function.x.name), &s, function.span.clone()));
+                } else {
+                    panic!("unexpected body for string_literal");
+                }
+                // TODO check whether we need this
+                // if vstring.inner_str.is_ascii() == false {
+                //     return err_str(&function.span, "Only ASCII characters are supported for verification purposes at the moment");
+                // }
+            } 
+
             // AST --> SST
             state.ret_post = Some((dest.clone(), ens_stmts.clone(), enss.clone()));
             let (mut stm, skip_ensures) =
@@ -683,23 +698,6 @@ pub fn func_def_to_air(
                 state.local_decls.push(decl.clone());
             }
 
-            if function.x.is_const && function.x.is_string_literal {
-                // we look up in the global strings if emitted is ever true here 
-                // if true then we emit the string and set the emitted to false. 
-                let spanned = &*function.clone();
-                let x = &spanned.x;
-                let vstring = todo!();
-                // if vstring.emitted == false {
-                //     return Ok((Arc::new(vec![]), vec![]))
-                // }
-                // if vstring.inner_str.is_ascii() == false {
-                //     return err_str(&function.span, "Only ASCII characters are supported for verification purposes at the moment");
-                // }
-
-                // let fn_prefix = fun_to_string(&function.x.name);
-                // return Ok(string_to_air(&fn_prefix, vstring.inner_str.clone(), function.span.clone()));
-            } 
-
             let (commands, snap_map) = crate::sst_to_air::body_stm_to_air(
                 ctx,
                 &function.span,
@@ -725,30 +723,21 @@ pub fn func_def_to_air(
     }
 }
 
-
-fn string_to_func(string: Arc<String>) {
-}
-
-fn string_to_air(fn_prefix: &str, string: Arc<String>, span: Span) -> (Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>) {
-    let mut ccs = Vec::new();
-    let mut spans = Vec::new();
-    
+fn string_to_air(fun_air_ident: Ident, string: &String, span: Span) -> (Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>) {
     let mut commands = Vec::new();
-    
     let mut myvec = Vec::new();
 
     for c in string.chars() {
-        let digit_value = c as i8;
+        let digit_value = c as u8;
         myvec.push(digit_value);
     }
-
-    let cc = CommandsWithContextX {
-        commands: Arc::new(commands),
-        desc: "StrSlice".to_string(),
-        span,
-        prover_choice: crate::def::ProverChoice::DefaultProver
-    };
-
     
-    (Arc::new(ccs), spans)
+    (Arc::new(vec![Arc::new(
+        CommandsWithContextX {
+            commands: Arc::new(commands),
+            desc: "StrSlice".to_string(),
+            span,
+            prover_choice: crate::def::ProverChoice::DefaultProver
+        }
+    )]), vec![])
 }

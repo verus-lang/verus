@@ -784,7 +784,7 @@ fn fn_call_to_vir<'tcx>(
     }
 
 
-    if is_strslice_reveal {
+    if is_strslice_reveal && false {
         return match &expr.kind {
             ExprKind::MethodCall(_, _, [arg0 @ Expr {hir_id:_, kind: ExprKind::Path(QPath::Resolved(_,Path {res: Res::Def(_, id), ..}) ), .. }], _) => {
                 let cvir = expr_to_vir(bctx, &arg0, ExprModifier::REGULAR)?; 

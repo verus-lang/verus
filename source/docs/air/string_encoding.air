@@ -1,0 +1,1316 @@
+(set-option :auto_config false)
+(set-option :smt.mbqi false)
+(set-option :smt.case_split 3)
+(set-option :smt.qi.eager_threshold 100.0)
+(set-option :smt.delay_units true)
+(set-option :smt.arith.solver 2)
+(set-option :smt.arith.nl false)
+(set-option :rlimit 30000000)
+
+;; Prelude
+
+;; AIR prelude
+
+(declare-sort FuelId 0)
+(declare-sort Fuel 0)
+(declare-const zero Fuel)
+(declare-fun succ (Fuel) Fuel)
+(declare-fun fuel_bool (FuelId) Bool)
+(declare-fun fuel_bool_default (FuelId) Bool)
+(declare-const fuel_defaults Bool)
+(axiom (=>
+  fuel_defaults
+  (forall ((id FuelId)) (!
+    (= (fuel_bool id) (fuel_bool_default id))
+    :pattern ((fuel_bool id))
+))))
+(declare-sort Poly 0)
+(declare-fun I (Int) Poly)
+(declare-fun B (Bool) Poly)
+(declare-fun %I (Poly) Int)
+(declare-fun %B (Poly) Bool)
+(declare-sort Type 0)
+(declare-const BOOL Type)
+(declare-const INT Type)
+(declare-const NAT Type)
+(declare-fun UINT (Int) Type)
+(declare-fun SINT (Int) Type)
+(declare-fun has_type (Poly Type) Bool)
+(declare-fun as_type (Poly Type) Poly)
+(declare-fun mk_fun (Fun) Fun)
+(axiom (has_type (B true) BOOL))
+(axiom (has_type (B false) BOOL))
+(axiom (forall ((x Poly) (t Type)) (!
+   (and
+    (has_type (as_type x t) t)
+    (=>
+     (has_type x t)
+     (= x (as_type x t))
+   ))
+   :pattern ((as_type x t))
+)))
+(axiom (forall ((x Fun)) (!
+   (= (mk_fun x) x)
+   :pattern ((mk_fun x))
+)))
+(axiom (forall ((x Bool)) (!
+   (= x (%B (B x)))
+   :pattern ((B x))
+)))
+(axiom (forall ((x Int)) (!
+   (= x (%I (I x)))
+   :pattern ((I x))
+)))
+(axiom (forall ((x Poly)) (!
+   (=>
+    (has_type x BOOL)
+    (= x (B (%B x)))
+   )
+   :pattern ((has_type x BOOL))
+)))
+(axiom (forall ((x Poly)) (!
+   (=>
+    (has_type x INT)
+    (= x (I (%I x)))
+   )
+   :pattern ((has_type x INT))
+)))
+(axiom (forall ((x Poly)) (!
+   (=>
+    (has_type x NAT)
+    (= x (I (%I x)))
+   )
+   :pattern ((has_type x NAT))
+)))
+(axiom (forall ((bits Int) (x Poly)) (!
+   (=>
+    (has_type x (UINT bits))
+    (= x (I (%I x)))
+   )
+   :pattern ((has_type x (UINT bits)))
+)))
+(axiom (forall ((bits Int) (x Poly)) (!
+   (=>
+    (has_type x (SINT bits))
+    (= x (I (%I x)))
+   )
+   :pattern ((has_type x (SINT bits)))
+)))
+(declare-const SZ Int)
+(axiom (or
+  (= SZ 32)
+  (= SZ 64)
+))
+(declare-fun uHi (Int) Int)
+(declare-fun iLo (Int) Int)
+(declare-fun iHi (Int) Int)
+(axiom (= (uHi 8) 256))
+(axiom (= (uHi 16) 65536))
+(axiom (= (uHi 32) 4294967296))
+(axiom (= (uHi 64) 18446744073709551616))
+(axiom (= (uHi 128) (+ 1 340282366920938463463374607431768211455)))
+(axiom (= (iLo 8) (- 128)))
+(axiom (= (iLo 16) (- 32768)))
+(axiom (= (iLo 32) (- 2147483648)))
+(axiom (= (iLo 64) (- 9223372036854775808)))
+(axiom (= (iLo 128) (- 170141183460469231731687303715884105728)))
+(axiom (= (iHi 8) 128))
+(axiom (= (iHi 16) 32768))
+(axiom (= (iHi 32) 2147483648))
+(axiom (= (iHi 64) 9223372036854775808))
+(axiom (= (iHi 128) 170141183460469231731687303715884105728))
+(declare-fun nClip (Int) Int)
+(declare-fun uClip (Int Int) Int)
+(declare-fun iClip (Int Int) Int)
+(axiom (forall ((i Int)) (!
+   (and
+    (<= 0 (nClip i))
+    (=>
+     (<= 0 i)
+     (= i (nClip i))
+   ))
+   :pattern ((nClip i))
+)))
+(axiom (forall ((bits Int) (i Int)) (!
+   (and
+    (<= 0 (uClip bits i))
+    (< (uClip bits i) (uHi bits))
+    (=>
+     (and
+      (<= 0 i)
+      (< i (uHi bits))
+     )
+     (= i (uClip bits i))
+   ))
+   :pattern ((uClip bits i))
+)))
+(axiom (forall ((bits Int) (i Int)) (!
+   (and
+    (<= (iLo bits) (iClip bits i))
+    (< (iClip bits i) (iHi bits))
+    (=>
+     (and
+      (<= (iLo bits) i)
+      (< i (iHi bits))
+     )
+     (= i (iClip bits i))
+   ))
+   :pattern ((iClip bits i))
+)))
+(declare-fun uInv (Int Int) Bool)
+(declare-fun iInv (Int Int) Bool)
+(axiom (forall ((bits Int) (i Int)) (!
+   (= (uInv bits i) (and
+     (<= 0 i)
+     (< i (uHi bits))
+   ))
+   :pattern ((uInv bits i))
+)))
+(axiom (forall ((bits Int) (i Int)) (!
+   (= (iInv bits i) (and
+     (<= (iLo bits) i)
+     (< i (iHi bits))
+   ))
+   :pattern ((iInv bits i))
+)))
+(axiom (forall ((x Int)) (!
+   (has_type (I x) INT)
+   :pattern ((has_type (I x) INT))
+)))
+(axiom (forall ((x Int)) (!
+   (=>
+    (<= 0 x)
+    (has_type (I x) NAT)
+   )
+   :pattern ((has_type (I x) NAT))
+)))
+(axiom (forall ((bits Int) (x Int)) (!
+   (=>
+    (uInv bits x)
+    (has_type (I x) (UINT bits))
+   )
+   :pattern ((has_type (I x) (UINT bits)))
+)))
+(axiom (forall ((bits Int) (x Int)) (!
+   (=>
+    (iInv bits x)
+    (has_type (I x) (SINT bits))
+   )
+   :pattern ((has_type (I x) (SINT bits)))
+)))
+(axiom (forall ((x Poly)) (!
+   (=>
+    (has_type x NAT)
+    (<= 0 (%I x))
+   )
+   :pattern ((has_type x NAT))
+)))
+(axiom (forall ((bits Int) (x Poly)) (!
+   (=>
+    (has_type x (UINT bits))
+    (uInv bits (%I x))
+   )
+   :pattern ((has_type x (UINT bits)))
+)))
+(axiom (forall ((bits Int) (x Poly)) (!
+   (=>
+    (has_type x (SINT bits))
+    (iInv bits (%I x))
+   )
+   :pattern ((has_type x (SINT bits)))
+)))
+(declare-fun Mul (Int Int) Int)
+(declare-fun EucDiv (Int Int) Int)
+(declare-fun EucMod (Int Int) Int)
+(axiom (forall ((x Int) (y Int)) (!
+   (= (Mul x y) (* x y))
+   :pattern ((Mul x y))
+)))
+(axiom (forall ((x Int) (y Int)) (!
+   (= (EucDiv x y) (div x y))
+   :pattern ((EucDiv x y))
+)))
+(axiom (forall ((x Int) (y Int)) (!
+   (= (EucMod x y) (mod x y))
+   :pattern ((EucMod x y))
+)))
+(declare-fun check_decrease_int.? (Int Int Bool) Bool)
+(axiom (forall ((cur Int) (prev Int) (otherwise Bool)) (!
+   (= (check_decrease_int.? cur prev otherwise) (or
+     (and
+      (<= 0 cur)
+      (< cur prev)
+     )
+     (and
+      (= cur prev)
+      otherwise
+   )))
+   :pattern ((check_decrease_int.? cur prev otherwise))
+)))
+(declare-fun height.? (Poly) Int)
+(axiom (forall ((x Poly)) (!
+   (<= 0 (height.? x))
+   :pattern ((height.? x))
+)))
+(declare-fun uintxor (Int Poly Poly) Int)
+(declare-fun uintand (Int Poly Poly) Int)
+(declare-fun uintor (Int Poly Poly) Int)
+(declare-fun uintshr (Int Poly Poly) Int)
+(declare-fun uintshl (Int Poly Poly) Int)
+(declare-fun uintnot (Int Poly) Int)
+
+;; MODULE ''
+
+;; Fuel
+(declare-const fuel%pervasive.seq.Seq.ext_equal. FuelId)
+(declare-const fuel%GREETING. FuelId)
+(declare-const fuel%PARTIAL_GREETING. FuelId)
+(axiom (distinct fuel%pervasive.seq.Seq.ext_equal. fuel%GREETING. fuel%PARTIAL_GREETING.))
+
+;; Datatypes
+(declare-sort pervasive.seq.Seq<u8.>. 0)
+(declare-sort pervasive.string.StrSlice. 0)
+(declare-datatypes ((tuple%0. 0)) (((tuple%0./tuple%0))))
+(declare-fun TYPE%fun%1. (Type Type) Type)
+(declare-fun TYPE%pervasive.seq.Seq. (Type) Type)
+(declare-fun TYPE%pervasive.invariant.AtomicInvariant. (Type) Type)
+(declare-fun TYPE%pervasive.invariant.LocalInvariant. (Type) Type)
+(declare-const TYPE%pervasive.string.StrSlice. Type)
+(declare-const TYPE%tuple%0. Type)
+(declare-fun Poly%fun%1. (Fun) Poly)
+(declare-fun %Poly%fun%1. (Poly) Fun)
+(declare-fun Poly%pervasive.seq.Seq<u8.>. (pervasive.seq.Seq<u8.>.) Poly)
+(declare-fun %Poly%pervasive.seq.Seq<u8.>. (Poly) pervasive.seq.Seq<u8.>.)
+(declare-fun Poly%pervasive.string.StrSlice. (pervasive.string.StrSlice.) Poly)
+(declare-fun %Poly%pervasive.string.StrSlice. (Poly) pervasive.string.StrSlice.)
+(declare-fun Poly%tuple%0. (tuple%0.) Poly)
+(declare-fun %Poly%tuple%0. (Poly) tuple%0.)
+(axiom (forall ((x@ Fun)) (!
+   (= x@ (%Poly%fun%1. (Poly%fun%1. x@)))
+   :pattern ((Poly%fun%1. x@))
+)))
+(axiom (forall ((T%0& Type) (T%1& Type) (x@ Poly)) (!
+   (=>
+    (has_type x@ (TYPE%fun%1. T%0& T%1&))
+    (= x@ (Poly%fun%1. (%Poly%fun%1. x@)))
+   )
+   :pattern ((has_type x@ (TYPE%fun%1. T%0& T%1&)))
+)))
+(axiom (forall ((T%0& Type) (T%1& Type) (x@ Fun)) (!
+   (=>
+    (forall ((T%0@ Poly)) (!
+      (=>
+       (has_type T%0@ T%0&)
+       (has_type (apply Poly x@ T%0@) T%1&)
+      )
+      :pattern ((has_type (apply Poly x@ T%0@) T%1&))
+    ))
+    (has_type (Poly%fun%1. (mk_fun x@)) (TYPE%fun%1. T%0& T%1&))
+   )
+   :pattern ((has_type (Poly%fun%1. (mk_fun x@)) (TYPE%fun%1. T%0& T%1&)))
+)))
+(axiom (forall ((T%0& Type) (T%1& Type) (T%0@ Poly) (x@ Fun)) (!
+   (=>
+    (and
+     (has_type (Poly%fun%1. x@) (TYPE%fun%1. T%0& T%1&))
+     (has_type T%0@ T%0&)
+    )
+    (has_type (apply Poly x@ T%0@) T%1&)
+   )
+   :pattern ((apply Poly x@ T%0@) (has_type (Poly%fun%1. x@) (TYPE%fun%1. T%0& T%1&)))
+)))
+(axiom (forall ((x@ pervasive.seq.Seq<u8.>.)) (!
+   (= x@ (%Poly%pervasive.seq.Seq<u8.>. (Poly%pervasive.seq.Seq<u8.>. x@)))
+   :pattern ((Poly%pervasive.seq.Seq<u8.>. x@))
+)))
+(axiom (forall ((x@ Poly)) (!
+   (=>
+    (has_type x@ (TYPE%pervasive.seq.Seq. (UINT 8)))
+    (= x@ (Poly%pervasive.seq.Seq<u8.>. (%Poly%pervasive.seq.Seq<u8.>. x@)))
+   )
+   :pattern ((has_type x@ (TYPE%pervasive.seq.Seq. (UINT 8))))
+)))
+(axiom (forall ((x@ pervasive.seq.Seq<u8.>.)) (!
+   (has_type (Poly%pervasive.seq.Seq<u8.>. x@) (TYPE%pervasive.seq.Seq. (UINT 8)))
+   :pattern ((has_type (Poly%pervasive.seq.Seq<u8.>. x@) (TYPE%pervasive.seq.Seq. (UINT
+       8
+)))))))
+(axiom (forall ((x@ pervasive.string.StrSlice.)) (!
+   (= x@ (%Poly%pervasive.string.StrSlice. (Poly%pervasive.string.StrSlice. x@)))
+   :pattern ((Poly%pervasive.string.StrSlice. x@))
+)))
+(axiom (forall ((x@ Poly)) (!
+   (=>
+    (has_type x@ TYPE%pervasive.string.StrSlice.)
+    (= x@ (Poly%pervasive.string.StrSlice. (%Poly%pervasive.string.StrSlice. x@)))
+   )
+   :pattern ((has_type x@ TYPE%pervasive.string.StrSlice.))
+)))
+(axiom (forall ((x@ pervasive.string.StrSlice.)) (!
+   (has_type (Poly%pervasive.string.StrSlice. x@) TYPE%pervasive.string.StrSlice.)
+   :pattern ((has_type (Poly%pervasive.string.StrSlice. x@) TYPE%pervasive.string.StrSlice.))
+)))
+(axiom (forall ((x@ tuple%0.)) (!
+   (= x@ (%Poly%tuple%0. (Poly%tuple%0. x@)))
+   :pattern ((Poly%tuple%0. x@))
+)))
+(axiom (forall ((x@ Poly)) (!
+   (=>
+    (has_type x@ TYPE%tuple%0.)
+    (= x@ (Poly%tuple%0. (%Poly%tuple%0. x@)))
+   )
+   :pattern ((has_type x@ TYPE%tuple%0.))
+)))
+(axiom (forall ((x@ tuple%0.)) (!
+   (has_type (Poly%tuple%0. x@) TYPE%tuple%0.)
+   :pattern ((has_type (Poly%tuple%0. x@) TYPE%tuple%0.))
+)))
+
+;; Function-Decl crate::pervasive::seq::Seq::empty
+(declare-fun pervasive.seq.Seq.empty.? (Type) Poly)
+
+;; Function-Decl crate::pervasive::seq::Seq::new
+(declare-fun pervasive.seq.Seq.new.? (Type Poly Poly) Poly)
+
+;; Function-Decl crate::pervasive::seq::Seq::len
+(declare-fun pervasive.seq.Seq.len.? (Type Poly) Int)
+
+;; Function-Decl crate::pervasive::seq::Seq::index
+(declare-fun pervasive.seq.Seq.index.? (Type Poly Poly) Poly)
+
+;; Function-Decl crate::pervasive::seq::Seq::push
+(declare-fun pervasive.seq.Seq.push.? (Type Poly Poly) Poly)
+
+;; Function-Decl crate::pervasive::seq::Seq::update
+(declare-fun pervasive.seq.Seq.update.? (Type Poly Poly Poly) Poly)
+
+;; Function-Decl crate::pervasive::seq::Seq::ext_equal
+(declare-fun pervasive.seq.Seq.ext_equal.? (Type Poly Poly) Bool)
+
+;; Function-Decl crate::pervasive::seq::Seq::subrange
+(declare-fun pervasive.seq.Seq.subrange.? (Type Poly Poly Poly) Poly)
+
+;; Function-Decl crate::pervasive::seq::Seq::add
+(declare-fun pervasive.seq.Seq.add.? (Type Poly Poly) Poly)
+
+;; Function-Decl crate::pervasive::invariant::AtomicInvariant::inv
+(declare-fun pervasive.invariant.AtomicInvariant.inv.? (Type Poly Poly) Bool)
+
+;; Function-Decl crate::pervasive::invariant::AtomicInvariant::namespace
+(declare-fun pervasive.invariant.AtomicInvariant.namespace.? (Type Poly) Int)
+
+;; Function-Decl crate::pervasive::invariant::LocalInvariant::inv
+(declare-fun pervasive.invariant.LocalInvariant.inv.? (Type Poly Poly) Bool)
+
+;; Function-Decl crate::pervasive::invariant::LocalInvariant::namespace
+(declare-fun pervasive.invariant.LocalInvariant.namespace.? (Type Poly) Int)
+
+;; Function-Decl crate::pervasive::string::StrSlice::view
+(declare-fun pervasive.string.StrSlice.view.? (Poly) pervasive.seq.Seq<u8.>.)
+
+;; Function-Decl crate::pervasive::string::StrSlice::is_ascii
+(declare-fun pervasive.string.StrSlice.is_ascii.? (Poly) Bool)
+
+;; Function-Decl crate::GREETING
+(declare-fun GREETING.? () pervasive.string.StrSlice.)
+
+;; Function-Decl crate::PARTIAL_GREETING
+(declare-fun PARTIAL_GREETING.? () pervasive.string.StrSlice.)
+
+;; Function-Axioms crate::pervasive::seq::Seq::empty
+(axiom (forall ((A& Type)) (!
+   (has_type (pervasive.seq.Seq.empty.? A&) (TYPE%pervasive.seq.Seq. A&))
+   :pattern ((pervasive.seq.Seq.empty.? A&))
+)))
+
+;; Function-Axioms crate::pervasive::seq::Seq::push
+(axiom (forall ((A& Type) (self@ Poly) (a@ Poly)) (!
+   (=>
+    (and
+     (has_type self@ (TYPE%pervasive.seq.Seq. A&))
+     (has_type a@ A&)
+    )
+    (has_type (pervasive.seq.Seq.push.? A& self@ a@) (TYPE%pervasive.seq.Seq. A&))
+   )
+   :pattern ((pervasive.seq.Seq.push.? A& self@ a@))
+)))
+
+;; Function-Axioms crate::pervasive::seq::Seq::len
+(axiom (forall ((A& Type) (self@ Poly)) (!
+   (=>
+    (has_type self@ (TYPE%pervasive.seq.Seq. A&))
+    (<= 0 (pervasive.seq.Seq.len.? A& self@))
+   )
+   :pattern ((pervasive.seq.Seq.len.? A& self@))
+)))
+
+;; Function-Specs crate::pervasive::seq::Seq::index
+(declare-fun req%pervasive.seq.Seq.index. (Type Poly Poly) Bool)
+(axiom (forall ((A& Type) (self@ Poly) (i@ Poly)) (!
+   (= (req%pervasive.seq.Seq.index. A& self@ i@) (axiom_location ("recommendation not met")
+     (and
+      (<= 0 (%I i@))
+      (< (%I i@) (pervasive.seq.Seq.len.? A& self@))
+   )))
+   :pattern ((req%pervasive.seq.Seq.index. A& self@ i@))
+)))
+
+;; Function-Axioms crate::pervasive::seq::Seq::index
+(axiom (forall ((A& Type) (self@ Poly) (i@ Poly)) (!
+   (=>
+    (and
+     (has_type self@ (TYPE%pervasive.seq.Seq. A&))
+     (has_type i@ INT)
+    )
+    (has_type (pervasive.seq.Seq.index.? A& self@ i@) A&)
+   )
+   :pattern ((pervasive.seq.Seq.index.? A& self@ i@))
+)))
+
+;; Function-Specs crate::pervasive::seq::Seq::subrange
+(declare-fun req%pervasive.seq.Seq.subrange. (Type Poly Poly Poly) Bool)
+(axiom (forall ((A& Type) (self@ Poly) (start_inclusive@ Poly) (end_exclusive@ Poly))
+  (!
+   (= (req%pervasive.seq.Seq.subrange. A& self@ start_inclusive@ end_exclusive@) (axiom_location
+     ("recommendation not met") (and
+      (and
+       (<= 0 (%I start_inclusive@))
+       (<= (%I start_inclusive@) (%I end_exclusive@))
+      )
+      (<= (%I end_exclusive@) (pervasive.seq.Seq.len.? A& self@))
+   )))
+   :pattern ((req%pervasive.seq.Seq.subrange. A& self@ start_inclusive@ end_exclusive@))
+)))
+
+;; Function-Axioms crate::pervasive::seq::Seq::subrange
+(axiom (forall ((A& Type) (self@ Poly) (start_inclusive@ Poly) (end_exclusive@ Poly))
+  (!
+   (=>
+    (and
+     (has_type self@ (TYPE%pervasive.seq.Seq. A&))
+     (has_type start_inclusive@ INT)
+     (has_type end_exclusive@ INT)
+    )
+    (has_type (pervasive.seq.Seq.subrange.? A& self@ start_inclusive@ end_exclusive@)
+     (TYPE%pervasive.seq.Seq. A&)
+   ))
+   :pattern ((pervasive.seq.Seq.subrange.? A& self@ start_inclusive@ end_exclusive@))
+)))
+
+;; Function-Specs crate::pervasive::seq::Seq::update
+(declare-fun req%pervasive.seq.Seq.update. (Type Poly Poly Poly) Bool)
+(axiom (forall ((A& Type) (self@ Poly) (i@ Poly) (a@ Poly)) (!
+   (= (req%pervasive.seq.Seq.update. A& self@ i@ a@) (axiom_location ("recommendation not met")
+     (and
+      (<= 0 (%I i@))
+      (< (%I i@) (pervasive.seq.Seq.len.? A& self@))
+   )))
+   :pattern ((req%pervasive.seq.Seq.update. A& self@ i@ a@))
+)))
+
+;; Function-Axioms crate::pervasive::seq::Seq::update
+(axiom (forall ((A& Type) (self@ Poly) (i@ Poly) (a@ Poly)) (!
+   (=>
+    (and
+     (has_type self@ (TYPE%pervasive.seq.Seq. A&))
+     (has_type i@ INT)
+     (has_type a@ A&)
+    )
+    (has_type (pervasive.seq.Seq.update.? A& self@ i@ a@) (TYPE%pervasive.seq.Seq. A&))
+   )
+   :pattern ((pervasive.seq.Seq.update.? A& self@ i@ a@))
+)))
+
+;; Function-Axioms crate::pervasive::seq::Seq::new
+(axiom (forall ((A& Type) (len@ Poly) (f@ Poly)) (!
+   (=>
+    (and
+     (has_type len@ NAT)
+     (has_type f@ (TYPE%fun%1. INT A&))
+    )
+    (has_type (pervasive.seq.Seq.new.? A& len@ f@) (TYPE%pervasive.seq.Seq. A&))
+   )
+   :pattern ((pervasive.seq.Seq.new.? A& len@ f@))
+)))
+
+;; Function-Axioms crate::pervasive::seq::Seq::ext_equal
+(axiom (fuel_bool_default fuel%pervasive.seq.Seq.ext_equal.))
+(axiom (=>
+  (fuel_bool fuel%pervasive.seq.Seq.ext_equal.)
+  (forall ((A& Type) (self@ Poly) (s2@ Poly)) (!
+    (= (pervasive.seq.Seq.ext_equal.? A& self@ s2@) (and
+      (= (pervasive.seq.Seq.len.? A& self@) (pervasive.seq.Seq.len.? A& s2@))
+      (forall ((i$ Poly)) (!
+        (=>
+         (has_type i$ INT)
+         (=>
+          (and
+           (<= 0 (%I i$))
+           (< (%I i$) (pervasive.seq.Seq.len.? A& self@))
+          )
+          (= (pervasive.seq.Seq.index.? A& self@ i$) (pervasive.seq.Seq.index.? A& s2@ i$))
+        ))
+        :pattern ((pervasive.seq.Seq.index.? A& self@ i$))
+        :pattern ((pervasive.seq.Seq.index.? A& s2@ i$))
+    ))))
+    :pattern ((pervasive.seq.Seq.ext_equal.? A& self@ s2@))
+))))
+
+;; Function-Axioms crate::pervasive::seq::Seq::add
+(axiom (forall ((A& Type) (self@ Poly) (rhs@ Poly)) (!
+   (=>
+    (and
+     (has_type self@ (TYPE%pervasive.seq.Seq. A&))
+     (has_type rhs@ (TYPE%pervasive.seq.Seq. A&))
+    )
+    (has_type (pervasive.seq.Seq.add.? A& self@ rhs@) (TYPE%pervasive.seq.Seq. A&))
+   )
+   :pattern ((pervasive.seq.Seq.add.? A& self@ rhs@))
+)))
+
+;; Function-Axioms crate::pervasive::seq::axiom_seq_empty
+(declare-fun ens%pervasive.seq.axiom_seq_empty. (Type) Bool)
+(axiom (forall ((A& Type)) (!
+   (= (ens%pervasive.seq.axiom_seq_empty. A&) (= (pervasive.seq.Seq.len.? A& (pervasive.seq.Seq.empty.?
+       A&
+      )
+     ) 0
+   ))
+   :pattern ((ens%pervasive.seq.axiom_seq_empty. A&))
+)))
+(axiom (forall ((A& Type)) (!
+   (= (pervasive.seq.Seq.len.? A& (pervasive.seq.Seq.empty.? A&)) 0)
+   :pattern ((pervasive.seq.Seq.len.? A& (pervasive.seq.Seq.empty.? A&)))
+)))
+
+;; Function-Axioms crate::pervasive::seq::axiom_seq_new_len
+(declare-fun ens%pervasive.seq.axiom_seq_new_len. (Type Int Fun) Bool)
+(axiom (forall ((A& Type) (len@ Int) (f@ Fun)) (!
+   (= (ens%pervasive.seq.axiom_seq_new_len. A& len@ f@) (= (pervasive.seq.Seq.len.? A&
+      (pervasive.seq.Seq.new.? A& (I len@) (Poly%fun%1. f@))
+     ) len@
+   ))
+   :pattern ((ens%pervasive.seq.axiom_seq_new_len. A& len@ f@))
+)))
+(axiom (forall ((A& Type) (len$ Poly) (f$ Poly)) (!
+   (=>
+    (and
+     (has_type len$ NAT)
+     (has_type f$ (TYPE%fun%1. INT A&))
+    )
+    (= (pervasive.seq.Seq.len.? A& (pervasive.seq.Seq.new.? A& len$ f$)) (%I len$))
+   )
+   :pattern ((pervasive.seq.Seq.len.? A& (pervasive.seq.Seq.new.? A& len$ f$)))
+)))
+
+;; Function-Specs crate::pervasive::seq::axiom_seq_new_index
+(declare-fun req%pervasive.seq.axiom_seq_new_index. (Type Int Fun Int) Bool)
+(axiom (forall ((A& Type) (len@ Int) (f@ Fun) (i@ Int)) (!
+   (= (req%pervasive.seq.axiom_seq_new_index. A& len@ f@ i@) (axiom_location ("failed precondition")
+     (and
+      (<= 0 i@)
+      (< i@ len@)
+   )))
+   :pattern ((req%pervasive.seq.axiom_seq_new_index. A& len@ f@ i@))
+)))
+
+;; Function-Axioms crate::pervasive::seq::axiom_seq_new_index
+(declare-fun ens%pervasive.seq.axiom_seq_new_index. (Type Int Fun Int) Bool)
+(axiom (forall ((A& Type) (len@ Int) (f@ Fun) (i@ Int)) (!
+   (= (ens%pervasive.seq.axiom_seq_new_index. A& len@ f@ i@) (= (pervasive.seq.Seq.index.?
+      A& (pervasive.seq.Seq.new.? A& (I len@) (Poly%fun%1. f@)) (I i@)
+     ) (apply Poly f@ (I i@))
+   ))
+   :pattern ((ens%pervasive.seq.axiom_seq_new_index. A& len@ f@ i@))
+)))
+(axiom (forall ((A& Type) (len$ Poly) (f$ Poly) (i$ Poly)) (!
+   (=>
+    (and
+     (has_type len$ NAT)
+     (has_type f$ (TYPE%fun%1. INT A&))
+     (has_type i$ INT)
+    )
+    (=>
+     (and
+      (<= 0 (%I i$))
+      (< (%I i$) (%I len$))
+     )
+     (= (pervasive.seq.Seq.index.? A& (pervasive.seq.Seq.new.? A& len$ f$) i$) (apply Poly
+       (%Poly%fun%1. f$) i$
+   ))))
+   :pattern ((pervasive.seq.Seq.index.? A& (pervasive.seq.Seq.new.? A& len$ f$) i$))
+)))
+
+;; Function-Axioms crate::pervasive::seq::axiom_seq_push_len
+(declare-fun ens%pervasive.seq.axiom_seq_push_len. (Type Poly Poly) Bool)
+(axiom (forall ((A& Type) (s@ Poly) (a@ Poly)) (!
+   (= (ens%pervasive.seq.axiom_seq_push_len. A& s@ a@) (= (pervasive.seq.Seq.len.? A& (
+       pervasive.seq.Seq.push.? A& s@ a@
+      )
+     ) (nClip (+ (pervasive.seq.Seq.len.? A& s@) 1))
+   ))
+   :pattern ((ens%pervasive.seq.axiom_seq_push_len. A& s@ a@))
+)))
+(axiom (forall ((A& Type) (s$ Poly) (a$ Poly)) (!
+   (=>
+    (and
+     (has_type s$ (TYPE%pervasive.seq.Seq. A&))
+     (has_type a$ A&)
+    )
+    (= (pervasive.seq.Seq.len.? A& (pervasive.seq.Seq.push.? A& s$ a$)) (nClip (+ (pervasive.seq.Seq.len.?
+        A& s$
+       ) 1
+   ))))
+   :pattern ((pervasive.seq.Seq.len.? A& (pervasive.seq.Seq.push.? A& s$ a$)))
+)))
+
+;; Function-Specs crate::pervasive::seq::axiom_seq_push_index_same
+(declare-fun req%pervasive.seq.axiom_seq_push_index_same. (Type Poly Poly Int) Bool)
+(axiom (forall ((A& Type) (s@ Poly) (a@ Poly) (i@ Int)) (!
+   (= (req%pervasive.seq.axiom_seq_push_index_same. A& s@ a@ i@) (axiom_location ("failed precondition")
+     (= i@ (pervasive.seq.Seq.len.? A& s@))
+   ))
+   :pattern ((req%pervasive.seq.axiom_seq_push_index_same. A& s@ a@ i@))
+)))
+
+;; Function-Axioms crate::pervasive::seq::axiom_seq_push_index_same
+(declare-fun ens%pervasive.seq.axiom_seq_push_index_same. (Type Poly Poly Int) Bool)
+(axiom (forall ((A& Type) (s@ Poly) (a@ Poly) (i@ Int)) (!
+   (= (ens%pervasive.seq.axiom_seq_push_index_same. A& s@ a@ i@) (= (pervasive.seq.Seq.index.?
+      A& (pervasive.seq.Seq.push.? A& s@ a@) (I i@)
+     ) a@
+   ))
+   :pattern ((ens%pervasive.seq.axiom_seq_push_index_same. A& s@ a@ i@))
+)))
+(axiom (forall ((A& Type) (s$ Poly) (a$ Poly) (i$ Poly)) (!
+   (=>
+    (and
+     (has_type s$ (TYPE%pervasive.seq.Seq. A&))
+     (has_type a$ A&)
+     (has_type i$ INT)
+    )
+    (=>
+     (= (%I i$) (pervasive.seq.Seq.len.? A& s$))
+     (= (pervasive.seq.Seq.index.? A& (pervasive.seq.Seq.push.? A& s$ a$) i$) a$)
+   ))
+   :pattern ((pervasive.seq.Seq.index.? A& (pervasive.seq.Seq.push.? A& s$ a$) i$))
+)))
+
+;; Function-Specs crate::pervasive::seq::axiom_seq_push_index_different
+(declare-fun req%pervasive.seq.axiom_seq_push_index_different. (Type Poly Poly Int)
+ Bool
+)
+(axiom (forall ((A& Type) (s@ Poly) (a@ Poly) (i@ Int)) (!
+   (= (req%pervasive.seq.axiom_seq_push_index_different. A& s@ a@ i@) (axiom_location
+     ("failed precondition") (and
+      (<= 0 i@)
+      (< i@ (pervasive.seq.Seq.len.? A& s@))
+   )))
+   :pattern ((req%pervasive.seq.axiom_seq_push_index_different. A& s@ a@ i@))
+)))
+
+;; Function-Axioms crate::pervasive::seq::axiom_seq_push_index_different
+(declare-fun ens%pervasive.seq.axiom_seq_push_index_different. (Type Poly Poly Int)
+ Bool
+)
+(axiom (forall ((A& Type) (s@ Poly) (a@ Poly) (i@ Int)) (!
+   (= (ens%pervasive.seq.axiom_seq_push_index_different. A& s@ a@ i@) (= (pervasive.seq.Seq.index.?
+      A& (pervasive.seq.Seq.push.? A& s@ a@) (I i@)
+     ) (pervasive.seq.Seq.index.? A& s@ (I i@))
+   ))
+   :pattern ((ens%pervasive.seq.axiom_seq_push_index_different. A& s@ a@ i@))
+)))
+(axiom (forall ((A& Type) (s$ Poly) (a$ Poly) (i$ Poly)) (!
+   (=>
+    (and
+     (has_type s$ (TYPE%pervasive.seq.Seq. A&))
+     (has_type a$ A&)
+     (has_type i$ INT)
+    )
+    (=>
+     (and
+      (<= 0 (%I i$))
+      (< (%I i$) (pervasive.seq.Seq.len.? A& s$))
+     )
+     (= (pervasive.seq.Seq.index.? A& (pervasive.seq.Seq.push.? A& s$ a$) i$) (pervasive.seq.Seq.index.?
+       A& s$ i$
+   ))))
+   :pattern ((pervasive.seq.Seq.index.? A& (pervasive.seq.Seq.push.? A& s$ a$) i$))
+)))
+
+;; Function-Specs crate::pervasive::seq::axiom_seq_update_len
+(declare-fun req%pervasive.seq.axiom_seq_update_len. (Type Poly Int Poly) Bool)
+(axiom (forall ((A& Type) (s@ Poly) (i@ Int) (a@ Poly)) (!
+   (= (req%pervasive.seq.axiom_seq_update_len. A& s@ i@ a@) (axiom_location ("failed precondition")
+     (and
+      (<= 0 i@)
+      (< i@ (pervasive.seq.Seq.len.? A& s@))
+   )))
+   :pattern ((req%pervasive.seq.axiom_seq_update_len. A& s@ i@ a@))
+)))
+
+;; Function-Axioms crate::pervasive::seq::axiom_seq_update_len
+(declare-fun ens%pervasive.seq.axiom_seq_update_len. (Type Poly Int Poly) Bool)
+(axiom (forall ((A& Type) (s@ Poly) (i@ Int) (a@ Poly)) (!
+   (= (ens%pervasive.seq.axiom_seq_update_len. A& s@ i@ a@) (= (pervasive.seq.Seq.len.?
+      A& (pervasive.seq.Seq.update.? A& s@ (I i@) a@)
+     ) (pervasive.seq.Seq.len.? A& s@)
+   ))
+   :pattern ((ens%pervasive.seq.axiom_seq_update_len. A& s@ i@ a@))
+)))
+(axiom (forall ((A& Type) (s$ Poly) (i$ Poly) (a$ Poly)) (!
+   (=>
+    (and
+     (has_type s$ (TYPE%pervasive.seq.Seq. A&))
+     (has_type i$ INT)
+     (has_type a$ A&)
+    )
+    (=>
+     (and
+      (<= 0 (%I i$))
+      (< (%I i$) (pervasive.seq.Seq.len.? A& s$))
+     )
+     (= (pervasive.seq.Seq.len.? A& (pervasive.seq.Seq.update.? A& s$ i$ a$)) (pervasive.seq.Seq.len.?
+       A& s$
+   ))))
+   :pattern ((pervasive.seq.Seq.len.? A& (pervasive.seq.Seq.update.? A& s$ i$ a$)))
+)))
+
+;; Function-Specs crate::pervasive::seq::axiom_seq_update_same
+(declare-fun req%pervasive.seq.axiom_seq_update_same. (Type Poly Int Poly) Bool)
+(axiom (forall ((A& Type) (s@ Poly) (i@ Int) (a@ Poly)) (!
+   (= (req%pervasive.seq.axiom_seq_update_same. A& s@ i@ a@) (axiom_location ("failed precondition")
+     (and
+      (<= 0 i@)
+      (< i@ (pervasive.seq.Seq.len.? A& s@))
+   )))
+   :pattern ((req%pervasive.seq.axiom_seq_update_same. A& s@ i@ a@))
+)))
+
+;; Function-Axioms crate::pervasive::seq::axiom_seq_update_same
+(declare-fun ens%pervasive.seq.axiom_seq_update_same. (Type Poly Int Poly) Bool)
+(axiom (forall ((A& Type) (s@ Poly) (i@ Int) (a@ Poly)) (!
+   (= (ens%pervasive.seq.axiom_seq_update_same. A& s@ i@ a@) (= (pervasive.seq.Seq.index.?
+      A& (pervasive.seq.Seq.update.? A& s@ (I i@) a@) (I i@)
+     ) a@
+   ))
+   :pattern ((ens%pervasive.seq.axiom_seq_update_same. A& s@ i@ a@))
+)))
+(axiom (forall ((A& Type) (s$ Poly) (i$ Poly) (a$ Poly)) (!
+   (=>
+    (and
+     (has_type s$ (TYPE%pervasive.seq.Seq. A&))
+     (has_type i$ INT)
+     (has_type a$ A&)
+    )
+    (=>
+     (and
+      (<= 0 (%I i$))
+      (< (%I i$) (pervasive.seq.Seq.len.? A& s$))
+     )
+     (= (pervasive.seq.Seq.index.? A& (pervasive.seq.Seq.update.? A& s$ i$ a$) i$) a$)
+   ))
+   :pattern ((pervasive.seq.Seq.index.? A& (pervasive.seq.Seq.update.? A& s$ i$ a$) i$))
+)))
+
+;; Function-Specs crate::pervasive::seq::axiom_seq_update_different
+(declare-fun req%pervasive.seq.axiom_seq_update_different. (Type Poly Int Int Poly)
+ Bool
+)
+(axiom (forall ((A& Type) (s@ Poly) (i1@ Int) (i2@ Int) (a@ Poly)) (!
+   (= (req%pervasive.seq.axiom_seq_update_different. A& s@ i1@ i2@ a@) (and
+     (axiom_location ("failed precondition") (and
+       (<= 0 i1@)
+       (< i1@ (pervasive.seq.Seq.len.? A& s@))
+     ))
+     (axiom_location ("failed precondition") (and
+       (<= 0 i2@)
+       (< i2@ (pervasive.seq.Seq.len.? A& s@))
+     ))
+     (axiom_location ("failed precondition") (not (= i1@ i2@)))
+   ))
+   :pattern ((req%pervasive.seq.axiom_seq_update_different. A& s@ i1@ i2@ a@))
+)))
+
+;; Function-Axioms crate::pervasive::seq::axiom_seq_update_different
+(declare-fun ens%pervasive.seq.axiom_seq_update_different. (Type Poly Int Int Poly)
+ Bool
+)
+(axiom (forall ((A& Type) (s@ Poly) (i1@ Int) (i2@ Int) (a@ Poly)) (!
+   (= (ens%pervasive.seq.axiom_seq_update_different. A& s@ i1@ i2@ a@) (= (pervasive.seq.Seq.index.?
+      A& (pervasive.seq.Seq.update.? A& s@ (I i2@) a@) (I i1@)
+     ) (pervasive.seq.Seq.index.? A& s@ (I i1@))
+   ))
+   :pattern ((ens%pervasive.seq.axiom_seq_update_different. A& s@ i1@ i2@ a@))
+)))
+(axiom (forall ((A& Type) (s$ Poly) (i1$ Poly) (i2$ Poly) (a$ Poly)) (!
+   (=>
+    (and
+     (has_type s$ (TYPE%pervasive.seq.Seq. A&))
+     (has_type i1$ INT)
+     (has_type i2$ INT)
+     (has_type a$ A&)
+    )
+    (=>
+     (and
+      (and
+       (and
+        (<= 0 (%I i1$))
+        (< (%I i1$) (pervasive.seq.Seq.len.? A& s$))
+       )
+       (and
+        (<= 0 (%I i2$))
+        (< (%I i2$) (pervasive.seq.Seq.len.? A& s$))
+      ))
+      (not (= i1$ i2$))
+     )
+     (= (pervasive.seq.Seq.index.? A& (pervasive.seq.Seq.update.? A& s$ i2$ a$) i1$) (pervasive.seq.Seq.index.?
+       A& s$ i1$
+   ))))
+   :pattern ((pervasive.seq.Seq.index.? A& (pervasive.seq.Seq.update.? A& s$ i2$ a$) i1$))
+)))
+
+;; Function-Axioms crate::pervasive::seq::axiom_seq_ext_equal
+(declare-fun ens%pervasive.seq.axiom_seq_ext_equal. (Type Poly Poly) Bool)
+(axiom (forall ((A& Type) (s1@ Poly) (s2@ Poly)) (!
+   (= (ens%pervasive.seq.axiom_seq_ext_equal. A& s1@ s2@) (= (pervasive.seq.Seq.ext_equal.?
+      A& s1@ s2@
+     ) (= s1@ s2@)
+   ))
+   :pattern ((ens%pervasive.seq.axiom_seq_ext_equal. A& s1@ s2@))
+)))
+(axiom (forall ((A& Type) (s1$ Poly) (s2$ Poly)) (!
+   (=>
+    (and
+     (has_type s1$ (TYPE%pervasive.seq.Seq. A&))
+     (has_type s2$ (TYPE%pervasive.seq.Seq. A&))
+    )
+    (= (pervasive.seq.Seq.ext_equal.? A& s1$ s2$) (= s1$ s2$))
+   )
+   :pattern ((pervasive.seq.Seq.ext_equal.? A& s1$ s2$))
+)))
+
+;; Function-Specs crate::pervasive::seq::axiom_seq_subrange_len
+(declare-fun req%pervasive.seq.axiom_seq_subrange_len. (Type Poly Int Int) Bool)
+(axiom (forall ((A& Type) (s@ Poly) (j@ Int) (k@ Int)) (!
+   (= (req%pervasive.seq.axiom_seq_subrange_len. A& s@ j@ k@) (axiom_location ("failed precondition")
+     (and
+      (and
+       (<= 0 j@)
+       (<= j@ k@)
+      )
+      (<= k@ (pervasive.seq.Seq.len.? A& s@))
+   )))
+   :pattern ((req%pervasive.seq.axiom_seq_subrange_len. A& s@ j@ k@))
+)))
+
+;; Function-Axioms crate::pervasive::seq::axiom_seq_subrange_len
+(declare-fun ens%pervasive.seq.axiom_seq_subrange_len. (Type Poly Int Int) Bool)
+(axiom (forall ((A& Type) (s@ Poly) (j@ Int) (k@ Int)) (!
+   (= (ens%pervasive.seq.axiom_seq_subrange_len. A& s@ j@ k@) (= (pervasive.seq.Seq.len.?
+      A& (pervasive.seq.Seq.subrange.? A& s@ (I j@) (I k@))
+     ) (- k@ j@)
+   ))
+   :pattern ((ens%pervasive.seq.axiom_seq_subrange_len. A& s@ j@ k@))
+)))
+(axiom (forall ((A& Type) (s$ Poly) (j$ Poly) (k$ Poly)) (!
+   (=>
+    (and
+     (has_type s$ (TYPE%pervasive.seq.Seq. A&))
+     (has_type j$ INT)
+     (has_type k$ INT)
+    )
+    (=>
+     (and
+      (and
+       (<= 0 (%I j$))
+       (<= (%I j$) (%I k$))
+      )
+      (<= (%I k$) (pervasive.seq.Seq.len.? A& s$))
+     )
+     (= (pervasive.seq.Seq.len.? A& (pervasive.seq.Seq.subrange.? A& s$ j$ k$)) (- (%I k$)
+       (%I j$)
+   ))))
+   :pattern ((pervasive.seq.Seq.len.? A& (pervasive.seq.Seq.subrange.? A& s$ j$ k$)))
+)))
+
+;; Function-Specs crate::pervasive::seq::axiom_seq_subrange_index
+(declare-fun req%pervasive.seq.axiom_seq_subrange_index. (Type Poly Int Int Int) Bool)
+(axiom (forall ((A& Type) (s@ Poly) (j@ Int) (k@ Int) (i@ Int)) (!
+   (= (req%pervasive.seq.axiom_seq_subrange_index. A& s@ j@ k@ i@) (and
+     (axiom_location ("failed precondition") (and
+       (and
+        (<= 0 j@)
+        (<= j@ k@)
+       )
+       (<= k@ (pervasive.seq.Seq.len.? A& s@))
+     ))
+     (axiom_location ("failed precondition") (and
+       (<= 0 i@)
+       (< i@ (- k@ j@))
+   ))))
+   :pattern ((req%pervasive.seq.axiom_seq_subrange_index. A& s@ j@ k@ i@))
+)))
+
+;; Function-Axioms crate::pervasive::seq::axiom_seq_subrange_index
+(declare-fun ens%pervasive.seq.axiom_seq_subrange_index. (Type Poly Int Int Int) Bool)
+(axiom (forall ((A& Type) (s@ Poly) (j@ Int) (k@ Int) (i@ Int)) (!
+   (= (ens%pervasive.seq.axiom_seq_subrange_index. A& s@ j@ k@ i@) (= (pervasive.seq.Seq.index.?
+      A& (pervasive.seq.Seq.subrange.? A& s@ (I j@) (I k@)) (I i@)
+     ) (pervasive.seq.Seq.index.? A& s@ (I (+ i@ j@)))
+   ))
+   :pattern ((ens%pervasive.seq.axiom_seq_subrange_index. A& s@ j@ k@ i@))
+)))
+(axiom (forall ((A& Type) (s$ Poly) (j$ Poly) (k$ Poly) (i$ Poly)) (!
+   (=>
+    (and
+     (has_type s$ (TYPE%pervasive.seq.Seq. A&))
+     (has_type j$ INT)
+     (has_type k$ INT)
+     (has_type i$ INT)
+    )
+    (=>
+     (and
+      (and
+       (and
+        (<= 0 (%I j$))
+        (<= (%I j$) (%I k$))
+       )
+       (<= (%I k$) (pervasive.seq.Seq.len.? A& s$))
+      )
+      (and
+       (<= 0 (%I i$))
+       (< (%I i$) (- (%I k$) (%I j$)))
+     ))
+     (= (pervasive.seq.Seq.index.? A& (pervasive.seq.Seq.subrange.? A& s$ j$ k$) i$) (pervasive.seq.Seq.index.?
+       A& s$ (I (+ (%I i$) (%I j$)))
+   ))))
+   :pattern ((pervasive.seq.Seq.index.? A& (pervasive.seq.Seq.subrange.? A& s$ j$ k$)
+     i$
+)))))
+
+;; Function-Axioms crate::pervasive::seq::axiom_seq_add_len
+(declare-fun ens%pervasive.seq.axiom_seq_add_len. (Type Poly Poly) Bool)
+(axiom (forall ((A& Type) (s1@ Poly) (s2@ Poly)) (!
+   (= (ens%pervasive.seq.axiom_seq_add_len. A& s1@ s2@) (= (pervasive.seq.Seq.len.? A&
+      (pervasive.seq.Seq.add.? A& s1@ s2@)
+     ) (nClip (+ (pervasive.seq.Seq.len.? A& s1@) (pervasive.seq.Seq.len.? A& s2@)))
+   ))
+   :pattern ((ens%pervasive.seq.axiom_seq_add_len. A& s1@ s2@))
+)))
+(axiom (forall ((A& Type) (s1$ Poly) (s2$ Poly)) (!
+   (=>
+    (and
+     (has_type s1$ (TYPE%pervasive.seq.Seq. A&))
+     (has_type s2$ (TYPE%pervasive.seq.Seq. A&))
+    )
+    (= (pervasive.seq.Seq.len.? A& (pervasive.seq.Seq.add.? A& s1$ s2$)) (nClip (+ (pervasive.seq.Seq.len.?
+        A& s1$
+       ) (pervasive.seq.Seq.len.? A& s2$)
+   ))))
+   :pattern ((pervasive.seq.Seq.len.? A& (pervasive.seq.Seq.add.? A& s1$ s2$)))
+)))
+
+;; Function-Specs crate::pervasive::seq::axiom_seq_add_index1
+(declare-fun req%pervasive.seq.axiom_seq_add_index1. (Type Poly Poly Int) Bool)
+(axiom (forall ((A& Type) (s1@ Poly) (s2@ Poly) (i@ Int)) (!
+   (= (req%pervasive.seq.axiom_seq_add_index1. A& s1@ s2@ i@) (axiom_location ("failed precondition")
+     (and
+      (<= 0 i@)
+      (< i@ (pervasive.seq.Seq.len.? A& s1@))
+   )))
+   :pattern ((req%pervasive.seq.axiom_seq_add_index1. A& s1@ s2@ i@))
+)))
+
+;; Function-Axioms crate::pervasive::seq::axiom_seq_add_index1
+(declare-fun ens%pervasive.seq.axiom_seq_add_index1. (Type Poly Poly Int) Bool)
+(axiom (forall ((A& Type) (s1@ Poly) (s2@ Poly) (i@ Int)) (!
+   (= (ens%pervasive.seq.axiom_seq_add_index1. A& s1@ s2@ i@) (= (pervasive.seq.Seq.index.?
+      A& (pervasive.seq.Seq.add.? A& s1@ s2@) (I i@)
+     ) (pervasive.seq.Seq.index.? A& s1@ (I i@))
+   ))
+   :pattern ((ens%pervasive.seq.axiom_seq_add_index1. A& s1@ s2@ i@))
+)))
+(axiom (forall ((A& Type) (s1$ Poly) (s2$ Poly) (i$ Poly)) (!
+   (=>
+    (and
+     (has_type s1$ (TYPE%pervasive.seq.Seq. A&))
+     (has_type s2$ (TYPE%pervasive.seq.Seq. A&))
+     (has_type i$ INT)
+    )
+    (=>
+     (and
+      (<= 0 (%I i$))
+      (< (%I i$) (pervasive.seq.Seq.len.? A& s1$))
+     )
+     (= (pervasive.seq.Seq.index.? A& (pervasive.seq.Seq.add.? A& s1$ s2$) i$) (pervasive.seq.Seq.index.?
+       A& s1$ i$
+   ))))
+   :pattern ((pervasive.seq.Seq.index.? A& (pervasive.seq.Seq.add.? A& s1$ s2$) i$))
+)))
+
+;; Function-Specs crate::pervasive::seq::axiom_seq_add_index2
+(declare-fun req%pervasive.seq.axiom_seq_add_index2. (Type Poly Poly Int) Bool)
+(axiom (forall ((A& Type) (s1@ Poly) (s2@ Poly) (i@ Int)) (!
+   (= (req%pervasive.seq.axiom_seq_add_index2. A& s1@ s2@ i@) (and
+     (axiom_location ("failed precondition") (<= 0 (pervasive.seq.Seq.len.? A& s1@)))
+     (axiom_location ("failed precondition") (< i@ (+ (pervasive.seq.Seq.len.? A& s1@) (pervasive.seq.Seq.len.?
+         A& s2@
+   ))))))
+   :pattern ((req%pervasive.seq.axiom_seq_add_index2. A& s1@ s2@ i@))
+)))
+
+;; Function-Axioms crate::pervasive::seq::axiom_seq_add_index2
+(declare-fun ens%pervasive.seq.axiom_seq_add_index2. (Type Poly Poly Int) Bool)
+(axiom (forall ((A& Type) (s1@ Poly) (s2@ Poly) (i@ Int)) (!
+   (= (ens%pervasive.seq.axiom_seq_add_index2. A& s1@ s2@ i@) (= (pervasive.seq.Seq.index.?
+      A& (pervasive.seq.Seq.add.? A& s1@ s2@) (I i@)
+     ) (pervasive.seq.Seq.index.? A& s2@ (I (- i@ (pervasive.seq.Seq.len.? A& s1@))))
+   ))
+   :pattern ((ens%pervasive.seq.axiom_seq_add_index2. A& s1@ s2@ i@))
+)))
+(axiom (forall ((A& Type) (s1$ Poly) (s2$ Poly) (i$ Poly)) (!
+   (=>
+    (and
+     (has_type s1$ (TYPE%pervasive.seq.Seq. A&))
+     (has_type s2$ (TYPE%pervasive.seq.Seq. A&))
+     (has_type i$ INT)
+    )
+    (=>
+     (and
+      (<= 0 (pervasive.seq.Seq.len.? A& s1$))
+      (< (%I i$) (+ (pervasive.seq.Seq.len.? A& s1$) (pervasive.seq.Seq.len.? A& s2$)))
+     )
+     (= (pervasive.seq.Seq.index.? A& (pervasive.seq.Seq.add.? A& s1$ s2$) i$) (pervasive.seq.Seq.index.?
+       A& s2$ (I (- (%I i$) (pervasive.seq.Seq.len.? A& s1$)))
+   ))))
+   :pattern ((pervasive.seq.Seq.index.? A& (pervasive.seq.Seq.add.? A& s1$ s2$) i$))
+)))
+
+;; Function-Specs crate::pervasive::assert
+(declare-fun req%pervasive.assert. (Bool) Bool)
+(axiom (forall ((b@ Bool)) (!
+   (= (req%pervasive.assert. b@) b@)
+   :pattern ((req%pervasive.assert. b@))
+)))
+
+;; Function-Axioms crate::pervasive::assert
+(declare-fun ens%pervasive.assert. (Bool) Bool)
+(axiom (forall ((b@ Bool)) (!
+   (= (ens%pervasive.assert. b@) b@)
+   :pattern ((ens%pervasive.assert. b@))
+)))
+
+;; Function-Specs crate::pervasive::string::StrSlice::substring
+(declare-fun req%pervasive.string.StrSlice.substring. (pervasive.string.StrSlice. Int
+  Int
+ ) Bool
+)
+(axiom (forall ((self@ pervasive.string.StrSlice.) (from@ Int) (to@ Int)) (!
+   (= (req%pervasive.string.StrSlice.substring. self@ from@ to@) (and
+     (axiom_location ("failed precondition") (< from@ (pervasive.seq.Seq.len.? (UINT 8) (
+         Poly%pervasive.seq.Seq<u8.>. (pervasive.string.StrSlice.view.? (Poly%pervasive.string.StrSlice.
+           self@
+     ))))))
+     (axiom_location ("failed precondition") (<= to@ (pervasive.seq.Seq.len.? (UINT 8) (Poly%pervasive.seq.Seq<u8.>.
+         (pervasive.string.StrSlice.view.? (Poly%pervasive.string.StrSlice. self@))
+   ))))))
+   :pattern ((req%pervasive.string.StrSlice.substring. self@ from@ to@))
+)))
+
+;; Function-Axioms crate::pervasive::string::StrSlice::substring
+(declare-fun ens%pervasive.string.StrSlice.substring. (pervasive.string.StrSlice. Int
+  Int pervasive.string.StrSlice.
+ ) Bool
+)
+(axiom (forall ((self@ pervasive.string.StrSlice.) (from@ Int) (to@ Int) (ret@ pervasive.string.StrSlice.))
+  (!
+   (= (ens%pervasive.string.StrSlice.substring. self@ from@ to@ ret@) (= (pervasive.string.StrSlice.view.?
+      (Poly%pervasive.string.StrSlice. ret@)
+     ) (%Poly%pervasive.seq.Seq<u8.>. (pervasive.seq.Seq.subrange.? (UINT 8) (Poly%pervasive.seq.Seq<u8.>.
+        (pervasive.string.StrSlice.view.? (Poly%pervasive.string.StrSlice. self@))
+       ) (I from@) (I to@)
+   ))))
+   :pattern ((ens%pervasive.string.StrSlice.substring. self@ from@ to@ ret@))
+)))
+
+;; Function-Def crate::main
+(check-valid
+ (axiom fuel_defaults)
+ (block)
+)
+
+;(declare-const str%GREETING (Array Int Int))
+;(axiom
+; (and
+;  (= (store str%GREETING 0 10) str%GREETING)
+;  (= (store str%GREETING 1 11) str%GREETING)
+;  (= (store str%GREETING 2 12) str%GREETING)
+;  (= (store str%GREETING 3 12) str%GREETING)
+;  (= (store str%GREETING 4 13) str%GREETING)
+; )
+;)
+(axiom
+ (and
+  (pervasive.string.StrSlice.is_ascii.? (Poly%pervasive.string.StrSlice. (GREETING.?)))
+  (= (pervasive.seq.Seq.len.? (UINT 8) (
+        Poly%pervasive.seq.Seq<u8.>. (pervasive.string.StrSlice.view.? (Poly%pervasive.string.StrSlice. (GREETING.?)
+    )))) 10)
+
+  (= (pervasive.seq.Seq.index.? (UINT 8) (Poly%pervasive.seq.Seq<u8.>. (pervasive.string.StrSlice.view.? (Poly%pervasive.string.StrSlice. (GREETING.?)))) (I 0)) (I 10))
+  (= (pervasive.seq.Seq.index.? (UINT 8) (Poly%pervasive.seq.Seq<u8.>. (pervasive.string.StrSlice.view.? (Poly%pervasive.string.StrSlice. (GREETING.?)))) (I 1)) (I 11))
+  (= (pervasive.seq.Seq.index.? (UINT 8) (Poly%pervasive.seq.Seq<u8.>. (pervasive.string.StrSlice.view.? (Poly%pervasive.string.StrSlice. (GREETING.?)))) (I 2)) (I 12))
+  (= (pervasive.seq.Seq.index.? (UINT 8) (Poly%pervasive.seq.Seq<u8.>. (pervasive.string.StrSlice.view.? (Poly%pervasive.string.StrSlice. (GREETING.?)))) (I 3)) (I 12))
+  (= (pervasive.seq.Seq.index.? (UINT 8) (Poly%pervasive.seq.Seq<u8.>. (pervasive.string.StrSlice.view.? (Poly%pervasive.string.StrSlice. (GREETING.?)))) (I 4)) (I 13))
+ )
+)
+ 
+
+;(declare-const str%PARTIAL_GREETING (Array Int Int))
+;(axiom
+; (and
+;  (= (store str%PARTIAL_GREETING 0 10) str%PARTIAL_GREETING)
+;  (= (store str%PARTIAL_GREETING 1 11) str%PARTIAL_GREETING)
+;  (= (store str%PARTIAL_GREETING 2 12) str%PARTIAL_GREETING)
+;  (= (store str%PARTIAL_GREETING 3 12) str%PARTIAL_GREETING)
+;  (= (store str%PARTIAL_GREETING 4 13) str%PARTIAL_GREETING)
+; )
+;)
+(axiom
+ (and
+  (pervasive.string.StrSlice.is_ascii.? (Poly%pervasive.string.StrSlice. (PARTIAL_GREETING.?)))
+  (= (pervasive.seq.Seq.len.? (UINT 8) (
+        Poly%pervasive.seq.Seq<u8.>. (pervasive.string.StrSlice.view.? (Poly%pervasive.string.StrSlice. (PARTIAL_GREETING.?)
+    )))) 5)
+
+  (= (pervasive.seq.Seq.index.? (UINT 8) (Poly%pervasive.seq.Seq<u8.>. (pervasive.string.StrSlice.view.? (Poly%pervasive.string.StrSlice. (PARTIAL_GREETING.?)))) (I 0)) (I 10))
+  (= (pervasive.seq.Seq.index.? (UINT 8) (Poly%pervasive.seq.Seq<u8.>. (pervasive.string.StrSlice.view.? (Poly%pervasive.string.StrSlice. (PARTIAL_GREETING.?)))) (I 1)) (I 11))
+  (= (pervasive.seq.Seq.index.? (UINT 8) (Poly%pervasive.seq.Seq<u8.>. (pervasive.string.StrSlice.view.? (Poly%pervasive.string.StrSlice. (PARTIAL_GREETING.?)))) (I 2)) (I 12))
+  (= (pervasive.seq.Seq.index.? (UINT 8) (Poly%pervasive.seq.Seq<u8.>. (pervasive.string.StrSlice.view.? (Poly%pervasive.string.StrSlice. (PARTIAL_GREETING.?)))) (I 3)) (I 12))
+  (= (pervasive.seq.Seq.index.? (UINT 8) (Poly%pervasive.seq.Seq<u8.>. (pervasive.string.StrSlice.view.? (Poly%pervasive.string.StrSlice. (PARTIAL_GREETING.?)))) (I 4)) (I 13))
+ )
+)
+
+;; Function-Def crate::string_lit
+(check-valid
+ (declare-const tmp%1@ pervasive.string.StrSlice.)
+ (declare-const tmp%2@ pervasive.string.StrSlice.)
+ (declare-const tmp%3@ Bool)
+ (declare-const tmp%4@ Bool)
+ (declare-const tmp%5@ pervasive.string.StrSlice.)
+ (declare-const tmp%6@ Bool)
+ (declare-const tmp%7@ Bool)
+ (declare-const part@ pervasive.string.StrSlice.)
+ (axiom fuel_defaults)
+ (block
+  ; reveal GREETING
+  ; reveal PARTIAL_GREETING
+  (assume
+   (= tmp%3@ (pervasive.string.StrSlice.is_ascii.? (Poly%pervasive.string.StrSlice. (GREETING.?))))
+  )
+  (block
+   (assert
+    ("assertion failure A")
+    (req%pervasive.assert. tmp%3@)
+   )
+   (assume
+    (ens%pervasive.assert. tmp%3@)
+  ))
+  (assume
+   (= tmp%4@ (pervasive.string.StrSlice.is_ascii.? (Poly%pervasive.string.StrSlice. (PARTIAL_GREETING.?))))
+  )
+  (block
+   (assert
+    ("assertion failure B")
+    (req%pervasive.assert. tmp%4@)
+   )
+   (assume
+    (ens%pervasive.assert. tmp%4@)
+  ))
+  (assume
+   (= tmp%5@ (GREETING.?))
+  )
+  (block
+   (assert
+    ("precondition not satisfied")
+    (req%pervasive.string.StrSlice.substring. tmp%5@ 0 5)
+   )
+   (assume
+    (ens%pervasive.string.StrSlice.substring. tmp%5@ 0 5 part@)
+  ))
+  (assume
+   (= tmp%6@ (pervasive.seq.Seq.ext_equal.? (UINT 8) (Poly%pervasive.seq.Seq<u8.>. (pervasive.string.StrSlice.view.?
+       (Poly%pervasive.string.StrSlice. part@)
+      )
+     ) (Poly%pervasive.seq.Seq<u8.>. (pervasive.string.StrSlice.view.? (Poly%pervasive.string.StrSlice.
+        (PARTIAL_GREETING.?)
+  ))))))
+  (block
+   (assert
+    ("assertion failure")
+    (req%pervasive.assert. tmp%6@)
+   )
+   (assume
+    (ens%pervasive.assert. tmp%6@)
+  ))
+  (assume
+   (= tmp%7@ (= (pervasive.string.StrSlice.view.? (Poly%pervasive.string.StrSlice. part@))
+     (pervasive.string.StrSlice.view.? (Poly%pervasive.string.StrSlice. (PARTIAL_GREETING.?)))
+  )))
+  (block
+   (assert
+    ("assertion failure C")
+    (req%pervasive.assert. tmp%7@)
+   )
+   (assume
+    (ens%pervasive.assert. tmp%7@)
+))))
+
+;; Function-Check-Recommends crate::string_lit
+(check-valid
+ (declare-const tmp%1@ pervasive.string.StrSlice.)
+ (declare-const tmp%2@ pervasive.string.StrSlice.)
+ (declare-const tmp%3@ Bool)
+ (declare-const tmp%4@ Bool)
+ (declare-const tmp%5@ pervasive.string.StrSlice.)
+ (declare-const tmp%6@ Bool)
+ (declare-const part@ pervasive.string.StrSlice.)
+ (axiom fuel_defaults)
+ (block
+  (assume
+   (= tmp%1@ (GREETING.?))
+  )
+  (block)
+  (assume
+   (= tmp%2@ (PARTIAL_GREETING.?))
+  )
+  (block)
+  (assume
+   (= tmp%3@ (pervasive.string.StrSlice.is_ascii.? (Poly%pervasive.string.StrSlice. (GREETING.?))))
+  )
+  (block
+   (assume
+    (ens%pervasive.assert. tmp%3@)
+  ))
+  (assume
+   (= tmp%4@ (pervasive.string.StrSlice.is_ascii.? (Poly%pervasive.string.StrSlice. (PARTIAL_GREETING.?))))
+  )
+  (block
+   (assume
+    (ens%pervasive.assert. tmp%4@)
+  ))
+  (assume
+   (= tmp%5@ (GREETING.?))
+  )
+  (block
+   (assume
+    (ens%pervasive.string.StrSlice.substring. tmp%5@ 0 5 part@)
+  ))
+  (assume
+   (= tmp%6@ (= (pervasive.string.StrSlice.view.? (Poly%pervasive.string.StrSlice. part@))
+     (pervasive.string.StrSlice.view.? (Poly%pervasive.string.StrSlice. (PARTIAL_GREETING.?)))
+  )))
+  (block
+   (assume
+    (ens%pervasive.assert. tmp%6@)
+))))
