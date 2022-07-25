@@ -21,7 +21,7 @@ use air::scope_map::ScopeMap;
 use num_bigint::BigInt;
 use num_traits::identities::Zero;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 type Arg = (Exp, Typ);
 type Args = Arc<Vec<Arg>>;
@@ -107,7 +107,7 @@ impl State {
             dont_rename: HashSet::new(),
             ret_post: None,
             disable_recommends: 0,
-            fun_ssts: Arc::new(Mutex::new(HashMap::new())),
+            fun_ssts: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -203,7 +203,9 @@ impl State {
         });
         let exp = crate::sst_visitor::map_exp_visitor_result(&exp, &mut |exp| match &exp.x {
             ExpX::Call(fun, typs, args) => {
-                if let Some(SstInfo { inline: Some(inline), params, body }) = fun_ssts.lock().unwrap().get(fun) {
+                if let Some(SstInfo { inline: Some(inline), params, body }) =
+                    fun_ssts.read().unwrap().get(fun)
+                {
                     let typ_bounds = &inline.typ_bounds;
                     let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
                     let mut substs: HashMap<UniqueIdent, Exp> = HashMap::new();

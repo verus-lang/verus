@@ -25,7 +25,7 @@ use air::ast_util::{
 };
 use air::errors::ErrorLabel;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 pub struct SstInline {
     pub(crate) typ_bounds: TypBounds,
@@ -37,7 +37,7 @@ pub struct SstInfo {
     pub(crate) body: Exp,
 }
 
-pub type SstMap = Arc<Mutex<HashMap<Fun, SstInfo>>>;
+pub type SstMap = Arc<RwLock<HashMap<Fun, SstInfo>>>;
 
 // binder for forall (typ_params params)
 pub(crate) fn func_bind_trig(
@@ -146,7 +146,7 @@ fn func_body_to_air(
         None
     };
     let info = SstInfo { inline, params: function.x.params.clone(), body: body_exp.clone() };
-    state.fun_ssts.lock().unwrap().insert(function.x.name.clone(), info);
+    state.fun_ssts.write().unwrap().insert(function.x.name.clone(), info);
 
     let mut decrease_by_stms: Vec<Stm> = Vec::new();
     let decrease_by_reqs = if let Some(req) = &function.x.decrease_when {
@@ -343,7 +343,7 @@ pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
         if let Some(body) = &function.x.body {
             let body_exp = crate::ast_to_sst::expr_to_exp_as_spec(
                 &ctx,
-                &Arc::new(Mutex::new(HashMap::new())),
+                &Arc::new(RwLock::new(HashMap::new())),
                 &params_to_pars(&function.x.params, false),
                 &body,
             )?;
