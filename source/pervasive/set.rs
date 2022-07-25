@@ -364,26 +364,21 @@ pub proof fn axiom_set_choose_len<A>(s: Set<A>)
 
 #[doc(hidden)]
 #[macro_export]
-macro_rules! set_insert_rec {
-    [$val:expr;] => {
-        $val
+macro_rules! set_internal {
+    [$($elem:expr),*] => {
+        $crate::pervasive::set::Set::empty()
+            $(.insert($elem))*
     };
-    [$val:expr;$elem:expr] => {
-        set_insert_rec![$val.insert($elem);]
-    };
-    [$val:expr;$elem:expr,$($tail:tt)*] => {
-        set_insert_rec![$val.insert($elem);$($tail)*]
-    }
 }
 
 #[macro_export]
 macro_rules! set {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::pervasive::set::set_insert_rec![$crate::pervasive::set::Set::empty();$($tail)*])
-    }
+        ::builtin_macros::verus_proof_macro_exprs!($crate::pervasive::set::set_internal!($($tail)*))
+    };
 }
 
-pub use set_insert_rec;
+pub use set_internal;
 pub use set;
 
 } // verus!
