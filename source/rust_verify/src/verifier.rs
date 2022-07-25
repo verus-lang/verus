@@ -878,7 +878,6 @@ impl Verifier {
         let mut ctx = vir::context::Ctx::new(
             &pruned_krate,
             global_ctx,
-            self.global_strings.as_ref().expect("expected global_strings").clone(),
             module.clone(),
             mono_abstract_datatypes,
             lambda_types,
@@ -1093,7 +1092,6 @@ impl Verifier {
             erasure_info,
             autoviewed_call_typs,
             unique_id: std::cell::Cell::new(0),
-            global_strings: std::sync::Arc::new(std::sync::Mutex::new(HashMap::new()))
         });
 
         // Convert HIR -> VIR
@@ -1146,7 +1144,6 @@ impl Verifier {
             ignored_functions,
         };
         self.erasure_hints = Some(erasure_hints);
-        self.global_strings = Some(ctxt.global_strings.clone());
 
         let time4 = Instant::now();
         self.time_vir = time4 - time0;

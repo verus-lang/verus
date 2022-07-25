@@ -688,19 +688,16 @@ pub fn func_def_to_air(
                 // if true then we emit the string and set the emitted to false. 
                 let spanned = &*function.clone();
                 let x = &spanned.x;
-                let vstring = ctx.global_strings.lock()
-                        .expect("expected lock on global_strings")
-                        .get(&x.name.path)
-                        .expect("expected a value in global_strings").clone();
-                if vstring.emitted == false {
-                    return Ok((Arc::new(vec![]), vec![]))
-                }
-                if vstring.inner_str.is_ascii() == false {
-                    return err_str(&function.span, "Only ASCII characters are supported for verification purposes at the moment");
-                }
+                let vstring = todo!();
+                // if vstring.emitted == false {
+                //     return Ok((Arc::new(vec![]), vec![]))
+                // }
+                // if vstring.inner_str.is_ascii() == false {
+                //     return err_str(&function.span, "Only ASCII characters are supported for verification purposes at the moment");
+                // }
 
-                let fn_prefix = fun_to_string(&function.x.name);
-                return Ok(string_to_air(&fn_prefix, vstring.inner_str.clone(), function.span.clone()));
+                // let fn_prefix = fun_to_string(&function.x.name);
+                // return Ok(string_to_air(&fn_prefix, vstring.inner_str.clone(), function.span.clone()));
             } 
 
             let (commands, snap_map) = crate::sst_to_air::body_stm_to_air(

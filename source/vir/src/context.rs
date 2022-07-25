@@ -64,7 +64,6 @@ pub struct Ctx {
     pub(crate) mono_abstract_datatypes: Vec<MonoTyp>,
     pub(crate) lambda_types: Vec<usize>,
     pub functions: Vec<Function>,
-    pub global_strings: GlobalStrings, 
     pub func_map: HashMap<Fun, Function>,
     pub(crate) funcs_with_ensure_predicate: HashSet<Fun>,
     pub(crate) datatype_map: HashMap<Path, Datatype>,
@@ -220,7 +219,6 @@ impl Ctx {
     pub fn new(
         krate: &Krate,
         global: GlobalCtx,
-        global_strings: GlobalStrings, 
         module: Path,
         mono_abstract_datatypes: Vec<MonoTyp>,
         lambda_types: Vec<usize>,
@@ -250,7 +248,6 @@ impl Ctx {
         }
         Ok(Ctx {
             module,
-            global_strings,
             datatype_is_transparent,
             datatypes_with_invariant,
             mono_abstract_datatypes,

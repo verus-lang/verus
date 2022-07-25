@@ -25,7 +25,6 @@ pub struct ContextX<'tcx> {
     pub(crate) erasure_info: ErasureInfoRef,
     pub(crate) autoviewed_call_typs: HashMap<HirId, Typ>,
     pub(crate) unique_id: std::cell::Cell<u64>,
-    pub(crate) global_strings: GlobalStrings
 }
 
 #[derive(Clone)]

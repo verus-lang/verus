@@ -789,23 +789,21 @@ fn fn_call_to_vir<'tcx>(
             ExprKind::MethodCall(_, _, [arg0 @ Expr {hir_id:_, kind: ExprKind::Path(QPath::Resolved(_,Path {res: Res::Def(_, id), ..}) ), .. }], _) => {
                 let cvir = expr_to_vir(bctx, &arg0, ExprModifier::REGULAR)?; 
                 let mypath = def_id_to_vir_path(bctx.ctxt.tcx, *id);
-                let vstring = (bctx.ctxt.global_strings.lock()
-                                    .expect("expected to have a lock on global_strings")
-                                    .get(&mypath)
-                                    .expect("reveal called on a variable not present in the global_strings dictionary")).clone();
+                todo!();
+                // let vstring = todo!();
+                // let strval = vstring.inner_str.clone();
 
-                let strval = vstring.inner_str.clone();
-
-                if vstring.emitted == false {
-                    let new_vstring = VerifiableString {
-                        inner_str: strval.clone(), 
-                        emitted: true
-                    };
-                    drop(vstring);
-                    bctx.ctxt.global_strings.lock()
-                        .expect("expected to have a lock on global_strings")
-                        .insert(mypath, Arc::new(new_vstring));
-                }
+                // if vstring.emitted == false {
+                //     let new_vstring = VerifiableString {
+                //         inner_str: strval.clone(), 
+                //         emitted: true
+                //     };
+                //     drop(vstring);
+                //     todo!();
+                //     // bctx.ctxt.global_strings.lock()
+                //     //     .expect("expected to have a lock on global_strings")
+                //     //     .insert(mypath, Arc::new(new_vstring));
+                // }
                 Ok(cvir)
             },
             _ => panic!("Expected a method call for StrSlice::reveal with one argument but did not receive it")
