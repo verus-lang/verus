@@ -1725,7 +1725,11 @@ pub fn body_stm_to_air(
             func_span.clone(),
             "function body check".to_string(),
             Arc::new(commands),
-            if is_spinoff_prover || is_bit_vector_mode { ProverChoice::Spinoff } else { ProverChoice::DefaultProver },
+            if is_spinoff_prover || is_bit_vector_mode {
+                ProverChoice::Spinoff
+            } else {
+                ProverChoice::DefaultProver
+            },
         ));
     }
     (state.commands, state.snap_map)
