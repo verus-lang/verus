@@ -12,6 +12,7 @@
  - [Tokenized State Machines](./tokenized.md)
 
    - [Overview (TODO)](tokenized-overview.md)
+     - [Strategy Reference](strategy-reference.md)
    - [Tutorial by example](tutorial-by-example.md)
 
      - [Counting to 2](./examples/counting-to-2.md)
@@ -33,5 +34,4 @@
 
 # Reference
 
-  - [Command reference](./command-reference.md)
   - [Formalism of Tokenization by monoids (TODO)](./monoid-formalism.md)
