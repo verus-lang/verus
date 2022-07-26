@@ -136,7 +136,7 @@ Now, with these operators defined, we can give a general meaning for the three t
 | `have f >= (x);`   | `require f >= x;`                   | Input argument of type `&_`             |
 | `add f += (x);`    | `assert f ## x;`<br>`update f = f + x;`  | Output argument                    |
 
-Furthermore, for a given field, the commands always go in the order `remove`s before `have`s before `add`s.
+Furthermore, for a given field, the commands always go in the order `remove` before `have` before `add`.
 There could be multiple, or none, of each one.
 The reason is that ordering would not impact the definition of the exchange function; furthermore,
 this particular ordering gives the strongest possible relation definition, so it the easiest to work with.
@@ -169,54 +169,56 @@ The general form is `add f += (x)` as above, with `x` taking the same type as fi
 The general form works for all the collection strategies.
 
 Note that there is no "special" form for either `count`, since the general form
-is perfectly suitable for those situations. (TODO what about `bool`?)
+is perfectly suitable for those situations.
 
 Also note that the special forms generate simpler proof obligations, and thus are
 easier for the SMT solver to handle.
 
+We supply, here, a reference table for all the different possible commands for each strategy:
+
 | Type          | Command                 | Meaning in transition                                                                 | Exchange Fn Parameter |
 |---------------|-------------------------|---------------------------------------------------------------------------------------|-----------------------|
-|               |                         |                                                                                       |                       |
+|&nbsp;         |                         |                                                                                       |                       |
 | `Option<V>`   | `remove f -= Some(v);`  | `require f === Some(v);`<br>`update f = None;`                                        | Input `f`             |
 | `Option<V>`   | `have f >= Some(v);`    | `require f === Some(v);`                                                              | Input `&f`            |
 | `Option<V>`   | `add f += Some(v);`     | `assert f === None;`<br>`update f = Some(v);`                                         | Output `f`            |
-|---------------|                         |                                                                                       |                       |
+|&nbsp;         |                         |                                                                                       |                       |
 | `Option<V>`   | `remove f -= (x);`      | <code>require x === None \|\| f === x;</code><br>`update f = if x === None { f } else { None };` | Input `Option<f>`     |
 | `Option<V>`   | `have f >= (x);`        | <code>require x === None \|\| f === x;</code>                                                    | Input `&Option<f>`    |
 | `Option<V>`   | `add f += (x);`         | <code>assert f === None \|\| x === None;</code><br>`update f = if x === None { f } else { x };`  | Output `Option<f>`    |
-|---------------|                         |                                                                                       |                       |
-| `Map<K, V>`   | `remove f -= [k => v];` | `require f.contains(k);`<br>`update f = f.remove(k);`                                 | Input `f`             |
-| `Map<K, V>`   | `have f >= [k => v];`   | `require f.contains(k);`                                                              | Input `&f`            |
+|&nbsp;         |                         |                                                                                       |                       |
+| `Map<K, V>`   | `remove f -= [k => v];` | `require f.contains(k) && f.index(k) === v;`<br>`update f = f.remove(k);`             | Input `f`             |
+| `Map<K, V>`   | `have f >= [k => v];`   | `require f.contains(k) && f.index(k) === v;`                                          | Input `&f`            |
 | `Map<K, V>`   | `add f += [k => v];`    | `assert !f.contains(k);`<br>`update f = f.insert(k, v);`                              | Output `f`            |
-|---------------|                         |                                                                                       |                       |
+|&nbsp;         |                         |                                                                                       |                       |
 | `Map<K, V>`   | `remove f -= (x);`      | `require x.le(f);`<br>`update f = f.remove_keys(x.dom());`                            | Input `Map<K, f>`     |
 | `Map<K, V>`   | `have f >= (x);`        | `require x.le(f);`                                                                    | Input `&Map<K, f>`    |
 | `Map<K, V>`   | `add f += (x);`         | `assert x.dom().disjoint(f.dom();)`<br>`update f = f.union_prefer_right(x);`          | Output `Map<K, f>`    |
-|---------------|                         |                                                                                       |                       |
+|&nbsp;         |                         |                                                                                       |                       |
 | `Multiset<V>` | `remove f -= {v};`      | `require f.count(v) >= 1;`<br>`update f = f.remove(v);`                               | Input `f`             |
 | `Multiset<V>` | `have f >= {v};`        | `require f.count(v) >= 1;`                                                            | Input `&f`            |
 | `Multiset<V>` | `add f += {v};`         | `update f = f.insert(v);`                                                             | Output `f`            |
-|---------------|                         |                                                                                       |                       |
+|&nbsp;         |                         |                                                                                       |                       |
 | `Multiset<V>` | `remove f -= (x);`      | `require x.le(f);`<br>`update f = f.sub(x);`                                          | Input `Multiset<f>`   |
 | `Multiset<V>` | `have f >= (x);`        | `require x.le(f);`                                                                    | Input `&Multiset<f>`  |
 | `Multiset<V>` | `add f += (x);`         | `update f = f.add(x);`                                                                | Output `Multiset<f>`  |
-|---------------|                         |                                                                                       |                       |
+|&nbsp;         |                         |                                                                                       |                       |
 | `Set<V>`      | `remove f -= {v};`      | `require f.contains(v);`<br>`update f = f.remove(v);`                                 | Input `f`             |
 | `Set<V>`      | `have f >= {v};`        | `require f.contains(v);`                                                              | Input `&f`            |
-| `Set<V>`      | `add f += {v};`         | `update f = f.insert(v);`                                                             | Output `f`            |
-|---------------|                         |                                                                                       |                       |
+| `Set<V>`      | `add f += {v};`         | `assert !f.contains(v);`<br>`update f = f.insert(v);`                                 | Output `f`            |
+|&nbsp;         |                         |                                                                                       |                       |
 | `Set<V>`      | `remove f -= (x);`      | `require x.subset_of(f);`<br>`update f = f.difference(x);`                            | Input `Set<f>`        |
 | `Set<V>`      | `have f >= (x);`        | `require x.subset_of(f);`                                                             | Input `&Set<f>`       |
-| `Set<V>`      | `add f += (x);`         | `update f = f.union(x);`                                                              | Output `Set<f>`       |
-|---------------|                         |                                                                                       |                       |
+| `Set<V>`      | `add f += (x);`         | `assert f.disjoin(t);`<br>`update f = f.union(x);`                                    | Output `Set<f>`       |
+|&nbsp;         |                         |                                                                                       |                       |
 | `nat`         | `remove f -= (x);`      | `require f >= x;`<br>`update f = f - x;`                                              | Input `f`             |
 | `nat`         | `have f >= (x);`        | `require f >= x;`                                                                     | Input `&f`            |
-| `nat`         | `add f += (x);`         | `add f += x;`                                                                         | Output `f`            |
-|---------------|                         |                                                                                       |                       |
+| `nat`         | `add f += (x);`         | `update f = f + x;`                                                                   | Output `f`            |
+|&nbsp;         |                         |                                                                                       |                       |
 | `bool`        | `remove f -= true;`     | `require f == true;`<br>`update f = false;`                                           | Input `f`             |
 | `bool`        | `have f >= true;`       | `require f == true;`                                                                  | Input `&f`            |
 | `bool`        | `add f += true;`        | `assert f == false;`<br>`update f = true;`                                            | Output `f`            |
-|---------------|                         |                                                                                       |                       |
+|&nbsp;         |                         |                                                                                       |                       |
 | `bool`        | `remove f -= (x);`      | `require x ==> f;`<br>`update f = f && !x;`                                           | Input `Option<f>`     |
 | `bool`        | `have f >= (x);`        | `require x ==> f;`                                                                    | Input `&Option<f>`    |
 | `bool`        | `add f += (x);`         | `assert !(f && x);`<br><code>update f = f \|\| x;</code>                              | Output `Option<f>`    |
@@ -224,11 +226,105 @@ easier for the SMT solver to handle.
 
 ### Persistent Collection Strategies
 
-TODO
+Verus supports "persistent" versions for several of the collection types:
+`persistent_option`, `persistent_map`, `persistent_set`, `persistent_count`, and `persistent_bool`.
+
+By "persistent", we mean that any state introduced is permanent.
+
+ * `persistent_option`: once a value becomes `Some(x)`, it will always remain `Some(x)`.
+ * `persistent_map`: once a (key, value) pair is inserted, that key will always remain, and its value will never change.
+ * `persistent_set`: once a value is inserted, that value will remain
+ * `persistent_count`: the number can never decrease
+ * `persistent_bool`: once it becomes true, it can never become false.
+
+As a result, we can remove the uniqueness constraints on the tokens,
+and we can implement `Clone` on the token type.
+In other words, for a given token (say, `token![instance => f => k => v]`)
+we can freely make clones of that token without tracking the number of clones.
+
+| Strategy | `a ## b`                     | `a · b`                         |
+|----------|------------------------------|---------------------------------|
+| `persistent_option`   | <code>a === None \|\| b === None \|\| a === b</code> | `if a == None { b } else { a }` |
+| `persistent_map`      | `a.agrees(b)`                | `a.union_prefer_right(b)`       |
+| `persistent_set`      | `true`                       | `a.union(b)`                    |
+| `persistent_count`    | `true`                       | `max(a, b)`                     |
+| `persistent_bool`     | `true`                       | <code>a \|\| b</code>           |
+
+Unlike before, `a ## a` always holds (with `a · a = a`).
+At a technical level,
+this property is what makes it safe to implement `Clone` on the tokes.
+
+This property also lets us see why we cannot `remove` state.
+These monoids are not _cancellative_ like the above; in particular,
+if we have state `a` and attempt
+to "subtract" `a`, then we might still be left with `a`.
+Thus, from the perspective of the transition system, there can never be any point
+to doing a remove.
+
+`have` and `add` are specified in the same methodology as above, which amounts to the following:
+
+| Type            | Command               | Meaning in transition                                                                             | Exchange Fn Parameter |   |
+|-----------------|-----------------------|---------------------------------------------------------------------------------------------------|-----------------------|---|
+| &nbsp;          |                       |                                                                                                   |                       |   |
+| `Option<V>`     | `have f >= Some(v);`  | `require f === Some(v);`                                                                          | Input `&f`            |   |
+| `Option<V>`     | `add f += Some(v);`   | <code>assert f === None \|\| f === Some(v);</code><br>`update f = Some(v);`                       | Output `f`            |   |
+| &nbsp;          |                       |                                                                                                   |                       |   |
+| `Option<V>`     | `have f >= (x);`      | <code>require x === None \|\| f === x;</code>                                                     | Input `&Option<f>`    |   |
+| `Option<V>`     | `add f += (x);`       | <code>assert f === None \|\| x === None \|\| f === x;</code><br>`update f = if x === None { f } else { x };` | Output `Option<f>`    |   |
+| &nbsp;          |                       |                                                                                                   |                       |   |
+| `Map<K, V>`     | `have f >= [k => v];` | `require f.contains(k) && f.index(k) === v;`                                                      | Input `&f`            |   |
+| `Map<K, V>`     | `add f += [k => v];`  | `assert f.contains(k) ==> f.index(k) === v;`<br>`update f = f.insert(k, v);`                      | Output `f`            |   |
+| &nbsp;          |                       |                                                                                                   |                       |   |
+| `Map<K, V>`     | `have f >= (x);`      | `require x.le(f);`                                                                                | Input `&Map<K, f>`    |   |
+| `Map<K, V>`     | `add f += (x);`       | `assert x.agrees(f)`<br>`update f = f.union_prefer_right(x);`                                     | Output `Map<K, f>`    |   |
+| &nbsp;          |                       |                                                                                                   |                       |   |
+| `Set<V>`        | `have f >= {v};`      | `require f.contains(v);`                                                                          | Input `&f`            |   |
+| `Set<V>`        | `add f += {v};`       | `update f = f.insert(v);`                                                                         | Output `f`            |   |
+| &nbsp;          |                       |                                                                                                   |                       |   |
+| `Set<V>`        | `have f >= (x);`      | `require x.subset_of(f);`                                                                         | Input `&Set<f>`       |   |
+| `Set<V>`        | `add f += (x);`       | `update f = f.union(x);`                                                                          | Output `Set<f>`       |   |
+| &nbsp;          |                       |                                                                                                   |                       |   |
+| `nat`           | `have f >= (x);`      | `require f >= x;`                                                                                 | Input `&f`            |   |
+| `nat`           | `add f += (x);`       | `update f = max(f, x);`                                                                           | Output `f`            |   |
+| &nbsp;          |                       |                                                                                                   |                       |   |
+| `bool`          | `have f >= true;`     | `require f == true;`                                                                              | Input `&f`            |   |
+| `bool`          | `add f += true;`      | `update f = true;`                                                                                | Output `f`            |   |
+| &nbsp;          |                       |                                                                                                   |                       |   |
+| `bool`          | `have f >= (x);`      | `require x ==> f;`                                                                                | Input `&Option<f>`    |   |
+| `bool`          | `add f += (x);`       | <code>update f = f \|\| x</code>                                                                  | Output `Option<f>`    |   |
 
 ### Inherent Safety Conditions
 
-TODO
+Above, we discussed the general meanings of `remove`, `have`, and `add`, which we repeat here
+for reference:
+
+| Command            | Meaning as transition on state      | Meaning for exchange function           |
+|--------------------|-------------------------------------|-----------------------------------------|
+| `remove f -= (x);` | `require f >= x;`<br>`update f = f - x;` | Input argument, consumed           |
+| `have f >= (x);`   | `require f >= x;`                   | Input argument of type `&_`             |
+| `add f += (x);`    | `assert f ## x;`<br>`update f = f + x;`  | Output argument                    |
+
+The reader may wonder, why do we use `assert` for `add`, but not for the other two?
+
+In the case of `remove` and `have`, we allow `f >= x` to be an enabling condition, and it is then
+possible for the client of an exchange function to justify that the enabling condition is met by 
+the existence of the tokens that it inputs.
+
+In the case of `add`, however, there is no such justification because the tokens that correspond to `x`
+are _output_ tokens. These tokens do not exist before the transition occurs, so we cannot use their
+existence to justify the transition is safe. Rather, it is up to the developer of the transition system
+to show that introducing the state given by `x` is always safe. Hence, we use `assert` to create a safety condition.
+We call this the _inherent safety condition_ to the `add` command.
+
+As with any ordinary `assert`, the developer is expected to show that it follows from the invariant
+and from any preceeding enabling conditions.
+If the proof, does not go through automatically, the developer can supply a proof body using `by`, e.g.,:
+
+```rust,ignore
+add f += Some(v) by {
+    // proof that pre.f === Some
+};
+```
 
 ### Init
 
