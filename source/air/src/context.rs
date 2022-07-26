@@ -240,12 +240,24 @@ impl Context {
             self.log_set_z3_param(option, &s);
         }
     }
+    
+    pub(crate) fn set_z3_param_str(&mut self, option: &str, value: &str, write_to_logs: bool) {
+        if option == "tactic.default_tactic"  {
+            if write_to_logs {
+                self.log_set_z3_param(option, &value.to_string());
+            }
+        } else {            
+            panic!("encountered unexpected z3 option: {} : {}", option, value);
+        }
+    }
 
     pub fn set_z3_param(&mut self, option: &str, value: &str) {
         if value == "true" {
             self.set_z3_param_bool(option, true, true);
         } else if value == "false" {
             self.set_z3_param_bool(option, false, true);
+        } else if value == "sat" {
+            self.set_z3_param_str(option, value, true);
         } else if value.contains(".") {
             let v = value.parse::<f64>().expect(&format!("could not parse option value {}", value));
             self.set_z3_param_f64(option, v, true);
