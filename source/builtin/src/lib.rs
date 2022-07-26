@@ -272,6 +272,48 @@ impl<A> std::ops::Deref for Tracked<A> {
     }
 }
 
+macro_rules! emit_phantom {
+    ($x:ident) => {
+        PhantomData
+    };
+}
+macro_rules! split_tuple {
+    /*
+        #[inline(always)]
+        pub fn tracked_split_tuple2<A1, A2>(_t: Tracked<(A1, A2)>) -> (Tracked<A1>, Tracked<A2>) {
+            (Tracked { phantom: PhantomData }, Tracked { phantom: PhantomData })
+        }
+    */
+    ($fun:ident, $typ:ident, [$($t:ident)*]) => {
+        #[inline(always)]
+        pub fn $fun
+            <$( $t, )* >
+            (_t: $typ<($( $t, )*)>)
+            ->
+            ($( $typ<$t>, )*) {
+            ($( $typ { phantom: emit_phantom!($t) }, )*)
+        }
+    }
+}
+split_tuple!(ghost_split_tuple0, Ghost, []);
+split_tuple!(ghost_split_tuple1, Ghost, [A1]);
+split_tuple!(ghost_split_tuple2, Ghost, [A1 A2]);
+split_tuple!(ghost_split_tuple3, Ghost, [A1 A2 A3]);
+split_tuple!(ghost_split_tuple4, Ghost, [A1 A2 A3 A4]);
+split_tuple!(ghost_split_tuple5, Ghost, [A1 A2 A3 A4 A5]);
+split_tuple!(ghost_split_tuple6, Ghost, [A1 A2 A3 A4 A5 A6]);
+split_tuple!(ghost_split_tuple7, Ghost, [A1 A2 A3 A4 A5 A6 A7]);
+split_tuple!(ghost_split_tuple8, Ghost, [A1 A2 A3 A4 A5 A6 A7 A8]);
+split_tuple!(tracked_split_tuple0, Tracked, []);
+split_tuple!(tracked_split_tuple1, Tracked, [A1]);
+split_tuple!(tracked_split_tuple2, Tracked, [A1 A2]);
+split_tuple!(tracked_split_tuple3, Tracked, [A1 A2 A3]);
+split_tuple!(tracked_split_tuple4, Tracked, [A1 A2 A3 A4]);
+split_tuple!(tracked_split_tuple5, Tracked, [A1 A2 A3 A4 A5]);
+split_tuple!(tracked_split_tuple6, Tracked, [A1 A2 A3 A4 A5 A6]);
+split_tuple!(tracked_split_tuple7, Tracked, [A1 A2 A3 A4 A5 A6 A7]);
+split_tuple!(tracked_split_tuple8, Tracked, [A1 A2 A3 A4 A5 A6 A7 A8]);
+
 //
 // int and nat
 //

@@ -367,6 +367,22 @@ fn test_consume(t: Tracked<int>)
     }
 }
 
+/// Exec code can extract individual Ghost and Tracked values from Ghost and Tracked tuples
+/// with "let Ghost((...))" and "let Tracked((...))".
+/// The tuple pattern elements may further match on Trk and Gho from pervasives::modes.
+fn test_ghost_tuple_match(t: Tracked<(bool, bool, Gho<int>, Gho<int>)>) -> Tracked<bool> {
+    let g: Ghost<(int, int)> = ghost((10, 20));
+
+    let Ghost((g1, g2)) = g; // g1 and g2 both have type Ghost<int>
+    assert(*g1 + *g2 == 30);
+
+    let Ghost((g1, g2)): (Ghost<int>, Ghost<int>) = g;
+    assert(*g1 + *g2 == 30);
+
+    let Tracked((b1, b2, Gho(g3), Gho(g4))) = t; // b1, b2: Tracked<bool> and g3, g4: Ghost<int>
+    b2
+}
+
 /// Spec functions are not checked for correctness (although they are checked for termination).
 /// However, marking a spec function as "spec(checked)" enables lightweight "recommends checking"
 /// inside the spec function.

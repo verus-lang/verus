@@ -37,10 +37,33 @@ pub fn tracked_get<A>(#[proof] t: Tracked<A>) -> A {
 
 verus! {
 
-pub tracked struct TrackedAndGhost<T, G>(
-    pub tracked T,
-    pub ghost G,
-);
+// REVIEW: consider moving these into builtin and erasing them from the VIR
+pub struct Gho<A>(pub ghost A);
+pub struct Trk<A>(pub tracked A);
+
+#[inline(always)]
+#[verifier(external_body)]
+pub fn ghost_unwrap_gho<A>(a: Ghost<Gho<A>>) -> (ret: Ghost<A>)
+    ensures a.0 === *ret
+{
+    Ghost::assume_new()
+}
+
+#[inline(always)]
+#[verifier(external_body)]
+pub fn tracked_unwrap_gho<A>(a: Tracked<Gho<A>>) -> (ret: Tracked<A>)
+    ensures a.0 === *ret
+{
+    Tracked::assume_new()
+}
+
+#[inline(always)]
+#[verifier(external_body)]
+pub fn tracked_unwrap_trk<A>(a: Tracked<Trk<A>>) -> (ret: Tracked<A>)
+    ensures a.0 === *ret
+{
+    Tracked::assume_new()
+}
 
 } // verus
 
