@@ -252,7 +252,7 @@ we can freely make clones of that token without tracking the number of clones.
 
 Unlike before, `a ## a` always holds (with `a · a = a`).
 At a technical level,
-this property is what makes it safe to implement `Clone` on the tokes.
+this property is what makes it safe to implement `Clone` on the tokens.
 
 This property also lets us see why we cannot `remove` state.
 These monoids are not _cancellative_ like the above; in particular,
@@ -263,35 +263,35 @@ to doing a remove.
 
 `have` and `add` are specified in the same methodology as above, which amounts to the following:
 
-| Type            | Command               | Meaning in transition                                                                             | Exchange Fn Parameter |   |
-|-----------------|-----------------------|---------------------------------------------------------------------------------------------------|-----------------------|---|
-| &nbsp;          |                       |                                                                                                   |                       |   |
-| `Option<V>`     | `have f >= Some(v);`  | `require f === Some(v);`                                                                          | Input `&f`            |   |
-| `Option<V>`     | `add f += Some(v);`   | <code>assert f === None \|\| f === Some(v);</code><br>`update f = Some(v);`                       | Output `f`            |   |
-| &nbsp;          |                       |                                                                                                   |                       |   |
-| `Option<V>`     | `have f >= (x);`      | <code>require x === None \|\| f === x;</code>                                                     | Input `&Option<f>`    |   |
-| `Option<V>`     | `add f += (x);`       | <code>assert f === None \|\| x === None \|\| f === x;</code><br>`update f = if x === None { f } else { x };` | Output `Option<f>`    |   |
-| &nbsp;          |                       |                                                                                                   |                       |   |
-| `Map<K, V>`     | `have f >= [k => v];` | `require f.contains(k) && f.index(k) === v;`                                                      | Input `&f`            |   |
-| `Map<K, V>`     | `add f += [k => v];`  | `assert f.contains(k) ==> f.index(k) === v;`<br>`update f = f.insert(k, v);`                      | Output `f`            |   |
-| &nbsp;          |                       |                                                                                                   |                       |   |
-| `Map<K, V>`     | `have f >= (x);`      | `require x.le(f);`                                                                                | Input `&Map<K, f>`    |   |
-| `Map<K, V>`     | `add f += (x);`       | `assert x.agrees(f)`<br>`update f = f.union_prefer_right(x);`                                     | Output `Map<K, f>`    |   |
-| &nbsp;          |                       |                                                                                                   |                       |   |
-| `Set<V>`        | `have f >= {v};`      | `require f.contains(v);`                                                                          | Input `&f`            |   |
-| `Set<V>`        | `add f += {v};`       | `update f = f.insert(v);`                                                                         | Output `f`            |   |
-| &nbsp;          |                       |                                                                                                   |                       |   |
-| `Set<V>`        | `have f >= (x);`      | `require x.subset_of(f);`                                                                         | Input `&Set<f>`       |   |
-| `Set<V>`        | `add f += (x);`       | `update f = f.union(x);`                                                                          | Output `Set<f>`       |   |
-| &nbsp;          |                       |                                                                                                   |                       |   |
-| `nat`           | `have f >= (x);`      | `require f >= x;`                                                                                 | Input `&f`            |   |
-| `nat`           | `add f += (x);`       | `update f = max(f, x);`                                                                           | Output `f`            |   |
-| &nbsp;          |                       |                                                                                                   |                       |   |
-| `bool`          | `have f >= true;`     | `require f == true;`                                                                              | Input `&f`            |   |
-| `bool`          | `add f += true;`      | `update f = true;`                                                                                | Output `f`            |   |
-| &nbsp;          |                       |                                                                                                   |                       |   |
-| `bool`          | `have f >= (x);`      | `require x ==> f;`                                                                                | Input `&Option<f>`    |   |
-| `bool`          | `add f += (x);`       | <code>update f = f \|\| x</code>                                                                  | Output `Option<f>`    |   |
+| Type            | Command               | Meaning in transition                                                                             | Exchange Fn Parameter |
+|-----------------|-----------------------|---------------------------------------------------------------------------------------------------|-----------------------|
+| &nbsp;          |                       |                                                                                                   |                       |
+| `Option<V>`     | `have f >= Some(v);`  | `require f === Some(v);`                                                                          | Input `&f`            |
+| `Option<V>`     | `add f += Some(v);`   | <code>assert f === None \|\| f === Some(v);</code><br>`update f = Some(v);`                       | Output `f`            |
+| &nbsp;          |                       |                                                                                                   |                       |
+| `Option<V>`     | `have f >= (x);`      | <code>require x === None \|\| f === x;</code>                                                     | Input `&Option<f>`    |
+| `Option<V>`     | `add f += (x);`       | <code>assert f === None \|\| x === None \|\| f === x;</code><br>`update f = if x === None { f } else { x };` | Output `Option<f>`    |
+| &nbsp;          |                       |                                                                                                   |                       |
+| `Map<K, V>`     | `have f >= [k => v];` | `require f.contains(k) && f.index(k) === v;`                                                      | Input `&f`            |
+| `Map<K, V>`     | `add f += [k => v];`  | `assert f.contains(k) ==> f.index(k) === v;`<br>`update f = f.insert(k, v);`                      | Output `f`            |
+| &nbsp;          |                       |                                                                                                   |                       |
+| `Map<K, V>`     | `have f >= (x);`      | `require x.le(f);`                                                                                | Input `&Map<K, f>`    |
+| `Map<K, V>`     | `add f += (x);`       | `assert x.agrees(f)`<br>`update f = f.union_prefer_right(x);`                                     | Output `Map<K, f>`    |
+| &nbsp;          |                       |                                                                                                   |                       |
+| `Set<V>`        | `have f >= {v};`      | `require f.contains(v);`                                                                          | Input `&f`            |
+| `Set<V>`        | `add f += {v};`       | `update f = f.insert(v);`                                                                         | Output `f`            |
+| &nbsp;          |                       |                                                                                                   |                       |
+| `Set<V>`        | `have f >= (x);`      | `require x.subset_of(f);`                                                                         | Input `&Set<f>`       |
+| `Set<V>`        | `add f += (x);`       | `update f = f.union(x);`                                                                          | Output `Set<f>`       |
+| &nbsp;          |                       |                                                                                                   |                       |
+| `nat`           | `have f >= (x);`      | `require f >= x;`                                                                                 | Input `&f`            |
+| `nat`           | `add f += (x);`       | `update f = max(f, x);`                                                                           | Output `f`            |
+| &nbsp;          |                       |                                                                                                   |                       |
+| `bool`          | `have f >= true;`     | `require f == true;`                                                                              | Input `&f`            |
+| `bool`          | `add f += true;`      | `update f = true;`                                                                                | Output `f`            |
+| &nbsp;          |                       |                                                                                                   |                       |
+| `bool`          | `have f >= (x);`      | `require x ==> f;`                                                                                | Input `&Option<f>`    |
+| `bool`          | `add f += (x);`       | <code>update f = f \|\| x</code>                                                                  | Output `Option<f>`    |
 
 ### Inherent Safety Conditions
 
@@ -314,7 +314,7 @@ In the case of `add`, however, there is no such justification because the tokens
 are _output_ tokens. These tokens do not exist before the transition occurs, so we cannot use their
 existence to justify the transition is safe. Rather, it is up to the developer of the transition system
 to show that introducing the state given by `x` is always safe. Hence, we use `assert` to create a safety condition.
-We call this the _inherent safety condition_ to the `add` command.
+We call this the _inherent safety condition_ of the `add` command.
 
 As with any ordinary `assert`, the developer is expected to show that it follows from the invariant
 and from any preceeding enabling conditions.
