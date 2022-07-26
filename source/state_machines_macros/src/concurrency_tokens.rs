@@ -17,7 +17,7 @@ use crate::to_token_stream::{
     name_with_type_args_turbofish, shardable_type_to_type,
 };
 use crate::token_transition_checks::{check_ordering_remove_have_add, check_unsupported_updates};
-use crate::util::{combine_errors_or_ok, is_definitely_irrefutable};
+use crate::util::{combine_errors_or_ok, get_module_path_of_macro_call, is_definitely_irrefutable};
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
@@ -264,6 +264,74 @@ fn const_fn_stream(field: &Field) -> TokenStream {
     };
 }
 
+fn get_macro_decl(sm: &SM) -> TokenStream {
+    let sm_name = &sm.name;
+    let mod_path = get_module_path_of_macro_call();
+    let arms: Vec<TokenStream> = sm.fields.iter().map(|f| {
+        let field_name = &f.name;
+        match &f.stype {
+            ShardableType::Variable(_)
+            | ShardableType::Option(_)
+            | ShardableType::Multiset(_)
+            | ShardableType::PersistentOption(_)
+            | ShardableType::Count => {
+                quote!{
+                    ($instance:expr => #field_name => $value:expr) => {
+                        #mod_path::#sm_name::#field_name { instance: $instance, value: $value }
+                    };
+                }
+            }
+
+            ShardableType::Map(_, _) | ShardableType::PersistentMap(_, _) => {
+                quote!{
+                    ($instance:expr => #field_name => $value:expr => $key:expr) => {
+                        #mod_path::#sm_name::#field_name { instance: $instance, value: $value, key: $key }
+                    };
+                }
+            }
+
+            ShardableType::Constant(_) => {
+                let msg_lit = format!("The field `{field_name:}` has sharding strategy `constant`, which does not have an associated token type. To access its value, use `instance.{field_name:}()`");
+
+                quote!{
+                    ($instance:expr => #field_name => $($tt:tt)*) => {
+                        ::std::compile_error!(#msg_lit)
+                    };
+                }
+            }
+
+            ShardableType::NotTokenized(_) | ShardableType::StorageOption(_) | ShardableType::StorageMap(_, _) => {
+                let strat = f.stype.strategy_name();
+                let msg_lit = format!("The field `{field_name:}` has sharding strategy `{strat:}`, which does not have an associated token type.");
+
+                quote!{
+                    ($instance:expr => #field_name => $($tt:tt)*) => {
+                        ::std::compile_error!(#msg_lit)
+                    };
+                }
+            }
+        }
+    }).collect();
+
+    let name = &sm.name;
+
+    let msg_string_lit = format!("`, expected some field defined in `{name:}`");
+
+    quote! {
+        #[macro_export]
+        macro_rules! #name {
+            #(#arms)*
+            ($instance:expr => $id:ident => $($tt:tt)*) => {
+                ::std::compile_error!(::std::concat!(
+                    "unrecognized field name `",
+                    ::std::stringify!($id),
+                    #msg_string_lit
+                ))
+            };
+        }
+    }
+}
+
 // Pull everything together.
 //
 //     struct Instance
@@ -329,12 +397,16 @@ pub fn output_token_types_and_fns(
     }
     combine_errors_or_ok(errors)?;
 
+    let macro_decl = get_macro_decl(&bundle.sm);
+
     let insttype = inst_type(&bundle.sm);
     let impldecl = impl_decl_stream(&insttype, &bundle.sm.generics);
     token_stream.extend(quote! {
         #impldecl {
             #inst_impl_token_stream
         }
+
+        #macro_decl
     });
 
     Ok(())
