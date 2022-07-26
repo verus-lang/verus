@@ -11,12 +11,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v2
 
-      - name: check Z3 version
-        working-directory: ./source   # "cd source"   
-        run: |
-          /home/chanheec/local_bin/z3 --version  # 4.8.5 expected
       # run "cargo test" using our latest rustc binary
-      - name: cargo test with default Z3
+      - name: cargo test
         working-directory: ./source   # "cd source"   
         run: |
           mkdir ../rust
@@ -24,7 +20,7 @@ jobs:
           echo rustc version `../rust/install/bin/rustc --version`           # check rustc version
           RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo clean    # cargo clean
           RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo build    # cargo build   
-          VERUS_Z3_PATH="/home/chanheec/local_bin/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ../rust/install/bin/cargo test
+          VERUS_Z3_PATH="/home/chanheec/local_bin/z3_4_9_1" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ../rust/install/bin/cargo test
       
       - name: check cargo fmt
         working-directory: ./source   # "cd source"   
@@ -36,20 +32,4 @@ jobs:
         working-directory: ./source
         run: |
           RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo build --features singular       # build with singular feature 
-          VERUS_SINGULAR_PATH="/usr/bin/Singular" VERUS_Z3_PATH="/home/chanheec/local_bin/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ../rust/install/bin/cargo test -p rust_verify --features singular
-
-      # Second run with latest Z3
-      - name: cargo test with z3_4_8_17
-        id: z3_4_8_17
-        working-directory: ./source   # "cd source"   
-        continue-on-error: true
-        run: |
-          VERUS_Z3_PATH="/home/chanheec/local_bin/z3_4_8_17" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ../rust/install/bin/cargo test
-
-      - name: summarize_z3_4_8_17_fail
-        if: steps.z3_4_8_17.outcome != 'success'
-        run: echo '#### cargo test with z3 4.8.17 failed, but marked as suceess' >> $GITHUB_STEP_SUMMARY
-
-      - name: summarize_z3_4_8_17_success
-        if: steps.z3_4_8_17.outcome == 'success'
-        run: echo '### All tests passed! :rocket:' >> $GITHUB_STEP_SUMMARY
+          VERUS_SINGULAR_PATH="/usr/bin/Singular" VERUS_Z3_PATH="/home/chanheec/local_bin/z3_4_9_1" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ../rust/install/bin/cargo test -p rust_verify --features singular
