@@ -17,7 +17,7 @@ fn main() {}
 /// `#[cfg(any())]` which simply turns off a module.
 /// Any module with its `#[cfg(any())]` line commented out is valid to run.
 
-#[cfg(any())]
+//#[cfg(any())]
 mod fib {
     use super::*;
 
@@ -35,7 +35,7 @@ mod fib {
 
     fn test() {
         //assert(fib(10) == 55);  // Fails without more fuel
-        //assert_by_compute_only(fib(10) == 55);
+        assert_by_compute_only(fib(10) == 55);
         assert_by_compute_only(fib(100) == 354224848179261915075);
         assert_by_compute_only(fib(101) == 573147844013817084101);
         assert(fib(102) == 927372692193078999176);  // Succeeds based on the two results above
@@ -65,7 +65,7 @@ mod verititan_example {
     }
 }
 
-#[cfg(any())]
+//#[cfg(any())]
 mod recursive_data_structures {
     use super::*;
 
