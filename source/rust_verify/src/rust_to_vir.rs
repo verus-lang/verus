@@ -43,7 +43,6 @@ fn check_item<'tcx>(
             check_item_fn(
                 ctxt,
                 vir,
-                None,
                 item.def_id.to_def_id(),
                 FunctionKind::Static,
                 visibility,
@@ -309,7 +308,6 @@ fn check_item<'tcx>(
                                             check_item_fn(
                                                 ctxt,
                                                 vir,
-                                                Some(self_typ.clone()),
                                                 impl_item.def_id.to_def_id(),
                                                 kind,
                                                 impl_item_visibility,
@@ -408,7 +406,6 @@ fn check_item<'tcx>(
                         let fun = check_item_fn(
                             ctxt,
                             vir,
-                            None,
                             def_id.to_def_id(),
                             FunctionKind::TraitMethodDecl { trait_path: trait_path.clone() },
                             visibility.clone(),

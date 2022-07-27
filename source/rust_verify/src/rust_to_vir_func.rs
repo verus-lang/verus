@@ -11,7 +11,6 @@ use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_un
 use rustc_ast::Attribute;
 use rustc_hir::{Body, BodyId, FnDecl, FnHeader, FnSig, Generics, Param, Unsafety};
 use rustc_middle::ty::TyCtxt;
-use rustc_middle::ty::{TyKind};
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::sync::Arc;
@@ -44,25 +43,9 @@ pub(crate) fn body_to_vir<'tcx>(
     expr_to_vir(&bctx, &body.value, ExprModifier::REGULAR)
 }
 
-fn is_self_or_self_ref(span: Span, ty: &rustc_hir::Ty) -> Result<bool, VirErr> {
-    match ty.kind {
-        rustc_hir::TyKind::Rptr(_, rustc_hir::MutTy { ty: rty, mutbl: _, .. }) => {
-            is_self_or_self_ref(span, rty)
-        }
-        rustc_hir::TyKind::Path(rustc_hir::QPath::Resolved(None, path)) => match path.res {
-            rustc_hir::def::Res::SelfTy(Some(_), _impl_def_id) => Ok(true),
-            rustc_hir::def::Res::SelfTy(None, _) => Ok(true),
-            _ => Ok(false),
-        },
-        _ => Ok(false),
-    }
-}
-
 fn check_fn_decl<'tcx>(
     tcx: TyCtxt<'tcx>,
-    sig_span: &Span,
     decl: &'tcx FnDecl<'tcx>,
-    self_typ: Option<Typ>,
     attrs: &[Attribute],
     mode: Mode,
     output_ty: rustc_middle::ty::Ty<'tcx>,
@@ -101,7 +84,6 @@ fn find_body<'tcx>(ctxt: &Context<'tcx>, body_id: &BodyId) -> &'tcx Body<'tcx> {
 pub(crate) fn check_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut KrateX,
-    self_typ: Option<Typ>,
     id: rustc_span::def_id::DefId,
     kind: FunctionKind,
     visibility: vir::ast::Visibility,
@@ -120,14 +102,6 @@ pub(crate) fn check_item_fn<'tcx>(
     } else {
         None
     };
-    let self_typ = match (self_typ, &kind) {
-        (Some(t), _) => Some(t),
-        (_, FunctionKind::TraitMethodDecl { .. }) => {
-            Some(Arc::new(TypX::TypParam(vir::def::trait_self_type_param())))
-        }
-        (_, FunctionKind::Static) => None,
-        _ => panic!("missing self type for kind {:?}", &kind),
-    };
 
     let fn_sig = ctxt.tcx.fn_sig(id);
     // REVIEW: rustc docs refer to skip_binder as "dangerous"
@@ -141,15 +115,7 @@ pub(crate) fn check_item_fn<'tcx>(
             span: _,
         } => {
             unsupported_err_unless!(*unsafety == Unsafety::Normal, sig.span, "unsafe");
-            check_fn_decl(
-                ctxt.tcx,
-                &sig.span,
-                decl,
-                self_typ.clone(),
-                attrs,
-                mode,
-                fn_sig.output(),
-            )?
+            check_fn_decl(ctxt.tcx, decl, attrs, mode, fn_sig.output())?
         }
     };
     let sig_typ_bounds = check_generics_bounds_fun(ctxt.tcx, generics)?;
@@ -395,7 +361,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let fn_sig = fn_sig.skip_binder();
     let inputs = fn_sig.inputs();
 
-    let ret_typ_mode = check_fn_decl(ctxt.tcx, &span, decl, None, attrs, mode, fn_sig.output())?;
+    let ret_typ_mode = check_fn_decl(ctxt.tcx, decl, attrs, mode, fn_sig.output())?;
     let typ_bounds = check_generics_bounds_fun(ctxt.tcx, generics)?;
     let vattrs = get_verifier_attrs(attrs)?;
     let fuel = get_fuel(&vattrs);
