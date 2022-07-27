@@ -73,7 +73,7 @@ cd source
 #### On Windows: make sure the Z3 executable is in your path
 
 Download the [Z3 binaries](https://github.com/Z3Prover/z3/releases).
-Make sure you get Z3 4.9.1.
+Make sure you get Z3 4.10.1.
 The Z3 `bin` folder contain the executable `z3.exe`.
 Either add the Z3 `bin` folder to your path or copy the Z3 executable file to one of the folders in your path.
 

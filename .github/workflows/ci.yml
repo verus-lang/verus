@@ -20,7 +20,7 @@ jobs:
           echo rustc version `../rust/install/bin/rustc --version`           # check rustc version
           RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo clean    # cargo clean
           RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo build    # cargo build   
-          VERUS_Z3_PATH="/home/chanheec/local_bin/z3_4_9_1" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ../rust/install/bin/cargo test
+          VERUS_Z3_PATH="/home/chanheec/local_bin/z3_4_10_1" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ../rust/install/bin/cargo test
       
       - name: check cargo fmt
         working-directory: ./source   # "cd source"   
@@ -32,4 +32,4 @@ jobs:
         working-directory: ./source
         run: |
           RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo build --features singular       # build with singular feature 
-          VERUS_SINGULAR_PATH="/usr/bin/Singular" VERUS_Z3_PATH="/home/chanheec/local_bin/z3_4_9_1" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ../rust/install/bin/cargo test -p rust_verify --features singular
+          VERUS_SINGULAR_PATH="/usr/bin/Singular" VERUS_Z3_PATH="/home/chanheec/local_bin/z3_4_10_1" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ../rust/install/bin/cargo test -p rust_verify --features singular
