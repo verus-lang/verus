@@ -1183,11 +1183,13 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 stm.span.clone(),
                 "assert_bit_vector".to_string(),
                 Arc::new(vec![
+                    mk_option_command("sat.euf", "true"),
+                    mk_option_command("tactic.default_tactic", "sat"),
+                    mk_option_command("smt.ematching", "false"),
                     mk_option_command("smt.case_split", "0"),
                     Arc::new(CommandX::CheckValid(query)),
-                    mk_option_command("smt.case_split", "3"),
                 ]),
-                ProverChoice::DefaultProver,
+                ProverChoice::Spinoff,
             ));
 
             vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr, expr_ctxt)))]
@@ -1710,9 +1712,11 @@ pub fn body_stm_to_air(
             ]
         } else if is_bit_vector_mode {
             vec![
+                mk_option_command("sat.euf", "true"),
+                mk_option_command("tactic.default_tactic", "sat"),
+                mk_option_command("smt.ematching", "false"),
                 mk_option_command("smt.case_split", "0"),
                 Arc::new(CommandX::CheckValid(query)),
-                mk_option_command("smt.case_split", "3"),
             ]
         } else {
             vec![Arc::new(CommandX::CheckValid(query))]
@@ -1721,7 +1725,11 @@ pub fn body_stm_to_air(
             func_span.clone(),
             "function body check".to_string(),
             Arc::new(commands),
-            if is_spinoff_prover { ProverChoice::Spinoff } else { ProverChoice::DefaultProver },
+            if is_spinoff_prover || is_bit_vector_mode {
+                ProverChoice::Spinoff
+            } else {
+                ProverChoice::DefaultProver
+            },
         ));
     }
     (state.commands, state.snap_map)
