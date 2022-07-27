@@ -3,7 +3,7 @@ use crate::attributes::{
 };
 use crate::context::{BodyCtxt, Context};
 use crate::rust_to_vir_base::{
-    check_generics_bounds_fun, def_id_to_vir_path, ident_to_var, ty_to_vir,
+    check_generics_bounds_fun, def_id_to_vir_path, ident_to_var, mid_ty_to_vir,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_var, ExprModifier};
 use crate::util::{err_span_str, err_span_string, spanned_new, unsupported_err_span};
@@ -11,6 +11,7 @@ use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_un
 use rustc_ast::Attribute;
 use rustc_hir::{Body, BodyId, FnDecl, FnHeader, FnSig, Generics, Param, Unsafety};
 use rustc_middle::ty::TyCtxt;
+use rustc_middle::ty::{TyKind};
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::sync::Arc;
@@ -64,6 +65,7 @@ fn check_fn_decl<'tcx>(
     self_typ: Option<Typ>,
     attrs: &[Attribute],
     mode: Mode,
+    output_ty: rustc_middle::ty::Ty<'tcx>,
 ) -> Result<Option<(Typ, Mode)>, VirErr> {
     let FnDecl { inputs: _, output, c_variadic, implicit_self } = decl;
     unsupported_unless!(!c_variadic, "c_variadic");
@@ -79,12 +81,8 @@ fn check_fn_decl<'tcx>(
         // REVIEW: there's no attribute syntax on return types,
         // so we always return the default mode.
         // The current workaround is to return a struct if the default doesn't work.
-        rustc_hir::FnRetTy::Return(ty) => {
-            let typ = if is_self_or_self_ref(*sig_span, &ty)? {
-                self_typ.expect("a param is Self, so this must be an impl")
-            } else {
-                ty_to_vir(tcx, ty)
-            };
+        rustc_hir::FnRetTy::Return(_ty) => {
+            let typ = mid_ty_to_vir(tcx, output_ty, false);
             Ok(Some((typ, get_ret_mode(mode, attrs))))
         }
     }
@@ -130,6 +128,12 @@ pub(crate) fn check_item_fn<'tcx>(
         (_, FunctionKind::Static) => None,
         _ => panic!("missing self type for kind {:?}", &kind),
     };
+
+    let fn_sig = ctxt.tcx.fn_sig(id);
+    // REVIEW: rustc docs refer to skip_binder as "dangerous"
+    let fn_sig = fn_sig.skip_binder();
+    let inputs = fn_sig.inputs();
+
     let ret_typ_mode = match sig {
         FnSig {
             header: FnHeader { unsafety, constness: _, asyncness: _, abi: _ },
@@ -137,7 +141,15 @@ pub(crate) fn check_item_fn<'tcx>(
             span: _,
         } => {
             unsupported_err_unless!(*unsafety == Unsafety::Normal, sig.span, "unsafe");
-            check_fn_decl(ctxt.tcx, &sig.span, decl, self_typ.clone(), attrs, mode)?
+            check_fn_decl(
+                ctxt.tcx,
+                &sig.span,
+                decl,
+                self_typ.clone(),
+                attrs,
+                mode,
+                fn_sig.output(),
+            )?
         }
     };
     let sig_typ_bounds = check_generics_bounds_fun(ctxt.tcx, generics)?;
@@ -148,26 +160,28 @@ pub(crate) fn check_item_fn<'tcx>(
         erasure_info.external_functions.push(name);
         return Ok(None);
     }
+
     let body = find_body(ctxt, body_id);
     let Body { params, value: _, generator_kind } = body;
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
-    for (param, input) in params.iter().zip(sig.decl.inputs.iter()) {
+
+    assert!(params.len() == inputs.len());
+    for (param, input) in params.iter().zip(inputs.iter()) {
         let Param { hir_id, pat, ty_span: _, span } = param;
 
         let name = Arc::new(pat_to_var(pat));
         let param_mode = get_var_mode(mode, ctxt.tcx.hir().attrs(*hir_id));
-        let is_mut = is_mut_ty(&input);
+        let is_mut = is_mut_ty(input);
         if is_mut.is_some() && mode == Mode::Spec {
             return err_span_string(
                 *span,
                 format!("&mut argument not allowed for #[spec] functions"),
             );
         }
-        let (typ, is_mut) = if is_self_or_self_ref(*span, &input)? {
-            (self_typ.clone().expect("a param is Self, so this must be an impl"), is_mut.is_some())
-        } else {
-            (ty_to_vir(ctxt.tcx, is_mut.unwrap_or(&input)), is_mut.is_some())
-        };
+
+        let typ = mid_ty_to_vir(ctxt.tcx, is_mut.unwrap_or(input), false);
+        let is_mut = is_mut.is_some();
+
         let vir_param = spanned_new(*span, ParamX { name, typ, mode: param_mode, is_mut });
         vir_params.push(vir_param);
     }
@@ -304,13 +318,9 @@ pub(crate) fn check_item_fn<'tcx>(
     Ok(Some(name))
 }
 
-fn is_mut_ty<'tcx>(ty: &'tcx rustc_hir::Ty<'tcx>) -> Option<&'tcx rustc_hir::Ty<'tcx>> {
-    let rustc_hir::Ty { kind, .. } = ty;
-    match kind {
-        rustc_hir::TyKind::Rptr(
-            _,
-            rustc_hir::MutTy { ty: tys, mutbl: rustc_ast::Mutability::Mut },
-        ) => Some(tys),
+fn is_mut_ty<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> Option<rustc_middle::ty::Ty<'tcx>> {
+    match ty.kind() {
+        rustc_middle::ty::TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) => Some(tys),
         _ => None,
     }
 }
@@ -379,15 +389,23 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     generics: &'tcx Generics,
 ) -> Result<(), VirErr> {
     let mode = get_mode(Mode::Exec, attrs);
-    let ret_typ_mode = check_fn_decl(ctxt.tcx, &span, decl, None, attrs, mode)?;
+
+    let fn_sig = ctxt.tcx.fn_sig(id);
+    // REVIEW: rustc docs refer to skip_binder as "dangerous"
+    let fn_sig = fn_sig.skip_binder();
+    let inputs = fn_sig.inputs();
+
+    let ret_typ_mode = check_fn_decl(ctxt.tcx, &span, decl, None, attrs, mode, fn_sig.output())?;
     let typ_bounds = check_generics_bounds_fun(ctxt.tcx, generics)?;
     let vattrs = get_verifier_attrs(attrs)?;
     let fuel = get_fuel(&vattrs);
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
-    for (param, input) in idents.iter().zip(decl.inputs.iter()) {
+
+    assert!(idents.len() == inputs.len());
+    for (param, input) in idents.iter().zip(inputs.iter()) {
         let name = Arc::new(ident_to_var(param));
         let is_mut = is_mut_ty(input);
-        let typ = ty_to_vir(ctxt.tcx, is_mut.unwrap_or(input));
+        let typ = mid_ty_to_vir(ctxt.tcx, is_mut.unwrap_or(input), false);
         // REVIEW: the parameters don't have attributes, so we use the overall mode
         let vir_param =
             spanned_new(param.span, ParamX { name, typ, mode, is_mut: is_mut.is_some() });

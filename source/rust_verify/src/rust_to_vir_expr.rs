@@ -100,7 +100,7 @@ fn closure_param_typs<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr<'tcx>) -> Vec<Typ
             let sig = substs.as_closure().sig();
             let args: Vec<Typ> = sig
                 .inputs()
-                .skip_binder()
+                .skip_binder() // REVIEW: rustc docs refer to skip_binder as "dangerous"
                 .iter()
                 .map(|t| mid_ty_to_vir(bctx.ctxt.tcx, t, false /* allow_mut_ref */))
                 .collect();
