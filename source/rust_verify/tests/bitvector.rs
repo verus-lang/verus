@@ -119,14 +119,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test10 verus_code! {
-        proof fn test9(x: u32, y:u32) {
-            assert(0u32 < (10 as int)) by(bit_vector);  // 10 is casted into u32 internally
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
     #[test] test1_fails verus_code! {
         proof fn test1(b: u32) {
             assert(b | b > b) by(bit_vector); // FAILS
@@ -198,17 +190,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test8_fails verus_code! {
         proof fn test8(b: i32) {
-            assert(b <= b) by(bit_vector);; // VIR Error: signed int
-        }
-    } => Err(err) => assert_vir_error(err)
-}
-
-test_verify_one_file! {
-    //https://github.com/secure-foundations/verus/issues/191 (@matthias-brun)
-    #[test] test9_fails verus_code! {
-        #[verifier(bit_vector)]
-        proof fn f() {
-            ensures((1 as u64) << 1 > 0); // VIR Error: bit-width mismatch(1 from rhs is 32-bit)
+            assert(b <= b) by(bit_vector); // VIR Error: signed int
         }
     } => Err(err) => assert_vir_error(err)
 }
@@ -217,16 +199,8 @@ test_verify_one_file! {
     //https://github.com/secure-foundations/verus/issues/191 (@matthias-brun)
     #[test] test10_fails verus_code! {
         #[verifier(bit_vector)]
-        proof fn f() {
-            ensures(forall(|i: u64| ((1 as u64) << i > 0))); // FAILS: should not panic
-        }
-    } => Err(err) => assert_one_fails(err)
-}
-
-test_verify_one_file! {
-    #[test] test11_fails verus_code! {
-        proof fn test11(b: u32) {
-            assert(0 < 0xffffffff_ffffffff as u32) by(bit_vector); // FAILS
+        proof fn f2() {
+            ensures(forall |i: u64| (1 << i) > 0); // FAILS: should not panic
         }
     } => Err(err) => assert_one_fails(err)
 }
