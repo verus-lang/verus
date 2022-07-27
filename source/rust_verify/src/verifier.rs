@@ -908,7 +908,9 @@ impl Verifier {
                 if function_invalidity
                     && !recommends_rerun
                     && !self.args.no_auto_recommends_check
+                    // in case of singular proof function and bit-vector proof function, skip recommends check
                     && !is_singular
+                    && !function.x.attrs.bit_vector
                 {
                     // Rerun failed query to report possible recommends violations
                     recommends_rerun = true;
