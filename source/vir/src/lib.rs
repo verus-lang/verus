@@ -61,3 +61,18 @@ mod triggers_auto;
 mod util;
 mod visitor;
 pub mod well_formed;
+pub mod string_utils;
+
+#[macro_export]
+macro_rules! avec {
+    [$($value:expr),*] => {
+        {
+            #[allow(unused_mut)]
+            let mut v = Vec::new();
+            $(
+                v.push($value);
+            )*
+            Arc::new(v)
+        }
+    }
+}

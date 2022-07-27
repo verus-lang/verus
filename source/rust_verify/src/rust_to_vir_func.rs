@@ -396,13 +396,6 @@ pub(crate) fn check_item_const<'tcx>(
 
     let is_string_literal = match &vir_body.x {
         vir::ast::ExprX::Const(vir::ast::Constant::StrSlice(val)) => {
-            // let mut global_strings = ctxt.global_strings.lock().expect("expected lock on global_strings");
-            // let vstring: VerifiableString = VerifiableString {
-            //     inner_str: val.clone(), 
-            //     emitted: false
-            // };
-            // let path = name.path.clone();
-            // global_strings.insert(path, Arc::new(vstring));
             true
         }, 
         _ => false
@@ -410,7 +403,7 @@ pub(crate) fn check_item_const<'tcx>(
     
     let ret_name = Arc::new(RETURN_VALUE.to_string());
     let ret =
-        spanned_new(span, ParamX { name: ret_name, typ: typ.clone(), mode: mode, is_mut: false });
+        spanned_new(span, ParamX { name: ret_name, typ: typ.clone(), mode, is_mut: false });
     let func = FunctionX {
         name,
         kind: FunctionKind::Static,

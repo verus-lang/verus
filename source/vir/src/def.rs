@@ -41,6 +41,7 @@ const SUFFIX_PATH: &str = ".";
 const PREFIX_FUEL_ID: &str = "fuel%";
 const PREFIX_FUEL_NAT: &str = "fuel_nat%";
 const PREFIX_REQUIRES: &str = "req%";
+const PREFIX_STR: &str = "str%";
 const PREFIX_ENSURES: &str = "ens%";
 const PREFIX_RECURSIVE: &str = "rec%";
 const PREFIX_SIMPLIFY_TEMP_VAR: &str = "tmp%%";
@@ -260,6 +261,10 @@ pub fn prefix_fuel_nat(ident: &Ident) -> Ident {
 
 pub fn prefix_requires(ident: &Ident) -> Ident {
     Arc::new(PREFIX_REQUIRES.to_string() + ident)
+}
+
+pub fn prefix_str(ident: &Ident) -> Ident {
+    Arc::new(PREFIX_STR.to_string() + ident)
 }
 
 pub fn prefix_ensures(ident: &Ident) -> Ident {

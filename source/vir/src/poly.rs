@@ -727,3 +727,10 @@ pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &Krate) -> Krate {
     }
     Arc::new(kratex)
 }
+pub fn poly_closed_expr(ctx: &Ctx, expr: &Expr) -> Expr {
+    let mut types = ScopeMap::new();
+    types.push_scope(true);
+
+    let mut state = State { types, is_trait: false };
+    poly_expr(ctx, &mut state, expr)
+}

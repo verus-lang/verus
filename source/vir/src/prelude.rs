@@ -72,6 +72,8 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
                 :pattern (([fuel_bool] id))
             ))
         ))
+        (declare-sort StrLitId 0)
+        (declare-fun str_reveal_bool (StrLitId) Bool)
 
         // Polymorphism
         (declare-sort [Poly] 0)
