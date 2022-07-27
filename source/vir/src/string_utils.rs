@@ -56,9 +56,13 @@ pub fn get_view_vir_fun() -> Fun {
     Arc::new(funx)
 }
 
-pub fn get_index_vir_ty() -> Typ {
+pub fn get_index_ret_vir_ty() -> Typ {
     let u8tyx = TypX::Int(IntRange::U(8));
     Arc::new(u8tyx)
+}
+
+pub fn get_index_vir_ty() -> Typ {
+    Arc::new(TypX::Int(IntRange::USize))
 }
 
 pub fn get_index_vir_fun() -> Fun {

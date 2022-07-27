@@ -13,12 +13,12 @@ use crate::def::{
 use crate::poly::poly_closed_expr;
 use crate::sst::{BndX, Exp, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst_to_air::{
-    exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, ExprCtxt, ExprMode,
+    exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, ExprCtxt, ExprMode, path_to_air_ident,
 };
 use crate::util::vec_map;
 use crate::{avec, string_utils::*};
 use air::ast::{
-    BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Commands, Datatype, DeclX, Expr,
+    BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Commands, Datatype, DeclX, Decl, Expr,
     ExprX, Quant, Span, Trigger, Triggers, Constant, MultiOp,
 };
 use air::ast_util::{
@@ -662,10 +662,6 @@ pub fn func_def_to_air(
                 } else {
                     panic!("unexpected body for string_literal");
                 }
-                // TODO check whether we need this
-                // if vstring.inner_str.is_ascii() == false {
-                //     return err_str(&function.span, "Only ASCII characters are supported for verification purposes at the moment");
-                // }
             }
 
             // AST --> SST
@@ -729,7 +725,7 @@ pub fn func_def_to_air(
     }
 }
 
-fn is_ascii_to_air(
+fn string_is_ascii_to_air(
     ctx: &Ctx,
     fun: Fun,
     _string: &String,
@@ -759,7 +755,7 @@ fn is_ascii_to_air(
     exp_to_expr(ctx, &exp, ExprCtxt { mode: ExprMode::Spec, is_bit_vector: false })
 }
 
-fn index_to_air(
+fn string_index_to_air(
     ctx: &Ctx,
     fun: Fun,
     index: usize,
@@ -785,30 +781,43 @@ fn index_to_air(
 
     let spanned_view_call =
         Arc::new(SpannedTyped { span: span.clone(), x: view_call, typ: view_ty });
-
+    
     let index_ty = get_index_vir_ty();
-    let index_fun = get_index_vir_fun();
-
     let indexed_expr = crate::ast::ExprX::Const(crate::ast::Constant::Nat(Arc::new(index.to_string())));
     let spanned_indexed_expr = Arc::new(SpannedTyped { span: span.clone(), x: indexed_expr, typ: index_ty.clone() });
 
+    let index_ret_ty = get_index_ret_vir_ty();
+    let index_fun = get_index_vir_fun();
+
     let index_call = crate::ast::ExprX::Call(
-        crate::ast::CallTarget::Static(index_fun, avec![]),
+        crate::ast::CallTarget::Static(index_fun, avec![Arc::new(TypX::Int(IntRange::U(8)))]),
         avec![spanned_view_call, spanned_indexed_expr],
     );
     let spanned_index_call =
-        Arc::new(SpannedTyped { span: span.clone(), x: index_call, typ: index_ty });
+        Arc::new(SpannedTyped { span: span.clone(), x: index_call, typ: index_ret_ty.clone() });
+
+
     let expr = poly_closed_expr(ctx, &spanned_index_call);
 
     let exp = crate::ast_to_sst::expr_to_exp(ctx, &Arc::new(vec![]), &expr)
         .expect("internal compiler error");
     let expr = exp_to_expr(ctx, &exp, ExprCtxt { mode: ExprMode::Spec, is_bit_vector: false });
     
-    let val_exp = Arc::new(ExprX::Const(Constant::Nat(Arc::new(val.to_string()))));
-    Arc::new(ExprX::Binary(BinaryOp::Eq, expr, val_exp))
+    /* let oval_expr = crate::ast::ExprX::Const(crate::ast::Constant::Nat(Arc::new(val.to_string())));
+    let oval_expr = Arc::new(SpannedTyped { span: span.clone(), x: oval_expr, typ: index_ret_ty.clone() });
+    
+    let oval_expr = poly_closed_expr(ctx, &oval_expr);
+    let oval_exp = crate::ast_to_sst::expr_to_exp(ctx, &avec![], &oval_expr).expect("internal compiler error");
+    let oval_expr = exp_to_expr(ctx, &oval_exp, ExprCtxt { mode: ExprMode::Spec, is_bit_vector: false });
+    dbg!(oval_expr);
+    todo!("die"); */
+    
+    let val_expr = Arc::new(ExprX::Apply(Arc::new("I".to_string()), avec![Arc::new(ExprX::Const(Constant::Nat(Arc::new(val.to_string()))))]));
+    
+    Arc::new(ExprX::Binary(BinaryOp::Eq, expr, val_expr))
 }
 
-fn len_to_air(ctx: &Ctx, fun: Fun, len: usize, span: Span) -> Expr {
+fn string_len_to_air(ctx: &Ctx, fun: Fun, len: usize, span: Span) -> Expr {
     let strslice_ty = get_strslice_vir_ty();
     let fun_call = crate::ast::ExprX::Call(
         crate::ast::CallTarget::Static(fun, Arc::new(vec![])),
@@ -831,7 +840,7 @@ fn len_to_air(ctx: &Ctx, fun: Fun, len: usize, span: Span) -> Expr {
     let len_fun = get_len_vir_fun();
 
     let len_call = crate::ast::ExprX::Call(
-        crate::ast::CallTarget::Static(len_fun, avec![]), 
+        crate::ast::CallTarget::Static(len_fun, avec![Arc::new(TypX::Int(IntRange::U(8)))]), 
         avec![spanned_view_call]
     );
 
@@ -847,15 +856,19 @@ fn len_to_air(ctx: &Ctx, fun: Fun, len: usize, span: Span) -> Expr {
     Arc::new(ExprX::Binary(BinaryOp::Eq, expr, len_val))
 }
 
-fn expr_with_str_fuel(expr: Expr) -> Expr {
-    let expr_binop = ExprX::Binary(BinaryOp::Implies,unimplemented!(), expr);
+fn expr_with_str_fuel(fun_ident: Ident, expr: Expr) -> Expr {
+    let var = Arc::new(ExprX::Var(fun_ident));
+    let apply = Arc::new(ExprX::Apply(Arc::new("str_reveal_bool".to_string()), avec![var]));
+    let expr_binop = ExprX::Binary(BinaryOp::Implies, apply, expr);
     Arc::new(expr_binop)
 }
 
-fn and(exprs: Vec<Expr>) -> Expr {
-    let exprs = Arc::new(exprs);
-    let exprx = ExprX::Multi(MultiOp::And, exprs);
-    Arc::new(exprx)
+fn declare_str_fuel_const(fun: Fun) -> (Ident, Decl) {
+    let varname = crate::def::prefix_str(&path_to_air_ident(&fun.path));
+    let ty = air::ast::TypX::Named(Arc::new("StrLitId".to_string()));
+    let ty = Arc::new(ty);
+    let exp = Arc::new(DeclX::Const(varname.clone(), ty));
+    (varname, exp)
 }
 
 fn string_to_air(
@@ -864,24 +877,37 @@ fn string_to_air(
     string: &String,
     span: Span,
 ) -> (Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>) {
+
+    let and = |exprs: Vec<Expr>| -> Expr {
+        let exprs = Arc::new(exprs);
+        let exprx = ExprX::Multi(MultiOp::And, exprs);
+        Arc::new(exprx)
+    };
+
     let mut commands = Vec::new();
+
+
+    let (str_ident, decl) = declare_str_fuel_const(fun.clone());
+    commands.push(Arc::new(CommandX::Global(decl)));
+
     let mut exps = Vec::new();
-    let ascii_exp = is_ascii_to_air(ctx, fun.clone(), string, span.clone(), &mut commands);
-    let len_exp = len_to_air(ctx, fun.clone(), string.len(), span.clone());
+    let ascii_exp = string_is_ascii_to_air(ctx, fun.clone(), string, span.clone(), &mut commands);
+    let len_exp = string_len_to_air(ctx, fun.clone(), string.len(), span.clone());
     exps.push(len_exp);
     exps.push(ascii_exp);
 
     for (index, c) in string.chars().into_iter().enumerate() {
         let digit_value = c as u8;
-        let exp = index_to_air(ctx, fun.clone(), index, digit_value, span.clone(), &mut commands);
+        let exp = string_index_to_air(ctx, fun.clone(), index, digit_value, span.clone(), &mut commands);
         exps.push(exp);
     }
 
-    let expr = and(exps);
-    dbg!(&expr);
-    // let expr = expr_with_str_fuel(expr);
-    let command = Arc::new(CommandX::Global(Arc::new(DeclX::Axiom(expr))));
-    // commands.push(command);
+
+    let exp = and(exps);
+    let exp = expr_with_str_fuel(str_ident, exp);
+
+    let command = Arc::new(CommandX::Global(Arc::new(DeclX::Axiom(exp))));
+    commands.push(command);
 
     (
         Arc::new(vec![Arc::new(CommandsWithContextX {
