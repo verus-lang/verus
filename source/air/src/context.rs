@@ -242,12 +242,8 @@ impl Context {
     }
 
     pub(crate) fn set_z3_param_str(&mut self, option: &str, value: &str, write_to_logs: bool) {
-        if option == "tactic.default_tactic" {
-            if write_to_logs {
-                self.log_set_z3_param(option, &value.to_string());
-            }
-        } else {
-            panic!("encountered unexpected z3 option: {} : {}", option, value);
+        if write_to_logs {
+            self.log_set_z3_param(option, &value.to_string());
         }
     }
 
@@ -256,14 +252,14 @@ impl Context {
             self.set_z3_param_bool(option, true, true);
         } else if value == "false" {
             self.set_z3_param_bool(option, false, true);
-        } else if value == "sat" {
-            self.set_z3_param_str(option, value, true);
-        } else if value.contains(".") {
-            let v = value.parse::<f64>().expect(&format!("could not parse option value {}", value));
+        } else if let Ok(v) = value.parse::<f64>() {
             self.set_z3_param_f64(option, v, true);
-        } else {
-            let v = value.parse::<u32>().expect(&format!("could not parse option value {}", value));
+        } else if let Ok(v) = value.parse::<u32>() {
             self.set_z3_param_u32(option, v, true);
+        } else if value.is_ascii() {
+            self.set_z3_param_str(option, value, true);
+        } else {
+            panic!("unexpected z3 param {}", value);
         }
     }
 
