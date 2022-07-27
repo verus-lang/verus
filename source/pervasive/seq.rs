@@ -297,15 +297,10 @@ pub proof fn axiom_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int)
 
 #[doc(hidden)]
 #[macro_export]
-macro_rules! seq_insert_rec {
-    [$val:expr;] => {
-        $val
-    };
-    [$val:expr;$elem:expr] => {
-        seq_insert_rec![$val.push($elem);]
-    };
-    [$val:expr;$elem:expr,$($tail:tt)*] => {
-        seq_insert_rec![$val.push($elem);$($tail)*]
+macro_rules! seq_internal {
+    [$($elem:expr),* $(,)?] => {
+        $crate::pervasive::seq::Seq::empty()
+            $(.push($elem))*
     }
 }
 
@@ -325,11 +320,11 @@ macro_rules! seq_insert_rec {
 #[macro_export]
 macro_rules! seq {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::pervasive::seq::seq_insert_rec![$crate::pervasive::seq::Seq::empty();$($tail)*])
-    }
+        ::builtin_macros::verus_proof_macro_exprs!($crate::pervasive::seq::seq_internal!($($tail)*))
+    };
 }
 
-pub use seq_insert_rec;
+pub use seq_internal;
 pub use seq;
 
 } // verus!

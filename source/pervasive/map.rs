@@ -269,15 +269,10 @@ pub proof fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
 
 #[doc(hidden)]
 #[macro_export]
-macro_rules! map_insert_rec {
-    [$val:expr;] => {
-        $val
-    };
-    [$val:expr;$key:expr => $value:expr] => {
-        map_insert_rec![$val.insert($key, $value);]
-    };
-    [$val:expr;$key:expr => $value:expr,$($tail:tt)*] => {
-        map_insert_rec![$val.insert($key, $value);$($tail)*]
+macro_rules! map_internal {
+    [$($key:expr => $value:expr),* $(,)?] => {
+        $crate::pervasive::map::Map::empty()
+            $(.insert($key, $value))*
     }
 }
 
@@ -291,11 +286,11 @@ macro_rules! map_insert_rec {
 #[macro_export]
 macro_rules! map {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::pervasive::map::map_insert_rec![$crate::pervasive::map::Map::empty();$($tail)*])
-    }
-} 
+        ::builtin_macros::verus_proof_macro_exprs!($crate::pervasive::map::map_internal!($($tail)*))
+    };
+}
 
-pub use map_insert_rec;
+pub use map_internal;
 pub use map;
 
 /// Prove two maps equal by _extensionality_. Usage is:
