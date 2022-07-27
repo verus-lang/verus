@@ -63,6 +63,15 @@ fn check_item<'tcx>(
             // TODO use rustc_middle info here? if sufficient, it may allow for a single code path
             // for definitions of the local crate and imported crates
             // let adt_def = tcx.adt_def(item.def_id);
+            //
+            // UPDATE: We now use _some_ rustc_middle info with the adt_def, which we
+            // use to get rustc_middle types. However, we don't exclusively use
+            // rustc_middle; in fact, we still rely on attributes which we can only
+            // get from the HIR data.
+
+            let tyof = ctxt.tcx.type_of(item.def_id.to_def_id());
+            let adt_def = tyof.ty_adt_def().expect("adt_def");
+
             check_item_struct(
                 ctxt,
                 vir,
@@ -73,9 +82,13 @@ fn check_item<'tcx>(
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 variant_data,
                 generics,
+                adt_def,
             )?;
         }
         ItemKind::Enum(enum_def, generics) => {
+            let tyof = ctxt.tcx.type_of(item.def_id.to_def_id());
+            let adt_def = tyof.ty_adt_def().expect("adt_def");
+
             // TODO use rustc_middle? see `Struct` case
             check_item_enum(
                 ctxt,
@@ -87,6 +100,7 @@ fn check_item<'tcx>(
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 enum_def,
                 generics,
+                adt_def,
             )?;
         }
         ItemKind::Impl(impll) => {
