@@ -108,8 +108,10 @@ fn validate_idents_transition_stmt(ts: &TransitionStmt, kind: TransitionKind) ->
 fn validate_idents_op(op: &SpecialOp, kind: TransitionKind) -> parse::Result<()> {
     match &op.elt {
         MonoidElt::OptionSome(None) => {}
+        MonoidElt::True => {}
         MonoidElt::OptionSome(Some(e))
         | MonoidElt::SingletonMultiset(e)
+        | MonoidElt::SingletonSet(e)
         | MonoidElt::General(e) => {
             validate_idents_expr(e, kind)?;
         }

@@ -245,6 +245,7 @@ fn visit_special_op(
     match op {
         SpecialOp { stmt: _, elt: MonoidElt::OptionSome(Some(e)) }
         | SpecialOp { stmt: _, elt: MonoidElt::General(e) }
+        | SpecialOp { stmt: _, elt: MonoidElt::SingletonSet(e) }
         | SpecialOp { stmt: _, elt: MonoidElt::SingletonMultiset(e) } => {
             visit_field_accesses(
                 e,
@@ -253,6 +254,7 @@ fn visit_special_op(
                 ident_to_field,
             );
         }
+        SpecialOp { stmt: _, elt: MonoidElt::True } => {}
         SpecialOp { stmt: _, elt: MonoidElt::OptionSome(None) } => {
             // nothing to do
         }

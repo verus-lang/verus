@@ -318,14 +318,22 @@ enum ShardingType {
     Variable,
     Constant,
     NotTokenized,
-    Multiset,
+
     Option,
     Map,
-    StorageOption,
-    StorageMap,
+    Set,
+    Multiset,
+    Count,
+    Bool,
+
     PersistentOption,
     PersistentMap,
-    Count,
+    PersistentSet,
+    PersistentCount,
+    PersistentBool,
+
+    StorageOption,
+    StorageMap,
 }
 
 /// Get the sharding type from the attributes of the field.
@@ -365,6 +373,8 @@ fn get_sharding_type(
                                 "variable" => ShardingType::Variable,
                                 "constant" => ShardingType::Constant,
                                 "multiset" => ShardingType::Multiset,
+                                "set" => ShardingType::Set,
+                                "bool" => ShardingType::Bool,
                                 "count" => ShardingType::Count,
                                 "option" => ShardingType::Option,
                                 "map" => ShardingType::Map,
@@ -372,6 +382,9 @@ fn get_sharding_type(
                                 "storage_map" => ShardingType::StorageMap,
                                 "persistent_option" => ShardingType::PersistentOption,
                                 "persistent_map" => ShardingType::PersistentMap,
+                                "persistent_set" => ShardingType::PersistentSet,
+                                "persistent_count" => ShardingType::PersistentCount,
+                                "persistent_bool" => ShardingType::PersistentBool,
                                 "not_tokenized" => ShardingType::NotTokenized,
                                 name => {
                                     return Err(Error::new(
@@ -542,6 +555,18 @@ fn to_fields(
                 check_untemplated_type(&field.ty, "count", "nat")?;
                 ShardableType::Count
             }
+            ShardingType::PersistentCount => {
+                check_untemplated_type(&field.ty, "persistent_count", "nat")?;
+                ShardableType::PersistentCount
+            }
+            ShardingType::Bool => {
+                check_untemplated_type(&field.ty, "bool", "bool")?;
+                ShardableType::Bool
+            }
+            ShardingType::PersistentBool => {
+                check_untemplated_type(&field.ty, "persistent_bool", "bool")?;
+                ShardableType::PersistentBool
+            }
             ShardingType::Multiset => {
                 let v = extract_template_params(&field.ty, "multiset", "Multiset", 1)?;
                 ShardableType::Multiset(v[0].clone())
@@ -554,21 +579,29 @@ fn to_fields(
                 let v = extract_template_params(&field.ty, "map", "Map", 2)?;
                 ShardableType::Map(v[0].clone(), v[1].clone())
             }
+            ShardingType::Set => {
+                let v = extract_template_params(&field.ty, "set", "Set", 1)?;
+                ShardableType::Set(v[0].clone())
+            }
             ShardingType::StorageOption => {
                 let v = extract_template_params(&field.ty, "storage_option", "Option", 1)?;
                 ShardableType::StorageOption(v[0].clone())
             }
             ShardingType::StorageMap => {
-                let v = extract_template_params(&field.ty, "map", "Map", 2)?;
+                let v = extract_template_params(&field.ty, "storage_map", "Map", 2)?;
                 ShardableType::StorageMap(v[0].clone(), v[1].clone())
             }
             ShardingType::PersistentOption => {
-                let v = extract_template_params(&field.ty, "option", "Option", 1)?;
+                let v = extract_template_params(&field.ty, "persistent_option", "Option", 1)?;
                 ShardableType::PersistentOption(v[0].clone())
             }
             ShardingType::PersistentMap => {
-                let v = extract_template_params(&field.ty, "map", "Map", 2)?;
+                let v = extract_template_params(&field.ty, "persistent_map", "Map", 2)?;
                 ShardableType::PersistentMap(v[0].clone(), v[1].clone())
+            }
+            ShardingType::PersistentSet => {
+                let v = extract_template_params(&field.ty, "persistent_set", "Set", 1)?;
+                ShardableType::PersistentSet(v[0].clone())
             }
         };
 

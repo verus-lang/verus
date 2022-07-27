@@ -277,12 +277,17 @@ fn is_allowed_in_update_in_normal_transition(stype: &ShardableType) -> bool {
         ShardableType::Constant(_)
         | ShardableType::Multiset(_)
         | ShardableType::Option(_)
+        | ShardableType::Set(_)
         | ShardableType::Map(_, _)
         | ShardableType::StorageOption(_)
         | ShardableType::StorageMap(_, _)
         | ShardableType::PersistentMap(_, _)
         | ShardableType::PersistentOption(_)
-        | ShardableType::Count => false,
+        | ShardableType::PersistentSet(_)
+        | ShardableType::Count
+        | ShardableType::PersistentCount
+        | ShardableType::Bool
+        | ShardableType::PersistentBool => false,
     }
 }
 
@@ -309,11 +314,16 @@ fn is_allowed_in_special_op(
 
         ShardableType::Map(_, _)
         | ShardableType::Option(_)
+        | ShardableType::Set(_)
+        | ShardableType::Bool
         | ShardableType::Multiset(_)
         | ShardableType::StorageOption(_)
         | ShardableType::StorageMap(_, _)
         | ShardableType::PersistentMap(_, _)
         | ShardableType::PersistentOption(_)
+        | ShardableType::PersistentSet(_)
+        | ShardableType::PersistentBool
+        | ShardableType::PersistentCount
         | ShardableType::Count => {
             if !op_matches_type(stype, &sop.elt) {
                 let syntax = sop.elt.syntax();
@@ -384,6 +394,18 @@ fn op_matches_type(stype: &ShardableType, elt: &MonoidElt) -> bool {
             _ => false,
         },
 
+        ShardableType::Set(_) | ShardableType::PersistentSet(_) => match elt {
+            MonoidElt::General(_) => true,
+            MonoidElt::SingletonSet(_) => true,
+            _ => false,
+        },
+
+        ShardableType::Bool | ShardableType::PersistentBool => match elt {
+            MonoidElt::General(_) => true,
+            MonoidElt::True => true,
+            _ => false,
+        },
+
         ShardableType::Option(_)
         | ShardableType::PersistentOption(_)
         | ShardableType::StorageOption(_) => match elt {
@@ -398,7 +420,7 @@ fn op_matches_type(stype: &ShardableType, elt: &MonoidElt) -> bool {
             _ => false,
         },
 
-        ShardableType::Count => match elt {
+        ShardableType::Count | ShardableType::PersistentCount => match elt {
             MonoidElt::General(_) => true,
             _ => false,
         },

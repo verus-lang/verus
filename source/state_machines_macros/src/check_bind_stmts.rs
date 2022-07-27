@@ -65,6 +65,8 @@ pub fn uses_bind(elt: &MonoidElt) -> bool {
         MonoidElt::SingletonKV(_, None) => true,
         MonoidElt::SingletonKV(_, Some(_)) => false,
         MonoidElt::SingletonMultiset(_) => false,
+        MonoidElt::SingletonSet(_) => false,
+        MonoidElt::True => false,
         MonoidElt::General(_) => false,
     }
 }
