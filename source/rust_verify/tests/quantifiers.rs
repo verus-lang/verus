@@ -11,12 +11,12 @@ test_verify_one_file! {
 
         proof fn test1() {
             assert(tr(300));
-            assert(exists|i: nat| i >= 0 && tr(i));
+            assert(exists|i: nat| i >= 0 && tr(i as int));
         }
 
         proof fn test1_inference() {
             assert(tr(300));
-            assert(exists|i| i >= 0 && tr(i));
+            assert(exists|i| 0 <= i && tr(i));
         }
     } => Ok(())
 }
@@ -28,7 +28,7 @@ test_verify_one_file! {
         }
 
         proof fn test1() {
-            assert(exists|i: nat| i >= 0 && tr(i)); // FAILS
+            assert(exists|i: nat| i >= 0 && tr(i as int)); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -45,7 +45,7 @@ test_verify_one_file! {
 
         proof fn test1() {
             assert(tr1(300));
-            assert(exists|i: nat| i >= 0 && tr1(i) && tr2(i));
+            assert(exists|i: nat| i >= 0 && tr1(i as int) && tr2(i as int));
         }
     } => Ok(())
 }
@@ -62,7 +62,7 @@ test_verify_one_file! {
 
         proof fn test1() {
             assert(tr2(300));
-            assert(exists|i: nat| i >= 0 && tr1(i) && tr2(i));
+            assert(exists|i: nat| i >= 0 && tr1(i as int) && tr2(i as int));
         }
     } => Ok(())
 }
@@ -142,7 +142,7 @@ test_verify_one_file! {
 
         proof fn test1() {
             assert(tr2(300));
-            assert(exists|i: nat| i >= 0 && tr1(i) && #[trigger] tr2(i));
+            assert(exists|i: nat| i >= 0 && tr1(i as int) && #[trigger] tr2(i as int));
         }
     } => Ok(())
 }
@@ -159,7 +159,7 @@ test_verify_one_file! {
 
         proof fn test1() {
             assert(tr1(300));
-            assert(exists|i: nat| i >= 0 && tr1(i) && #[trigger] tr2(i)); // FAILS
+            assert(exists|i: nat| i >= 0 && tr1(i as int) && #[trigger] tr2(i as int)); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -181,10 +181,10 @@ test_verify_one_file! {
 
                 ::builtin::assert_by(::builtin::equal(m1, m2), {
                     ::builtin::assert_forall_by(|key| {
-                        ::builtin::ensures([((#[trigger]
-                        m1.dom().contains(key)) >>= m2.dom().contains(key))
-                            && (m2.dom().contains(key) >>= m1.dom().contains(key))
-                            && (m1.dom().contains(key) && m2.dom().contains(key) >>=
+                        ::builtin::ensures([
+                        imply(#[trigger] m1.dom().contains(key)), m2.dom().contains(key)
+                            && imply(m2.dom().contains(key), m1.dom().contains(key))
+                            imply(m1.dom().contains(key) && m2.dom().contains(key),
                                 ::builtin::equal(m1.index(key), m2.index(key)))]);
                         { {} }
                     });

@@ -27,7 +27,7 @@ test_verify_one_file! {
             let s1: Set<i32> = Set::empty().insert(1);
 
             assert (exists|s3: Set<i32>| different_set(s3) !== s1) by {
-                assert(!different_set(Set::empty()).contains(1));
+                assert(!different_set(Set::empty()).contains(1i32));
             }
         }
     } => Ok(())

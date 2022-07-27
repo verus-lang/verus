@@ -4,9 +4,10 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] test_ref_0 code! {
-        fn test_ref_0(p: int) {
-            requires(p == 12);
+    #[test] test_ref_0 verus_code! {
+        fn test_ref_0(p: int)
+            requires p == 12
+        {
             let b: &int = &p;
             assert(*b == 12);
         }
@@ -261,36 +262,40 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_trigger_0 code! {
+    #[test] test_mut_ref_trigger_0 verus_code! {
         #[verifier(external_body)]
         struct A {
             _p: std::marker::PhantomData<()>,
         }
 
         impl A {
-            #[spec]
             #[verifier(external_body)]
-            fn index(&self, i: nat) -> nat { unimplemented!() }
+            spec fn index(&self, i: nat) -> nat { unimplemented!() }
         }
 
-        #[exec]
-        fn add1(a: &mut A, i: usize) {
-            ensures(forall(|j: nat| a.index(j) == old(a).index(j) + 1));
+        exec fn add1(a: &mut A, i: usize)
+            ensures
+                forall|j: nat| a.index(j) == old(a).index(j) + 1
+        {
             assume(false);
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_old_trigger code! {
+    #[test] test_mut_ref_old_trigger verus_code! {
         use crate::pervasive::vec::*;
 
-        fn add1(v: &mut Vec<u64>) {
-            requires(forall(|i: nat| i < old(v).len() >>= old(v).index(i) < 10));
+        fn add1(v: &mut Vec<u64>)
+            requires
+                forall|i: int| 0 <= i < old(v).len() ==> old(v)[i] < 10,
+        {
         }
 
-        fn test(v: Vec<u64>) {
-            requires(forall(|i: nat| i < v.len() >>= v.index(i) < 5));
+        fn test(v: Vec<u64>)
+            requires
+                forall|i: int| 0 <= i < v.len() ==> v[i] < 5,
+        {
             let mut v1 = v;
             add1(&mut v1);
         }

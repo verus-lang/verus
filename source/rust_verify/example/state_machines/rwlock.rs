@@ -119,7 +119,7 @@ tokenized_state_machine!(RwLock {
     }
 
     /// Check that the 'reader' is actually a guard for the given object.
-    readonly!{
+    property!{
         read_guard(x: T) {
             have reader >= {x};
             guard storage >= Some(x);

@@ -64,7 +64,7 @@ enum TermX {
 impl std::fmt::Debug for TermX {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
-            TermX::Var((x, _)) => write!(f, "{}", x),
+            TermX::Var(x) => write!(f, "{}", &x.name),
             TermX::App(App::Const(c), _) => write!(f, "{:?}", c),
             TermX::App(App::Field(_, x, y), es) => write!(f, "{:?}.{}/{}", es[0], x, y),
             TermX::App(c @ (App::Call(_) | App::Ctor(_, _)), es) => {
@@ -86,8 +86,8 @@ impl std::fmt::Debug for TermX {
             TermX::App(App::Other(_), _) => {
                 write!(f, "_")
             }
-            TermX::App(App::VarAt((x, _), VarAt::Pre), _) => {
-                write!(f, "old({})", x)
+            TermX::App(App::VarAt(x, VarAt::Pre), _) => {
+                write!(f, "old({})", &x.name)
             }
             TermX::App(App::BitOp(bop), _) => {
                 write!(f, "BitOp: {:?}", bop)
@@ -193,7 +193,7 @@ fn check_timeout(timer: &mut Timer) -> Result<(), VirErr> {
 
 fn trigger_vars_in_term(ctxt: &Ctxt, vars: &mut HashSet<Ident>, term: &Term) {
     match &**term {
-        TermX::Var((x, None)) if ctxt.trigger_vars.contains(x) => {
+        TermX::Var(UniqueIdent { name: x, local: None }) if ctxt.trigger_vars.contains(x) => {
             vars.insert(x.clone());
         }
         TermX::Var(..) => {}
@@ -214,7 +214,9 @@ fn term_size(term: &Term) -> u64 {
 
 fn trigger_var_depth(ctxt: &Ctxt, term: &Term, depth: u64) -> Option<u64> {
     match &**term {
-        TermX::Var((x, None)) if ctxt.trigger_vars.contains(x) => Some(depth),
+        TermX::Var(UniqueIdent { name: x, local: None }) if ctxt.trigger_vars.contains(x) => {
+            Some(depth)
+        }
         TermX::Var(..) => None,
         TermX::App(_, args) => {
             args.iter().filter_map(|t| trigger_var_depth(ctxt, t, depth + 1)).max()
@@ -260,7 +262,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             for typ in typs.iter() {
                 let ft = |all_terms: &mut Vec<Term>, t: &Typ| match &**t {
                     TypX::TypParam(x) => {
-                        let x = (crate::def::suffix_typ_param_id(x), None);
+                        let x = crate::def::unique_bound(&crate::def::suffix_typ_param_id(x));
                         all_terms.push(Arc::new(TermX::Var(x)));
                         Ok(t.clone())
                     }
@@ -293,9 +295,11 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             (is_pure, Arc::new(TermX::App(App::Ctor(path.clone(), variant), Arc::new(terms))))
         }
         ExpX::Unary(UnaryOp::Trigger(_), e1) => gather_terms(ctxt, ctx, e1, depth),
+        ExpX::Unary(UnaryOp::CoerceMode { .. }, e1) => gather_terms(ctxt, ctx, e1, depth),
+        ExpX::Unary(UnaryOp::MustBeFinalized, e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::Unary(op, e1) => {
             let depth = match op {
-                UnaryOp::Not => 0,
+                UnaryOp::Not | UnaryOp::CoerceMode { .. } | UnaryOp::MustBeFinalized => 0,
                 UnaryOp::Trigger(_) | UnaryOp::Clip(_) | UnaryOp::BitNot => 1,
             };
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
@@ -401,10 +405,16 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
 // Second bool: is the instantiation potentially bigger than the original template?
 fn structure_matches(ctxt: &Ctxt, template: &Term, term: &Term) -> (bool, bool) {
     match (&**template, &**term) {
-        (TermX::Var((x1, None)), TermX::App(_, _)) if ctxt.trigger_vars.contains(x1) => {
+        (TermX::Var(UniqueIdent { name: x1, local: None }), TermX::App(_, _))
+            if ctxt.trigger_vars.contains(x1) =>
+        {
             (true, true)
         }
-        (TermX::Var((x1, None)), _) if ctxt.trigger_vars.contains(x1) => (true, false),
+        (TermX::Var(UniqueIdent { name: x1, local: None }), _)
+            if ctxt.trigger_vars.contains(x1) =>
+        {
+            (true, false)
+        }
         (TermX::Var(x1), TermX::Var(x2)) => (x1 == x2, false),
         (TermX::App(a1, args1), TermX::App(a2, args2))
             if a1 == a2 && args1.len() == args2.len() =>

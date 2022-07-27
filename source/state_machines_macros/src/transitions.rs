@@ -1,3 +1,5 @@
+use crate::ast::INIT_LABEL_TYPE_NAME;
+use crate::ast::TRANSITION_LABEL_TYPE_NAME;
 use crate::ast::{
     Field, MonoidElt, ShardableType, SpecialOp, SplitKind, Transition, TransitionKind,
     TransitionStmt, SM,
@@ -10,7 +12,7 @@ use crate::util::{combine_errors_or_ok, combine_results};
 use proc_macro2::Span;
 use syn_verus::parse;
 use syn_verus::spanned::Spanned;
-use syn_verus::{Error, Ident};
+use syn_verus::{Error, Ident, Type, TypePath};
 
 pub fn fields_contain(fields: &Vec<Field>, ident: &Ident) -> bool {
     for f in fields {
@@ -417,12 +419,13 @@ fn check_valid_ops(
     fields: &Vec<Field>,
     ts: &TransitionStmt,
     is_readonly: bool,
+    is_property: bool,
     errors: &mut Vec<Error>,
 ) {
     match ts {
         TransitionStmt::Block(_, v) => {
             for t in v.iter() {
-                check_valid_ops(fields, t, is_readonly, errors);
+                check_valid_ops(fields, t, is_readonly, is_property, errors);
             }
         }
         TransitionStmt::Split(span, SplitKind::Special(f, op, _, _), es) => {
@@ -439,20 +442,26 @@ fn check_valid_ops(
                     format!("'{:}' statement not allowed in readonly transition", op.stmt.name()),
                 ));
             }
-            if !is_readonly && op.is_only_allowed_in_readonly() {
+            if is_property && op.is_modifier() {
                 errors.push(Error::new(
                     *span,
-                    format!("'{:}' statement only allowed in readonly transition", op.stmt.name()),
+                    format!("'{:}' statement not allowed in 'property' definition", op.stmt.name()),
+                ));
+            }
+            if !is_readonly && !is_property && op.is_only_allowed_in_property_or_readonly() {
+                errors.push(Error::new(
+                    *span,
+                    format!("'{:}' statement only allowed in 'readonly' transition or 'property' definition", op.stmt.name()),
                 ));
             }
 
             for e in es {
-                check_valid_ops(fields, e, is_readonly, errors);
+                check_valid_ops(fields, e, is_readonly, is_property, errors);
             }
         }
         TransitionStmt::Split(_, _, es) => {
             for e in es {
-                check_valid_ops(fields, e, is_readonly, errors);
+                check_valid_ops(fields, e, is_readonly, is_property, errors);
             }
         }
         TransitionStmt::Require(_, _) => {}
@@ -478,6 +487,12 @@ fn check_valid_ops(
                 errors.push(Error::new(
                     span.span(),
                     format!("'update' statement not allowed in readonly transition"),
+                ));
+            }
+            if is_property {
+                errors.push(Error::new(
+                    span.span(),
+                    format!("'update' statement not allowed in property definition"),
                 ));
             }
         }
@@ -622,6 +637,44 @@ pub fn check_transitions(sm: &mut SM) -> parse::Result<()> {
     combine_results(results)
 }
 
+fn check_label_param(sm: &SM, tr: &Transition, errors: &mut Vec<Error>) {
+    let first_arg_is_type = |expected_name: &str| {
+        if tr.params.len() == 0 {
+            false
+        } else {
+            let ty = &tr.params[0].ty;
+            match ty {
+                Type::Path(TypePath { qself: None, path }) => match path.get_ident() {
+                    None => false,
+                    Some(id) => id.to_string() == expected_name,
+                },
+                _ => false,
+            }
+        }
+    };
+
+    match tr.kind {
+        TransitionKind::Property => { /* no requirement */ }
+        TransitionKind::Init => {
+            if sm.init_label.is_some() && !first_arg_is_type(INIT_LABEL_TYPE_NAME) {
+                errors.push(Error::new(tr.name.span(),
+                  format!("Since '{INIT_LABEL_TYPE_NAME:}' was declared, the first param to an 'init' definition must be '{INIT_LABEL_TYPE_NAME:}'")));
+            }
+        }
+        TransitionKind::ReadonlyTransition | TransitionKind::Transition => {
+            if sm.transition_label.is_some() && !first_arg_is_type(TRANSITION_LABEL_TYPE_NAME) {
+                let kindname = if tr.kind == TransitionKind::ReadonlyTransition {
+                    "'readonly' transition"
+                } else {
+                    "'transition'"
+                };
+                errors.push(Error::new(tr.name.span(),
+                  format!("Since '{TRANSITION_LABEL_TYPE_NAME:}' was declared, the first param to a {kindname:} must be '{TRANSITION_LABEL_TYPE_NAME:}'")));
+            }
+        }
+    }
+}
+
 pub fn check_transition(sm: &SM, tr: &mut Transition) -> parse::Result<()> {
     validate_idents_transition(tr)?;
 
@@ -632,12 +685,17 @@ pub fn check_transition(sm: &SM, tr: &mut Transition) -> parse::Result<()> {
         return combine_errors_or_ok(errors);
     }
 
+    check_label_param(sm, tr, &mut errors);
+
     match &tr.kind {
-        TransitionKind::Readonly => {
-            check_valid_ops(&sm.fields, &tr.body, true, &mut errors);
+        TransitionKind::ReadonlyTransition => {
+            check_valid_ops(&sm.fields, &tr.body, true, false, &mut errors);
+        }
+        TransitionKind::Property => {
+            check_valid_ops(&sm.fields, &tr.body, false, true, &mut errors);
         }
         TransitionKind::Transition => {
-            check_valid_ops(&sm.fields, &tr.body, false, &mut errors);
+            check_valid_ops(&sm.fields, &tr.body, false, false, &mut errors);
             check_at_most_one_update(sm, &tr.body, &mut errors);
         }
         TransitionKind::Init => {

@@ -203,25 +203,37 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_ops_trait_impl code! {
-        #[derive(PartialEq, Eq)] #[spec]
-        struct V {
+    #[test] test_ops_trait_impl verus_code! {
+        #[derive(PartialEq, Eq)]
+        ghost struct V {
             one: nat,
             two: nat,
         }
 
         impl V {
-            #[spec]
-            fn get_one(self) -> nat {
+            spec fn get_one(self) -> nat {
                 self.one
+            }
+        }
+
+        impl V {
+            spec fn spec_index(self, idx: int) -> nat {
+                if idx == 0 {
+                    self.one
+                } else if idx == 1 {
+                    self.two
+                } else {
+                    arbitrary()
+                }
             }
         }
 
         impl std::ops::Index<int> for V {
             type Output = nat;
 
-            #[spec]
-            fn index(&self, idx: int) -> &nat {
+            // TODO: this index-via-ghost-struct feature is probably obsolete now;
+            // we should consider removing it
+            spec fn index(&self, idx: int) -> &nat {
                 if idx == 0 {
                     &self.one
                 } else if idx == 1 {
@@ -232,9 +244,11 @@ test_verify_one_file! {
             }
         }
 
-        fn test(v: V) {
-            requires(v[0] == 3);
-
+        // this actually uses spec_index, not index:
+        fn test(v: V)
+            requires
+                v[0] == 3,
+        {
             assert(v[0] + 1 == 4);
         }
     } => Ok(())

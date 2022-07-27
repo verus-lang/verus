@@ -12,7 +12,7 @@ verus! {
 /// that has `Seq<A>` as its specification type.
 ///
 /// An object `seq: Seq<A>` has a length, given by [`seq.len()`](Seq::len),
-/// and a value at each `i` for `0 <= i < seq.len()`, given by [`seq.index(i)`](Seq::index).
+/// and a value at each `i` for `0 <= i < seq.len()`, given by [`seq[i]`](Seq::index).
 ///
 /// Sequences can be constructed in a few different ways:
 ///  * [`Seq::empty`] construct an empty sequence (`len() == 0`)
@@ -35,7 +35,7 @@ impl<A> Seq<A> {
 
     pub spec fn empty() -> Seq<A>;
 
-    /// Construct a sequence `s` of length `len` where entry `s.index(i)` is given by `f(i)`.
+    /// Construct a sequence `s` of length `len` where entry `s[i]` is given by `f(i)`.
 
     pub spec fn new<F: Fn(int) -> A>(len: nat, f: F) -> Seq<A>;
 
@@ -50,6 +50,15 @@ impl<A> Seq<A> {
 
     pub spec fn index(self, i: int) -> A
         recommends 0 <= i < self.len();
+
+    /// `[]` operator, synonymous with `index`
+
+    #[verifier(inline)]
+    pub open spec fn spec_index(self, i: int) -> A
+        recommends 0 <= i < self.len()
+    {
+        self.index(i)
+    }
 
     /// Appends the value `a` to the end of the sequence.
     /// This always increases the length of the sequence by 1.
@@ -95,7 +104,7 @@ impl<A> Seq<A> {
 
     pub open spec fn ext_equal(self, s2: Seq<A>) -> bool {
         &&& self.len() == s2.len()
-        &&& (forall|i: int| 0 <= i < self.len() ==> self.index(i) === s2.index(i))
+        &&& (forall|i: int| 0 <= i < self.len() ==> self[i] === s2[i])
     }
 
     /// Returns a sequence for the given subrange.
@@ -137,7 +146,7 @@ impl<A> Seq<A> {
     pub open spec fn last(self) -> A
         recommends 0 < self.len()
     {
-        self.index(self.len() as int - 1)
+        self[self.len() as int - 1]
     }
 }
 
@@ -165,7 +174,7 @@ pub proof fn axiom_seq_new_index<A, F: Fn(int) -> A>(len: nat, f: F, i: int)
     requires
         0 <= i < len,
     ensures
-        Seq::new(len, f).index(i) === f(i),
+        Seq::new(len, f)[i] === f(i),
 {
 }
 
@@ -183,7 +192,7 @@ pub proof fn axiom_seq_push_index_same<A>(s: Seq<A>, a: A, i: int)
     requires
         i == s.len(),
     ensures
-        #[trigger] s.push(a).index(i) === a,
+        #[trigger] s.push(a)[i] === a,
 {
 }
 
@@ -193,7 +202,7 @@ pub proof fn axiom_seq_push_index_different<A>(s: Seq<A>, a: A, i: int)
     requires
         0 <= i < s.len(),
     ensures
-        s.push(a).index(i) === s.index(i),
+        s.push(a)[i] === s[i],
 {
 }
 
@@ -213,7 +222,7 @@ pub proof fn axiom_seq_update_same<A>(s: Seq<A>, i: int, a: A)
     requires
         0 <= i < s.len(),
     ensures
-        #[trigger] s.update(i, a).index(i) === a,
+        #[trigger] s.update(i, a)[i] === a,
 {
 }
 
@@ -225,7 +234,7 @@ pub proof fn axiom_seq_update_different<A>(s: Seq<A>, i1: int, i2: int, a: A)
         0 <= i2 < s.len(),
         i1 != i2,
     ensures
-        s.update(i2, a).index(i1) === s.index(i1),
+        s.update(i2, a)[i1] === s[i1],
 {
 }
 
@@ -254,7 +263,7 @@ pub proof fn axiom_seq_subrange_index<A>(s: Seq<A>, j: int, k: int, i: int)
         0 <= j <= k <= s.len(),
         0 <= i < k - j,
     ensures
-        s.subrange(j, k).index(i) === s.index(i + j),
+        s.subrange(j, k)[i] === s[i + j],
 {
 }
 
@@ -271,7 +280,7 @@ pub proof fn axiom_seq_add_index1<A>(s1: Seq<A>, s2: Seq<A>, i: int)
     requires
         0 <= i < s1.len(),
     ensures
-        s1.add(s2).index(i) === s1.index(i),
+        s1.add(s2)[i] === s1[i],
 {
 }
 
@@ -282,7 +291,7 @@ pub proof fn axiom_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int)
         0 <= s1.len(),
         i < s1.len() as int + s2.len(),
     ensures
-        s1.add(s2).index(i) === s2.index(i - s1.len()),
+        s1.add(s2)[i] === s2[i - s1.len()],
 {
 }
 
@@ -308,9 +317,9 @@ macro_rules! seq_insert_rec {
 /// let s = seq![11, 12, 13];
 ///
 /// assert(s.len() == 3);
-/// assert(s.index(0) == 11);
-/// assert(s.index(1) == 12);
-/// assert(s.index(2) == 13);
+/// assert(s[0] == 11);
+/// assert(s[1] == 12);
+/// assert(s[2] == 13);
 /// ```
 
 #[macro_export]

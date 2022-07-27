@@ -157,10 +157,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_publish_but_not_marked_pub code! {
+    #[test] test_publish_but_not_marked_pub verus_code! {
         #[spec]
         #[verifier(publish)]
-        fn bar() -> int {
+        fn bar() -> u64 {
             7
         }
     } => Err(err) => assert_vir_error(err)

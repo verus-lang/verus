@@ -14,9 +14,9 @@ struct X {
 fn main() {
     let x = X { i: 5 };
 
-    let (pcell, Proof(mut token)) = PCell::empty();
+    let (pcell, mut token) = PCell::empty();
 
     pcell.put(&mut token, x);
 
-    assert(equal(token.value, option::Option::Some(X { i : 5 })));
+    assert(equal((*token).value, option::Option::Some(X { i : 5 })));
 }

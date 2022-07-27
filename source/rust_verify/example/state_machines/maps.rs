@@ -102,7 +102,7 @@ tokenized_state_machine!(
             }
         }
 
-        readonly! {
+        property! {
             do_guard(i: int, b: bool) {
                 have map >= [i => b];
                 guard storage_map >= [i => b];

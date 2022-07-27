@@ -15,12 +15,12 @@ impl<A> Seq<A> {
     /// The `int` parameter of `f` is the index of the element being mapped.
 
     pub open spec fn map<B, F: Fn(int, A) -> B>(self, f: F) -> Seq<B> {
-        Seq::new(self.len(), |i: int| f(i, self.index(i)))
+        Seq::new(self.len(), |i: int| f(i, self[i]))
     }
 
     // TODO is_sorted -- extract from summer_school e22
     pub open spec fn contains(self, needle: A) -> bool {
-        exists|i: nat| i < self.len() && self.index(i) === needle
+        exists|i: int| 0 <= i < self.len() && self[i] === needle
     }
 
     /// Drops the last element of a sequence and returns a sequence whose length is
@@ -76,7 +76,7 @@ impl<A> Seq<A> {
 ///         // Prove that the elements are equal by appealing to a bitvector solver:
 ///         let j = i as u64;
 ///         assert_bit_vector(j | 0 == j);
-///         assert(s.index(i) == t.index(i));
+///         assert(s[i] == t[i]);
 ///     });
 /// }
 /// ```
@@ -98,6 +98,28 @@ macro_rules! assert_seqs_equal {
             });
             $crate::pervasive::assert(s1.ext_equal(s2));
         });
+    }
+}
+
+#[macro_export]
+macro_rules! assert_seqs_equal_verus {
+    ($s1:expr, $s2:expr) => {
+        assert_seqs_equal_verus!($s1, $s2, idx => { })
+    };
+    ($s1:expr, $s2:expr, $idx:ident => $bblock:block) => {
+        ::builtin_macros::verus_proof_expr! {{
+        let s1 = $s1;
+        let s2 = $s2;
+        ::builtin::assert_by(::builtin::equal(s1, s2), {
+            $crate::pervasive::assert(s1.len() == s2.len());
+            ::builtin::assert_forall_by(|$idx : ::builtin::int| {
+                ::builtin::requires(0 <= $idx && $idx < s1.len());
+                ::builtin::ensures(::builtin::equal(s1.index($idx), s2.index($idx)));
+                { $bblock }
+            });
+            $crate::pervasive::assert(s1.ext_equal(s2));
+        });
+        }}
     }
 }
 

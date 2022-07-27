@@ -6,10 +6,6 @@ use crate::pervasive::invariant::*;
 use crate::pervasive::atomic::*;
 use crate::pervasive::modes::*;
 
-#[doc(hidden)]
-#[spec]
-//const ATOMIC_MEM_NAMESPACE: int = 0;
-
 macro_rules! declare_atomic_type {
     ($at_ident:ident, $patomic_ty:ident, $perm_ty:ty, $value_ty: ty) => {
         pub struct $at_ident<#[verifier(maybe_negative)] G> {
@@ -40,7 +36,7 @@ macro_rules! declare_atomic_type {
                 #[proof] let pair = (perm, g);
                 #[proof] let atomic_inv = AtomicInvariant::new(pair,
                     |p| patomic.id() == p.0.patomic && f(p.0.value, p.1),
-                    0);
+                    spec_literal_int("0"));
 
                 $at_ident {
                     patomic,

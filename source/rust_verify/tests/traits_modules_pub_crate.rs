@@ -1155,24 +1155,20 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_self_ok code! {
+    #[test] test_self_ok verus_code! {
         mod M1 {
             pub(crate) trait T {
-                #[spec]
-                fn r<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self { builtin::no_method_body() }
+                spec fn r<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self;
 
-                fn f<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self {
-                    builtin::ensures(|r: &'a Self| [
-                        b >>= builtin::equal(r, self),
-                        !b >>= builtin::equal(r, x),
-                    ]);
-                    builtin::no_method_body()
-                }
+                fn f<'a>(&'a self, x: &'a Self, b: bool) -> (r: &'a Self)
+                    ensures
+                        b ==> r === self,
+                        !b ==> r === x;
             }
 
             fn p<A: T>(a1: &A, a2: &A) {
                 let a3 = a1.f(a2, true);
-                crate::pervasive::assert(builtin::equal(a3, a1));
+                assert(a3 === a1);
             }
         }
 
@@ -1180,14 +1176,13 @@ test_verify_one_file! {
             pub(crate) struct S(pub(crate) u8);
 
             impl crate::M1::T for S {
-                #[spec]
-                fn r<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self {
+                spec fn r<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self {
                     if b { self } else { x }
                 }
 
                 fn f<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self {
                     let x = if b { self } else { x };
-                    crate::pervasive::assert(builtin::equal(x, self.r(x, b)));
+                    assert(x === self.r(x, b));
                     x
                 }
             }
@@ -1199,30 +1194,27 @@ test_verify_one_file! {
                 let s1 = crate::M2::S(1);
                 let s2 = crate::M2::S(2);
                 let s3 = s1.f(&s2, true);
-                crate::pervasive::assert(s1.0 == s3.0);
+                assert(s1.0 === s3.0);
             }
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_self_fail code! {
+    #[test] test_self_fail verus_code! {
         mod M1 {
             pub(crate) trait T {
-                fn f<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self {
-                    builtin::ensures(|r: &'a Self| [
-                        b >>= builtin::equal(r, self),
-                        !b >>= builtin::equal(r, x), // TRAIT
-                    ]);
-                    builtin::no_method_body()
-                }
+                fn f<'a>(&'a self, x: &'a Self, b: bool) -> (r: &'a Self)
+                    ensures
+                        b ==> r === self,
+                        !b ==> r === x; // TRAIT
             }
         }
 
         mod M2 {
             fn p<A: crate::M1::T>(a1: &A, a2: &A) {
                 let a3 = a1.f(a2, false);
-                crate::pervasive::assert(builtin::equal(a3, a1)); // FAILS
+                assert(a3 === a1); // FAILS
             }
         }
 
@@ -1242,7 +1234,7 @@ test_verify_one_file! {
                 let s1 = crate::M3::S(1);
                 let s2 = crate::M3::S(2);
                 let s3 = s1.f(&s2, false);
-                crate::pervasive::assert(s1.0 == s3.0); // FAILS
+                assert(s1.0 === s3.0); // FAILS
             }
         }
     } => Err(err) => assert_fails(err, 3)

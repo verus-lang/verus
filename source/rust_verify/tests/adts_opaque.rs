@@ -23,6 +23,43 @@ test_verify_one_file! {
     } => Err(TestErr { has_vir_error: true, .. })
 }
 
+test_verify_one_file! {
+    #[test] test_needs_pub_abstract2 verus_code! {
+        mod M1 {
+            use builtin::*;
+
+            #[derive(PartialEq, Eq)]
+            pub struct Car {
+                passengers: nat,
+                pub four_doors: bool,
+            }
+
+            pub open spec fn get_passengers() -> Car {
+                Car { passengers: 0, four_doors: true }
+            }
+        }
+    } => Err(TestErr { has_vir_error: true, .. })
+}
+
+test_verify_one_file! {
+    #[test] test_needs_pub_abstract3 code! {
+        mod M1 {
+            use builtin::*;
+
+            enum E {
+                C()
+            }
+
+            #[spec]
+            #[verifier(publish)] // illegal
+            pub fn get_passengers() -> bool {
+                let _ = E::C();
+                true
+            }
+        }
+    } => Err(TestErr { has_vir_error: true, .. })
+}
+
 const M1: &str = code_str! {
     mod M1 {
         use builtin::*;
@@ -60,14 +97,16 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_opaque_struct_1 M1.to_string() + code_str! {
+    #[test] test_opaque_struct_1 M1.to_string() + verus_code_str! {
         mod M2 {
             use crate::M1::{Car, get_passengers, Bike};
             use builtin::*;
             use crate::pervasive::*;
 
-            fn test_opaque_struct_1(c: Car) {
-                requires(get_passengers(c) == 12);
+            fn test_opaque_struct_1(c: Car)
+                requires
+                    get_passengers(c) == 12,
+            {
                 assert(get_passengers(c) == 12);
             }
         }

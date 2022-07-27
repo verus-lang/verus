@@ -1,7 +1,7 @@
 use proc_macro2::Span;
 use std::rc::Rc;
 use syn_verus::token;
-use syn_verus::{Block, Expr, FieldsNamed, Generics, Ident, ImplItemMethod, Pat, Type};
+use syn_verus::{Block, Expr, FieldsNamed, Generics, Ident, ImplItemMethod, Item, Pat, Type};
 
 #[derive(Clone, Debug)]
 pub struct SM {
@@ -11,6 +11,8 @@ pub struct SM {
     pub fields_named_ast: FieldsNamed,
     pub transitions: Vec<Transition>,
     pub concurrent: bool,
+    pub transition_label: Option<Item>,
+    pub init_label: Option<Item>,
 }
 
 #[derive(Clone, Debug)]
@@ -18,6 +20,9 @@ pub struct Extras {
     pub invariants: Vec<Invariant>,
     pub lemmas: Vec<Lemma>,
 }
+
+pub const TRANSITION_LABEL_TYPE_NAME: &str = "Label";
+pub const INIT_LABEL_TYPE_NAME: &str = "InitLabel";
 
 #[derive(Clone, Debug)]
 pub struct Field {
@@ -68,7 +73,18 @@ pub enum ShardableType {
 pub enum TransitionKind {
     Init,
     Transition,
-    Readonly,
+
+    /// Like a transition, but it can't update anything.
+    /// Can still be useful if there's a transition label
+    /// (e.g., for "query" transitions).
+    ReadonlyTransition,
+
+    /// This is sort of like a readonly transition, but it
+    /// does not actually create a transition relation and
+    /// it never has an associated label.
+    /// You can use this to define extra safety conditions,
+    /// like guard properties.
+    Property,
 }
 
 #[derive(Clone, Debug)]
@@ -233,7 +249,7 @@ impl SpecialOp {
         self.stmt.is_modifier()
     }
 
-    pub fn is_only_allowed_in_readonly(&self) -> bool {
+    pub fn is_only_allowed_in_property_or_readonly(&self) -> bool {
         self.stmt.is_guard()
     }
 
@@ -469,5 +485,16 @@ impl ShardableType {
 impl Field {
     pub fn get_type(&self) -> Type {
         crate::to_token_stream::shardable_type_to_type(self.type_span, &self.stype)
+    }
+}
+
+impl TransitionKind {
+    pub fn requires_invariant_lemma(&self) -> bool {
+        match self {
+            TransitionKind::Init => true,
+            TransitionKind::Transition => true,
+            TransitionKind::ReadonlyTransition => false,
+            TransitionKind::Property => false,
+        }
     }
 }

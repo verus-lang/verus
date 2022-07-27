@@ -111,25 +111,25 @@ test_verify_one_file! {
                 y <= 0xffff,
                 z <= 0xffff,
         {
-            assert((x as int) * (z as int) == ((x * z) as int)) by(nonlinear_arith)
+            assert(x * z == mul(x, z)) by(nonlinear_arith)
                 requires
                     x <= 0xffff,
                     z <= 0xffff,
             {
-                assert(0 <= (x as int) * (z as int));
-                assert((x as int) * (z as int) <= 0xffff * 0xffff);
+                assert(0 <= x * z);
+                assert(x * z <= 0xffff * 0xffff);
             }
-            assert((x as int) * (z as int) == ((x * z) as int));
+            assert(x * z == mul(x, z));
 
-            assert((y as int) * (z as int) == ((y * z) as int)) by(nonlinear_arith)
+            assert(y * z == mul(y, z)) by(nonlinear_arith)
                 requires
                     y <= 0xffff,
                     z <= 0xffff,
             {
-                assert(0 <= (y as int) * (z as int));
-                assert((y as int) * (z as int) <= 0xffff * 0xffff);
+                assert(0 <= y * z);
+                assert(y * z <= 0xffff * 0xffff);
             }
-            assert((y as int) * (z as int) == ((y * z) as int));
+            assert(y * z == mul(y, z));
         }
     } => Ok(())
 }
@@ -139,14 +139,14 @@ test_verify_one_file! {
         proof fn test6(x: u32, y: u32, z: u32)
             requires x < 0xfff
         {
-            assert(x * x + x == x * (x + 1)) by(nonlinear_arith)
+            assert(add(mul(x, x), x) == mul(x, add(x, 1))) by(nonlinear_arith)
                 requires x < 0xfff
             {
             }
-            assert(x * x + x == x * (x + 1));
+            assert(add(mul(x, x), x) == mul(x, add(x, 1)));
 
-            assert(x * y == y * x) by(nonlinear_arith);
-            assert(x * y == y * x);
+            assert(mul(x, y) == mul(y, x)) by(nonlinear_arith);
+            assert(mul(x, y) == mul(y, x));
         }
     } => Ok(())
 }
@@ -186,7 +186,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test4_fails verus_code! {
         proof fn test4_fails(x: u32, y: u32, z: u32) {
-            assert((x as int) * (z as int) == ((x * z) as int)) by(nonlinear_arith); // FAILS
+            assert(x * z == (mul(x, z) as int)) by(nonlinear_arith); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
 }
@@ -252,10 +252,10 @@ test_verify_one_file! {
         proof fn test6(x: int)
             requires x == 5
         {
-            assert({let z = 2; x * z == 10}) by(nonlinear_arith)
-                requires ({let z = 5; x == z})
+            assert({let z: int = 2; x * z == 10}) by(nonlinear_arith)
+                requires ({let z: int = 5; x == z})
             {
-                let y: nat = x as nat * 2;
+                let y: nat = mul(x as nat, 2);
                 assert(y == 10);
             }
             assert(x * 2 == 10);

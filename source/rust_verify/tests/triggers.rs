@@ -15,10 +15,13 @@ test_verify_one_file! {
 
         impl Node {
             #[spec] fn inv(&self) -> bool {
-                forall(|i: nat, j: nat| (i < self.nodes.len() && j < self.nodes.index(i).values.len()) >>= {
-                    let values = #[trigger] self.nodes.index(i).values;
-                    self.base_v <= #[trigger] values.index(j)
-                })
+                forall(|i: nat, j: nat|
+                    imply(i < self.nodes.len() && j < self.nodes.index(spec_cast_integer::<nat, int>(i)).values.len(),
+                    {
+                        let values = #[trigger] self.nodes.index(spec_cast_integer::<nat, int>(i)).values;
+                        self.base_v <= #[trigger] values.index(spec_cast_integer::<nat, int>(j))
+                    }
+                ))
             }
         }
 
@@ -37,43 +40,48 @@ test_verify_one_file! {
 
         impl Node {
             #[spec] fn inv(&self) -> bool {
-                forall(|i: nat, j: nat| with_triggers!([self.nodes.index(i).values.index(j)] =>
-                                                       (i < self.nodes.len() && j < self.nodes.index(i).values.len()) >>= {
-                    let values = self.nodes.index(i).values;
-                    self.base_v <= values.index(j)
-                }))
+                forall(|i: nat, j: nat|
+                    with_triggers!([self.nodes.index(spec_cast_integer::<nat, int>(i)).values.index(spec_cast_integer::<nat, int>(j))] =>
+                        imply(i < self.nodes.len() && j < self.nodes.index(spec_cast_integer::<nat, int>(i)).values.len(),
+                        {
+                            let values = self.nodes.index(spec_cast_integer::<nat, int>(i)).values;
+                            self.base_v <= values.index(spec_cast_integer::<nat, int>(j))
+                        })
+                    )
+                )
             }
         }
-
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_illegal_arith_trigger code! {
-        fndecl!(fn some_fn(a: nat) -> nat);
-        #[proof] fn quant() {
-            ensures(forall(|a: nat, b: nat| #[trigger] some_fn(a + b) == 10));
+    #[test] test_illegal_arith_trigger verus_code! {
+        spec fn some_fn(a: nat) -> nat;
+        proof fn quant()
+            ensures
+                forall|a: nat, b: nat| #[trigger] some_fn(a + b) == 10,
+        {
             assume(false);
         }
     } => Err(err) => assert_vir_error(err)
 }
 
 test_verify_one_file! {
-    #[test] test_mul_distrib_pass code! {
-        #[proof] #[verifier(nonlinear)]
-        fn mul_distributive_auto() {
-            ensures(forall_arith(|a: nat, b: nat, c: nat| #[trigger] ((a + b) * c) == a * c + b * c));
+    #[test] test_mul_distrib_pass verus_code! {
+        #[verifier(nonlinear)]
+        proof fn mul_distributive_auto()
+            ensures
+                forall_arith(|a: nat, b: nat, c: nat| #[trigger] ((a + b) * c) == a * c + b * c),
+        {
         }
 
-        #[proof]
-        fn test1(a: nat, b: nat, c: nat) {
-            requires([
+        proof fn test1(a: nat, b: nat, c: nat)
+            requires
                 (a + b) * c == 20,
                 a * c == 10,
-            ]);
-            ensures([
+            ensures
                 b * c == 10,
-            ]);
+        {
             mul_distributive_auto();
             assert((a + b) * c == a * c + b * c);
         }
