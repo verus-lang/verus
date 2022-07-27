@@ -12,7 +12,7 @@ use crate::def::{get_variant_fn_name, is_variant_fn_name};
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
 use crate::rust_to_vir_base::{
     check_generics_bounds, def_id_to_vir_path, fn_item_hir_id_to_self_def_id, hack_get_def_name,
-    ident_to_var, mk_visibility, ty_to_vir, typ_path_and_ident_to_vir_path,
+    ident_to_var, mid_ty_to_vir, mk_visibility, typ_path_and_ident_to_vir_path,
 };
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
 use crate::util::{err_span_str, spanned_new, unsupported_err_span};
@@ -194,7 +194,9 @@ fn check_item<'tcx>(
                     None,
                     rustc_hir::Path { res: rustc_hir::def::Res::Def(_, self_def_id), .. },
                 )) => {
-                    let self_typ = ty_to_vir(ctxt.tcx, impll.self_ty);
+                    let self_ty = ctxt.tcx.type_of(item.def_id.to_def_id());
+                    let self_typ = mid_ty_to_vir(ctxt.tcx, self_ty, false);
+
                     let datatype_typ_args = if let TypX::Datatype(_, typ_args) = &*self_typ {
                         typ_args.clone()
                     } else {
@@ -349,13 +351,18 @@ fn check_item<'tcx>(
         {
             return Ok(());
         }
-        ItemKind::Const(ty, body_id) => {
+        ItemKind::Const(_ty, body_id) => {
+            let def_id = body_id.hir_id.owner.to_def_id();
             if hack_get_def_name(ctxt.tcx, body_id.hir_id.owner.to_def_id())
                 .starts_with("_DERIVE_builtin_Structural_FOR_")
             {
                 ctxt.erasure_info.borrow_mut().ignored_functions.push(item.span.data());
                 return Ok(());
             }
+
+            let mid_ty = ctxt.tcx.type_of(def_id);
+            let vir_ty = mid_ty_to_vir(ctxt.tcx, mid_ty, false);
+
             crate::rust_to_vir_func::check_item_const(
                 ctxt,
                 vir,
@@ -363,7 +370,7 @@ fn check_item<'tcx>(
                 item.def_id.to_def_id(),
                 visibility,
                 ctxt.tcx.hir().attrs(item.hir_id()),
-                &ty_to_vir(ctxt.tcx, ty),
+                &vir_ty,
                 body_id,
             )?;
         }
