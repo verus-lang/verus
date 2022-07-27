@@ -5,14 +5,15 @@ fn main() {}
 mod pervasive;
 #[allow(unused_imports)] use { builtin_macros::*, builtin::*, pervasive::*, option::*, seq::*, vec::*, };
 
+verus! {
+
 // ## A -- A-program.rs
 
-fn max(a: u64, b: u64) -> u64 {
-    ensures(|ret: u64| [
+fn max(a: u64, b: u64) -> (ret: u64)
+    ensures
         ret == a || ret == b,
         ret >= a && ret >= b,
-    ]);
-
+{
     if a >= b { a } else { b }
 }
 
@@ -35,33 +36,32 @@ fn main_1() {
 
 // ## C -- C-prime.rs
 
-#[spec]
-fn divides(factor: nat, candidate: nat) -> bool {
+spec fn divides(factor: nat, candidate: nat) -> bool {
     candidate % factor == 0
 }
 
-#[spec]
-fn is_prime(candidate: nat) -> bool {
-       1 < candidate
-    && forall(|factor: nat| 1 < factor && factor < candidate
-              >>= !divides(factor, candidate))
+spec fn is_prime(candidate: nat) -> bool {
+    &&& 1 < candidate
+    &&& forall|factor: nat| 1 < factor && factor < candidate ==>
+        !divides(factor, candidate)
 }
 
-fn test_prime(candidate: u64) -> bool {
-    requires(1 < candidate);
-    ensures(|result: bool| result == is_prime(candidate));
-    
+fn test_prime(candidate: u64) -> (result: bool)
+    requires
+        1 < candidate,
+    ensures
+        result == is_prime(candidate as nat),
+{
     let mut factor: u64 = 2;
-    while (factor < candidate) {
-        invariant([
-            1 < factor, factor <= candidate,
-            forall(|smallerfactor:nat|
-                   1 < smallerfactor && smallerfactor < factor
-                   >>= !divides(smallerfactor, candidate))
-        ]);
+    while factor < candidate
+        invariant
+            1 < factor <= candidate,
+            forall|smallerfactor: nat|
+                1 < smallerfactor < factor ==> !divides(smallerfactor, candidate as nat),
+    {
         if candidate % factor == 0 {
-            assert(divides(factor, candidate));
-            assert(!is_prime(candidate));
+            assert(divides(factor as nat, candidate as nat));
+            assert(!is_prime(candidate as nat));
             return false;
         }
         factor = factor + 1;
@@ -80,62 +80,75 @@ fn assertions() {
 
 // ## D -- D-fibo.rs
 
-#[spec]
-fn fibo(n: nat) -> nat {
-  decreases(n);
-  if n == 0 { 0 } else if n == 1 { 1 }
-  else { fibo(n - 2) + fibo(n - 1) }
+spec fn fibo(n: nat) -> nat
+    decreases n
+{
+    if n == 0 { 0 } else if n == 1 { 1 }
+    else { fibo((n - 2) as nat) + fibo((n - 1) as nat) }
 }
 
-#[proof]
-fn lemma_fibo_is_monotonic(i:nat, j:nat) {
-  requires(i<=j);
-  ensures(fibo(i) <= fibo(j));
-  decreases(j-i);
-
+proof fn lemma_fibo_is_monotonic(i: nat, j: nat)
+    requires
+        i <= j,
+    ensures
+        fibo(i) <= fibo(j),
+    decreases j - i
+{
   // ----
 
-  if i<2 && j<2 { } else if i==j { }
-  else if i==j-1 {
-    reveal_with_fuel(fibo, 2);
-    lemma_fibo_is_monotonic(i, j-1);
-  } else {
-    lemma_fibo_is_monotonic(i, j-1);
-    lemma_fibo_is_monotonic(i, j-2);
-  }
+   if i < 2 && j < 2 {
+   } else if i == j {
+   } else if i == j - 1 {
+       reveal_with_fuel(fibo, 2);
+       lemma_fibo_is_monotonic(i, (j - 1) as nat);
+   } else {
+       lemma_fibo_is_monotonic(i, (j - 1) as nat);
+       lemma_fibo_is_monotonic(i, (j - 2) as nat);
+   }
 }
 
 // ## D/2 -- D-fibo.rs
 
-#[spec]
-fn fibo_fits_u64(n: nat) -> bool { fibo(n) <= 0xffff_ffff_ffff_ffff }
+spec fn fibo_fits_u64(n: nat) -> bool {
+    fibo(n) <= 0xffff_ffff_ffff_ffff
+}
 
-#[exec]
-fn fibo_impl(n: u64) -> u64 {
-  requires(fibo_fits_u64(n));
-  ensures(|result: u64| result == fibo(n));
-
+exec fn fibo_impl(n: u64) -> (result: u64)
+    requires
+        fibo_fits_u64(n as nat),
+    ensures
+        result == fibo(n as nat),
+{
   // ----
 
-  if n == 0 { return 0; }
-  let mut prev: u64 = 0; let mut cur: u64 = 1;
-  let mut i: u64 = 1;
-  while i < n {
-    invariant([
-      i > 0, i <= n,
-      fibo_fits_u64(n as nat), fibo_fits_u64(i as nat),
-      cur == fibo(i), prev == fibo(i as nat - 1),
-    ]);
-    i = i + 1;
-    lemma_fibo_is_monotonic(i, n);
-    let new_cur = cur + prev;
-    prev = cur; cur = new_cur;
-  }
-  cur
+    if n == 0 {
+        return 0;
+    }
+    let mut prev: u64 = 0;
+    let mut cur: u64 = 1;
+    let mut i: u64 = 1;
+    while i < n
+        invariant
+            0 < i <= n,
+            fibo_fits_u64(n as nat),
+            fibo_fits_u64(i as nat),
+            cur == fibo(i as nat),
+            prev == fibo((i - 1) as nat),
+    {
+        i = i + 1;
+        proof {
+            lemma_fibo_is_monotonic(i as nat, n as nat);
+        }
+        let new_cur = cur + prev;
+        prev = cur;
+        cur = new_cur;
+    }
+    cur
 }
 
 // ## E -- E-reverse.rs -- spec variables
 
+/* See vectors.rs
 fn reverse(v: &mut Vec<u64>) {
     ensures([
         v.len() == old(v).len(),
@@ -162,6 +175,7 @@ fn reverse(v: &mut Vec<u64>) {
         n = n + 1;
     }
 }
+*/
 
 // F -- F-linear-proof
 
@@ -169,9 +183,12 @@ fn reverse(v: &mut Vec<u64>) {
 
 // G -- G-bitvector.rs
 
-fn mod8_bw(x: u32) -> u32 {
-  ensures(|ret: u32| ret == x % 8);
-
-  assert_bit_vector(x & 7 == x % 8);
-  x & 7
+fn mod8_bw(x: u32) -> (ret: u32)
+    ensures
+        ret == x % 8,
+{
+    assert(x & 7 == x % 8) by(bit_vector);
+    x & 7
 }
+
+} // verus!

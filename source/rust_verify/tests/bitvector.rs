@@ -15,8 +15,8 @@ test_verify_one_file! {
             assert(b & b == b) by(bit_vector);
             assert(b & b == b);
 
-            assert(b + (!b) + 1 == 0) by(bit_vector);
-            assert(b + (!b) + 1 == 0);
+            assert(add(add(b, !b), 1) == 0) by(bit_vector);
+            assert(add(add(b, !b), 1) == 0);
 
             assert(b | b == b) by(bit_vector);
             assert(b | b == b);
@@ -30,9 +30,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test2 verus_code! {
         proof fn test2(b: u32) {
-            assert(b << 2 == b * 4) by(bit_vector);
-            assert(b << 2 == b * 4);
-            assert(b < 256 ==> ((b << 2) as int) == (b as int) * 4);
+            assert(b << 2 == mul(b, 4)) by(bit_vector);
+            assert(b << 2 == mul(b, 4));
+            assert(b < 256 ==> b << 2 == b * 4);
 
             assert(b >> 1 == b / 2) by(bit_vector);
             assert(b >> 1 == b / 2);
@@ -43,8 +43,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test3 verus_code! {
         proof fn test3(b: u32) {
-            assert(2 * b - b == b) by(bit_vector);
-            assert(2 * b - b == b);
+            assert(sub(mul(2, b), b) == b) by(bit_vector);
+            assert(sub(mul(2, b), b) == b);
 
             assert(b <= b) by(bit_vector);
             assert(b >= b) by(bit_vector);
@@ -58,9 +58,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test4 verus_code! {
         proof fn test4(u1: u32, u2:u32) {
-            assert( (u1 as u64) << (32 as u64) | (u2 as u64)  == (u1 as u64) * 0x100000000 + (u2 as u64))
+            assert( (u1 as u64) << 32u64 | (u2 as u64)  == add(mul(u1 as u64, 0x100000000), u2 as u64))
                 by(bit_vector);
-            assert( (u1 as u64) << (32 as u64) | (u2 as u64)  == (u1 as u64) * 0x100000000 + (u2 as u64));
+            assert( (u1 as u64) << (32 as u64) | (u2 as u64)  == add(mul(u1 as u64, 0x100000000), u2 as u64));
         }
     } => Ok(())
 }
@@ -68,9 +68,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test5 verus_code! {
         proof fn test5(u:u64) {
-            assert( (u >> (32 as u64)) as u32  ==  (u / (0x100000000 as u64)) as u32)
+            assert( (u >> 32) as u32  ==  (u / 0x100000000) as u32)
                 by(bit_vector);
-            assert( (u >> (32 as u64)) as u32  ==  (u / (0x100000000 as u64)) as u32);
+            assert( (u >> 32) as u32  ==  (u / 0x100000000) as u32);
         }
     } => Ok(())
 }
@@ -88,7 +88,7 @@ test_verify_one_file! {
     #[test] test7 verus_code! {
         proof fn test7(b1:u64, b2:u64, b3:u64) {
             assert( !b1 != !b2 ==> !(b1 == b2)) by(bit_vector);
-            assert(((b1 == (1 as u64)) && (b2 == b3)) ==> (b1 + b2 == b3 + 1)) by(bit_vector);
+            assert(((b1 == 1u64) && (b2 == b3)) ==> (add(b1, b2) == add(b3, 1))) by(bit_vector);
             assert((b1 == b2) ==> (!b1 == !b2)) by(bit_vector);
             assert( b1 == (!(!b1))) by(bit_vector);
         }
@@ -119,6 +119,14 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test10 verus_code! {
+        proof fn test9(x: u32, y:u32) {
+            assert(0u32 < (10 as int)) by(bit_vector);  // 10 is casted into u32 internally
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test1_fails verus_code! {
         proof fn test1(b: u32) {
             assert(b | b > b) by(bit_vector); // FAILS
@@ -129,7 +137,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test2_fails verus_code! {
         proof fn test2(b: u32) {
-            assert(b + 1 == b) by(bit_vector); // FAILS
+            assert(add(b, 1) == b) by(bit_vector); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -153,8 +161,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test5_fails verus_code! {
         proof fn test5(b: u32) {
-            assert((b << 1) == b * 2) by(bit_vector);
-            assert((b << 1) == b * 4); // FAILS
+            assert((b << 1) == mul(b, 2)) by(bit_vector);
+            assert((b << 1) == mul(b, 4)); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -162,10 +170,19 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test6_fails verus_code! {
         proof fn test6(b: u32) {
-            assert(b << 2 == b * 4) by(bit_vector);
-            assert(((b << 2) as int) == (b as int) * 4);  // FAILS
+            assert(b << 2 == mul(b, 4)) by(bit_vector);
+            assert(b << 2 == b * 4);  // FAILS
         }
     } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test6_fails2 verus_code! {
+        proof fn test6(b: u32) {
+            assert(b << 2 == b * 4) by(bit_vector);
+            assert(b << 2 == b * 4);  // FAILS
+        }
+    } => Err(_)
 }
 
 test_verify_one_file! {
@@ -179,30 +196,18 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test8_fails code! {
-        #[proof]
-        fn test8(b: i32) {
-            assert_bit_vector(b <= b); // VIR Error: signed int
-        }
-    } => Err(err) => assert_vir_error(err)
-}
-
-test_verify_one_file! {
-    #[test] test9_fails code! {
-        use crate::pervasive::seq::*;
-        #[proof]
-        fn test9() {
-            let s1 = Seq::new(5, |i: int| 10 * i);
-            assert_bit_vector(0 < s1.index(0)); // VIR Error: cannot get bit-width from type Int
+    #[test] test8_fails verus_code! {
+        proof fn test8(b: i32) {
+            assert(b <= b) by(bit_vector);; // VIR Error: signed int
         }
     } => Err(err) => assert_vir_error(err)
 }
 
 test_verify_one_file! {
     //https://github.com/secure-foundations/verus/issues/191 (@matthias-brun)
-    #[test] test10_fails code! {
-        #[proof] #[verifier(bit_vector)]
-        fn f() {
+    #[test] test9_fails verus_code! {
+        #[verifier(bit_vector)]
+        proof fn f() {
             ensures((1 as u64) << 1 > 0); // VIR Error: bit-width mismatch(1 from rhs is 32-bit)
         }
     } => Err(err) => assert_vir_error(err)
@@ -210,10 +215,18 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     //https://github.com/secure-foundations/verus/issues/191 (@matthias-brun)
-    #[test] test11_fails code! {
-        #[proof] #[verifier(bit_vector)]
-        fn f() {
+    #[test] test10_fails verus_code! {
+        #[verifier(bit_vector)]
+        proof fn f() {
             ensures(forall(|i: u64| ((1 as u64) << i > 0))); // FAILS: should not panic
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test11_fails verus_code! {
+        proof fn test11(b: u32) {
+            assert(0 < 0xffffffff_ffffffff as u32) by(bit_vector); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }

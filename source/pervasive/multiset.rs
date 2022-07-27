@@ -7,6 +7,8 @@ use crate::pervasive::*;
 #[allow(unused_imports)]
 use crate::pervasive::set::*;
 
+verus!{
+
 /// `Multiset<V>` is an abstract multiset type for specifications.
 ///
 /// `Multiset<V>` can be encoded as a (total) map from elements to natural numbers,
@@ -24,25 +26,52 @@ use crate::pervasive::set::*;
 // We could in principle implement the Multiset via an inductive datatype
 // and so we can mark its type argument as strictly_positive.
 
+// Note: Multiset is finite (in contrast to Set, Map, which are infinite) because it
+// isn't entirely obvious how to represent an infinite multiset in the case where
+// a single value (v: V) has an infinite multiplicity. It seems to require either:
+//   (1) representing multiplicity by an ordinal or cardinal or something
+//   (2) limiting each multiplicity to be finite
+// (1) would be complicated and it's not clear what the use would be; (2) has some
+// weird properties (e.g., you can't in general define a multiset `map` function
+// since it might map an infinite number of elements to the same one).
+
 #[verifier(external_body)]
 pub struct Multiset<#[verifier(strictly_positive)] V> {
     dummy: std::marker::PhantomData<V>,
 }
 
 impl<V> Multiset<V> {
-    fndecl!(pub fn count(self, value: V) -> nat);
+    /// Returns the _count_, or _multiplicity_ of a single value within the multiset.
+    pub spec fn count(self, value: V) -> nat;
 
-    fndecl!(pub fn empty() -> Self);
-    fndecl!(pub fn singleton(v: V) -> Self);
-    fndecl!(pub fn add(self, m2: Self) -> Self);
-    fndecl!(pub fn sub(self, m2: Self) -> Self);
+    /// The total size of the multiset, i.e., the sum of all multiplicities over all values.
+    pub spec fn len(self) -> nat;
+
+    /// An empty multiset.
+    pub spec fn empty() -> Self;
+
+    /// A singleton multiset, i.e., a multiset with a single element of multiplicity 1.
+    pub spec fn singleton(v: V) -> Self;
+
+    /// Takes the union of two multisets. For a given element, its multiplicity in
+    /// the resulting multiset is the sum of its multiplicities in the operands.
+    pub spec fn add(self, m2: Self) -> Self;
+
+    /// Takes the difference of two multisets.
+    /// The multiplicities of `m2` are subtracted from those of `self`; if any element
+    /// occurs more in `m2` then the resulting multiplicity bottoms out at 0.
+    /// (See [`axiom_multiset_sub`] for the precise definition.)
+    ///
+    /// Note in particular that `self === self.sub(m).add(m)` only holds if
+    /// `m` is included in `self`.
+
+    pub spec fn sub(self, m2: Self) -> Self;
 
     /// Inserts one instance the value `v` into the multiset.
     ///
     /// This always increases the total size of the multiset by 1.
 
-    #[spec] #[verifier(publish)]
-    pub fn insert(self, v: V) -> Self {
+    pub open spec fn insert(self, v: V) -> Self {
         self.add(Self::singleton(v))
     }
 
@@ -50,8 +79,7 @@ impl<V> Multiset<V> {
     ///
     /// If `v` was absent from the multiset, then the multiset is unchanged.
 
-    #[spec] #[verifier(publish)]
-    pub fn remove(self, v: V) -> Self {
+    pub open spec fn remove(self, v: V) -> Self {
         self.sub(Self::singleton(v))
     }
 
@@ -59,9 +87,8 @@ impl<V> Multiset<V> {
     /// that is, if for each value `v`, the number of occurences in the left
     /// is at most the number of occurences in the right.
 
-    #[spec] #[verifier(publish)]
-    pub fn le(self, m2: Self) -> bool {
-        forall(|v: V| self.count(v) <= m2.count(v))
+    pub open spec fn le(self, m2: Self) -> bool {
+        forall |v: V| self.count(v) <= m2.count(v)
     }
 
     /// Returns true if the two multisets are pointwise equal, i.e.,
@@ -72,86 +99,73 @@ impl<V> Multiset<V> {
     /// To prove that two maps are equal via extensionality, it is generally easier
     /// to use the [`assert_multisets_equal!`] macro, rather than using `ext_equal` directly.
 
-    #[spec] #[verifier(publish)]
-    pub fn ext_equal(self, m2: Self) -> bool {
-        forall(|v: V| self.count(v) == m2.count(v))
+    pub open spec fn ext_equal(self, m2: Self) -> bool {
+        forall |v: V| self.count(v) == m2.count(v)
     }
 
-    fndecl!(pub fn len(self) -> nat);
-
     // TODO define this in terms of a more general constructor?
-    fndecl!(pub fn filter<F: Fn(V) -> bool>(self, f: F) -> Self);
+    pub spec fn filter<F: Fn(V) -> bool>(self, f: F) -> Self;
 
     // TODO(tjhance) flesh out remaining proof-mode functions
     // (note: for collections of 'proof' objects I usually advise using maps when possible)
 
-    #[proof]
     #[verifier(external_body)]
-    #[verifier(returns(proof))]
-    pub fn proof_remove(#[proof] &mut self, #[spec] v: V) -> V {
-        requires(old(self).count(v) >= 1);
-        ensures(|out_v: V|
-            equal(out_v, v) && equal(*self, old(self).remove(v))
-        );
-
+    pub proof fn tracked_remove(tracked &mut self, v: V) -> (tracked out_v: V)
+        requires old(self).count(v) >= 1,
+        ensures
+            out_v === v,
+            *self === old(self).remove(v),
+    {
         unimplemented!();
     }
 }
 
 // Specification of `empty`
 
-#[proof]
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub fn axiom_multiset_empty<V>(v: V) {
-    ensures(Multiset::empty().count(v) == 0);
-}
+pub proof fn axiom_multiset_empty<V>(v: V)
+    ensures Multiset::empty().count(v) == 0,
+{ }
 
 // Specification of `singleton`
 
-#[proof]
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub fn axiom_multiset_singleton<V>(v: V) {
-    ensures(Multiset::singleton(v).count(v) == 1);
-}
+pub proof fn axiom_multiset_singleton<V>(v: V)
+    ensures Multiset::singleton(v).count(v) == 1,
+{ }
 
-#[proof]
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub fn axiom_multiset_singleton_different<V>(v: V, w: V) {
-    ensures(!equal(v, w) >>= Multiset::singleton(v).count(w) == 0);
-}
+pub proof fn axiom_multiset_singleton_different<V>(v: V, w: V)
+    ensures v !== w ==> Multiset::singleton(v).count(w) == 0,
+{ }
 
 // Specification of `add`
 
-#[proof]
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub fn axiom_multiset_add<V>(m1: Multiset<V>, m2: Multiset<V>, v: V) {
-    ensures(m1.add(m2).count(v) == m1.count(v) + m2.count(v));
-}
+pub proof fn axiom_multiset_add<V>(m1: Multiset<V>, m2: Multiset<V>, v: V)
+    ensures m1.add(m2).count(v) == m1.count(v) + m2.count(v),
+{ }
 
 // Specification of `sub`
 
-#[proof]
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub fn axiom_multiset_sub<V>(m1: Multiset<V>, m2: Multiset<V>, v: V) {
-    ensures(m1.sub(m2).count(v) ==
-        if m1.count(v) >= m2.count(v) { m1.count(v) - m2.count(v) } else { 0 });
-}
+pub proof fn axiom_multiset_sub<V>(m1: Multiset<V>, m2: Multiset<V>, v: V)
+    ensures m1.sub(m2).count(v) ==
+        if m1.count(v) >= m2.count(v) { m1.count(v) - m2.count(v) } else { 0 },
+{ }
 
 // Extensional equality
 
-#[proof]
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub fn axiom_multiset_ext_equal<V>(m1: Multiset<V>, m2: Multiset<V>) {
-    ensures(m1.ext_equal(m2) == equal(m1, m2));
-}
-
-verus!{
+pub proof fn axiom_multiset_ext_equal<V>(m1: Multiset<V>, m2: Multiset<V>)
+    ensures m1.ext_equal(m2) == equal(m1, m2),
+{ }
 
 // Specification of `len`
 
@@ -188,8 +202,6 @@ pub proof fn axiom_filter_count<V, F: Fn(V) -> bool>(m: Multiset<V>, f: F, v: V)
         if f(v) { m.count(v) } else { 0 }
 {}
 
-}
-
 #[macro_export]
 macro_rules! assert_multisets_equal {
     ($m1:expr, $m2:expr $(,)?) => {
@@ -209,3 +221,5 @@ macro_rules! assert_multisets_equal {
         });
     }
 }
+
+} // verus!

@@ -47,14 +47,14 @@ tokenized_state_machine!{InternSystem<T> {
         }
     }
 
-    readonly!{
+    property!{
         get_value(i: nat) {
             have frag >= [i => let val];
             assert(i < pre.auth.len() && equal(pre.auth.index(i), val));
         }
     }
 
-    readonly!{
+    property!{
         compute_equality(idx1: nat, val1: T, idx2: nat, val2: T) {
             have frag >= [idx1 => val1];
             have frag >= [idx2 => val2];

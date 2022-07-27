@@ -427,7 +427,8 @@ fn erase_call(
 }
 
 fn erase_expr(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> Expr {
-    erase_expr_opt(ctxt, mctxt, expect, expr).expect("erase_expr")
+    erase_expr_opt(ctxt, mctxt, expect, expr)
+        .unwrap_or_else(|| panic!("internal error: expected Some(Expr) {:?}", &expr.span))
 }
 
 /// Erase ghost code from expr, and return Some resulting expression.
@@ -1279,6 +1280,7 @@ fn erase_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &Item) -> Vec<P<Item>> {
             }
         }
         ItemKind::MacroDef(..) => item.kind.clone(),
+        ItemKind::TyAlias(..) => item.kind.clone(),
         ItemKind::Trait(tr) => ItemKind::Trait(erase_trait(ctxt, mctxt, tr)),
         _ => {
             unsupported!("unsupported item", item)

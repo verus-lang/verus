@@ -70,35 +70,36 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test2 code! {
+    #[test] test2 verus_code! {
         enum List<A> {
             Nil,
             Cons(A, Box<List<A>>),
         }
 
-        #[spec]
-        fn len<A>(list: &List<A>) -> nat {
-            decreases(list);
+        spec fn len<A>(list: &List<A>) -> nat
+            decreases list
+        {
             match list {
                 List::Nil => 0,
                 List::Cons(_, tl) => 1 + len(tl),
             }
         }
 
-        fn get_len<A>(list: &List<A>) -> u64 {
-            requires(len(list) <= 0xffffffffffffffff);
-            ensures(|r: u64| r == len(list));
-
+        fn get_len<A>(list: &List<A>) -> (r: u64)
+            requires
+                len(list) <= 0xffffffffffffffff,
+            ensures
+                r == len(list),
+        {
             let mut n: u64 = 0;
             let mut done = false;
             let mut iter = list;
-            while !done {
-                invariant([
+            while !done
+                invariant
                     len(list) <= 0xffffffffffffffff,
                     n + len(iter) == len(list),
-                    done >>= len(iter) == 0,
-                ]);
-
+                    done ==> len(iter) == 0,
+            {
                 match iter {
                     List::Nil => {
                         done = true;
@@ -116,35 +117,36 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test2_struct code! {
+    #[test] test2_struct verus_code! {
         enum List<A> {
             Nil,
             Cons { hd: A, tl: Box<List<A>> },
         }
 
-        #[spec]
-        fn len<A>(list: &List<A>) -> nat {
-            decreases(list);
+        spec fn len<A>(list: &List<A>) -> nat
+            decreases list
+        {
             match list {
                 List::Nil => 0,
                 List::Cons { hd: _, tl } => 1 + len(tl),
             }
         }
 
-        fn get_len<A>(list: &List<A>) -> u64 {
-            requires(len(list) <= 0xffffffffffffffff);
-            ensures(|r: u64| r == len(list));
-
+        fn get_len<A>(list: &List<A>) -> (r: u64)
+            requires
+                len(list) <= 0xffffffffffffffff,
+            ensures
+                r == len(list),
+        {
             let mut n: u64 = 0;
             let mut done = false;
             let mut iter = list;
-            while !done {
-                invariant([
+            while !done
+                invariant
                     len(list) <= 0xffffffffffffffff,
                     n + len(iter) == len(list),
-                    done >>= len(iter) == 0,
-                ]);
-
+                    done ==> len(iter) == 0,
+            {
                 match iter {
                     List::Nil => {
                         done = true;
@@ -162,34 +164,35 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test2_fails code! {
+    #[test] test2_fails verus_code! {
         enum List<A> {
             Nil,
             Cons(A, Box<List<A>>),
         }
 
-        #[spec]
-        fn len<A>(list: &List<A>) -> nat {
-            decreases(list);
+        spec fn len<A>(list: &List<A>) -> nat
+            decreases list
+        {
             match list {
                 List::Nil => 0,
                 List::Cons(_, tl) => 1 + len(tl),
             }
         }
 
-        fn get_len<A>(list: &List<A>) -> u64 {
-            requires(len(list) <= 0xffffffffffffffff);
-            ensures(|r: u64| r == len(list));
-
+        fn get_len<A>(list: &List<A>) -> (r: u64)
+            requires
+                len(list) <= 0xffffffffffffffff,
+            ensures
+                r == len(list),
+        {
             let mut n: u64 = 0;
             let mut done = false;
             let mut iter = list;
-            while !done {
-                invariant([
+            while !done
+                invariant
                     n + len(iter) == len(list),
-                    done >>= len(iter) == 0,
-                ]);
-
+                    done ==> len(iter) == 0,
+            {
                 match iter {
                     List::Nil => {
                         done = true;
@@ -482,11 +485,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_if_let1 code! {
+    #[test] test_if_let1 verus_code! {
         enum E { X(u64), Y(bool) }
 
-        #[proof]
-        fn test_ep(e: &E) {
+        proof fn test_ep(e: &E) {
             if let E::X(u) = e {
                 assert(*u as int >= 0);
             }
@@ -501,11 +503,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_if_let1_fails code! {
+    #[test] test_if_let1_fails verus_code! {
         enum E { X(u64), Y(bool) }
 
-        #[proof]
-        fn test_ep(e: &E) {
+        proof fn test_ep(e: &E) {
             if let E::X(u) = e {
                 assert(*u as int == 5); // FAILS
             }
@@ -514,11 +515,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_if_let2 code! {
+    #[test] test_if_let2 verus_code! {
         enum E { X(u64) }
 
-        #[proof]
-        fn test_ep(e: &E) {
+        proof fn test_ep(e: &E) {
             if let E::X(u) = e {
                 assert(*u as int >= 0);
             } else {
@@ -537,11 +537,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_if_let2_fails1 code! {
+    #[test] test_if_let2_fails1 verus_code! {
         enum E { X(u64), Y(bool) }
 
-        #[proof]
-        fn test_ep(e: &E) {
+        proof fn test_ep(e: &E) {
             if let E::X(u) = e {
                 assert(*u as int >= 0);
             } else {
@@ -552,7 +551,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_if_let2_fails2 code! {
+    #[test] test_if_let2_fails2 verus_code! {
         enum E { X(u64), Y(bool) }
 
         fn test_ee(e: &E) {

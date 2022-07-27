@@ -58,7 +58,7 @@ tokenized_state_machine!(
             }
         }
 
-        readonly!{
+        property!{
             finalize() {
                 require(pre.inc_a);
                 require(pre.inc_b);
@@ -100,8 +100,7 @@ impl Global {
     #[spec]
     pub fn wf(self) -> bool {
         self.atomic.has_inv(|v, g|
-            equal(g.instance, self.instance)
-            && equal(g.value, v as int)
+            equal(g, X![self.instance => counter => v as int])
         )
     }
 }
@@ -119,14 +118,16 @@ impl Spawnable<Proof<X::inc_a>> for Thread1Data {
     #[spec]
     fn pre(self) -> bool {
         (*self.globals).wf()
-        && equal(self.token.instance, (*self.globals).instance)
-        && !self.token.value
+        && equal(self.token,
+            X![(*self.globals).instance => inc_a => false]
+        )
     }
 
     #[spec]
     fn post(self, new_token: Proof<X::inc_a>) -> bool {
-        equal(new_token.0.instance, (*self.globals).instance)
-        && new_token.0.value
+        equal(new_token.0,
+            X![(*self.globals).instance => inc_a => true]
+        )
     }
 
     fn run(self) -> Proof<X::inc_a> {
@@ -155,14 +156,16 @@ impl Spawnable<Proof<X::inc_b>> for Thread2Data {
     #[spec]
     fn pre(self) -> bool {
         (*self.globals).wf()
-        && equal(self.token.instance, (*self.globals).instance)
-        && !self.token.value
+        && equal(self.token,
+            X![(*self.globals).instance => inc_b => false]
+        )
     }
 
     #[spec]
     fn post(self, new_token: Proof<X::inc_b>) -> bool {
-        equal(new_token.0.instance, (*self.globals).instance)
-        && new_token.0.value
+        equal(new_token.0,
+            X![(*self.globals).instance => inc_b => true]
+        )
     }
 
     fn run(self) -> Proof<X::inc_b> {

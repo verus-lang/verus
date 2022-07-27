@@ -61,10 +61,22 @@ pub fn n_types_equal(typs1: &Typs, typs2: &Typs) -> bool {
 
 pub const QUANT_FORALL: Quant = Quant { quant: air::ast::Quant::Forall, boxed_params: true };
 
-pub fn params_equal(param1: &Param, param2: &Param) -> bool {
+pub fn params_equal_opt(
+    param1: &Param,
+    param2: &Param,
+    check_names: bool,
+    check_modes: bool,
+) -> bool {
     let ParamX { name: name1, typ: typ1, mode: mode1, is_mut: is_mut1 } = &param1.x;
     let ParamX { name: name2, typ: typ2, mode: mode2, is_mut: is_mut2 } = &param2.x;
-    name1 == name2 && types_equal(typ1, typ2) && mode1 == mode2 && is_mut1 == is_mut2
+    (!check_names || name1 == name2)
+        && types_equal(typ1, typ2)
+        && (!check_modes || mode1 == mode2)
+        && is_mut1 == is_mut2
+}
+
+pub fn params_equal(param1: &Param, param2: &Param) -> bool {
+    params_equal_opt(param1, param2, true, true)
 }
 
 pub fn generic_bounds_equal(b1: &GenericBound, b2: &GenericBound) -> bool {
@@ -77,6 +89,15 @@ pub fn generic_bounds_equal(b1: &GenericBound, b2: &GenericBound) -> bool {
     }
 }
 
+pub fn allowed_bitvector_type(typ: &Typ) -> bool {
+    match &**typ {
+        TypX::Bool => true,
+        TypX::Int(IntRange::U(_)) | TypX::Int(IntRange::I(_)) => true,
+        TypX::Boxed(typ) => allowed_bitvector_type(typ),
+        _ => false,
+    }
+}
+
 pub fn bitwidth_from_type(et: &Typ) -> Option<u32> {
     match &**et {
         TypX::Int(IntRange::U(size)) | TypX::Int(IntRange::I(size)) => Some(*size),
@@ -85,22 +106,19 @@ pub fn bitwidth_from_type(et: &Typ) -> Option<u32> {
     }
 }
 
-impl TypX {
-    pub fn is_ghost_typ(&self) -> bool {
-        match self {
-            TypX::Datatype(path, _) => path_as_rust_name(path) == "crate::pervasive::modes::Ghost",
-            _ => false,
+pub(crate) fn fixed_integer_const(n: &String, typ: &Typ) -> bool {
+    if let TypX::Int(IntRange::U(bits)) = &**typ {
+        if let Ok(u) = n.parse::<u128>() {
+            return *bits == 128 || u < 2u128 << bits;
         }
     }
-
-    pub fn is_tracked_typ(&self) -> bool {
-        match self {
-            TypX::Datatype(path, _) => {
-                path_as_rust_name(path) == "crate::pervasive::modes::Tracked"
-            }
-            _ => false,
+    if let TypX::Int(IntRange::I(bits)) = &**typ {
+        if let Ok(i) = n.parse::<i128>() {
+            return *bits == 128
+                || -((2u128 << (bits - 1)) as i128) <= i && i < (2u128 << (bits - 1)) as i128;
         }
     }
+    false
 }
 
 pub fn path_as_rust_name(path: &Path) -> String {

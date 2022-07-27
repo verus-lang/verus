@@ -102,8 +102,15 @@ fn check_one_expr(
                     if !is_datatype_transparent(&module, dt) {
                         return err_str(
                             &expr.span,
-                            "constructor of datatype with unencoded fields here",
+                            "constructor of datatype with inaccessible fields here",
                         );
+                    }
+                }
+                match (disallow_private_access, &dt.x.transparency, dt.x.visibility.is_private) {
+                    (None, _, _) => {}
+                    (_, crate::ast::DatatypeTransparency::Always, false) => {}
+                    (Some(msg), _, _) => {
+                        return err_str(&expr.span, msg);
                     }
                 }
             } else {
@@ -116,7 +123,7 @@ fn check_one_expr(
                     if !is_datatype_transparent(&module, dt) {
                         return err_str(
                             &expr.span,
-                            "field access of datatype with unencoded fields here",
+                            "field access of datatype with inaccessible fields here",
                         );
                     }
                 }
@@ -284,6 +291,25 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
         check_typ(ctxt, function, &p.x.typ, &p.span)?;
         if p.x.name == function.x.ret.x.name {
             return err_str(&p.span, "parameter name cannot be same as return value name");
+        }
+    }
+
+    if function.x.attrs.inline {
+        if function.x.mode != Mode::Spec {
+            return err_str(&function.span, "'inline' is only allowed for 'spec' functions");
+        }
+        // make sure we don't leak private bodies by inlining
+        if !function.x.visibility.is_private && function.x.publish != Some(true) {
+            return err_str(
+                &function.span,
+                "'inline' is only allowed for private or 'open spec' functions",
+            );
+        }
+        if function.x.decrease.len() != 0 {
+            return err_str(&function.span, "'inline' functions cannot be recursive");
+        }
+        if function.x.body.is_none() {
+            return err_str(&function.span, "'inline' functions must have a body");
         }
     }
 
@@ -659,6 +685,58 @@ fn check_datatype(dt: &Datatype) -> Result<(), VirErr> {
     Ok(())
 }
 
+fn check_functions_match(
+    msg: &str,
+    check_names: bool,
+    check_modes: bool,
+    check_return: bool,
+    f1: &Function,
+    f2: &Function,
+) -> Result<(), VirErr> {
+    if f1.x.typ_bounds.len() != f2.x.typ_bounds.len() {
+        return Err(air::errors::error(
+            format!("{msg} function should have the same type bounds"),
+            &f1.span,
+        )
+        .secondary_span(&f2.span));
+    }
+    for ((px, pb), (fx, fb)) in f1.x.typ_bounds.iter().zip(f2.x.typ_bounds.iter()) {
+        if px != fx || !crate::ast_util::generic_bounds_equal(&pb, &fb) {
+            return Err(air::errors::error(
+                format!("{msg} function should have the same type bounds"),
+                &f1.span,
+            )
+            .secondary_span(&f2.span));
+        }
+    }
+    if f1.x.params.len() != f2.x.params.len() {
+        return Err(air::errors::error(
+            format!("{msg} function should have the same number of parameters"),
+            &f1.span,
+        )
+        .secondary_span(&f2.span));
+    }
+    for (pp, fp) in f1.x.params.iter().zip(f2.x.params.iter()) {
+        if !crate::ast_util::params_equal_opt(&pp, &fp, check_names, check_modes) {
+            return Err(air::errors::error(
+                format!("{msg} function should have the same parameter types"),
+                &pp.span,
+            )
+            .secondary_span(&fp.span));
+        }
+    }
+    if check_return {
+        if !crate::ast_util::params_equal_opt(&f1.x.ret, &f2.x.ret, check_names, check_modes) {
+            return Err(air::errors::error(
+                format!("{msg} function should have the same return types"),
+                &f1.x.ret.span,
+            )
+            .secondary_span(&f2.x.ret.span));
+        }
+    }
+    Ok(())
+}
+
 pub fn check_crate(krate: &Krate) -> Result<(), VirErr> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     for function in krate.functions.iter() {
@@ -705,40 +783,39 @@ pub fn check_crate(krate: &Krate) -> Result<(), VirErr> {
                 .secondary_span(&function.span));
             }
             decreases_by_proof_to_spec.insert(proof_fun.clone(), function.x.name.clone());
-            if proof_function.x.typ_bounds.len() != function.x.typ_bounds.len() {
+            check_functions_match(
+                "decreases_by/recommends_by",
+                true,
+                true,
+                false,
+                &proof_function,
+                &function,
+            )?;
+        }
+        if let Some(spec_fun) = &function.x.attrs.autospec {
+            let spec_function = if let Some(spec_function) = funs.get(spec_fun) {
+                spec_function
+            } else {
+                return err_str(
+                    &function.span,
+                    "cannot find function referred to in when_used_as_spec",
+                );
+            };
+            if function.x.mode != Mode::Exec || spec_function.x.mode != Mode::Spec {
                 return Err(air::errors::error(
-                    "decreases_by/recommends_by function should have the same type bounds",
-                    &proof_function.span,
+                    "when_used_as_spec must point from an exec function to a spec function",
+                    &spec_function.span,
                 )
                 .secondary_span(&function.span));
             }
-            for ((px, pb), (fx, fb)) in
-                proof_function.x.typ_bounds.iter().zip(function.x.typ_bounds.iter())
-            {
-                if px != fx || !crate::ast_util::generic_bounds_equal(&pb, &fb) {
-                    return Err(air::errors::error(
-                        "decreases_by/recommends_by function should have the same type bounds",
-                        &proof_function.span,
-                    )
-                    .secondary_span(&function.span));
-                }
-            }
-            if proof_function.x.params.len() != function.x.params.len() {
-                return Err(air::errors::error(
-                    "decreases_by/recommends_by function should have the same parameter types",
-                    &proof_function.span,
-                )
-                .secondary_span(&function.span));
-            }
-            for (pp, fp) in proof_function.x.params.iter().zip(function.x.params.iter()) {
-                if !crate::ast_util::params_equal(&pp, &fp) {
-                    return Err(air::errors::error(
-                        "decreases_by/recommends_by function should have the same parameter types",
-                        &pp.span,
-                    )
-                    .secondary_span(&fp.span));
-                }
-            }
+            check_functions_match(
+                "when_used_as_spec",
+                false,
+                false,
+                true,
+                &spec_function,
+                &function,
+            )?;
         }
     }
     for function in krate.functions.iter() {
