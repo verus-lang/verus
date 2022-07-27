@@ -298,7 +298,7 @@ pub proof fn axiom_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int)
 #[doc(hidden)]
 #[macro_export]
 macro_rules! seq_internal {
-    [$($elem:expr),*] => {
+    [$($elem:expr),* $(,)?] => {
         $crate::pervasive::seq::Seq::empty()
             $(.push($elem))*
     }

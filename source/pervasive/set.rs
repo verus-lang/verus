@@ -365,7 +365,7 @@ pub proof fn axiom_set_choose_len<A>(s: Set<A>)
 #[doc(hidden)]
 #[macro_export]
 macro_rules! set_internal {
-    [$($elem:expr),*] => {
+    [$($elem:expr),* $(,)?] => {
         $crate::pervasive::set::Set::empty()
             $(.insert($elem))*
     };

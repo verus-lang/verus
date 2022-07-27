@@ -39,6 +39,12 @@ test_verify_one_file! {
             let s2: Set<int> = set![4, 2];
             assert(s1.ext_equal(s2));
         }
+
+        proof fn comma_at_end() {
+            let s1: Set<int> = set![2, 4,];
+            let s2: Set<int> = set![4, 2,];
+            assert(s1.ext_equal(s2));
+        }
     } => Ok(())
 }
 
@@ -51,5 +57,12 @@ test_verify_one_file! {
             let s1: Seq<int> = seq![2, 4, 6, 8, 10];
             assert(s1.index(2) == 6);
         }
+
+
+        proof fn comma_at_end() {
+            let s1: Seq<int> = seq![2, 4, 6, 8, 10,];
+            assert(s1.index(2) == 6);
+        }
+
     } => Ok(())
 }

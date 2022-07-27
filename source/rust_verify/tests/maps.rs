@@ -18,6 +18,9 @@ test_verify_one_file! {
             let m3 = map![10int => true ==> false, 20int => false ==> true];
             assert(!m3.index(10));
             assert(m3.index(20));
+            let m4 = map![10int => true ==> false, 20int => false ==> true,];
+            assert(!m4.index(10));
+            assert(m4.index(20));
         }
 
         proof fn testfun_eq() {

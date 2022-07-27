@@ -270,7 +270,7 @@ pub proof fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
 #[doc(hidden)]
 #[macro_export]
 macro_rules! map_internal {
-    [$($key:expr => $value:expr),*] => {
+    [$($key:expr => $value:expr),* $(,)?] => {
         $crate::pervasive::map::Map::empty()
             $(.insert($key, $value))*
     }
