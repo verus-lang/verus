@@ -2,13 +2,11 @@ use crate::attributes::get_verifier_attrs;
 use crate::context::BodyCtxt;
 use crate::util::{err_span_str, unsupported_err_span};
 use crate::{unsupported, unsupported_err, unsupported_err_unless};
-use rustc_ast::{IntTy, Mutability, UintTy};
-use rustc_hir::def::{DefKind, Res};
+use rustc_ast::Mutability;
 use rustc_hir::definitions::DefPath;
 use rustc_hir::{
-    GenericBound, GenericParam, GenericParamKind, Generics, HirId, ItemKind, LifetimeParamKind,
-    ParamName, PathSegment, PolyTraitRef, PrimTy, QPath, TraitBoundModifier, TraitFn,
-    TraitItemKind, Ty, Visibility, VisibilityKind,
+    GenericParam, GenericParamKind, Generics, HirId, ItemKind, LifetimeParamKind, ParamName, QPath,
+    TraitFn, TraitItemKind, Ty, Visibility, VisibilityKind,
 };
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::ProjectionPredicate;
@@ -129,35 +127,6 @@ pub(crate) fn def_id_to_datatype<'tcx, 'hir>(
     typ_args: Typs,
 ) -> TypX {
     TypX::Datatype(def_id_to_vir_path(tcx, def_id), typ_args)
-}
-
-pub(crate) fn def_id_to_datatype_typ_args<'tcx, 'hir>(
-    tcx: TyCtxt<'tcx>,
-    def_id: DefId,
-    segments: &'hir [PathSegment<'hir>],
-) -> (Path, Typs) {
-    let typ_args: Vec<Typ> = match &segments.last().expect("type must have a segment").args {
-        None => vec![],
-        Some(args) => args
-            .args
-            .iter()
-            .filter_map(|a| match a {
-                rustc_hir::GenericArg::Type(t) => Some(ty_to_vir(tcx, &t)),
-                rustc_hir::GenericArg::Lifetime(_) => None,
-                _ => panic!("unexpected type arguments"),
-            })
-            .collect(),
-    };
-    (def_id_to_vir_path(tcx, def_id), Arc::new(typ_args))
-}
-
-pub(crate) fn def_id_to_datatype_typx<'tcx, 'hir>(
-    tcx: TyCtxt<'tcx>,
-    def_id: DefId,
-    segments: &'hir [PathSegment<'hir>],
-) -> TypX {
-    let (path, typ_args) = def_id_to_datatype_typ_args(tcx, def_id, segments);
-    TypX::Datatype(path, typ_args)
 }
 
 // TODO: proper handling of def_ids
@@ -391,105 +360,6 @@ pub(crate) fn _ty_resolved_path_to_debug_path(_tcx: TyCtxt<'_>, ty: &Ty) -> Stri
     }
 }
 
-pub(crate) fn impl_def_id_to_self_ty<'tcx>(tcx: TyCtxt<'tcx>, impl_def_id: DefId) -> Typ {
-    let local_id = impl_def_id.as_local().expect("impl_def_id_to_self_ty expects local id");
-    let hir_id = tcx.hir().local_def_id_to_hir_id(local_id);
-    let node = tcx.hir().get(hir_id);
-    match node {
-        rustc_hir::Node::Item(rustc_hir::Item {
-            kind: rustc_hir::ItemKind::Impl(impll), ..
-        }) => ty_to_vir(tcx, &impll.self_ty),
-        _ => {
-            panic!("impl_def_id_to_self_ty expected an Impl node");
-        }
-    }
-}
-
-pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
-    let Ty { hir_id: _, kind, span } = ty;
-    match kind {
-        rustc_hir::TyKind::Tup(tys) => {
-            Arc::new(TypX::Tuple(Arc::new(tys.iter().map(|t| ty_to_vir(tcx, t)).collect())))
-        }
-        rustc_hir::TyKind::Rptr(
-            _,
-            rustc_hir::MutTy { ty: tys, mutbl: rustc_ast::Mutability::Not },
-        ) => ty_to_vir(tcx, tys),
-        rustc_hir::TyKind::Path(QPath::Resolved(None, path)) => Arc::new(match path.res {
-            Res::PrimTy(PrimTy::Bool) => TypX::Bool,
-            Res::PrimTy(PrimTy::Uint(UintTy::U8)) => TypX::Int(IntRange::U(8)),
-            Res::PrimTy(PrimTy::Uint(UintTy::U16)) => TypX::Int(IntRange::U(16)),
-            Res::PrimTy(PrimTy::Uint(UintTy::U32)) => TypX::Int(IntRange::U(32)),
-            Res::PrimTy(PrimTy::Uint(UintTy::U64)) => TypX::Int(IntRange::U(64)),
-            Res::PrimTy(PrimTy::Uint(UintTy::U128)) => TypX::Int(IntRange::U(128)),
-            Res::PrimTy(PrimTy::Uint(UintTy::Usize)) => TypX::Int(IntRange::USize),
-            Res::PrimTy(PrimTy::Int(IntTy::I8)) => TypX::Int(IntRange::I(8)),
-            Res::PrimTy(PrimTy::Int(IntTy::I16)) => TypX::Int(IntRange::I(16)),
-            Res::PrimTy(PrimTy::Int(IntTy::I32)) => TypX::Int(IntRange::I(32)),
-            Res::PrimTy(PrimTy::Int(IntTy::I64)) => TypX::Int(IntRange::I(64)),
-            Res::PrimTy(PrimTy::Int(IntTy::I128)) => TypX::Int(IntRange::I(128)),
-            Res::PrimTy(PrimTy::Int(IntTy::Isize)) => TypX::Int(IntRange::ISize),
-
-            Res::Def(DefKind::TyParam, def_id) => {
-                let path = def_id_to_vir_path(tcx, def_id);
-                let name = path.segments.last().unwrap();
-                if **name == kw::SelfUpper.to_string() {
-                    TypX::TypParam(vir::def::trait_self_type_param())
-                } else {
-                    TypX::TypParam(name.clone())
-                }
-            }
-            Res::Def(DefKind::Struct, def_id) => {
-                // TODO: consider using #[rust_diagnostic_item] and https://doc.rust-lang.org/stable/nightly-rustc/rustc_middle/ty/query/query_stored/type.diagnostic_items.html for the builtin lib
-                let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(tcx, def_id));
-                if def_name == "builtin::int" {
-                    TypX::Int(IntRange::Int)
-                } else if def_name == "builtin::nat" {
-                    TypX::Int(IntRange::Nat)
-                } else if Some(def_id) == tcx.lang_items().owned_box()
-                    || def_name == "alloc::rc::Rc"
-                    || def_name == "alloc::sync::Arc"
-                    || def_name == "builtin::Ghost"
-                    || def_name == "builtin::Tracked"
-                {
-                    match &path.segments[0].args.expect("Box/Rc/Arc/Ghost/Tracked arg").args[0] {
-                        rustc_hir::GenericArg::Type(t) => return ty_to_vir(tcx, t),
-                        _ => panic!("unexpected arg to Box/Rc/Arc/Ghost/Tracked"),
-                    }
-                } else {
-                    def_id_to_datatype_typx(tcx, def_id, &path.segments)
-                }
-            }
-            Res::Def(DefKind::Enum, def_id) => def_id_to_datatype_typx(tcx, def_id, &path.segments),
-            Res::SelfTy(None, Some((impl_def_id, false))) => {
-                return impl_def_id_to_self_ty(tcx, impl_def_id);
-            }
-
-            Res::Def(DefKind::TyAlias, def_id) => {
-                match &path.segments.last().expect("type must have a segment").args {
-                    None => {}
-                    Some(_) => {
-                        unsupported!(format!(
-                            "use of type alias with generic type args here: {:?}",
-                            span
-                        ));
-                    }
-                }
-
-                let ty = tcx.type_of(def_id);
-                return mid_ty_to_vir(tcx, ty, false);
-            }
-
-            _ => {
-                unsupported!(format!("type {:#?} {:?} {:?}", kind, path.res, span))
-            }
-        }),
-        _ => {
-            unsupported!(format!("type {:#?} {:?}", kind, span))
-        }
-    }
-}
-
 pub(crate) fn typ_of_node<'tcx>(bctx: &BodyCtxt<'tcx>, id: &HirId, allow_mut_ref: bool) -> Typ {
     mid_ty_to_vir(bctx.ctxt.tcx, bctx.types.node_type(*id), allow_mut_ref)
 }
@@ -557,9 +427,8 @@ pub(crate) fn is_smt_arith<'tcx>(bctx: &BodyCtxt<'tcx>, id1: &HirId, id2: &HirId
     }
 }
 
-pub(crate) fn check_generic_bound<'tcx>(
+fn check_generic_bound<'tcx>(
     tcx: TyCtxt<'tcx>,
-    span: Span,
     trait_def_id: DefId,
     args: &Vec<rustc_middle::ty::Ty<'tcx>>,
 ) -> Result<vir::ast::GenericBound, VirErr> {
@@ -639,7 +508,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
                     continue;
                 }
 
-                let generic_bound = check_generic_bound(tcx, *span, trait_def_id, &trait_params)?;
+                let generic_bound = check_generic_bound(tcx, trait_def_id, &trait_params)?;
 
                 match lhs.kind() {
                     TyKind::Param(param) => {
