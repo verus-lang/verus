@@ -23,7 +23,9 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant};
+
+// An approximation of how many interpreter invocations we can do in 1 second
+const RLIMIT_MULTIPLIER: u64 = 15000;
 
 type Env = ScopeMap<UniqueIdent, Exp>;
 
@@ -90,6 +92,8 @@ struct State {
     depth: usize,
     /// Symbol table mapping bound variables to their values
     env: Env,
+    /// Number of iterations computed thus far
+    iterations: u64,
     /// Enable debug output
     debug: bool,
     /// Collect and display performance data
@@ -136,9 +140,8 @@ impl State {
 struct Ctx<'a> {
     /// Maps each function to the SST expression representing its body
     fun_ssts: &'a SstMap,
-    /// We avoid infinite loops by imposing a fixed time limit
-    time_start: Instant,
-    time_limit: Duration,
+    /// We avoid infinite loops by running for a fixed number of intervals
+    max_iterations: u64,
 }
 
 /// Interpreter-internal expressions
@@ -515,6 +518,7 @@ fn print_vector(vec: &Vector<Exp>) {
 /// Displays data for profiling/debugging the interpreter
 fn display_perf_stats(state: &State) {
     if state.perf {
+        println!("Performed {} interpreter iterations", state.iterations);
         if state.enable_simplified_cache {
             let sum = state.ptr_hits + state.ptr_misses;
             let hit_perc = 100.0 * (state.ptr_hits as f64 / sum as f64);
@@ -745,7 +749,8 @@ fn eval_seq(
 /// Symbolically execute the expression as far as we can,
 /// stopping when we hit a symbolic control-flow decision
 fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, VirErr> {
-    if ctx.time_start.elapsed() > ctx.time_limit {
+    state.iterations += 1;
+    if state.iterations > ctx.max_iterations {
         display_perf_stats(state);
         return err_str(&exp.span, "assert_by_compute timed out");
     }
@@ -1269,6 +1274,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     Ok(res)
 }
 
+/// We run the interpreter on a separate thread, so that we can give it a larger-than-default stack
 fn eval_expr_launch(
     exp: Exp,
     fun_ssts: SstMap,
@@ -1280,6 +1286,7 @@ fn eval_expr_launch(
     let mut state = State {
         depth: 0,
         env,
+        iterations: 1,
         debug: false,
         perf: false,
         cache,
@@ -1292,10 +1299,10 @@ fn eval_expr_launch(
         ptr_misses: 0,
         fun_calls: HashMap::new(),
     };
-    // Don't run for more than rlimit seconds
-    let time_limit = if rlimit == 0 { Duration::MAX } else { Duration::new(rlimit as u64, 0) };
-    let time_start = Instant::now();
-    let ctx = Ctx { fun_ssts: &fun_ssts, time_start, time_limit };
+    // Don't run for too long
+    let max_iterations =
+        if rlimit == 0 { std::u64::MAX } else { rlimit as u64 * RLIMIT_MULTIPLIER };
+    let ctx = Ctx { fun_ssts: &fun_ssts, max_iterations };
     let res = eval_expr_internal(&ctx, &mut state, &exp)?;
     display_perf_stats(&state);
     match mode {

@@ -17,7 +17,7 @@ fn main() {}
 /// `#[cfg(any())]` which simply turns off a module.
 /// Any module with its `#[cfg(any())]` line commented out is valid to run.
 
-//#[cfg(any())]
+#[cfg(any())]
 mod fib {
     use super::*;
 
@@ -65,7 +65,7 @@ mod verititan_example {
     }
 }
 
-//#[cfg(any())]
+#[cfg(any())]
 mod recursive_data_structures {
     use super::*;
 
@@ -131,7 +131,7 @@ mod recursive_data_structures {
     }
 }
 
-//#[cfg(any())]
+#[cfg(any())]
 mod sequences {
     use super::*;
 
