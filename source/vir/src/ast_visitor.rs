@@ -251,6 +251,7 @@ where
                     expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
                 }
                 ExprX::Fuel(_, _) => (),
+                ExprX::FuelString(_) => (),
                 ExprX::Header(_) => {
                     panic!("header expression not allowed here: {:?}", &expr.span);
                 }
@@ -577,6 +578,7 @@ where
             ExprX::Assign { init_not_mut: *init_not_mut, lhs: expr1, rhs: expr2 }
         }
         ExprX::Fuel(path, fuel) => ExprX::Fuel(path.clone(), *fuel),
+        ExprX::FuelString(path) => ExprX::FuelString(path.clone()),
         ExprX::Header(_) => {
             return err_str(&expr.span, "header expression not allowed here");
         }

@@ -784,27 +784,11 @@ fn fn_call_to_vir<'tcx>(
     }
 
 
-    if is_strslice_reveal && false {
+    if is_strslice_reveal {
         return match &expr.kind {
-            ExprKind::MethodCall(_, _, [arg0 @ Expr {hir_id:_, kind: ExprKind::Path(QPath::Resolved(_,Path {res: Res::Def(_, id), ..}) ), .. }], _) => {
-                let cvir = expr_to_vir(bctx, &arg0, ExprModifier::REGULAR)?; 
+            ExprKind::MethodCall(_, _, [arg0 @ Expr {hir_id:_, kind: ExprKind::Path(QPath::Resolved(_,Path {res: Res::Def(_, id), ..}) ), span,.. }], _) => {
                 let mypath = def_id_to_vir_path(bctx.ctxt.tcx, *id);
-                todo!();
-                // let vstring = todo!();
-                // let strval = vstring.inner_str.clone();
-
-                // if vstring.emitted == false {
-                //     let new_vstring = VerifiableString {
-                //         inner_str: strval.clone(), 
-                //         emitted: true
-                //     };
-                //     drop(vstring);
-                //     todo!();
-                //     // bctx.ctxt.global_strings.lock()
-                //     //     .expect("expected to have a lock on global_strings")
-                //     //     .insert(mypath, Arc::new(new_vstring));
-                // }
-                Ok(cvir)
+                Ok(mk_expr(ExprX::FuelString(mypath)))
             },
             _ => panic!("Expected a method call for StrSlice::reveal with one argument but did not receive it")
         };

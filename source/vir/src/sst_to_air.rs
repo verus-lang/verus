@@ -1428,7 +1428,15 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 state.map_span(&stm, SpanKind::Full);
             }
             stmts
-        }
+        }, 
+        StmX::FuelString(path) => {
+            use crate::avec;
+            let str_var = Arc::new(ExprX::Var(crate::def::prefix_str(&path_to_air_ident(path))));
+            let reveal_fn = Arc::new("str_reveal_bool".to_string());
+            let expr = Arc::new(ExprX::Apply(reveal_fn, avec![str_var]));
+            let stmt = Arc::new(StmtX::Assume(expr));
+            vec![stmt]
+        },
         StmX::Block(stms) => {
             if ctx.debug {
                 state.push_scope();

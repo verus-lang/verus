@@ -579,6 +579,7 @@ fn check_expr(
             Ok(x_mode)
         }
         ExprX::Fuel(_, _) => Ok(outer_mode),
+        ExprX::FuelString(_) => Ok(outer_mode),
         ExprX::Header(_) => panic!("internal error: Header shouldn't exist here"),
         ExprX::Admit => {
             if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {

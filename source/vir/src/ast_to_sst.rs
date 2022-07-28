@@ -1028,6 +1028,10 @@ fn expr_to_stm_opt(
         ExprX::Fuel(x, fuel) => {
             let stm = Spanned::new(expr.span.clone(), StmX::Fuel(x.clone(), *fuel));
             Ok((vec![stm], ReturnValue::ImplicitUnit(expr.span.clone())))
+        }, 
+        ExprX::FuelString(path) => {
+            let stm = Spanned::new(expr.span.clone(), StmX::FuelString(path.clone()));
+            Ok((vec![stm], ReturnValue::ImplicitUnit(expr.span.clone())))
         }
         ExprX::Header(_) => {
             return err_str(&expr.span, "header expression not allowed here");

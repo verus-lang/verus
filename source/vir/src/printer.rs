@@ -300,6 +300,9 @@ fn expr_to_node(expr: &Expr) -> Node {
         }
         ExprX::Fuel(fun, fuel) => {
             nodes!(fuel {fun_to_node(fun)} {str_to_node(&format!("{}", fuel))})
+        }, 
+        ExprX::FuelString(_) => {
+            nodes!(str_fuel)
         }
         ExprX::Header(header_expr) => nodes!(header {header_expr_to_node(header_expr)}),
         ExprX::Admit => node!(admit),

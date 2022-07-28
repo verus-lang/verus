@@ -93,6 +93,7 @@ pub enum StmX {
         rhs: Exp,
     },
     Fuel(Fun, u32),
+    FuelString(Path),
     DeadEnd(Stm),
     If(Exp, Stm, Option<Stm>),
     While {

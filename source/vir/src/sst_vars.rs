@@ -48,7 +48,8 @@ pub(crate) fn stm_assign(
         | StmX::AssertBV(..)
         | StmX::AssertQuery { .. }
         | StmX::Assume(_)
-        | StmX::Fuel(..) => stm.clone(),
+        | StmX::Fuel(..) 
+        | StmX::FuelString(_) => stm.clone(),
         StmX::Assign { lhs: Dest { dest, is_init }, rhs: _ } => {
             let var = get_loc_var(dest);
             assigned.insert(var.clone());
