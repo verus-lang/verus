@@ -27,6 +27,7 @@ use rustc_hir::{
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use vir::ast::Typ;
 use vir::ast::{Fun, FunX, FunctionKind, Krate, KrateX, Mode, Path, TypX, VirErr};
 use vir::ast_util::path_as_rust_name;
 
@@ -204,14 +205,25 @@ fn check_item<'tcx>(
                         panic!("expected datatype")
                     };
                     let self_path = def_id_to_vir_path(ctxt.tcx, *self_def_id);
+
                     let trait_path_typ_args =
                         impll.of_trait.as_ref().map(|TraitRef { path, .. }| {
-                            crate::rust_to_vir_base::def_id_to_datatype_typ_args(
-                                ctxt.tcx,
-                                path.res.def_id(),
-                                path.segments,
-                            )
+                            let trait_ref = ctxt
+                                .tcx
+                                .impl_trait_ref(item.def_id.to_def_id())
+                                .expect("impl_trait_ref");
+                            // If we have `impl X for Z<A, B, C>` then the list of types is [X, A, B, C].
+                            // So to get the type args, we strip off the first element.
+                            let types: Vec<Typ> = trait_ref
+                                .substs
+                                .types()
+                                .skip(1)
+                                .map(|ty| mid_ty_to_vir(ctxt.tcx, ty, false))
+                                .collect();
+                            let path = def_id_to_vir_path(ctxt.tcx, path.res.def_id());
+                            (path, Arc::new(types))
                         });
+
                     for impl_item_ref in impll.items {
                         match impl_item_ref.kind {
                             AssocItemKind::Fn { has_self } => {
