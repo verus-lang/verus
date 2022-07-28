@@ -464,7 +464,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
     // so then we can handle the case where a method adds extra bounds to an impl
     // type parameter
 
-    let Generics { params, where_clause, span: _ } = hir_generics;
+    let Generics { params, where_clause: _, span: _ } = hir_generics;
 
     // For each generic param, we're going to collect all the trait bounds here.
     let mut typ_param_bounds: HashMap<String, Vec<vir::ast::GenericBound>> = HashMap::new();
@@ -686,7 +686,6 @@ pub(crate) fn check_generics_bounds<'tcx>(
             _ => unsupported_err!(*span, "complex generics", hir_generics),
         }
     }
-    unsupported_err_unless!(where_clause.predicates.len() == 0, hir_generics.span, "where clause");
     Ok(typ_params)
 }
 

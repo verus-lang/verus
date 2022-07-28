@@ -955,3 +955,42 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 3)
 }
+
+test_verify_one_file! {
+    #[test] test_ok_where_clause verus_code! {
+        trait Tr {
+            spec fn f(&self) -> bool;
+        }
+
+        spec fn not_f<S>(x: S) -> bool
+            where S: Tr
+        {
+            !x.f()
+        }
+
+        proof fn foo<S>(x: S, y: S) where S : Tr
+            requires x.f() ==> y.f(),
+            ensures not_f(y) ==> not_f(x),
+        {
+        }
+
+        struct Bar<X>
+        {
+            x: X,
+        }
+
+        impl<X> Bar<X>
+            where X: Tr
+        {
+            spec fn bar_not_f(&self) -> bool {
+                not_f(self.x)
+            }
+
+            proof fn easy_lemma(bar1: &Self, bar2: &Self)
+                requires bar1.x.f() ==> bar2.x.f(),
+                ensures not_f(bar2.x) ==> not_f(bar1.x)
+            {
+            }
+        }
+    } => Ok(())
+}
