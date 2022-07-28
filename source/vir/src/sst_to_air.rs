@@ -29,8 +29,8 @@ use air::ast::{
 };
 use air::ast_util::{
     bool_typ, bv_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and,
-    mk_bind_expr, mk_eq, mk_exists, mk_implies, mk_ite, mk_let, mk_not, mk_option_command, mk_or,
-    mk_xor, str_apply, str_ident, str_typ, str_var, string_var,
+    mk_bind_expr, mk_bitvector_option, mk_eq, mk_exists, mk_implies, mk_ite, mk_let, mk_not,
+    mk_option_command, mk_or, mk_xor, str_apply, str_ident, str_typ, str_var, string_var,
 };
 use air::errors::{error, error_with_label};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -1251,16 +1251,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             let assertion = Arc::new(StmtX::Assert(error, air_expr));
             // this creates a separate query for the bv assertion
             let query = Arc::new(QueryX { local: Arc::new(local), assertion });
+            let mut bv_commands = mk_bitvector_option();
+            bv_commands.push(Arc::new(CommandX::CheckValid(query)));
             state.commands.push(CommandsWithContextX::new(
                 stm.span.clone(),
                 "assert_bit_vector".to_string(),
-                Arc::new(vec![
-                    mk_option_command("sat.euf", "true"),
-                    mk_option_command("tactic.default_tactic", "sat"),
-                    mk_option_command("smt.ematching", "false"),
-                    mk_option_command("smt.case_split", "0"),
-                    Arc::new(CommandX::CheckValid(query)),
-                ]),
+                Arc::new(bv_commands),
                 ProverChoice::Spinoff,
             ));
 
@@ -1776,13 +1772,9 @@ pub fn body_stm_to_air(
                 mk_option_command("smt.arith.nl", "false"),
             ]
         } else if is_bit_vector_mode {
-            vec![
-                mk_option_command("sat.euf", "true"),
-                mk_option_command("tactic.default_tactic", "sat"),
-                mk_option_command("smt.ematching", "false"),
-                mk_option_command("smt.case_split", "0"),
-                Arc::new(CommandX::CheckValid(query)),
-            ]
+            let mut bv_commands = mk_bitvector_option();
+            bv_commands.push(Arc::new(CommandX::CheckValid(query)));
+            bv_commands
         } else {
             vec![Arc::new(CommandX::CheckValid(query))]
         };
