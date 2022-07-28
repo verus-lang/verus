@@ -86,9 +86,8 @@ impl<V> PCell<V> {
     #[inline(always)]
     #[verifier(external_body)]
     pub fn empty() -> (pt: (PCell<V>, Tracked<Permission<V>>))
-        ensures ((*pt.1) ===
-            Permission{ pcell: pt.0.id(), value: option::Option::None }
-        ),
+        ensures
+            pt.1@ === (Permission{ pcell: pt.0.id(), value: option::Option::None }),
     {
         let p = PCell { ucell: UnsafeCell::new(MaybeUninit::uninit()) };
         (p, Tracked::assume_new())
@@ -98,11 +97,11 @@ impl<V> PCell<V> {
     #[verifier(external_body)]
     pub fn put(&self, perm: &mut Tracked<Permission<V>>, v: V)
         requires
-            self.id() === (**old(perm)).pcell,
-            (**old(perm)).value === option::Option::None,
+            self.id() === old(perm)@.pcell,
+            old(perm)@.value === option::Option::None,
         ensures
-            (**perm).pcell === (**old(perm)).pcell,
-            (**perm).value === option::Option::Some(v),
+            perm@.pcell === old(perm)@.pcell,
+            perm@.value === option::Option::Some(v),
     {
         opens_invariants_none();
 
@@ -115,12 +114,12 @@ impl<V> PCell<V> {
     #[verifier(external_body)]
     pub fn take(&self, perm: &mut Tracked<Permission<V>>) -> (v: V)
         requires
-            self.id() === (**old(perm)).pcell,
-            (**old(perm)).value.is_Some(),
+            self.id() === old(perm)@.pcell,
+            old(perm)@.value.is_Some(),
         ensures
-            (**perm).pcell === (**old(perm)).pcell,
-            (**perm).value === option::Option::None,
-            v === (**old(perm)).value.get_Some_0(),
+            perm@.pcell === old(perm)@.pcell,
+            perm@.value === option::Option::None,
+            v === old(perm)@.value.get_Some_0(),
     {
         opens_invariants_none();
 
@@ -135,12 +134,12 @@ impl<V> PCell<V> {
     #[verifier(external_body)]
     pub fn replace(&self, perm: &mut Tracked<Permission<V>>, in_v: V) -> (out_v: V)
         requires
-            self.id() === (**old(perm)).pcell,
-            (**old(perm)).value.is_Some(),
+            self.id() === old(perm)@.pcell,
+            old(perm)@.value.is_Some(),
         ensures
-            (**perm).pcell === (**old(perm)).pcell,
-            (**perm).value === option::Option::Some(in_v),
-            out_v === (**old(perm)).value.get_Some_0(),
+            perm@.pcell === old(perm)@.pcell,
+            perm@.value === option::Option::Some(in_v),
+            out_v === old(perm)@.value.get_Some_0(),
     {
         opens_invariants_none();
 
@@ -159,10 +158,10 @@ impl<V> PCell<V> {
     #[verifier(external_body)]
     pub fn borrow<'a>(&'a self, perm: &'a Tracked<Permission<V>>) -> (v: &'a V)
         requires
-            self.id() === (**perm).pcell,
-            (**perm).value.is_Some(),
+            self.id() === perm@.pcell,
+            perm@.value.is_Some(),
         ensures
-            *v === (**perm).value.get_Some_0(),
+            *v === perm@.value.get_Some_0(),
     {
         opens_invariants_none();
 
@@ -177,10 +176,10 @@ impl<V> PCell<V> {
     #[inline(always)]
     pub fn into_inner(self, perm: Tracked<Permission<V>>) -> (v: V)
         requires
-            self.id() === (*perm).pcell,
-            (*perm).value.is_Some(),
+            self.id() === perm@.pcell,
+            perm@.value.is_Some(),
         ensures
-            v === (*perm).value.get_Some_0(),
+            v === perm@.value.get_Some_0(),
     {
         opens_invariants_none();
 
@@ -190,7 +189,8 @@ impl<V> PCell<V> {
 
     #[inline(always)]
     pub fn new(v: V) -> (pt: (PCell<V>, Tracked<Permission<V>>))
-        ensures ((*pt.1) === Permission{ pcell: pt.0.id(), value: option::Option::Some(v) }),
+        ensures
+            pt.1@ === (Permission{ pcell: pt.0.id(), value: option::Option::Some(v) }),
     {
         let (p, mut t) = Self::empty();
         p.put(&mut t, v);

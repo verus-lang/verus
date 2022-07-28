@@ -1,6 +1,6 @@
 use crate::ast::{
     CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, FunX, Function, FunctionKind, Krate,
-    MaskSpec, Mode, MultiOp, Path, PathX, TypX, UnaryOpr, VirErr,
+    MaskSpec, Mode, MultiOp, Path, PathX, TypX, UnaryOp, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string, error, path_as_rust_name, referenced_vars_expr};
 use crate::datatype_to_air::is_datatype_transparent;
@@ -74,7 +74,10 @@ fn check_one_expr(
                 fn is_ok(e: &Expr) -> bool {
                     match &e.x {
                         ExprX::VarLoc(_) => true,
+                        ExprX::Unary(UnaryOp::CoerceMode { .. }, e1) => is_ok(e1),
                         ExprX::UnaryOpr(UnaryOpr::Field { .. }, base) => is_ok(base),
+                        ExprX::Block(stmts, Some(e1)) if stmts.len() == 0 => is_ok(e1),
+                        ExprX::Ghost { alloc_wrapper: None, tracked: true, expr: e1 } => is_ok(e1),
                         _ => false,
                     }
                 }

@@ -1,7 +1,7 @@
 use crate::ast::{
     BinaryOp, CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, Ident,
-    InferMode, InvAtomicity, Krate, Mode, MultiOp, Path, Pattern, PatternX, Stmt, StmtX, UnaryOp,
-    UnaryOpr, VirErr,
+    InferMode, InvAtomicity, Krate, Mode, ModeCoercion, MultiOp, Path, Pattern, PatternX, Stmt,
+    StmtX, UnaryOp, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string, get_field};
 use crate::util::vec_map_result;
@@ -256,26 +256,52 @@ fn add_pattern(typing: &mut Typing, mode: Mode, pattern: &Pattern) -> Result<(),
 
 fn get_var_loc_mode(
     typing: &mut Typing,
-    expr_type_mode: Option<Mode>,
+    outer_mode: Mode,
+    expr_inner_mode: Option<Mode>,
     expr: &Expr,
     init_not_mut: bool,
 ) -> Result<Mode, VirErr> {
     let x_mode = match &expr.x {
         ExprX::VarLoc(x) => {
             let (_, x_mode) = typing.get(x);
-            if typing.block_ghostness != Ghost::Exec && expr_type_mode == Some(Mode::Spec) {
-                Mode::Spec
-            } else if typing.block_ghostness != Ghost::Exec
-                && expr_type_mode == Some(Mode::Proof)
-                && x_mode != Mode::Spec
-            {
-                Mode::Proof
-            } else {
-                x_mode
+            x_mode
+        }
+        ExprX::Unary(
+            UnaryOp::CoerceMode {
+                op_mode,
+                from_mode,
+                to_mode,
+                kind: ModeCoercion::DerefMut | ModeCoercion::BorrowMut,
+            },
+            e1,
+        ) => {
+            assert!(!init_not_mut);
+            if typing.check_ghost_blocks {
+                if (*op_mode == Mode::Exec) != (typing.block_ghostness == Ghost::Exec) {
+                    return err_string(
+                        &expr.span,
+                        format!("cannot perform operation with mode {}", op_mode),
+                    );
+                }
             }
+            if outer_mode != *op_mode {
+                return err_string(
+                    &expr.span,
+                    format!("cannot perform operation with mode {}", op_mode),
+                );
+            }
+            let mode1 = get_var_loc_mode(typing, outer_mode, Some(*to_mode), e1, init_not_mut)?;
+            if !mode_le(mode1, *from_mode) {
+                return err_string(
+                    &expr.span,
+                    format!("expected mode {}, found mode {}", *from_mode, mode1),
+                );
+            }
+            *to_mode
         }
         ExprX::UnaryOpr(UnaryOpr::Field(FieldOpr { datatype, variant: _, field }), rcvr) => {
-            let rcvr_mode = get_var_loc_mode(typing, expr_type_mode, rcvr, init_not_mut)?;
+            let rcvr_mode =
+                get_var_loc_mode(typing, outer_mode, expr_inner_mode, rcvr, init_not_mut)?;
             let datatype = &typing.datatypes[datatype].x;
             if datatype.unforgeable {
                 return err_str(&expr.span, "unforgeable datatypes cannot be updated");
@@ -289,6 +315,21 @@ fn get_var_loc_mode(
                 .a;
             mode_join(rcvr_mode, *field_mode)
         }
+        ExprX::Block(stmts, Some(e1)) if stmts.len() == 0 => {
+            // For now, only support the special case for Tracked::borrow_mut.
+            get_var_loc_mode(typing, outer_mode, None, e1, init_not_mut)?
+        }
+        ExprX::Ghost { alloc_wrapper: None, tracked: true, expr: e1 } => {
+            // For now, only support the special case for Tracked::borrow_mut.
+            if typing.block_ghostness != (Ghost::Ghost { tracked: false }) {
+                return err_str(&expr.span, "unexpected `tracked`");
+            }
+            let prev = typing.block_ghostness;
+            typing.block_ghostness = Ghost::Ghost { tracked: true };
+            let mode = get_var_loc_mode(typing, outer_mode, None, e1, init_not_mut)?;
+            typing.block_ghostness = prev;
+            mode
+        }
         _ => {
             panic!("unexpected loc {:?}", expr);
         }
@@ -299,7 +340,13 @@ fn get_var_loc_mode(
             "delayed assignment to non-mut let not allowed for spec variables",
         );
     }
-    typing.erasure_modes.var_modes.push((expr.span.clone(), x_mode));
+    match &expr.x {
+        ExprX::Ghost { .. } => {}
+        _ => {
+            let push_mode = expr_inner_mode.unwrap_or(x_mode);
+            typing.erasure_modes.var_modes.push((expr.span.clone(), push_mode));
+        }
+    }
     Ok(x_mode)
 }
 
@@ -490,7 +537,7 @@ fn check_expr_handle_mut_arg(
 
             Ok(mode)
         }
-        ExprX::Unary(UnaryOp::CoerceMode { op_mode, from_mode, to_mode }, e1) => {
+        ExprX::Unary(UnaryOp::CoerceMode { op_mode, from_mode, to_mode, kind }, e1) => {
             // same as a call to an op_mode function with parameter from_mode and return to_mode
             if typing.check_ghost_blocks {
                 if (*op_mode == Mode::Exec) != (typing.block_ghostness == Ghost::Exec) {
@@ -508,7 +555,11 @@ fn check_expr_handle_mut_arg(
             }
             let param_mode = mode_join(outer_mode, *from_mode);
             check_expr_has_mode(typing, param_mode, e1, *from_mode)?;
-            Ok(*to_mode)
+            if *kind == ModeCoercion::BorrowMut {
+                return Ok((*to_mode, Some(*to_mode)));
+            } else {
+                Ok(*to_mode)
+            }
         }
         ExprX::Unary(_, e1) => check_expr(typing, outer_mode, erasure_mode, e1),
         ExprX::UnaryOpr(UnaryOpr::Box(_), e1) => check_expr(typing, outer_mode, erasure_mode, e1),
@@ -619,14 +670,14 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(typing, Mode::Spec, body, Mode::Spec)?;
             Ok(Mode::Spec)
         }
-        ExprX::Assign { init_not_mut, lhs_type_mode, lhs, rhs } => {
+        ExprX::Assign { init_not_mut, lhs, rhs } => {
             if typing.in_forall_stmt {
                 return err_str(
                     &expr.span,
                     "assignment is not allowed in 'assert ... by' statement",
                 );
             }
-            let x_mode = get_var_loc_mode(typing, *lhs_type_mode, lhs, *init_not_mut)?;
+            let x_mode = get_var_loc_mode(typing, outer_mode, None, lhs, *init_not_mut)?;
             if !mode_le(outer_mode, x_mode) {
                 return err_string(
                     &expr.span,
@@ -834,14 +885,17 @@ fn check_expr_handle_mut_arg(
                 _ => outer_mode,
             };
             let mode = if alloc_wrapper.is_none() {
-                check_expr(typing, outer_mode, erasure_mode, e1)?
+                check_expr_handle_mut_arg(typing, outer_mode, erasure_mode, e1)?
             } else {
                 let target_mode = if *tracked { Mode::Proof } else { Mode::Spec };
                 check_expr_has_mode(typing, outer_mode, e1, target_mode)?;
-                Mode::Exec
+                (Mode::Exec, None)
             };
             typing.block_ghostness = prev;
-            Ok(mode)
+            return Ok(mode);
+        }
+        ExprX::Block(ss, Some(e1)) if ss.len() == 0 => {
+            return check_expr_handle_mut_arg(typing, outer_mode, erasure_mode, e1);
         }
         ExprX::Block(ss, e1) => {
             for stmt in ss.iter() {

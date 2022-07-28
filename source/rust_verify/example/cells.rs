@@ -18,5 +18,5 @@ fn main() {
 
     pcell.put(&mut token, x);
 
-    assert(equal((*token).value, option::Option::Some(X { i : 5 })));
+    assert(equal(token.view().value, option::Option::Some(X { i : 5 })));
 }

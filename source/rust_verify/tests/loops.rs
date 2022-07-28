@@ -265,9 +265,11 @@ test_verify_one_file! {
         fn test() {
             let mut a: Ghost<int> = ghost(5);
             loop
-                invariant *a > 0
+                invariant a@ > 0
             {
-                a = ghost(*a + 1);
+                proof {
+                    a@ = a@ + 1;
+                }
             }
         }
     } => Ok(())

@@ -485,7 +485,7 @@ test_verify_one_file! {
 
             let s1 = S { a: 10, b: ghost(20) };
             let s2 = s1;
-            assert(*s1.b == *s2.b);
+            assert(s1.b@ == s2.b@);
             let b = s1.equals(&s2); assert(b);
             (s1, s2)
         }

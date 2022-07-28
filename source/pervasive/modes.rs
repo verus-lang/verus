@@ -3,36 +3,28 @@
 #[allow(unused_imports)] use crate::pervasive::*;
 use std::marker::PhantomData;
 
-// TODO: the *_exec* and tracked_get functions would be better in builtin,
+// TODO: the *_exec* functions would be better in builtin,
 // but it's painful to implement the support in erase.rs at the moment.
 #[verifier(external_body)]
 pub fn ghost_exec<A>(#[spec] a: A) -> Ghost<A> {
-    ensures(|s: Ghost<A>| equal(a, s.value()));
+    ensures(|s: Ghost<A>| equal(a, s.view()));
     Ghost::assume_new()
 }
 
 #[verifier(external_body)]
 pub fn tracked_exec<A>(#[proof] a: A) -> Tracked<A> {
-    ensures(|s: Tracked<A>| equal(a, s.value()));
+    ensures(|s: Tracked<A>| equal(a, s.view()));
     opens_invariants_none();
     Tracked::assume_new()
 }
 
 #[verifier(external_body)]
 pub fn tracked_exec_borrow<'a, A>(#[proof] a: &'a A) -> &'a Tracked<A> {
-    ensures(|s: Tracked<A>| equal(*a, s.value()));
+    ensures(|s: Tracked<A>| equal(*a, s.view()));
     opens_invariants_none();
 
     // TODO: implement this (using unsafe) or mark function as ghost (if supported by Rust)
     unimplemented!();
-}
-
-#[proof]
-#[verifier(external_body)]
-#[verifier(returns(proof))]
-pub fn tracked_get<A>(#[proof] t: Tracked<A>) -> A {
-    ensures(|a: A| equal(a, *t));
-    unimplemented!()
 }
 
 verus! {
@@ -44,7 +36,7 @@ pub struct Trk<A>(pub tracked A);
 #[inline(always)]
 #[verifier(external_body)]
 pub fn ghost_unwrap_gho<A>(a: Ghost<Gho<A>>) -> (ret: Ghost<A>)
-    ensures a.0 === *ret
+    ensures a@.0 === ret@
 {
     Ghost::assume_new()
 }
@@ -52,7 +44,7 @@ pub fn ghost_unwrap_gho<A>(a: Ghost<Gho<A>>) -> (ret: Ghost<A>)
 #[inline(always)]
 #[verifier(external_body)]
 pub fn tracked_unwrap_gho<A>(a: Tracked<Gho<A>>) -> (ret: Tracked<A>)
-    ensures a.0 === *ret
+    ensures a@.0 === ret@
 {
     Tracked::assume_new()
 }
@@ -60,7 +52,7 @@ pub fn tracked_unwrap_gho<A>(a: Tracked<Gho<A>>) -> (ret: Tracked<A>)
 #[inline(always)]
 #[verifier(external_body)]
 pub fn tracked_unwrap_trk<A>(a: Tracked<Trk<A>>) -> (ret: Tracked<A>)
-    ensures a.0 === *ret
+    ensures a@.0 === ret@
 {
     Tracked::assume_new()
 }

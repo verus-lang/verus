@@ -5,7 +5,7 @@ use builtin::*;
 
 mod pervasive;
 #[allow(unused_imports)]
-use crate::pervasive::modes::*;
+use crate::pervasive::{modes::*, seq::*, vec::*};
 
 #[verifier(external)]
 fn main() {
@@ -310,6 +310,19 @@ proof fn chained_comparisons(i: int, j: int, k: int)
 {
 }
 
+/// In specs, e@ is an abbreviation for e.view()
+/// Many types implement a view() method to get an abstract ghost view of a concrete type.
+fn test_views() {
+    let mut v: Vec<u8> = Vec::new();
+    v.push(10);
+    v.push(20);
+    proof {
+        let s: Seq<u8> = v@; // v@ is equivalent to v.view()
+        assert(s[0] == 10);
+        assert(s[1] == 20);
+    }
+}
+
 /// struct and enum declarations may be declared exec (default), tracked, or ghost,
 /// and fields may be declared exec (default), tracked or ghost.
 tracked struct TrackedAndGhost<T, G>(
@@ -338,30 +351,31 @@ proof fn test_tracked(
 /// Instead, the library types Ghost and Tracked are used to wrap ghost values and tracked values.
 /// Ghost and tracked expressions ghost(expr) and tracked(expr) create values of type Ghost<T>
 /// and Tracked<T>, where expr is treated as proof code whose value is wrapped inside Ghost or Tracked.
+/// The view x@ of a Ghost or Tracked x is the ghost or tracked value inside the Ghost or Tracked.
 fn test_ghost(x: u32, y: u32)
     requires
         x < 100,
         y < 100,
 {
     let u: Ghost<int> = ghost(my_spec_fun(x as int, y as int));
-    let mut v: Ghost<int> = ghost(*u + 1);
-    assert(*v == x + y + 1);
+    let mut v: Ghost<int> = ghost(u@ + 1);
+    assert(v@ == x + y + 1);
     proof {
-        v = Ghost::new(*v + 1); // proof code may assign to exec variables of type Ghost/Tracked
+        v@ = v@ + 1; // proof code may assign to the view of exec variables of type Ghost/Tracked
     }
     let w: Ghost<int> = ghost({
         // proof block that returns a ghost value
-        let temp = *v + 1;
+        let temp = v@ + 1;
         temp + 1
     });
-    assert(*w == x + y + 4);
+    assert(w@ == x + y + 4);
 }
 
 fn test_consume(t: Tracked<int>)
-    requires *t <= 7
+    requires t@ <= 7
 {
     proof {
-        let tracked x = tracked_get(tracked t);
+        let tracked x = (tracked t).get();
         assert(x <= 7);
         consume(tracked x);
     }
@@ -374,10 +388,10 @@ fn test_ghost_tuple_match(t: Tracked<(bool, bool, Gho<int>, Gho<int>)>) -> Track
     let g: Ghost<(int, int)> = ghost((10, 20));
 
     let Ghost((g1, g2)) = g; // g1 and g2 both have type Ghost<int>
-    assert(*g1 + *g2 == 30);
+    assert(g1@ + g2@ == 30);
 
     let Ghost((g1, g2)): (Ghost<int>, Ghost<int>) = g;
-    assert(*g1 + *g2 == 30);
+    assert(g1@ + g2@ == 30);
 
     let Tracked((b1, b2, Gho(g3), Gho(g4))) = t; // b1, b2: Tracked<bool> and g3, g4: Ghost<int>
     b2

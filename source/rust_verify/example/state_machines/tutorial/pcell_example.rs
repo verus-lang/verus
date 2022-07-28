@@ -16,7 +16,7 @@ fn main() {
 
     // Initially, cell is unitialized, and the `perm` token
     // represents that as the value `None`.
-    assert((*perm).value === Option::None);
+    assert(perm@.value === Option::None);
 
     // We can write a value to the pcell (thus initializing it).
     // This only requires an `&` reference to the PCell, but it does
@@ -24,14 +24,14 @@ fn main() {
     pcell.put(&mut perm, 5); 
 
     // Having written the value, this is reflected in the token:
-    assert((*perm).value === Option::Some(5));
+    assert(perm@.value === Option::Some(5));
 
     // We can take the value back out:
     let x = pcell.take(&mut perm); 
 
     // Which leaves it uninitialized again:
     assert(x == 5);
-    assert((*perm).value === Option::None);
+    assert(perm@.value === Option::None);
 }
 // ANCHOR_END: example
 

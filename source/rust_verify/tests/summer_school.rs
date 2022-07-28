@@ -1025,7 +1025,7 @@ test_verify_one_file! {
                         assert(view_u64(haystack.view())[mid as int] <= view_u64(haystack.view())[i]);
                     }
                 }
-                assert(high - low < *decreases); // Termination check
+                assert(high - low < decreases@); // Termination check
             }
             low
         }
