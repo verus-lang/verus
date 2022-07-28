@@ -1305,38 +1305,42 @@ fn eval_expr_launch(
     let ctx = Ctx { fun_ssts: &fun_ssts, max_iterations };
     let res = eval_expr_internal(&ctx, &mut state, &exp)?;
     display_perf_stats(&state);
-    match mode {
-        // Send partial result to Z3
-        ComputeMode::Z3 => {
-            // Restore the free variables we hid during interpretation
-            let res = crate::sst_visitor::map_exp_visitor(&res, &mut |e| match &e.x {
-                ExpX::Interp(InterpExp::FreeVar(v)) => {
-                    SpannedTyped::new(&e.span, &e.typ, ExpX::Var(v.clone()))
+    if let ExpX::Const(Constant::Bool(false)) = res.x {
+        err_str(&exp.span, "assert simplifies to false")
+    } else {
+        match mode {
+            // Send partial result to Z3
+            ComputeMode::Z3 => {
+                // Restore the free variables we hid during interpretation
+                let res = crate::sst_visitor::map_exp_visitor(&res, &mut |e| match &e.x {
+                    ExpX::Interp(InterpExp::FreeVar(v)) => {
+                        SpannedTyped::new(&e.span, &e.typ, ExpX::Var(v.clone()))
+                    }
+                    _ => e.clone(),
+                });
+                if state.debug {
+                    if exp.definitely_eq(&res) {
+                        println!();
+                        println!(
+                            "Could not take advantage of compute to simplify expression before sending to z3"
+                        );
+                        println!("  Unchanged: {}", exp);
+                        println!();
+                    } else {
+                        println!("Was able to simplify before sending to Z3");
+                        println!("  Old: {}", exp);
+                        println!("  New: {}", res);
+                        println!();
+                    }
                 }
-                _ => e.clone(),
-            });
-            if state.debug {
-                if exp.definitely_eq(&res) {
-                    println!();
-                    println!(
-                        "Could not take advantage of compute to simplify expression before sending to z3"
-                    );
-                    println!("  Unchanged: {}", exp);
-                    println!();
-                } else {
-                    println!("Was able to simplify before sending to Z3");
-                    println!("  Old: {}", exp);
-                    println!("  New: {}", res);
-                    println!();
-                }
+                Ok(res)
             }
-            Ok(res)
+            // Proof must succeed purely through computation
+            ComputeMode::ComputeOnly => match res.x {
+                ExpX::Const(Constant::Bool(true)) => Ok(res),
+                _ => err_str(&exp.span, "assert_by_compute_only failed to simplify down to true"),
+            },
         }
-        // Proof must succeed purely through computation
-        ComputeMode::ComputeOnly => match res.x {
-            ExpX::Const(Constant::Bool(true)) => Ok(res),
-            _ => err_str(&exp.span, "assert_by_compute_only failed to simplify down to true"),
-        },
     }
 }
 
