@@ -20,8 +20,10 @@ use num_bigint::{BigInt, Sign};
 use num_traits::identities::Zero;
 use num_traits::{FromPrimitive, One, Signed, ToPrimitive};
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::Write;
 use std::hash::{Hash, Hasher};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 // An approximation of how many interpreter invocations we can do in 1 second
@@ -94,6 +96,8 @@ struct State {
     env: Env,
     /// Number of iterations computed thus far
     iterations: u64,
+    /// Log to write out extra info
+    log: Option<File>,
     /// Enable debug output
     debug: bool,
     /// Collect and display performance data
@@ -132,6 +136,13 @@ impl State {
             self.cache.get(f)?.get(&args.into()).cloned()
         } else {
             None
+        }
+    }
+
+    fn log(&self, s: String) {
+        if self.debug {
+            let mut log = self.log.as_ref().unwrap();
+            writeln!(log, "{}", s).expect("I/O error writing to the interpreter's log");
         }
     }
 }
@@ -510,47 +521,43 @@ fn i128_to_fixed_width(i: i128, width: u32) -> BigInt {
     .unwrap()
 }
 
-fn print_vector(vec: &Vector<Exp>) {
-    let s = vec.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
-    println!("[{}]", s)
-}
-
 /// Displays data for profiling/debugging the interpreter
 fn display_perf_stats(state: &State) {
     if state.perf {
-        println!("Performed {} interpreter iterations", state.iterations);
+        state.log(format!("\n{}\nPerformance Stats\n{}\n", "*".repeat(80), "*".repeat(80)));
+        state.log(format!("Performed {} interpreter iterations", state.iterations));
         if state.enable_simplified_cache {
             let sum = state.ptr_hits + state.ptr_misses;
             let hit_perc = 100.0 * (state.ptr_hits as f64 / sum as f64);
-            println!(
+            state.log(format!(
                 "Simplified cache had {} hits out of {} ({:.1}%)",
                 state.ptr_hits, sum, hit_perc
-            );
+            ));
         } else {
-            println!("Simplified cache was disabled");
+            state.log("Simplified cache was disabled".to_string());
         }
         if state.enable_cache {
             let sum = state.cache_hits + state.cache_misses;
             let hit_perc = 100.0 * (state.cache_hits as f64 / sum as f64);
-            println!(
+            state.log(format!(
                 "Call result cache had {} hits out of {} ({:.1}%)",
                 state.cache_hits, sum, hit_perc
-            );
+            ));
 
             let mut cache_stats: Vec<(&Fun, usize)> =
                 state.cache.iter().map(|(fun, vec)| (fun, vec.len())).collect();
             cache_stats.sort_by(|a, b| b.1.cmp(&a.1));
             for (fun, calls) in &cache_stats {
-                println!("{:?} cached {} distinct invocations", fun.path, calls);
+                state.log(format!("{:?} cached {} distinct invocations", fun.path, calls));
             }
         } else {
-            println!("Function-call cache was disabled");
+            state.log("Function-call cache was disabled".to_string());
         }
-        println!("\nRaw call numbers:");
+        state.log(format!("\nRaw call numbers:"));
         let mut fun_call_stats: Vec<(&Fun, _)> = state.fun_calls.iter().collect();
         fun_call_stats.sort_by(|a, b| b.1.cmp(&a.1));
         for (fun, count) in fun_call_stats {
-            println!("{:?} called {} times", fun.path, count);
+            state.log(format!("{:?} called {} times", fun.path, count));
         }
     }
 }
@@ -716,12 +723,7 @@ fn eval_seq(
                 },
                 ExtEqual => match (&args[0].x, &args[1].x) {
                     (Interp(Seq(l)), Interp(Seq(r))) => match l.syntactic_eq(r) {
-                        None => {
-                            println!("Eq check couldn't determine equality for:");
-                            print_vector(l);
-                            print_vector(r);
-                            ok
-                        }
+                        None => ok,
                         Some(b) => bool_new(b),
                     },
                     _ => ok,
@@ -751,18 +753,13 @@ fn eval_seq(
 fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, VirErr> {
     state.iterations += 1;
     if state.iterations > ctx.max_iterations {
-        display_perf_stats(state);
         return err_str(&exp.span, "assert_by_compute timed out");
     }
-    if state.debug {
-        println!("{}Evaluating {:}", "\t".repeat(state.depth), exp);
-    }
+    state.log(format!("{}Evaluating {:}", "\t".repeat(state.depth), exp));
     let ok = Ok(exp.clone());
     if state.enable_simplified_cache && state.simplified.contains(exp) {
         state.ptr_hits += 1;
-        if state.debug {
-            println!("{}=> already simplified as far as it will go", "\t".repeat(state.depth));
-        }
+        state.log(format!("{}=> already simplified as far as it will go", "\t".repeat(state.depth)));
         return Ok(exp.clone());
     }
     state.ptr_misses += 1;
@@ -777,18 +774,13 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
         Var(id) => match state.env.get(id) {
             None => {
                 if state.debug {
-                    println!("Failed to find a match for {:?}", id);
+                    state.log(format!("Failed to find a match for variable {:?}", id));
                 };
                 // "Hide" the variable, so that we don't accidentally
                 // mix free and bound variables while interpreting
                 exp_new(Interp(InterpExp::FreeVar(id.clone())))
             }
-            Some(e) => {
-                if state.debug {
-                    //println!("Found match for {:?}", id);
-                };
-                Ok(e.clone())
-            }
+            Some(e) => Ok(e.clone()),
         },
         Unary(op, e) => {
             use Constant::*;
@@ -888,12 +880,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     _ => ok,
                 },
                 Unbox(_) => match &e.x {
-                    UnaryOpr(Box(_), inner_e) => {
-                        if state.debug {
-                            //println!("Unbox found matching box");
-                        };
-                        Ok(inner_e.clone())
-                    }
+                    UnaryOpr(Box(_), inner_e) => Ok(inner_e.clone()),
                     // Sequences move through unbox
                     Interp(InterpExp::Seq(s)) => exp_new(Interp(InterpExp::Seq(s.clone()))),
                     _ => ok,
@@ -1276,9 +1263,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     };
     let res = r?;
     state.depth -= 1;
-    if state.debug {
-        println!("{}=> {:}", "\t".repeat(state.depth), &res);
-    }
+    state.log(format!("{}=> {:}", "\t".repeat(state.depth), &res));
     if state.enable_simplified_cache {
         state.simplified.insert(&res);
     }
@@ -1291,15 +1276,20 @@ fn eval_expr_launch(
     fun_ssts: SstMap,
     rlimit: u32,
     mode: ComputeMode,
+    log: Arc<Mutex<Option<File>>>,
 ) -> Result<Exp, VirErr> {
     let env = ScopeMap::new();
     let cache = HashMap::new();
+    let mut file_log_opt = log.lock().unwrap();
+    let logging = file_log_opt.is_some();
+    let debug = logging;
     let mut state = State {
         depth: 0,
         env,
         iterations: 1,
-        debug: false,
-        perf: false,
+        log: file_log_opt.take(),
+        debug,
+        perf: logging,
         cache,
         enable_cache: true,
         cache_hits: 0,
@@ -1316,6 +1306,9 @@ fn eval_expr_launch(
     let ctx = Ctx { fun_ssts: &fun_ssts, max_iterations };
     let res = eval_expr_internal(&ctx, &mut state, &exp)?;
     display_perf_stats(&state);
+    if state.log.is_some() {
+        file_log_opt.replace(state.log.unwrap());
+    }
     if let ExpX::Const(Constant::Bool(false)) = res.x {
         err_str(&exp.span, "assert simplifies to false")
     } else {
@@ -1329,7 +1322,7 @@ fn eval_expr_launch(
                     }
                     _ => e.clone(),
                 });
-                if state.debug {
+                if debug {
                     if exp.definitely_eq(&res) {
                         println!();
                         println!(
@@ -1368,15 +1361,16 @@ pub fn eval_expr(
     fun_ssts: &SstMap,
     rlimit: u32,
     mode: ComputeMode,
+    log: Arc<Mutex<Option<File>>>,
 ) -> Result<Exp, VirErr> {
-    //println!("Starting from {}", exp);
     let builder =
         thread::Builder::new().name("interpreter".to_string()).stack_size(1024 * 1024 * 1024); // 1 GB
     let handler = {
         // Create local versions that we own and hence can pass to the closure
         let exp = exp.clone();
         let fun_ssts = fun_ssts.clone();
-        builder.spawn(move || eval_expr_launch(exp, fun_ssts, rlimit, mode)).unwrap()
+        let log = log.clone();
+        builder.spawn(move || eval_expr_launch(exp, fun_ssts, rlimit, mode, log)).unwrap()
     };
     handler.join().unwrap()
 }

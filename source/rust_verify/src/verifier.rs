@@ -974,11 +974,18 @@ impl Verifier {
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate(&krate);
 
+        let file = Arc::new(Mutex::new(
+                if self.args.log_all || self.args.log_vir_simple {
+            Some(self.create_log_file(None, None, crate::config::INTERPRETER_FILE_SUFFIX)?)
+        } else {
+            None
+        }));
         let mut global_ctx = vir::context::GlobalCtx::new(
             &krate,
             air_no_span.clone(),
             inferred_modes,
             self.args.rlimit,
+            file,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;

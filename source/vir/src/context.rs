@@ -15,7 +15,8 @@ use air::ast_util::str_typ;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::fs::File;
+use std::sync::{Arc, Mutex};
 
 pub type ChosenTrigger = Vec<(Span, String)>;
 #[derive(Debug, Clone)]
@@ -40,6 +41,7 @@ pub struct GlobalCtx {
     pub method_map: HashMap<(Fun, Path), Fun>,
     pub(crate) inferred_modes: HashMap<InferMode, Mode>,
     pub(crate) rlimit: u32,
+    pub(crate) interpreter_log: Arc<Mutex<Option<File>>>,
 }
 
 // Context for verifying one function
@@ -150,6 +152,7 @@ impl GlobalCtx {
         no_span: Span,
         inferred_modes: HashMap<InferMode, Mode>,
         rlimit: u32,
+        interpreter_log: Arc<Mutex<Option<File>>>,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
             std::cell::RefCell::new(Vec::new());
@@ -208,6 +211,7 @@ impl GlobalCtx {
             method_map,
             inferred_modes,
             rlimit,
+            interpreter_log,
         })
     }
 

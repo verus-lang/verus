@@ -1278,6 +1278,7 @@ fn expr_to_stm_opt(
                 &state.fun_ssts,
                 ctx.global.rlimit,
                 *mode,
+                ctx.global.interpreter_log.clone(),
             )?;
             let err = error_with_label(
                 "assertion failed",
