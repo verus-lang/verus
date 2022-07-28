@@ -1338,7 +1338,7 @@ fn eval_expr_launch(
             // Proof must succeed purely through computation
             ComputeMode::ComputeOnly => match res.x {
                 ExpX::Const(Constant::Bool(true)) => Ok(res),
-                _ => err_str(&exp.span, "assert_by_compute_only failed to simplify down to true"),
+                _ => err_str(&exp.span, &format!("assert_by_compute_only failed to simplify down to true.  Instead got: {}.", res).to_string()),
             },
         }
     }
