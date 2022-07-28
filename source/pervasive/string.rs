@@ -31,6 +31,7 @@ impl<'a> StrSlice<'a> {
 
     #[rustc_diagnostic_item = "pervasive::string::StrSlice::reveal"]
     #[verifier(external_body)]
+    #[spec]
     pub const fn reveal(&self) {}
 
     #[verifier(external_body)]
