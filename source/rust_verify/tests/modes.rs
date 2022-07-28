@@ -426,6 +426,111 @@ const PROOF_FN_COMMON: &str = code_str! {
 };
 
 test_verify_one_file! {
+    #[test] test_mut_arg_fail1 code! {
+        #[proof]
+        fn f(#[proof] x: &mut bool, #[proof] b: bool) {
+            requires(b);
+            ensures(*x);
+
+            *x = b;
+        }
+
+        fn g(#[proof] b: bool) {
+            requires(b);
+
+            #[spec] let tr = true;
+            let mut e = false;
+            if tr {
+                f(&mut e, b); // should fail: exec <- proof out assign
+            }
+            assert(e);
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] test_mut_arg_fail2 verus_code! {
+        proof fn f(x: &mut bool)
+            ensures *x
+        {
+            *x = true;
+        }
+
+        fn g() {
+            let mut e = false;
+            proof {
+                f(&mut e); // fails, exec <- ghost out assign
+            }
+            assert(e);
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] test_mut_arg_fail3 verus_code! {
+        struct S {
+            ghost g: bool,
+        }
+
+        fn f(x: &mut bool) {}
+
+        fn g(e: S) {
+            let mut e = e;
+            f(&mut e.g); // fails, exec <- ghost assign
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] test_mut_arg_fail4 verus_code! {
+        struct S {
+            e: bool,
+        }
+
+        proof fn f(tracked x: &mut bool) {}
+
+        proof fn g(g: S) {
+            let mut g = g;
+            f(&mut g.e); // fails, tracked <- ghost assign
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] test_mut_arg_fail5 verus_code! {
+        struct S {
+            e: bool,
+        }
+
+        proof fn f(x: &mut bool) {}
+
+        fn g(e: S) {
+            let mut e = e;
+            proof {
+                f(&mut e.e); // fails, exec <- ghost out assign
+            }
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] test_mut_arg_fail6 verus_code! {
+        struct S {
+            tracked t: bool,
+        }
+
+        proof fn f(x: &mut bool) {}
+
+        fn g(e: S) {
+            let mut e = e;
+            proof {
+                f(&mut e.t); // fails, tracked <- ghost out assign
+            }
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
     #[test] test_proof_fn_call_fail PROOF_FN_COMMON.to_string() + code_str! {
         #[proof]
         fn lemma(#[proof] node: Node) {
