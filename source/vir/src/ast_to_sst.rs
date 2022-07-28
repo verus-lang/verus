@@ -203,7 +203,7 @@ impl State {
         });
         let exp = crate::sst_visitor::map_exp_visitor_result(&exp, &mut |exp| match &exp.x {
             ExpX::Call(fun, typs, args) => {
-                if let Some(SstInfo { inline: Some(inline), params, body }) =
+                if let Some(SstInfo { inline: Some(inline), params, memoize: _, body }) =
                     fun_ssts.read().unwrap().get(fun)
                 {
                     let typ_bounds = &inline.typ_bounds;

@@ -25,7 +25,7 @@ use std::sync::Arc;
 use std::thread;
 
 // An approximation of how many interpreter invocations we can do in 1 second
-const RLIMIT_MULTIPLIER: u64 = 15000;
+const RLIMIT_MULTIPLIER: u64 = 25000;
 
 type Env = ScopeMap<UniqueIdent, Exp>;
 
@@ -117,14 +117,14 @@ struct State {
 
 // Define the function-call cache's API
 impl State {
-    fn insert_call(&mut self, f: &Fun, args: &Exps, result: &Exp) {
-        if self.enable_cache {
+    fn insert_call(&mut self, f: &Fun, args: &Exps, result: &Exp, memoize: bool) {
+        if self.enable_cache && memoize {
             self.cache.entry(f.clone()).or_default().insert(args.into(), result.clone());
         }
     }
 
-    fn lookup_call(&mut self, f: &Fun, args: &Exps) -> Option<Exp> {
-        if self.enable_cache {
+    fn lookup_call(&mut self, f: &Fun, args: &Exps, memoize: bool) -> Option<Exp> {
+        if self.enable_cache && memoize {
             if self.perf {
                 let count = self.fun_calls.entry(f.clone()).or_default();
                 *count += 1;
@@ -1170,44 +1170,55 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             }
         }
         Call(fun, typs, args) => {
-            // Simplify arguments and check whether we've seen this call before
+            if state.perf {
+                // Record the call for later performance analysis
+                match state.fun_calls.get_mut(fun) {
+                    None => {
+                        state.fun_calls.insert(fun.clone(), 1);
+                    }
+                    Some(count) => {
+                        *count += 1;
+                    }
+                }
+            }
+            // Simplify arguments
             let new_args: Result<Vec<Exp>, VirErr> =
                 args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
             let new_args = Arc::new(new_args?);
-            match state.fun_calls.get_mut(fun) {
+
+            match is_sequence_fn(&fun) {
+                Some(seq_fn) => eval_seq(ctx, state, seq_fn, exp, &new_args),
                 None => {
-                    state.fun_calls.insert(fun.clone(), 1);
-                }
-                Some(count) => {
-                    *count += 1;
-                }
-            }
-            match state.lookup_call(&fun, &new_args) {
-                Some(prev_result) => {
-                    state.cache_hits += 1;
-                    Ok(prev_result)
-                }
-                None => {
-                    state.cache_misses += 1;
-                    let result = match is_sequence_fn(&fun) {
-                        Some(seq_fn) => eval_seq(ctx, state, seq_fn, exp, &new_args),
-                        None => match ctx.fun_ssts.read().unwrap().get(fun) {
-                            None => exp_new(Call(fun.clone(), typs.clone(), new_args.clone())),
-                            Some(SstInfo { params, body, .. }) => {
-                                state.env.push_scope(true);
-                                for (formal, actual) in params.iter().zip(new_args.iter()) {
-                                    let formal_id =
-                                        UniqueIdent { name: formal.x.name.clone(), local: Some(0) };
-                                    state.env.insert(formal_id, actual.clone()).unwrap();
+                    // Try to find the function's body
+                    match ctx.fun_ssts.read().unwrap().get(fun) {
+                        None => {
+                            // We don't have the body for this function, so we can't simplify further
+                            exp_new(Call(fun.clone(), typs.clone(), new_args.clone()))
+                        }
+                        Some(SstInfo { params, body, memoize, .. }) => {
+                            match state.lookup_call(&fun, &new_args, *memoize) {
+                                Some(prev_result) => {
+                                    state.cache_hits += 1;
+                                    Ok(prev_result)
                                 }
-                                let e = eval_expr_internal(ctx, state, &body);
-                                state.env.pop_scope();
-                                e
+                                None => {
+                                    state.cache_misses += 1;
+                                    state.env.push_scope(true);
+                                    for (formal, actual) in params.iter().zip(new_args.iter()) {
+                                        let formal_id = UniqueIdent {
+                                            name: formal.x.name.clone(),
+                                            local: Some(0),
+                                        };
+                                        state.env.insert(formal_id, actual.clone()).unwrap();
+                                    }
+                                    let result = eval_expr_internal(ctx, state, &body);
+                                    state.env.pop_scope();
+                                    state.insert_call(fun, &new_args, &result.clone()?, *memoize);
+                                    result
+                                }
                             }
-                        },
-                    };
-                    state.insert_call(fun, &new_args, &result.clone()?);
-                    result
+                        }
+                    }
                 }
             }
         }
@@ -1338,7 +1349,14 @@ fn eval_expr_launch(
             // Proof must succeed purely through computation
             ComputeMode::ComputeOnly => match res.x {
                 ExpX::Const(Constant::Bool(true)) => Ok(res),
-                _ => err_str(&exp.span, &format!("assert_by_compute_only failed to simplify down to true.  Instead got: {}.", res).to_string()),
+                _ => err_str(
+                    &exp.span,
+                    &format!(
+                        "assert_by_compute_only failed to simplify down to true.  Instead got: {}.",
+                        res
+                    )
+                    .to_string(),
+                ),
             },
         }
     }

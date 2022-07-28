@@ -519,6 +519,8 @@ pub struct FunctionAttrsX {
     pub nonlinear: bool,
     /// Use a dedicated Z3 process for this single query
     pub spinoff_prover: bool,
+    /// Memoize function call results during interpretation
+    pub memoize: bool,
 }
 
 /// Function specification of its invariant mask

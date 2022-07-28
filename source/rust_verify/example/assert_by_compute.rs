@@ -17,11 +17,12 @@ fn main() {}
 /// `#[cfg(any())]` which simply turns off a module.
 /// Any module with its `#[cfg(any())]` line commented out is valid to run.
 
-#[cfg(any())]
+//#[cfg(any())]
 mod fib {
     use super::*;
 
-   #[spec]
+    #[spec]
+    #[verifier(memoize)]
     fn fib(x: nat) -> nat {
         decreases(x);
         if x == 0 {
@@ -65,7 +66,7 @@ mod verititan_example {
     }
 }
 
-#[cfg(any())]
+//#[cfg(any())]
 mod recursive_data_structures {
     use super::*;
 
@@ -131,7 +132,7 @@ mod recursive_data_structures {
     }
 }
 
-#[cfg(any())]
+//#[cfg(any())]
 mod sequences {
     use super::*;
 
@@ -326,7 +327,7 @@ mod veribetrkv_example_original {
     }
 }
 
-#[cfg(any())]
+//#[cfg(any())]
 mod veribetrkv_example_list_comprehension {
     use super::*;
 
@@ -396,5 +397,4 @@ mod veribetrkv_example_list_comprehension {
                 .ext_equal(pow_mod_crc(2 * 64 * v as nat).add(pow_mod_crc(64 * v as nat))),
         );
     }
-
 }

@@ -269,6 +269,7 @@ pub(crate) fn check_item_fn<'tcx>(
         check_recommends: vattrs.check_recommends,
         nonlinear: vattrs.nonlinear,
         spinoff_prover: vattrs.spinoff_prover,
+        memoize: vattrs.memoize,
     };
 
     let mut recommend: Vec<vir::ast::Expr> = (*header.recommend).clone();

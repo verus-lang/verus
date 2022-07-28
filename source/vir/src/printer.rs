@@ -446,6 +446,7 @@ fn function_to_node(function: &FunctionX) -> Node {
             check_recommends,
             nonlinear,
             spinoff_prover,
+            memoize,
         } = &**attrs;
 
         let mut nodes = vec![
@@ -496,6 +497,9 @@ fn function_to_node(function: &FunctionX) -> Node {
         }
         if *spinoff_prover {
             nodes.push(str_to_node("+spinoff_prover"));
+        }
+        if *memoize {
+            nodes.push(str_to_node("+memoize"));
         }
 
         Node::List(nodes)

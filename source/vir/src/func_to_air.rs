@@ -34,6 +34,7 @@ pub struct SstInline {
 pub struct SstInfo {
     pub(crate) inline: Option<SstInline>,
     pub(crate) params: Params,
+    pub(crate) memoize: bool,
     pub(crate) body: Exp,
 }
 
@@ -145,7 +146,12 @@ fn func_body_to_air(
     } else {
         None
     };
-    let info = SstInfo { inline, params: function.x.params.clone(), body: body_exp.clone() };
+    let info = SstInfo {
+        inline,
+        params: function.x.params.clone(),
+        memoize: function.x.attrs.memoize,
+        body: body_exp.clone(),
+    };
     state.fun_ssts.write().unwrap().insert(function.x.name.clone(), info);
 
     let mut decrease_by_stms: Vec<Stm> = Vec::new();
