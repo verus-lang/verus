@@ -98,3 +98,12 @@ test_verify_one_file! {
         const C: u8 = 256 - 1;
     } => Err(e) => assert_vir_error(e)
 }
+
+test_verify_one_file! {
+    #[test] test_overflow_fails_usize code! {
+        fn test(a: u64) -> u64 {
+            let b = a + 1; // FAILS
+            b
+        }
+    } => Err(e) => assert_one_fails(e)
+}
