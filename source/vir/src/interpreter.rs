@@ -21,8 +21,8 @@ use num_traits::identities::Zero;
 use num_traits::{FromPrimitive, One, Signed, ToPrimitive};
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::Write;
 use std::hash::{Hash, Hasher};
+use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -759,7 +759,8 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     let ok = Ok(exp.clone());
     if state.enable_simplified_cache && state.simplified.contains(exp) {
         state.ptr_hits += 1;
-        state.log(format!("{}=> already simplified as far as it will go", "\t".repeat(state.depth)));
+        state
+            .log(format!("{}=> already simplified as far as it will go", "\t".repeat(state.depth)));
         return Ok(exp.clone());
     }
     state.ptr_misses += 1;
