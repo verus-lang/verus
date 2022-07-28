@@ -143,6 +143,20 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_not_yet_supported_11 code! {
+        trait T {
+            #[spec]
+            fn f(&self) -> bool { no_method_body() }
+        }
+
+        trait S : T {
+            #[spec]
+            fn g(&self) -> bool { no_method_body() }
+        }
+    } => Err(_)
+}
+
+test_verify_one_file! {
     #[test] test_ill_formed_1 code! {
         trait T1 {
             fn f(&self); // need to call no_method_body()

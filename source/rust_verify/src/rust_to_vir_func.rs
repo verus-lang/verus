@@ -90,15 +90,17 @@ pub(crate) fn check_item_fn<'tcx>(
     attrs: &[Attribute],
     sig: &'tcx FnSig<'tcx>,
     trait_path: Option<vir::ast::Path>,
-    self_generics: Option<&'tcx Generics>,
+    // (impl generics, impl def_id)
+    self_generics: Option<(&'tcx Generics, rustc_span::def_id::DefId)>,
     generics: &'tcx Generics,
     body_id: &BodyId,
 ) -> Result<Option<Fun>, VirErr> {
     let path = def_id_to_vir_path(ctxt.tcx, id);
     let name = Arc::new(FunX { path: path.clone(), trait_path: trait_path.clone() });
     let mode = get_mode(Mode::Exec, attrs);
-    let self_typ_params = if let Some(cg) = self_generics {
-        Some(check_generics_bounds_fun(ctxt.tcx, cg)?)
+
+    let self_typ_params = if let Some((cg, impl_def_id)) = self_generics {
+        Some(check_generics_bounds_fun(ctxt.tcx, cg, impl_def_id)?)
     } else {
         None
     };
@@ -118,7 +120,7 @@ pub(crate) fn check_item_fn<'tcx>(
             check_fn_decl(ctxt.tcx, decl, attrs, mode, fn_sig.output())?
         }
     };
-    let sig_typ_bounds = check_generics_bounds_fun(ctxt.tcx, generics)?;
+    let sig_typ_bounds = check_generics_bounds_fun(ctxt.tcx, generics, id)?;
     let vattrs = get_verifier_attrs(attrs)?;
     let fuel = get_fuel(&vattrs);
     if vattrs.external {
@@ -362,7 +364,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let inputs = fn_sig.inputs();
 
     let ret_typ_mode = check_fn_decl(ctxt.tcx, decl, attrs, mode, fn_sig.output())?;
-    let typ_bounds = check_generics_bounds_fun(ctxt.tcx, generics)?;
+    let typ_bounds = check_generics_bounds_fun(ctxt.tcx, generics, id)?;
     let vattrs = get_verifier_attrs(attrs)?;
     let fuel = get_fuel(&vattrs);
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();

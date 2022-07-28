@@ -105,6 +105,7 @@ fn check_item<'tcx>(
         ItemKind::Impl(impll) => {
             let attrs = ctxt.tcx.hir().attrs(item.hir_id());
             let vattrs = get_verifier_attrs(attrs)?;
+            let impl_def_id = item.def_id.to_def_id();
 
             if vattrs.external {
                 return Ok(());
@@ -316,7 +317,7 @@ fn check_item<'tcx>(
                                                 fn_attrs,
                                                 sig,
                                                 trait_path_typ_args.clone().map(|(p, _)| p),
-                                                Some(&impll.generics),
+                                                Some((&impll.generics, impl_def_id)),
                                                 &impl_item.generics,
                                                 body_id,
                                             )?;
@@ -375,23 +376,18 @@ fn check_item<'tcx>(
             )?;
         }
         ItemKind::Macro(_macro_def) => {}
-        ItemKind::Trait(IsAuto::No, Unsafety::Normal, trait_generics, bounds, trait_items) => {
-            let generics_bnds = check_generics_bounds(ctxt.tcx, trait_generics, false)?;
-            for b in bounds.iter() {
-                match &*crate::rust_to_vir_base::check_generic_bound(ctxt.tcx, b.span(), b)? {
-                    vir::ast::GenericBoundX::Traits(ts) if ts.len() == 0 => {}
-                    _ => {
-                        unsupported_err!(item.span, "trait generic bounds");
-                    }
-                }
-            }
-            let trait_path = def_id_to_vir_path(ctxt.tcx, item.def_id.to_def_id());
+        ItemKind::Trait(IsAuto::No, Unsafety::Normal, trait_generics, _bounds, trait_items) => {
+            let trait_def_id = item.def_id.to_def_id();
+            let generics_bnds =
+                check_generics_bounds(ctxt.tcx, trait_generics, false, trait_def_id)?;
+            let trait_path = def_id_to_vir_path(ctxt.tcx, trait_def_id);
             let mut methods: Vec<Fun> = Vec::new();
             for trait_item_ref in *trait_items {
                 let trait_item = ctxt.tcx.hir().trait_item(trait_item_ref.id);
                 let TraitItem { ident: _, def_id, generics: item_generics, kind, span } =
                     trait_item;
-                let generics_bnds = check_generics_bounds(ctxt.tcx, item_generics, false)?;
+                let generics_bnds =
+                    check_generics_bounds(ctxt.tcx, item_generics, false, def_id.to_def_id())?;
                 unsupported_err_unless!(generics_bnds.len() == 0, *span, "trait generics");
                 match kind {
                     TraitItemKind::Fn(sig, fun) => {
@@ -419,7 +415,7 @@ fn check_item<'tcx>(
                             attrs,
                             sig,
                             None,
-                            Some(trait_generics),
+                            Some((trait_generics, trait_def_id)),
                             item_generics,
                             body_id,
                         )?;

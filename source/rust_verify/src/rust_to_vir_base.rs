@@ -11,11 +11,15 @@ use rustc_hir::{
     TraitItemKind, Ty, Visibility, VisibilityKind,
 };
 use rustc_infer::infer::TyCtxtInferExt;
+use rustc_middle::ty::ProjectionPredicate;
+use rustc_middle::ty::ProjectionTy;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
+use rustc_middle::ty::{BoundConstness, ImplPolarity, PredicateKind, TraitPredicate};
 use rustc_span::def_id::{DefId, LOCAL_CRATE};
 use rustc_span::symbol::{kw, Ident};
 use rustc_span::Span;
 use rustc_trait_selection::infer::InferCtxtExt;
+use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{GenericBoundX, IntRange, Mode, Path, PathX, Typ, TypBounds, TypX, Typs, VirErr};
 use vir::ast_util::types_equal;
@@ -556,70 +560,202 @@ pub(crate) fn is_smt_arith<'tcx>(bctx: &BodyCtxt<'tcx>, id1: &HirId, id2: &HirId
 pub(crate) fn check_generic_bound<'tcx>(
     tcx: TyCtxt<'tcx>,
     span: Span,
-    bound: &'tcx GenericBound<'tcx>,
+    trait_def_id: DefId,
+    args: &Vec<rustc_middle::ty::Ty<'tcx>>,
 ) -> Result<vir::ast::GenericBound, VirErr> {
-    match bound {
-        GenericBound::Trait(
-            PolyTraitRef { bound_generic_params: [], trait_ref, span: _ },
-            TraitBoundModifier::None,
-        ) => {
-            let path = &trait_ref.path;
-            let def_id = match path.res {
-                rustc_hir::def::Res::Def(_, def_id) => def_id,
-                _ => return unsupported_err!(span, "generic bounds"),
-            };
-            if Some(def_id) == tcx.lang_items().fn_trait() {
-                let args = &path.segments.last().expect("last segment").args.expect("GenericArgs");
-                unsupported_err_unless!(args.args.len() == 1, span, "generic bounds");
-                unsupported_err_unless!(args.bindings.len() == 1, span, "generic bounds");
-                unsupported_err_unless!(
-                    args.bindings[0].gen_args.args.len() == 0,
-                    span,
-                    "generic bounds"
-                );
-                let t_args = match &args.args[0] {
-                    rustc_hir::GenericArg::Type(t) => ty_to_vir(tcx, &t),
-                    _ => panic!("unexpected arg to Fn"),
-                };
-                let t_ret = match &args.bindings[0].kind {
-                    rustc_hir::TypeBindingKind::Equality { ty } => ty_to_vir(tcx, ty),
-                    _ => panic!("unexpected arg to Fn"),
-                };
-                let args = match &*t_args {
-                    TypX::Tuple(args) => args.clone(),
-                    _ => panic!("unexpected arg to Fn"),
-                };
-                Ok(Arc::new(GenericBoundX::FnSpec(args, t_ret)))
-            } else if Some(def_id) == tcx.lang_items().sized_trait()
-                || Some(def_id) == tcx.lang_items().copy_trait()
-                || Some(def_id) == tcx.lang_items().unpin_trait()
-                || Some(def_id) == tcx.lang_items().sync_trait()
-                || Some(def_id) == tcx.get_diagnostic_item(rustc_span::sym::Send)
-            {
-                // Rust language marker traits are ignored in VIR
-                Ok(Arc::new(GenericBoundX::Traits(vec![])))
-            } else {
-                let typx = def_id_to_datatype_typx(tcx, def_id, &path.segments);
-                if let TypX::Datatype(trait_name, _args) = typx {
-                    Ok(Arc::new(GenericBoundX::Traits(vec![trait_name])))
-                } else {
-                    panic!("unexpected trait bound");
-                }
-            }
-        }
-        _ => {
-            unsupported_err!(span, "generic bounds")
-        }
+    if Some(trait_def_id) == tcx.lang_items().sized_trait()
+        || Some(trait_def_id) == tcx.lang_items().copy_trait()
+        || Some(trait_def_id) == tcx.lang_items().unpin_trait()
+        || Some(trait_def_id) == tcx.lang_items().sync_trait()
+        || Some(trait_def_id) == tcx.get_diagnostic_item(rustc_span::sym::Send)
+    {
+        // Rust language marker traits are ignored in VIR
+        Ok(Arc::new(GenericBoundX::Traits(vec![])))
+    } else {
+        // REVIEW: this seems wrong
+        // Why did the previous code here throw away the args?
+        let _args = args;
+
+        let trait_name = def_id_to_vir_path(tcx, trait_def_id);
+        Ok(Arc::new(GenericBoundX::Traits(vec![trait_name])))
     }
 }
 
 pub(crate) fn check_generics_bounds<'tcx>(
     tcx: TyCtxt<'tcx>,
-    generics: &'tcx Generics<'tcx>,
+    hir_generics: &'tcx Generics<'tcx>,
     check_that_external_body_datatype_declares_positivity: bool,
+    def_id: DefId,
 ) -> Result<Vec<(vir::ast::Ident, vir::ast::GenericBound, bool)>, VirErr> {
-    let Generics { params, where_clause, span: _ } = generics;
+    // TODO use tcx.generics_of(def_id) as well?
+    // (is probably the easiest way to handle synthetic params)
+
+    // TODO the 'predicates' object contains the parent def_id; we can use that
+    // to handle all the params and bounds from the impl at once,
+    // so then we can handle the case where a method adds extra bounds to an impl
+    // type parameter
+
+    let Generics { params, where_clause, span: _ } = hir_generics;
+
+    // For each generic param, we're going to collect all the trait bounds here.
+    let mut typ_param_bounds: HashMap<String, Vec<vir::ast::GenericBound>> = HashMap::new();
+    for param in params.iter() {
+        match param.name {
+            ParamName::Plain(id) => {
+                typ_param_bounds.insert(id.as_str().to_string(), vec![]);
+            }
+            _ => {}
+        }
+    }
+
+    // Process all trait bounds.
+    let predicates = tcx.predicates_of(def_id);
+    for (predicate, span) in predicates.predicates.iter() {
+        // REVIEW: rustc docs say that skip_binder is "dangerous"
+        match predicate.kind().skip_binder() {
+            PredicateKind::RegionOutlives(_) | PredicateKind::TypeOutlives(_) => {
+                // can ignore lifetime bounds
+            }
+            PredicateKind::Trait(TraitPredicate {
+                trait_ref,
+                constness: BoundConstness::NotConst,
+                polarity: ImplPolarity::Positive,
+            }) => {
+                let substs = trait_ref.substs;
+
+                // For a bound like `T: SomeTrait<X, Y, Z>`, then:
+                // T should be index 0,
+                // X, Y, Z, should be the rest
+                // The SomeTrait is given by the def_id
+
+                let trait_def_id = trait_ref.def_id;
+
+                let mut iter = substs.types();
+                let lhs = iter.next().expect("expect lhs of trait bound");
+                let trait_params: Vec<rustc_middle::ty::Ty> = iter.collect();
+
+                if Some(trait_def_id) == tcx.lang_items().fn_trait() {
+                    // Fn bounds handled in the case below
+                    continue;
+                }
+
+                let generic_bound = check_generic_bound(tcx, *span, trait_def_id, &trait_params)?;
+
+                match lhs.kind() {
+                    TyKind::Param(param) => {
+                        if param.name == kw::SelfUpper {
+                            // trait definitions might have more trait bounds on Self
+                            // for example `trait X : Y` might have the trait bound Y
+                            // which looks like a bound `Self: Y` here.
+                            // We currently don't support this.
+                            //
+                            // On the other hand, any functions inside a trait definition
+                            // will all have a trait bound `Self: X`. We _do_ need to support
+                            // this - that's fundamental to how traits work.
+                            if trait_def_id != def_id && Some(trait_def_id) != predicates.parent {
+                                match &*generic_bound {
+                                    GenericBoundX::Traits(l) if l.len() == 0 => {}
+                                    _ => {
+                                        return err_span_str(
+                                            *span,
+                                            "Verus does not yet support trait bounds on Self",
+                                        );
+                                    }
+                                }
+                            }
+                        } else {
+                            let type_param_name = param.name.as_str().to_string();
+                            match typ_param_bounds.get_mut(&type_param_name) {
+                                None => {
+                                    return err_span_str(
+                                        *span,
+                                        "could not find this type parameter",
+                                    );
+                                }
+                                Some(r) => {
+                                    r.push(generic_bound);
+                                }
+                            }
+                        }
+                    }
+                    _ => {
+                        return err_span_str(
+                            *span,
+                            "Verus does yet not support trait bounds on types that are not type parameters",
+                        );
+                    }
+                };
+            }
+            PredicateKind::Projection(ProjectionPredicate {
+                projection_ty: ProjectionTy { substs, item_def_id },
+                ty,
+            }) => {
+                // The trait bound `F: Fn(A) -> B`
+                // is really more like a trait bound `F: Fn<A, Output=B>`
+                // The trait bounds that use = are called projections.
+                // When Rust sees a trait bound like this, it actually creates *two*
+                // bounds, a Trait bound for `F: Fn<A>` and a Projection for `Output=B`.
+                //
+                // Thus when processing the Fn bounds we have to skip one of them and
+                // process the other. We process this one because it actually has the
+                // Output type information here.
+
+                if Some(item_def_id) == tcx.lang_items().fn_once_output() {
+                    let mut iter = substs.types();
+                    let lhs = iter.next().expect("expect lhs of trait bound");
+                    let fn_input = iter.next().expect("expect input arg to Fn");
+                    let fn_output = ty;
+
+                    let t_args = mid_ty_to_vir(tcx, &fn_input, false);
+                    let t_ret = mid_ty_to_vir(tcx, &fn_output, false);
+                    let args = match &*t_args {
+                        TypX::Tuple(args) => args.clone(),
+                        _ => panic!("unexpected arg to Fn"),
+                    };
+
+                    let generic_bound = Arc::new(GenericBoundX::FnSpec(args, t_ret));
+
+                    match lhs.kind() {
+                        TyKind::Param(param) => {
+                            if param.name == kw::SelfUpper {
+                                return err_span_str(
+                                    *span,
+                                    "Verus does not yet support trait bounds on Self",
+                                );
+                            } else {
+                                let type_param_name = param.name.as_str().to_string();
+                                match typ_param_bounds.get_mut(&type_param_name) {
+                                    None => {
+                                        return err_span_str(
+                                            *span,
+                                            "could not find this type parameter",
+                                        );
+                                    }
+                                    Some(r) => {
+                                        r.push(generic_bound);
+                                    }
+                                }
+                            }
+                        }
+                        _ => {
+                            return err_span_str(
+                                *span,
+                                "Verus does yet not support trait bounds on types that are not type parameters",
+                            );
+                        }
+                    };
+                } else {
+                    return err_span_str(*span, "Verus does yet not support this type of bound");
+                }
+            }
+            _ => {
+                return err_span_str(*span, "Verus does yet not support this type of bound");
+            }
+        }
+    }
+
     let mut typ_params: Vec<(vir::ast::Ident, vir::ast::GenericBound, bool)> = Vec::new();
+
     for param in params.iter() {
         let vattrs = get_verifier_attrs(tcx.hir().attrs(param.hir_id))?;
         let neg = vattrs.maybe_negative;
@@ -631,7 +767,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
             );
         }
         let strictly_positive = !neg; // strictly_positive is the default
-        let GenericParam { hir_id: _, name, bounds, span, pure_wrt_drop, kind } = param;
+        let GenericParam { hir_id: _, name, bounds: _, span, pure_wrt_drop, kind } = param;
 
         if let GenericParamKind::Type { .. } = kind {
             if check_that_external_body_datatype_declares_positivity && !neg && !pos {
@@ -645,17 +781,11 @@ pub(crate) fn check_generics_bounds<'tcx>(
         unsupported_err_unless!(!pure_wrt_drop, *span, "generic pure_wrt_drop");
         match (name, kind) {
             (ParamName::Plain(id), GenericParamKind::Type { default: None, synthetic: false }) => {
-                // lifetime bounds can be ignored for VIR, since they are only relevant
-                // for rustc's borrow-checking pass
-                let bounds: Vec<&GenericBound> =
-                    bounds.iter().filter(|bound| !is_lifetime_bound(bound)).collect();
-
                 // trait/function bounds
                 let ident = Arc::new(id.name.as_str().to_string());
                 let mut trait_bounds: Vec<Path> = Vec::new();
                 let mut fn_bounds: Vec<vir::ast::GenericBound> = Vec::new();
-                for bound in bounds {
-                    let vir_bound = check_generic_bound(tcx, *span, bound)?;
+                for vir_bound in typ_param_bounds.remove(&*ident).unwrap().into_iter() {
                     match &*vir_bound {
                         GenericBoundX::Traits(ts) => {
                             trait_bounds.extend(ts.clone());
@@ -684,26 +814,22 @@ pub(crate) fn check_generics_bounds<'tcx>(
                 ParamName::Fresh(_),
                 GenericParamKind::Lifetime { kind: LifetimeParamKind::Elided },
             ) => {}
-            _ => unsupported_err!(*span, "complex generics", generics),
+            _ => unsupported_err!(*span, "complex generics", hir_generics),
         }
     }
-    unsupported_err_unless!(where_clause.predicates.len() == 0, generics.span, "where clause");
+    unsupported_err_unless!(where_clause.predicates.len() == 0, hir_generics.span, "where clause");
     Ok(typ_params)
 }
 
 pub(crate) fn check_generics_bounds_fun<'tcx>(
     tcx: TyCtxt<'tcx>,
     generics: &'tcx Generics<'tcx>,
+    def_id: DefId,
 ) -> Result<TypBounds, VirErr> {
     Ok(Arc::new(
-        check_generics_bounds(tcx, generics, false)?.into_iter().map(|(a, b, _)| (a, b)).collect(),
+        check_generics_bounds(tcx, generics, false, def_id)?
+            .into_iter()
+            .map(|(a, b, _)| (a, b))
+            .collect(),
     ))
-}
-
-pub(crate) fn is_lifetime_bound(bound: &GenericBound) -> bool {
-    match bound {
-        GenericBound::Trait(..) => false,
-        GenericBound::LangItemTrait(..) => false,
-        GenericBound::Outlives(..) => true,
-    }
 }
