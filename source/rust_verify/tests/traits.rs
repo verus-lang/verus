@@ -157,6 +157,27 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_not_yet_supported_12 code!{
+        struct Abc<T> {
+            t: T,
+        }
+
+        trait SomeTrait {
+            #[spec]
+            fn f(&self) -> bool { no_method_body() }
+        }
+
+        impl<S> Abc<S> {
+            fn foo(&self)
+                where S: SomeTrait
+            {
+                assert(self.t.f() == self.t.f());
+            }
+        }
+    } => Err(_)
+}
+
+test_verify_one_file! {
     #[test] test_ill_formed_1 code! {
         trait T1 {
             fn f(&self); // need to call no_method_body()
