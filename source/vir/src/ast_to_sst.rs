@@ -1279,12 +1279,17 @@ fn expr_to_stm_opt(
                 ctx.global.rlimit,
                 *mode,
             )?;
+            let err = error_with_label(
+                "assertion failed",
+                &expr.span.clone(),
+                format!("simplified to {}", interp_expr),
+            );
             let mut stmts = Vec::new();
             if matches!(mode, ComputeMode::Z3) {
-                let assert = Spanned::new(e.span.clone(), StmX::Assert(None, interp_expr));
+                let assert = Spanned::new(expr.span.clone(), StmX::Assert(Some(err), interp_expr));
                 stmts.push(assert);
             }
-            let assume = Spanned::new(e.span.clone(), StmX::Assume(expr));
+            let assume = Spanned::new(expr.span.clone(), StmX::Assume(expr));
             stmts.push(assume);
             Ok((stmts, ret))
         }
