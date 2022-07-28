@@ -81,6 +81,13 @@ the time it will spend interpreting any given `assert_by_compute`.
 Specifically, the time limit is the number of seconds specified via the
 `rlimit` command-line option.
 
+By default, the interpreter does not cache function call results based on the 
+value of the arguments passed to the function.  Experiments showed this typically
+hurt performance, since it entailed traversing the (large) AST nodes representing
+the arguments.  However, some examples need such caching to succceed (e.g., computing
+with the naive definition of Fibonacci).  Such functions can be annotated with
+`#[verifier(memoize)]`, which will cause their results to be cached during computation.
+
 ## Current Limitations
 
 0. As mentioned above, the expression given to `assert_by_compute` is
@@ -90,12 +97,6 @@ Specifically, the time limit is the number of seconds specified via the
 2. The interpreter is recursive, so a deeply nested expression (or
    series of function calls) may cause Verus to exceed the process'
    stack space.
-3. The interpreter currently caches function call results based on the 
-   value of the arguments passed to the function.  This enables examples
-   like (naive) Fibonacci to succeed, but it comes at the cost of somewhat 
-   slower performance.  Potential future work would be to add support for
-   a `#[memoize]` or `#[memoize_for_compute]` annotation, so that only 
-   functions with that annotation would be memoized.
 
 ## See Also
 
