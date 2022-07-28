@@ -576,7 +576,7 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
         let (cell, cell_perm) = PCell::empty();
         backing_cells_vec.push(cell);
 
-        perms.proof_insert(i, tracked_get(cell_perm));
+        perms.tracked_insert(i, tracked_get(cell_perm));
 
         assert(perms.dom().contains(i as nat));
         assert(equal(backing_cells_vec.index(i as nat).id(), perms.index(i as nat).pcell));
