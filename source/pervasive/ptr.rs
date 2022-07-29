@@ -55,6 +55,65 @@ verus!{
 ///
 /// ### Example (TODO)
 
+// Notes about pointer provenance:
+// 
+// "Pointer provenance" is this complicated subject which is a necessary
+// evil if you want to understand the abstract machine semantics of a language
+// with pointers and what is or is not UB with int-to-pointer casts.
+//
+// See this series of blog posts for some introduction:
+// https://www.ralfj.de/blog/2022/04/11/provenance-exposed.html
+//
+// Here in Verus, where code is forced to be verified, we want to tell
+// a much simpler story, which is the following:
+//
+//   ***** VERUS POINTER MODEL *****
+//    "Provenance" comes from the `tracked ghost` Permission object.
+//   *******************************
+// 
+// Pretty simple, right?
+//
+// Of course, this trusted pointer library still needs to actually run and
+// be sound in the Rust backend.
+// Rust's abstract pointer model is unchanged, and it doesn't know anything
+// about Verus's special ghost `Permission` object, which gets erased, anyway.
+//
+// Maybe someday the ghost Permission model will become a real
+// memory model. That isn't true today.
+// So we still need to know something about actual, real memory models that
+// are used right now in order to implement this API soundly.
+//
+// Our goal is to allow the *user of Verus* to think in terms of the
+// VERUS POINTER MODEL where provenance is tracked via the `Permission` object.
+// The rest of this is just details for the trusted implementation of PPtr
+// that will be sound in the Rust backend.
+//
+// In the "PNVI-ae-udi" model:
+//  * A ptr->int cast "exposes" a pointer (adding it some global list in the 
+//    abstract machine)
+//  * An int->ptr cast acquires the provenance of that pointer only if it
+//    was previously exposed.
+//
+// The "tower of weakenings", however,
+// (see https://gankra.github.io/blah/tower-of-weakenings/)
+// proposes a stricter model called "Strict Provenance".
+// This basically forbids exposing and requires provenance to always be tracked.
+//
+// If possible, it would be nice to stick to this stricter model, but it isn't necessary.
+//
+// Unfortunately, it's not possible. The Strict Provenance requires "provenance" to be
+// tracked through non-ghost pointers. We can't use our ghost objects to track provenance
+// in general while staying consistent with Strict Provenance.
+//
+// We have two options:
+//
+//  1. Just forbid int->ptr conversions
+//  2. Always "expose" every PPtr when it's created, in order to definitely be safe
+//     under PNVI-ae-udi.
+//
+// However, int->ptr conversions ought to be allowed in the VERUS POINTER MODEL,
+// so I'm going with (2) here.
+
 // TODO implement: borrow_mut; figure out Drop, see if we can avoid leaking?
 
 #[verifier(external_body)]
@@ -164,6 +223,10 @@ impl<V> PPtr<V> {
         let p = PPtr {
             uptr: Box::leak(box MaybeUninit::uninit()).as_mut_ptr(),
         };
+
+        // See explanation about exposing pointers, above
+        let _exposed_addr = p.uptr as usize;
+
         (p, Tracked::assume_new())
     }
 

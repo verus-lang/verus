@@ -365,7 +365,13 @@ impl Verifier {
                     if !self.args.profile && !self.args.profile_all {
                         msg.push_str("; consider rerunning with --profile for more details");
                     }
-                    compiler.diagnostic().span_err(multispan, &msg);
+                    match error_as {
+                        ErrorAs::Error => compiler.diagnostic().span_err(multispan, &msg),
+                        ErrorAs::Warning => compiler.diagnostic().span_warn(multispan, &msg),
+                        ErrorAs::Note => {
+                            compiler.diagnostic().span_note_without_error(multispan, &msg)
+                        }
+                    }
 
                     self.errors.push(vec![ErrorSpan::new_from_air_span(
                         compiler.session().source_map(),
@@ -483,6 +489,7 @@ impl Verifier {
         module: &vir::ast::Path,
         function_name: Option<&Fun>,
         comment: &str,
+        desc_prefix: Option<&str>,
     ) -> bool {
         if let Some(verify_function) = &self.args.verify_function {
             if let Some(function_name) = function_name {
@@ -500,6 +507,7 @@ impl Verifier {
             air_context.blank_line();
             air_context.comment(comment);
         }
+        let desc = desc_prefix.unwrap_or("").to_string() + desc;
         for command in commands.iter() {
             let result_invalidity = self.check_result_validity(
                 compiler,
@@ -509,7 +517,7 @@ impl Verifier {
                 snap_map,
                 qid_map,
                 &command,
-                &(span, desc),
+                &(span, &desc),
                 *prover_choice == vir::def::ProverChoice::Singular,
             );
             invalidity = invalidity || result_invalidity;
@@ -772,6 +780,7 @@ impl Verifier {
                     module,
                     Some(&function.x.name),
                     &("Function-Termination ".to_string() + &fun_as_rust_dbg(f)),
+                    Some("function termination: "),
                 );
                 let check_recommends = function.x.attrs.check_recommends;
                 if (invalidity && !self.args.no_auto_recommends_check) || check_recommends {
@@ -801,6 +810,7 @@ impl Verifier {
                             module,
                             Some(&function.x.name),
                             &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),
+                            Some("recommends check: "),
                         );
                     }
                 }
@@ -884,6 +894,7 @@ impl Verifier {
                     } else {
                         &mut air_context
                     };
+                    let desc_prefix = recommends_rerun.then(|| "recommends check: ");
                     let command_invalidity = self.run_commands_queries(
                         compiler,
                         error_as,
@@ -895,6 +906,7 @@ impl Verifier {
                         module,
                         Some(&function.x.name),
                         &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),
+                        desc_prefix,
                     );
                     if *prover_choice == vir::def::ProverChoice::Spinoff {
                         let (time_smt_init, time_smt_run) = query_air_context.get_time();
@@ -908,7 +920,9 @@ impl Verifier {
                 if function_invalidity
                     && !recommends_rerun
                     && !self.args.no_auto_recommends_check
+                    // in case of singular proof function and bit-vector proof function, skip recommends check
                     && !is_singular
+                    && !function.x.attrs.bit_vector
                 {
                     // Rerun failed query to report possible recommends violations
                     recommends_rerun = true;

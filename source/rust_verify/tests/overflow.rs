@@ -95,3 +95,23 @@ test_verify_one_file! {
         const C: u8 = 256 - 1;
     } => Err(e) => assert_vir_error(e)
 }
+
+test_verify_one_file! {
+    #[test] test_overflow_fails_usize code! {
+        fn test(a: usize) -> usize {
+            let b = a + 1; // FAILS
+            b
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_overflow_ensures_pass code! {
+        fn test(a: usize) -> usize {
+            requires(a < 30);
+            ensures(|r: usize| r == a + 1);
+            let b = a + 1;
+            b
+        }
+    } => Ok(())
+}

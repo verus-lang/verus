@@ -121,6 +121,15 @@ pub(crate) fn fixed_integer_const(n: &String, typ: &Typ) -> bool {
     false
 }
 
+impl IntRange {
+    pub fn is_bounded(&self) -> bool {
+        match self {
+            IntRange::Int | IntRange::Nat => false,
+            IntRange::U(_) | IntRange::I(_) | IntRange::USize | IntRange::ISize => true,
+        }
+    }
+}
+
 pub fn path_as_rust_name(path: &Path) -> String {
     let krate = match &path.krate {
         None => "crate".to_string(),

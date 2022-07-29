@@ -1,6 +1,6 @@
 use crate::ast::{
-    ArithOp, BinaryOp, CallTarget, Constant, Expr, ExprX, Fun, Function, Ident, IntRange, Mode,
-    PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
+    ArithOp, BinaryOp, CallTarget, Constant, Expr, ExprX, Fun, Function, Ident, Mode, PatternX,
+    SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use crate::ast_util::{err_str, err_string, types_equal, QUANT_FORALL};
 use crate::context::Ctx;
@@ -995,7 +995,7 @@ fn expr_to_stm_opt(
                             (true, _, _, false) => {}
                             (_, Mode::Spec, _, false) => {}
                             (_, Mode::Proof | Mode::Exec, _, true) => {}
-                            (_, _, TypX::Int(IntRange::U(_) | IntRange::I(_)), _) => {
+                            (_, _, TypX::Int(ir), _) if ir.is_bounded() => {
                                 let (assert_exp, msg) = match arith {
                                     ArithOp::Add | ArithOp::Sub | ArithOp::Mul => {
                                         let unary = UnaryOpr::HasType(expr.typ.clone());

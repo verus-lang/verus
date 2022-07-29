@@ -227,24 +227,6 @@ impl AtomicInstCollector {
     }
 }
 
-fn check_expr_has_mode(
-    typing: &mut Typing,
-    outer_mode: Mode,
-    expr: &Expr,
-    expected: Mode,
-) -> Result<(), VirErr> {
-    let mode = check_expr(typing, outer_mode, &ErasureModeX::new(Some(expected)), expr)?;
-    match &*expr.typ {
-        crate::ast::TypX::Tuple(ts) if ts.len() == 0 => return Ok(()),
-        _ => {}
-    }
-    if !mode_le(mode, expected) {
-        err_string(&expr.span, format!("expression has mode {}, expected mode {}", mode, expected))
-    } else {
-        Ok(())
-    }
-}
-
 fn add_pattern(typing: &mut Typing, mode: Mode, pattern: &Pattern) -> Result<(), VirErr> {
     typing.erasure_modes.var_modes.push((pattern.span.clone(), mode));
     match &pattern.x {
@@ -321,16 +303,44 @@ fn get_var_loc_mode(
     Ok(x_mode)
 }
 
+fn check_expr_has_mode(
+    typing: &mut Typing,
+    outer_mode: Mode,
+    expr: &Expr,
+    expected: Mode,
+) -> Result<(), VirErr> {
+    let mode = check_expr(typing, outer_mode, &ErasureModeX::new(Some(expected)), expr)?;
+    match &*expr.typ {
+        crate::ast::TypX::Tuple(ts) if ts.len() == 0 => return Ok(()),
+        _ => {}
+    }
+    if !mode_le(mode, expected) {
+        err_string(&expr.span, format!("expression has mode {}, expected mode {}", mode, expected))
+    } else {
+        Ok(())
+    }
+}
+
 fn check_expr(
     typing: &mut Typing,
     outer_mode: Mode,
     erasure_mode: &ErasureMode,
     expr: &Expr,
 ) -> Result<Mode, VirErr> {
-    match &expr.x {
+    Ok(check_expr_handle_mut_arg(typing, outer_mode, erasure_mode, expr)?.0)
+}
+
+fn check_expr_handle_mut_arg(
+    typing: &mut Typing,
+    outer_mode: Mode,
+    erasure_mode: &ErasureMode,
+    expr: &Expr,
+) -> Result<(Mode, Option<Mode>), VirErr> {
+    let mode = match &expr.x {
         ExprX::Const(_) => Ok(Mode::Exec),
         ExprX::Var(x) | ExprX::VarLoc(x) | ExprX::VarAt(x, _) => {
-            let mode = mode_join(outer_mode, typing.get(x).1);
+            let x_mode = typing.get(x).1;
+            let mode = mode_join(outer_mode, x_mode);
             if typing.in_forall_stmt && mode == Mode::Proof {
                 // Proof variables may be used as spec, but not as proof inside forall statements.
                 // This protects against effectively consuming a linear proof variable
@@ -346,7 +356,7 @@ fn check_expr(
                 mode
             };
             typing.erasure_modes.var_modes.push((expr.span.clone(), mode));
-            Ok(mode)
+            return Ok((mode, Some(x_mode)));
         }
         ExprX::ConstVar(x) => {
             let function = match typing.funs.get(x) {
@@ -409,13 +419,24 @@ fn check_expr(
                         );
                     }
                     let arg_erasure = ErasureModeX::new(Some(param.x.mode));
-                    let arg_mode = check_expr(typing, outer_mode, &arg_erasure, arg)?;
-                    if arg_mode != param_mode {
+                    let (arg_mode_read, arg_mode_write) =
+                        check_expr_handle_mut_arg(typing, outer_mode, &arg_erasure, arg)?;
+                    let arg_mode_write = arg_mode_write.expect("internal error: no arg_mode_write");
+                    if arg_mode_read != param_mode {
                         return err_string(
                             &param.span,
                             format!(
                                 "expected mode {}, &mut argument has mode {}",
-                                param_mode, arg_mode
+                                param_mode, arg_mode_read
+                            ),
+                        );
+                    }
+                    if arg_mode_write != param_mode {
+                        return err_string(
+                            &param.span,
+                            format!(
+                                "expected mode {}, &mut argument has mode {}",
+                                param_mode, arg_mode_write
                             ),
                         );
                     }
@@ -500,15 +521,24 @@ fn check_expr(
             check_expr(typing, outer_mode, erasure_mode, e1)
         }
         ExprX::UnaryOpr(UnaryOpr::TupleField { .. }, e1) => {
-            check_expr(typing, outer_mode, erasure_mode, e1)
+            return check_expr_handle_mut_arg(typing, outer_mode, erasure_mode, e1);
         }
         ExprX::UnaryOpr(UnaryOpr::Field(FieldOpr { datatype, variant, field }), e1) => {
-            let e1_mode = check_expr(typing, outer_mode, erasure_mode, e1)?;
+            let (e1_mode_read, e1_mode_write) =
+                check_expr_handle_mut_arg(typing, outer_mode, erasure_mode, e1)?;
             let datatype = &typing.datatypes[datatype];
             let field = get_field(&datatype.x.get_variant(variant).a, field);
-            Ok(mode_join(e1_mode, field.a.1))
+            let field_mode = field.a.1;
+            let mode_read = mode_join(e1_mode_read, field_mode);
+            if let Some(e1_mode_write) = e1_mode_write {
+                return Ok((mode_read, Some(mode_join(e1_mode_write, field_mode))));
+            } else {
+                Ok(mode_read)
+            }
         }
-        ExprX::Loc(e) => check_expr(typing, outer_mode, erasure_mode, e),
+        ExprX::Loc(e) => {
+            return check_expr_handle_mut_arg(typing, outer_mode, erasure_mode, e);
+        }
         ExprX::Binary(op, e1, e2) => {
             let op_mode = match op {
                 BinaryOp::Eq(mode) => *mode,
@@ -860,7 +890,8 @@ fn check_expr(
             typing.vars.pop_scope();
             Ok(Mode::Exec)
         }
-    }
+    };
+    Ok((mode?, None))
 }
 
 fn check_stmt(

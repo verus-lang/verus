@@ -187,11 +187,20 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-// test_verify_one_file! {
-//     #[test] test6_fails code! {
-//         #[proof]
-//         fn test6(b: i32) {
-//             assert_bit_vector(b < b); // FAILS, signed int
-//         }
-//     } => Err(err) => assert_one_fails(err)
-// }
+test_verify_one_file! {
+    #[test] test8_fails verus_code! {
+        proof fn test8(b: i32) {
+            assert(b <= b) by(bit_vector); // VIR Error: signed int
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    //https://github.com/secure-foundations/verus/issues/191 (@matthias-brun)
+    #[test] test10_fails verus_code! {
+        #[verifier(bit_vector)]
+        proof fn f2() {
+            ensures(forall |i: u64| (1 << i) > 0); // FAILS: should not panic
+        }
+    } => Err(err) => assert_one_fails(err)
+}
