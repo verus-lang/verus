@@ -2304,8 +2304,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // TODO update test to pass with z3 4.10.1
-    #[ignore] #[test] inherent_safety_condition_map_general_guard IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_map_general_guard IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_map)]
@@ -2317,7 +2316,10 @@ test_verify_one_file! {
                     guard t >= (Map::<int,int>::empty().insert(spec_literal_int("5"), spec_literal_int("7"))) by { }; // FAILS
 
                     birds_eye let t = pre.t;
-                    assert(t.dom().contains(spec_literal_int("5")) && t.index(spec_literal_int("5")) == spec_literal_int("7"));
+                    assert(t.dom().contains(spec_literal_int("5")) && t.index(spec_literal_int("5")) == spec_literal_int("7")) by {
+                        assert(Map::<int,int>::empty().insert(spec_literal_int("5"), spec_literal_int("7")).dom().contains(spec_literal_int("5")));
+                        assert(Map::<int,int>::empty().insert(spec_literal_int("5"), spec_literal_int("7")).index(spec_literal_int("5")) == spec_literal_int("7"));
+                    };
                 }
             }
         }}
