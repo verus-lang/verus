@@ -38,7 +38,6 @@ test_verify_one_file! {
         fn test(a: u64) {
             let mut j = a;
             j = j + 2; // FAILS
-            assert(j == a as nat + 2);
         }
     } => Err(e) => assert_one_fails(e)
 }
@@ -59,8 +58,6 @@ test_verify_one_file! {
         fn test(a: u64) {
             let mut j = a;
             j = j + 2; // FAILS
-            j = j + 2;
-            assert(j == a + 4);
         }
     } => Err(e) => assert_one_fails(e)
 }

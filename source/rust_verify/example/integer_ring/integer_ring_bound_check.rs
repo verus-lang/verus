@@ -23,7 +23,7 @@ fn ModAfterMul(x: int, y: int, z:int, m:int){
 
 // bound check lemmas
 #[verifier(nonlinear)]  
-// #[verifier(external_body)]
+#[verifier(external_body)]
 #[proof]
 fn LemmaMulUpperBound(x: int, XBound: int, y: int, YBound: int) {
     requires([

@@ -1,3 +1,6 @@
+// rust_verify/tests/example.rs ignore
+// TODO this file times out with z3 4.8.17
+
 #[allow(unused_imports)]
 use builtin::*;
 mod pervasive;

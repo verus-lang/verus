@@ -143,6 +143,41 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_not_yet_supported_11 code! {
+        trait T {
+            #[spec]
+            fn f(&self) -> bool { no_method_body() }
+        }
+
+        trait S : T {
+            #[spec]
+            fn g(&self) -> bool { no_method_body() }
+        }
+    } => Err(_)
+}
+
+test_verify_one_file! {
+    #[test] test_not_yet_supported_12 code!{
+        struct Abc<T> {
+            t: T,
+        }
+
+        trait SomeTrait {
+            #[spec]
+            fn f(&self) -> bool { no_method_body() }
+        }
+
+        impl<S> Abc<S> {
+            fn foo(&self)
+                where S: SomeTrait
+            {
+                assert(self.t.f() == self.t.f());
+            }
+        }
+    } => Err(_)
+}
+
+test_verify_one_file! {
     #[test] test_ill_formed_1 code! {
         trait T1 {
             fn f(&self); // need to call no_method_body()
@@ -919,4 +954,43 @@ test_verify_one_file! {
             assert(s1.0 == s3.0); // FAILS
         }
     } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] test_ok_where_clause verus_code! {
+        trait Tr {
+            spec fn f(&self) -> bool;
+        }
+
+        spec fn not_f<S>(x: S) -> bool
+            where S: Tr
+        {
+            !x.f()
+        }
+
+        proof fn foo<S>(x: S, y: S) where S : Tr
+            requires x.f() ==> y.f(),
+            ensures not_f(y) ==> not_f(x),
+        {
+        }
+
+        struct Bar<X>
+        {
+            x: X,
+        }
+
+        impl<X> Bar<X>
+            where X: Tr
+        {
+            spec fn bar_not_f(&self) -> bool {
+                not_f(self.x)
+            }
+
+            proof fn easy_lemma(bar1: &Self, bar2: &Self)
+                requires bar1.x.f() ==> bar2.x.f(),
+                ensures not_f(bar2.x) ==> not_f(bar1.x)
+            {
+            }
+        }
+    } => Ok(())
 }

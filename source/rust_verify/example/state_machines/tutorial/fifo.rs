@@ -577,6 +577,10 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
         backing_cells_vec.push(cell);
 
         perms.tracked_insert(i, tracked_get(cell_perm));
+
+        assert(perms.dom().contains(i as nat));
+        assert(equal(backing_cells_vec.index(i as nat).id(), perms.index(i as nat).pcell));
+        assert(perms.index(i as nat).value.is_None());
     }
 
     // Vector for ids

@@ -772,11 +772,7 @@ test_verify_one_file! {
             let u = x.u;
             assert(u == 5);
         }
-    } => Ok(())
-}
 
-test_verify_one_file! {
-    #[test] #[ignore] type_alias_with_params code!{
         struct Bar<T> {
             u: T,
         }

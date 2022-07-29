@@ -279,3 +279,12 @@ pub fn mk_eq(e1: &Expr, e2: &Expr) -> Expr {
 pub fn mk_option_command(s1: &str, s2: &str) -> Command {
     Arc::new(CommandX::SetOption(Arc::new(String::from(s1)), Arc::new(String::from(s2))))
 }
+
+pub fn mk_bitvector_option() -> Vec<Command> {
+    vec![
+        mk_option_command("sat.euf", "true"),
+        mk_option_command("tactic.default_tactic", "sat"),
+        mk_option_command("smt.ematching", "false"),
+        mk_option_command("smt.case_split", "0"),
+    ]
+}
