@@ -190,7 +190,7 @@ tokenized_state_machine!(RefCounter<#[verifier(maybe_negative)] T> {
         dec_basic(x: T) {
             require(pre.counter >= 2);
             remove reader -= {x};
-            update counter = pre.counter - 1;
+            update counter = (pre.counter - 1) as nat;
         }
     }
 

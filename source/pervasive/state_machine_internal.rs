@@ -8,6 +8,7 @@ use builtin_macros::*;
 use crate::pervasive::*;
 use crate::pervasive::seq::*;
 use crate::pervasive::map::*;
+use crate::pervasive::option::*;
 
 #[verifier(external_body)]
 pub struct SyncSendIfSyncSend<#[verifier(strictly_positive)] T> {
@@ -134,6 +135,36 @@ impl<K, V> Map<K, V> {
     pub open spec fn update_at_index(self, k: K, v: V) -> Self {
         self.insert(k, v)
     }
+}
+
+#[doc(hidden)]
+#[verifier(inline)]
+pub open spec fn opt_is_none<V>(a: Option<V>) -> bool {
+    a.is_None()
+}
+
+#[doc(hidden)]
+#[verifier(inline)]
+pub open spec fn opt_ge<V>(a: Option<V>, b: Option<V>) -> bool {
+    b.is_Some() ==> a === b
+}
+
+#[doc(hidden)]
+#[verifier(inline)]
+pub open spec fn opt_add<V>(a: Option<V>, b: Option<V>) -> Option<V> {
+    if b.is_Some() { b } else { a }
+}
+
+#[doc(hidden)]
+#[verifier(inline)]
+pub open spec fn opt_agree<V>(a: Option<V>, b: Option<V>) -> bool {
+    a.is_Some() && b.is_Some() ==> a.get_Some_0() === b.get_Some_0()
+}
+
+#[doc(hidden)]
+#[verifier(inline)]
+pub open spec fn opt_sub<V>(a: Option<V>, b: Option<V>) -> Option<V> {
+    if b.is_Some() { Option::None } else { a }
 }
 
 } // verus!

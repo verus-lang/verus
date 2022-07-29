@@ -525,12 +525,12 @@ fn expr_can_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Option<Ex
                 ShardableType::PersistentMap(_, _) => Some(Expr::Verbatim(quote! {
                     (#cur).agrees(#e)
                 })),
-                ShardableType::PersistentOption(_) => Some(Expr::Verbatim(quote! {
-                    ::builtin::imply(
-                        (#cur).is_Some() && (#e).is_Some(),
-                        ::builtin::equal((#cur).get_Some_0(), (#e).get_Some_0()),
-                    )
-                })),
+                ShardableType::PersistentOption(_) => {
+                    let ty = get_opt_type(stype);
+                    Some(Expr::Verbatim(quote! {
+                        crate::pervasive::state_machine_internal::opt_agree::<#ty>(#cur, #e)
+                    }))
+                }
                 _ => {
                     panic!("expr_can_add invalid case");
                 }
@@ -548,8 +548,10 @@ fn expr_can_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Option<Ex
             MonoidElt::SingletonMultiset(_e) => None,
             MonoidElt::General(e) => match stype {
                 ShardableType::Option(_) | ShardableType::StorageOption(_) => {
+                    let ty = get_opt_type(stype);
                     Some(Expr::Verbatim(quote! {
-                        ((#e).is_None() || (#cur).is_None())
+                        crate::pervasive::state_machine_internal::opt_is_none::<#ty>(#e)
+                          || (#cur).is_None()
                     }))
                 }
 
@@ -589,7 +591,12 @@ fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
                 ShardableType::PersistentMap(_, _) => {
                     Expr::Verbatim(quote! { (#cur).union_prefer_right(#e) })
                 }
-                ShardableType::PersistentOption(_) => Expr::Verbatim(quote! { (#e).or(#cur) }),
+                ShardableType::PersistentOption(_) => {
+                    let ty = get_opt_type(stype);
+                    Expr::Verbatim(quote! {
+                        crate::pervasive::state_machine_internal::opt_add::<#ty>(#cur, #e)
+                    })
+                }
                 _ => {
                     panic!("expr_can_add invalid case");
                 }
@@ -620,8 +627,9 @@ fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
             }),
             MonoidElt::General(e) => match stype {
                 ShardableType::Option(_) | ShardableType::StorageOption(_) => {
+                    let ty = get_opt_type(stype);
                     Expr::Verbatim(quote! {
-                        (#e).or(#cur)
+                        crate::pervasive::state_machine_internal::opt_add::<#ty>(#cur, #e)
                     })
                 }
 
@@ -697,9 +705,12 @@ fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt, pat_opt: &Option<
         MonoidElt::General(e) => match stype {
             ShardableType::Option(_)
             | ShardableType::PersistentOption(_)
-            | ShardableType::StorageOption(_) => Expr::Verbatim(quote! {
-                ::builtin::imply((#e).is_Some(), ::builtin::equal(#cur, #e))
-            }),
+            | ShardableType::StorageOption(_) => {
+                let ty = get_opt_type(stype);
+                Expr::Verbatim(quote! {
+                    crate::pervasive::state_machine_internal::opt_ge::<#ty>(#cur, #e)
+                })
+            }
 
             ShardableType::Map(_, _)
             | ShardableType::PersistentMap(_, _)
@@ -738,9 +749,12 @@ fn expr_remove(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
             (#cur).remove(#e)
         }),
         MonoidElt::General(e) => match stype {
-            ShardableType::Option(_) | ShardableType::StorageOption(_) => Expr::Verbatim(quote! {
-                (if (#e).is_Some() { crate::pervasive::option::Option::None } else { #cur })
-            }),
+            ShardableType::Option(_) | ShardableType::StorageOption(_) => {
+                let ty = get_opt_type(stype);
+                Expr::Verbatim(quote! {
+                    crate::pervasive::state_machine_internal::opt_sub::<#ty>(#cur, #e)
+                })
+            }
 
             ShardableType::Map(_, _) | ShardableType::StorageMap(_, _) => Expr::Verbatim(quote! {
                 (#cur).remove_keys(#e.dom())
@@ -751,7 +765,7 @@ fn expr_remove(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
             }),
 
             ShardableType::Count => Expr::Verbatim(quote! {
-                (#cur) - (#e)
+                (((#cur) - (#e)) as nat)
             }),
 
             _ => {

@@ -988,10 +988,9 @@ pub fn exchange_stream(
     };
 
     return Ok(quote! {
-        #[proof]
         #return_value_mode
         #[verifier(external_body)]
-        pub fn #exch_name#gen(#(#in_args),*) #out_args_ret {
+        pub proof fn #exch_name#gen(#(#in_args),*) #out_args_ret {
             #req_stream
             #ens_stream
             #extra_deps
@@ -1158,9 +1157,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             // Some(x)        Some(Token { instance: instance, value: x })
 
             quote! {
-                #[spec]
-                #[verifier(publish)]
-                pub fn #fn_name(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
+                pub open spec fn #fn_name(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
                     match token_opt {
                         crate::pervasive::option::Option::None => {
                             opt.is_None()
@@ -1196,9 +1193,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             //    [k1 := Token { instance: instance, value: v2 }]...
 
             quote! {
-                #[spec]
-                #[verifier(publish)]
-                pub fn #fn_name(token_map: #map_token_ty, m: #map_normal_ty, instance: #inst_ty) -> bool {
+                pub open spec fn #fn_name(token_map: #map_token_ty, m: #map_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::equal(token_map.dom(), m.dom())
                     && ::builtin::forall(|key: #key|
                         ::builtin::imply(
@@ -1236,9 +1231,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             // }
 
             quote! {
-                #[spec]
-                #[verifier(publish)]
-                pub fn #fn_name(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
+                pub open spec fn #fn_name(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|x: #ty|
                         #[trigger] tokens.count(
                             #constructor_name {
@@ -1269,16 +1262,14 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                     ::std::unimplemented!();
                 }
 
-                #[proof]
-                #[verifier(returns(proof))]
                 #[verifier(external_body)]
-                pub fn split(#[proof] self, #[spec] i: nat) -> (Self, Self) {
+                pub proof fn split(tracked self, i: nat) -> tracked (Self, Self) {
                     ::builtin::requires(i <= self.value);
                     ::builtin::ensures(|s: (Self, Self)|
                         equal(s.0.instance, self.instance)
                         && equal(s.1.instance, self.instance)
                         && equal(s.0.value, i)
-                        && equal(s.1.value, self.value - i)
+                        && equal(s.1.value as int, self.value - i)
                     );
                     ::std::unimplemented!();
                 }

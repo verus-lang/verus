@@ -71,14 +71,12 @@ tokenized_state_machine!{FifoQueue<T> {
     }
     // ANCHOR_END: fields
 
-    #[spec]
-    fn len(&self) -> nat {
+    pub open spec fn len(&self) -> nat {
         self.backing_cells.len()
     }
 
     // ANCHOR: inc_wrap
-    #[spec] #[verifier(publish)]
-    pub fn inc_wrap(i: nat, len: nat) -> nat {
+    pub open spec fn inc_wrap(i: nat, len: nat) -> nat {
         if i + 1 == len { 0 } else { i + 1 }
     }
     // ANCHOR_END: inc_wrap
@@ -132,8 +130,7 @@ tokenized_state_machine!{FifoQueue<T> {
     // Indicates whether we expect the cell at index `i` to be full based on
     // the values of the `head` and `tail`.
 
-    #[spec]
-    fn in_active_range(&self, i: nat) -> bool {
+    pub open spec fn in_active_range(&self, i: nat) -> bool {
         // Note that self.head = self.tail means empty range
         0 <= i && i < self.len() && (
             if self.head <= self.tail {
@@ -147,8 +144,7 @@ tokenized_state_machine!{FifoQueue<T> {
     // Indicates whether we expect a cell to be checked out or not,
     // based on the producer/consumer state.
 
-    #[spec]
-    fn is_checked_out(&self, i: nat) -> bool {
+    pub open spec fn is_checked_out(&self, i: nat) -> bool {
         equal(self.producer, ProducerState::Producing(i))
         || equal(self.consumer, ConsumerState::Consuming(i))
     }
@@ -163,8 +159,7 @@ tokenized_state_machine!{FifoQueue<T> {
     // Which of these 3 possibilities we should be in depends on the
     // producer/consumer/head/tail state.
 
-    #[spec]
-    fn valid_storage_at_idx(&self, i: nat) -> bool {
+    pub open spec fn valid_storage_at_idx(&self, i: nat) -> bool {
         if self.is_checked_out(i) {
             // No cell permission is stored
             !self.storage.dom().contains(i)
@@ -190,7 +185,7 @@ tokenized_state_machine!{FifoQueue<T> {
 
     #[invariant]
     pub fn valid_storage_all(&self) -> bool {
-        forall(|i| 0 <= i && i < self.len() >>=
+        forall(|i: nat| 0 <= i && i < self.len() >>=
             self.valid_storage_at_idx(i))
     }
 
@@ -201,7 +196,7 @@ tokenized_state_machine!{FifoQueue<T> {
             // an empty cell.
 
             require(
-                forall(|i| 0 <= i && i < backing_cells.len() >>=
+                forall(|i: nat| 0 <= i && i < backing_cells.len() >>=
                     #[trigger] storage.dom().contains(i)
                     && equal(
                         storage.index(i).pcell,
@@ -361,7 +356,7 @@ tokenized_state_machine!{FifoQueue<T> {
 
     #[inductive(initialize)]
     fn initialize_inductive(post: Self, backing_cells: Seq<CellId>, storage: Map<nat, cell::Permission<T>>) {
-        assert_forall_by(|i| {
+        assert_forall_by(|i: nat| {
             requires(0 <= i && i < post.len());
             ensures(post.valid_storage_at_idx(i));
 
