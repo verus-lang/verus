@@ -405,6 +405,8 @@ fn e10_pass() {
         (
             "test.rs".to_string(),
             code! {
+                #![feature(fmt_internals)]
+
                 mod pervasive;
                 mod directions;
 
@@ -502,66 +504,67 @@ fn e13_pass() {
         ("lunch.rs".to_string(), LUNCH_SHARED_CODE.to_string()),
         (
             "test.rs".to_string(),
-            verus_code! {
-                #[allow(unused_imports)] use builtin::*;
-                #[allow(unused_imports)] use builtin_macros::*;
-                mod pervasive; use pervasive::*;
-                mod directions; use directions::{Direction, turn_left, turn_right};
-                mod lunch; use lunch::*;
+            "#![feature(fmt_internals)]\n".to_string()
+                + &verus_code! {
+                    #[allow(unused_imports)] use builtin::*;
+                    #[allow(unused_imports)] use builtin_macros::*;
+                    mod pervasive; use pervasive::*;
+                    mod directions; use directions::{Direction, turn_left, turn_right};
+                    mod lunch; use lunch::*;
 
-                spec fn add(x: int, y: int) -> int {
-                    x + y
-                }
-
-                proof fn forall_lemma() {
-                    // NB: The original version here fails with:
-                    // "Could not automatically infer triggers for this quantifer."
-                    // We decided that this use case -- a forall that can be proven but
-                    // never used (in any reasonable setting because no way is Chris
-                    // gonna trigger on '+'!) -- is extremely rare. Relevant in teaching,
-                    // perhaps, but not even in proof debugging.
-                    // assert(forall(|x: int| x + x == 2 * x));
-
-                    assert(forall|x: int| add(x, x) == 2 * x);
-                }
-
-                proof fn another_forall_lemma() {
-                    assert(forall|dir: Direction|
-                        turn_left(turn_left(dir)) == turn_right(turn_right(dir)));
-                }
-
-                // TODO(utaal/jon): use utaal's auto-generated predicates
-                impl Order {
-                    spec fn is_appetizer(self) -> bool {
-                        match self { Order::Appetizer { .. } => true, _ => false }
+                    spec fn add(x: int, y: int) -> int {
+                        x + y
                     }
 
-                    spec fn is_sandwich(self) -> bool {
-                        match self { Order::Sandwich { .. } => true, _ => false }
+                    proof fn forall_lemma() {
+                        // NB: The original version here fails with:
+                        // "Could not automatically infer triggers for this quantifer."
+                        // We decided that this use case -- a forall that can be proven but
+                        // never used (in any reasonable setting because no way is Chris
+                        // gonna trigger on '+'!) -- is extremely rare. Relevant in teaching,
+                        // perhaps, but not even in proof debugging.
+                        // assert(forall(|x: int| x + x == 2 * x));
+
+                        assert(forall|x: int| add(x, x) == 2 * x);
                     }
 
-                    spec fn get_cheese(self) -> Cheese {
-                        // TODO() use Order::*;
-                        match self {
-                            Order::Sandwich { cheese: cheese, .. } => cheese,
-                            Order::Appetizer { cheese: cheese, .. } => cheese,
-                            Order::Pizza { .. }  => arbitrary(),
+                    proof fn another_forall_lemma() {
+                        assert(forall|dir: Direction|
+                            turn_left(turn_left(dir)) == turn_right(turn_right(dir)));
+                    }
+
+                    // TODO(utaal/jon): use utaal's auto-generated predicates
+                    impl Order {
+                        spec fn is_appetizer(self) -> bool {
+                            match self { Order::Appetizer { .. } => true, _ => false }
+                        }
+
+                        spec fn is_sandwich(self) -> bool {
+                            match self { Order::Sandwich { .. } => true, _ => false }
+                        }
+
+                        spec fn get_cheese(self) -> Cheese {
+                            // TODO() use Order::*;
+                            match self {
+                                Order::Sandwich { cheese: cheese, .. } => cheese,
+                                Order::Appetizer { cheese: cheese, .. } => cheese,
+                                Order::Pizza { .. }  => arbitrary(),
+                            }
                         }
                     }
-                }
 
-                proof fn cheese_take_two() {
-                    assert forall|o1:Order| o1.is_appetizer() implies
-                        exists(|o2:Order| o2.is_sandwich() && o1.get_cheese() == o2.get_cheese()) by
-                    {
-                        // ensures(exists(|o2: Order| matches!((o1, o2), (Order::Appetizer { cheese: c1, .. }, Order::Sanwhich { cheese: c2, .. }) if c1 == c2)))
+                    proof fn cheese_take_two() {
+                        assert forall|o1:Order| o1.is_appetizer() implies
+                            exists(|o2:Order| o2.is_sandwich() && o1.get_cheese() == o2.get_cheese()) by
+                        {
+                            // ensures(exists(|o2: Order| matches!((o1, o2), (Order::Appetizer { cheese: c1, .. }, Order::Sanwhich { cheese: c2, .. }) if c1 == c2)))
 
-                        // ensures(exists(|o2:Order| o2.is_sandwich() && o1.get_cheese() == o2.get_sandwich().cheese));
-                        let o3 = Order::Sandwich { meat: Meat::Ham, cheese: o1.get_cheese() };
-                        assert(o3.is_sandwich() /*&& o1.get_cheese() == o3.get_cheese()*/); // witness to ensures.
+                            // ensures(exists(|o2:Order| o2.is_sandwich() && o1.get_cheese() == o2.get_sandwich().cheese));
+                            let o3 = Order::Sandwich { meat: Meat::Ham, cheese: o1.get_cheese() };
+                            assert(o3.is_sandwich() /*&& o1.get_cheese() == o3.get_cheese()*/); // witness to ensures.
+                        }
                     }
-                }
-            },
+                },
         ),
     ];
     let result = verify_files(files, "test.rs".to_string());

@@ -13,13 +13,14 @@ use rustc_span::source_map::FileLoader;
 #[derive(Clone, Default)]
 struct TestFileLoader {
     files: std::collections::HashMap<std::path::PathBuf, String>,
+    pervasive_path: String,
 }
 
 impl TestFileLoader {
     fn remap_pervasive_path(&self, path: &std::path::Path) -> std::path::PathBuf {
         if path.parent().and_then(|x| x.file_name()) == Some(std::ffi::OsStr::new("pervasive")) {
             if let Some(file_name) = path.file_name() {
-                return std::path::Path::new("../pervasive").join(file_name).into();
+                return std::path::Path::new(&self.pervasive_path).join(file_name).into();
             }
         }
         path.into()
@@ -124,6 +125,7 @@ pub fn verify_files_and_pervasive(
         } else {
             Default::default()
         };
+
         if !files.iter().any(|(_, body)| body.contains("#[verifier(integer_ring)]")) {
             our_args.no_enhanced_typecheck = true;
         }
@@ -137,10 +139,16 @@ pub fn verify_files_and_pervasive(
     let files = files.into_iter().map(|(p, f)| (p.into(), f)).collect();
     let captured_output = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let captured_output_1 = captured_output.clone();
+
+    let pervasive_path = match std::env::var("PERVASIVE_PATH") {
+        Ok(path) if !verify_pervasive => path,
+        _ => "../pervasive".to_string(),
+    };
+
     let result = std::panic::catch_unwind(move || {
         let mut verifier = Verifier::new(our_args);
         verifier.test_capture_output = Some(captured_output_1);
-        let file_loader: TestFileLoader = TestFileLoader { files };
+        let file_loader: TestFileLoader = TestFileLoader { files, pervasive_path };
         let (verifier, status) = rust_verify::driver::run(verifier, rustc_args, file_loader);
         status.map(|_| ()).map_err(|_| TestErr {
             errors: verifier.errors,
@@ -175,8 +183,15 @@ pub fn verify_files_and_pervasive(
 
 #[allow(dead_code)]
 pub const USE_PRELUDE: &str = crate::common::code_str! {
-    #[allow(unused_imports)] use builtin::*;
-    #[allow(unused_imports)] use builtin_macros::*;
+    // If we're using the pre-macro-expanded pervasive lib, then it might have
+    // some macro-internal stuff in it, and rustc needs this option in order to accept it.
+    #![feature(fmt_internals)]
+
+    #![allow(unused_imports)]
+    #![allow(unused_macros)]
+
+    use builtin::*;
+    use builtin_macros::*;
 
     mod pervasive; #[allow(unused_imports)] use pervasive::*;
 };
