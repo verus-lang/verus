@@ -104,6 +104,8 @@ ast_struct! {
     pub struct ItemConst {
         pub attrs: Vec<Attribute>,
         pub vis: Visibility,
+        pub publish: Publish,
+        pub mode: FnMode,
         pub const_token: Token![const],
         pub ident: Ident,
         pub colon_token: Token![:],
@@ -723,6 +725,8 @@ ast_struct! {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "full")))]
     pub struct TraitItemConst {
         pub attrs: Vec<Attribute>,
+        pub publish: Publish,
+        pub mode: FnMode,
         pub const_token: Token![const],
         pub ident: Ident,
         pub colon_token: Token![:],
@@ -834,6 +838,8 @@ ast_struct! {
     pub struct ImplItemConst {
         pub attrs: Vec<Attribute>,
         pub vis: Visibility,
+        pub publish: Publish,
+        pub mode: FnMode,
         pub defaultness: Option<Token![default]>,
         pub const_token: Token![const],
         pub ident: Ident,
@@ -1061,11 +1067,21 @@ pub mod parsing {
                         }))
                     }
                 }
-            } else if lookahead.peek(Token![const]) {
+            } else if lookahead.peek(Token![const])
+                || lookahead.peek(Token![open])
+                || lookahead.peek(Token![closed])
+                || lookahead.peek(Token![exec])
+                || lookahead.peek(Token![tracked])
+                || lookahead.peek(Token![spec])
+            {
+                let _: Publish = ahead.parse()?;
+                let _: FnMode = ahead.parse()?;
                 ahead.parse::<Token![const]>()?;
                 let lookahead = ahead.lookahead1();
                 if lookahead.peek(Ident) || lookahead.peek(Token![_]) {
                     let vis = input.parse()?;
+                    let publish = input.parse()?;
+                    let mode = input.parse()?;
                     let const_token = input.parse()?;
                     let ident = {
                         let lookahead = input.lookahead1();
@@ -1084,6 +1100,8 @@ pub mod parsing {
                         Ok(Item::Const(ItemConst {
                             attrs: Vec::new(),
                             vis,
+                            publish,
+                            mode,
                             const_token,
                             ident,
                             colon_token,
@@ -1441,6 +1459,8 @@ pub mod parsing {
             Ok(ItemConst {
                 attrs: input.call(Attribute::parse_outer)?,
                 vis: input.parse()?,
+                publish: input.parse()?,
+                mode: input.parse()?,
                 const_token: input.parse()?,
                 ident: {
                     let lookahead = input.lookahead1();
@@ -2316,6 +2336,8 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             Ok(TraitItemConst {
                 attrs: input.call(Attribute::parse_outer)?,
+                publish: input.parse()?,
+                mode: input.parse()?,
                 const_token: input.parse()?,
                 ident: {
                     let lookahead = input.lookahead1();
@@ -2592,7 +2614,15 @@ pub mod parsing {
 
             let mut item = if lookahead.peek(Token![fn]) || peek_signature(&ahead) {
                 input.parse().map(ImplItem::Method)
-            } else if lookahead.peek(Token![const]) {
+            } else if lookahead.peek(Token![const])
+                || lookahead.peek(Token![open])
+                || lookahead.peek(Token![closed])
+                || lookahead.peek(Token![exec])
+                || lookahead.peek(Token![tracked])
+                || lookahead.peek(Token![spec])
+            {
+                let publish = ahead.parse()?;
+                let mode = ahead.parse()?;
                 let const_token: Token![const] = ahead.parse()?;
                 let lookahead = ahead.lookahead1();
                 if lookahead.peek(Ident) || lookahead.peek(Token![_]) {
@@ -2604,6 +2634,8 @@ pub mod parsing {
                         return Ok(ImplItem::Const(ImplItemConst {
                             attrs,
                             vis,
+                            publish,
+                            mode,
                             defaultness,
                             const_token,
                             ident,
@@ -2660,6 +2692,8 @@ pub mod parsing {
             Ok(ImplItemConst {
                 attrs: input.call(Attribute::parse_outer)?,
                 vis: input.parse()?,
+                publish: input.parse()?,
+                mode: input.parse()?,
                 defaultness: input.parse()?,
                 const_token: input.parse()?,
                 ident: {
@@ -2872,6 +2906,8 @@ mod printing {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             tokens.append_all(self.attrs.outer());
             self.vis.to_tokens(tokens);
+            self.publish.to_tokens(tokens);
+            self.mode.to_tokens(tokens);
             self.const_token.to_tokens(tokens);
             self.ident.to_tokens(tokens);
             self.colon_token.to_tokens(tokens);
@@ -3137,6 +3173,8 @@ mod printing {
     impl ToTokens for TraitItemConst {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             tokens.append_all(self.attrs.outer());
+            self.publish.to_tokens(tokens);
+            self.mode.to_tokens(tokens);
             self.const_token.to_tokens(tokens);
             self.ident.to_tokens(tokens);
             self.colon_token.to_tokens(tokens);
@@ -3203,6 +3241,8 @@ mod printing {
             tokens.append_all(self.attrs.outer());
             self.vis.to_tokens(tokens);
             self.defaultness.to_tokens(tokens);
+            self.publish.to_tokens(tokens);
+            self.mode.to_tokens(tokens);
             self.const_token.to_tokens(tokens);
             self.ident.to_tokens(tokens);
             self.colon_token.to_tokens(tokens);

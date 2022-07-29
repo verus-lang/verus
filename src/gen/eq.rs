@@ -1077,6 +1077,7 @@ impl Eq for ImplItemConst {}
 impl PartialEq for ImplItemConst {
     fn eq(&self, other: &Self) -> bool {
         self.attrs == other.attrs && self.vis == other.vis
+            && self.publish == other.publish && self.mode == other.mode
             && self.defaultness == other.defaultness && self.ident == other.ident
             && self.ty == other.ty && self.expr == other.expr
     }
@@ -1162,8 +1163,10 @@ impl Eq for ItemConst {}
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for ItemConst {
     fn eq(&self, other: &Self) -> bool {
-        self.attrs == other.attrs && self.vis == other.vis && self.ident == other.ident
-            && self.ty == other.ty && self.expr == other.expr
+        self.attrs == other.attrs && self.vis == other.vis
+            && self.publish == other.publish && self.mode == other.mode
+            && self.ident == other.ident && self.ty == other.ty
+            && self.expr == other.expr
     }
 }
 #[cfg(feature = "full")]
@@ -2018,8 +2021,9 @@ impl Eq for TraitItemConst {}
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for TraitItemConst {
     fn eq(&self, other: &Self) -> bool {
-        self.attrs == other.attrs && self.ident == other.ident && self.ty == other.ty
-            && self.default == other.default
+        self.attrs == other.attrs && self.publish == other.publish
+            && self.mode == other.mode && self.ident == other.ident
+            && self.ty == other.ty && self.default == other.default
     }
 }
 #[cfg(feature = "full")]

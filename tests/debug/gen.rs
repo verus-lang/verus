@@ -2809,6 +2809,8 @@ impl Debug for Lite<syn::ImplItem> {
                     formatter.field("attrs", Lite(&_val.attrs));
                 }
                 formatter.field("vis", Lite(&_val.vis));
+                formatter.field("publish", Lite(&_val.publish));
+                formatter.field("mode", Lite(&_val.mode));
                 if let Some(val) = &_val.defaultness {
                     #[derive(RefCast)]
                     #[repr(transparent)]
@@ -2922,6 +2924,8 @@ impl Debug for Lite<syn::ImplItemConst> {
             formatter.field("attrs", Lite(&_val.attrs));
         }
         formatter.field("vis", Lite(&_val.vis));
+        formatter.field("publish", Lite(&_val.publish));
+        formatter.field("mode", Lite(&_val.mode));
         if let Some(val) = &_val.defaultness {
             #[derive(RefCast)]
             #[repr(transparent)]
@@ -3052,6 +3056,8 @@ impl Debug for Lite<syn::Item> {
                     formatter.field("attrs", Lite(&_val.attrs));
                 }
                 formatter.field("vis", Lite(&_val.vis));
+                formatter.field("publish", Lite(&_val.publish));
+                formatter.field("mode", Lite(&_val.mode));
                 formatter.field("ident", Lite(&_val.ident));
                 formatter.field("ty", Lite(&_val.ty));
                 formatter.field("expr", Lite(&_val.expr));
@@ -3463,6 +3469,8 @@ impl Debug for Lite<syn::ItemConst> {
             formatter.field("attrs", Lite(&_val.attrs));
         }
         formatter.field("vis", Lite(&_val.vis));
+        formatter.field("publish", Lite(&_val.publish));
+        formatter.field("mode", Lite(&_val.mode));
         formatter.field("ident", Lite(&_val.ident));
         formatter.field("ty", Lite(&_val.ty));
         formatter.field("expr", Lite(&_val.expr));
@@ -5354,6 +5362,8 @@ impl Debug for Lite<syn::TraitItem> {
                 if !_val.attrs.is_empty() {
                     formatter.field("attrs", Lite(&_val.attrs));
                 }
+                formatter.field("publish", Lite(&_val.publish));
+                formatter.field("mode", Lite(&_val.mode));
                 formatter.field("ident", Lite(&_val.ident));
                 formatter.field("ty", Lite(&_val.ty));
                 if let Some(val) = &_val.default {
@@ -5488,6 +5498,8 @@ impl Debug for Lite<syn::TraitItemConst> {
         if !_val.attrs.is_empty() {
             formatter.field("attrs", Lite(&_val.attrs));
         }
+        formatter.field("publish", Lite(&_val.publish));
+        formatter.field("mode", Lite(&_val.mode));
         formatter.field("ident", Lite(&_val.ident));
         formatter.field("ty", Lite(&_val.ty));
         if let Some(val) = &_val.default {

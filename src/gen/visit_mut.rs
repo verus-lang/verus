@@ -2338,6 +2338,8 @@ where
         v.visit_attribute_mut(it);
     }
     v.visit_visibility_mut(&mut node.vis);
+    v.visit_publish_mut(&mut node.publish);
+    v.visit_fn_mode_mut(&mut node.mode);
     if let Some(it) = &mut node.defaultness {
         tokens_helper(v, &mut it.span);
     }
@@ -2484,6 +2486,8 @@ where
         v.visit_attribute_mut(it);
     }
     v.visit_visibility_mut(&mut node.vis);
+    v.visit_publish_mut(&mut node.publish);
+    v.visit_fn_mode_mut(&mut node.mode);
     tokens_helper(v, &mut node.const_token.span);
     v.visit_ident_mut(&mut node.ident);
     tokens_helper(v, &mut node.colon_token.spans);
@@ -3684,6 +3688,8 @@ where
     for it in &mut node.attrs {
         v.visit_attribute_mut(it);
     }
+    v.visit_publish_mut(&mut node.publish);
+    v.visit_fn_mode_mut(&mut node.mode);
     tokens_helper(v, &mut node.const_token.span);
     v.visit_ident_mut(&mut node.ident);
     tokens_helper(v, &mut node.colon_token.spans);

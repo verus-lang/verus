@@ -2107,6 +2107,8 @@ where
     ImplItemConst {
         attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
         vis: f.fold_visibility(node.vis),
+        publish: f.fold_publish(node.publish),
+        mode: f.fold_fn_mode(node.mode),
         defaultness: (node.defaultness)
             .map(|it| Token![default](tokens_helper(f, &it.span))),
         const_token: Token![const](tokens_helper(f, &node.const_token.span)),
@@ -2222,6 +2224,8 @@ where
     ItemConst {
         attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
         vis: f.fold_visibility(node.vis),
+        publish: f.fold_publish(node.publish),
+        mode: f.fold_fn_mode(node.mode),
         const_token: Token![const](tokens_helper(f, &node.const_token.span)),
         ident: f.fold_ident(node.ident),
         colon_token: Token![:](tokens_helper(f, &node.colon_token.spans)),
@@ -3278,6 +3282,8 @@ where
 {
     TraitItemConst {
         attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
+        publish: f.fold_publish(node.publish),
+        mode: f.fold_fn_mode(node.mode),
         const_token: Token![const](tokens_helper(f, &node.const_token.span)),
         ident: f.fold_ident(node.ident),
         colon_token: Token![:](tokens_helper(f, &node.colon_token.spans)),

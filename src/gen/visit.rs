@@ -2338,6 +2338,8 @@ where
         v.visit_attribute(it);
     }
     v.visit_visibility(&node.vis);
+    v.visit_publish(&node.publish);
+    v.visit_fn_mode(&node.mode);
     if let Some(it) = &node.defaultness {
         tokens_helper(v, &it.span);
     }
@@ -2484,6 +2486,8 @@ where
         v.visit_attribute(it);
     }
     v.visit_visibility(&node.vis);
+    v.visit_publish(&node.publish);
+    v.visit_fn_mode(&node.mode);
     tokens_helper(v, &node.const_token.span);
     v.visit_ident(&node.ident);
     tokens_helper(v, &node.colon_token.spans);
@@ -3684,6 +3688,8 @@ where
     for it in &node.attrs {
         v.visit_attribute(it);
     }
+    v.visit_publish(&node.publish);
+    v.visit_fn_mode(&node.mode);
     tokens_helper(v, &node.const_token.span);
     v.visit_ident(&node.ident);
     tokens_helper(v, &node.colon_token.spans);

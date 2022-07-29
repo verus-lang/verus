@@ -1578,6 +1578,8 @@ impl Debug for ImplItemConst {
         let mut formatter = formatter.debug_struct("ImplItemConst");
         formatter.field("attrs", &self.attrs);
         formatter.field("vis", &self.vis);
+        formatter.field("publish", &self.publish);
+        formatter.field("mode", &self.mode);
         formatter.field("defaultness", &self.defaultness);
         formatter.field("const_token", &self.const_token);
         formatter.field("ident", &self.ident);
@@ -1752,6 +1754,8 @@ impl Debug for ItemConst {
         let mut formatter = formatter.debug_struct("ItemConst");
         formatter.field("attrs", &self.attrs);
         formatter.field("vis", &self.vis);
+        formatter.field("publish", &self.publish);
+        formatter.field("mode", &self.mode);
         formatter.field("const_token", &self.const_token);
         formatter.field("ident", &self.ident);
         formatter.field("colon_token", &self.colon_token);
@@ -2871,6 +2875,8 @@ impl Debug for TraitItemConst {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("TraitItemConst");
         formatter.field("attrs", &self.attrs);
+        formatter.field("publish", &self.publish);
+        formatter.field("mode", &self.mode);
         formatter.field("const_token", &self.const_token);
         formatter.field("ident", &self.ident);
         formatter.field("colon_token", &self.colon_token);

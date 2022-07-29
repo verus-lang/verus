@@ -2739,6 +2739,12 @@
         "vis": {
           "syn": "Visibility"
         },
+        "publish": {
+          "syn": "Publish"
+        },
+        "mode": {
+          "syn": "FnMode"
+        },
         "defaultness": {
           "option": {
             "token": "Default"
@@ -3007,6 +3013,12 @@
         },
         "vis": {
           "syn": "Visibility"
+        },
+        "publish": {
+          "syn": "Publish"
+        },
+        "mode": {
+          "syn": "FnMode"
         },
         "const_token": {
           "token": "Const"
@@ -5187,6 +5199,12 @@
           "vec": {
             "syn": "Attribute"
           }
+        },
+        "publish": {
+          "syn": "Publish"
+        },
+        "mode": {
+          "syn": "FnMode"
         },
         "const_token": {
           "token": "Const"

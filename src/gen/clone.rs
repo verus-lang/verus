@@ -1089,6 +1089,8 @@ impl Clone for ImplItemConst {
         ImplItemConst {
             attrs: self.attrs.clone(),
             vis: self.vis.clone(),
+            publish: self.publish.clone(),
+            mode: self.mode.clone(),
             defaultness: self.defaultness.clone(),
             const_token: self.const_token.clone(),
             ident: self.ident.clone(),
@@ -1195,6 +1197,8 @@ impl Clone for ItemConst {
         ItemConst {
             attrs: self.attrs.clone(),
             vis: self.vis.clone(),
+            publish: self.publish.clone(),
+            mode: self.mode.clone(),
             const_token: self.const_token.clone(),
             ident: self.ident.clone(),
             colon_token: self.colon_token.clone(),
@@ -2092,6 +2096,8 @@ impl Clone for TraitItemConst {
     fn clone(&self) -> Self {
         TraitItemConst {
             attrs: self.attrs.clone(),
+            publish: self.publish.clone(),
+            mode: self.mode.clone(),
             const_token: self.const_token.clone(),
             ident: self.ident.clone(),
             colon_token: self.colon_token.clone(),
