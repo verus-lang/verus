@@ -194,6 +194,50 @@ impl Visitor {
         stmts
     }
 
+    fn visit_const(
+        &mut self,
+        span: proc_macro2::Span,
+        attrs: &mut Vec<Attribute>,
+        vis: Option<&Visibility>,
+        publish: &mut Publish,
+        mode: &mut FnMode,
+    ) {
+        attrs.push(parse_quote_spanned!(span => #[verifier(verus_macro)]));
+
+        let publish_attrs = match (vis, &publish) {
+            (Some(Visibility::Inherited), _) => vec![],
+            (_, Publish::Default) => vec![parse_quote_spanned!(span => #[verifier(publish)])],
+            (_, Publish::Closed(_)) => vec![],
+            (_, Publish::Open(o)) => {
+                vec![parse_quote_spanned!(o.token.span => #[verifier(publish)])]
+            }
+            (_, Publish::OpenRestricted(_)) => {
+                unimplemented!("TODO: support open(...)")
+            }
+        };
+
+        let (inside_ghost, mode_attrs): (u32, Vec<Attribute>) = match &mode {
+            FnMode::Default => (0, vec![]),
+            FnMode::Spec(token) => {
+                (1, vec![parse_quote_spanned!(token.spec_token.span => #[spec])])
+            }
+            FnMode::SpecChecked(token) => {
+                (1, vec![parse_quote_spanned!(token.spec_token.span => #[spec(checked)])])
+            }
+            FnMode::Proof(token) => {
+                (1, vec![parse_quote_spanned!(token.proof_token.span => #[proof])])
+            }
+            FnMode::Exec(token) => {
+                (0, vec![parse_quote_spanned!(token.exec_token.span => #[exec])])
+            }
+        };
+        self.inside_ghost = inside_ghost;
+        *publish = Publish::Default;
+        *mode = FnMode::Default;
+        attrs.extend(publish_attrs);
+        attrs.extend(mode_attrs);
+    }
+
     fn exec_ghost_match(
         &mut self,
         pat: &mut Pat,
@@ -981,7 +1025,13 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_const_mut(&mut self, con: &mut ItemConst) {
-        self.inside_ghost = 1;
+        self.visit_const(
+            con.const_token.span,
+            &mut con.attrs,
+            Some(&con.vis),
+            &mut con.publish,
+            &mut con.mode,
+        );
         visit_item_const_mut(self, con);
     }
 
