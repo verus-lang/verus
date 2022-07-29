@@ -143,6 +143,63 @@ fn check_strslice_new<'tcx>(sig: &'tcx FnSig<'tcx>) -> Result<(), VirErr> {
     Ok(())
 }
 
+fn check_new_strlit<'tcx>(ctx: &Context<'tcx>, sig: &'tcx FnSig<'tcx>) -> Result<(), VirErr> {
+    let (decl, span) = match sig {
+        FnSig {decl, span,..} => (decl, span)
+    };
+
+    let sig_span = span;
+    let expected_input_num = 2;
+
+    if decl.inputs.len() != expected_input_num {
+        crate::err!(*sig_span, format!("Expected {} but got {}", expected_input_num, decl.inputs.len()));
+    }
+
+    let (kind, span) = match &decl.inputs[0].kind {
+        TyKind::Rptr(_, mutty) => (&mutty.ty.kind, mutty.ty.span), 
+        _ => crate::err!(decl.inputs[0].span, format!("expected a str"))
+    };
+
+    let (res, span) = match kind {
+        TyKind::Path(QPath::Resolved(_, path)) => (path.res, path.span), 
+        _ => crate::err!(span, format!("expected str"))
+    };
+
+    if res != Res::PrimTy(PrimTy::Str) {
+        crate::err!(span, format!("expected a str"));
+    }
+    
+    let (res, span) = match &decl.inputs[1].kind {
+        TyKind::Path(QPath::Resolved(_, path)) => (path.res, path.span), 
+        _ => crate::err!(*sig_span, format!("expected a bool"))
+    };
+
+    if res != Res::PrimTy(PrimTy::Bool) {
+        crate::err!(span, format!("expected a bool"));
+    }
+
+    let (kind, span) = match decl.output {
+        FnRetTy::Return( Ty {hir_id: _, kind, span} ) => (kind, span),
+        _ => crate::err!(*sig_span, format!("expected a return type of StrSlice"))
+    };
+
+    let (res, span) = match kind {
+        TyKind::Path(QPath::Resolved(_, path)) => (path.res, path.span), 
+        _ => crate::err!(*span, format!("expected a StrSlice"))
+    };
+
+    let id = match res {
+        Res::Def(_, id) => id, 
+        _ => crate::err!(span, format!(""))
+    };
+
+
+    if !ctx.tcx.is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice"),id) {
+        crate::err!(span, format!("expected a StrSlice"));
+    }
+    Ok(())
+}
+
 pub(crate) fn check_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut KrateX,
@@ -159,6 +216,9 @@ pub(crate) fn check_item_fn<'tcx>(
 ) -> Result<Option<Fun>, VirErr> {
     let path = def_id_to_vir_path(ctxt.tcx, id);
     let is_str_new = ctxt.tcx.is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice::new"), id);
+    let is_new_strlit = ctxt.tcx.is_diagnostic_item(Symbol::intern("pervasive::string::new_strlit"), id);
+
+ 
 
     let name = Arc::new(FunX { path: path.clone(), trait_path });
     let mode = get_mode(Mode::Exec, attrs);
@@ -189,7 +249,15 @@ pub(crate) fn check_item_fn<'tcx>(
     let vattrs = get_verifier_attrs(attrs)?;
     let fuel = get_fuel(&vattrs);
     
+    if is_new_strlit {
+        check_new_strlit(&ctxt, sig)?;
+    }
+
     if is_str_new {
+        check_strslice_new(sig)?;
+    }
+
+    if is_str_new || is_new_strlit {
         let mut erasure_info = ctxt.erasure_info.borrow_mut();
         unsupported_err_unless!(
             vattrs.external_body,
@@ -197,11 +265,11 @@ pub(crate) fn check_item_fn<'tcx>(
             "StrSlice::new must be external_body"
         ); 
 
-        check_strslice_new(sig)?;
         erasure_info.ignored_functions.push(sig.span.data());
         erasure_info.external_functions.push(name);
         return Ok(None);
     }
+
 
     if vattrs.external {
         let mut erasure_info = ctxt.erasure_info.borrow_mut();
@@ -395,7 +463,7 @@ pub(crate) fn check_item_const<'tcx>(
     let vir_body = body_to_vir(ctxt, body_id, body, mode, vattrs.external_body)?;
 
     let is_string_literal = match &vir_body.x {
-        vir::ast::ExprX::Const(vir::ast::Constant::StrSlice(val)) => {
+        vir::ast::ExprX::Const(vir::ast::Constant::StrSlice(val, _)) => {
             true
         }, 
         _ => false

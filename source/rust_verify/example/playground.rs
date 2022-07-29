@@ -11,6 +11,7 @@ verus! {
     use pervasive::string::*; 
     const GREETING: StrSlice<'static> = StrSlice::new("Hello World");
     const PARTIAL_GREETING: StrSlice<'static> = StrSlice::new("Hello");
+    const OTHER_GREETING: StrSlice<'static> = new_strlit("Hello World!", true);
 
     fn string_lit<'a>() {
         GREETING.reveal();

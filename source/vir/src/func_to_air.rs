@@ -650,9 +650,12 @@ pub fn func_def_to_air(
             let enss = Arc::new(enss);
 
             if function.x.is_const && function.x.is_string_literal {
-                if let crate::ast::ExprX::Const(crate::ast::Constant::StrSlice(s)) =
+                if let crate::ast::ExprX::Const(crate::ast::Constant::StrSlice(s, reveal)) =
                     &function.x.body.as_ref().expect("string_literal always has a body").x
                 {
+                    if !reveal {
+                        return Ok((avec![], vec![]));
+                    }
                     return Ok(string_to_air(
                         ctx,
                         function.x.name.clone(),

@@ -430,6 +430,7 @@ fn fn_call_to_vir<'tcx>(
     let is_alloc_ghost = f_name == "pervasive::modes::Ghost::<A>::exec";
     let is_alloc_tracked = f_name == "pervasive::modes::Tracked::<A>::exec";
     let is_strslice_new = tcx.is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice::new"), f);  
+    let is_new_strlit = tcx.is_diagnostic_item(Symbol::intern("pervasive::string::new_strlit"), f);
     let is_strslice_reveal = tcx.is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice::reveal"), f);
     let is_spec = is_admit
         || is_no_method_body
@@ -777,12 +778,30 @@ fn fn_call_to_vir<'tcx>(
         let arg = args.first().expect("argument to StrSlice::new");
         if let ExprKind::Lit(lit) = &arg.kind {
             if let rustc_ast::LitKind::Str(s, _) = lit.node {
-                let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()));
+                let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()), true);
                 return Ok(mk_expr(ExprX::Const(c)));
             }
         }
     }
+    
+    if is_new_strlit {
+        let arg0 = args[0];
+        let arg1 = args[1];
 
+        let (s, reveal) = match (&arg0.kind, &arg1.kind) {
+            (ExprKind::Lit(lit0), ExprKind::Lit(lit1)) => {
+                match (&lit0.node, &lit1.node) {
+                    (rustc_ast::LitKind::Str(s,_), rustc_ast::LitKind::Bool(reveal)) => (s.to_string(), reveal),  
+                    _ => panic!("invalid types to new_strlit")
+                }
+            }, 
+            _ => todo!()
+        };
+
+
+        let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()), *reveal);
+        return Ok(mk_expr(ExprX::Const(c)));
+    }
 
     if is_strslice_reveal {
         return match &expr.kind {

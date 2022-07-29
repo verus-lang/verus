@@ -259,7 +259,7 @@ pub enum Constant {
     /// non-negative integer of arbitrary size (IntRange::Nat); use subtraction to get negative numbers
     Nat(Arc<String>),
     /// Hold generated string slices in here
-    StrSlice(Arc<String>)
+    StrSlice(Arc<String>, bool)
 }
 
 #[derive(Debug)]

@@ -17,6 +17,13 @@ pub struct StrSlice<'a> {
     inner: &'a str,
 }
 
+
+#[rustc_diagnostic_item = "pervasive::string::new_strlit"]
+#[verifier(external_body)]
+pub const fn new_strlit<'a>(s: &'a str, revealable: bool) -> StrSlice<'a> {
+    StrSlice { inner: s } 
+}
+
 impl<'a> StrSlice<'a> {
     pub spec fn view(&self) -> Seq<u8>;
 
