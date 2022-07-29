@@ -284,7 +284,7 @@ fn get_macro_decl(sm: &SM) -> TokenStream {
 
             ShardableType::Map(_, _) | ShardableType::PersistentMap(_, _) => {
                 quote!{
-                    ($instance:expr => #field_name => $value:expr => $key:expr) => {
+                    ($instance:expr => #field_name => $key:expr => $value:expr) => {
                         #mod_path::#sm_name::#field_name { instance: $instance, value: $value, key: $key }
                     };
                 }
