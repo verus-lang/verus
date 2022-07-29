@@ -9,7 +9,7 @@ use pervasive::string::*;
 
 verus! {
     use pervasive::string::*; 
-    const GREETING: StrSlice<'static> = StrSlice::new("Hello World");
+    const GREETING: StrSlice<'static> = new_strlit("Hello World", true);
     const PARTIAL_GREETING: StrSlice<'static> = StrSlice::new("Hello");
     const OTHER_GREETING: StrSlice<'static> = new_strlit("Hello World!", true);
 
