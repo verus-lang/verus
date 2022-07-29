@@ -452,8 +452,13 @@ fn check_foreign_item<'tcx>(
                 generics,
             )?;
         }
+        ForeignItemKind::Static(..)
+            if get_verifier_attrs(ctxt.tcx.hir().attrs(item.hir_id()))?.external =>
+        {
+            return Ok(());
+        }
         _ => {
-            unsupported_err!(item.span, "unsupported item", item);
+            unsupported_err!(item.span, "unsupported foreign item", item);
         }
     }
     Ok(())
