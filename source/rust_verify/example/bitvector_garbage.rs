@@ -19,6 +19,7 @@ macro_rules! get_bit {
         verus_proof_macro_exprs!(get_bit_macro!($($a)*))
     }
 }
+fn main() {}
 
 verus! {
 
@@ -134,7 +135,5 @@ fn get_color(bv: u32, index: u32) -> (c: Color)
     };
     c
 }
-
-fn main() {}
 
 } // verus!
