@@ -174,9 +174,9 @@ macro_rules! assert_sets_equal {
         ::builtin::assert_by(::builtin::equal(s1, s2), {
             ::builtin::assert_forall_by(|$elem $( : $t )?| {
                 ::builtin::ensures(
-                    (s1.contains($elem) >>= s2.contains($elem))
+                    ::builtin::imply(s1.contains($elem), s2.contains($elem))
                     &&
-                    (s2.contains($elem) >>= s1.contains($elem))
+                    ::builtin::imply(s2.contains($elem), s1.contains($elem))
                 );
                 { $bblock }
             });
@@ -186,5 +186,31 @@ macro_rules! assert_sets_equal {
 }
 
 pub use assert_sets_equal;
+
+#[macro_export]
+macro_rules! assert_sets_equal_verus {
+    ($s1:expr, $s2:expr $(,)?) => {
+        assert_sets_equal_verus!($s1, $s2, elem => { })
+    };
+    ($s1:expr, $s2:expr, $elem:ident $( : $t:ty )? => $bblock:block) => {
+        ::builtin_macros::verus_proof_expr! {{
+        let s1 = $s1;
+        let s2 = $s2;
+        ::builtin::assert_by(::builtin::equal(s1, s2), {
+            ::builtin::assert_forall_by(|$elem $( : $t )?| {
+                ::builtin::ensures(
+                    ::builtin::imply(s1.contains($elem), s2.contains($elem))
+                    &&
+                    ::builtin::imply(s2.contains($elem), s1.contains($elem))
+                );
+                { $bblock }
+            });
+            $crate::pervasive::assert(s1.ext_equal(s2));
+        });
+        }}
+    }
+}
+
+pub use assert_sets_equal_verus;
 
 } // verus!

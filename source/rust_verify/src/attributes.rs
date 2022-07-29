@@ -123,6 +123,8 @@ pub(crate) enum Attr {
     Publish,
     // publish body with zero fuel
     OpaqueOutsideModule,
+    // inline spec function in SMT query
+    Inline,
     // Rust ghost block
     GhostBlock(GhostBlockAttr),
     // type parameter is not necessarily used in strictly positive positions
@@ -137,6 +139,8 @@ pub(crate) enum Attr {
     NoAutoTrigger,
     // when used in a spec context, promote to spec by inserting .view()
     Autoview,
+    // when used in a ghost context, redirect to a specified spec method
+    Autospec(String),
     // add manual trigger to expression inside quantifier
     Trigger(Option<Vec<u64>>),
     // custom error string to report for precondition failures
@@ -224,6 +228,7 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "opaque_outside_module" => {
                     v.push(Attr::OpaqueOutsideModule)
                 }
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "inline" => v.push(Attr::Inline),
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "proof_block" => {
                     v.push(Attr::GhostBlock(GhostBlockAttr::Proof))
                 }
@@ -253,6 +258,11 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "autoview" => {
                     v.push(Attr::Autoview)
+                }
+                Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))])
+                    if arg == "when_used_as_spec" =>
+                {
+                    v.push(Attr::Autospec(ident.clone()))
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "unforgeable" => {
                     v.push(Attr::Unforgeable)
@@ -413,11 +423,13 @@ pub(crate) struct VerifierAttrs {
     pub(crate) opaque: bool,
     pub(crate) publish: bool,
     pub(crate) opaque_outside_module: bool,
+    pub(crate) inline: bool,
     pub(crate) strictly_positive: bool,
     pub(crate) maybe_negative: bool,
     pub(crate) broadcast_forall: bool,
     pub(crate) no_auto_trigger: bool,
     pub(crate) autoview: bool,
+    pub(crate) autospec: Option<String>,
     pub(crate) custom_req_err: Option<String>,
     pub(crate) bit_vector: bool,
     pub(crate) unforgeable: bool,
@@ -439,11 +451,13 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         opaque: false,
         publish: false,
         opaque_outside_module: false,
+        inline: false,
         maybe_negative: false,
         strictly_positive: false,
         broadcast_forall: false,
         no_auto_trigger: false,
         autoview: false,
+        autospec: None,
         custom_req_err: None,
         bit_vector: false,
         unforgeable: false,
@@ -464,11 +478,13 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::Opaque => vs.opaque = true,
             Attr::Publish => vs.publish = true,
             Attr::OpaqueOutsideModule => vs.opaque_outside_module = true,
+            Attr::Inline => vs.inline = true,
             Attr::MaybeNegative => vs.maybe_negative = true,
             Attr::StrictlyPositive => vs.strictly_positive = true,
             Attr::BroadcastForall => vs.broadcast_forall = true,
             Attr::NoAutoTrigger => vs.no_auto_trigger = true,
             Attr::Autoview => vs.autoview = true,
+            Attr::Autospec(method_ident) => vs.autospec = Some(method_ident),
             Attr::CustomReqErr(s) => vs.custom_req_err = Some(s.clone()),
             Attr::BitVector => vs.bit_vector = true,
             Attr::Unforgeable => vs.unforgeable = true,

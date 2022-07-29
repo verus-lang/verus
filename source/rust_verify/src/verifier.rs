@@ -22,8 +22,8 @@ use std::time::{Duration, Instant};
 
 use vir::ast::{Fun, Function, InferMode, Krate, Mode, VirErr, Visibility};
 use vir::ast_util::{fun_as_rust_dbg, fun_name_crate_relative, is_visible_to};
-use vir::def::SnapPos;
-use vir::def::{CommandsWithContext, CommandsWithContextX};
+use vir::def::{CommandsWithContext, CommandsWithContextX, SnapPos};
+use vir::func_to_air::SstMap;
 use vir::recursion::Node;
 
 const RLIMIT_PER_SECOND: u32 = 3000000;
@@ -710,6 +710,7 @@ impl Verifier {
         // Declare them in SCC (strongly connected component) sorted order so that
         // termination checking precedes consequence axioms for each SCC.
         let mut fun_axioms: HashMap<Fun, Commands> = HashMap::new();
+        let mut fun_ssts = SstMap::new();
         for scc in &ctx.global.func_call_sccs.clone() {
             let scc_nodes = ctx.global.func_call_graph.get_scc_nodes(scc);
             let mut scc_fun_nodes: Vec<Fun> = Vec::new();
@@ -727,7 +728,7 @@ impl Verifier {
                 let (function, _vis_abs) = &funs[f];
 
                 ctx.fun = mk_fun_ctx(&function, false);
-                let decl_commands = vir::func_to_air::func_decl_to_air(ctx, &function)?;
+                let decl_commands = vir::func_to_air::func_decl_to_air(ctx, &fun_ssts, &function)?;
                 ctx.fun = None;
                 let comment = "Function-Specs ".to_string() + &fun_as_rust_dbg(f);
                 self.run_commands(&mut air_context, &decl_commands, &comment);
@@ -741,11 +742,14 @@ impl Verifier {
                 let (function, vis_abs) = &funs[f];
 
                 ctx.fun = mk_fun_ctx(&function, false);
-                let (decl_commands, check_commands) = vir::func_to_air::func_axioms_to_air(
-                    ctx,
-                    &function,
-                    is_visible_to(&vis_abs, module),
-                )?;
+                let (decl_commands, check_commands, new_fun_ssts) =
+                    vir::func_to_air::func_axioms_to_air(
+                        ctx,
+                        fun_ssts,
+                        &function,
+                        is_visible_to(&vis_abs, module),
+                    )?;
+                fun_ssts = new_fun_ssts;
                 fun_axioms.insert(f.clone(), decl_commands);
                 ctx.fun = None;
 
@@ -774,13 +778,15 @@ impl Verifier {
                     // Rerun failed query to report possible recommends violations
                     // or (optionally) check recommends for spec function bodies
                     ctx.fun = mk_fun_ctx(&function, true);
-                    let (commands, snap_map) = vir::func_to_air::func_def_to_air(
+                    let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
                         ctx,
+                        fun_ssts,
                         &function,
                         vir::func_to_air::FuncDefPhase::CheckingSpecs,
                         true,
                     )?;
                     ctx.fun = None;
+                    fun_ssts = new_fun_ssts;
                     let error_as = if invalidity { ErrorAs::Note } else { ErrorAs::Warning };
                     let s = "Function-Decl-Check-Recommends ";
                     for command in commands.iter().map(|x| &*x) {
@@ -826,12 +832,14 @@ impl Verifier {
             let mut is_singular = false;
             loop {
                 ctx.fun = mk_fun_ctx(&function, recommends_rerun);
-                let (commands, snap_map) = vir::func_to_air::func_def_to_air(
+                let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
                     ctx,
+                    fun_ssts,
                     &function,
                     vir::func_to_air::FuncDefPhase::CheckingProofExec,
                     recommends_rerun,
                 )?;
+                fun_ssts = new_fun_ssts;
                 let error_as = if recommends_rerun { ErrorAs::Note } else { ErrorAs::Error };
                 let s =
                     if recommends_rerun { "Function-Check-Recommends " } else { "Function-Def " };
@@ -900,7 +908,9 @@ impl Verifier {
                 if function_invalidity
                     && !recommends_rerun
                     && !self.args.no_auto_recommends_check
+                    // in case of singular proof function and bit-vector proof function, skip recommends check
                     && !is_singular
+                    && !function.x.attrs.bit_vector
                 {
                     // Rerun failed query to report possible recommends violations
                     recommends_rerun = true;
@@ -1114,13 +1124,17 @@ impl Verifier {
 
     fn construct_vir_crate<'tcx>(&mut self, tcx: TyCtxt<'tcx>) -> Result<bool, VirErr> {
         let autoviewed_call_typs = Arc::new(std::sync::Mutex::new(HashMap::new()));
-        let _ = tcx.formal_verifier_callback.replace(Some(Box::new(crate::typecheck::Typecheck {
-            int_ty_id: None,
-            nat_ty_id: None,
-            exprs_in_spec: Arc::new(std::sync::Mutex::new(HashSet::new())),
-            autoviewed_calls: HashSet::new(),
-            autoviewed_call_typs: autoviewed_call_typs.clone(),
-        })));
+        if !self.args.no_enhanced_typecheck {
+            let _ =
+                tcx.formal_verifier_callback.replace(Some(Box::new(crate::typecheck::Typecheck {
+                    int_ty_id: None,
+                    nat_ty_id: None,
+                    enhanced_typecheck: !self.args.no_enhanced_typecheck,
+                    exprs_in_spec: Arc::new(std::sync::Mutex::new(HashSet::new())),
+                    autoviewed_calls: HashSet::new(),
+                    autoviewed_call_typs: autoviewed_call_typs.clone(),
+                })));
+        }
         match rustc_typeck::check_crate(tcx) {
             Ok(()) => {}
             Err(rustc_errors::ErrorReported {}) => {

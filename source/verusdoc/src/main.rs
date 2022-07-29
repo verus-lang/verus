@@ -464,9 +464,12 @@ fn write_css(dir_path: &Path) {
   font-size: 14px;
 }
 
+pre.verus-spec-code {
+  margin-left: 40px !important;
+}
+
 .verus-spec-code code {
   background-color: #ffffff !important;
-  margin-left: 40px !important;
 }
 
 .verus-spec-keyword {

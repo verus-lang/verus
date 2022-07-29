@@ -65,9 +65,9 @@ pub fn main() {
         returning ret;
         ghost g
     => {
-        assert(ret.is_Ok() >>= old_val == 20 && new_val == 25);
-        assert(ret.is_Err() >>= old_val != 20 && new_val == old_val
-            && ret.get_Err_0() == old_val);
+        assert(imply(ret.is_Ok(), old_val == 20 && new_val == 25));
+        assert(imply(ret.is_Err(), old_val != 20 && new_val == old_val
+            && ret.get_Err_0() == old_val));
 
         g = if g == 20 { 25 } else { g };
     });

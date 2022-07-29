@@ -63,38 +63,33 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_forallstmt1 code! {
-        #[spec]
+    #[test] test_forallstmt1 verus_code! {
         #[verifier(opaque)]
-        fn f1(i: int) -> int {
+        spec fn f1(i: int) -> int {
             i + 1
         }
 
         fn forallstmt_test() {
-            assert_forall_by(|x: int| {
-                ensures(f1(x) > x);
+            assert forall|x: int| f1(x) > x by {
                 reveal(f1);
-            });
+            }
             assert(f1(3) > 3);
         }
 
         fn forallstmt_test_inference() {
-            assert_forall_by(|x| {
-                ensures(f1(x) > x);
+            assert forall|x| f1(x) > x by {
                 reveal(f1);
-            });
+            }
             assert(f1(3) > 3);
         }
 
-        #[proof]
-        fn no_consume(x: bool) {
+        proof fn no_consume(x: bool) {
         }
 
         fn forallstmt_proof_var_allowed_as_spec(#[proof] x: bool) {
-            assert_forall_by(|i: int| {
-                ensures(f1(i) == f1(i));
+            assert forall|i: int| f1(i) == f1(i) by {
                 no_consume(x);
-            });
+            }
         }
     } => Ok(())
 }
@@ -225,7 +220,7 @@ test_verify_one_file! {
         }
 
         fn forallstmt_test() {
-            assert forall|x: nat| 1 <= f1(x) by {
+            assert forall|x: nat| 1 <= f1(x as int) by {
                 reveal(f1);
             }
             assert(f1(3) > 0);
@@ -241,40 +236,39 @@ test_verify_one_file! {
         }
 
         fn forallstmt_test() {
-            assert forall|x: nat| 1 <= f1(x) by {} // FAILS
+            assert forall|x: nat| 1 <= f1(x as int) by {} // FAILS
             assert(f1(3) > 0);
         }
     } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
-    #[test] test_assertby1_let code! {
-        #[spec]
+    #[test] test_assertby1_let verus_code! {
         #[verifier(opaque)]
-        fn f1(i: int) -> int {
+        spec fn f1(i: int) -> int {
             i + 1
         }
 
         fn assertby_test() {
-            assert_by({ #[spec] let a = 3; f1(a) > a }, reveal(f1));
+            assert({let a = 3; f1(a) > a}) by {
+                reveal(f1);
+            }
             assert(f1(3) > 3);
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_forallstmt_let code! {
-        #[spec]
+    #[test] test_forallstmt_let verus_code! {
         #[verifier(opaque)]
-        fn f1(i: int) -> int {
+        spec fn f1(i: int) -> int {
             i + 1
         }
 
         fn forallstmt_test() {
-            assert_forall_by(|x: nat| {
-                ensures({ #[spec] let a = 1; a <= #[trigger] f1(x) });
+            assert forall|x: nat| { let a: int = 1; a <= #[trigger] f1(x as int) } by {
                 reveal(f1);
-            });
+            }
             assert(f1(3) > 0);
         }
     } => Ok(())

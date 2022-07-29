@@ -119,6 +119,11 @@ pub enum UnaryOp {
     Trigger(TriggerAnnotation),
     /// Force integer value into range given by IntRange (e.g. by using mod)
     Clip(IntRange),
+    /// Operations that coerce from/to builtin::Ghost or builtin::Tracked
+    CoerceMode { op_mode: Mode, from_mode: Mode, to_mode: Mode },
+    /// Internal consistency check to make sure finalize_exp gets called
+    /// (appears only briefly in SST before finalize_exp is called)
+    MustBeFinalized,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -207,8 +212,9 @@ pub enum BinaryOp {
     Ne,
     ///
     Inequality(InequalityOp),
-    /// IntRange operations that may require overflow or divide-by zero checks
-    Arith(ArithOp, InferMode),
+    /// IntRange operations that may require overflow or divide-by-zero checks
+    /// (None for InferMode means always mode Spec)
+    Arith(ArithOp, Option<InferMode>),
     /// Bit Vector Operators
     Bitwise(BitwiseOp),
 }
@@ -385,7 +391,9 @@ pub enum ExprX {
     /// Manually supply triggers for body of quantifier
     WithTriggers { triggers: Arc<Vec<Exprs>>, body: Expr },
     /// Assign to local variable
-    Assign { init_not_mut: bool, lhs: Expr, rhs: Expr },
+    /// init_not_mut = true ==> a delayed initialization of a non-mutable variable
+    /// lhs_type_mode = Some(mode) ==> assignment to Ghost<t> or Tracked<t>
+    Assign { init_not_mut: bool, lhs_type_mode: Option<Mode>, lhs: Expr, rhs: Expr },
     /// Reveal definition of an opaque function with some integer fuel amount
     Fuel(Fun, u32),
     /// Header, which must appear at the beginning of a function or while loop.
@@ -464,6 +472,8 @@ pub type FunctionAttrs = Arc<FunctionAttrsX>;
 pub struct FunctionAttrsX {
     /// Erasure and lifetime checking based on ghost blocks
     pub uses_ghost_blocks: bool,
+    /// Inline spec function for SMT
+    pub inline: bool,
     /// List of functions that this function wants to view as opaque
     pub hidden: Arc<Vec<Fun>>,
     /// Create a global axiom saying forall params, require ==> ensure
@@ -474,6 +484,8 @@ pub struct FunctionAttrsX {
     pub custom_req_err: Option<String>,
     /// coerce f(e, ...) to f(e.view(), ...)
     pub autoview: bool,
+    /// When used in a ghost context, redirect to a specified spec function
+    pub autospec: Option<Fun>,
     /// Verify using bitvector theory
     pub bit_vector: bool,
     /// Is atomic (i.e., can be inside an invariant block)

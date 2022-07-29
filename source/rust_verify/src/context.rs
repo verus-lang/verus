@@ -31,6 +31,7 @@ pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) types: &'tcx TypeckResults<'tcx>,
     pub(crate) mode: Mode,
     pub(crate) external_body: bool,
+    pub(crate) in_ghost: bool,
 }
 
 impl<'tcx> ContextX<'tcx> {

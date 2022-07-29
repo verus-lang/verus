@@ -7,6 +7,8 @@ use std::alloc::{dealloc};
 #[allow(unused_imports)] use crate::pervasive::*;
 #[allow(unused_imports)] use crate::pervasive::modes::*;
 
+verus!{
+
 /// `PPtr<V>` (which stands for "permissioned pointer")
 /// is a wrapper around a raw pointer to `V` on the heap.
 ///
@@ -53,6 +55,65 @@ use std::alloc::{dealloc};
 ///
 /// ### Example (TODO)
 
+// Notes about pointer provenance:
+// 
+// "Pointer provenance" is this complicated subject which is a necessary
+// evil if you want to understand the abstract machine semantics of a language
+// with pointers and what is or is not UB with int-to-pointer casts.
+//
+// See this series of blog posts for some introduction:
+// https://www.ralfj.de/blog/2022/04/11/provenance-exposed.html
+//
+// Here in Verus, where code is forced to be verified, we want to tell
+// a much simpler story, which is the following:
+//
+//   ***** VERUS POINTER MODEL *****
+//    "Provenance" comes from the `tracked ghost` Permission object.
+//   *******************************
+// 
+// Pretty simple, right?
+//
+// Of course, this trusted pointer library still needs to actually run and
+// be sound in the Rust backend.
+// Rust's abstract pointer model is unchanged, and it doesn't know anything
+// about Verus's special ghost `Permission` object, which gets erased, anyway.
+//
+// Maybe someday the ghost Permission model will become a real
+// memory model. That isn't true today.
+// So we still need to know something about actual, real memory models that
+// are used right now in order to implement this API soundly.
+//
+// Our goal is to allow the *user of Verus* to think in terms of the
+// VERUS POINTER MODEL where provenance is tracked via the `Permission` object.
+// The rest of this is just details for the trusted implementation of PPtr
+// that will be sound in the Rust backend.
+//
+// In the "PNVI-ae-udi" model:
+//  * A ptr->int cast "exposes" a pointer (adding it some global list in the 
+//    abstract machine)
+//  * An int->ptr cast acquires the provenance of that pointer only if it
+//    was previously exposed.
+//
+// The "tower of weakenings", however,
+// (see https://gankra.github.io/blah/tower-of-weakenings/)
+// proposes a stricter model called "Strict Provenance".
+// This basically forbids exposing and requires provenance to always be tracked.
+//
+// If possible, it would be nice to stick to this stricter model, but it isn't necessary.
+//
+// Unfortunately, it's not possible. The Strict Provenance requires "provenance" to be
+// tracked through non-ghost pointers. We can't use our ghost objects to track provenance
+// in general while staying consistent with Strict Provenance.
+//
+// We have two options:
+//
+//  1. Just forbid int->ptr conversions
+//  2. Always "expose" every PPtr when it's created, in order to definitely be safe
+//     under PNVI-ae-udi.
+//
+// However, int->ptr conversions ought to be allowed in the VERUS POINTER MODEL,
+// so I'm going with (2) here.
+
 // TODO implement: borrow_mut; figure out Drop, see if we can avoid leaking?
 
 #[verifier(external_body)]
@@ -76,18 +137,17 @@ unsafe impl<T> Send for PPtr<T> {}
 ///
 /// See the [`PPtr`] documentation for more details.
 
-#[proof]
 #[verifier(unforgeable)]
-pub struct Permission<V> {
+pub tracked struct Permission<V> {
     /// Indicates that this token is for a pointer `ptr: PPtr<V>`
     /// such that [`ptr.id()`](PPtr::id) equal to this value.
 
-    #[spec] pub pptr: int,
+    pub ghost pptr: int,
 
     /// Indicates that this token gives the ability to read a value `V` from memory.
     /// When `None`, it indicates that the memory is uninitialized.
 
-    #[spec] pub value: option::Option<V>,
+    pub ghost value: option::Option<V>,
 }
 
 impl<V> Permission<V> {
@@ -96,31 +156,39 @@ impl<V> Permission<V> {
     /// however, it is not possible to obtain a `Permission` token for
     /// any such a pointer.)
 
-    #[proof]
     #[verifier(external_body)]
-    pub fn is_nonnull(#[proof] &self) {
+    pub proof fn is_nonnull(tracked &self) {
         ensures(self.pptr != 0);
         unimplemented!();
     }
 
-    #[proof]
     #[verifier(external_body)]
-    pub fn leak_contents(#[proof] &mut self) {
+    pub proof fn leak_contents(tracked &mut self) {
         ensures(self.pptr == old(self).pptr && self.value.is_None());
         unimplemented!();
     }
 }
 
 impl<V> PPtr<V> {
+
+    verus! {
+
     /// Cast a pointer to an integer.
 
     #[inline(always)]
     #[verifier(external_body)]
-    #[exec]
-    pub fn to_usize(&self) -> usize {
-        ensures(|u: usize| u as int == self.id());
+    pub fn to_usize(&self) -> (u: usize)
+        ensures
+            u as int == self.id(),
+    {
         self.uptr as usize
     }
+
+    } // verus!
+
+    /// integer address of the pointer
+
+    pub spec fn id(&self) -> int;
 
     /// Cast an integer to a pointer.
     /// 
@@ -136,9 +204,9 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    #[exec]
-    pub fn from_usize(u: usize) -> Self {
-        ensures(|p: Self| p.id() == u as int);
+    pub fn from_usize(u: usize) -> (p: Self)
+        ensures p.id() == u as int,
+    {
         let uptr = u as *mut MaybeUninit<V>;
         PPtr { uptr }
     }
@@ -147,29 +215,29 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn empty() -> (PPtr<V>, Proof<Permission<V>>) {
-        ensures(|pt : (PPtr<V>, Proof<Permission<V>>)|
-            equal(pt.1, Proof(Permission{ pptr: pt.0.id(), value: option::Option::None }))
-        );
+    pub fn empty() -> (pt: (PPtr<V>, Tracked<Permission<V>>))
+        ensures (*pt.1 === Permission{ pptr: pt.0.id(), value: option::Option::None }),
+    {
         opens_invariants_none();
 
         let p = PPtr {
             uptr: Box::leak(box MaybeUninit::uninit()).as_mut_ptr(),
         };
-        let Proof(t) = exec_proof_from_false();
-        (p, Proof(t))
-    }
 
-    // integer address of the pointer
-    fndecl!(pub fn id(&self) -> int);
+        // See explanation about exposing pointers, above
+        let _exposed_addr = p.uptr as usize;
+
+        (p, Tracked::assume_new())
+    }
 
     /// Clones the pointer.
     /// TODO implement the `Clone` and `Copy` traits
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn clone(&self) -> PPtr<V> {
-        ensures(|pt: PPtr<V>| equal(pt.id(), self.id()));
+    pub fn clone(&self) -> (pt: PPtr<V>)
+        ensures pt.id() === self.id(),
+    {
         opens_invariants_none();
 
         PPtr { uptr: self.uptr }
@@ -183,15 +251,14 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn put(&self, #[proof] perm: &mut Permission<V>, v: V) {
-        requires([
-            equal(self.id(), old(perm).pptr),
-            equal(old(perm).value, option::Option::None),
-        ]);
-        ensures([
-            equal(perm.pptr, old(perm).pptr),
-            equal(perm.value, option::Option::Some(v)),
-        ]);
+    pub fn put(&self, perm: &mut Tracked<Permission<V>>, v: V)
+        requires
+            self.id() === (**old(perm)).pptr,
+            (**old(perm)).value === option::Option::None,
+        ensures
+            (**perm).pptr === (**old(perm)).pptr,
+            (**perm).value === option::Option::Some(v),
+    {
         opens_invariants_none();
 
         unsafe {
@@ -209,16 +276,15 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn take(&self, #[proof] perm: &mut Permission<V>) -> V {
-        requires([
-            equal(self.id(), old(perm).pptr),
-            old(perm).value.is_Some(),
-        ]);
-        ensures(|v: V| [
-            equal(perm.pptr, old(perm).pptr),
-            equal(perm.value, option::Option::None),
-            equal(v, old(perm).value.get_Some_0()),
-        ]);
+    pub fn take(&self, perm: &mut Tracked<Permission<V>>) -> (v: V)
+        requires
+            self.id() === (**old(perm)).pptr,
+            (**old(perm)).value.is_Some(),
+        ensures
+            (**perm).pptr === (**old(perm)).pptr,
+            (**perm).value === option::Option::None,
+            v === (**old(perm)).value.get_Some_0(),
+    {
         opens_invariants_none();
 
         unsafe {
@@ -233,16 +299,15 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn replace(&self, #[proof] perm: &mut Permission<V>, in_v: V) -> V {
-        requires([
-            equal(self.id(), old(perm).pptr),
-            old(perm).value.is_Some(),
-        ]);
-        ensures(|out_v: V| [
-            equal(perm.pptr, old(perm).pptr),
-            equal(perm.value, option::Option::Some(in_v)),
-            equal(out_v, old(perm).value.get_Some_0()),
-        ]);
+    pub fn replace(&self, perm: &mut Tracked<Permission<V>>, in_v: V) -> (out_v: V)
+        requires
+            self.id() === (**old(perm)).pptr,
+            (**old(perm)).value.is_Some(),
+        ensures
+            (**perm).pptr === (**old(perm)).pptr,
+            (**perm).value === option::Option::Some(in_v),
+            out_v === (**old(perm)).value.get_Some_0(),
+    {
         opens_invariants_none();
 
         unsafe {
@@ -259,14 +324,12 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn borrow<'a>(&self, #[proof] perm: &'a Permission<V>) -> &'a V {
-        requires([
-            equal(self.id(), perm.pptr),
-            perm.value.is_Some(),
-        ]);
-        ensures(|v: V|
-            equal(v, perm.value.get_Some_0())
-        );
+    pub fn borrow<'a>(&self, perm: &'a Tracked<Permission<V>>) -> (v: &'a V)
+        requires
+            self.id() === (**perm).pptr,
+            (**perm).value.is_Some(),
+        ensures *v === (**perm).value.get_Some_0(),
+    {
         opens_invariants_none();
         
         unsafe {
@@ -282,11 +345,11 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn dispose(&self, #[proof] perm: Permission<V>) {
-        requires([
-            equal(self.id(), perm.pptr),
-            equal(perm.value, option::Option::None),
-        ]);
+    pub fn dispose(&self, perm: Tracked<Permission<V>>)
+        requires
+            self.id() === (*perm).pptr,
+            (*perm).value === option::Option::None,
+    {
         opens_invariants_none();
 
         unsafe {
@@ -304,17 +367,16 @@ impl<V> PPtr<V> {
     /// access to the memory by freeing it.
 
     #[inline(always)]
-    pub fn into_inner(self, #[proof] perm: Permission<V>) -> V {
-        requires([
-            equal(self.id(), perm.pptr),
-            perm.value.is_Some(),
-        ]);
-        ensures(|v|
-            equal(v, perm.value.get_Some_0())
-        );
+    pub fn into_inner(self, perm: Tracked<Permission<V>>) -> (v: V)
+        requires
+            self.id() === (*perm).pptr,
+            (*perm).value.is_Some(),
+        ensures
+            v === (*perm).value.get_Some_0(),
+    {
         opens_invariants_none();
 
-        #[proof] let mut perm = perm;
+        let mut perm = perm;
         let v = self.take(&mut perm);
         self.dispose(perm);
         v
@@ -324,13 +386,14 @@ impl<V> PPtr<V> {
     /// with the given value `v`.
 
     #[inline(always)]
-    pub fn new(v: V) -> (PPtr<V>, Proof<Permission<V>>) {
-        ensures(|pt : (PPtr<V>, Proof<Permission<V>>)|
-            equal(pt.1, Proof(Permission{ pptr: pt.0.id(), value: option::Option::Some(v) }))
-        );
-
-        let (p, Proof(mut t)) = Self::empty();
+    pub fn new(v: V) -> (pt: (PPtr<V>, Tracked<Permission<V>>))
+        ensures
+            (*pt.1 === Permission{ pptr: pt.0.id(), value: option::Option::Some(v) }),
+    {
+        let (p, mut t) = Self::empty();
         p.put(&mut t, v);
-        (p, Proof(t))
+        (p, t)
     }
+}
+
 }

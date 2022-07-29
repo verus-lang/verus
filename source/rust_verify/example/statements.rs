@@ -1,6 +1,9 @@
 use builtin::*;
+use builtin_macros::*;
 mod pervasive;
 use pervasive::*;
+
+verus! {
 
 fn main() {}
 
@@ -9,16 +12,16 @@ fn test_if(b: bool) {
     if b {
         x = 10;
     }
-    assert(b >>= x == 10);
+    assert(b ==> x == 10);
     if b {
         x = x + 3;
         x = x + 4;
     } else {
         x = x + 2;
     }
-    assert(b >>= x == 17);
-    assert(!b >>= x == 2);
-    assert(x == if b { 17 } else { 2 });
+    assert(b ==> x == 17);
+    assert(!b ==> x == 2);
+    assert(x == if b { 17int } else { 2 });
     if x == 0 {
         assert(false);
     } else if x == 1 {
@@ -36,14 +39,13 @@ fn test_loop() {
     let mut b2: u8 = 200;
     let mut b3: u8 = 30;
 
-    while i < 100 {
-        invariant([
+    while i < 100
+        invariant
             10 <= i,
             i <= 100,
-            b1 as u64 == i * 2,
-        ]);
-
-        assert(b2 as int <= 255);
+            b1 == i * 2,
+    {
+        assert(b2 <= 255);
         i = i + 1;
         b1 = b1 + 2;
         b2 = b2 / 2;
@@ -52,3 +54,5 @@ fn test_loop() {
     assert(b1 == 200);
     assert(b3 == 30);
 }
+
+} // verus!

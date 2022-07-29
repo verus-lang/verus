@@ -7,7 +7,7 @@ use std::sync::Arc;
 fn to_ident_set(input: &HashSet<UniqueIdent>) -> HashSet<Arc<String>> {
     let mut output = HashSet::new();
     for item in input {
-        output.insert(item.0.clone());
+        output.insert(item.name.clone());
     }
     output
 }

@@ -20,6 +20,15 @@ use vir::ast::{
 };
 use vir::def::RETURN_VALUE;
 
+pub(crate) fn autospec_fun(path: &vir::ast::Path, method_name: String) -> vir::ast::Path {
+    // turn a::b::c into a::b::method_name
+    let mut pathx = (**path).clone();
+    let mut segments = (*pathx.segments).clone();
+    *segments.last_mut().expect("empty path") = Arc::new(method_name);
+    pathx.segments = Arc::new(segments);
+    Arc::new(pathx)
+}
+
 pub(crate) fn body_to_vir<'tcx>(
     ctxt: &Context<'tcx>,
     id: &BodyId,
@@ -29,7 +38,8 @@ pub(crate) fn body_to_vir<'tcx>(
 ) -> Result<vir::ast::Expr, VirErr> {
     let def = rustc_middle::ty::WithOptConstParam::unknown(id.hir_id.owner);
     let types = ctxt.tcx.typeck_opt_const_arg(def);
-    let bctx = BodyCtxt { ctxt: ctxt.clone(), types, mode, external_body };
+    let bctx =
+        BodyCtxt { ctxt: ctxt.clone(), types, mode, external_body, in_ghost: mode != Mode::Exec };
     expr_to_vir(&bctx, &body.value, ExprModifier::REGULAR)
 }
 
@@ -105,7 +115,7 @@ pub(crate) fn check_item_fn<'tcx>(
     body_id: &BodyId,
 ) -> Result<Option<Fun>, VirErr> {
     let path = def_id_to_vir_path(ctxt.tcx, id);
-    let name = Arc::new(FunX { path, trait_path: trait_path });
+    let name = Arc::new(FunX { path: path.clone(), trait_path: trait_path.clone() });
     let mode = get_mode(Mode::Exec, attrs);
     let self_typ_params = if let Some(cg) = self_generics {
         Some(check_generics_bounds_fun(ctxt.tcx, cg)?)
@@ -143,6 +153,7 @@ pub(crate) fn check_item_fn<'tcx>(
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
     for (param, input) in params.iter().zip(sig.decl.inputs.iter()) {
         let Param { hir_id, pat, ty_span: _, span } = param;
+
         let name = Arc::new(pat_to_var(pat));
         let param_mode = get_var_mode(mode, ctxt.tcx.hir().attrs(*hir_id));
         let is_mut = is_mut_ty(&input);
@@ -238,14 +249,20 @@ pub(crate) fn check_item_fn<'tcx>(
         Arc::new(typ_bounds)
     };
     let publish = get_publish(&vattrs);
+    let autospec = vattrs.autospec.map(|method_name| {
+        let path = autospec_fun(&path, method_name.clone());
+        Arc::new(FunX { path, trait_path: trait_path.clone() })
+    });
     let fattrs = FunctionAttrsX {
         uses_ghost_blocks: vattrs.verus_macro,
+        inline: vattrs.inline,
         hidden: Arc::new(header.hidden),
         custom_req_err: vattrs.custom_req_err,
         no_auto_trigger: vattrs.no_auto_trigger,
         broadcast_forall: vattrs.broadcast_forall,
         bit_vector: vattrs.bit_vector,
         autoview: vattrs.autoview,
+        autospec,
         atomic: vattrs.atomic,
         integer_ring: vattrs.integer_ring,
         is_decrease_by: vattrs.decreases_by,

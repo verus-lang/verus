@@ -14,7 +14,7 @@ verus! {
 /// that has a `Map<K, V>` as its specification type.
 ///
 /// An object `map: Map<K, V>` has a _domain_, a set of keys given by [`map.dom()`](Map::dom),
-/// and a mapping for keys in the domain to values, given by [`map.index(key)`](Map::index).
+/// and a mapping for keys in the domain to values, given by [`map[key]`](Map::index).
 /// Alternatively, a map can be thought of as a set of `(K, V)` pairs where each key
 /// appears in at most entry.
 ///
@@ -36,6 +36,8 @@ pub tracked struct Map<#[verifier(maybe_negative)] K, #[verifier(strictly_positi
 }
 
 impl<K, V> Map<K, V> {
+    /// An empty map.
+
     pub spec fn empty() -> Map<K, V>;
 
     /// Gives a `Map<K, V>` whose domain contains every key, and maps each key
@@ -62,6 +64,15 @@ impl<K, V> Map<K, V> {
     pub spec fn index(self, key: K) -> V
         recommends self.dom().contains(key);
 
+    /// `[]` operator, synonymous with `index`
+
+    #[verifier(inline)]
+    pub open spec fn spec_index(self, key: K) -> V
+        recommends self.dom().contains(key)
+    {
+        self.index(key)
+    }
+
     /// Inserts the given (key, value) pair into the map.
     ///
     /// If the key is already present from the map, then its existing value is overwritten
@@ -85,13 +96,13 @@ impl<K, V> Map<K, V> {
 
     pub open spec fn ext_equal(self, m2: Map<K, V>) -> bool {
         &&& self.dom().ext_equal(m2.dom())
-        &&& (forall|k: K| #![auto] self.dom().contains(k) ==> self.index(k) === m2.index(k))
+        &&& (forall|k: K| #![auto] self.dom().contains(k) ==> self[k] === m2[k])
     }
 
     /// Returns true if the key `k` is in the domain of `self`, and it maps to the value `v`.
 
     pub open spec fn contains_pair(self, k: K, v: V) -> bool {
-        self.dom().contains(k) && self.index(k) === v
+        self.dom().contains(k) && self[k] === v
     }
 
     /// Returns true if `m1` is _contained in_ `m2`, i.e., the domain of `m1` is a subset
@@ -107,7 +118,7 @@ impl<K, V> Map<K, V> {
 
     pub open spec fn le(self, m2: Self) -> bool {
         forall|k: K| #[trigger] self.dom().contains(k) ==>
-            #[trigger] m2.dom().contains(k) && self.index(k) === m2.index(k)
+            #[trigger] m2.dom().contains(k) && self[k] === m2[k]
     }
 
     /// Gives the union of two maps, defined as:
@@ -128,7 +139,7 @@ impl<K, V> Map<K, V> {
     pub open spec fn union_prefer_right(self, m2: Self) -> Self {
         Self::new(
             |k: K| self.dom().contains(k) || m2.dom().contains(k),
-            |k: K| if m2.dom().contains(k) { m2.index(k) } else { self.index(k) }
+            |k: K| if m2.dom().contains(k) { m2[k] } else { self[k] }
         )
     }
 
@@ -148,7 +159,7 @@ impl<K, V> Map<K, V> {
     pub open spec fn remove_keys(self, keys: Set<K>) -> Self {
         Self::new(
             |k: K| self.dom().contains(k) && !keys.contains(k),
-            |k: K| self.index(k)
+            |k: K| self[k]
         )
     }
 
@@ -157,11 +168,11 @@ impl<K, V> Map<K, V> {
 
     pub open spec fn agrees(self, m2: Self) -> bool {
         forall|k| #![auto] self.dom().contains(k) && m2.dom().contains(k) ==>
-            self.index(k) === m2.index(k)
+            self[k] === m2[k]
     }
 
     #[verifier(external_body)]
-    pub proof fn proof_empty() -> (tracked out_v: Self)
+    pub proof fn tracked_empty() -> (tracked out_v: Self)
         ensures
             out_v === Map::empty(),
     {
@@ -169,7 +180,7 @@ impl<K, V> Map<K, V> {
     }
 
     #[verifier(external_body)]
-    pub proof fn proof_insert(tracked &mut self, key: K, tracked value: V)
+    pub proof fn tracked_insert(tracked &mut self, key: K, tracked value: V)
         ensures
             *self === Map::insert(*old(self), key, value),
     {
@@ -179,12 +190,12 @@ impl<K, V> Map<K, V> {
     /// todo fill in documentation
 
     #[verifier(external_body)]
-    pub proof fn proof_remove(tracked &mut self, key: K) -> (tracked v: V)
+    pub proof fn tracked_remove(tracked &mut self, key: K) -> (tracked v: V)
         requires
             old(self).dom().contains(key),
         ensures
             *self === Map::remove(*old(self), key),
-            v === old(self).index(key),
+            v === old(self)[key],
     {
         unimplemented!();
     }
@@ -212,7 +223,7 @@ pub proof fn axiom_map_insert_domain<K, V>(m: Map<K, V>, key: K, value: V)
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_insert_same<K, V>(m: Map<K, V>, key: K, value: V)
     ensures
-        #[trigger] m.insert(key, value).index(key) === value,
+        #[trigger] m.insert(key, value)[key] === value,
 {
 }
 
@@ -223,7 +234,7 @@ pub proof fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, va
         m.dom().contains(key1),
         key1 !== key2,
     ensures
-        m.insert(key2, value).index(key1) === m.index(key1),
+        m.insert(key2, value)[key1] === m[key1],
 {
 }
 
@@ -242,7 +253,7 @@ pub proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
         m.dom().contains(key1),
         key1 !== key2,
     ensures
-        m.remove(key2).index(key1) === m.index(key1),
+        m.remove(key2)[key1] === m[key1],
 {
 }
 
@@ -258,15 +269,10 @@ pub proof fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
 
 #[doc(hidden)]
 #[macro_export]
-macro_rules! map_insert_rec {
-    [$val:expr;] => {
-        $val
-    };
-    [$val:expr;$key:expr => $value:expr] => {
-        map_insert_rec![$val.insert($key, $value);]
-    };
-    [$val:expr;$key:expr => $value:expr,$($tail:tt)*] => {
-        map_insert_rec![$val.insert($key, $value);$($tail)*]
+macro_rules! map_internal {
+    [$($key:expr => $value:expr),* $(,)?] => {
+        $crate::pervasive::map::Map::empty()
+            $(.insert($key, $value))*
     }
 }
 
@@ -280,11 +286,11 @@ macro_rules! map_insert_rec {
 #[macro_export]
 macro_rules! map {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::pervasive::map::map_insert_rec![$crate::pervasive::map::Map::empty();$($tail)*])
-    }
-} 
+        ::builtin_macros::verus_proof_macro_exprs!($crate::pervasive::map::map_internal!($($tail)*))
+    };
+}
 
-pub use map_insert_rec;
+pub use map_internal;
 pub use map;
 
 /// Prove two maps equal by _extensionality_. Usage is:
@@ -316,9 +322,9 @@ macro_rules! assert_maps_equal {
                 // TODO better error message here: show the individual conjunct that fails,
                 // and maybe give an error message in english as well
                 ::builtin::ensures([
-                    ((#[trigger] m1.dom().contains($k)) >>= m2.dom().contains($k))
-                    && (m2.dom().contains($k) >>= m1.dom().contains($k))
-                    && (m1.dom().contains($k) && m2.dom().contains($k) >>=
+                    ::builtin::imply(#[trigger] m1.dom().contains($k), m2.dom().contains($k))
+                    && ::builtin::imply(m2.dom().contains($k), m1.dom().contains($k))
+                    && ::builtin::imply(m1.dom().contains($k) && m2.dom().contains($k),
                         ::builtin::equal(m1.index($k), m2.index($k)))
                 ]);
                 { $bblock }
@@ -329,5 +335,34 @@ macro_rules! assert_maps_equal {
 }
 
 pub use assert_maps_equal;
+
+#[macro_export]
+macro_rules! assert_maps_equal_verus {
+    ($m1:expr, $m2:expr $(,)?) => {
+        assert_maps_equal_verus!($m1, $m2, key => { })
+    };
+    ($m1:expr, $m2:expr, $k:ident $( : $t:ty )? => $bblock:block) => {
+        ::builtin_macros::verus_proof_expr! {{
+        #[spec] let m1 = $m1;
+        #[spec] let m2 = $m2;
+        ::builtin::assert_by(::builtin::equal(m1, m2), {
+            ::builtin::assert_forall_by(|$k $( : $t )?| {
+                // TODO better error message here: show the individual conjunct that fails,
+                // and maybe give an error message in english as well
+                ::builtin::ensures([
+                    ::builtin::imply(#[trigger] m1.dom().contains($k), m2.dom().contains($k))
+                    && ::builtin::imply(m2.dom().contains($k), m1.dom().contains($k))
+                    && ::builtin::imply(m1.dom().contains($k) && m2.dom().contains($k),
+                        ::builtin::equal(m1.index($k), m2.index($k)))
+                ]);
+                { $bblock }
+            });
+            $crate::pervasive::assert(m1.ext_equal(m2));
+        });
+        }}
+    }
+}
+
+pub use assert_maps_equal_verus;
 
 } // verus!

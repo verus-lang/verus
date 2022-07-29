@@ -1,7 +1,8 @@
+use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use syn_verus::parse;
 use syn_verus::parse2;
-use syn_verus::{Error, Expr, Pat, PatIdent, PatTuple};
+use syn_verus::{Error, Expr, Ident, Pat, PatIdent, PatTuple};
 
 // If there is at least one error, combine them all into one
 // Else, return Ok(())
@@ -64,5 +65,35 @@ pub fn is_definitely_irrefutable(pat: &Pat) -> bool {
         Pat::Wild(_) => true,
 
         _ => false,
+    }
+}
+
+pub fn get_module_path_of_macro_call() -> TokenStream {
+    let ts: proc_macro::TokenStream = quote::quote! { ::std::module_path!() }.into();
+    let mod_name_ts = ts.expand_expr();
+    let mod_name_ts = match mod_name_ts {
+        Ok(name) => name,
+        Err(_) => {
+            panic!("get_module_path_of_macro_call failed");
+        }
+    };
+    let mod_name = mod_name_ts.to_string();
+
+    let mod_name = &mod_name[1..mod_name.len() - 1]; // remove "
+
+    let span = Span::call_site();
+
+    // Skip the first one (it's the crate name)
+    let segments: Vec<TokenStream> = mod_name
+        .split("::")
+        .skip(1)
+        .map(|s| {
+            let ident = Ident::new(s, span);
+            quote::quote! { :: #ident }
+        })
+        .collect();
+
+    quote::quote! {
+        $crate #(#segments)*
     }
 }
