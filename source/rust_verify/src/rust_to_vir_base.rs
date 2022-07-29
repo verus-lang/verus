@@ -441,8 +441,9 @@ fn check_generic_bound<'tcx>(
         // Rust language marker traits are ignored in VIR
         Ok(Arc::new(GenericBoundX::Traits(vec![])))
     } else {
-        // REVIEW: this seems wrong
-        // Why did the previous code here throw away the args?
+        // TODO we will actually need to handle these arguments at some point.
+        // Right now, this is safe only because Verus does not support having
+        // a type implement two instances of the same trait with different type args.
         let _args = args;
 
         let trait_name = def_id_to_vir_path(tcx, trait_def_id);
