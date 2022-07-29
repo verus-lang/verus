@@ -425,6 +425,11 @@ fn check_item<'tcx>(
             // type alias (like lines of the form `type X = ...;`
             // Nothing to do here - we can rely on Rust's type resolution to handle these
         }
+        ItemKind::GlobalAsm(..) =>
+        //if get_verifier_attrs(ctxt.tcx.hir().attrs(item.hir_id()))?.external =>
+        {
+            return Ok(());
+        }
         _ => {
             unsupported_err!(item.span, "unsupported item", item);
         }
