@@ -29,4 +29,4 @@ grep '^ ' $TEMPD/expanded.rs > $TEMPD/mod.rs
 
 echo "Expanded pervasive lib at $TEMPD/expanded.rs"
 
-TEST_PERVASIVE_PATH=$TEMPD ./tools/cargo.sh test "$@"
+TEST_PERVASIVE_PATH=$TEMPD ./tools/cargo.sh nextest run "$@"
