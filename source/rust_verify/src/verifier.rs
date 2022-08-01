@@ -450,6 +450,14 @@ impl Verifier {
                 }
             }
         }
+        if error_as == ErrorAs::Error && checks_remaining == 0 {
+            let multispan = MultiSpan::from_spans(vec![from_raw_span(&context.0.raw_span)]);
+            let msg = format!(
+                "{}: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function",
+                context.1
+            );
+            compiler.diagnostic().span_warn(multispan, &msg);
+        }
 
         if is_check_valid && !is_singular {
             air_context.finish_query();
