@@ -141,7 +141,9 @@ impl fmt::Display for ExpX {
                 Constant::Bool(b) => write!(f, "{}", b),
                 Constant::Int(i) => write!(f, "{}", i),
             },
-            Var(id) => write!(f, "{}", id.name),
+            Var(id) | VarLoc(id) => write!(f, "{}", id.name),
+            VarAt(id, _at) => write!(f, "old({})", id.name),
+            Loc(exp) => write!(f, "{}", exp), // REVIEW: Additional decoration required?
             Call(fun, _, exps) => {
                 let args = exps.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
                 write!(f, "{}({})", fun.path.segments.last().unwrap(), args)
@@ -199,7 +201,7 @@ impl fmt::Display for ExpX {
                     },
                 }
             }
-            If(e1, e2, e3) => write!(f, "if {} then {} else {}", e1, e2, e3),
+            If(e1, e2, e3) => write!(f, "if {} {{ {} }} else {{ {} }}", e1, e2, e3),
             Bind(bnd, exp) => match &bnd.x {
                 BndX::Let(bnds) => {
                     let assigns = bnds
@@ -209,13 +211,31 @@ impl fmt::Display for ExpX {
                         .join(", ");
                     write!(f, "let {} in {}", assigns, exp)
                 }
+                BndX::Quant(Quant { quant: q, ..}, bnds, _trigs) => {
+                    let q_str = match q {
+                        air::ast::Quant::Forall => "forall",
+                        air::ast::Quant::Exists => "exists",
+                    };
+                    let vars = bnds
+                        .iter()
+                        .map(|b| format!("{}", b.name))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+
+                    write!(f, "({} |{}| {})", q_str, vars, exp)
+                }
                 BndX::Lambda(bnds) => {
                     let assigns =
                         bnds.iter().map(|b| format!("{}", b.name)).collect::<Vec<_>>().join(", ");
                     write!(f, "(|{}| {})", assigns, exp)
                 }
-                BndX::Quant(..) | BndX::Choose(..) => {
-                    write!(f, "Unexpected: {:?}", self)
+                BndX::Choose(bnds, _trigs, _cond) => { // REVIEW: Where is cond used?  Couldn't find an example syntax
+                    let vars = bnds
+                        .iter()
+                        .map(|b| format!("{}", b.name))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    write!(f, "(choose |{}| {})", vars, exp)
                 }
             },
             Ctor(_path, id, bnds) => {
@@ -225,9 +245,6 @@ impl fmt::Display for ExpX {
             CallLambda(_typ, e, args) => {
                 let args = args.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
                 write!(f, "{}({})", e, args)
-            }
-            VarLoc(..) | VarAt(..) | Loc(..) | Old(..) | WithTriggers(..) => {
-                write!(f, "Unexpected: {:?}", self)
             }
             Interp(e) => {
                 use InterpExp::*;
@@ -239,6 +256,7 @@ impl fmt::Display for ExpX {
                     }
                 }
             }
+            Old(..) | WithTriggers(..) => Ok(()),  // We don't show the user these internal expressions
         }
     }
 }
