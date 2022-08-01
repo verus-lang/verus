@@ -1,14 +1,15 @@
 use crate::attributes::get_verifier_attrs;
 use crate::context::BodyCtxt;
 use crate::util::{err_span_str, unsupported_err_span};
-use crate::{unsupported, unsupported_err, unsupported_err_unless};
+use crate::{unsupported, unsupported_err_unless};
 use rustc_ast::Mutability;
 use rustc_hir::definitions::DefPath;
 use rustc_hir::{
-    GenericParam, GenericParamKind, Generics, HirId, ItemKind, LifetimeParamKind, ParamName, QPath,
-    TraitFn, TraitItemKind, Ty, Visibility, VisibilityKind,
+    GenericParam, GenericParamKind, Generics, HirId, ItemKind, QPath, TraitFn, TraitItemKind, Ty,
+    Visibility, VisibilityKind,
 };
 use rustc_infer::infer::TyCtxtInferExt;
+use rustc_middle::ty::GenericParamDefKind;
 use rustc_middle::ty::ProjectionPredicate;
 use rustc_middle::ty::ProjectionTy;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
@@ -240,7 +241,9 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Param(param) if param.name == kw::SelfUpper => {
             (Arc::new(TypX::TypParam(vir::def::trait_self_type_param())), false)
         }
-        TyKind::Param(param) => (Arc::new(TypX::TypParam(Arc::new(param.name.to_string()))), false),
+        TyKind::Param(param) => {
+            (Arc::new(TypX::TypParam(Arc::new(param_ty_to_vir_name(param)))), false)
+        }
         TyKind::Never => {
             // All types are inhabited in SMT; we pick an arbitrary inhabited type for Never
             (Arc::new(TypX::Tuple(Arc::new(vec![]))), false)
@@ -437,31 +440,85 @@ fn check_generic_bound<'tcx>(
     }
 }
 
+// These 2 functions map a GenericParamDef or ParamTy to the name we use for that type
+// parameter in VIR.
+//
+// In rustc_middle, all the type params have a symbol and an index.
+// The indices are all unique. The symbols are unique for all the user-declared type
+// params, but they aren't necessarily unique for synthetic params.
+// (A synthetic param is a nameless type parameter created when the user writes
+// something like `x: impl SomeTrait`.)
+//
+// In order to keep the AIR readable, though, we want to use the symbol names when
+// possible. So:
+//  - For synthetic params, use impl%{index} for the name.
+//  - For other type params, just use the user-given type param name.
+
+fn generic_param_def_to_vir_name(gen: &rustc_middle::ty::GenericParamDef) -> String {
+    let is_synthetic = match gen.kind {
+        GenericParamDefKind::Type { synthetic, .. } => synthetic,
+        _ => panic!("expected GenericParamDefKind::Type"),
+    };
+
+    if is_synthetic {
+        vir::def::PREFIX_IMPL_TYPE_PARAM.to_string() + &gen.index.to_string()
+    } else {
+        gen.name.as_str().to_string()
+    }
+}
+
+fn param_ty_to_vir_name(param: &rustc_middle::ty::ParamTy) -> String {
+    let name = param.name.as_str();
+    if name.starts_with("impl ") {
+        vir::def::PREFIX_IMPL_TYPE_PARAM.to_string() + &param.index.to_string()
+    } else {
+        name.to_string()
+    }
+}
+
 pub(crate) fn check_generics_bounds<'tcx>(
     tcx: TyCtxt<'tcx>,
     hir_generics: &'tcx Generics<'tcx>,
     check_that_external_body_datatype_declares_positivity: bool,
     def_id: DefId,
 ) -> Result<Vec<(vir::ast::Ident, vir::ast::GenericBound, bool)>, VirErr> {
-    // TODO use tcx.generics_of(def_id) as well?
-    // (is probably the easiest way to handle synthetic params)
-
     // TODO the 'predicates' object contains the parent def_id; we can use that
     // to handle all the params and bounds from the impl at once,
     // so then we can handle the case where a method adds extra bounds to an impl
     // type parameter
 
-    let Generics { params, where_clause: _, span: _ } = hir_generics;
+    let Generics { params: hir_params, where_clause: _, span } = hir_generics;
+    let generics = tcx.generics_of(def_id);
+
+    let mut mid_params: Vec<&rustc_middle::ty::GenericParamDef> = vec![];
+    for param in generics.params.iter() {
+        match &param.kind {
+            GenericParamDefKind::Lifetime { .. } => {} // ignore
+            GenericParamDefKind::Type { .. } => {
+                mid_params.push(param);
+            }
+            GenericParamDefKind::Const { .. } => {
+                return err_span_str(*span, "Verus does not yet support const generics");
+            }
+        }
+    }
+
+    let hir_params: Vec<&GenericParam> = hir_params
+        .iter()
+        .filter(|p| {
+            match &p.kind {
+                GenericParamKind::Lifetime { kind: _ } => false, // ignore
+                GenericParamKind::Type { default: _, synthetic: _ } => true,
+                GenericParamKind::Const { ty: _, default: _ } => false, // error above
+            }
+        })
+        .collect();
 
     // For each generic param, we're going to collect all the trait bounds here.
     let mut typ_param_bounds: HashMap<String, Vec<vir::ast::GenericBound>> = HashMap::new();
-    for param in params.iter() {
-        match param.name {
-            ParamName::Plain(id) => {
-                typ_param_bounds.insert(id.as_str().to_string(), vec![]);
-            }
-            _ => {}
-        }
+    for param in mid_params.iter() {
+        let id = generic_param_def_to_vir_name(param);
+        typ_param_bounds.insert(id, vec![]);
     }
 
     // Process all trait bounds.
@@ -483,6 +540,16 @@ pub(crate) fn check_generics_bounds<'tcx>(
                 // T should be index 0,
                 // X, Y, Z, should be the rest
                 // The SomeTrait is given by the def_id
+
+                // Note: I _think_ rustc organizes it this way because
+                // T, X, Y, Z are actually all handled symmetrically
+                // in the formal theory of Rust's traits;
+                // i.e., the `Self` of a trait is actually the same as any of the other
+                // type parameters, it's just special in the notation for convenience.
+                //
+                // Right now Verus only allows `Self` (in the example, `T`) to be a type param,
+                // and it doesn't have full support for the other type params, so we special
+                // case it here.
 
                 let trait_def_id = trait_ref.def_id;
 
@@ -520,7 +587,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
                                 }
                             }
                         } else {
-                            let type_param_name = param.name.as_str().to_string();
+                            let type_param_name = param_ty_to_vir_name(&param);
                             match typ_param_bounds.get_mut(&type_param_name) {
                                 None => {
                                     return err_span_str(
@@ -579,7 +646,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
                                     "Verus does not yet support trait bounds on Self",
                                 );
                             } else {
-                                let type_param_name = param.name.as_str().to_string();
+                                let type_param_name = param_ty_to_vir_name(&param);
                                 match typ_param_bounds.get_mut(&type_param_name) {
                                     None => {
                                         return err_span_str(
@@ -612,33 +679,59 @@ pub(crate) fn check_generics_bounds<'tcx>(
 
     let mut typ_params: Vec<(vir::ast::Ident, vir::ast::GenericBound, bool)> = Vec::new();
 
-    for param in params.iter() {
-        let vattrs = get_verifier_attrs(tcx.hir().attrs(param.hir_id))?;
+    // In traits, the first type param is Self. This is handled specially,
+    // so we skip it here.
+    // (Skipping it also allows the HIR type params and middle type params to line up.)
+    let first_param_is_self = mid_params.len() > 0 && mid_params[0].name == kw::SelfUpper;
+    let skip_n = if first_param_is_self { 1 } else { 0 };
+
+    assert!(hir_params.len() + skip_n == mid_params.len());
+
+    for (idx, mid_param) in mid_params.iter().skip(skip_n).enumerate() {
+        match mid_param.kind {
+            GenericParamDefKind::Type { .. } => {}
+            _ => {
+                continue;
+            }
+        }
+
+        // We still need to look at the HIR param because we need to check the attributes.
+        let hir_param = &hir_params[idx];
+
+        let vattrs = get_verifier_attrs(tcx.hir().attrs(hir_param.hir_id))?;
         let neg = vattrs.maybe_negative;
         let pos = vattrs.strictly_positive;
         if neg && pos {
             return err_span_str(
-                param.span,
+                hir_param.span,
                 "type parameter cannot be both maybe_negative and strictly_positive",
             );
         }
         let strictly_positive = !neg; // strictly_positive is the default
-        let GenericParam { hir_id: _, name, bounds: _, span, pure_wrt_drop, kind } = param;
+        let GenericParam { hir_id: _, name: _, bounds: _, span, pure_wrt_drop, kind } = hir_param;
+
+        unsupported_err_unless!(!pure_wrt_drop, *span, "generic pure_wrt_drop");
 
         if let GenericParamKind::Type { .. } = kind {
             if check_that_external_body_datatype_declares_positivity && !neg && !pos {
                 return err_span_str(
-                    param.span,
+                    *span,
                     "in external_body datatype, each type parameter must be either #[verifier(maybe_negative)] or #[verifier(strictly_positive)] (maybe_negative is always safe to use)",
                 );
             }
+        } else {
+            panic!("mid_param is a Type, so we expected the HIR param to be a Type");
         }
 
-        unsupported_err_unless!(!pure_wrt_drop, *span, "generic pure_wrt_drop");
-        match (name, kind) {
-            (ParamName::Plain(id), GenericParamKind::Type { default: None, synthetic: false }) => {
+        match &mid_param.kind {
+            GenericParamDefKind::Type {
+                has_default: false,
+                synthetic: true | false,
+                object_lifetime_default: _,
+            } => {
                 // trait/function bounds
-                let ident = Arc::new(id.name.as_str().to_string());
+                let ident = Arc::new(generic_param_def_to_vir_name(mid_param));
+
                 let mut trait_bounds: Vec<Path> = Vec::new();
                 let mut fn_bounds: Vec<vir::ast::GenericBound> = Vec::new();
                 for vir_bound in typ_param_bounds.remove(&*ident).unwrap().into_iter() {
@@ -662,15 +755,9 @@ pub(crate) fn check_generics_bounds<'tcx>(
                 };
                 typ_params.push((ident, bound, strictly_positive));
             }
-            (
-                ParamName::Plain(_id),
-                GenericParamKind::Lifetime { kind: LifetimeParamKind::Explicit },
-            ) => {}
-            (
-                ParamName::Fresh(_),
-                GenericParamKind::Lifetime { kind: LifetimeParamKind::Elided },
-            ) => {}
-            _ => unsupported_err!(*span, "complex generics", hir_generics),
+            _ => {
+                panic!("shouldn't get here");
+            }
         }
     }
     Ok(typ_params)

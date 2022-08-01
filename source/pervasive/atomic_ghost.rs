@@ -15,7 +15,7 @@ macro_rules! declare_atomic_type {
 
         impl<G> $at_ident<G> {
             #[spec] #[verifier(publish)]
-            pub fn has_inv<F: Fn($value_ty, G) -> bool>(&self, f: F) -> bool {
+            pub fn has_inv(&self, f: impl Fn($value_ty, G) -> bool) -> bool {
                 forall(|p| #[trigger] self.atomic_inv.inv(p) == (
                     self.patomic.id() == p.0.patomic
                         && f(p.0.value, p.1)
@@ -23,12 +23,12 @@ macro_rules! declare_atomic_type {
             }
 
             #[spec] #[verifier(publish)]
-            pub fn has_inv_fn<F: Fn($value_ty) -> G>(&self, f: F) -> bool {
+            pub fn has_inv_fn(&self, f: impl Fn($value_ty) -> G) -> bool {
                 self.has_inv(|v: $value_ty, g: G| equal(g, f(v)))
             }
 
             #[inline(always)]
-            pub fn new<F: Fn($value_ty, G) -> bool>(u: $value_ty, #[proof] g: G, #[spec] f: F) -> Self {
+            pub fn new(u: $value_ty, #[proof] g: G, #[spec] f: impl Fn($value_ty, G) -> bool) -> Self {
                 requires(f(u, g));
                 ensures(|t: Self| t.has_inv(f));
 
