@@ -718,6 +718,14 @@ impl VisitMut for Visitor {
                             *expr =
                                 parse_quote_spanned!(span => {::builtin::assert_by(#arg, #block);});
                         }
+                        (Some(_), Some((_, id)), None) if id.to_string() == "compute" => {
+                            *expr =
+                                parse_quote_spanned!(span => ::builtin::assert_by_compute(#arg));
+                        }
+                        (Some(_), Some((_, id)), None) if id.to_string() == "compute_only" => {
+                            *expr =
+                                parse_quote_spanned!(span => ::builtin::assert_by_compute_only(#arg));
+                        }
                         (Some(_), Some((_, id)), None) if id.to_string() == "bit_vector" => {
                             *expr =
                                 parse_quote_spanned!(span => ::builtin::assert_bit_vector(#arg));
