@@ -435,12 +435,16 @@ test_verify_one_file! {
             }
         }}
 
-        fn foo(#[proof] m: Map<int, int>) {
+        verus!{
+
+        proof fn foo(tracked m: Map<int, int>) {
             requires(equal(m, Map::empty()));
 
-            #[proof] let inst = X::Instance::initialize(m);
-            #[proof] let t = inst.tr();
-            assert(equal(t, spec_literal_int("5")));
+            let tracked inst = X::Instance::initialize(tracked m);
+            let tracked t = (tracked inst).tr();
+            assert(t === 5);
+        }
+
         }
     } => Ok(())
 }
@@ -2981,92 +2985,77 @@ test_verify_one_file! {
             }
         }
 
-        } // verus!
-
-
-        #[proof]
-        fn correct_init(post: X::State, x: int, y: int, z: int) {
+        proof fn correct_init(post: X::State, x: int, y: int, z: int) {
             requires(X::State::initialize(post, x, y, z));
             ensures(rel_init(post, x, y, z));
         }
 
-        #[proof]
-        fn rev_init(post: X::State, x: int, y: int, z: int) {
+        proof fn rev_init(post: X::State, x: int, y: int, z: int) {
             requires(rel_init(post, x, y, z));
             ensures(X::State::initialize(post, x, y, z));
         }
 
-        #[proof]
-        fn correct_tr1(pre: X::State, post: X::State, b: bool, c: bool) {
+        proof fn correct_tr1(pre: X::State, post: X::State, b: bool, c: bool) {
             requires(X::State::tr1(pre, post, b, c));
             ensures(rel_tr1(pre, post, b, c));
         }
 
-        #[proof]
-        fn rev_tr1(pre: X::State, post: X::State, b: bool, c: bool) {
+        proof fn rev_tr1(pre: X::State, post: X::State, b: bool, c: bool) {
             requires(rel_tr1(pre, post, b, c));
             ensures(X::State::tr1(pre, post, b, c));
         }
 
-        #[proof]
-        fn correct_tr1_strong(pre: X::State, post: X::State, b: bool, c: bool) {
+        proof fn correct_tr1_strong(pre: X::State, post: X::State, b: bool, c: bool) {
             requires(X::State::tr1_strong(pre, post, b, c));
             ensures(rel_tr1_strong(pre, post, b, c));
         }
 
-        #[proof]
-        fn rev_tr1_strong(pre: X::State, post: X::State, b: bool, c: bool) {
+        proof fn rev_tr1_strong(pre: X::State, post: X::State, b: bool, c: bool) {
             requires(rel_tr1_strong(pre, post, b, c));
             ensures(X::State::tr1_strong(pre, post, b, c));
         }
 
-        #[proof]
-        fn correct_tr2(pre: X::State, post: X::State, b: bool, c: bool) {
+        proof fn correct_tr2(pre: X::State, post: X::State, b: bool, c: bool) {
             requires(X::State::tr2(pre, post, b, c));
             ensures(rel_tr2(pre, post, b, c));
         }
 
-        #[proof]
-        fn rev_tr2(pre: X::State, post: X::State, b: bool, c: bool) {
+        proof fn rev_tr2(pre: X::State, post: X::State, b: bool, c: bool) {
             requires(rel_tr2(pre, post, b, c));
             ensures(X::State::tr2(pre, post, b, c));
         }
 
-        #[proof]
-        fn correct_tr2_strong(pre: X::State, post: X::State, b: bool, c: bool) {
+        proof fn correct_tr2_strong(pre: X::State, post: X::State, b: bool, c: bool) {
             requires(X::State::tr2_strong(pre, post, b, c));
             ensures(rel_tr2_strong(pre, post, b, c));
         }
 
-        #[proof]
-        fn rev_tr2_strong(pre: X::State, post: X::State, b: bool, c: bool) {
+        proof fn rev_tr2_strong(pre: X::State, post: X::State, b: bool, c: bool) {
             requires(rel_tr2_strong(pre, post, b, c));
             ensures(X::State::tr2_strong(pre, post, b, c));
         }
 
-        #[proof]
-        fn correct_tr3(pre: X::State, post: X::State, b: bool, c: bool) {
+        proof fn correct_tr3(pre: X::State, post: X::State, b: bool, c: bool) {
             requires(X::State::tr3(pre, post, b, c));
             ensures(rel_tr3(pre, post, b, c));
         }
 
-        #[proof]
-        fn rev_tr3(pre: X::State, post: X::State, b: bool, c: bool) {
+        proof fn rev_tr3(pre: X::State, post: X::State, b: bool, c: bool) {
             requires(rel_tr3(pre, post, b, c));
             ensures(X::State::tr3(pre, post, b, c));
         }
 
-        #[proof]
-        fn correct_tr3_strong(pre: X::State, post: X::State, b: bool, c: bool) {
+        proof fn correct_tr3_strong(pre: X::State, post: X::State, b: bool, c: bool) {
             requires(X::State::tr3_strong(pre, post, b, c));
             ensures(rel_tr3_strong(pre, post, b, c));
         }
 
-        #[proof]
-        fn rev_tr3_strong(pre: X::State, post: X::State, b: bool, c: bool) {
+        proof fn rev_tr3_strong(pre: X::State, post: X::State, b: bool, c: bool) {
             requires(rel_tr3_strong(pre, post, b, c));
             ensures(X::State::tr3_strong(pre, post, b, c));
         }
+
+        } // verus!
     } => Ok(())
 }
 
@@ -3156,43 +3145,38 @@ test_verify_one_file! {
             &&& (c && pre.x == post.x && pre.y == post.y)
         }
 
-        } // verus!
-
-        #[proof]
-        fn correct_init(post: X::State, x: int, y: int, z: int, foo: Foo) {
+        proof fn correct_init(post: X::State, x: int, y: int, z: int, foo: Foo) {
             requires(X::State::initialize(post, x, y, z, foo));
             ensures(rel_init(post, x, y, z, foo));
         }
 
-        #[proof]
-        fn rev_init(post: X::State, x: int, y: int, z: int, foo: Foo) {
+        proof fn rev_init(post: X::State, x: int, y: int, z: int, foo: Foo) {
             requires(rel_init(post, x, y, z, foo));
             ensures(X::State::initialize(post, x, y, z, foo));
         }
 
-        #[proof]
-        fn correct_tr1(pre: X::State, post: X::State, foo: Foo, c: bool) {
+        proof fn correct_tr1(pre: X::State, post: X::State, foo: Foo, c: bool) {
             requires(X::State::tr1(pre, post, foo, c));
             ensures(rel_tr1(pre, post, foo, c));
         }
 
-        #[proof]
-        fn rev_tr1(pre: X::State, post: X::State, foo: Foo, c: bool) {
+        proof fn rev_tr1(pre: X::State, post: X::State, foo: Foo, c: bool) {
             requires(rel_tr1(pre, post, foo, c));
             ensures(X::State::tr1(pre, post, foo, c));
         }
 
-        #[proof]
-        fn correct_tr1_strong(pre: X::State, post: X::State, foo: Foo, c: bool) {
+        proof fn correct_tr1_strong(pre: X::State, post: X::State, foo: Foo, c: bool) {
             requires(X::State::tr1_strong(pre, post, foo, c));
             ensures(rel_tr1_strong(pre, post, foo, c));
         }
 
-        #[proof]
-        fn rev_tr1_strong(pre: X::State, post: X::State, foo: Foo, c: bool) {
+        proof fn rev_tr1_strong(pre: X::State, post: X::State, foo: Foo, c: bool) {
             requires(rel_tr1_strong(pre, post, foo, c));
             ensures(X::State::tr1_strong(pre, post, foo, c));
         }
+
+        } // verus!
+
     } => Ok(())
 }
 
@@ -3259,7 +3243,6 @@ test_verify_one_file! {
             }
         }}
 
-        /*
         verus! {
 
         spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
@@ -3364,104 +3347,88 @@ test_verify_one_file! {
             &&& post.mset === pre.mset
         }
 
-        } // verus!
-
-        #[proof]
-        fn correct_tr1(pre: Y::State, post: Y::State) {
+        proof fn correct_tr1(pre: Y::State, post: Y::State) {
             requires(Y::State::tr1(pre, post));
             ensures(rel_tr1(pre, post));
         }
 
-        #[proof]
-        fn rev_tr1(pre: Y::State, post: Y::State) {
+        proof fn rev_tr1(pre: Y::State, post: Y::State) {
             requires(rel_tr1(pre, post));
             ensures(Y::State::tr1(pre, post));
         }
 
-        #[proof]
-        fn correct_tr1_strong(pre: Y::State, post: Y::State) {
+        proof fn correct_tr1_strong(pre: Y::State, post: Y::State) {
             requires(Y::State::tr1_strong(pre, post));
             ensures(rel_tr1_strong(pre, post));
         }
 
-        #[proof]
-        fn rev_tr1_strong(pre: Y::State, post: Y::State) {
+        proof fn rev_tr1_strong(pre: Y::State, post: Y::State) {
             requires(rel_tr1_strong(pre, post));
             ensures(Y::State::tr1_strong(pre, post));
         }
 
-        #[proof]
-        fn correct_tr2(pre: Y::State, post: Y::State) {
+        proof fn correct_tr2(pre: Y::State, post: Y::State) {
             requires(Y::State::tr2(pre, post));
             ensures(rel_tr2(pre, post));
         }
 
-        #[proof]
-        fn rev_tr2(pre: Y::State, post: Y::State) {
+        proof fn rev_tr2(pre: Y::State, post: Y::State) {
             requires(rel_tr2(pre, post));
             ensures(Y::State::tr2(pre, post));
         }
 
-        #[proof]
-        fn correct_tr2_strong(pre: Y::State, post: Y::State) {
+        proof fn correct_tr2_strong(pre: Y::State, post: Y::State) {
             requires(Y::State::tr2_strong(pre, post));
             ensures(rel_tr2_strong(pre, post));
         }
 
-        #[proof]
-        fn rev_tr2_strong(pre: Y::State, post: Y::State) {
+        proof fn rev_tr2_strong(pre: Y::State, post: Y::State) {
             requires(rel_tr2_strong(pre, post));
             ensures(Y::State::tr2_strong(pre, post));
         }
 
-        #[proof]
-        fn correct_tr3(pre: Y::State, post: Y::State) {
+        proof fn correct_tr3(pre: Y::State, post: Y::State) {
             requires(Y::State::tr3(pre, post));
             ensures(rel_tr3(pre, post));
         }
 
-        #[proof]
-        fn rev_tr3(pre: Y::State, post: Y::State) {
+        proof fn rev_tr3(pre: Y::State, post: Y::State) {
             requires(rel_tr3(pre, post));
             ensures(Y::State::tr3(pre, post));
         }
 
-        #[proof]
-        fn correct_tr3_strong(pre: Y::State, post: Y::State) {
+        proof fn correct_tr3_strong(pre: Y::State, post: Y::State) {
             requires(Y::State::tr3_strong(pre, post));
             ensures(rel_tr3_strong(pre, post));
         }
 
-        #[proof]
-        fn rev_tr3_strong(pre: Y::State, post: Y::State) {
+        proof fn rev_tr3_strong(pre: Y::State, post: Y::State) {
             requires(rel_tr3_strong(pre, post));
             ensures(Y::State::tr3_strong(pre, post));
         }
 
-        #[proof]
-        fn correct_tr4(pre: Y::State, post: Y::State) {
+        proof fn correct_tr4(pre: Y::State, post: Y::State) {
             requires(Y::State::tr4(pre, post));
             ensures(rel_tr4(pre, post));
         }
 
-        #[proof]
-        fn rev_tr4(pre: Y::State, post: Y::State) {
+        proof fn rev_tr4(pre: Y::State, post: Y::State) {
             requires(rel_tr4(pre, post));
             ensures(Y::State::tr4(pre, post));
         }
 
-        #[proof]
-        fn correct_tr4_strong(pre: Y::State, post: Y::State) {
+        proof fn correct_tr4_strong(pre: Y::State, post: Y::State) {
             requires(Y::State::tr4_strong(pre, post));
             ensures(rel_tr4_strong(pre, post));
         }
 
-        #[proof]
-        fn rev_tr4_strong(pre: Y::State, post: Y::State) {
+        proof fn rev_tr4_strong(pre: Y::State, post: Y::State) {
             requires(rel_tr4_strong(pre, post));
             ensures(Y::State::tr4_strong(pre, post));
         }
-        */
+
+        } // verus!
+
     } => Ok(())
 }
 
@@ -3651,103 +3618,87 @@ test_verify_one_file! {
             &&& post.mset === pre.mset
         }
 
-        } // verus!
-
-        #[proof]
-        fn correct_tr1(pre: Y::State, post: Y::State) {
+        proof fn correct_tr1(pre: Y::State, post: Y::State) {
             requires(Y::State::tr1(pre, post));
             ensures(rel_tr1(pre, post));
         }
 
-        #[proof]
-        fn rev_tr1(pre: Y::State, post: Y::State) {
+        proof fn rev_tr1(pre: Y::State, post: Y::State) {
             requires(rel_tr1(pre, post));
             ensures(Y::State::tr1(pre, post));
         }
 
-        #[proof]
-        fn correct_tr1_strong(pre: Y::State, post: Y::State) {
+        proof fn correct_tr1_strong(pre: Y::State, post: Y::State) {
             requires(Y::State::tr1_strong(pre, post));
             ensures(rel_tr1_strong(pre, post));
         }
 
-        #[proof]
-        fn rev_tr1_strong(pre: Y::State, post: Y::State) {
+        proof fn rev_tr1_strong(pre: Y::State, post: Y::State) {
             requires(rel_tr1_strong(pre, post));
             ensures(Y::State::tr1_strong(pre, post));
         }
 
-        #[proof]
-        fn correct_tr2(pre: Y::State, post: Y::State) {
+        proof fn correct_tr2(pre: Y::State, post: Y::State) {
             requires(Y::State::tr2(pre, post));
             ensures(rel_tr2(pre, post));
         }
 
-        #[proof]
-        fn rev_tr2(pre: Y::State, post: Y::State) {
+        proof fn rev_tr2(pre: Y::State, post: Y::State) {
             requires(rel_tr2(pre, post));
             ensures(Y::State::tr2(pre, post));
         }
 
-        #[proof]
-        fn correct_tr2_strong(pre: Y::State, post: Y::State) {
+        proof fn correct_tr2_strong(pre: Y::State, post: Y::State) {
             requires(Y::State::tr2_strong(pre, post));
             ensures(rel_tr2_strong(pre, post));
         }
 
-        #[proof]
-        fn rev_tr2_strong(pre: Y::State, post: Y::State) {
+        proof fn rev_tr2_strong(pre: Y::State, post: Y::State) {
             requires(rel_tr2_strong(pre, post));
             ensures(Y::State::tr2_strong(pre, post));
         }
 
-        #[proof]
-        fn correct_tr3(pre: Y::State, post: Y::State) {
+        proof fn correct_tr3(pre: Y::State, post: Y::State) {
             requires(Y::State::tr3(pre, post));
             ensures(rel_tr3(pre, post));
         }
 
-        #[proof]
-        fn rev_tr3(pre: Y::State, post: Y::State) {
+        proof fn rev_tr3(pre: Y::State, post: Y::State) {
             requires(rel_tr3(pre, post));
             ensures(Y::State::tr3(pre, post));
         }
 
-        #[proof]
-        fn correct_tr3_strong(pre: Y::State, post: Y::State) {
+        proof fn correct_tr3_strong(pre: Y::State, post: Y::State) {
             requires(Y::State::tr3_strong(pre, post));
             ensures(rel_tr3_strong(pre, post));
         }
 
-        #[proof]
-        fn rev_tr3_strong(pre: Y::State, post: Y::State) {
+        proof fn rev_tr3_strong(pre: Y::State, post: Y::State) {
             requires(rel_tr3_strong(pre, post));
             ensures(Y::State::tr3_strong(pre, post));
         }
 
-        #[proof]
-        fn correct_tr4(pre: Y::State, post: Y::State) {
+        proof fn correct_tr4(pre: Y::State, post: Y::State) {
             requires(Y::State::tr4(pre, post));
             ensures(rel_tr4(pre, post));
         }
 
-        #[proof]
-        fn rev_tr4(pre: Y::State, post: Y::State) {
+        proof fn rev_tr4(pre: Y::State, post: Y::State) {
             requires(rel_tr4(pre, post));
             ensures(Y::State::tr4(pre, post));
         }
 
-        #[proof]
-        fn correct_tr4_strong(pre: Y::State, post: Y::State) {
+        proof fn correct_tr4_strong(pre: Y::State, post: Y::State) {
             requires(Y::State::tr4_strong(pre, post));
             ensures(rel_tr4_strong(pre, post));
         }
 
-        #[proof]
-        fn rev_tr4_strong(pre: Y::State, post: Y::State) {
+        proof fn rev_tr4_strong(pre: Y::State, post: Y::State) {
             requires(rel_tr4_strong(pre, post));
             ensures(Y::State::tr4_strong(pre, post));
         }
+
+        } // verus!
     } => Ok(())
 }
 
@@ -3789,106 +3740,92 @@ test_verify_one_file! {
             }
         }}
 
-        #[spec]
-        fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+        verus!{
+
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
             equal(pre.opt, post.opt) && equal(pre.storage_opt, post.storage_opt)
         }
 
-        #[spec]
-        fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
             equal(pre.opt, post.opt) && equal(pre.storage_opt, post.storage_opt)
         }
 
-        #[spec]
-        fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+        spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
             equal(pre.opt, post.opt) && equal(pre.storage_opt, post.storage_opt)
         }
 
-        #[spec]
-        fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+        spec fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
             equal(pre.opt, post.opt) && equal(pre.storage_opt, post.storage_opt)
         }
 
-        #[spec]
-        fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
+        spec fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
             equal(pre.opt, post.opt) && equal(pre.storage_opt, post.storage_opt)
         }
 
-        #[spec]
-        fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
+        spec fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
             equal(pre.opt, post.opt) && equal(pre.storage_opt, post.storage_opt)
         }
 
-        #[proof]
-        fn correct_tr1(pre: Y::State, post: Y::State) {
+        proof fn correct_tr1(pre: Y::State, post: Y::State) {
             requires(Y::State::tr1(pre, post));
             ensures(rel_tr1(pre, post));
         }
 
-        #[proof]
-        fn rev_tr1(pre: Y::State, post: Y::State) {
+        proof fn rev_tr1(pre: Y::State, post: Y::State) {
             requires(rel_tr1(pre, post));
             ensures(Y::State::tr1(pre, post));
         }
 
-        #[proof]
-        fn correct_tr1_strong(pre: Y::State, post: Y::State) {
+        proof fn correct_tr1_strong(pre: Y::State, post: Y::State) {
             requires(Y::State::tr1_strong(pre, post));
             ensures(rel_tr1_strong(pre, post));
         }
 
-        #[proof]
-        fn rev_tr1_strong(pre: Y::State, post: Y::State) {
+        proof fn rev_tr1_strong(pre: Y::State, post: Y::State) {
             requires(rel_tr1_strong(pre, post));
             ensures(Y::State::tr1_strong(pre, post));
         }
 
-        #[proof]
-        fn correct_tr2(pre: Y::State, post: Y::State) {
+        proof fn correct_tr2(pre: Y::State, post: Y::State) {
             requires(Y::State::tr2(pre, post));
             ensures(rel_tr2(pre, post));
         }
 
-        #[proof]
-        fn rev_tr2(pre: Y::State, post: Y::State) {
+        proof fn rev_tr2(pre: Y::State, post: Y::State) {
             requires(rel_tr2(pre, post));
             ensures(Y::State::tr2(pre, post));
         }
 
-        #[proof]
-        fn correct_tr2_strong(pre: Y::State, post: Y::State) {
+        proof fn correct_tr2_strong(pre: Y::State, post: Y::State) {
             requires(Y::State::tr2_strong(pre, post));
             ensures(rel_tr2_strong(pre, post));
         }
 
-        #[proof]
-        fn rev_tr2_strong(pre: Y::State, post: Y::State) {
+        proof fn rev_tr2_strong(pre: Y::State, post: Y::State) {
             requires(rel_tr2_strong(pre, post));
             ensures(Y::State::tr2_strong(pre, post));
         }
 
-        #[proof]
-        fn correct_tr3(pre: Y::State, post: Y::State) {
+        proof fn correct_tr3(pre: Y::State, post: Y::State) {
             requires(Y::State::tr3(pre, post));
             ensures(rel_tr3(pre, post));
         }
 
-        #[proof]
-        fn rev_tr3(pre: Y::State, post: Y::State) {
+        proof fn rev_tr3(pre: Y::State, post: Y::State) {
             requires(rel_tr3(pre, post));
             ensures(Y::State::tr3(pre, post));
         }
 
-        #[proof]
-        fn correct_tr3_strong(pre: Y::State, post: Y::State) {
+        proof fn correct_tr3_strong(pre: Y::State, post: Y::State) {
             requires(Y::State::tr3_strong(pre, post));
             ensures(rel_tr3_strong(pre, post));
         }
 
-        #[proof]
-        fn rev_tr3_strong(pre: Y::State, post: Y::State) {
+        proof fn rev_tr3_strong(pre: Y::State, post: Y::State) {
             requires(rel_tr3_strong(pre, post));
             ensures(Y::State::tr3_strong(pre, post));
+        }
+
         }
     } => Ok(())
 }
@@ -5830,11 +5767,15 @@ test_verify_one_file! {
           #[proof] let k = inst.tr8(spec_literal_int("1"), &u, &t); // FAILS
         }
 
-        fn test_precondition_have4(inst: Y::Instance, t: Y::opt, u: Y::m)
+        verus!{
+
+        proof fn test_precondition_have4(tracked inst: Y::Instance, tracked t: Y::opt, tracked u: Y::m)
         {
           requires(equal(t.instance, inst) && equal(u.instance, inst) && u.key == spec_literal_int("1")
               && equal(u.value, t.value));
-          #[proof] let k = inst.tr9(spec_literal_int("1"), &u, &t); // FAILS
+          let k = tracked inst.tr9(1, tracked &u, tracked &t); // FAILS
+        }
+
         }
     } => Err(e) => assert_fails(e, 10)
 }
