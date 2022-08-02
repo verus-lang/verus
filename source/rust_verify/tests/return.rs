@@ -67,6 +67,7 @@ test_verify_one_file! {
     #[test] test2_fails code! {
         fn test_ret(b: bool) {
             ensures(false);
+            requires(b);
 
             if b {
                 return; // FAILS

@@ -1213,7 +1213,7 @@ decreases version
   if version == 0 {
     init_state()
   } else {
-    update_state(state_at_version(log, version - 1), log.index(version as int - 1)).0
+    update_state(state_at_version(log, (version - 1) as nat), log.index(version as int - 1)).0
   }
 }
 

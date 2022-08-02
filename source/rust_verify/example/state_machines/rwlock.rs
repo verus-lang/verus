@@ -76,7 +76,7 @@ tokenized_state_machine!(RwLock {
         acquire_read_abandon() {
             remove pending_reader -= {()};
             assert(pre.flags.1 >= 1);
-            update flags = (pre.flags.0, pre.flags.1 - 1);
+            update flags = (pre.flags.0, (pre.flags.1 - 1) as nat);
         }
     }
 
@@ -137,15 +137,15 @@ tokenized_state_machine!(RwLock {
                 assert(equal(pre.storage, Option::Some(x)));
                 //assert(equal(x, pre.storage.get_Some_0()));
             };
-            update flags = (pre.flags.0, pre.flags.1 - 1);
+            update flags = (pre.flags.0, (pre.flags.1 - 1) as nat);
         }
     }
 
     #[invariant]
     pub fn exc_bit_matches(&self) -> bool {
-        (if self.flags.0 { 1 } else { 0 }) ==
-            (if self.pending_writer.is_Some() { 1 } else { 0 })
-            + (if self.writer.is_Some() { 1 } else { 0 })
+        (if self.flags.0 { 1 } else { 0 as int }) ==
+            (if self.pending_writer.is_Some() { 1 } else { 0 as int }) as int
+            + (if self.writer.is_Some() { 1 } else { 0 as int }) as int
     }
 
     #[invariant]

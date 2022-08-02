@@ -34,7 +34,7 @@ state_machine!{
             tr_inc() {
                 // Replace a single unstamped ticket with a stamped ticket
                 require(pre.unstamped_tickets >= 1);
-                update unstamped_tickets = pre.unstamped_tickets - 1;
+                update unstamped_tickets = (pre.unstamped_tickets - 1) as nat;
                 update stamped_tickets = pre.stamped_tickets + 1;
 
                 assert(pre.counter < pre.num_threads);
