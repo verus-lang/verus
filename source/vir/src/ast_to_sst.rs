@@ -1008,9 +1008,21 @@ fn expr_to_stm_opt(
             let ctor = ExpX::Ctor(p.clone(), i.clone(), Arc::new(args));
             Ok((stms, ReturnValue::Some(mk_exp(ctor))))
         }
-        ExprX::Unary(op, expr) => {
-            let (stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
+        ExprX::Unary(op, exprr) => {
+            let (mut stms, exp) = expr_to_stm_opt(ctx, state, exprr)?;
             let exp = unwrap_or_return_never!(exp, stms);
+            if let (true, UnaryOp::Clip(_)) = (state.checking_recommends(ctx), op) {
+                let unary = UnaryOpr::HasType(expr.typ.clone());
+                let has_type = ExpX::UnaryOpr(unary, exp.clone());
+                let has_type = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), has_type);
+                let error = air::errors::error(
+                    "recommendation not met: value may be out of range of the target type",
+                    &expr.span,
+                );
+                let assert = StmX::Assert(Some(error), has_type);
+                let assert = Spanned::new(expr.span.clone(), assert);
+                stms.push(assert);
+            }
             Ok((stms, ReturnValue::Some(mk_exp(ExpX::Unary(*op, exp)))))
         }
         ExprX::UnaryOpr(op, expr) => {
