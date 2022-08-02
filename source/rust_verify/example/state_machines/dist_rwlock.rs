@@ -1,5 +1,3 @@
-// rust_verify/tests/example.rs ignore
-
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
@@ -173,7 +171,7 @@ tokenized_state_machine!{
                 self.storage === Option::Some(v.1)
         }
 
-        closed spec fn filter_r(shared_guard: Multiset<(int, T)>, r: int) -> Multiset<(int, T)> {
+        pub closed spec fn filter_r(shared_guard: Multiset<(int, T)>, r: int) -> Multiset<(int, T)> {
             shared_guard.filter(|val| val.0 == r)
         }
 
@@ -375,6 +373,19 @@ impl<T> RwLock<T> {
             v.push(rc_atomic);
 
             i = i + 1;
+
+            assert_forall_by(|j: int| {
+                requires(i <= j && j < rc_width);
+                ensures(#[trigger] ref_counts_tokens.dom().contains(j)
+                      && equal(ref_counts_tokens.index(j).instance, inst)
+                      && equal(ref_counts_tokens.index(j).key, j)
+                      && equal(ref_counts_tokens.index(j).value, 0));
+
+                assert(ref_counts_tokens.dom().contains(j));
+                assert(equal(ref_counts_tokens.index(j).instance, inst));
+                assert(equal(ref_counts_tokens.index(j).key, j));
+                assert(equal(ref_counts_tokens.index(j).value, 0));
+            });
         }
 
         RwLock {
