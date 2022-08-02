@@ -267,12 +267,7 @@ fn get_var_loc_mode(
             x_mode
         }
         ExprX::Unary(
-            UnaryOp::CoerceMode {
-                op_mode,
-                from_mode,
-                to_mode,
-                kind: ModeCoercion::BorrowMut,
-            },
+            UnaryOp::CoerceMode { op_mode, from_mode, to_mode, kind: ModeCoercion::BorrowMut },
             e1,
         ) => {
             assert!(!init_not_mut);
