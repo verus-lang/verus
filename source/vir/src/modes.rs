@@ -797,6 +797,12 @@ fn check_expr_handle_mut_arg(
             }
             match (e1, typing.ret_mode) {
                 (None, _) => {}
+                (Some(v), None)
+                    if if let crate::ast::TypX::Tuple(tp) = &*v.typ {
+                        tp.len() == 0
+                    } else {
+                        false
+                    } => {}
                 (_, None) => panic!("internal error: missing return type"),
                 (Some(e1), Some(ret_mode)) => {
                     check_expr_has_mode(typing, outer_mode, e1, ret_mode)?;
