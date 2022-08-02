@@ -316,7 +316,7 @@ test_verify_one_file! {
         fn test() {
             assert_by_compute_only(f_no_body(5) != f_no_body(6)); // FAILS
         }
-    } => Err(err) => assert_vir_error(err) 
+    } => Err(err) => assert_vir_error(err)
 }
 
 test_verify_one_file! {

@@ -211,16 +211,13 @@ impl fmt::Display for ExpX {
                         .join(", ");
                     write!(f, "let {} in {}", assigns, exp)
                 }
-                BndX::Quant(Quant { quant: q, ..}, bnds, _trigs) => {
+                BndX::Quant(Quant { quant: q, .. }, bnds, _trigs) => {
                     let q_str = match q {
                         air::ast::Quant::Forall => "forall",
                         air::ast::Quant::Exists => "exists",
                     };
-                    let vars = bnds
-                        .iter()
-                        .map(|b| format!("{}", b.name))
-                        .collect::<Vec<_>>()
-                        .join(", ");
+                    let vars =
+                        bnds.iter().map(|b| format!("{}", b.name)).collect::<Vec<_>>().join(", ");
 
                     write!(f, "({} |{}| {})", q_str, vars, exp)
                 }
@@ -229,12 +226,10 @@ impl fmt::Display for ExpX {
                         bnds.iter().map(|b| format!("{}", b.name)).collect::<Vec<_>>().join(", ");
                     write!(f, "(|{}| {})", assigns, exp)
                 }
-                BndX::Choose(bnds, _trigs, _cond) => { // REVIEW: Where is cond used?  Couldn't find an example syntax
-                    let vars = bnds
-                        .iter()
-                        .map(|b| format!("{}", b.name))
-                        .collect::<Vec<_>>()
-                        .join(", ");
+                BndX::Choose(bnds, _trigs, _cond) => {
+                    // REVIEW: Where is cond used?  Couldn't find an example syntax
+                    let vars =
+                        bnds.iter().map(|b| format!("{}", b.name)).collect::<Vec<_>>().join(", ");
                     write!(f, "(choose |{}| {})", vars, exp)
                 }
             },
@@ -256,7 +251,7 @@ impl fmt::Display for ExpX {
                     }
                 }
             }
-            Old(..) | WithTriggers(..) => Ok(()),  // We don't show the user these internal expressions
+            Old(..) | WithTriggers(..) => Ok(()), // We don't show the user these internal expressions
         }
     }
 }
