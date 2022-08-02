@@ -271,7 +271,7 @@ fn get_var_loc_mode(
                 op_mode,
                 from_mode,
                 to_mode,
-                kind: ModeCoercion::DerefMut | ModeCoercion::BorrowMut,
+                kind: ModeCoercion::BorrowMut,
             },
             e1,
         ) => {

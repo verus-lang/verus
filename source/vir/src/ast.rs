@@ -109,8 +109,11 @@ pub enum TriggerAnnotation {
 /// Operations on Ghost and Tracked
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ModeCoercion {
-    DerefMut,
+    /// Mutable borrows (Ghost::borrow_mut and Tracked::borrow_mut) are treated specially by
+    /// the mode checker when checking assignments.
     BorrowMut,
+    /// All other cases are treated uniformly by the mode checker based on their op/from/to-mode.
+    /// (This includes Ghost::borrow, Tracked::get, etc.)
     Other,
 }
 
