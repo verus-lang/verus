@@ -39,7 +39,7 @@ struct Node<V> {
 
 struct DListXor<V> {
     #[spec] ptrs: Seq<PPtr<Node<V>>>,
-    #[proof] perms: Map<nat, Permission<Node<V>>>,
+    #[proof] perms: Map<nat, PermissionOpt<Node<V>>>,
 
     head: u64,
     tail: u64,
@@ -80,15 +80,15 @@ impl<V> DListXor<V> {
 
         self.perms.dom().contains(i)
         &&
-        equal(self.perms.index(i).pptr, self.ptrs.index(i).id())
+        equal(self.perms.index(i).view().pptr, self.ptrs.index(i).id())
         &&
         0 < self.ptrs.index(i).id()
         &&
         self.ptrs.index(i).id() < 0x10000000000000000
         &&
-        self.perms.index(i).value.is_Some()
+        self.perms.index(i).view().value.is_Some()
         &&
-        self.perms.index(i).value.get_Some_0().xored == (
+        self.perms.index(i).view().value.get_Some_0().xored == (
             self.prev_of(i) ^ self.next_of(i)
         )
     }
@@ -122,7 +122,7 @@ impl<V> DListXor<V> {
         recommends(self.wf());
 
         Seq::<V>::new(self.ptrs.len(), |i: int| {
-            self.perms.index(i as nat).value.get_Some_0().v
+            self.perms.index(i as nat).view().value.get_Some_0().v
         })
     }
 
@@ -217,7 +217,7 @@ impl<V> DListXor<V> {
 
             #[spec] let i = self.ptrs.len() - 2;
             //assert(self.perms.dom().contains(i));
-            //assert(equal(self.perms.index(i).pptr, self.ptrs.index(i).view()));
+            //assert(equal(self.perms.index(i).view().pptr, self.ptrs.index(i).view()));
             //assert(self.perms.index(i).value.is_Some());
             #[spec] let prev_of_i = self.prev_of(i);
             assert_bit_vector(prev_of_i ^ 0 == prev_of_i);
@@ -319,7 +319,7 @@ impl<V> DListXor<V> {
             /*#[spec] let i = self.ptrs.len() - 1;
             assert(self.ptrs.len() == old(self).ptrs.len() - 1);
             assert(self.perms.dom().contains(i));
-            assert(equal(self.perms.index(i).pptr, self.ptrs.index(i).view()));
+            assert(equal(self.perms.index(i).view().pptr, self.ptrs.index(i).view()));
             assert(0 < self.ptrs.index(i).view());
             assert(self.ptrs.index(i).view() < 0x10000000000000000);
             assert(self.perms.index(i).value.is_Some());

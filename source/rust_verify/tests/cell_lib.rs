@@ -23,24 +23,24 @@ fn test_body(tests: &str, contradiction_smoke_test: bool) -> String {
 
 const CELL_TEST: &str = code_str! {
     let (cell, mut token) = PCell::<u32>::empty();
-    assert(equal((*token).pcell, cell.id()));
-    assert(equal((*token).value, option::Option::None));
+    assert(equal((*token).view().pcell, cell.id()));
+    assert(equal((*token).view().value, option::Option::None));
 
     cell.put(&mut token, 5);
-    assert(equal((*token).pcell, cell.id()));
-    assert(equal((*token).value, option::Option::Some(5)));
+    assert(equal((*token).view().pcell, cell.id()));
+    assert(equal((*token).view().value, option::Option::Some(5)));
 
     let x = cell.replace(&mut token, 7);
-    assert(equal((*token).pcell, cell.id()));
-    assert(equal((*token).value, option::Option::Some(7)));
+    assert(equal((*token).view().pcell, cell.id()));
+    assert(equal((*token).view().value, option::Option::Some(7)));
     assert(equal(x, 5));
 
     let t = cell.borrow(&token);
     assert(equal(*t, 7));
 
     let x = cell.take(&mut token);
-    assert(equal((*token).pcell, cell.id()));
-    assert(equal((*token).value, option::Option::None));
+    assert(equal((*token).view().pcell, cell.id()));
+    assert(equal((*token).view().value, option::Option::None));
     assert(equal(x, 7));
 };
 
@@ -54,24 +54,24 @@ test_verify_one_file! {
 
 const PTR_TEST: &str = code_str! {
     let (ptr, mut token) = PPtr::<u32>::empty();
-    assert(equal((*token).pptr, ptr.id()));
-    assert(equal((*token).value, option::Option::None));
+    assert(equal((*token).view().pptr, ptr.id()));
+    assert(equal((*token).view().value, option::Option::None));
 
     ptr.put(&mut token, 5);
-    assert(equal((*token).pptr, ptr.id()));
-    assert(equal((*token).value, option::Option::Some(5)));
+    assert(equal((*token).view().pptr, ptr.id()));
+    assert(equal((*token).view().value, option::Option::Some(5)));
 
     let x = ptr.replace(&mut token, 7);
-    assert(equal((*token).pptr, ptr.id()));
-    assert(equal((*token).value, option::Option::Some(7)));
+    assert(equal((*token).view().pptr, ptr.id()));
+    assert(equal((*token).view().value, option::Option::Some(7)));
     assert(equal(x, 5));
 
     let t = ptr.borrow(&token);
     assert(equal(*t, 7));
 
     let x = ptr.take(&mut token);
-    assert(equal((*token).pptr, ptr.id()));
-    assert(equal((*token).value, option::Option::None));
+    assert(equal((*token).view().pptr, ptr.id()));
+    assert(equal((*token).view().value, option::Option::None));
     assert(equal(x, 7));
 
     ptr.dispose(token);
@@ -271,7 +271,7 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-// Test that cell::Permission<T> correctly inherits the Send and Sync properties of T
+// Test that cell::PermissionOpt<T> correctly inherits the Send and Sync properties of T
 
 test_verify_one_file! {
     #[test] permission_inherits_sync IMPORTS.to_string() + code_str! {
@@ -284,7 +284,7 @@ test_verify_one_file! {
         pub fn f<T: Sync>(t: T) {
         }
 
-        pub fn foo(r: cell::Permission<Foo>) {
+        pub fn foo(r: cell::PermissionOpt<Foo>) {
             f(r);
         }
     } => Err(e) => assert_error_msg(e, "the trait `std::marker::Sync` is not implemented for `Foo`")
@@ -301,7 +301,7 @@ test_verify_one_file! {
         pub fn f<T: Send>(t: T) {
         }
 
-        pub fn foo(r: cell::Permission<Foo>) {
+        pub fn foo(r: cell::PermissionOpt<Foo>) {
             f(r);
         }
     } => Err(e) => assert_error_msg(e, "the trait `std::marker::Send` is not implemented for `Foo`")
