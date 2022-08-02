@@ -1307,7 +1307,6 @@ fn eval_expr_launch(
     let ctx = Ctx { fun_ssts: &fun_ssts, max_iterations };
     let res = eval_expr_internal(&ctx, &mut state, &exp)?;
     display_perf_stats(&state);
-    println!("Performed {} interpreter iterations", state.iterations);
     if state.log.is_some() {
         file_log_opt.replace(state.log.unwrap());
     }

@@ -146,6 +146,30 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] lets_bad code! {
+
+        #[spec]
+        fn f(n:nat) -> nat {
+            n + 1
+        }
+
+        fn test() {
+            assert_by_compute({
+                #[spec]
+                let x = 4;
+                #[spec]
+                let r1 = f(x);
+                #[spec]
+                let x = 5;
+                #[spec]
+                let r2 = f(x);
+                r1 == r2
+            });     // FAILS
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
     #[test] datatype code! {
         #[allow(unused_imports)]
         use pervasive::option::Option;
@@ -290,9 +314,9 @@ test_verify_one_file! {
         }
 
         fn test() {
-            assert_by_compute(f_no_body(5) != f_no_body(6)); // FAILS
+            assert_by_compute_only(f_no_body(5) != f_no_body(6)); // FAILS
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_vir_error(err) 
 }
 
 test_verify_one_file! {
@@ -310,26 +334,26 @@ test_verify_one_file! {
         }
 
         fn test() {
-            assert_by_compute(f_no_body(5) == g_no_body(5)); // FAILS
+            assert_by_compute_only(f_no_body(5) == g_no_body(5)); // FAILS
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_vir_error(err)
 }
 
 test_verify_one_file! {
     #[test] fn_calls_bad3 code! {
         mod privacy_invasion {
             #[allow(unused_imports)]
-            use builtin::assert_by_compute;
+            use builtin::assert_by_compute_only;
 
             mod mostly_private {
                 #[spec] pub fn f() -> u32 { 1 }
             }
 
             fn test() {
-                assert_by_compute(mostly_private::f() == 1); // FAILS
+                assert_by_compute_only(mostly_private::f() == 1); // FAILS
             }
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_vir_error(err)
 }
 
 test_verify_one_file! {
