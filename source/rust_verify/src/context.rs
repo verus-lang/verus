@@ -5,7 +5,6 @@ use rustc_span::SpanData;
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{Expr, InferMode, Mode, Pattern, Typ};
-use vir::context::GlobalStrings;
 
 #[derive(Debug)]
 pub struct ErasureInfo {

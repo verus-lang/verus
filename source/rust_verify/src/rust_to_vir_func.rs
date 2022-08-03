@@ -18,7 +18,6 @@ use vir::ast::{
     Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, KrateX, MaskSpec, Mode,
     ParamX, Typ, TypX, VirErr,
 };
-use vir::context::VerifiableString;
 use vir::def::RETURN_VALUE;
 
 pub(crate) fn body_to_vir<'tcx>(
@@ -92,57 +91,6 @@ fn find_body<'tcx>(ctxt: &Context<'tcx>, body_id: &BodyId) -> &'tcx Body<'tcx> {
 }
 
 
-fn check_strslice_new<'tcx>(sig: &'tcx FnSig<'tcx>) -> Result<(), VirErr> {
-
-    let (decl, span) = match sig {
-        FnSig { header: _, decl, span } => (decl, span),
-    };
-
-    let sig_span = span;
-    
-    let expected_input_num = 1;
-    if decl.inputs.len() != expected_input_num {
-        crate::err!(*span, format!("Expected {} input for StrSlice::new but got {}", expected_input_num, decl.inputs.len()));
-    }
-
-
-    let (kind, span) = match &decl.inputs[0].kind {
-        TyKind::Rptr(_, muty) => (&muty.ty.kind, muty.ty.span),
-        _ => crate::err!(decl.inputs[0].span, format!("Expected a Rptr") ),
-    };
-
-    
-    
-
-    let (res, span) = match kind {
-        TyKind::Path( QPath::Resolved(_, path)) => (path.res, path.span),
-        _ => crate::err!(span, format!("Expected a resolved path"))
-    };
-
-    if res != Res::PrimTy(PrimTy::Str) {
-        crate::err!(span, format!("Expected primitive type str"));
-    }
-    
-    
-    let (kind, span) = match decl.output {
-        FnRetTy::Return( Ty {hir_id: _, kind, span} ) => (kind, span),
-        _ => crate::err!(*sig_span, format!(""))
-    };
-
-
-
-    let (res, span) = match kind {
-        TyKind::Path( QPath::Resolved(_, path)) => (path.res, path.span), 
-        _ => crate::err!(*span, format!("Expected a resolved path"))
-    };
-
-    match res {
-        Res::SelfTy(_, _) => {}, 
-        _ => crate::err!(span, format!("Expected a Self, while StrSlice<'a> is a valid return type, this isn't suppported at the moment"))
-    };
-    Ok(())
-}
-
 fn check_new_strlit<'tcx>(ctx: &Context<'tcx>, sig: &'tcx FnSig<'tcx>) -> Result<(), VirErr> {
     let (decl, span) = match sig {
         FnSig {decl, span,..} => (decl, span)
@@ -215,7 +163,6 @@ pub(crate) fn check_item_fn<'tcx>(
     body_id: &BodyId,
 ) -> Result<Option<Fun>, VirErr> {
     let path = def_id_to_vir_path(ctxt.tcx, id);
-    let is_str_new = ctxt.tcx.is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice::new"), id);
     let is_new_strlit = ctxt.tcx.is_diagnostic_item(Symbol::intern("pervasive::string::new_strlit"), id);
 
  
@@ -253,11 +200,8 @@ pub(crate) fn check_item_fn<'tcx>(
         check_new_strlit(&ctxt, sig)?;
     }
 
-    if is_str_new {
-        check_strslice_new(sig)?;
-    }
 
-    if is_str_new || is_new_strlit {
+    if is_new_strlit {
         let mut erasure_info = ctxt.erasure_info.borrow_mut();
         unsupported_err_unless!(
             vattrs.external_body,
@@ -463,9 +407,7 @@ pub(crate) fn check_item_const<'tcx>(
     let vir_body = body_to_vir(ctxt, body_id, body, mode, vattrs.external_body)?;
 
     let is_string_literal = match &vir_body.x {
-        vir::ast::ExprX::Const(vir::ast::Constant::StrSlice(val, _)) => {
-            true
-        }, 
+        vir::ast::ExprX::Const(vir::ast::Constant::StrSlice(_, _)) => true, 
         _ => false
     };
     

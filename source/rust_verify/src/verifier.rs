@@ -23,7 +23,6 @@ use vir::ast_util::{fun_as_rust_dbg, fun_name_crate_relative, is_visible_to};
 use vir::def::SnapPos;
 use vir::def::{CommandsWithContext, CommandsWithContextX};
 use vir::recursion::Node;
-use vir::context::GlobalStrings;
 
 const RLIMIT_PER_SECOND: u32 = 3000000;
 
@@ -41,7 +40,6 @@ pub struct Verifier {
     pub args: Args,
     pub test_capture_output: Option<std::sync::Arc<std::sync::Mutex<Vec<u8>>>>,
     pub erasure_hints: Option<crate::erase::ErasureHints>,
-    pub global_strings: Option<GlobalStrings>,
     pub time_vir: Duration,
     pub time_vir_rust_to_vir: Duration,
     pub time_vir_verify: Duration,
@@ -163,7 +161,6 @@ impl Verifier {
             args,
             test_capture_output: None,
             erasure_hints: None,
-            global_strings: None,
             time_vir: Duration::new(0, 0),
             time_vir_rust_to_vir: Duration::new(0, 0),
             time_vir_verify: Duration::new(0, 0),

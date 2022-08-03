@@ -45,17 +45,6 @@ pub struct FunctionCtx {
     pub module_for_chosen_triggers: Option<Path>,
 }
 
-
-/// This stores information about whether a string should be emitted or not. 
-/// To make a string verifiable, one must simply call "reveal" on that string.
-#[derive(Clone, Debug)]
-pub struct VerifiableString {
-    pub inner_str: Arc<String>,
-    pub emitted: bool
-}
-
-pub type GlobalStrings = std::sync::Arc<std::sync::Mutex<HashMap<Path, Arc<VerifiableString>>>>;
-
 // Context for verifying one module
 pub struct Ctx {
     pub(crate) module: Path,

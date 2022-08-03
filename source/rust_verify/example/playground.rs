@@ -1,16 +1,13 @@
 mod pervasive;
 
 #[allow(unused_imports)]
-use builtin::*;
-#[allow(unused_imports)]
 use builtin_macros::*;
-#[allow(unused_imports)]
-use pervasive::string::*;
 
 verus! {
+    #[allow(unused_imports)]
     use pervasive::string::*; 
     const GREETING: StrSlice<'static> = new_strlit("Hello World", true);
-    const PARTIAL_GREETING: StrSlice<'static> = StrSlice::new("Hello");
+    const PARTIAL_GREETING: StrSlice<'static> = new_strlit("Hello", true);
     const OTHER_GREETING: StrSlice<'static> = new_strlit("Hello World!", true);
 
     fn string_lit<'a>() {

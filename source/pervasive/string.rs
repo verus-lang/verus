@@ -29,13 +29,6 @@ impl<'a> StrSlice<'a> {
 
     pub spec fn is_ascii(&self) -> bool;
 
-    #[rustc_diagnostic_item = "pervasive::string::StrSlice::new"]
-    #[verifier(external_body)]
-    pub const fn new(s: &'a str) -> (r: Self)
-    {
-        Self { inner: s }
-    }
-
     #[rustc_diagnostic_item = "pervasive::string::StrSlice::reveal"]
     #[verifier(external_body)]
     #[spec]

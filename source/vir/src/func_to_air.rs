@@ -1,11 +1,11 @@
 use crate::ast::{
-    Fun, FunX, Function, FunctionKind, GenericBoundX, Ident, Idents, IntRange, Mode, Param, ParamX,
-    Params, Path, SpannedTyped, Typ, TypX, Typs, VirErr,
+    Fun, Function, FunctionKind, GenericBoundX, Ident, Idents, IntRange, Mode, Param, ParamX,
+    Params, SpannedTyped, Typ, TypX, Typs, VirErr,
 };
-use crate::ast_util::{err_str, fun_as_rust_dbg, path_as_rust_name, QUANT_FORALL};
+use crate::ast_util::QUANT_FORALL;
 use crate::context::Ctx;
 use crate::def::{
-    fun_to_string, prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_pre_var,
+    prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_pre_var,
     prefix_recursive_fun, prefix_requires, suffix_global_id, suffix_local_stmt_id,
     suffix_typ_param_id, CommandsWithContext, CommandsWithContextX, SnapPos, Spanned, FUEL_BOOL,
     FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE, SUCC, ZERO,
@@ -18,7 +18,7 @@ use crate::sst_to_air::{
 use crate::util::vec_map;
 use crate::{avec, string_utils::*};
 use air::ast::{
-    BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Commands, Datatype, DeclX, Decl, Expr,
+    BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Commands, DeclX, Decl, Expr,
     ExprX, Quant, Span, Trigger, Triggers, Constant, MultiOp,
 };
 use air::ast_util::{

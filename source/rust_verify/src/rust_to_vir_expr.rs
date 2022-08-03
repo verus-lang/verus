@@ -36,7 +36,6 @@ use vir::ast::{
     PathX, PatternX, Quant, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
     VirErr,
 };
-use vir::context::VerifiableString;
 use vir::ast_util::{ident_binder, path_as_rust_name};
 use vir::def::positional_field_ident;
 
@@ -429,7 +428,6 @@ fn fn_call_to_vir<'tcx>(
     let is_panic = f_name == "core::panicking::panic";
     let is_alloc_ghost = f_name == "pervasive::modes::Ghost::<A>::exec";
     let is_alloc_tracked = f_name == "pervasive::modes::Tracked::<A>::exec";
-    let is_strslice_new = tcx.is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice::new"), f);  
     let is_new_strlit = tcx.is_diagnostic_item(Symbol::intern("pervasive::string::new_strlit"), f);
     let is_strslice_reveal = tcx.is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice::reveal"), f);
     let is_spec = is_admit
@@ -773,16 +771,6 @@ fn fn_call_to_vir<'tcx>(
     } else {
         Box::new(std::iter::repeat(None))
     };
-
-    if is_strslice_new {
-        let arg = args.first().expect("argument to StrSlice::new");
-        if let ExprKind::Lit(lit) = &arg.kind {
-            if let rustc_ast::LitKind::Str(s, _) = lit.node {
-                let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()), true);
-                return Ok(mk_expr(ExprX::Const(c)));
-            }
-        }
-    }
     
     if is_new_strlit {
         let arg0 = args[0];
@@ -805,7 +793,7 @@ fn fn_call_to_vir<'tcx>(
 
     if is_strslice_reveal {
         return match &expr.kind {
-            ExprKind::MethodCall(_, _, [arg0 @ Expr {hir_id:_, kind: ExprKind::Path(QPath::Resolved(_,Path {res: Res::Def(_, id), ..}) ), span,.. }], _) => {
+            ExprKind::MethodCall(_, _, [Expr {hir_id:_, kind: ExprKind::Path(QPath::Resolved(_,Path {res: Res::Def(_, id), ..}) ),.. }], _) => {
                 let mypath = def_id_to_vir_path(bctx.ctxt.tcx, *id);
                 Ok(mk_expr(ExprX::FuelString(mypath)))
             },
