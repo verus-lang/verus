@@ -664,6 +664,7 @@ impl Verifier {
         let mk_fun_ctx = |f: &Function, checking_recommends: bool| {
             Some(vir::context::FunctionCtx {
                 checking_recommends,
+                checking_recommends_for_non_spec: checking_recommends && f.x.mode != Mode::Spec,
                 module_for_chosen_triggers: f.x.visibility.owning_module.clone(),
                 current_fun: f.x.name.clone(),
             })
