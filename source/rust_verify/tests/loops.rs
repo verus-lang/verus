@@ -300,3 +300,17 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[ignore] #[test] regression_11_incorrect_loop_header verus_code! {
+        fn test() {
+            let mut a: u64 = 0;
+            while a < 100
+                invariant a <= 100
+            {
+                requires(a <= 100);
+                a = a + 1;
+            }
+        }
+    } => Err(e) => assert_vir_error(e)
+}
