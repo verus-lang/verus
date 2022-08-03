@@ -46,6 +46,12 @@ fn replace_self_shardable_type(stype: &mut ShardableType, path: &Path) {
         ShardableType::PersistentOption(ty) => {
             replace_self_type(ty, path);
         }
+        ShardableType::Set(ty) => {
+            replace_self_type(ty, path);
+        }
+        ShardableType::PersistentSet(ty) => {
+            replace_self_type(ty, path);
+        }
         ShardableType::Map(key, val) => {
             replace_self_type(key, path);
             replace_self_type(val, path);
@@ -65,6 +71,9 @@ fn replace_self_shardable_type(stype: &mut ShardableType, path: &Path) {
             replace_self_type(val, path);
         }
         ShardableType::Count => {}
+        ShardableType::PersistentCount => {}
+        ShardableType::Bool => {}
+        ShardableType::PersistentBool => {}
     }
 }
 
@@ -142,9 +151,11 @@ fn replace_self_ts(ts: &mut TransitionStmt, path: &Path) {
 
 fn replace_self_op(op: &mut SpecialOp, path: &Path) {
     match &mut op.elt {
+        MonoidElt::True => {}
         MonoidElt::OptionSome(None) => {}
         MonoidElt::OptionSome(Some(e))
         | MonoidElt::SingletonMultiset(e)
+        | MonoidElt::SingletonSet(e)
         | MonoidElt::General(e)
         | MonoidElt::SingletonKV(e, None) => {
             replace_self_expr(e, path);

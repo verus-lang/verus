@@ -42,7 +42,7 @@ struct Node<V> {
 
 struct DListXor<V> {
     ptrs: Ghost<Seq<PPtr<Node<V>>>>,
-    perms: Tracked<Map<nat, Permission<Node<V>>>>,
+    perms: Tracked<Map<nat, PermissionOpt<Node<V>>>>,
 
     head: u64,
     tail: u64,
@@ -77,11 +77,11 @@ impl<V> DListXor<V> {
         recommends i < self.ptrs@.len()
     {
         &&& self.perms@.dom().contains(i)
-        &&& self.perms@[i].pptr === self.ptrs@[i as int].id()
+        &&& self.perms@[i].view().pptr === self.ptrs@[i as int].id()
         &&& 0 < self.ptrs@[i as int].id()
         &&& self.ptrs@[i as int].id() < 0x10000000000000000
-        &&& self.perms@[i].value.is_Some()
-        &&& self.perms@[i].value.get_Some_0().xored == (
+        &&& self.perms@[i].view().value.is_Some()
+        &&& self.perms@[i].view().value.get_Some_0().xored == (
             self.prev_of(i) ^ self.next_of(i)
         )
     }
@@ -112,7 +112,7 @@ impl<V> DListXor<V> {
     {
 
         Seq::<V>::new(self.ptrs@.len(), |i: int| {
-            self.perms@[i as nat].value.get_Some_0().v
+            self.perms@[i as nat]@.value.get_Some_0().v
         })
     }
 
@@ -179,7 +179,7 @@ impl<V> DListXor<V> {
             let tail_ptr_u64 = self.tail;
             proof { lemma_usize_u64(tail_ptr_u64); }
             let tail_ptr = PPtr::<Node<V>>::from_usize(tail_ptr_u64 as usize);
-            let mut tail_perm: Tracked<Permission<Node<V>>> = tracked(
+            let mut tail_perm: Tracked<PermissionOpt<Node<V>>> = tracked(
                 (tracked self.perms.borrow_mut()).tracked_remove((self.ptrs@.len() - 1) as nat)
             );
             let mut tail_node = tail_ptr.take(&mut tail_perm);
@@ -211,7 +211,7 @@ impl<V> DListXor<V> {
 
                 let i = (self.ptrs@.len() - 2) as nat;
                 //assert(self.perms@.dom().contains(i));
-                //assert(self.perms@[i].pptr === self.ptrs@[i]@);
+                //assert(self.perms@[i]@.pptr === self.ptrs@[i]@);
                 //assert(self.perms@[i].value.is_Some());
                 let prev_of_i = self.prev_of(i);
                 assert_bit_vector(prev_of_i ^ 0 == prev_of_i);
@@ -251,7 +251,7 @@ impl<V> DListXor<V> {
         let last_u64 = self.tail;
         proof { lemma_usize_u64(last_u64); }
         let last_ptr = PPtr::<Node<V>>::from_usize(last_u64 as usize);
-        let last_perm: Tracked<Permission<Node<V>>> = tracked(
+        let last_perm: Tracked<PermissionOpt<Node<V>>> = tracked(
             (tracked self.perms.borrow_mut()).tracked_remove((self.ptrs@.len() - 1) as nat)
         );
         let last_node = last_ptr.into_inner(last_perm);
@@ -320,7 +320,7 @@ impl<V> DListXor<V> {
                 /*#[spec] let i = self.ptrs@.len() - 1;
                 assert(self.ptrs@.len() == old(self).ptrs@.len() - 1);
                 assert(self.perms@.dom().contains(i));
-                assert(self.perms@[i].pptr === self.ptrs@[i]@);
+                assert(self.perms@[i]@.pptr === self.ptrs@[i]@);
                 assert(0 < self.ptrs@[i]@);
                 assert(self.ptrs@[i]@ < 0x10000000000000000);
                 assert(self.perms@[i].value.is_Some());

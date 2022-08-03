@@ -343,7 +343,9 @@ fn parse_monoid_stmt(
 
 /// Parse the element to be added, removed, etc. Looks like one of:
 ///
-/// * `{x}` multiset singleton
+/// * `{x}` multiset singleton (TODO change to `multiset {...}`?
+/// * `set {x}` set singleton
+/// * `true`
 /// * `[key => value]` map singleton
 /// * `Some(x)` optional value
 /// * `(x)` general value
@@ -381,6 +383,15 @@ fn parse_monoid_elt(
             let e: Expr = content.parse()?;
             Ok((MonoidElt::OptionSome(Some(e)), None))
         }
+    } else if peek_keyword(input.cursor(), "set") {
+        let _ = keyword(input, "set");
+        let content;
+        let _ = braced!(content in input);
+        let e: Expr = content.parse()?;
+        Ok((MonoidElt::SingletonSet(e), None))
+    } else if peek_keyword(input.cursor(), "true") {
+        let _ = keyword(input, "true");
+        Ok((MonoidElt::True, None))
     } else if input.peek(token::Paren) {
         let content;
         let _ = parenthesized!(content in input);

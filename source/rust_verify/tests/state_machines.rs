@@ -9,6 +9,7 @@ const IMPORTS: &str = code_str! {
     #[allow(unused_imports)] use crate::pervasive::result::*;
     #[allow(unused_imports)] use crate::pervasive::option::*;
     #[allow(unused_imports)] use crate::pervasive::map::*;
+    #[allow(unused_imports)] use crate::pervasive::set::*;
     #[allow(unused_imports)] use crate::pervasive::multiset::*;
     #[allow(unused_imports)] use builtin::*;
     #[allow(unused_imports)] use builtin_macros::*;
@@ -1220,6 +1221,17 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] wrong_form_set IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(set)]
+                pub t: Multiset<int>,
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "must be of the form Set<_>")
+}
+
+test_verify_one_file! {
     #[test] wrong_form_count IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1228,6 +1240,17 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_error_msg(e, "must be nat")
+}
+
+test_verify_one_file! {
+    #[test] wrong_form_bool IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(bool)]
+                pub t: int,
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "must be bool")
 }
 
 test_verify_one_file! {
@@ -2519,6 +2542,40 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_error_msg(e, "element but the given field has sharding strategy 'multiset'")
+}
+
+test_verify_one_file! {
+    #[test] wrong_op_multiset_add_set IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(multiset)]
+                pub t: Multiset<int>,
+            }
+
+            transition!{
+                tr() {
+                    add t += set { 5 };
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "element but the given field has sharding strategy 'multiset'")
+}
+
+test_verify_one_file! {
+    #[test] wrong_op_set_add_multiset IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(set)]
+                pub t: Set<int>,
+            }
+
+            transition!{
+                tr() {
+                    add t += { 5 };
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "element but the given field has sharding strategy 'set'")
 }
 
 test_verify_one_file! {
@@ -4372,7 +4429,6 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] bind_fail_add IMPORTS.to_string() + code_str! {
-
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(option)]
@@ -4390,7 +4446,6 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] bind_fail_deposit IMPORTS.to_string() + code_str! {
-
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(storage_option)]
@@ -4408,7 +4463,6 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] bind_fail_guard IMPORTS.to_string() + code_str! {
-
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(storage_option)]
@@ -4460,7 +4514,6 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] assert_require_let_codegen IMPORTS.to_string() + code_str! {
-
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(variable)]
@@ -4623,7 +4676,6 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] count_codegen IMPORTS.to_string() + code_str! {
-
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(count)]
@@ -4758,6 +4810,57 @@ test_verify_one_file! {
             transition!{
                 tr_remove() {
                     remove c -= [1 => 2];
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
+}
+
+test_verify_one_file! {
+    #[test] persistent_bool_remove_fail IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(persistent_bool)]
+                pub c: bool,
+            }
+
+            transition!{
+                tr_remove() {
+                    remove c -= true;
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
+}
+
+test_verify_one_file! {
+    #[test] persistent_count_remove_fail IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(persistent_count)]
+                pub c: nat,
+            }
+
+            transition!{
+                tr_remove() {
+                    remove c -= (1);
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
+}
+
+test_verify_one_file! {
+    #[test] persistent_set_remove_fail IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(persistent_set)]
+                pub c: Set<int>,
+            }
+
+            transition!{
+                tr_remove() {
+                    remove c -= set { 1 };
                 }
             }
         }}
@@ -5862,4 +5965,665 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_error_msg(e, "the first param to a 'readonly'")
+}
+
+test_verify_one_file! {
+    #[test] bool_codegen IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(bool)]
+                pub b: bool,
+            }
+
+            init!{
+                init_false() {
+                    init b = false;
+                }
+            }
+
+            init!{
+                init_true() {
+                    init b = true;
+                }
+            }
+
+            transition!{
+                tr_add() {
+                    add b += true by {
+                        assert(pre.b === false); // FAILS
+                    };
+                }
+            }
+
+            transition!{
+                tr_have() {
+                    have b >= true;
+                }
+            }
+
+            transition!{
+                tr_remove() {
+                    remove b -= true;
+                }
+            }
+
+            transition!{
+                tr_add_gen(x: bool) {
+                    add b += (x) by {
+                        assert(pre.b === false || x === false); // FAILS
+                    };
+                }
+            }
+
+            transition!{
+                tr_have_gen(x: bool) {
+                    have b >= (x);
+                }
+            }
+
+            transition!{
+                tr_remove_gen(x: bool) {
+                    remove b -= (x);
+                }
+            }
+        }}
+
+        verus!{
+
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            pre.b === false ==> post.b === true
+        }
+
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.b === false && post.b === true
+        }
+
+        spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+            pre.b === true && post.b === true
+        }
+
+        spec fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.b === true && post.b === true
+        }
+
+        spec fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
+            pre.b === true && post.b === false
+        }
+
+        spec fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.b === true && post.b === false
+        }
+
+        spec fn rel_tr4(pre: Y::State, post: Y::State, x: bool) -> bool {
+            (!pre.b || !x) ==> (post.b === (pre.b || x))
+        }
+
+        spec fn rel_tr4_strong(pre: Y::State, post: Y::State, x: bool) -> bool {
+            (!pre.b || !x) && (post.b === (pre.b || x))
+        }
+
+        spec fn rel_tr5(pre: Y::State, post: Y::State, x: bool) -> bool {
+            (x ==> pre.b) && (post.b === pre.b)
+        }
+
+        spec fn rel_tr5_strong(pre: Y::State, post: Y::State, x: bool) -> bool {
+            (x ==> pre.b) && (post.b === pre.b)
+        }
+
+        spec fn rel_tr6(pre: Y::State, post: Y::State, x: bool) -> bool {
+            (x ==> pre.b) && (post.b === (pre.b && !x))
+        }
+
+        spec fn rel_tr6_strong(pre: Y::State, post: Y::State, x: bool) -> bool {
+            (x ==> pre.b) && (post.b === (pre.b && !x))
+        }
+
+        }
+
+        #[proof]
+        fn correct_tr(pre: Y::State, post: Y::State, x: bool) {
+            ensures([
+                rel_tr1(pre, post) == Y::State::tr_add(pre, post),
+                rel_tr1_strong(pre, post) == Y::State::tr_add_strong(pre, post),
+                rel_tr2(pre, post) == Y::State::tr_have(pre, post),
+                rel_tr2_strong(pre, post) == Y::State::tr_have_strong(pre, post),
+                rel_tr3(pre, post) == Y::State::tr_remove(pre, post),
+                rel_tr3_strong(pre, post) == Y::State::tr_remove_strong(pre, post),
+
+                rel_tr4(pre, post, x) == Y::State::tr_add_gen(pre, post, x),
+                rel_tr4_strong(pre, post, x) == Y::State::tr_add_gen_strong(pre, post, x),
+                rel_tr5(pre, post, x) == Y::State::tr_have_gen(pre, post, x),
+                rel_tr5_strong(pre, post, x) == Y::State::tr_have_gen_strong(pre, post, x),
+                rel_tr6(pre, post, x) == Y::State::tr_remove_gen(pre, post, x),
+                rel_tr6_strong(pre, post, x) == Y::State::tr_remove_gen_strong(pre, post, x),
+            ]);
+        }
+
+        fn test_inst1() {
+            #[proof] let (inst, token_f) = Y::Instance::init_false();
+            assert(token_f.is_None());
+
+            #[proof] let tok = inst.tr_add();
+            assert(equal(tok.instance, inst));
+            inst.tr_have(&tok);
+            inst.tr_remove(tok);
+
+            #[proof] let opt_tok = inst.tr_add_gen(true);
+            assert(opt_tok.is_Some());
+            assert(equal(opt_tok.get_Some_0().instance, inst));
+            inst.tr_have_gen(true, &opt_tok);
+            inst.tr_remove_gen(true, opt_tok);
+
+            #[proof] let opt_tok = inst.tr_add_gen(false);
+            assert(opt_tok.is_None());
+            inst.tr_have_gen(false, &opt_tok);
+            inst.tr_remove_gen(false, opt_tok);
+        }
+
+        fn test_inst1_fail() {
+            #[proof] let (inst, token_f) = Y::Instance::init_false();
+            assert(token_f.is_None());
+
+            #[proof] let opt_tok = inst.tr_add_gen(false);
+            assert(opt_tok.is_None());
+            inst.tr_have_gen(true, &opt_tok);   // FAILS
+        }
+
+        fn test_inst2() {
+            #[proof] let (inst, token_t) = Y::Instance::init_true();
+            assert(token_t.is_Some());
+            assert(equal(token_t.get_Some_0().instance, inst));
+        }
+    } => Err(e) => assert_fails(e, 3)
+}
+
+test_verify_one_file! {
+    #[test] persistent_bool_codegen IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(persistent_bool)]
+                pub b: bool,
+            }
+
+            init!{
+                init_false() {
+                    init b = false;
+                }
+            }
+
+            init!{
+                init_true() {
+                    init b = true;
+                }
+            }
+
+            transition!{
+                tr_add() {
+                    add b += true;
+                }
+            }
+
+            transition!{
+                tr_have() {
+                    have b >= true;
+                }
+            }
+
+            transition!{
+                tr_add_gen(x: bool) {
+                    add b += (x);
+                }
+            }
+
+            transition!{
+                tr_have_gen(x: bool) {
+                    have b >= (x);
+                }
+            }
+        }}
+
+        verus!{
+
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            post.b === true
+        }
+
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            post.b === true
+        }
+
+        spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+            pre.b === true && post.b === true
+        }
+
+        spec fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.b === true && post.b === true
+        }
+
+        spec fn rel_tr4(pre: Y::State, post: Y::State, x: bool) -> bool {
+            (post.b === (pre.b || x))
+        }
+
+        spec fn rel_tr4_strong(pre: Y::State, post: Y::State, x: bool) -> bool {
+            (post.b === (pre.b || x))
+        }
+
+        spec fn rel_tr5(pre: Y::State, post: Y::State, x: bool) -> bool {
+            (x ==> pre.b) && (post.b === pre.b)
+        }
+
+        spec fn rel_tr5_strong(pre: Y::State, post: Y::State, x: bool) -> bool {
+            (x ==> pre.b) && (post.b === pre.b)
+        }
+
+        }
+
+        #[proof]
+        fn correct_tr(pre: Y::State, post: Y::State, x: bool) {
+            ensures([
+                rel_tr1(pre, post) == Y::State::tr_add(pre, post),
+                rel_tr1_strong(pre, post) == Y::State::tr_add_strong(pre, post),
+                rel_tr2(pre, post) == Y::State::tr_have(pre, post),
+                rel_tr2_strong(pre, post) == Y::State::tr_have_strong(pre, post),
+
+                rel_tr4(pre, post, x) == Y::State::tr_add_gen(pre, post, x),
+                rel_tr4_strong(pre, post, x) == Y::State::tr_add_gen_strong(pre, post, x),
+                rel_tr5(pre, post, x) == Y::State::tr_have_gen(pre, post, x),
+                rel_tr5_strong(pre, post, x) == Y::State::tr_have_gen_strong(pre, post, x),
+            ]);
+        }
+
+        fn test_inst1() {
+            #[proof] let (inst, token_f) = Y::Instance::init_false();
+            assert(token_f.is_None());
+
+            #[proof] let tok = inst.tr_add();
+            assert(equal(tok.instance, inst));
+            inst.tr_have(&tok);
+
+            #[proof] let tok1 = tok.clone();
+            assert(equal(tok, tok1));
+
+            #[proof] let opt_tok = inst.tr_add_gen(true);
+            assert(opt_tok.is_Some());
+            assert(equal(opt_tok.get_Some_0().instance, inst));
+            inst.tr_have_gen(true, &opt_tok);
+
+            #[proof] let opt_tok = inst.tr_add_gen(false);
+            assert(opt_tok.is_None());
+            inst.tr_have_gen(false, &opt_tok);
+        }
+
+        fn test_inst1_fail() {
+            #[proof] let (inst, token_f) = Y::Instance::init_false();
+            assert(token_f.is_None());
+
+            #[proof] let opt_tok = inst.tr_add_gen(false);
+            assert(opt_tok.is_None());
+            inst.tr_have_gen(true, &opt_tok);   // FAILS
+        }
+
+        fn test_inst2() {
+            #[proof] let (inst, token_t) = Y::Instance::init_true();
+            assert(token_t.is_Some());
+            assert(equal(token_t.get_Some_0().instance, inst));
+        }
+    } => Err(e) => assert_fails(e, 1)
+}
+
+test_verify_one_file! {
+    #[test] persistent_count_codegen IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(persistent_count)]
+                pub c: nat,
+            }
+
+            init!{
+                initialize() {
+                    init c = 9;
+                }
+            }
+
+            transition!{
+                tr_add() {
+                    add c += (2);
+                }
+            }
+
+            transition!{
+                tr_have() {
+                    have c >= (2);
+                }
+            }
+        }}
+
+        verus!{
+
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            post.c == if pre.c <= 2 { 2 } else { pre.c }
+        }
+
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            post.c == if pre.c <= 2 { 2 } else { pre.c }
+        }
+
+        spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+            pre.c >= 2 && post.c == pre.c
+        }
+
+        spec fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.c >= 2 && post.c == pre.c
+        }
+
+        proof fn correct_tr(pre: Y::State, post: Y::State) {
+            ensures([
+                rel_tr1(pre, post) == Y::State::tr_add(pre, post),
+                rel_tr1_strong(pre, post) == Y::State::tr_add_strong(pre, post),
+                rel_tr2(pre, post) == Y::State::tr_have(pre, post),
+                rel_tr2_strong(pre, post) == Y::State::tr_have_strong(pre, post),
+            ]);
+        }
+
+        }
+
+        fn test_inst() {
+            #[proof] let (inst, t1) = Y::Instance::initialize();
+            assert(t1.value == spec_literal_nat("9"));
+
+            #[proof] let t2 = t1.weaken(spec_literal_nat("2"));
+
+            inst.tr_have(&t2);
+
+            #[proof] let t4 = inst.tr_add();
+            assert(t4.value == spec_literal_nat("2"));
+
+            #[proof] let t2_clone = t2.clone();
+            assert(equal(t2, t2_clone));
+        }
+
+        fn test_weaken_fail() {
+            #[proof] let (inst, t1) = Y::Instance::initialize();
+            #[proof] let t2 = t1.weaken(spec_literal_nat("800")); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 1)
+}
+
+test_verify_one_file! {
+    #[test] set_codegen IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(set)]
+                pub b: Set<int>,
+            }
+
+            init!{
+                initialize() {
+                    init b = Set::empty().insert(19);
+                }
+            }
+
+            transition!{
+                tr_add() {
+                    add b += set { 5 }; // FAILS
+                }
+            }
+
+            transition!{
+                tr_have() {
+                    have b >= set { 5 };
+                }
+            }
+
+            transition!{
+                tr_remove() {
+                    remove b -= set { 5 };
+                }
+            }
+
+            transition!{
+                tr_add_gen() {
+                    add b += (Set::empty().insert(6)); // FAILS
+                }
+            }
+
+            transition!{
+                tr_have_gen() {
+                    have b >= (Set::empty().insert(6));
+                }
+            }
+
+            transition!{
+                tr_remove_gen() {
+                    remove b -= (Set::empty().insert(6));
+                }
+            }
+        }}
+
+        verus!{
+
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            !pre.b.contains(5)
+            ==> post.b === pre.b.insert(5)
+        }
+
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            !pre.b.contains(5)
+            && post.b === pre.b.insert(5)
+        }
+
+        spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(5)
+            && pre.b === post.b
+        }
+
+        spec fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(5)
+            && pre.b === post.b
+        }
+
+        spec fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(5)
+            && post.b === pre.b.remove(5)
+        }
+
+        spec fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(5)
+            && post.b === pre.b.remove(5)
+        }
+
+        spec fn rel_tr4(pre: Y::State, post: Y::State) -> bool {
+            !pre.b.contains(6)
+            ==> post.b === pre.b.union(Set::empty().insert(6))
+        }
+
+        spec fn rel_tr4_strong(pre: Y::State, post: Y::State) -> bool {
+            !pre.b.contains(6)
+            && post.b === pre.b.union(Set::empty().insert(6))
+        }
+
+        spec fn rel_tr5(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(6)
+            && pre.b === post.b
+        }
+
+        spec fn rel_tr5_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(6)
+            && pre.b === post.b
+        }
+
+        spec fn rel_tr6(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(6)
+            && post.b === pre.b.difference(Set::empty().insert(6))
+        }
+
+        spec fn rel_tr6_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(6)
+            && post.b === pre.b.difference(Set::empty().insert(6))
+        }
+
+        }
+
+        #[proof]
+        fn correct_tr(pre: Y::State, post: Y::State) {
+            ensures([
+                rel_tr1(pre, post) == Y::State::tr_add(pre, post),
+                rel_tr1_strong(pre, post) == Y::State::tr_add_strong(pre, post),
+                rel_tr2(pre, post) == Y::State::tr_have(pre, post),
+                rel_tr2_strong(pre, post) == Y::State::tr_have_strong(pre, post),
+                rel_tr3(pre, post) == Y::State::tr_remove(pre, post),
+                rel_tr3_strong(pre, post) == Y::State::tr_remove_strong(pre, post),
+
+                rel_tr4(pre, post) == Y::State::tr_add_gen(pre, post),
+                rel_tr4_strong(pre, post) == Y::State::tr_add_gen_strong(pre, post),
+                rel_tr5(pre, post) == Y::State::tr_have_gen(pre, post),
+                rel_tr5_strong(pre, post) == Y::State::tr_have_gen_strong(pre, post),
+                rel_tr6(pre, post) == Y::State::tr_remove_gen(pre, post),
+                rel_tr6_strong(pre, post) == Y::State::tr_remove_gen_strong(pre, post),
+            ]);
+        }
+
+        #[proof]
+        fn test_inst1() {
+            #[proof] let (inst, token_f) = Y::Instance::initialize();
+            assert(Set::empty().insert(spec_literal_int("19")).contains(spec_literal_int("19")));
+            assert(token_f.contains(Y![
+                inst => b => spec_literal_int("19")
+            ]));
+
+            #[proof] let token1 = inst.tr_add();
+            assert(equal(token1.instance, inst));
+            assert(token1.value == spec_literal_int("5"));
+            inst.tr_have(&token1);
+            inst.tr_remove(token1);
+
+            #[proof] let token_set = inst.tr_add_gen();
+            assert(Set::empty().insert(spec_literal_int("6")).contains(spec_literal_int("6")));
+            assert(token_set.contains(Y![
+                inst => b => spec_literal_int("6")
+            ]));
+            inst.tr_have_gen(&token_set);
+            inst.tr_remove_gen(token_set);
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file! {
+    #[test] persistent_set_codegen IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(persistent_set)]
+                pub b: Set<int>,
+            }
+
+            init!{
+                initialize() {
+                    init b = Set::empty().insert(19);
+                }
+            }
+
+            transition!{
+                tr_add() {
+                    add b += set { 5 };
+                }
+            }
+
+            transition!{
+                tr_have() {
+                    have b >= set { 5 };
+                }
+            }
+
+            transition!{
+                tr_add_gen() {
+                    add b += (Set::empty().insert(6));
+                }
+            }
+
+            transition!{
+                tr_have_gen() {
+                    have b >= (Set::empty().insert(6));
+                }
+            }
+        }}
+
+        verus!{
+
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            post.b === pre.b.insert(5)
+        }
+
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            post.b === pre.b.insert(5)
+        }
+
+        spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(5)
+            && pre.b === post.b
+        }
+
+        spec fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(5)
+            && pre.b === post.b
+        }
+
+        spec fn rel_tr4(pre: Y::State, post: Y::State) -> bool {
+            post.b === pre.b.union(Set::empty().insert(6))
+        }
+
+        spec fn rel_tr4_strong(pre: Y::State, post: Y::State) -> bool {
+            post.b === pre.b.union(Set::empty().insert(6))
+        }
+
+        spec fn rel_tr5(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(6)
+            && pre.b === post.b
+        }
+
+        spec fn rel_tr5_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(6)
+            && pre.b === post.b
+        }
+
+        }
+
+        #[proof]
+        fn correct_tr(pre: Y::State, post: Y::State) {
+            ensures([
+                rel_tr1(pre, post) == Y::State::tr_add(pre, post),
+                rel_tr1_strong(pre, post) == Y::State::tr_add_strong(pre, post),
+                rel_tr2(pre, post) == Y::State::tr_have(pre, post),
+                rel_tr2_strong(pre, post) == Y::State::tr_have_strong(pre, post),
+
+                rel_tr4(pre, post) == Y::State::tr_add_gen(pre, post),
+                rel_tr4_strong(pre, post) == Y::State::tr_add_gen_strong(pre, post),
+                rel_tr5(pre, post) == Y::State::tr_have_gen(pre, post),
+                rel_tr5_strong(pre, post) == Y::State::tr_have_gen_strong(pre, post),
+            ]);
+        }
+
+        #[proof]
+        fn test_inst1() {
+            #[proof] let (inst, token_f) = Y::Instance::initialize();
+            assert(Set::empty().insert(spec_literal_int("19")).contains(spec_literal_int("19")));
+            assert(token_f.contains(Y![
+                inst => b => spec_literal_int("19")
+            ]));
+
+            #[proof] let token1 = inst.tr_add();
+            assert(equal(token1.instance, inst));
+            assert(token1.value == spec_literal_int("5"));
+            inst.tr_have(&token1);
+
+            let token1_clone = token1.clone();
+            assert(equal(token1_clone, token1));
+
+            #[proof] let token_set = inst.tr_add_gen();
+            assert(Set::empty().insert(spec_literal_int("6")).contains(spec_literal_int("6")));
+            assert(token_set.contains(Y![
+                inst => b => spec_literal_int("6")
+            ]));
+            inst.tr_have_gen(&token_set);
+        }
+    } => Ok(())
 }
