@@ -135,13 +135,13 @@ impl Spawnable<Proof<X::stamped_tickets>> for ThreadData {
     fn pre(self) -> bool {
         (*self.globals).wf()
         && equal(self.token.instance, (*self.globals).instance)
-        && self.token.value == 1
+        && self.token.count == 1
     }
 
     #[spec]
     fn post(self, new_token: Proof<X::stamped_tickets>) -> bool {
         equal(new_token.0.instance, (*self.globals).instance)
-        && new_token.0.value == 1
+        && new_token.0.count == 1
     }
 
     // ANCHOR: thread_run
@@ -196,12 +196,12 @@ fn do_count(num_threads: u32) {
         invariant([
             0 <= i,
             i <= num_threads,
-            unstamped_tokens.value + i as int == num_threads as int,
+            unstamped_tokens.count + i as int == num_threads as int,
             equal(unstamped_tokens.instance, instance),
             join_handles.view().len() == i as int,
             forall(|j: int, ret| 0 <= j && j < i >>=
                 join_handles.view().index(j).predicate(ret) >>=
-                    equal(ret.0.instance, instance) && ret.0.value == 1),
+                    equal(ret.0.instance, instance) && ret.0.count == 1),
             (*global_arc).wf(),
             equal((*global_arc).instance, instance),
         ]);
@@ -226,12 +226,12 @@ fn do_count(num_threads: u32) {
         invariant([
             0 <= i,
             i <= num_threads,
-            stamped_tokens.value == i as int,
+            stamped_tokens.count == i as int,
             equal(stamped_tokens.instance, instance),
             join_handles.view().len() as int + i as int == num_threads,
             forall(|j: int, ret| 0 <= j && j < join_handles.view().len() >>=
                 #[trigger] join_handles.view().index(j).predicate(ret) >>=
-                    equal(ret.0.instance, instance) && ret.0.value == 1),
+                    equal(ret.0.instance, instance) && ret.0.count == 1),
             (*global_arc).wf(),
             equal((*global_arc).instance, instance),
         ]);

@@ -4751,21 +4751,21 @@ test_verify_one_file! {
 
         fn test_inst() {
             #[proof] let (inst, t1) = Y::Instance::initialize();
-            assert(t1.value == spec_literal_nat("9"));
+            assert(t1.count == spec_literal_nat("9"));
 
             #[proof] let (t2, t3) = t1.split(spec_literal_nat("2"));
 
-            assert(t2.value == spec_literal_nat("2"));
-            assert(t3.value == spec_literal_nat("7"));
+            assert(t2.count == spec_literal_nat("2"));
+            assert(t3.count == spec_literal_nat("7"));
 
             inst.tr_have(&t2);
             inst.tr_remove(t2);
 
             #[proof] let t4 = inst.tr_add();
-            assert(t4.value == spec_literal_nat("2"));
+            assert(t4.count == spec_literal_nat("2"));
 
             #[proof] let q = t4.join(t3);
-            assert(q.value == spec_literal_nat("9"));
+            assert(q.count == spec_literal_nat("9"));
         }
 
         fn test_join_fail() {
@@ -6329,14 +6329,14 @@ test_verify_one_file! {
 
         fn test_inst() {
             #[proof] let (inst, t1) = Y::Instance::initialize();
-            assert(t1.value == spec_literal_nat("9"));
+            assert(t1.count == spec_literal_nat("9"));
 
             #[proof] let t2 = t1.weaken(spec_literal_nat("2"));
 
             inst.tr_have(&t2);
 
             #[proof] let t4 = inst.tr_add();
-            assert(t4.value == spec_literal_nat("2"));
+            assert(t4.count == spec_literal_nat("2"));
 
             #[proof] let t2_clone = t2.clone();
             assert(equal(t2, t2_clone));
@@ -6487,7 +6487,8 @@ test_verify_one_file! {
         fn test_inst1() {
             #[proof] let (inst, token_f) = Y::Instance::initialize();
             assert(Set::empty().insert(spec_literal_int("19")).contains(spec_literal_int("19")));
-            assert(token_f.contains(Y![
+            assert(token_f.dom().contains(spec_literal_int("19")));
+            assert(equal(token_f.index(spec_literal_int("19")), Y![
                 inst => b => spec_literal_int("19")
             ]));
 
@@ -6499,7 +6500,8 @@ test_verify_one_file! {
 
             #[proof] let token_set = inst.tr_add_gen();
             assert(Set::empty().insert(spec_literal_int("6")).contains(spec_literal_int("6")));
-            assert(token_set.contains(Y![
+            assert(token_set.dom().contains(spec_literal_int("6")));
+            assert(equal(token_set.index(spec_literal_int("6")), Y![
                 inst => b => spec_literal_int("6")
             ]));
             inst.tr_have_gen(&token_set);
@@ -6606,7 +6608,8 @@ test_verify_one_file! {
         fn test_inst1() {
             #[proof] let (inst, token_f) = Y::Instance::initialize();
             assert(Set::empty().insert(spec_literal_int("19")).contains(spec_literal_int("19")));
-            assert(token_f.contains(Y![
+            assert(token_f.dom().contains(spec_literal_int("19")));
+            assert(equal(token_f.index(spec_literal_int("19")), Y![
                 inst => b => spec_literal_int("19")
             ]));
 
@@ -6620,7 +6623,8 @@ test_verify_one_file! {
 
             #[proof] let token_set = inst.tr_add_gen();
             assert(Set::empty().insert(spec_literal_int("6")).contains(spec_literal_int("6")));
-            assert(token_set.contains(Y![
+            assert(token_set.dom().contains(spec_literal_int("6")));
+            assert(equal(token_set.index(spec_literal_int("6")), Y![
                 inst => b => spec_literal_int("6")
             ]));
             inst.tr_have_gen(&token_set);

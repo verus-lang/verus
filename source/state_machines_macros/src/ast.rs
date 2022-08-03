@@ -217,6 +217,18 @@ pub struct Arm {
     pub comma: Option<token::Comma>,
 }
 
+/// The 'Split' is a generic node that handles any kind of control flow or variable binding.
+/// The variables being bound are determined by any Pats in the contents of the SplitKind.
+/// Meanwhile each node has n children depending on the SplitKind.
+///
+///   * If - 2 children
+///   * Match - 1 child per arm
+///   * Let - 1 child
+///   * Special - 1 child
+///      * Note that many (most, in fact) special nodes don't bind any variables at all.
+///        If the special node doesn't have a Pat then we always construct the node
+///        so that its child is an empty block.
+
 #[derive(Clone, Debug)]
 pub enum SplitKind {
     If(Expr),

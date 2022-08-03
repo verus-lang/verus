@@ -65,6 +65,7 @@ impl<T> Duplicable<T> {
     #[spec]
     pub fn wf(self) -> bool {
         equal(self.reader.instance, self.inst)
+        && equal(self.reader.count, 1)
     }
 
     #[spec]
@@ -78,7 +79,7 @@ impl<T> Duplicable<T> {
         ensures(|s: Self| s.wf() && equal(s.view(), t));
 
         #[proof] let (inst, mut readers) = Dupe::Instance::initialize_one(/* spec */ t, Option::Some(t));
-        #[proof] let reader = readers.tracked_remove(Dupe::reader { value: t, instance: inst });
+        #[proof] let reader = readers.tracked_remove(t);
         Duplicable {
             inst, reader
         }
@@ -254,6 +255,7 @@ impl<S> MyRc<S> {
     fn wf(self) -> bool {
         equal(self.reader.value.view().pptr, self.ptr.id())
         && equal(self.reader.instance, self.inst)
+        && equal(self.reader.count, 1)
         && self.reader.value.view().value.is_Some()
         && self.inv.wf()
         && (forall(|g: GhostStuff<S>| self.inv.view().inv(g) ==
