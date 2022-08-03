@@ -272,19 +272,30 @@ fn extract_choose<'tcx>(
     }
 }
 
-fn mk_clip<'tcx>(range: &IntRange, expr: &vir::ast::Expr) -> vir::ast::Expr {
+fn mk_clip<'tcx>(
+    range: &IntRange,
+    expr: &vir::ast::Expr,
+    recommends_assume_truncate: bool,
+) -> vir::ast::Expr {
     match range {
         IntRange::Int => expr.clone(),
         range => SpannedTyped::new(
             &expr.span,
             &Arc::new(TypX::Int(*range)),
-            ExprX::Unary(UnaryOp::Clip(*range), expr.clone()),
+            ExprX::Unary(
+                UnaryOp::Clip { range: *range, truncate: recommends_assume_truncate },
+                expr.clone(),
+            ),
         ),
     }
 }
 
-fn mk_ty_clip<'tcx>(typ: &Typ, expr: &vir::ast::Expr) -> vir::ast::Expr {
-    mk_clip(&get_range(typ), expr)
+fn mk_ty_clip<'tcx>(
+    typ: &Typ,
+    expr: &vir::ast::Expr,
+    recommends_assume_truncate: bool,
+) -> vir::ast::Expr {
+    mk_clip(&get_range(typ), expr, recommends_assume_truncate)
 }
 
 fn check_lit_int(
@@ -1163,7 +1174,14 @@ fn fn_call_to_vir<'tcx>(
             (TypX::Int(IntRange::U(_)), TypX::Int(IntRange::Nat)) => Ok(source_vir),
             (TypX::Int(IntRange::USize), TypX::Int(IntRange::Nat)) => Ok(source_vir),
             (TypX::Int(IntRange::Nat), TypX::Int(IntRange::Nat)) => Ok(source_vir),
-            (TypX::Int(_), TypX::Int(_)) => return Ok(mk_ty_clip(&to_ty, &source_vir)),
+            (TypX::Int(IntRange::Int), TypX::Int(IntRange::Nat)) => {
+                return Ok(mk_ty_clip(&to_ty, &source_vir, true));
+            }
+            (TypX::Int(_), TypX::Int(_)) => {
+                let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
+                let expr_vattrs = get_verifier_attrs(expr_attrs)?;
+                return Ok(mk_ty_clip(&to_ty, &source_vir, expr_vattrs.truncate));
+            }
             _ => {
                 return err_span_str(
                     expr.span,
@@ -1236,7 +1254,7 @@ fn fn_call_to_vir<'tcx>(
         };
         let e = mk_expr(ExprX::Binary(vop, lhs, rhs));
         if is_arith_binary || is_spec_arith_binary {
-            Ok(mk_ty_clip(&expr_typ(), &e))
+            Ok(mk_ty_clip(&expr_typ(), &e, true))
         } else {
             Ok(e)
         }
@@ -1868,6 +1886,16 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
         Ok(mk_expr(ExprX::Const(vir::ast::Constant::Nat(Arc::new(i.to_string())))))
     };
 
+    let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
+    let expr_vattrs = get_verifier_attrs(expr_attrs)?;
+    // TODO
+    // if !matches!(&expr.kind, ExprKind::Cast(_, _)) && expr_vattrs.truncate {
+    //     return err_span_str(
+    //         expr.span,
+    //         "the attribute #[verifier(truncate)] is only allowed on casts (you may need parentheses around the cast)"
+    //     );
+    // }
+
     match &expr.kind {
         ExprKind::Block(body, _) => {
             if is_invariant_block(bctx, expr)? {
@@ -1978,7 +2006,9 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             let source_ty = &source_vir.typ;
             let to_ty = expr_typ();
             match (&**source_ty, &*to_ty) {
-                (TypX::Int(_), TypX::Int(_)) => Ok(mk_ty_clip(&to_ty, &source_vir)),
+                (TypX::Int(_), TypX::Int(_)) => {
+                    Ok(mk_ty_clip(&to_ty, &source_vir, expr_vattrs.truncate))
+                }
                 _ => {
                     return err_span_str(
                         expr.span,
@@ -2099,12 +2129,14 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             };
             let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs));
             match op.node {
-                BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => Ok(mk_ty_clip(&expr_typ(), &e)),
+                BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => {
+                    Ok(mk_ty_clip(&expr_typ(), &e, true))
+                }
                 BinOpKind::Div | BinOpKind::Rem => {
                     match mk_range(tc.node_type(expr.hir_id)) {
                         IntRange::Int | IntRange::Nat | IntRange::U(_) | IntRange::USize => {
                             // Euclidean division
-                            Ok(mk_ty_clip(&expr_typ(), &e))
+                            Ok(mk_ty_clip(&expr_typ(), &e, true))
                         }
                         IntRange::I(_) | IntRange::ISize => {
                             // Non-Euclidean division, which will need more encoding

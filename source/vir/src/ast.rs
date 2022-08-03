@@ -137,7 +137,7 @@ pub enum UnaryOp {
     /// Each trigger group becomes one SMT trigger containing all the expressions in the trigger group.
     Trigger(TriggerAnnotation),
     /// Force integer value into range given by IntRange (e.g. by using mod)
-    Clip(IntRange),
+    Clip { range: IntRange, truncate: bool },
     /// Operations that coerce from/to builtin::Ghost or builtin::Tracked
     CoerceMode { op_mode: Mode, from_mode: Mode, to_mode: Mode, kind: ModeCoercion },
     /// Internal consistency check to make sure finalize_exp gets called

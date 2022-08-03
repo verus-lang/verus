@@ -523,9 +523,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             let hint = match op {
                 UnaryOp::BitNot => expr_ctxt.bit_vector_typ_hint.clone(),
-                UnaryOp::Clip(range @ (IntRange::U(..) | IntRange::I(..))) => {
-                    Some(Arc::new(TypX::Int(*range)))
-                }
+                UnaryOp::Clip {
+                    range: range @ (IntRange::U(..) | IntRange::I(..)),
+                    truncate: _,
+                } => Some(Arc::new(TypX::Int(*range))),
                 _ => None,
             };
             let expr_ctxt = &expr_ctxt.set_bit_vector_typ_hint(hint);
@@ -541,7 +542,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 }
                 // bitvector type casting by 'as' keyword
                 // via converting Clip into concat/extract
-                UnaryOp::Clip(IntRange::U(new_n) | IntRange::I(new_n)) => {
+                UnaryOp::Clip { range: IntRange::U(new_n) | IntRange::I(new_n), .. } => {
                     match &*exp.typ {
                         TypX::Int(IntRange::U(old_n) | IntRange::I(old_n)) => {
                             // expand with zero using concat
@@ -572,7 +573,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         }
                     }
                 }
-                UnaryOp::Clip(_) => {
+                UnaryOp::Clip { .. } => {
                     return err_string(
                         &exp.span,
                         format!(
@@ -623,8 +624,8 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 clip_bitwise_result(bit_expr, exp)?
             }
             UnaryOp::Trigger(_) => exp_to_expr(ctx, exp, expr_ctxt)?,
-            UnaryOp::Clip(IntRange::Int) => exp_to_expr(ctx, exp, expr_ctxt)?,
-            UnaryOp::Clip(range) => {
+            UnaryOp::Clip { range: IntRange::Int, .. } => exp_to_expr(ctx, exp, expr_ctxt)?,
+            UnaryOp::Clip { range, .. } => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 let f_name = match range {
                     IntRange::Int => panic!("internal error: Int"),

@@ -667,7 +667,7 @@ fn is_small_exp(exp: &Exp) -> bool {
         ExpX::Const(_) => true,
         ExpX::Var(..) | ExpX::VarAt(..) => true,
         ExpX::Old(..) => true,
-        ExpX::Unary(UnaryOp::Not | UnaryOp::Clip(_), e) => is_small_exp_or_loc(e),
+        ExpX::Unary(UnaryOp::Not | UnaryOp::Clip { .. }, e) => is_small_exp_or_loc(e),
         ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), e) => is_small_exp_or_loc(e),
         _ => false,
     }
@@ -1011,7 +1011,9 @@ fn expr_to_stm_opt(
         ExprX::Unary(op, exprr) => {
             let (mut stms, exp) = expr_to_stm_opt(ctx, state, exprr)?;
             let exp = unwrap_or_return_never!(exp, stms);
-            if let (true, UnaryOp::Clip(_)) = (state.checking_recommends(ctx), op) {
+            if let (true, UnaryOp::Clip { truncate: false, .. }) =
+                (state.checking_recommends(ctx), op)
+            {
                 let unary = UnaryOpr::HasType(expr.typ.clone());
                 let has_type = ExpX::UnaryOpr(unary, exp.clone());
                 let has_type = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), has_type);
