@@ -537,11 +537,14 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
             }
         }
         ExprKind::Assign(e1, e2, span) => {
-            let e1_var_span = match &e1.kind {
-                rustc_ast::ExprKind::Unary(rustc_ast::UnOp::Deref, e) => e.span,
-                _ => e1.span,
-            };
-            let mode1 = *mctxt.find_span(&ctxt.var_modes, e1_var_span);
+            fn underef(e: &Expr) -> &Expr {
+                match &e.kind {
+                    rustc_ast::ExprKind::Paren(e) => underef(e),
+                    rustc_ast::ExprKind::Unary(rustc_ast::UnOp::Deref, e) => e,
+                    _ => e,
+                }
+            }
+            let mode1 = *mctxt.find_span(&ctxt.var_modes, underef(e1).span);
             if keep_mode(ctxt, mode1) {
                 let e1 = erase_expr(ctxt, mctxt, mode1, e1);
                 let e2 = erase_expr(ctxt, mctxt, mode1, e2);

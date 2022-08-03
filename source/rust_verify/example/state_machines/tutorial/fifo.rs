@@ -571,7 +571,7 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
         let (cell, cell_perm) = PCell::empty();
         backing_cells_vec.push(cell);
 
-        perms.tracked_insert(i, tracked_get(cell_perm));
+        perms.tracked_insert(i, cell_perm.get());
 
         assert(perms.dom().contains(i as nat));
         assert(equal(backing_cells_vec.index(i as nat).id(), perms.index(i as nat).view().pcell));
@@ -671,7 +671,7 @@ impl<T> Producer<T> {
                 // from uninitialized to initialized (to the value t).
                 let mut cell_perm = tracked_exec(cell_perm);
                 queue.buffer.index(self.tail).put(&mut cell_perm, t);
-                #[proof] let cell_perm = tracked_get(cell_perm);
+                #[proof] let cell_perm = cell_perm.get();
 
                 // Store the updated tail to the shared `tail` atomic,
                 // while performing the `produce_end` transition.
@@ -725,7 +725,7 @@ impl<T> Consumer<T> {
                 };
                 let mut cell_perm = tracked_exec(cell_perm);
                 let t = queue.buffer.index(self.head).take(&mut cell_perm);
-                #[proof] let cell_perm = tracked_get(cell_perm);
+                #[proof] let cell_perm = cell_perm.get();
 
                 atomic_with_ghost!(&queue.head => store(next_head as u64); ghost head_token => {
                     queue.instance.consume_end(cell_perm,

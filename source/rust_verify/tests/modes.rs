@@ -36,8 +36,8 @@ test_verify_one_file! {
             let s = S { i, j };
         }
         fn test3(i: bool, j: Ghost<bool>) {
-            let s: Ghost<S> = ghost(S { i: Ghost::new(i), j: *j });
-            let jj: Ghost<bool> = ghost((*s).j);
+            let s: Ghost<S> = ghost(S { i: Ghost::new(i), j: j@ });
+            let jj: Ghost<bool> = ghost(s@.j);
         }
     } => Ok(())
 }
@@ -62,7 +62,7 @@ test_verify_one_file! {
             j: bool,
         }
         fn test(i: bool, j: Ghost<bool>) {
-            let s = S { i: ghost(i), j: *j };
+            let s = S { i: ghost(i), j: j@ };
         }
     } => Err(_) => ()
 }
@@ -106,91 +106,88 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] struct_fails4a code! {
+    #[test] struct_fails4a verus_code! {
         struct S {
-            #[spec] i: bool,
+            ghost i: bool,
             j: bool,
         }
         fn test(s: Ghost<S>) -> bool {
-            s.j
+            s@.j
         }
     } => Err(err) => assert_vir_error(err)
 }
 
 test_verify_one_file! {
-    #[test] struct_fails4b code! {
+    #[test] struct_fails4b verus_code! {
         struct S {
-            #[spec] i: bool,
+            ghost i: bool,
             j: bool,
         }
         fn test(s: &Ghost<S>) -> bool {
-            s.j
+            s@.j
         }
     } => Err(err) => assert_vir_error(err)
 }
 
 test_verify_one_file! {
-    #[test] struct_fails4c code! {
+    #[test] struct_fails4c verus_code! {
         struct S {
-            #[spec] i: bool,
+            ghost i: bool,
             j: bool,
         }
         fn test(s: Ghost<&S>) -> bool {
-            s.j
+            s@.j
         }
     } => Err(err) => assert_vir_error(err)
 }
 
 test_verify_one_file! {
-    #[test] struct_fails5a code! {
+    #[test] struct_fails5a verus_code! {
         struct S {
-            #[spec] i: bool,
+            ghost i: bool,
             j: bool,
         }
         impl S {
-            #[spec]
-            fn get_j(self) -> bool {
+            spec fn get_j(self) -> bool {
                 self.j
             }
         }
         fn test(s: Ghost<S>) -> bool {
-            s.get_j()
+            s@.get_j()
         }
     } => Err(err) => assert_vir_error(err)
 }
 
 test_verify_one_file! {
-    #[test] struct_fails5b code! {
+    #[test] struct_fails5b verus_code! {
         struct S {
-            #[spec] i: bool,
+            ghost i: bool,
             j: bool,
         }
         impl S {
-            #[spec]
-            fn get_j(self) -> bool {
+            spec fn get_j(self) -> bool {
                 self.j
             }
         }
         fn test(s: &Ghost<S>) -> bool {
-            s.get_j()
+            s@.get_j()
         }
     } => Err(err) => assert_vir_error(err)
 }
 
 test_verify_one_file! {
-    #[test] struct_fails5c code! {
+    #[test] struct_fails5c verus_code! {
         struct S {
-            #[spec] i: bool,
+            ghost i: bool,
             j: bool,
         }
         impl S {
-            #[spec]
-            fn get_j(self) -> bool {
+            spec fn get_j(self) -> bool {
                 self.j
             }
         }
         fn test(s: Ghost<&S>) -> bool {
-            s.get_j()
+            s@.get_j()
         }
     } => Err(err) => assert_vir_error(err)
 }
@@ -621,9 +618,201 @@ test_verify_one_file! {
         fn foo<V>(x: Tracked<V>) {
             let y = &x;
 
-            assert(equal((**y), (*x)));
-            assert(equal((**y), x.value()));
-            assert(equal((*y).value(), x.value()));
+            assert(equal((*y).view(), x.view()));
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] ghost_wrapper_assign_fail1 verus_code! {
+        use pervasive::modes::*;
+
+        fn f() {
+            let g: Ghost<bool> = ghost(true);
+            proof {
+                let tracked t: bool = g@; // fails: tracked <- ghost assign
+            }
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] ghost_wrapper_assign_fail2 verus_code! {
+        use pervasive::modes::*;
+
+        fn f() {
+            let g: Ghost<bool> = ghost(true);
+            let e: bool = g@; // fails: exec <- ghost assign
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] ghost_wrapper_assign_fail3 verus_code! {
+        use pervasive::modes::*;
+
+        fn f() {
+            let mut e: bool = false;
+            proof {
+                e = true; // fails: exec assign from proof mode
+            }
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] ghost_wrapper_assign_fail4 verus_code! {
+        use pervasive::modes::*;
+
+        fn f(t: Tracked<bool>) {
+            let g: Ghost<bool> = ghost(true);
+            let mut t = t;
+            proof {
+                t@ = g@; // fails: tracked <- ghost assign
+            }
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] ghost_wrapper_call_fail1 verus_code! {
+        use pervasive::modes::*;
+
+        fn f(x: bool) {
+        }
+
+        fn g(g: Ghost<bool>) {
+            f(g@); // fails, exec <- ghost assign
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] ghost_wrapper_call_fail2 verus_code! {
+        use pervasive::modes::*;
+
+        fn f(x: bool) {
+        }
+
+        fn g(t: Tracked<bool>) {
+            f(t@); // fails, exec <- tracked assign
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] ghost_wrapper_call_fail3 verus_code! {
+        use pervasive::modes::*;
+
+        proof fn f(tracked x: bool) {
+        }
+
+        fn g(g: Ghost<bool>) {
+            proof {
+                f(g@); // fails, tracked <- ghost assign
+            }
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] ghost_wrapper_call_mut_fail1 verus_code! {
+        use pervasive::modes::*;
+
+        fn f(x: &mut bool) {
+        }
+
+        fn g(g: Ghost<bool>) {
+            let mut g = g;
+            f(g.borrow_mut()); // fails, exec <- ghost assign
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] ghost_wrapper_call_mut_fail2 verus_code! {
+        use pervasive::modes::*;
+
+        fn f(x: &mut bool) {
+        }
+
+        fn g(t: Tracked<bool>) {
+            let mut t = t;
+            f(t.borrow_mut()); // fails, exec <- tracked assign
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] ghost_wrapper_call_mut_fail3 verus_code! {
+        use pervasive::modes::*;
+
+        proof fn f(tracked x: &mut bool) {
+        }
+
+        fn g(g: Ghost<bool>) {
+            let mut g = g;
+            proof {
+                f(g.borrow_mut()); // fails, tracked <- ghost assign
+            }
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] ghost_wrapper_call_mut_fail4 verus_code! {
+        use pervasive::modes::*;
+
+        proof fn f(x: &mut bool) {
+        }
+
+        fn g(t: Tracked<bool>) {
+            let mut t = t;
+            proof {
+                f(t.borrow_mut()); // fails, tracked <- ghost out assign
+            }
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] ghost_wrapper_assign_struct_fail1 verus_code! {
+        use pervasive::modes::*;
+        struct S {
+            e: bool,
+        }
+        fn f(g: Ghost<S>) {
+            proof {
+                let tracked t: bool = g@.e; // fails: tracked <- ghost assign
+            }
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] ghost_wrapper_assign_struct_fail2 verus_code! {
+        use pervasive::modes::*;
+        struct S {
+            e: bool,
+        }
+        fn f(g: Ghost<S>) {
+            let e: bool = g@.e; // fails: exec <- ghost assign
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] ghost_wrapper_assign_struct_fail3 verus_code! {
+        use pervasive::modes::*;
+        struct S {
+            e: bool,
+        }
+        fn f(t: Tracked<S>) {
+            let g: Ghost<bool> = ghost(true);
+            let mut t = t;
+            proof {
+                t@.e = g@; // fails: tracked <- ghost assign
+            }
+        }
+    } => Err(e) => assert_vir_error(e)
 }

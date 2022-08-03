@@ -21,7 +21,7 @@ fn main() {
 
     pcell.put(&mut token, x);
 
-    assert((*token)@.value === option::Option::Some(X { i : 5 }));
+    assert(token@@.value === option::Option::Some(X { i : 5 }));
 }
 
 }

@@ -278,10 +278,10 @@ impl<S> MyRc<S> {
 
         #[proof] let (inst, mut rc_token, _) = RefCounter::Instance::initialize_empty(Option::None);
         
-        #[proof] let ptr_perm = tracked_get(ptr_perm);
+        #[proof] let ptr_perm = ptr_perm.get();
         #[proof] let reader = inst.do_deposit(ptr_perm, &mut rc_token, ptr_perm);
 
-        #[proof] let g = GhostStuff::<S> { rc_perm: tracked_get(rc_perm), rc_token };
+        #[proof] let g = GhostStuff::<S> { rc_perm: rc_perm.get(), rc_token };
 
         #[proof] let inv = LocalInvariant::new(g,
             |g: GhostStuff<S>|
@@ -328,7 +328,7 @@ impl<S> MyRc<S> {
                 &mut rc_token,
                 &self.reader);
                 
-            g = GhostStuff { rc_perm: tracked_get(rc_perm), rc_token };
+            g = GhostStuff { rc_perm: rc_perm.get(), rc_token };
         });
 
         MyRc {
@@ -380,7 +380,7 @@ impl<S> MyRc<S> {
                 ptr.dispose(inner_rc_perm);
             }
 
-            g = GhostStuff { rc_perm: tracked_get(rc_perm), rc_token };
+            g = GhostStuff { rc_perm: rc_perm.get(), rc_token };
         });
     }
 }
