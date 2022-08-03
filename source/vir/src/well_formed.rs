@@ -100,10 +100,13 @@ fn check_one_expr(
             if let Some(dt) = ctxt.dts.get(path) {
                 if let Some(module) = &function.x.visibility.owning_module {
                     if !is_datatype_transparent(&module, dt) {
-                        return err_str(
+                        return Err(error(
+                            "constructor of datatype with inaccessible fields",
                             &expr.span,
-                            "constructor of datatype with inaccessible fields here",
-                        );
+                        ).secondary_label(
+                            &dt.span,
+                            "a datatype is treated as opaque whenever at least one field is not visible"
+                        ));
                     }
                 }
                 match (disallow_private_access, &dt.x.transparency, dt.x.visibility.is_private) {
@@ -121,10 +124,13 @@ fn check_one_expr(
             if let Some(dt) = ctxt.dts.get(path) {
                 if let Some(module) = &function.x.visibility.owning_module {
                     if !is_datatype_transparent(&module, dt) {
-                        return err_str(
+                        return Err(error(
+                            "field access of datatype with inaccessible fields",
                             &expr.span,
-                            "field access of datatype with inaccessible fields here",
-                        );
+                        ).secondary_label(
+                            &dt.span,
+                            "a datatype is treated as opaque whenever at least one field is not visible"
+                        ));
                     }
                 }
                 if let Some(msg) = disallow_private_access {
