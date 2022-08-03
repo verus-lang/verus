@@ -140,7 +140,7 @@ pub fn verify_files_and_pervasive(
     let captured_output = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let captured_output_1 = captured_output.clone();
 
-    let pervasive_path = match std::env::var("PERVASIVE_PATH") {
+    let pervasive_path = match std::env::var("TEST_PERVASIVE_PATH") {
         Ok(path) if !verify_pervasive => path,
         _ => "../pervasive".to_string(),
     };
