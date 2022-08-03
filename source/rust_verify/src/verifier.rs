@@ -704,9 +704,10 @@ impl Verifier {
                 .iter()
                 .map(|(_, (f, _))| f)
                 .filter(|f| Some(module.clone()) == f.x.visibility.owning_module);
-            let module_fun_names: Vec<String> =
+            let mut module_fun_names: Vec<String> =
                 module_funs.map(|f| fun_name_crate_relative(&module, &f.x.name)).collect();
             if !module_fun_names.iter().any(|f| f == verify_function) {
+                module_fun_names.sort();
                 let msg = vec![
                     format!(
                         "could not find function {verify_function} specified by --verify-function"
