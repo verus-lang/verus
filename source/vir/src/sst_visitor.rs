@@ -162,7 +162,7 @@ where
                         expr_visitor_control_flow!(stm_visitor_dfs(rhs, f));
                     }
                 }
-                StmX::AssertQuery { body, mode: _, typ_inv_vars: _ } => {
+                StmX::AssertQuery { body, mode: _, typ_inv_vars: _, spinoff_prover: _ } => {
                     expr_visitor_control_flow!(stm_visitor_dfs(body, f));
                 }
                 StmX::While {
@@ -210,7 +210,7 @@ where
             StmX::AssertBV(exp) => {
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
             }
-            StmX::AssertQuery { body: _, typ_inv_vars: _, mode: _ } => (),
+            StmX::AssertQuery { body: _, typ_inv_vars: _, mode: _, spinoff_prover: _ } => (),
             StmX::Assume(exp) => {
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
             }
@@ -548,11 +548,16 @@ where
             );
             fe(&stm)
         }
-        StmX::AssertQuery { mode, typ_inv_vars, body } => {
+        StmX::AssertQuery { mode, typ_inv_vars, body, spinoff_prover } => {
             let body = map_stm_visitor(body, fe)?;
             let stm = Spanned::new(
                 stm.span.clone(),
-                StmX::AssertQuery { mode: *mode, typ_inv_vars: typ_inv_vars.clone(), body },
+                StmX::AssertQuery {
+                    mode: *mode,
+                    typ_inv_vars: typ_inv_vars.clone(),
+                    body,
+                    spinoff_prover: *spinoff_prover,
+                },
             );
             fe(&stm)
         }

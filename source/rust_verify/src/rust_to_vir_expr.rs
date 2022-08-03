@@ -849,11 +849,15 @@ fn fn_call_to_vir<'tcx>(
         }
         let ensures = header.ensure;
         let proof = vir_expr;
+
+        let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
+        let expr_vattrs = get_verifier_attrs(expr_attrs)?;
         return Ok(mk_expr(ExprX::AssertQuery {
             requires,
             ensures,
             proof,
             mode: AssertQueryMode::NonLinear,
+            spinoff_prover: expr_vattrs.spinoff_prover,
         }));
     }
     if is_assert_forall_by {

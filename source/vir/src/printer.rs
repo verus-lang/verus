@@ -312,8 +312,12 @@ fn expr_to_node(expr: &Expr) -> Node {
         ExprX::Forall { vars, require, ensure, proof } => {
             nodes!(forall {binders_node(vars, &typ_to_node)} {str_to_node(":require")} {expr_to_node(require)} {str_to_node(":ensure")} {expr_to_node(ensure)} {str_to_node(":proof")} {expr_to_node(proof)})
         }
-        ExprX::AssertQuery { requires, ensures, proof, mode } => {
-            nodes!(assertQuery {str_to_node(":requires")} {exprs_to_node(requires)} {str_to_node(":ensures")} {exprs_to_node(ensures)} {str_to_node(":proof")} {expr_to_node(proof)} {str_to_node(":mode")} {str_to_node(&format!("{:?}", mode))})
+        ExprX::AssertQuery { requires, ensures, proof, mode, spinoff_prover } => {
+            let mut nodes = nodes_vec!(assertQuery {str_to_node(":requires")} {exprs_to_node(requires)} {str_to_node(":ensures")} {exprs_to_node(ensures)} {str_to_node(":proof")} {expr_to_node(proof)} {str_to_node(":mode")} {str_to_node(&format!("{:?}", mode))});
+            if *spinoff_prover {
+                nodes.push(str_to_node("+spinoff_prover"));
+            }
+            Node::List(nodes)
         }
         ExprX::AssertBV(expr) => nodes!(assertbv {expr_to_node(expr)}),
         ExprX::If(e0, e1, e2) => {

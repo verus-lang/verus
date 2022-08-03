@@ -663,7 +663,7 @@ fn check_expr_handle_mut_arg(
             typing.in_forall_stmt = in_forall_stmt;
             Ok(Mode::Proof)
         }
-        ExprX::AssertQuery { requires, ensures, proof, mode: _ } => {
+        ExprX::AssertQuery { requires, ensures, proof, mode: _, spinoff_prover: _ } => {
             if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return err_str(&expr.span, "cannot use assert in exec mode");
             }
