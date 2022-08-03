@@ -15,12 +15,7 @@ struct Ctxt {
 }
 
 #[warn(unused_must_use)]
-fn check_typ(
-    _ctxt: &Ctxt,
-    _function: &Function,
-    typ: &Arc<TypX>,
-    span: &air::ast::Span,
-) -> Result<(), VirErr> {
+fn check_typ(typ: &Arc<TypX>, span: &air::ast::Span) -> Result<(), VirErr> {
     crate::ast_visitor::typ_visitor_check(typ, &mut |t| {
         if let crate::ast::TypX::Datatype(path, _) = &**t {
             let PathX { krate, segments: _ } = &**path;
@@ -33,7 +28,10 @@ fn check_typ(
                 }
                 Some(_) => err_str(
                     span,
-                    "`{path:}` is not supported (note: currently Verus does not support definitions external to the crate, including most features in std)",
+                    &format!(
+                        "`{:}` is not supported (note: currently Verus does not support definitions external to the crate, including most features in std)",
+                        path_as_rust_name(path)
+                    ),
                 ),
             }
         } else {
@@ -103,10 +101,13 @@ fn check_one_expr(
             if let Some(dt) = ctxt.dts.get(path) {
                 if let Some(module) = &function.x.visibility.owning_module {
                     if !is_datatype_transparent(&module, dt) {
-                        return err_str(
+                        return Err(error(
+                            "constructor of datatype with inaccessible fields",
                             &expr.span,
-                            "constructor of datatype with inaccessible fields here",
-                        );
+                        ).secondary_label(
+                            &dt.span,
+                            "a datatype is treated as opaque whenever at least one field is not visible"
+                        ));
                     }
                 }
                 match (disallow_private_access, &dt.x.transparency, dt.x.visibility.is_private) {
@@ -124,10 +125,13 @@ fn check_one_expr(
             if let Some(dt) = ctxt.dts.get(path) {
                 if let Some(module) = &function.x.visibility.owning_module {
                     if !is_datatype_transparent(&module, dt) {
-                        return err_str(
+                        return Err(error(
+                            "field access of datatype with inaccessible fields",
                             &expr.span,
-                            "field access of datatype with inaccessible fields here",
-                        );
+                        ).secondary_label(
+                            &dt.span,
+                            "a datatype is treated as opaque whenever at least one field is not visible"
+                        ));
                     }
                 }
                 if let Some(msg) = disallow_private_access {
@@ -291,7 +295,7 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
     }
 
     for p in function.x.params.iter() {
-        check_typ(ctxt, function, &p.x.typ, &p.span)?;
+        check_typ(&p.x.typ, &p.span)?;
         if p.x.name == function.x.ret.x.name {
             return err_str(&p.span, "parameter name cannot be same as return value name");
         }
@@ -667,6 +671,13 @@ fn check_datatype(dt: &Datatype) -> Result<(), VirErr> {
 
     if unforgeable && dt_mode != Mode::Proof {
         return err_string(&dt.span, format!("an unforgeable datatype must be in #[proof] mode"));
+    }
+
+    for variant in dt.x.variants.iter() {
+        for field in variant.a.iter() {
+            let typ = &field.a.0;
+            check_typ(typ, &dt.span)?;
+        }
     }
 
     // For an 'unforgeable' datatype, all fields must be #[spec]

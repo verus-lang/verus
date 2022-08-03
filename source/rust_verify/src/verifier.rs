@@ -450,6 +450,14 @@ impl Verifier {
                 }
             }
         }
+        if error_as == ErrorAs::Error && checks_remaining == 0 {
+            let multispan = MultiSpan::from_spans(vec![from_raw_span(&context.0.raw_span)]);
+            let msg = format!(
+                "{}: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function",
+                context.1
+            );
+            compiler.diagnostic().span_warn(multispan, &msg);
+        }
 
         if is_check_valid && !is_singular {
             air_context.finish_query();
@@ -696,9 +704,10 @@ impl Verifier {
                 .iter()
                 .map(|(_, (f, _))| f)
                 .filter(|f| Some(module.clone()) == f.x.visibility.owning_module);
-            let module_fun_names: Vec<String> =
+            let mut module_fun_names: Vec<String> =
                 module_funs.map(|f| fun_name_crate_relative(&module, &f.x.name)).collect();
             if !module_fun_names.iter().any(|f| f == verify_function) {
+                module_fun_names.sort();
                 let msg = vec![
                     format!(
                         "could not find function {verify_function} specified by --verify-function"
