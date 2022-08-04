@@ -316,3 +316,45 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_vir_error(e)
 }
+
+const MUT_REF_COMMON: &str = verus_code_str! {
+    fn update_x(x: &mut bool) {
+        *x = false;
+    }
+};
+
+test_verify_one_file! {
+    #[test] mut_ref_havoc_loop_1_regression_231 MUT_REF_COMMON.to_string() + verus_code_str! {
+        fn foo(x: &mut bool)
+            requires *old(x) == true
+        {
+            assert(*x == true);
+
+            let mut i = 0;
+            while i < 5 {
+                i = i + 1;
+
+                update_x(x);
+            }
+
+            assert(*x == true); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] mut_ref_havoc_loop_2_regression_231 MUT_REF_COMMON.to_string() + verus_code_str! {
+        fn foo2() {
+            let mut x = true;
+
+            let mut i = 0;
+            while i < 5 {
+                i = i + 1;
+
+                update_x(&mut x);
+            }
+
+            assert(x == true); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
