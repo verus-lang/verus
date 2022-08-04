@@ -22,7 +22,7 @@ jobs:
           echo `./z3 --version`
           RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo clean    # cargo clean
           RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo build    # cargo build   
-          VERUS_Z3_PATH="$(pwd)/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ../rust/install/bin/cargo test
+          VERUS_Z3_PATH="$(pwd)/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc ./tools/run-tests.sh 
       
       - name: check cargo fmt
         working-directory: ./source   # "cd source"   
@@ -35,4 +35,4 @@ jobs:
         run: |
           ../.github/workflows/get-z3.sh
           RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo build --features singular       # build with singular feature 
-          VERUS_SINGULAR_PATH="/usr/bin/Singular" VERUS_Z3_PATH=""$(pwd)/z3"" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ../rust/install/bin/cargo test -p rust_verify --features singular
+          VERUS_SINGULAR_PATH="/usr/bin/Singular" VERUS_Z3_PATH=""$(pwd)/z3"" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ./tools/run-tests.sh -p rust_verify --features singular
