@@ -112,4 +112,78 @@ proof fn equivalence_proof(a:u32, b:u32)
 // {}
 
 
+#[verifier(bit_vector)]
+proof fn equivalence_proof_bv(a:u32, b:u32) 
+    requires        
+        get_bit!(a, 0u32) == get_bit!(b, 0u32),
+        get_bit!(a, 1u32) == get_bit!(b, 1u32),
+        get_bit!(a, 2u32) == get_bit!(b, 2u32),
+        get_bit!(a, 3u32) == get_bit!(b, 3u32),
+        get_bit!(a, 4u32) == get_bit!(b, 4u32),
+        get_bit!(a, 5u32) == get_bit!(b, 5u32),
+        get_bit!(a, 6u32) == get_bit!(b, 6u32),
+        get_bit!(a, 7u32) == get_bit!(b, 7u32),
+        get_bit!(a, 8u32) == get_bit!(b, 8u32),
+        get_bit!(a, 9u32) == get_bit!(b, 9u32),
+
+        get_bit!(a, 10u32) == get_bit!(b, 10u32),
+        get_bit!(a, 11u32) == get_bit!(b, 11u32),
+        get_bit!(a, 12u32) == get_bit!(b, 12u32),
+        get_bit!(a, 13u32) == get_bit!(b, 13u32),
+        get_bit!(a, 14u32) == get_bit!(b, 14u32),
+        get_bit!(a, 15u32) == get_bit!(b, 15u32),
+        get_bit!(a, 16u32) == get_bit!(b, 16u32),
+        get_bit!(a, 17u32) == get_bit!(b, 17u32),
+        get_bit!(a, 18u32) == get_bit!(b, 18u32),
+        get_bit!(a, 19u32) == get_bit!(b, 19u32),
+
+        get_bit!(a, 20u32) == get_bit!(b, 20u32),
+        get_bit!(a, 21u32) == get_bit!(b, 21u32),
+        get_bit!(a, 22u32) == get_bit!(b, 22u32),
+        get_bit!(a, 23u32) == get_bit!(b, 23u32),
+        get_bit!(a, 24u32) == get_bit!(b, 24u32),
+        get_bit!(a, 25u32) == get_bit!(b, 25u32),
+        get_bit!(a, 26u32) == get_bit!(b, 26u32),
+        get_bit!(a, 27u32) == get_bit!(b, 27u32),
+        get_bit!(a, 28u32) == get_bit!(b, 28u32),
+        get_bit!(a, 29u32) == get_bit!(b, 29u32),
+        
+        get_bit!(a, 30u32) == get_bit!(b, 30u32),
+        get_bit!(a, 31u32) == get_bit!(b, 31u32),
+    ensures
+        a == b,
+{}
+
+proof fn equivalence_proof_2(a:u32, b:u32) 
+    requires 
+        forall|i: u32| #![auto]
+            i < 32 ==> (get_bit!(a, i) == get_bit!(b, i)),    
+    ensures
+        a == b,
+{
+    equivalence_proof_bv(a,b);
+}
+
+
+// #[spec]
+// fn u32_view(u: u32) -> Seq<bool> {
+//     Seq::new(32, |i: int| get_bit!(u, i as u32))
+// }
+
+// proof fn equivalence_proof_3(a:u32, b:u32) 
+//     requires 
+//         u32_view(a) === u32_view(b),
+//     ensures
+//         a == b,
+// {
+//     assert(u32_view(a).index(0) == u32_view(b).index(0));
+//     // assert(get_bit!(a, 0u32) == get_bit!(b, 0u32));
+//     // assert(get_bit!(a, 1u32) == get_bit!(b, 1u32));
+//     equivalence_proof_bv(a,b);
+// }
+
+
+
+
+
 } // verus!
