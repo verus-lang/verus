@@ -557,13 +557,17 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
 
     while backing_cells_vec.len() < len {
         invariant(
-            forall(|j: int| 0 <= j && j < backing_cells_vec.len() as int >>=
+            forall(|j: int| with_triggers!(
+                [perms.dom().contains(j as nat)],
+                [backing_cells_vec.index(j as nat)], 
+                [perms.index(j as nat)] =>
+                0 <= j && j < backing_cells_vec.len() as int >>=
                 #[trigger] perms.dom().contains(j as nat)
                 &&
                 equal(backing_cells_vec.index(j as nat).id(), perms.index(j as nat).view().pcell)
                 &&
                 perms.index(j as nat).view().value.is_None()
-            )
+            ))
         );
 
         #[spec] let i = backing_cells_vec.len();

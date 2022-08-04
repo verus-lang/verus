@@ -343,9 +343,19 @@ impl<T> RwLock<T> {
             assert(equal(ref_counts_tokens.index(j).value, 0));
         });
 
+        assert(forall(|j: int| with_triggers!(
+            [ref_counts_tokens.dom().contains(j)],[ref_counts_tokens.index(j)] =>
+            i <= j && j < rc_width >>= (
+            ref_counts_tokens.dom().contains(j)
+            && equal(ref_counts_tokens.index(j).instance, inst)
+            && equal(ref_counts_tokens.index(j).key, j)
+            && equal(ref_counts_tokens.index(j).value, 0)
+        ))));
+
         while i < rc_width {
             invariant([
-                v.len() == i as int,
+                i <= rc_width,
+                v.view().len() == i as int,
                 forall(|j: int| 0 <= j && j < i >>=
                     v.view().index(j).has_inv_fn(|r: u64| DistRwLock::ref_counts {
                         instance: inst,
@@ -353,12 +363,14 @@ impl<T> RwLock<T> {
                         value: r,
                     })
                 ),
-                forall(|j: int| i <= j && j < rc_width >>= (
-                    #[trigger] ref_counts_tokens.dom().contains(j)
+                forall(|j: int| with_triggers!(
+                    [ref_counts_tokens.dom().contains(j)],[ref_counts_tokens.index(j)] =>
+                    i <= j && j < rc_width >>= (
+                    ref_counts_tokens.dom().contains(j)
                     && equal(ref_counts_tokens.index(j).instance, inst)
                     && equal(ref_counts_tokens.index(j).key, j)
                     && equal(ref_counts_tokens.index(j).value, 0)
-                )),
+                ))),
             ]);
 
             assert(ref_counts_tokens.dom().contains(i));
@@ -390,11 +402,27 @@ impl<T> RwLock<T> {
             });
         }
 
-        RwLock {
+        let s = RwLock {
             inst,
             exc_locked: exc_locked_atomic,
             ref_counts: v,
-        }
+        };
+
+        assert(s.inst.rc_width() == s.ref_counts.view().len());
+        assert(s.exc_locked.has_inv_fn(|b: bool| DistRwLock::exc_locked {
+            instance: s.inst,
+            value: b
+        }));
+        assert(forall(|i: int| { (0 <= i && i < s.ref_counts.view().len()) >>=
+            s.ref_counts.view().index(i).has_inv_fn(|r: u64| DistRwLock::ref_counts {
+                instance: s.inst,
+                key: i,
+                value: r,
+            })
+        }));
+
+        s
+
     }
 }
 
