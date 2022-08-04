@@ -719,7 +719,7 @@ pub fn func_def_to_air(
             state.ret_post = None;
 
             // Check termination
-            let (decls, stm) = if ctx.checking_recommends() {
+            let (decls, stm) = if function.x.mode == Mode::Exec || ctx.checking_recommends() {
                 (vec![], stm)
             } else {
                 crate::recursion::check_termination_stm(ctx, &state.fun_ssts, function, &stm)?

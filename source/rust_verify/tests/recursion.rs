@@ -1064,3 +1064,29 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] mutable_reference_no_decreases verus_code! {
+        fn e(s: &mut u64, i: usize) -> usize {
+            if i < 10 {
+                e(s, i + 1)
+            } else {
+                i
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] exec_no_decreases verus_code! {
+        fn e(s: &mut u64, i: usize) -> usize
+            decreases 100 - i
+        {
+            if i < 10 {
+                e(s, i + 1)
+            } else {
+                i
+            }
+        }
+    } => Err(e) => assert_vir_error(e)
+}

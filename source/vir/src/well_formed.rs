@@ -647,6 +647,15 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
         check_expr(ctxt, function, expr, disallow_private_access)?;
     }
 
+    if function.x.mode == Mode::Exec
+        && (function.x.decrease.len() > 0 || function.x.decrease_by.is_some())
+    {
+        return err_str(
+            &function.span,
+            "decreases and decreases_by are not supported for exec functions",
+        );
+    }
+
     if let Some(body) = &function.x.body {
         // Check that public, non-abstract spec function bodies don't refer to private items:
         let disallow_private_access = function.x.publish.is_some()
