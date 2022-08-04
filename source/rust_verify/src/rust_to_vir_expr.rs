@@ -2,7 +2,7 @@ use crate::attributes::{
     get_ghost_block_opt, get_trigger, get_var_mode, get_verifier_attrs, parse_attrs, Attr,
     GetVariantField, GhostBlockAttr,
 };
-use crate::context::BodyCtxt;
+use crate::context::{BodyCtxt, Context};
 use crate::erase::ResolvedCall;
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, def_to_path_ident, get_function_def, get_range, hack_get_def_name,
@@ -285,15 +285,23 @@ fn mk_ty_clip<'tcx>(typ: &Typ, expr: &vir::ast::Expr) -> vir::ast::Expr {
     mk_clip(&get_range(typ), expr)
 }
 
-fn check_lit_int(span: Span, in_negative_literal: bool, i: u128, typ: &Typ) -> Result<(), VirErr> {
+fn check_lit_int(
+    ctxt: &Context,
+    span: Span,
+    in_negative_literal: bool,
+    i: u128,
+    typ: &Typ,
+) -> Result<(), VirErr> {
     let i_bump = if in_negative_literal { 1 } else { 0 };
     if let TypX::Int(range) = **typ {
         match range {
             IntRange::Int | IntRange::Nat => Ok(()),
             IntRange::U(n) if n == 128 || (n < 128 && i < (1u128 << n)) => Ok(()),
             IntRange::I(n) if n - 1 < 128 && i < (1u128 << (n - 1)) + i_bump => Ok(()),
-            IntRange::USize if i < (1u128 << vir::def::ARCH_SIZE_MIN_BITS) => Ok(()),
-            IntRange::ISize if i < (1u128 << (vir::def::ARCH_SIZE_MIN_BITS - 1)) + i_bump => Ok(()),
+            IntRange::USize if i < (1u128 << ctxt.arch.word_bits.min_bits()) => Ok(()),
+            IntRange::ISize if i < (1u128 << (ctxt.arch.word_bits.min_bits() - 1)) + i_bump => {
+                Ok(())
+            }
             _ => {
                 return err_span_str(span, "integer literal out of range");
             }
@@ -645,7 +653,7 @@ fn fn_call_to_vir<'tcx>(
                         }
                     };
                     let in_negative_literal = false;
-                    check_lit_int(expr.span, in_negative_literal, i, &expr_typ())?
+                    check_lit_int(&bctx.ctxt, expr.span, in_negative_literal, i, &expr_typ())?
                 }
                 return Ok(mk_expr(ExprX::Const(vir::ast::Constant::Nat(Arc::new(s.to_string())))));
             }
@@ -1734,7 +1742,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
     let modifier = ExprModifier { deref_mut: false, ..current_modifier };
 
     let mk_lit_int = |in_negative_literal: bool, i: u128, typ: Typ| {
-        check_lit_int(expr.span, in_negative_literal, i, &typ)?;
+        check_lit_int(&bctx.ctxt, expr.span, in_negative_literal, i, &typ)?;
         Ok(mk_expr(ExprX::Const(vir::ast::Constant::Nat(Arc::new(i.to_string())))))
     };
 

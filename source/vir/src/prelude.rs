@@ -3,10 +3,35 @@ use crate::def::*;
 use crate::sst_to_air::{fun_to_air_ident, path_to_air_ident};
 use air::ast::Ident;
 use air::printer::{macro_push_node, str_to_node};
-use air::{node, nodes_vec};
+use air::{node, nodes, nodes_vec};
 use sise::Node;
 
-pub(crate) fn prelude_nodes() -> Vec<Node> {
+#[derive(Copy, Clone, Debug)]
+pub enum ArchWordBits {
+    Either32Or64,
+    Exactly(u32),
+}
+
+impl ArchWordBits {
+    pub fn min_bits(&self) -> u32 {
+        match self {
+            ArchWordBits::Either32Or64 => 32,
+            ArchWordBits::Exactly(v) => *v,
+        }
+    }
+}
+
+impl Default for ArchWordBits {
+    fn default() -> Self {
+        ArchWordBits::Either32Or64
+    }
+}
+
+pub struct PreludeConfig {
+    pub arch_word_bits: ArchWordBits,
+}
+
+pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     #[allow(non_snake_case)]
     let FuelId = str_to_node(FUEL_ID);
     #[allow(non_snake_case)]
@@ -171,7 +196,14 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
         // Integers
         // TODO: make this more configurable via options or HeaderExpr directives
         (declare-const [arch_size] Int) // number of bits for usize/isize
-        (axiom (or (= [arch_size] {str_to_node(&ARCH_SIZE_MIN_BITS.to_string())}) (= [arch_size] 64)))
+        (axiom
+            {
+                match config.arch_word_bits {
+                    ArchWordBits::Either32Or64 => nodes!(or (= [arch_size] 32) (= [arch_size] 64)),
+                    ArchWordBits::Exactly(bits) => nodes!(= [arch_size] {str_to_node(&bits.to_string())}),
+                }
+            }
+        )
         (declare-fun [u_hi] (Int) Int) // \
         (declare-fun [i_lo] (Int) Int) // - convert number of bits to integer ranges
         (declare-fun [i_hi] (Int) Int) // /

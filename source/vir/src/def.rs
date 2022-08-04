@@ -133,9 +133,6 @@ pub const QID_ACCESSOR: &str = "accessor";
 pub const QID_INVARIANT: &str = "invariant";
 pub const QID_HAS_TYPE_ALWAYS: &str = "has_type_always";
 
-// We assume that usize is at least ARCH_SIZE_MIN_BITS wide
-pub const ARCH_SIZE_MIN_BITS: u32 = 32;
-
 pub const SUPPORTED_CRATES: [&str; 2] = ["builtin", "pervasive"];
 
 pub fn path_to_string(path: &Path) -> String {

@@ -1,5 +1,5 @@
 use crate::config::{Args, ShowTriggers};
-use crate::context::{ContextX, ErasureInfo};
+use crate::context::{ArchContextX, ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::unsupported;
 use crate::util::{error, from_raw_span, signalling};
@@ -24,6 +24,7 @@ use vir::ast::{Fun, Function, InferMode, Krate, Mode, VirErr, Visibility};
 use vir::ast_util::{fun_as_rust_dbg, fun_name_crate_relative, is_visible_to};
 use vir::def::{CommandsWithContext, CommandsWithContextX, SnapPos};
 use vir::func_to_air::SstMap;
+use vir::prelude::PreludeConfig;
 use vir::recursion::Node;
 
 const RLIMIT_PER_SECOND: u32 = 3000000;
@@ -539,6 +540,7 @@ impl Verifier {
         module_path: &vir::ast::Path,
         function_path: Option<&vir::ast::Path>,
         is_rerun: bool,
+        prelude_config: vir::prelude::PreludeConfig,
     ) -> Result<air::context::Context, VirErr> {
         let mut air_context = air::context::Context::new();
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
@@ -581,7 +583,7 @@ impl Verifier {
 
         air_context.blank_line();
         air_context.comment("Prelude");
-        for command in vir::context::Ctx::prelude().iter() {
+        for command in vir::context::Ctx::prelude(prelude_config).iter() {
             Self::check_internal_result(air_context.command(&command, Default::default()));
         }
 
@@ -605,8 +607,12 @@ impl Verifier {
         is_rerun: bool,
         span: &air::ast::Span,
     ) -> Result<air::context::Context, VirErr> {
-        let mut air_context =
-            self.new_air_context_with_prelude(module_path, Some(function_path), is_rerun)?;
+        let mut air_context = self.new_air_context_with_prelude(
+            module_path,
+            Some(function_path),
+            is_rerun,
+            PreludeConfig { arch_word_bits: self.args.arch_word_bits },
+        )?;
 
         // Write the span of spun-off query
         air_context.comment(&span.as_string);
@@ -639,7 +645,12 @@ impl Verifier {
         module: &vir::ast::Path,
         ctx: &mut vir::context::Ctx,
     ) -> Result<(Duration, Duration), VirErr> {
-        let mut air_context = self.new_air_context_with_prelude(module, None, false)?;
+        let mut air_context = self.new_air_context_with_prelude(
+            module,
+            None,
+            false,
+            PreludeConfig { arch_word_bits: self.args.arch_word_bits },
+        )?;
         let mut spunoff_time_smt_init = Duration::ZERO;
         let mut spunoff_time_smt_run = Duration::ZERO;
 
@@ -1190,6 +1201,7 @@ impl Verifier {
             erasure_info,
             autoviewed_call_typs,
             unique_id: std::cell::Cell::new(0),
+            arch: Arc::new(ArchContextX { word_bits: self.args.arch_word_bits }),
         });
 
         // Convert HIR -> VIR
