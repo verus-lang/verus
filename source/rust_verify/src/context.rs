@@ -16,6 +16,11 @@ pub struct ErasureInfo {
 
 type ErasureInfoRef = std::rc::Rc<std::cell::RefCell<ErasureInfo>>;
 
+pub type ArchContext = Arc<ArchContextX>;
+pub struct ArchContextX {
+    pub(crate) word_bits: vir::prelude::ArchWordBits,
+}
+
 pub type Context<'tcx> = Arc<ContextX<'tcx>>;
 pub struct ContextX<'tcx> {
     pub(crate) tcx: TyCtxt<'tcx>,
@@ -23,6 +28,7 @@ pub struct ContextX<'tcx> {
     pub(crate) erasure_info: ErasureInfoRef,
     pub(crate) autoviewed_call_typs: HashMap<HirId, Typ>,
     pub(crate) unique_id: std::cell::Cell<u64>,
+    pub(crate) arch: ArchContext,
 }
 
 #[derive(Clone)]

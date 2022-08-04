@@ -44,7 +44,7 @@ pub mod headers;
 mod inv_masks;
 pub mod modes;
 pub mod poly;
-mod prelude;
+pub mod prelude;
 pub mod printer;
 pub mod prune;
 pub mod recursion;

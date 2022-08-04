@@ -277,8 +277,8 @@ impl Ctx {
         self.global
     }
 
-    pub fn prelude() -> Commands {
-        let nodes = crate::prelude::prelude_nodes();
+    pub fn prelude(prelude_config: crate::prelude::PreludeConfig) -> Commands {
+        let nodes = crate::prelude::prelude_nodes(prelude_config);
         air::parser::Parser::new()
             .nodes_to_commands(&nodes)
             .expect("internal error: malformed prelude")
