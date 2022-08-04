@@ -35,16 +35,23 @@ pub(crate) fn stm_assign(
     stm: &Stm,
 ) -> Stm {
     let result = match &stm.x {
-        StmX::Call(_, _, _, _, Some(dest)) => {
-            let var: UniqueIdent = get_loc_var(&dest.dest);
-            assigned.insert(var.clone());
-            if !dest.is_init {
-                modified.insert(var.clone());
+        StmX::Call(_, _, _, args, dest) => {
+            if let Some(dest) = dest {
+                let var: UniqueIdent = get_loc_var(&dest.dest);
+                assigned.insert(var.clone());
+                if !dest.is_init {
+                    modified.insert(var.clone());
+                }
+            }
+            for arg in args.iter() {
+                if let ExpX::Loc(loc) = &arg.x {
+                    let var = get_loc_var(loc);
+                    modified.insert(var);
+                }
             }
             stm.clone()
         }
-        StmX::Call(..)
-        | StmX::Assert(..)
+        StmX::Assert(..)
         | StmX::AssertBV(..)
         | StmX::AssertBitVector { .. }
         | StmX::AssertQuery { .. }

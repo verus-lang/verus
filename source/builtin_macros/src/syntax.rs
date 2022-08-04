@@ -48,6 +48,8 @@ struct Visitor {
     // Fixed is used for bitwise operations, where we use Rust's native integer literals
     // rather than an int literal.
     inside_arith: InsideArith,
+    // assign_to == true means we're an expression being assigned to by Assign
+    assign_to: bool,
 
     // Add extra verus signature information to the docstring
     rustdoc: bool,
@@ -192,6 +194,50 @@ impl Visitor {
         attrs.extend(ext_attrs);
         stmts.extend(unimpl);
         stmts
+    }
+
+    fn visit_const(
+        &mut self,
+        span: proc_macro2::Span,
+        attrs: &mut Vec<Attribute>,
+        vis: Option<&Visibility>,
+        publish: &mut Publish,
+        mode: &mut FnMode,
+    ) {
+        attrs.push(parse_quote_spanned!(span => #[verifier(verus_macro)]));
+
+        let publish_attrs = match (vis, &publish) {
+            (Some(Visibility::Inherited), _) => vec![],
+            (_, Publish::Default) => vec![parse_quote_spanned!(span => #[verifier(publish)])],
+            (_, Publish::Closed(_)) => vec![],
+            (_, Publish::Open(o)) => {
+                vec![parse_quote_spanned!(o.token.span => #[verifier(publish)])]
+            }
+            (_, Publish::OpenRestricted(_)) => {
+                unimplemented!("TODO: support open(...)")
+            }
+        };
+
+        let (inside_ghost, mode_attrs): (u32, Vec<Attribute>) = match &mode {
+            FnMode::Default => (0, vec![]),
+            FnMode::Spec(token) => {
+                (1, vec![parse_quote_spanned!(token.spec_token.span => #[spec])])
+            }
+            FnMode::SpecChecked(token) => {
+                (1, vec![parse_quote_spanned!(token.spec_token.span => #[spec(checked)])])
+            }
+            FnMode::Proof(token) => {
+                (1, vec![parse_quote_spanned!(token.proof_token.span => #[proof])])
+            }
+            FnMode::Exec(token) => {
+                (0, vec![parse_quote_spanned!(token.exec_token.span => #[exec])])
+            }
+        };
+        self.inside_ghost = inside_ghost;
+        *publish = Publish::Default;
+        *mode = FnMode::Default;
+        attrs.extend(publish_attrs);
+        attrs.extend(mode_attrs);
     }
 
     fn exec_ghost_match(
@@ -429,19 +475,39 @@ impl VisitMut for Visitor {
             }
             _ => InsideArith::None,
         };
+        let sub_assign_to = match expr {
+            Expr::Field(..) => self.assign_to,
+            _ => false,
+        };
 
+        // Recursively call visit_expr_mut
         let is_inside_ghost = self.inside_ghost > 0;
         let is_inside_arith = self.inside_arith;
+        let is_assign_to = self.assign_to;
         let use_spec_traits = self.use_spec_traits && is_inside_ghost;
         if mode_block.is_some() || ghost_intrinsic {
             self.inside_ghost += 1;
         }
         self.inside_arith = sub_inside_arith;
+        self.assign_to = sub_assign_to;
+        let assign_left = if let Expr::Assign(assign) = expr {
+            let mut left = take_expr(&mut assign.left);
+            self.assign_to = true;
+            self.visit_expr_mut(&mut left);
+            self.assign_to = false;
+            Some(left)
+        } else {
+            None
+        };
         visit_expr_mut(self, expr);
+        if let Expr::Assign(assign) = expr {
+            assign.left = Box::new(assign_left.expect("assign_left"));
+        }
         if mode_block.is_some() || ghost_intrinsic {
             self.inside_ghost -= 1;
         }
         self.inside_arith = is_inside_arith;
+        self.assign_to = is_assign_to;
 
         if let Expr::Unary(unary) = expr {
             use syn_verus::spanned::Spanned;
@@ -795,11 +861,21 @@ impl VisitMut for Visitor {
                     }
                     expr.replace_attrs(attrs);
                 }
-                Expr::View(view) => {
+                Expr::View(view) if !self.assign_to => {
                     let at_token = view.at_token;
                     let span = at_token.span;
                     let base = view.expr;
                     *expr = parse_quote_spanned!(span => (#base.view()));
+                }
+                Expr::View(view) => {
+                    use syn_verus::spanned::Spanned;
+                    assert!(self.assign_to);
+                    let at_token = view.at_token;
+                    let span1 = at_token.span;
+                    let span2 = view.span();
+                    let base = view.expr;
+                    let borrowed: Expr = parse_quote_spanned!(span1 => #base.borrow_mut());
+                    *expr = parse_quote_spanned!(span2 => (*(#borrowed)));
                 }
                 Expr::Assume(assume) => {
                     let span = assume.assume_token.span;
@@ -981,7 +1057,13 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_const_mut(&mut self, con: &mut ItemConst) {
-        self.inside_ghost = 1;
+        self.visit_const(
+            con.const_token.span,
+            &mut con.attrs,
+            Some(&con.vis),
+            &mut con.publish,
+            &mut con.mode,
+        );
         visit_item_const_mut(self, con);
     }
 
@@ -1146,6 +1228,7 @@ pub(crate) fn rewrite_items(
         use_spec_traits,
         inside_ghost: 0,
         inside_arith: InsideArith::None,
+        assign_to: false,
         rustdoc: env_rustdoc(),
     };
     for mut item in items.items {
@@ -1169,6 +1252,7 @@ pub(crate) fn rewrite_expr(
         use_spec_traits: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
         inside_arith: InsideArith::None,
+        assign_to: false,
         rustdoc: env_rustdoc(),
     };
     visitor.visit_expr_mut(&mut expr);
@@ -1244,6 +1328,7 @@ pub(crate) fn proof_macro_exprs(
         use_spec_traits: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
         inside_arith: InsideArith::None,
+        assign_to: false,
         rustdoc: env_rustdoc(),
     };
     for element in &mut invoke.elements.elements {

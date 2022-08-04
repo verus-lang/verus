@@ -105,19 +105,6 @@ impl<V> Multiset<V> {
 
     // TODO define this in terms of a more general constructor?
     pub spec fn filter<F: Fn(V) -> bool>(self, f: F) -> Self;
-
-    // TODO(tjhance) flesh out remaining proof-mode functions
-    // (note: for collections of 'proof' objects I usually advise using maps when possible)
-
-    #[verifier(external_body)]
-    pub proof fn tracked_remove(tracked &mut self, v: V) -> (tracked out_v: V)
-        requires old(self).count(v) >= 1,
-        ensures
-            out_v === v,
-            *self === old(self).remove(v),
-    {
-        unimplemented!();
-    }
 }
 
 // Specification of `empty`

@@ -265,9 +265,11 @@ test_verify_one_file! {
         fn test() {
             let mut a: Ghost<int> = ghost(5);
             loop
-                invariant *a > 0
+                invariant a@ > 0
             {
-                a = ghost(*a + 1);
+                proof {
+                    a@ = a@ + 1;
+                }
             }
         }
     } => Ok(())
@@ -299,4 +301,60 @@ test_verify_one_file! {
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[ignore] #[test] regression_11_incorrect_loop_header verus_code! {
+        fn test() {
+            let mut a: u64 = 0;
+            while a < 100
+                invariant a <= 100
+            {
+                requires(a <= 100);
+                a = a + 1;
+            }
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+const MUT_REF_COMMON: &str = verus_code_str! {
+    fn update_x(x: &mut bool) {
+        *x = false;
+    }
+};
+
+test_verify_one_file! {
+    #[test] mut_ref_havoc_loop_1_regression_231 MUT_REF_COMMON.to_string() + verus_code_str! {
+        fn foo(x: &mut bool)
+            requires *old(x) == true
+        {
+            assert(*x == true);
+
+            let mut i = 0;
+            while i < 5 {
+                i = i + 1;
+
+                update_x(x);
+            }
+
+            assert(*x == true); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] mut_ref_havoc_loop_2_regression_231 MUT_REF_COMMON.to_string() + verus_code_str! {
+        fn foo2() {
+            let mut x = true;
+
+            let mut i = 0;
+            while i < 5 {
+                i = i + 1;
+
+                update_x(&mut x);
+            }
+
+            assert(x == true); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
 }

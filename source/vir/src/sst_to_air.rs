@@ -1138,7 +1138,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
         StmX::Call(x, mode, typs, args, dest) => {
             let mut stmts: Vec<Stmt> = Vec::new();
             let func = &ctx.func_map[x];
-            if func.x.require.len() > 0 && (!ctx.checking_recommends() || *mode == Mode::Spec) {
+            if func.x.require.len() > 0
+                && (!ctx.checking_recommends_for_non_spec() || *mode == Mode::Spec)
+            {
                 let f_req = prefix_requires(&fun_to_air_ident(&func.x.name));
                 let mut req_args = vec_map(typs, typ_to_id);
                 for arg in args.iter() {

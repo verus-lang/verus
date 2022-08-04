@@ -28,7 +28,7 @@ tokenized_state_machine!(
         // ANCHOR: inv 
         #[invariant]
         pub fn main_inv(&self) -> bool {
-            self.counter == (if self.inc_a { 1 } else { 0 }) + (if self.inc_b { 1 } else { 0 })
+            self.counter == (if self.inc_a { 1 as int } else { 0 }) + (if self.inc_b { 1 as int } else { 0 })
         }
         // ANCHOR_END: inv 
 

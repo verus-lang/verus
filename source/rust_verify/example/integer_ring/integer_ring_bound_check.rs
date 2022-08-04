@@ -121,15 +121,20 @@ fn ModAfterMul_u32_with_assert_by_nonlinear(x: u32, y:u32 , z:u32, m:u32){
     });
     assert((y as int) * (z as int) == ( (y*z) as int));
 
-    assert_nonlinear_by({
-        requires([
-            ((x as int) * (z as int) == ( (x*z) as int)),
-            ((y as int) * (z as int) == ( (y*z) as int)),
-            (y <= x),
-            (0 <= z),
-        ]);
-        ensures(y*z <= x*z);
-    });
+    // below `assert_nonlinear_by` timeouts now in newer z3
+    // assert_nonlinear_by({
+    //     requires([
+    //         x <= 0xffff,
+    //         y <= 0xffff,
+    //         z <= 0xffff,
+    //         ((x as int) * (z as int) == ( (x*z) as int)),
+    //         ((y as int) * (z as int) == ( (y*z) as int)),
+    //         (y <= x),
+    //         (0 <= z),
+    //     ]);
+    //     ensures(y*z <= x*z);
+    // });
+    LemmaInequalityAfterMul(y,x,z);
     assert(y*z <= x*z);
 }
 

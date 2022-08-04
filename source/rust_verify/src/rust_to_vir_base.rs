@@ -19,7 +19,7 @@ use rustc_span::Span;
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::HashMap;
 use std::sync::Arc;
-use vir::ast::{GenericBoundX, IntRange, Mode, Path, PathX, Typ, TypBounds, TypX, Typs, VirErr};
+use vir::ast::{GenericBoundX, IntRange, Path, PathX, Typ, TypBounds, TypX, Typs, VirErr};
 use vir::ast_util::types_equal;
 
 pub(crate) fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Path {
@@ -217,25 +217,6 @@ pub(crate) fn mid_ty_simplify<'tcx>(
             }
         }
         _ => ty,
-    }
-}
-
-pub(crate) fn mid_ty_to_mode<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    ty: rustc_middle::ty::Ty<'tcx>,
-) -> Option<Mode> {
-    match ty.kind() {
-        TyKind::Adt(AdtDef { did, .. }, _args) => {
-            let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(tcx, *did));
-            if def_name == "builtin::Ghost" {
-                Some(Mode::Spec)
-            } else if def_name == "builtin::Tracked" {
-                Some(Mode::Proof)
-            } else {
-                None
-            }
-        }
-        _ => None,
     }
 }
 

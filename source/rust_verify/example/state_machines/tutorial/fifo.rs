@@ -47,7 +47,7 @@ tokenized_state_machine!{FifoQueue<T> {
         // All the stored permissions
 
         #[sharding(storage_map)]
-        pub storage: Map<nat, cell::Permission<T>>,
+        pub storage: Map<nat, cell::PermissionOpt<T>>,
 
         // Represents the shared `head` field
 
@@ -71,14 +71,12 @@ tokenized_state_machine!{FifoQueue<T> {
     }
     // ANCHOR_END: fields
 
-    #[spec]
-    fn len(&self) -> nat {
+    pub open spec fn len(&self) -> nat {
         self.backing_cells.len()
     }
 
     // ANCHOR: inc_wrap
-    #[spec] #[verifier(publish)]
-    pub fn inc_wrap(i: nat, len: nat) -> nat {
+    pub open spec fn inc_wrap(i: nat, len: nat) -> nat {
         if i + 1 == len { 0 } else { i + 1 }
     }
     // ANCHOR_END: inc_wrap
@@ -132,8 +130,7 @@ tokenized_state_machine!{FifoQueue<T> {
     // Indicates whether we expect the cell at index `i` to be full based on
     // the values of the `head` and `tail`.
 
-    #[spec]
-    fn in_active_range(&self, i: nat) -> bool {
+    pub open spec fn in_active_range(&self, i: nat) -> bool {
         // Note that self.head = self.tail means empty range
         0 <= i && i < self.len() && (
             if self.head <= self.tail {
@@ -147,8 +144,7 @@ tokenized_state_machine!{FifoQueue<T> {
     // Indicates whether we expect a cell to be checked out or not,
     // based on the producer/consumer state.
 
-    #[spec]
-    fn is_checked_out(&self, i: nat) -> bool {
+    pub open spec fn is_checked_out(&self, i: nat) -> bool {
         equal(self.producer, ProducerState::Producing(i))
         || equal(self.consumer, ConsumerState::Consuming(i))
     }
@@ -163,8 +159,7 @@ tokenized_state_machine!{FifoQueue<T> {
     // Which of these 3 possibilities we should be in depends on the
     // producer/consumer/head/tail state.
 
-    #[spec]
-    fn valid_storage_at_idx(&self, i: nat) -> bool {
+    pub open spec fn valid_storage_at_idx(&self, i: nat) -> bool {
         if self.is_checked_out(i) {
             // No cell permission is stored
             !self.storage.dom().contains(i)
@@ -174,40 +169,40 @@ tokenized_state_machine!{FifoQueue<T> {
 
             // Permission must be for the correct cell:
             && equal(
-                self.storage.index(i).pcell,
+                self.storage.index(i).view().pcell,
                 self.backing_cells.index(i)
             )
 
             && if self.in_active_range(i) {
                 // The cell is full
-                self.storage.index(i).value.is_Some()
+                self.storage.index(i).view().value.is_Some()
             } else {
                 // The cell is empty
-                self.storage.index(i).value.is_None()
+                self.storage.index(i).view().value.is_None()
             }
         }
     }
 
     #[invariant]
     pub fn valid_storage_all(&self) -> bool {
-        forall(|i| 0 <= i && i < self.len() >>=
+        forall(|i: nat| 0 <= i && i < self.len() >>=
             self.valid_storage_at_idx(i))
     }
 
     init!{
-        initialize(backing_cells: Seq<CellId>, storage: Map<nat, cell::Permission<T>>) {
+        initialize(backing_cells: Seq<CellId>, storage: Map<nat, cell::PermissionOpt<T>>) {
             // Upon initialization, the user needs to deposit _all_ the relevant
             // cell permissions to start with. Each permission should indicate
             // an empty cell.
 
             require(
-                forall(|i| 0 <= i && i < backing_cells.len() >>=
+                forall(|i: nat| 0 <= i && i < backing_cells.len() >>=
                     #[trigger] storage.dom().contains(i)
                     && equal(
-                        storage.index(i).pcell,
+                        storage.index(i).view().pcell,
                         backing_cells.index(i)
                     )
-                    && storage.index(i).value.is_None(),
+                    && storage.index(i).view().value.is_None(),
                 )
             );
             require(backing_cells.len() > 0);
@@ -255,8 +250,8 @@ tokenized_state_machine!{FifoQueue<T> {
             //  (i) is for the cell at index `tail` (the IDs match)
             //  (ii) the permission indicates that the cell is empty
             assert(
-                equal(perm.pcell, pre.backing_cells.index(tail))
-                && perm.value.is_None()
+                equal(perm.view().pcell, pre.backing_cells.index(tail))
+                && perm.view().value.is_None()
             ) by {
                 assert(!pre.in_active_range(tail));
                 assert(pre.valid_storage_at_idx(tail));
@@ -272,7 +267,7 @@ tokenized_state_machine!{FifoQueue<T> {
         // (coming from "outside" the system) we can't compute it as a
         // function of the current state, unlike how we did it for the
         // `produce_start` transition).
-        produce_end(perm: cell::Permission<T>) {
+        produce_end(perm: cell::PermissionOpt<T>) {
             // In order to complete the produce step,
             // we have to be in ProducerState::Producing.
             require(pre.producer.is_Producing());
@@ -292,8 +287,8 @@ tokenized_state_machine!{FifoQueue<T> {
             // checked in satisfies its requirements. It has to be associated
             // with the correct cell, and it has to be full.
 
-            require(equal(perm.pcell, pre.backing_cells.index(tail))
-              && perm.value.is_Some());
+            require(equal(perm.view().pcell, pre.backing_cells.index(tail))
+              && perm.view().value.is_Some());
 
             // Perform our updates. Update the tail to the computed value,
             // both the shared version and the producer's local copy.
@@ -332,10 +327,10 @@ tokenized_state_machine!{FifoQueue<T> {
                 assert(pre.valid_storage_at_idx(head));
             };
 
-            assert(equal(perm.pcell, pre.backing_cells.index(head))) by {
+            assert(equal(perm.view().pcell, pre.backing_cells.index(head))) by {
                 assert(pre.valid_storage_at_idx(head));
             };
-            assert(perm.value.is_Some()) by {
+            assert(perm.view().value.is_Some()) by {
                 assert(pre.in_active_range(head));
                 assert(pre.valid_storage_at_idx(head));
             };
@@ -343,7 +338,7 @@ tokenized_state_machine!{FifoQueue<T> {
     }
 
     transition!{
-        consume_end(perm: cell::Permission<T>) {
+        consume_end(perm: cell::PermissionOpt<T>) {
             require(pre.consumer.is_Consuming());
             let head = pre.consumer.get_Consuming_0();
 
@@ -353,22 +348,22 @@ tokenized_state_machine!{FifoQueue<T> {
             update consumer = ConsumerState::Idle(next_head);
             update head = next_head;
 
-            require(equal(perm.pcell, pre.backing_cells.index(head))
-              && perm.value.is_None());
+            require(equal(perm.view().pcell, pre.backing_cells.index(head))
+              && perm.view().value.is_None());
             deposit storage += [head => perm] by { assert(pre.valid_storage_at_idx(head)); };
         }
     }
 
     #[inductive(initialize)]
-    fn initialize_inductive(post: Self, backing_cells: Seq<CellId>, storage: Map<nat, cell::Permission<T>>) {
-        assert_forall_by(|i| {
+    fn initialize_inductive(post: Self, backing_cells: Seq<CellId>, storage: Map<nat, cell::PermissionOpt<T>>) {
+        assert_forall_by(|i: nat| {
             requires(0 <= i && i < post.len());
             ensures(post.valid_storage_at_idx(i));
 
             assert(post.storage.dom().contains(i));
             /*
             assert(equal(
-                post.storage.index(i).pcell,
+                post.storage.index(i).view().pcell,
                 post.backing_cells.index(i)
             ));
             assert(if post.in_active_range(i) {
@@ -403,7 +398,7 @@ tokenized_state_machine!{FifoQueue<T> {
     }
 
     #[inductive(produce_end)]
-    fn produce_end_inductive(pre: Self, post: Self, perm: cell::Permission<T>) {
+    fn produce_end_inductive(pre: Self, post: Self, perm: cell::PermissionOpt<T>) {
         assert_forall_by(|i| {
             requires(pre.valid_storage_at_idx(i));
             ensures(post.valid_storage_at_idx(i));
@@ -413,7 +408,7 @@ tokenized_state_machine!{FifoQueue<T> {
             } else {
                 assert(post.storage.dom().contains(i));
                 assert(equal(
-                    post.storage.index(i).pcell,
+                    post.storage.index(i).view().pcell,
                     post.backing_cells.index(i)
                 ));
                 assert(if post.in_active_range(i) {
@@ -434,17 +429,17 @@ tokenized_state_machine!{FifoQueue<T> {
     }
    
     #[inductive(consume_end)]
-    fn consume_end_inductive(pre: Self, post: Self, perm: cell::Permission<T>) {
+    fn consume_end_inductive(pre: Self, post: Self, perm: cell::PermissionOpt<T>) {
         let head = pre.consumer.get_Consuming_0();
         assert(post.storage.dom().contains(head));
         assert(equal(
-                post.storage.index(head).pcell,
+                post.storage.index(head).view().pcell,
                 post.backing_cells.index(head)
             ));
         assert(if post.in_active_range(head) {
-                post.storage.index(head).value.is_Some()
+                post.storage.index(head).view().value.is_Some()
             } else {
-                post.storage.index(head).value.is_None()
+                post.storage.index(head).view().value.is_None()
             });
 
         match (pre.producer, pre.consumer) {
@@ -558,17 +553,21 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
 
     // Initialize map for the permissions to the cells
     // (keyed by the indices into the vector)
-    #[proof] let mut perms = Map::<nat, cell::Permission<T>>::tracked_empty();
+    #[proof] let mut perms = Map::<nat, cell::PermissionOpt<T>>::tracked_empty();
 
     while backing_cells_vec.len() < len {
         invariant(
-            forall(|j: int| 0 <= j && j < backing_cells_vec.len() as int >>=
+            forall(|j: int| with_triggers!(
+                [perms.dom().contains(j as nat)],
+                [backing_cells_vec.index(j as nat)], 
+                [perms.index(j as nat)] =>
+                0 <= j && j < backing_cells_vec.len() as int >>=
                 #[trigger] perms.dom().contains(j as nat)
                 &&
-                equal(backing_cells_vec.index(j as nat).id(), perms.index(j as nat).pcell)
+                equal(backing_cells_vec.index(j as nat).id(), perms.index(j as nat).view().pcell)
                 &&
-                perms.index(j as nat).value.is_None()
-            )
+                perms.index(j as nat).view().value.is_None()
+            ))
         );
 
         #[spec] let i = backing_cells_vec.len();
@@ -576,11 +575,11 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
         let (cell, cell_perm) = PCell::empty();
         backing_cells_vec.push(cell);
 
-        perms.tracked_insert(i, tracked_get(cell_perm));
+        perms.tracked_insert(i, cell_perm.get());
 
         assert(perms.dom().contains(i as nat));
-        assert(equal(backing_cells_vec.index(i as nat).id(), perms.index(i as nat).pcell));
-        assert(perms.index(i as nat).value.is_None());
+        assert(equal(backing_cells_vec.index(i as nat).id(), perms.index(i as nat).view().pcell));
+        assert(perms.index(i as nat).view().value.is_None());
     }
 
     // Vector for ids
@@ -676,7 +675,7 @@ impl<T> Producer<T> {
                 // from uninitialized to initialized (to the value t).
                 let mut cell_perm = tracked_exec(cell_perm);
                 queue.buffer.index(self.tail).put(&mut cell_perm, t);
-                #[proof] let cell_perm = tracked_get(cell_perm);
+                #[proof] let cell_perm = cell_perm.get();
 
                 // Store the updated tail to the shared `tail` atomic,
                 // while performing the `produce_end` transition.
@@ -730,7 +729,7 @@ impl<T> Consumer<T> {
                 };
                 let mut cell_perm = tracked_exec(cell_perm);
                 let t = queue.buffer.index(self.head).take(&mut cell_perm);
-                #[proof] let cell_perm = tracked_get(cell_perm);
+                #[proof] let cell_perm = cell_perm.get();
 
                 atomic_with_ghost!(&queue.head => store(next_head as u64); ghost head_token => {
                     queue.instance.consume_end(cell_perm,

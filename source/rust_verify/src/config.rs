@@ -36,6 +36,7 @@ pub struct Args {
     pub no_lifetime: bool,
     pub no_auto_recommends_check: bool,
     pub no_enhanced_typecheck: bool,
+    pub arch_word_bits: vir::prelude::ArchWordBits,
     pub time: bool,
     pub rlimit: u32,
     pub smt_options: Vec<(String, String)>,
@@ -76,6 +77,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_NO_LIFETIME: &str = "no-lifetime";
     const OPT_NO_AUTO_RECOMMENDS_CHECK: &str = "no-auto-recommends-check";
     const OPT_NO_ENHANCED_TYPECHECK: &str = "no-enhanced-typecheck";
+    const OPT_ARCH_WORD_BITS: &str = "arch-word-bits";
     const OPT_TIME: &str = "time";
     const OPT_RLIMIT: &str = "rlimit";
     const OPT_SMT_OPTION: &str = "smt-option";
@@ -125,6 +127,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         "Do not automatically check recommends after verification failures",
     );
     opts.optflag("", OPT_NO_ENHANCED_TYPECHECK, "Disable extensions to Rust type checker");
+    opts.optopt("", OPT_ARCH_WORD_BITS, "Size in bits for usize/isize: valid options are either '32', '64', or '32,64'. (default: 32,64)\nWARNING: this flag is a temporary workaround and will be removed in the near future", "BITS");
     opts.optflag("", OPT_TIME, "Measure and report time taken");
     opts.optopt(
         "",
@@ -203,6 +206,21 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         no_lifetime: matches.opt_present(OPT_NO_LIFETIME),
         no_auto_recommends_check: matches.opt_present(OPT_NO_AUTO_RECOMMENDS_CHECK),
         no_enhanced_typecheck: matches.opt_present(OPT_NO_ENHANCED_TYPECHECK),
+        arch_word_bits: matches
+            .opt_str(OPT_ARCH_WORD_BITS)
+            .map(|bits| {
+                use vir::prelude::ArchWordBits;
+                match bits.as_str() {
+                    "32" => ArchWordBits::Exactly(32),
+                    "64" => ArchWordBits::Exactly(64),
+                    "32,64" => ArchWordBits::Either32Or64,
+                    _ => error(format!(
+                        "invalid {} option: it must be either '32', '64', or '32,64'",
+                        OPT_ARCH_WORD_BITS
+                    )),
+                }
+            })
+            .unwrap_or(vir::prelude::ArchWordBits::Either32Or64),
         time: matches.opt_present(OPT_TIME),
         rlimit: matches
             .opt_get::<u32>(OPT_RLIMIT)

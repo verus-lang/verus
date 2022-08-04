@@ -1,16 +1,28 @@
 use std::process::Command;
 
 #[cfg(target_os = "macos")]
+const DYN_LIB_VAR: &str = "DYLD_LIBRARY_PATH";
+
+#[cfg(target_os = "linux")]
+const DYN_LIB_VAR: &str = "LD_LIBRARY_PATH";
+
+#[cfg(target_os = "macos")]
 const DYN_LIB_EXT: &str = "dylib";
 
 #[cfg(target_os = "linux")]
 const DYN_LIB_EXT: &str = "so";
 
-#[cfg(target_os = "linux")]
-const RUST_LIB_TARGET: &str = "x86_64-unknown-linux";
-
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 const RUST_LIB_TARGET: &str = "x86_64-apple-darwin";
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+const RUST_LIB_TARGET: &str = "aarch64-apple-darwin";
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+const RUST_LIB_TARGET: &str = "x86_64-unknown-linux-gnu";
+
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+const RUST_LIB_TARGET: &str = "aarch64-unknown-linux-gnu";
 
 #[derive(Debug)]
 enum Mode {
@@ -92,8 +104,8 @@ fn run_examples_in_directory(dir_path: &str) {
 
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         let script = format!(
-            "DYLD_LIBRARY_PATH=../rust/install/lib/rustlib/{}/lib LD_LIBRARY_PATH=../rust/install/lib ../rust/install/bin/rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/libbuiltin_macros.{} --extern state_machines_macros=../rust/install/bin/libstate_machines_macros.{} --edition=2018 {}",
-            RUST_LIB_TARGET, DYN_LIB_EXT, DYN_LIB_EXT, &path
+            "{}=../rust/install/lib/rustlib/{}/lib:../rust/install/lib ../rust/install/bin/rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/libbuiltin_macros.{} --extern state_machines_macros=../rust/install/bin/libstate_machines_macros.{} --edition=2018 {}",
+            DYN_LIB_VAR, RUST_LIB_TARGET, DYN_LIB_EXT, DYN_LIB_EXT, &path
         );
 
         let output = if cfg!(target_os = "windows") {

@@ -102,3 +102,12 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] regression_215 verus_code! {
+        // NOTE: we may want to allow this, but fixing the panic in #215 was the priority
+        fn f() {
+            return ();
+        }
+    } => Err(e) => assert_vir_error(e)
+}

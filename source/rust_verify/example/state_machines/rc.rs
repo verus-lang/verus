@@ -65,6 +65,7 @@ impl<T> Duplicable<T> {
     #[spec]
     pub fn wf(self) -> bool {
         equal(self.reader.instance, self.inst)
+        && equal(self.reader.count, 1)
     }
 
     #[spec]
@@ -78,7 +79,7 @@ impl<T> Duplicable<T> {
         ensures(|s: Self| s.wf() && equal(s.view(), t));
 
         #[proof] let (inst, mut readers) = Dupe::Instance::initialize_one(/* spec */ t, Option::Some(t));
-        #[proof] let reader = readers.tracked_remove(Dupe::reader { value: t, instance: inst });
+        #[proof] let reader = readers.tracked_remove(t);
         Duplicable {
             inst, reader
         }
@@ -190,7 +191,7 @@ tokenized_state_machine!(RefCounter<#[verifier(maybe_negative)] T> {
         dec_basic(x: T) {
             require(pre.counter >= 2);
             remove reader -= {x};
-            update counter = pre.counter - 1;
+            update counter = (pre.counter - 1) as nat;
         }
     }
 
@@ -221,17 +222,17 @@ struct InnerRc<S> {
 
 #[proof]
 struct GhostStuff<S> {
-    #[proof] pub rc_perm: cell::Permission<u64>,
-    #[proof] pub rc_token: RefCounter::counter<ptr::Permission<InnerRc<S>>>,
+    #[proof] pub rc_perm: cell::PermissionOpt<u64>,
+    #[proof] pub rc_token: RefCounter::counter<ptr::PermissionOpt<InnerRc<S>>>,
 }
 
 impl<S> GhostStuff<S> {
     #[spec]
-    fn wf(self, inst: RefCounter::Instance<ptr::Permission<InnerRc<S>>>, cell: PCell<u64>) -> bool {
-        equal(self.rc_perm.pcell, cell.id())
+    fn wf(self, inst: RefCounter::Instance<ptr::PermissionOpt<InnerRc<S>>>, cell: PCell<u64>) -> bool {
+        equal(self.rc_perm.view().pcell, cell.id())
         && equal(self.rc_token.instance, inst)
-        && self.rc_perm.value.is_Some()
-        && self.rc_perm.value.get_Some_0() as nat == self.rc_token.value
+        && self.rc_perm.view().value.is_Some()
+        && self.rc_perm.view().value.get_Some_0() as nat == self.rc_token.value
     }
 }
 
@@ -243,26 +244,27 @@ impl<S> InnerRc<S> {
 }
 
 struct MyRc<S> {
-    #[proof] pub inst: RefCounter::Instance<ptr::Permission<InnerRc<S>>>,
+    #[proof] pub inst: RefCounter::Instance<ptr::PermissionOpt<InnerRc<S>>>,
     #[proof] pub inv: Duplicable<LocalInvariant<GhostStuff<S>>>,
-    #[proof] pub reader: RefCounter::reader<ptr::Permission<InnerRc<S>>>,
+    #[proof] pub reader: RefCounter::reader<ptr::PermissionOpt<InnerRc<S>>>,
     pub ptr: PPtr<InnerRc<S>>,
 }
 
 impl<S> MyRc<S> {
     #[spec]
     fn wf(self) -> bool {
-        equal(self.reader.value.pptr, self.ptr.id())
+        equal(self.reader.value.view().pptr, self.ptr.id())
         && equal(self.reader.instance, self.inst)
-        && self.reader.value.value.is_Some()
+        && equal(self.reader.count, 1)
+        && self.reader.value.view().value.is_Some()
         && self.inv.wf()
         && (forall(|g: GhostStuff<S>| self.inv.view().inv(g) ==
-            g.wf(self.inst, self.reader.value.value.get_Some_0().rc_cell)))
+            g.wf(self.inst, self.reader.value.view().value.get_Some_0().rc_cell)))
     }
 
     #[spec]
     fn view(self) -> S {
-        self.reader.value.value.get_Some_0().s
+        self.reader.value.view().value.get_Some_0().s
     }
 
     fn new(s: S) -> Self {
@@ -278,14 +280,14 @@ impl<S> MyRc<S> {
 
         #[proof] let (inst, mut rc_token, _) = RefCounter::Instance::initialize_empty(Option::None);
         
-        #[proof] let ptr_perm = tracked_get(ptr_perm);
+        #[proof] let ptr_perm = ptr_perm.get();
         #[proof] let reader = inst.do_deposit(ptr_perm, &mut rc_token, ptr_perm);
 
-        #[proof] let g = GhostStuff::<S> { rc_perm: tracked_get(rc_perm), rc_token };
+        #[proof] let g = GhostStuff::<S> { rc_perm: rc_perm.get(), rc_token };
 
         #[proof] let inv = LocalInvariant::new(g,
             |g: GhostStuff<S>|
-                g.wf(reader.instance, reader.value.value.get_Some_0().rc_cell),
+                g.wf(reader.instance, reader.value.view().value.get_Some_0().rc_cell),
             0);
         #[proof] let inv = Duplicable::new(inv);
 
@@ -328,7 +330,7 @@ impl<S> MyRc<S> {
                 &mut rc_token,
                 &self.reader);
                 
-            g = GhostStuff { rc_perm: tracked_get(rc_perm), rc_token };
+            g = GhostStuff { rc_perm: rc_perm.get(), rc_token };
         });
 
         MyRc {
@@ -380,7 +382,7 @@ impl<S> MyRc<S> {
                 ptr.dispose(inner_rc_perm);
             }
 
-            g = GhostStuff { rc_perm: tracked_get(rc_perm), rc_token };
+            g = GhostStuff { rc_perm: rc_perm.get(), rc_token };
         });
     }
 }

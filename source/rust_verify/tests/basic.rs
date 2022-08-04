@@ -217,13 +217,17 @@ test_verify_one_file! {
             assert(y == z);
             assert((x == 1) == !a);
         }
+    } => Ok(())
+}
 
+test_verify_one_file! {
+    #[test] test_short_circuit1 code! {
         fn f3(a: bool, b: bool) {
-            let mut x: Ghost<u64> = ghost(0);
-            let y: Ghost<bool> = ghost(a ==> b);
-            let z: Ghost<bool> = ghost(a ==> { x = Ghost::new((*x + 1) as u64); b });
-            assert(*y == *z);
-            assert((*x == 1) == a);
+            #[spec] let mut x: u64 = 0;
+            #[spec] let y: bool = imply(a, b);
+            #[spec] let z: bool = imply(a, { x = x + 1; b });
+            assert(y == z);
+            assert((x == 1) == a);
         }
     } => Ok(())
 }

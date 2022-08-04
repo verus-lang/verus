@@ -796,7 +796,7 @@ fn expr_to_stm_opt(
             let e0 = unwrap_or_return_never!(e0, stms);
             Ok((stms, ReturnValue::Some(mk_exp(ExpX::Loc(e0)))))
         }
-        ExprX::Assign { init_not_mut, lhs_type_mode: _, lhs: lhs_expr, rhs: expr2 } => {
+        ExprX::Assign { init_not_mut, lhs: lhs_expr, rhs: expr2 } => {
             let (mut stms, lhs_exp) = expr_to_stm_opt(ctx, state, lhs_expr)?;
             let lhs_exp = lhs_exp.expect_value();
             match expr_must_be_call_stm(ctx, state, expr2)? {

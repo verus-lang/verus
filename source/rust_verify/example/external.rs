@@ -7,7 +7,7 @@ verus! {
 #[verifier(external_body)]
 fn test(n: u64, s: Ghost<int>)
     requires
-        n > 10 && s >= n,
+        n > 10 && s@ >= n,
 {
     println!("hello {}", n);
 }

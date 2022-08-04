@@ -45,9 +45,11 @@ pub struct GlobalCtx {
 pub struct FunctionCtx {
     // false normally, true if we're just checking recommends
     pub checking_recommends: bool,
+    // false normally, true if we're just checking recommends for a non-spec function
+    pub checking_recommends_for_non_spec: bool,
     // used to print diagnostics for triggers
     pub module_for_chosen_triggers: Option<Path>,
-    // used to create quantifier identifiers
+    // used to create quantifier identifiers and for checking_recommends
     pub current_fun: Fun,
 }
 
@@ -74,6 +76,13 @@ impl Ctx {
     pub fn checking_recommends(&self) -> bool {
         match self.fun {
             Some(FunctionCtx { checking_recommends: true, .. }) => true,
+            _ => false,
+        }
+    }
+
+    pub fn checking_recommends_for_non_spec(&self) -> bool {
+        match self.fun {
+            Some(FunctionCtx { checking_recommends_for_non_spec: true, .. }) => true,
             _ => false,
         }
     }
@@ -268,8 +277,8 @@ impl Ctx {
         self.global
     }
 
-    pub fn prelude() -> Commands {
-        let nodes = crate::prelude::prelude_nodes();
+    pub fn prelude(prelude_config: crate::prelude::PreludeConfig) -> Commands {
+        let nodes = crate::prelude::prelude_nodes(prelude_config);
         air::parser::Parser::new()
             .nodes_to_commands(&nodes)
             .expect("internal error: malformed prelude")
