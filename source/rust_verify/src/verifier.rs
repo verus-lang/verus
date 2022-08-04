@@ -511,7 +511,8 @@ impl Verifier {
             }
         }
         let mut invalidity = false;
-        let CommandsWithContextX { span, desc, commands, prover_choice } = &*commands_with_context;
+        let CommandsWithContextX { span, desc, commands, prover_choice, skip_recommends: _ } =
+            &*commands_with_context;
         if commands.len() > 0 {
             air_context.blank_line();
             air_context.comment(comment);
@@ -794,6 +795,7 @@ impl Verifier {
                         desc: "termination proof".to_string(),
                         commands: check_commands,
                         prover_choice: vir::def::ProverChoice::DefaultProver,
+                        skip_recommends: false,
                     }),
                     &HashMap::new(),
                     &vec![],
@@ -860,7 +862,6 @@ impl Verifier {
                 continue;
             }
             let mut recommends_rerun = false;
-            let mut is_singular = false;
             loop {
                 ctx.fun = mk_fun_ctx(&function, recommends_rerun);
                 let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
@@ -877,16 +878,21 @@ impl Verifier {
 
                 let mut function_invalidity = false;
                 for command in commands.iter().map(|x| &*x) {
-                    let CommandsWithContextX { span, desc: _, commands: _, prover_choice } =
-                        &**command;
+                    let CommandsWithContextX {
+                        span,
+                        desc: _,
+                        commands: _,
+                        prover_choice,
+                        skip_recommends,
+                    } = &**command;
+                    if recommends_rerun && *skip_recommends {
+                        continue;
+                    }
                     if *prover_choice == vir::def::ProverChoice::Singular {
-                        is_singular = true;
                         #[cfg(not(feature = "singular"))]
-                        if is_singular {
-                            panic!(
-                                "Found singular command when Verus is compiled without Singular feature"
-                            );
-                        }
+                        panic!(
+                            "Found singular command when Verus is compiled without Singular feature"
+                        );
 
                         #[cfg(feature = "singular")]
                         if air_context.singular_log.is_none() {
@@ -938,13 +944,7 @@ impl Verifier {
                     function_invalidity = function_invalidity || command_invalidity;
                 }
 
-                if function_invalidity
-                    && !recommends_rerun
-                    && !self.args.no_auto_recommends_check
-                    // in case of singular proof function and bit-vector proof function, skip recommends check
-                    && !is_singular
-                    && !function.x.attrs.bit_vector
-                {
+                if function_invalidity && !recommends_rerun && !self.args.no_auto_recommends_check {
                     // Rerun failed query to report possible recommends violations
                     recommends_rerun = true;
                     continue;

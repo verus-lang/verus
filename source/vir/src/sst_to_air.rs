@@ -1317,6 +1317,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                             mk_option_command("smt.arith.nl", "false"),
                         ]),
                         ProverChoice::DefaultProver,
+                        true,
                     ));
                 }
             }
@@ -1345,6 +1346,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 "assert_bit_vector".to_string(),
                 Arc::new(bv_commands),
                 ProverChoice::Spinoff,
+                true,
             ));
 
             vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr, expr_ctxt)?))]
@@ -1510,6 +1512,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 desc: "while loop".to_string(),
                 commands: Arc::new(vec![Arc::new(CommandX::CheckValid(query))]),
                 prover_choice: ProverChoice::DefaultProver,
+                skip_recommends: false,
             }));
 
             // At original site of while loop, assert invariant, havoc, assume invariant + neg_cond
@@ -1858,6 +1861,7 @@ pub fn body_stm_to_air(
             "Singular check valid".to_string(),
             Arc::new(vec![singular_command]),
             ProverChoice::Singular,
+            true,
         ));
     } else {
         let query = Arc::new(QueryX { local: Arc::new(local), assertion });
@@ -1883,6 +1887,7 @@ pub fn body_stm_to_air(
             } else {
                 ProverChoice::DefaultProver
             },
+            is_integer_ring || is_bit_vector_mode || is_nonlinear,
         ));
     }
     Ok((state.commands, state.snap_map))

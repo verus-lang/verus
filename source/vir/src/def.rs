@@ -438,6 +438,7 @@ pub struct CommandsWithContextX {
     pub desc: String,
     pub commands: Commands,
     pub prover_choice: ProverChoice,
+    pub skip_recommends: bool,
 }
 
 impl CommandsWithContextX {
@@ -446,12 +447,14 @@ impl CommandsWithContextX {
         desc: String,
         commands: Commands,
         prover_choice: ProverChoice,
+        skip_recommends: bool,
     ) -> CommandsWithContext {
         Arc::new(CommandsWithContextX {
             span: span,
             desc: desc,
             commands: commands,
             prover_choice: prover_choice,
+            skip_recommends: skip_recommends,
         })
     }
 }
