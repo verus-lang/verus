@@ -880,12 +880,15 @@ impl Verifier {
                 for command in commands.iter().map(|x| &*x) {
                     let CommandsWithContextX {
                         span,
-                        desc: _,
+                        desc,
                         commands: _,
                         prover_choice,
                         skip_recommends,
                     } = &**command;
                     if recommends_rerun && *skip_recommends {
+                        let multispan = MultiSpan::from_spans(vec![from_raw_span(&span.raw_span)]);
+                        let msg = format!("recommends check skipped: {}", desc);
+                        compiler.diagnostic().span_note_without_error(multispan, &msg);
                         continue;
                     }
                     if *prover_choice == vir::def::ProverChoice::Singular {
