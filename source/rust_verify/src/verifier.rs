@@ -857,12 +857,14 @@ impl Verifier {
         let function_spec_commands = Arc::new(function_spec_commands);
         let function_axiom_commands = Arc::new(function_axiom_commands);
         // Create queries to check the validity of proof/exec function bodies
+        let no_auto_recommends_check = self.args.no_auto_recommends_check;
         for function in &krate.functions {
             if Some(module.clone()) != function.x.visibility.owning_module {
                 continue;
             }
-            let mut recommends_rerun = false;
-            loop {
+            let check_validity = &mut |recommends_rerun: bool,
+                                       mut fun_ssts: SstMap|
+             -> Result<(bool, SstMap), VirErr> {
                 ctx.fun = mk_fun_ctx(&function, recommends_rerun);
                 let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
                     ctx,
@@ -946,13 +948,12 @@ impl Verifier {
 
                     function_invalidity = function_invalidity || command_invalidity;
                 }
-
-                if function_invalidity && !recommends_rerun && !self.args.no_auto_recommends_check {
-                    // Rerun failed query to report possible recommends violations
-                    recommends_rerun = true;
-                    continue;
-                }
-                break;
+                Ok((function_invalidity, fun_ssts))
+            };
+            let (function_invalidity, new_fun_ssts) = check_validity(false, fun_ssts)?;
+            fun_ssts = new_fun_ssts;
+            if function_invalidity && !no_auto_recommends_check {
+                fun_ssts = check_validity(true, fun_ssts)?.1;
             }
         }
         ctx.fun = None;
