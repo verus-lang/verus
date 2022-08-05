@@ -511,7 +511,8 @@ impl Verifier {
             }
         }
         let mut invalidity = false;
-        let CommandsWithContextX { span, desc, commands, prover_choice } = &*commands_with_context;
+        let CommandsWithContextX { span, desc, commands, prover_choice, skip_recommends: _ } =
+            &*commands_with_context;
         if commands.len() > 0 {
             air_context.blank_line();
             air_context.comment(comment);
@@ -794,6 +795,7 @@ impl Verifier {
                         desc: "termination proof".to_string(),
                         commands: check_commands,
                         prover_choice: vir::def::ProverChoice::DefaultProver,
+                        skip_recommends: false,
                     }),
                     &HashMap::new(),
                     &vec![],
@@ -855,13 +857,14 @@ impl Verifier {
         let function_spec_commands = Arc::new(function_spec_commands);
         let function_axiom_commands = Arc::new(function_axiom_commands);
         // Create queries to check the validity of proof/exec function bodies
+        let no_auto_recommends_check = self.args.no_auto_recommends_check;
         for function in &krate.functions {
             if Some(module.clone()) != function.x.visibility.owning_module {
                 continue;
             }
-            let mut recommends_rerun = false;
-            let mut is_singular = false;
-            loop {
+            let check_validity = &mut |recommends_rerun: bool,
+                                       mut fun_ssts: SstMap|
+             -> Result<(bool, SstMap), VirErr> {
                 ctx.fun = mk_fun_ctx(&function, recommends_rerun);
                 let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
                     ctx,
@@ -877,16 +880,24 @@ impl Verifier {
 
                 let mut function_invalidity = false;
                 for command in commands.iter().map(|x| &*x) {
-                    let CommandsWithContextX { span, desc: _, commands: _, prover_choice } =
-                        &**command;
+                    let CommandsWithContextX {
+                        span,
+                        desc,
+                        commands: _,
+                        prover_choice,
+                        skip_recommends,
+                    } = &**command;
+                    if recommends_rerun && *skip_recommends {
+                        let multispan = MultiSpan::from_spans(vec![from_raw_span(&span.raw_span)]);
+                        let msg = format!("recommends check skipped: {}", desc);
+                        compiler.diagnostic().span_note_without_error(multispan, &msg);
+                        continue;
+                    }
                     if *prover_choice == vir::def::ProverChoice::Singular {
-                        is_singular = true;
                         #[cfg(not(feature = "singular"))]
-                        if is_singular {
-                            panic!(
-                                "Found singular command when Verus is compiled without Singular feature"
-                            );
-                        }
+                        panic!(
+                            "Found singular command when Verus is compiled without Singular feature"
+                        );
 
                         #[cfg(feature = "singular")]
                         if air_context.singular_log.is_none() {
@@ -937,19 +948,12 @@ impl Verifier {
 
                     function_invalidity = function_invalidity || command_invalidity;
                 }
-
-                if function_invalidity
-                    && !recommends_rerun
-                    && !self.args.no_auto_recommends_check
-                    // in case of singular proof function and bit-vector proof function, skip recommends check
-                    && !is_singular
-                    && !function.x.attrs.bit_vector
-                {
-                    // Rerun failed query to report possible recommends violations
-                    recommends_rerun = true;
-                    continue;
-                }
-                break;
+                Ok((function_invalidity, fun_ssts))
+            };
+            let (function_invalidity, new_fun_ssts) = check_validity(false, fun_ssts)?;
+            fun_ssts = new_fun_ssts;
+            if function_invalidity && !no_auto_recommends_check {
+                fun_ssts = check_validity(true, fun_ssts)?.1;
             }
         }
         ctx.fun = None;
