@@ -146,7 +146,7 @@ impl Spawnable<Proof<X::stamped_tickets>> for ThreadData {
 
     // ANCHOR: thread_run
     fn run(self) -> Proof<X::stamped_tickets> {
-        let ThreadData { globals: globals, mut token } = self;
+        let ThreadData { globals: globals, token } = self;
         let globals = &*globals;
         #[proof] let new_token;
 
@@ -169,10 +169,10 @@ impl Spawnable<Proof<X::stamped_tickets>> for ThreadData {
 fn do_count(num_threads: u32) {
     // Initialize protocol 
 
-    #[proof] let (instance,
-        counter_token,
-        mut unstamped_tokens,
-        mut stamped_tokens) = X::Instance::initialize(num_threads as nat);
+    #[proof] let (Trk(instance),
+        Trk(counter_token),
+        Trk(mut unstamped_tokens),
+        Trk(mut stamped_tokens)) = X::Instance::initialize(num_threads as nat);
 
     // Initialize the counter
 

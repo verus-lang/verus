@@ -1074,7 +1074,10 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
             && !matches!(&function.x.kind, FunctionKind::TraitMethodDecl { .. })
         {
             // can't erase return values in external_body functions, so:
-            if function.x.mode != ret_mode {
+            // (note: proof functions that are external_body are usually implemented
+            // as `unimplemented!()` and don't actually return anything, so it should
+            // be fine.)
+            if function.x.mode == Mode::Exec && function.x.mode != ret_mode {
                 return err_string(
                     &function.span,
                     format!(

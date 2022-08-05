@@ -315,7 +315,7 @@ impl<T> RwLock<T> {
         requires(0 < rc_width);
         ensures(|s: Self| s.wf());
         
-        #[proof] let (inst, exc_locked_token, mut ref_counts_tokens, _, _, _, _) =
+        #[proof] let (Trk(inst), Trk(exc_locked_token), Trk(mut ref_counts_tokens), _, _, _, _) =
             DistRwLock::Instance::initialize(rc_width, t, Option::Some(t));
 
         let exc_locked_atomic = AtomicBool::new(false, exc_locked_token,

@@ -170,17 +170,17 @@ impl<T> Interner<T> {
         )
     }
 
-    fn new() -> (Self, Proof<InternSystem::Instance<T>>) {
-        ensures(|x: (Self, Proof<InternSystem::Instance<T>>)| {
+    fn new() -> (Self, Trk<InternSystem::Instance<T>>) {
+        ensures(|x: (Self, Trk<InternSystem::Instance<T>>)| {
             #[spec] let s = x.0;
             #[spec] let inst = x.1.0;
             s.wf(inst)
         });
 
-        #[proof] let (inst, auth, _f) = InternSystem::Instance::empty();
+        #[proof] let (Trk(inst), Trk(auth), Trk(_f)) = InternSystem::Instance::empty();
         let store = Vec::new();
 
-        (Interner { inst: inst.clone(), auth, store }, Proof(inst))
+        (Interner { inst: inst.clone(), auth, store }, Trk(inst))
     }
 
     fn insert(&mut self, #[spec] inst: InternSystem::Instance<T>, val: T) -> Interned<T> {
@@ -272,7 +272,7 @@ impl<T> Interned<T> {
 
 
 fn main() {
-    let (mut interner, Proof(inst)) = Interner::<u64>::new();
+    let (mut interner, Trk(inst)) = Interner::<u64>::new();
 
     let s1 = interner.insert(inst, 1);
     let s2 = interner.insert(inst, 2);
