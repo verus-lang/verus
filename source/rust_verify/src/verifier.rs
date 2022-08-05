@@ -539,7 +539,7 @@ impl Verifier {
     fn new_air_context_with_prelude(
         &mut self,
         module_path: &vir::ast::Path,
-        function_path: Option<&vir::ast::Path>,
+        query_function_path_counter: Option<(&vir::ast::Path, usize)>,
         is_rerun: bool,
         prelude_config: vir::prelude::PreludeConfig,
     ) -> Result<air::context::Context, VirErr> {
@@ -550,11 +550,16 @@ impl Verifier {
         air_context.set_profile_all(self.args.profile_all);
 
         let rerun_msg = if is_rerun { "_rerun" } else { "" };
+        let count_msg = query_function_path_counter
+            .map(|(_, ref c)| format!("_{:02}", c))
+            .unwrap_or("".to_string());
+        let function_path = query_function_path_counter.map(|(p, _)| p);
         if self.args.log_all || self.args.log_air_initial {
             let file = self.create_log_file(
                 Some(module_path),
                 function_path,
-                format!("{}{}", rerun_msg, crate::config::AIR_INITIAL_FILE_SUFFIX).as_str(),
+                format!("{}{}{}", rerun_msg, count_msg, crate::config::AIR_INITIAL_FILE_SUFFIX)
+                    .as_str(),
             )?;
             air_context.set_air_initial_log(Box::new(file));
         }
@@ -562,7 +567,8 @@ impl Verifier {
             let file = self.create_log_file(
                 Some(module_path),
                 function_path,
-                format!("{}{}", rerun_msg, crate::config::AIR_FINAL_FILE_SUFFIX).as_str(),
+                format!("{}{}{}", rerun_msg, count_msg, crate::config::AIR_FINAL_FILE_SUFFIX)
+                    .as_str(),
             )?;
             air_context.set_air_final_log(Box::new(file));
         }
@@ -570,7 +576,7 @@ impl Verifier {
             let file = self.create_log_file(
                 Some(module_path),
                 function_path,
-                format!("{}{}", rerun_msg, crate::config::SMT_FILE_SUFFIX).as_str(),
+                format!("{}{}{}", rerun_msg, count_msg, crate::config::SMT_FILE_SUFFIX).as_str(),
             )?;
             air_context.set_smt_log(Box::new(file));
         }
@@ -606,11 +612,12 @@ impl Verifier {
         function_spec_commands: Arc<Vec<(Commands, String)>>,
         function_axiom_commands: Arc<Vec<(Commands, String)>>,
         is_rerun: bool,
+        context_counter: usize,
         span: &air::ast::Span,
     ) -> Result<air::context::Context, VirErr> {
         let mut air_context = self.new_air_context_with_prelude(
             module_path,
-            Some(function_path),
+            Some((function_path, context_counter)),
             is_rerun,
             PreludeConfig { arch_word_bits: self.args.arch_word_bits },
         )?;
@@ -865,6 +872,7 @@ impl Verifier {
             let check_validity = &mut |recommends_rerun: bool,
                                        mut fun_ssts: SstMap|
              -> Result<(bool, SstMap), VirErr> {
+                let mut spinoff_context_counter = 1;
                 ctx.fun = mk_fun_ctx(&function, recommends_rerun);
                 let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
                     ctx,
@@ -920,8 +928,10 @@ impl Verifier {
                             function_spec_commands.clone(),
                             function_axiom_commands.clone(),
                             recommends_rerun,
+                            spinoff_context_counter,
                             &span,
                         )?;
+                        spinoff_context_counter += 1;
                         &mut spinoff_z3_context
                     } else {
                         &mut air_context

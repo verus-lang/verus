@@ -1179,7 +1179,7 @@ fn expr_to_stm_opt(
             stms.push(assume);
             Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
         }
-        ExprX::AssertQuery { requires, ensures, proof, mode } => {
+        ExprX::AssertQuery { requires, ensures, proof, mode, spinoff_prover } => {
             let mut inner_body: Vec<Stm> = Vec::new();
             let mut vars = BTreeMap::new(); // order vars by UniqueIdent
 
@@ -1253,6 +1253,7 @@ fn expr_to_stm_opt(
                     body: inner_body,
                     typ_inv_vars: Arc::new(vars.into_iter().collect()),
                     mode: *mode,
+                    spinoff_prover: *spinoff_prover,
                 },
             );
             Ok((vec![outer_block, nonlinear], ReturnValue::ImplicitUnit(expr.span.clone())))

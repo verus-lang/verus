@@ -1285,7 +1285,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
             vec![Arc::new(StmtX::Assert(error, air_expr))]
         }
-        StmX::AssertQuery { typ_inv_vars, body, mode } => {
+        StmX::AssertQuery { typ_inv_vars, body, mode, spinoff_prover } => {
             if ctx.debug {
                 unimplemented!("assert query is unsupported in debugger mode");
             }
@@ -1316,7 +1316,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                             Arc::new(CommandX::CheckValid(query)),
                             mk_option_command("smt.arith.nl", "false"),
                         ]),
-                        ProverChoice::DefaultProver,
+                        if *spinoff_prover {
+                            ProverChoice::Spinoff
+                        } else {
+                            ProverChoice::DefaultProver
+                        },
                         true,
                     ));
                 }

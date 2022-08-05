@@ -888,22 +888,26 @@ impl VisitMut for Visitor {
                     let span = assert.assert_token.span;
                     let arg = assert.expr;
                     let attrs = assert.attrs;
-                    match (assert.by_token, assert.prover, assert.body) {
+                    if match (assert.by_token, assert.prover, assert.body) {
                         (None, None, None) => {
                             *expr = parse_quote_spanned!(span => crate::pervasive::assert(#arg));
+                            true
                         }
                         (None, _, _) => panic!("missing by token"),
                         (Some(_), None, None) => panic!("extra by token"),
                         (Some(_), None, Some(box (None, block))) => {
                             *expr =
                                 parse_quote_spanned!(span => {::builtin::assert_by(#arg, #block);});
+                            true
                         }
                         (Some(_), Some((_, id)), None) if id.to_string() == "bit_vector" => {
                             *expr =
                                 parse_quote_spanned!(span => ::builtin::assert_bit_vector(#arg));
+                            true
                         }
                         (Some(_), Some((_, id)), None) if id.to_string() == "nonlinear_arith" => {
                             *expr = parse_quote_spanned!(span => ::builtin::assert_nonlinear_by({::builtin::ensures(#arg);}));
+                            true
                         }
                         (Some(_), Some((_, id)), Some(box (requires, mut block)))
                             if id.to_string() == "nonlinear_arith" =>
@@ -914,17 +918,23 @@ impl VisitMut for Visitor {
                             }
                             stmts.push(parse_quote_spanned!(span => ::builtin::ensures(#arg);));
                             block.stmts.splice(0..0, stmts);
-                            *expr = parse_quote_spanned!(span => {::builtin::assert_nonlinear_by(#block);});
+                            let mut assert_nonlinear_by: Expr = parse_quote_spanned!(span => ::builtin::assert_nonlinear_by(#block));
+                            assert_nonlinear_by.replace_attrs(attrs.clone());
+                            *expr = parse_quote_spanned!(span => {#assert_nonlinear_by});
+                            false
                         }
                         (Some(_), Some((_, id)), _) => {
                             let span = id.span();
                             *expr = parse_quote_spanned!(span => compile_error!("unsupported kind of assert-by"));
+                            true
                         }
                         _ => {
                             *expr = parse_quote_spanned!(span => compile_error!("unsupported kind of assert-by"));
+                            true
                         }
+                    } {
+                        expr.replace_attrs(attrs);
                     }
-                    expr.replace_attrs(attrs);
                 }
                 Expr::AssertForall(assert) => {
                     let span = assert.assert_token.span;

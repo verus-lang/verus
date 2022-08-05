@@ -156,7 +156,7 @@ fn check_one_expr(
         ExprX::OpenInvariant(_inv, _binder, body, _atomicity) => {
             assert_no_early_exit_in_inv_block(&body.span, body)?;
         }
-        ExprX::AssertQuery { requires, ensures, proof, mode: _ } => {
+        ExprX::AssertQuery { requires, ensures, proof, mode: _, spinoff_prover: _ } => {
             if function.x.attrs.nonlinear {
                 return err_str(
                     &expr.span,
