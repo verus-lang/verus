@@ -2264,6 +2264,9 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             let cond = expr_to_vir(bctx, cond, ExprModifier::REGULAR)?;
             let mut body = expr_to_vir(bctx, body, ExprModifier::REGULAR)?;
             let header = vir::headers::read_header(&mut body)?;
+            if header.decrease.len() > 0 {
+                return err_span_str(expr.span, "termination checking of loops is not supported");
+            }
             let invs = header.invariant;
             Ok(mk_expr(ExprX::While { cond, body, invs }))
         }

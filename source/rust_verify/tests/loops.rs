@@ -358,3 +358,17 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_one_fails(e)
 }
+
+test_verify_one_file! {
+    #[test] loop_termination_unsupported verus_code! {
+        fn test() {
+            let mut a: u64 = 0;
+            while a < 100
+                invariant a <= 100
+                decreases 100 - a
+            {
+                a = a + 1;
+            }
+        }
+    } => Err(e) => assert_vir_error(e)
+}

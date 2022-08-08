@@ -1169,7 +1169,11 @@ impl Verifier {
         Ok(true)
     }
 
-    fn construct_vir_crate<'tcx>(&mut self, tcx: TyCtxt<'tcx>) -> Result<bool, VirErr> {
+    fn construct_vir_crate<'tcx>(
+        &mut self,
+        tcx: TyCtxt<'tcx>,
+        diagnostics: &impl Diagnostics,
+    ) -> Result<bool, VirErr> {
         let autoviewed_call_typs = Arc::new(std::sync::Mutex::new(HashMap::new()));
         if !self.args.no_enhanced_typecheck {
             let _ =
@@ -1228,7 +1232,17 @@ impl Verifier {
             let mut file = self.create_log_file(None, None, crate::config::VIR_FILE_SUFFIX)?;
             vir::printer::write_krate(&mut file, &vir_crate);
         }
-        vir::well_formed::check_crate(&vir_crate)?;
+        let mut check_crate_diags = vec![];
+        let check_crate_result = vir::well_formed::check_crate(&vir_crate, &mut check_crate_diags);
+        for diag in check_crate_diags {
+            match diag {
+                vir::ast::VirErrAs::Warning(err) => {
+                    diagnostics.report_error(&err, ErrorAs::Warning)
+                }
+                vir::ast::VirErrAs::Note(err) => diagnostics.report_error(&err, ErrorAs::Note),
+            }
+        }
+        check_crate_result?;
         let (erasure_modes, inferred_modes) = vir::modes::check_crate(&vir_crate)?;
         let vir_crate = vir::traits::demote_foreign_traits(&vir_crate)?;
 
@@ -1339,7 +1353,7 @@ impl rustc_driver::Callbacks for VerifierCallbacks {
         let _result = queries.global_ctxt().expect("global_ctxt").peek_mut().enter(|tcx| {
             {
                 let mut verifier = self.verifier.lock().expect("verifier mutex");
-                if let Err(err) = verifier.construct_vir_crate(tcx) {
+                if let Err(err) = verifier.construct_vir_crate(tcx, compiler) {
                     compiler.report_error(&err, ErrorAs::Error);
                     verifier.encountered_vir_error = true;
                     return;

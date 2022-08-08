@@ -1064,3 +1064,73 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] mutable_reference_no_decreases verus_code! {
+        fn e(s: &mut u64, i: usize) -> usize {
+            if i < 10 {
+                e(s, i + 1)
+            } else {
+                i
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] mutable_reference_decreases_1 verus_code! {
+        fn e(s: &mut u64, i: usize) -> usize
+            decreases i
+        {
+            if i > 0 {
+                e(s, i - 1)
+            } else {
+                i
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] mutable_reference_decreases_2_pass verus_code! {
+        fn e(s: &mut u64) -> u64
+            decreases *s
+        {
+            if *s > 0 {
+                *s = *s - 1;
+                e(s)
+            } else {
+                *s
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] mutable_reference_decreases_2_fail verus_code! {
+        fn e(s: &mut u64) -> u64
+            decreases *s
+        {
+            *s = *s - 1;
+            e(s) // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] exec_no_decreases verus_code! {
+        fn e(s: &mut u64, i: usize) -> usize
+        {
+            decreases_by(check_e);
+            if i < 10 {
+                e(s, i + 1)
+            } else {
+                i
+            }
+        }
+
+        #[verifier(decreases_by)]
+        proof fn check_e(s: &mut u64, i: usize) {
+        }
+    } => Err(e) => assert_vir_error(e)
+}

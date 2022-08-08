@@ -91,6 +91,16 @@ fn run_arith_sum(n: u64) -> u64 {
     result
 }
 
+fn exec_with_decreases(n: u64) -> u64
+    decreases 100 - n
+{
+    if n < 100 {
+        exec_with_decreases(n + 1)
+    } else {
+        n
+    }
+}
+
 #[verifier(external)]
 fn main() {
     let args = std::env::args();
