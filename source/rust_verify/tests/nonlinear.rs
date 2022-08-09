@@ -5,14 +5,10 @@
 mod common;
 use common::*;
 
-// TODO: make sure testcases do not timeout
-
 // Test #[verifier(nonlinear)]
 
-// TODO stabilize this with z3 4.8.17
 test_verify_one_file! {
-    // TODO stabilize this with z3 4.8.17
-    #[ignore] #[test] test1 code! {
+    #[test] test1 verus_code! {
         #[verifier(nonlinear)]
         proof fn lemma_mul_upper_bound(x: int, x_bound: int, y: int, y_bound: int)
             requires
@@ -23,11 +19,6 @@ test_verify_one_file! {
             ensures
                 x * y <= x_bound * y_bound,
         {
-            // TODO this attempt to stabilize didn't work
-            // assert(x <= x * x_bound);
-            assert(y <= y * y_bound);
-
-            assert(x * y <= x_bound * y_bound);
         }
     } => Ok(())
 }
