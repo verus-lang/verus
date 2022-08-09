@@ -908,10 +908,14 @@ impl VisitMut for Visitor {
                     let right = binary.right;
                     match binary.op {
                         BinOp::Eq(..) => {
-                            *expr = Expr::Verbatim(quote_spanned!(span => spec_eq(#left, #right)));
+                            *expr = Expr::Verbatim(
+                                quote_spanned!(span => ::builtin::spec_eq(#left, #right)),
+                            );
                         }
                         BinOp::Ne(..) => {
-                            *expr = Expr::Verbatim(quote_spanned!(span => !spec_eq(#left, #right)));
+                            *expr = Expr::Verbatim(
+                                quote_spanned!(span => ! ::builtin::spec_eq(#left, #right)),
+                            );
                         }
                         BinOp::Le(..) => {
                             *expr = Expr::Verbatim(quote_spanned!(span => (#left).spec_le(#right)));
