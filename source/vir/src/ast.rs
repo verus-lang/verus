@@ -439,13 +439,7 @@ pub enum ExprX {
     /// Sequence of statements, optionally including an expression at the end
     Block(Stmts, Option<Expr>),
     /// assert_by with smt.arith.nl=true
-    AssertQuery {
-        requires: Exprs,
-        ensures: Exprs,
-        proof: Expr,
-        mode: AssertQueryMode,
-        spinoff_prover: bool,
-    },
+    AssertQuery { requires: Exprs, ensures: Exprs, proof: Expr, mode: AssertQueryMode },
 }
 
 /// Statement, similar to rustc_hir::Stmt

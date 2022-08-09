@@ -252,10 +252,10 @@ impl Context {
             self.set_z3_param_bool(option, true, true);
         } else if value == "false" {
             self.set_z3_param_bool(option, false, true);
-        } else if let Ok(v) = value.parse::<f64>() {
-            self.set_z3_param_f64(option, v, true);
         } else if let Ok(v) = value.parse::<u32>() {
             self.set_z3_param_u32(option, v, true);
+        } else if let Ok(v) = value.parse::<f64>() {
+            self.set_z3_param_f64(option, v, true);
         } else if value.is_ascii() {
             self.set_z3_param_str(option, value, true);
         } else {

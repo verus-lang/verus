@@ -118,7 +118,6 @@ pub enum StmX {
         mode: AssertQueryMode,
         typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
         body: Stm,
-        spinoff_prover: bool,
     },
 }
 

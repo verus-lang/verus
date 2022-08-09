@@ -1285,7 +1285,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
             vec![Arc::new(StmtX::Assert(error, air_expr))]
         }
-        StmX::AssertQuery { typ_inv_vars, body, mode, spinoff_prover } => {
+        StmX::AssertQuery { typ_inv_vars, body, mode } => {
             if ctx.debug {
                 unimplemented!("assert query is unsupported in debugger mode");
             }
@@ -1312,15 +1312,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         stm.span.clone(),
                         "assert_nonlinear_by".to_string(),
                         Arc::new(vec![
-                            mk_option_command("smt.arith.nl", "true"),
+                            mk_option_command("smt.arith.solver", "6"),
                             Arc::new(CommandX::CheckValid(query)),
-                            mk_option_command("smt.arith.nl", "false"),
                         ]),
-                        if *spinoff_prover {
-                            ProverChoice::Spinoff
-                        } else {
-                            ProverChoice::DefaultProver
-                        },
+                        ProverChoice::Spinoff,
                         true,
                     ));
                 }
@@ -1870,11 +1865,7 @@ pub fn body_stm_to_air(
     } else {
         let query = Arc::new(QueryX { local: Arc::new(local), assertion });
         let commands = if is_nonlinear {
-            vec![
-                mk_option_command("smt.arith.nl", "true"),
-                Arc::new(CommandX::CheckValid(query)),
-                mk_option_command("smt.arith.nl", "false"),
-            ]
+            vec![mk_option_command("smt.arith.solver", "6"), Arc::new(CommandX::CheckValid(query))]
         } else if is_bit_vector_mode {
             let mut bv_commands = mk_bitvector_option();
             bv_commands.push(Arc::new(CommandX::CheckValid(query)));
@@ -1886,7 +1877,7 @@ pub fn body_stm_to_air(
             func_span.clone(),
             "function body check".to_string(),
             Arc::new(commands),
-            if is_spinoff_prover || is_bit_vector_mode {
+            if is_spinoff_prover || is_bit_vector_mode || is_nonlinear {
                 ProverChoice::Spinoff
             } else {
                 ProverChoice::DefaultProver

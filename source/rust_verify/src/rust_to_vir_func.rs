@@ -235,6 +235,13 @@ pub(crate) fn check_item_fn<'tcx>(
         let path = autospec_fun(&path, method_name.clone());
         Arc::new(FunX { path, trait_path: trait_path.clone() })
     });
+
+    if vattrs.nonlinear && vattrs.spinoff_prover {
+        return err_span_str(
+            sig.span,
+            "#[verifier(spinoff_prover)] is implied for assert by nonlinear_arith",
+        );
+    }
     let fattrs = FunctionAttrsX {
         uses_ghost_blocks: vattrs.verus_macro,
         inline: vattrs.inline,
