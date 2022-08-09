@@ -1,3 +1,5 @@
+// rust_verify/tests/example.rs ignore
+
 #![allow(unused_imports)]
 
 // port of single-producer single-consumer queue from LinearDafny
