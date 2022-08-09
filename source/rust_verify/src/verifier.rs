@@ -659,6 +659,8 @@ impl Verifier {
             false,
             PreludeConfig { arch_word_bits: self.args.arch_word_bits },
         )?;
+        air_context.set_expected_solver_version(crate::consts::EXPECTED_SOLVER_VERSION.to_string());
+
         let mut spunoff_time_smt_init = Duration::ZERO;
         let mut spunoff_time_smt_run = Duration::ZERO;
 
