@@ -99,8 +99,16 @@ impl<K, V> Map<K, V> {
         &&& (forall|k: K| #![auto] self.dom().contains(k) ==> self[k] === m2[k])
     }
 
+    /// Returns true if the key `k` is in the domain of `self`.
+
+    #[verifier(inline)]
+    pub open spec fn contains(self, k: K) -> bool {
+        self.dom().contains(k)
+    }
+
     /// Returns true if the key `k` is in the domain of `self`, and it maps to the value `v`.
 
+    #[verifier(inline)]
     pub open spec fn contains_pair(self, k: K, v: V) -> bool {
         self.dom().contains(k) && self[k] === v
     }
