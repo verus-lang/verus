@@ -558,7 +558,7 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
         invariant(
             forall(|j: int| with_triggers!(
                 [perms.dom().contains(j as nat)],
-                [backing_cells_vec.index(j as nat)], 
+                [backing_cells_vec.view().index(j as nat)], 
                 [perms.index(j as nat)] =>
                 0 <= j && j < backing_cells_vec.len() as int >>=
                 #[trigger] perms.dom().contains(j as nat)
