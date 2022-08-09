@@ -109,6 +109,8 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context, decl: &Decl) {
 pub type ReportLongRunning<'a> =
     (std::time::Duration, Box<dyn FnMut(std::time::Duration) -> () + 'a>);
 
+const GET_VERSION_RESPONSE_PREFIX: &str = "(:version";
+
 pub(crate) fn smt_check_assertion<'ctx>(
     context: &mut Context,
     mut infos: Vec<AssertionInfo>,
@@ -116,7 +118,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
     only_check_earlier: bool,
     report_long_running: Option<&mut ReportLongRunning>,
 ) -> ValidityResult {
-    if only_check_earlier {
+    let disabled_expr = if only_check_earlier {
         // disable all labels that come after the first known error
         let mut disabled: Vec<Expr> = Vec::new();
         let mut found_disabled = false;
@@ -136,7 +138,35 @@ pub(crate) fn smt_check_assertion<'ctx>(
             // no earlier assertions to check
             return ValidityResult::Valid;
         }
-        context.smt_log.log_assert(&mk_and(&disabled));
+        Some(mk_and(&disabled))
+    } else {
+        None
+    };
+
+    context.smt_log.log_get_info("version");
+    let smt_data = context.smt_log.take_pipe_data();
+    let early_smt_output = context.get_smt_process().send_commands(smt_data);
+    for line in early_smt_output {
+        if line.starts_with(GET_VERSION_RESPONSE_PREFIX) {
+            if let Some(expected_version) = &context.expected_solver_version {
+                let value: &str = &line[GET_VERSION_RESPONSE_PREFIX.len()..line.len() - 1];
+                let version = value.trim_matches(&[' ', '"'][..]);
+                if version != expected_version.as_str() {
+                    panic!(
+                        "The verifier expects z3 version \"{}\", found version \"{}\"",
+                        expected_version, version
+                    );
+                }
+            }
+        } else if context.ignore_unexpected_smt {
+            println!("warning: unexpected SMT output: {}", line);
+        } else {
+            return ValidityResult::UnexpectedOutput(line);
+        }
+    }
+
+    if let Some(disabled_expr) = disabled_expr {
+        context.smt_log.log_assert(&disabled_expr);
     }
 
     let mut discovered_error: Option<Error> = None;

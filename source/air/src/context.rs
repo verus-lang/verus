@@ -82,6 +82,7 @@ pub struct Context {
     pub(crate) time_smt_init: Duration,
     pub(crate) time_smt_run: Duration,
     pub(crate) state: ContextState,
+    pub(crate) expected_solver_version: Option<String>,
 }
 
 impl Context {
@@ -110,6 +111,7 @@ impl Context {
             time_smt_init: Duration::new(0, 0),
             time_smt_run: Duration::new(0, 0),
             state: ContextState::NotStarted,
+            expected_solver_version: None,
         };
         context.axiom_infos.push_scope(false);
         context.lambda_map.push_scope(false);
@@ -173,6 +175,10 @@ impl Context {
 
     pub fn get_time(&self) -> (Duration, Duration) {
         (self.time_smt_init, self.time_smt_run)
+    }
+
+    pub fn set_expected_solver_version(&mut self, version: String) {
+        self.expected_solver_version = Some(version);
     }
 
     pub fn set_rlimit(&mut self, rlimit: u32) {

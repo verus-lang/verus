@@ -23,6 +23,7 @@ extern crate smallvec;
 
 mod attributes;
 pub mod config;
+pub mod consts;
 pub mod context;
 pub mod debugger;
 pub mod def;
