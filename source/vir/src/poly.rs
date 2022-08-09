@@ -439,7 +439,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let vars = Arc::new(bs);
             mk_expr(ExprX::Forall { vars, require, ensure, proof })
         }
-        ExprX::AssertQuery { requires, ensures, proof, mode, spinoff_prover } => {
+        ExprX::AssertQuery { requires, ensures, proof, mode } => {
             state.types.push_scope(true);
             let requires =
                 requires.iter().map(|e| coerce_expr_to_native(ctx, &poly_expr(ctx, state, e)));
@@ -449,13 +449,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let ensures = Arc::new(ensures.collect());
             let proof = poly_expr(ctx, state, proof);
             state.types.pop_scope();
-            mk_expr(ExprX::AssertQuery {
-                requires,
-                ensures,
-                proof,
-                mode: *mode,
-                spinoff_prover: *spinoff_prover,
-            })
+            mk_expr(ExprX::AssertQuery { requires, ensures, proof, mode: *mode })
         }
         ExprX::If(e0, e1, None) => {
             let e0 = coerce_expr_to_native(ctx, &poly_expr(ctx, state, e0));
