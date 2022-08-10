@@ -940,7 +940,7 @@ impl Verifier {
                         prover_choice,
                         skip_recommends,
                     } = &**command;
-                    if recommends_rerun && *skip_recommends {
+                    if recommends_rerun && (*skip_recommends || ctx.expand_flag) {
                         let multispan = MultiSpan::from_spans(vec![from_raw_span(&span.raw_span)]);
                         let msg = format!("recommends check skipped: {}", desc);
                         compiler.diagnostic().span_note_without_error(multispan, &msg);
