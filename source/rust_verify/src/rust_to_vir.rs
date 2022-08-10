@@ -426,7 +426,7 @@ fn check_item<'tcx>(
             // Nothing to do here - we can rely on Rust's type resolution to handle these
         }
         ItemKind::GlobalAsm(..) =>
-        //if get_verifier_attrs(ctxt.tcx.hir().attrs(item.hir_id()))?.external =>
+        //TODO(utaal): add a crate-level attribute to enable global_asm
         {
             return Ok(());
         }
