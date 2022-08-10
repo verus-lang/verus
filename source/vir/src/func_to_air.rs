@@ -154,16 +154,18 @@ fn func_body_to_air(
         vec![]
     };
     if let Some(fun) = &function.x.decrease_by {
-        let decrease_by_fun = &ctx.func_map[fun];
-        state.view_as_spec = false;
-        let (body_stms, _exp) = crate::ast_to_sst::expr_to_stm_or_error(
-            &ctx,
-            &mut state,
-            decrease_by_fun.x.body.as_ref().expect("decreases_by has body"),
-        )?;
-        let body_stms: Result<Vec<Stm>, VirErr> =
-            body_stms.iter().map(|s| state.finalize_stm(ctx, &state.fun_ssts, s)).collect();
-        decrease_by_stms.extend(body_stms?);
+        if &ctx.module == &fun.path.pop_segment() {
+            let decrease_by_fun = &ctx.func_map[fun];
+            state.view_as_spec = false;
+            let (body_stms, _exp) = crate::ast_to_sst::expr_to_stm_or_error(
+                &ctx,
+                &mut state,
+                decrease_by_fun.x.body.as_ref().expect("decreases_by has body"),
+            )?;
+            let body_stms: Result<Vec<Stm>, VirErr> =
+                body_stms.iter().map(|s| state.finalize_stm(ctx, &state.fun_ssts, s)).collect();
+            decrease_by_stms.extend(body_stms?);
+        }
     }
     state.finalize();
 
