@@ -122,6 +122,7 @@ fn func_body_to_air(
     check_commands: &mut Vec<Command>,
     function: &Function,
     body: &crate::ast::Expr,
+    not_verifying_owning_module: bool,
 ) -> Result<SstMap, VirErr> {
     let id_fuel = prefix_fuel_id(&fun_to_air_ident(&function.x.name));
 
@@ -154,16 +155,19 @@ fn func_body_to_air(
         vec![]
     };
     if let Some(fun) = &function.x.decrease_by {
-        let decrease_by_fun = &ctx.func_map[fun];
         state.view_as_spec = false;
-        let (body_stms, _exp) = crate::ast_to_sst::expr_to_stm_or_error(
-            &ctx,
-            &mut state,
-            decrease_by_fun.x.body.as_ref().expect("decreases_by has body"),
-        )?;
-        let body_stms: Result<Vec<Stm>, VirErr> =
-            body_stms.iter().map(|s| state.finalize_stm(ctx, &state.fun_ssts, s)).collect();
-        decrease_by_stms.extend(body_stms?);
+        if let Some(decrease_by_fun) = ctx.func_map.get(fun) {
+            let (body_stms, _exp) = crate::ast_to_sst::expr_to_stm_or_error(
+                &ctx,
+                &mut state,
+                decrease_by_fun.x.body.as_ref().expect("decreases_by has body"),
+            )?;
+            let body_stms: Result<Vec<Stm>, VirErr> =
+                body_stms.iter().map(|s| state.finalize_stm(ctx, &state.fun_ssts, s)).collect();
+            decrease_by_stms.extend(body_stms?);
+        } else {
+            assert!(not_verifying_owning_module);
+        }
     }
     state.finalize();
 
@@ -445,6 +449,7 @@ pub fn func_axioms_to_air(
     fun_ssts: SstMap,
     function: &Function,
     public_body: bool,
+    not_verifying_owning_module: bool,
 ) -> Result<(Commands, Commands, SstMap), VirErr> {
     let mut ens_typs: Vec<_> = function
         .x
@@ -470,6 +475,7 @@ pub fn func_axioms_to_air(
                         &mut check_commands,
                         function,
                         body,
+                        not_verifying_owning_module,
                     )?;
                 }
             }
