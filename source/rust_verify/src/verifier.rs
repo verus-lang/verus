@@ -428,7 +428,9 @@ impl Verifier {
 
                         if !self.expand_flag {
                             self.errors.push(errors);
-                            self.expand_targets.push(error.clone());
+                            if self.args.expand_errors {
+                                self.expand_targets.push(error.clone());
+                            }
                         } else {
                             self.expanded_errors.push(errors);
                         }
@@ -1049,9 +1051,12 @@ impl Verifier {
             vir::printer::write_krate(&mut file, &poly_krate);
         }
 
-        let before_err_count = self.count_errors;
-        self.expand_targets = vec![]; // flush old errors
-        self.expand_flag = false;
+        let mut before_err_count = 0;
+        if self.args.expand_errors {
+            before_err_count = self.count_errors;
+            self.expand_targets = vec![]; // flush old errors
+            self.expand_flag = false;
+        }
 
         let (time_smt_init, time_smt_run) =
             self.verify_module(compiler, &poly_krate, module, &mut ctx)?;
