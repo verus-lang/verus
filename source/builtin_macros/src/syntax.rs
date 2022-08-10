@@ -488,23 +488,6 @@ impl VisitMut for Visitor {
             None
         };
 
-        let ghost_intrinsic = match &expr {
-            Expr::Call(ExprCall {
-                func: box Expr::Path(syn_verus::ExprPath { path: Path { segments, .. }, .. }),
-                ..
-            }) if segments.len() == 2 => {
-                if segments.first().unwrap().ident.to_string() == "builtin" {
-                    match segments.last().unwrap().ident.to_string().as_str() {
-                        "requires" | "ensures" | "recommends" | "decreases" | "invariant" => true,
-                        _ => false,
-                    }
-                } else {
-                    false
-                }
-            }
-            _ => false,
-        };
-
         let sub_inside_arith = match expr {
             Expr::Paren(..) | Expr::Block(..) | Expr::Group(..) => self.inside_arith,
             Expr::Cast(..) => InsideArith::Widen,
@@ -531,22 +514,6 @@ impl VisitMut for Visitor {
                 | BinOp::Shr(..) => InsideArith::Fixed,
                 _ => InsideArith::None,
             },
-            Expr::Call(ExprCall {
-                func: box Expr::Path(ExprPath { path: Path { segments, .. }, .. }),
-                ..
-            }) if segments.len() == 2 => {
-                if segments.first().unwrap().ident.to_string() == "builtin" {
-                    match segments.last().unwrap().ident.to_string().as_str() {
-                        "spec_chained_value" | "spec_chained_cmp" | "spec_chained_le"
-                        | "spec_chained_lt" | "spec_chained_ge" | "spec_chained_gt" => {
-                            InsideArith::Widen
-                        }
-                        _ => InsideArith::None,
-                    }
-                } else {
-                    InsideArith::None
-                }
-            }
             _ => InsideArith::None,
         };
         let sub_assign_to = match expr {
@@ -559,7 +526,7 @@ impl VisitMut for Visitor {
         let is_inside_arith = self.inside_arith;
         let is_assign_to = self.assign_to;
         let use_spec_traits = self.use_spec_traits && is_inside_ghost;
-        if mode_block.is_some() || ghost_intrinsic {
+        if mode_block.is_some() {
             self.inside_ghost += 1;
         }
         self.inside_arith = sub_inside_arith;
@@ -577,7 +544,7 @@ impl VisitMut for Visitor {
         if let Expr::Assign(assign) = expr {
             assign.left = Box::new(assign_left.expect("assign_left"));
         }
-        if mode_block.is_some() || ghost_intrinsic {
+        if mode_block.is_some() {
             self.inside_ghost -= 1;
         }
         self.inside_arith = is_inside_arith;
