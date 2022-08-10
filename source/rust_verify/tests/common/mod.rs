@@ -233,7 +233,7 @@ fn relevant_error_span(err: &Vec<ErrorSpan>) -> &ErrorSpan {
     if let Some(e) = err.iter().find(|e| e.description == Some("at this exit".to_string())) {
         return e;
     } else if let Some(e) = err.iter().find(|e| {
-        e.description == Some("failed this postcondition".to_string())
+        e.description == Some(vir::def::THIS_POST_FAILED.to_string())
             && !e.test_span_line.contains("TRAIT")
     }) {
         return e;

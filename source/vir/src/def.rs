@@ -135,6 +135,17 @@ pub const QID_HAS_TYPE_ALWAYS: &str = "has_type_always";
 
 pub const SUPPORTED_CRATES: [&str; 2] = ["builtin", "pervasive"];
 
+// List of pre-defined error messages
+pub const ASSERTION_FAILURE: &str = "assertion failure";
+pub const PRECONDITION_FAILURE: &str = "precondition not satisfied";
+pub const POSTCONDITION_FAILURE: &str = "postcondition not satisfied";
+pub const THIS_POST_FAILED: &str = "failed this postcondition";
+pub const INV_FAIL_LOOP_END: &str = "invariant not satisfied at end of loop body";
+pub const INV_FAIL_LOOP_FRONT: &str = "invariant not satisfied before loop";
+pub const SPLIT_ASSERT_FAILURE: &str = "splitted assertion failure";
+pub const SPLIT_PRE_FAILURE: &str = "splitted precondition failure";
+pub const SPLIT_POST_FAILURE: &str = "splitted postcondition failure";
+
 pub fn path_to_string(path: &Path) -> String {
     let s = vec_map(&path.segments, |s| s.to_string()).join(PATH_SEPARATOR) + SUFFIX_PATH;
     if let Some(krate) = &path.krate { krate.to_string() + KRATE_SEPARATOR + &s } else { s }
