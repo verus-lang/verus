@@ -808,6 +808,13 @@ pub fn check_crate(krate: &Krate, diags: &mut Vec<VirErrAs>) -> Result<(), VirEr
                 .secondary_span(&funs[prev].span)
                 .secondary_span(&function.span));
             }
+            if proof_fun.path.pop_segment() != function.x.name.path.pop_segment() {
+                return Err(air::errors::error(
+                    "a decreases_by function must be in the same module as the function definition",
+                    &proof_function.span,
+                )
+                .secondary_span(&function.span));
+            }
             decreases_by_proof_to_spec.insert(proof_fun.clone(), function.x.name.clone());
             check_functions_match(
                 "decreases_by/recommends_by",

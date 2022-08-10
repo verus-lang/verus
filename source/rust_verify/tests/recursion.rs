@@ -1134,3 +1134,49 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_vir_error(e)
 }
+
+test_verify_one_file! {
+    #[test] decreases_by_other_module_1_regression_249 verus_code! {
+        mod A {
+            #[allow(unused_imports)] use builtin::*;
+            pub open spec fn f() -> nat {
+                decreases_by(termination_f);
+                0
+            }
+
+            #[verifier(decreases_by)]
+            pub proof fn termination_f() {
+            }
+        }
+
+        mod B {
+            #[allow(unused_imports)] use builtin::*;
+            #[allow(unused_imports)] use crate::A::f;
+
+            spec fn g() -> nat {
+                f()
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] decreases_by_other_module_2 verus_code! {
+        mod A {
+            #[allow(unused_imports)] use builtin::*;
+            pub open spec fn f() -> nat {
+                decreases_by(crate::B::termination_f);
+                0
+            }
+
+        }
+
+        mod B {
+            #[allow(unused_imports)] use builtin::*;
+            #[verifier(decreases_by)]
+            pub proof fn termination_f() {
+                assert(false);
+            }
+        }
+    } => Err(e) => assert_vir_error(e) // the decreases_by function must be in the same module
+}
