@@ -784,18 +784,21 @@ impl Verifier {
                 let (function, vis_abs) = &funs[f];
 
                 ctx.fun = mk_fun_ctx(&function, false);
+                let not_verifying_owning_module =
+                    Some(module) != function.x.visibility.owning_module.as_ref();
                 let (decl_commands, check_commands, new_fun_ssts) =
                     vir::func_to_air::func_axioms_to_air(
                         ctx,
                         fun_ssts,
                         &function,
                         is_visible_to(&vis_abs, module),
+                        not_verifying_owning_module,
                     )?;
                 fun_ssts = new_fun_ssts;
                 fun_axioms.insert(f.clone(), decl_commands);
                 ctx.fun = None;
 
-                if Some(module.clone()) != function.x.visibility.owning_module {
+                if not_verifying_owning_module {
                     continue;
                 }
                 let invalidity = self.run_commands_queries(
