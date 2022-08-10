@@ -1038,65 +1038,65 @@ impl Verifier {
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate_simplified(&krate);
 
-        if (if self.args.verify_module.is_some() { 1 } else { 0 }
-            + if self.args.verify_root { 1 } else { 0 }
-            + if self.args.verify_pervasive { 1 } else { 0 })
-            > 1
+        if self.args.verify_pervasive
+            && (!self.args.verify_module.is_empty() || self.args.verify_root)
         {
             return Err(error(
-                "only one of --verify-module, --verify-root, or --verify-pervasive allowed",
+                "--verify-pervasive not allowed when --verify-root or --verify-module are present",
             ));
         }
 
         if self.args.verify_function.is_some() {
-            if self.args.verify_module.is_none() && !self.args.verify_root {
+            if self.args.verify_module.is_empty() && !self.args.verify_root {
                 return Err(error(
                     "--verify-function option requires --verify-module or --verify-root",
+                ));
+            }
+
+            if self.args.verify_module.len() > 1 {
+                return Err(error(
+                    "--verify-function only allowed with a single --verify-module (or --verify-root)",
                 ));
             }
         }
 
         let module_ids_to_verify: Vec<vir::ast::Path> = {
-            if self.args.verify_root {
-                let root_mod_id = krate
-                    .module_ids
-                    .iter()
-                    .find(|m| m.segments.len() == 0)
-                    .expect("missing root module");
-                vec![root_mod_id.clone()]
-            } else if let Some(mod_name) = &self.args.verify_module {
-                if let Some(id) = krate.module_ids.iter().find(|m| &module_name(m) == mod_name) {
-                    vec![id.clone()]
-                } else {
-                    let msg = vec![
-                        format!("could not find module {mod_name} specified by --verify-module"),
-                        format!("available modules are:"),
-                    ]
-                    .into_iter()
-                    .chain(krate.module_ids.iter().filter_map(|m| {
-                        let name = module_name(m);
-                        (!(name.starts_with("pervasive::") || name == "pervasive")
-                            && m.segments.len() > 0)
-                            .then(|| format!("- {name}"))
-                    }))
-                    .chain(Some(format!("or use --verify-root, --verify-pervasive")).into_iter())
-                    .collect::<Vec<_>>()
-                    .join("\n");
+            let mut remaining_verify_module: HashSet<_> = self.args.verify_module.iter().collect();
+            let module_ids_to_verify = krate
+                .module_ids
+                .iter()
+                .filter(|m| {
+                    let name = module_name(m);
+                    let is_pervasive = name.starts_with("pervasive::") || name == "pervasive";
+                    (!self.args.verify_root
+                        && self.args.verify_module.is_empty()
+                        && (!is_pervasive ^ self.args.verify_pervasive))
+                        || (self.args.verify_root && m.segments.len() == 0)
+                        || remaining_verify_module.take(&name).is_some()
+                })
+                .cloned()
+                .collect();
 
-                    return Err(error(msg));
-                }
-            } else {
-                krate
-                    .module_ids
-                    .iter()
-                    .filter(|m| {
-                        let name = module_name(m);
-                        !(name.starts_with("pervasive::") || name == "pervasive")
-                            ^ self.args.verify_pervasive
-                    })
-                    .cloned()
-                    .collect()
+            if let Some(mod_name) = remaining_verify_module.into_iter().next() {
+                let msg = vec![
+                    format!("could not find module {mod_name} specified by --verify-module"),
+                    format!("available modules are:"),
+                ]
+                .into_iter()
+                .chain(krate.module_ids.iter().filter_map(|m| {
+                    let name = module_name(m);
+                    (!(name.starts_with("pervasive::") || name == "pervasive")
+                        && m.segments.len() > 0)
+                        .then(|| format!("- {name}"))
+                }))
+                .chain(Some(format!("or use --verify-root, --verify-pervasive")).into_iter())
+                .collect::<Vec<_>>()
+                .join("\n");
+
+                return Err(error(msg));
             }
+
+            module_ids_to_verify
         };
 
         for module in &module_ids_to_verify {

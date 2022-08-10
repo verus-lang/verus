@@ -29,7 +29,7 @@ pub const TRIGGERS_FILE_SUFFIX: &str = ".triggers";
 pub struct Args {
     pub pervasive_path: Option<String>,
     pub verify_root: bool,
-    pub verify_module: Option<String>,
+    pub verify_module: Vec<String>,
     pub verify_function: Option<String>,
     pub verify_pervasive: bool,
     pub no_verify: bool,
@@ -106,10 +106,10 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     let mut opts = Options::new();
     opts.optopt("", OPT_PERVASIVE_PATH, "Path of the pervasive module", "PATH");
     opts.optflag("", OPT_VERIFY_ROOT, "Verify just the root module of crate");
-    opts.optopt(
+    opts.optmulti(
         "",
         OPT_VERIFY_MODULE,
-        "Verify just one submodule within crate (e.g. 'foo' or 'foo::bar')",
+        "Verify just one submodule within crate (e.g. 'foo' or 'foo::bar'), can be repeated to verify only certain modules",
         "MODULE",
     );
     opts.optopt(
@@ -199,7 +199,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     let args = Args {
         pervasive_path: matches.opt_str(OPT_PERVASIVE_PATH),
         verify_root: matches.opt_present(OPT_VERIFY_ROOT),
-        verify_module: matches.opt_str(OPT_VERIFY_MODULE),
+        verify_module: matches.opt_strs(OPT_VERIFY_MODULE),
         verify_function: matches.opt_str(OPT_VERIFY_FUNCTION),
         verify_pervasive: matches.opt_present(OPT_VERIFY_PERVASIVE),
         no_verify: matches.opt_present(OPT_NO_VERIFY),
