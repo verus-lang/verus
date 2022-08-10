@@ -291,7 +291,7 @@ fn merge_two_es(es1: TracedExps, es2: TracedExps) -> TracedExps {
     return Arc::new(merged_vec);
 }
 
-// use span of e2 -- e1 is just for precondition
+// Assuming e1, try to prove e2. Hence we use the span of e2 here.
 fn mk_imply_traced(e1: &Exp, e2: &TracedExp) -> TracedExp {
     let imply = ExpX::Binary(BinaryOp::Implies, e1.clone(), e2.e.clone());
     let imply_exp = SpannedTyped::new(&e2.e.span, &Arc::new(TypX::Bool), imply);
@@ -314,7 +314,6 @@ fn mk_chained_implies(es: TracedExps) -> TracedExps {
 }
 
 // Note: this splitting referenced Dafny - https://github.com/dafny-lang/dafny/blob/cf285b9282499c46eb24f05c7ecc7c72423cd878/Source/Dafny/Verifier/Translator.cs#L11100
-// `split_expr` should be called after `finalize_exp` to ensure that triggers are already selected
 pub(crate) fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> TracedExps {
     match *exp.e.typ {
         TypX::Bool => (),
@@ -415,7 +414,6 @@ pub(crate) fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: boo
         ExpX::Call(fun_name, _typs, exps) => {
             let fun = get_function(ctx, &exp.e.span, fun_name).unwrap();
             let res_inlined_exp = tr_inline_function(ctx, state, fun, exps, &exp.e.span);
-
             match res_inlined_exp {
                 Ok(inlined_exp) => {
                     let inlined_tr_exp = TracedExpX::new(
@@ -429,26 +427,7 @@ pub(crate) fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: boo
                     let not_inlined_exp =
                         TracedExpX::new(exp.e.clone(), exp.trace.secondary_label(&sp, msg));
                     return mk_atom(not_inlined_exp, negated);
-                } // Ok(inlined_exp) => {
-                  //     let new_trace = if level > 0 {
-                  //         exp.trace.secondary_label(&exp.e.span, format!("{}", exp.e.clone()))
-                  //     } else {
-                  //         exp.trace.secondary_span(&exp.e.span)
-                  //     };
-
-                  //     let inlined_tr_exp =
-                  //         TracedExpX::new(inlined_exp.clone(), inlined_exp.clone(), new_trace);
-                  //     return split_expr(ctx, state, &inlined_tr_exp, negated, level + 1);
-                  // }
-                  // Err((sp, msg)) => {
-                  //     // if the function inlining failed, treat as atom
-                  //     let not_inlined_exp = TracedExpX::new(
-                  //         exp.e.clone(),
-                  //         exp.e.clone(),
-                  //         exp.trace.secondary_label(&sp, msg),
-                  //     );
-                  //     return mk_atom(not_inlined_exp, negated);
-                  // }
+                }
             }
         }
         ExpX::If(e1, e2, e3) if !negated => {
@@ -541,9 +520,7 @@ pub(crate) fn need_split_expression(ctx: &Ctx, span: &Span) -> bool {
                     }
                 }
             }
-        }
-        // TODO while loop invariant
-        else {
+        } else {
             for sp in &err.spans {
                 // REVIEW: is this string matching desirable?
                 if sp.as_string == span.as_string {
