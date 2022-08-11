@@ -101,6 +101,8 @@ macro_rules! assert_seqs_equal {
     }
 }
 
+pub use assert_seqs_equal;
+
 #[macro_export]
 macro_rules! assert_seqs_equal_verus {
     ($s1:expr, $s2:expr) => {
@@ -122,5 +124,7 @@ macro_rules! assert_seqs_equal_verus {
         }}
     }
 }
+
+pub use assert_seqs_equal_verus;
 
 } // verus!
