@@ -70,9 +70,7 @@ proof fn equivalence_proof_lower_n(a:u32, b:u32, n:u32)
     decreases n,
 {
     if n == 0 {
-        assert_bitvector_by({
-            ensures(a & sub(1u32 << 0,1) == b & sub(1u32 << 0,1));
-        });
+        assert(a & sub(1u32 << 0,1) == b & sub(1u32 << 0,1)) by(bit_vector);
         // assert(equal_lower_n_bits(a,b,0));
     } else {
         equivalence_proof_lower_n(a,b, sub(n,1));   // lower `n-1` bits
@@ -91,12 +89,10 @@ proof fn equivalence_proof(a:u32, b:u32)
     // at this point, we have `equal_lower_n_bits(a,b,32)`
     // now it is trivial to get `a==b`, however, we need additional call to conclude that a==b
     // this is because Verus does not reason about bitvectors unless it is explicitly specified.
-    assert_bitvector_by({
-        requires([
-            a & sub(1u32 << 32,1) == b & sub(1u32 << 32,1)          
-        ]);
-        ensures(a==b);
-    })
+    assert(a == b) by (bit_vector)
+        requires
+            a & sub(1u32 << 32,1) == b & sub(1u32 << 32,1),
+    {}
 }
 
 

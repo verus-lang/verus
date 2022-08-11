@@ -902,6 +902,17 @@ impl VisitMut for Visitor {
                             *expr =
                                 parse_quote_spanned!(span => ::builtin::assert_bit_vector(#arg));
                         }
+                        (Some(_), Some((_, id)), Some(box (requires, mut block)))
+                            if id.to_string() == "bit_vector" =>
+                        {
+                            let mut stmts: Vec<Stmt> = Vec::new();
+                            if let Some(Requires { token, exprs }) = requires {
+                                stmts.push(parse_quote_spanned!(token.span => ::builtin::requires([#exprs]);));
+                            }
+                            stmts.push(parse_quote_spanned!(span => ::builtin::ensures(#arg);));
+                            block.stmts.splice(0..0, stmts);
+                            *expr = parse_quote_spanned!(span => {::builtin::assert_bitvector_by(#block);});
+                        }
                         (Some(_), Some((_, id)), None) if id.to_string() == "nonlinear_arith" => {
                             *expr = parse_quote_spanned!(span => ::builtin::assert_nonlinear_by({::builtin::ensures(#arg);}));
                         }
