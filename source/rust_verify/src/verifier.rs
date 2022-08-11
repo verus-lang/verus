@@ -59,7 +59,7 @@ pub struct Verifier {
     // proof debugging purposes
     expand_flag: bool,
     pub expand_targets: Vec<air::errors::Error>,
-    pub expanded_errors: Vec<Vec<ErrorSpan>>,
+    pub expand_errors: Vec<Vec<ErrorSpan>>,
 }
 
 #[derive(Debug)]
@@ -186,7 +186,7 @@ impl Verifier {
 
             expand_flag: false,
             expand_targets: vec![],
-            expanded_errors: vec![],
+            expand_errors: vec![],
         }
     }
 
@@ -432,7 +432,36 @@ impl Verifier {
                                 self.expand_targets.push(error.clone());
                             }
                         } else {
-                            self.expanded_errors.push(errors);
+                            // For testing setup, add error for each relevant span
+                            if vir::split_expression::is_split_error(&error) {
+                                let mut errors: Vec<ErrorSpan> = vec![];
+                                for span in &error.spans {
+                                    let error = ErrorSpan::new_from_air_span(
+                                        compiler.session().source_map(),
+                                        &error.msg,
+                                        span,
+                                    );
+                                    if !errors.iter().any(|x: &ErrorSpan| {
+                                        x.test_span_line == error.test_span_line
+                                    }) {
+                                        errors.push(error);
+                                    }
+                                }
+
+                                for label in &error.labels {
+                                    let error = ErrorSpan::new_from_air_span(
+                                        compiler.session().source_map(),
+                                        &error.msg,
+                                        &label.span,
+                                    );
+                                    if !errors.iter().any(|x: &ErrorSpan| {
+                                        x.test_span_line == error.test_span_line
+                                    }) {
+                                        errors.push(error);
+                                    }
+                                }
+                                self.expand_errors.push(errors);
+                            }
                         }
                         if self.args.debug {
                             let mut debugger = Debugger::new(
