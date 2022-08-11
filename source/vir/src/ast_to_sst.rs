@@ -708,7 +708,15 @@ fn stm_call(
                 continue;
             }
             let exp_subsituted = exp_subsituted.unwrap();
-            let error = air::errors::error(crate::def::SPLIT_PRE_FAILURE.to_string(), span);
+            // REVIEW: should we simply use SPLIT_ASSERT_FAILURE?
+            let message = if name.path.segments[0].to_string() == "pervasive".to_string()
+                && name.path.segments[1].to_string() == "assert".to_string()
+            {
+                crate::def::SPLIT_ASSERT_FAILURE
+            } else {
+                crate::def::SPLIT_PRE_FAILURE
+            };
+            let error = air::errors::error(message.to_string(), span);
             let exprs = crate::split_expression::split_expr(
                 ctx,
                 state,
