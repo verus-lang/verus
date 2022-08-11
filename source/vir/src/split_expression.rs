@@ -105,21 +105,6 @@ fn is_bool_type(t: &Typ) -> bool {
     }
 }
 
-fn is_same_type(t1: &Typ, t2: &Typ) -> bool {
-    match (&**t1, &**t2) {
-        (TypX::Bool, TypX::Bool)
-        | (TypX::Int(_), TypX::Int(_))
-        | (TypX::Tuple(_), TypX::Tuple(_))
-        | (TypX::Lambda(_, _), TypX::Lambda(_, _))
-        | (TypX::Datatype(_, _), TypX::Datatype(_, _))
-        | (TypX::TypParam(_), TypX::TypParam(_))
-        | (TypX::TypeId, TypX::TypeId)
-        | (TypX::Air(_), TypX::Air(_)) => true,
-        (TypX::Boxed(b1), TypX::Boxed(b2)) => is_same_type(b1, b2),
-        _ => false,
-    }
-}
-
 pub(crate) fn tr_inline_expression(
     body_exp: &Exp,
     params: &Params,
@@ -130,7 +115,7 @@ pub(crate) fn tr_inline_expression(
         _ => {
             return Err((
                 body_exp.span.clone(),
-                "Skip inlining for non-boolean expreesion".to_string(),
+                "Note: skip inlining due to verifier(external_body)".to_string(),
             ));
         }
     };
@@ -138,11 +123,8 @@ pub(crate) fn tr_inline_expression(
     let mut count = 0;
     for param in &**params {
         let exp_to_insert = &exps[count];
-        if !is_same_type(&param.x.typ, &exp_to_insert.typ) {
-            return Err((
-                exp_to_insert.span.clone(),
-                "Error: arg type mismatch during expression inlining".to_string(),
-            ));
+        if !crate::ast_util::types_equal(&param.x.typ, &exp_to_insert.typ) {
+            panic!("Internal error: arg type mismatch during expression inlining");
         }
         arg_map.insert(param.x.name.clone(), exp_to_insert.clone());
         count = count + 1;
@@ -160,6 +142,8 @@ pub(crate) fn pure_ast_expression_to_sst(ctx: &Ctx, body: &Expr, params: &Params
     .expect("pure_ast_expression_to_sst")
 }
 
+// Note that errors from `tr_inline_function` will be used by `split_expr`.
+// It will be reported to users specifying the reason why the function inlining failed.
 fn tr_inline_function(
     ctx: &Ctx,
     state: &State,
