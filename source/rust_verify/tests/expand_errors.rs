@@ -56,81 +56,81 @@ test_verify_one_file! {
     } => Err(e) => assert_expand_fails(e, 4)
 }
 
-// test_verify_one_file! {
-//     #[test] test3_expand_requires verus_code! {
-//         #[derive(PartialEq, Eq)]
-//         pub enum Message {
-//             Quit(bool),
-//             Move { x: i32, y: i32 },
-//             Write(bool),
-//         }
+test_verify_one_file! {
+    #[test] test3_expand_requires verus_code! {
+        #[derive(PartialEq, Eq)]
+        pub enum Message {
+            Quit(bool),
+            Move { x: i32, y: i32 },
+            Write(bool),
+        }
 
-//         spec fn is_good_integer_3(x: int) -> bool
-//         {
-//             x >= 0 && x != 5            // EXPAND
-//         //  ^^^^^^
-//         }
-//         spec fn is_good_message_3(msg:Message) -> bool {
-//             match msg {
-//                 Message::Quit(b) => b,
-//                 Message::Move{x, y} => is_good_integer_3( (x as int)  - (y as int)),   // EXPAND
-//             //                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-//                 Message::Write(b) => b,
-//             }
-//         }
+        spec fn is_good_integer_3(x: int) -> bool
+        {
+            x >= 0 && x != 5            // EXPAND-ERRORS
+        //  ^^^^^^
+        }
+        spec fn is_good_message_3(msg:Message) -> bool {
+            match msg {
+                Message::Quit(b) => b,
+                Message::Move{x, y} => is_good_integer_3( (x as int)  - (y as int)),   // EXPAND-ERRORS
+            //                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                Message::Write(b) => b,
+            }
+        }
 
-//         proof fn test_require_failure(m:Message, b: bool) -> (good_int: int)
-//             requires
-//                 b,
-//                 is_good_message_3(m),               // EXPAND
-//             //  ^^^^^^^^^^^^^^^^^^^^
-//             ensures
-//                 is_good_integer_3(good_int),
-//         {
-//             return 0;
-//         }
+        proof fn test_require_failure(m:Message, b: bool) -> (good_int: int)
+            requires
+                b,
+                is_good_message_3(m),               // EXPAND-ERRORS
+            //  ^^^^^^^^^^^^^^^^^^^^
+            ensures
+                is_good_integer_3(good_int),
+        {
+            return 0;
+        }
 
-//         proof fn test_3(x:int) {
-//             let x = Message::Move{x: 0, y: 5};
-//             test_require_failure(x, true);          // EXPAND
-//             //^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-//             assert(false);
-//         }
-//     } => Err(e) => assert_expand_fails(e, 4)
-// }
+        proof fn test_3(x:int) {
+            let x = Message::Move{x: 0, y: 5};
+            test_require_failure(x, true);          // EXPAND-ERRORS
+            //^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            assert(false);
+        }
+    } => Err(e) => assert_expand_fails(e, 4)
+}
 
-// test_verify_one_file! {
-//     #[test] test4_expand_ensures verus_code! {
-//         #[derive(PartialEq, Eq)]
-//         pub enum Message {
-//             Quit(bool),
-//             Move { x: i32, y: i32 },
-//             Write(bool),
-//         }
+test_verify_one_file! {
+    #[test] test4_expand_ensures verus_code! {
+        #[derive(PartialEq, Eq)]
+        pub enum Message {
+            Quit(bool),
+            Move { x: i32, y: i32 },
+            Write(bool),
+        }
 
-//         spec fn is_good_integer_8(x: int) -> bool
-//         {
-//             x >= 0 && x != 5                // EXPAND
-//         //            ^^^^^^
-//         }
+        spec fn is_good_integer_4(x: int) -> bool
+        {
+            x >= 0 && x != 5                // EXPAND-ERRORS
+        //            ^^^^^^
+        }
 
-//         spec fn is_good_message_8(msg:Message) -> bool {
-//             match msg {
-//                 Message::Quit(b) => b,
-//                 Message::Move{x, y} => is_good_integer_8( (x as int)  - (y as int)),        // EXPAND
-//             //                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-//                 Message::Write(b) => b,
-//             }
-//         }
+        spec fn is_good_message_4(msg:Message) -> bool {
+            match msg {
+                Message::Quit(b) => b,
+                Message::Move{x, y} => is_good_integer_4( (x as int)  - (y as int)),        // EXPAND-ERRORS
+            //                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                Message::Write(b) => b,
+            }
+        }
 
-//         proof fn test_ensures_failure(b: bool) -> (good_msg: Message)
-//             ensures
-//                 is_good_message_8(good_msg),            // EXPAND
-//               //^^^^^^^^^^^^^^^^^^^^^^^^^^^
-//         {
-//             let mut ret =  Message::Write(true);
-//             if !b {ret = Message::Move{x: 10, y: 5};}
-//             ret
-//         }
-//     } => Err(e) => assert_expand_fails(e, 3)
-// }
+        proof fn test_ensures_failure(b: bool) -> (good_msg: Message)
+            ensures
+                is_good_message_4(good_msg),            // EXPAND-ERRORS
+              //^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        {
+            let mut ret =  Message::Write(true);
+            if !b {ret = Message::Move{x: 10, y: 5};}
+            ret
+        }
+    } => Err(e) => assert_expand_fails(e, 3)
+}

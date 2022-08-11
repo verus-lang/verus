@@ -137,6 +137,7 @@ pub fn verify_files_and_pervasive(
         our_args.verify_pervasive |= verify_pervasive;
         if files.iter().any(|(_, body)| body.contains("EXPAND-ERRORS")) {
             our_args.expand_errors = true;
+            our_args.multiple_errors = 2;
         }
         our_args
     };
