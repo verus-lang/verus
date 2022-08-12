@@ -142,9 +142,10 @@ impl Visitor {
                 | FnMode::SpecChecked(ModeSpecChecked { spec_token, .. }),
                 None,
             ) => {
-                let e: Expr = Expr::Verbatim(quote_spanned!(spec_token.span =>
-                    compile_error!("non-private spec function must be marked open or closed to indicate whether the function body is public (pub open) or private (pub closed)")));
-                stmts.push(Stmt::Expr(e));
+                stmts.push(stmt_with_semi!(
+                    spec_token.span =>
+                    compile_error!("non-private spec function must be marked open or closed to indicate whether the function body is public (pub open) or private (pub closed)")
+                ));
             }
             _ => {}
         }
