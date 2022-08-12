@@ -999,11 +999,24 @@ impl VisitMut for Visitor {
                         {
                             let mut stmts: Vec<Stmt> = Vec::new();
                             if let Some(Requires { token, exprs }) = requires {
-                                stmts.push(parse_quote_spanned!(token.span => ::builtin::requires([#exprs]);));
+                                stmts.push(Stmt::Semi(
+                                    Expr::Verbatim(
+                                        quote_spanned!(token.span => ::builtin::requires([#exprs])),
+                                    ),
+                                    Semi { spans: [token.span] },
+                                ));
                             }
-                            stmts.push(parse_quote_spanned!(span => ::builtin::ensures(#arg);));
+                            stmts.push(Stmt::Semi(
+                                Expr::Verbatim(quote_spanned!(span => ::builtin::ensures(#arg))),
+                                Semi { spans: [span] },
+                            ));
                             block.stmts.splice(0..0, stmts);
-                            *expr = parse_quote_spanned!(span => {::builtin::assert_bitvector_by(#block);});
+                            let mut assert_bitvector_by: Expr = Expr::Verbatim(
+                                quote_spanned!(span => ::builtin::assert_bitvector_by(#block)),
+                            );
+                            assert_bitvector_by.replace_attrs(attrs.clone());
+                            *expr = Expr::Verbatim(quote_spanned!(span => {#assert_bitvector_by}));
+                            false
                         }
                         (Some(_), Some((_, id)), None) if id.to_string() == "nonlinear_arith" => {
                             *expr = Expr::Verbatim(

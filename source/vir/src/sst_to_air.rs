@@ -1361,7 +1361,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     Arc::new(CommandX::CheckValid(query)),
                     mk_option_command("smt.case_split", "3"),
                 ]),
-                ProverChoice::DefaultProver,
+                ProverChoice::Spinoff,
+                true,
             ));
             vec![]
         }
