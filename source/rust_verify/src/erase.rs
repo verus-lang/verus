@@ -59,7 +59,7 @@ use rustc_ast::ast::{
 };
 use rustc_ast::ptr::P;
 use rustc_data_structures::thin_vec::ThinVec;
-use rustc_interface::interface::Compiler;
+use verus_rustc_interface::interface::Compiler;
 use rustc_span::symbol::{Ident, Symbol};
 use rustc_span::{Span, SpanData};
 
@@ -1375,11 +1375,11 @@ impl CompilerCallbacks {
     fn maybe_print<'tcx>(
         &self,
         compiler: &Compiler,
-        queries: &'tcx rustc_interface::Queries<'tcx>,
+        queries: &'tcx verus_rustc_interface::Queries<'tcx>,
     ) {
         if self.print {
             let krate = &queries.expansion().expect("expansion").peek().0;
-            rustc_driver::pretty::print_after_parsing(
+            verus_rustc_driver::pretty::print_after_parsing(
                 &compiler.session(),
                 &compiler.input(),
                 krate,
@@ -1418,12 +1418,12 @@ impl rustc_lint::FormalVerifierRewrite for CompilerCallbacks {
     }
 }
 
-impl rustc_driver::Callbacks for CompilerCallbacks {
+impl verus_rustc_driver::Callbacks for CompilerCallbacks {
     fn after_parsing<'tcx>(
         &mut self,
         compiler: &Compiler,
-        queries: &'tcx rustc_interface::Queries<'tcx>,
-    ) -> rustc_driver::Compilation {
+        queries: &'tcx verus_rustc_interface::Queries<'tcx>,
+    ) -> verus_rustc_driver::Compilation {
         let _ = {
             // Install the rewrite_crate callback so that Rust will later call us back on the AST
             let registration = queries.register_plugins().expect("register_plugins");
@@ -1434,18 +1434,18 @@ impl rustc_driver::Callbacks for CompilerCallbacks {
         if self.lifetimes_only {
             self.maybe_print(compiler, queries);
             crate::lifetime::check(queries);
-            rustc_driver::Compilation::Stop
+            verus_rustc_driver::Compilation::Stop
         } else {
-            rustc_driver::Compilation::Continue
+            verus_rustc_driver::Compilation::Continue
         }
     }
 
     fn after_expansion<'tcx>(
         &mut self,
         compiler: &Compiler,
-        queries: &'tcx rustc_interface::Queries<'tcx>,
-    ) -> rustc_driver::Compilation {
+        queries: &'tcx verus_rustc_interface::Queries<'tcx>,
+    ) -> verus_rustc_driver::Compilation {
         self.maybe_print(compiler, queries);
-        rustc_driver::Compilation::Continue
+        verus_rustc_driver::Compilation::Continue
     }
 }

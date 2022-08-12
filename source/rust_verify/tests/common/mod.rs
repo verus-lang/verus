@@ -1,4 +1,3 @@
-extern crate rustc_driver;
 extern crate rustc_errors;
 extern crate rustc_span;
 

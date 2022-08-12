@@ -1,0 +1,18 @@
+[package]
+name = "verus_rustc_driver"
+version = "0.0.0"
+edition = "2021"
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+tracing = { version = "0.1.28" }
+serde_json = "1.0.59"
+verus_rustc_interface = { path = "../rustc_interface" }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["consoleapi", "debugapi", "processenv"] }

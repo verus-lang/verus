@@ -2,7 +2,7 @@
 
 use rustc_hir::{AssocItemKind, ItemKind, OwnerNode};
 
-pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
+pub(crate) fn check<'tcx>(queries: &'tcx verus_rustc_interface::Queries<'tcx>) {
     queries.global_ctxt().expect("global_ctxt").peek_mut().enter(|tcx| {
         let hir = tcx.hir();
         let krate = hir.krate();

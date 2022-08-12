@@ -8,4 +8,6 @@ members = [
   "rust_verify_test_macros",
   "state_machines_macros",
   "verusdoc",
+  "rustc_interface",
+  "rustc_driver",
 ]

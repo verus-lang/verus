@@ -6,13 +6,13 @@ use std::time::{Duration, Instant};
 
 fn mk_compiler<'a, 'b, F>(
     rustc_args: &'a [String],
-    verifier: &'b mut (dyn rustc_driver::Callbacks + Send),
+    verifier: &'b mut (dyn verus_rustc_driver::Callbacks + Send),
     file_loader: &F,
-) -> rustc_driver::RunCompiler<'a, 'b>
+) -> verus_rustc_driver::RunCompiler<'a, 'b>
 where
     F: 'static + rustc_span::source_map::FileLoader + Send + Sync + Clone,
 {
-    let mut compiler = rustc_driver::RunCompiler::new(rustc_args, verifier);
+    let mut compiler = verus_rustc_driver::RunCompiler::new(rustc_args, verifier);
     compiler.set_file_loader(Some(Box::new(file_loader.clone())));
     compiler
 }

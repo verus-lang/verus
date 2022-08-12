@@ -6,7 +6,7 @@ use rustc_ast::Mutability;
 use rustc_hir::definitions::DefPath;
 use rustc_hir::{
     GenericParam, GenericParamKind, Generics, HirId, ItemKind, LifetimeParamKind, ParamName, QPath,
-    TraitFn, TraitItemKind, Ty, Visibility, VisibilityKind,
+    TraitFn, TraitItemKind, Ty,
 };
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::ProjectionPredicate;

@@ -4,11 +4,9 @@
 
 extern crate rustc_ast;
 extern crate rustc_data_structures;
-extern crate rustc_driver;
 extern crate rustc_errors;
 extern crate rustc_hir;
 extern crate rustc_infer;
-extern crate rustc_interface;
 extern crate rustc_lint;
 extern crate rustc_macros;
 extern crate rustc_middle;
@@ -20,6 +18,9 @@ extern crate rustc_span;
 extern crate rustc_trait_selection;
 extern crate rustc_typeck;
 extern crate smallvec;
+
+extern crate verus_rustc_driver;
+extern crate verus_rustc_interface;
 
 mod attributes;
 pub mod config;

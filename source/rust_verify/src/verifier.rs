@@ -8,7 +8,7 @@ use air::context::{QueryContext, ValidityResult};
 use air::errors::{Error, ErrorLabel};
 use air::profiler::Profiler;
 use rustc_hir::OwnerNode;
-use rustc_interface::interface::Compiler;
+use verus_rustc_interface::interface::Compiler;
 
 use num_format::{Locale, ToFormattedString};
 use rustc_middle::ty::TyCtxt;
@@ -1328,8 +1328,8 @@ impl rustc_lint::FormalVerifierRewrite for Rewrite {
     }
 }
 
-impl rustc_driver::Callbacks for VerifierCallbacks {
-    fn config(&mut self, config: &mut rustc_interface::interface::Config) {
+impl verus_rustc_driver::Callbacks for VerifierCallbacks {
+    fn config(&mut self, config: &mut verus_rustc_interface::interface::Config) {
         if let Some(target) = &self.verifier.lock().unwrap().test_capture_output {
             config.diagnostic_output =
                 rustc_session::DiagnosticOutput::Raw(Box::new(DiagnosticOutputBuffer {
@@ -1341,8 +1341,8 @@ impl rustc_driver::Callbacks for VerifierCallbacks {
     fn after_parsing<'tcx>(
         &mut self,
         _compiler: &Compiler,
-        queries: &'tcx rustc_interface::Queries<'tcx>,
-    ) -> rustc_driver::Compilation {
+        queries: &'tcx verus_rustc_interface::Queries<'tcx>,
+    ) -> verus_rustc_driver::Compilation {
         let _ = {
             // Install the rewrite_crate callback so that Rust will later call us back on the AST
             let registration = queries.register_plugins().expect("register_plugins");
@@ -1350,14 +1350,14 @@ impl rustc_driver::Callbacks for VerifierCallbacks {
             let lint_store = &peeked.1;
             lint_store.formal_verifier_callback.replace(Some(Box::new(Rewrite {})));
         };
-        rustc_driver::Compilation::Continue
+        verus_rustc_driver::Compilation::Continue
     }
 
     fn after_expansion<'tcx>(
         &mut self,
         compiler: &Compiler,
-        queries: &'tcx rustc_interface::Queries<'tcx>,
-    ) -> rustc_driver::Compilation {
+        queries: &'tcx verus_rustc_interface::Queries<'tcx>,
+    ) -> verus_rustc_driver::Compilation {
         let _result = queries.global_ctxt().expect("global_ctxt").peek_mut().enter(|tcx| {
             {
                 let mut verifier = self.verifier.lock().expect("verifier mutex");
@@ -1390,6 +1390,6 @@ impl rustc_driver::Callbacks for VerifierCallbacks {
                 }
             }
         });
-        rustc_driver::Compilation::Stop
+        verus_rustc_driver::Compilation::Stop
     }
 }
