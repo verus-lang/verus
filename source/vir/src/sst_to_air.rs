@@ -1351,16 +1351,13 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 air_body.push(Arc::new(ens_stmt));
             }
             let assertion = one_stmt(air_body);
-
             let query = Arc::new(QueryX { local: Arc::new(local), assertion });
+            let mut bv_commands = mk_bitvector_option();
+            bv_commands.push(Arc::new(CommandX::CheckValid(query)));
             state.commands.push(CommandsWithContextX::new(
                 stm.span.clone(),
                 "assert_bitvector_by".to_string(),
-                Arc::new(vec![
-                    mk_option_command("smt.case_split", "0"),
-                    Arc::new(CommandX::CheckValid(query)),
-                    mk_option_command("smt.case_split", "3"),
-                ]),
+                Arc::new(bv_commands),
                 ProverChoice::Spinoff,
                 true,
             ));
