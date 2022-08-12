@@ -852,7 +852,7 @@ fn fn_call_to_vir<'tcx>(
         unsupported_err_unless!(
             len == 1,
             expr.span,
-            "expected assert_nonlinear_by with one argument",
+            "expected assert_nonlinear_by/assert_bitvector_by with one argument",
             &args
         );
         let mut vir_expr = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
@@ -867,7 +867,10 @@ fn fn_call_to_vir<'tcx>(
             )])
         };
         if header.ensure.len() == 0 {
-            return err_span_str(expr.span, "assert_nonlinear_by must have at least one ensures");
+            return err_span_str(
+                expr.span,
+                "assert_nonlinear_by/assert_bitvector_by must have at least one ensures",
+            );
         }
         let ensures = header.ensure;
         let proof = vir_expr;
@@ -877,7 +880,7 @@ fn fn_call_to_vir<'tcx>(
         if expr_vattrs.spinoff_prover {
             return err_span_str(
                 expr.span,
-                "#[verifier(spinoff_prover)] is implied for assert by nonlinear_arith",
+                "#[verifier(spinoff_prover)] is implied for assert by nonlinear_arith and assert by bit_vector",
             );
         }
         return Ok(mk_expr(ExprX::AssertQuery {

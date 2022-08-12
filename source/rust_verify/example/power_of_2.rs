@@ -94,7 +94,6 @@ fn left_shift_by_one(bv:u32, e:u32) {
 
 #[proof]
 #[verifier(nonlinear)]
-#[verifier(spinoff_prover)]
 fn lemma_mul_upper_bound(x: nat, y: nat, z: nat) {
     requires([
         x < y,
