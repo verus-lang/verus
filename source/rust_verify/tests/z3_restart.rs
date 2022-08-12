@@ -50,7 +50,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_with_nlarith verus_code! {
         #[verifier(nonlinear)]
-        #[verifier(spinoff_prover)]
+        // #[verifier(spinoff_prover)] is implied for nonlinear queries
         proof fn lemma_div_pos_is_pos(x: int, d: int)
             requires
                 0 <= x,
@@ -95,7 +95,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test2_fails verus_code! {
         #[verifier(nonlinear)]
-        #[verifier(spinoff_prover)]
+        // #[verifier(spinoff_prover)] is implied for nonlinear queries
         proof fn wrong_lemma_2(x: int, y: int, z: int)
             requires
                 x > y,

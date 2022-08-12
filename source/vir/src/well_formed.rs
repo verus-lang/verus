@@ -1,6 +1,6 @@
 use crate::ast::{
     CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, FunX, Function, FunctionKind, Krate,
-    MaskSpec, Mode, MultiOp, Path, PathX, TypX, UnaryOp, UnaryOpr, VirErr,
+    MaskSpec, Mode, MultiOp, Path, PathX, TypX, UnaryOp, UnaryOpr, VirErr, VirErrAs,
 };
 use crate::ast_util::{err_str, err_string, error, path_as_rust_name, referenced_vars_expr};
 use crate::datatype_to_air::is_datatype_transparent;
@@ -210,7 +210,11 @@ fn check_expr(
     })
 }
 
-fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
+fn check_function(
+    ctxt: &Ctxt,
+    function: &Function,
+    diags: &mut Vec<VirErrAs>,
+) -> Result<(), VirErr> {
     if let FunctionKind::TraitMethodDecl { .. } = function.x.kind {
         if function.x.body.is_some() && function.x.mode != Mode::Exec {
             // REVIEW: If we allow default method implementations, we'll need to make sure
@@ -647,6 +651,14 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
         check_expr(ctxt, function, expr, disallow_private_access)?;
     }
 
+    if function.x.mode == Mode::Exec
+        && (function.x.decrease.len() > 0 || function.x.decrease_by.is_some())
+    {
+        diags.push(VirErrAs::Warning(
+            error("decreases checks in exec functions do not guarantee termination of functions with loops or of their callers", &function.span),
+        ));
+    }
+
     if let Some(body) = &function.x.body {
         // Check that public, non-abstract spec function bodies don't refer to private items:
         let disallow_private_access = function.x.publish.is_some()
@@ -751,7 +763,7 @@ fn check_functions_match(
     Ok(())
 }
 
-pub fn check_crate(krate: &Krate) -> Result<(), VirErr> {
+pub fn check_crate(krate: &Krate, diags: &mut Vec<VirErrAs>) -> Result<(), VirErr> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     for function in krate.functions.iter() {
         if funs.contains_key(&function.x.name) {
@@ -794,6 +806,13 @@ pub fn check_crate(krate: &Krate) -> Result<(), VirErr> {
                     &proof_function.span,
                 )
                 .secondary_span(&funs[prev].span)
+                .secondary_span(&function.span));
+            }
+            if proof_fun.path.pop_segment() != function.x.name.path.pop_segment() {
+                return Err(air::errors::error(
+                    "a decreases_by function must be in the same module as the function definition",
+                    &proof_function.span,
+                )
                 .secondary_span(&function.span));
             }
             decreases_by_proof_to_spec.insert(proof_fun.clone(), function.x.name.clone());
@@ -845,7 +864,7 @@ pub fn check_crate(krate: &Krate) -> Result<(), VirErr> {
 
     let ctxt = Ctxt { funs, dts };
     for function in krate.functions.iter() {
-        check_function(&ctxt, function)?;
+        check_function(&ctxt, function, diags)?;
     }
     for dt in krate.datatypes.iter() {
         check_datatype(dt)?;

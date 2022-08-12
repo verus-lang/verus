@@ -1,3 +1,5 @@
+// rust_verify/tests/example.rs ignore
+
 #![allow(unused_imports)]
 
 // port of single-producer single-consumer queue from LinearDafny
@@ -480,22 +482,21 @@ struct Queue<T> {
 
 verus!{
 impl<T> Queue<T> {
-    #[spec]
-    pub fn wf(&self) -> bool {
+    pub closed spec fn wf(&self) -> bool {
         // The Cell IDs in the instance protocol match the cell IDs in the actual vector:
-        &&& self.instance.backing_cells().len() == self.buffer.view().len()
-        &&& (forall|i: int| 0 <= i && i < self.buffer.view().len() as int ==>
+        &&& self.instance.backing_cells().len() == self.buffer@.len()
+        &&& (forall|i: int| 0 <= i && i < self.buffer@.len() as int ==>
             self.instance.backing_cells().index(i) ===
-                self.buffer.view().index(i).id())
+                self.buffer@.index(i).id())
 
         // HeadTailTokens are well-formed:
         &&& self.head.has_inv(|v, g|
-            equal(g.instance, self.instance)
-            && g.value == v as int
+            equal(g@.instance, self.instance)
+            && g@.value == v as int
         )
         &&& self.tail.has_inv(|v, g|
-            equal(g.instance, self.instance)
-            && g.value == v as int
+            equal(g@.instance, self.instance)
+            && g@.value == v as int
         )
     }
 }
@@ -514,8 +515,8 @@ impl<T> Producer<T> {
     #[spec]
     pub fn wf(&self) -> bool {
            (*self.queue).wf()
-        && equal(self.producer.instance, (*self.queue).instance)
-        && equal(self.producer.value, ProducerState::Idle(self.tail as nat))
+        && equal(self.producer.view().instance, (*self.queue).instance)
+        && equal(self.producer.view().value, ProducerState::Idle(self.tail as nat))
         && ((self.tail as int) < (*self.queue).buffer.view().len())
     }
 }
@@ -533,8 +534,8 @@ impl<T> Consumer<T> {
     #[spec]
     pub fn wf(&self) -> bool {
            (*self.queue).wf()
-        && equal(self.consumer.instance, (*self.queue).instance)
-        && equal(self.consumer.value, ConsumerState::Idle(self.head as nat))
+        && equal(self.consumer.view().instance, (*self.queue).instance)
+        && equal(self.consumer.view().value, ConsumerState::Idle(self.head as nat))
         && (self.head as int) < (*self.queue).buffer.view().len()
     }
 }
@@ -559,7 +560,7 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
         invariant(
             forall(|j: int| with_triggers!(
                 [perms.dom().contains(j as nat)],
-                [backing_cells_vec.index(j as nat)], 
+                [backing_cells_vec.view().index(j as nat)], 
                 [perms.index(j as nat)] =>
                 0 <= j && j < backing_cells_vec.len() as int >>=
                 #[trigger] perms.dom().contains(j as nat)
@@ -593,9 +594,9 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
 
     // Initialize atomics
     let head_atomic = AtomicU64::new(0, head_token,
-        |v, g| equal(g.instance, instance) && g.value == v as int);
+        |v, g| equal(g.view().instance, instance) && g.view().value == v as int);
     let tail_atomic = AtomicU64::new(0, tail_token,
-        |v, g| equal(g.instance, instance) && g.value == v as int);
+        |v, g| equal(g.view().instance, instance) && g.view().value == v as int);
 
     // Initialize the queue
     let queue = Queue::<T> {

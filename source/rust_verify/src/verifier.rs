@@ -511,7 +511,8 @@ impl Verifier {
             }
         }
         let mut invalidity = false;
-        let CommandsWithContextX { span, desc, commands, prover_choice } = &*commands_with_context;
+        let CommandsWithContextX { span, desc, commands, prover_choice, skip_recommends: _ } =
+            &*commands_with_context;
         if commands.len() > 0 {
             air_context.blank_line();
             air_context.comment(comment);
@@ -538,7 +539,7 @@ impl Verifier {
     fn new_air_context_with_prelude(
         &mut self,
         module_path: &vir::ast::Path,
-        function_path: Option<&vir::ast::Path>,
+        query_function_path_counter: Option<(&vir::ast::Path, usize)>,
         is_rerun: bool,
         prelude_config: vir::prelude::PreludeConfig,
     ) -> Result<air::context::Context, VirErr> {
@@ -549,11 +550,16 @@ impl Verifier {
         air_context.set_profile_all(self.args.profile_all);
 
         let rerun_msg = if is_rerun { "_rerun" } else { "" };
+        let count_msg = query_function_path_counter
+            .map(|(_, ref c)| format!("_{:02}", c))
+            .unwrap_or("".to_string());
+        let function_path = query_function_path_counter.map(|(p, _)| p);
         if self.args.log_all || self.args.log_air_initial {
             let file = self.create_log_file(
                 Some(module_path),
                 function_path,
-                format!("{}{}", rerun_msg, crate::config::AIR_INITIAL_FILE_SUFFIX).as_str(),
+                format!("{}{}{}", rerun_msg, count_msg, crate::config::AIR_INITIAL_FILE_SUFFIX)
+                    .as_str(),
             )?;
             air_context.set_air_initial_log(Box::new(file));
         }
@@ -561,7 +567,8 @@ impl Verifier {
             let file = self.create_log_file(
                 Some(module_path),
                 function_path,
-                format!("{}{}", rerun_msg, crate::config::AIR_FINAL_FILE_SUFFIX).as_str(),
+                format!("{}{}{}", rerun_msg, count_msg, crate::config::AIR_FINAL_FILE_SUFFIX)
+                    .as_str(),
             )?;
             air_context.set_air_final_log(Box::new(file));
         }
@@ -569,7 +576,7 @@ impl Verifier {
             let file = self.create_log_file(
                 Some(module_path),
                 function_path,
-                format!("{}{}", rerun_msg, crate::config::SMT_FILE_SUFFIX).as_str(),
+                format!("{}{}{}", rerun_msg, count_msg, crate::config::SMT_FILE_SUFFIX).as_str(),
             )?;
             air_context.set_smt_log(Box::new(file));
         }
@@ -605,11 +612,12 @@ impl Verifier {
         function_spec_commands: Arc<Vec<(Commands, String)>>,
         function_axiom_commands: Arc<Vec<(Commands, String)>>,
         is_rerun: bool,
+        context_counter: usize,
         span: &air::ast::Span,
     ) -> Result<air::context::Context, VirErr> {
         let mut air_context = self.new_air_context_with_prelude(
             module_path,
-            Some(function_path),
+            Some((function_path, context_counter)),
             is_rerun,
             PreludeConfig { arch_word_bits: self.args.arch_word_bits },
         )?;
@@ -651,6 +659,11 @@ impl Verifier {
             false,
             PreludeConfig { arch_word_bits: self.args.arch_word_bits },
         )?;
+        if self.args.solver_version_check {
+            air_context
+                .set_expected_solver_version(crate::consts::EXPECTED_SOLVER_VERSION.to_string());
+        }
+
         let mut spunoff_time_smt_init = Duration::ZERO;
         let mut spunoff_time_smt_run = Duration::ZERO;
 
@@ -771,18 +784,21 @@ impl Verifier {
                 let (function, vis_abs) = &funs[f];
 
                 ctx.fun = mk_fun_ctx(&function, false);
+                let not_verifying_owning_module =
+                    Some(module) != function.x.visibility.owning_module.as_ref();
                 let (decl_commands, check_commands, new_fun_ssts) =
                     vir::func_to_air::func_axioms_to_air(
                         ctx,
                         fun_ssts,
                         &function,
                         is_visible_to(&vis_abs, module),
+                        not_verifying_owning_module,
                     )?;
                 fun_ssts = new_fun_ssts;
                 fun_axioms.insert(f.clone(), decl_commands);
                 ctx.fun = None;
 
-                if Some(module.clone()) != function.x.visibility.owning_module {
+                if not_verifying_owning_module {
                     continue;
                 }
                 let invalidity = self.run_commands_queries(
@@ -794,6 +810,7 @@ impl Verifier {
                         desc: "termination proof".to_string(),
                         commands: check_commands,
                         prover_choice: vir::def::ProverChoice::DefaultProver,
+                        skip_recommends: false,
                     }),
                     &HashMap::new(),
                     &vec![],
@@ -855,13 +872,15 @@ impl Verifier {
         let function_spec_commands = Arc::new(function_spec_commands);
         let function_axiom_commands = Arc::new(function_axiom_commands);
         // Create queries to check the validity of proof/exec function bodies
+        let no_auto_recommends_check = self.args.no_auto_recommends_check;
         for function in &krate.functions {
             if Some(module.clone()) != function.x.visibility.owning_module {
                 continue;
             }
-            let mut recommends_rerun = false;
-            let mut is_singular = false;
-            loop {
+            let check_validity = &mut |recommends_rerun: bool,
+                                       mut fun_ssts: SstMap|
+             -> Result<(bool, SstMap), VirErr> {
+                let mut spinoff_context_counter = 1;
                 ctx.fun = mk_fun_ctx(&function, recommends_rerun);
                 let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
                     ctx,
@@ -877,16 +896,24 @@ impl Verifier {
 
                 let mut function_invalidity = false;
                 for command in commands.iter().map(|x| &*x) {
-                    let CommandsWithContextX { span, desc: _, commands: _, prover_choice } =
-                        &**command;
+                    let CommandsWithContextX {
+                        span,
+                        desc,
+                        commands: _,
+                        prover_choice,
+                        skip_recommends,
+                    } = &**command;
+                    if recommends_rerun && *skip_recommends {
+                        let multispan = MultiSpan::from_spans(vec![from_raw_span(&span.raw_span)]);
+                        let msg = format!("recommends check skipped: {}", desc);
+                        compiler.diagnostic().span_note_without_error(multispan, &msg);
+                        continue;
+                    }
                     if *prover_choice == vir::def::ProverChoice::Singular {
-                        is_singular = true;
                         #[cfg(not(feature = "singular"))]
-                        if is_singular {
-                            panic!(
-                                "Found singular command when Verus is compiled without Singular feature"
-                            );
-                        }
+                        panic!(
+                            "Found singular command when Verus is compiled without Singular feature"
+                        );
 
                         #[cfg(feature = "singular")]
                         if air_context.singular_log.is_none() {
@@ -909,8 +936,10 @@ impl Verifier {
                             function_spec_commands.clone(),
                             function_axiom_commands.clone(),
                             recommends_rerun,
+                            spinoff_context_counter,
                             &span,
                         )?;
+                        spinoff_context_counter += 1;
                         &mut spinoff_z3_context
                     } else {
                         &mut air_context
@@ -937,19 +966,12 @@ impl Verifier {
 
                     function_invalidity = function_invalidity || command_invalidity;
                 }
-
-                if function_invalidity
-                    && !recommends_rerun
-                    && !self.args.no_auto_recommends_check
-                    // in case of singular proof function and bit-vector proof function, skip recommends check
-                    && !is_singular
-                    && !function.x.attrs.bit_vector
-                {
-                    // Rerun failed query to report possible recommends violations
-                    recommends_rerun = true;
-                    continue;
-                }
-                break;
+                Ok((function_invalidity, fun_ssts))
+            };
+            let (function_invalidity, new_fun_ssts) = check_validity(false, fun_ssts)?;
+            fun_ssts = new_fun_ssts;
+            if function_invalidity && !no_auto_recommends_check {
+                fun_ssts = check_validity(true, fun_ssts)?.1;
             }
         }
         ctx.fun = None;
@@ -1024,65 +1046,65 @@ impl Verifier {
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate_simplified(&krate);
 
-        if (if self.args.verify_module.is_some() { 1 } else { 0 }
-            + if self.args.verify_root { 1 } else { 0 }
-            + if self.args.verify_pervasive { 1 } else { 0 })
-            > 1
+        if self.args.verify_pervasive
+            && (!self.args.verify_module.is_empty() || self.args.verify_root)
         {
             return Err(error(
-                "only one of --verify-module, --verify-root, or --verify-pervasive allowed",
+                "--verify-pervasive not allowed when --verify-root or --verify-module are present",
             ));
         }
 
         if self.args.verify_function.is_some() {
-            if self.args.verify_module.is_none() && !self.args.verify_root {
+            if self.args.verify_module.is_empty() && !self.args.verify_root {
                 return Err(error(
                     "--verify-function option requires --verify-module or --verify-root",
+                ));
+            }
+
+            if self.args.verify_module.len() > 1 {
+                return Err(error(
+                    "--verify-function only allowed with a single --verify-module (or --verify-root)",
                 ));
             }
         }
 
         let module_ids_to_verify: Vec<vir::ast::Path> = {
-            if self.args.verify_root {
-                let root_mod_id = krate
-                    .module_ids
-                    .iter()
-                    .find(|m| m.segments.len() == 0)
-                    .expect("missing root module");
-                vec![root_mod_id.clone()]
-            } else if let Some(mod_name) = &self.args.verify_module {
-                if let Some(id) = krate.module_ids.iter().find(|m| &module_name(m) == mod_name) {
-                    vec![id.clone()]
-                } else {
-                    let msg = vec![
-                        format!("could not find module {mod_name} specified by --verify-module"),
-                        format!("available modules are:"),
-                    ]
-                    .into_iter()
-                    .chain(krate.module_ids.iter().filter_map(|m| {
-                        let name = module_name(m);
-                        (!(name.starts_with("pervasive::") || name == "pervasive")
-                            && m.segments.len() > 0)
-                            .then(|| format!("- {name}"))
-                    }))
-                    .chain(Some(format!("or use --verify-root, --verify-pervasive")).into_iter())
-                    .collect::<Vec<_>>()
-                    .join("\n");
+            let mut remaining_verify_module: HashSet<_> = self.args.verify_module.iter().collect();
+            let module_ids_to_verify = krate
+                .module_ids
+                .iter()
+                .filter(|m| {
+                    let name = module_name(m);
+                    let is_pervasive = name.starts_with("pervasive::") || name == "pervasive";
+                    (!self.args.verify_root
+                        && self.args.verify_module.is_empty()
+                        && (!is_pervasive ^ self.args.verify_pervasive))
+                        || (self.args.verify_root && m.segments.len() == 0)
+                        || remaining_verify_module.take(&name).is_some()
+                })
+                .cloned()
+                .collect();
 
-                    return Err(error(msg));
-                }
-            } else {
-                krate
-                    .module_ids
-                    .iter()
-                    .filter(|m| {
-                        let name = module_name(m);
-                        !(name.starts_with("pervasive::") || name == "pervasive")
-                            ^ self.args.verify_pervasive
-                    })
-                    .cloned()
-                    .collect()
+            if let Some(mod_name) = remaining_verify_module.into_iter().next() {
+                let msg = vec![
+                    format!("could not find module {mod_name} specified by --verify-module"),
+                    format!("available modules are:"),
+                ]
+                .into_iter()
+                .chain(krate.module_ids.iter().filter_map(|m| {
+                    let name = module_name(m);
+                    (!(name.starts_with("pervasive::") || name == "pervasive")
+                        && m.segments.len() > 0)
+                        .then(|| format!("- {name}"))
+                }))
+                .chain(Some(format!("or use --verify-root, --verify-pervasive")).into_iter())
+                .collect::<Vec<_>>()
+                .join("\n");
+
+                return Err(error(msg));
             }
+
+            module_ids_to_verify
         };
 
         for module in &module_ids_to_verify {
@@ -1155,7 +1177,11 @@ impl Verifier {
         Ok(true)
     }
 
-    fn construct_vir_crate<'tcx>(&mut self, tcx: TyCtxt<'tcx>) -> Result<bool, VirErr> {
+    fn construct_vir_crate<'tcx>(
+        &mut self,
+        tcx: TyCtxt<'tcx>,
+        diagnostics: &impl Diagnostics,
+    ) -> Result<bool, VirErr> {
         let autoviewed_call_typs = Arc::new(std::sync::Mutex::new(HashMap::new()));
         if !self.args.no_enhanced_typecheck {
             let _ =
@@ -1214,7 +1240,17 @@ impl Verifier {
             let mut file = self.create_log_file(None, None, crate::config::VIR_FILE_SUFFIX)?;
             vir::printer::write_krate(&mut file, &vir_crate);
         }
-        vir::well_formed::check_crate(&vir_crate)?;
+        let mut check_crate_diags = vec![];
+        let check_crate_result = vir::well_formed::check_crate(&vir_crate, &mut check_crate_diags);
+        for diag in check_crate_diags {
+            match diag {
+                vir::ast::VirErrAs::Warning(err) => {
+                    diagnostics.report_error(&err, ErrorAs::Warning)
+                }
+                vir::ast::VirErrAs::Note(err) => diagnostics.report_error(&err, ErrorAs::Note),
+            }
+        }
+        check_crate_result?;
         let (erasure_modes, inferred_modes) = vir::modes::check_crate(&vir_crate)?;
         let vir_crate = vir::traits::demote_foreign_traits(&vir_crate)?;
 
@@ -1325,7 +1361,7 @@ impl rustc_driver::Callbacks for VerifierCallbacks {
         let _result = queries.global_ctxt().expect("global_ctxt").peek_mut().enter(|tcx| {
             {
                 let mut verifier = self.verifier.lock().expect("verifier mutex");
-                if let Err(err) = verifier.construct_vir_crate(tcx) {
+                if let Err(err) = verifier.construct_vir_crate(tcx, compiler) {
                     compiler.report_error(&err, ErrorAs::Error);
                     verifier.encountered_vir_error = true;
                     return;

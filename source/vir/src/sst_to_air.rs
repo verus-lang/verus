@@ -1312,11 +1312,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         stm.span.clone(),
                         "assert_nonlinear_by".to_string(),
                         Arc::new(vec![
-                            mk_option_command("smt.arith.nl", "true"),
+                            mk_option_command("smt.arith.solver", "6"),
                             Arc::new(CommandX::CheckValid(query)),
-                            mk_option_command("smt.arith.nl", "false"),
                         ]),
-                        ProverChoice::DefaultProver,
+                        ProverChoice::Spinoff,
+                        true,
                     ));
                 }
                 _ => unreachable!("bitvector mode in wrong place"),
@@ -1388,6 +1388,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 "assert_bit_vector".to_string(),
                 Arc::new(bv_commands),
                 ProverChoice::Spinoff,
+                true,
             ));
 
             vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr, expr_ctxt)?))]
@@ -1553,6 +1554,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 desc: "while loop".to_string(),
                 commands: Arc::new(vec![Arc::new(CommandX::CheckValid(query))]),
                 prover_choice: ProverChoice::DefaultProver,
+                skip_recommends: false,
             }));
 
             // At original site of while loop, assert invariant, havoc, assume invariant + neg_cond
@@ -1901,15 +1903,12 @@ pub fn body_stm_to_air(
             "Singular check valid".to_string(),
             Arc::new(vec![singular_command]),
             ProverChoice::Singular,
+            true,
         ));
     } else {
         let query = Arc::new(QueryX { local: Arc::new(local), assertion });
         let commands = if is_nonlinear {
-            vec![
-                mk_option_command("smt.arith.nl", "true"),
-                Arc::new(CommandX::CheckValid(query)),
-                mk_option_command("smt.arith.nl", "false"),
-            ]
+            vec![mk_option_command("smt.arith.solver", "6"), Arc::new(CommandX::CheckValid(query))]
         } else if is_bit_vector_mode {
             let mut bv_commands = mk_bitvector_option();
             bv_commands.push(Arc::new(CommandX::CheckValid(query)));
@@ -1921,11 +1920,12 @@ pub fn body_stm_to_air(
             func_span.clone(),
             "function body check".to_string(),
             Arc::new(commands),
-            if is_spinoff_prover || is_bit_vector_mode {
+            if is_spinoff_prover || is_bit_vector_mode || is_nonlinear {
                 ProverChoice::Spinoff
             } else {
                 ProverChoice::DefaultProver
             },
+            is_integer_ring || is_bit_vector_mode || is_nonlinear,
         ));
     }
     Ok((state.commands, state.snap_map))

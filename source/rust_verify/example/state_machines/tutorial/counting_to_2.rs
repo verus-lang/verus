@@ -100,7 +100,7 @@ impl Global {
     #[spec]
     pub fn wf(self) -> bool {
         self.atomic.has_inv(|v, g|
-            equal(g, X![self.instance => counter => v as int])
+            equal(g.view(), X![self.instance => counter => v as int])
         )
     }
 }
@@ -118,14 +118,14 @@ impl Spawnable<Proof<X::inc_a>> for Thread1Data {
     #[spec]
     fn pre(self) -> bool {
         (*self.globals).wf()
-        && equal(self.token,
+        && equal(self.token.view(),
             X![(*self.globals).instance => inc_a => false]
         )
     }
 
     #[spec]
     fn post(self, new_token: Proof<X::inc_a>) -> bool {
-        equal(new_token.0,
+        equal(new_token.0.view(),
             X![(*self.globals).instance => inc_a => true]
         )
     }
@@ -156,14 +156,14 @@ impl Spawnable<Proof<X::inc_b>> for Thread2Data {
     #[spec]
     fn pre(self) -> bool {
         (*self.globals).wf()
-        && equal(self.token,
+        && equal(self.token.view(),
             X![(*self.globals).instance => inc_b => false]
         )
     }
 
     #[spec]
     fn post(self, new_token: Proof<X::inc_b>) -> bool {
-        equal(new_token.0,
+        equal(new_token.0.view(),
             X![(*self.globals).instance => inc_b => true]
         )
     }
@@ -193,7 +193,7 @@ fn main() {
   // Initialize the counter
 
   let atomic = AtomicU32::new(0, counter_token, |v, g| {
-      equal(g.instance, instance) && equal(g.value, v as int)
+      equal(g.view().instance, instance) && equal(g.view().value, v as int)
   });
 
   let global = Global { atomic, instance: instance.clone() };

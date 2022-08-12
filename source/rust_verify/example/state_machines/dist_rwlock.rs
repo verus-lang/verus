@@ -1,5 +1,3 @@
-// rust_verify/tests/example.rs ignore
-
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
@@ -289,27 +287,27 @@ tokenized_state_machine!{
     }
 }
 
+verus!{
+
 struct RwLock<T> {
     #[proof] inst: DistRwLock::Instance<T>,
     exc_locked: AtomicBool<DistRwLock::exc_locked<T>>,
     ref_counts: Vec<AtomicU64<DistRwLock::ref_counts<T>>>,
 }
 
+}
+
 impl<T> RwLock<T> {
-    #[spec]
-    fn wf(&self) -> bool {
-        self.inst.rc_width() == self.ref_counts.view().len()
-        && self.exc_locked.has_inv_fn(|b: bool| DistRwLock::exc_locked {
-            instance: self.inst,
-            value: b
-        })
-        && forall(|i: int| { (0 <= i && i < self.ref_counts.view().len()) >>=
-            self.ref_counts.view().index(i).has_inv_fn(|r: u64| DistRwLock::ref_counts {
-                instance: self.inst,
-                key: i,
-                value: r,
-            })
-        })
+    verus!{
+
+    spec fn wf(&self) -> bool {
+        &&& self.inst.rc_width() == self.ref_counts.view().len()
+        &&& self.exc_locked.has_inv(|b: bool, g: DistRwLock::exc_locked<T>| g@ === DistRwLock![ self.inst => exc_locked => b ])
+        &&& forall |i: int| (0 <= i && i < self.ref_counts.view().len()) ==>
+            self.ref_counts@.index(i).has_inv(|r: u64, g: DistRwLock::ref_counts<T>|
+                g@ === DistRwLock![ self.inst => ref_counts => i => r ])
+    }
+
     }
 
     #[verifier(spinoff_prover)] 
@@ -321,10 +319,7 @@ impl<T> RwLock<T> {
             DistRwLock::Instance::initialize(rc_width, t, Option::Some(t));
 
         let exc_locked_atomic = AtomicBool::new(false, exc_locked_token,
-            |b, g| equal(g, DistRwLock::exc_locked {
-                instance: inst,
-                value: b,
-            })
+            |b, g| equal(g.view(), DistRwLock![ inst => exc_locked => b ])
         );
 
         let mut v: Vec<AtomicU64<DistRwLock::ref_counts<T>>> = Vec::new();
@@ -333,23 +328,23 @@ impl<T> RwLock<T> {
         assert_forall_by(|j: int| {
             requires(i <= j && j < rc_width);
             ensures(#[trigger] ref_counts_tokens.dom().contains(j)
-                  && equal(ref_counts_tokens.index(j).instance, inst)
-                  && equal(ref_counts_tokens.index(j).key, j)
-                  && equal(ref_counts_tokens.index(j).value, 0));
+                  && equal(ref_counts_tokens.index(j).view().instance, inst)
+                  && equal(ref_counts_tokens.index(j).view().key, j)
+                  && equal(ref_counts_tokens.index(j).view().value, 0));
 
             assert(ref_counts_tokens.dom().contains(j));
-            assert(equal(ref_counts_tokens.index(j).instance, inst));
-            assert(equal(ref_counts_tokens.index(j).key, j));
-            assert(equal(ref_counts_tokens.index(j).value, 0));
+            assert(equal(ref_counts_tokens.index(j).view().instance, inst));
+            assert(equal(ref_counts_tokens.index(j).view().key, j));
+            assert(equal(ref_counts_tokens.index(j).view().value, 0));
         });
 
         assert(forall(|j: int| with_triggers!(
             [ref_counts_tokens.dom().contains(j)],[ref_counts_tokens.index(j)] =>
             i <= j && j < rc_width >>= (
             ref_counts_tokens.dom().contains(j)
-            && equal(ref_counts_tokens.index(j).instance, inst)
-            && equal(ref_counts_tokens.index(j).key, j)
-            && equal(ref_counts_tokens.index(j).value, 0)
+            && equal(ref_counts_tokens.index(j).view().instance, inst)
+            && equal(ref_counts_tokens.index(j).view().key, j)
+            && equal(ref_counts_tokens.index(j).view().value, 0)
         ))));
 
         while i < rc_width {
@@ -357,19 +352,16 @@ impl<T> RwLock<T> {
                 i <= rc_width,
                 v.view().len() == i as int,
                 forall(|j: int| 0 <= j && j < i >>=
-                    v.view().index(j).has_inv_fn(|r: u64| DistRwLock::ref_counts {
-                        instance: inst,
-                        key: j,
-                        value: r,
-                    })
+                    v.view().index(j).has_inv(|r: u64, g: DistRwLock::ref_counts<T>|
+                        equal(g.view(), DistRwLock! [ inst => ref_counts => j => r ]))
                 ),
                 forall(|j: int| with_triggers!(
                     [ref_counts_tokens.dom().contains(j)],[ref_counts_tokens.index(j)] =>
                     i <= j && j < rc_width >>= (
                     ref_counts_tokens.dom().contains(j)
-                    && equal(ref_counts_tokens.index(j).instance, inst)
-                    && equal(ref_counts_tokens.index(j).key, j)
-                    && equal(ref_counts_tokens.index(j).value, 0)
+                    && equal(ref_counts_tokens.index(j).view().instance, inst)
+                    && equal(ref_counts_tokens.index(j).view().key, j)
+                    && equal(ref_counts_tokens.index(j).view().value, 0)
                 ))),
             ]);
 
@@ -378,12 +370,7 @@ impl<T> RwLock<T> {
             #[proof] let ref_count_token = ref_counts_tokens.tracked_remove(i as int);
 
             let rc_atomic = AtomicU64::new(0, ref_count_token,
-                |r: u64, g| equal(g, DistRwLock::ref_counts {
-                    instance: inst,
-                    key: i,
-                    value: r,
-                })
-            );
+                |r: u64, g| equal(g.view(), DistRwLock![ inst => ref_counts => i => r ]));
             v.push(rc_atomic);
 
             i = i + 1;
@@ -391,14 +378,14 @@ impl<T> RwLock<T> {
             assert_forall_by(|j: int| {
                 requires(i <= j && j < rc_width);
                 ensures(#[trigger] ref_counts_tokens.dom().contains(j)
-                      && equal(ref_counts_tokens.index(j).instance, inst)
-                      && equal(ref_counts_tokens.index(j).key, j)
-                      && equal(ref_counts_tokens.index(j).value, 0));
+                      && equal(ref_counts_tokens.index(j).view().instance, inst)
+                      && equal(ref_counts_tokens.index(j).view().key, j)
+                      && equal(ref_counts_tokens.index(j).view().value, 0));
 
                 assert(ref_counts_tokens.dom().contains(j));
-                assert(equal(ref_counts_tokens.index(j).instance, inst));
-                assert(equal(ref_counts_tokens.index(j).key, j));
-                assert(equal(ref_counts_tokens.index(j).value, 0));
+                assert(equal(ref_counts_tokens.index(j).view().instance, inst));
+                assert(equal(ref_counts_tokens.index(j).view().key, j));
+                assert(equal(ref_counts_tokens.index(j).view().value, 0));
             });
         }
 
@@ -409,16 +396,11 @@ impl<T> RwLock<T> {
         };
 
         assert(s.inst.rc_width() == s.ref_counts.view().len());
-        assert(s.exc_locked.has_inv_fn(|b: bool| DistRwLock::exc_locked {
-            instance: s.inst,
-            value: b
-        }));
+        assert(s.exc_locked.has_inv(|b: bool, g: DistRwLock::exc_locked<T>|
+            equal(g.view(), DistRwLock![ s.inst => exc_locked => b ])));
         assert(forall(|i: int| { (0 <= i && i < s.ref_counts.view().len()) >>=
-            s.ref_counts.view().index(i).has_inv_fn(|r: u64| DistRwLock::ref_counts {
-                instance: s.inst,
-                key: i,
-                value: r,
-            })
+            s.ref_counts.view().index(i).has_inv(|r: u64, g: DistRwLock::ref_counts<T>|
+                equal(g.view(), DistRwLock![ s.inst => ref_counts => i => r ]))
         }));
 
         s

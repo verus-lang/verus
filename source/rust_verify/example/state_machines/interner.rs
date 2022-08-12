@@ -163,9 +163,9 @@ impl<T> Interner<T> {
     #[spec]
     fn wf(&self, inst: InternSystem::Instance<T>) -> bool {
         equal(self.inst, inst)
-        && equal(self.auth.instance, inst)
+        && equal(self.auth.view().instance, inst)
         && equal(
-            self.auth.value,
+            self.auth.view().value,
             self.store.view(),
         )
     }
@@ -233,14 +233,14 @@ impl<T> Interner<T> {
 impl<T> Interned<T> {
     #[spec]
     fn wf(&self, inst: InternSystem::Instance<T>) -> bool {
-        equal(self.frag.instance, inst)
+        equal(self.frag.view().instance, inst)
         && equal(inst, self.inst)
-        && self.id as int == self.frag.key
+        && self.id as int == self.frag.view().key
     }
 
     #[spec]
     fn view(&self) -> T {
-        self.frag.value
+        self.frag.view().value
     }
 
     fn clone(&self, #[spec] inst: InternSystem::Instance<T>) -> Self {
@@ -259,10 +259,10 @@ impl<T> Interned<T> {
         ensures(|b: bool| b == equal(self.view(), other.view()));
 
         self.inst.compute_equality(
-            self.frag.key,
-            self.frag.value,
-            other.frag.key,
-            other.frag.value,
+            self.frag.view().key,
+            self.frag.view().value,
+            other.frag.view().key,
+            other.frag.view().value,
             &self.frag, &other.frag);
 
         self.id == other.id

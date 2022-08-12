@@ -15,6 +15,11 @@ pub use air::ast::{Binder, Binders};
 /// Result<T, VirErr> is used when an error might need to be reported to the user
 pub type VirErr = Error;
 
+pub enum VirErrAs {
+    Warning(VirErr),
+    Note(VirErr),
+}
+
 /// A non-qualified name, such as a local variable name or type parameter name
 pub type Ident = Arc<String>;
 pub type Idents = Arc<Vec<Ident>>;

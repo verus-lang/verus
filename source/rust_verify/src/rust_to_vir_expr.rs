@@ -871,6 +871,15 @@ fn fn_call_to_vir<'tcx>(
         }
         let ensures = header.ensure;
         let proof = vir_expr;
+
+        let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
+        let expr_vattrs = get_verifier_attrs(expr_attrs)?;
+        if expr_vattrs.spinoff_prover {
+            return err_span_str(
+                expr.span,
+                "#[verifier(spinoff_prover)] is implied for assert by nonlinear_arith",
+            );
+        }
         return Ok(mk_expr(ExprX::AssertQuery {
             requires,
             ensures,
@@ -2266,6 +2275,9 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             let cond = expr_to_vir(bctx, cond, ExprModifier::REGULAR)?;
             let mut body = expr_to_vir(bctx, body, ExprModifier::REGULAR)?;
             let header = vir::headers::read_header(&mut body)?;
+            if header.decrease.len() > 0 {
+                return err_span_str(expr.span, "termination checking of loops is not supported");
+            }
             let invs = header.invariant;
             Ok(mk_expr(ExprX::While { cond, body, invs }))
         }

@@ -497,12 +497,14 @@ test_verify_one_file! {
         mod M2 {
             struct S {}
             impl crate::M1::T for S {
-                fn f(&self, x: &Self, n: u64) {
-                    self.f(x, n - 1);
+                fn f(&self, x: &Self, n: u64)
+                {
+                    builtin::decreases(0);
+                    self.f(x, n - 1); // FAILS
                 }
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
@@ -566,11 +568,12 @@ test_verify_one_file! {
             struct S {}
             impl crate::M1::T for S {
                 fn f(&self, x: &Self, n: u64) {
-                    x.f(self, n - 1);
+                    builtin::decreases(0);
+                    x.f(self, n - 1); // FAILS
                 }
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
