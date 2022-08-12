@@ -322,7 +322,20 @@ tokenized_state_machine!{
             }
         }
 
-        //// Lifecycle of the combiner
+        //// Updates, init and finish
+
+        /*transition!{
+            update_new(op: UpdateOp) {
+                birds_eye let rid = get_new_nat(
+                    pre.local_reads.dom().union(
+                    ));
+                add local_reads += [ rid => ReadonlyState::Init {op} ] by {
+                    get_new_nat_not_in(pre.local_reads.dom());
+                };
+            }
+        }*/
+
+        //// Lifecycle of the combiner and updates
 
         /*
         transition!{
@@ -851,39 +864,52 @@ tokenized_state_machine!{
               && node_id1 != node_id) implies
                 CombinerRidsDistinctTwoNodes(post.combiner.index(node_id1), post.combiner.index(node_id))
             by {
-                /*
                 assert(pre.wf_combiner_for_node_id(node_id1));
 
-                let c1 = post.combiner.index(node_id1);
+                /*let c1 = post.combiner.index(node_id1);
                 let c2 = post.combiner.index(node_id);
 
-                let queued_ops1 = match c1 {
-                  CombinerState::Ready => arbitrary(),
-                  CombinerState::Placed{queued_ops} => queued_ops,
-                  CombinerState::LoadedHead{queued_ops, ..} => queued_ops,
-                  CombinerState::Loop{queued_ops, ..} => queued_ops,
-                  CombinerState::UpdatedVersion{queued_ops, ..} => queued_ops,
-                };
+                if !c1.is_Ready() && !c2.is_Ready() {
+                    let queued_ops1 = match c1 {
+                      CombinerState::Ready => arbitrary(),
+                      CombinerState::Placed{queued_ops} => queued_ops,
+                      CombinerState::LoadedHead{queued_ops, ..} => queued_ops,
+                      CombinerState::Loop{queued_ops, ..} => queued_ops,
+                      CombinerState::UpdatedVersion{queued_ops, ..} => queued_ops,
+                    };
 
-                /*let queued_ops2 = match c2 {
-                  CombinerState::Ready => arbitrary(),
-                  CombinerState::Placed{queued_ops} => queued_ops,
-                  CombinerState::LoadedHead{queued_ops, ..} => queued_ops,
-                  CombinerState::Loop{queued_ops, ..} => queued_ops,
-                  CombinerState::UpdatedVersion{queued_ops, ..} => queued_ops,
-                };*/
+                    /*let queued_ops2 = match c2 {
+                      CombinerState::Ready => arbitrary(),
+                      CombinerState::Placed{queued_ops} => queued_ops,
+                      CombinerState::LoadedHead{queued_ops, ..} => queued_ops,
+                      CombinerState::Loop{queued_ops, ..} => queued_ops,
+                      CombinerState::UpdatedVersion{queued_ops, ..} => queued_ops,
+                    };*/
 
-                assert forall |j| 0 <= j < queued_ops1.len() implies
-                    queued_ops1.index(j) != rid
-                by {
-                  assert(pre.local_updates.index(queued_ops1.index(j)).is_Applied()
-                      || pre.local_updates.index(queued_ops1.index(j)).is_Done());
-                }
+                    assert forall |j| 0 <= j < queued_ops1.len()
+                        && queued_ops1.index(j) == rid implies false
+                    by {
+                      // should follow from QueueRidsUpdatePlaced, QueueRidsUpdateDone
+                      assert(pre.local_updates.index(queued_ops1.index(j)).is_Placed()
+                          || pre.local_updates.index(queued_ops1.index(j)).is_Applied()
+                          || pre.local_updates.index(queued_ops1.index(j)).is_Done());
+                    }
 
-                assert(!queued_ops1.contains(rid));
+                    assert(!queued_ops1.contains(rid));
 
+                    /*assert forall |i, j| 0 <= i < queued_ops1.len() && 0 <= j < queued_ops2.len()
+                        implies #[trigger] queued_ops1.index(i) !== #[trigger] queued_ops2.index(j)
+                    by {
+                    }*/
+
+                    //assert(seqs_disjoint(queued_ops1, queued_ops2));
+                }*/
+
+                //assert(CombinerRidsDistinctTwoNodes(c1, c2));
+
+                //assert(CombinerRidsDistinctTwoNodes(pre.combiner.index(node_id1), pre.combiner.index(node_id)));
+                //assert(CombinerRidsDistinctTwoNodes(post.combiner.index(node_id1), pre.combiner.index(node_id)));
                 assert(CombinerRidsDistinctTwoNodes(post.combiner.index(node_id1), post.combiner.index(node_id)));
-                */
             }
 
         }
@@ -1310,6 +1336,10 @@ pub open spec fn QueueRidsUpdateDone(queued_ops: Seq<nat>,
     localUpdates: Map<nat, UpdateState>, bound: nat) -> bool
 recommends 0 <= bound <= queued_ops.len(),
 {
+  // Note that use localUpdates.dom().contains(queued_ops.index(j)) as a *hypothesis*
+  // here. This is because the model actually allows an update to "leave early"
+  // before the combiner phase completes. (This is actually an instance of our
+  // model being overly permissive.)
   forall |j| 0 <= j < bound ==>
       localUpdates.dom().contains(#[trigger] queued_ops.index(j)) ==>
               (localUpdates.index(queued_ops.index(j)).is_Applied()
@@ -1328,7 +1358,7 @@ pub open spec fn LogContainsEntriesUpToHere(log: Map<nat, LogEntry>, end: nat) -
 
 pub open spec fn seqs_disjoint(s: Seq<nat>, t: Seq<nat>) -> bool
 {
-  forall |i, j| 0 <= i < s.len() && 0 <= j < t.len() ==> s.index(i) !== s.index(j)
+  forall |i, j| 0 <= i < s.len() && 0 <= j < t.len() ==> s.index(i) !== t.index(j)
 }
 
 pub open spec fn CombinerRidsDistinctTwoNodes(c1: CombinerState, c2: CombinerState) -> bool
