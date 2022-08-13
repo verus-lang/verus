@@ -214,7 +214,7 @@ impl<V> DListXor<V> {
                 //assert(self.perms@[i]@.pptr === self.ptrs@[i]@);
                 //assert(self.perms@[i].value.is_Some());
                 let prev_of_i = self.prev_of(i);
-                assert_bit_vector(prev_of_i ^ 0 == prev_of_i);
+                assert(prev_of_i ^ 0 == prev_of_i) by(bit_vector);
                 //assert(self.prev_of(i) == second_to_last_ptr);
                 //assert(self.next_of(i) == new_ptr_int);
                 //assert(self.perms@[i].value.get_Some_0().xored == (
@@ -273,7 +273,7 @@ impl<V> DListXor<V> {
                 assert_by_contradiction!(self.ptrs@.len() == 1, {
                     assert(old(self).wf_perm((self.ptrs@.len() - 2) as nat));
                     #[spec] let actual_penult_u64 = self.prev_of((self.ptrs@.len() - 1) as nat);
-                    assert_bit_vector(actual_penult_u64 ^ 0 == actual_penult_u64);
+                    assert(actual_penult_u64 ^ 0 == actual_penult_u64) by(bit_vector);
                 });
             }
         } else {

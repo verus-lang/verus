@@ -1335,12 +1335,6 @@ fn expr_to_stm_opt(
                 }
             }
         }
-        ExprX::AssertBV(e) => {
-            let expr = expr_to_pure_exp(ctx, state, &e)?;
-            let ret = ReturnValue::ImplicitUnit(expr.span.clone());
-            let assert = Spanned::new(e.span.clone(), StmX::AssertBV(expr));
-            Ok((vec![assert], ret))
-        }
         ExprX::If(expr0, expr1, None) => {
             let (stms0, e0) = expr_to_stm_opt(ctx, state, expr0)?;
             let (stms1, e1) = expr_to_stm_opt(ctx, state, expr1)?;

@@ -722,13 +722,6 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(typing, Mode::Proof, proof, Mode::Proof)?;
             Ok(Mode::Proof)
         }
-        ExprX::AssertBV(e) => {
-            if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
-                return err_str(&expr.span, "cannot use assert in exec mode");
-            }
-            check_expr_has_mode(typing, Mode::Spec, e, Mode::Spec)?;
-            Ok(Mode::Proof)
-        }
         ExprX::If(e1, e2, e3) => {
             let erasure_mode1 = ErasureModeX::new(None);
             let mode1 = check_expr(typing, outer_mode, &erasure_mode1, e1)?;

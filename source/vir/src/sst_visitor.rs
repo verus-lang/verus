@@ -151,7 +151,6 @@ where
                 | StmX::Assert(_, _)
                 | StmX::Assume(_)
                 | StmX::Assign { .. }
-                | StmX::AssertBV { .. }
                 | StmX::AssertBitVector { .. }
                 | StmX::Fuel(..) => (),
                 StmX::DeadEnd(s) => {
@@ -206,9 +205,6 @@ where
                 }
             }
             StmX::Assert(_span2, exp) => {
-                expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
-            }
-            StmX::AssertBV(exp) => {
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
             }
             StmX::AssertBitVector { requires, ensures } => {
@@ -525,7 +521,6 @@ where
         StmX::Assert(_, _) => fe(stm),
         StmX::Assume(_) => fe(stm),
         StmX::Assign { .. } => fe(stm),
-        StmX::AssertBV { .. } => fe(stm),
         StmX::AssertBitVector { .. } => fe(stm),
         StmX::Fuel(..) => fe(stm),
         StmX::DeadEnd(s) => {
@@ -600,7 +595,6 @@ where
                 )
             }
             StmX::Assert(span2, exp) => Spanned::new(span, StmX::Assert(span2.clone(), fe(exp)?)),
-            StmX::AssertBV(exp) => Spanned::new(span, StmX::AssertBV(fe(exp)?)),
             StmX::AssertBitVector { requires, ensures } => {
                 let requires = Arc::new(vec_map_result(requires, fe)?);
                 let ensures = Arc::new(vec_map_result(ensures, fe)?);

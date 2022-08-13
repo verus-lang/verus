@@ -987,10 +987,7 @@ impl VisitMut for Visitor {
                         }
                         (Some(_), Some((_, id)), None) if id.to_string() == "bit_vector" => {
                             *expr = Expr::Verbatim(
-                                quote_spanned!(span => ::builtin::assert_bit_vector(#arg)),
-                            );
-                            Expr::Verbatim(
-                                quote_spanned!(span => ::builtin::assert_bit_vector(#arg)),
+                                quote_spanned!(span => ::builtin::assert_bitvector_by({::builtin::ensures(#arg);})),
                             );
                             true
                         }

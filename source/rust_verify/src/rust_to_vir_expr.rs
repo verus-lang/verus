@@ -899,9 +899,26 @@ fn fn_call_to_vir<'tcx>(
         return extract_assert_forall_by(bctx, expr.span, args[0]);
     }
 
+    // internally translate this into `assert_bitvector_by`. REVIEW: consider deprecating this at all
     if is_assert_bit_vector {
-        let expr = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
-        return Ok(mk_expr(ExprX::AssertBV(expr)));
+        let vir_expr = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+        let requires = Arc::new(vec![spanned_typed_new(
+            expr.span,
+            &Arc::new(TypX::Bool),
+            ExprX::Const(Constant::Bool(true)),
+        )]);
+        let ensures = Arc::new(vec![vir_expr]);
+        let proof = spanned_typed_new(
+            expr.span,
+            &Arc::new(TypX::Tuple(Arc::new(vec![]))),
+            ExprX::Block(Arc::new(vec![]), None),
+        );
+        return Ok(mk_expr(ExprX::AssertQuery {
+            requires,
+            ensures,
+            proof,
+            mode: AssertQueryMode::BitVector,
+        }));
     }
 
     if is_ignored_fn {
