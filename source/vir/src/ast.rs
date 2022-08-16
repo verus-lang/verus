@@ -437,7 +437,7 @@ pub enum ExprX {
     Ghost { alloc_wrapper: Option<Fun>, tracked: bool, expr: Expr },
     /// Sequence of statements, optionally including an expression at the end
     Block(Stmts, Option<Expr>),
-    /// assert_by with smt.arith.nl=true
+    /// `assert_by` with a dedicated prover option (nonlinear_arith, bit_vector)
     AssertQuery { requires: Exprs, ensures: Exprs, proof: Expr, mode: AssertQueryMode },
 }
 

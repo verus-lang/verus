@@ -64,3 +64,30 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] test2_fails code! {
+        #[proof]
+        fn test2_fails(b1: u32) {
+            assert_bitvector_by({
+                requires(b1 == 0x100);  // FAILS
+                ensures((b1 << 1) == 0x200);
+            });
+            assert((b1 << 1) == 0x200);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test3_fails code! {
+        #[proof]
+        fn test3_fails(b1: u32, b2: u32) {
+            requires(b1 != b2);
+
+            assert_bitvector_by({
+                requires(b1 == b2);  // FAILS
+                ensures((b1 << 10) == (b2 << 10));
+            });
+        }
+    } => Err(err) => assert_one_fails(err)
+}
