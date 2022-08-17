@@ -25,6 +25,26 @@ const IMPORTS: &str = code_str! {
 };
 
 test_verify_one_file! {
+    #[test] dupe_name_fail IMPORTS.to_string() + code_str! {
+        state_machine!{ X {
+            fields {
+                pub v: Map<int, int>,
+            }
+
+            transition!{
+                some_name() {
+                }
+            }
+
+            transition!{
+                some_name() {
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "duplicate item name")
+}
+
+test_verify_one_file! {
     #[test] test_birds_eye_init_error IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields { #[sharding(variable)] pub t: int }

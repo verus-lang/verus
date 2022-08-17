@@ -10,6 +10,7 @@ use crate::ident_visitor::validate_idents_transition;
 use crate::inherent_safety_conditions::check_inherent_conditions;
 use crate::util::{combine_errors_or_ok, combine_results};
 use proc_macro2::Span;
+use std::collections::HashSet;
 use syn_verus::parse;
 use syn_verus::spanned::Spanned;
 use syn_verus::{Error, Ident, Type, TypePath};
@@ -650,7 +651,15 @@ pub fn check_transitions(sm: &mut SM) -> parse::Result<()> {
     let mut transitions = Vec::new();
     std::mem::swap(&mut transitions, &mut sm.transitions);
 
+    let mut names: HashSet<String> = HashSet::new();
+
     for tr in transitions.iter_mut() {
+        let name = tr.name.to_string();
+        if names.contains(&name) {
+            results.push(Err(Error::new(tr.name.span(), "duplicate item name")));
+        }
+        names.insert(name);
+
         results.push(check_transition(sm, tr));
     }
 
