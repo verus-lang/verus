@@ -265,7 +265,7 @@ fn visit_special_op(
                 MonoidStmtType::Deposit => true,
                 MonoidStmtType::Guard => true,
                 MonoidStmtType::Withdraw => true,
-                MonoidStmtType::Add => false,
+                MonoidStmtType::Add(_) => false,
                 MonoidStmtType::Remove => false,
                 MonoidStmtType::Have => false,
             };

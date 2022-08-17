@@ -106,7 +106,7 @@ pub struct Transition {
 #[derive(Clone, Copy, Debug)]
 pub enum MonoidStmtType {
     Have,
-    Add,
+    Add(bool), // 'true' if this is for a persistent type
     Remove,
     Guard,
     Deposit,
@@ -117,7 +117,7 @@ impl MonoidStmtType {
     pub fn name(self) -> &'static str {
         match self {
             MonoidStmtType::Have => "have",
-            MonoidStmtType::Add => "add",
+            MonoidStmtType::Add(_) => "add",
             MonoidStmtType::Remove => "remove",
             MonoidStmtType::Guard => "guard",
             MonoidStmtType::Deposit => "deposit",
@@ -128,7 +128,7 @@ impl MonoidStmtType {
     pub fn is_for_storage(self) -> bool {
         match self {
             MonoidStmtType::Have => false,
-            MonoidStmtType::Add => false,
+            MonoidStmtType::Add(_) => false,
             MonoidStmtType::Remove => false,
             MonoidStmtType::Guard => true,
             MonoidStmtType::Deposit => true,
@@ -307,7 +307,7 @@ impl MonoidStmtType {
         match self {
             MonoidStmtType::Have => false,
             MonoidStmtType::Guard => false,
-            MonoidStmtType::Add => true,
+            MonoidStmtType::Add(_) => true,
             MonoidStmtType::Remove => true,
             MonoidStmtType::Deposit => true,
             MonoidStmtType::Withdraw => true,
@@ -337,7 +337,7 @@ impl MonoidStmtType {
 
     pub fn is_add(self) -> bool {
         match self {
-            MonoidStmtType::Add => true,
+            MonoidStmtType::Add(_) => true,
             _ => false,
         }
     }

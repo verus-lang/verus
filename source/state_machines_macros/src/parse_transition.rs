@@ -184,7 +184,7 @@ fn parse_transition_stmt(ctxt: &mut Ctxt, input: ParseStream) -> parse::Result<V
     } else if ident.to_string() == "have" {
         Ok(vec![parse_monoid_stmt(ident, input, MonoidStmtType::Have)?])
     } else if ident.to_string() == "add" {
-        Ok(vec![parse_monoid_stmt(ident, input, MonoidStmtType::Add)?])
+        Ok(vec![parse_monoid_stmt(ident, input, MonoidStmtType::Add(false))?])
     } else if ident.to_string() == "remove" {
         Ok(vec![parse_monoid_stmt(ident, input, MonoidStmtType::Remove)?])
     } else if ident.to_string() == "guard" {
@@ -269,17 +269,34 @@ fn parse_monoid_stmt(
     let field: Ident = input.parse()?;
 
     // Parse the operator depending on the type of statement this is.
-    match monoid_stmt_type {
+    let monoid_stmt_type = match monoid_stmt_type {
         MonoidStmtType::Have | MonoidStmtType::Guard => {
             let _t: Token![>=] = input.parse()?;
+            monoid_stmt_type
         }
-        MonoidStmtType::Add | MonoidStmtType::Deposit => {
+        MonoidStmtType::Deposit => {
             let _t: Token![+=] = input.parse()?;
+            monoid_stmt_type
+        }
+        MonoidStmtType::Add(_) => {
+            if input.peek(Token![+=]) {
+                let _t: Token![+=] = input.parse()?;
+                MonoidStmtType::Add(false)
+            } else if input.peek(token::Paren) {
+                let paren_content;
+                let _ = parenthesized!(paren_content in input);
+                let _ = keyword(&paren_content, "union");
+                let _: Token![=] = input.parse()?;
+                MonoidStmtType::Add(true)
+            } else {
+                return Err(input.error("expected += or union="));
+            }
         }
         MonoidStmtType::Remove | MonoidStmtType::Withdraw => {
             let _t: Token![-=] = input.parse()?;
+            monoid_stmt_type
         }
-    }
+    };
 
     // Parse the part after the operator. The syntax used here determines what "type"
     // the data is (e.g., multiset, option, or map).
@@ -290,7 +307,7 @@ fn parse_monoid_stmt(
             MonoidStmtType::Have | MonoidStmtType::Remove | MonoidStmtType::Withdraw => {
                 // okay
             }
-            MonoidStmtType::Guard | MonoidStmtType::Add | MonoidStmtType::Deposit => {}
+            MonoidStmtType::Guard | MonoidStmtType::Add(_) | MonoidStmtType::Deposit => {}
         }
     }
 

@@ -4854,6 +4854,40 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] use_plus_for_persistent_fail IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(persistent_bool)]
+                pub c: bool,
+            }
+
+            transition!{
+                tr_add() {
+                    add c += true;
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "for the persistent strategy `persistent_bool`, use `(union)=` instead of `+=`")
+}
+
+test_verify_one_file! {
+    #[test] use_union_for_nonpersistent_fail IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(bool)]
+                pub c: bool,
+            }
+
+            transition!{
+                tr_add() {
+                    add c (union)= true;
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "use `+=` instead of `(union)=`")
+}
+
+test_verify_one_file! {
     #[test] persistent_count_remove_fail IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -4908,13 +4942,13 @@ test_verify_one_file! {
             transition!{
                 tr1() {
                     have d >= Some(7);
-                    add c += Some(3);
+                    add c (union)= Some(3);
                 }
             }
 
             transition!{
                 tr2() {
-                    add c += ( Option::Some(3) );
+                    add c (union)= ( Option::Some(3) );
                 }
             }
 
@@ -5074,13 +5108,13 @@ test_verify_one_file! {
             transition!{
                 tr1() {
                     have c >= [1 => 2];
-                    add c += [3 => 4];
+                    add c (union)= [3 => 4];
                 }
             }
 
             transition!{
                 tr2() {
-                    add c += (
+                    add c (union)= (
                         Map::empty().insert(5, 9).insert(12, 15)
                     );
                 }
@@ -6178,7 +6212,7 @@ test_verify_one_file! {
 
             transition!{
                 tr_add() {
-                    add b += true;
+                    add b (union)= true;
                 }
             }
 
@@ -6190,7 +6224,7 @@ test_verify_one_file! {
 
             transition!{
                 tr_add_gen(x: bool) {
-                    add b += (x);
+                    add b (union)= (x);
                 }
             }
 
@@ -6306,7 +6340,7 @@ test_verify_one_file! {
 
             transition!{
                 tr_add() {
-                    add c += (2);
+                    add c (union)= (2);
                 }
             }
 
@@ -6545,7 +6579,7 @@ test_verify_one_file! {
 
             transition!{
                 tr_add() {
-                    add b += set { 5 };
+                    add b (union)= set { 5 };
                 }
             }
 
@@ -6557,7 +6591,7 @@ test_verify_one_file! {
 
             transition!{
                 tr_add_gen() {
-                    add b += (Set::empty().insert(6));
+                    add b (union)= (Set::empty().insert(6));
                 }
             }
 

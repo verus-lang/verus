@@ -183,6 +183,12 @@ impl<'ast> Visit<'ast> for IdentVisitor {
     fn visit_expr(&mut self, node: &'ast Expr) {
         match node {
             Expr::Verbatim(_) => {
+                // In some odd cases, syn can return parse results that use
+                // Expr::Verbatim. For example, a lone underscore returns
+                // an Expr::Verbatim even though I don't think that's a valid expression.
+                // Anyway, in the event of something unexpected like this,
+                // just error on it immediately. Later, we will assume that any
+                // Expr::Verbatim node was produced by our own code.
                 self.errors.push(Error::new(
                     node.span(),
                     format!("Verus does not support this expression"),

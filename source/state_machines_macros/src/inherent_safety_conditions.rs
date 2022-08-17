@@ -85,7 +85,7 @@ fn check_inherent_condition_for_special_op(
                 Ok("".to_string())
             }
         }
-        MonoidStmtType::Add | MonoidStmtType::Deposit => match coll_type {
+        MonoidStmtType::Add(_) | MonoidStmtType::Deposit => match coll_type {
             CollectionType::Multiset
             | CollectionType::Nat
             | CollectionType::PersistentNat

@@ -43,7 +43,7 @@ tokenized_state_machine!{InternSystem<T> {
         get_frag(idx: nat) {
             require(0 <= idx && idx < pre.auth.len());
             let val = pre.auth.index(idx);
-            add frag += [idx => val];
+            add frag (union)= [idx => val];
         }
     }
 

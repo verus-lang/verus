@@ -2129,7 +2129,7 @@ fn translate_special_condition(
             ))
         }
 
-        SpecialOp { stmt: MonoidStmtType::Add, elt } => {
+        SpecialOp { stmt: MonoidStmtType::Add(_), elt } => {
             let elt = translate_elt(ctxt, elt, false, errors);
 
             let ident = ctxt.get_numbered_token_ident(&field.name);
@@ -2276,7 +2276,7 @@ fn translate_special_assignment(op: &SpecialOp, param: &TokenParam) -> Expr {
             Expr::Verbatim(quote! { #name })
         }
 
-        MonoidStmtType::Add | MonoidStmtType::Guard | MonoidStmtType::Deposit => {
+        MonoidStmtType::Add(_) | MonoidStmtType::Guard | MonoidStmtType::Deposit => {
             panic!("unexpected monoid type");
         }
     }

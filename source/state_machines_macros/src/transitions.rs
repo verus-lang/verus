@@ -1,8 +1,8 @@
 use crate::ast::INIT_LABEL_TYPE_NAME;
 use crate::ast::TRANSITION_LABEL_TYPE_NAME;
 use crate::ast::{
-    Field, MonoidElt, ShardableType, SpecialOp, SplitKind, Transition, TransitionKind,
-    TransitionStmt, SM,
+    Field, MonoidElt, MonoidStmtType, ShardableType, SpecialOp, SplitKind, Transition,
+    TransitionKind, TransitionStmt, SM,
 };
 use crate::check_bind_stmts::check_bind_stmts;
 use crate::check_birds_eye::check_birds_eye;
@@ -343,6 +343,29 @@ fn is_allowed_in_special_op(
             let op_is_storage = sop.stmt.is_for_storage();
 
             assert!(!strat_is_storage || !strat_is_persistent);
+
+            match sop.stmt {
+                MonoidStmtType::Add(is_max) => {
+                    if strat_is_persistent && !is_max {
+                        let strat = stype.strategy_name();
+                        return Err(Error::new(
+                            span,
+                            format!(
+                                "for the persistent strategy `{strat:}`, use `(union)=` instead of `+=`"
+                            ),
+                        ));
+                    } else if !strat_is_persistent && is_max {
+                        let strat = stype.strategy_name();
+                        return Err(Error::new(
+                            span,
+                            format!(
+                                "for the strategy `{strat:}`, use `+=` instead of `(union)=` (only persistent strategies should use `(union)=`)"
+                            ),
+                        ));
+                    }
+                }
+                _ => {}
+            }
 
             if stype.is_persistent() && sop.is_remove() {
                 let stmt_name = sop.stmt.name();
