@@ -206,7 +206,7 @@ fn do_count(num_threads: u32) {
             equal((*global_arc).instance, instance),
         ]);
 
-        #[proof] let (unstamped_token, rest) = unstamped_tokens.split(1);
+        #[proof] let (Trk(unstamped_token), Trk(rest)) = unstamped_tokens.split(1);
         unstamped_tokens = rest;
 
         let thread_data = ThreadData { globals: global_arc.clone(), token: unstamped_token };

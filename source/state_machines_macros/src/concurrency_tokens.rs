@@ -1551,16 +1551,17 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 }
 
                 #[verifier(external_body)]
-                pub proof fn split(tracked self, i: nat) -> tracked (Self, Self) {
+                pub proof fn split(tracked self, i: nat) -> tracked (crate::pervasive::modes::Trk<Self>, crate::pervasive::modes::Trk<Self>) {
                     ::builtin::requires(i <= self.view().count);
-                    ::builtin::ensures(|s: (Self, Self)|
-                        ::builtin::equal(s.0.view().instance, self.view().instance)
-                        && ::builtin::equal(s.1.view().instance, self.view().instance)
-                        && ::builtin::equal(s.0.view().value, self.view().value)
-                        && ::builtin::equal(s.1.view().value, self.view().value)
-                        && ::builtin::equal(s.0.view().count, i)
-                        && ::builtin::equal(s.1.view().count as int, self.view().count - i)
-                    );
+                    ::builtin::ensures(|s: (crate::pervasive::modes::Trk<Self>, crate::pervasive::modes::Trk<Self>)| {
+                        let (crate::pervasive::modes::Trk(x), crate::pervasive::modes::Trk(y)) = s;
+                        ::builtin::equal(x.view().instance, self.view().instance)
+                        && ::builtin::equal(y.view().instance, self.view().instance)
+                        && ::builtin::equal(x.view().value, self.view().value)
+                        && ::builtin::equal(y.view().value, self.view().value)
+                        && ::builtin::equal(x.view().count, i)
+                        && ::builtin::equal(y.view().count as int, self.view().count - i)
+                    });
                     ::std::unimplemented!();
                 }
             }
@@ -1580,14 +1581,15 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 }
 
                 #[verifier(external_body)]
-                pub proof fn split(tracked self, i: nat) -> tracked (Self, Self) {
+                pub proof fn split(tracked self, i: nat) -> tracked (crate::pervasive::modes::Trk<Self>, crate::pervasive::modes::Trk<Self>) {
                     ::builtin::requires(i <= self.view().count);
-                    ::builtin::ensures(|s: (Self, Self)|
-                        ::builtin::equal(s.0.view().instance, self.view().instance)
-                        && ::builtin::equal(s.1.view().instance, self.view().instance)
-                        && ::builtin::equal(s.0.view().count, i)
-                        && ::builtin::equal(s.1.view().count as int, self.view().count - i)
-                    );
+                    ::builtin::ensures(|s: (crate::pervasive::modes::Trk<Self>, crate::pervasive::modes::Trk<Self>)| {
+                        let (crate::pervasive::modes::Trk(x), crate::pervasive::modes::Trk(y)) = s;
+                        ::builtin::equal(x.view().instance, self.view().instance)
+                        && ::builtin::equal(y.view().instance, self.view().instance)
+                        && ::builtin::equal(x.view().count, i)
+                        && ::builtin::equal(y.view().count as int, self.view().count - i)
+                    });
                     ::std::unimplemented!();
                 }
             }

@@ -4753,7 +4753,7 @@ test_verify_one_file! {
             #[proof] let (Trk(inst), Trk(t1)) = Y::Instance::initialize();
             assert(t1.view().count == spec_literal_nat("9"));
 
-            #[proof] let (t2, t3) = t1.split(spec_literal_nat("2"));
+            #[proof] let (Trk(t2), Trk(t3)) = t1.split(spec_literal_nat("2"));
 
             assert(t2.view().count == spec_literal_nat("2"));
             assert(t3.view().count == spec_literal_nat("7"));
@@ -4777,7 +4777,7 @@ test_verify_one_file! {
         fn test_split_fail() {
             #[proof] let (Trk(inst), Trk(t1)) = Y::Instance::initialize();
 
-            #[proof] let (t2, t3) = t1.split(spec_literal_nat("10")); // FAILS
+            #[proof] let (Trk(t2), Trk(t3)) = t1.split(spec_literal_nat("10")); // FAILS
         }
     } => Err(e) => assert_fails(e, 2)
 }
