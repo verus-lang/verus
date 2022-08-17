@@ -356,12 +356,12 @@ fn parse_monoid_elt(
     if input.peek(token::Brace) {
         let content;
         let _ = braced!(content in input);
-        let e: Expr = content.parse()?;
+        let e: Expr = parse_expr_for_monoid_elt(&content)?;
         Ok((MonoidElt::SingletonMultiset(e), None))
     } else if input.peek(token::Bracket) {
         let content;
         let _ = bracketed!(content in input);
-        let key: Expr = content.parse()?;
+        let key: Expr = parse_expr_for_monoid_elt(&content)?;
         let _: Token![=>] = content.parse()?;
         if content.peek(Token![let]) {
             let _: Token![let] = content.parse()?;
@@ -387,7 +387,7 @@ fn parse_monoid_elt(
         let _ = keyword(input, "set");
         let content;
         let _ = braced!(content in input);
-        let e: Expr = content.parse()?;
+        let e: Expr = parse_expr_for_monoid_elt(&content)?;
         Ok((MonoidElt::SingletonSet(e), None))
     } else if peek_keyword(input.cursor(), "true") {
         let _ = keyword(input, "true");
@@ -395,11 +395,19 @@ fn parse_monoid_elt(
     } else if input.peek(token::Paren) {
         let content;
         let _ = parenthesized!(content in input);
-        let e: Expr = content.parse()?;
+        let e: Expr = parse_expr_for_monoid_elt(&content)?;
         Ok((MonoidElt::General(e), None))
     } else {
         let name = monoid_stmt_type.name();
         Err(input.error(format!("malformed {name:} statement")))
+    }
+}
+
+fn parse_expr_for_monoid_elt(input: ParseStream) -> parse::Result<Expr> {
+    if input.peek(Token![let]) {
+        Err(input.error("A let-pattern binding is not supported here; only supported in the positions `[... => let PAT]` or `Some(let PAT)`."))
+    } else {
+        input.parse()
     }
 }
 

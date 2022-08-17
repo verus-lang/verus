@@ -5,6 +5,7 @@ use crate::simplification::UPDATE_TMP_PREFIX;
 use crate::util::combine_errors_or_ok;
 use syn_verus::parse;
 use syn_verus::spanned::Spanned;
+use syn_verus::visit;
 use syn_verus::visit::Visit;
 use syn_verus::{Error, Expr, ExprMacro, Ident, Macro, Pat, PatIdent, Path, Type};
 
@@ -177,6 +178,20 @@ impl<'ast> Visit<'ast> for IdentVisitor {
     fn visit_expr_macro(&mut self, node: &'ast ExprMacro) {
         self.errors
             .push(Error::new(node.span(), format!("macro not allowed in transition expression")));
+    }
+
+    fn visit_expr(&mut self, node: &'ast Expr) {
+        match node {
+            Expr::Verbatim(_) => {
+                self.errors.push(Error::new(
+                    node.span(),
+                    format!("Verus does not support this expression"),
+                ));
+            }
+            _ => {
+                visit::visit_expr(self, node);
+            }
+        }
     }
 }
 
