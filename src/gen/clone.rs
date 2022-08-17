@@ -49,6 +49,7 @@ impl Clone for Assert {
             expr: self.expr.clone(),
             by_token: self.by_token.clone(),
             prover: self.prover.clone(),
+            requires: self.requires.clone(),
             body: self.body.clone(),
         }
     }

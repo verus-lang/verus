@@ -50,6 +50,7 @@ impl Hash for Assert {
         self.expr.hash(state);
         self.by_token.hash(state);
         self.prover.hash(state);
+        self.requires.hash(state);
         self.body.hash(state);
     }
 }

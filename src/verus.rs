@@ -147,7 +147,8 @@ ast_struct! {
         /// by_token is only used if prover and/or body is Some
         pub by_token: Option<Token![by]>,
         pub prover: Option<(token::Paren, Ident)>,
-        pub body: Option<Box<(Option<Requires>, Block)>>,
+        pub requires: Option<Requires>,
+        pub body: Option<Box<Block>>,
     }
 }
 
@@ -450,12 +451,16 @@ pub mod parsing {
                 } else {
                     None
                 };
-                let body = if input.peek(Token![requires]) || input.peek(token::Brace) {
+                let (requires, body) = if input.peek(Token![requires]) || input.peek(token::Brace) {
                     let requires = input.parse()?;
-                    let block = input.parse()?;
-                    Some(Box::new((requires, block)))
+                    let block = if input.peek(token::Brace) {
+                        Some(Box::new(input.parse()?))
+                    } else {
+                        None
+                    };
+                    (requires, block)
                 } else {
-                    None
+                    (None, None)
                 };
                 if prover.is_none() && body.is_none() {
                     return Err(content.error("expected `(` or `{` after `by`"));
@@ -467,11 +472,13 @@ pub mod parsing {
                     expr,
                     by_token,
                     prover,
+                    requires,
                     body,
                 })
             } else {
                 let by_token = None;
                 let prover = None;
+                let requires = None;
                 let body = None;
                 Ok(Assert {
                     attrs,
@@ -480,6 +487,7 @@ pub mod parsing {
                     expr,
                     by_token,
                     prover,
+                    requires,
                     body,
                 })
             }
@@ -687,10 +695,8 @@ mod printing {
                             id.to_tokens(tokens);
                         });
                     }
-                    if let Some(box (requires, body)) = &self.body {
-                        requires.to_tokens(tokens);
-                        body.to_tokens(tokens);
-                    }
+                    self.requires.to_tokens(tokens);
+                    self.body.to_tokens(tokens);
                 }
             }
         }

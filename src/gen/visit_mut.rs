@@ -916,11 +916,11 @@ where
         tokens_helper(v, &mut (it).0.span);
         v.visit_ident_mut(&mut (it).1);
     }
+    if let Some(it) = &mut node.requires {
+        v.visit_requires_mut(it);
+    }
     if let Some(it) = &mut node.body {
-        if let Some(it) = &mut (**it).0 {
-            v.visit_requires_mut(it);
-        }
-        full!(v.visit_block_mut(& mut (* * it).1));
+        full!(v.visit_block_mut(& mut * * it));
     }
 }
 pub fn visit_assert_forall_mut<V>(v: &mut V, node: &mut AssertForall)

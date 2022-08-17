@@ -49,6 +49,7 @@ impl Debug for Assert {
         formatter.field("expr", &self.expr);
         formatter.field("by_token", &self.by_token);
         formatter.field("prover", &self.prover);
+        formatter.field("requires", &self.requires);
         formatter.field("body", &self.body);
         formatter.finish()
     }

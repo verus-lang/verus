@@ -915,11 +915,11 @@ where
         tokens_helper(v, &(it).0.span);
         v.visit_ident(&(it).1);
     }
+    if let Some(it) = &node.requires {
+        v.visit_requires(it);
+    }
     if let Some(it) = &node.body {
-        if let Some(it) = &(**it).0 {
-            v.visit_requires(it);
-        }
-        full!(v.visit_block(& (* * it).1));
+        full!(v.visit_block(& * * it));
     }
 }
 pub fn visit_assert_forall<'ast, V>(v: &mut V, node: &'ast AssertForall)

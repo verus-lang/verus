@@ -134,19 +134,15 @@
             ]
           }
         },
+        "requires": {
+          "option": {
+            "syn": "Requires"
+          }
+        },
         "body": {
           "option": {
             "box": {
-              "tuple": [
-                {
-                  "option": {
-                    "syn": "Requires"
-                  }
-                },
-                {
-                  "syn": "Block"
-                }
-              ]
+              "syn": "Block"
             }
           }
         }

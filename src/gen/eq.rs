@@ -42,7 +42,7 @@ impl PartialEq for Assert {
     fn eq(&self, other: &Self) -> bool {
         self.attrs == other.attrs && self.expr == other.expr
             && self.by_token == other.by_token && self.prover == other.prover
-            && self.body == other.body
+            && self.requires == other.requires && self.body == other.body
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]

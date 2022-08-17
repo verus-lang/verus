@@ -124,10 +124,26 @@ impl Debug for Lite<syn::Assert> {
             }
             formatter.field("prover", Print::ref_cast(val));
         }
+        if let Some(val) = &_val.requires {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::Requires);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("requires", Print::ref_cast(val));
+        }
         if let Some(val) = &_val.body {
             #[derive(RefCast)]
             #[repr(transparent)]
-            struct Print(Box<(Option<syn::Requires>, syn::Block)>);
+            struct Print(Box<syn::Block>);
             impl Debug for Print {
                 fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                     formatter.write_str("Some")?;

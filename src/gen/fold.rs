@@ -908,11 +908,8 @@ where
         by_token: (node.by_token).map(|it| Token![by](tokens_helper(f, &it.span))),
         prover: (node.prover)
             .map(|it| (Paren(tokens_helper(f, &(it).0.span)), f.fold_ident((it).1))),
-        body: (node.body)
-            .map(|it| Box::new((
-                ((*it).0).map(|it| f.fold_requires(it)),
-                full!(f.fold_block((* it).1)),
-            ))),
+        requires: (node.requires).map(|it| f.fold_requires(it)),
+        body: (node.body).map(|it| Box::new(full!(f.fold_block(* it)))),
     }
 }
 pub fn fold_assert_forall<F>(f: &mut F, node: AssertForall) -> AssertForall
