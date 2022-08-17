@@ -971,30 +971,35 @@ impl VisitMut for Visitor {
                     let span = assert.assert_token.span;
                     let arg = assert.expr;
                     let attrs = assert.attrs;
-                    if match (assert.by_token, assert.prover, assert.body) {
-                        (None, None, None) => {
+                    if match (assert.by_token, assert.prover, assert.requires, assert.body) {
+                        (None, None, None, None) => {
                             *expr = Expr::Verbatim(
                                 quote_spanned!(span => crate::pervasive::assert(#arg)),
                             );
                             true
                         }
-                        (None, _, _) => panic!("missing by token"),
-                        (Some(_), None, None) => panic!("extra by token"),
-                        (Some(_), None, Some(box (None, block))) => {
+                        (None, _, _, _) => panic!("missing by token"),
+                        (Some(_), None, None, None) => panic!("extra by token"),
+                        (Some(_), None, None, Some(box block)) => {
                             *expr = Expr::Verbatim(
                                 quote_spanned!(span => {::builtin::assert_by(#arg, #block);}),
                             );
                             true
                         }
-                        (Some(_), Some((_, id)), None) if id.to_string() == "bit_vector" => {
+                        (Some(_), Some((_, id)), None, None) if id.to_string() == "bit_vector" => {
                             *expr = Expr::Verbatim(
                                 quote_spanned!(span => ::builtin::assert_bitvector_by({::builtin::ensures(#arg);})),
                             );
                             true
                         }
-                        (Some(_), Some((_, id)), Some(box (requires, mut block)))
+                        (Some(_), Some((_, id)), requires, block)
                             if id.to_string() == "bit_vector" =>
                         {
+                            let mut block = if let Some(box block) = block {
+                                block
+                            } else {
+                                Block { brace_token: token::Brace { span }, stmts: vec![] }
+                            };
                             let mut stmts: Vec<Stmt> = Vec::new();
                             if let Some(Requires { token, exprs }) = requires {
                                 stmts.push(Stmt::Semi(
@@ -1016,13 +1021,15 @@ impl VisitMut for Visitor {
                             *expr = Expr::Verbatim(quote_spanned!(span => {#assert_bitvector_by}));
                             false
                         }
-                        (Some(_), Some((_, id)), None) if id.to_string() == "nonlinear_arith" => {
+                        (Some(_), Some((_, id)), None, None)
+                            if id.to_string() == "nonlinear_arith" =>
+                        {
                             *expr = Expr::Verbatim(
                                 quote_spanned!(span => ::builtin::assert_nonlinear_by({::builtin::ensures(#arg);})),
                             );
                             true
                         }
-                        (Some(_), Some((_, id)), Some(box (requires, mut block)))
+                        (Some(_), Some((_, id)), requires, Some(box mut block))
                             if id.to_string() == "nonlinear_arith" =>
                         {
                             let mut stmts: Vec<Stmt> = Vec::new();
@@ -1046,7 +1053,7 @@ impl VisitMut for Visitor {
                             *expr = Expr::Verbatim(quote_spanned!(span => {#assert_nonlinear_by}));
                             false
                         }
-                        (Some(_), Some((_, id)), _) => {
+                        (Some(_), Some((_, id)), _, _) => {
                             let span = id.span();
                             *expr = Expr::Verbatim(
                                 quote_spanned!(span => compile_error!("unsupported kind of assert-by")),
