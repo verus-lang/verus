@@ -450,6 +450,7 @@ fn fn_call_to_vir<'tcx>(
     let is_implies = f_name == "builtin::imply";
     let is_assert_by = f_name == "builtin::assert_by";
     let is_assert_nonlinear_by = f_name == "builtin::assert_nonlinear_by";
+    let is_assert_bitvector_by = f_name == "builtin::assert_bitvector_by";
     let is_assert_forall_by = f_name == "builtin::assert_forall_by";
     let is_assert_bit_vector = f_name == "builtin::assert_bit_vector";
     let is_old = f_name == "builtin::old";
@@ -613,6 +614,7 @@ fn fn_call_to_vir<'tcx>(
             || is_with_triggers
             || is_assert_by
             || is_assert_nonlinear_by
+            || is_assert_bitvector_by
             || is_assert_forall_by
             || is_assert_bit_vector
             || is_old
@@ -846,11 +848,11 @@ fn fn_call_to_vir<'tcx>(
         let proof = expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?;
         return Ok(mk_expr(ExprX::Forall { vars, require, ensure, proof }));
     }
-    if is_assert_nonlinear_by {
+    if is_assert_nonlinear_by || is_assert_bitvector_by {
         unsupported_err_unless!(
             len == 1,
             expr.span,
-            "expected assert_nonlinear_by with one argument",
+            "expected assert_nonlinear_by/assert_bitvector_by with one argument",
             &args
         );
         let mut vir_expr = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
@@ -865,7 +867,10 @@ fn fn_call_to_vir<'tcx>(
             )])
         };
         if header.ensure.len() == 0 {
-            return err_span_str(expr.span, "assert_nonlinear_by must have at least one ensures");
+            return err_span_str(
+                expr.span,
+                "assert_nonlinear_by/assert_bitvector_by must have at least one ensures",
+            );
         }
         let ensures = header.ensure;
         let proof = vir_expr;
@@ -875,14 +880,18 @@ fn fn_call_to_vir<'tcx>(
         if expr_vattrs.spinoff_prover {
             return err_span_str(
                 expr.span,
-                "#[verifier(spinoff_prover)] is implied for assert by nonlinear_arith",
+                "#[verifier(spinoff_prover)] is implied for assert by nonlinear_arith and assert by bit_vector",
             );
         }
         return Ok(mk_expr(ExprX::AssertQuery {
             requires,
             ensures,
             proof,
-            mode: AssertQueryMode::NonLinear,
+            mode: if is_assert_nonlinear_by {
+                AssertQueryMode::NonLinear
+            } else {
+                AssertQueryMode::BitVector
+            },
         }));
     }
     if is_assert_forall_by {
@@ -890,9 +899,26 @@ fn fn_call_to_vir<'tcx>(
         return extract_assert_forall_by(bctx, expr.span, args[0]);
     }
 
+    // internally translate this into `assert_bitvector_by`. REVIEW: consider deprecating this at all
     if is_assert_bit_vector {
-        let expr = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
-        return Ok(mk_expr(ExprX::AssertBV(expr)));
+        let vir_expr = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+        let requires = Arc::new(vec![spanned_typed_new(
+            expr.span,
+            &Arc::new(TypX::Bool),
+            ExprX::Const(Constant::Bool(true)),
+        )]);
+        let ensures = Arc::new(vec![vir_expr]);
+        let proof = spanned_typed_new(
+            expr.span,
+            &Arc::new(TypX::Tuple(Arc::new(vec![]))),
+            ExprX::Block(Arc::new(vec![]), None),
+        );
+        return Ok(mk_expr(ExprX::AssertQuery {
+            requires,
+            ensures,
+            proof,
+            mode: AssertQueryMode::BitVector,
+        }));
     }
 
     if is_ignored_fn {

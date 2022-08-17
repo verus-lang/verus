@@ -151,7 +151,7 @@ where
                 | StmX::Assert(_, _)
                 | StmX::Assume(_)
                 | StmX::Assign { .. }
-                | StmX::AssertBV { .. }
+                | StmX::AssertBitVector { .. }
                 | StmX::Fuel(..) => (),
                 StmX::DeadEnd(s) => {
                     expr_visitor_control_flow!(stm_visitor_dfs(s, f));
@@ -207,8 +207,13 @@ where
             StmX::Assert(_span2, exp) => {
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
             }
-            StmX::AssertBV(exp) => {
-                expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
+            StmX::AssertBitVector { requires, ensures } => {
+                for req in requires.iter() {
+                    expr_visitor_control_flow!(exp_visitor_dfs(req, &mut ScopeMap::new(), f));
+                }
+                for ens in ensures.iter() {
+                    expr_visitor_control_flow!(exp_visitor_dfs(ens, &mut ScopeMap::new(), f));
+                }
             }
             StmX::AssertQuery { body: _, typ_inv_vars: _, mode: _ } => (),
             StmX::Assume(exp) => {
@@ -516,7 +521,7 @@ where
         StmX::Assert(_, _) => fe(stm),
         StmX::Assume(_) => fe(stm),
         StmX::Assign { .. } => fe(stm),
-        StmX::AssertBV { .. } => fe(stm),
+        StmX::AssertBitVector { .. } => fe(stm),
         StmX::Fuel(..) => fe(stm),
         StmX::DeadEnd(s) => {
             let s = map_stm_visitor(s, fe)?;
@@ -590,7 +595,11 @@ where
                 )
             }
             StmX::Assert(span2, exp) => Spanned::new(span, StmX::Assert(span2.clone(), fe(exp)?)),
-            StmX::AssertBV(exp) => Spanned::new(span, StmX::AssertBV(fe(exp)?)),
+            StmX::AssertBitVector { requires, ensures } => {
+                let requires = Arc::new(vec_map_result(requires, fe)?);
+                let ensures = Arc::new(vec_map_result(ensures, fe)?);
+                Spanned::new(span, StmX::AssertBitVector { requires, ensures })
+            }
             StmX::Assume(exp) => Spanned::new(span, StmX::Assume(fe(exp)?)),
             StmX::Assign { lhs: Dest { dest, is_init }, rhs } => {
                 let dest = fe(dest)?;

@@ -355,6 +355,7 @@ pub enum InvAtomicity {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum AssertQueryMode {
     NonLinear,
+    BitVector,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -418,8 +419,6 @@ pub enum ExprX {
     Admit,
     /// Forall or assert-by statement; proves "forall vars. ensure" via proof.
     Forall { vars: Binders<Typ>, require: Expr, ensure: Expr, proof: Expr },
-    /// bit vector assertions
-    AssertBV(Expr),
     /// If-else
     If(Expr, Expr, Option<Expr>),
     /// Match (Note: ast_simplify replaces Match with other expressions)
@@ -438,7 +437,7 @@ pub enum ExprX {
     Ghost { alloc_wrapper: Option<Fun>, tracked: bool, expr: Expr },
     /// Sequence of statements, optionally including an expression at the end
     Block(Stmts, Option<Expr>),
-    /// assert_by with smt.arith.nl=true
+    /// `assert_by` with a dedicated prover option (nonlinear_arith, bit_vector)
     AssertQuery { requires: Exprs, ensures: Exprs, proof: Expr, mode: AssertQueryMode },
 }
 

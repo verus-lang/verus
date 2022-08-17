@@ -181,6 +181,11 @@ pub fn assert_nonlinear_by(_: ()) {
 }
 
 #[proof]
+pub fn assert_bitvector_by(_: ()) {
+    unimplemented!();
+}
+
+#[proof]
 pub fn assert_forall_by<A>(_a: A) {
     unimplemented!();
 }

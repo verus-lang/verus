@@ -420,7 +420,6 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             };
             mk_expr(ExprX::Assign { init_not_mut: *init_not_mut, lhs: e1, rhs: e2 })
         }
-        ExprX::AssertBV(e) => mk_expr(ExprX::AssertBV(poly_expr(ctx, state, e))),
         ExprX::Fuel(..) => expr.clone(),
         ExprX::Header(..) => panic!("Header should already be removed"),
         ExprX::Admit => expr.clone(),

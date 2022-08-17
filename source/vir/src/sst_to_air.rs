@@ -436,7 +436,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 format!("error: unable to get bit-width from constant of type {:?}", exp.typ),
             );
         }
-        (ExpX::Const(c), false) => {
+        (ExpX::Const(c), _) => {
             let expr = constant_to_expr(ctx, c);
             expr
         }
@@ -1319,36 +1319,49 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         true,
                     ));
                 }
+                _ => unreachable!("bitvector mode in wrong place"),
             }
 
             vec![]
         }
-        StmX::AssertBV(expr) => {
-            // here expr is boxed/unboxed in poly::poly_expr
-            // this is for integer version
-            // for bitvector part, box/unbox will be completely removed in exp_to_bv_expr
+        StmX::AssertBitVector { requires, ensures } => {
+            if ctx.debug {
+                unimplemented!("AssertBitVector is unsupported in debugger mode");
+            }
             let bv_expr_ctxt = &ExprCtxt::new_mode_bv(ExprMode::Body, true);
-            let error = error_with_label(
-                "assertion failed".to_string(),
-                &stm.span,
-                "assertion failed".to_string(),
-            );
-            let local = state.local_bv_shared.clone();
-            let air_expr = exp_to_expr(ctx, &expr, bv_expr_ctxt)?;
-            let assertion = Arc::new(StmtX::Assert(error, air_expr));
-            // this creates a separate query for the bv assertion
+
+            let requires_air: Vec<Expr> =
+                vec_map_result(requires, |e| exp_to_expr(ctx, e, bv_expr_ctxt))?;
+
+            let ensures_air: Vec<(Span, Expr)> =
+                vec_map_result(ensures, |e| match exp_to_expr(ctx, e, bv_expr_ctxt) {
+                    Ok(ens_air) => Ok((e.span.clone(), ens_air)),
+                    Err(vir_err) => Err(vir_err.clone()),
+                })?;
+
+            let mut local = state.local_bv_shared.clone();
+            for req in requires_air.iter() {
+                local.push(Arc::new(DeclX::Axiom(req.clone())));
+            }
+
+            let mut air_body: Vec<Stmt> = Vec::new();
+            for (span, ens) in ensures_air.iter() {
+                let error = error("bitvector ensures not satisfied", span);
+                let ens_stmt = StmtX::Assert(error, ens.clone());
+                air_body.push(Arc::new(ens_stmt));
+            }
+            let assertion = one_stmt(air_body);
             let query = Arc::new(QueryX { local: Arc::new(local), assertion });
             let mut bv_commands = mk_bitvector_option();
             bv_commands.push(Arc::new(CommandX::CheckValid(query)));
             state.commands.push(CommandsWithContextX::new(
                 stm.span.clone(),
-                "assert_bit_vector".to_string(),
+                "assert_bitvector_by".to_string(),
                 Arc::new(bv_commands),
                 ProverChoice::Spinoff,
                 true,
             ));
-
-            vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr, expr_ctxt)?))]
+            vec![]
         }
         StmX::Assume(expr) => {
             if ctx.debug {

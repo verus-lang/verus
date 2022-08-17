@@ -317,7 +317,6 @@ fn expr_to_node(expr: &Expr) -> Node {
         ExprX::AssertQuery { requires, ensures, proof, mode } => {
             nodes!(assertQuery {str_to_node(":requires")} {exprs_to_node(requires)} {str_to_node(":ensures")} {exprs_to_node(ensures)} {str_to_node(":proof")} {expr_to_node(proof)} {str_to_node(":mode")} {str_to_node(&format!("{:?}", mode))})
         }
-        ExprX::AssertBV(expr) => nodes!(assertbv {expr_to_node(expr)}),
         ExprX::If(e0, e1, e2) => {
             let mut nodes = nodes_vec!(if { expr_to_node(e0) } {
                 expr_to_node(e1)
