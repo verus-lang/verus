@@ -21,7 +21,7 @@ pub struct StrSlice<'a> {
 #[rustc_diagnostic_item = "pervasive::string::new_strlit"]
 #[verifier(external_body)]
 pub const fn new_strlit<'a>(s: &'a str) -> StrSlice<'a> {
-    StrSlice { inner: s } 
+    StrSlice { inner: s }
 }
 
 impl<'a> StrSlice<'a> {
@@ -60,6 +60,15 @@ impl<'a> StrSlice<'a> {
             inner: &self.inner[from..to],
         }
     }
+
+    #[rustc_diagnostic_item = "pervasive::string::StrSlice::to_string"]
+    #[verifier(external_body)]
+    pub fn to_string(self) -> (ret: String)
+        ensures
+            self.view() === ret.view()
+    {
+        String::from_str(self)
+    }
 }
 
 #[verifier(external_body)]
@@ -82,5 +91,27 @@ pub proof fn axiom_str_literal_get_char<'a>(s: StrSlice<'a>, i: int)
     ensures
         #[trigger] s.view().index(i) === builtin::strslice_get_char(s, i),
 { }
+
+impl String {
+    pub spec fn view(&self) -> Seq<u8>;
+
+    #[verifier(external_body)]
+    pub fn from_str<'a>(s: StrSlice<'a>) -> (ret: String)
+        ensures
+            s.view() === ret.view()
+
+    {
+        String { inner: s.inner.to_string() }
+    }
+
+    #[verifier(external_body)]
+    pub fn as_str<'a>(&'a self) -> (ret: StrSlice<'a>)
+        ensures
+            self.view() === ret.view()
+    {
+        let inner = self.inner.as_str();
+        StrSlice { inner }
+    }
+}
 
 }
