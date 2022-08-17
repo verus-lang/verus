@@ -20,7 +20,7 @@ use crate::def::{
 use crate::def::{CommandsWithContext, CommandsWithContextX};
 use crate::inv_masks::MaskSet;
 use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
-use crate::sst::{BndInfo, BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX, UniqueIdent};
+use crate::sst::{self, BndInfo, BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX, UniqueIdent};
 use crate::sst_vars::{get_loc_var, AssignMap};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
@@ -31,6 +31,7 @@ use air::ast_util::{
     bool_typ, bv_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and,
     mk_bind_expr, mk_bitvector_option, mk_eq, mk_exists, mk_implies, mk_ite, mk_let, mk_not,
     mk_option_command, mk_or, mk_xor, str_apply, str_ident, str_typ, str_var, string_var,
+    strslice_typ,
 };
 use air::errors::{error, error_with_label};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -76,6 +77,8 @@ pub(crate) fn monotyp_to_path(typ: &MonoTyp) -> Path {
         MonoTypX::Datatype(path, typs) => {
             return crate::def::monotyp_apply(path, &typs.iter().map(monotyp_to_path).collect());
         }
+        // TODO is this right?
+        MonoTypX::StrSlice => str_ident("StrSlice"),
     };
     Arc::new(PathX { krate: None, segments: Arc::new(vec![id]) })
 }
@@ -100,6 +103,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::TypParam(_) => str_typ(POLY),
         TypX::TypeId => str_typ(crate::def::TYPE),
         TypX::Air(t) => t.clone(),
+        TypX::StrSlice => strslice_typ(),
     }
 }
 
@@ -120,6 +124,7 @@ pub fn monotyp_to_id(typ: &MonoTyp) -> Expr {
     match &**typ {
         MonoTypX::Int(range) => range_to_id(range),
         MonoTypX::Bool => str_var(crate::def::TYPE_ID_BOOL),
+        MonoTypX::StrSlice => str_var(crate::def::TYPE_ID_STRSLICE),
         MonoTypX::Datatype(path, typs) => {
             let f_name = crate::def::prefix_type_id(path);
             air::ast_util::ident_apply_or_var(&f_name, &Arc::new(vec_map(&**typs, monotyp_to_id)))
@@ -142,6 +147,7 @@ pub fn typ_to_id(typ: &Typ) -> Expr {
         TypX::TypParam(x) => ident_var(&suffix_typ_param_id(x)),
         TypX::TypeId => panic!("internal error: typ_to_id of TypeId"),
         TypX::Air(_) => panic!("internal error: typ_to_id of Air"),
+        TypX::StrSlice => str_var(crate::def::TYPE_ID_STRSLICE),
     }
 }
 
@@ -239,6 +245,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::TypParam(_) => None,
         TypX::TypeId => None,
         TypX::Air(_) => None,
+        TypX::StrSlice => Some(str_ident(crate::def::BOX_STRSLICE)),
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
 }
@@ -265,6 +272,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::TypParam(_) => None,
         TypX::TypeId => None,
         TypX::Air(_) => None,
+        TypX::StrSlice => Some(str_ident(crate::def::UNBOX_STRSLICE)),
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
 }
@@ -309,10 +317,46 @@ pub(crate) fn ctor_to_apply<'a>(
     (variant_ident(path, &variant), fields.iter().map(move |f| get_field(binders, &f.name)))
 }
 
-pub(crate) fn constant_to_expr(_ctx: &Ctx, constant: &crate::ast::Constant) -> Expr {
+fn str_to_const_str(ctx: &Ctx, s: Arc<String>) -> Expr {
+    Arc::new(ExprX::Apply(
+        crate::def::strslice_new_strlit_ident(),
+        Arc::new(vec![Arc::new(ExprX::Const(Constant::Nat({
+            use num_bigint::BigUint;
+            use sha2::{Digest, Sha512};
+
+            let mut str_hashes = ctx.string_hashes.borrow_mut();
+
+            let mut hasher = Sha512::new();
+            hasher.update(&*s);
+            let res = hasher.finalize();
+
+            #[cfg(target_endian = "little")]
+            let num = BigUint::from_bytes_le(&res[..]);
+
+            #[cfg(target_endian = "big")]
+            let num = BigUint::from_bytes_be(&res[..]);
+
+            let num_str = Arc::new(num.to_string());
+
+            if let Some(other_s) = str_hashes.get(&num) {
+                if other_s != &s {
+                    panic!(
+                        "sha512 collision detected, choosing to panic over introducing unsoundness"
+                    );
+                }
+            } else {
+                str_hashes.insert(num, s);
+            }
+            num_str
+        })))]),
+    ))
+}
+
+pub(crate) fn constant_to_expr(ctx: &Ctx, constant: &crate::ast::Constant) -> Expr {
     match constant {
         crate::ast::Constant::Bool(b) => Arc::new(ExprX::Const(Constant::Bool(*b))),
         crate::ast::Constant::Nat(s) => Arc::new(ExprX::Const(Constant::Nat(s.clone()))),
+        crate::ast::Constant::StrSlice(s) => str_to_const_str(ctx, s.clone()),
     }
 }
 
@@ -419,6 +463,26 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
     let bit_vector_typ_hint = &expr_ctxt.bit_vector_typ_hint;
     let expr_ctxt = &expr_ctxt.set_bit_vector_typ_hint(None);
     let result = match (&exp.x, expr_ctxt.is_bit_vector) {
+        (ExpX::Str(strop), _) => {
+            match strop {
+                sst::StrOp::Len(v) => Arc::new(ExprX::Apply(
+                    crate::def::strslice_len_ident(),
+                    Arc::new(vec![exp_to_expr(ctx, v, expr_ctxt)?]),
+                )),
+                sst::StrOp::IsAscii(v) => Arc::new(ExprX::Apply(
+                    crate::def::strslice_is_ascii_ident(),
+                    Arc::new(vec![exp_to_expr(ctx, v, expr_ctxt)?]),
+                )),
+                sst::StrOp::GetChar { strslice: v, index } => Arc::new(ExprX::Apply(
+                    crate::def::strslice_get_char_ident(),
+                    Arc::new(vec![
+                        exp_to_expr(ctx, v, expr_ctxt)?,
+                        exp_to_expr(ctx, index, expr_ctxt)?,
+                    ]),
+                )),
+            }
+            // }
+        }
         (ExpX::Const(crate::ast::Constant::Nat(s)), true) => {
             let typ = match (&*exp.typ, bit_vector_typ_hint) {
                 (TypX::Int(IntRange::Int | IntRange::Nat), Some(hint))
@@ -977,7 +1041,7 @@ impl State {
     // }
 
     fn map_span(&mut self, stm: &Stm, kind: SpanKind) {
-        let spos = SnapPos { snapshot_id: self.get_current_sid(), kind: kind };
+        let spos = SnapPos { snapshot_id: self.get_current_sid(), kind };
         // let aset = self.get_assigned_set(stm);
         // println!("{:?} {:?}", stm.span, aset);
         self.snap_map.push((stm.span.clone(), spos));
@@ -1631,6 +1695,22 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
             stmts
         }
+        StmX::RevealString(lit) => {
+            let exprs = Arc::new({
+                let mut v = vec![
+                    string_is_ascii_to_air(ctx, lit.clone()),
+                    string_len_to_air(ctx, lit.clone()),
+                ];
+
+                if lit.is_ascii() {
+                    v.push(string_indicies_to_air(ctx, lit.clone()));
+                }
+                v
+            });
+            let exprx = Arc::new(ExprX::Multi(MultiOp::And, exprs));
+            let stmt = Arc::new(StmtX::Assume(exprx));
+            vec![stmt]
+        }
         StmX::Block(stms) => {
             if ctx.debug {
                 state.push_scope();
@@ -1647,6 +1727,40 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
         }
     };
     Ok(result)
+}
+
+fn string_len_to_air(ctx: &Ctx, lit: Arc<String>) -> Expr {
+    let cnst = str_to_const_str(ctx, lit.clone());
+    let lhs = str_apply(&crate::def::strslice_len_ident(), &vec![cnst]);
+    let len_val = Arc::new(ExprX::Const(Constant::Nat(Arc::new(lit.len().to_string()))));
+    Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, lhs, len_val))
+}
+
+fn string_index_to_air(cnst: &Expr, index: usize, value: char) -> Expr {
+    let index_expr = Arc::new(ExprX::Const(Constant::Nat(Arc::new(index.to_string()))));
+    let value_expr = Arc::new(ExprX::Const(Constant::Nat(Arc::new((value as u8).to_string()))));
+    let lhs = str_apply(&crate::def::strslice_get_char_ident(), &vec![cnst.clone(), index_expr]);
+    Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, lhs, value_expr))
+}
+
+fn string_indicies_to_air(ctx: &Ctx, lit: Arc<String>) -> Expr {
+    let cnst = str_to_const_str(ctx, lit.clone());
+    let mut exprs = Vec::new();
+    for (i, c) in lit.chars().enumerate() {
+        let e = string_index_to_air(&cnst, i, c);
+        exprs.push(e);
+    }
+    let exprs = Arc::new(exprs);
+    let exprx = Arc::new(ExprX::Multi(MultiOp::And, exprs));
+    exprx
+}
+
+fn string_is_ascii_to_air(ctx: &Ctx, lit: Arc<String>) -> Expr {
+    let is_ascii = lit.is_ascii();
+    let cnst = str_to_const_str(ctx, lit);
+    let lhs = str_apply(&crate::def::strslice_is_ascii_ident(), &vec![cnst]);
+    let is_ascii = Arc::new(ExprX::Const(Constant::Bool(is_ascii)));
+    Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, lhs, is_ascii))
 }
 
 fn set_fuel(ctx: &Ctx, local: &mut Vec<Decl>, hidden: &Vec<Fun>) {

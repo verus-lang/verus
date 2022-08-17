@@ -11,7 +11,9 @@ use crate::def::{
 };
 use crate::func_to_air::{params_to_pars, SstMap};
 use crate::scc::Graph;
-use crate::sst::{BndX, Dest, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, StmX, UniqueIdent};
+use crate::sst::{
+    BndX, Dest, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, StmX, StrOp, UniqueIdent,
+};
 use crate::sst_visitor::{
     exp_rename_vars, exp_visitor_check, exp_visitor_dfs, map_exp_visitor, map_stm_visitor,
     stm_visitor_dfs, VisitorControlFlow,
@@ -157,6 +159,14 @@ fn terminates(ctxt: &Ctxt, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp, VirErr> 
     let bool_exp = |expx: ExpX| SpannedTyped::new(&exp.span, &Arc::new(TypX::Bool), expx);
     let r = |e: &Exp| terminates(ctxt, fun_ssts, e);
     match &exp.x {
+        ExpX::Str(strop) => match strop {
+            StrOp::Len(iexp) | StrOp::IsAscii(iexp) => r(iexp),
+            StrOp::GetChar { strslice, index } => {
+                let e_strslice = r(strslice)?;
+                let e_index = r(index)?;
+                Ok(bool_exp(ExpX::Binary(BinaryOp::And, e_strslice, e_index)))
+            }
+        },
         ExpX::Const(_) | ExpX::Var(..) | ExpX::VarAt(..) | ExpX::VarLoc(..) | ExpX::Old(..) => {
             Ok(bool_exp(ExpX::Const(Constant::Bool(true))))
         }

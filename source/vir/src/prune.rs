@@ -103,6 +103,14 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
     loop {
         let ft = |state: &mut State, t: &Typ| {
             match &**t {
+                TypX::StrSlice => {
+                    let path = crate::def::strslice_defn_path();
+                    reach(
+                        &mut state.reached_modules,
+                        &mut state.worklist_modules,
+                        &path.pop_segment(),
+                    );
+                }
                 TypX::Datatype(path, _) => {
                     record_datatype(ctxt, state, t, path);
                     reach_datatype(ctxt, state, path);

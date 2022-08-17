@@ -23,17 +23,19 @@ use rustc_hir::{
     BinOpKind, BindingAnnotation, Block, Destination, Expr, ExprKind, Guard, Local, LoopSource,
     Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
 };
+
 use rustc_middle::ty::subst::GenericArgKind;
 use rustc_middle::ty::{PredicateKind, TyCtxt, TyKind};
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
+use rustc_span::symbol::Symbol;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArmX, AssertQueryMode, BinaryOp, BitwiseOp, CallTarget, Constant, ExprX, FieldOpr,
     FunX, HeaderExpr, HeaderExprX, Ident, InequalityOp, IntRange, InvAtomicity, Mode, ModeCoercion,
-    MultiOp, PatternX, Quant, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
-    VirErr,
+    MultiOp, PatternX, Quant, SpannedTyped, StmtX, Stmts, StrOp, Typ, TypX, UnaryOp, UnaryOpr,
+    VarAt, VirErr,
 };
 use vir::ast_util::{ident_binder, path_as_rust_name};
 use vir::def::positional_field_ident;
@@ -500,6 +502,15 @@ fn fn_call_to_vir<'tcx>(
     let is_tracked_exec_borrow = f_name == "pervasive::modes::tracked_exec_borrow";
     let is_tracked_get = f_name == "builtin::Tracked::<A>::get";
     let is_tracked_split_tuple = f_name.starts_with("builtin::tracked_split_tuple");
+    let is_new_strlit = tcx.is_diagnostic_item(Symbol::intern("pervasive::string::new_strlit"), f);
+
+    let is_reveal_strlit = tcx.is_diagnostic_item(Symbol::intern("builtin::reveal_strlit"), f);
+    let is_strslice_len = tcx.is_diagnostic_item(Symbol::intern("builtin::strslice_len"), f);
+    let is_strslice_get_char =
+        tcx.is_diagnostic_item(Symbol::intern("builtin::strslice_get_char"), f);
+    let is_strslice_is_ascii =
+        tcx.is_diagnostic_item(Symbol::intern("builtin::strslice_is_ascii"), f);
+
     let is_spec = is_admit
         || is_no_method_body
         || is_requires
@@ -514,7 +525,8 @@ fn fn_call_to_vir<'tcx>(
         || is_opens_invariants
         || is_opens_invariants_except;
     let is_quant = is_forall || is_exists || is_forall_arith;
-    let is_directive = is_extra_dependency || is_hide || is_reveal || is_reveal_fuel;
+    let is_directive =
+        is_extra_dependency || is_hide || is_reveal || is_reveal_fuel || is_reveal_strlit;
     let is_cmp = is_equal || is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
     let is_arith_binary =
         is_builtin_add || is_builtin_sub || is_builtin_mul || is_add || is_sub || is_mul;
@@ -935,6 +947,83 @@ fn fn_call_to_vir<'tcx>(
     } else {
         Box::new(std::iter::repeat(None))
     };
+
+    if is_new_strlit {
+        let s = if let ExprKind::Lit(lit0) = &args[0].kind {
+            if let rustc_ast::LitKind::Str(s, _) = lit0.node {
+                s
+            } else {
+                panic!("unexpected arguments to new_strlit")
+            }
+        } else {
+            panic!("unexpected arguments to new_strlit")
+        };
+
+        let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()));
+        return Ok(mk_expr(ExprX::Const(c)));
+    }
+
+    if is_reveal_strlit {
+        let s = if let ExprKind::Lit(lit0) = &args[0].kind {
+            if let rustc_ast::LitKind::Str(s, _) = lit0.node {
+                s
+            } else {
+                panic!("unexpected arguments to new_strlit")
+            }
+        } else {
+            panic!("unexpected arguments to new_strlit")
+        };
+
+        return Ok(mk_expr(ExprX::RevealString(Arc::new(s.to_string()))));
+    }
+
+    if is_strslice_get_char {
+        return match &expr.kind {
+            ExprKind::Call(_, args) => {
+                assert!(args.len() == 2);
+                let arg0 = args.first().unwrap();
+                let arg0 = expr_to_vir(bctx, arg0, ExprModifier::REGULAR)
+                    .expect("internal compiler error");
+                let arg1 = &args[1];
+                let arg1 = expr_to_vir(bctx, arg1, ExprModifier::REGULAR)
+                    .expect("internal compiler error");
+                Ok(mk_expr(ExprX::Str(StrOp::GetChar { strslice: arg0, index: arg1 })))
+            }
+            _ => panic!(
+                "Expected a call for builtin::strslice_is_ascii with one argument but did not receive it"
+            ),
+        };
+    }
+
+    if is_strslice_len {
+        return match &expr.kind {
+            ExprKind::Call(_, args) => {
+                assert!(args.len() == 1);
+                let arg0 = args.first().unwrap();
+                let arg0 = expr_to_vir(bctx, arg0, ExprModifier::REGULAR)
+                    .expect("internal compiler error");
+                Ok(mk_expr(ExprX::Str(StrOp::Len(arg0))))
+            }
+            _ => panic!(
+                "Expected a call for builtin::strslice_is_ascii with one argument but did not receive it"
+            ),
+        };
+    }
+
+    if is_strslice_is_ascii {
+        return match &expr.kind {
+            ExprKind::Call(_, args) => {
+                assert!(args.len() == 1);
+                let arg0 = args.first().unwrap();
+                let arg0 = expr_to_vir(bctx, arg0, ExprModifier::REGULAR)
+                    .expect("internal compiler error");
+                Ok(mk_expr(ExprX::Str(StrOp::IsAscii(arg0))))
+            }
+            _ => panic!(
+                "Expected a call for builtin::strslice_is_ascii with one argument but did not receive it"
+            ),
+        };
+    }
 
     let mut vir_args = args
         .iter()

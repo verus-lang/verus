@@ -104,6 +104,7 @@ fn subst_exp_rec(
         | ExpX::UnaryOpr(..)
         | ExpX::Binary(..)
         | ExpX::If(..)
+        | ExpX::Str(..)
         | ExpX::WithTriggers(..) => crate::sst_visitor::map_shallow_exp(
             exp,
             &mut (substs, free_vars),

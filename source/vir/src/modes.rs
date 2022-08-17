@@ -89,7 +89,7 @@ impl ErasureModeX {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ErasureModes {
     // Modes of conditions in If
     pub condition_modes: Vec<(Span, Mode)>,
@@ -380,6 +380,7 @@ fn check_expr_handle_mut_arg(
 ) -> Result<(Mode, Option<Mode>), VirErr> {
     let mode = match &expr.x {
         ExprX::Const(_) => Ok(Mode::Exec),
+        ExprX::Str(_) => Ok(Mode::Spec),
         ExprX::Var(x) | ExprX::VarLoc(x) | ExprX::VarAt(x, _) => {
             let x_mode = typing.get(x).1;
             let mode = mode_join(outer_mode, x_mode);
@@ -683,6 +684,7 @@ fn check_expr_handle_mut_arg(
             Ok(x_mode)
         }
         ExprX::Fuel(_, _) => Ok(outer_mode),
+        ExprX::RevealString(_) => Ok(outer_mode),
         ExprX::Header(_) => panic!("internal error: Header shouldn't exist here"),
         ExprX::Admit => {
             if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {

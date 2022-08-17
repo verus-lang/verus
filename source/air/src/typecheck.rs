@@ -49,6 +49,7 @@ pub fn it() -> Typ {
 
 fn typ_name(typ: &Typ) -> String {
     match &**typ {
+        TypX::StrSlice => "StrSlice".to_string(),
         TypX::Bool => "Bool".to_string(),
         TypX::Int => "Int".to_string(),
         TypX::Lambda => "Fun".to_string(),
@@ -69,6 +70,7 @@ fn check_typ(typing: &Typing, typ: &Typ) -> Result<(), TypeError> {
     match &**typ {
         TypX::Bool => Ok(()),
         TypX::Int => Ok(()),
+        TypX::StrSlice => Ok(()),
         TypX::Lambda => Ok(()),
         TypX::Named(x) => match typing.get(x) {
             Some(DeclaredX::Type) => Ok(()),
@@ -105,6 +107,7 @@ fn check_exprs(
     }
     for i in 0..f_typs.len() {
         let et = check_expr(typing, &exprs[i])?;
+
         if !typ_eq(&et, &f_typs[i]) {
             return Err(format!(
                 "in call to {}, argument #{} has type {:?} when it should have type {:?}",

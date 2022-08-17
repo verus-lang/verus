@@ -335,6 +335,11 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 )),
             )
         }
+        ExpX::Str(_) => {
+            unreachable!(
+                "internal error: doesn't make sense to reach `gather_terms` for ExpX::Str, builtin strops are only used to tie builtin and pervasive together and should not be used in user programs"
+            );
+        }
         ExpX::Binary(op, e1, e2) => {
             use BinaryOp::*;
             let depth = match op {

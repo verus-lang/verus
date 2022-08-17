@@ -116,6 +116,7 @@ fn check_trigger_expr(
                     | UnaryOpr::Field { .. } => Ok(()),
                     UnaryOpr::HasType(_) => panic!("internal error: trigger on HasType"),
                 },
+                ExpX::Str(_) => Ok(()),
                 ExpX::Binary(op, _, _) => {
                     use BinaryOp::*;
                     match op {

@@ -39,6 +39,13 @@ pub struct UniqueIdent {
     pub local: Option<u64>,
 }
 
+#[derive(Debug, Clone)]
+pub enum StrOp {
+    IsAscii(Exp),
+    Len(Exp),
+    GetChar { strslice: Exp, index: Exp },
+}
+
 pub type Exp = Arc<SpannedTyped<ExpX>>;
 pub type Exps = Arc<Vec<Exp>>;
 #[derive(Debug, Clone)]
@@ -60,6 +67,7 @@ pub enum ExpX {
     If(Exp, Exp, Exp),
     WithTriggers(Trigs, Exp),
     Bind(Bnd, Exp),
+    Str(StrOp),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -105,6 +113,7 @@ pub enum StmX {
         rhs: Exp,
     },
     Fuel(Fun, u32),
+    RevealString(Arc<String>),
     DeadEnd(Stm),
     If(Exp, Stm, Option<Stm>),
     While {

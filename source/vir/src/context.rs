@@ -12,6 +12,7 @@ use crate::sst_to_air::fun_to_air_ident;
 use crate::util::vec_map;
 use air::ast::{Command, CommandX, Commands, DeclX, MultiOp, Span};
 use air::ast_util::str_typ;
+use num_bigint::BigUint;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -70,6 +71,11 @@ pub struct Ctx {
     pub(crate) debug: bool,
     pub fun: Option<FunctionCtx>,
     pub global: GlobalCtx,
+    // In the very unlikely case where we get sha512 collisions
+    // we use this to panic rather than introduce unsoundness.
+    // Of course it can be argued that accounting for sha512 collisions
+    // is overkill, perhaps this should be revisited.
+    pub(crate) string_hashes: RefCell<HashMap<BigUint, Arc<String>>>,
 }
 
 impl Ctx {
@@ -255,6 +261,7 @@ impl Ctx {
             trait_map.insert(tr.x.name.clone(), tr.clone());
         }
         let quantifier_count = Cell::new(0);
+        let string_hashes = RefCell::new(HashMap::new());
         Ok(Ctx {
             module,
             datatype_is_transparent,
@@ -270,6 +277,7 @@ impl Ctx {
             debug,
             fun: None,
             global,
+            string_hashes,
         })
     }
 

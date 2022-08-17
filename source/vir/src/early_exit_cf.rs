@@ -66,7 +66,8 @@ fn expr_get_early_exits_rec(
             | ExprX::If(..)
             | ExprX::Match(..)
             | ExprX::Ghost { .. }
-            | ExprX::Block(..) => VisitorControlFlow::Recurse,
+            | ExprX::Block(..)
+            | ExprX::Str(..) => VisitorControlFlow::Recurse,
             ExprX::Quant(..)
             | ExprX::Closure(..)
             | ExprX::Choose { .. }
@@ -74,7 +75,8 @@ fn expr_get_early_exits_rec(
             | ExprX::Fuel(..)
             | ExprX::Header(..)
             | ExprX::Admit
-            | ExprX::Forall { .. } => VisitorControlFlow::Return,
+            | ExprX::Forall { .. }
+            | ExprX::RevealString(_) => VisitorControlFlow::Return,
             ExprX::AssertQuery { .. } => VisitorControlFlow::Return,
             ExprX::While { cond, body, invs: _ } => {
                 expr_get_early_exits_rec(cond, in_loop, scope_map, results);

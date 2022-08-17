@@ -7,10 +7,9 @@
 
 use crate::def::Spanned;
 use air::ast::Span;
+pub use air::ast::{Binder, Binders};
 use air::errors::Error;
 use std::sync::Arc;
-
-pub use air::ast::{Binder, Binders};
 
 /// Result<T, VirErr> is used when an error might need to be reported to the user
 pub type VirErr = Error;
@@ -96,6 +95,10 @@ pub enum TypX {
     TypeId,
     /// AIR type, used internally during translation
     Air(air::ast::Typ),
+
+    /// StrSlice type. Currently the pervasive StrSlice struct is "seen" as this type
+    /// despite the fact that it is in fact a datatype
+    StrSlice,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -240,6 +243,13 @@ pub enum MultiOp {
     Chained(Arc<Vec<InequalityOp>>),
 }
 
+#[derive(Clone, Debug)]
+pub enum StrOp {
+    Len(Expr),
+    IsAscii(Expr),
+    GetChar { strslice: Expr, index: Expr },
+}
+
 /// Ghost annotations on functions and while loops; must appear at the beginning of function body
 /// or while loop body
 pub type HeaderExpr = Arc<HeaderExprX>;
@@ -281,6 +291,8 @@ pub enum Constant {
     Bool(bool),
     /// non-negative integer of arbitrary size (IntRange::Nat); use subtraction to get negative numbers
     Nat(Arc<String>),
+    /// Hold generated string slices in here
+    StrSlice(Arc<String>),
 }
 
 #[derive(Debug)]
@@ -398,6 +410,8 @@ pub enum ExprX {
     Binary(BinaryOp, Expr, Expr),
     /// Primitive multi-operand operation
     Multi(MultiOp, Exprs),
+    /// Primitive string slice operations
+    Str(StrOp),
     /// Quantifier (forall/exists), binding the variables in Binders, with body Expr
     Quant(Quant, Binders<Typ>, Expr),
     /// Specification closure
@@ -439,6 +453,8 @@ pub enum ExprX {
     Block(Stmts, Option<Expr>),
     /// `assert_by` with a dedicated prover option (nonlinear_arith, bit_vector)
     AssertQuery { requires: Exprs, ensures: Exprs, proof: Expr, mode: AssertQueryMode },
+    /// Reveal a string
+    RevealString(Arc<String>),
 }
 
 /// Statement, similar to rustc_hir::Stmt

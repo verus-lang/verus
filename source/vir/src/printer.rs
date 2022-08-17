@@ -73,6 +73,7 @@ fn typ_to_node(typ: &Typ) -> Node {
         TypX::TypParam(ident) => nodes!(TypParam {str_to_node(ident)}),
         TypX::TypeId => nodes!(TypeId),
         TypX::Air(_air_typ) => nodes!({ str_to_node("AirTyp") }),
+        TypX::StrSlice => crate::def::strslice(),
     }
 }
 
@@ -195,9 +196,23 @@ fn expr_to_node(expr: &Expr) -> Node {
                 match cnst {
                     Constant::Bool(val) => str_to_node(&format!("{}", val)),
                     Constant::Nat(val) => str_to_node(&format!("{}", val)),
+                    Constant::StrSlice(val) => str_to_node(&format!(
+                        "\"{}\"",
+                        match val.is_ascii() {
+                            true => val,
+                            false => "non_ascii_string_with_unknown_value",
+                        }
+                    )),
                 }
             }
         ),
+        ExprX::Str(op) => match op {
+            StrOp::Len(e) => nodes!(strop len {expr_to_node(e)}),
+            StrOp::IsAscii(e) => nodes!(strop is_ascii {expr_to_node(e)}),
+            StrOp::GetChar { strslice: e, index } => {
+                nodes!(strop get_char {expr_to_node(e)} {expr_to_node(index)})
+            }
+        },
         ExprX::Var(ident) => nodes!(var {str_to_node(ident)}),
         ExprX::VarLoc(ident) => nodes!(varloc {str_to_node(ident)}),
         ExprX::VarAt(ident, var_at) => {
@@ -309,6 +324,9 @@ fn expr_to_node(expr: &Expr) -> Node {
         ExprX::Fuel(fun, fuel) => {
             nodes!(fuel {fun_to_node(fun)} {str_to_node(&format!("{}", fuel))})
         }
+        ExprX::RevealString(_) => {
+            nodes!(str_reveal)
+        }
         ExprX::Header(header_expr) => nodes!(header {header_expr_to_node(header_expr)}),
         ExprX::Admit => node!(admit),
         ExprX::Forall { vars, require, ensure, proof } => {
@@ -376,6 +394,7 @@ fn expr_to_node(expr: &Expr) -> Node {
             Node::List(nodes)
         }
     };
+    let node = nodes!(expr {node} {typ_to_node(&expr.typ)});
     spanned_node(node, &expr.span)
 }
 
@@ -394,7 +413,7 @@ fn function_to_node(function: &FunctionX) -> Node {
         decrease,
         decrease_when,
         decrease_by,
-        broadcast_forall: _,
+        broadcast_forall,
         mask_spec,
         is_const,
         publish,
@@ -547,6 +566,12 @@ fn function_to_node(function: &FunctionX) -> Node {
         str_to_node(":decrease"),
         exprs_to_node(decrease),
     ];
+    if let Some((broadcast_params, req_ens)) = &broadcast_forall {
+        let broadcast_params_node =
+            Node::List(broadcast_params.iter().map(param_to_node).collect());
+        nodes.push(str_to_node(":broadcast_forall"));
+        nodes.push(nodes!({broadcast_params_node} {expr_to_node(req_ens)}));
+    }
     if let Some(decrease_when) = &decrease_when {
         nodes.push(str_to_node(":decrease_when"));
         nodes.push(expr_to_node(decrease_when));

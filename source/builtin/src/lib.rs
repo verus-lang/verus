@@ -894,3 +894,27 @@ impl_binary_op_rhs!(SpecShr, spec_shr, Self, Self, [
     usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128
 ]);
+
+#[rustc_diagnostic_item = "builtin::strslice_is_ascii"]
+#[spec]
+pub fn strslice_is_ascii<A>(_a: A) -> bool {
+    unimplemented!()
+}
+
+#[rustc_diagnostic_item = "builtin::strslice_len"]
+#[spec]
+pub fn strslice_len<A>(_a: A) -> nat {
+    unimplemented!()
+}
+
+#[rustc_diagnostic_item = "builtin::strslice_get_char"]
+#[spec]
+pub fn strslice_get_char<A>(_a: A, _i: int) -> u8 {
+    unimplemented!()
+}
+
+#[rustc_diagnostic_item = "builtin::reveal_strlit"]
+#[proof]
+pub fn reveal_strlit<A>(_a: A) {
+    unimplemented!()
+}
