@@ -898,7 +898,7 @@ impl Verifier {
                 for command in commands.iter().map(|x| &*x) {
                     let CommandsWithContextX {
                         span,
-                        desc,
+                        desc: _,
                         commands: _,
                         prover_choice,
                         skip_recommends,
