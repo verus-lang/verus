@@ -59,7 +59,6 @@ pub struct Args {
     pub profile_all: bool,
     pub compile: bool,
     pub solver_version_check: bool,
-    pub emit_skip_recommends: bool,
 }
 
 pub fn enable_default_features(rustc_args: &mut Vec<String>) {
@@ -105,7 +104,6 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_PROFILE_ALL: &str = "profile-all";
     const OPT_COMPILE: &str = "compile";
     const OPT_NO_SOLVER_VERSION_CHECK: &str = "no-solver-version-check";
-    const OPT_EMIT_SKIP_RECOMMENDS: &str = "emit-skip-recommends";
 
     let mut opts = Options::new();
     opts.optopt("", OPT_PERVASIVE_PATH, "Path of the pervasive module", "PATH");
@@ -172,7 +170,6 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     opts.optflag("", OPT_PROFILE_ALL, "Always collect and report prover performance data");
     opts.optflag("", OPT_COMPILE, "Run Rustc compiler after verification");
     opts.optflag("", OPT_NO_SOLVER_VERSION_CHECK, "Skip the check that the solver has the expected version (useful to experiment with different versions of z3)");
-    opts.optflag("", OPT_EMIT_SKIP_RECOMMENDS, "Emit note when skipping recommends check");
     opts.optflag("h", "help", "print this help menu");
 
     let print_usage = || {
@@ -276,7 +273,6 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         profile_all: matches.opt_present(OPT_PROFILE_ALL),
         compile: matches.opt_present(OPT_COMPILE),
         solver_version_check: !matches.opt_present(OPT_NO_SOLVER_VERSION_CHECK),
-        emit_skip_recommends: matches.opt_present(OPT_EMIT_SKIP_RECOMMENDS),
     };
 
     (args, unmatched)
