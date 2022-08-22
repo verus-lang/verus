@@ -221,3 +221,26 @@ test_verify_one_file! {
         }
     } => Err(_)
 }
+
+test_verify_one_file! {
+    #[test] test_string_1_pass verus_code! {
+        use pervasive::string::*;
+        fn test() {
+            let a = String::from_str(new_strlit("A"));
+            reveal_strlit("A");
+            assert(a@ === new_strlit("A")@);
+            assert(a.is_ascii());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_string_1_fail verus_code! {
+        use pervasive::string::*;
+        fn test() {
+            let a = String::from_str(new_strlit("A"));
+            reveal_strlit("A");
+            assert(a@ === new_strlit("B")@); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}

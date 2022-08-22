@@ -95,10 +95,13 @@ pub proof fn axiom_str_literal_get_char<'a>(s: StrSlice<'a>, i: int)
 impl String {
     pub spec fn view(&self) -> Seq<u8>;
 
+    pub spec fn is_ascii(&self) -> bool;
+
     #[verifier(external_body)]
     pub fn from_str<'a>(s: StrSlice<'a>) -> (ret: String)
         ensures
-            s.view() === ret.view()
+            s.view() === ret.view(),
+            s.is_ascii() === ret.is_ascii(),
 
     {
         String { inner: s.inner.to_string() }
@@ -107,7 +110,8 @@ impl String {
     #[verifier(external_body)]
     pub fn as_str<'a>(&'a self) -> (ret: StrSlice<'a>)
         ensures
-            self.view() === ret.view()
+            self.view() === ret.view(),
+            self.is_ascii() === ret.is_ascii(),
     {
         let inner = self.inner.as_str();
         StrSlice { inner }
