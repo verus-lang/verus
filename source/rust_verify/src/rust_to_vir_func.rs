@@ -93,40 +93,40 @@ fn check_new_strlit<'tcx>(ctx: &Context<'tcx>, sig: &'tcx FnSig<'tcx>) -> Result
     let expected_input_num = 1;
 
     if decl.inputs.len() != expected_input_num {
-        crate::err!(*sig_span, format!("Expected one argument to new_strlit"))
+        return err_span_string(*sig_span, format!("Expected one argument to new_strlit"));
     }
 
     let (kind, span) = match &decl.inputs[0].kind {
         TyKind::Rptr(_, mutty) => (&mutty.ty.kind, mutty.ty.span),
-        _ => crate::err!(decl.inputs[0].span, format!("expected a str")),
+        _ => return err_span_string(decl.inputs[0].span, format!("expected a str")),
     };
 
     let (res, span) = match kind {
         TyKind::Path(QPath::Resolved(_, path)) => (path.res, path.span),
-        _ => crate::err!(span, format!("expected str")),
+        _ => return err_span_string(span, format!("expected str")),
     };
 
     if res != Res::PrimTy(PrimTy::Str) {
-        crate::err!(span, format!("expected a str"));
+        return err_span_string(span, format!("expected a str"));
     }
 
     let (kind, span) = match decl.output {
         FnRetTy::Return(Ty { hir_id: _, kind, span }) => (kind, span),
-        _ => crate::err!(*sig_span, format!("expected a return type of StrSlice")),
+        _ => return err_span_string(*sig_span, format!("expected a return type of StrSlice")),
     };
 
     let (res, span) = match kind {
         TyKind::Path(QPath::Resolved(_, path)) => (path.res, path.span),
-        _ => crate::err!(*span, format!("expected a StrSlice")),
+        _ => return err_span_string(*span, format!("expected a StrSlice")),
     };
 
     let id = match res {
         Res::Def(_, id) => id,
-        _ => crate::err!(span, format!("")),
+        _ => return err_span_string(span, format!("")),
     };
 
     if !ctx.tcx.is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice"), id) {
-        crate::err!(span, format!("expected a StrSlice"));
+        return err_span_string(span, format!("expected a StrSlice"));
     }
     Ok(())
 }

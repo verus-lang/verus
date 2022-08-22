@@ -87,13 +87,6 @@ macro_rules! err_unless {
 }
 
 #[macro_export]
-macro_rules! err {
-    ($span: expr, $msg: expr) => {
-        return crate::util::err_span_string::<()>($span, $msg)
-    };
-}
-
-#[macro_export]
 macro_rules! unsupported {
     ($msg: expr) => {{ panic!("The verifier does not yet support the following Rust feature: {}", $msg) }};
     ($msg: expr, $info: expr) => {{
