@@ -12,5 +12,5 @@ proc-macro2 = "1.0.39"
 quote = "1.0"
 synstructure = "0.12"
 syn = "1.0"
-syn_verus = { git = "https://github.com/secure-foundations/syn", rev = "10a4c83", features = ["full", "visit-mut", "extra-traits"] }
-prettyplease_verus = { git = "https://github.com/secure-foundations/prettyplease", rev = "9b1c5726" }
+syn_verus = { path="../../dependencies/syn", features = ["full", "visit-mut", "extra-traits"] }
+prettyplease_verus = { path="../../dependencies/prettyplease" }

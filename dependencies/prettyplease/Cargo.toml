@@ -18,10 +18,10 @@ verbatim = ["syn_verus/parsing"]
 
 [dependencies]
 proc-macro2 = { version = "1.0", default-features = false }
-syn_verus = { git = "https://github.com/secure-foundations/syn", rev = "42ae850", default-features = false, features = ["full"] }
+syn_verus = { path="../syn", default-features = false, features = ["full"] }
 
 [dev-dependencies]
-syn_verus = { git = "https://github.com/secure-foundations/syn", rev = "42ae850", default-features = false, features = ["parsing"] }
+syn_verus = { path="../syn", default-features = false, features = ["parsing"] }
 
 [workspace]
 members = ["cargo-expand/update", "examples/update"]
