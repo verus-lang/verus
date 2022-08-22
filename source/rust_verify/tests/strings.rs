@@ -196,3 +196,28 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 3)
 }
+
+test_verify_one_file! {
+    #[test] test_new_strlit_invalid verus_code! {
+        use pervasive::string::*;
+        const x: StrSlice<'static> = new_strlit(12);
+    } => Err(_)
+}
+
+test_verify_one_file! {
+    #[test] test_reveal_strlit_invalid_1 verus_code! {
+        use pervasive::string::*;
+        fn test() {
+            reveal_strlit(12);
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] test_reveal_strlit_invalid_2 verus_code! {
+        use pervasive::string::*;
+        fn test() {
+            reveal_strlit("a", "a");
+        }
+    } => Err(_)
+}

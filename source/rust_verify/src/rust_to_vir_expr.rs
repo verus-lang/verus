@@ -964,17 +964,15 @@ fn fn_call_to_vir<'tcx>(
     }
 
     if is_reveal_strlit {
-        let s = if let ExprKind::Lit(lit0) = &args[0].kind {
-            if let rustc_ast::LitKind::Str(s, _) = lit0.node {
-                s
-            } else {
-                panic!("unexpected arguments to reveal_strlit")
-            }
+        if let Some(s) = if let ExprKind::Lit(lit0) = &args[0].kind {
+            if let rustc_ast::LitKind::Str(s, _) = lit0.node { Some(s) } else { None }
         } else {
-            panic!("unexpected arguments to reveal_strlit")
-        };
-
-        return Ok(mk_expr(ExprX::RevealString(Arc::new(s.to_string()))));
+            None
+        } {
+            return Ok(mk_expr(ExprX::RevealString(Arc::new(s.to_string()))));
+        } else {
+            return err_span_string(args[0].span, "string literal expected".to_string());
+        }
     }
 
     if is_strslice_get_char {
