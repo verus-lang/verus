@@ -214,6 +214,15 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         )))
 
         // String literals
+        (axiom (forall ((x Int) (y Int)) (!
+            (=>
+                (= ([new_strlit] x) ([new_strlit] y))
+                (= x y)
+            )
+            :pattern (([new_strlit] x) ([new_strlit] y))
+            :qid prelude_strlit_injective
+            :skolemid skolem_prelude_strlit_injective
+        )))
         (axiom (forall ((x [Poly])) (!
             (=>
                 ([has_type] x [type_id_strslice])

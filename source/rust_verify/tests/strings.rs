@@ -244,3 +244,26 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_one_fails(e)
 }
+
+test_verify_one_file! {
+    #[test] test_strlit_neq verus_code! {
+        use pervasive::string::*;
+        const x: StrSlice<'static> = new_strlit("Hello World");
+        const y: StrSlice<'static> = new_strlit("Gello World");
+        fn test() {
+            assert(x !== y);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_strlit_neq_soundness verus_code! {
+        use pervasive::string::*;
+        const x: StrSlice<'static> = new_strlit("Hello World");
+        const y: StrSlice<'static> = new_strlit("Gello World");
+        fn test() {
+            assert(x !== y);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
