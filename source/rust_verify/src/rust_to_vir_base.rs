@@ -634,15 +634,6 @@ pub(crate) fn check_generics_bounds<'tcx>(
             }
         }
 
-        if let GenericParamKind::Type { .. } = kind {
-            if check_that_external_body_datatype_declares_positivity && !neg && !pos {
-                return err_span_str(
-                    param.span,
-                    "in external_body datatype, each type parameter must be either #[verifier(maybe_negative)] or #[verifier(strictly_positive)] (maybe_negative is always safe to use)",
-                );
-            }
-        }
-
         unsupported_err_unless!(!pure_wrt_drop, *span, "generic pure_wrt_drop");
         match (name, kind) {
             (ParamName::Plain(id), GenericParamKind::Type { default: None, synthetic: false }) => {
