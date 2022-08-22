@@ -114,7 +114,7 @@ pub fn check_item_struct<'tcx>(
         (ident_binder(&variant_name, &Arc::new(vec![])), false)
     } else {
         let field_defs = adt_def.all_fields();
-        check_variant_data(ctxt, &module_path, &variant_name, variant_data, false, field_defs)
+        check_variant_data(ctxt, module_path, &variant_name, variant_data, false, field_defs)
     };
     let transparency = if vattrs.external_body {
         DatatypeTransparency::Never

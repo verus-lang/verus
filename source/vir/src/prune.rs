@@ -103,6 +103,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
     loop {
         let ft = |state: &mut State, t: &Typ| {
             match &**t {
+                // This is temporary until we support adding specification for std.
                 TypX::StrSlice => {
                     let path = crate::def::strslice_defn_path();
                     reach(

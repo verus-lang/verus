@@ -218,7 +218,7 @@ pub(crate) fn check_item_fn<'tcx>(
             );
         }
 
-        let typ: Typ = mid_ty_to_vir(ctxt.tcx, is_mut.unwrap_or(input), false);
+        let typ = mid_ty_to_vir(ctxt.tcx, is_mut.unwrap_or(input), false);
 
         let is_mut = is_mut.is_some();
 

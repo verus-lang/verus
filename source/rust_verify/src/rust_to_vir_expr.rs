@@ -968,10 +968,10 @@ fn fn_call_to_vir<'tcx>(
             if let rustc_ast::LitKind::Str(s, _) = lit0.node {
                 s
             } else {
-                panic!("unexpected arguments to new_strlit")
+                panic!("unexpected arguments to reveal_strlit")
             }
         } else {
-            panic!("unexpected arguments to new_strlit")
+            panic!("unexpected arguments to reveal_strlit")
         };
 
         return Ok(mk_expr(ExprX::RevealString(Arc::new(s.to_string()))));
@@ -979,18 +979,18 @@ fn fn_call_to_vir<'tcx>(
 
     if is_strslice_get_char {
         return match &expr.kind {
-            ExprKind::Call(_, args) => {
-                assert!(args.len() == 2);
+            ExprKind::Call(_, args) if args.len() == 2 => {
                 let arg0 = args.first().unwrap();
-                let arg0 = expr_to_vir(bctx, arg0, ExprModifier::REGULAR)
-                    .expect("internal compiler error");
+                let arg0 = expr_to_vir(bctx, arg0, ExprModifier::REGULAR).expect(
+                    "invalid parameter for builtin::strslice_get_char at arg0, arg0 must be self",
+                );
                 let arg1 = &args[1];
                 let arg1 = expr_to_vir(bctx, arg1, ExprModifier::REGULAR)
-                    .expect("internal compiler error");
+                    .expect("invalid parameter for builtin::strslice_get_char at arg1, arg1 must be an integer");
                 Ok(mk_expr(ExprX::Str(StrOp::GetChar { strslice: arg0, index: arg1 })))
             }
             _ => panic!(
-                "Expected a call for builtin::strslice_is_ascii with one argument but did not receive it"
+                "Expected a call for builtin::strslice_get_char with two argument but did not receive it"
             ),
         };
     }
@@ -1005,7 +1005,7 @@ fn fn_call_to_vir<'tcx>(
                 Ok(mk_expr(ExprX::Str(StrOp::Len(arg0))))
             }
             _ => panic!(
-                "Expected a call for builtin::strslice_is_ascii with one argument but did not receive it"
+                "Expected a call for builtin::strslice_len with one argument but did not receive it"
             ),
         };
     }
