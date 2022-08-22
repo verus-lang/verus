@@ -1888,13 +1888,30 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
 
     let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
     let expr_vattrs = get_verifier_attrs(expr_attrs)?;
-    // TODO
-    // if !matches!(&expr.kind, ExprKind::Cast(_, _)) && expr_vattrs.truncate {
-    //     return err_span_str(
-    //         expr.span,
-    //         "the attribute #[verifier(truncate)] is only allowed on casts (you may need parentheses around the cast)"
-    //     );
-    // }
+    if expr_vattrs.truncate {
+        if !match &expr.kind {
+            ExprKind::Cast(_, _) => true,
+            ExprKind::Call(target, _) => match &target.kind {
+                ExprKind::Path(qpath) => {
+                    let def = bctx.types.qpath_res(&qpath, expr.hir_id);
+                    match def {
+                        rustc_hir::def::Res::Def(_, def_id) => {
+                            let f_name = tcx.def_path_str(def_id);
+                            f_name == "builtin::spec_cast_integer"
+                        }
+                        _ => false,
+                    }
+                }
+                _ => false,
+            },
+            _ => false,
+        } {
+            return err_span_str(
+                expr.span,
+                "the attribute #[verifier(truncate)] is only allowed on casts (you may need parentheses around the cast)",
+            );
+        }
+    }
 
     match &expr.kind {
         ExprKind::Block(body, _) => {

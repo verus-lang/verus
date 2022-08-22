@@ -1018,7 +1018,7 @@ fn expr_to_stm_opt(
                 let has_type = ExpX::UnaryOpr(unary, exp.clone());
                 let has_type = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), has_type);
                 let error = air::errors::error(
-                    "recommendation not met: value may be out of range of the target type",
+                    "recommendation not met: value may be out of range of the target type (use `#[verifier(truncate)]` on the cast to silence this warning)",
                     &expr.span,
                 );
                 let assert = StmX::Assert(Some(error), has_type);
