@@ -20,7 +20,7 @@ use crate::def::{
 use crate::def::{CommandsWithContext, CommandsWithContextX};
 use crate::inv_masks::MaskSet;
 use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
-use crate::sst::{self, BndInfo, BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX, UniqueIdent};
+use crate::sst::{BndInfo, BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX, StrOp, UniqueIdent};
 use crate::sst_vars::{get_loc_var, AssignMap};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
@@ -337,14 +337,12 @@ fn str_to_const_str(ctx: &Ctx, s: Arc<String>) -> Expr {
 
             let num_str = Arc::new(num.to_string());
 
-            if let Some(other_s) = str_hashes.get(&num) {
-                if other_s != &s {
+            if let Some(other_s) = str_hashes.insert(num, s.clone()) {
+                if other_s != s {
                     panic!(
                         "sha512 collision detected, choosing to panic over introducing unsoundness"
                     );
                 }
-            } else {
-                str_hashes.insert(num, s);
             }
             num_str
         })))]),
@@ -464,15 +462,15 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
     let result = match (&exp.x, expr_ctxt.is_bit_vector) {
         (ExpX::Str(strop), _) => {
             match strop {
-                sst::StrOp::Len(v) => Arc::new(ExprX::Apply(
+                StrOp::Len(v) => Arc::new(ExprX::Apply(
                     crate::def::strslice_len_ident(),
                     Arc::new(vec![exp_to_expr(ctx, v, expr_ctxt)?]),
                 )),
-                sst::StrOp::IsAscii(v) => Arc::new(ExprX::Apply(
+                StrOp::IsAscii(v) => Arc::new(ExprX::Apply(
                     crate::def::strslice_is_ascii_ident(),
                     Arc::new(vec![exp_to_expr(ctx, v, expr_ctxt)?]),
                 )),
-                sst::StrOp::GetChar { strslice: v, index } => Arc::new(ExprX::Apply(
+                StrOp::GetChar { strslice: v, index } => Arc::new(ExprX::Apply(
                     crate::def::strslice_get_char_ident(),
                     Arc::new(vec![
                         exp_to_expr(ctx, v, expr_ctxt)?,
@@ -1702,7 +1700,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 ];
 
                 if lit.is_ascii() {
-                    v.push(string_indicies_to_air(ctx, lit.clone()));
+                    v.push(string_indices_to_air(ctx, lit.clone()));
                 }
                 v
             });
@@ -1742,7 +1740,7 @@ fn string_index_to_air(cnst: &Expr, index: usize, value: char) -> Expr {
     Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, lhs, value_expr))
 }
 
-fn string_indicies_to_air(ctx: &Ctx, lit: Arc<String>) -> Expr {
+fn string_indices_to_air(ctx: &Ctx, lit: Arc<String>) -> Expr {
     let cnst = str_to_const_str(ctx, lit.clone());
     let mut exprs = Vec::new();
     for (i, c) in lit.chars().enumerate() {
