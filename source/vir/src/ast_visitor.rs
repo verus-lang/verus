@@ -1,7 +1,7 @@
 use crate::ast::{
     Arm, ArmX, CallTarget, Datatype, DatatypeX, Expr, ExprX, Field, Function, FunctionKind,
     FunctionX, GenericBound, GenericBoundX, Ident, MaskSpec, Param, ParamX, Pattern, PatternX,
-    SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOpr, Variant, VirErr,
+    SpannedTyped, Stmt, StmtX, StrOp, Typ, TypX, UnaryOpr, Variant, VirErr,
 };
 use crate::ast_util::err_str;
 use crate::def::Spanned;
@@ -181,8 +181,7 @@ where
                 | ExprX::Var(_)
                 | ExprX::VarLoc(_)
                 | ExprX::VarAt(_, _)
-                | ExprX::ConstVar(..)
-                | ExprX::Str(_) => (),
+                | ExprX::ConstVar(..) => (),
                 ExprX::Loc(e) => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
                 }
@@ -227,6 +226,11 @@ where
                     for e in es.iter() {
                         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
                     }
+                }
+                ExprX::Str(
+                    StrOp::Len(e1) | StrOp::IsAscii(e1) | StrOp::GetChar { strslice: e1, index: _ },
+                ) => {
+                    expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
                 }
                 ExprX::Quant(_quant, binders, e1) => {
                     map.push_scope(true);
@@ -477,7 +481,6 @@ where
         ExprX::VarLoc(x) => ExprX::VarLoc(x.clone()),
         ExprX::VarAt(x, at) => ExprX::VarAt(x.clone(), at.clone()),
         ExprX::ConstVar(x) => ExprX::ConstVar(x.clone()),
-        ExprX::Str(op) => ExprX::Str(op.clone()),
         ExprX::Loc(e) => ExprX::Loc(map_expr_visitor_env(e, map, env, fe, fs, ft)?),
         ExprX::Call(target, es) => {
             let target = match target {
@@ -541,6 +544,18 @@ where
                 exprs.push(map_expr_visitor_env(e, map, env, fe, fs, ft)?);
             }
             ExprX::Multi(op.clone(), Arc::new(exprs))
+        }
+        ExprX::Str(
+            op @ (StrOp::Len(e1) | StrOp::IsAscii(e1) | StrOp::GetChar { strslice: e1, index: _ }),
+        ) => {
+            let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
+            ExprX::Str(match op {
+                StrOp::Len(_) => StrOp::Len(expr1),
+                StrOp::IsAscii(_) => StrOp::IsAscii(expr1),
+                StrOp::GetChar { strslice: _, index } => {
+                    StrOp::GetChar { strslice: expr1, index: index.clone() }
+                }
+            })
         }
         ExprX::Quant(quant, binders, e1) => {
             let binders =

@@ -159,14 +159,6 @@ fn terminates(ctxt: &Ctxt, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp, VirErr> 
     let bool_exp = |expx: ExpX| SpannedTyped::new(&exp.span, &Arc::new(TypX::Bool), expx);
     let r = |e: &Exp| terminates(ctxt, fun_ssts, e);
     match &exp.x {
-        ExpX::Str(strop) => match strop {
-            StrOp::Len(iexp) | StrOp::IsAscii(iexp) => r(iexp),
-            StrOp::GetChar { strslice, index } => {
-                let e_strslice = r(strslice)?;
-                let e_index = r(index)?;
-                Ok(bool_exp(ExpX::Binary(BinaryOp::And, e_strslice, e_index)))
-            }
-        },
         ExpX::Const(_) | ExpX::Var(..) | ExpX::VarAt(..) | ExpX::VarLoc(..) | ExpX::Old(..) => {
             Ok(bool_exp(ExpX::Const(Constant::Bool(true))))
         }
@@ -219,6 +211,14 @@ fn terminates(ctxt: &Ctxt, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp, VirErr> 
             let e2 = r(e2)?;
             Ok(bool_exp(ExpX::Binary(BinaryOp::And, e1, e2)))
         }
+        ExpX::Str(strop) => match strop {
+            StrOp::Len(iexp) | StrOp::IsAscii(iexp) => r(iexp),
+            StrOp::GetChar { strslice, index } => {
+                let e_strslice = r(strslice)?;
+                let e_index = r(index)?;
+                Ok(bool_exp(ExpX::Binary(BinaryOp::And, e_strslice, e_index)))
+            }
+        },
         ExpX::If(e1, e2, e3) => {
             let t_e1 = r(e1)?;
             let t_e2 = r(e2)?;

@@ -69,6 +69,13 @@ where
                 ExpX::Unary(_op, e1) => {
                     expr_visitor_control_flow!(exp_visitor_dfs(e1, map, f));
                 }
+                ExpX::UnaryOpr(_op, e1) => {
+                    expr_visitor_control_flow!(exp_visitor_dfs(e1, map, f));
+                }
+                ExpX::Binary(_op, e1, e2) => {
+                    expr_visitor_control_flow!(exp_visitor_dfs(e1, map, f));
+                    expr_visitor_control_flow!(exp_visitor_dfs(e2, map, f));
+                }
                 ExpX::Str(strop) => match strop {
                     StrOp::Len(iexp) | StrOp::IsAscii(iexp) => {
                         expr_visitor_control_flow!(exp_visitor_dfs(iexp, map, f));
@@ -78,13 +85,6 @@ where
                         expr_visitor_control_flow!(exp_visitor_dfs(index, map, f));
                     }
                 },
-                ExpX::UnaryOpr(_op, e1) => {
-                    expr_visitor_control_flow!(exp_visitor_dfs(e1, map, f));
-                }
-                ExpX::Binary(_op, e1, e2) => {
-                    expr_visitor_control_flow!(exp_visitor_dfs(e1, map, f));
-                    expr_visitor_control_flow!(exp_visitor_dfs(e2, map, f));
-                }
                 ExpX::If(e1, e2, e3) => {
                     expr_visitor_control_flow!(exp_visitor_dfs(e1, map, f));
                     expr_visitor_control_flow!(exp_visitor_dfs(e2, map, f));
