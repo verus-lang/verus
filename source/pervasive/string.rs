@@ -25,23 +25,23 @@ pub const fn new_strlit<'a>(s: &'a str) -> StrSlice<'a> {
 }
 
 impl<'a> StrSlice<'a> {
-    pub spec fn view(&self) -> Seq<u8>;
+    pub spec fn bytes(&self) -> Seq<u8>;
     
     pub spec fn is_ascii(&self) -> bool;
 
     #[verifier(external_body)]
     pub fn len(&self) -> (l: usize)
-        ensures self.is_ascii() ==> l as nat === self.view().len()
+        ensures self.is_ascii() ==> l as nat === self.bytes().len()
     {
         self.inner.len()
     }
     
     #[verifier(external_body)]
     pub fn get_char(&self, i: usize) -> (c: u8)
-        requires i < self.view().len()
+        requires i < self.bytes().len()
         ensures
             self.is_ascii() ==> (
-                self.view().index(i as int) == c &&
+                self.bytes().index(i as int) == c &&
                 c < 128
             )
     {
@@ -51,10 +51,10 @@ impl<'a> StrSlice<'a> {
     #[verifier(external_body)]
     pub fn substring(&self, from: usize, to: usize) -> (ret: StrSlice<'a>)
         requires
-            from < self.view().len(),
-            to <= self.view().len(),
+            from < self.bytes().len(),
+            to <= self.bytes().len(),
         ensures
-            ret.view() === self.view().subrange(from as int, to as int)
+            ret.bytes() === self.bytes().subrange(from as int, to as int)
     {
         StrSlice {
             inner: &self.inner[from..to],
@@ -65,7 +65,7 @@ impl<'a> StrSlice<'a> {
     #[verifier(external_body)]
     pub fn to_string(self) -> (ret: String)
         ensures
-            self.view() === ret.view()
+            self.bytes() === ret.bytes()
     {
         String::from_str(self)
     }
@@ -82,25 +82,25 @@ pub proof fn axiom_str_literal_is_ascii<'a>(s: StrSlice<'a>)
 #[verifier(broadcast_forall)]
 pub proof fn axiom_str_literal_len<'a>(s: StrSlice<'a>)
     ensures
-        #[trigger] s.view().len() === builtin::strslice_len(s),
+        #[trigger] s.bytes().len() === builtin::strslice_len(s),
 { }
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_str_literal_get_char<'a>(s: StrSlice<'a>, i: int)
     ensures
-        #[trigger] s.view().index(i) === builtin::strslice_get_char(s, i),
+        #[trigger] s.bytes().index(i) === builtin::strslice_get_char(s, i),
 { }
 
 impl String {
-    pub spec fn view(&self) -> Seq<u8>;
+    pub spec fn bytes(&self) -> Seq<u8>;
 
     pub spec fn is_ascii(&self) -> bool;
 
     #[verifier(external_body)]
     pub fn from_str<'a>(s: StrSlice<'a>) -> (ret: String)
         ensures
-            s.view() === ret.view(),
+            s.bytes() === ret.bytes(),
             s.is_ascii() === ret.is_ascii(),
 
     {
@@ -110,7 +110,7 @@ impl String {
     #[verifier(external_body)]
     pub fn as_str<'a>(&'a self) -> (ret: StrSlice<'a>)
         ensures
-            self.view() === ret.view(),
+            self.bytes() === ret.bytes(),
             self.is_ascii() === ret.is_ascii(),
     {
         let inner = self.inner.as_str();

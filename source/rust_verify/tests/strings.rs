@@ -39,7 +39,7 @@ test_verify_one_file! {
             proof {
                 reveal_strlit("hello world");
             }
-            assert(x@.len() == 11);
+            assert(x.bytes().len() == 11);
             let val = x.get_char(0);
             let h_u8 = 104;
             assert(h_u8 === val);
@@ -67,7 +67,7 @@ test_verify_one_file! {
             proof {
                 reveal_strlit("abcdef");
             }
-            assert(x@.len() === 6);
+            assert(x.bytes().len() === 6);
         }
     } => Ok(())
 }
@@ -81,7 +81,7 @@ test_verify_one_file! {
             proof {
                 reveal_strlit("abcdef");
             }
-            assert(x@.len() == 1); // FAILS
+            assert(x.bytes().len() == 1); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -91,7 +91,7 @@ test_verify_one_file! {
         use pervasive::string::*;
         fn test_substring_passes<'a>() -> (ret: StrSlice<'a>)
             ensures
-                ret@.subrange(0,5).ext_equal(new_strlit("Hello")@)
+                ret.bytes().subrange(0,5).ext_equal(new_strlit("Hello").bytes())
 
         {
             proof {
@@ -104,7 +104,7 @@ test_verify_one_file! {
 
         fn test_substring_passes2<'a>() -> (ret: StrSlice<'a>)
             ensures
-                ret@.subrange(0,5).ext_equal(new_strlit("Hello")@)
+                ret.bytes().subrange(0,5).ext_equal(new_strlit("Hello").bytes())
         {
             let x = new_strlit("Hello World");
 
@@ -123,7 +123,7 @@ test_verify_one_file! {
         use pervasive::string::*;
         fn test_substring_fails<'a>() -> (ret: StrSlice<'a>)
             ensures
-                ret@.subrange(0,5).ext_equal(new_strlit("Hello")@) // FAILS
+                ret.bytes().subrange(0,5).ext_equal(new_strlit("Hello").bytes()) // FAILS
         {
             proof {
                 reveal_strlit("Hello");
@@ -166,9 +166,9 @@ test_verify_one_file! {
             assert(a === a);
             assert(a0_clone === a0);
 
-            assert(a@.ext_equal(abc@.subrange(0,1)));
-            assert(b@.ext_equal(abc@.subrange(1,2)));
-            assert(c@.ext_equal(abc@.subrange(2,3)));
+            assert(a.bytes().ext_equal(abc.bytes().subrange(0,1)));
+            assert(b.bytes().ext_equal(abc.bytes().subrange(1,2)));
+            assert(c.bytes().ext_equal(abc.bytes().subrange(2,3)));
 
             assert(cba !== abc);
             assert(abc === abc_clone);
@@ -184,11 +184,11 @@ test_verify_one_file! {
         const z: StrSlice<'static> = new_strlit("Insert string here");
 
         fn test_multi_fails1() {
-            assert(x@.len() === 11); // FAILS
+            assert(x.bytes().len() === 11); // FAILS
         }
 
         fn test_multi_fails2() {
-            assert(x@.len() !== 11) // FAILS
+            assert(x.bytes().len() !== 11) // FAILS
         }
 
         fn test_multi_fails3() {
@@ -228,7 +228,7 @@ test_verify_one_file! {
         fn test() {
             let a = String::from_str(new_strlit("A"));
             reveal_strlit("A");
-            assert(a@ === new_strlit("A")@);
+            assert(a.bytes() === new_strlit("A").bytes());
             assert(a.is_ascii());
         }
     } => Ok(())
@@ -240,7 +240,7 @@ test_verify_one_file! {
         fn test() {
             let a = String::from_str(new_strlit("A"));
             reveal_strlit("A");
-            assert(a@ === new_strlit("B")@); // FAILS
+            assert(a.bytes() === new_strlit("B").bytes()); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
 }
