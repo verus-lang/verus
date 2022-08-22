@@ -86,7 +86,6 @@ impl Printer {
 
     pub(crate) fn typ_to_node(&self, typ: &Typ) -> Node {
         match &**typ {
-            TypX::StrSlice => str_to_node("StrSlice"),
             TypX::Bool => str_to_node("Bool"),
             TypX::Int => str_to_node("Int"),
             TypX::Lambda if self.print_as_smt => str_to_node(crate::def::FUNCTION),

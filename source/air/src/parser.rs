@@ -77,7 +77,6 @@ impl Parser {
             Node::Atom(s) if s.to_string() == "Bool" => Ok(Arc::new(TypX::Bool)),
             Node::Atom(s) if s.to_string() == "Int" => Ok(Arc::new(TypX::Int)),
             Node::Atom(s) if s.to_string() == "Fun" => Ok(Arc::new(TypX::Lambda)),
-            Node::Atom(s) if s.to_string() == "StrSlice" => Ok(Arc::new(TypX::StrSlice)),
             Node::Atom(s) if is_symbol(s) => Ok(Arc::new(TypX::Named(Arc::new(s.clone())))),
             Node::List(nodes) if is_bitvec(nodes).is_some() => {
                 Ok(Arc::new(TypX::BitVec(is_bitvec(nodes).unwrap())))

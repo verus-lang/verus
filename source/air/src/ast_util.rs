@@ -106,10 +106,6 @@ pub fn bool_typ() -> Typ {
     Arc::new(TypX::Bool)
 }
 
-pub fn strslice_typ() -> Typ {
-    Arc::new(TypX::StrSlice)
-}
-
 pub fn ident_typ(x: &Ident) -> Typ {
     Arc::new(TypX::Named(x.clone()))
 }

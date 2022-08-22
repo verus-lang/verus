@@ -31,7 +31,6 @@ use air::ast_util::{
     bool_typ, bv_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and,
     mk_bind_expr, mk_bitvector_option, mk_eq, mk_exists, mk_implies, mk_ite, mk_let, mk_not,
     mk_option_command, mk_or, mk_xor, str_apply, str_ident, str_typ, str_var, string_var,
-    strslice_typ,
 };
 use air::errors::{error, error_with_label};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -103,7 +102,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::TypParam(_) => str_typ(POLY),
         TypX::TypeId => str_typ(crate::def::TYPE),
         TypX::Air(t) => t.clone(),
-        TypX::StrSlice => strslice_typ(),
+        TypX::StrSlice => str_typ(crate::def::STRSLICE),
     }
 }
 

@@ -22,7 +22,6 @@ pub type Typs = Arc<Vec<Typ>>;
 pub enum TypX {
     Bool,
     Int,
-    StrSlice,
     // Lambda deliberately omits argument, return types to make box/unbox for generics easier
     Lambda,
     Named(Ident),
