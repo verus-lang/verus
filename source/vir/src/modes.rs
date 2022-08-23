@@ -380,7 +380,6 @@ fn check_expr_handle_mut_arg(
 ) -> Result<(Mode, Option<Mode>), VirErr> {
     let mode = match &expr.x {
         ExprX::Const(_) => Ok(Mode::Exec),
-        ExprX::Str(_) => Ok(Mode::Spec),
         ExprX::Var(x) | ExprX::VarLoc(x) | ExprX::VarAt(x, _) => {
             let x_mode = typing.get(x).1;
             let mode = mode_join(outer_mode, x_mode);

@@ -206,13 +206,6 @@ fn expr_to_node(expr: &Expr) -> Node {
                 }
             }
         ),
-        ExprX::Str(op) => match op {
-            StrOp::Len(e) => nodes!(strop len {expr_to_node(e)}),
-            StrOp::IsAscii(e) => nodes!(strop is_ascii {expr_to_node(e)}),
-            StrOp::GetChar { strslice: e, index } => {
-                nodes!(strop get_char {expr_to_node(e)} {expr_to_node(index)})
-            }
-        },
         ExprX::Var(ident) => nodes!(var {str_to_node(ident)}),
         ExprX::VarLoc(ident) => nodes!(varloc {str_to_node(ident)}),
         ExprX::VarAt(ident, var_at) => {
@@ -235,6 +228,8 @@ fn expr_to_node(expr: &Expr) -> Node {
         }
         ExprX::Unary(unary_op, expr) => Node::List({
             let mut nodes = match unary_op {
+                UnaryOp::StrLen => nodes_vec!(strop len {expr_to_node(expr)}),
+                UnaryOp::StrIsAscii => nodes_vec!(strop is_ascii {expr_to_node(expr)}),
                 UnaryOp::Not => nodes_vec!(not),
                 UnaryOp::BitNot => nodes_vec!(bitnot),
                 UnaryOp::Trigger(group) => {
@@ -289,6 +284,9 @@ fn expr_to_node(expr: &Expr) -> Node {
             }
             BinaryOp::Bitwise(op) => {
                 nodes!({str_to_node(&format!("{:?}", op))} {expr_to_node(e1)} {expr_to_node(e2)})
+            }
+            BinaryOp::StrGetChar => {
+                nodes!(strop get_char {expr_to_node(e1)} {expr_to_node(e2)})
             }
             _ => {
                 nodes!({str_to_node(&format!("{:?}", binary_op).to_lowercase())} {expr_to_node(e1)} {expr_to_node(e2)})

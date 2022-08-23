@@ -143,6 +143,10 @@ pub enum UnaryOp {
     /// Internal consistency check to make sure finalize_exp gets called
     /// (appears only briefly in SST before finalize_exp is called)
     MustBeFinalized,
+    /// Used only for handling builtin::strslice_len
+    StrLen,
+    /// Used only for handling builtin::strslice_is_ascii
+    StrIsAscii,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -236,18 +240,13 @@ pub enum BinaryOp {
     Arith(ArithOp, Option<InferMode>),
     /// Bit Vector Operators
     Bitwise(BitwiseOp),
+    /// Used only for handling builtin::strslice_get_char
+    StrGetChar,
 }
 
 #[derive(Clone, Debug)]
 pub enum MultiOp {
     Chained(Arc<Vec<InequalityOp>>),
-}
-
-#[derive(Clone, Debug)]
-pub enum StrOp {
-    Len(Expr),
-    IsAscii(Expr),
-    GetChar { strslice: Expr, index: Expr },
 }
 
 /// Ghost annotations on functions and while loops; must appear at the beginning of function body
@@ -410,8 +409,6 @@ pub enum ExprX {
     Binary(BinaryOp, Expr, Expr),
     /// Primitive multi-operand operation
     Multi(MultiOp, Exprs),
-    /// Primitive string slice operations
-    Str(StrOp),
     /// Quantifier (forall/exists), binding the variables in Binders, with body Expr
     Quant(Quant, Binders<Typ>, Expr),
     /// Specification closure

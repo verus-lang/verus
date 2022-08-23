@@ -1,7 +1,6 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, BinaryOp, CallTarget, Constant, Expr, ExprX, Fun, Function, Ident,
-    Mode, PatternX, SpannedTyped, Stmt, StmtX, StrOp, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt,
-    VirErr,
+    Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use crate::ast_util::{err_str, err_string, types_equal, QUANT_FORALL};
 use crate::context::Ctx;
@@ -769,42 +768,6 @@ fn expr_to_stm_opt(
 ) -> Result<(Vec<Stm>, ReturnValue), VirErr> {
     let mk_exp = |expx: ExpX| SpannedTyped::new(&expr.span, &expr.typ, expx);
     match &expr.x {
-        ExprX::Str(strop) => match strop {
-            StrOp::Len(iexpr) | StrOp::IsAscii(iexpr) => {
-                let (stms, exp) = expr_to_stm_opt(ctx, state, iexpr)?;
-                let exp = unwrap_or_return_never!(exp, stms);
-                if let StrOp::Len(_m) = strop {
-                    return Ok((
-                        stms,
-                        ReturnValue::Some(mk_exp(ExpX::Str(crate::sst::StrOp::Len(exp)))),
-                    ));
-                } else {
-                    return Ok((
-                        stms,
-                        ReturnValue::Some(mk_exp(ExpX::Str(crate::sst::StrOp::IsAscii(exp)))),
-                    ));
-                }
-            }
-            StrOp::GetChar { strslice, index } => {
-                let (stms_strslice, exp_strslice) = expr_to_stm_opt(ctx, state, strslice)?;
-
-                let exp_strslice = unwrap_or_return_never!(exp_strslice, stms_strslice);
-
-                let (mut stms_index, exp_index) = expr_to_stm_opt(ctx, state, index)?;
-                let exp_index = unwrap_or_return_never!(exp_index, stms_index);
-
-                let mut stms = stms_strslice;
-                stms.append(&mut stms_index);
-
-                Ok((
-                    stms,
-                    ReturnValue::Some(mk_exp(ExpX::Str(crate::sst::StrOp::GetChar {
-                        strslice: exp_strslice,
-                        index: exp_index,
-                    }))),
-                ))
-            }
-        },
         ExprX::Const(c) => Ok((vec![], ReturnValue::Some(mk_exp(ExpX::Const(c.clone()))))),
         ExprX::Var(x) => {
             let unique_id = state.get_var_unique_id(&x);

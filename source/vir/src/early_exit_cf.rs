@@ -66,8 +66,7 @@ fn expr_get_early_exits_rec(
             | ExprX::If(..)
             | ExprX::Match(..)
             | ExprX::Ghost { .. }
-            | ExprX::Block(..)
-            | ExprX::Str(..) => VisitorControlFlow::Recurse,
+            | ExprX::Block(..) => VisitorControlFlow::Recurse,
             ExprX::Quant(..)
             | ExprX::Closure(..)
             | ExprX::Choose { .. }

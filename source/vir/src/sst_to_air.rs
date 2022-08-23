@@ -20,7 +20,7 @@ use crate::def::{
 use crate::def::{CommandsWithContext, CommandsWithContextX};
 use crate::inv_masks::MaskSet;
 use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
-use crate::sst::{BndInfo, BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX, StrOp, UniqueIdent};
+use crate::sst::{BndInfo, BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX, UniqueIdent};
 use crate::sst_vars::{get_loc_var, AssignMap};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
@@ -460,26 +460,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
     let bit_vector_typ_hint = &expr_ctxt.bit_vector_typ_hint;
     let expr_ctxt = &expr_ctxt.set_bit_vector_typ_hint(None);
     let result = match (&exp.x, expr_ctxt.is_bit_vector) {
-        (ExpX::Str(strop), _) => {
-            match strop {
-                StrOp::Len(v) => Arc::new(ExprX::Apply(
-                    crate::def::strslice_len_ident(),
-                    Arc::new(vec![exp_to_expr(ctx, v, expr_ctxt)?]),
-                )),
-                StrOp::IsAscii(v) => Arc::new(ExprX::Apply(
-                    crate::def::strslice_is_ascii_ident(),
-                    Arc::new(vec![exp_to_expr(ctx, v, expr_ctxt)?]),
-                )),
-                StrOp::GetChar { strslice: v, index } => Arc::new(ExprX::Apply(
-                    crate::def::strslice_get_char_ident(),
-                    Arc::new(vec![
-                        exp_to_expr(ctx, v, expr_ctxt)?,
-                        exp_to_expr(ctx, index, expr_ctxt)?,
-                    ]),
-                )),
-            }
-            // }
-        }
         (ExpX::Const(crate::ast::Constant::Nat(s)), true) => {
             let typ = match (&*exp.typ, bit_vector_typ_hint) {
                 (TypX::Int(IntRange::Int | IntRange::Nat), Some(hint))
@@ -608,9 +588,20 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 UnaryOp::MustBeFinalized => {
                     panic!("internal error: Exp not finalized: {:?}", exp)
                 }
+                UnaryOp::StrLen | UnaryOp::StrIsAscii => panic!(
+                    "internal error: matching for bit vector ops on this match should be impossible"
+                ),
             }
         }
         (ExpX::Unary(op, exp), false) => match op {
+            UnaryOp::StrLen => Arc::new(ExprX::Apply(
+                crate::def::strslice_len_ident(),
+                Arc::new(vec![exp_to_expr(ctx, exp, expr_ctxt)?]),
+            )),
+            UnaryOp::StrIsAscii => Arc::new(ExprX::Apply(
+                crate::def::strslice_is_ascii_ident(),
+                Arc::new(vec![exp_to_expr(ctx, exp, expr_ctxt)?]),
+            )),
             UnaryOp::Not => mk_not(&exp_to_expr(ctx, exp, expr_ctxt)?),
             UnaryOp::BitNot => {
                 let width = match bitwidth_from_type(&exp.typ) {
@@ -742,6 +733,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 BinaryOp::And => unreachable!(),
                 BinaryOp::Or => unreachable!(),
                 BinaryOp::Xor => unreachable!(),
+                BinaryOp::StrGetChar => unreachable!(),
             };
             return Ok(Arc::new(ExprX::Binary(bop, lh, rh)));
         }
@@ -788,6 +780,13 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     let eq = ExprX::Binary(air::ast::BinaryOp::Eq, lh, rh);
                     ExprX::Unary(air::ast::UnaryOp::Not, Arc::new(eq))
                 }
+                BinaryOp::StrGetChar => ExprX::Apply(
+                    crate::def::strslice_get_char_ident(),
+                    Arc::new(vec![
+                        exp_to_expr(ctx, lhs, expr_ctxt)?,
+                        exp_to_expr(ctx, rhs, expr_ctxt)?,
+                    ]),
+                ),
                 // here the binary bitvector Ops are translated into the integer versions
                 // Similar to typ_invariant(), make obvious range according to bit-width
                 BinaryOp::Bitwise(bo) => {
@@ -857,6 +856,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                             air::ast::BinaryOp::EuclideanMod
                         }
                         BinaryOp::Bitwise(..) => unreachable!(),
+                        BinaryOp::StrGetChar => unreachable!(),
                     };
                     ExprX::Binary(aop, lh, rh)
                 }

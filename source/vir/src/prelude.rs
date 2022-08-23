@@ -93,6 +93,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let strslice_get_char = strslice_get_char();
     let type_id_strslice = str_to_node(TYPE_ID_STRSLICE);
     let new_strlit = strslice_new_strlit();
+    let from_strlit = strslice_from_strlit();
 
     nodes_vec!(
         // Fuel
@@ -116,6 +117,8 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [strslice_len] ([strslice]) Int)
         (declare-fun [strslice_get_char] ([strslice] Int) Int)
         (declare-fun [new_strlit] (Int) [strslice])
+
+        (declare-fun [from_strlit] ([strslice]) Int)
 
         // Polymorphism
         (declare-sort [Poly] 0)
@@ -214,15 +217,13 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         )))
 
         // String literals
-        (axiom (forall ((x Int) (y Int)) (!
-            (=>
-                (= ([new_strlit] x) ([new_strlit] y))
-                (= x y)
-            )
-            :pattern (([new_strlit] x) ([new_strlit] y))
+        (axiom (forall ((x Int)) (!
+            (= ([from_strlit] ([new_strlit] x)) x)
+            :pattern (([new_strlit] x))
             :qid prelude_strlit_injective
             :skolemid skolem_prelude_strlit_injective
         )))
+
         (axiom (forall ((x [Poly])) (!
             (=>
                 ([has_type] x [type_id_strslice])

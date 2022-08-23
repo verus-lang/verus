@@ -246,6 +246,12 @@ fn make_score(term: &Term, depth: u64) -> Score {
 }
 
 fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Term) {
+    let fail_on_strop = || {
+        unreachable!(
+            "internal error: doesn't make sense to reach `gather_terms` for string operations defined for builtin, these are only used to tie builtin and pervasive together and do not make sense in user programs"
+        )
+    };
+
     let (is_pure, term) = match &exp.x {
         ExpX::Const(c) => (true, Arc::new(TermX::App(App::Const(c.clone()), Arc::new(vec![])))),
         ExpX::Var(x) => (true, Arc::new(TermX::Var(x.clone()))),
@@ -301,6 +307,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             let depth = match op {
                 UnaryOp::Not | UnaryOp::CoerceMode { .. } | UnaryOp::MustBeFinalized => 0,
                 UnaryOp::Trigger(_) | UnaryOp::Clip(_) | UnaryOp::BitNot => 1,
+                UnaryOp::StrIsAscii | UnaryOp::StrLen => fail_on_strop(),
             };
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
             match op {
@@ -335,17 +342,13 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 )),
             )
         }
-        ExpX::Str(_) => {
-            unreachable!(
-                "internal error: doesn't make sense to reach `gather_terms` for ExpX::Str, builtin strops are only used to tie builtin and pervasive together and should not be used in user programs"
-            );
-        }
         ExpX::Binary(op, e1, e2) => {
             use BinaryOp::*;
             let depth = match op {
                 And | Or | Xor | Implies | Eq(_) => 0,
                 Ne | Inequality(_) | Arith(..) => 1,
                 Bitwise(..) => 1,
+                StrGetChar => fail_on_strop(),
             };
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
             let (_, term2) = gather_terms(ctxt, ctx, e2, depth);

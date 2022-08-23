@@ -72,7 +72,7 @@ Therefore, the expression Unbox(Box(1)) explicitly introduces a superfluous Unbo
 use crate::ast::{
     BinaryOp, CallTarget, Datatype, DatatypeX, Expr, ExprX, Exprs, FieldOpr, Function,
     FunctionKind, FunctionX, Ident, IntRange, Krate, KrateX, MaskSpec, Mode, MultiOp, Param,
-    ParamX, Path, PatternX, SpannedTyped, Stmt, StmtX, StrOp, Typ, TypX, UnaryOp, UnaryOpr,
+    ParamX, Path, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr,
 };
 use crate::context::Ctx;
 use crate::def::Spanned;
@@ -235,27 +235,6 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
     let mk_expr_typ = |t: &Typ, e: ExprX| SpannedTyped::new(&expr.span, t, e);
     match &expr.x {
         ExprX::Const(_) => expr.clone(),
-        ExprX::Str(sop) => match sop {
-            StrOp::Len(e) => {
-                let e = poly_expr(ctx, state, e);
-                mk_expr_typ(&expr.typ, ExprX::Str(StrOp::Len(coerce_expr_to_native(ctx, &e))))
-            }
-            StrOp::IsAscii(e) => {
-                let e = poly_expr(ctx, state, e);
-                mk_expr_typ(&expr.typ, ExprX::Str(StrOp::IsAscii(coerce_expr_to_native(ctx, &e))))
-            }
-            StrOp::GetChar { strslice: e, index: ie } => {
-                let e = poly_expr(ctx, state, e);
-                let ie = poly_expr(ctx, state, ie);
-                mk_expr_typ(
-                    &expr.typ,
-                    ExprX::Str(StrOp::GetChar {
-                        strslice: coerce_expr_to_native(ctx, &e),
-                        index: coerce_expr_to_native(ctx, &ie),
-                    }),
-                )
-            }
-        },
         ExprX::Var(x) => SpannedTyped::new(&expr.span, &state.types[x], ExprX::Var(x.clone())),
         ExprX::VarLoc(x) => {
             SpannedTyped::new(&expr.span, &state.types[x], ExprX::VarLoc(x.clone()))
@@ -320,7 +299,11 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         ExprX::Unary(op, e1) => {
             let e1 = poly_expr(ctx, state, e1);
             match op {
-                UnaryOp::Not | UnaryOp::Clip(_) | UnaryOp::BitNot => {
+                UnaryOp::Not
+                | UnaryOp::Clip(_)
+                | UnaryOp::BitNot
+                | UnaryOp::StrLen
+                | UnaryOp::StrIsAscii => {
                     let e1 = coerce_expr_to_native(ctx, &e1);
                     mk_expr(ExprX::Unary(*op, e1))
                 }
@@ -375,6 +358,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 Arith(..) => true,
                 Eq(_) | Ne => false,
                 Bitwise(..) => true,
+                StrGetChar { .. } => true,
             };
             if native {
                 let e1 = coerce_expr_to_native(ctx, &e1);

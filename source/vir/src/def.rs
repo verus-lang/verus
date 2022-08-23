@@ -144,6 +144,8 @@ pub const STRSLICE_IS_ASCII: &str = "strslice_is_ascii";
 pub const STRSLICE_LEN: &str = "strslice_len";
 pub const STRSLICE_GET_CHAR: &str = "strslice_get_char";
 pub const STRSLICE_NEW_STRLIT: &str = "new_strlit";
+// only used to prove that new_strlit is injective
+pub const STRSLICE_FROM_STRLIT: &str = "from_strlit";
 
 pub const SUPPORTED_CRATES: [&str; 2] = ["builtin", "pervasive"];
 
@@ -560,6 +562,10 @@ pub fn strslice_get_char() -> Node {
 
 pub fn strslice_new_strlit() -> Node {
     str_to_node(&strslice_new_strlit_ident())
+}
+
+pub fn strslice_from_strlit() -> Node {
+    str_to_node(&prefix_str(&std::sync::Arc::new(STRSLICE_FROM_STRLIT.to_string())))
 }
 
 pub fn strslice_defn_path() -> Path {

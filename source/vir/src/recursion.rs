@@ -11,9 +11,7 @@ use crate::def::{
 };
 use crate::func_to_air::{params_to_pars, SstMap};
 use crate::scc::Graph;
-use crate::sst::{
-    BndX, Dest, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, StmX, StrOp, UniqueIdent,
-};
+use crate::sst::{BndX, Dest, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, StmX, UniqueIdent};
 use crate::sst_visitor::{
     exp_rename_vars, exp_visitor_check, exp_visitor_dfs, map_exp_visitor, map_stm_visitor,
     stm_visitor_dfs, VisitorControlFlow,
@@ -211,14 +209,6 @@ fn terminates(ctxt: &Ctxt, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp, VirErr> 
             let e2 = r(e2)?;
             Ok(bool_exp(ExpX::Binary(BinaryOp::And, e1, e2)))
         }
-        ExpX::Str(strop) => match strop {
-            StrOp::Len(iexp) | StrOp::IsAscii(iexp) => r(iexp),
-            StrOp::GetChar { strslice, index } => {
-                let e_strslice = r(strslice)?;
-                let e_index = r(index)?;
-                Ok(bool_exp(ExpX::Binary(BinaryOp::And, e_strslice, e_index)))
-            }
-        },
         ExpX::If(e1, e2, e3) => {
             let t_e1 = r(e1)?;
             let t_e2 = r(e2)?;

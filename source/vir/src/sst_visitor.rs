@@ -1,6 +1,6 @@
 use crate::ast::{Ident, SpannedTyped, Typ, UnaryOpr, VirErr};
 use crate::def::Spanned;
-use crate::sst::{BndX, Dest, Exp, ExpX, Exps, Stm, StmX, StrOp, Trig, Trigs, UniqueIdent};
+use crate::sst::{BndX, Dest, Exp, ExpX, Exps, Stm, StmX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map_result;
 use crate::visitor::expr_visitor_control_flow;
 pub(crate) use crate::visitor::VisitorControlFlow;
@@ -76,15 +76,6 @@ where
                     expr_visitor_control_flow!(exp_visitor_dfs(e1, map, f));
                     expr_visitor_control_flow!(exp_visitor_dfs(e2, map, f));
                 }
-                ExpX::Str(strop) => match strop {
-                    StrOp::Len(iexp) | StrOp::IsAscii(iexp) => {
-                        expr_visitor_control_flow!(exp_visitor_dfs(iexp, map, f));
-                    }
-                    StrOp::GetChar { strslice, index } => {
-                        expr_visitor_control_flow!(exp_visitor_dfs(strslice, map, f));
-                        expr_visitor_control_flow!(exp_visitor_dfs(index, map, f));
-                    }
-                },
                 ExpX::If(e1, e2, e3) => {
                     expr_visitor_control_flow!(exp_visitor_dfs(e1, map, f));
                     expr_visitor_control_flow!(exp_visitor_dfs(e2, map, f));
@@ -313,24 +304,6 @@ where
             let exp = exp_new(ExpX::UnaryOpr(op.clone(), expr1));
             f(&exp, map)
         }
-        ExpX::Str(strop) => match strop {
-            StrOp::Len(iexp) => {
-                let expr1 = map_exp_visitor_bind(iexp, map, f)?;
-                let nexp = exp_new(ExpX::Str(StrOp::Len(expr1)));
-                f(&nexp, map)
-            }
-            StrOp::IsAscii(iexp) => {
-                let expr1 = map_exp_visitor_bind(iexp, map, f)?;
-                let nexp = exp_new(ExpX::Str(StrOp::IsAscii(expr1)));
-                f(&nexp, map)
-            }
-            StrOp::GetChar { strslice, index } => {
-                let expr1 = map_exp_visitor_bind(strslice, map, f)?;
-                let expr2 = map_exp_visitor_bind(index, map, f)?;
-                let nexp = exp_new(ExpX::Str(StrOp::GetChar { strslice: expr1, index: expr2 }));
-                f(&nexp, map)
-            }
-        },
         ExpX::Binary(op, e1, e2) => {
             let expr1 = map_exp_visitor_bind(e1, map, f)?;
             let expr2 = map_exp_visitor_bind(e2, map, f)?;
@@ -507,14 +480,6 @@ where
             };
             ok_exp(ExpX::UnaryOpr(op.clone(), fe(env, e1)?))
         }
-        ExpX::Str(strop) => match strop {
-            StrOp::Len(iexp) => ok_exp(ExpX::Str(StrOp::Len(fe(env, iexp)?))),
-            StrOp::IsAscii(iexp) => ok_exp(ExpX::Str(StrOp::IsAscii(fe(env, iexp)?))),
-            StrOp::GetChar { strslice, index } => ok_exp(ExpX::Str(StrOp::GetChar {
-                strslice: fe(env, strslice)?,
-                index: fe(env, index)?,
-            })),
-        },
         ExpX::Binary(op, e1, e2) => ok_exp(ExpX::Binary(*op, fe(env, e1)?, fe(env, e2)?)),
         ExpX::If(e0, e1, e2) => ok_exp(ExpX::If(fe(env, e0)?, fe(env, e1)?, fe(env, e2)?)),
         ExpX::WithTriggers(ts, body) => {

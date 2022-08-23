@@ -34,8 +34,8 @@ use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArmX, AssertQueryMode, BinaryOp, BitwiseOp, CallTarget, Constant, ExprX, FieldOpr,
     FunX, HeaderExpr, HeaderExprX, Ident, InequalityOp, IntRange, InvAtomicity, Mode, ModeCoercion,
-    MultiOp, PatternX, Quant, SpannedTyped, StmtX, Stmts, StrOp, Typ, TypX, UnaryOp, UnaryOpr,
-    VarAt, VirErr,
+    MultiOp, PatternX, Quant, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
+    VirErr,
 };
 use vir::ast_util::{ident_binder, path_as_rust_name};
 use vir::def::positional_field_ident;
@@ -985,7 +985,7 @@ fn fn_call_to_vir<'tcx>(
                 let arg1 = &args[1];
                 let arg1 = expr_to_vir(bctx, arg1, ExprModifier::REGULAR)
                     .expect("invalid parameter for builtin::strslice_get_char at arg1, arg1 must be an integer");
-                Ok(mk_expr(ExprX::Str(StrOp::GetChar { strslice: arg0, index: arg1 })))
+                Ok(mk_expr(ExprX::Binary(BinaryOp::StrGetChar, arg0, arg1)))
             }
             _ => panic!(
                 "Expected a call for builtin::strslice_get_char with two argument but did not receive it"
@@ -1000,7 +1000,7 @@ fn fn_call_to_vir<'tcx>(
                 let arg0 = args.first().unwrap();
                 let arg0 = expr_to_vir(bctx, arg0, ExprModifier::REGULAR)
                     .expect("internal compiler error");
-                Ok(mk_expr(ExprX::Str(StrOp::Len(arg0))))
+                Ok(mk_expr(ExprX::Unary(UnaryOp::StrLen, arg0)))
             }
             _ => panic!(
                 "Expected a call for builtin::strslice_len with one argument but did not receive it"
@@ -1015,7 +1015,7 @@ fn fn_call_to_vir<'tcx>(
                 let arg0 = args.first().unwrap();
                 let arg0 = expr_to_vir(bctx, arg0, ExprModifier::REGULAR)
                     .expect("internal compiler error");
-                Ok(mk_expr(ExprX::Str(StrOp::IsAscii(arg0))))
+                Ok(mk_expr(ExprX::Unary(UnaryOp::StrIsAscii, arg0)))
             }
             _ => panic!(
                 "Expected a call for builtin::strslice_is_ascii with one argument but did not receive it"
