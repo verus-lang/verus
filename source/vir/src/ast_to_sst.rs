@@ -5,7 +5,7 @@ use crate::ast::{
 use crate::ast_util::{err_str, err_string, types_equal, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{unique_bound, unique_local, Spanned};
-use crate::func_to_air::SstMap;
+use crate::func_to_air::{SstInline, SstMap};
 use crate::sst::{
     Bnd, BndX, Dest, Exp, ExpX, Exps, LocalDecl, LocalDeclX, ParPurpose, Pars, Stm, StmX,
     UniqueIdent,
@@ -207,9 +207,9 @@ impl State {
         });
         let exp = crate::sst_visitor::map_exp_visitor_result(&exp, &mut |exp| match &exp.x {
             ExpX::Call(fun, typs, args) => {
-                if let Some((Some(inline), body)) = fun_ssts.get(fun) {
-                    let params = &inline.params;
-                    let typ_bounds = &inline.typ_bounds;
+                if let Some((Some(SstInline { params, typ_bounds, do_inline: true }), body)) =
+                    fun_ssts.get(fun)
+                {
                     let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
                     let mut substs: HashMap<UniqueIdent, Exp> = HashMap::new();
                     assert!(typ_bounds.len() == typs.len());
@@ -699,11 +699,13 @@ fn stm_call(
         // Also, note that prevasive::assert is consisted of `requires` and `ensures`.
         // therefore, we are also splitting pervaisve::assert here
         let params = &fun.x.params;
+        let typ_bounds = &fun.x.typ_bounds;
         for e in &**fun.x.require {
             let exp = crate::split_expression::pure_ast_expression_to_sst(ctx, e, params);
-            let arg_exps = Arc::new(vec_map(&args, |x| x.0.clone()));
-            let exp_subsituted =
-                crate::split_expression::tr_inline_expression(&exp, params, &arg_exps);
+            let args_exp = Arc::new(vec_map(&args, |x| x.0.clone()));
+            let exp_subsituted = crate::split_expression::inline_expression(
+                &name, &args_exp, &typs, params, typ_bounds, &exp, span,
+            );
             if exp_subsituted.is_err() {
                 continue;
             }

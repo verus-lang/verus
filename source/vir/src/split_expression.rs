@@ -1,101 +1,16 @@
-use crate::ast::{BinaryOp, Expr, Function, Ident, Params, SpannedTyped, Typ, TypX, UnaryOp};
+use crate::ast::{
+    BinaryOp, Expr, Fun, Function, Ident, Params, SpannedTyped, Typ, TypBounds, TypX, Typs, UnaryOp,
+};
 use crate::ast_to_sst::{get_function, State};
 use crate::context::Ctx;
+use crate::def::unique_local;
 use crate::def::Spanned;
-use crate::sst::{Bnd, BndX, Exp, ExpX, Exps, Stm, StmX, UniqueIdent};
-use air::ast::{Binder, BinderX, Span};
+use crate::func_to_air::SstInline;
+use crate::sst::{BndX, Exp, ExpX, Exps, Stm, StmX, UniqueIdent};
+use air::ast::Span;
 use air::errors::Error;
 use std::collections::HashMap;
 use std::sync::Arc;
-
-fn subsitute_argument(
-    exp: &Exp,
-    arg_map: &HashMap<Arc<String>, Exp>,
-) -> Result<Exp, (Span, String)> {
-    let result = match &exp.x {
-        ExpX::Var(UniqueIdent { name: id, local: _ }) => match arg_map.get(id) {
-            Some(e) => e.clone(),
-            None => exp.clone(),
-        },
-        ExpX::Call(x, typs, es) => {
-            let mut es_replaced = vec![];
-            for e in es.iter() {
-                let e_replaced = subsitute_argument(e, arg_map)?;
-                es_replaced.push(e_replaced);
-            }
-            let new_exp = ExpX::Call(x.clone(), typs.clone(), Arc::new(es_replaced));
-            SpannedTyped::new(&exp.span, &exp.typ, new_exp)
-        }
-        ExpX::Unary(op, e1) => {
-            let e1_replaced = subsitute_argument(e1, arg_map)?;
-            let new_exp = ExpX::Unary(*op, e1_replaced);
-            SpannedTyped::new(&exp.span, &exp.typ, new_exp)
-        }
-        ExpX::UnaryOpr(uop, e1) => {
-            let e1_replaced = subsitute_argument(e1, arg_map)?;
-            let new_exp = ExpX::UnaryOpr(uop.clone(), e1_replaced);
-            SpannedTyped::new(&exp.span, &exp.typ, new_exp)
-        }
-        ExpX::Binary(bop, e1, e2) => {
-            let e1_replaced = subsitute_argument(e1, arg_map)?;
-            let e2_replaced = subsitute_argument(e2, arg_map)?;
-            let new_exp = ExpX::Binary(*bop, e1_replaced, e2_replaced);
-            SpannedTyped::new(&exp.span, &exp.typ, new_exp)
-        }
-        ExpX::If(e1, e2, e3) => {
-            let e1_replaced = subsitute_argument(e1, arg_map)?;
-            let e2_replaced = subsitute_argument(e2, arg_map)?;
-            let e3_replaced = subsitute_argument(e3, arg_map)?;
-            let new_exp = ExpX::If(e1_replaced, e2_replaced, e3_replaced);
-            SpannedTyped::new(&exp.span, &exp.typ, new_exp)
-        }
-        ExpX::Bind(bnd, e1) => {
-            // In the arg_map, remove names that will be binded locally
-            let mut arg_map = arg_map.clone();
-            arg_map.retain(|name, _| {
-                let binded_names: Vec<Ident> = match &bnd.x {
-                    BndX::Let(binders) => binders.iter().map(|b| b.name.clone()).collect(),
-                    BndX::Quant(_, binders, _) => binders.iter().map(|b| b.name.clone()).collect(),
-                    BndX::Choose(binders, _, _) => binders.iter().map(|b| b.name.clone()).collect(),
-                    BndX::Lambda(binders) => binders.iter().map(|b| b.name.clone()).collect(),
-                };
-                !binded_names.iter().any(|bname| **bname == **name)
-            });
-            let arg_map = arg_map;
-            let e1_replaced = subsitute_argument(e1, &arg_map)?;
-            let bnd_replaced: Bnd = match &bnd.x {
-                BndX::Let(binders) => {
-                    let mut new_binders: Vec<Binder<Exp>> = vec![];
-                    for old_b in &**binders {
-                        let new_b = BinderX {
-                            name: old_b.name.clone(),
-                            a: subsitute_argument(&old_b.a, &arg_map)?,
-                        };
-                        new_binders.push(Arc::new(new_b));
-                    }
-                    Spanned::new(bnd.span.clone(), BndX::Let(Arc::new(new_binders)))
-                }
-                BndX::Quant(quant, bndrs, _trigs) => Spanned::new(
-                    bnd.span.clone(),
-                    BndX::Quant(quant.clone(), bndrs.clone(), Arc::new(vec![])),
-                ),
-                _ => {
-                    return Err((
-                        exp.span.clone(),
-                        format!("Unsupported binder during subsitution"),
-                    ));
-                }
-            };
-            let new_exp = ExpX::Bind(bnd_replaced, e1_replaced);
-            SpannedTyped::new(&exp.span, &exp.typ, new_exp)
-        }
-        ExpX::Const(_) => exp.clone(),
-        _ => {
-            return Err((exp.span.clone(), format!("Unsupported expression during subsitution")));
-        }
-    };
-    Ok(result)
-}
 
 fn is_bool_type(t: &Typ) -> bool {
     match &**t {
@@ -105,31 +20,44 @@ fn is_bool_type(t: &Typ) -> bool {
     }
 }
 
-pub(crate) fn tr_inline_expression(
-    body_exp: &Exp,
+// This function is to
+// 1) inline a function body
+// 2) inline a function requires
+pub(crate) fn inline_expression(
+    name: &Fun,
+    args: &Exps,
+    typs: &Typs,
     params: &Params,
-    exps: &Exps,
+    typ_bounds: &TypBounds,
+    body: &Exp,
+    outer_span: &Span,
 ) -> Result<Exp, (Span, String)> {
-    match *body_exp.typ {
-        TypX::Bool => (),
-        _ => {
-            return Err((
-                body_exp.span.clone(),
-                "Note: skip inlining due to verifier(external_body)".to_string(),
-            ));
-        }
-    };
-    let mut arg_map: HashMap<Arc<String>, Exp> = HashMap::new();
-    let mut count = 0;
-    for param in &**params {
-        let exp_to_insert = &exps[count];
-        if !crate::ast_util::types_equal(&param.x.typ, &exp_to_insert.typ) {
-            panic!("Internal error: arg type mismatch during expression inlining");
-        }
-        arg_map.insert(param.x.name.clone(), exp_to_insert.clone());
-        count = count + 1;
+    // code copied from crate::ast_to_sst::finalized_exp
+    let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
+    let mut substs: HashMap<UniqueIdent, Exp> = HashMap::new();
+    assert!(typ_bounds.len() == typs.len());
+    for ((name, _), typ) in typ_bounds.iter().zip(typs.iter()) {
+        assert!(!typ_substs.contains_key(name));
+        typ_substs.insert(name.clone(), typ.clone());
     }
-    return subsitute_argument(body_exp, &arg_map);
+    assert!(params.len() == args.len());
+    for (param, arg) in params.iter().zip(args.iter()) {
+        let unique = unique_local(&param.x.name);
+        assert!(!substs.contains_key(&unique));
+        substs.insert(unique, arg.clone());
+    }
+    let e = crate::sst_util::subst_exp(typ_substs, substs, body);
+
+    // when `inline_expression` is called to inline the `requires` of `pervasive::assert`, highlighting the `requires(b)` has no point.
+    let span = if name.path.segments[0].to_string() == "pervasive".to_string()
+        && name.path.segments[1].to_string() == "assert".to_string()
+    {
+        outer_span
+    } else {
+        &body.span
+    };
+    let e = SpannedTyped::new(span, &e.typ, e.x.clone());
+    return Ok(e);
 }
 
 pub(crate) fn pure_ast_expression_to_sst(ctx: &Ctx, body: &Expr, params: &Params) -> Exp {
@@ -148,8 +76,9 @@ fn tr_inline_function(
     ctx: &Ctx,
     state: &State,
     fun_to_inline: Function,
-    exps: &Exps,
+    args: &Exps,
     span: &Span,
+    typs: &Typs,
 ) -> Result<Exp, (Span, String)> {
     let opaque_err = Err((fun_to_inline.span.clone(), "Note: this function is opaque".to_string()));
     let closed_err = Err((
@@ -158,7 +87,7 @@ fn tr_inline_function(
     ));
     let foriegn_module_err = Err((
         fun_to_inline.span.clone(),
-        "Note: this function is inside a foriegn module".to_string(),
+        "Note: this function is inside a foreign module".to_string(),
     ));
     let type_err = Err((
         fun_to_inline.span.clone(),
@@ -225,16 +154,28 @@ fn tr_inline_function(
             return type_err;
         }
 
-        let params = &fun_to_inline.x.params;
-        let body_exp = pure_ast_expression_to_sst(ctx, body, params);
-
-        if crate::recursion::is_recursive_exp(ctx, &fun_to_inline.x.name, &body_exp) {
+        if fun_to_inline.x.decrease.len() != 0 {
             return Err((
                 fun_to_inline.span.clone(),
                 format!("Note: this function is recursive with fuel {fuel}"),
             ));
+        }
+        let fun = &fun_to_inline.x.name;
+        let fun_ssts = &state.fun_ssts;
+        if let Some((Some(SstInline { params, typ_bounds, do_inline: _ }), body)) =
+            fun_ssts.get(fun)
+        {
+            return inline_expression(
+                fun,
+                args,
+                typs,
+                params,
+                typ_bounds,
+                body,
+                &body.span.clone(),
+            );
         } else {
-            return tr_inline_expression(&body_exp, params, exps);
+            return Err((fun_to_inline.span.clone(), format!("Note: not found on SstMap")));
         }
     }
 }
@@ -395,9 +336,9 @@ pub(crate) fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: boo
                 _ => return mk_atom(exp.clone(), negated),
             }
         }
-        ExpX::Call(fun_name, _typs, exps) => {
+        ExpX::Call(fun_name, typs, args) => {
             let fun = get_function(ctx, &exp.e.span, fun_name).unwrap();
-            let res_inlined_exp = tr_inline_function(ctx, state, fun, exps, &exp.e.span);
+            let res_inlined_exp = tr_inline_function(ctx, state, fun, args, &exp.e.span, typs);
             match res_inlined_exp {
                 Ok(inlined_exp) => {
                     let inlined_tr_exp = TracedExpX::new(
