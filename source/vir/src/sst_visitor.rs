@@ -152,7 +152,8 @@ where
                 | StmX::Assume(_)
                 | StmX::Assign { .. }
                 | StmX::AssertBitVector { .. }
-                | StmX::Fuel(..) => (),
+                | StmX::Fuel(..)
+                | StmX::RevealString(_) => (),
                 StmX::DeadEnd(s) => {
                     expr_visitor_control_flow!(stm_visitor_dfs(s, f));
                 }
@@ -223,7 +224,8 @@ where
                 expr_visitor_control_flow!(exp_visitor_dfs(dest, &mut ScopeMap::new(), f));
                 expr_visitor_control_flow!(exp_visitor_dfs(rhs, &mut ScopeMap::new(), f))
             }
-            StmX::Fuel(..) | StmX::DeadEnd(..) => (),
+            StmX::Fuel(..) | StmX::DeadEnd(..) | StmX::RevealString(_) => (),
+
             StmX::If(exp, _s1, _s2) => {
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
             }
@@ -523,6 +525,7 @@ where
         StmX::Assign { .. } => fe(stm),
         StmX::AssertBitVector { .. } => fe(stm),
         StmX::Fuel(..) => fe(stm),
+        StmX::RevealString(_) => fe(stm),
         StmX::DeadEnd(s) => {
             let s = map_stm_visitor(s, fe)?;
             let stm = Spanned::new(stm.span.clone(), StmX::DeadEnd(s));
@@ -608,6 +611,7 @@ where
             }
             StmX::AssertQuery { .. } => stm.clone(),
             StmX::Fuel(..) => stm.clone(),
+            StmX::RevealString(_) => stm.clone(),
             StmX::DeadEnd(..) => stm.clone(),
             StmX::If(exp, s1, s2) => {
                 let exp = fe(exp)?;

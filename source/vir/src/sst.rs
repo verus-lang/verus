@@ -105,6 +105,7 @@ pub enum StmX {
         rhs: Exp,
     },
     Fuel(Fun, u32),
+    RevealString(Arc<String>),
     DeadEnd(Stm),
     If(Exp, Stm, Option<Stm>),
     While {

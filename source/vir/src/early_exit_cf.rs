@@ -74,7 +74,8 @@ fn expr_get_early_exits_rec(
             | ExprX::Fuel(..)
             | ExprX::Header(..)
             | ExprX::Admit
-            | ExprX::Forall { .. } => VisitorControlFlow::Return,
+            | ExprX::Forall { .. }
+            | ExprX::RevealString(_) => VisitorControlFlow::Return,
             ExprX::AssertQuery { .. } => VisitorControlFlow::Return,
             ExprX::While { cond, body, invs: _ } => {
                 expr_get_early_exits_rec(cond, in_loop, scope_map, results);
