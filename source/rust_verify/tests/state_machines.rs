@@ -5208,7 +5208,7 @@ test_verify_one_file! {
                 rel_tr3(pre, post) == Y::State::tr3(pre, post),
                 rel_tr3_strong(pre, post) == Y::State::tr3_strong(pre, post),
         {
-            assert_maps_equal_verus!(
+            assert_maps_equal!(
                 pre.c.insert(5, 9).insert(12, 15),
                 pre.c.union_prefer_right(
                     Map::empty().insert(5, 9).insert(12, 15)

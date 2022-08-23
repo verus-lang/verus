@@ -315,38 +315,18 @@ pub use map;
 
 #[macro_export]
 macro_rules! assert_maps_equal {
-    ($m1:expr, $m2:expr $(,)?) => {
-        assert_maps_equal!($m1, $m2, key => { })
+    [$($tail:tt)*] => {
+        ::builtin_macros::verus_proof_macro_exprs!($crate::pervasive::map::assert_maps_equal_internal!($($tail)*))
     };
-    ($m1:expr, $m2:expr, $k:ident $( : $t:ty )? => $bblock:block) => {
-        #[spec] let m1 = $crate::pervasive::map::check_argument_is_map($m1);
-        #[spec] let m2 = $crate::pervasive::map::check_argument_is_map($m2);
-        ::builtin::assert_by(::builtin::equal(m1, m2), {
-            ::builtin::assert_forall_by(|$k $( : $t )?| {
-                // TODO better error message here: show the individual conjunct that fails,
-                // and maybe give an error message in english as well
-                ::builtin::ensures([
-                    ::builtin::imply(#[trigger] m1.dom().contains($k), m2.dom().contains($k))
-                    && ::builtin::imply(m2.dom().contains($k), m1.dom().contains($k))
-                    && ::builtin::imply(m1.dom().contains($k) && m2.dom().contains($k),
-                        ::builtin::equal(m1.index($k), m2.index($k)))
-                ]);
-                { $bblock }
-            });
-            $crate::pervasive::assert(m1.ext_equal(m2));
-        });
-    }
 }
-
-pub use assert_maps_equal;
 
 #[macro_export]
-macro_rules! assert_maps_equal_verus {
+#[doc(hidden)]
+macro_rules! assert_maps_equal_internal {
     ($m1:expr, $m2:expr $(,)?) => {
-        assert_maps_equal_verus!($m1, $m2, key => { })
+        assert_maps_equal_internal!($m1, $m2, key => { })
     };
     ($m1:expr, $m2:expr, $k:ident $( : $t:ty )? => $bblock:block) => {
-        ::builtin_macros::verus_proof_expr! {{
         #[spec] let m1 = $crate::pervasive::map::check_argument_is_map($m1);
         #[spec] let m2 = $crate::pervasive::map::check_argument_is_map($m2);
         ::builtin::assert_by(::builtin::equal(m1, m2), {
@@ -363,10 +343,10 @@ macro_rules! assert_maps_equal_verus {
             });
             $crate::pervasive::assert(m1.ext_equal(m2));
         });
-        }}
     }
 }
 
-pub use assert_maps_equal_verus;
+pub use assert_maps_equal_internal;
+pub use assert_maps_equal;
 
 } // verus!
