@@ -389,12 +389,9 @@ pub(crate) fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: boo
         }
         ExpX::Bind(bnd, e1) => {
             // TODO: shrink binder if the split body does not reference a binded variable
+            // Note: trigger selection happens after the AST->SST translation(see crate::ast_to_sst::finalized_exp)
             let new_bnd = match &bnd.x {
                 BndX::Let(..) if !negated => bnd.clone(),
-
-                // since the trigger selection happens after the AST->SST translation(see crate::ast_to_sst::finalized_exp),
-                // ininling spec functions can make "Could not automatically infer triggers" error.
-                // However, for proving `forall` clause, triggers not matter. (triggers are needed when using `forall` as a hypothesis)
                 BndX::Quant(
                     Quant { quant: air::ast::Quant::Forall, boxed_params },
                     bndrs,
