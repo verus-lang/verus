@@ -39,6 +39,49 @@ impl Debug for Arm {
         formatter.finish()
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for Assert {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Assert");
+        formatter.field("attrs", &self.attrs);
+        formatter.field("assert_token", &self.assert_token);
+        formatter.field("paren_token", &self.paren_token);
+        formatter.field("expr", &self.expr);
+        formatter.field("by_token", &self.by_token);
+        formatter.field("prover", &self.prover);
+        formatter.field("requires", &self.requires);
+        formatter.field("body", &self.body);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for AssertForall {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("AssertForall");
+        formatter.field("attrs", &self.attrs);
+        formatter.field("assert_token", &self.assert_token);
+        formatter.field("forall_token", &self.forall_token);
+        formatter.field("or1_token", &self.or1_token);
+        formatter.field("inputs", &self.inputs);
+        formatter.field("or2_token", &self.or2_token);
+        formatter.field("expr", &self.expr);
+        formatter.field("implies", &self.implies);
+        formatter.field("by_token", &self.by_token);
+        formatter.field("body", &self.body);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for Assume {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Assume");
+        formatter.field("attrs", &self.attrs);
+        formatter.field("assume_token", &self.assume_token);
+        formatter.field("paren_token", &self.paren_token);
+        formatter.field("expr", &self.expr);
+        formatter.finish()
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for AttrStyle {
@@ -222,6 +265,41 @@ impl Debug for BinOp {
                 formatter.field(v0);
                 formatter.finish()
             }
+            BinOp::BigAnd(v0) => {
+                let mut formatter = formatter.debug_tuple("BigAnd");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            BinOp::BigOr(v0) => {
+                let mut formatter = formatter.debug_tuple("BigOr");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            BinOp::Equiv(v0) => {
+                let mut formatter = formatter.debug_tuple("Equiv");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            BinOp::Imply(v0) => {
+                let mut formatter = formatter.debug_tuple("Imply");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            BinOp::Exply(v0) => {
+                let mut formatter = formatter.debug_tuple("Exply");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            BinOp::BigEq(v0) => {
+                let mut formatter = formatter.debug_tuple("BigEq");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            BinOp::BigNe(v0) => {
+                let mut formatter = formatter.debug_tuple("BigNe");
+                formatter.field(v0);
+                formatter.finish()
+            }
         }
     }
 }
@@ -255,6 +333,14 @@ impl Debug for BoundLifetimes {
         formatter.field("lt_token", &self.lt_token);
         formatter.field("lifetimes", &self.lifetimes);
         formatter.field("gt_token", &self.gt_token);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for Closed {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Closed");
+        formatter.field("token", &self.token);
         formatter.finish()
     }
 }
@@ -318,6 +404,29 @@ impl Debug for DataEnum {
         formatter.finish()
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for DataMode {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            DataMode::Ghost(v0) => {
+                let mut formatter = formatter.debug_tuple("Ghost");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            DataMode::Tracked(v0) => {
+                let mut formatter = formatter.debug_tuple("Tracked");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            DataMode::Exec(v0) => {
+                let mut formatter = formatter.debug_tuple("Exec");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            DataMode::Default => formatter.write_str("Default"),
+        }
+    }
+}
 #[cfg(feature = "derive")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for DataStruct {
@@ -339,6 +448,15 @@ impl Debug for DataUnion {
         formatter.finish()
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for Decreases {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Decreases");
+        formatter.field("token", &self.token);
+        formatter.field("exprs", &self.exprs);
+        formatter.finish()
+    }
+}
 #[cfg(feature = "derive")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for DeriveInput {
@@ -346,9 +464,19 @@ impl Debug for DeriveInput {
         let mut formatter = formatter.debug_struct("DeriveInput");
         formatter.field("attrs", &self.attrs);
         formatter.field("vis", &self.vis);
+        formatter.field("mode", &self.mode);
         formatter.field("ident", &self.ident);
         formatter.field("generics", &self.generics);
         formatter.field("data", &self.data);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for Ensures {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Ensures");
+        formatter.field("token", &self.token);
+        formatter.field("exprs", &self.exprs);
         formatter.finish()
     }
 }
@@ -587,6 +715,30 @@ impl Debug for Expr {
                 formatter.field(v0);
                 formatter.finish()
             }
+            #[cfg(feature = "full")]
+            Expr::Assume(v0) => {
+                let mut formatter = formatter.debug_tuple("Assume");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            #[cfg(feature = "full")]
+            Expr::Assert(v0) => {
+                let mut formatter = formatter.debug_tuple("Assert");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            #[cfg(feature = "full")]
+            Expr::AssertForall(v0) => {
+                let mut formatter = formatter.debug_tuple("AssertForall");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            #[cfg(feature = "full")]
+            Expr::View(v0) => {
+                let mut formatter = formatter.debug_tuple("View");
+                formatter.field(v0);
+                formatter.finish()
+            }
             #[cfg(any(syn_no_non_exhaustive, not(feature = "full")))]
             _ => unreachable!(),
         }
@@ -734,6 +886,7 @@ impl Debug for ExprClosure {
         formatter.field("inputs", &self.inputs);
         formatter.field("or2_token", &self.or2_token);
         formatter.field("output", &self.output);
+        formatter.field("inner_attrs", &self.inner_attrs);
         formatter.field("body", &self.body);
         formatter.finish()
     }
@@ -843,6 +996,10 @@ impl Debug for ExprLoop {
         formatter.field("attrs", &self.attrs);
         formatter.field("label", &self.label);
         formatter.field("loop_token", &self.loop_token);
+        formatter.field("requires", &self.requires);
+        formatter.field("invariant", &self.invariant);
+        formatter.field("ensures", &self.ensures);
+        formatter.field("decreases", &self.decreases);
         formatter.field("body", &self.body);
         formatter.finish()
     }
@@ -1046,6 +1203,8 @@ impl Debug for ExprWhile {
         formatter.field("label", &self.label);
         formatter.field("while_token", &self.while_token);
         formatter.field("cond", &self.cond);
+        formatter.field("invariant", &self.invariant);
+        formatter.field("decreases", &self.decreases);
         formatter.field("body", &self.body);
         formatter.finish()
     }
@@ -1068,6 +1227,7 @@ impl Debug for Field {
         let mut formatter = formatter.debug_struct("Field");
         formatter.field("attrs", &self.attrs);
         formatter.field("vis", &self.vis);
+        formatter.field("mode", &self.mode);
         formatter.field("ident", &self.ident);
         formatter.field("colon_token", &self.colon_token);
         formatter.field("ty", &self.ty);
@@ -1152,17 +1312,55 @@ impl Debug for File {
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for FnArg {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("FnArg");
+        formatter.field("tracked", &self.tracked);
+        formatter.field("kind", &self.kind);
+        formatter.finish()
+    }
+}
+#[cfg(feature = "full")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for FnArgKind {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            FnArg::Receiver(v0) => {
+            FnArgKind::Receiver(v0) => {
                 let mut formatter = formatter.debug_tuple("Receiver");
                 formatter.field(v0);
                 formatter.finish()
             }
-            FnArg::Typed(v0) => {
+            FnArgKind::Typed(v0) => {
                 let mut formatter = formatter.debug_tuple("Typed");
                 formatter.field(v0);
                 formatter.finish()
             }
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for FnMode {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            FnMode::Spec(v0) => {
+                let mut formatter = formatter.debug_tuple("Spec");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            FnMode::SpecChecked(v0) => {
+                let mut formatter = formatter.debug_tuple("SpecChecked");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            FnMode::Proof(v0) => {
+                let mut formatter = formatter.debug_tuple("Proof");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            FnMode::Exec(v0) => {
+                let mut formatter = formatter.debug_tuple("Exec");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            FnMode::Default => formatter.write_str("Default"),
         }
     }
 }
@@ -1381,6 +1579,8 @@ impl Debug for ImplItemConst {
         let mut formatter = formatter.debug_struct("ImplItemConst");
         formatter.field("attrs", &self.attrs);
         formatter.field("vis", &self.vis);
+        formatter.field("publish", &self.publish);
+        formatter.field("mode", &self.mode);
         formatter.field("defaultness", &self.defaultness);
         formatter.field("const_token", &self.const_token);
         formatter.field("ident", &self.ident);
@@ -1413,6 +1613,7 @@ impl Debug for ImplItemMethod {
         formatter.field("defaultness", &self.defaultness);
         formatter.field("sig", &self.sig);
         formatter.field("block", &self.block);
+        formatter.field("semi_token", &self.semi_token);
         formatter.finish()
     }
 }
@@ -1440,6 +1641,15 @@ impl Debug for Index {
         let mut formatter = formatter.debug_struct("Index");
         formatter.field("index", &self.index);
         formatter.field("span", &self.span);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for Invariant {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Invariant");
+        formatter.field("token", &self.token);
+        formatter.field("exprs", &self.exprs);
         formatter.finish()
     }
 }
@@ -1545,6 +1755,8 @@ impl Debug for ItemConst {
         let mut formatter = formatter.debug_struct("ItemConst");
         formatter.field("attrs", &self.attrs);
         formatter.field("vis", &self.vis);
+        formatter.field("publish", &self.publish);
+        formatter.field("mode", &self.mode);
         formatter.field("const_token", &self.const_token);
         formatter.field("ident", &self.ident);
         formatter.field("colon_token", &self.colon_token);
@@ -1562,6 +1774,7 @@ impl Debug for ItemEnum {
         let mut formatter = formatter.debug_struct("ItemEnum");
         formatter.field("attrs", &self.attrs);
         formatter.field("vis", &self.vis);
+        formatter.field("mode", &self.mode);
         formatter.field("enum_token", &self.enum_token);
         formatter.field("ident", &self.ident);
         formatter.field("generics", &self.generics);
@@ -1594,6 +1807,7 @@ impl Debug for ItemFn {
         formatter.field("vis", &self.vis);
         formatter.field("sig", &self.sig);
         formatter.field("block", &self.block);
+        formatter.field("semi_token", &self.semi_token);
         formatter.finish()
     }
 }
@@ -1690,6 +1904,7 @@ impl Debug for ItemStruct {
         let mut formatter = formatter.debug_struct("ItemStruct");
         formatter.field("attrs", &self.attrs);
         formatter.field("vis", &self.vis);
+        formatter.field("mode", &self.mode);
         formatter.field("struct_token", &self.struct_token);
         formatter.field("ident", &self.ident);
         formatter.field("generics", &self.generics);
@@ -1862,6 +2077,7 @@ impl Debug for Local {
         let mut formatter = formatter.debug_struct("Local");
         formatter.field("attrs", &self.attrs);
         formatter.field("let_token", &self.let_token);
+        formatter.field("tracked", &self.tracked);
         formatter.field("pat", &self.pat);
         formatter.field("init", &self.init);
         formatter.field("semi_token", &self.semi_token);
@@ -1978,6 +2194,79 @@ impl Debug for MethodTurbofish {
         formatter.finish()
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for Mode {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Mode::Spec(v0) => {
+                let mut formatter = formatter.debug_tuple("Spec");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            Mode::Proof(v0) => {
+                let mut formatter = formatter.debug_tuple("Proof");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            Mode::Exec(v0) => {
+                let mut formatter = formatter.debug_tuple("Exec");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            Mode::Default => formatter.write_str("Default"),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for ModeExec {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ModeExec");
+        formatter.field("exec_token", &self.exec_token);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for ModeGhost {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ModeGhost");
+        formatter.field("ghost_token", &self.ghost_token);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for ModeProof {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ModeProof");
+        formatter.field("proof_token", &self.proof_token);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for ModeSpec {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ModeSpec");
+        formatter.field("spec_token", &self.spec_token);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for ModeSpecChecked {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ModeSpecChecked");
+        formatter.field("spec_token", &self.spec_token);
+        formatter.field("paren_token", &self.paren_token);
+        formatter.field("checked", &self.checked);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for ModeTracked {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ModeTracked");
+        formatter.field("tracked_token", &self.tracked_token);
+        formatter.finish()
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for NestedMeta {
@@ -1994,6 +2283,25 @@ impl Debug for NestedMeta {
                 formatter.finish()
             }
         }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for Open {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Open");
+        formatter.field("token", &self.token);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for OpenRestricted {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("OpenRestricted");
+        formatter.field("open_token", &self.open_token);
+        formatter.field("paren_token", &self.paren_token);
+        formatter.field("in_token", &self.in_token);
+        formatter.field("path", &self.path);
+        formatter.finish()
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -2338,6 +2646,29 @@ impl Debug for PredicateType {
         formatter.finish()
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for Publish {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Publish::Closed(v0) => {
+                let mut formatter = formatter.debug_tuple("Closed");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            Publish::Open(v0) => {
+                let mut formatter = formatter.debug_tuple("Open");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            Publish::OpenRestricted(v0) => {
+                let mut formatter = formatter.debug_tuple("OpenRestricted");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            Publish::Default => formatter.write_str("Default"),
+        }
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for QSelf {
@@ -2381,16 +2712,36 @@ impl Debug for Receiver {
         formatter.finish()
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for Recommends {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Recommends");
+        formatter.field("token", &self.token);
+        formatter.field("exprs", &self.exprs);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for Requires {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Requires");
+        formatter.field("token", &self.token);
+        formatter.field("exprs", &self.exprs);
+        formatter.finish()
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for ReturnType {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ReturnType::Default => formatter.write_str("Default"),
-            ReturnType::Type(v0, v1) => {
+            ReturnType::Type(v0, v1, v2, v3) => {
                 let mut formatter = formatter.debug_tuple("Type");
                 formatter.field(v0);
                 formatter.field(v1);
+                formatter.field(v2);
+                formatter.field(v3);
                 formatter.finish()
             }
         }
@@ -2401,10 +2752,12 @@ impl Debug for ReturnType {
 impl Debug for Signature {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("Signature");
+        formatter.field("publish", &self.publish);
         formatter.field("constness", &self.constness);
         formatter.field("asyncness", &self.asyncness);
         formatter.field("unsafety", &self.unsafety);
         formatter.field("abi", &self.abi);
+        formatter.field("mode", &self.mode);
         formatter.field("fn_token", &self.fn_token);
         formatter.field("ident", &self.ident);
         formatter.field("generics", &self.generics);
@@ -2412,6 +2765,18 @@ impl Debug for Signature {
         formatter.field("inputs", &self.inputs);
         formatter.field("variadic", &self.variadic);
         formatter.field("output", &self.output);
+        formatter.field("requires", &self.requires);
+        formatter.field("recommends", &self.recommends);
+        formatter.field("ensures", &self.ensures);
+        formatter.field("decreases", &self.decreases);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for Specification {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Specification");
+        formatter.field("exprs", &self.exprs);
         formatter.finish()
     }
 }
@@ -2511,6 +2876,8 @@ impl Debug for TraitItemConst {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("TraitItemConst");
         formatter.field("attrs", &self.attrs);
+        formatter.field("publish", &self.publish);
+        formatter.field("mode", &self.mode);
         formatter.field("const_token", &self.const_token);
         formatter.field("ident", &self.ident);
         formatter.field("colon_token", &self.colon_token);
@@ -2845,6 +3212,46 @@ impl Debug for UnOp {
                 formatter.field(v0);
                 formatter.finish()
             }
+            UnOp::BigAnd(v0) => {
+                let mut formatter = formatter.debug_tuple("BigAnd");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            UnOp::BigOr(v0) => {
+                let mut formatter = formatter.debug_tuple("BigOr");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            UnOp::Proof(v0) => {
+                let mut formatter = formatter.debug_tuple("Proof");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            UnOp::Ghost(v0) => {
+                let mut formatter = formatter.debug_tuple("Ghost");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            UnOp::Tracked(v0) => {
+                let mut formatter = formatter.debug_tuple("Tracked");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            UnOp::Forall(v0) => {
+                let mut formatter = formatter.debug_tuple("Forall");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            UnOp::Exists(v0) => {
+                let mut formatter = formatter.debug_tuple("Exists");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            UnOp::Choose(v0) => {
+                let mut formatter = formatter.debug_tuple("Choose");
+                formatter.field(v0);
+                formatter.finish()
+            }
         }
     }
 }
@@ -2950,6 +3357,16 @@ impl Debug for Variant {
         formatter.field("ident", &self.ident);
         formatter.field("fields", &self.fields);
         formatter.field("discriminant", &self.discriminant);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for View {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("View");
+        formatter.field("attrs", &self.attrs);
+        formatter.field("expr", &self.expr);
+        formatter.field("at_token", &self.at_token);
         formatter.finish()
     }
 }

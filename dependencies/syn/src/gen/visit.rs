@@ -46,6 +46,15 @@ pub trait Visit<'ast> {
     fn visit_arm(&mut self, i: &'ast Arm) {
         visit_arm(self, i);
     }
+    fn visit_assert(&mut self, i: &'ast Assert) {
+        visit_assert(self, i);
+    }
+    fn visit_assert_forall(&mut self, i: &'ast AssertForall) {
+        visit_assert_forall(self, i);
+    }
+    fn visit_assume(&mut self, i: &'ast Assume) {
+        visit_assume(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_attr_style(&mut self, i: &'ast AttrStyle) {
         visit_attr_style(self, i);
@@ -74,6 +83,9 @@ pub trait Visit<'ast> {
     fn visit_bound_lifetimes(&mut self, i: &'ast BoundLifetimes) {
         visit_bound_lifetimes(self, i);
     }
+    fn visit_closed(&mut self, i: &'ast Closed) {
+        visit_closed(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_const_param(&mut self, i: &'ast ConstParam) {
         visit_const_param(self, i);
@@ -90,6 +102,9 @@ pub trait Visit<'ast> {
     fn visit_data_enum(&mut self, i: &'ast DataEnum) {
         visit_data_enum(self, i);
     }
+    fn visit_data_mode(&mut self, i: &'ast DataMode) {
+        visit_data_mode(self, i);
+    }
     #[cfg(feature = "derive")]
     fn visit_data_struct(&mut self, i: &'ast DataStruct) {
         visit_data_struct(self, i);
@@ -98,9 +113,15 @@ pub trait Visit<'ast> {
     fn visit_data_union(&mut self, i: &'ast DataUnion) {
         visit_data_union(self, i);
     }
+    fn visit_decreases(&mut self, i: &'ast Decreases) {
+        visit_decreases(self, i);
+    }
     #[cfg(feature = "derive")]
     fn visit_derive_input(&mut self, i: &'ast DeriveInput) {
         visit_derive_input(self, i);
+    }
+    fn visit_ensures(&mut self, i: &'ast Ensures) {
+        visit_ensures(self, i);
     }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_expr(&mut self, i: &'ast Expr) {
@@ -295,6 +316,13 @@ pub trait Visit<'ast> {
         visit_fn_arg(self, i);
     }
     #[cfg(feature = "full")]
+    fn visit_fn_arg_kind(&mut self, i: &'ast FnArgKind) {
+        visit_fn_arg_kind(self, i);
+    }
+    fn visit_fn_mode(&mut self, i: &'ast FnMode) {
+        visit_fn_mode(self, i);
+    }
+    #[cfg(feature = "full")]
     fn visit_foreign_item(&mut self, i: &'ast ForeignItem) {
         visit_foreign_item(self, i);
     }
@@ -356,6 +384,9 @@ pub trait Visit<'ast> {
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_index(&mut self, i: &'ast Index) {
         visit_index(self, i);
+    }
+    fn visit_invariant(&mut self, i: &'ast Invariant) {
+        visit_invariant(self, i);
     }
     #[cfg(feature = "full")]
     fn visit_item(&mut self, i: &'ast Item) {
@@ -492,9 +523,36 @@ pub trait Visit<'ast> {
     fn visit_method_turbofish(&mut self, i: &'ast MethodTurbofish) {
         visit_method_turbofish(self, i);
     }
+    fn visit_mode(&mut self, i: &'ast Mode) {
+        visit_mode(self, i);
+    }
+    fn visit_mode_exec(&mut self, i: &'ast ModeExec) {
+        visit_mode_exec(self, i);
+    }
+    fn visit_mode_ghost(&mut self, i: &'ast ModeGhost) {
+        visit_mode_ghost(self, i);
+    }
+    fn visit_mode_proof(&mut self, i: &'ast ModeProof) {
+        visit_mode_proof(self, i);
+    }
+    fn visit_mode_spec(&mut self, i: &'ast ModeSpec) {
+        visit_mode_spec(self, i);
+    }
+    fn visit_mode_spec_checked(&mut self, i: &'ast ModeSpecChecked) {
+        visit_mode_spec_checked(self, i);
+    }
+    fn visit_mode_tracked(&mut self, i: &'ast ModeTracked) {
+        visit_mode_tracked(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_nested_meta(&mut self, i: &'ast NestedMeta) {
         visit_nested_meta(self, i);
+    }
+    fn visit_open(&mut self, i: &'ast Open) {
+        visit_open(self, i);
+    }
+    fn visit_open_restricted(&mut self, i: &'ast OpenRestricted) {
+        visit_open_restricted(self, i);
     }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_parenthesized_generic_arguments(
@@ -591,6 +649,9 @@ pub trait Visit<'ast> {
     fn visit_predicate_type(&mut self, i: &'ast PredicateType) {
         visit_predicate_type(self, i);
     }
+    fn visit_publish(&mut self, i: &'ast Publish) {
+        visit_publish(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_qself(&mut self, i: &'ast QSelf) {
         visit_qself(self, i);
@@ -603,6 +664,12 @@ pub trait Visit<'ast> {
     fn visit_receiver(&mut self, i: &'ast Receiver) {
         visit_receiver(self, i);
     }
+    fn visit_recommends(&mut self, i: &'ast Recommends) {
+        visit_recommends(self, i);
+    }
+    fn visit_requires(&mut self, i: &'ast Requires) {
+        visit_requires(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_return_type(&mut self, i: &'ast ReturnType) {
         visit_return_type(self, i);
@@ -613,6 +680,9 @@ pub trait Visit<'ast> {
     }
     fn visit_span(&mut self, i: &Span) {
         visit_span(self, i);
+    }
+    fn visit_specification(&mut self, i: &'ast Specification) {
+        visit_specification(self, i);
     }
     #[cfg(feature = "full")]
     fn visit_stmt(&mut self, i: &'ast Stmt) {
@@ -750,6 +820,9 @@ pub trait Visit<'ast> {
     fn visit_variant(&mut self, i: &'ast Variant) {
         visit_variant(self, i);
     }
+    fn visit_view(&mut self, i: &'ast View) {
+        visit_view(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_vis_crate(&mut self, i: &'ast VisCrate) {
         visit_vis_crate(self, i);
@@ -824,6 +897,67 @@ where
     if let Some(it) = &node.comma {
         tokens_helper(v, &it.spans);
     }
+}
+pub fn visit_assert<'ast, V>(v: &mut V, node: &'ast Assert)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    tokens_helper(v, &node.assert_token.span);
+    tokens_helper(v, &node.paren_token.span);
+    v.visit_expr(&*node.expr);
+    if let Some(it) = &node.by_token {
+        tokens_helper(v, &it.span);
+    }
+    if let Some(it) = &node.prover {
+        tokens_helper(v, &(it).0.span);
+        v.visit_ident(&(it).1);
+    }
+    if let Some(it) = &node.requires {
+        v.visit_requires(it);
+    }
+    if let Some(it) = &node.body {
+        full!(v.visit_block(& * * it));
+    }
+}
+pub fn visit_assert_forall<'ast, V>(v: &mut V, node: &'ast AssertForall)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    tokens_helper(v, &node.assert_token.span);
+    tokens_helper(v, &node.forall_token.span);
+    tokens_helper(v, &node.or1_token.spans);
+    for el in Punctuated::pairs(&node.inputs) {
+        let (it, p) = el.into_tuple();
+        full!(v.visit_pat(it));
+        if let Some(p) = p {
+            tokens_helper(v, &p.spans);
+        }
+    }
+    tokens_helper(v, &node.or2_token.spans);
+    v.visit_expr(&*node.expr);
+    if let Some(it) = &node.implies {
+        tokens_helper(v, &(it).0.span);
+        v.visit_expr(&*(it).1);
+    }
+    tokens_helper(v, &node.by_token.span);
+    full!(v.visit_block(& * node.body));
+}
+pub fn visit_assume<'ast, V>(v: &mut V, node: &'ast Assume)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    tokens_helper(v, &node.assume_token.span);
+    tokens_helper(v, &node.paren_token.span);
+    v.visit_expr(&*node.expr);
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_attr_style<'ast, V>(v: &mut V, node: &'ast AttrStyle)
@@ -952,6 +1086,27 @@ where
         BinOp::ShrEq(_binding_0) => {
             tokens_helper(v, &_binding_0.spans);
         }
+        BinOp::BigAnd(_binding_0) => {
+            tokens_helper(v, &_binding_0.spans);
+        }
+        BinOp::BigOr(_binding_0) => {
+            tokens_helper(v, &_binding_0.spans);
+        }
+        BinOp::Equiv(_binding_0) => {
+            tokens_helper(v, &_binding_0.spans);
+        }
+        BinOp::Imply(_binding_0) => {
+            tokens_helper(v, &_binding_0.spans);
+        }
+        BinOp::Exply(_binding_0) => {
+            tokens_helper(v, &_binding_0.spans);
+        }
+        BinOp::BigEq(_binding_0) => {
+            tokens_helper(v, &_binding_0.spans);
+        }
+        BinOp::BigNe(_binding_0) => {
+            tokens_helper(v, &_binding_0.spans);
+        }
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -988,6 +1143,12 @@ where
         }
     }
     tokens_helper(v, &node.gt_token.spans);
+}
+pub fn visit_closed<'ast, V>(v: &mut V, node: &'ast Closed)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.token.span);
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_const_param<'ast, V>(v: &mut V, node: &'ast ConstParam)
@@ -1055,6 +1216,23 @@ where
         }
     }
 }
+pub fn visit_data_mode<'ast, V>(v: &mut V, node: &'ast DataMode)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    match node {
+        DataMode::Ghost(_binding_0) => {
+            v.visit_mode_ghost(_binding_0);
+        }
+        DataMode::Tracked(_binding_0) => {
+            v.visit_mode_tracked(_binding_0);
+        }
+        DataMode::Exec(_binding_0) => {
+            v.visit_mode_exec(_binding_0);
+        }
+        DataMode::Default => {}
+    }
+}
 #[cfg(feature = "derive")]
 pub fn visit_data_struct<'ast, V>(v: &mut V, node: &'ast DataStruct)
 where
@@ -1074,6 +1252,13 @@ where
     tokens_helper(v, &node.union_token.span);
     v.visit_fields_named(&node.fields);
 }
+pub fn visit_decreases<'ast, V>(v: &mut V, node: &'ast Decreases)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.token.span);
+    v.visit_specification(&node.exprs);
+}
 #[cfg(feature = "derive")]
 pub fn visit_derive_input<'ast, V>(v: &mut V, node: &'ast DeriveInput)
 where
@@ -1083,9 +1268,17 @@ where
         v.visit_attribute(it);
     }
     v.visit_visibility(&node.vis);
+    v.visit_data_mode(&node.mode);
     v.visit_ident(&node.ident);
     v.visit_generics(&node.generics);
     v.visit_data(&node.data);
+}
+pub fn visit_ensures<'ast, V>(v: &mut V, node: &'ast Ensures)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.token.span);
+    v.visit_specification(&node.exprs);
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_expr<'ast, V>(v: &mut V, node: &'ast Expr)
@@ -1212,6 +1405,18 @@ where
         }
         Expr::Yield(_binding_0) => {
             full!(v.visit_expr_yield(_binding_0));
+        }
+        Expr::Assume(_binding_0) => {
+            v.visit_assume(_binding_0);
+        }
+        Expr::Assert(_binding_0) => {
+            v.visit_assert(_binding_0);
+        }
+        Expr::AssertForall(_binding_0) => {
+            v.visit_assert_forall(_binding_0);
+        }
+        Expr::View(_binding_0) => {
+            v.visit_view(_binding_0);
         }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
@@ -1393,6 +1598,9 @@ where
     }
     tokens_helper(v, &node.or2_token.spans);
     v.visit_return_type(&node.output);
+    for it in &node.inner_attrs {
+        v.visit_attribute(it);
+    }
     v.visit_expr(&*node.body);
 }
 #[cfg(feature = "full")]
@@ -1511,6 +1719,18 @@ where
         v.visit_label(it);
     }
     tokens_helper(v, &node.loop_token.span);
+    if let Some(it) = &node.requires {
+        v.visit_requires(it);
+    }
+    if let Some(it) = &node.invariant {
+        v.visit_invariant(it);
+    }
+    if let Some(it) = &node.ensures {
+        v.visit_ensures(it);
+    }
+    if let Some(it) = &node.decreases {
+        v.visit_decreases(it);
+    }
     v.visit_block(&node.body);
 }
 #[cfg(feature = "full")]
@@ -1751,6 +1971,12 @@ where
     }
     tokens_helper(v, &node.while_token.span);
     v.visit_expr(&*node.cond);
+    if let Some(it) = &node.invariant {
+        v.visit_invariant(it);
+    }
+    if let Some(it) = &node.decreases {
+        v.visit_decreases(it);
+    }
     v.visit_block(&node.body);
 }
 #[cfg(feature = "full")]
@@ -1775,6 +2001,7 @@ where
         v.visit_attribute(it);
     }
     v.visit_visibility(&node.vis);
+    v.visit_data_mode(&node.mode);
     if let Some(it) = &node.ident {
         v.visit_ident(it);
     }
@@ -1872,13 +2099,43 @@ pub fn visit_fn_arg<'ast, V>(v: &mut V, node: &'ast FnArg)
 where
     V: Visit<'ast> + ?Sized,
 {
+    if let Some(it) = &node.tracked {
+        tokens_helper(v, &it.span);
+    }
+    v.visit_fn_arg_kind(&node.kind);
+}
+#[cfg(feature = "full")]
+pub fn visit_fn_arg_kind<'ast, V>(v: &mut V, node: &'ast FnArgKind)
+where
+    V: Visit<'ast> + ?Sized,
+{
     match node {
-        FnArg::Receiver(_binding_0) => {
+        FnArgKind::Receiver(_binding_0) => {
             v.visit_receiver(_binding_0);
         }
-        FnArg::Typed(_binding_0) => {
+        FnArgKind::Typed(_binding_0) => {
             v.visit_pat_type(_binding_0);
         }
+    }
+}
+pub fn visit_fn_mode<'ast, V>(v: &mut V, node: &'ast FnMode)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    match node {
+        FnMode::Spec(_binding_0) => {
+            v.visit_mode_spec(_binding_0);
+        }
+        FnMode::SpecChecked(_binding_0) => {
+            v.visit_mode_spec_checked(_binding_0);
+        }
+        FnMode::Proof(_binding_0) => {
+            v.visit_mode_proof(_binding_0);
+        }
+        FnMode::Exec(_binding_0) => {
+            v.visit_mode_exec(_binding_0);
+        }
+        FnMode::Default => {}
     }
 }
 #[cfg(feature = "full")]
@@ -2081,6 +2338,8 @@ where
         v.visit_attribute(it);
     }
     v.visit_visibility(&node.vis);
+    v.visit_publish(&node.publish);
+    v.visit_fn_mode(&node.mode);
     if let Some(it) = &node.defaultness {
         tokens_helper(v, &it.span);
     }
@@ -2119,6 +2378,9 @@ where
     }
     v.visit_signature(&node.sig);
     v.visit_block(&node.block);
+    if let Some(it) = &node.semi_token {
+        tokens_helper(v, &it.spans);
+    }
 }
 #[cfg(feature = "full")]
 pub fn visit_impl_item_type<'ast, V>(v: &mut V, node: &'ast ImplItemType)
@@ -2146,6 +2408,13 @@ where
 {
     skip!(node.index);
     v.visit_span(&node.span);
+}
+pub fn visit_invariant<'ast, V>(v: &mut V, node: &'ast Invariant)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.token.span);
+    v.visit_specification(&node.exprs);
 }
 #[cfg(feature = "full")]
 pub fn visit_item<'ast, V>(v: &mut V, node: &'ast Item)
@@ -2217,6 +2486,8 @@ where
         v.visit_attribute(it);
     }
     v.visit_visibility(&node.vis);
+    v.visit_publish(&node.publish);
+    v.visit_fn_mode(&node.mode);
     tokens_helper(v, &node.const_token.span);
     v.visit_ident(&node.ident);
     tokens_helper(v, &node.colon_token.spans);
@@ -2234,6 +2505,7 @@ where
         v.visit_attribute(it);
     }
     v.visit_visibility(&node.vis);
+    v.visit_data_mode(&node.mode);
     tokens_helper(v, &node.enum_token.span);
     v.visit_ident(&node.ident);
     v.visit_generics(&node.generics);
@@ -2275,6 +2547,9 @@ where
     v.visit_visibility(&node.vis);
     v.visit_signature(&node.sig);
     v.visit_block(&*node.block);
+    if let Some(it) = &node.semi_token {
+        tokens_helper(v, &it.spans);
+    }
 }
 #[cfg(feature = "full")]
 pub fn visit_item_foreign_mod<'ast, V>(v: &mut V, node: &'ast ItemForeignMod)
@@ -2398,6 +2673,7 @@ where
         v.visit_attribute(it);
     }
     v.visit_visibility(&node.vis);
+    v.visit_data_mode(&node.mode);
     tokens_helper(v, &node.struct_token.span);
     v.visit_ident(&node.ident);
     v.visit_generics(&node.generics);
@@ -2613,6 +2889,9 @@ where
         v.visit_attribute(it);
     }
     tokens_helper(v, &node.let_token.span);
+    if let Some(it) = &node.tracked {
+        tokens_helper(v, &it.span);
+    }
     v.visit_pat(&node.pat);
     if let Some(it) = &node.init {
         tokens_helper(v, &(it).0.spans);
@@ -2718,6 +2997,61 @@ where
     }
     tokens_helper(v, &node.gt_token.spans);
 }
+pub fn visit_mode<'ast, V>(v: &mut V, node: &'ast Mode)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    match node {
+        Mode::Spec(_binding_0) => {
+            v.visit_mode_spec(_binding_0);
+        }
+        Mode::Proof(_binding_0) => {
+            v.visit_mode_proof(_binding_0);
+        }
+        Mode::Exec(_binding_0) => {
+            v.visit_mode_exec(_binding_0);
+        }
+        Mode::Default => {}
+    }
+}
+pub fn visit_mode_exec<'ast, V>(v: &mut V, node: &'ast ModeExec)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.exec_token.span);
+}
+pub fn visit_mode_ghost<'ast, V>(v: &mut V, node: &'ast ModeGhost)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.ghost_token.span);
+}
+pub fn visit_mode_proof<'ast, V>(v: &mut V, node: &'ast ModeProof)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.proof_token.span);
+}
+pub fn visit_mode_spec<'ast, V>(v: &mut V, node: &'ast ModeSpec)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.spec_token.span);
+}
+pub fn visit_mode_spec_checked<'ast, V>(v: &mut V, node: &'ast ModeSpecChecked)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.spec_token.span);
+    tokens_helper(v, &node.paren_token.span);
+    v.visit_ident(&*node.checked);
+}
+pub fn visit_mode_tracked<'ast, V>(v: &mut V, node: &'ast ModeTracked)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.tracked_token.span);
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_nested_meta<'ast, V>(v: &mut V, node: &'ast NestedMeta)
 where
@@ -2731,6 +3065,23 @@ where
             v.visit_lit(_binding_0);
         }
     }
+}
+pub fn visit_open<'ast, V>(v: &mut V, node: &'ast Open)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.token.span);
+}
+pub fn visit_open_restricted<'ast, V>(v: &mut V, node: &'ast OpenRestricted)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.open_token.span);
+    tokens_helper(v, &node.paren_token.span);
+    if let Some(it) = &node.in_token {
+        tokens_helper(v, &it.span);
+    }
+    v.visit_path(&*node.path);
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_parenthesized_generic_arguments<'ast, V>(
@@ -3096,6 +3447,23 @@ where
         }
     }
 }
+pub fn visit_publish<'ast, V>(v: &mut V, node: &'ast Publish)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    match node {
+        Publish::Closed(_binding_0) => {
+            v.visit_closed(_binding_0);
+        }
+        Publish::Open(_binding_0) => {
+            v.visit_open(_binding_0);
+        }
+        Publish::OpenRestricted(_binding_0) => {
+            v.visit_open_restricted(_binding_0);
+        }
+        Publish::Default => {}
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_qself<'ast, V>(v: &mut V, node: &'ast QSelf)
 where
@@ -3142,6 +3510,20 @@ where
     }
     tokens_helper(v, &node.self_token.span);
 }
+pub fn visit_recommends<'ast, V>(v: &mut V, node: &'ast Recommends)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.token.span);
+    v.visit_specification(&node.exprs);
+}
+pub fn visit_requires<'ast, V>(v: &mut V, node: &'ast Requires)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.token.span);
+    v.visit_specification(&node.exprs);
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_return_type<'ast, V>(v: &mut V, node: &'ast ReturnType)
 where
@@ -3149,9 +3531,17 @@ where
 {
     match node {
         ReturnType::Default => {}
-        ReturnType::Type(_binding_0, _binding_1) => {
+        ReturnType::Type(_binding_0, _binding_1, _binding_2, _binding_3) => {
             tokens_helper(v, &_binding_0.spans);
-            v.visit_type(&**_binding_1);
+            if let Some(it) = &*_binding_1 {
+                tokens_helper(v, &it.span);
+            }
+            if let Some(it) = &*_binding_2 {
+                tokens_helper(v, &(**it).0.span);
+                full!(v.visit_pat(& (* * it).1));
+                tokens_helper(v, &(**it).2.spans);
+            }
+            v.visit_type(&**_binding_3);
         }
     }
 }
@@ -3160,6 +3550,7 @@ pub fn visit_signature<'ast, V>(v: &mut V, node: &'ast Signature)
 where
     V: Visit<'ast> + ?Sized,
 {
+    v.visit_publish(&node.publish);
     if let Some(it) = &node.constness {
         tokens_helper(v, &it.span);
     }
@@ -3172,6 +3563,7 @@ where
     if let Some(it) = &node.abi {
         v.visit_abi(it);
     }
+    v.visit_fn_mode(&node.mode);
     tokens_helper(v, &node.fn_token.span);
     v.visit_ident(&node.ident);
     v.visit_generics(&node.generics);
@@ -3187,11 +3579,35 @@ where
         v.visit_variadic(it);
     }
     v.visit_return_type(&node.output);
+    if let Some(it) = &node.requires {
+        v.visit_requires(it);
+    }
+    if let Some(it) = &node.recommends {
+        v.visit_recommends(it);
+    }
+    if let Some(it) = &node.ensures {
+        v.visit_ensures(it);
+    }
+    if let Some(it) = &node.decreases {
+        v.visit_decreases(it);
+    }
 }
 pub fn visit_span<'ast, V>(v: &mut V, node: &Span)
 where
     V: Visit<'ast> + ?Sized,
 {}
+pub fn visit_specification<'ast, V>(v: &mut V, node: &'ast Specification)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for el in Punctuated::pairs(&node.exprs) {
+        let (it, p) = el.into_tuple();
+        v.visit_expr(it);
+        if let Some(p) = p {
+            tokens_helper(v, &p.spans);
+        }
+    }
+}
 #[cfg(feature = "full")]
 pub fn visit_stmt<'ast, V>(v: &mut V, node: &'ast Stmt)
 where
@@ -3272,6 +3688,8 @@ where
     for it in &node.attrs {
         v.visit_attribute(it);
     }
+    v.visit_publish(&node.publish);
+    v.visit_fn_mode(&node.mode);
     tokens_helper(v, &node.const_token.span);
     v.visit_ident(&node.ident);
     tokens_helper(v, &node.colon_token.spans);
@@ -3613,6 +4031,30 @@ where
         UnOp::Neg(_binding_0) => {
             tokens_helper(v, &_binding_0.spans);
         }
+        UnOp::BigAnd(_binding_0) => {
+            tokens_helper(v, &_binding_0.spans);
+        }
+        UnOp::BigOr(_binding_0) => {
+            tokens_helper(v, &_binding_0.spans);
+        }
+        UnOp::Proof(_binding_0) => {
+            tokens_helper(v, &_binding_0.span);
+        }
+        UnOp::Ghost(_binding_0) => {
+            tokens_helper(v, &_binding_0.span);
+        }
+        UnOp::Tracked(_binding_0) => {
+            tokens_helper(v, &_binding_0.span);
+        }
+        UnOp::Forall(_binding_0) => {
+            tokens_helper(v, &_binding_0.span);
+        }
+        UnOp::Exists(_binding_0) => {
+            tokens_helper(v, &_binding_0.span);
+        }
+        UnOp::Choose(_binding_0) => {
+            tokens_helper(v, &_binding_0.span);
+        }
     }
 }
 #[cfg(feature = "full")]
@@ -3708,6 +4150,16 @@ where
         tokens_helper(v, &(it).0.spans);
         v.visit_expr(&(it).1);
     }
+}
+pub fn visit_view<'ast, V>(v: &mut V, node: &'ast View)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    v.visit_expr(&*node.expr);
+    tokens_helper(v, &node.at_token.spans);
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_vis_crate<'ast, V>(v: &mut V, node: &'ast VisCrate)

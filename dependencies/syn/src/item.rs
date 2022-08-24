@@ -104,6 +104,8 @@ ast_struct! {
     pub struct ItemConst {
         pub attrs: Vec<Attribute>,
         pub vis: Visibility,
+        pub publish: Publish,
+        pub mode: FnMode,
         pub const_token: Token![const],
         pub ident: Ident,
         pub colon_token: Token![:],
@@ -122,6 +124,7 @@ ast_struct! {
     pub struct ItemEnum {
         pub attrs: Vec<Attribute>,
         pub vis: Visibility,
+        pub mode: DataMode,
         pub enum_token: Token![enum],
         pub ident: Ident,
         pub generics: Generics,
@@ -157,6 +160,7 @@ ast_struct! {
         pub vis: Visibility,
         pub sig: Signature,
         pub block: Box<Block>,
+        pub semi_token: Option<Token![;]>,
     }
 }
 
@@ -264,6 +268,7 @@ ast_struct! {
     pub struct ItemStruct {
         pub attrs: Vec<Attribute>,
         pub vis: Visibility,
+        pub mode: DataMode,
         pub struct_token: Token![struct],
         pub ident: Ident,
         pub generics: Generics,
@@ -390,6 +395,7 @@ impl From<DeriveInput> for Item {
             Data::Struct(data) => Item::Struct(ItemStruct {
                 attrs: input.attrs,
                 vis: input.vis,
+                mode: input.mode,
                 struct_token: data.struct_token,
                 ident: input.ident,
                 generics: input.generics,
@@ -399,6 +405,7 @@ impl From<DeriveInput> for Item {
             Data::Enum(data) => Item::Enum(ItemEnum {
                 attrs: input.attrs,
                 vis: input.vis,
+                mode: input.mode,
                 enum_token: data.enum_token,
                 ident: input.ident,
                 generics: input.generics,
@@ -422,6 +429,7 @@ impl From<ItemStruct> for DeriveInput {
         DeriveInput {
             attrs: input.attrs,
             vis: input.vis,
+            mode: input.mode,
             ident: input.ident,
             generics: input.generics,
             data: Data::Struct(DataStruct {
@@ -438,6 +446,7 @@ impl From<ItemEnum> for DeriveInput {
         DeriveInput {
             attrs: input.attrs,
             vis: input.vis,
+            mode: input.mode,
             ident: input.ident,
             generics: input.generics,
             data: Data::Enum(DataEnum {
@@ -454,6 +463,7 @@ impl From<ItemUnion> for DeriveInput {
         DeriveInput {
             attrs: input.attrs,
             vis: input.vis,
+            mode: DataMode::Default,
             ident: input.ident,
             generics: input.generics,
             data: Data::Union(DataUnion {
@@ -715,6 +725,8 @@ ast_struct! {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "full")))]
     pub struct TraitItemConst {
         pub attrs: Vec<Attribute>,
+        pub publish: Publish,
+        pub mode: FnMode,
         pub const_token: Token![const],
         pub ident: Ident,
         pub colon_token: Token![:],
@@ -826,6 +838,8 @@ ast_struct! {
     pub struct ImplItemConst {
         pub attrs: Vec<Attribute>,
         pub vis: Visibility,
+        pub publish: Publish,
+        pub mode: FnMode,
         pub defaultness: Option<Token![default]>,
         pub const_token: Token![const],
         pub ident: Ident,
@@ -848,6 +862,7 @@ ast_struct! {
         pub defaultness: Option<Token![default]>,
         pub sig: Signature,
         pub block: Block,
+        pub semi_token: Option<Token![;]>,
     }
 }
 
@@ -888,10 +903,12 @@ ast_struct! {
     /// *This type is available only if Syn is built with the `"full"` feature.*
     #[cfg_attr(doc_cfg, doc(cfg(feature = "full")))]
     pub struct Signature {
+        pub publish: Publish,
         pub constness: Option<Token![const]>,
         pub asyncness: Option<Token![async]>,
         pub unsafety: Option<Token![unsafe]>,
         pub abi: Option<Abi>,
+        pub mode: FnMode,
         pub fn_token: Token![fn],
         pub ident: Ident,
         pub generics: Generics,
@@ -899,6 +916,10 @@ ast_struct! {
         pub inputs: Punctuated<FnArg, Token![,]>,
         pub variadic: Option<Variadic>,
         pub output: ReturnType,
+        pub requires: Option<Requires>,
+        pub recommends: Option<Recommends>,
+        pub ensures: Option<Ensures>,
+        pub decreases: Option<Decreases>,
     }
 }
 
@@ -906,9 +927,9 @@ impl Signature {
     /// A method's `self` receiver, such as `&self` or `self: Box<Self>`.
     pub fn receiver(&self) -> Option<&FnArg> {
         let arg = self.inputs.first()?;
-        match arg {
-            FnArg::Receiver(_) => Some(arg),
-            FnArg::Typed(PatType { pat, .. }) => {
+        match &arg.kind {
+            FnArgKind::Receiver(_) => Some(arg),
+            FnArgKind::Typed(PatType { pat, .. }) => {
                 if let Pat::Ident(PatIdent { ident, .. }) = &**pat {
                     if ident == "self" {
                         return Some(arg);
@@ -920,17 +941,25 @@ impl Signature {
     }
 }
 
+ast_struct! {
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "full")))]
+    pub struct FnArg {
+        pub tracked: Option<Token![tracked]>,
+        pub kind: FnArgKind,
+    }
+}
+
 ast_enum_of_structs! {
     /// An argument in a function signature: the `n: usize` in `fn f(n: usize)`.
     ///
     /// *This type is available only if Syn is built with the `"full"` feature.*
     #[cfg_attr(doc_cfg, doc(cfg(feature = "full")))]
-    pub enum FnArg {
+    pub enum FnArgKind {
         /// The `self` argument of an associated method, whether taken by value
         /// or by reference.
         ///
         /// Note that `self` receivers with a specified type, such as `self:
-        /// Box<Self>`, are parsed as a `FnArg::Typed`.
+        /// Box<Self>`, are parsed as a `FnArgKind::Typed`.
         Receiver(Receiver),
 
         /// A function argument accepted by pattern and type.
@@ -943,7 +972,7 @@ ast_struct! {
     /// or by reference.
     ///
     /// Note that `self` receivers with a specified type, such as `self:
-    /// Box<Self>`, are parsed as a `FnArg::Typed`.
+    /// Box<Self>`, are parsed as a `FnArgKind::Typed`.
     ///
     /// *This type is available only if Syn is built with the `"full"` feature.*
     #[cfg_attr(doc_cfg, doc(cfg(feature = "full")))]
@@ -980,17 +1009,13 @@ pub mod parsing {
             let mut attrs = input.call(Attribute::parse_outer)?;
             let ahead = input.fork();
             let vis: Visibility = ahead.parse()?;
+            ahead.parse::<DataMode>()?;
 
             let lookahead = ahead.lookahead1();
             let mut item = if lookahead.peek(Token![fn]) || peek_signature(&ahead) {
                 let vis: Visibility = input.parse()?;
                 let sig: Signature = input.parse()?;
-                if input.peek(Token![;]) {
-                    input.parse::<Token![;]>()?;
-                    Ok(Item::Verbatim(verbatim::between(begin, input)))
-                } else {
-                    parse_rest_of_fn(input, Vec::new(), vis, sig).map(Item::Fn)
-                }
+                parse_rest_of_fn(input, Vec::new(), vis, sig).map(Item::Fn)
             } else if lookahead.peek(Token![extern]) {
                 ahead.parse::<Token![extern]>()?;
                 let lookahead = ahead.lookahead1();
@@ -1042,11 +1067,21 @@ pub mod parsing {
                         }))
                     }
                 }
-            } else if lookahead.peek(Token![const]) {
+            } else if lookahead.peek(Token![const])
+                || lookahead.peek(Token![open])
+                || lookahead.peek(Token![closed])
+                || lookahead.peek(Token![exec])
+                || lookahead.peek(Token![tracked])
+                || lookahead.peek(Token![spec])
+            {
+                let _: Publish = ahead.parse()?;
+                let _: FnMode = ahead.parse()?;
                 ahead.parse::<Token![const]>()?;
                 let lookahead = ahead.lookahead1();
                 if lookahead.peek(Ident) || lookahead.peek(Token![_]) {
                     let vis = input.parse()?;
+                    let publish = input.parse()?;
+                    let mode = input.parse()?;
                     let const_token = input.parse()?;
                     let ident = {
                         let lookahead = input.lookahead1();
@@ -1065,6 +1100,8 @@ pub mod parsing {
                         Ok(Item::Const(ItemConst {
                             attrs: Vec::new(),
                             vis,
+                            publish,
+                            mode,
                             const_token,
                             ident,
                             colon_token,
@@ -1422,6 +1459,8 @@ pub mod parsing {
             Ok(ItemConst {
                 attrs: input.call(Attribute::parse_outer)?,
                 vis: input.parse()?,
+                publish: input.parse()?,
+                mode: input.parse()?,
                 const_token: input.parse()?,
                 ident: {
                     let lookahead = input.lookahead1();
@@ -1443,8 +1482,8 @@ pub mod parsing {
     fn pop_variadic(args: &mut Punctuated<FnArg, Token![,]>) -> Option<Variadic> {
         let trailing_punct = args.trailing_punct();
 
-        let last = match args.last_mut()? {
-            FnArg::Typed(last) => last,
+        let last = match &mut args.last_mut()?.kind {
+            FnArgKind::Typed(last) => last,
             _ => return None,
         };
 
@@ -1490,20 +1529,24 @@ pub mod parsing {
 
     fn peek_signature(input: ParseStream) -> bool {
         let fork = input.fork();
-        fork.parse::<Option<Token![const]>>().is_ok()
+        fork.parse::<Publish>().is_ok()
+            && fork.parse::<Option<Token![const]>>().is_ok()
             && fork.parse::<Option<Token![async]>>().is_ok()
             && fork.parse::<Option<Token![unsafe]>>().is_ok()
             && fork.parse::<Option<Abi>>().is_ok()
+            && fork.parse::<FnMode>().is_ok()
             && fork.peek(Token![fn])
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Signature {
         fn parse(input: ParseStream) -> Result<Self> {
+            let publish: Publish = input.parse()?;
             let constness: Option<Token![const]> = input.parse()?;
             let asyncness: Option<Token![async]> = input.parse()?;
             let unsafety: Option<Token![unsafe]> = input.parse()?;
             let abi: Option<Abi> = input.parse()?;
+            let mode: FnMode = input.parse()?;
             let fn_token: Token![fn] = input.parse()?;
             let ident: Ident = input.parse()?;
             let mut generics: Generics = input.parse()?;
@@ -1515,12 +1558,18 @@ pub mod parsing {
 
             let output: ReturnType = input.parse()?;
             generics.where_clause = input.parse()?;
+            let requires: Option<Requires> = input.parse()?;
+            let recommends: Option<Recommends> = input.parse()?;
+            let ensures: Option<Ensures> = input.parse()?;
+            let decreases: Option<Decreases> = input.parse()?;
 
             Ok(Signature {
+                publish,
                 constness,
                 asyncness,
                 unsafety,
                 abi,
+                mode,
                 fn_token,
                 ident,
                 generics,
@@ -1528,6 +1577,10 @@ pub mod parsing {
                 inputs,
                 variadic,
                 output,
+                requires,
+                recommends,
+                ensures,
+                decreases,
             })
         }
     }
@@ -1548,16 +1601,23 @@ pub mod parsing {
         vis: Visibility,
         sig: Signature,
     ) -> Result<ItemFn> {
-        let content;
-        let brace_token = braced!(content in input);
-        attr::parsing::parse_inner(&content, &mut attrs)?;
-        let stmts = content.call(Block::parse_within)?;
+        let (brace_token, stmts, semi_token) = if input.peek(Token![;]) {
+            let semi_token: Token![;] = input.parse()?;
+            (Brace(semi_token.span), vec![], Some(semi_token))
+        } else {
+            let content;
+            let brace_token = braced!(content in input);
+            attr::parsing::parse_inner(&content, &mut attrs)?;
+            let stmts = content.call(Block::parse_within)?;
+            (brace_token, stmts, None)
+        };
 
         Ok(ItemFn {
             attrs,
             vis,
             sig,
             block: Box::new(Block { brace_token, stmts }),
+            semi_token,
         })
     }
 
@@ -1565,19 +1625,26 @@ pub mod parsing {
     impl Parse for FnArg {
         fn parse(input: ParseStream) -> Result<Self> {
             let attrs = input.call(Attribute::parse_outer)?;
+            let tracked: Option<Token![tracked]> = input.parse()?;
 
             let ahead = input.fork();
             if let Ok(mut receiver) = ahead.parse::<Receiver>() {
                 if !ahead.peek(Token![:]) {
                     input.advance_to(&ahead);
                     receiver.attrs = attrs;
-                    return Ok(FnArg::Receiver(receiver));
+                    return Ok(FnArg {
+                        tracked,
+                        kind: FnArgKind::Receiver(receiver),
+                    });
                 }
             }
 
             let mut typed = input.call(fn_arg_typed)?;
             typed.attrs = attrs;
-            Ok(FnArg::Typed(typed))
+            Ok(FnArg {
+                tracked,
+                kind: FnArgKind::Typed(typed),
+            })
         }
     }
 
@@ -1607,32 +1674,35 @@ pub mod parsing {
             let attrs = input.call(Attribute::parse_outer)?;
 
             let arg = if let Some(dots) = input.parse::<Option<Token![...]>>()? {
-                FnArg::Typed(PatType {
-                    attrs,
-                    pat: Box::new(Pat::Verbatim(variadic_to_tokens(&dots))),
-                    colon_token: Token![:](dots.spans[0]),
-                    ty: Box::new(Type::Verbatim(variadic_to_tokens(&dots))),
-                })
+                FnArg {
+                    tracked: None,
+                    kind: FnArgKind::Typed(PatType {
+                        attrs,
+                        pat: Box::new(Pat::Verbatim(variadic_to_tokens(&dots))),
+                        colon_token: Token![:](dots.spans[0]),
+                        ty: Box::new(Type::Verbatim(variadic_to_tokens(&dots))),
+                    }),
+                }
             } else {
                 let mut arg: FnArg = input.parse()?;
-                match &mut arg {
-                    FnArg::Receiver(receiver) if has_receiver => {
+                match &mut arg.kind {
+                    FnArgKind::Receiver(receiver) if has_receiver => {
                         return Err(Error::new(
                             receiver.self_token.span,
                             "unexpected second method receiver",
                         ));
                     }
-                    FnArg::Receiver(receiver) if !args.is_empty() => {
+                    FnArgKind::Receiver(receiver) if !args.is_empty() => {
                         return Err(Error::new(
                             receiver.self_token.span,
                             "unexpected method receiver",
                         ));
                     }
-                    FnArg::Receiver(receiver) => {
+                    FnArgKind::Receiver(receiver) => {
                         has_receiver = true;
                         receiver.attrs = attrs;
                     }
-                    FnArg::Typed(arg) => arg.attrs = attrs,
+                    FnArgKind::Typed(arg) => arg.attrs = attrs,
                 }
                 arg
             };
@@ -1973,6 +2043,7 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             let attrs = input.call(Attribute::parse_outer)?;
             let vis = input.parse::<Visibility>()?;
+            let mode = input.parse::<DataMode>()?;
             let struct_token = input.parse::<Token![struct]>()?;
             let ident = input.parse::<Ident>()?;
             let generics = input.parse::<Generics>()?;
@@ -1980,6 +2051,7 @@ pub mod parsing {
             Ok(ItemStruct {
                 attrs,
                 vis,
+                mode,
                 struct_token,
                 ident,
                 generics: Generics {
@@ -1997,6 +2069,7 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             let attrs = input.call(Attribute::parse_outer)?;
             let vis = input.parse::<Visibility>()?;
+            let mode = input.parse::<DataMode>()?;
             let enum_token = input.parse::<Token![enum]>()?;
             let ident = input.parse::<Ident>()?;
             let generics = input.parse::<Generics>()?;
@@ -2004,6 +2077,7 @@ pub mod parsing {
             Ok(ItemEnum {
                 attrs,
                 vis,
+                mode,
                 enum_token,
                 ident,
                 generics: Generics {
@@ -2262,6 +2336,8 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             Ok(TraitItemConst {
                 attrs: input.call(Attribute::parse_outer)?,
+                publish: input.parse()?,
+                mode: input.parse()?,
                 const_token: input.parse()?,
                 ident: {
                     let lookahead = input.lookahead1();
@@ -2538,7 +2614,15 @@ pub mod parsing {
 
             let mut item = if lookahead.peek(Token![fn]) || peek_signature(&ahead) {
                 input.parse().map(ImplItem::Method)
-            } else if lookahead.peek(Token![const]) {
+            } else if lookahead.peek(Token![const])
+                || lookahead.peek(Token![open])
+                || lookahead.peek(Token![closed])
+                || lookahead.peek(Token![exec])
+                || lookahead.peek(Token![tracked])
+                || lookahead.peek(Token![spec])
+            {
+                let publish = ahead.parse()?;
+                let mode = ahead.parse()?;
                 let const_token: Token![const] = ahead.parse()?;
                 let lookahead = ahead.lookahead1();
                 if lookahead.peek(Ident) || lookahead.peek(Token![_]) {
@@ -2550,6 +2634,8 @@ pub mod parsing {
                         return Ok(ImplItem::Const(ImplItemConst {
                             attrs,
                             vis,
+                            publish,
+                            mode,
                             defaultness,
                             const_token,
                             ident,
@@ -2606,6 +2692,8 @@ pub mod parsing {
             Ok(ImplItemConst {
                 attrs: input.call(Attribute::parse_outer)?,
                 vis: input.parse()?,
+                publish: input.parse()?,
+                mode: input.parse()?,
                 defaultness: input.parse()?,
                 const_token: input.parse()?,
                 ident: {
@@ -2633,26 +2721,25 @@ pub mod parsing {
             let defaultness: Option<Token![default]> = input.parse()?;
             let sig: Signature = input.parse()?;
 
-            let block = if let Some(semi) = input.parse::<Option<Token![;]>>()? {
+            let (block, semi_token) = if let Some(semi) = input.parse::<Option<Token![;]>>()? {
                 // Accept methods without a body in an impl block because
                 // rustc's *parser* does not reject them (the compilation error
                 // is emitted later than parsing) and it can be useful for macro
                 // DSLs.
-                let mut punct = Punct::new(';', Spacing::Alone);
-                punct.set_span(semi.span);
-                let tokens = TokenStream::from_iter(vec![TokenTree::Punct(punct)]);
-                Block {
+                let block = Block {
                     brace_token: Brace { span: semi.span },
-                    stmts: vec![Stmt::Item(Item::Verbatim(tokens))],
-                }
+                    stmts: vec![],
+                };
+                (block, Some(semi))
             } else {
                 let content;
                 let brace_token = braced!(content in input);
                 attrs.extend(content.call(Attribute::parse_inner)?);
-                Block {
+                let block = Block {
                     brace_token,
                     stmts: content.call(Block::parse_within)?,
-                }
+                };
+                (block, None)
             };
 
             Ok(ImplItemMethod {
@@ -2661,6 +2748,7 @@ pub mod parsing {
                 defaultness,
                 sig,
                 block,
+                semi_token,
             })
         }
     }
@@ -2818,6 +2906,8 @@ mod printing {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             tokens.append_all(self.attrs.outer());
             self.vis.to_tokens(tokens);
+            self.publish.to_tokens(tokens);
+            self.mode.to_tokens(tokens);
             self.const_token.to_tokens(tokens);
             self.ident.to_tokens(tokens);
             self.colon_token.to_tokens(tokens);
@@ -2834,6 +2924,10 @@ mod printing {
             tokens.append_all(self.attrs.outer());
             self.vis.to_tokens(tokens);
             self.sig.to_tokens(tokens);
+            if let Some(semi_token) = self.semi_token {
+                semi_token.to_tokens(tokens);
+                return;
+            }
             self.block.brace_token.surround(tokens, |tokens| {
                 tokens.append_all(self.attrs.inner());
                 tokens.append_all(&self.block.stmts);
@@ -2891,6 +2985,7 @@ mod printing {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             tokens.append_all(self.attrs.outer());
             self.vis.to_tokens(tokens);
+            self.mode.to_tokens(tokens);
             self.enum_token.to_tokens(tokens);
             self.ident.to_tokens(tokens);
             self.generics.to_tokens(tokens);
@@ -2906,6 +3001,7 @@ mod printing {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             tokens.append_all(self.attrs.outer());
             self.vis.to_tokens(tokens);
+            self.mode.to_tokens(tokens);
             self.struct_token.to_tokens(tokens);
             self.ident.to_tokens(tokens);
             self.generics.to_tokens(tokens);
@@ -3077,6 +3173,8 @@ mod printing {
     impl ToTokens for TraitItemConst {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             tokens.append_all(self.attrs.outer());
+            self.publish.to_tokens(tokens);
+            self.mode.to_tokens(tokens);
             self.const_token.to_tokens(tokens);
             self.ident.to_tokens(tokens);
             self.colon_token.to_tokens(tokens);
@@ -3143,6 +3241,8 @@ mod printing {
             tokens.append_all(self.attrs.outer());
             self.vis.to_tokens(tokens);
             self.defaultness.to_tokens(tokens);
+            self.publish.to_tokens(tokens);
+            self.mode.to_tokens(tokens);
             self.const_token.to_tokens(tokens);
             self.ident.to_tokens(tokens);
             self.colon_token.to_tokens(tokens);
@@ -3160,13 +3260,9 @@ mod printing {
             self.vis.to_tokens(tokens);
             self.defaultness.to_tokens(tokens);
             self.sig.to_tokens(tokens);
-            if self.block.stmts.len() == 1 {
-                if let Stmt::Item(Item::Verbatim(verbatim)) = &self.block.stmts[0] {
-                    if verbatim.to_string() == ";" {
-                        verbatim.to_tokens(tokens);
-                        return;
-                    }
-                }
+            if let Some(semi_token) = self.semi_token {
+                semi_token.to_tokens(tokens);
+                return;
             }
             self.block.brace_token.surround(tokens, |tokens| {
                 tokens.append_all(self.attrs.inner());
@@ -3245,9 +3341,11 @@ mod printing {
     }
 
     fn maybe_variadic_to_tokens(arg: &FnArg, tokens: &mut TokenStream) -> bool {
-        let arg = match arg {
-            FnArg::Typed(arg) => arg,
-            FnArg::Receiver(receiver) => {
+        arg.tracked.to_tokens(tokens);
+
+        let arg = match &arg.kind {
+            FnArgKind::Typed(arg) => arg,
+            FnArgKind::Receiver(receiver) => {
                 receiver.to_tokens(tokens);
                 return false;
             }
@@ -3274,10 +3372,12 @@ mod printing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for Signature {
         fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.publish.to_tokens(tokens);
             self.constness.to_tokens(tokens);
             self.asyncness.to_tokens(tokens);
             self.unsafety.to_tokens(tokens);
             self.abi.to_tokens(tokens);
+            self.mode.to_tokens(tokens);
             self.fn_token.to_tokens(tokens);
             self.ident.to_tokens(tokens);
             self.generics.to_tokens(tokens);
@@ -3303,6 +3403,10 @@ mod printing {
             });
             self.output.to_tokens(tokens);
             self.generics.where_clause.to_tokens(tokens);
+            self.requires.to_tokens(tokens);
+            self.recommends.to_tokens(tokens);
+            self.ensures.to_tokens(tokens);
+            self.decreases.to_tokens(tokens);
         }
     }
 

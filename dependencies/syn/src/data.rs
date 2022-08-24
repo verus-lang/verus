@@ -158,6 +158,8 @@ ast_struct! {
         /// Visibility of the field.
         pub vis: Visibility,
 
+        pub mode: DataMode,
+
         /// Name of the field, if any.
         ///
         /// Fields of tuple structs have no names.
@@ -301,6 +303,7 @@ pub mod parsing {
             Ok(Field {
                 attrs: input.call(Attribute::parse_outer)?,
                 vis: input.parse()?,
+                mode: input.parse()?,
                 ident: Some(if input.peek(Token![_]) {
                     input.call(Ident::parse_any)
                 } else {
@@ -317,6 +320,7 @@ pub mod parsing {
             Ok(Field {
                 attrs: input.call(Attribute::parse_outer)?,
                 vis: input.parse()?,
+                mode: input.parse()?,
                 ident: None,
                 colon_token: None,
                 ty: input.parse()?,
@@ -349,9 +353,9 @@ pub mod parsing {
     }
 
     impl Visibility {
-        fn parse_pub(input: ParseStream) -> Result<Self> {
-            let pub_token = input.parse::<Token![pub]>()?;
-
+        pub(crate) fn parse_restricted(
+            input: ParseStream,
+        ) -> Result<Option<(token::Paren, Option<Token![in]>, Box<Path>)>> {
             if input.peek(token::Paren) {
                 let ahead = input.fork();
 
@@ -369,25 +373,29 @@ pub mod parsing {
                     // e.g. `pub (crate::A, crate::B)` (Issue #720).
                     if content.is_empty() {
                         input.advance_to(&ahead);
-                        return Ok(Visibility::Restricted(VisRestricted {
-                            pub_token,
-                            paren_token,
-                            in_token: None,
-                            path: Box::new(Path::from(path)),
-                        }));
+                        return Ok(Some((paren_token, None, Box::new(Path::from(path)))));
                     }
                 } else if content.peek(Token![in]) {
                     let in_token: Token![in] = content.parse()?;
                     let path = content.call(Path::parse_mod_style)?;
 
                     input.advance_to(&ahead);
-                    return Ok(Visibility::Restricted(VisRestricted {
-                        pub_token,
-                        paren_token,
-                        in_token: Some(in_token),
-                        path: Box::new(path),
-                    }));
+                    return Ok(Some((paren_token, Some(in_token), Box::new(path))));
                 }
+            }
+            Ok(None)
+        }
+
+        fn parse_pub(input: ParseStream) -> Result<Self> {
+            let pub_token = input.parse::<Token![pub]>()?;
+
+            if let Some((paren_token, in_token, path)) = Self::parse_restricted(input)? {
+                return Ok(Visibility::Restricted(VisRestricted {
+                    pub_token,
+                    paren_token,
+                    in_token,
+                    path,
+                }));
             }
 
             Ok(Visibility::Public(VisPublic { pub_token }))
@@ -456,6 +464,7 @@ mod printing {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             tokens.append_all(&self.attrs);
             self.vis.to_tokens(tokens);
+            self.mode.to_tokens(tokens);
             if let Some(ident) = &self.ident {
                 ident.to_tokens(tokens);
                 TokensOrDefault(&self.colon_token).to_tokens(tokens);

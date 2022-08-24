@@ -47,6 +47,15 @@ pub trait VisitMut {
     fn visit_arm_mut(&mut self, i: &mut Arm) {
         visit_arm_mut(self, i);
     }
+    fn visit_assert_mut(&mut self, i: &mut Assert) {
+        visit_assert_mut(self, i);
+    }
+    fn visit_assert_forall_mut(&mut self, i: &mut AssertForall) {
+        visit_assert_forall_mut(self, i);
+    }
+    fn visit_assume_mut(&mut self, i: &mut Assume) {
+        visit_assume_mut(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_attr_style_mut(&mut self, i: &mut AttrStyle) {
         visit_attr_style_mut(self, i);
@@ -75,6 +84,9 @@ pub trait VisitMut {
     fn visit_bound_lifetimes_mut(&mut self, i: &mut BoundLifetimes) {
         visit_bound_lifetimes_mut(self, i);
     }
+    fn visit_closed_mut(&mut self, i: &mut Closed) {
+        visit_closed_mut(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_const_param_mut(&mut self, i: &mut ConstParam) {
         visit_const_param_mut(self, i);
@@ -91,6 +103,9 @@ pub trait VisitMut {
     fn visit_data_enum_mut(&mut self, i: &mut DataEnum) {
         visit_data_enum_mut(self, i);
     }
+    fn visit_data_mode_mut(&mut self, i: &mut DataMode) {
+        visit_data_mode_mut(self, i);
+    }
     #[cfg(feature = "derive")]
     fn visit_data_struct_mut(&mut self, i: &mut DataStruct) {
         visit_data_struct_mut(self, i);
@@ -99,9 +114,15 @@ pub trait VisitMut {
     fn visit_data_union_mut(&mut self, i: &mut DataUnion) {
         visit_data_union_mut(self, i);
     }
+    fn visit_decreases_mut(&mut self, i: &mut Decreases) {
+        visit_decreases_mut(self, i);
+    }
     #[cfg(feature = "derive")]
     fn visit_derive_input_mut(&mut self, i: &mut DeriveInput) {
         visit_derive_input_mut(self, i);
+    }
+    fn visit_ensures_mut(&mut self, i: &mut Ensures) {
+        visit_ensures_mut(self, i);
     }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_expr_mut(&mut self, i: &mut Expr) {
@@ -296,6 +317,13 @@ pub trait VisitMut {
         visit_fn_arg_mut(self, i);
     }
     #[cfg(feature = "full")]
+    fn visit_fn_arg_kind_mut(&mut self, i: &mut FnArgKind) {
+        visit_fn_arg_kind_mut(self, i);
+    }
+    fn visit_fn_mode_mut(&mut self, i: &mut FnMode) {
+        visit_fn_mode_mut(self, i);
+    }
+    #[cfg(feature = "full")]
     fn visit_foreign_item_mut(&mut self, i: &mut ForeignItem) {
         visit_foreign_item_mut(self, i);
     }
@@ -357,6 +385,9 @@ pub trait VisitMut {
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_index_mut(&mut self, i: &mut Index) {
         visit_index_mut(self, i);
+    }
+    fn visit_invariant_mut(&mut self, i: &mut Invariant) {
+        visit_invariant_mut(self, i);
     }
     #[cfg(feature = "full")]
     fn visit_item_mut(&mut self, i: &mut Item) {
@@ -493,9 +524,36 @@ pub trait VisitMut {
     fn visit_method_turbofish_mut(&mut self, i: &mut MethodTurbofish) {
         visit_method_turbofish_mut(self, i);
     }
+    fn visit_mode_mut(&mut self, i: &mut Mode) {
+        visit_mode_mut(self, i);
+    }
+    fn visit_mode_exec_mut(&mut self, i: &mut ModeExec) {
+        visit_mode_exec_mut(self, i);
+    }
+    fn visit_mode_ghost_mut(&mut self, i: &mut ModeGhost) {
+        visit_mode_ghost_mut(self, i);
+    }
+    fn visit_mode_proof_mut(&mut self, i: &mut ModeProof) {
+        visit_mode_proof_mut(self, i);
+    }
+    fn visit_mode_spec_mut(&mut self, i: &mut ModeSpec) {
+        visit_mode_spec_mut(self, i);
+    }
+    fn visit_mode_spec_checked_mut(&mut self, i: &mut ModeSpecChecked) {
+        visit_mode_spec_checked_mut(self, i);
+    }
+    fn visit_mode_tracked_mut(&mut self, i: &mut ModeTracked) {
+        visit_mode_tracked_mut(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_nested_meta_mut(&mut self, i: &mut NestedMeta) {
         visit_nested_meta_mut(self, i);
+    }
+    fn visit_open_mut(&mut self, i: &mut Open) {
+        visit_open_mut(self, i);
+    }
+    fn visit_open_restricted_mut(&mut self, i: &mut OpenRestricted) {
+        visit_open_restricted_mut(self, i);
     }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_parenthesized_generic_arguments_mut(
@@ -592,6 +650,9 @@ pub trait VisitMut {
     fn visit_predicate_type_mut(&mut self, i: &mut PredicateType) {
         visit_predicate_type_mut(self, i);
     }
+    fn visit_publish_mut(&mut self, i: &mut Publish) {
+        visit_publish_mut(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_qself_mut(&mut self, i: &mut QSelf) {
         visit_qself_mut(self, i);
@@ -604,6 +665,12 @@ pub trait VisitMut {
     fn visit_receiver_mut(&mut self, i: &mut Receiver) {
         visit_receiver_mut(self, i);
     }
+    fn visit_recommends_mut(&mut self, i: &mut Recommends) {
+        visit_recommends_mut(self, i);
+    }
+    fn visit_requires_mut(&mut self, i: &mut Requires) {
+        visit_requires_mut(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_return_type_mut(&mut self, i: &mut ReturnType) {
         visit_return_type_mut(self, i);
@@ -614,6 +681,9 @@ pub trait VisitMut {
     }
     fn visit_span_mut(&mut self, i: &mut Span) {
         visit_span_mut(self, i);
+    }
+    fn visit_specification_mut(&mut self, i: &mut Specification) {
+        visit_specification_mut(self, i);
     }
     #[cfg(feature = "full")]
     fn visit_stmt_mut(&mut self, i: &mut Stmt) {
@@ -751,6 +821,9 @@ pub trait VisitMut {
     fn visit_variant_mut(&mut self, i: &mut Variant) {
         visit_variant_mut(self, i);
     }
+    fn visit_view_mut(&mut self, i: &mut View) {
+        visit_view_mut(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_vis_crate_mut(&mut self, i: &mut VisCrate) {
         visit_vis_crate_mut(self, i);
@@ -825,6 +898,67 @@ where
     if let Some(it) = &mut node.comma {
         tokens_helper(v, &mut it.spans);
     }
+}
+pub fn visit_assert_mut<V>(v: &mut V, node: &mut Assert)
+where
+    V: VisitMut + ?Sized,
+{
+    for it in &mut node.attrs {
+        v.visit_attribute_mut(it);
+    }
+    tokens_helper(v, &mut node.assert_token.span);
+    tokens_helper(v, &mut node.paren_token.span);
+    v.visit_expr_mut(&mut *node.expr);
+    if let Some(it) = &mut node.by_token {
+        tokens_helper(v, &mut it.span);
+    }
+    if let Some(it) = &mut node.prover {
+        tokens_helper(v, &mut (it).0.span);
+        v.visit_ident_mut(&mut (it).1);
+    }
+    if let Some(it) = &mut node.requires {
+        v.visit_requires_mut(it);
+    }
+    if let Some(it) = &mut node.body {
+        full!(v.visit_block_mut(& mut * * it));
+    }
+}
+pub fn visit_assert_forall_mut<V>(v: &mut V, node: &mut AssertForall)
+where
+    V: VisitMut + ?Sized,
+{
+    for it in &mut node.attrs {
+        v.visit_attribute_mut(it);
+    }
+    tokens_helper(v, &mut node.assert_token.span);
+    tokens_helper(v, &mut node.forall_token.span);
+    tokens_helper(v, &mut node.or1_token.spans);
+    for el in Punctuated::pairs_mut(&mut node.inputs) {
+        let (it, p) = el.into_tuple();
+        full!(v.visit_pat_mut(it));
+        if let Some(p) = p {
+            tokens_helper(v, &mut p.spans);
+        }
+    }
+    tokens_helper(v, &mut node.or2_token.spans);
+    v.visit_expr_mut(&mut *node.expr);
+    if let Some(it) = &mut node.implies {
+        tokens_helper(v, &mut (it).0.span);
+        v.visit_expr_mut(&mut *(it).1);
+    }
+    tokens_helper(v, &mut node.by_token.span);
+    full!(v.visit_block_mut(& mut * node.body));
+}
+pub fn visit_assume_mut<V>(v: &mut V, node: &mut Assume)
+where
+    V: VisitMut + ?Sized,
+{
+    for it in &mut node.attrs {
+        v.visit_attribute_mut(it);
+    }
+    tokens_helper(v, &mut node.assume_token.span);
+    tokens_helper(v, &mut node.paren_token.span);
+    v.visit_expr_mut(&mut *node.expr);
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_attr_style_mut<V>(v: &mut V, node: &mut AttrStyle)
@@ -953,6 +1087,27 @@ where
         BinOp::ShrEq(_binding_0) => {
             tokens_helper(v, &mut _binding_0.spans);
         }
+        BinOp::BigAnd(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.spans);
+        }
+        BinOp::BigOr(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.spans);
+        }
+        BinOp::Equiv(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.spans);
+        }
+        BinOp::Imply(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.spans);
+        }
+        BinOp::Exply(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.spans);
+        }
+        BinOp::BigEq(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.spans);
+        }
+        BinOp::BigNe(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.spans);
+        }
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -989,6 +1144,12 @@ where
         }
     }
     tokens_helper(v, &mut node.gt_token.spans);
+}
+pub fn visit_closed_mut<V>(v: &mut V, node: &mut Closed)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.token.span);
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_const_param_mut<V>(v: &mut V, node: &mut ConstParam)
@@ -1056,6 +1217,23 @@ where
         }
     }
 }
+pub fn visit_data_mode_mut<V>(v: &mut V, node: &mut DataMode)
+where
+    V: VisitMut + ?Sized,
+{
+    match node {
+        DataMode::Ghost(_binding_0) => {
+            v.visit_mode_ghost_mut(_binding_0);
+        }
+        DataMode::Tracked(_binding_0) => {
+            v.visit_mode_tracked_mut(_binding_0);
+        }
+        DataMode::Exec(_binding_0) => {
+            v.visit_mode_exec_mut(_binding_0);
+        }
+        DataMode::Default => {}
+    }
+}
 #[cfg(feature = "derive")]
 pub fn visit_data_struct_mut<V>(v: &mut V, node: &mut DataStruct)
 where
@@ -1075,6 +1253,13 @@ where
     tokens_helper(v, &mut node.union_token.span);
     v.visit_fields_named_mut(&mut node.fields);
 }
+pub fn visit_decreases_mut<V>(v: &mut V, node: &mut Decreases)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.token.span);
+    v.visit_specification_mut(&mut node.exprs);
+}
 #[cfg(feature = "derive")]
 pub fn visit_derive_input_mut<V>(v: &mut V, node: &mut DeriveInput)
 where
@@ -1084,9 +1269,17 @@ where
         v.visit_attribute_mut(it);
     }
     v.visit_visibility_mut(&mut node.vis);
+    v.visit_data_mode_mut(&mut node.mode);
     v.visit_ident_mut(&mut node.ident);
     v.visit_generics_mut(&mut node.generics);
     v.visit_data_mut(&mut node.data);
+}
+pub fn visit_ensures_mut<V>(v: &mut V, node: &mut Ensures)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.token.span);
+    v.visit_specification_mut(&mut node.exprs);
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_expr_mut<V>(v: &mut V, node: &mut Expr)
@@ -1213,6 +1406,18 @@ where
         }
         Expr::Yield(_binding_0) => {
             full!(v.visit_expr_yield_mut(_binding_0));
+        }
+        Expr::Assume(_binding_0) => {
+            v.visit_assume_mut(_binding_0);
+        }
+        Expr::Assert(_binding_0) => {
+            v.visit_assert_mut(_binding_0);
+        }
+        Expr::AssertForall(_binding_0) => {
+            v.visit_assert_forall_mut(_binding_0);
+        }
+        Expr::View(_binding_0) => {
+            v.visit_view_mut(_binding_0);
         }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
@@ -1394,6 +1599,9 @@ where
     }
     tokens_helper(v, &mut node.or2_token.spans);
     v.visit_return_type_mut(&mut node.output);
+    for it in &mut node.inner_attrs {
+        v.visit_attribute_mut(it);
+    }
     v.visit_expr_mut(&mut *node.body);
 }
 #[cfg(feature = "full")]
@@ -1512,6 +1720,18 @@ where
         v.visit_label_mut(it);
     }
     tokens_helper(v, &mut node.loop_token.span);
+    if let Some(it) = &mut node.requires {
+        v.visit_requires_mut(it);
+    }
+    if let Some(it) = &mut node.invariant {
+        v.visit_invariant_mut(it);
+    }
+    if let Some(it) = &mut node.ensures {
+        v.visit_ensures_mut(it);
+    }
+    if let Some(it) = &mut node.decreases {
+        v.visit_decreases_mut(it);
+    }
     v.visit_block_mut(&mut node.body);
 }
 #[cfg(feature = "full")]
@@ -1752,6 +1972,12 @@ where
     }
     tokens_helper(v, &mut node.while_token.span);
     v.visit_expr_mut(&mut *node.cond);
+    if let Some(it) = &mut node.invariant {
+        v.visit_invariant_mut(it);
+    }
+    if let Some(it) = &mut node.decreases {
+        v.visit_decreases_mut(it);
+    }
     v.visit_block_mut(&mut node.body);
 }
 #[cfg(feature = "full")]
@@ -1776,6 +2002,7 @@ where
         v.visit_attribute_mut(it);
     }
     v.visit_visibility_mut(&mut node.vis);
+    v.visit_data_mode_mut(&mut node.mode);
     if let Some(it) = &mut node.ident {
         v.visit_ident_mut(it);
     }
@@ -1873,13 +2100,43 @@ pub fn visit_fn_arg_mut<V>(v: &mut V, node: &mut FnArg)
 where
     V: VisitMut + ?Sized,
 {
+    if let Some(it) = &mut node.tracked {
+        tokens_helper(v, &mut it.span);
+    }
+    v.visit_fn_arg_kind_mut(&mut node.kind);
+}
+#[cfg(feature = "full")]
+pub fn visit_fn_arg_kind_mut<V>(v: &mut V, node: &mut FnArgKind)
+where
+    V: VisitMut + ?Sized,
+{
     match node {
-        FnArg::Receiver(_binding_0) => {
+        FnArgKind::Receiver(_binding_0) => {
             v.visit_receiver_mut(_binding_0);
         }
-        FnArg::Typed(_binding_0) => {
+        FnArgKind::Typed(_binding_0) => {
             v.visit_pat_type_mut(_binding_0);
         }
+    }
+}
+pub fn visit_fn_mode_mut<V>(v: &mut V, node: &mut FnMode)
+where
+    V: VisitMut + ?Sized,
+{
+    match node {
+        FnMode::Spec(_binding_0) => {
+            v.visit_mode_spec_mut(_binding_0);
+        }
+        FnMode::SpecChecked(_binding_0) => {
+            v.visit_mode_spec_checked_mut(_binding_0);
+        }
+        FnMode::Proof(_binding_0) => {
+            v.visit_mode_proof_mut(_binding_0);
+        }
+        FnMode::Exec(_binding_0) => {
+            v.visit_mode_exec_mut(_binding_0);
+        }
+        FnMode::Default => {}
     }
 }
 #[cfg(feature = "full")]
@@ -2081,6 +2338,8 @@ where
         v.visit_attribute_mut(it);
     }
     v.visit_visibility_mut(&mut node.vis);
+    v.visit_publish_mut(&mut node.publish);
+    v.visit_fn_mode_mut(&mut node.mode);
     if let Some(it) = &mut node.defaultness {
         tokens_helper(v, &mut it.span);
     }
@@ -2119,6 +2378,9 @@ where
     }
     v.visit_signature_mut(&mut node.sig);
     v.visit_block_mut(&mut node.block);
+    if let Some(it) = &mut node.semi_token {
+        tokens_helper(v, &mut it.spans);
+    }
 }
 #[cfg(feature = "full")]
 pub fn visit_impl_item_type_mut<V>(v: &mut V, node: &mut ImplItemType)
@@ -2146,6 +2408,13 @@ where
 {
     skip!(node.index);
     v.visit_span_mut(&mut node.span);
+}
+pub fn visit_invariant_mut<V>(v: &mut V, node: &mut Invariant)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.token.span);
+    v.visit_specification_mut(&mut node.exprs);
 }
 #[cfg(feature = "full")]
 pub fn visit_item_mut<V>(v: &mut V, node: &mut Item)
@@ -2217,6 +2486,8 @@ where
         v.visit_attribute_mut(it);
     }
     v.visit_visibility_mut(&mut node.vis);
+    v.visit_publish_mut(&mut node.publish);
+    v.visit_fn_mode_mut(&mut node.mode);
     tokens_helper(v, &mut node.const_token.span);
     v.visit_ident_mut(&mut node.ident);
     tokens_helper(v, &mut node.colon_token.spans);
@@ -2234,6 +2505,7 @@ where
         v.visit_attribute_mut(it);
     }
     v.visit_visibility_mut(&mut node.vis);
+    v.visit_data_mode_mut(&mut node.mode);
     tokens_helper(v, &mut node.enum_token.span);
     v.visit_ident_mut(&mut node.ident);
     v.visit_generics_mut(&mut node.generics);
@@ -2275,6 +2547,9 @@ where
     v.visit_visibility_mut(&mut node.vis);
     v.visit_signature_mut(&mut node.sig);
     v.visit_block_mut(&mut *node.block);
+    if let Some(it) = &mut node.semi_token {
+        tokens_helper(v, &mut it.spans);
+    }
 }
 #[cfg(feature = "full")]
 pub fn visit_item_foreign_mod_mut<V>(v: &mut V, node: &mut ItemForeignMod)
@@ -2398,6 +2673,7 @@ where
         v.visit_attribute_mut(it);
     }
     v.visit_visibility_mut(&mut node.vis);
+    v.visit_data_mode_mut(&mut node.mode);
     tokens_helper(v, &mut node.struct_token.span);
     v.visit_ident_mut(&mut node.ident);
     v.visit_generics_mut(&mut node.generics);
@@ -2613,6 +2889,9 @@ where
         v.visit_attribute_mut(it);
     }
     tokens_helper(v, &mut node.let_token.span);
+    if let Some(it) = &mut node.tracked {
+        tokens_helper(v, &mut it.span);
+    }
     v.visit_pat_mut(&mut node.pat);
     if let Some(it) = &mut node.init {
         tokens_helper(v, &mut (it).0.spans);
@@ -2718,6 +2997,61 @@ where
     }
     tokens_helper(v, &mut node.gt_token.spans);
 }
+pub fn visit_mode_mut<V>(v: &mut V, node: &mut Mode)
+where
+    V: VisitMut + ?Sized,
+{
+    match node {
+        Mode::Spec(_binding_0) => {
+            v.visit_mode_spec_mut(_binding_0);
+        }
+        Mode::Proof(_binding_0) => {
+            v.visit_mode_proof_mut(_binding_0);
+        }
+        Mode::Exec(_binding_0) => {
+            v.visit_mode_exec_mut(_binding_0);
+        }
+        Mode::Default => {}
+    }
+}
+pub fn visit_mode_exec_mut<V>(v: &mut V, node: &mut ModeExec)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.exec_token.span);
+}
+pub fn visit_mode_ghost_mut<V>(v: &mut V, node: &mut ModeGhost)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.ghost_token.span);
+}
+pub fn visit_mode_proof_mut<V>(v: &mut V, node: &mut ModeProof)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.proof_token.span);
+}
+pub fn visit_mode_spec_mut<V>(v: &mut V, node: &mut ModeSpec)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.spec_token.span);
+}
+pub fn visit_mode_spec_checked_mut<V>(v: &mut V, node: &mut ModeSpecChecked)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.spec_token.span);
+    tokens_helper(v, &mut node.paren_token.span);
+    v.visit_ident_mut(&mut *node.checked);
+}
+pub fn visit_mode_tracked_mut<V>(v: &mut V, node: &mut ModeTracked)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.tracked_token.span);
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_nested_meta_mut<V>(v: &mut V, node: &mut NestedMeta)
 where
@@ -2731,6 +3065,23 @@ where
             v.visit_lit_mut(_binding_0);
         }
     }
+}
+pub fn visit_open_mut<V>(v: &mut V, node: &mut Open)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.token.span);
+}
+pub fn visit_open_restricted_mut<V>(v: &mut V, node: &mut OpenRestricted)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.open_token.span);
+    tokens_helper(v, &mut node.paren_token.span);
+    if let Some(it) = &mut node.in_token {
+        tokens_helper(v, &mut it.span);
+    }
+    v.visit_path_mut(&mut *node.path);
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_parenthesized_generic_arguments_mut<V>(
@@ -3096,6 +3447,23 @@ where
         }
     }
 }
+pub fn visit_publish_mut<V>(v: &mut V, node: &mut Publish)
+where
+    V: VisitMut + ?Sized,
+{
+    match node {
+        Publish::Closed(_binding_0) => {
+            v.visit_closed_mut(_binding_0);
+        }
+        Publish::Open(_binding_0) => {
+            v.visit_open_mut(_binding_0);
+        }
+        Publish::OpenRestricted(_binding_0) => {
+            v.visit_open_restricted_mut(_binding_0);
+        }
+        Publish::Default => {}
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_qself_mut<V>(v: &mut V, node: &mut QSelf)
 where
@@ -3142,6 +3510,20 @@ where
     }
     tokens_helper(v, &mut node.self_token.span);
 }
+pub fn visit_recommends_mut<V>(v: &mut V, node: &mut Recommends)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.token.span);
+    v.visit_specification_mut(&mut node.exprs);
+}
+pub fn visit_requires_mut<V>(v: &mut V, node: &mut Requires)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.token.span);
+    v.visit_specification_mut(&mut node.exprs);
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_return_type_mut<V>(v: &mut V, node: &mut ReturnType)
 where
@@ -3149,9 +3531,17 @@ where
 {
     match node {
         ReturnType::Default => {}
-        ReturnType::Type(_binding_0, _binding_1) => {
+        ReturnType::Type(_binding_0, _binding_1, _binding_2, _binding_3) => {
             tokens_helper(v, &mut _binding_0.spans);
-            v.visit_type_mut(&mut **_binding_1);
+            if let Some(it) = &mut *_binding_1 {
+                tokens_helper(v, &mut it.span);
+            }
+            if let Some(it) = &mut *_binding_2 {
+                tokens_helper(v, &mut (**it).0.span);
+                full!(v.visit_pat_mut(& mut (* * it).1));
+                tokens_helper(v, &mut (**it).2.spans);
+            }
+            v.visit_type_mut(&mut **_binding_3);
         }
     }
 }
@@ -3160,6 +3550,7 @@ pub fn visit_signature_mut<V>(v: &mut V, node: &mut Signature)
 where
     V: VisitMut + ?Sized,
 {
+    v.visit_publish_mut(&mut node.publish);
     if let Some(it) = &mut node.constness {
         tokens_helper(v, &mut it.span);
     }
@@ -3172,6 +3563,7 @@ where
     if let Some(it) = &mut node.abi {
         v.visit_abi_mut(it);
     }
+    v.visit_fn_mode_mut(&mut node.mode);
     tokens_helper(v, &mut node.fn_token.span);
     v.visit_ident_mut(&mut node.ident);
     v.visit_generics_mut(&mut node.generics);
@@ -3187,11 +3579,35 @@ where
         v.visit_variadic_mut(it);
     }
     v.visit_return_type_mut(&mut node.output);
+    if let Some(it) = &mut node.requires {
+        v.visit_requires_mut(it);
+    }
+    if let Some(it) = &mut node.recommends {
+        v.visit_recommends_mut(it);
+    }
+    if let Some(it) = &mut node.ensures {
+        v.visit_ensures_mut(it);
+    }
+    if let Some(it) = &mut node.decreases {
+        v.visit_decreases_mut(it);
+    }
 }
 pub fn visit_span_mut<V>(v: &mut V, node: &mut Span)
 where
     V: VisitMut + ?Sized,
 {}
+pub fn visit_specification_mut<V>(v: &mut V, node: &mut Specification)
+where
+    V: VisitMut + ?Sized,
+{
+    for el in Punctuated::pairs_mut(&mut node.exprs) {
+        let (it, p) = el.into_tuple();
+        v.visit_expr_mut(it);
+        if let Some(p) = p {
+            tokens_helper(v, &mut p.spans);
+        }
+    }
+}
 #[cfg(feature = "full")]
 pub fn visit_stmt_mut<V>(v: &mut V, node: &mut Stmt)
 where
@@ -3272,6 +3688,8 @@ where
     for it in &mut node.attrs {
         v.visit_attribute_mut(it);
     }
+    v.visit_publish_mut(&mut node.publish);
+    v.visit_fn_mode_mut(&mut node.mode);
     tokens_helper(v, &mut node.const_token.span);
     v.visit_ident_mut(&mut node.ident);
     tokens_helper(v, &mut node.colon_token.spans);
@@ -3613,6 +4031,30 @@ where
         UnOp::Neg(_binding_0) => {
             tokens_helper(v, &mut _binding_0.spans);
         }
+        UnOp::BigAnd(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.spans);
+        }
+        UnOp::BigOr(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.spans);
+        }
+        UnOp::Proof(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.span);
+        }
+        UnOp::Ghost(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.span);
+        }
+        UnOp::Tracked(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.span);
+        }
+        UnOp::Forall(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.span);
+        }
+        UnOp::Exists(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.span);
+        }
+        UnOp::Choose(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.span);
+        }
     }
 }
 #[cfg(feature = "full")]
@@ -3708,6 +4150,16 @@ where
         tokens_helper(v, &mut (it).0.spans);
         v.visit_expr_mut(&mut (it).1);
     }
+}
+pub fn visit_view_mut<V>(v: &mut V, node: &mut View)
+where
+    V: VisitMut + ?Sized,
+{
+    for it in &mut node.attrs {
+        v.visit_attribute_mut(it);
+    }
+    v.visit_expr_mut(&mut *node.expr);
+    tokens_helper(v, &mut node.at_token.spans);
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_vis_crate_mut<V>(v: &mut V, node: &mut VisCrate)

@@ -40,6 +40,7 @@ ast_struct! {
     pub struct Local {
         pub attrs: Vec<Attribute>,
         pub let_token: Token![let],
+        pub tracked: Option<Token![tracked]>,
         pub pat: Pat,
         pub init: Option<(Token![=], Box<Expr>)>,
         pub semi_token: Token![;],
@@ -225,6 +226,7 @@ pub mod parsing {
 
     fn stmt_local(input: ParseStream, attrs: Vec<Attribute>, begin: ParseBuffer) -> Result<Stmt> {
         let let_token: Token![let] = input.parse()?;
+        let tracked: Option<Token![tracked]> = input.parse()?;
 
         let mut pat: Pat = pat::parsing::multi_pat_with_leading_vert(input)?;
         if input.peek(Token![:]) {
@@ -262,6 +264,7 @@ pub mod parsing {
         Ok(Stmt::Local(Local {
             attrs,
             let_token,
+            tracked,
             pat,
             init,
             semi_token,
@@ -273,7 +276,7 @@ pub mod parsing {
         allow_nosemi: bool,
         mut attrs: Vec<Attribute>,
     ) -> Result<Stmt> {
-        let mut e = expr::parsing::expr_early(input)?;
+        let mut e = expr::parsing::expr_early_block(input)?;
 
         let mut attr_target = &mut e;
         loop {
@@ -334,6 +337,7 @@ mod printing {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             expr::printing::outer_attrs_to_tokens(&self.attrs, tokens);
             self.let_token.to_tokens(tokens);
+            self.tracked.to_tokens(tokens);
             self.pat.to_tokens(tokens);
             if let Some((eq_token, init)) = &self.init {
                 eq_token.to_tokens(tokens);

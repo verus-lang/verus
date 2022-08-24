@@ -225,6 +225,12 @@ ast_enum_of_structs! {
         /// A yield expression: `yield expr`.
         Yield(ExprYield),
 
+        // verus
+        Assume(Assume),
+        Assert(Assert),
+        AssertForall(AssertForall),
+        View(View),
+
         // Not public API.
         //
         // For testing exhaustiveness in downstream code, use the following idiom:
@@ -407,6 +413,7 @@ ast_struct! {
         pub inputs: Punctuated<Pat, Token![,]>,
         pub or2_token: Token![|],
         pub output: ReturnType,
+        pub inner_attrs: Vec<Attribute>,
         pub body: Box<Expr>,
     }
 }
@@ -536,6 +543,10 @@ ast_struct! {
         pub attrs: Vec<Attribute>,
         pub label: Option<Label>,
         pub loop_token: Token![loop],
+        pub requires: Option<Requires>,
+        pub invariant: Option<Invariant>,
+        pub ensures: Option<Ensures>,
+        pub decreases: Option<Decreases>,
         pub body: Block,
     }
 }
@@ -764,6 +775,8 @@ ast_struct! {
         pub label: Option<Label>,
         pub while_token: Token![while],
         pub cond: Box<Expr>,
+        pub invariant: Option<Invariant>,
+        pub decreases: Option<Decreases>,
         pub body: Block,
     }
 }
@@ -792,7 +805,7 @@ impl Expr {
     });
 
     #[cfg(all(feature = "parsing", feature = "full"))]
-    pub(crate) fn replace_attrs(&mut self, new: Vec<Attribute>) -> Vec<Attribute> {
+    pub fn replace_attrs(&mut self, new: Vec<Attribute>) -> Vec<Attribute> {
         match self {
             Expr::Box(ExprBox { attrs, .. })
             | Expr::Array(ExprArray { attrs, .. })
@@ -832,6 +845,10 @@ impl Expr {
             | Expr::Async(ExprAsync { attrs, .. })
             | Expr::Await(ExprAwait { attrs, .. })
             | Expr::TryBlock(ExprTryBlock { attrs, .. })
+            | Expr::Assume(Assume { attrs, .. })
+            | Expr::Assert(Assert { attrs, .. })
+            | Expr::AssertForall(AssertForall { attrs, .. })
+            | Expr::View(View { attrs, .. })
             | Expr::Yield(ExprYield { attrs, .. }) => mem::replace(attrs, new),
             Expr::Verbatim(_) => Vec::new(),
 
@@ -1078,6 +1095,17 @@ pub(crate) fn requires_terminator(expr: &Expr) -> bool {
     match *expr {
         Expr::Unsafe(..)
         | Expr::Block(..)
+        | Expr::Unary(ExprUnary {
+            expr: box Expr::Block(..),
+            op: UnOp::Proof(..),
+            ..
+        })
+        | Expr::Assert(Assert {
+            by_token: Some(..),
+            body: Some(..),
+            ..
+        })
+        | Expr::AssertForall(..)
         | Expr::If(..)
         | Expr::Match(..)
         | Expr::While(..)
@@ -1111,6 +1139,11 @@ pub(crate) mod parsing {
         Any,
         Assign,
         Range,
+        BigOr,
+        BigAnd,
+        Equiv,
+        Exply,
+        Imply,
         Or,
         And,
         Compare,
@@ -1121,6 +1154,13 @@ pub(crate) mod parsing {
         Arithmetic,
         Term,
         Cast,
+    }
+
+    #[derive(PartialEq, Eq, Clone, Copy)]
+    enum Associativity {
+        Left,
+        Right,
+        None,
     }
 
     impl Precedence {
@@ -1150,6 +1190,39 @@ pub(crate) mod parsing {
                 | BinOp::BitOrEq(_)
                 | BinOp::ShlEq(_)
                 | BinOp::ShrEq(_) => Precedence::Assign,
+
+                // verus
+                BinOp::BigAnd(_) => Precedence::BigAnd,
+                BinOp::BigOr(_) => Precedence::BigOr,
+                BinOp::Equiv(_) => Precedence::Equiv,
+                BinOp::Imply(_) => Precedence::Imply,
+                BinOp::Exply(_) => Precedence::Exply,
+                BinOp::BigEq(_) => Precedence::Compare,
+                BinOp::BigNe(_) => Precedence::Compare,
+            }
+        }
+    }
+
+    impl Associativity {
+        fn of(precedence: Precedence) -> Self {
+            match precedence {
+                Precedence::Assign | Precedence::Imply => Associativity::Right,
+                Precedence::Equiv => Associativity::None,
+                Precedence::Any
+                | Precedence::Range
+                | Precedence::BigOr
+                | Precedence::BigAnd
+                | Precedence::Exply
+                | Precedence::Or
+                | Precedence::And
+                | Precedence::Compare
+                | Precedence::BitOr
+                | Precedence::BitXor
+                | Precedence::BitAnd
+                | Precedence::Shift
+                | Precedence::Arithmetic
+                | Precedence::Term
+                | Precedence::Cast => Associativity::Left,
             }
         }
     }
@@ -1298,8 +1371,17 @@ pub(crate) mod parsing {
                 let mut rhs = unary_expr(input, allow_struct)?;
                 loop {
                     let next = peek_precedence(input);
-                    if next > precedence || next == precedence && precedence == Precedence::Assign {
+                    if next > precedence
+                        || (next == precedence
+                            && Associativity::of(precedence) == Associativity::Right)
+                    {
                         rhs = parse_expr(input, rhs, allow_struct, next)?;
+                    } else if next == precedence
+                        && Associativity::of(precedence) == Associativity::None
+                    {
+                        return Err(
+                            input.error("non-associative operator requires additional parentheses")
+                        );
                     } else {
                         break;
                     }
@@ -1413,8 +1495,17 @@ pub(crate) mod parsing {
                 let mut rhs = unary_expr(input, allow_struct)?;
                 loop {
                     let next = peek_precedence(input);
-                    if next > precedence || next == precedence && precedence == Precedence::Assign {
+                    if next > precedence
+                        || (next == precedence
+                            && Associativity::of(precedence) == Associativity::Right)
+                    {
                         rhs = parse_expr(input, rhs, allow_struct, next)?;
+                    } else if next == precedence
+                        && Associativity::of(precedence) == Associativity::None
+                    {
+                        return Err(
+                            input.error("non-associative operator requires additional parentheses")
+                        );
                     } else {
                         break;
                     }
@@ -1496,6 +1587,7 @@ pub(crate) mod parsing {
     fn unary_expr(input: ParseStream, allow_struct: AllowStruct) -> Result<Expr> {
         let begin = input.fork();
         let attrs = input.call(expr_attrs)?;
+        crate::verus::disallow_prefix_binop(input)?;
         if input.peek(Token![&]) {
             let and_token: Token![&] = input.parse()?;
             let raw: Option<raw> =
@@ -1524,6 +1616,18 @@ pub(crate) mod parsing {
             expr_box(input, attrs, allow_struct).map(Expr::Box)
         } else if input.peek(Token![*]) || input.peek(Token![!]) || input.peek(Token![-]) {
             expr_unary(input, attrs, allow_struct).map(Expr::Unary)
+        } else if input.peek(Token![proof]) && input.peek2(token::Brace) {
+            expr_unary(input, attrs, allow_struct).map(Expr::Unary)
+        } else if input.peek(Token![ghost]) && input.peek2(token::Paren) {
+            expr_unary(input, attrs, allow_struct).map(Expr::Unary)
+        } else if input.peek(Token![tracked]) {
+            expr_unary(input, attrs, allow_struct).map(Expr::Unary)
+        } else if input.peek2(Token![|])
+            && (input.peek(Token![forall])
+                || input.peek(Token![exists])
+                || input.peek(Token![choose]))
+        {
+            expr_unary(input, attrs, allow_struct).map(Expr::Unary)
         } else {
             trailer_expr(attrs, input, allow_struct)
         }
@@ -1531,6 +1635,7 @@ pub(crate) mod parsing {
 
     #[cfg(not(feature = "full"))]
     fn unary_expr(input: ParseStream, allow_struct: AllowStruct) -> Result<Expr> {
+        crate::verus::disallow_prefix_binop(input)?;
         if input.peek(Token![*]) || input.peek(Token![!]) || input.peek(Token![-]) {
             Ok(Expr::Unary(ExprUnary {
                 attrs: Vec::new(),
@@ -1644,6 +1749,12 @@ pub(crate) mod parsing {
                     expr: Box::new(e),
                     question_token: input.parse()?,
                 });
+            } else if input.peek(Token![@]) {
+                e = Expr::View(View {
+                    attrs: Vec::new(),
+                    expr: Box::new(e),
+                    at_token: input.parse()?,
+                });
             } else {
                 break;
             }
@@ -1754,6 +1865,12 @@ pub(crate) mod parsing {
             input.parse().map(Expr::ForLoop)
         } else if input.peek(Token![loop]) {
             input.parse().map(Expr::Loop)
+        } else if input.peek(Token![assume]) {
+            input.parse().map(Expr::Assume)
+        } else if input.peek(Token![assert]) && input.peek2(Token![forall]) {
+            input.parse().map(Expr::AssertForall)
+        } else if input.peek(Token![assert]) {
+            input.parse().map(Expr::Assert)
         } else if input.peek(Token![match]) {
             input.parse().map(Expr::Match)
         } else if input.peek(Token![yield]) {
@@ -1997,7 +2114,37 @@ pub(crate) mod parsing {
 
     #[cfg(feature = "full")]
     pub(crate) fn expr_early(input: ParseStream) -> Result<Expr> {
-        let mut attrs = input.call(expr_attrs)?;
+        let attrs = input.call(expr_attrs)?;
+        expr_early_inner(input, attrs)
+    }
+
+    #[cfg(feature = "full")]
+    pub(crate) fn expr_early_block(input: ParseStream) -> Result<Expr> {
+        let attrs = input.call(expr_attrs)?;
+        let prefix_binop = verus::parse_prefix_binop(input, &attrs)?;
+        if let Some((op, binop)) = prefix_binop {
+            let allow_struct = AllowStruct(true);
+            let expr = unary_expr(input, allow_struct)?;
+            let expr = parse_expr(input, expr, allow_struct, Precedence::of(&binop))?;
+            let expr = Box::new(expr);
+            return Ok(Expr::Unary(ExprUnary { attrs, expr, op }));
+        }
+        if input.peek(Token![proof]) && input.peek2(token::Brace) {
+            let token: Token![proof] = input.parse()?;
+            let op = op::UnOp::Proof(token);
+            let expr = expr_early_inner(input, attrs)?;
+            let expr = Box::new(expr);
+            return Ok(Expr::Unary(ExprUnary {
+                attrs: vec![],
+                expr,
+                op,
+            }));
+        }
+        expr_early_inner(input, attrs)
+    }
+
+    #[cfg(feature = "full")]
+    pub(crate) fn expr_early_inner(input: ParseStream, mut attrs: Vec<Attribute>) -> Result<Expr> {
         let mut expr = if input.peek(Token![if]) {
             Expr::If(input.parse()?)
         } else if input.peek(Token![while]) {
@@ -2006,6 +2153,12 @@ pub(crate) mod parsing {
             Expr::ForLoop(input.parse()?)
         } else if input.peek(Token![loop]) {
             Expr::Loop(input.parse()?)
+        } else if input.peek(Token![assume]) {
+            Expr::Assume(input.parse()?)
+        } else if input.peek(Token![assert]) && input.peek2(Token![forall]) {
+            Expr::AssertForall(input.parse()?)
+        } else if input.peek(Token![assert]) {
+            Expr::Assert(input.parse()?)
         } else if input.peek(Token![match]) {
             Expr::Match(input.parse()?)
         } else if input.peek(Token![try]) && input.peek2(token::Brace) {
@@ -2220,6 +2373,10 @@ pub(crate) mod parsing {
             let mut attrs = input.call(Attribute::parse_outer)?;
             let label: Option<Label> = input.parse()?;
             let loop_token: Token![loop] = input.parse()?;
+            let requires = input.parse()?;
+            let invariant = input.parse()?;
+            let ensures = input.parse()?;
+            let decreases = input.parse()?;
 
             let content;
             let brace_token = braced!(content in input);
@@ -2230,6 +2387,10 @@ pub(crate) mod parsing {
                 attrs,
                 label,
                 loop_token,
+                requires,
+                invariant,
+                ensures,
+                decreases,
                 body: Block { brace_token, stmts },
             })
         }
@@ -2301,6 +2462,7 @@ pub(crate) mod parsing {
         ExprTry, Try, "expected try expression",
         ExprTuple, Tuple, "expected tuple expression",
         ExprType, Type, "expected type ascription expression",
+        View, View, "expected view expression",
     }
 
     #[cfg(feature = "full")]
@@ -2444,20 +2606,23 @@ pub(crate) mod parsing {
 
         let or2_token: Token![|] = input.parse()?;
 
-        let (output, body) = if input.peek(Token![->]) {
+        let (output, inner_attrs, body) = if input.peek(Token![->]) {
             let arrow_token: Token![->] = input.parse()?;
+            let tracked: Option<Token![tracked]> = input.parse()?;
             let ty: Type = input.parse()?;
             let body: Block = input.parse()?;
-            let output = ReturnType::Type(arrow_token, Box::new(ty));
+            let output = ReturnType::Type(arrow_token, tracked, None, Box::new(ty));
+            let inner_attrs = input.call(Attribute::parse_inner)?;
             let block = Expr::Block(ExprBlock {
                 attrs: Vec::new(),
                 label: None,
                 block: body,
             });
-            (output, block)
+            (output, inner_attrs, block)
         } else {
+            let inner_attrs = input.call(Attribute::parse_inner)?;
             let body = ambiguous_expr(input, allow_struct)?;
-            (ReturnType::Default, body)
+            (ReturnType::Default, inner_attrs, body)
         };
 
         Ok(ExprClosure {
@@ -2469,6 +2634,7 @@ pub(crate) mod parsing {
             inputs,
             or2_token,
             output,
+            inner_attrs,
             body: Box::new(body),
         })
     }
@@ -2532,6 +2698,8 @@ pub(crate) mod parsing {
             let label: Option<Label> = input.parse()?;
             let while_token: Token![while] = input.parse()?;
             let cond = Expr::parse_without_eager_brace(input)?;
+            let invariant = input.parse()?;
+            let decreases = input.parse()?;
 
             let content;
             let brace_token = braced!(content in input);
@@ -2543,6 +2711,8 @@ pub(crate) mod parsing {
                 label,
                 while_token,
                 cond: Box::new(cond),
+                invariant,
+                decreases,
                 body: Block { brace_token, stmts },
             })
         }
@@ -3150,6 +3320,8 @@ pub(crate) mod printing {
             self.label.to_tokens(tokens);
             self.while_token.to_tokens(tokens);
             wrap_bare_struct(tokens, &self.cond);
+            self.invariant.to_tokens(tokens);
+            self.decreases.to_tokens(tokens);
             self.body.brace_token.surround(tokens, |tokens| {
                 inner_attrs_to_tokens(&self.attrs, tokens);
                 tokens.append_all(&self.body.stmts);
@@ -3181,6 +3353,10 @@ pub(crate) mod printing {
             outer_attrs_to_tokens(&self.attrs, tokens);
             self.label.to_tokens(tokens);
             self.loop_token.to_tokens(tokens);
+            self.requires.to_tokens(tokens);
+            self.invariant.to_tokens(tokens);
+            self.ensures.to_tokens(tokens);
+            self.decreases.to_tokens(tokens);
             self.body.brace_token.surround(tokens, |tokens| {
                 inner_attrs_to_tokens(&self.attrs, tokens);
                 tokens.append_all(&self.body.stmts);
@@ -3264,6 +3440,7 @@ pub(crate) mod printing {
             self.inputs.to_tokens(tokens);
             self.or2_token.to_tokens(tokens);
             self.output.to_tokens(tokens);
+            inner_attrs_to_tokens(&self.inner_attrs, tokens);
             self.body.to_tokens(tokens);
         }
     }

@@ -61,6 +61,15 @@ ast_enum! {
         ShlEq(Token![<<=]),
         /// The `>>=` operator
         ShrEq(Token![>>=]),
+
+        // verus
+        BigAnd(Token![&&&]),
+        BigOr(Token![|||]),
+        Equiv(Token![<==>]),
+        Imply(Token![==>]),
+        Exply(Token![<==]),
+        BigEq(Token![===]),
+        BigNe(Token![!==]),
     }
 }
 
@@ -77,6 +86,16 @@ ast_enum! {
         Not(Token![!]),
         /// The `-` operator for negation
         Neg(Token![-]),
+
+        // verus
+        BigAnd(Token![&&&]),
+        BigOr(Token![|||]),
+        Proof(Token![proof]),
+        Ghost(Token![ghost]),
+        Tracked(Token![tracked]),
+        Forall(Token![forall]),
+        Exists(Token![exists]),
+        Choose(Token![choose]),
     }
 }
 
@@ -86,7 +105,21 @@ pub mod parsing {
     use crate::parse::{Parse, ParseStream, Result};
 
     fn parse_binop(input: ParseStream) -> Result<BinOp> {
-        if input.peek(Token![&&]) {
+        if input.peek(Token![&&&]) {
+            input.parse().map(BinOp::BigAnd)
+        } else if input.peek(Token![|||]) {
+            input.parse().map(BinOp::BigOr)
+        } else if input.peek(Token![<==>]) {
+            input.parse().map(BinOp::Equiv)
+        } else if input.peek(Token![==>]) {
+            input.parse().map(BinOp::Imply)
+        } else if input.peek(Token![<==]) {
+            input.parse().map(BinOp::Exply)
+        } else if input.peek(Token![===]) {
+            input.parse().map(BinOp::BigEq)
+        } else if input.peek(Token![!==]) {
+            input.parse().map(BinOp::BigNe)
+        } else if input.peek(Token![&&]) {
             input.parse().map(BinOp::And)
         } else if input.peek(Token![||]) {
             input.parse().map(BinOp::Or)
@@ -172,6 +205,18 @@ pub mod parsing {
                 input.parse().map(UnOp::Not)
             } else if lookahead.peek(Token![-]) {
                 input.parse().map(UnOp::Neg)
+            } else if lookahead.peek(Token![proof]) {
+                input.parse().map(UnOp::Proof)
+            } else if lookahead.peek(Token![ghost]) {
+                input.parse().map(UnOp::Ghost)
+            } else if lookahead.peek(Token![tracked]) {
+                input.parse().map(UnOp::Tracked)
+            } else if lookahead.peek(Token![forall]) {
+                input.parse().map(UnOp::Forall)
+            } else if lookahead.peek(Token![exists]) {
+                input.parse().map(UnOp::Exists)
+            } else if lookahead.peek(Token![choose]) {
+                input.parse().map(UnOp::Choose)
             } else {
                 Err(lookahead.error())
             }
@@ -217,6 +262,15 @@ mod printing {
                 BinOp::BitOrEq(t) => t.to_tokens(tokens),
                 BinOp::ShlEq(t) => t.to_tokens(tokens),
                 BinOp::ShrEq(t) => t.to_tokens(tokens),
+
+                // verus
+                BinOp::BigAnd(t) => t.to_tokens(tokens),
+                BinOp::BigOr(t) => t.to_tokens(tokens),
+                BinOp::Equiv(t) => t.to_tokens(tokens),
+                BinOp::Imply(t) => t.to_tokens(tokens),
+                BinOp::Exply(t) => t.to_tokens(tokens),
+                BinOp::BigEq(t) => t.to_tokens(tokens),
+                BinOp::BigNe(t) => t.to_tokens(tokens),
             }
         }
     }
@@ -228,6 +282,16 @@ mod printing {
                 UnOp::Deref(t) => t.to_tokens(tokens),
                 UnOp::Not(t) => t.to_tokens(tokens),
                 UnOp::Neg(t) => t.to_tokens(tokens),
+
+                // verus
+                UnOp::BigAnd(t) => t.to_tokens(tokens),
+                UnOp::BigOr(t) => t.to_tokens(tokens),
+                UnOp::Proof(t) => t.to_tokens(tokens),
+                UnOp::Ghost(t) => t.to_tokens(tokens),
+                UnOp::Tracked(t) => t.to_tokens(tokens),
+                UnOp::Forall(t) => t.to_tokens(tokens),
+                UnOp::Exists(t) => t.to_tokens(tokens),
+                UnOp::Choose(t) => t.to_tokens(tokens),
             }
         }
     }

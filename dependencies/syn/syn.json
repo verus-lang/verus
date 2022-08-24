@@ -96,6 +96,143 @@
       }
     },
     {
+      "ident": "Assert",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "assert_token": {
+          "token": "Assert"
+        },
+        "paren_token": {
+          "group": "Paren"
+        },
+        "expr": {
+          "box": {
+            "syn": "Expr"
+          }
+        },
+        "by_token": {
+          "option": {
+            "token": "By"
+          }
+        },
+        "prover": {
+          "option": {
+            "tuple": [
+              {
+                "group": "Paren"
+              },
+              {
+                "proc_macro2": "Ident"
+              }
+            ]
+          }
+        },
+        "requires": {
+          "option": {
+            "syn": "Requires"
+          }
+        },
+        "body": {
+          "option": {
+            "box": {
+              "syn": "Block"
+            }
+          }
+        }
+      }
+    },
+    {
+      "ident": "AssertForall",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "assert_token": {
+          "token": "Assert"
+        },
+        "forall_token": {
+          "token": "Forall"
+        },
+        "or1_token": {
+          "token": "Or"
+        },
+        "inputs": {
+          "punctuated": {
+            "element": {
+              "syn": "Pat"
+            },
+            "punct": "Comma"
+          }
+        },
+        "or2_token": {
+          "token": "Or"
+        },
+        "expr": {
+          "box": {
+            "syn": "Expr"
+          }
+        },
+        "implies": {
+          "option": {
+            "tuple": [
+              {
+                "token": "Implies"
+              },
+              {
+                "box": {
+                  "syn": "Expr"
+                }
+              }
+            ]
+          }
+        },
+        "by_token": {
+          "token": "By"
+        },
+        "body": {
+          "box": {
+            "syn": "Block"
+          }
+        }
+      }
+    },
+    {
+      "ident": "Assume",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "assume_token": {
+          "token": "Assume"
+        },
+        "paren_token": {
+          "group": "Paren"
+        },
+        "expr": {
+          "box": {
+            "syn": "Expr"
+          }
+        }
+      }
+    },
+    {
       "ident": "AttrStyle",
       "features": {
         "any": [
@@ -317,6 +454,41 @@
           {
             "token": "ShrEq"
           }
+        ],
+        "BigAnd": [
+          {
+            "token": "BigAnd"
+          }
+        ],
+        "BigOr": [
+          {
+            "token": "BigOr"
+          }
+        ],
+        "Equiv": [
+          {
+            "token": "Equiv"
+          }
+        ],
+        "Imply": [
+          {
+            "token": "Imply"
+          }
+        ],
+        "Exply": [
+          {
+            "token": "Exply"
+          }
+        ],
+        "BigEq": [
+          {
+            "token": "EqEqEq"
+          }
+        ],
+        "BigNe": [
+          {
+            "token": "NeEq"
+          }
         ]
       }
     },
@@ -383,6 +555,17 @@
         },
         "gt_token": {
           "token": "Gt"
+        }
+      }
+    },
+    {
+      "ident": "Closed",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "Closed"
         }
       }
     },
@@ -499,6 +682,30 @@
       }
     },
     {
+      "ident": "DataMode",
+      "features": {
+        "any": []
+      },
+      "variants": {
+        "Ghost": [
+          {
+            "syn": "ModeGhost"
+          }
+        ],
+        "Tracked": [
+          {
+            "syn": "ModeTracked"
+          }
+        ],
+        "Exec": [
+          {
+            "syn": "ModeExec"
+          }
+        ],
+        "Default": []
+      }
+    },
+    {
       "ident": "DataStruct",
       "features": {
         "any": [
@@ -536,6 +743,20 @@
       }
     },
     {
+      "ident": "Decreases",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "Decreases"
+        },
+        "exprs": {
+          "syn": "Specification"
+        }
+      }
+    },
+    {
       "ident": "DeriveInput",
       "features": {
         "any": [
@@ -551,6 +772,9 @@
         "vis": {
           "syn": "Visibility"
         },
+        "mode": {
+          "syn": "DataMode"
+        },
         "ident": {
           "proc_macro2": "Ident"
         },
@@ -559,6 +783,20 @@
         },
         "data": {
           "syn": "Data"
+        }
+      }
+    },
+    {
+      "ident": "Ensures",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "Ensures"
+        },
+        "exprs": {
+          "syn": "Specification"
         }
       }
     },
@@ -769,6 +1007,26 @@
         "Yield": [
           {
             "syn": "ExprYield"
+          }
+        ],
+        "Assume": [
+          {
+            "syn": "Assume"
+          }
+        ],
+        "Assert": [
+          {
+            "syn": "Assert"
+          }
+        ],
+        "AssertForall": [
+          {
+            "syn": "AssertForall"
+          }
+        ],
+        "View": [
+          {
+            "syn": "View"
           }
         ]
       },
@@ -1119,6 +1377,11 @@
         "output": {
           "syn": "ReturnType"
         },
+        "inner_attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
         "body": {
           "box": {
             "syn": "Expr"
@@ -1373,6 +1636,26 @@
         },
         "loop_token": {
           "token": "Loop"
+        },
+        "requires": {
+          "option": {
+            "syn": "Requires"
+          }
+        },
+        "invariant": {
+          "option": {
+            "syn": "Invariant"
+          }
+        },
+        "ensures": {
+          "option": {
+            "syn": "Ensures"
+          }
+        },
+        "decreases": {
+          "option": {
+            "syn": "Decreases"
+          }
         },
         "body": {
           "syn": "Block"
@@ -1847,6 +2130,16 @@
             "syn": "Expr"
           }
         },
+        "invariant": {
+          "option": {
+            "syn": "Invariant"
+          }
+        },
+        "decreases": {
+          "option": {
+            "syn": "Decreases"
+          }
+        },
         "body": {
           "syn": "Block"
         }
@@ -1893,6 +2186,9 @@
         },
         "vis": {
           "syn": "Visibility"
+        },
+        "mode": {
+          "syn": "DataMode"
         },
         "ident": {
           "option": {
@@ -2061,6 +2357,24 @@
           "full"
         ]
       },
+      "fields": {
+        "tracked": {
+          "option": {
+            "token": "Tracked"
+          }
+        },
+        "kind": {
+          "syn": "FnArgKind"
+        }
+      }
+    },
+    {
+      "ident": "FnArgKind",
+      "features": {
+        "any": [
+          "full"
+        ]
+      },
       "variants": {
         "Receiver": [
           {
@@ -2072,6 +2386,35 @@
             "syn": "PatType"
           }
         ]
+      }
+    },
+    {
+      "ident": "FnMode",
+      "features": {
+        "any": []
+      },
+      "variants": {
+        "Spec": [
+          {
+            "syn": "ModeSpec"
+          }
+        ],
+        "SpecChecked": [
+          {
+            "syn": "ModeSpecChecked"
+          }
+        ],
+        "Proof": [
+          {
+            "syn": "ModeProof"
+          }
+        ],
+        "Exec": [
+          {
+            "syn": "ModeExec"
+          }
+        ],
+        "Default": []
       }
     },
     {
@@ -2392,6 +2735,12 @@
         "vis": {
           "syn": "Visibility"
         },
+        "publish": {
+          "syn": "Publish"
+        },
+        "mode": {
+          "syn": "FnMode"
+        },
         "defaultness": {
           "option": {
             "token": "Default"
@@ -2469,6 +2818,11 @@
         },
         "block": {
           "syn": "Block"
+        },
+        "semi_token": {
+          "option": {
+            "token": "Semi"
+          }
         }
       }
     },
@@ -2527,6 +2881,20 @@
         },
         "span": {
           "proc_macro2": "Span"
+        }
+      }
+    },
+    {
+      "ident": "Invariant",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "Invariant"
+        },
+        "exprs": {
+          "syn": "Specification"
         }
       }
     },
@@ -2642,6 +3010,12 @@
         "vis": {
           "syn": "Visibility"
         },
+        "publish": {
+          "syn": "Publish"
+        },
+        "mode": {
+          "syn": "FnMode"
+        },
         "const_token": {
           "token": "Const"
         },
@@ -2684,6 +3058,9 @@
         },
         "vis": {
           "syn": "Visibility"
+        },
+        "mode": {
+          "syn": "DataMode"
         },
         "enum_token": {
           "token": "Enum"
@@ -2771,6 +3148,11 @@
         "block": {
           "box": {
             "syn": "Block"
+          }
+        },
+        "semi_token": {
+          "option": {
+            "token": "Semi"
           }
         }
       }
@@ -3023,6 +3405,9 @@
         },
         "vis": {
           "syn": "Visibility"
+        },
+        "mode": {
+          "syn": "DataMode"
         },
         "struct_token": {
           "token": "Struct"
@@ -3418,6 +3803,11 @@
         "let_token": {
           "token": "Let"
         },
+        "tracked": {
+          "option": {
+            "token": "Tracked"
+          }
+        },
         "pat": {
           "syn": "Pat"
         },
@@ -3609,6 +3999,104 @@
       }
     },
     {
+      "ident": "Mode",
+      "features": {
+        "any": []
+      },
+      "variants": {
+        "Spec": [
+          {
+            "syn": "ModeSpec"
+          }
+        ],
+        "Proof": [
+          {
+            "syn": "ModeProof"
+          }
+        ],
+        "Exec": [
+          {
+            "syn": "ModeExec"
+          }
+        ],
+        "Default": []
+      }
+    },
+    {
+      "ident": "ModeExec",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "exec_token": {
+          "token": "Exec"
+        }
+      }
+    },
+    {
+      "ident": "ModeGhost",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "ghost_token": {
+          "token": "Ghost"
+        }
+      }
+    },
+    {
+      "ident": "ModeProof",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "proof_token": {
+          "token": "Proof"
+        }
+      }
+    },
+    {
+      "ident": "ModeSpec",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "spec_token": {
+          "token": "Spec"
+        }
+      }
+    },
+    {
+      "ident": "ModeSpecChecked",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "spec_token": {
+          "token": "Spec"
+        },
+        "paren_token": {
+          "group": "Paren"
+        },
+        "checked": {
+          "box": {
+            "proc_macro2": "Ident"
+          }
+        }
+      }
+    },
+    {
+      "ident": "ModeTracked",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "tracked_token": {
+          "token": "Tracked"
+        }
+      }
+    },
+    {
       "ident": "NestedMeta",
       "features": {
         "any": [
@@ -3627,6 +4115,41 @@
             "syn": "Lit"
           }
         ]
+      }
+    },
+    {
+      "ident": "Open",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "Open"
+        }
+      }
+    },
+    {
+      "ident": "OpenRestricted",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "open_token": {
+          "token": "Open"
+        },
+        "paren_token": {
+          "group": "Paren"
+        },
+        "in_token": {
+          "option": {
+            "token": "In"
+          }
+        },
+        "path": {
+          "box": {
+            "syn": "Path"
+          }
+        }
       }
     },
     {
@@ -4265,6 +4788,30 @@
       }
     },
     {
+      "ident": "Publish",
+      "features": {
+        "any": []
+      },
+      "variants": {
+        "Closed": [
+          {
+            "syn": "Closed"
+          }
+        ],
+        "Open": [
+          {
+            "syn": "Open"
+          }
+        ],
+        "OpenRestricted": [
+          {
+            "syn": "OpenRestricted"
+          }
+        ],
+        "Default": []
+      }
+    },
+    {
       "ident": "QSelf",
       "features": {
         "any": [
@@ -4352,6 +4899,34 @@
       }
     },
     {
+      "ident": "Recommends",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "Recommends"
+        },
+        "exprs": {
+          "syn": "Specification"
+        }
+      }
+    },
+    {
+      "ident": "Requires",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "Requires"
+        },
+        "exprs": {
+          "syn": "Specification"
+        }
+      }
+    },
+    {
       "ident": "ReturnType",
       "features": {
         "any": [
@@ -4364,6 +4939,28 @@
         "Type": [
           {
             "token": "RArrow"
+          },
+          {
+            "option": {
+              "token": "Tracked"
+            }
+          },
+          {
+            "option": {
+              "box": {
+                "tuple": [
+                  {
+                    "group": "Paren"
+                  },
+                  {
+                    "syn": "Pat"
+                  },
+                  {
+                    "token": "Colon"
+                  }
+                ]
+              }
+            }
           },
           {
             "box": {
@@ -4381,6 +4978,9 @@
         ]
       },
       "fields": {
+        "publish": {
+          "syn": "Publish"
+        },
         "constness": {
           "option": {
             "token": "Const"
@@ -4400,6 +5000,9 @@
           "option": {
             "syn": "Abi"
           }
+        },
+        "mode": {
+          "syn": "FnMode"
         },
         "fn_token": {
           "token": "Fn"
@@ -4428,6 +5031,42 @@
         },
         "output": {
           "syn": "ReturnType"
+        },
+        "requires": {
+          "option": {
+            "syn": "Requires"
+          }
+        },
+        "recommends": {
+          "option": {
+            "syn": "Recommends"
+          }
+        },
+        "ensures": {
+          "option": {
+            "syn": "Ensures"
+          }
+        },
+        "decreases": {
+          "option": {
+            "syn": "Decreases"
+          }
+        }
+      }
+    },
+    {
+      "ident": "Specification",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "exprs": {
+          "punctuated": {
+            "element": {
+              "syn": "Expr"
+            },
+            "punct": "Comma"
+          }
         }
       }
     },
@@ -4556,6 +5195,12 @@
           "vec": {
             "syn": "Attribute"
           }
+        },
+        "publish": {
+          "syn": "Publish"
+        },
+        "mode": {
+          "syn": "FnMode"
         },
         "const_token": {
           "token": "Const"
@@ -5179,6 +5824,46 @@
           {
             "token": "Sub"
           }
+        ],
+        "BigAnd": [
+          {
+            "token": "BigAnd"
+          }
+        ],
+        "BigOr": [
+          {
+            "token": "BigOr"
+          }
+        ],
+        "Proof": [
+          {
+            "token": "Proof"
+          }
+        ],
+        "Ghost": [
+          {
+            "token": "Ghost"
+          }
+        ],
+        "Tracked": [
+          {
+            "token": "Tracked"
+          }
+        ],
+        "Forall": [
+          {
+            "token": "Forall"
+          }
+        ],
+        "Exists": [
+          {
+            "token": "Exists"
+          }
+        ],
+        "Choose": [
+          {
+            "token": "Choose"
+          }
         ]
       }
     },
@@ -5358,6 +6043,27 @@
       }
     },
     {
+      "ident": "View",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "expr": {
+          "box": {
+            "syn": "Expr"
+          }
+        },
+        "at_token": {
+          "token": "At"
+        }
+      }
+    },
+    {
       "ident": "VisCrate",
       "features": {
         "any": [
@@ -5496,22 +6202,30 @@
     "AndAnd": "&&",
     "AndEq": "&=",
     "As": "as",
+    "Assert": "assert",
+    "Assume": "assume",
     "Async": "async",
     "At": "@",
     "Auto": "auto",
     "Await": "await",
     "Bang": "!",
     "Become": "become",
+    "BigAnd": "&&&",
+    "BigOr": "|||",
     "Box": "box",
     "Break": "break",
+    "By": "by",
     "Caret": "^",
     "CaretEq": "^=",
+    "Choose": "choose",
+    "Closed": "closed",
     "Colon": ":",
     "Colon2": "::",
     "Comma": ",",
     "Const": "const",
     "Continue": "continue",
     "Crate": "crate",
+    "Decreases": "decreases",
     "Default": "default",
     "Div": "/",
     "DivEq": "/=",
@@ -5523,19 +6237,31 @@
     "DotDotEq": "..=",
     "Dyn": "dyn",
     "Else": "else",
+    "Ensures": "ensures",
     "Enum": "enum",
     "Eq": "=",
     "EqEq": "==",
+    "EqEqEq": "===",
+    "Equiv": "<==>",
+    "Exec": "exec",
+    "Exists": "exists",
+    "Exply": "<==",
     "Extern": "extern",
     "FatArrow": "=>",
     "Final": "final",
     "Fn": "fn",
     "For": "for",
+    "Forall": "forall",
     "Ge": ">=",
+    "Ghost": "ghost",
     "Gt": ">",
     "If": "if",
     "Impl": "impl",
+    "Implies": "implies",
+    "Imply": "==>",
     "In": "in",
+    "Invariant": "invariant",
+    "Is": "is",
     "LArrow": "<-",
     "Le": "<=",
     "Let": "let",
@@ -5548,18 +6274,23 @@
     "MulEq": "*=",
     "Mut": "mut",
     "Ne": "!=",
+    "NeEq": "!==",
+    "Open": "open",
     "Or": "|",
     "OrEq": "|=",
     "OrOr": "||",
     "Override": "override",
     "Pound": "#",
     "Priv": "priv",
+    "Proof": "proof",
     "Pub": "pub",
     "Question": "?",
     "RArrow": "->",
+    "Recommends": "recommends",
     "Ref": "ref",
     "Rem": "%",
     "RemEq": "%=",
+    "Requires": "requires",
     "Return": "return",
     "SelfType": "Self",
     "SelfValue": "self",
@@ -5568,6 +6299,7 @@
     "ShlEq": "<<=",
     "Shr": ">>",
     "ShrEq": ">>=",
+    "Spec": "spec",
     "Star": "*",
     "Static": "static",
     "Struct": "struct",
@@ -5575,6 +6307,7 @@
     "SubEq": "-=",
     "Super": "super",
     "Tilde": "~",
+    "Tracked": "tracked",
     "Trait": "trait",
     "Try": "try",
     "Type": "type",
