@@ -32,7 +32,7 @@ pub struct SstInline {
     pub(crate) params: Params,
     pub do_inline: bool,
 }
-pub type SstMap = HashMap<Fun, (Option<SstInline>, Exp)>;
+pub type SstMap = HashMap<Fun, (SstInline, Exp)>;
 
 // binder for forall (typ_params params)
 pub(crate) fn func_bind_trig(
@@ -136,11 +136,11 @@ fn func_body_to_air(
     state.fun_ssts = fun_ssts;
     let body_exp = crate::ast_to_sst::expr_to_pure_exp(&ctx, &mut state, &body)?;
     let body_exp = state.finalize_exp(ctx, &state.fun_ssts, &body_exp)?;
-    let inline = Some(SstInline {
+    let inline = SstInline {
         typ_bounds: function.x.typ_bounds.clone(),
         params: function.x.params.clone(),
         do_inline: function.x.attrs.inline,
-    });
+    };
 
     state.fun_ssts.insert(function.x.name.clone(), (inline, body_exp.clone()));
 

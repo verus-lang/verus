@@ -1,5 +1,5 @@
 use crate::ast::{
-    BinaryOp, Expr, Fun, Function, Ident, Params, SpannedTyped, Typ, TypBounds, TypX, Typs, UnaryOp,
+    BinaryOp, Fun, Function, Ident, Params, SpannedTyped, Typ, TypBounds, TypX, Typs, UnaryOp,
 };
 use crate::ast_to_sst::{get_function, State};
 use crate::context::Ctx;
@@ -21,8 +21,8 @@ fn is_bool_type(t: &Typ) -> bool {
 }
 
 // This function is to
-// 1) inline a function body
-// 2) inline a function requires
+// 1) inline a function body at a call site
+// 2) inline a function's requires expression at a call site
 pub(crate) fn inline_expression(
     name: &Fun,
     args: &Exps,
@@ -48,7 +48,8 @@ pub(crate) fn inline_expression(
     }
     let e = crate::sst_util::subst_exp(typ_substs, substs, body);
 
-    // when `inline_expression` is called to inline the `requires` of `pervasive::assert`, highlighting the `requires(b)` has no point.
+    // Note that `pervasive::assert` is merely consisted of `requires` and `ensures`
+    // when `inline_expression` is called to inline the `requires` of `pervasive::assert`, we want to avoid highlighting it.
     let span = if name.path.segments[0].to_string() == "pervasive".to_string()
         && name.path.segments[1].to_string() == "assert".to_string()
     {
@@ -58,16 +59,6 @@ pub(crate) fn inline_expression(
     };
     let e = SpannedTyped::new(span, &e.typ, e.x.clone());
     return Ok(e);
-}
-
-pub(crate) fn pure_ast_expression_to_sst(ctx: &Ctx, body: &Expr, params: &Params) -> Exp {
-    crate::ast_to_sst::expr_to_exp_as_spec(
-        &ctx,
-        &HashMap::new(),
-        &crate::func_to_air::params_to_pars(params, true), // REVIEW: is `true` here desirable?
-        &body,
-    )
-    .expect("pure_ast_expression_to_sst")
 }
 
 // Note that errors from `tr_inline_function` will be used by `split_expr`.
@@ -162,9 +153,7 @@ fn tr_inline_function(
         }
         let fun = &fun_to_inline.x.name;
         let fun_ssts = &state.fun_ssts;
-        if let Some((Some(SstInline { params, typ_bounds, do_inline: _ }), body)) =
-            fun_ssts.get(fun)
-        {
+        if let Some((SstInline { params, typ_bounds, do_inline: _ }, body)) = fun_ssts.get(fun) {
             return inline_expression(
                 fun,
                 args,
@@ -186,8 +175,8 @@ fn tr_inline_function(
 pub type TracedExp = Arc<TracedExpX>;
 pub type TracedExps = Arc<Vec<TracedExp>>;
 pub struct TracedExpX {
-    pub e: Exp,                    // Exp to be discharged to Z3
-    pub trace: air::errors::Error, //  when inlining function, log call stack into `trace`
+    pub e: Exp,                    //  Exp to be discharged to Z3
+    pub trace: air::errors::Error, //  when inlining function, record call stack into `trace`
 }
 impl TracedExpX {
     pub fn new(e: Exp, trace: air::errors::Error) -> TracedExp {

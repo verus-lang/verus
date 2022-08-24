@@ -955,7 +955,9 @@ impl Verifier {
                 ctx.fun = mk_fun_ctx(&function, recommends_rerun);
                 ctx.expand_flag = expands_rerun;
                 self.expand_flag = expands_rerun;
-                ctx.debug_expand_targets = self.expand_targets.to_vec();
+                if expands_rerun {
+                    ctx.debug_expand_targets = self.expand_targets.to_vec();
+                }
                 let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
                     ctx,
                     fun_ssts,

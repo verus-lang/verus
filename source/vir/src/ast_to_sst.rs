@@ -207,7 +207,7 @@ impl State {
         });
         let exp = crate::sst_visitor::map_exp_visitor_result(&exp, &mut |exp| match &exp.x {
             ExpX::Call(fun, typs, args) => {
-                if let Some((Some(SstInline { params, typ_bounds, do_inline: true }), body)) =
+                if let Some((SstInline { params, typ_bounds, do_inline: true }, body)) =
                     fun_ssts.get(fun)
                 {
                     let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
@@ -701,7 +701,14 @@ fn stm_call(
         let params = &fun.x.params;
         let typ_bounds = &fun.x.typ_bounds;
         for e in &**fun.x.require {
-            let exp = crate::split_expression::pure_ast_expression_to_sst(ctx, e, params);
+            let exp = crate::ast_to_sst::expr_to_exp_as_spec(
+                &ctx,
+                &HashMap::new(),
+                &crate::func_to_air::params_to_pars(params, true), // REVIEW: is `true` here desirable?
+                &e,
+            )
+            .expect("pure_ast_expression_to_sst");
+
             let args_exp = Arc::new(vec_map(&args, |x| x.0.clone()));
             let exp_subsituted = crate::split_expression::inline_expression(
                 &name, &args_exp, &typs, params, typ_bounds, &exp, span,
