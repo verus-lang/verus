@@ -156,9 +156,9 @@ pub const POSTCONDITION_FAILURE: &str = "postcondition not satisfied";
 pub const THIS_POST_FAILED: &str = "failed this postcondition";
 pub const INV_FAIL_LOOP_END: &str = "invariant not satisfied at end of loop body";
 pub const INV_FAIL_LOOP_FRONT: &str = "invariant not satisfied before loop";
-pub const SPLIT_ASSERT_FAILURE: &str = "splitted assertion failure";
-pub const SPLIT_PRE_FAILURE: &str = "splitted precondition failure";
-pub const SPLIT_POST_FAILURE: &str = "splitted postcondition failure";
+pub const SPLIT_ASSERT_FAILURE: &str = "split assertion failure";
+pub const SPLIT_PRE_FAILURE: &str = "split precondition failure";
+pub const SPLIT_POST_FAILURE: &str = "split postcondition failure";
 
 pub fn path_to_string(path: &Path) -> String {
     let s = vec_map(&path.segments, |s| s.to_string()).join(PATH_SEPARATOR) + SUFFIX_PATH;

@@ -170,7 +170,7 @@ fn tr_inline_function(
 }
 
 //  Note that `e` is not the same with the highlighted expression. It is the expression that will be handed to Z3 for verification condition.
-//  For example,  A => (B && C) is splitted into A => B and A => B => C. When A => B => C fails, only C will be highlighted.
+//  For example,  A => (B && C) is split into A => B and A => B => C. When A => B => C fails, only C will be highlighted.
 //  For details, See BinaryOp::And/OR, `implies`, `If`, `Bind`.
 pub type TracedExp = Arc<TracedExpX>;
 pub type TracedExps = Arc<Vec<TracedExp>>;
@@ -295,14 +295,14 @@ pub(crate) fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: boo
                         &TracedExpX::new(e2.clone(), exp.trace.clone()),
                         false,
                     );
-                    let mut splitted: Vec<TracedExp> = vec![];
+                    let mut split_traced: Vec<TracedExp> = vec![];
                     for e in &*es2 {
                         let new_e = ExpX::Binary(BinaryOp::Implies, e1.clone(), e.e.clone());
                         let new_exp = SpannedTyped::new(&e.e.span, &exp.e.typ, new_e);
                         let new_tr_exp = TracedExpX::new(new_exp, e.trace.clone());
-                        splitted.push(new_tr_exp);
+                        split_traced.push(new_tr_exp);
                     }
-                    return Arc::new(splitted);
+                    return Arc::new(split_traced);
                 }
                 // split lhs (e.g. !((A && B) => C) to !(A=>C) && !(B=>C) )
                 // REVIEW: is this actually useful?
@@ -313,14 +313,14 @@ pub(crate) fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: boo
                         &TracedExpX::new(e1.clone(), exp.trace.clone()),
                         false, // instead of pushing negation, wrap negation outside
                     );
-                    let mut splitted: Vec<TracedExp> = vec![];
+                    let mut split_traced: Vec<TracedExp> = vec![];
                     for e in &*es1 {
                         let new_e = ExpX::Binary(BinaryOp::Implies, e.e.clone(), e2.clone());
                         let new_exp = SpannedTyped::new(&e.e.span, &exp.e.typ, new_e);
                         let new_tr_exp = TracedExpX::new(new_exp, e.trace.clone());
-                        splitted.push(negate_atom(new_tr_exp)); // negate here
+                        split_traced.push(negate_atom(new_tr_exp)); // negate here
                     }
-                    return Arc::new(splitted);
+                    return Arc::new(split_traced);
                 }
                 _ => return mk_atom(exp.clone(), negated),
             }
@@ -377,14 +377,14 @@ pub(crate) fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: boo
             }
             let es1 =
                 split_expr(ctx, state, &TracedExpX::new(e1.clone(), exp.trace.clone()), negated);
-            let mut splitted: Vec<TracedExp> = vec![];
+            let mut split_traced: Vec<TracedExp> = vec![];
             for e in &*es1 {
                 let new_e = ExpX::UnaryOpr(uop.clone(), e.e.clone());
                 let new_exp = SpannedTyped::new(&e.e.span, &exp.e.typ, new_e);
                 let new_tr_exp = TracedExpX::new(new_exp.clone(), e.trace.clone());
-                splitted.push(new_tr_exp);
+                split_traced.push(new_tr_exp);
             }
-            return Arc::new(splitted);
+            return Arc::new(split_traced);
         }
         ExpX::Bind(bnd, e1) => {
             let new_bnd = match &bnd.x {
@@ -394,21 +394,21 @@ pub(crate) fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: boo
             };
             let es1 =
                 split_expr(ctx, state, &TracedExpX::new(e1.clone(), exp.trace.clone()), negated);
-            let mut splitted: Vec<TracedExp> = vec![];
+            let mut split_traced: Vec<TracedExp> = vec![];
             for e in &*es1 {
                 let new_expx = ExpX::Bind(new_bnd.clone(), e.e.clone());
                 let new_exp = SpannedTyped::new(&e.e.span, &exp.e.typ, new_expx);
                 let new_tr_exp = TracedExpX::new(new_exp, e.trace.clone());
-                splitted.push(new_tr_exp);
+                split_traced.push(new_tr_exp);
             }
-            return Arc::new(splitted);
+            return Arc::new(split_traced);
         }
-        // cases that cannot be splitted. "atom" boolean expressions
+        // cases that cannot be split. "atom" boolean expressions
         _ => return mk_atom(exp.clone(), negated),
     }
 }
 
-pub(crate) fn register_splitted_assertions(traced_exprs: TracedExps) -> Vec<Stm> {
+pub(crate) fn register_split_assertions(traced_exprs: TracedExps) -> Vec<Stm> {
     let mut stms: Vec<Stm> = Vec::new();
     if traced_exprs.len() == 1 && traced_exprs[0].trace.labels.len() == 0 {
         // if the length of the vector is 1, this indicate split failure

@@ -694,7 +694,7 @@ fn stm_call(
     if ctx.expand_flag && crate::split_expression::need_split_expression(ctx, span) {
         // we are spliting the `requires` expression on the call site.
         // If we split the `requires` expression on the function itself,
-        // this splitted encoding will take effect on every call site, which is not desirable.
+        // this split encoding will take effect on every call site, which is not desirable.
         //
         // Also, note that prevasive::assert is consisted of `requires` and `ensures`.
         // therefore, we are also splitting pervaisve::assert here
@@ -703,7 +703,7 @@ fn stm_call(
         for e in &**fun.x.require {
             let exp = crate::ast_to_sst::expr_to_exp_as_spec(
                 &ctx,
-                &HashMap::new(),
+                &state.fun_ssts,
                 &crate::func_to_air::params_to_pars(params, true), // REVIEW: is `true` here desirable?
                 &e,
             )
@@ -732,7 +732,7 @@ fn stm_call(
                 &crate::split_expression::TracedExpX::new(exp_subsituted.clone(), error.clone()),
                 false,
             );
-            stms.extend(crate::split_expression::register_splitted_assertions(exprs).into_iter());
+            stms.extend(crate::split_expression::register_split_assertions(exprs).into_iter());
         }
     }
 

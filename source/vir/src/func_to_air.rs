@@ -730,7 +730,7 @@ pub fn func_def_to_air(
                         let ens_exp =
                             crate::ast_to_sst::expr_to_exp(ctx, &state.fun_ssts, &ens_pars, e)?;
                         let error = air::errors::error(crate::def::SPLIT_POST_FAILURE, &e.span);
-                        let splitted_exprs = crate::split_expression::split_expr(
+                        let split_exprs = crate::split_expression::split_expr(
                             ctx,
                             &state, // use the state after `body` translation to get the fuel info
                             &crate::split_expression::TracedExpX::new(
@@ -740,7 +740,7 @@ pub fn func_def_to_air(
                             false,
                         );
                         small_ens_assertions.extend(
-                            crate::split_expression::register_splitted_assertions(splitted_exprs),
+                            crate::split_expression::register_split_assertions(split_exprs),
                         );
                     }
                 }
