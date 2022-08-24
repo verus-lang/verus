@@ -388,7 +388,7 @@ pub(crate) fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: boo
             return Arc::new(split_traced);
         }
         ExpX::Bind(bnd, e1) => {
-            // TODO: shrink binder if the split body does not reference a binded variable
+            // TODO: shrink binder if the split body does not reference one of the binded variables
             // Note: trigger selection happens after the AST->SST translation(see crate::ast_to_sst::finalized_exp)
             let new_bnd = match &bnd.x {
                 BndX::Let(..) if !negated => bnd.clone(),
@@ -397,11 +397,10 @@ pub(crate) fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: boo
                     bndrs,
                     _trigs,
                 ) if !negated => {
-                    // remove triggers that are already selected
                     let bndx = BndX::Quant(
                         Quant { quant: air::ast::Quant::Forall, boxed_params: *boxed_params },
                         bndrs.clone(),
-                        Arc::new(vec![]),
+                        Arc::new(vec![]), // remove triggers that are already selected
                     );
                     Spanned::new(bnd.span.clone(), bndx)
                 }

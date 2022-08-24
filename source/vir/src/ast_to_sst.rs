@@ -250,9 +250,9 @@ impl State {
                     let trigs = match trigs {
                         Ok(trigs) => trigs,
                         Err(e) if !ctx.expand_flag => return Err(e),
-                        // ininling spec functions can make "Could not automatically infer triggers" error.
+                        // Ininling a spec function can generate "Could not automatically infer triggers" error even if the original expression succeeds to select triggers.
                         // However, for proving `forall` clause, triggers not matter. (triggers are needed when using `forall` as a hypothesis)
-                        // For split `forall` clauses, these will not be used as a fact to prove other facts
+                        // Split `forall` clauses will not be used as a fact to prove other VCs.
                         Err(_) if ctx.expand_flag => Arc::new(vec![]),
                         _ => unreachable!(),
                     };

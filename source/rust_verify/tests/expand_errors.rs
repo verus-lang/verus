@@ -153,3 +153,21 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_expand_fails(e, 2)
 }
+
+test_verify_one_file! {
+    // credit: (this example is copied from rust_verify/example/rw2022_scripts.rs, example C)
+    #[test] test6_expand_forall verus_code! {
+        // this example encounters "could not automatically infer trigger" when inlining `divides`, but proceed without trigger selection
+        spec fn divides(factor: nat, candidate: nat) -> bool {
+            candidate % factor == 0             // EXPAND-ERRORS
+        }
+        spec fn is_prime(candidate: nat) -> bool {
+            &&& 1 < candidate
+            &&& forall|factor: nat| 1 < factor && factor < candidate ==>
+                !divides(factor, candidate)     // EXPAND-ERRORS
+        }
+        proof fn test_trigger() {
+            assert(is_prime(6));                // EXPAND-ERRORS
+        }
+    } => Err(e) => assert_expand_fails(e, 3)
+}
