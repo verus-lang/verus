@@ -1,0 +1,22 @@
+[package]
+name = "syn-dev"
+version = "0.0.0"
+authors = ["David Tolnay <dtolnay@gmail.com>"]
+edition = "2018"
+publish = false
+
+[lib]
+path = "parse.rs"
+proc-macro = true
+
+[[bin]]
+path = "main.rs"
+name = "syn-dev"
+
+[dependencies]
+quote = "1.0"
+
+[dependencies.syn]
+path = ".."
+default-features = false
+features = ["parsing", "full", "extra-traits", "proc-macro"]
