@@ -1969,6 +1969,10 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 Ok(mk_expr(ExprX::Const(c)))
             }
             LitKind::Int(i, _) => mk_lit_int(false, i, typ_of_node(bctx, &expr.hir_id, false)),
+            LitKind::Char(c) => {
+                let c = vir::ast::Constant::Char(c);
+                Ok(mk_expr(ExprX::Const(c)))
+            }
             _ => {
                 panic!("unexpected constant: {:?}", lit)
             }

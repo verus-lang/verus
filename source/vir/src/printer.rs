@@ -74,6 +74,7 @@ fn typ_to_node(typ: &Typ) -> Node {
         TypX::TypeId => nodes!(TypeId),
         TypX::Air(_air_typ) => nodes!({ str_to_node("AirTyp") }),
         TypX::StrSlice => crate::def::strslice(),
+        TypX::Char => nodes!(str_to_node("Char")),
     }
 }
 
@@ -196,11 +197,21 @@ fn expr_to_node(expr: &Expr) -> Node {
                 match cnst {
                     Constant::Bool(val) => str_to_node(&format!("{}", val)),
                     Constant::Nat(val) => str_to_node(&format!("{}", val)),
+                    // HACK HACK
+                    // the printer for sise::Node does not seem to support non-ascii characters
+                    // as a result we need to do this hack
                     Constant::StrSlice(val) => str_to_node(&format!(
                         "\"{}\"",
                         match val.is_ascii() {
                             true => val,
                             false => "non_ascii_string_with_unknown_value",
+                        }
+                    )),
+                    Constant::Char(c) => str_to_node(&format!(
+                        "char#{}",
+                        match c.is_ascii() {
+                            true => c.to_string(),
+                            false => "non_ascii_char".to_string(),
                         }
                     )),
                 }

@@ -99,6 +99,9 @@ pub enum TypX {
     /// StrSlice type. Currently the pervasive StrSlice struct is "seen" as this type
     /// despite the fact that it is in fact a datatype
     StrSlice,
+
+    /// UTF-8 character type
+    Char,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -292,6 +295,8 @@ pub enum Constant {
     Nat(Arc<String>),
     /// Hold generated string slices in here
     StrSlice(Arc<String>),
+    // Hold unicode values here
+    Char(char),
 }
 
 #[derive(Debug)]

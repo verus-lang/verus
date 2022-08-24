@@ -103,6 +103,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::TypeId => str_typ(crate::def::TYPE),
         TypX::Air(t) => t.clone(),
         TypX::StrSlice => str_typ(crate::def::STRSLICE),
+        TypX::Char => str_typ(crate::def::CHAR),
     }
 }
 
@@ -147,6 +148,7 @@ pub fn typ_to_id(typ: &Typ) -> Expr {
         TypX::TypeId => panic!("internal error: typ_to_id of TypeId"),
         TypX::Air(_) => panic!("internal error: typ_to_id of Air"),
         TypX::StrSlice => str_var(crate::def::TYPE_ID_STRSLICE),
+        TypX::Char => str_var(crate::def::TYPE_ID_CHAR),
     }
 }
 
@@ -245,6 +247,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::TypeId => None,
         TypX::Air(_) => None,
         TypX::StrSlice => Some(str_ident(crate::def::BOX_STRSLICE)),
+        TypX::Char => Some(str_ident(crate::def::BOX_CHAR)),
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
 }
@@ -272,6 +275,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::TypeId => None,
         TypX::Air(_) => None,
         TypX::StrSlice => Some(str_ident(crate::def::UNBOX_STRSLICE)),
+        TypX::Char => Some(str_ident(crate::def::UNBOX_CHAR)),
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
 }
@@ -349,11 +353,21 @@ fn str_to_const_str(ctx: &Ctx, s: Arc<String>) -> Expr {
     ))
 }
 
+fn char_to_unicode_repr(c: char) -> u32 {
+    c as u32
+}
+
 pub(crate) fn constant_to_expr(ctx: &Ctx, constant: &crate::ast::Constant) -> Expr {
     match constant {
         crate::ast::Constant::Bool(b) => Arc::new(ExprX::Const(Constant::Bool(*b))),
         crate::ast::Constant::Nat(s) => Arc::new(ExprX::Const(Constant::Nat(s.clone()))),
         crate::ast::Constant::StrSlice(s) => str_to_const_str(ctx, s.clone()),
+        crate::ast::Constant::Char(c) => Arc::new(ExprX::Apply(
+            crate::def::char_from_unicode_ident(),
+            Arc::new(vec![Arc::new(ExprX::Const(Constant::Nat(Arc::new(
+                char_to_unicode_repr(*c).to_string(),
+            ))))]),
+        )),
     }
 }
 
@@ -1694,15 +1708,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
         }
         StmX::RevealString(lit) => {
             let exprs = Arc::new({
-                let mut v = vec![
+                vec![
                     string_is_ascii_to_air(ctx, lit.clone()),
                     string_len_to_air(ctx, lit.clone()),
-                ];
-
-                if lit.is_ascii() {
-                    v.push(string_indices_to_air(ctx, lit.clone()));
-                }
-                v
+                    string_indices_to_air(ctx, lit.clone()),
+                ]
             });
             let exprx = Arc::new(ExprX::Multi(MultiOp::And, exprs));
             let stmt = Arc::new(StmtX::Assume(exprx));
@@ -1729,15 +1739,17 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 fn string_len_to_air(ctx: &Ctx, lit: Arc<String>) -> Expr {
     let cnst = str_to_const_str(ctx, lit.clone());
     let lhs = str_apply(&crate::def::strslice_len_ident(), &vec![cnst]);
-    let len_val = Arc::new(ExprX::Const(Constant::Nat(Arc::new(lit.len().to_string()))));
+    let len_val = Arc::new(ExprX::Const(Constant::Nat(Arc::new(lit.chars().count().to_string()))));
     Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, lhs, len_val))
 }
 
 fn string_index_to_air(cnst: &Expr, index: usize, value: char) -> Expr {
     let index_expr = Arc::new(ExprX::Const(Constant::Nat(Arc::new(index.to_string()))));
-    let value_expr = Arc::new(ExprX::Const(Constant::Nat(Arc::new((value as u8).to_string()))));
+    let value_expr =
+        Arc::new(ExprX::Const(Constant::Nat(Arc::new((char_to_unicode_repr(value)).to_string()))));
+    let char_expr = str_apply(&crate::def::char_from_unicode_ident(), &vec![value_expr]);
     let lhs = str_apply(&crate::def::strslice_get_char_ident(), &vec![cnst.clone(), index_expr]);
-    Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, lhs, value_expr))
+    Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, lhs, char_expr))
 }
 
 fn string_indices_to_air(ctx: &Ctx, lit: Arc<String>) -> Expr {
