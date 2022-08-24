@@ -134,3 +134,22 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_expand_fails(e, 3)
 }
+
+test_verify_one_file! {
+    #[test] test5_expand_forall verus_code! {
+        use crate::pervasive::{*, seq::*};
+        spec fn seq_bounded_by_length(s1: Seq<int>) -> bool {
+            (forall|i:int| (0 <= i && i < s1.len())  ==>
+                                                         (0 <= s1.index(i)
+                                                          && s1.index(i) < s1.len()))   // EXPAND-ERRORS
+        }
+
+        proof fn test_expansion_forall()
+        {
+            let mut ss = Seq::empty();
+            ss = ss.push(0);
+            ss = ss.push(10);
+            assert(seq_bounded_by_length(ss));  // EXPAND-ERRORS
+        }
+    } => Err(e) => assert_expand_fails(e, 2)
+}

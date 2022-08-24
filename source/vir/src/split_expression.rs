@@ -1,5 +1,6 @@
 use crate::ast::{
-    BinaryOp, Fun, Function, Ident, Params, SpannedTyped, Typ, TypBounds, TypX, Typs, UnaryOp,
+    BinaryOp, Fun, Function, Ident, Params, Quant, SpannedTyped, Typ, TypBounds, TypX, Typs,
+    UnaryOp,
 };
 use crate::ast_to_sst::{get_function, State};
 use crate::context::Ctx;
@@ -387,9 +388,39 @@ pub(crate) fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: boo
             return Arc::new(split_traced);
         }
         ExpX::Bind(bnd, e1) => {
+            // TODO: shrink binder if the split body does not reference a binded variable
             let new_bnd = match &bnd.x {
                 BndX::Let(..) if !negated => bnd.clone(),
-                // TODO(channy1413): split quantifiers
+
+                // since the trigger selection happens after the AST->SST translation(see crate::ast_to_sst::finalized_exp),
+                // ininling spec functions can make "Could not automatically infer triggers" error.
+                // However, for proving `forall` clause, triggers not matter. (triggers are needed when using `forall` as a hypothesis)
+                BndX::Quant(
+                    Quant { quant: air::ast::Quant::Forall, boxed_params },
+                    bndrs,
+                    _trigs,
+                ) if !negated => {
+                    // remove triggers that are already selected
+                    let bndx = BndX::Quant(
+                        Quant { quant: air::ast::Quant::Forall, boxed_params: *boxed_params },
+                        bndrs.clone(),
+                        Arc::new(vec![]),
+                    );
+                    Spanned::new(bnd.span.clone(), bndx)
+                }
+                // REVIEW: is this actually useful?
+                BndX::Quant(
+                    Quant { quant: air::ast::Quant::Exists, boxed_params },
+                    bndrs,
+                    _trigs,
+                ) if negated => {
+                    let new_bndx = BndX::Quant(
+                        Quant { quant: air::ast::Quant::Forall, boxed_params: *boxed_params },
+                        bndrs.clone(),
+                        Arc::new(vec![]), // remove triggers that are already selected
+                    );
+                    Spanned::new(bnd.span.clone(), new_bndx)
+                }
                 _ => return mk_atom(exp.clone(), negated),
             };
             let es1 =
