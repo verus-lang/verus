@@ -16,9 +16,9 @@ use syn_verus::{
     braced, bracketed, parenthesized, parse_macro_input, AttrStyle, Attribute, BinOp, Block,
     DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop, ExprTuple,
     ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Ident, ImplItemMethod, Invariant, Item,
-    ItemConst, ItemEnum, ItemFn, ItemStruct, Lit, Local, ModeSpec, ModeSpecChecked, Pat, Path,
-    PathArguments, PathSegment, Publish, Recommends, Requires, ReturnType, Signature, Stmt, Token,
-    TraitItemMethod, UnOp, Visibility,
+    ItemConst, ItemEnum, ItemFn, ItemStruct, Lit, Local, Meta, ModeSpec, ModeSpecChecked, Pat,
+    Path, PathArguments, PathSegment, Publish, Recommends, Requires, ReturnType, Signature, Stmt,
+    Token, TraitItemMethod, UnOp, Visibility,
 };
 
 fn take_expr(expr: &mut Expr) -> Expr {
@@ -57,6 +57,10 @@ struct Visitor {
 
     // Add extra verus signature information to the docstring
     rustdoc: bool,
+
+    // if we are inside bit-vector assertion, warn users to use add/sub/mul for fixed-width operators,
+    // rather than +/-/*, which will be promoted to integer operators
+    inside_bitvector: bool,
 }
 
 fn data_mode_attrs(mode: &DataMode) -> Vec<Attribute> {
@@ -98,6 +102,14 @@ impl Visitor {
         is_trait: bool,
     ) -> Vec<Stmt> {
         let mut stmts: Vec<Stmt> = Vec::new();
+
+        let inside_bitvector = if attrs.len() == 1 {
+            let attr = attrs.first().unwrap();
+            let arg = get_arg_from_verifier_attr(&attr);
+            if arg.is_some() { arg.unwrap() == "bit_vector".to_string() } else { false }
+        } else {
+            false
+        };
 
         attrs.push(mk_verifier_attr(sig.fn_token.span, "verus_macro"));
 
@@ -184,6 +196,7 @@ impl Visitor {
         self.inside_ghost = inside_ghost;
 
         self.inside_ghost += 1; // for requires, ensures, etc.
+        self.inside_bitvector = inside_bitvector;
 
         let requires = std::mem::take(&mut sig.requires);
         let recommends = std::mem::take(&mut sig.recommends);
@@ -237,6 +250,7 @@ impl Visitor {
         }
 
         self.inside_ghost -= 1;
+        self.inside_bitvector = false;
 
         sig.publish = Publish::Default;
         sig.mode = FnMode::Default;
@@ -463,6 +477,21 @@ impl VisitMut for Visitor {
         if self.chain_operators(expr) {
             return;
         }
+
+        let is_inside_bitvector = match &expr {
+            Expr::Assert(a) => match &a.prover {
+                Some((_, id)) => {
+                    if id.to_string() == "bit_vector" {
+                        self.inside_bitvector = true;
+                        true
+                    } else {
+                        false
+                    }
+                }
+                None => false,
+            },
+            _ => false,
+        };
 
         let is_auto_proof_block = if self.inside_ghost == 0 {
             match &expr {
@@ -897,17 +926,22 @@ impl VisitMut for Visitor {
                         BinOp::Gt(..) => {
                             *expr = Expr::Verbatim(quote_spanned!(span => (#left).spec_gt(#right)));
                         }
-                        BinOp::Add(..) => {
+                        BinOp::Add(..) if !self.inside_bitvector => {
                             *expr =
                                 Expr::Verbatim(quote_spanned!(span => (#left).spec_add(#right)));
                         }
-                        BinOp::Sub(..) => {
+                        BinOp::Sub(..) if !self.inside_bitvector => {
                             *expr =
                                 Expr::Verbatim(quote_spanned!(span => (#left).spec_sub(#right)));
                         }
-                        BinOp::Mul(..) => {
+                        BinOp::Mul(..) if !self.inside_bitvector => {
                             *expr =
                                 Expr::Verbatim(quote_spanned!(span => (#left).spec_mul(#right)));
+                        }
+                        BinOp::Add(..) | BinOp::Sub(..) | BinOp::Mul(..) => {
+                            *expr = Expr::Verbatim(
+                                quote_spanned!(span => compile_error!("Inside bit-vector assertion, use `add` `sub` `mul` for fixed-bit operators, instead of `+` `-` `*`. (see the functions builtin::add(left, right), builtin::sub(left, right), and builtin::mul(left, right))")),
+                            );
                         }
                         BinOp::Div(..) => {
                             *expr = Expr::Verbatim(
@@ -1098,6 +1132,9 @@ impl VisitMut for Visitor {
             self.inside_ghost -= 1;
             let inner = take_expr(expr);
             *expr = Expr::Verbatim(quote_spanned!(span => #[verifier(proof_block)] { #inner } ));
+        }
+        if is_inside_bitvector {
+            self.inside_bitvector = false;
         }
     }
 
@@ -1411,6 +1448,7 @@ pub(crate) fn rewrite_items(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_bitvector: false,
     };
     for mut item in items.items {
         visitor.visit_item_mut(&mut item);
@@ -1435,6 +1473,7 @@ pub(crate) fn rewrite_expr(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_bitvector: false,
     };
     visitor.visit_expr_mut(&mut expr);
     expr.to_tokens(&mut new_stream);
@@ -1510,6 +1549,7 @@ pub(crate) fn proof_macro_exprs(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_bitvector: false,
     };
     for element in &mut invoke.elements.elements {
         match element {
@@ -1547,4 +1587,49 @@ fn mk_empty_attr(span: Span, name: &str) -> Attribute {
 fn mk_verifier_attr(span: Span, arg: &str) -> Attribute {
     let ident = Ident::new(arg, span);
     mk_attr(span, "verifier", quote_spanned! {span => (#ident)})
+}
+
+/// Get `arg` from `#[verifier(arg)]`, and if `attr` is not a verifier attribute, return `None`
+fn get_arg_from_verifier_attr(attr: &Attribute) -> Option<String> {
+    let parsed = attr.parse_meta();
+    if parsed.is_err() {
+        return None;
+    }
+    let parsed = parsed.unwrap();
+    let ids = get_idents_from_meta(&parsed);
+    if ids.len() == 2 && ids.contains(&"verifier".to_string()) {
+        let mut id: Vec<String> =
+            ids.into_iter().filter(|x| x != &"verifier".to_string()).collect();
+        if id.len() == 1 { id.pop() } else { None }
+    } else {
+        None
+    }
+}
+
+/// Get idents from all "Path" in attributes(e.g. collect "verifier"` and `arg` from  `#[verifier(arg)]`)
+fn get_idents_from_meta(parsed: &Meta) -> Vec<String> {
+    match parsed {
+        syn_verus::Meta::List(meta_list) => {
+            let mut ids = get_ident_from_path(&meta_list.path);
+            for meta in &meta_list.nested {
+                match meta {
+                    syn_verus::NestedMeta::Meta(meta) => {
+                        ids.append(&mut get_idents_from_meta(&meta));
+                    }
+                    syn_verus::NestedMeta::Lit(_) => (),
+                }
+            }
+            ids
+        }
+        syn_verus::Meta::Path(path) => get_ident_from_path(&path),
+        syn_verus::Meta::NameValue(meta_name_value) => get_ident_from_path(&meta_name_value.path),
+    }
+}
+
+fn get_ident_from_path(path: &Path) -> Vec<String> {
+    let mut ids = vec![];
+    for seg in &path.segments {
+        ids.push(seg.ident.to_string().clone());
+    }
+    ids
 }
