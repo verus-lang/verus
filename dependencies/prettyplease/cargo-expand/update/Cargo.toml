@@ -1,0 +1,15 @@
+[package]
+name = "prettyplease-update"
+version = "0.0.0"
+authors = ["David Tolnay <dtolnay@gmail.com>"]
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "prettyplease-update"
+path = "update.rs"
+
+[dependencies]
+anyhow = "1.0"
+prettyplease = { path = "../../", features = ["verbatim"] }
+syn = { version = "1.0", default-features = false, features = ["parsing", "printing"] }
