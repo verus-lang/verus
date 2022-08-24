@@ -95,13 +95,17 @@ pub enum StmX {
     Call(Fun, Mode, Typs, Exps, Option<Dest>),
     // note: failed assertion reports Stm's span, plus an optional additional span
     Assert(Option<Error>, Exp),
-    AssertBV(Exp),
+    AssertBitVector {
+        requires: Exps,
+        ensures: Exps,
+    },
     Assume(Exp),
     Assign {
         lhs: Dest,
         rhs: Exp,
     },
     Fuel(Fun, u32),
+    RevealString(Arc<String>),
     DeadEnd(Stm),
     If(Exp, Stm, Option<Stm>),
     While {

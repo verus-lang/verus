@@ -89,7 +89,7 @@ impl ErasureModeX {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ErasureModes {
     // Modes of conditions in If
     pub condition_modes: Vec<(Span, Mode)>,
@@ -683,6 +683,7 @@ fn check_expr_handle_mut_arg(
             Ok(x_mode)
         }
         ExprX::Fuel(_, _) => Ok(outer_mode),
+        ExprX::RevealString(_) => Ok(outer_mode),
         ExprX::Header(_) => panic!("internal error: Header shouldn't exist here"),
         ExprX::Admit => {
             if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
@@ -720,13 +721,6 @@ fn check_expr_handle_mut_arg(
                 check_expr_has_mode(typing, Mode::Spec, ens, Mode::Spec)?;
             }
             check_expr_has_mode(typing, Mode::Proof, proof, Mode::Proof)?;
-            Ok(Mode::Proof)
-        }
-        ExprX::AssertBV(e) => {
-            if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
-                return err_str(&expr.span, "cannot use assert in exec mode");
-            }
-            check_expr_has_mode(typing, Mode::Spec, e, Mode::Spec)?;
             Ok(Mode::Proof)
         }
         ExprX::If(e1, e2, e3) => {
@@ -1081,7 +1075,10 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
             && !matches!(&function.x.kind, FunctionKind::TraitMethodDecl { .. })
         {
             // can't erase return values in external_body functions, so:
-            if function.x.mode != ret_mode {
+            // (note: proof functions that are external_body are usually implemented
+            // as `unimplemented!()` and don't actually return anything, so it should
+            // be fine.)
+            if function.x.mode == Mode::Exec && function.x.mode != ret_mode {
                 return err_string(
                     &function.span,
                     format!(

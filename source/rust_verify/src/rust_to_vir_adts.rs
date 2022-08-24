@@ -10,6 +10,7 @@ use air::ast_util::str_ident;
 use rustc_ast::Attribute;
 use rustc_hir::{EnumDef, Generics, ItemId, VariantData};
 use rustc_span::Span;
+use rustc_span::Symbol;
 use std::sync::Arc;
 use vir::ast::{DatatypeTransparency, DatatypeX, Ident, KrateX, Mode, Path, Variant, VirErr};
 use vir::ast_util::ident_binder;
@@ -93,12 +94,21 @@ pub fn check_item_struct<'tcx>(
 ) -> Result<(), VirErr> {
     assert!(adt_def.is_struct());
 
+    let is_strslice_struct = ctxt
+        .tcx
+        .is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice"), id.def_id.to_def_id());
+
+    if is_strslice_struct {
+        return Ok(());
+    }
+
     let vattrs = get_verifier_attrs(attrs)?;
     let def_id = id.def_id.to_def_id();
     let typ_params =
         Arc::new(check_generics_bounds(ctxt.tcx, generics, vattrs.external_body, def_id)?);
     let name = hack_get_def_name(ctxt.tcx, def_id);
     let path = def_id_to_vir_path(ctxt.tcx, def_id);
+
     let variant_name = Arc::new(name.clone());
     let (variant, one_field_private) = if vattrs.external_body {
         (ident_binder(&variant_name, &Arc::new(vec![])), false)

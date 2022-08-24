@@ -15,7 +15,7 @@ use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
 use rustc_middle::ty::{BoundConstness, ImplPolarity, PredicateKind, TraitPredicate};
 use rustc_span::def_id::{DefId, LOCAL_CRATE};
 use rustc_span::symbol::{kw, Ident};
-use rustc_span::Span;
+use rustc_span::{Span, Symbol};
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -252,6 +252,11 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         }
         TyKind::Adt(AdtDef { did, .. }, args) => {
             let s = ty.to_string();
+            let is_strslice =
+                tcx.is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice"), *did);
+            if is_strslice {
+                return (Arc::new(TypX::StrSlice), false);
+            }
             // TODO use lang items instead of string comparisons
             if s == crate::typecheck::BUILTIN_INT {
                 (Arc::new(TypX::Int(IntRange::Int)), false)

@@ -1,6 +1,6 @@
 use crate::ast::{
-    ArithOp, BinaryOp, CallTarget, Constant, Expr, ExprX, Fun, Function, Ident, Mode, PatternX,
-    SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
+    ArithOp, AssertQueryMode, BinaryOp, CallTarget, Constant, Expr, ExprX, Fun, Function, Ident,
+    Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use crate::ast_util::{err_str, err_string, types_equal, QUANT_FORALL};
 use crate::context::Ctx;
@@ -1199,6 +1199,10 @@ fn expr_to_stm_opt(
             }
             Ok((vec![stm], ReturnValue::ImplicitUnit(expr.span.clone())))
         }
+        ExprX::RevealString(path) => {
+            let stm = Spanned::new(expr.span.clone(), StmX::RevealString(path.clone()));
+            Ok((vec![stm], ReturnValue::ImplicitUnit(expr.span.clone())))
+        }
         ExprX::Header(_) => {
             return err_str(&expr.span, "header expression not allowed here");
         }
@@ -1260,94 +1264,168 @@ fn expr_to_stm_opt(
             Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
         }
         ExprX::AssertQuery { requires, ensures, proof, mode } => {
-            let mut inner_body: Vec<Stm> = Vec::new();
-            let mut vars = BTreeMap::new(); // order vars by UniqueIdent
+            // Note that `ExprX::AssertQuery` makes a separate query for AssertQueryMode::NonLinear and AssertQueryMode::BitVector
+            // only `requires` and type invariants will be provided to prove `ensures`
+            match mode {
+                AssertQueryMode::NonLinear => {
+                    let mut inner_body: Vec<Stm> = Vec::new();
+                    let mut vars = BTreeMap::new(); // order vars by UniqueIdent
 
-            // Translate body as separate query
-            state.push_scope();
-            for r in requires.iter() {
-                let (require_check_recommends, require_exp) =
-                    expr_to_pure_exp_check(ctx, state, &r)?;
-                inner_body.extend(require_check_recommends);
-                vars.extend(free_vars_exp(&require_exp).into_iter());
-                let assume = Spanned::new(r.span.clone(), StmX::Assume(require_exp));
-                inner_body.push(assume);
-            }
-
-            if ctx.expand_flag {
-                state.push_fuel_scope();
-            }
-            let (proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
-            if ctx.expand_flag {
-                state.pop_fuel_scope();
-            }
-            if let ReturnValue::Some(_) = e {
-                return err_str(&expr.span, "'assert ... by' block cannot end with an expression");
-            }
-            inner_body.extend(proof_stms);
-
-            for e in ensures.iter() {
-                if state.checking_recommends(ctx) {
-                    let check_stms = check_pure_expr(ctx, state, &e)?;
-                    for s in check_stms.iter() {
-                        vars.extend(free_vars_stm(&s).into_iter());
+                    // Translate body as separate query
+                    state.push_scope();
+                    for r in requires.iter() {
+                        let (require_check_recommends, require_exp) =
+                            expr_to_pure_exp_check(ctx, state, &r)?;
+                        inner_body.extend(require_check_recommends);
+                        vars.extend(free_vars_exp(&require_exp).into_iter());
+                        let assume = Spanned::new(r.span.clone(), StmX::Assume(require_exp));
+                        inner_body.push(assume);
                     }
-                    inner_body.extend(check_stms);
-                } else {
-                    let ensure_exp = expr_to_pure_exp(ctx, state, &e)?;
-                    vars.extend(free_vars_exp(&ensure_exp).into_iter());
-                    let assert = Spanned::new(e.span.clone(), StmX::Assert(None, ensure_exp));
-                    inner_body.push(assert);
-                }
-            }
 
-            let inner_body = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(inner_body)));
-            state.pop_scope();
+                    if ctx.expand_flag {
+                        state.pop_fuel_scope();
+                    }
+                    let (proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
+                    if ctx.expand_flag {
+                        state.pop_fuel_scope();
+                    }
+                    if let ReturnValue::Some(_) = e {
+                        return err_str(
+                            &expr.span,
+                            "'assert ... by' block cannot end with an expression",
+                        );
+                    }
+                    inner_body.extend(proof_stms);
 
-            let mut outer: Vec<Stm> = Vec::new();
+                    for e in ensures.iter() {
+                        if state.checking_recommends(ctx) {
+                            let check_stms = check_pure_expr(ctx, state, &e)?;
+                            for s in check_stms.iter() {
+                                vars.extend(free_vars_stm(&s).into_iter());
+                            }
+                            inner_body.extend(check_stms);
+                        } else {
+                            let ensure_exp = expr_to_pure_exp(ctx, state, &e)?;
+                            vars.extend(free_vars_exp(&ensure_exp).into_iter());
+                            let assert =
+                                Spanned::new(e.span.clone(), StmX::Assert(None, ensure_exp));
+                            inner_body.push(assert);
+                        }
+                    }
 
-            // Translate as assert, assume in outer query
-            for r in requires.iter() {
-                if state.checking_recommends(ctx) {
-                    outer.extend(check_pure_expr(ctx, state, &r)?);
-                } else {
-                    let require_exp = expr_to_pure_exp(ctx, state, &r)?;
-                    let assert = Spanned::new(
-                        r.span.clone(),
-                        StmX::Assert(
-                            Some(air::errors::error(
-                                "requires not satisfied".to_string(),
-                                &r.span.clone(),
-                            )),
-                            require_exp,
-                        ),
+                    let inner_body =
+                        Spanned::new(expr.span.clone(), StmX::Block(Arc::new(inner_body)));
+                    state.pop_scope();
+
+                    let mut outer: Vec<Stm> = Vec::new();
+
+                    // Translate as assert, assume in outer query
+                    for r in requires.iter() {
+                        if state.checking_recommends(ctx) {
+                            outer.extend(check_pure_expr(ctx, state, &r)?);
+                        } else {
+                            let require_exp = expr_to_pure_exp(ctx, state, &r)?;
+                            let assert = Spanned::new(
+                                r.span.clone(),
+                                StmX::Assert(
+                                    Some(air::errors::error(
+                                        "requires not satisfied".to_string(),
+                                        &r.span.clone(),
+                                    )),
+                                    require_exp,
+                                ),
+                            );
+                            outer.push(assert);
+                        }
+                    }
+                    for e in ensures.iter() {
+                        let ensure_exp = expr_to_pure_exp(ctx, state, &e)?;
+                        let assume = Spanned::new(e.span.clone(), StmX::Assume(ensure_exp));
+                        outer.push(assume);
+                    }
+
+                    let outer_block = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(outer)));
+
+                    let nonlinear = Spanned::new(
+                        expr.span.clone(),
+                        StmX::AssertQuery {
+                            body: inner_body,
+                            typ_inv_vars: Arc::new(vars.into_iter().collect()),
+                            mode: *mode,
+                        },
                     );
-                    outer.push(assert);
+                    Ok((vec![outer_block, nonlinear], ReturnValue::ImplicitUnit(expr.span.clone())))
+                }
+
+                AssertQueryMode::BitVector => {
+                    // check if assertion block is consisted only with requires/ensures
+                    let (proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
+                    let proof_block_err =
+                        err_str(&expr.span, "assert_bitvector_by cannot contain a proof block");
+                    if let ReturnValue::Some(_) = e {
+                        return err_str(
+                            &expr.span,
+                            "assert_bitvector_by cannot contain a return value",
+                        );
+                    }
+                    if proof_stms.len() > 1 {
+                        return proof_block_err;
+                    }
+                    if let StmX::Block(st) = &proof_stms[0].x {
+                        if st.len() > 0 {
+                            return proof_block_err;
+                        }
+                    } else {
+                        return proof_block_err;
+                    }
+
+                    // translate requires/ensures expression
+                    let mut requires_in = vec![];
+                    let mut ensures_in = vec![];
+                    state.push_scope();
+                    for r in requires.iter() {
+                        let require_exp = expr_to_pure_exp(ctx, state, &r)?;
+                        requires_in.push(require_exp.clone());
+                    }
+                    for e in ensures.iter() {
+                        let ensure_exp = expr_to_pure_exp(ctx, state, &e)?;
+                        ensures_in.push(ensure_exp.clone());
+                    }
+                    state.pop_scope();
+
+                    // Translate as assert, assume in outer query
+                    let mut outer: Vec<Stm> = Vec::new();
+                    for r in requires.iter() {
+                        let require_exp = expr_to_pure_exp(ctx, state, &r)?;
+                        let assert = Spanned::new(
+                            r.span.clone(),
+                            StmX::Assert(
+                                Some(air::errors::error(
+                                    "requires not satisfied".to_string(),
+                                    &r.span.clone(),
+                                )),
+                                require_exp,
+                            ),
+                        );
+                        outer.push(assert);
+                    }
+                    for e in ensures.iter() {
+                        let ensure_exp = expr_to_pure_exp(ctx, state, &e)?;
+                        let assume = Spanned::new(e.span.clone(), StmX::Assume(ensure_exp));
+                        outer.push(assume);
+                    }
+                    let outer_block = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(outer)));
+
+                    let bitvector = Spanned::new(
+                        expr.span.clone(),
+                        StmX::AssertBitVector {
+                            requires: Arc::new(requires_in),
+                            ensures: Arc::new(ensures_in),
+                        },
+                    );
+                    Ok((vec![outer_block, bitvector], ReturnValue::ImplicitUnit(expr.span.clone())))
                 }
             }
-            for e in ensures.iter() {
-                let ensure_exp = expr_to_pure_exp(ctx, state, &e)?;
-                let assume = Spanned::new(e.span.clone(), StmX::Assume(ensure_exp));
-                outer.push(assume);
-            }
-
-            let outer_block = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(outer)));
-
-            let nonlinear = Spanned::new(
-                expr.span.clone(),
-                StmX::AssertQuery {
-                    body: inner_body,
-                    typ_inv_vars: Arc::new(vars.into_iter().collect()),
-                    mode: *mode,
-                },
-            );
-            Ok((vec![outer_block, nonlinear], ReturnValue::ImplicitUnit(expr.span.clone())))
-        }
-        ExprX::AssertBV(e) => {
-            let expr = expr_to_pure_exp(ctx, state, &e)?;
-            let ret = ReturnValue::ImplicitUnit(expr.span.clone());
-            let assert = Spanned::new(e.span.clone(), StmX::AssertBV(expr));
-            Ok((vec![assert], ret))
         }
         ExprX::If(expr0, expr1, None) => {
             let (stms0, e0) = expr_to_stm_opt(ctx, state, expr0)?;

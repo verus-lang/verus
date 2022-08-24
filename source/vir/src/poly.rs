@@ -89,6 +89,7 @@ pub enum MonoTypX {
     Bool,
     Int(IntRange),
     Datatype(Path, MonoTyps),
+    StrSlice,
 }
 
 struct State {
@@ -100,6 +101,7 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
     match &**typ {
         TypX::Bool => Some(Arc::new(MonoTypX::Bool)),
         TypX::Int(range) => Some(Arc::new(MonoTypX::Int(*range))),
+        TypX::StrSlice => Some(Arc::new(MonoTypX::StrSlice)),
         TypX::Datatype(path, typs) => {
             let mut monotyps: Vec<MonoTyp> = Vec::new();
             for typ in typs.iter() {
@@ -123,12 +125,13 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
             let typs = vec_map(&**typs, monotyp_to_typ);
             Arc::new(TypX::Datatype(path.clone(), Arc::new(typs)))
         }
+        MonoTypX::StrSlice => Arc::new(TypX::StrSlice),
     }
 }
 
 pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) => false,
+        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::StrSlice => false,
         TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
         TypX::Datatype(path, _) => {
             if ctx.datatype_is_transparent[path] {
@@ -145,7 +148,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
 
 fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) => typ.clone(),
+        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::StrSlice => typ.clone(),
         TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
         TypX::Datatype(path, _) => {
             if ctx.datatype_is_transparent[path] {
@@ -166,7 +169,9 @@ fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
 
 fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) => Arc::new(TypX::Boxed(typ.clone())),
+        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::StrSlice => {
+            Arc::new(TypX::Boxed(typ.clone()))
+        }
         TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
         TypX::Datatype(..) => Arc::new(TypX::Boxed(typ.clone())),
         TypX::Boxed(_) | TypX::TypParam(_) => typ.clone(),
@@ -177,7 +182,9 @@ fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
 
 fn coerce_expr_to_native(ctx: &Ctx, expr: &Expr) -> Expr {
     match &*expr.typ {
-        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::Datatype(..) => expr.clone(),
+        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::Datatype(..) | TypX::StrSlice => {
+            expr.clone()
+        }
         TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
         TypX::Boxed(typ) => {
             if typ_is_poly(ctx, typ) {
@@ -201,7 +208,7 @@ fn coerce_expr_to_poly(ctx: &Ctx, expr: &Expr) -> Expr {
         {
             expr.clone()
         }
-        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::Datatype(..) => {
+        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::Datatype(..) | TypX::StrSlice => {
             let op = UnaryOpr::Box(expr.typ.clone());
             let exprx = ExprX::UnaryOpr(op, expr.clone());
             let typ = Arc::new(TypX::Boxed(expr.typ.clone()));
@@ -292,7 +299,11 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         ExprX::Unary(op, e1) => {
             let e1 = poly_expr(ctx, state, e1);
             match op {
-                UnaryOp::Not | UnaryOp::Clip(_) | UnaryOp::BitNot => {
+                UnaryOp::Not
+                | UnaryOp::Clip(_)
+                | UnaryOp::BitNot
+                | UnaryOp::StrLen
+                | UnaryOp::StrIsAscii => {
                     let e1 = coerce_expr_to_native(ctx, &e1);
                     mk_expr(ExprX::Unary(*op, e1))
                 }
@@ -347,6 +358,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 Arith(..) => true,
                 Eq(_) | Ne => false,
                 Bitwise(..) => true,
+                StrGetChar { .. } => true,
             };
             if native {
                 let e1 = coerce_expr_to_native(ctx, &e1);
@@ -420,8 +432,8 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             };
             mk_expr(ExprX::Assign { init_not_mut: *init_not_mut, lhs: e1, rhs: e2 })
         }
-        ExprX::AssertBV(e) => mk_expr(ExprX::AssertBV(poly_expr(ctx, state, e))),
         ExprX::Fuel(..) => expr.clone(),
+        ExprX::RevealString(_) => expr.clone(),
         ExprX::Header(..) => panic!("Header should already be removed"),
         ExprX::Admit => expr.clone(),
         ExprX::Forall { vars, require, ensure, proof } => {

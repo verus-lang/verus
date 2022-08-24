@@ -103,7 +103,11 @@ fn check_trigger_expr(
                 ExpX::VarAt(_, VarAt::Pre) => Ok(()),
                 ExpX::Old(_, _) => panic!("internal error: Old"),
                 ExpX::Unary(op, _) => match op {
-                    UnaryOp::Trigger(_) | UnaryOp::Clip(_) | UnaryOp::BitNot => Ok(()),
+                    UnaryOp::Trigger(_)
+                    | UnaryOp::Clip(_)
+                    | UnaryOp::BitNot
+                    | UnaryOp::StrLen
+                    | UnaryOp::StrIsAscii => Ok(()),
                     UnaryOp::CoerceMode { .. } => Ok(()),
                     UnaryOp::MustBeFinalized => Ok(()),
                     UnaryOp::Not => err_str(&exp.span, "triggers cannot contain boolean operators"),
@@ -128,6 +132,7 @@ fn check_trigger_expr(
                             "triggers cannot contain integer arithmetic\nuse forall_arith for quantifiers on integer arithmetic",
                         ),
                         Bitwise(..) => Ok(()),
+                        StrGetChar => Ok(()),
                     }
                 }
                 ExpX::If(_, _, _) => err_str(&exp.span, "triggers cannot contain if/else"),
@@ -159,7 +164,7 @@ fn check_trigger_expr(
                 ExpX::Unary(op, _) => match op {
                     UnaryOp::Trigger(_) | UnaryOp::Clip(_) | UnaryOp::CoerceMode { .. } => true,
                     UnaryOp::MustBeFinalized => true,
-                    UnaryOp::Not | UnaryOp::BitNot => false,
+                    UnaryOp::Not | UnaryOp::BitNot | UnaryOp::StrLen | UnaryOp::StrIsAscii => false,
                 },
                 ExpX::Binary(op, _, _) => {
                     use BinaryOp::*;

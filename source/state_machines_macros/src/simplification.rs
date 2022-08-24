@@ -387,7 +387,7 @@ fn simplify_special_op(
             (vec![SimplStmt::Require(span, prec)], vec![])
         }
 
-        SpecialOp { stmt: MonoidStmtType::Add, elt } => {
+        SpecialOp { stmt: MonoidStmtType::Add(_), elt } => {
             let cur = get_cur(&field.name);
             let new_val = expr_add(&field.stype, &cur, elt);
 

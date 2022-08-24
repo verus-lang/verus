@@ -35,6 +35,10 @@ impl<A> Seq<A> {
     } 
 }
 
+#[doc(hidden)]
+#[verifier(inline)]
+pub open spec fn check_argument_is_seq<A>(s: Seq<A>) -> Seq<A> { s }
+
 /// Prove two sequences `s1` and `s2` are equal by proving that their elements are equal at each index.
 ///
 /// More precisely, `assert_seqs_equal!` requires:
@@ -83,12 +87,12 @@ impl<A> Seq<A> {
 
 #[macro_export]
 macro_rules! assert_seqs_equal {
-    ($s1:expr, $s2:expr) => {
+    ($s1:expr, $s2:expr $(,)?) => {
         assert_seqs_equal!($s1, $s2, idx => { })
     };
     ($s1:expr, $s2:expr, $idx:ident => $bblock:block) => {
-        let s1 = $s1;
-        let s2 = $s2;
+        let s1 = $crate::pervasive::seq_lib::check_argument_is_seq($s1);
+        let s2 = $crate::pervasive::seq_lib::check_argument_is_seq($s2);
         ::builtin::assert_by(::builtin::equal(s1, s2), {
             $crate::pervasive::assert(s1.len() == s2.len());
             ::builtin::assert_forall_by(|$idx : ::builtin::int| {
@@ -101,15 +105,17 @@ macro_rules! assert_seqs_equal {
     }
 }
 
+pub use assert_seqs_equal;
+
 #[macro_export]
 macro_rules! assert_seqs_equal_verus {
-    ($s1:expr, $s2:expr) => {
+    ($s1:expr, $s2:expr $(,)?) => {
         assert_seqs_equal_verus!($s1, $s2, idx => { })
     };
     ($s1:expr, $s2:expr, $idx:ident => $bblock:block) => {
         ::builtin_macros::verus_proof_expr! {{
-        let s1 = $s1;
-        let s2 = $s2;
+        let s1 = $crate::pervasive::seq_lib::check_argument_is_seq($s1);
+        let s2 = $crate::pervasive::seq_lib::check_argument_is_seq($s2);
         ::builtin::assert_by(::builtin::equal(s1, s2), {
             $crate::pervasive::assert(s1.len() == s2.len());
             ::builtin::assert_forall_by(|$idx : ::builtin::int| {
@@ -122,5 +128,7 @@ macro_rules! assert_seqs_equal_verus {
         }}
     }
 }
+
+pub use assert_seqs_equal_verus;
 
 } // verus!

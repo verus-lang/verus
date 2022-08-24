@@ -268,7 +268,7 @@ impl<S> MyRc<S> {
 
         let (ptr, ptr_perm) = PPtr::new(inner_rc);
 
-        #[proof] let (inst, mut rc_token, _) = RefCounter::Instance::initialize_empty(Option::None);
+        #[proof] let (Trk(inst), Trk(mut rc_token), _) = RefCounter::Instance::initialize_empty(Option::None);
         
         #[proof] let ptr_perm = ptr_perm.get();
         #[proof] let reader = inst.do_deposit(ptr_perm, &mut rc_token, ptr_perm);

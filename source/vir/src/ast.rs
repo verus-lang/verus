@@ -7,10 +7,9 @@
 
 use crate::def::Spanned;
 use air::ast::Span;
+pub use air::ast::{Binder, Binders};
 use air::errors::Error;
 use std::sync::Arc;
-
-pub use air::ast::{Binder, Binders};
 
 /// Result<T, VirErr> is used when an error might need to be reported to the user
 pub type VirErr = Error;
@@ -96,6 +95,10 @@ pub enum TypX {
     TypeId,
     /// AIR type, used internally during translation
     Air(air::ast::Typ),
+
+    /// StrSlice type. Currently the pervasive StrSlice struct is "seen" as this type
+    /// despite the fact that it is in fact a datatype
+    StrSlice,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -140,6 +143,10 @@ pub enum UnaryOp {
     /// Internal consistency check to make sure finalize_exp gets called
     /// (appears only briefly in SST before finalize_exp is called)
     MustBeFinalized,
+    /// Used only for handling builtin::strslice_len
+    StrLen,
+    /// Used only for handling builtin::strslice_is_ascii
+    StrIsAscii,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -233,6 +240,8 @@ pub enum BinaryOp {
     Arith(ArithOp, Option<InferMode>),
     /// Bit Vector Operators
     Bitwise(BitwiseOp),
+    /// Used only for handling builtin::strslice_get_char
+    StrGetChar,
 }
 
 #[derive(Clone, Debug)]
@@ -281,6 +290,8 @@ pub enum Constant {
     Bool(bool),
     /// non-negative integer of arbitrary size (IntRange::Nat); use subtraction to get negative numbers
     Nat(Arc<String>),
+    /// Hold generated string slices in here
+    StrSlice(Arc<String>),
 }
 
 #[derive(Debug)]
@@ -355,6 +366,7 @@ pub enum InvAtomicity {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum AssertQueryMode {
     NonLinear,
+    BitVector,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -418,8 +430,6 @@ pub enum ExprX {
     Admit,
     /// Forall or assert-by statement; proves "forall vars. ensure" via proof.
     Forall { vars: Binders<Typ>, require: Expr, ensure: Expr, proof: Expr },
-    /// bit vector assertions
-    AssertBV(Expr),
     /// If-else
     If(Expr, Expr, Option<Expr>),
     /// Match (Note: ast_simplify replaces Match with other expressions)
@@ -438,8 +448,10 @@ pub enum ExprX {
     Ghost { alloc_wrapper: Option<Fun>, tracked: bool, expr: Expr },
     /// Sequence of statements, optionally including an expression at the end
     Block(Stmts, Option<Expr>),
-    /// assert_by with smt.arith.nl=true
+    /// `assert_by` with a dedicated prover option (nonlinear_arith, bit_vector)
     AssertQuery { requires: Exprs, ensures: Exprs, proof: Expr, mode: AssertQueryMode },
+    /// Reveal a string
+    RevealString(Arc<String>),
 }
 
 /// Statement, similar to rustc_hir::Stmt

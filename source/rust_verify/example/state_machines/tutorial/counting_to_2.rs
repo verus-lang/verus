@@ -185,10 +185,10 @@ impl Spawnable<Proof<X::inc_b>> for Thread2Data {
 fn main() {
   // Initialize protocol 
 
-  #[proof] let (instance,
-      counter_token,
-      inc_a_token,
-      inc_b_token) = X::Instance::initialize();
+  #[proof] let (Trk(instance),
+      Trk(counter_token),
+      Trk(inc_a_token),
+      Trk(inc_b_token)) = X::Instance::initialize();
 
   // Initialize the counter
 

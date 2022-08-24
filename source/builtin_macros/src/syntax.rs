@@ -14,11 +14,11 @@ use syn_verus::visit_mut::{
 };
 use syn_verus::{
     braced, bracketed, parenthesized, parse_macro_input, AttrStyle, Attribute, BinOp, Block,
-    DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop, ExprPath,
-    ExprTuple, ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Ident, ImplItemMethod, Invariant,
-    Item, ItemConst, ItemEnum, ItemFn, ItemStruct, Lit, Local, ModeSpec, ModeSpecChecked, Pat,
-    Path, PathArguments, PathSegment, Publish, Recommends, Requires, ReturnType, Signature, Stmt,
-    Token, TraitItemMethod, UnOp, Visibility,
+    DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop, ExprTuple,
+    ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Ident, ImplItemMethod, Invariant, Item,
+    ItemConst, ItemEnum, ItemFn, ItemStruct, Lit, Local, ModeSpec, ModeSpecChecked, Pat, Path,
+    PathArguments, PathSegment, Publish, Recommends, Requires, ReturnType, Signature, Stmt, Token,
+    TraitItemMethod, UnOp, Visibility,
 };
 
 fn take_expr(expr: &mut Expr) -> Expr {
@@ -142,9 +142,10 @@ impl Visitor {
                 | FnMode::SpecChecked(ModeSpecChecked { spec_token, .. }),
                 None,
             ) => {
-                let e: Expr = Expr::Verbatim(quote_spanned!(spec_token.span =>
-                    compile_error!("non-private spec function must be marked open or closed to indicate whether the function body is public (pub open) or private (pub closed)")));
-                stmts.push(Stmt::Expr(e));
+                stmts.push(stmt_with_semi!(
+                    spec_token.span =>
+                    compile_error!("non-private spec function must be marked open or closed to indicate whether the function body is public (pub open) or private (pub closed)")
+                ));
             }
             _ => {}
         }
@@ -488,23 +489,6 @@ impl VisitMut for Visitor {
             None
         };
 
-        let ghost_intrinsic = match &expr {
-            Expr::Call(ExprCall {
-                func: box Expr::Path(syn_verus::ExprPath { path: Path { segments, .. }, .. }),
-                ..
-            }) if segments.len() == 2 => {
-                if segments.first().unwrap().ident.to_string() == "builtin" {
-                    match segments.last().unwrap().ident.to_string().as_str() {
-                        "requires" | "ensures" | "recommends" | "decreases" | "invariant" => true,
-                        _ => false,
-                    }
-                } else {
-                    false
-                }
-            }
-            _ => false,
-        };
-
         let sub_inside_arith = match expr {
             Expr::Paren(..) | Expr::Block(..) | Expr::Group(..) => self.inside_arith,
             Expr::Cast(..) => InsideArith::Widen,
@@ -531,22 +515,6 @@ impl VisitMut for Visitor {
                 | BinOp::Shr(..) => InsideArith::Fixed,
                 _ => InsideArith::None,
             },
-            Expr::Call(ExprCall {
-                func: box Expr::Path(ExprPath { path: Path { segments, .. }, .. }),
-                ..
-            }) if segments.len() == 2 => {
-                if segments.first().unwrap().ident.to_string() == "builtin" {
-                    match segments.last().unwrap().ident.to_string().as_str() {
-                        "spec_chained_value" | "spec_chained_cmp" | "spec_chained_le"
-                        | "spec_chained_lt" | "spec_chained_ge" | "spec_chained_gt" => {
-                            InsideArith::Widen
-                        }
-                        _ => InsideArith::None,
-                    }
-                } else {
-                    InsideArith::None
-                }
-            }
             _ => InsideArith::None,
         };
         let sub_assign_to = match expr {
@@ -559,7 +527,7 @@ impl VisitMut for Visitor {
         let is_inside_arith = self.inside_arith;
         let is_assign_to = self.assign_to;
         let use_spec_traits = self.use_spec_traits && is_inside_ghost;
-        if mode_block.is_some() || ghost_intrinsic {
+        if mode_block.is_some() {
             self.inside_ghost += 1;
         }
         self.inside_arith = sub_inside_arith;
@@ -577,7 +545,7 @@ impl VisitMut for Visitor {
         if let Expr::Assign(assign) = expr {
             assign.left = Box::new(assign_left.expect("assign_left"));
         }
-        if mode_block.is_some() || ghost_intrinsic {
+        if mode_block.is_some() {
             self.inside_ghost -= 1;
         }
         self.inside_arith = is_inside_arith;
@@ -1003,37 +971,65 @@ impl VisitMut for Visitor {
                     let span = assert.assert_token.span;
                     let arg = assert.expr;
                     let attrs = assert.attrs;
-                    if match (assert.by_token, assert.prover, assert.body) {
-                        (None, None, None) => {
+                    if match (assert.by_token, assert.prover, assert.requires, assert.body) {
+                        (None, None, None, None) => {
                             *expr = Expr::Verbatim(
                                 quote_spanned!(span => crate::pervasive::assert(#arg)),
                             );
                             true
                         }
-                        (None, _, _) => panic!("missing by token"),
-                        (Some(_), None, None) => panic!("extra by token"),
-                        (Some(_), None, Some(box (None, block))) => {
+                        (None, _, _, _) => panic!("missing by token"),
+                        (Some(_), None, None, None) => panic!("extra by token"),
+                        (Some(_), None, None, Some(box block)) => {
                             *expr = Expr::Verbatim(
                                 quote_spanned!(span => {::builtin::assert_by(#arg, #block);}),
                             );
                             true
                         }
-                        (Some(_), Some((_, id)), None) if id.to_string() == "bit_vector" => {
+                        (Some(_), Some((_, id)), None, None) if id.to_string() == "bit_vector" => {
                             *expr = Expr::Verbatim(
-                                quote_spanned!(span => ::builtin::assert_bit_vector(#arg)),
-                            );
-                            Expr::Verbatim(
-                                quote_spanned!(span => ::builtin::assert_bit_vector(#arg)),
+                                quote_spanned!(span => ::builtin::assert_bitvector_by({::builtin::ensures(#arg);})),
                             );
                             true
                         }
-                        (Some(_), Some((_, id)), None) if id.to_string() == "nonlinear_arith" => {
+                        (Some(_), Some((_, id)), requires, block)
+                            if id.to_string() == "bit_vector" =>
+                        {
+                            let mut block = if let Some(box block) = block {
+                                block
+                            } else {
+                                Block { brace_token: token::Brace { span }, stmts: vec![] }
+                            };
+                            let mut stmts: Vec<Stmt> = Vec::new();
+                            if let Some(Requires { token, exprs }) = requires {
+                                stmts.push(Stmt::Semi(
+                                    Expr::Verbatim(
+                                        quote_spanned!(token.span => ::builtin::requires([#exprs])),
+                                    ),
+                                    Semi { spans: [token.span] },
+                                ));
+                            }
+                            stmts.push(Stmt::Semi(
+                                Expr::Verbatim(quote_spanned!(span => ::builtin::ensures(#arg))),
+                                Semi { spans: [span] },
+                            ));
+                            block.stmts.splice(0..0, stmts);
+                            let mut assert_bitvector_by: Expr = Expr::Verbatim(
+                                quote_spanned!(span => ::builtin::assert_bitvector_by(#block)),
+                            );
+                            assert_bitvector_by.replace_attrs(attrs.clone());
+                            *expr = Expr::Verbatim(quote_spanned!(span => {#assert_bitvector_by}));
+                            false
+                        }
+                        (Some(_), Some((_, id)), None, None)
+                            if id.to_string() == "nonlinear_arith" =>
+                        {
                             *expr = Expr::Verbatim(
                                 quote_spanned!(span => ::builtin::assert_nonlinear_by({::builtin::ensures(#arg);})),
                             );
                             true
                         }
-                        (Some(_), Some((_, id)), Some(box (requires, mut block)))
+                        (Some(_), Some((_, id)), requires, Some(box mut block))
                             if id.to_string() == "nonlinear_arith" =>
                         {
                             let mut stmts: Vec<Stmt> = Vec::new();
@@ -1057,7 +1053,7 @@ impl VisitMut for Visitor {
                             *expr = Expr::Verbatim(quote_spanned!(span => {#assert_nonlinear_by}));
                             false
                         }
-                        (Some(_), Some((_, id)), _) => {
+                        (Some(_), Some((_, id)), _, _) => {
                             let span = id.span();
                             *expr = Expr::Verbatim(
                                 quote_spanned!(span => compile_error!("unsupported kind of assert-by")),

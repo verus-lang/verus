@@ -290,6 +290,10 @@ macro_rules! map {
     };
 }
 
+#[doc(hidden)]
+#[verifier(inline)]
+pub open spec fn check_argument_is_map<K, V>(m: Map<K, V>) -> Map<K, V> { m }
+
 pub use map_internal;
 pub use map;
 
@@ -315,8 +319,8 @@ macro_rules! assert_maps_equal {
         assert_maps_equal!($m1, $m2, key => { })
     };
     ($m1:expr, $m2:expr, $k:ident $( : $t:ty )? => $bblock:block) => {
-        #[spec] let m1 = $m1;
-        #[spec] let m2 = $m2;
+        #[spec] let m1 = $crate::pervasive::map::check_argument_is_map($m1);
+        #[spec] let m2 = $crate::pervasive::map::check_argument_is_map($m2);
         ::builtin::assert_by(::builtin::equal(m1, m2), {
             ::builtin::assert_forall_by(|$k $( : $t )?| {
                 // TODO better error message here: show the individual conjunct that fails,
@@ -343,8 +347,8 @@ macro_rules! assert_maps_equal_verus {
     };
     ($m1:expr, $m2:expr, $k:ident $( : $t:ty )? => $bblock:block) => {
         ::builtin_macros::verus_proof_expr! {{
-        #[spec] let m1 = $m1;
-        #[spec] let m2 = $m2;
+        #[spec] let m1 = $crate::pervasive::map::check_argument_is_map($m1);
+        #[spec] let m2 = $crate::pervasive::map::check_argument_is_map($m2);
         ::builtin::assert_by(::builtin::equal(m1, m2), {
             ::builtin::assert_forall_by(|$k $( : $t )?| {
                 // TODO better error message here: show the individual conjunct that fails,

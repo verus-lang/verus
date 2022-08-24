@@ -22,7 +22,7 @@ pub fn check_bind_stmts(sm: &SM, ts: &mut TransitionStmt, errors: &mut Vec<Error
                                 // ok
                             }
 
-                            MonoidStmtType::Add => {
+                            MonoidStmtType::Add(_) => {
                                 errors.push(Error::new(
                                     *span,
                                     "pattern-binding cannot be used in an 'add' statement; there is no way to infer what value should be added",

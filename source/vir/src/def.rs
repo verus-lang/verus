@@ -3,6 +3,8 @@ use crate::sst::UniqueIdent;
 use crate::util::vec_map;
 use air::ast::{Commands, Ident, Span};
 use air::ast_util::str_ident;
+use air::printer::str_to_node;
+use sise::Node;
 use std::fmt::Debug;
 use std::sync::Arc;
 
@@ -41,6 +43,7 @@ const SUFFIX_PATH: &str = ".";
 const PREFIX_FUEL_ID: &str = "fuel%";
 const PREFIX_FUEL_NAT: &str = "fuel_nat%";
 const PREFIX_REQUIRES: &str = "req%";
+const PREFIX_STR: &str = "str%";
 const PREFIX_ENSURES: &str = "ens%";
 const PREFIX_RECURSIVE: &str = "rec%";
 const PREFIX_SIMPLIFY_TEMP_VAR: &str = "tmp%%";
@@ -102,11 +105,14 @@ pub const SNAPSHOT_ASSIGN: &str = "ASSIGN";
 pub const POLY: &str = "Poly";
 pub const BOX_INT: &str = "I";
 pub const BOX_BOOL: &str = "B";
+pub const BOX_STRSLICE: &str = "S";
 pub const UNBOX_INT: &str = "%I";
 pub const UNBOX_BOOL: &str = "%B";
+pub const UNBOX_STRSLICE: &str = "%S";
 pub const TYPE: &str = "Type";
 pub const TYPE_ID_BOOL: &str = "BOOL";
 pub const TYPE_ID_INT: &str = "INT";
+pub const TYPE_ID_STRSLICE: &str = "STRSLICE";
 pub const TYPE_ID_NAT: &str = "NAT";
 pub const TYPE_ID_UINT: &str = "UINT";
 pub const TYPE_ID_SINT: &str = "SINT";
@@ -132,6 +138,14 @@ pub const QID_APPLY: &str = "apply";
 pub const QID_ACCESSOR: &str = "accessor";
 pub const QID_INVARIANT: &str = "invariant";
 pub const QID_HAS_TYPE_ALWAYS: &str = "has_type_always";
+
+pub const STRSLICE: &str = "StrSlice";
+pub const STRSLICE_IS_ASCII: &str = "strslice_is_ascii";
+pub const STRSLICE_LEN: &str = "strslice_len";
+pub const STRSLICE_GET_CHAR: &str = "strslice_get_char";
+pub const STRSLICE_NEW_STRLIT: &str = "new_strlit";
+// only used to prove that new_strlit is injective
+pub const STRSLICE_FROM_STRLIT: &str = "from_strlit";
 
 pub const SUPPORTED_CRATES: [&str; 2] = ["builtin", "pervasive"];
 
@@ -291,6 +305,10 @@ pub fn prefix_fuel_nat(ident: &Ident) -> Ident {
 
 pub fn prefix_requires(ident: &Ident) -> Ident {
     Arc::new(PREFIX_REQUIRES.to_string() + ident)
+}
+
+pub fn prefix_str(ident: &Ident) -> Ident {
+    Arc::new(PREFIX_STR.to_string() + ident)
 }
 
 pub fn prefix_ensures(ident: &Ident) -> Ident {
@@ -517,5 +535,57 @@ pub fn fn_namespace_name(atomicity: InvAtomicity) -> Fun {
             ]),
         }),
         trait_path: None,
+    })
+}
+
+// string related definitions
+pub fn strslice() -> Node {
+    str_to_node(STRSLICE)
+}
+
+pub fn strslice_is_ascii_ident() -> Ident {
+    prefix_str(&std::sync::Arc::new(STRSLICE_IS_ASCII.to_string()))
+}
+
+pub fn strslice_len_ident() -> Ident {
+    prefix_str(&std::sync::Arc::new(STRSLICE_LEN.to_string()))
+}
+
+pub fn strslice_get_char_ident() -> Ident {
+    prefix_str(&std::sync::Arc::new(STRSLICE_GET_CHAR.to_string()))
+}
+
+pub fn strslice_new_strlit_ident() -> Ident {
+    prefix_str(&std::sync::Arc::new(STRSLICE_NEW_STRLIT.to_string()))
+}
+
+pub fn strslice_is_ascii() -> Node {
+    str_to_node(&strslice_is_ascii_ident())
+}
+
+pub fn strslice_len() -> Node {
+    str_to_node(&strslice_len_ident())
+}
+
+pub fn strslice_get_char() -> Node {
+    str_to_node(&strslice_get_char_ident())
+}
+
+pub fn strslice_new_strlit() -> Node {
+    str_to_node(&strslice_new_strlit_ident())
+}
+
+pub fn strslice_from_strlit() -> Node {
+    str_to_node(&prefix_str(&std::sync::Arc::new(STRSLICE_FROM_STRLIT.to_string())))
+}
+
+pub fn strslice_defn_path() -> Path {
+    Arc::new(PathX {
+        krate: None,
+        segments: Arc::new(vec![
+            Arc::new("pervasive".to_string()),
+            Arc::new("string".to_string()),
+            Arc::new(STRSLICE.to_string()),
+        ]),
     })
 }

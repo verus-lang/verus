@@ -602,6 +602,11 @@ impl Ctxt {
     }
 }
 
+enum Mode {
+    Ghost,
+    Tracked,
+}
+
 /// Primary method to build an exchange method for a given transition.
 ///
 /// To build an exchange method, we need to collect 4 key pieces
@@ -727,17 +732,17 @@ pub fn exchange_stream(
     //                                           otherwise, includes storage tokens AND
     //                                           tokens of this instance)
 
-    let mut in_args: Vec<TokenStream> = Vec::new();
-    let mut out_args: Vec<(TokenStream, TokenStream)> = Vec::new();
+    let mut in_params: Vec<TokenStream> = Vec::new();
+    let mut out_params: Vec<(TokenStream, TokenStream, Mode)> = Vec::new();
 
     // First, we create a parameter for the Instance, either an input or output parameter
     // as appropriate.
 
     if ctxt.is_init {
         let itn = inst_type(sm);
-        out_args.push((quote! { instance }, quote! { #itn }));
+        out_params.push((quote! { instance }, quote! { #itn }, Mode::Tracked));
     } else {
-        in_args.push(quote! { #[proof] &self });
+        in_params.push(quote! { #[proof] &self });
     }
 
     // Take the transition parameters (the normal parameters defined in the transition)
@@ -746,7 +751,7 @@ pub fn exchange_stream(
     for param in &tr.params {
         let id = &param.name;
         let ty = &param.ty;
-        in_args.push(quote! { #[spec] #id: #ty });
+        in_params.push(quote! { #[spec] #id: #ty });
     }
 
     // We need some pre/post conditions that the input/output
@@ -834,8 +839,8 @@ pub fn exchange_stream(
 
                 add_token_param_in_out(
                     &ctxt,
-                    &mut in_args,
-                    &mut out_args,
+                    &mut in_params,
+                    &mut out_params,
                     &mut inst_eq_enss,
                     &mut inst_eq_reqs,
                     &arg_name,
@@ -861,8 +866,8 @@ pub fn exchange_stream(
 
                 add_token_param_in_out(
                     &ctxt,
-                    &mut in_args,
-                    &mut out_args,
+                    &mut in_params,
+                    &mut out_params,
                     &mut inst_eq_enss,
                     &mut inst_eq_reqs,
                     &arg_name,
@@ -920,7 +925,7 @@ pub fn exchange_stream(
             if nondeterministic_read {
                 let ty = shardable_type_to_type(field.type_span, &field.stype);
                 let name = nondeterministic_read_spec_out_name(field);
-                out_args.push((quote! { #name }, quote! { crate::modes::Spec<#ty> }));
+                out_params.push((quote! { #name }, quote! { #ty }, Mode::Ghost));
             }
 
             // Now, we handle the actual proof-mode tokens.
@@ -955,8 +960,8 @@ pub fn exchange_stream(
 
                         add_token_param_in_out(
                             &ctxt,
-                            &mut in_args,
-                            &mut out_args,
+                            &mut in_params,
+                            &mut out_params,
                             &mut inst_eq_enss,
                             &mut inst_eq_reqs,
                             &transition_arg_name(field),
@@ -1005,8 +1010,8 @@ pub fn exchange_stream(
                     for p in &ctxt.params[&field.name.to_string()] {
                         add_token_param_in_out(
                             &ctxt,
-                            &mut in_args,
-                            &mut out_args,
+                            &mut in_params,
+                            &mut out_params,
                             &mut inst_eq_enss,
                             &mut inst_eq_reqs,
                             &p.name,
@@ -1045,7 +1050,7 @@ pub fn exchange_stream(
     // Output types are a bit tricky
     // because of the lack of named output params.
 
-    let (out_args_ret, ens_stream) = if out_args.len() == 0 {
+    let (out_params_ret, ens_stream, ret_value_mode) = if out_params.len() == 0 {
         let ens_stream = if enss.len() > 0 {
             quote! {
                 ::builtin::ensures([
@@ -1056,15 +1061,16 @@ pub fn exchange_stream(
             TokenStream::new()
         };
 
-        (TokenStream::new(), ens_stream)
-    } else if out_args.len() == 1 {
-        let arg_name = &out_args[0].0;
-        let arg_ty = &out_args[0].1;
+        (TokenStream::new(), ens_stream, TokenStream::new())
+    } else if out_params.len() == 1 {
+        let param_name = &out_params[0].0;
+        let param_ty = &out_params[0].1;
+        let param_mode = &out_params[0].2;
 
         let ens_stream = if enss.len() > 0 {
             quote! {
                 ::builtin::ensures(
-                    |#arg_name: #arg_ty| [
+                    |#param_name: #param_ty| [
                         #(#enss),*
                     ]
                 );
@@ -1073,16 +1079,47 @@ pub fn exchange_stream(
             TokenStream::new()
         };
 
-        (quote! { -> #arg_ty }, ens_stream)
+        let ret_value_mode = match param_mode {
+            Mode::Tracked => quote! { #[verifier(returns(proof))] },
+            Mode::Ghost => TokenStream::new(),
+        };
+
+        (quote! { -> #param_ty }, ens_stream, ret_value_mode)
     } else {
         // If we have more than one output param (we aren't counting the &mut inputs here,
         // only stuff in the 'return type' position) then we have to package it all into
         // a tuple and unpack it in the 'ensures' clause.
 
-        let arg_tys: Vec<TokenStream> = out_args.iter().map(|oa| oa.1.clone()).collect();
-        let arg_names: Vec<TokenStream> = out_args.iter().map(|oa| oa.0.clone()).collect();
-        let tup_typ = quote! { (#(#arg_tys),*) };
-        let tup_names = quote! { (#(#arg_names),*) };
+        let param_tys: Vec<TokenStream> = out_params
+            .iter()
+            .map(|oa| {
+                let ty = &oa.1;
+                match oa.2 {
+                    Mode::Ghost => {
+                        quote! { crate::pervasive::modes::Gho<#ty> }
+                    }
+                    Mode::Tracked => {
+                        quote! { crate::pervasive::modes::Trk<#ty> }
+                    }
+                }
+            })
+            .collect();
+        let param_names: Vec<TokenStream> = out_params
+            .iter()
+            .map(|oa| {
+                let name = &oa.0;
+                match oa.2 {
+                    Mode::Ghost => {
+                        quote! { crate::pervasive::modes::Gho(#name) }
+                    }
+                    Mode::Tracked => {
+                        quote! { crate::pervasive::modes::Trk(#name) }
+                    }
+                }
+            })
+            .collect();
+        let tup_typ = quote! { (#(#param_tys),*) };
+        let tup_names = quote! { (#(#param_names),*) };
 
         let ens_stream = if enss.len() > 0 {
             quote! {
@@ -1097,13 +1134,9 @@ pub fn exchange_stream(
             TokenStream::new()
         };
 
-        (quote! { -> #tup_typ }, ens_stream)
-    };
+        let ret_value_mode = quote! { #[verifier(returns(proof))] };
 
-    let return_value_mode = if out_args.len() == 0 {
-        TokenStream::new()
-    } else {
-        quote! { #[verifier(returns(proof))] }
+        (quote! { -> #tup_typ }, ens_stream, ret_value_mode)
     };
 
     // Tie it all together
@@ -1117,9 +1150,9 @@ pub fn exchange_stream(
     };
 
     return Ok(quote! {
-        #return_value_mode
+        #ret_value_mode
         #[verifier(external_body)]
-        pub proof fn #exch_name#gen(#(#in_args),*) #out_args_ret {
+        pub proof fn #exch_name#gen(#(#in_params),*) #out_params_ret {
             #req_stream
             #ens_stream
             #extra_deps
@@ -1518,16 +1551,17 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 }
 
                 #[verifier(external_body)]
-                pub proof fn split(tracked self, i: nat) -> tracked (Self, Self) {
+                pub proof fn split(tracked self, i: nat) -> tracked (crate::pervasive::modes::Trk<Self>, crate::pervasive::modes::Trk<Self>) {
                     ::builtin::requires(i <= self.view().count);
-                    ::builtin::ensures(|s: (Self, Self)|
-                        ::builtin::equal(s.0.view().instance, self.view().instance)
-                        && ::builtin::equal(s.1.view().instance, self.view().instance)
-                        && ::builtin::equal(s.0.view().value, self.view().value)
-                        && ::builtin::equal(s.1.view().value, self.view().value)
-                        && ::builtin::equal(s.0.view().count, i)
-                        && ::builtin::equal(s.1.view().count as int, self.view().count - i)
-                    );
+                    ::builtin::ensures(|s: (crate::pervasive::modes::Trk<Self>, crate::pervasive::modes::Trk<Self>)| {
+                        let (crate::pervasive::modes::Trk(x), crate::pervasive::modes::Trk(y)) = s;
+                        ::builtin::equal(x.view().instance, self.view().instance)
+                        && ::builtin::equal(y.view().instance, self.view().instance)
+                        && ::builtin::equal(x.view().value, self.view().value)
+                        && ::builtin::equal(y.view().value, self.view().value)
+                        && ::builtin::equal(x.view().count, i)
+                        && ::builtin::equal(y.view().count as int, self.view().count - i)
+                    });
                     ::std::unimplemented!();
                 }
             }
@@ -1547,14 +1581,15 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 }
 
                 #[verifier(external_body)]
-                pub proof fn split(tracked self, i: nat) -> tracked (Self, Self) {
+                pub proof fn split(tracked self, i: nat) -> tracked (crate::pervasive::modes::Trk<Self>, crate::pervasive::modes::Trk<Self>) {
                     ::builtin::requires(i <= self.view().count);
-                    ::builtin::ensures(|s: (Self, Self)|
-                        ::builtin::equal(s.0.view().instance, self.view().instance)
-                        && ::builtin::equal(s.1.view().instance, self.view().instance)
-                        && ::builtin::equal(s.0.view().count, i)
-                        && ::builtin::equal(s.1.view().count as int, self.view().count - i)
-                    );
+                    ::builtin::ensures(|s: (crate::pervasive::modes::Trk<Self>, crate::pervasive::modes::Trk<Self>)| {
+                        let (crate::pervasive::modes::Trk(x), crate::pervasive::modes::Trk(y)) = s;
+                        ::builtin::equal(x.view().instance, self.view().instance)
+                        && ::builtin::equal(y.view().instance, self.view().instance)
+                        && ::builtin::equal(x.view().count, i)
+                        && ::builtin::equal(y.view().count as int, self.view().count - i)
+                    });
                     ::std::unimplemented!();
                 }
             }
@@ -1578,13 +1613,13 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
 
 fn add_token_param_in_out(
     ctxt: &Ctxt,
-    in_args: &mut Vec<TokenStream>,
-    out_args: &mut Vec<(TokenStream, TokenStream)>,
+    in_params: &mut Vec<TokenStream>,
+    out_params: &mut Vec<(TokenStream, TokenStream, Mode)>,
     inst_eq_enss: &mut Vec<Expr>,
     inst_eq_reqs: &mut Vec<Expr>,
 
-    arg_name: &Ident,
-    arg_type: &Type,
+    param_name: &Ident,
+    param_type: &Type,
     inout_type: InoutType,
     apply_instance_condition: bool,
     use_explicit_lifetime: bool,
@@ -1601,30 +1636,30 @@ fn add_token_param_in_out(
     let (is_input, is_output) = match inout_type {
         InoutType::In => {
             assert!(!use_explicit_lifetime);
-            in_args.push(quote! { #[proof] #arg_name: #arg_type });
+            in_params.push(quote! { #[proof] #param_name: #param_type });
             (true, false)
         }
         InoutType::Out => {
             assert!(!use_explicit_lifetime);
-            out_args.push((quote! {#arg_name}, quote! {#arg_type}));
+            out_params.push((quote! {#param_name}, quote! {#param_type}, Mode::Tracked));
             (false, true)
         }
         InoutType::InOut => {
             assert!(!use_explicit_lifetime);
-            in_args.push(quote! { #[proof] #arg_name: &mut #arg_type });
+            in_params.push(quote! { #[proof] #param_name: &mut #param_type });
             (true, true)
         }
         InoutType::BorrowIn => {
             if use_explicit_lifetime {
-                in_args.push(quote! { #[proof] #arg_name: &'a #arg_type });
+                in_params.push(quote! { #[proof] #param_name: &'a #param_type });
             } else {
-                in_args.push(quote! { #[proof] #arg_name: &#arg_type });
+                in_params.push(quote! { #[proof] #param_name: &#param_type });
             }
             (true, false)
         }
         InoutType::BorrowOut => {
             assert!(use_explicit_lifetime);
-            out_args.push((quote! {#arg_name}, quote! {&'a #arg_type}));
+            out_params.push((quote! {#param_name}, quote! {&'a #param_type}, Mode::Tracked));
             (false, true)
         }
     };
@@ -1634,16 +1669,16 @@ fn add_token_param_in_out(
     if apply_instance_condition {
         let inst = get_inst_value(&ctxt);
         if is_output {
-            let lhs = Expr::Verbatim(quote! { #arg_name.view().instance });
+            let lhs = Expr::Verbatim(quote! { #param_name.view().instance });
             inst_eq_enss.push(Expr::Verbatim(quote! {
                 ::builtin::equal(#lhs, #inst)
             }));
         }
         if is_input {
             let lhs = if is_output {
-                Expr::Verbatim(quote! { ::builtin::old(#arg_name).view().instance })
+                Expr::Verbatim(quote! { ::builtin::old(#param_name).view().instance })
             } else {
-                Expr::Verbatim(quote! { #arg_name.view().instance })
+                Expr::Verbatim(quote! { #param_name.view().instance })
             };
             inst_eq_reqs.push(Expr::Verbatim(quote! {
                 ::builtin::equal(#lhs, #inst)
@@ -2094,7 +2129,7 @@ fn translate_special_condition(
             ))
         }
 
-        SpecialOp { stmt: MonoidStmtType::Add, elt } => {
+        SpecialOp { stmt: MonoidStmtType::Add(_), elt } => {
             let elt = translate_elt(ctxt, elt, false, errors);
 
             let ident = ctxt.get_numbered_token_ident(&field.name);
@@ -2241,7 +2276,7 @@ fn translate_special_assignment(op: &SpecialOp, param: &TokenParam) -> Expr {
             Expr::Verbatim(quote! { #name })
         }
 
-        MonoidStmtType::Add | MonoidStmtType::Guard | MonoidStmtType::Deposit => {
+        MonoidStmtType::Add(_) | MonoidStmtType::Guard | MonoidStmtType::Deposit => {
             panic!("unexpected monoid type");
         }
     }
@@ -2391,7 +2426,7 @@ fn get_const_field_value(ctxt: &Ctxt, field: &Field, span: Span) -> Expr {
 
 fn get_nondeterministic_out_value(_ctxt: &Ctxt, field: &Field, span: Span) -> Expr {
     let name = nondeterministic_read_spec_out_name(field);
-    Expr::Verbatim(quote_spanned! { span => #name.value() })
+    Expr::Verbatim(quote_spanned! { span => #name })
 }
 
 fn get_old_field_value(ctxt: &Ctxt, field: &Field, span: Span) -> Expr {

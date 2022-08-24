@@ -23,10 +23,12 @@ use rustc_hir::{
     BinOpKind, BindingAnnotation, Block, Destination, Expr, ExprKind, Guard, Local, LoopSource,
     Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
 };
+
 use rustc_middle::ty::subst::GenericArgKind;
 use rustc_middle::ty::{PredicateKind, TyCtxt, TyKind};
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
+use rustc_span::symbol::Symbol;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
@@ -450,6 +452,7 @@ fn fn_call_to_vir<'tcx>(
     let is_implies = f_name == "builtin::imply";
     let is_assert_by = f_name == "builtin::assert_by";
     let is_assert_nonlinear_by = f_name == "builtin::assert_nonlinear_by";
+    let is_assert_bitvector_by = f_name == "builtin::assert_bitvector_by";
     let is_assert_forall_by = f_name == "builtin::assert_forall_by";
     let is_assert_bit_vector = f_name == "builtin::assert_bit_vector";
     let is_old = f_name == "builtin::old";
@@ -499,6 +502,15 @@ fn fn_call_to_vir<'tcx>(
     let is_tracked_exec_borrow = f_name == "pervasive::modes::tracked_exec_borrow";
     let is_tracked_get = f_name == "builtin::Tracked::<A>::get";
     let is_tracked_split_tuple = f_name.starts_with("builtin::tracked_split_tuple");
+    let is_new_strlit = tcx.is_diagnostic_item(Symbol::intern("pervasive::string::new_strlit"), f);
+
+    let is_reveal_strlit = tcx.is_diagnostic_item(Symbol::intern("builtin::reveal_strlit"), f);
+    let is_strslice_len = tcx.is_diagnostic_item(Symbol::intern("builtin::strslice_len"), f);
+    let is_strslice_get_char =
+        tcx.is_diagnostic_item(Symbol::intern("builtin::strslice_get_char"), f);
+    let is_strslice_is_ascii =
+        tcx.is_diagnostic_item(Symbol::intern("builtin::strslice_is_ascii"), f);
+
     let is_spec = is_admit
         || is_no_method_body
         || is_requires
@@ -513,7 +525,8 @@ fn fn_call_to_vir<'tcx>(
         || is_opens_invariants
         || is_opens_invariants_except;
     let is_quant = is_forall || is_exists || is_forall_arith;
-    let is_directive = is_extra_dependency || is_hide || is_reveal || is_reveal_fuel;
+    let is_directive =
+        is_extra_dependency || is_hide || is_reveal || is_reveal_fuel || is_reveal_strlit;
     let is_cmp = is_equal || is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
     let is_arith_binary =
         is_builtin_add || is_builtin_sub || is_builtin_mul || is_add || is_sub || is_mul;
@@ -613,6 +626,7 @@ fn fn_call_to_vir<'tcx>(
             || is_with_triggers
             || is_assert_by
             || is_assert_nonlinear_by
+            || is_assert_bitvector_by
             || is_assert_forall_by
             || is_assert_bit_vector
             || is_old
@@ -846,11 +860,11 @@ fn fn_call_to_vir<'tcx>(
         let proof = expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?;
         return Ok(mk_expr(ExprX::Forall { vars, require, ensure, proof }));
     }
-    if is_assert_nonlinear_by {
+    if is_assert_nonlinear_by || is_assert_bitvector_by {
         unsupported_err_unless!(
             len == 1,
             expr.span,
-            "expected assert_nonlinear_by with one argument",
+            "expected assert_nonlinear_by/assert_bitvector_by with one argument",
             &args
         );
         let mut vir_expr = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
@@ -865,7 +879,10 @@ fn fn_call_to_vir<'tcx>(
             )])
         };
         if header.ensure.len() == 0 {
-            return err_span_str(expr.span, "assert_nonlinear_by must have at least one ensures");
+            return err_span_str(
+                expr.span,
+                "assert_nonlinear_by/assert_bitvector_by must have at least one ensures",
+            );
         }
         let ensures = header.ensure;
         let proof = vir_expr;
@@ -875,14 +892,18 @@ fn fn_call_to_vir<'tcx>(
         if expr_vattrs.spinoff_prover {
             return err_span_str(
                 expr.span,
-                "#[verifier(spinoff_prover)] is implied for assert by nonlinear_arith",
+                "#[verifier(spinoff_prover)] is implied for assert by nonlinear_arith and assert by bit_vector",
             );
         }
         return Ok(mk_expr(ExprX::AssertQuery {
             requires,
             ensures,
             proof,
-            mode: AssertQueryMode::NonLinear,
+            mode: if is_assert_nonlinear_by {
+                AssertQueryMode::NonLinear
+            } else {
+                AssertQueryMode::BitVector
+            },
         }));
     }
     if is_assert_forall_by {
@@ -890,9 +911,26 @@ fn fn_call_to_vir<'tcx>(
         return extract_assert_forall_by(bctx, expr.span, args[0]);
     }
 
+    // internally translate this into `assert_bitvector_by`. REVIEW: consider deprecating this at all
     if is_assert_bit_vector {
-        let expr = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
-        return Ok(mk_expr(ExprX::AssertBV(expr)));
+        let vir_expr = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+        let requires = Arc::new(vec![spanned_typed_new(
+            expr.span,
+            &Arc::new(TypX::Bool),
+            ExprX::Const(Constant::Bool(true)),
+        )]);
+        let ensures = Arc::new(vec![vir_expr]);
+        let proof = spanned_typed_new(
+            expr.span,
+            &Arc::new(TypX::Tuple(Arc::new(vec![]))),
+            ExprX::Block(Arc::new(vec![]), None),
+        );
+        return Ok(mk_expr(ExprX::AssertQuery {
+            requires,
+            ensures,
+            proof,
+            mode: AssertQueryMode::BitVector,
+        }));
     }
 
     if is_ignored_fn {
@@ -909,6 +947,81 @@ fn fn_call_to_vir<'tcx>(
     } else {
         Box::new(std::iter::repeat(None))
     };
+
+    if is_new_strlit {
+        let s = if let ExprKind::Lit(lit0) = &args[0].kind {
+            if let rustc_ast::LitKind::Str(s, _) = lit0.node {
+                s
+            } else {
+                panic!("unexpected arguments to new_strlit")
+            }
+        } else {
+            panic!("unexpected arguments to new_strlit")
+        };
+
+        let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()));
+        return Ok(mk_expr(ExprX::Const(c)));
+    }
+
+    if is_reveal_strlit {
+        if let Some(s) = if let ExprKind::Lit(lit0) = &args[0].kind {
+            if let rustc_ast::LitKind::Str(s, _) = lit0.node { Some(s) } else { None }
+        } else {
+            None
+        } {
+            return Ok(mk_expr(ExprX::RevealString(Arc::new(s.to_string()))));
+        } else {
+            return err_span_string(args[0].span, "string literal expected".to_string());
+        }
+    }
+
+    if is_strslice_get_char {
+        return match &expr.kind {
+            ExprKind::Call(_, args) if args.len() == 2 => {
+                let arg0 = args.first().unwrap();
+                let arg0 = expr_to_vir(bctx, arg0, ExprModifier::REGULAR).expect(
+                    "invalid parameter for builtin::strslice_get_char at arg0, arg0 must be self",
+                );
+                let arg1 = &args[1];
+                let arg1 = expr_to_vir(bctx, arg1, ExprModifier::REGULAR)
+                    .expect("invalid parameter for builtin::strslice_get_char at arg1, arg1 must be an integer");
+                Ok(mk_expr(ExprX::Binary(BinaryOp::StrGetChar, arg0, arg1)))
+            }
+            _ => panic!(
+                "Expected a call for builtin::strslice_get_char with two argument but did not receive it"
+            ),
+        };
+    }
+
+    if is_strslice_len {
+        return match &expr.kind {
+            ExprKind::Call(_, args) => {
+                assert!(args.len() == 1);
+                let arg0 = args.first().unwrap();
+                let arg0 = expr_to_vir(bctx, arg0, ExprModifier::REGULAR)
+                    .expect("internal compiler error");
+                Ok(mk_expr(ExprX::Unary(UnaryOp::StrLen, arg0)))
+            }
+            _ => panic!(
+                "Expected a call for builtin::strslice_len with one argument but did not receive it"
+            ),
+        };
+    }
+
+    if is_strslice_is_ascii {
+        return match &expr.kind {
+            ExprKind::Call(_, args) => {
+                assert!(args.len() == 1);
+                let arg0 = args.first().unwrap();
+                let arg0 = expr_to_vir(bctx, arg0, ExprModifier::REGULAR)
+                    .expect("internal compiler error");
+                Ok(mk_expr(ExprX::Unary(UnaryOp::StrIsAscii, arg0)))
+            }
+            _ => panic!(
+                "Expected a call for builtin::strslice_is_ascii with one argument but did not receive it"
+            ),
+        };
+    }
 
     let mut vir_args = args
         .iter()

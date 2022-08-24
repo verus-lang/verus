@@ -149,6 +149,10 @@ pub proof fn lemma_int_range(lo: int, hi: int)
     }
 }
 
+#[doc(hidden)]
+#[verifier(inline)]
+pub open spec fn check_argument_is_set<A>(s: Set<A>) -> Set<A> { s }
+
 /// Prove two sets equal by extensionality. Usage is:
 ///
 /// ```rust
@@ -169,8 +173,8 @@ macro_rules! assert_sets_equal {
         assert_sets_equal!($s1, $s2, elem => { })
     };
     ($s1:expr, $s2:expr, $elem:ident $( : $t:ty )? => $bblock:block) => {
-        let s1 = $s1;
-        let s2 = $s2;
+        let s1 = $crate::pervasive::set_lib::check_argument_is_set($s1);
+        let s2 = $crate::pervasive::set_lib::check_argument_is_set($s2);
         ::builtin::assert_by(::builtin::equal(s1, s2), {
             ::builtin::assert_forall_by(|$elem $( : $t )?| {
                 ::builtin::ensures(
@@ -194,8 +198,8 @@ macro_rules! assert_sets_equal_verus {
     };
     ($s1:expr, $s2:expr, $elem:ident $( : $t:ty )? => $bblock:block) => {
         ::builtin_macros::verus_proof_expr! {{
-        let s1 = $s1;
-        let s2 = $s2;
+        let s1 = $crate::pervasive::set_lib::check_argument_is_set($s1);
+        let s2 = $crate::pervasive::set_lib::check_argument_is_set($s2);
         ::builtin::assert_by(::builtin::equal(s1, s2), {
             ::builtin::assert_forall_by(|$elem $( : $t )?| {
                 ::builtin::ensures(

@@ -164,7 +164,7 @@ fn check_is_sorted_tree(tree: &Tree) -> (ret: TreeSortedness)
             //         assert(left_bound == tree@[0]);
             //     }
             // });
-            // assert(right_bound == tree@.last());
+            assert(right_bound == tree@.last());
             TreeSortedness::Bounded(left_bound, right_bound)
         }
     }

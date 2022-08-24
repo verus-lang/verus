@@ -199,11 +199,12 @@ fn check_item<'tcx>(
                     let self_ty = ctxt.tcx.type_of(item.def_id.to_def_id());
                     let self_typ = mid_ty_to_vir(ctxt.tcx, self_ty, false);
 
-                    let datatype_typ_args = if let TypX::Datatype(_, typ_args) = &*self_typ {
-                        typ_args.clone()
-                    } else {
-                        panic!("expected datatype")
+                    let datatype_typ_args = match &*self_typ {
+                        TypX::Datatype(_, typ_args) => typ_args.clone(),
+                        TypX::StrSlice => Arc::new(vec![Arc::new(TypX::StrSlice)]),
+                        _ => panic!("expected datatype or StrSlice"),
                     };
+
                     let self_path = def_id_to_vir_path(ctxt.tcx, *self_def_id);
 
                     let trait_path_typ_args =
@@ -451,6 +452,11 @@ fn check_item<'tcx>(
             // type alias (like lines of the form `type X = ...;`
             // Nothing to do here - we can rely on Rust's type resolution to handle these
         }
+        ItemKind::GlobalAsm(..) =>
+        //TODO(utaal): add a crate-level attribute to enable global_asm
+        {
+            return Ok(());
+        }
         _ => {
             unsupported_err!(item.span, "unsupported item", item);
         }
@@ -478,8 +484,13 @@ fn check_foreign_item<'tcx>(
                 generics,
             )?;
         }
+        ForeignItemKind::Static(..)
+            if get_verifier_attrs(ctxt.tcx.hir().attrs(item.hir_id()))?.external =>
+        {
+            return Ok(());
+        }
         _ => {
-            unsupported_err!(item.span, "unsupported item", item);
+            unsupported_err!(item.span, "unsupported foreign item", item);
         }
     }
     Ok(())

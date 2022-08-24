@@ -15,7 +15,7 @@ macro_rules! make_unsigned_integer_atomic {
         // TODO when we support `std::intrinsics::wrapping_add`,
         // use that instead.
 
-        verus! {
+        verus!{
 
         pub open spec fn $wrap_add(a: int, b: int) -> int {
             if a + b > $int_max {
@@ -249,19 +249,16 @@ macro_rules! atomic_integer_methods {
         // Note that wrapping-on-overflow is the defined behavior for fetch_add and fetch_sub
         // for Rust's atomics (in contrast to ordinary arithmetic)
 
-        verus! {
-
         #[inline(always)]
         #[verifier(external_body)]
         #[verifier(atomic)]
-        pub fn fetch_add_wrapping(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> (ret: $value_ty)
-            requires
-                self.id() === old(perm).patomic,
-            ensures
-                old(perm).value === ret,
+        pub fn fetch_add_wrapping(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
+            requires(equal(self.id(), old(perm).patomic));
+            ensures(|ret: $value_ty| [
+                equal(old(perm).value, ret),
                 perm.patomic == old(perm).patomic,
-                perm.value == $wrap_add(old(perm).value as int, n as int),
-        {
+                spec_cast_integer::<$value_ty, int>(perm.value) == $wrap_add(spec_cast_integer(old(perm).value), spec_cast_integer(n)),
+            ]);
             opens_invariants_none();
 
             return self.ato.fetch_add(n, Ordering::SeqCst);
@@ -270,14 +267,13 @@ macro_rules! atomic_integer_methods {
         #[inline(always)]
         #[verifier(external_body)]
         #[verifier(atomic)]
-        pub fn fetch_sub_wrapping(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> (ret: $value_ty)
-            requires
-                self.id() === old(perm).patomic,
-            ensures
-                old(perm).value === ret,
+        pub fn fetch_sub_wrapping(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
+            requires(equal(self.id(), old(perm).patomic));
+            ensures(|ret: $value_ty| [
+                equal(old(perm).value, ret),
                 perm.patomic == old(perm).patomic,
-                perm.value == $wrap_sub(old(perm).value as int, n as int),
-        {
+                spec_cast_integer::<$value_ty, int>(perm.value) == $wrap_sub(spec_cast_integer::<$value_ty, int>(old(perm).value), spec_cast_integer(n)),
+            ]);
             opens_invariants_none();
 
             return self.ato.fetch_sub(n, Ordering::SeqCst);
@@ -288,16 +284,18 @@ macro_rules! atomic_integer_methods {
 
         #[inline(always)]
         #[verifier(atomic)]
-        pub fn fetch_add(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> (ret: $value_ty)
-            requires
-                self.id() === old(perm).patomic,
-                ($int_min as $value_ty) <= old(perm).value + n,
-                old(perm).value + n <= ($int_max as $value_ty),
-            ensures
-                old(perm).value === ret,
+        pub fn fetch_add(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty
+        {
+            requires([
+                equal(self.id(), old(perm).patomic),
+                $int_min <= old(perm).value.spec_add(n),
+                old(perm).value.spec_add(n) <= $int_max
+            ]);
+            ensures(|ret: $value_ty| [
+                equal(old(perm).value, ret),
                 perm.patomic == old(perm).patomic,
                 perm.value == old(perm).value + n,
-        {
+            ]);
             opens_invariants_none();
 
             self.fetch_add_wrapping(&mut *perm, n)
@@ -305,16 +303,18 @@ macro_rules! atomic_integer_methods {
 
         #[inline(always)]
         #[verifier(atomic)]
-        pub fn fetch_sub(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> (ret: $value_ty)
-            requires
-                self.id() === old(perm).patomic,
-                ($int_min as $value_ty) <= old(perm).value - n,
-                old(perm).value - n <= ($int_max as $value_ty),
-            ensures
-                old(perm).value === ret,
+        pub fn fetch_sub(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty
+        {
+            requires([
+                equal(self.id(), old(perm).patomic),
+                $int_min <= old(perm).value.spec_sub(n),
+                old(perm).value.spec_sub(n) <= $int_max,
+            ]);
+            ensures(|ret: $value_ty| [
+                equal(old(perm).value, ret),
                 perm.patomic == old(perm).patomic,
                 perm.value == old(perm).value - n,
-        {
+            ]);
             opens_invariants_none();
 
             self.fetch_sub_wrapping(&mut *perm, n)
@@ -323,14 +323,14 @@ macro_rules! atomic_integer_methods {
         #[inline(always)]
         #[verifier(external_body)]
         #[verifier(atomic)]
-        pub fn fetch_and(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> (ret: $value_ty)
-            requires
-                self.id() === old(perm).patomic,
-            ensures
-                old(perm).value === ret,
+        pub fn fetch_and(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty
+        {
+            requires(equal(self.id(), old(perm).patomic));
+            ensures(|ret: $value_ty| [
+                equal(old(perm).value, ret),
                 perm.patomic == old(perm).patomic,
                 perm.value == (old(perm).value & n),
-        {
+            ]);
             opens_invariants_none();
 
             return self.ato.fetch_and(n, Ordering::SeqCst);
@@ -339,14 +339,14 @@ macro_rules! atomic_integer_methods {
         #[inline(always)]
         #[verifier(external_body)]
         #[verifier(atomic)]
-        pub fn fetch_or(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> (ret: $value_ty)
-            requires
-                self.id() === old(perm).patomic,
-            ensures
-                old(perm).value === ret,
+        pub fn fetch_or(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty
+        {
+            requires(equal(self.id(), old(perm).patomic));
+            ensures(|ret: $value_ty| [
+                equal(old(perm).value, ret),
                 perm.patomic == old(perm).patomic,
                 perm.value == (old(perm).value | n),
-        {
+            ]);
             opens_invariants_none();
 
             return self.ato.fetch_or(n, Ordering::SeqCst);
@@ -355,14 +355,14 @@ macro_rules! atomic_integer_methods {
         #[inline(always)]
         #[verifier(external_body)]
         #[verifier(atomic)]
-        pub fn fetch_xor(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> (ret: $value_ty)
-            requires
-                self.id() === old(perm).patomic,
-            ensures
-                old(perm).value === ret,
+        pub fn fetch_xor(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty
+        {
+            requires(equal(self.id(), old(perm).patomic));
+            ensures(|ret: $value_ty| [
+                equal(old(perm).value, ret),
                 perm.patomic == old(perm).patomic,
                 perm.value == (old(perm).value ^ n),
-        {
+            ]);
             opens_invariants_none();
 
             return self.ato.fetch_or(n, Ordering::SeqCst);
@@ -371,14 +371,14 @@ macro_rules! atomic_integer_methods {
         #[inline(always)]
         #[verifier(external_body)]
         #[verifier(atomic)]
-        pub fn fetch_nand(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> (ret: $value_ty)
-            requires
-                self.id() === old(perm).patomic,
-            ensures
-                old(perm).value === ret,
+        pub fn fetch_nand(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty
+        {
+            requires(equal(self.id(), old(perm).patomic));
+            ensures(|ret: $value_ty| [
+                equal(old(perm).value, ret),
                 perm.patomic == old(perm).patomic,
                 perm.value == !(old(perm).value & n),
-        {
+            ]);
             opens_invariants_none();
 
             return self.ato.fetch_nand(n, Ordering::SeqCst);
@@ -387,14 +387,14 @@ macro_rules! atomic_integer_methods {
         #[inline(always)]
         #[verifier(external_body)]
         #[verifier(atomic)]
-        pub fn fetch_max(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> (ret: $value_ty)
-            requires
-                self.id() === old(perm).patomic,
-            ensures
-                old(perm).value === ret,
+        pub fn fetch_max(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty
+        {
+            requires(equal(self.id(), old(perm).patomic));
+            ensures(|ret: $value_ty| [
+                equal(old(perm).value, ret),
                 perm.patomic == old(perm).patomic,
                 perm.value == (if old(perm).value > n { old(perm).value } else { n }),
-        {
+            ]);
             opens_invariants_none();
 
             return self.ato.fetch_max(n, Ordering::SeqCst);
@@ -403,20 +403,18 @@ macro_rules! atomic_integer_methods {
         #[inline(always)]
         #[verifier(external_body)]
         #[verifier(atomic)]
-        pub fn fetch_min(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> (ret: $value_ty)
-            requires
-                self.id() === old(perm).patomic,
-            ensures
-                old(perm).value === ret,
+        pub fn fetch_min(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty
+        {
+            requires(equal(self.id(), old(perm).patomic));
+            ensures(|ret: $value_ty| [
+                equal(old(perm).value, ret),
                 perm.patomic == old(perm).patomic,
                 perm.value == (if old(perm).value < n { old(perm).value } else { n }),
-        {
+            ]);
             opens_invariants_none();
 
             return self.ato.fetch_min(n, Ordering::SeqCst);
         }
-
-        } // verus!
     }
 }
 
@@ -490,14 +488,14 @@ macro_rules! atomic_bool_methods {
 
 make_bool_atomic!(PAtomicBool, PermissionBool, AtomicBool, bool);
 
-make_unsigned_integer_atomic!(PAtomicU8, PermissionU8, AtomicU8, u8, wrapping_add_u8, wrapping_sub_u8, 0, 0xff);
-make_unsigned_integer_atomic!(PAtomicU16, PermissionU16, AtomicU16, u16, wrapping_add_u16, wrapping_sub_u16, 0, 0xffff);
-make_unsigned_integer_atomic!(PAtomicU32, PermissionU32, AtomicU32, u32, wrapping_add_u32, wrapping_sub_u32, 0, 0xffff_ffff);
-make_unsigned_integer_atomic!(PAtomicU64, PermissionU64, AtomicU64, u64, wrapping_add_u64, wrapping_sub_u64, 0, 0xffff_ffff_ffff_ffff);
+make_unsigned_integer_atomic!(PAtomicU8, PermissionU8, AtomicU8, u8, wrapping_add_u8, wrapping_sub_u8, spec_literal_int("0"), spec_literal_int("255"));
+make_unsigned_integer_atomic!(PAtomicU16, PermissionU16, AtomicU16, u16, wrapping_add_u16, wrapping_sub_u16, spec_literal_int("0"), spec_literal_int("65535"));
+make_unsigned_integer_atomic!(PAtomicU32, PermissionU32, AtomicU32, u32, wrapping_add_u32, wrapping_sub_u32, spec_literal_int("0"), spec_literal_int("4294967295"));
+make_unsigned_integer_atomic!(PAtomicU64, PermissionU64, AtomicU64, u64, wrapping_add_u64, wrapping_sub_u64, spec_literal_int("0"), spec_literal_int("18446744073709551615"));
 
-make_signed_integer_atomic!(PAtomicI8, PermissionI8, AtomicI8, i8, wrapping_add_i8, wrapping_sub_i8, -0x80, 0x7f);
-make_signed_integer_atomic!(PAtomicI16, PermissionI16, AtomicI16, i16, wrapping_add_i16, wrapping_sub_i16, -0x8000, 0x7fff);
-make_signed_integer_atomic!(PAtomicI32, PermissionI32, AtomicI32, i32, wrapping_add_i32, wrapping_sub_i32, -0x8000_0000, 0x7fff_ffff);
-make_signed_integer_atomic!(PAtomicI64, PermissionI64, AtomicI64, i64, wrapping_add_i64, wrapping_sub_i64, -0x8000_0000_0000_0000, 0x7fff_ffff_ffff_ffff);
+make_signed_integer_atomic!(PAtomicI8, PermissionI8, AtomicI8, i8, wrapping_add_i8, wrapping_sub_i8, -spec_literal_int("128"), spec_literal_int("127"));
+make_signed_integer_atomic!(PAtomicI16, PermissionI16, AtomicI16, i16, wrapping_add_i16, wrapping_sub_i16, -spec_literal_int("32768"), spec_literal_int("32767"));
+make_signed_integer_atomic!(PAtomicI32, PermissionI32, AtomicI32, i32, wrapping_add_i32, wrapping_sub_i32, -spec_literal_int("2147483648"), spec_literal_int("2147483647"));
+make_signed_integer_atomic!(PAtomicI64, PermissionI64, AtomicI64, i64, wrapping_add_i64, wrapping_sub_i64, -spec_literal_int("9223372036854775808"), spec_literal_int("9223372036854775807"));
 
 // TODO usize and isize (for this, we need to be able to use constants like usize::MAX)

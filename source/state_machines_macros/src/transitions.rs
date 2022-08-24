@@ -1,8 +1,8 @@
 use crate::ast::INIT_LABEL_TYPE_NAME;
 use crate::ast::TRANSITION_LABEL_TYPE_NAME;
 use crate::ast::{
-    Field, MonoidElt, ShardableType, SpecialOp, SplitKind, Transition, TransitionKind,
-    TransitionStmt, SM,
+    Field, MonoidElt, MonoidStmtType, ShardableType, SpecialOp, SplitKind, Transition,
+    TransitionKind, TransitionStmt, SM,
 };
 use crate::check_bind_stmts::check_bind_stmts;
 use crate::check_birds_eye::check_birds_eye;
@@ -10,6 +10,7 @@ use crate::ident_visitor::validate_idents_transition;
 use crate::inherent_safety_conditions::check_inherent_conditions;
 use crate::util::{combine_errors_or_ok, combine_results};
 use proc_macro2::Span;
+use std::collections::HashSet;
 use syn_verus::parse;
 use syn_verus::spanned::Spanned;
 use syn_verus::{Error, Ident, Type, TypePath};
@@ -343,6 +344,29 @@ fn is_allowed_in_special_op(
 
             assert!(!strat_is_storage || !strat_is_persistent);
 
+            match sop.stmt {
+                MonoidStmtType::Add(is_max) => {
+                    if strat_is_persistent && !is_max {
+                        let strat = stype.strategy_name();
+                        return Err(Error::new(
+                            span,
+                            format!(
+                                "for the persistent strategy `{strat:}`, use `(union)=` instead of `+=`"
+                            ),
+                        ));
+                    } else if !strat_is_persistent && is_max {
+                        let strat = stype.strategy_name();
+                        return Err(Error::new(
+                            span,
+                            format!(
+                                "for the strategy `{strat:}`, use `+=` instead of `(union)=` (only persistent strategies should use `(union)=`)"
+                            ),
+                        ));
+                    }
+                }
+                _ => {}
+            }
+
             if stype.is_persistent() && sop.is_remove() {
                 let stmt_name = sop.stmt.name();
                 let strat = stype.strategy_name();
@@ -650,7 +674,15 @@ pub fn check_transitions(sm: &mut SM) -> parse::Result<()> {
     let mut transitions = Vec::new();
     std::mem::swap(&mut transitions, &mut sm.transitions);
 
+    let mut names: HashSet<String> = HashSet::new();
+
     for tr in transitions.iter_mut() {
+        let name = tr.name.to_string();
+        if names.contains(&name) {
+            results.push(Err(Error::new(tr.name.span(), "duplicate item name")));
+        }
+        names.insert(name);
+
         results.push(check_transition(sm, tr));
     }
 
