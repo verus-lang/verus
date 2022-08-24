@@ -30,8 +30,9 @@ use std::sync::Arc;
 pub struct SstInline {
     pub(crate) typ_bounds: TypBounds,
     pub(crate) params: Params,
+    pub do_inline: bool,
 }
-pub type SstMap = HashMap<Fun, (Option<SstInline>, Exp)>;
+pub type SstMap = HashMap<Fun, (SstInline, Exp)>;
 
 // binder for forall (typ_params params)
 pub(crate) fn func_bind_trig(
@@ -135,14 +136,12 @@ fn func_body_to_air(
     state.fun_ssts = fun_ssts;
     let body_exp = crate::ast_to_sst::expr_to_pure_exp(&ctx, &mut state, &body)?;
     let body_exp = state.finalize_exp(ctx, &state.fun_ssts, &body_exp)?;
-    let inline = if function.x.attrs.inline {
-        Some(SstInline {
-            typ_bounds: function.x.typ_bounds.clone(),
-            params: function.x.params.clone(),
-        })
-    } else {
-        None
+    let inline = SstInline {
+        typ_bounds: function.x.typ_bounds.clone(),
+        params: function.x.params.clone(),
+        do_inline: function.x.attrs.inline,
     };
+
     state.fun_ssts.insert(function.x.name.clone(), (inline, body_exp.clone()));
 
     let mut decrease_by_stms: Vec<Stm> = Vec::new();
@@ -661,6 +660,7 @@ pub fn func_def_to_air(
 
             let mut state = crate::ast_to_sst::State::new();
             state.fun_ssts = fun_ssts;
+            state.fun = Some(function.x.name.clone());
             let mut ens_params = (*function.x.params).clone();
             let dest = if function.x.has_return() {
                 let ParamX { name, typ, .. } = &function.x.ret.x;
@@ -721,6 +721,36 @@ pub fn func_def_to_air(
                 }
                 stm = crate::ast_to_sst::stms_to_one_stm(&body.span, req_stms);
             }
+
+            let stm = if !ctx.checking_recommends() && ctx.expand_flag {
+                // split ensures expressions for error localization
+                let mut small_ens_assertions = vec![];
+                for e in req_ens_function.x.ensure.iter() {
+                    if crate::split_expression::need_split_expression(ctx, &e.span) {
+                        let ens_exp =
+                            crate::ast_to_sst::expr_to_exp(ctx, &state.fun_ssts, &ens_pars, e)?;
+                        let error = air::errors::error(crate::def::SPLIT_POST_FAILURE, &e.span);
+                        let split_exprs = crate::split_expression::split_expr(
+                            ctx,
+                            &state, // use the state after `body` translation to get the fuel info
+                            &crate::split_expression::TracedExpX::new(
+                                ens_exp.clone(),
+                                error.clone(),
+                            ),
+                            false,
+                        );
+                        small_ens_assertions.extend(
+                            crate::split_expression::register_split_assertions(split_exprs),
+                        );
+                    }
+                }
+                let mut my_stms = vec![stm.clone()];
+                my_stms.extend(small_ens_assertions);
+                crate::ast_to_sst::stms_to_one_stm(&stm.span, my_stms)
+            } else {
+                stm
+            };
+
             let stm = state.finalize_stm(&ctx, &state.fun_ssts, &stm)?;
             state.ret_post = None;
 

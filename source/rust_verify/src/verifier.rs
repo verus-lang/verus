@@ -55,6 +55,11 @@ pub struct Verifier {
     vir_crate: Option<Krate>,
     air_no_span: Option<air::ast::Span>,
     inferred_modes: Option<HashMap<InferMode, Mode>>,
+
+    // proof debugging purposes
+    expand_flag: bool,
+    pub expand_targets: Vec<air::errors::Error>,
+    pub expand_errors: Vec<Vec<ErrorSpan>>,
 }
 
 #[derive(Debug)]
@@ -178,6 +183,10 @@ impl Verifier {
             vir_crate: None,
             air_no_span: None,
             inferred_modes: None,
+
+            expand_flag: false,
+            expand_targets: vec![],
+            expand_errors: vec![],
         }
     }
 
@@ -399,7 +408,9 @@ impl Verifier {
                         self.count_errors += 1;
                         invalidity = true;
                     }
-                    compiler.report_error(&error, error_as);
+                    if !self.expand_flag || vir::split_expression::is_split_error(&error) {
+                        compiler.report_error(&error, error_as);
+                    }
 
                     if error_as == ErrorAs::Error {
                         let mut errors = vec![ErrorSpan::new_from_air_span(
@@ -415,7 +426,43 @@ impl Verifier {
                             ));
                         }
 
-                        self.errors.push(errors);
+                        if !self.expand_flag {
+                            self.errors.push(errors);
+                            if self.args.expand_errors {
+                                self.expand_targets.push(error.clone());
+                            }
+                        } else {
+                            // For testing setup, add error for each relevant span
+                            if vir::split_expression::is_split_error(&error) {
+                                let mut errors: Vec<ErrorSpan> = vec![];
+                                for span in &error.spans {
+                                    let error = ErrorSpan::new_from_air_span(
+                                        compiler.session().source_map(),
+                                        &error.msg,
+                                        span,
+                                    );
+                                    if !errors.iter().any(|x: &ErrorSpan| {
+                                        x.test_span_line == error.test_span_line
+                                    }) {
+                                        errors.push(error);
+                                    }
+                                }
+
+                                for label in &error.labels {
+                                    let error = ErrorSpan::new_from_air_span(
+                                        compiler.session().source_map(),
+                                        &error.msg,
+                                        &label.span,
+                                    );
+                                    if !errors.iter().any(|x: &ErrorSpan| {
+                                        x.test_span_line == error.test_span_line
+                                    }) {
+                                        errors.push(error);
+                                    }
+                                }
+                                self.expand_errors.push(errors);
+                            }
+                        }
                         if self.args.debug {
                             let mut debugger = Debugger::new(
                                 air_model,
@@ -553,13 +600,21 @@ impl Verifier {
         let count_msg = query_function_path_counter
             .map(|(_, ref c)| format!("_{:02}", c))
             .unwrap_or("".to_string());
+        let expand_msg = if self.expand_flag { "_expand" } else { "" };
+
         let function_path = query_function_path_counter.map(|(p, _)| p);
         if self.args.log_all || self.args.log_air_initial {
             let file = self.create_log_file(
                 Some(module_path),
                 function_path,
-                format!("{}{}{}", rerun_msg, count_msg, crate::config::AIR_INITIAL_FILE_SUFFIX)
-                    .as_str(),
+                format!(
+                    "{}{}{}{}",
+                    rerun_msg,
+                    count_msg,
+                    expand_msg,
+                    crate::config::AIR_INITIAL_FILE_SUFFIX
+                )
+                .as_str(),
             )?;
             air_context.set_air_initial_log(Box::new(file));
         }
@@ -567,8 +622,14 @@ impl Verifier {
             let file = self.create_log_file(
                 Some(module_path),
                 function_path,
-                format!("{}{}{}", rerun_msg, count_msg, crate::config::AIR_FINAL_FILE_SUFFIX)
-                    .as_str(),
+                format!(
+                    "{}{}{}{}",
+                    rerun_msg,
+                    count_msg,
+                    expand_msg,
+                    crate::config::AIR_FINAL_FILE_SUFFIX
+                )
+                .as_str(),
             )?;
             air_context.set_air_final_log(Box::new(file));
         }
@@ -576,7 +637,14 @@ impl Verifier {
             let file = self.create_log_file(
                 Some(module_path),
                 function_path,
-                format!("{}{}{}", rerun_msg, count_msg, crate::config::SMT_FILE_SUFFIX).as_str(),
+                format!(
+                    "{}{}{}{}",
+                    rerun_msg,
+                    count_msg,
+                    expand_msg,
+                    crate::config::SMT_FILE_SUFFIX
+                )
+                .as_str(),
             )?;
             air_context.set_smt_log(Box::new(file));
         }
@@ -873,15 +941,23 @@ impl Verifier {
         let function_axiom_commands = Arc::new(function_axiom_commands);
         // Create queries to check the validity of proof/exec function bodies
         let no_auto_recommends_check = self.args.no_auto_recommends_check;
+        let expand_errors_check = self.args.expand_errors;
+        self.expand_targets = vec![];
         for function in &krate.functions {
             if Some(module.clone()) != function.x.visibility.owning_module {
                 continue;
             }
             let check_validity = &mut |recommends_rerun: bool,
+                                       expands_rerun: bool,
                                        mut fun_ssts: SstMap|
              -> Result<(bool, SstMap), VirErr> {
                 let mut spinoff_context_counter = 1;
                 ctx.fun = mk_fun_ctx(&function, recommends_rerun);
+                ctx.expand_flag = expands_rerun;
+                self.expand_flag = expands_rerun;
+                if expands_rerun {
+                    ctx.debug_expand_targets = self.expand_targets.to_vec();
+                }
                 let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
                     ctx,
                     fun_ssts,
@@ -965,10 +1041,13 @@ impl Verifier {
                 }
                 Ok((function_invalidity, fun_ssts))
             };
-            let (function_invalidity, new_fun_ssts) = check_validity(false, fun_ssts)?;
+            let (function_invalidity, new_fun_ssts) = check_validity(false, false, fun_ssts)?;
             fun_ssts = new_fun_ssts;
+            if function_invalidity && expand_errors_check {
+                fun_ssts = check_validity(false, true, fun_ssts)?.1;
+            }
             if function_invalidity && !no_auto_recommends_check {
-                fun_ssts = check_validity(true, fun_ssts)?.1;
+                fun_ssts = check_validity(true, false, fun_ssts)?.1;
             }
         }
         ctx.fun = None;
@@ -1011,6 +1090,7 @@ impl Verifier {
 
         let (time_smt_init, time_smt_run) =
             self.verify_module(compiler, &poly_krate, module, &mut ctx)?;
+
         global_ctx = ctx.free();
 
         self.time_smt_init += time_smt_init;

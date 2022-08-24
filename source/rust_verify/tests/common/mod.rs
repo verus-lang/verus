@@ -48,6 +48,7 @@ impl FileLoader for TestFileLoader {
 #[derive(Debug)]
 pub struct TestErr {
     pub errors: Vec<Vec<ErrorSpan>>,
+    pub expand_errors: Vec<Vec<ErrorSpan>>, // when Verus is with `expand-errors` flag
     pub has_vir_error: bool,
     pub output: String,
 }
@@ -134,6 +135,10 @@ pub fn verify_files_and_pervasive(
             our_args.log_all = true;
         }
         our_args.verify_pervasive |= verify_pervasive;
+        if files.iter().any(|(_, body)| body.contains("EXPAND-ERRORS")) {
+            our_args.expand_errors = true;
+            our_args.multiple_errors = 2;
+        }
         our_args
     };
     let files = files.into_iter().map(|(p, f)| (p.into(), f)).collect();
@@ -154,6 +159,7 @@ pub fn verify_files_and_pervasive(
             errors: verifier.errors,
             has_vir_error: verifier.encountered_vir_error,
             output: "".to_string(),
+            expand_errors: verifier.expand_errors,
         })
     });
     let output = std::str::from_utf8(
@@ -233,7 +239,7 @@ fn relevant_error_span(err: &Vec<ErrorSpan>) -> &ErrorSpan {
     if let Some(e) = err.iter().find(|e| e.description == Some("at this exit".to_string())) {
         return e;
     } else if let Some(e) = err.iter().find(|e| {
-        e.description == Some("failed this postcondition".to_string())
+        e.description == Some(vir::def::THIS_POST_FAILED.to_string())
             && !e.test_span_line.contains("TRAIT")
     }) {
         return e;
@@ -246,6 +252,18 @@ fn relevant_error_span(err: &Vec<ErrorSpan>) -> &ErrorSpan {
 pub fn assert_one_fails(err: TestErr) {
     assert_eq!(err.errors.len(), 1);
     assert!(relevant_error_span(&err.errors[0]).test_span_line.contains("FAILS"));
+}
+
+/// When this testcase has ONE verification failure,
+/// assert that all spans are properly reported (All spans are respoinsible to the verification failure)
+#[allow(dead_code)]
+pub fn assert_expand_fails(err: TestErr, span_count: usize) {
+    assert_eq!(err.expand_errors.len(), 1);
+    let expand_errors = err.expand_errors.first().expect("EXPAND-ERRORS");
+    assert_eq!(expand_errors.len(), span_count);
+    for c in 0..span_count {
+        assert!(&expand_errors[c].test_span_line.contains("EXPAND-ERRORS"));
+    }
 }
 
 /// Assert that `count` verification failures happened on source lines containin the string "FAILS".

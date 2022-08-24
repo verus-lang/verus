@@ -41,6 +41,7 @@ pub struct Args {
     pub rlimit: u32,
     pub smt_options: Vec<(String, String)>,
     pub multiple_errors: u32,
+    pub expand_errors: bool,
     pub log_dir: Option<String>,
     pub log_all: bool,
     pub log_vir: bool,
@@ -85,6 +86,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_RLIMIT: &str = "rlimit";
     const OPT_SMT_OPTION: &str = "smt-option";
     const OPT_MULTIPLE_ERRORS: &str = "multiple-errors";
+    const OPT_EXPAND_ERRORS: &str = "expand-errors";
     const OPT_LOG_DIR: &str = "log-dir";
     const OPT_LOG_ALL: &str = "log-all";
     const OPT_LOG_VIR: &str = "log-vir";
@@ -142,6 +144,11 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     );
     opts.optmulti("", OPT_SMT_OPTION, "Set an SMT option (e.g. smt.random_seed=7)", "OPTION=VALUE");
     opts.optopt("", OPT_MULTIPLE_ERRORS, "If 0, look for at most one error per function; if > 0, always find first error in function and make extra queries to find more errors (default: 2)", "INTEGER");
+    opts.optflag(
+        "",
+        OPT_EXPAND_ERRORS,
+        "When the proof fails, try to minimize the failing predicate",
+    );
     opts.optopt(
         "",
         OPT_LOG_DIR,
@@ -247,6 +254,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
             .opt_get::<u32>(OPT_MULTIPLE_ERRORS)
             .unwrap_or_else(|_| error("expected integer after multiple-errors".to_string()))
             .unwrap_or(2),
+        expand_errors: matches.opt_present(OPT_EXPAND_ERRORS),
         log_dir: matches.opt_str(OPT_LOG_DIR),
         log_all: matches.opt_present(OPT_LOG_ALL),
         log_vir: matches.opt_present(OPT_LOG_VIR),

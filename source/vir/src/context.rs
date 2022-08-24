@@ -68,7 +68,6 @@ pub struct Ctx {
     pub(crate) funcs_with_ensure_predicate: HashSet<Fun>,
     pub(crate) datatype_map: HashMap<Path, Datatype>,
     pub(crate) trait_map: HashMap<Path, Trait>,
-    pub(crate) debug: bool,
     pub fun: Option<FunctionCtx>,
     pub global: GlobalCtx,
     // In the very unlikely case where we get sha512 collisions
@@ -76,6 +75,10 @@ pub struct Ctx {
     // Of course it can be argued that accounting for sha512 collisions
     // is overkill, perhaps this should be revisited.
     pub(crate) string_hashes: RefCell<HashMap<BigUint, Arc<String>>>,
+    // proof debug purposes
+    pub debug: bool,
+    pub expand_flag: bool,
+    pub debug_expand_targets: Vec<air::errors::Error>,
 }
 
 impl Ctx {
@@ -274,10 +277,12 @@ impl Ctx {
             funcs_with_ensure_predicate,
             datatype_map,
             trait_map,
-            debug,
             fun: None,
             global,
             string_hashes,
+            debug,
+            expand_flag: false,
+            debug_expand_targets: vec![],
         })
     }
 
