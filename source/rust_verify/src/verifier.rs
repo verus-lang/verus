@@ -282,6 +282,45 @@ impl Verifier {
         }
     }
 
+    fn print_simple_profile_stats(
+        &self,
+        compiler: &Compiler,
+        profile: Vec<(String, u64, Vec<(String, u64)>)>,
+        qid_map: &HashMap<String, vir::sst::BndInfo>,
+    ) {
+        let max = 50;
+        for (index, (name, count, identcounts)) in profile.iter().take(max).enumerate() {
+            let index = index + 1;
+            // Report the quantifier
+            if let Some(bnd_info) = qid_map.get(name) {
+                let span = from_raw_span(&bnd_info.span.raw_span);
+                let mut spans = Vec::new();
+                let mut msg =
+                    format!("{:2}. Quantifier {}, instantiations: {}\n", index, name, count);
+                for (ident, count) in identcounts {
+                    msg += format!("    at: {}, instantiations: {}\n", ident, count).as_str();
+                }
+
+                // Summarize the triggers it used
+                let triggers = &bnd_info.trigs;
+                for trigger in triggers.iter() {
+                    spans.extend(trigger.iter().map(|e| from_raw_span(&e.span.raw_span)));
+                }
+                let mut multi = MultiSpan::from_spans(spans);
+                multi.push_span_label(span, "Triggers selected for this quantifier".to_string());
+                compiler.diagnostic().span_note_without_error(multi, &msg);
+            } else {
+                let mut msg =
+                    format!("{:2}. Quantifier {}, instantiations: {}\n", index, name, count);
+                for (ident, count) in identcounts {
+                    msg += format!("    at: {}, instantiations: {}\n", ident, count).as_str();
+                }
+
+                compiler.diagnostic().note_without_error(msg.as_str());
+            }
+        }
+    }
+
     /// Check the result of a query that was based on user input.
     /// Success/failure will (eventually) be communicated back to the user.
     /// Returns true if there was at least one Invalid resulting in an error.
@@ -381,8 +420,13 @@ impl Verifier {
                     )]);
 
                     if self.args.profile {
-                        let profiler = Profiler::new();
-                        self.print_profile_stats(compiler, profiler, qid_map);
+                        if !self.args.use_internal_profiler {
+                            let profiler = Profiler::new();
+                            self.print_profile_stats(compiler, profiler, qid_map);
+                        } else {
+                            let simple_profile = air::profiler::simple::profile();
+                            self.print_simple_profile_stats(compiler, simple_profile, qid_map);
+                        }
                     }
                     break;
                 }

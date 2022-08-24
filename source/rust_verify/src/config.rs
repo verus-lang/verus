@@ -57,6 +57,7 @@ pub struct Args {
     pub debug: bool,
     pub profile: bool,
     pub profile_all: bool,
+    pub use_internal_profiler: bool,
     pub compile: bool,
     pub solver_version_check: bool,
 }
@@ -104,6 +105,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_DEBUG: &str = "debug";
     const OPT_PROFILE: &str = "profile";
     const OPT_PROFILE_ALL: &str = "profile-all";
+    const OPT_USE_INTERNAL_PROFILER: &str = "use-internal-profiler";
     const OPT_COMPILE: &str = "compile";
     const OPT_NO_SOLVER_VERSION_CHECK: &str = "no-solver-version-check";
 
@@ -170,6 +172,11 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         "Collect and report prover performance data when resource limits are hit",
     );
     opts.optflag("", OPT_PROFILE_ALL, "Always collect and report prover performance data");
+    opts.optflag(
+        "",
+        OPT_USE_INTERNAL_PROFILER,
+        "Use a simplified profiler for prover performance data that also reports information about internal quantifiers, requires --profile or --profile-all",
+    );
     opts.optflag("", OPT_COMPILE, "Run Rustc compiler after verification");
     opts.optflag("", OPT_NO_SOLVER_VERSION_CHECK, "Skip the check that the solver has the expected version (useful to experiment with different versions of z3)");
     opts.optflag("h", "help", "print this help menu");
@@ -273,6 +280,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         debug: matches.opt_present(OPT_DEBUG),
         profile: matches.opt_present(OPT_PROFILE),
         profile_all: matches.opt_present(OPT_PROFILE_ALL),
+        use_internal_profiler: matches.opt_present(OPT_USE_INTERNAL_PROFILER),
         compile: matches.opt_present(OPT_COMPILE),
         solver_version_check: !matches.opt_present(OPT_NO_SOLVER_VERSION_CHECK),
     };
