@@ -940,7 +940,7 @@ impl VisitMut for Visitor {
                         }
                         BinOp::Add(..) | BinOp::Sub(..) | BinOp::Mul(..) => {
                             *expr = Expr::Verbatim(
-                                quote_spanned!(span => compile_error!("Inside bit-vector assertion, use `add` `sub` `mul` for fixed-bit operators, instead of `+` `-` `*`, ")),
+                                quote_spanned!(span => compile_error!("Inside bit-vector assertion, use `add` `sub` `mul` for fixed-bit operators, instead of `+` `-` `*`. (see the functions builtin::add(left, right), builtin::sub(left, right), and builtin::mul(left, right))")),
                             );
                         }
                         BinOp::Div(..) => {
