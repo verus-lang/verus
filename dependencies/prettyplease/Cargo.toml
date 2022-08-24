@@ -1,5 +1,5 @@
 [package]
-name = "prettyplease"
+name = "prettyplease_verus"
 version = "0.1.15"
 authors = ["David Tolnay <dtolnay@gmail.com>"]
 edition = "2021"
@@ -14,14 +14,14 @@ autoexamples = false
 exclude = ["cargo-expand"]
 
 [features]
-verbatim = ["syn/parsing"]
+verbatim = ["syn_verus/parsing"]
 
 [dependencies]
 proc-macro2 = { version = "1.0", default-features = false }
-syn = { version = "1.0.90", default-features = false, features = ["full"] }
+syn_verus = { git = "https://github.com/secure-foundations/syn", rev = "42ae850", default-features = false, features = ["full"] }
 
 [dev-dependencies]
-syn = { version = "1.0.90", default-features = false, features = ["parsing"] }
+syn_verus = { git = "https://github.com/secure-foundations/syn", rev = "42ae850", default-features = false, features = ["parsing"] }
 
 [workspace]
 members = ["cargo-expand/update", "examples/update"]

@@ -2,7 +2,7 @@ use crate::algorithm::Printer;
 use crate::iter::IterDelimited;
 use crate::INDENT;
 use proc_macro2::TokenStream;
-use syn::{
+use syn_verus::{
     FieldPat, Pat, PatBox, PatIdent, PatLit, PatMacro, PatOr, PatPath, PatRange, PatReference,
     PatRest, PatSlice, PatStruct, PatTuple, PatTupleStruct, PatType, PatWild, RangeLimits,
 };

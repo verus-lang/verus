@@ -4,15 +4,15 @@ use crate::iter::IterDelimited;
 use crate::stmt;
 use crate::INDENT;
 use proc_macro2::TokenStream;
-use syn::punctuated::Punctuated;
-use syn::{
+use syn_verus::punctuated::Punctuated;
+use syn_verus::{
     token, Arm, Attribute, BinOp, Block, Expr, ExprArray, ExprAssign, ExprAssignOp, ExprAsync,
     ExprAwait, ExprBinary, ExprBlock, ExprBox, ExprBreak, ExprCall, ExprCast, ExprClosure,
     ExprContinue, ExprField, ExprForLoop, ExprGroup, ExprIf, ExprIndex, ExprLet, ExprLit, ExprLoop,
     ExprMacro, ExprMatch, ExprMethodCall, ExprParen, ExprPath, ExprRange, ExprReference,
     ExprRepeat, ExprReturn, ExprStruct, ExprTry, ExprTryBlock, ExprTuple, ExprType, ExprUnary,
     ExprUnsafe, ExprWhile, ExprYield, FieldValue, GenericMethodArgument, Index, Label, Member,
-    MethodTurbofish, PathArguments, QSelf, RangeLimits, ReturnType, Stmt, Token, UnOp,
+    MethodTurbofish, PathArguments, QSelf, RangeLimits, ReturnType, Stmt, Token, UnOp, View,
 };
 
 impl Printer {
@@ -58,9 +58,22 @@ impl Printer {
             Expr::Verbatim(expr) => self.expr_verbatim(expr),
             Expr::While(expr) => self.expr_while(expr),
             Expr::Yield(expr) => self.expr_yield(expr),
+
+            // verus
+            // (note: for now, not supporting assert, assume, etc., since we're
+            // only using this for spec expressions at the moment)
+            Expr::View(v) => self.expr_view(v),
+
             #[cfg_attr(all(test, exhaustive), deny(non_exhaustive_omitted_patterns))]
             _ => unimplemented!("unknown Expr"),
         }
+    }
+
+    pub fn expr_view(&mut self, expr: &View) {
+        // Similar to expr_tyr
+        self.outer_attrs(&expr.attrs);
+        self.expr_beginning_of_line(&expr.expr, false);
+        self.word("@");
     }
 
     pub fn expr_beginning_of_line(&mut self, expr: &Expr, beginning_of_line: bool) {
@@ -294,7 +307,7 @@ impl Printer {
                     self.expr(&expr.body);
                 }
             }
-            ReturnType::Type(_arrow, ty) => {
+            ReturnType::Type(_arrow, _, _, ty) => {
                 if !expr.inputs.is_empty() {
                     self.trailing_comma(true);
                     self.offset(-INDENT);
@@ -1051,6 +1064,13 @@ impl Printer {
             BinOp::BitOrEq(_) => "|=",
             BinOp::ShlEq(_) => "<<=",
             BinOp::ShrEq(_) => ">>=",
+            BinOp::BigAnd(_) => "&&&",
+            BinOp::BigOr(_) => "|||",
+            BinOp::Equiv(_) => "<==>",
+            BinOp::Imply(_) => "==>",
+            BinOp::Exply(_) => "<==",
+            BinOp::BigEq(_) => "===",
+            BinOp::BigNe(_) => "!==",
         });
     }
 
@@ -1059,6 +1079,14 @@ impl Printer {
             UnOp::Deref(_) => "*",
             UnOp::Not(_) => "!",
             UnOp::Neg(_) => "-",
+            UnOp::BigAnd(_) => "&&& ",
+            UnOp::BigOr(_) => "||| ",
+            UnOp::Proof(_) => "proof ",
+            UnOp::Ghost(_) => "ghost ",
+            UnOp::Tracked(_) => "tracked ",
+            UnOp::Forall(_) => "forall ",
+            UnOp::Exists(_) => "exists ",
+            UnOp::Choose(_) => "choose ",
         });
     }
 

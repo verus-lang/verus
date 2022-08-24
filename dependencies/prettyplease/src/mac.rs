@@ -2,7 +2,7 @@ use crate::algorithm::Printer;
 use crate::token::Token;
 use crate::INDENT;
 use proc_macro2::{Delimiter, Spacing, TokenStream};
-use syn::{Ident, Macro, MacroDelimiter, PathArguments};
+use syn_verus::{Ident, Macro, MacroDelimiter, PathArguments};
 
 impl Printer {
     pub fn mac(&mut self, mac: &Macro, ident: Option<&Ident>) {
