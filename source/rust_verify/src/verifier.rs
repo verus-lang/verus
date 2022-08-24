@@ -941,15 +941,21 @@ impl Verifier {
         let function_axiom_commands = Arc::new(function_axiom_commands);
         // Create queries to check the validity of proof/exec function bodies
         let no_auto_recommends_check = self.args.no_auto_recommends_check;
+        let expand_errors_check = self.args.expand_errors;
+        self.expand_targets = vec![];
         for function in &krate.functions {
             if Some(module.clone()) != function.x.visibility.owning_module {
                 continue;
             }
             let check_validity = &mut |recommends_rerun: bool,
+                                       expands_rerun: bool,
                                        mut fun_ssts: SstMap|
              -> Result<(bool, SstMap), VirErr> {
                 let mut spinoff_context_counter = 1;
                 ctx.fun = mk_fun_ctx(&function, recommends_rerun);
+                ctx.expand_flag = expands_rerun;
+                self.expand_flag = expands_rerun;
+                ctx.debug_expand_targets = self.expand_targets.to_vec();
                 let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
                     ctx,
                     fun_ssts,
@@ -1036,10 +1042,13 @@ impl Verifier {
                 }
                 Ok((function_invalidity, fun_ssts))
             };
-            let (function_invalidity, new_fun_ssts) = check_validity(false, fun_ssts)?;
+            let (function_invalidity, new_fun_ssts) = check_validity(false, false, fun_ssts)?;
             fun_ssts = new_fun_ssts;
+            if function_invalidity && expand_errors_check {
+                fun_ssts = check_validity(false, true, fun_ssts)?.1;
+            }
             if function_invalidity && !no_auto_recommends_check {
-                fun_ssts = check_validity(true, fun_ssts)?.1;
+                fun_ssts = check_validity(true, false, fun_ssts)?.1;
             }
         }
         ctx.fun = None;
@@ -1080,36 +1089,8 @@ impl Verifier {
             vir::printer::write_krate(&mut file, &poly_krate);
         }
 
-        let mut before_err_count = 0;
-        if self.args.expand_errors {
-            before_err_count = self.count_errors;
-            self.expand_targets = vec![]; // flush old errors
-            self.expand_flag = false;
-        }
-
         let (time_smt_init, time_smt_run) =
             self.verify_module(compiler, &poly_krate, module, &mut ctx)?;
-
-        // when `expand_errors` flag is set, re-verify this module with split failing assertions to get more precise error message.
-        if self.args.expand_errors
-            && !self.encountered_vir_error
-            && before_err_count < self.count_errors
-        {
-            if module.segments.len() == 0 {
-                compiler
-                    .diagnostic()
-                    .note_without_error("re-verifying root module for error localization");
-            } else {
-                compiler.diagnostic().note_without_error(&format!(
-                    "re-verifying module {} for error localization",
-                    &module_name
-                ));
-            }
-            ctx.debug_expand_targets = self.expand_targets.to_vec();
-            ctx.expand_flag = true;
-            self.expand_flag = true;
-            self.verify_module(compiler, &poly_krate, module, &mut ctx)?;
-        }
 
         global_ctx = ctx.free();
 
