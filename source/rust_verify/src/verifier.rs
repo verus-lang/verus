@@ -13,7 +13,8 @@ use verus_rustc_interface::interface::Compiler;
 use num_format::{Locale, ToFormattedString};
 use rustc_middle::ty::TyCtxt;
 use rustc_span::source_map::SourceMap;
-use rustc_span::{CharPos, FileName, MultiSpan, Span};
+use rustc_span::{CharPos, FileName, Span};
+use rustc_error_messages::MultiSpan;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Write;
@@ -131,7 +132,7 @@ impl Diagnostics for Compiler {
         match error_as {
             ErrorAs::Note => self.diagnostic().span_note_without_error(multispan, &error.msg),
             ErrorAs::Warning => self.diagnostic().span_warn(multispan, &error.msg),
-            ErrorAs::Error => self.diagnostic().span_err(multispan, &error.msg),
+            ErrorAs::Error => { self.diagnostic().span_err(multispan, &error.msg); }
         }
     }
 }
@@ -367,7 +368,7 @@ impl Verifier {
                         msg.push_str("; consider rerunning with --profile for more details");
                     }
                     match error_as {
-                        ErrorAs::Error => compiler.diagnostic().span_err(multispan, &msg),
+                        ErrorAs::Error => { compiler.diagnostic().span_err(multispan, &msg); }
                         ErrorAs::Warning => compiler.diagnostic().span_warn(multispan, &msg),
                         ErrorAs::Note => {
                             compiler.diagnostic().span_note_without_error(multispan, &msg)
@@ -1158,7 +1159,7 @@ impl Verifier {
                 the theorem prover instantiates a quantifier whenever some expression matches the\n\
                 pattern specified by one of the quantifier's triggers.)\
                 ";
-            compiler.diagnostic().span_note_without_error(span, &msg);
+            compiler.diagnostic().span_note_without_error(span, msg);
         }
 
         Ok(())
@@ -1183,20 +1184,9 @@ impl Verifier {
         diagnostics: &impl Diagnostics,
     ) -> Result<bool, VirErr> {
         let autoviewed_call_typs = Arc::new(std::sync::Mutex::new(HashMap::new()));
-        if !self.args.no_enhanced_typecheck {
-            let _ =
-                tcx.formal_verifier_callback.replace(Some(Box::new(crate::typecheck::Typecheck {
-                    int_ty_id: None,
-                    nat_ty_id: None,
-                    enhanced_typecheck: !self.args.no_enhanced_typecheck,
-                    exprs_in_spec: Arc::new(std::sync::Mutex::new(HashSet::new())),
-                    autoviewed_calls: HashSet::new(),
-                    autoviewed_call_typs: autoviewed_call_typs.clone(),
-                })));
-        }
         match rustc_typeck::check_crate(tcx) {
             Ok(()) => {}
-            Err(rustc_errors::ErrorReported {}) => {
+            Err(_) => {
                 return Ok(false);
             }
         }
@@ -1261,8 +1251,8 @@ impl Verifier {
                 .owners
                 .iter()
                 .filter_map(|oi| {
-                    oi.as_ref().and_then(|o| {
-                        if let OwnerNode::Crate(c) = o.node() { Some(c.inner) } else { None }
+                    oi.as_owner().as_ref().and_then(|o| {
+                        if let OwnerNode::Crate(c) = o.node() { Some(c.spans.inner_span) } else { None }
                     })
                 })
                 .next()
@@ -1314,19 +1304,19 @@ impl std::io::Write for DiagnosticOutputBuffer {
 
 struct Rewrite {}
 
-impl rustc_lint::FormalVerifierRewrite for Rewrite {
-    fn rewrite_crate(
-        &mut self,
-        krate: &rustc_ast::ast::Crate,
-        _next_node_id: &mut dyn FnMut() -> rustc_ast::ast::NodeId,
-    ) -> rustc_ast::ast::Crate {
-        use crate::rustc_ast::mut_visit::MutVisitor;
-        let mut krate = krate.clone();
-        let mut visitor = crate::erase_rewrite::Visitor::new();
-        visitor.visit_crate(&mut krate);
-        krate
-    }
-}
+// TODO impl rustc_lint::FormalVerifierRewrite for Rewrite {
+// TODO     fn rewrite_crate(
+// TODO         &mut self,
+// TODO         krate: &rustc_ast::ast::Crate,
+// TODO         _next_node_id: &mut dyn FnMut() -> rustc_ast::ast::NodeId,
+// TODO     ) -> rustc_ast::ast::Crate {
+// TODO         use crate::rustc_ast::mut_visit::MutVisitor;
+// TODO         let mut krate = krate.clone();
+// TODO         let mut visitor = crate::erase_rewrite::Visitor::new();
+// TODO         visitor.visit_crate(&mut krate);
+// TODO         krate
+// TODO     }
+// TODO }
 
 impl verus_rustc_driver::Callbacks for VerifierCallbacks {
     fn config(&mut self, config: &mut verus_rustc_interface::interface::Config) {
@@ -1348,7 +1338,7 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacks {
             let registration = queries.register_plugins().expect("register_plugins");
             let peeked = registration.peek();
             let lint_store = &peeked.1;
-            lint_store.formal_verifier_callback.replace(Some(Box::new(Rewrite {})));
+            todo!() // lint_store.formal_verifier_callback.replace(Some(Box::new(Rewrite {})));
         };
         verus_rustc_driver::Compilation::Continue
     }

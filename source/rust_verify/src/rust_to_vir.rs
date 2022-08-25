@@ -12,7 +12,7 @@ use crate::def::{get_variant_fn_name, is_variant_fn_name};
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
 use crate::rust_to_vir_base::{
     check_generics_bounds, def_id_to_vir_path, fn_item_hir_id_to_self_def_id, hack_get_def_name,
-    ident_to_var, mid_ty_to_vir, mk_visibility, typ_path_and_ident_to_vir_path,
+    ident_to_var, mid_ty_to_vir, typ_path_and_ident_to_vir_path,
 };
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
 use crate::util::{err_span_str, spanned_new, unsupported_err_span};
@@ -38,7 +38,8 @@ fn check_item<'tcx>(
     id: &ItemId,
     item: &'tcx Item<'tcx>,
 ) -> Result<(), VirErr> {
-    let visibility = mk_visibility(&Some(module_path.clone()), &item.vis, true);
+    // TODO let visibility = mk_visibility(&Some(module_path.clone()), &item.vis, true);
+    let visibility = todo!();
     match &item.kind {
         ItemKind::Fn(sig, generics, body_id) => {
             check_item_fn(
@@ -82,7 +83,7 @@ fn check_item<'tcx>(
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 variant_data,
                 generics,
-                adt_def,
+                &adt_def,
             )?;
         }
         ItemKind::Enum(enum_def, generics) => {
@@ -100,7 +101,7 @@ fn check_item<'tcx>(
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 enum_def,
                 generics,
-                adt_def,
+                &adt_def,
             )?;
         }
         ItemKind::Impl(impll) => {
@@ -138,7 +139,7 @@ fn check_item<'tcx>(
                     let ty_kind_applied_never =
                         if let rustc_middle::ty::TyKind::Adt(def, substs) = ty.kind() {
                             rustc_middle::ty::TyKind::Adt(
-                                def,
+                                *def,
                                 ctxt.tcx.mk_substs(substs.iter().map(|g| match g.unpack() {
                                     rustc_middle::ty::subst::GenericArgKind::Type(_) => {
                                         (*ctxt.tcx).types.never.into()
@@ -228,8 +229,7 @@ fn check_item<'tcx>(
                         match impl_item_ref.kind {
                             AssocItemKind::Fn { has_self } => {
                                 let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
-                                let mut impl_item_visibility =
-                                    mk_visibility(&Some(module_path.clone()), &impl_item.vis, true);
+                                let mut impl_item_visibility = todo!(); // TODO mk_visibility(&Some(module_path.clone()), &impl_item.vis, true);
                                 match &impl_item.kind {
                                     ImplItemKind::Fn(sig, body_id) => {
                                         let fn_attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
@@ -244,9 +244,9 @@ fn check_item<'tcx>(
                                                 )
                                                 .map(|self_def_id| ctxt.tcx.adt_def(self_def_id))
                                                 .and_then(|adt| {
-                                                    adt.variants
+                                                    adt.variants()
                                                         .iter()
-                                                        .find(|v| v.ident.as_str() == variant_name)
+                                                        .find(|v| v.ident(ctxt.tcx).as_str() == variant_name)
                                                 })
                                             };
                                             let valid = if let Some(variant_name) =
@@ -265,7 +265,7 @@ fn check_item<'tcx>(
                                                 find_variant(&variant_name)
                                                     .and_then(|variant| {
                                                         variant.fields.iter().find(|f| {
-                                                            f.ident.as_str()
+                                                            f.ident(ctxt.tcx).as_str()
                                                                 == field_name_str.as_str()
                                                         })
                                                     })
@@ -295,11 +295,11 @@ fn check_item<'tcx>(
                                                     sig.span,
                                                     "method without self"
                                                 );
-                                                impl_item_visibility = mk_visibility(
-                                                    &Some(module_path.clone()),
-                                                    &impl_item.vis,
-                                                    false,
-                                                );
+                                                impl_item_visibility = todo!(); // TODO mk_visibility(
+                                                //     &Some(module_path.clone()),
+                                                //     &impl_item.vis,
+                                                //     false,
+                                                // );
                                                 let ident = ident_to_var(&impl_item_ref.ident);
                                                 let ident = Arc::new(ident);
                                                 let path = typ_path_and_ident_to_vir_path(
@@ -387,7 +387,7 @@ fn check_item<'tcx>(
                 body_id,
             )?;
         }
-        ItemKind::Macro(_macro_def) => {}
+        ItemKind::Macro(_macro_def, _macro_kind) => {}
         ItemKind::Trait(IsAuto::No, Unsafety::Normal, trait_generics, _bounds, trait_items) => {
             let trait_def_id = item.def_id.to_def_id();
             let generics_bnds =
@@ -396,8 +396,9 @@ fn check_item<'tcx>(
             let mut methods: Vec<Fun> = Vec::new();
             for trait_item_ref in *trait_items {
                 let trait_item = ctxt.tcx.hir().trait_item(trait_item_ref.id);
-                let TraitItem { ident: _, def_id, generics: item_generics, kind, span } =
+                let TraitItem { ident: _, def_id, generics: item_generics, kind, span, defaultness } =
                     trait_item;
+                todo!(); // defaultness
                 let generics_bnds =
                     check_generics_bounds(ctxt.tcx, item_generics, false, def_id.to_def_id())?;
                 unsupported_err_unless!(generics_bnds.len() == 0, *span, "trait generics");
@@ -471,7 +472,7 @@ fn check_foreign_item<'tcx>(
                 vir,
                 item.def_id.to_def_id(),
                 item.span,
-                mk_visibility(&None, &item.vis, true),
+                todo!(), // TODO mk_visibility(&None, &item.vis, true),
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 decl,
                 idents,
@@ -489,7 +490,7 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
     let mut vir: KrateX = Default::default();
     let mut item_to_module: HashMap<ItemId, Path> = HashMap::new();
     for (owner_id, owner_opt) in ctxt.krate.owners.iter_enumerated() {
-        if let Some(owner) = owner_opt {
+        if let Some(owner) = owner_opt.as_owner() {
             match owner.node() {
                 OwnerNode::Item(Item { kind: ItemKind::Mod(mod_), def_id, .. }) => {
                     let path = def_id_to_vir_path(ctxt.tcx, def_id.to_def_id());
@@ -506,7 +507,7 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
         }
     }
     for owner in ctxt.krate.owners.iter() {
-        if let Some(owner) = owner {
+        if let Some(owner) = owner.as_owner() {
             match owner.node() {
                 OwnerNode::Item(item) => {
                     let item_path;
@@ -516,6 +517,7 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
                         path
                     } else {
                         let owned_by = ctxt.krate.owners[item.hir_id().owner]
+                            .as_owner()
                             .as_ref()
                             .expect("owner of item")
                             .node();

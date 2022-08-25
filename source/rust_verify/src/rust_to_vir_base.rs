@@ -141,25 +141,25 @@ pub(crate) fn ident_to_var<'tcx>(ident: &Ident) -> String {
     ident.to_string()
 }
 
-pub(crate) fn is_visibility_private(vis_kind: &VisibilityKind, inherited_is_private: bool) -> bool {
-    match vis_kind {
-        VisibilityKind::Inherited => inherited_is_private,
-        VisibilityKind::Public => false,
-        VisibilityKind::Crate(_) => false,
-        VisibilityKind::Restricted { .. } => unsupported!("restricted visibility"),
-    }
-}
-
-pub(crate) fn mk_visibility<'tcx>(
-    owning_module: &Option<Path>,
-    vis: &Visibility<'tcx>,
-    inherited_is_private: bool,
-) -> vir::ast::Visibility {
-    vir::ast::Visibility {
-        owning_module: owning_module.clone(),
-        is_private: is_visibility_private(&vis.node, inherited_is_private),
-    }
-}
+// TODO pub(crate) fn is_visibility_private(vis_kind: &VisibilityKind, inherited_is_private: bool) -> bool {
+// TODO     match vis_kind {
+// TODO         VisibilityKind::Inherited => inherited_is_private,
+// TODO         VisibilityKind::Public => false,
+// TODO         VisibilityKind::Crate(_) => false,
+// TODO         VisibilityKind::Restricted { .. } => unsupported!("restricted visibility"),
+// TODO     }
+// TODO }
+// TODO 
+// TODO pub(crate) fn mk_visibility<'tcx>(
+// TODO     owning_module: &Option<Path>,
+// TODO     vis: &Visibility<'tcx>,
+// TODO     inherited_is_private: bool,
+// TODO ) -> vir::ast::Visibility {
+// TODO     vir::ast::Visibility {
+// TODO         owning_module: owning_module.clone(),
+// TODO         is_private: is_visibility_private(&vis.node, inherited_is_private),
+// TODO     }
+// TODO }
 
 pub(crate) fn get_range(typ: &Typ) -> IntRange {
     match &**typ {
@@ -170,8 +170,8 @@ pub(crate) fn get_range(typ: &Typ) -> IntRange {
 
 pub(crate) fn mk_range<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> IntRange {
     match ty.kind() {
-        TyKind::Adt(_, _) if ty.to_string() == crate::typecheck::BUILTIN_INT => IntRange::Int,
-        TyKind::Adt(_, _) if ty.to_string() == crate::typecheck::BUILTIN_NAT => IntRange::Nat,
+        TyKind::Adt(_, _) if ty.to_string() == crate::def::BUILTIN_INT => IntRange::Int,
+        TyKind::Adt(_, _) if ty.to_string() == crate::def::BUILTIN_NAT => IntRange::Nat,
         TyKind::Uint(rustc_middle::ty::UintTy::U8) => IntRange::U(8),
         TyKind::Uint(rustc_middle::ty::UintTy::U16) => IntRange::U(16),
         TyKind::Uint(rustc_middle::ty::UintTy::U32) => IntRange::U(32),
@@ -194,13 +194,13 @@ pub(crate) fn mid_ty_simplify<'tcx>(
     allow_mut_ref: bool,
 ) -> rustc_middle::ty::Ty<'tcx> {
     match ty.kind() {
-        TyKind::Ref(_, t, Mutability::Not) => mid_ty_simplify(tcx, t, allow_mut_ref),
+        TyKind::Ref(_, t, Mutability::Not) => mid_ty_simplify(tcx, *t, allow_mut_ref),
         TyKind::Ref(_, t, Mutability::Mut) if allow_mut_ref => {
-            mid_ty_simplify(tcx, t, allow_mut_ref)
+            mid_ty_simplify(tcx, *t, allow_mut_ref)
         }
-        TyKind::Adt(AdtDef { did, .. }, args) => {
-            let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(tcx, *did));
-            let is_box = Some(*did) == tcx.lang_items().owned_box() && args.len() == 2;
+        TyKind::Adt(AdtDef(adt_def), args) => {
+            let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(tcx, adt_def.did));
+            let is_box = Some(adt_def.did) == tcx.lang_items().owned_box() && args.len() == 2;
             let is_smart_ptr = (def_name == "alloc::rc::Rc"
                 || def_name == "alloc::sync::Arc"
                 || def_name == "builtin::Ghost"
@@ -232,10 +232,10 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Bool => (Arc::new(TypX::Bool), false),
         TyKind::Uint(_) | TyKind::Int(_) => (Arc::new(TypX::Int(mk_range(ty))), false),
         TyKind::Ref(_, tys, rustc_ast::Mutability::Not) => {
-            mid_ty_to_vir_ghost(tcx, tys, allow_mut_ref)
+            mid_ty_to_vir_ghost(tcx, *tys, allow_mut_ref)
         }
         TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) if allow_mut_ref => {
-            mid_ty_to_vir_ghost(tcx, tys, allow_mut_ref)
+            mid_ty_to_vir_ghost(tcx, *tys, allow_mut_ref)
         }
         TyKind::Param(param) if param.name == kw::SelfUpper => {
             (Arc::new(TypX::TypParam(vir::def::trait_self_type_param())), false)
@@ -247,15 +247,15 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         }
         TyKind::Tuple(_) => {
             let typs: Vec<Typ> =
-                ty.tuple_fields().map(|t| mid_ty_to_vir_ghost(tcx, t, allow_mut_ref).0).collect();
+                ty.tuple_fields().iter().map(|t| mid_ty_to_vir_ghost(tcx, t, allow_mut_ref).0).collect();
             (Arc::new(TypX::Tuple(Arc::new(typs))), false)
         }
-        TyKind::Adt(AdtDef { did, .. }, args) => {
+        TyKind::Adt(AdtDef(adt_def), args) => {
             let s = ty.to_string();
             // TODO use lang items instead of string comparisons
-            if s == crate::typecheck::BUILTIN_INT {
+            if s == crate::def::BUILTIN_INT {
                 (Arc::new(TypX::Int(IntRange::Int)), false)
-            } else if s == crate::typecheck::BUILTIN_NAT {
+            } else if s == crate::def::BUILTIN_NAT {
                 (Arc::new(TypX::Int(IntRange::Nat)), false)
             } else {
                 let typ_args: Vec<(Typ, bool)> = args
@@ -268,10 +268,10 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                         _ => panic!("unexpected type argument"),
                     })
                     .collect();
-                if Some(*did) == tcx.lang_items().owned_box() && typ_args.len() == 2 {
+                if Some(adt_def.did) == tcx.lang_items().owned_box() && typ_args.len() == 2 {
                     return typ_args[0].clone();
                 }
-                let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(tcx, *did));
+                let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(tcx, adt_def.did));
                 if (def_name == "alloc::rc::Rc" || def_name == "alloc::sync::Arc")
                     && typ_args.len() == 1
                 {
@@ -283,7 +283,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     return (typ_args[0].0.clone(), true);
                 }
                 let typ_args = typ_args.into_iter().map(|(t, _)| t).collect();
-                (Arc::new(def_id_to_datatype(tcx, *did, Arc::new(typ_args))), false)
+                (Arc::new(def_id_to_datatype(tcx, adt_def.did, Arc::new(typ_args))), false)
             }
         }
         TyKind::Closure(_def, substs) => {
@@ -292,7 +292,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                 .inputs()
                 .skip_binder()
                 .iter()
-                .map(|t| mid_ty_to_vir_ghost(tcx, t, allow_mut_ref).0)
+                .map(|t| mid_ty_to_vir_ghost(tcx, *t, allow_mut_ref).0)
                 .collect();
             let ret = mid_ty_to_vir_ghost(tcx, sig.output().skip_binder(), allow_mut_ref).0;
             (Arc::new(TypX::Lambda(Arc::new(args), ret)), false)
@@ -316,8 +316,8 @@ pub(crate) fn is_type_std_rc_or_arc<'tcx>(
     ty: rustc_middle::ty::Ty<'tcx>,
 ) -> bool {
     match ty.kind() {
-        TyKind::Adt(AdtDef { did, .. }, _args) => {
-            let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(tcx, *did));
+        TyKind::Adt(AdtDef(adt_def), _args) => {
+            let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(tcx, adt_def.did));
             if def_name == "alloc::rc::Rc" || def_name == "alloc::sync::Arc" {
                 return true;
             }
@@ -360,7 +360,7 @@ pub(crate) fn typ_of_node_expect_mut_ref<'tcx>(
 
 pub(crate) fn implements_structural<'tcx>(
     tcx: TyCtxt<'tcx>,
-    ty: &'tcx rustc_middle::ty::TyS<'tcx>,
+    ty: rustc_middle::ty::Ty<'tcx>,
 ) -> bool {
     let structural_def_id = tcx
         .get_diagnostic_item(rustc_span::Symbol::intern("builtin::Structural"))
@@ -392,7 +392,7 @@ pub(crate) fn is_smt_equality<'tcx>(
         (TypX::Int(_), TypX::Int(_)) => true,
         (TypX::Datatype(..), TypX::Datatype(..)) if types_equal(&t1, &t2) => {
             let ty = bctx.types.node_type(*id1);
-            implements_structural(bctx.ctxt.tcx, &ty)
+            implements_structural(bctx.ctxt.tcx, ty)
         }
         _ => false,
     }
@@ -446,7 +446,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
     // so then we can handle the case where a method adds extra bounds to an impl
     // type parameter
 
-    let Generics { params, where_clause: _, span: _ } = hir_generics;
+    let Generics { params, predicates: _, has_where_clause_predicates: _, where_clause_span: _, span: _ } = hir_generics;
 
     // For each generic param, we're going to collect all the trait bounds here.
     let mut typ_param_bounds: HashMap<String, Vec<vir::ast::GenericBound>> = HashMap::new();
@@ -539,7 +539,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
             }
             PredicateKind::Projection(ProjectionPredicate {
                 projection_ty: ProjectionTy { substs, item_def_id },
-                ty,
+                term: rustc_middle::ty::Term::Ty(ty),
             }) => {
                 // The trait bound `F: Fn(A) -> B`
                 // is really more like a trait bound `F: Fn<A, Output=B>`
@@ -557,8 +557,8 @@ pub(crate) fn check_generics_bounds<'tcx>(
                     let fn_input = iter.next().expect("expect input arg to Fn");
                     let fn_output = ty;
 
-                    let t_args = mid_ty_to_vir(tcx, &fn_input, false);
-                    let t_ret = mid_ty_to_vir(tcx, &fn_output, false);
+                    let t_args = mid_ty_to_vir(tcx, fn_input, false);
+                    let t_ret = mid_ty_to_vir(tcx, fn_output, false);
                     let args = match &*t_args {
                         TypX::Tuple(args) => args.clone(),
                         _ => panic!("unexpected arg to Fn"),
@@ -618,7 +618,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
             );
         }
         let strictly_positive = !neg; // strictly_positive is the default
-        let GenericParam { hir_id: _, name, bounds: _, span, pure_wrt_drop, kind } = param;
+        let GenericParam { hir_id: _, name, span, pure_wrt_drop, kind, colon_span: _ } = param;
 
         if let GenericParamKind::Type { .. } = kind {
             if check_that_external_body_datatype_declares_positivity && !neg && !pos {
@@ -662,7 +662,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
                 GenericParamKind::Lifetime { kind: LifetimeParamKind::Explicit },
             ) => {}
             (
-                ParamName::Fresh(_),
+                ParamName::Fresh,
                 GenericParamKind::Lifetime { kind: LifetimeParamKind::Elided },
             ) => {}
             _ => unsupported_err!(*span, "complex generics", hir_generics),

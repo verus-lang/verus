@@ -198,9 +198,10 @@ fn call_arbitrary(ctxt: &Ctxt, mctxt: &mut MCtxt, span: Span) -> Expr {
     ctxt.arbitrary_counter.set(n + 1);
     let kind = rustc_ast::token::LitKind::Integer;
     let symbol = Symbol::intern(&n.to_string());
-    let token = rustc_ast::token::Lit::new(kind, symbol, None);
+    // TODO let token = rustc_ast::token::Lit::new(kind, symbol, None);
+    let token_lit = todo!();
     let kind = LitKind::Int(n as u128, LitIntType::Unsuffixed);
-    let lit = Lit { token, kind, span };
+    let lit = Lit { token_lit, kind, span };
     let kind = ExprKind::Lit(lit);
     let id = mctxt.next_node_id();
     let attrs = ThinVec::new();
@@ -614,7 +615,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                 }
             }
         }
-        ExprKind::MethodCall(m_path, args, span) => {
+        ExprKind::MethodCall(m_path, recv, args, span) => {
             let call = mctxt.find_span(&ctxt.calls, *span).clone();
             match &call {
                 ResolvedCall::Call(f_path) => match erase_call(ctxt, mctxt, m_path, f_path, args) {
@@ -624,7 +625,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                         if args.len() == 0 {
                             return None;
                         } else {
-                            ExprKind::MethodCall(segment, args, *span)
+                            ExprKind::MethodCall(segment, recv.clone(), args, *span)
                         }
                     }
                 },
@@ -633,6 +634,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                     if keep_mode(ctxt, expect) {
                         ExprKind::MethodCall(
                             m_path.clone(),
+                            recv.clone(),
                             vec_map(args, |e| P(erase_expr(ctxt, mctxt, expect, e))),
                             span.clone(),
                         )
@@ -1293,12 +1295,12 @@ fn erase_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &Item) -> Vec<P<Item>> {
 }
 
 fn erase_crate(ctxt: &Ctxt, mctxt: &mut MCtxt, krate: &Crate) -> Crate {
-    let Crate { attrs, items, span } = krate;
+    let Crate { attrs, items, spans, id, is_placeholder } = krate;
     let mut new_items: Vec<P<Item>> = Vec::new();
     for item in items {
         new_items.extend(erase_item(ctxt, mctxt, item));
     }
-    Crate { items: new_items, attrs: attrs.clone(), span: *span }
+    Crate { items: new_items, attrs: attrs.clone(), spans: *spans, id: *id, is_placeholder: *is_placeholder }
 }
 
 fn mk_ctxt(erasure_hints: &ErasureHints, known_spans: &HashSet<Span>, keep_proofs: bool) -> Ctxt {
@@ -1392,31 +1394,31 @@ impl CompilerCallbacks {
 
 /// Implement the callback from Rust that rewrites the AST
 /// (Rust will call rewrite_crate just before transforming AST into HIR).
-impl rustc_lint::FormalVerifierRewrite for CompilerCallbacks {
-    fn rewrite_crate(
-        &mut self,
-        krate: &rustc_ast::ast::Crate,
-        next_node_id: &mut dyn FnMut() -> NodeId,
-    ) -> rustc_ast::ast::Crate {
-        use crate::rustc_ast::mut_visit::MutVisitor;
-        let mut krate = krate.clone();
-        let mut visitor = crate::erase_rewrite::Visitor::new();
-        visitor.visit_crate(&mut krate);
-
-        let ctxt = mk_ctxt(&self.erasure_hints, &visitor.spans, self.lifetimes_only);
-        let mut mctxt = MCtxt {
-            f_next_node_id: next_node_id,
-            remap_parens: HashMap::new(),
-            ret_mode: None,
-            external_body: false,
-        };
-        let time0 = Instant::now();
-        let krate = crate::erase::erase_crate(&ctxt, &mut mctxt, &krate);
-        let time1 = Instant::now();
-        (*self.time_erasure.lock().unwrap()) += time1 - time0;
-        krate
-    }
-}
+// impl rustc_lint::FormalVerifierRewrite for CompilerCallbacks {
+//     fn rewrite_crate(
+//         &mut self,
+//         krate: &rustc_ast::ast::Crate,
+//         next_node_id: &mut dyn FnMut() -> NodeId,
+//     ) -> rustc_ast::ast::Crate {
+//         use crate::rustc_ast::mut_visit::MutVisitor;
+//         let mut krate = krate.clone();
+//         let mut visitor = crate::erase_rewrite::Visitor::new();
+//         visitor.visit_crate(&mut krate);
+// 
+//         let ctxt = mk_ctxt(&self.erasure_hints, &visitor.spans, self.lifetimes_only);
+//         let mut mctxt = MCtxt {
+//             f_next_node_id: next_node_id,
+//             remap_parens: HashMap::new(),
+//             ret_mode: None,
+//             external_body: false,
+//         };
+//         let time0 = Instant::now();
+//         let krate = crate::erase::erase_crate(&ctxt, &mut mctxt, &krate);
+//         let time1 = Instant::now();
+//         (*self.time_erasure.lock().unwrap()) += time1 - time0;
+//         krate
+//     }
+// }
 
 impl verus_rustc_driver::Callbacks for CompilerCallbacks {
     fn after_parsing<'tcx>(
@@ -1429,7 +1431,7 @@ impl verus_rustc_driver::Callbacks for CompilerCallbacks {
             let registration = queries.register_plugins().expect("register_plugins");
             let peeked = registration.peek();
             let lint_store = &peeked.1;
-            lint_store.formal_verifier_callback.replace(Some(Box::new(self.clone())));
+            todo!(); // lint_store.formal_verifier_callback.replace(Some(Box::new(self.clone())));
         };
         if self.lifetimes_only {
             self.maybe_print(compiler, queries);

@@ -7,7 +7,7 @@ pub(crate) fn check<'tcx>(queries: &'tcx verus_rustc_interface::Queries<'tcx>) {
         let hir = tcx.hir();
         let krate = hir.krate();
         for owner in &krate.owners {
-            if let Some(owner) = owner {
+            if let Some(owner) = owner.as_owner() {
                 match owner.node() {
                     OwnerNode::Item(item) => match &item.kind {
                         rustc_hir::ItemKind::Fn(..) => {

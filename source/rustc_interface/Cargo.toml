@@ -5,6 +5,7 @@ edition = "2021"
 
 [lib]
 doctest = false
+crate-type = ["rlib", "dylib"]
 
 [dependencies]
 libloading = "0.7.1"

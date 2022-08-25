@@ -1,9 +1,6 @@
 use crate::attributes::{get_mode, get_verifier_attrs};
 use crate::context::Context;
-use crate::rust_to_vir_base::{
-    check_generics_bounds, def_id_to_vir_path, hack_get_def_name, is_visibility_private,
-    mid_ty_to_vir, mk_visibility,
-};
+use crate::rust_to_vir_base::{ check_generics_bounds, def_id_to_vir_path, hack_get_def_name, mid_ty_to_vir, };
 use crate::unsupported_unless;
 use crate::util::spanned_new;
 use air::ast_util::str_ident;
@@ -32,7 +29,7 @@ fn check_variant_data<'tcx>(
                 .iter()
                 .zip(field_defs)
                 .map(|(field, field_def)| {
-                    assert!(field.ident.name == field_def.ident.name);
+                    assert!(field.ident.name == field_def.ident(ctxt.tcx).name);
                     let field_ty = ctxt.tcx.type_of(field_def.did);
 
                     (
@@ -41,10 +38,10 @@ fn check_variant_data<'tcx>(
                             &(
                                 mid_ty_to_vir(ctxt.tcx, field_ty, false),
                                 get_mode(Mode::Exec, ctxt.tcx.hir().attrs(field.hir_id)),
-                                mk_visibility(&Some(module_path.clone()), &field.vis, !in_enum),
+                                todo!() // mk_visibility(&Some(module_path.clone()), &field.vis, !in_enum),
                             ),
                         ),
-                        is_visibility_private(&field.vis.node, !in_enum),
+                        todo!() // is_visibility_private(&field.vis.node, !in_enum),
                     )
                 })
                 .unzip();
@@ -56,7 +53,7 @@ fn check_variant_data<'tcx>(
                 .zip(field_defs)
                 .enumerate()
                 .map(|(i, (field, field_def))| {
-                    assert!(field.ident.name == field_def.ident.name);
+                    assert!(field.ident.name == field_def.ident(ctxt.tcx).name);
                     let field_ty = ctxt.tcx.type_of(field_def.did);
 
                     (
@@ -65,10 +62,10 @@ fn check_variant_data<'tcx>(
                             &(
                                 mid_ty_to_vir(ctxt.tcx, field_ty, false),
                                 get_mode(Mode::Exec, ctxt.tcx.hir().attrs(field.hir_id)),
-                                mk_visibility(&Some(module_path.clone()), &field.vis, !in_enum),
+                                todo!() // mk_visibility(&Some(module_path.clone()), &field.vis, !in_enum),
                             ),
                         ),
-                        is_visibility_private(&field.vis.node, !in_enum),
+                        todo!() // is_visibility_private(&field.vis.node, !in_enum),
                     )
                 })
                 .unzip();
@@ -76,7 +73,8 @@ fn check_variant_data<'tcx>(
         }
         VariantData::Unit(_vairant_id) => (Arc::new(vec![]), false),
     };
-    (ident_binder(name, &vir_fields), one_field_private)
+    (ident_binder(name, todo!()), one_field_private)
+    // (ident_binder(name, &vir_fields), one_field_private)
 }
 
 pub fn check_item_struct<'tcx>(
@@ -123,11 +121,12 @@ pub fn check_item_struct<'tcx>(
 }
 
 pub fn get_mid_variant_def_by_name<'a>(
+    ctxt: &'a Context<'a>,
     adt_def: &'a rustc_middle::ty::AdtDef,
-    variant_name: &str,
+    variant_name: &'a str,
 ) -> &'a rustc_middle::ty::VariantDef {
-    for variant_def in adt_def.variants.iter() {
-        if variant_def.ident.name.as_str() == variant_name {
+    for variant_def in adt_def.variants().iter() {
+        if variant_def.ident(ctxt.tcx).name.as_str() == variant_name {
             return variant_def;
         }
     }
@@ -135,7 +134,7 @@ pub fn get_mid_variant_def_by_name<'a>(
 }
 
 pub fn check_item_enum<'tcx>(
-    ctxt: &Context<'tcx>,
+    ctxt: &'tcx Context<'tcx>,
     vir: &mut KrateX,
     module_path: &Path,
     span: Span,
@@ -158,7 +157,7 @@ pub fn check_item_enum<'tcx>(
         .iter()
         .map(|variant| {
             let variant_name = &variant.ident.as_str();
-            let variant_def = get_mid_variant_def_by_name(&adt_def, variant_name);
+            let variant_def = get_mid_variant_def_by_name(ctxt, &adt_def, variant_name);
             let variant_name = str_ident(variant_name);
             let field_defs = variant_def.fields.iter();
             check_variant_data(ctxt, module_path, &variant_name, &variant.data, true, field_defs)

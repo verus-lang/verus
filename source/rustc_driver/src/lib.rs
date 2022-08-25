@@ -23,7 +23,6 @@ extern crate rustc_errors;
 extern crate rustc_feature;
 extern crate rustc_hir;
 extern crate rustc_hir_pretty;
-extern crate rustc_interface;
 extern crate rustc_lint;
 extern crate rustc_log;
 extern crate rustc_metadata;
@@ -44,8 +43,8 @@ use rustc_data_structures::sync::SeqCst;
 use rustc_errors::registry::{InvalidErrorCode, Registry};
 use rustc_errors::{ErrorGuaranteed, PResult};
 use rustc_feature::find_gated_cfg;
-use rustc_interface::util::{self, collect_crate_types, get_codegen_backend};
-use rustc_interface::{interface, Queries};
+use verus_rustc_interface::util::{self, collect_crate_types, get_codegen_backend};
+use verus_rustc_interface::{interface, Queries};
 use rustc_lint::LintStore;
 use rustc_log::stdout_isatty;
 use rustc_metadata::locator;
@@ -691,7 +690,7 @@ fn print_crate_info(
                     early_error(ErrorOutputType::default(), "no input file provided")
                 });
                 let attrs = attrs.as_ref().unwrap();
-                let t_outputs = rustc_interface::util::build_output_filenames(
+                let t_outputs = verus_rustc_interface::util::build_output_filenames(
                     input, odir, ofile, temps_dir, attrs, sess,
                 );
                 let id = rustc_session::output::find_crate_name(sess, attrs, input);
@@ -1093,7 +1092,7 @@ pub fn handle_options(args: &[String]) -> Option<getopts::Matches> {
     Some(matches)
 }
 
-fn parse_crate_attrs<'a>(sess: &'a Session, input: &Input) -> PResult<'a, Vec<ast::Attribute>> {
+fn parse_crate_attrs<'a>(sess: &'a Session, input: &Input) -> PResult<'a, ast::AttrVec> {
     match input {
         Input::File(ifile) => rustc_parse::parse_crate_attrs_from_file(ifile, &sess.parse_sess),
         Input::Str { name, input } => rustc_parse::parse_crate_attrs_from_source_str(

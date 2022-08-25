@@ -103,7 +103,7 @@ fn closure_param_typs<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr<'tcx>) -> Vec<Typ
                 .inputs()
                 .skip_binder() // REVIEW: rustc docs refer to skip_binder as "dangerous"
                 .iter()
-                .map(|t| mid_ty_to_vir(bctx.ctxt.tcx, t, false /* allow_mut_ref */))
+                .map(|t| mid_ty_to_vir(bctx.ctxt.tcx, *t, false /* allow_mut_ref */))
                 .collect();
             assert!(args.len() == 1);
             match &*args[0] {
@@ -121,7 +121,7 @@ fn extract_ensures<'tcx>(
 ) -> Result<HeaderExpr, VirErr> {
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
-        ExprKind::Closure(_, _fn_decl, body_id, _, _) => {
+        ExprKind::Closure(rustc_hir::Closure { body: body_id, .. }) => {
             let typs: Vec<Typ> = closure_param_typs(bctx, expr);
             let body = tcx.hir().body(*body_id);
             let xs: Vec<String> = body.params.iter().map(|param| pat_to_var(param.pat)).collect();
@@ -149,7 +149,7 @@ fn extract_quant<'tcx>(
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
-        ExprKind::Closure(_, _fn_decl, body_id, _, _) => {
+        ExprKind::Closure(rustc_hir::Closure { body: body_id, .. }) => {
             let body = tcx.hir().body(*body_id);
             let typs = closure_param_typs(bctx, expr);
             assert!(typs.len() == body.params.len());
@@ -182,7 +182,7 @@ fn extract_assert_forall_by<'tcx>(
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
-        ExprKind::Closure(_, _fn_decl, body_id, _, _) => {
+        ExprKind::Closure(rustc_hir::Closure { body: body_id, .. }) => {
             let body = tcx.hir().body(*body_id);
             let typs = closure_param_typs(bctx, expr);
             assert!(body.params.len() == typs.len());
@@ -228,7 +228,7 @@ fn extract_choose<'tcx>(
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
-        ExprKind::Closure(_, _fn_decl, body_id, _, _) => {
+        ExprKind::Closure(rustc_hir::Closure { body: body_id, .. }) => {
             let closure_body = tcx.hir().body(*body_id);
             let mut params: Vec<Binder<Typ>> = Vec::new();
             let mut vars: Vec<vir::ast::Expr> = Vec::new();
@@ -759,7 +759,7 @@ fn fn_call_to_vir<'tcx>(
         if let ExprKind::Path(QPath::Resolved(None, rustc_hir::Path { res: Res::Local(id), .. })) =
             &args[0].kind
         {
-            if let Node::Binding(pat) = tcx.hir().get(*id) {
+            if let Node::Pat(pat) = tcx.hir().get(*id) {
                 let typ = typ_of_node_expect_mut_ref(bctx, &expr.hir_id, args[0].span)?;
                 return Ok(spanned_typed_new(
                     expr.span,
@@ -1299,7 +1299,7 @@ fn datatype_variant_of_res<'tcx>(
 ) -> (vir::ast::Path, Ident) {
     let variant = tcx.expect_variant_res(*res);
     let vir_path = datatype_of_path(def_id_to_vir_path(tcx, res.def_id()), pop_constructor);
-    let variant_name = str_ident(&variant.ident.as_str());
+    let variant_name = str_ident(&variant.ident(tcx).as_str());
     (vir_path, variant_name)
 }
 
@@ -2014,7 +2014,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
         }
         ExprKind::Path(QPath::Resolved(None, path)) => match path.res {
             Res::Local(id) => match tcx.hir().get(id) {
-                Node::Binding(pat) => Ok(mk_expr(if modifier.addr_of {
+                Node::Pat(pat) => Ok(mk_expr(if modifier.addr_of {
                     ExprX::VarLoc(Arc::new(pat_to_var(pat)))
                 } else {
                     ExprX::Var(Arc::new(pat_to_var(pat)))
@@ -2054,7 +2054,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         None,
                         rustc_hir::Path { res: Res::Local(id), .. },
                     )) => {
-                        let not_mut = if let Node::Binding(pat) = bctx.ctxt.tcx.hir().get(*id) {
+                        let not_mut = if let Node::Pat(pat) = bctx.ctxt.tcx.hir().get(*id) {
                             let (mutable, _) = pat_to_mut_var(pat);
                             let ty = bctx.types.node_type(*id);
                             !(mutable || ty.ref_mutability() == Some(Mutability::Mut))
@@ -2107,21 +2107,21 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             let lhs_ty = mid_ty_simplify(tcx, lhs_ty, true);
             let (datatype, variant_name, field_name) = if let Some(adt_def) = lhs_ty.ty_adt_def() {
                 unsupported_err_unless!(
-                    adt_def.variants.len() == 1,
+                    adt_def.variants().len() == 1,
                     expr.span,
                     "field_of_adt_with_multiple_variants",
                     expr
                 );
-                let datatype_path = def_id_to_vir_path(tcx, adt_def.did);
-                let hir_def = bctx.ctxt.tcx.adt_def(adt_def.did);
-                let variant = hir_def.variants.iter().next().unwrap();
-                let variant_name = str_ident(&variant.ident.as_str());
+                let datatype_path = def_id_to_vir_path(tcx, adt_def.did());
+                let hir_def = bctx.ctxt.tcx.adt_def(adt_def.did());
+                let variant = hir_def.variants().iter().next().unwrap();
+                let variant_name = str_ident(&variant.ident(tcx).as_str());
                 let field_name = match variant.ctor_kind {
                     rustc_hir::def::CtorKind::Fn => {
                         let field_idx = variant
                             .fields
                             .iter()
-                            .position(|f| f.ident == *name)
+                            .position(|f| f.ident(tcx) == *name)
                             .expect("positional field not found");
                         positional_field_ident(field_idx)
                     }
@@ -2162,7 +2162,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
         ExprKind::If(cond, lhs, rhs) => {
             let cond = cond.peel_drop_temps();
             match cond.kind {
-                ExprKind::Let(pat, expr, _let_span) => {
+                ExprKind::Let(rustc_hir::Let { pat, init: expr, .. }) => {
                     // if let
                     let vir_expr = expr_to_vir(bctx, expr, modifier)?;
                     let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();
@@ -2205,7 +2205,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 let guard = match &arm.guard {
                     None => mk_expr(ExprX::Const(Constant::Bool(true))),
                     Some(Guard::If(guard)) => expr_to_vir(bctx, guard, modifier)?,
-                    Some(Guard::IfLet(_, _)) => unsupported_err!(expr.span, "Guard IfLet"),
+                    Some(Guard::IfLet(_)) => unsupported_err!(expr.span, "Guard IfLet"),
                 };
                 let body = expr_to_vir(bctx, &arm.body, modifier)?;
                 let vir_arm = ArmX { pattern, guard, body };
@@ -2303,7 +2303,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                             .pop()
                             .expect(format!("variant name in Struct ctor for {:?}", path).as_str());
                     }
-                    let variant_name = str_ident(&variant.ident.as_str());
+                    let variant_name = str_ident(&variant.ident(tcx).as_str());
                     (vir_path, variant_name)
                 }
                 _ => panic!("unexpected qpath {:?}", qpath),
@@ -2322,7 +2322,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             erasure_info.resolved_calls.push((expr.span.data(), resolved_call));
             Ok(mk_expr(ExprX::Ctor(path, variant_name, vir_fields, update)))
         }
-        ExprKind::MethodCall(_name_and_generics, _call_span_0, all_args, fn_span) => {
+        ExprKind::MethodCall(_name, all_args, fn_span) => {
             let fn_def_id = bctx
                 .types
                 .type_dependent_def_id(expr.hir_id)
@@ -2345,7 +2345,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     if f_name == "std::clone::Clone::clone" {
                         assert!(all_args.len() == 1);
                         let arg_typ = bctx.types.node_type(all_args[0].hir_id);
-                        if is_type_std_rc_or_arc(bctx.ctxt.tcx, &arg_typ) {
+                        if is_type_std_rc_or_arc(bctx.ctxt.tcx, arg_typ) {
                             let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
                             erasure_info
                                 .resolved_calls
@@ -2372,7 +2372,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 modifier,
             )
         }
-        ExprKind::Closure(_, _fn_decl, body_id, _, _) => {
+        ExprKind::Closure(rustc_hir::Closure { body: body_id, .. }) => {
             let body = tcx.hir().body(*body_id);
             let typs = closure_param_typs(bctx, expr);
             assert!(typs.len() == body.params.len());

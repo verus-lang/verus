@@ -2,7 +2,7 @@ use crate::rust_to_vir_base::ident_to_var;
 use crate::util::{err_span_str, err_span_string};
 use rustc_ast::token::{Token, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
-use rustc_ast::{AttrKind, Attribute, MacArgs};
+use rustc_ast::{AttrKind, Attribute, MacArgs, MacArgsEq};
 use rustc_span::Span;
 use vir::ast::{Mode, TriggerAnnotation, VirErr};
 
@@ -27,13 +27,13 @@ pub(crate) fn token_stream_to_trees(
 ) -> Result<Box<[AttrTree]>, ()> {
     let mut token_trees: Vec<TokenTree> = Vec::new();
     for x in stream.trees() {
-        token_trees.push(x);
+        token_trees.push(x.clone());
     }
     let mut i = 0;
     let mut trees: Vec<AttrTree> = Vec::new();
     while i < token_trees.len() {
         match &token_trees[i] {
-            TokenTree::Token(token) => {
+            TokenTree::Token(token, _) => {
                 if let Some(name) = token_to_string(token)? {
                     let fargs = if i + 1 < token_trees.len() {
                         if let TokenTree::Delimited(_, _, token_stream) = &token_trees[i + 1] {
@@ -61,19 +61,20 @@ pub(crate) fn mac_args_to_tree(span: Span, name: String, args: &MacArgs) -> Resu
         MacArgs::Delimited(_, _, token_stream) => {
             Ok(AttrTree::Fun(span, name, Some(token_stream_to_trees(span, token_stream)?)))
         }
-        MacArgs::Eq(_, token) => match token_to_string(token)? {
+        MacArgs::Eq(_, MacArgsEq::Hir(lit)) => match token_to_string(todo!())? { // TODO token)? {
             None => Err(()),
             Some(token) => Ok(AttrTree::Eq(span, name, token)),
         },
+        MacArgs::Eq(_, MacArgsEq::Ast(_)) => panic!("ast should have been removed in macro expansion"),
     }
 }
 
 pub(crate) fn attr_to_tree(attr: &Attribute) -> Result<AttrTree, ()> {
     match &attr.kind {
-        AttrKind::Normal(item, _) => match &item.path.segments[..] {
+        AttrKind::Normal(normal_attr) => match &normal_attr.item.path.segments[..] {
             [segment] => {
                 let name = ident_to_var(&segment.ident).as_str().to_string();
-                mac_args_to_tree(attr.span, name, &item.args)
+                mac_args_to_tree(attr.span, name, &normal_attr.item.args)
             }
             _ => Err(()),
         },

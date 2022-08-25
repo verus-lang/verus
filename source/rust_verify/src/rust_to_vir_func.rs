@@ -72,8 +72,8 @@ fn check_fn_decl<'tcx>(
 }
 
 fn find_body<'tcx>(ctxt: &Context<'tcx>, body_id: &BodyId) -> &'tcx Body<'tcx> {
-    let owner = ctxt.krate.owners[body_id.hir_id.owner].as_ref();
-    if let Some(owner) = owner {
+    let owner = ctxt.krate.owners[body_id.hir_id.owner].as_owner();
+    if let Some(owner) = owner.as_ref() {
         if let Some(body) = owner.nodes.bodies.get(&body_id.hir_id.local_id) {
             return body;
         }
@@ -139,7 +139,7 @@ pub(crate) fn check_item_fn<'tcx>(
 
         let name = Arc::new(pat_to_var(pat));
         let param_mode = get_var_mode(mode, ctxt.tcx.hir().attrs(*hir_id));
-        let is_mut = is_mut_ty(input);
+        let is_mut = is_mut_ty(*input);
         if is_mut.is_some() && mode == Mode::Spec {
             return err_span_string(
                 *span,
@@ -147,7 +147,7 @@ pub(crate) fn check_item_fn<'tcx>(
             );
         }
 
-        let typ = mid_ty_to_vir(ctxt.tcx, is_mut.unwrap_or(input), false);
+        let typ = mid_ty_to_vir(ctxt.tcx, is_mut.unwrap_or(*input), false);
         let is_mut = is_mut.is_some();
 
         let vir_param = spanned_new(*span, ParamX { name, typ, mode: param_mode, is_mut });
@@ -295,7 +295,7 @@ pub(crate) fn check_item_fn<'tcx>(
 
 fn is_mut_ty<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> Option<rustc_middle::ty::Ty<'tcx>> {
     match ty.kind() {
-        rustc_middle::ty::TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) => Some(tys),
+        rustc_middle::ty::TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) => Some(*tys),
         _ => None,
     }
 }
@@ -379,8 +379,8 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     assert!(idents.len() == inputs.len());
     for (param, input) in idents.iter().zip(inputs.iter()) {
         let name = Arc::new(ident_to_var(param));
-        let is_mut = is_mut_ty(input);
-        let typ = mid_ty_to_vir(ctxt.tcx, is_mut.unwrap_or(input), false);
+        let is_mut = is_mut_ty(*input);
+        let typ = mid_ty_to_vir(ctxt.tcx, is_mut.unwrap_or(*input), false);
         // REVIEW: the parameters don't have attributes, so we use the overall mode
         let vir_param =
             spanned_new(param.span, ParamX { name, typ, mode, is_mut: is_mut.is_some() });

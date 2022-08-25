@@ -17,7 +17,7 @@ pub(crate) struct Visitor {
 }
 
 fn fresh_span(span: Span) -> Span {
-    span.with_ctxt(span.data().ctxt.clone_unique_id())
+    span.with_ctxt(todo!()) // TODO span.data().ctxt.clone_unique_id())
 }
 
 impl Visitor {
@@ -40,7 +40,7 @@ impl MutVisitor for Visitor {
     fn visit_expr(&mut self, e: &mut P<Expr>) {
         self.freshen_span(&mut e.span);
         match &mut e.kind {
-            ExprKind::MethodCall(_, _, span) => {
+            ExprKind::MethodCall(_, _, _, span) => {
                 self.freshen_span(span);
             }
             _ => {}
