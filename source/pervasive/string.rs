@@ -29,9 +29,10 @@ impl<'a> StrSlice<'a> {
 
     pub spec fn is_ascii(&self) -> bool;
     
-    // len returns the byte length, this returns
-    // the unicode length 
-    // Warning: O(n)
+    /// The len() function in rust returns the byte length. 
+    /// It is more useful to talk about the length of characters and therefore this function was added. 
+    /// Please note that this function counts the unicode variation selectors as characters. 
+    /// Warning: O(n)
     #[verifier(external_body)]
     pub fn unicode_len(&self) -> (l: usize)
         ensures 
