@@ -165,7 +165,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     opts.optmulti(
         "",
         OPT_VIR_LOG_OPTION,
-        "Set VIR logging option (e.g. `--vir-log-option compact`. Available options: `compact` `no_span` `no_type` `no_encoding` `no_fn_details` `pretty_print`) (default: Verbose)",
+        "Set VIR logging option (e.g. `--vir-log-option no_span+no_type`. Available options: `compact` `no_span` `no_type` `no_encoding` `no_fn_details` `pretty_format`) (default: Verbose)",
         "VIR_LOG_OPTION",
     );
     opts.optflag("", OPT_LOG_AIR_INITIAL, "Log AIR queries in initial form");
@@ -273,15 +273,20 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
             let vir_opts: Vec<String> = matches.opt_strs(OPT_VIR_LOG_OPTION);
             if vir_opts.len() == 0 {
                 VirPrinterOption::default()
-            } else if vir_opts.contains(&vir::printer::COMPACT.to_string()) {
-                VirPrinterOption::mk_compact()
+            } else if vir_opts.len() > 1 {
+                error("expected VIR_LOG_OPTION of form OPT1+OPT2+OPT3".to_string())
             } else {
-                VirPrinterOption {
-                    no_span: vir_opts.contains(&vir::printer::NO_SPAN.to_string()),
-                    no_type: vir_opts.contains(&vir::printer::NO_TYPE.to_string()),
-                    no_fn_details: vir_opts.contains(&vir::printer::NO_FN_DETAILS.to_string()),
-                    no_encoding: vir_opts.contains(&vir::printer::NO_ENCODING.to_string()),
-                    pretty_format: vir_opts.contains(&vir::printer::PRETTY_FORMAT.to_string()),
+                let vir_opts = vir_opts[0].split('+').map(|s| s.trim()).collect::<Vec<_>>();
+                if vir_opts.contains(&vir::printer::COMPACT) {
+                    VirPrinterOption::mk_compact()
+                } else {
+                    VirPrinterOption {
+                        no_span: vir_opts.contains(&vir::printer::NO_SPAN),
+                        no_type: vir_opts.contains(&vir::printer::NO_TYPE),
+                        no_fn_details: vir_opts.contains(&vir::printer::NO_FN_DETAILS),
+                        no_encoding: vir_opts.contains(&vir::printer::NO_ENCODING),
+                        pretty_format: vir_opts.contains(&vir::printer::PRETTY_FORMAT),
+                    }
                 }
             }
         },

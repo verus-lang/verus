@@ -308,7 +308,7 @@ impl Printer {
             }
             ExprX::Call(call_target, exprs) if self.pretty_format => match call_target {
                 CallTarget::Static(fun, _) => {
-                    nodes!( {str_to_node(fun.path.segments.last().unwrap())} {self.exprs_to_node(exprs)} )
+                    nodes!(call {str_to_node(fun.path.segments.last().unwrap())} {self.exprs_to_node(exprs)} )
                 }
                 CallTarget::FnSpec(e) => {
                     nodes!(fnspec {self.expr_to_node(e)} {self.exprs_to_node(exprs)})
