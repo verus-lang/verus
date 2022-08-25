@@ -300,7 +300,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let e1 = poly_expr(ctx, state, e1);
             match op {
                 UnaryOp::Not
-                | UnaryOp::Clip(_)
+                | UnaryOp::Clip { .. }
                 | UnaryOp::BitNot
                 | UnaryOp::StrLen
                 | UnaryOp::StrIsAscii => {

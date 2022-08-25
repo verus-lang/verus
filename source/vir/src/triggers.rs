@@ -54,7 +54,7 @@ fn check_trigger_expr(
     } else {
         match &exp.x {
             ExpX::Unary(UnaryOp::Trigger(_), _)
-            | ExpX::Unary(UnaryOp::Clip(_), _)
+            | ExpX::Unary(UnaryOp::Clip { .. }, _)
             | ExpX::Binary(BinaryOp::Arith(..), _, _) => {}
             _ => {
                 return err_str(
@@ -104,7 +104,7 @@ fn check_trigger_expr(
                 ExpX::Old(_, _) => panic!("internal error: Old"),
                 ExpX::Unary(op, _) => match op {
                     UnaryOp::Trigger(_)
-                    | UnaryOp::Clip(_)
+                    | UnaryOp::Clip { .. }
                     | UnaryOp::BitNot
                     | UnaryOp::StrLen
                     | UnaryOp::StrIsAscii => Ok(()),
@@ -162,7 +162,7 @@ fn check_trigger_expr(
                 ExpX::VarAt(_, VarAt::Pre) => true,
                 ExpX::Old(_, _) => panic!("internal error: Old"),
                 ExpX::Unary(op, _) => match op {
-                    UnaryOp::Trigger(_) | UnaryOp::Clip(_) | UnaryOp::CoerceMode { .. } => true,
+                    UnaryOp::Trigger(_) | UnaryOp::Clip { .. } | UnaryOp::CoerceMode { .. } => true,
                     UnaryOp::MustBeFinalized => true,
                     UnaryOp::Not | UnaryOp::BitNot | UnaryOp::StrLen | UnaryOp::StrIsAscii => false,
                 },

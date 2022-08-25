@@ -306,7 +306,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::Unary(op, e1) => {
             let depth = match op {
                 UnaryOp::Not | UnaryOp::CoerceMode { .. } | UnaryOp::MustBeFinalized => 0,
-                UnaryOp::Trigger(_) | UnaryOp::Clip(_) | UnaryOp::BitNot => 1,
+                UnaryOp::Trigger(_) | UnaryOp::Clip { .. } | UnaryOp::BitNot => 1,
                 UnaryOp::StrIsAscii | UnaryOp::StrLen => fail_on_strop(),
             };
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
