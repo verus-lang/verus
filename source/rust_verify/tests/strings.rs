@@ -39,10 +39,9 @@ test_verify_one_file! {
             proof {
                 reveal_strlit("hello world");
             }
-            assert(x.bytes().len() == 11);
+            assert(x@.len() == 11);
             let val = x.get_char(0);
-            let h_u8 = 104;
-            assert(h_u8 === val);
+            assert('h' === val);
         }
     } => Ok(())
 }
@@ -53,7 +52,7 @@ test_verify_one_file! {
         fn get_char_fails() {
             let x = new_strlit("hello world");
             let val = x.get_char(0);
-            assert(val == 104); // FAILS
+            assert(val === 'h'); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -67,7 +66,7 @@ test_verify_one_file! {
             proof {
                 reveal_strlit("abcdef");
             }
-            assert(x.bytes().len() === 6);
+            assert(x@.len() === 6);
         }
     } => Ok(())
 }
@@ -81,7 +80,7 @@ test_verify_one_file! {
             proof {
                 reveal_strlit("abcdef");
             }
-            assert(x.bytes().len() == 1); // FAILS
+            assert(x@.len() == 1); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -91,7 +90,7 @@ test_verify_one_file! {
         use pervasive::string::*;
         fn test_substring_passes<'a>() -> (ret: StrSlice<'a>)
             ensures
-                ret.bytes().subrange(0,5).ext_equal(new_strlit("Hello").bytes())
+                ret@.subrange(0,5).ext_equal(new_strlit("Hello")@)
 
         {
             proof {
@@ -104,7 +103,7 @@ test_verify_one_file! {
 
         fn test_substring_passes2<'a>() -> (ret: StrSlice<'a>)
             ensures
-                ret.bytes().subrange(0,5).ext_equal(new_strlit("Hello").bytes())
+                ret@.subrange(0,5).ext_equal(new_strlit("Hello")@)
         {
             let x = new_strlit("Hello World");
 
@@ -113,7 +112,7 @@ test_verify_one_file! {
                 reveal_strlit("Hello World");
             }
 
-            x.substring(0,5)
+            x.substring_ascii(0,5)
         }
     } => Ok(())
 }
@@ -123,7 +122,7 @@ test_verify_one_file! {
         use pervasive::string::*;
         fn test_substring_fails<'a>() -> (ret: StrSlice<'a>)
             ensures
-                ret.bytes().subrange(0,5).ext_equal(new_strlit("Hello").bytes()) // FAILS
+                ret@.subrange(0,5).ext_equal(new_strlit("Hello")@) // FAILS
         {
             proof {
                 reveal_strlit("Hello");
@@ -166,9 +165,9 @@ test_verify_one_file! {
             assert(a === a);
             assert(a0_clone === a0);
 
-            assert(a.bytes().ext_equal(abc.bytes().subrange(0,1)));
-            assert(b.bytes().ext_equal(abc.bytes().subrange(1,2)));
-            assert(c.bytes().ext_equal(abc.bytes().subrange(2,3)));
+            assert(a@.ext_equal(abc@.subrange(0,1)));
+            assert(b@.ext_equal(abc@.subrange(1,2)));
+            assert(c@.ext_equal(abc@.subrange(2,3)));
 
             assert(cba !== abc);
             assert(abc === abc_clone);
@@ -184,11 +183,11 @@ test_verify_one_file! {
         const z: StrSlice<'static> = new_strlit("Insert string here");
 
         fn test_multi_fails1() {
-            assert(x.bytes().len() === 11); // FAILS
+            assert(x@.len() === 11); // FAILS
         }
 
         fn test_multi_fails2() {
-            assert(x.bytes().len() !== 11) // FAILS
+            assert(x@.len() !== 11) // FAILS
         }
 
         fn test_multi_fails3() {
@@ -228,7 +227,7 @@ test_verify_one_file! {
         fn test() {
             let a = String::from_str(new_strlit("A"));
             reveal_strlit("A");
-            assert(a.bytes() === new_strlit("A").bytes());
+            assert(a@ === new_strlit("A")@);
             assert(a.is_ascii());
         }
     } => Ok(())
@@ -240,7 +239,7 @@ test_verify_one_file! {
         fn test() {
             let a = String::from_str(new_strlit("A"));
             reveal_strlit("A");
-            assert(a.bytes() === new_strlit("B").bytes()); // FAILS
+            assert(a@ === new_strlit("B")@); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
 }
@@ -266,4 +265,102 @@ test_verify_one_file! {
             assert(false); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_char_passes verus_code! {
+        fn test_char_passes() {
+            let c = 'c';
+            assert(c == 'c');
+        }
+        fn test_char_passes1() {
+            let c = 'c';
+            assert(c != 'b');
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_char_fails verus_code! {
+        fn test_char_fails() {
+            let c = 'c';
+            assert(c == 'a'); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_char_unicode_passes verus_code! {
+        fn test_char_unicode_passes() {
+            let a = '💩';
+            assert(a == '💩');
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_len_return_passes verus_code! {
+        use pervasive::string::*;
+        fn test_len_return_passes<'a>() -> (ret: usize)
+            ensures
+                ret == 4
+        {
+            proof {
+                reveal_strlit("abcd");
+            }
+            new_strlit("abcd").unicode_len()
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_get_unicode_passes verus_code! {
+        use pervasive::string::*;
+        fn test_get_unicode_passes() {
+            let x = new_strlit("Hello");
+            proof {
+                reveal_strlit("Hello");
+            }
+            let x0: char = x.get_char(0);
+            assert(x0 == 'H');
+        }
+        fn test_get_unicode_non_ascii_passes() {
+            let emoji_with_str = new_strlit("💩");
+            proof {
+                reveal_strlit("💩");
+            }
+            let p = emoji_with_str.get_char(0);
+            assert(p == '💩');
+        }
+        fn test_get_unicode_non_ascii_passes1() {
+            let emoji_with_str = new_strlit("abcdef💩");
+            proof {
+                reveal_strlit("abcdef💩");
+            }
+            let p = emoji_with_str.get_char(0);
+            assert(p == 'a');
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_unicode_substring_passes verus_code! {
+        use pervasive::string::*;
+        fn test_substring_passes() {
+            proof {
+                reveal_strlit("01234💩");
+                reveal_strlit("012");
+                reveal_strlit("34💩");
+            }
+            let x = new_strlit("01234💩");
+            assert(x@.len() == 6);
+
+            let x0 = x.substring_char(0,3);
+            assert(x0@.ext_equal(new_strlit("012")@));
+
+            let x1 = x.substring_char(3,6);
+            assert(x1@.ext_equal(new_strlit("34💩")@));
+
+        }
+    } => Ok(())
 }

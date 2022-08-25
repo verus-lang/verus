@@ -44,6 +44,7 @@ const PREFIX_FUEL_ID: &str = "fuel%";
 const PREFIX_FUEL_NAT: &str = "fuel_nat%";
 const PREFIX_REQUIRES: &str = "req%";
 const PREFIX_STR: &str = "str%";
+const PREFIX_CHAR: &str = "char%";
 const PREFIX_ENSURES: &str = "ens%";
 const PREFIX_RECURSIVE: &str = "rec%";
 const PREFIX_SIMPLIFY_TEMP_VAR: &str = "tmp%%";
@@ -107,13 +108,16 @@ pub const POLY: &str = "Poly";
 pub const BOX_INT: &str = "I";
 pub const BOX_BOOL: &str = "B";
 pub const BOX_STRSLICE: &str = "S";
+pub const BOX_CHAR: &str = "C";
 pub const UNBOX_INT: &str = "%I";
 pub const UNBOX_BOOL: &str = "%B";
 pub const UNBOX_STRSLICE: &str = "%S";
+pub const UNBOX_CHAR: &str = "%C";
 pub const TYPE: &str = "Type";
 pub const TYPE_ID_BOOL: &str = "BOOL";
 pub const TYPE_ID_INT: &str = "INT";
 pub const TYPE_ID_STRSLICE: &str = "STRSLICE";
+pub const TYPE_ID_CHAR: &str = "CHAR";
 pub const TYPE_ID_NAT: &str = "NAT";
 pub const TYPE_ID_UINT: &str = "UINT";
 pub const TYPE_ID_SINT: &str = "SINT";
@@ -147,6 +151,10 @@ pub const STRSLICE_GET_CHAR: &str = "strslice_get_char";
 pub const STRSLICE_NEW_STRLIT: &str = "new_strlit";
 // only used to prove that new_strlit is injective
 pub const STRSLICE_FROM_STRLIT: &str = "from_strlit";
+
+pub const CHAR: &str = "Char";
+pub const CHAR_FROM_UNICODE: &str = "from_unicode";
+pub const CHAR_TO_UNICODE: &str = "to_unicode";
 
 pub const SUPPORTED_CRATES: [&str; 2] = ["builtin", "pervasive"];
 
@@ -312,6 +320,10 @@ pub fn prefix_requires(ident: &Ident) -> Ident {
 
 pub fn prefix_str(ident: &Ident) -> Ident {
     Arc::new(PREFIX_STR.to_string() + ident)
+}
+
+pub fn prefix_char(ident: &Ident) -> Ident {
+    Arc::new(PREFIX_CHAR.to_string() + ident)
 }
 
 pub fn prefix_ensures(ident: &Ident) -> Ident {
@@ -598,4 +610,21 @@ pub fn pervasive_assert_path() -> Path {
         krate: None,
         segments: Arc::new(PERVASIVE_ASSERT.iter().map(|x| Arc::new(x.to_string())).collect()),
     })
+}
+
+// char related definitions
+pub fn char_() -> Node {
+    str_to_node(CHAR)
+}
+
+pub fn char_from_unicode_ident() -> Ident {
+    prefix_char(&std::sync::Arc::new(CHAR_FROM_UNICODE.to_string()))
+}
+
+pub fn char_from_unicode() -> Node {
+    str_to_node(&char_from_unicode_ident())
+}
+
+pub fn char_to_unicode() -> Node {
+    str_to_node(&prefix_char(&std::sync::Arc::new(CHAR_TO_UNICODE.to_string())))
 }
