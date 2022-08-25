@@ -60,12 +60,12 @@ pub struct Args {
     pub solver_version_check: bool,
 }
 
-pub fn enable_default_features(rustc_args: &mut Vec<String>) {
-    for feature in &["stmt_expr_attributes", "box_syntax", "box_patterns", "negative_impls"] {
-        rustc_args.push("-Z".to_string());
-        rustc_args.push(format!("enable_feature={}", feature));
-    }
-}
+// TODO pub fn enable_default_features(rustc_args: &mut Vec<String>) {
+// TODO     for feature in &["stmt_expr_attributes", "box_syntax", "box_patterns", "negative_impls"] {
+// TODO         rustc_args.push("-Z".to_string());
+// TODO         rustc_args.push(format!("enable_feature={}", feature));
+// TODO     }
+// TODO }
 
 pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args, Vec<String>) {
     const OPT_PERVASIVE_PATH: &str = "pervasive-path";
