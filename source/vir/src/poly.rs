@@ -311,12 +311,13 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 | UnaryOp::Clip(_)
                 | UnaryOp::BitNot
                 | UnaryOp::StrLen
-                | UnaryOp::StrIsAscii => {
+                | UnaryOp::StrIsAscii
+                | UnaryOp::Cast(_) => {
                     let e1 = coerce_expr_to_native(ctx, &e1);
-                    mk_expr(ExprX::Unary(*op, e1))
+                    mk_expr(ExprX::Unary(op.clone(), e1))
                 }
                 UnaryOp::Trigger(_) | UnaryOp::CoerceMode { .. } => {
-                    mk_expr_typ(&e1.typ, ExprX::Unary(*op, e1.clone()))
+                    mk_expr_typ(&e1.typ, ExprX::Unary(op.clone(), e1.clone()))
                 }
                 UnaryOp::MustBeFinalized => panic!("internal error: MustBeFinalized in AST"),
             }

@@ -107,7 +107,8 @@ fn check_trigger_expr(
                     | UnaryOp::Clip(_)
                     | UnaryOp::BitNot
                     | UnaryOp::StrLen
-                    | UnaryOp::StrIsAscii => Ok(()),
+                    | UnaryOp::StrIsAscii 
+                    | UnaryOp::Cast(_) => Ok(()),
                     UnaryOp::CoerceMode { .. } => Ok(()),
                     UnaryOp::MustBeFinalized => Ok(()),
                     UnaryOp::Not => err_str(&exp.span, "triggers cannot contain boolean operators"),
@@ -164,7 +165,7 @@ fn check_trigger_expr(
                 ExpX::Unary(op, _) => match op {
                     UnaryOp::Trigger(_) | UnaryOp::Clip(_) | UnaryOp::CoerceMode { .. } => true,
                     UnaryOp::MustBeFinalized => true,
-                    UnaryOp::Not | UnaryOp::BitNot | UnaryOp::StrLen | UnaryOp::StrIsAscii => false,
+                    UnaryOp::Not | UnaryOp::BitNot | UnaryOp::StrLen | UnaryOp::StrIsAscii | UnaryOp::Cast(_) => false,
                 },
                 ExpX::Binary(op, _, _) => {
                     use BinaryOp::*;

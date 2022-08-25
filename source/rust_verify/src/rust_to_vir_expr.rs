@@ -1983,6 +1983,9 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             let to_ty = expr_typ();
             match (&**source_ty, &*to_ty) {
                 (TypX::Int(_), TypX::Int(_)) => Ok(mk_ty_clip(&to_ty, &source_vir)),
+                (TypX::Char, TypX::Int(_)) => {
+                    Ok(mk_expr(ExprX::Unary(UnaryOp::Cast(to_ty), source_vir.clone())))
+                }
                 _ => {
                     return err_span_str(
                         expr.span,

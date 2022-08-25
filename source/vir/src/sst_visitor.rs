@@ -296,7 +296,7 @@ where
         }
         ExpX::Unary(op, e1) => {
             let expr1 = map_exp_visitor_bind(e1, map, f)?;
-            let exp = exp_new(ExpX::Unary(*op, expr1));
+            let exp = exp_new(ExpX::Unary(op.clone(), expr1));
             f(&exp, map)
         }
         ExpX::UnaryOpr(op, e1) => {
@@ -468,7 +468,7 @@ where
             }
             ok_exp(ExpX::Ctor(path.clone(), ident.clone(), Arc::new(binders)))
         }
-        ExpX::Unary(op, e1) => ok_exp(ExpX::Unary(*op, fe(env, e1)?)),
+        ExpX::Unary(op, e1) => ok_exp(ExpX::Unary(op.clone(), fe(env, e1)?)),
         ExpX::UnaryOpr(op, e1) => {
             let op = match op {
                 UnaryOpr::Box(t) => UnaryOpr::Box(ft(env, t)?),

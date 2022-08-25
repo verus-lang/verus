@@ -74,6 +74,7 @@ pub enum IntRange {
 
 /// Rust type, but without Box, Rc, Arc, etc.
 pub type Typ = Arc<TypX>;
+
 pub type Typs = Arc<Vec<Typ>>;
 // Deliberately not marked Eq -- use explicit match instead, so we know where types are compared
 #[derive(Debug)]
@@ -104,6 +105,8 @@ pub enum TypX {
     Char,
 }
 
+
+
 #[derive(Copy, Clone, Debug)]
 pub enum TriggerAnnotation {
     /// Automatically choose triggers for the expression containing this annotation,
@@ -130,7 +133,7 @@ pub enum ModeCoercion {
 
 /// Primitive unary operations
 /// (not arbitrary user-defined functions -- these are represented by ExprX::Call)
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub enum UnaryOp {
     /// boolean not
     Not,
@@ -150,6 +153,9 @@ pub enum UnaryOp {
     StrLen,
     /// Used only for handling builtin::strslice_is_ascii
     StrIsAscii,
+
+    /// Used to support arbitary casts 
+    Cast(Typ)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]

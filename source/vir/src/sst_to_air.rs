@@ -470,6 +470,33 @@ fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
     Some(Arc::new(qid))
 }
 
+pub(crate) fn cast_to_air(
+    ctx: &Ctx,
+    exp: &Exp,
+    ty: &Typ,
+    expr_ctxt: &ExprCtxt,
+) -> Result<Expr, VirErr> {
+    match (&*exp.typ, &**ty) {
+        (TypX::Char, TypX::Int(range)) => {
+            let f_name = match range {
+                IntRange::Int => panic!("internal error: Int"),
+                IntRange::Nat => crate::def::NAT_CLIP,
+                IntRange::U(_) | IntRange::USize => crate::def::U_CLIP,
+                IntRange::I(_) | IntRange::ISize => crate::def::I_CLIP,
+            };
+            let unicode_int = Arc::new(ExprX::Apply(
+                crate::def::char_to_unicode_ident(),
+                Arc::new(vec![exp_to_expr(ctx, exp, expr_ctxt)?]),
+            ));
+            Ok(apply_range_fun(f_name, &IntRange::U(8), vec![unicode_int]))
+        }
+        _ => err_string(
+            &exp.span,
+            format!("Verus does not currently suppport casts from {:?} to {:?}", exp.typ, ty),
+        ),
+    }
+}
+
 pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<Expr, VirErr> {
     let bit_vector_typ_hint = &expr_ctxt.bit_vector_typ_hint;
     let expr_ctxt = &expr_ctxt.set_bit_vector_typ_hint(None);
@@ -605,6 +632,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 UnaryOp::StrLen | UnaryOp::StrIsAscii => panic!(
                     "internal error: matching for bit vector ops on this match should be impossible"
                 ),
+                UnaryOp::Cast(_) => panic!(
+                    "internal error: matching for bit vector ops on casts should be impossible"
+                ),
             }
         }
         (ExpX::Unary(op, exp), false) => match op {
@@ -616,6 +646,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 crate::def::strslice_is_ascii_ident(),
                 Arc::new(vec![exp_to_expr(ctx, exp, expr_ctxt)?]),
             )),
+            UnaryOp::Cast(ty) => return cast_to_air(ctx, exp, ty, expr_ctxt),
             UnaryOp::Not => mk_not(&exp_to_expr(ctx, exp, expr_ctxt)?),
             UnaryOp::BitNot => {
                 let width = match bitwidth_from_type(&exp.typ) {

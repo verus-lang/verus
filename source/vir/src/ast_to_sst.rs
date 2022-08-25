@@ -933,7 +933,7 @@ fn expr_to_stm_opt(
         ExprX::Unary(op, expr) => {
             let (stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
             let exp = unwrap_or_return_never!(exp, stms);
-            Ok((stms, ReturnValue::Some(mk_exp(ExpX::Unary(*op, exp)))))
+            Ok((stms, ReturnValue::Some(mk_exp(ExpX::Unary(op.clone(), exp)))))
         }
         ExprX::UnaryOpr(op, expr) => {
             let (stms, exp) = expr_to_stm_opt(ctx, state, expr)?;

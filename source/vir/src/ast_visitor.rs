@@ -516,7 +516,7 @@ where
         }
         ExprX::Unary(op, e1) => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
-            ExprX::Unary(*op, expr1)
+            ExprX::Unary(op.clone(), expr1)
         }
         ExprX::UnaryOpr(op, e1) => {
             let op = match op {

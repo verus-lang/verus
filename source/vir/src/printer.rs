@@ -261,6 +261,7 @@ fn expr_to_node(expr: &Expr) -> Node {
                     )
                 }
                 UnaryOp::MustBeFinalized => nodes_vec!(MustBeFinalized),
+                UnaryOp::Cast(ty) => nodes_vec!(cast {expr_to_node(expr)} {typ_to_node(ty)})
             };
             nodes.push(expr_to_node(expr));
             nodes
