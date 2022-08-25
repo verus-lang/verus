@@ -7,7 +7,7 @@ use crate::context::Ctx;
 use crate::def::unique_local;
 use crate::def::Spanned;
 use crate::func_to_air::SstInline;
-use crate::sst::{BndX, Exp, ExpX, Exps, Stm, StmX, UniqueIdent};
+use crate::sst::{Bnd, BndX, Exp, ExpX, Exps, Stm, StmX, UniqueIdent};
 use air::ast::Span;
 use air::errors::Error;
 use std::collections::HashMap;
@@ -388,53 +388,59 @@ pub(crate) fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: boo
             return Arc::new(split_traced);
         }
         ExpX::Bind(bnd, e1) => {
-            let referenced_vars = crate::sst_util::referenced_vars_exp(e1);
-            let shrink_binder = |bndrs: &air::ast::Binders<Typ>| -> air::ast::Binders<Typ> {
-                // Shrink binders if the split body does not reference one of the binded variables anymore
-                let mut new_bndrs = vec![];
-                for binder in &**bndrs {
-                    if referenced_vars.contains(&binder.name) {
-                        new_bndrs.push(binder.clone());
-                    }
+            match &bnd.x {
+                BndX::Let(..) if !negated => (), // REVIEW: Can we support `Let` in negated position?
+                BndX::Quant(Quant { quant: air::ast::Quant::Forall, boxed_params: _ }, _, _)
+                    if !negated =>
+                {
+                    ()
                 }
-                Arc::new(new_bndrs)
-            };
-
-            let new_bnd = match &bnd.x {
-                BndX::Let(..) if !negated => bnd.clone(),
-                // Note: trigger selection happens after the AST->SST translation(see crate::ast_to_sst::finalized_exp)
-                BndX::Quant(
-                    Quant { quant: air::ast::Quant::Forall, boxed_params },
-                    bndrs,
-                    _trigs,
-                ) if !negated => {
-                    let bndx = BndX::Quant(
-                        Quant { quant: air::ast::Quant::Forall, boxed_params: *boxed_params },
-                        shrink_binder(bndrs),
-                        Arc::new(vec![]), // remove triggers that are already selected
-                    );
-                    Spanned::new(bnd.span.clone(), bndx)
-                }
-                // REVIEW: is this actually useful?
-                BndX::Quant(
-                    Quant { quant: air::ast::Quant::Exists, boxed_params },
-                    bndrs,
-                    _trigs,
-                ) if negated => {
-                    let new_bndx = BndX::Quant(
-                        Quant { quant: air::ast::Quant::Forall, boxed_params: *boxed_params },
-                        shrink_binder(bndrs),
-                        Arc::new(vec![]), // remove triggers that are already selected
-                    );
-                    Spanned::new(bnd.span.clone(), new_bndx)
+                BndX::Quant(Quant { quant: air::ast::Quant::Exists, boxed_params: _ }, _, _)
+                    if negated =>
+                {
+                    ()
                 }
                 _ => return mk_atom(exp.clone(), negated),
             };
+
+            let new_bnd = |e1: &Exp| -> Bnd {
+                match &bnd.x {
+                    BndX::Let(..) if !negated => bnd.clone(),
+                    // Note: trigger selection happens after the AST->SST translation(see crate::ast_to_sst::finalized_exp)
+                    BndX::Quant(
+                        Quant { quant: air::ast::Quant::Forall, boxed_params },
+                        bndrs,
+                        _trigs,
+                    ) if !negated => {
+                        let bndx = BndX::Quant(
+                            Quant { quant: air::ast::Quant::Forall, boxed_params: *boxed_params },
+                            shrink_binders(e1, bndrs),
+                            Arc::new(vec![]), // remove triggers that are already selected
+                        );
+                        Spanned::new(bnd.span.clone(), bndx)
+                    }
+                    // REVIEW: is this actually useful?
+                    BndX::Quant(
+                        Quant { quant: air::ast::Quant::Exists, boxed_params },
+                        bndrs,
+                        _trigs,
+                    ) if negated => {
+                        let new_bndx = BndX::Quant(
+                            Quant { quant: air::ast::Quant::Forall, boxed_params: *boxed_params },
+                            shrink_binders(e1, bndrs),
+                            Arc::new(vec![]), // remove triggers that are already selected
+                        );
+                        Spanned::new(bnd.span.clone(), new_bndx)
+                    }
+                    _ => unreachable!(),
+                }
+            };
+
             let es1 =
                 split_expr(ctx, state, &TracedExpX::new(e1.clone(), exp.trace.clone()), negated);
             let mut split_traced: Vec<TracedExp> = vec![];
             for e in &*es1 {
-                let new_expx = ExpX::Bind(new_bnd.clone(), e.e.clone());
+                let new_expx = ExpX::Bind(new_bnd(&e.e), e.e.clone());
                 let new_exp = SpannedTyped::new(&e.e.span, &exp.e.typ, new_expx);
                 let new_tr_exp = TracedExpX::new(new_exp, e.trace.clone());
                 split_traced.push(new_tr_exp);
@@ -495,4 +501,17 @@ pub fn is_split_error(error: &Error) -> bool {
     } else {
         false
     }
+}
+
+// Shrink binders if the split body does not reference one of the binded variables anymore
+// REVIEW: does this optimization can change SMT query result?
+fn shrink_binders(e1: &Exp, bndrs: &air::ast::Binders<Typ>) -> air::ast::Binders<Typ> {
+    let referenced_vars = crate::sst_util::referenced_vars_exp(e1);
+    let mut new_bndrs = vec![];
+    for binder in &**bndrs {
+        if referenced_vars.contains(&binder.name) {
+            new_bndrs.push(binder.clone());
+        }
+    }
+    Arc::new(new_bndrs)
 }
