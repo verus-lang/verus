@@ -21,4 +21,6 @@ libc = "0.2"
 winapi = { version = "0.3", features = ["libloaderapi"] }
 
 [features]
+default = ['llvm']
 rustc_use_parallel_compiler = ['rayon', 'rustc-rayon-core']
+llvm = []

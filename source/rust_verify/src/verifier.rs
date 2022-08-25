@@ -1338,7 +1338,7 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacks {
             let registration = queries.register_plugins().expect("register_plugins");
             let peeked = registration.peek();
             let lint_store = &peeked.1;
-            todo!() // lint_store.formal_verifier_callback.replace(Some(Box::new(Rewrite {})));
+            // TODO lint_store.formal_verifier_callback.replace(Some(Box::new(Rewrite {})));
         };
         verus_rustc_driver::Compilation::Continue
     }

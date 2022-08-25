@@ -181,7 +181,12 @@ pub fn register_plugins<'a>(
         )
     });
 
-    let (krate, features) = rustc_expand::config::features(sess, krate, CRATE_NODE_ID);
+    let (krate, mut features) = rustc_expand::config::features(sess, krate, CRATE_NODE_ID);
+    features.stmt_expr_attributes = true;
+    features.box_syntax = true;
+    features.box_patterns = true;
+    features.negative_impls = true;
+    features.rustc_attrs = true;
     // these need to be set "early" so that expansion sees `quote` if enabled.
     sess.init_features(features);
 

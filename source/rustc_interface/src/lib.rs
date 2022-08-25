@@ -14,6 +14,7 @@ extern crate rustc_attr;
 extern crate rustc_borrowck;
 extern crate rustc_builtin_macros;
 extern crate rustc_codegen_ssa;
+extern crate rustc_codegen_llvm;
 extern crate rustc_const_eval;
 extern crate rustc_data_structures;
 extern crate rustc_errors;
