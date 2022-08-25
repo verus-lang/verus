@@ -3,6 +3,8 @@ use crate::sst::UniqueIdent;
 use crate::util::vec_map;
 use air::ast::{Commands, Ident, Span};
 use air::ast_util::str_ident;
+use air::printer::str_to_node;
+use sise::Node;
 use std::fmt::Debug;
 use std::sync::Arc;
 
@@ -41,6 +43,7 @@ const SUFFIX_PATH: &str = ".";
 const PREFIX_FUEL_ID: &str = "fuel%";
 const PREFIX_FUEL_NAT: &str = "fuel_nat%";
 const PREFIX_REQUIRES: &str = "req%";
+const PREFIX_STR: &str = "str%";
 const PREFIX_ENSURES: &str = "ens%";
 const PREFIX_RECURSIVE: &str = "rec%";
 const PREFIX_SIMPLIFY_TEMP_VAR: &str = "tmp%%";
@@ -68,6 +71,7 @@ const MONOTYPE_APP_END: &str = ">";
 const DECREASE_AT_ENTRY: &str = "decrease%init";
 const TRAIT_SELF_TYPE_PARAM: &str = "Self%";
 
+pub const PREFIX_IMPL_TYPE_PARAM: &str = "impl%";
 pub const SUFFIX_SNAP_MUT: &str = "_mutation";
 pub const SUFFIX_SNAP_JOIN: &str = "_join";
 pub const SUFFIX_SNAP_WHILE_BEGIN: &str = "_while_begin";
@@ -102,11 +106,14 @@ pub const SNAPSHOT_ASSIGN: &str = "ASSIGN";
 pub const POLY: &str = "Poly";
 pub const BOX_INT: &str = "I";
 pub const BOX_BOOL: &str = "B";
+pub const BOX_STRSLICE: &str = "S";
 pub const UNBOX_INT: &str = "%I";
 pub const UNBOX_BOOL: &str = "%B";
+pub const UNBOX_STRSLICE: &str = "%S";
 pub const TYPE: &str = "Type";
 pub const TYPE_ID_BOOL: &str = "BOOL";
 pub const TYPE_ID_INT: &str = "INT";
+pub const TYPE_ID_STRSLICE: &str = "STRSLICE";
 pub const TYPE_ID_NAT: &str = "NAT";
 pub const TYPE_ID_UINT: &str = "UINT";
 pub const TYPE_ID_SINT: &str = "SINT";
@@ -133,10 +140,26 @@ pub const QID_ACCESSOR: &str = "accessor";
 pub const QID_INVARIANT: &str = "invariant";
 pub const QID_HAS_TYPE_ALWAYS: &str = "has_type_always";
 
-// We assume that usize is at least ARCH_SIZE_MIN_BITS wide
-pub const ARCH_SIZE_MIN_BITS: u32 = 32;
+pub const STRSLICE: &str = "StrSlice";
+pub const STRSLICE_IS_ASCII: &str = "strslice_is_ascii";
+pub const STRSLICE_LEN: &str = "strslice_len";
+pub const STRSLICE_GET_CHAR: &str = "strslice_get_char";
+pub const STRSLICE_NEW_STRLIT: &str = "new_strlit";
+// only used to prove that new_strlit is injective
+pub const STRSLICE_FROM_STRLIT: &str = "from_strlit";
 
 pub const SUPPORTED_CRATES: [&str; 2] = ["builtin", "pervasive"];
+
+// List of pre-defined error messages
+pub const ASSERTION_FAILURE: &str = "assertion failure";
+pub const PRECONDITION_FAILURE: &str = "precondition not satisfied";
+pub const POSTCONDITION_FAILURE: &str = "postcondition not satisfied";
+pub const THIS_POST_FAILED: &str = "failed this postcondition";
+pub const INV_FAIL_LOOP_END: &str = "invariant not satisfied at end of loop body";
+pub const INV_FAIL_LOOP_FRONT: &str = "invariant not satisfied before loop";
+pub const SPLIT_ASSERT_FAILURE: &str = "split assertion failure";
+pub const SPLIT_PRE_FAILURE: &str = "split precondition failure";
+pub const SPLIT_POST_FAILURE: &str = "split postcondition failure";
 
 pub fn path_to_string(path: &Path) -> String {
     let s = vec_map(&path.segments, |s| s.to_string()).join(PATH_SEPARATOR) + SUFFIX_PATH;
@@ -283,6 +306,10 @@ pub fn prefix_fuel_nat(ident: &Ident) -> Ident {
 
 pub fn prefix_requires(ident: &Ident) -> Ident {
     Arc::new(PREFIX_REQUIRES.to_string() + ident)
+}
+
+pub fn prefix_str(ident: &Ident) -> Ident {
+    Arc::new(PREFIX_STR.to_string() + ident)
 }
 
 pub fn prefix_ensures(ident: &Ident) -> Ident {
@@ -441,6 +468,7 @@ pub struct CommandsWithContextX {
     pub desc: String,
     pub commands: Commands,
     pub prover_choice: ProverChoice,
+    pub skip_recommends: bool,
 }
 
 impl CommandsWithContextX {
@@ -449,12 +477,14 @@ impl CommandsWithContextX {
         desc: String,
         commands: Commands,
         prover_choice: ProverChoice,
+        skip_recommends: bool,
     ) -> CommandsWithContext {
         Arc::new(CommandsWithContextX {
             span: span,
             desc: desc,
             commands: commands,
             prover_choice: prover_choice,
+            skip_recommends: skip_recommends,
         })
     }
 }
@@ -506,5 +536,57 @@ pub fn fn_namespace_name(atomicity: InvAtomicity) -> Fun {
             ]),
         }),
         trait_path: None,
+    })
+}
+
+// string related definitions
+pub fn strslice() -> Node {
+    str_to_node(STRSLICE)
+}
+
+pub fn strslice_is_ascii_ident() -> Ident {
+    prefix_str(&std::sync::Arc::new(STRSLICE_IS_ASCII.to_string()))
+}
+
+pub fn strslice_len_ident() -> Ident {
+    prefix_str(&std::sync::Arc::new(STRSLICE_LEN.to_string()))
+}
+
+pub fn strslice_get_char_ident() -> Ident {
+    prefix_str(&std::sync::Arc::new(STRSLICE_GET_CHAR.to_string()))
+}
+
+pub fn strslice_new_strlit_ident() -> Ident {
+    prefix_str(&std::sync::Arc::new(STRSLICE_NEW_STRLIT.to_string()))
+}
+
+pub fn strslice_is_ascii() -> Node {
+    str_to_node(&strslice_is_ascii_ident())
+}
+
+pub fn strslice_len() -> Node {
+    str_to_node(&strslice_len_ident())
+}
+
+pub fn strslice_get_char() -> Node {
+    str_to_node(&strslice_get_char_ident())
+}
+
+pub fn strslice_new_strlit() -> Node {
+    str_to_node(&strslice_new_strlit_ident())
+}
+
+pub fn strslice_from_strlit() -> Node {
+    str_to_node(&prefix_str(&std::sync::Arc::new(STRSLICE_FROM_STRLIT.to_string())))
+}
+
+pub fn strslice_defn_path() -> Path {
+    Arc::new(PathX {
+        krate: None,
+        segments: Arc::new(vec![
+            Arc::new("pervasive".to_string()),
+            Arc::new("string".to_string()),
+            Arc::new(STRSLICE.to_string()),
+        ]),
     })
 }

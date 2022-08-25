@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 
 use builtin::*;
+use builtin_macros::*;
 mod pervasive;
 use pervasive::*;
 use pervasive::multiset::*;
@@ -33,8 +34,7 @@ tokenized_state_machine!{InternSystem<T> {
 
     transition!{
         insert(val: T) {
-            require(forall(|i: int| 0 <= i && i < pre.auth.len() >>=
-                !equal(pre.auth.index(i), val)));
+            require(forall |i: int| 0 <= i && i < pre.auth.len() ==> pre.auth.index(i) !== val);
             update auth = pre.auth.push(val);
         }
     }
@@ -43,14 +43,14 @@ tokenized_state_machine!{InternSystem<T> {
         get_frag(idx: nat) {
             require(0 <= idx && idx < pre.auth.len());
             let val = pre.auth.index(idx);
-            add frag += [idx => val];
+            add frag (union)= [idx => val];
         }
     }
 
     property!{
         get_value(i: nat) {
             have frag >= [i => let val];
-            assert(i < pre.auth.len() && equal(pre.auth.index(i), val));
+            assert(i < pre.auth.len() && pre.auth.index(i) === val);
         }
     }
 
@@ -64,21 +64,19 @@ tokenized_state_machine!{InternSystem<T> {
 
     #[invariant]
     pub fn agreement(&self) -> bool {
-        forall(|k| #[trigger] self.frag.dom().contains(k) >>=
+        forall |k| #[trigger] self.frag.dom().contains(k) ==>
             0 <= k && k < self.auth.len()
-                && equal(self.auth.index(k), self.frag.index(k))
-        )
+                && self.auth.index(k) === self.frag.index(k)
     }
 
     #[invariant]
     pub fn distinct(&self) -> bool {
-        forall(|i: int, j: int|
+        forall |i: int, j: int|
             0 <= i && i < self.auth.len() &&
             0 <= j && j < self.auth.len() &&
             i != j
-            >>=
-            !equal(self.auth.index(i), self.auth.index(j))
-        )
+            ==>
+            self.auth.index(i) !== self.auth.index(j)
     }
 
     #[inductive(empty)]
@@ -153,34 +151,37 @@ struct Interned<T> {
     id: usize,
 }
 
+verus!{
+
 #[verifier(external_body)]
-fn compute_eq<T>(a: &T, b: &T) -> bool {
-  ensures(|res: bool| res == equal(a, b));
+fn compute_eq<T>(a: &T, b: &T) -> (res: bool)
+  ensures res == equal(a, b)
+{
   unimplemented!();
 }
 
+}
+
 impl<T> Interner<T> {
-    #[spec]
-    fn wf(&self, inst: InternSystem::Instance<T>) -> bool {
-        equal(self.inst, inst)
-        && equal(self.auth.instance, inst)
-        && equal(
-            self.auth.value,
-            self.store.view(),
-        )
+    verus!{
+    spec fn wf(&self, inst: InternSystem::Instance<T>) -> bool {
+        &&& self.inst === inst
+        &&& self.auth@.instance === inst
+        &&& self.auth@.value === self.store@
+    }
     }
 
-    fn new() -> (Self, Proof<InternSystem::Instance<T>>) {
-        ensures(|x: (Self, Proof<InternSystem::Instance<T>>)| {
+    fn new() -> (Self, Trk<InternSystem::Instance<T>>) {
+        ensures(|x: (Self, Trk<InternSystem::Instance<T>>)| {
             #[spec] let s = x.0;
             #[spec] let inst = x.1.0;
             s.wf(inst)
         });
 
-        #[proof] let (inst, auth, _f) = InternSystem::Instance::empty();
+        #[proof] let (Trk(inst), Trk(auth), Trk(_f)) = InternSystem::Instance::empty();
         let store = Vec::new();
 
-        (Interner { inst: inst.clone(), auth, store }, Proof(inst))
+        (Interner { inst: inst.clone(), auth, store }, Trk(inst))
     }
 
     fn insert(&mut self, #[spec] inst: InternSystem::Instance<T>, val: T) -> Interned<T> {
@@ -231,16 +232,16 @@ impl<T> Interner<T> {
 }
 
 impl<T> Interned<T> {
-    #[spec]
-    fn wf(&self, inst: InternSystem::Instance<T>) -> bool {
-        equal(self.frag.instance, inst)
-        && equal(inst, self.inst)
-        && self.id as int == self.frag.key
+    verus!{
+    spec fn wf(&self, inst: InternSystem::Instance<T>) -> bool {
+        &&& self.frag@.instance === inst
+        &&& inst === self.inst
+        &&& self.id as int == self.frag@.key
     }
 
-    #[spec]
-    fn view(&self) -> T {
-        self.frag.value
+    spec fn view(&self) -> T {
+        self.frag@.value
+    }
     }
 
     fn clone(&self, #[spec] inst: InternSystem::Instance<T>) -> Self {
@@ -259,10 +260,10 @@ impl<T> Interned<T> {
         ensures(|b: bool| b == equal(self.view(), other.view()));
 
         self.inst.compute_equality(
-            self.frag.key,
-            self.frag.value,
-            other.frag.key,
-            other.frag.value,
+            self.frag.view().key,
+            self.frag.view().value,
+            other.frag.view().key,
+            other.frag.view().value,
             &self.frag, &other.frag);
 
         self.id == other.id
@@ -272,7 +273,7 @@ impl<T> Interned<T> {
 
 
 fn main() {
-    let (mut interner, Proof(inst)) = Interner::<u64>::new();
+    let (mut interner, Trk(inst)) = Interner::<u64>::new();
 
     let s1 = interner.insert(inst, 1);
     let s2 = interner.insert(inst, 2);

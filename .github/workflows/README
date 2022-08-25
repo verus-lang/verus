@@ -21,5 +21,4 @@ However, since two CI is running on the same machine, it can be simply done by "
 Note that Z3 binary path("VERUS_Z3_PATH") and Singular binary path("VERUS_SINGULAR_PATH") are needed to run tests.
 If something breaks, it is worth checking .cargo/config.toml file.
 
-
-
+To change the Z3 version in CI, change it in `.github/workflows/git-z3.sh`, since `ci.yml` will download the Z3 binary using that script.

@@ -1,7 +1,7 @@
 use proc_macro2::Span;
 use std::rc::Rc;
 use syn_verus::token;
-use syn_verus::{Block, Expr, FieldsNamed, Generics, Ident, ImplItemMethod, Pat, Type};
+use syn_verus::{Block, Expr, FieldsNamed, Generics, Ident, ImplItemMethod, Item, Pat, Type};
 
 #[derive(Clone, Debug)]
 pub struct SM {
@@ -11,6 +11,8 @@ pub struct SM {
     pub fields_named_ast: FieldsNamed,
     pub transitions: Vec<Transition>,
     pub concurrent: bool,
+    pub transition_label: Option<Item>,
+    pub init_label: Option<Item>,
 }
 
 #[derive(Clone, Debug)]
@@ -18,6 +20,9 @@ pub struct Extras {
     pub invariants: Vec<Invariant>,
     pub lemmas: Vec<Lemma>,
 }
+
+pub const TRANSITION_LABEL_TYPE_NAME: &str = "Label";
+pub const INIT_LABEL_TYPE_NAME: &str = "InitLabel";
 
 #[derive(Clone, Debug)]
 pub struct Field {
@@ -54,14 +59,22 @@ pub enum ShardableType {
     Variable(Type),
     Constant(Type),
     NotTokenized(Type),
+
     Option(Type),
     Map(Type, Type),
     Multiset(Type),
-    StorageOption(Type),
-    StorageMap(Type, Type),
+    Set(Type),
+    Count,
+    Bool,
+
     PersistentMap(Type, Type),
     PersistentOption(Type),
-    Count,
+    PersistentSet(Type),
+    PersistentCount,
+    PersistentBool,
+
+    StorageOption(Type),
+    StorageMap(Type, Type),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Copy)]
@@ -93,7 +106,7 @@ pub struct Transition {
 #[derive(Clone, Copy, Debug)]
 pub enum MonoidStmtType {
     Have,
-    Add,
+    Add(bool), // 'true' if this is for a persistent type
     Remove,
     Guard,
     Deposit,
@@ -104,7 +117,7 @@ impl MonoidStmtType {
     pub fn name(self) -> &'static str {
         match self {
             MonoidStmtType::Have => "have",
-            MonoidStmtType::Add => "add",
+            MonoidStmtType::Add(_) => "add",
             MonoidStmtType::Remove => "remove",
             MonoidStmtType::Guard => "guard",
             MonoidStmtType::Deposit => "deposit",
@@ -115,7 +128,7 @@ impl MonoidStmtType {
     pub fn is_for_storage(self) -> bool {
         match self {
             MonoidStmtType::Have => false,
-            MonoidStmtType::Add => false,
+            MonoidStmtType::Add(_) => false,
             MonoidStmtType::Remove => false,
             MonoidStmtType::Guard => true,
             MonoidStmtType::Deposit => true,
@@ -126,12 +139,16 @@ impl MonoidStmtType {
 
 #[derive(Clone, Debug)]
 pub enum MonoidElt {
+    /// Represents the element `true`
+    True,
     /// Represents the element Some(e)
     OptionSome(Option<Expr>),
     /// Represents the singleton map [k => v]
     SingletonKV(Expr, Option<Expr>),
     /// Represents the singleton multiset {e}
     SingletonMultiset(Expr),
+    /// Represents the set multiset {e}
+    SingletonSet(Expr),
     /// Represents e
     /// (can be used with any sharding strategy)
     General(Expr),
@@ -143,7 +160,9 @@ impl MonoidElt {
             MonoidElt::OptionSome(_) => "Some(...)",
             MonoidElt::SingletonKV(_, _) => "[... => ...]",
             MonoidElt::SingletonMultiset(_) => "{ ... }",
+            MonoidElt::SingletonSet(_) => "set { ... }",
             MonoidElt::General(_) => "( ... )",
+            MonoidElt::True => "true",
         }
     }
 
@@ -152,6 +171,8 @@ impl MonoidElt {
             MonoidElt::OptionSome(_) => "Option",
             MonoidElt::SingletonKV(_, _) => "Map",
             MonoidElt::SingletonMultiset(_) => "Multiset",
+            MonoidElt::SingletonSet(_) => "Set",
+            MonoidElt::True => "bool",
             MonoidElt::General(_) => {
                 // This function is just for error messages, and the relevant error
                 // shouldn't show up for this case.
@@ -195,6 +216,18 @@ pub struct Arm {
     pub fat_arrow_token: token::FatArrow,
     pub comma: Option<token::Comma>,
 }
+
+/// The 'Split' is a generic node that handles any kind of control flow or variable binding.
+/// The variables being bound are determined by any Pats in the contents of the SplitKind.
+/// Meanwhile each node has n children depending on the SplitKind.
+///
+///   * If - 2 children
+///   * Match - 1 child per arm
+///   * Let - 1 child
+///   * Special - 1 child
+///      * Note that many (most, in fact) special nodes don't bind any variables at all.
+///        If the special node doesn't have a Pat then we always construct the node
+///        so that its child is an empty block.
 
 #[derive(Clone, Debug)]
 pub enum SplitKind {
@@ -274,7 +307,7 @@ impl MonoidStmtType {
         match self {
             MonoidStmtType::Have => false,
             MonoidStmtType::Guard => false,
-            MonoidStmtType::Add => true,
+            MonoidStmtType::Add(_) => true,
             MonoidStmtType::Remove => true,
             MonoidStmtType::Deposit => true,
             MonoidStmtType::Withdraw => true,
@@ -304,7 +337,7 @@ impl MonoidStmtType {
 
     pub fn is_add(self) -> bool {
         match self {
-            MonoidStmtType::Add => true,
+            MonoidStmtType::Add(_) => true,
             _ => false,
         }
     }
@@ -391,20 +424,29 @@ impl ShardableType {
             ShardableType::Variable(_) => "variable",
             ShardableType::Constant(_) => "constant",
             ShardableType::NotTokenized(_) => "not_tokenized",
-            ShardableType::Multiset(_) => "multiset",
+
             ShardableType::Option(_) => "option",
             ShardableType::Map(_, _) => "map",
-            ShardableType::StorageOption(_) => "storage_option",
-            ShardableType::StorageMap(_, _) => "storage_map",
+            ShardableType::Multiset(_) => "multiset",
+            ShardableType::Set(_) => "set",
+            ShardableType::Count => "count",
+            ShardableType::Bool => "bool",
+
             ShardableType::PersistentMap(_, _) => "persistent_map",
             ShardableType::PersistentOption(_) => "persistent_option",
-            ShardableType::Count => "count",
+            ShardableType::PersistentSet(_) => "persistent_set",
+            ShardableType::PersistentCount => "persistent_count",
+            ShardableType::PersistentBool => "persistent_bool",
+
+            ShardableType::StorageOption(_) => "storage_option",
+            ShardableType::StorageMap(_, _) => "storage_map",
         }
     }
 
     pub fn is_count(&self) -> bool {
         match self {
             ShardableType::Count => true,
+            ShardableType::PersistentCount => true,
             _ => false,
         }
     }
@@ -421,22 +463,33 @@ impl ShardableType {
             | ShardableType::Map(_, _)
             | ShardableType::PersistentMap(_, _)
             | ShardableType::PersistentOption(_)
-            | ShardableType::Count => false,
+            | ShardableType::PersistentSet(_)
+            | ShardableType::PersistentCount
+            | ShardableType::PersistentBool
+            | ShardableType::Count
+            | ShardableType::Bool
+            | ShardableType::Set(_) => false,
         }
     }
 
     pub fn is_persistent(&self) -> bool {
         match self {
-            ShardableType::PersistentMap(_, _) | ShardableType::PersistentOption(_) => true,
+            ShardableType::PersistentMap(_, _)
+            | ShardableType::PersistentOption(_)
+            | ShardableType::PersistentSet(_)
+            | ShardableType::PersistentCount
+            | ShardableType::PersistentBool => true,
 
             ShardableType::Variable(_)
             | ShardableType::Constant(_)
             | ShardableType::NotTokenized(_)
             | ShardableType::Multiset(_)
             | ShardableType::Option(_)
+            | ShardableType::Set(_)
             | ShardableType::Map(_, _)
             | ShardableType::StorageOption(_)
             | ShardableType::StorageMap(_, _)
+            | ShardableType::Bool
             | ShardableType::Count => false,
         }
     }

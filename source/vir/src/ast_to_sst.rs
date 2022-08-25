@@ -1,11 +1,11 @@
 use crate::ast::{
-    ArithOp, BinaryOp, CallTarget, Constant, Expr, ExprX, Fun, Function, Ident, IntRange, Mode,
-    PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
+    ArithOp, AssertQueryMode, BinaryOp, CallTarget, Constant, Expr, ExprX, Fun, Function, Ident,
+    Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use crate::ast_util::{err_str, err_string, types_equal, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{unique_bound, unique_local, Spanned};
-use crate::func_to_air::SstMap;
+use crate::func_to_air::{SstInline, SstMap};
 use crate::sst::{
     Bnd, BndX, Dest, Exp, ExpX, Exps, LocalDecl, LocalDeclX, ParPurpose, Pars, Stm, StmX,
     UniqueIdent,
@@ -45,6 +45,10 @@ pub(crate) struct State {
     disable_recommends: u64,
     // Mapping from a function's name to the SST version of its body.  Used by the interpreter.
     pub fun_ssts: SstMap,
+    // For proof debug purpose, track the status of fuel for each function. Since `reveal`, `reveal_with_fuel` can change the fuel locally.
+    reveal_map: Vec<HashMap<Fun, u32>>, //  HashMap<Fun, fuel>
+    // For proof debug purporse, track the function that is being translated
+    pub(crate) fun: Option<Fun>,
 }
 
 #[derive(Clone)]
@@ -94,6 +98,8 @@ impl State {
     pub fn new() -> Self {
         let mut rename_map = ScopeMap::new();
         rename_map.push_scope(true);
+        let mut reveal_map = Vec::new();
+        reveal_map.push(HashMap::new());
         State {
             view_as_spec: false,
             next_var: 0,
@@ -104,6 +110,8 @@ impl State {
             ret_post: None,
             disable_recommends: 0,
             fun_ssts: HashMap::new(),
+            reveal_map,
+            fun: None,
         }
     }
 
@@ -199,9 +207,9 @@ impl State {
         });
         let exp = crate::sst_visitor::map_exp_visitor_result(&exp, &mut |exp| match &exp.x {
             ExpX::Call(fun, typs, args) => {
-                if let Some((Some(inline), body)) = fun_ssts.get(fun) {
-                    let params = &inline.params;
-                    let typ_bounds = &inline.typ_bounds;
+                if let Some((SstInline { params, typ_bounds, do_inline: true }, body)) =
+                    fun_ssts.get(fun)
+                {
                     let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
                     let mut substs: HashMap<UniqueIdent, Exp> = HashMap::new();
                     assert!(typ_bounds.len() == typs.len());
@@ -215,7 +223,10 @@ impl State {
                         assert!(!substs.contains_key(&unique));
                         substs.insert(unique, arg.clone());
                     }
-                    return Ok(crate::sst_util::subst_exp(typ_substs, substs, body));
+                    let e = crate::sst_util::subst_exp(typ_substs, substs, body);
+                    // keep the original outer span for better trigger messages
+                    let e = SpannedTyped::new(&exp.span, &e.typ, e.x.clone());
+                    return Ok(e);
                 }
                 Ok(exp.clone())
             }
@@ -278,6 +289,31 @@ impl State {
     fn checking_recommends(&self, ctx: &Ctx) -> bool {
         ctx.checking_recommends() && self.disable_recommends == 0
     }
+
+    // debug purposes about fuel
+    fn record_fuel(&mut self, x: &Fun, fuel: u32) {
+        let mut last = self.reveal_map.pop().unwrap();
+        last.insert(x.clone(), fuel);
+        self.reveal_map.push(last);
+    }
+
+    pub(crate) fn find_fuel(&self, x: &Fun) -> Option<u32> {
+        for rmap in &self.reveal_map {
+            if let Some(local_fuel) = rmap.get(x) {
+                return Some(*local_fuel);
+            }
+        }
+        None
+    }
+
+    // debug purposes. if some expr can contain `proof` block, push and pop around that proof block's translation
+    pub(crate) fn push_fuel_scope(&mut self) {
+        self.reveal_map.push(HashMap::new());
+    }
+
+    pub(crate) fn pop_fuel_scope(&mut self) {
+        self.reveal_map.pop();
+    }
 }
 
 pub(crate) fn var_loc_exp(span: &Span, typ: &Typ, lhs: UniqueIdent) -> Exp {
@@ -294,7 +330,7 @@ fn init_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
     )
 }
 
-fn get_function(ctx: &Ctx, span: &Span, name: &Fun) -> Result<Function, VirErr> {
+pub(crate) fn get_function(ctx: &Ctx, span: &Span, name: &Fun) -> Result<Function, VirErr> {
     match ctx.func_map.get(name) {
         None => err_string(span, format!("could not find function {:?}", &name)),
         Some(func) => Ok(func.clone()),
@@ -631,7 +667,7 @@ fn is_small_exp(exp: &Exp) -> bool {
         ExpX::Const(_) => true,
         ExpX::Var(..) | ExpX::VarAt(..) => true,
         ExpX::Old(..) => true,
-        ExpX::Unary(UnaryOp::Not | UnaryOp::Clip(_), e) => is_small_exp_or_loc(e),
+        ExpX::Unary(UnaryOp::Not | UnaryOp::Clip { .. }, e) => is_small_exp_or_loc(e),
         ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), e) => is_small_exp_or_loc(e),
         _ => false,
     }
@@ -654,8 +690,53 @@ fn stm_call(
     dest: Option<Dest>,
 ) -> Result<Stm, VirErr> {
     let fun = get_function(ctx, span, &name)?;
-    let mut small_args: Vec<Exp> = Vec::new();
     let mut stms: Vec<Stm> = Vec::new();
+    if ctx.expand_flag && crate::split_expression::need_split_expression(ctx, span) {
+        // we are spliting the `requires` expression on the call site.
+        // If we split the `requires` expression on the function itself,
+        // this split encoding will take effect on every call site, which is not desirable.
+        //
+        // Also, note that prevasive::assert is consisted of `requires` and `ensures`.
+        // therefore, we are also splitting pervaisve::assert here
+        let params = &fun.x.params;
+        let typ_bounds = &fun.x.typ_bounds;
+        for e in &**fun.x.require {
+            let exp = crate::ast_to_sst::expr_to_exp_as_spec(
+                &ctx,
+                &state.fun_ssts,
+                &crate::func_to_air::params_to_pars(params, true), // REVIEW: is `true` here desirable?
+                &e,
+            )
+            .expect("pure_ast_expression_to_sst");
+
+            let args_exp = Arc::new(vec_map(&args, |x| x.0.clone()));
+            let exp_subsituted = crate::split_expression::inline_expression(
+                &name, &args_exp, &typs, params, typ_bounds, &exp, span,
+            );
+            if exp_subsituted.is_err() {
+                continue;
+            }
+            let exp_subsituted = exp_subsituted.unwrap();
+            // REVIEW: should we simply use SPLIT_ASSERT_FAILURE?
+            let message = if name.path.segments[0].to_string() == "pervasive".to_string()
+                && name.path.segments[1].to_string() == "assert".to_string()
+            {
+                crate::def::SPLIT_ASSERT_FAILURE
+            } else {
+                crate::def::SPLIT_PRE_FAILURE
+            };
+            let error = air::errors::error(message.to_string(), span);
+            let exprs = crate::split_expression::split_expr(
+                ctx,
+                state,
+                &crate::split_expression::TracedExpX::new(exp_subsituted.clone(), error.clone()),
+                false,
+            );
+            stms.extend(crate::split_expression::register_split_assertions(exprs).into_iter());
+        }
+    }
+
+    let mut small_args: Vec<Exp> = Vec::new();
     for arg in args.iter() {
         if is_small_exp_or_loc(&arg.0) {
             small_args.push(arg.0.clone());
@@ -927,9 +1008,23 @@ fn expr_to_stm_opt(
             let ctor = ExpX::Ctor(p.clone(), i.clone(), Arc::new(args));
             Ok((stms, ReturnValue::Some(mk_exp(ctor))))
         }
-        ExprX::Unary(op, expr) => {
-            let (stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
+        ExprX::Unary(op, exprr) => {
+            let (mut stms, exp) = expr_to_stm_opt(ctx, state, exprr)?;
             let exp = unwrap_or_return_never!(exp, stms);
+            if let (true, UnaryOp::Clip { truncate: false, .. }) =
+                (state.checking_recommends(ctx), op)
+            {
+                let unary = UnaryOpr::HasType(expr.typ.clone());
+                let has_type = ExpX::UnaryOpr(unary, exp.clone());
+                let has_type = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), has_type);
+                let error = air::errors::error(
+                    "recommendation not met: value may be out of range of the target type (use `#[verifier(truncate)]` on the cast to silence this warning)",
+                    &expr.span,
+                );
+                let assert = StmX::Assert(Some(error), has_type);
+                let assert = Spanned::new(expr.span.clone(), assert);
+                stms.push(assert);
+            }
             Ok((stms, ReturnValue::Some(mk_exp(ExpX::Unary(*op, exp)))))
         }
         ExprX::UnaryOpr(op, expr) => {
@@ -992,7 +1087,7 @@ fn expr_to_stm_opt(
                             (true, _, _, false) => {}
                             (_, Mode::Spec, _, false) => {}
                             (_, Mode::Proof | Mode::Exec, _, true) => {}
-                            (_, _, TypX::Int(IntRange::U(_) | IntRange::I(_)), _) => {
+                            (_, _, TypX::Int(ir), _) if ir.is_bounded() => {
                                 let (assert_exp, msg) = match arith {
                                     ArithOp::Add | ArithOp::Sub | ArithOp::Mul => {
                                         let unary = UnaryOpr::HasType(expr.typ.clone());
@@ -1120,6 +1215,13 @@ fn expr_to_stm_opt(
         }
         ExprX::Fuel(x, fuel) => {
             let stm = Spanned::new(expr.span.clone(), StmX::Fuel(x.clone(), *fuel));
+            if ctx.expand_flag {
+                state.record_fuel(x, *fuel);
+            }
+            Ok((vec![stm], ReturnValue::ImplicitUnit(expr.span.clone())))
+        }
+        ExprX::RevealString(path) => {
+            let stm = Spanned::new(expr.span.clone(), StmX::RevealString(path.clone()));
             Ok((vec![stm], ReturnValue::ImplicitUnit(expr.span.clone())))
         }
         ExprX::Header(_) => {
@@ -1145,7 +1247,13 @@ fn expr_to_stm_opt(
                 let x = state.declare_new_var(&var.name, &var.a, false, true);
                 body.push(assume_has_typ(&x, &var.a, &require.span));
             }
+            if ctx.expand_flag {
+                state.push_fuel_scope();
+            }
             let (mut proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
+            if ctx.expand_flag {
+                state.pop_fuel_scope();
+            }
             if let ReturnValue::Some(_) = e {
                 return err_str(&expr.span, "'assert ... by' block cannot end with an expression");
             }
@@ -1177,100 +1285,196 @@ fn expr_to_stm_opt(
             Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
         }
         ExprX::AssertQuery { requires, ensures, proof, mode } => {
-            let mut inner_body: Vec<Stm> = Vec::new();
-            let mut vars = BTreeMap::new(); // order vars by UniqueIdent
+            // Note that `ExprX::AssertQuery` makes a separate query for AssertQueryMode::NonLinear and AssertQueryMode::BitVector
+            // only `requires` and type invariants will be provided to prove `ensures`
+            match mode {
+                AssertQueryMode::NonLinear => {
+                    let mut inner_body: Vec<Stm> = Vec::new();
+                    let mut vars = BTreeMap::new(); // order vars by UniqueIdent
 
-            // Translate body as separate query
-            state.push_scope();
-            for r in requires.iter() {
-                let (require_check_recommends, require_exp) =
-                    expr_to_pure_exp_check(ctx, state, &r)?;
-                inner_body.extend(require_check_recommends);
-                vars.extend(free_vars_exp(&require_exp).into_iter());
-                let assume = Spanned::new(r.span.clone(), StmX::Assume(require_exp));
-                inner_body.push(assume);
-            }
-
-            let (proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
-            if let ReturnValue::Some(_) = e {
-                return err_str(&expr.span, "'assert ... by' block cannot end with an expression");
-            }
-            inner_body.extend(proof_stms);
-
-            for e in ensures.iter() {
-                if state.checking_recommends(ctx) {
-                    let check_stms = check_pure_expr(ctx, state, &e)?;
-                    for s in check_stms.iter() {
-                        vars.extend(free_vars_stm(&s).into_iter());
+                    // Translate body as separate query
+                    state.push_scope();
+                    for r in requires.iter() {
+                        let (require_check_recommends, require_exp) =
+                            expr_to_pure_exp_check(ctx, state, &r)?;
+                        inner_body.extend(require_check_recommends);
+                        vars.extend(free_vars_exp(&require_exp).into_iter());
+                        let assume = Spanned::new(r.span.clone(), StmX::Assume(require_exp));
+                        inner_body.push(assume);
                     }
-                    inner_body.extend(check_stms);
-                } else {
-                    let ensure_exp = expr_to_pure_exp(ctx, state, &e)?;
-                    vars.extend(free_vars_exp(&ensure_exp).into_iter());
-                    let assert = Spanned::new(e.span.clone(), StmX::Assert(None, ensure_exp));
-                    inner_body.push(assert);
-                }
-            }
 
-            let inner_body = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(inner_body)));
-            state.pop_scope();
+                    if ctx.expand_flag {
+                        state.pop_fuel_scope();
+                    }
+                    let (proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
+                    if ctx.expand_flag {
+                        state.pop_fuel_scope();
+                    }
+                    if let ReturnValue::Some(_) = e {
+                        return err_str(
+                            &expr.span,
+                            "'assert ... by' block cannot end with an expression",
+                        );
+                    }
+                    inner_body.extend(proof_stms);
 
-            let mut outer: Vec<Stm> = Vec::new();
+                    for e in ensures.iter() {
+                        if state.checking_recommends(ctx) {
+                            let check_stms = check_pure_expr(ctx, state, &e)?;
+                            for s in check_stms.iter() {
+                                vars.extend(free_vars_stm(&s).into_iter());
+                            }
+                            inner_body.extend(check_stms);
+                        } else {
+                            let ensure_exp = expr_to_pure_exp(ctx, state, &e)?;
+                            vars.extend(free_vars_exp(&ensure_exp).into_iter());
+                            let assert =
+                                Spanned::new(e.span.clone(), StmX::Assert(None, ensure_exp));
+                            inner_body.push(assert);
+                        }
+                    }
 
-            // Translate as assert, assume in outer query
-            for r in requires.iter() {
-                if state.checking_recommends(ctx) {
-                    outer.extend(check_pure_expr(ctx, state, &r)?);
-                } else {
-                    let require_exp = expr_to_pure_exp(ctx, state, &r)?;
-                    let assert = Spanned::new(
-                        r.span.clone(),
-                        StmX::Assert(
-                            Some(air::errors::error(
-                                "requires not satisfied".to_string(),
-                                &r.span.clone(),
-                            )),
-                            require_exp,
-                        ),
+                    let inner_body =
+                        Spanned::new(expr.span.clone(), StmX::Block(Arc::new(inner_body)));
+                    state.pop_scope();
+
+                    let mut outer: Vec<Stm> = Vec::new();
+
+                    // Translate as assert, assume in outer query
+                    for r in requires.iter() {
+                        if state.checking_recommends(ctx) {
+                            outer.extend(check_pure_expr(ctx, state, &r)?);
+                        } else {
+                            let require_exp = expr_to_pure_exp(ctx, state, &r)?;
+                            let assert = Spanned::new(
+                                r.span.clone(),
+                                StmX::Assert(
+                                    Some(air::errors::error(
+                                        "requires not satisfied".to_string(),
+                                        &r.span.clone(),
+                                    )),
+                                    require_exp,
+                                ),
+                            );
+                            outer.push(assert);
+                        }
+                    }
+                    for e in ensures.iter() {
+                        let ensure_exp = expr_to_pure_exp(ctx, state, &e)?;
+                        let assume = Spanned::new(e.span.clone(), StmX::Assume(ensure_exp));
+                        outer.push(assume);
+                    }
+
+                    let outer_block = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(outer)));
+
+                    let nonlinear = Spanned::new(
+                        expr.span.clone(),
+                        StmX::AssertQuery {
+                            body: inner_body,
+                            typ_inv_vars: Arc::new(vars.into_iter().collect()),
+                            mode: *mode,
+                        },
                     );
-                    outer.push(assert);
+                    Ok((vec![outer_block, nonlinear], ReturnValue::ImplicitUnit(expr.span.clone())))
+                }
+
+                AssertQueryMode::BitVector => {
+                    // check if assertion block is consisted only with requires/ensures
+                    let (proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
+                    let proof_block_err =
+                        err_str(&expr.span, "assert_bitvector_by cannot contain a proof block");
+                    if let ReturnValue::Some(_) = e {
+                        return err_str(
+                            &expr.span,
+                            "assert_bitvector_by cannot contain a return value",
+                        );
+                    }
+                    if proof_stms.len() > 1 {
+                        return proof_block_err;
+                    }
+                    if let StmX::Block(st) = &proof_stms[0].x {
+                        if st.len() > 0 {
+                            return proof_block_err;
+                        }
+                    } else {
+                        return proof_block_err;
+                    }
+
+                    // translate requires/ensures expression
+                    let mut requires_in = vec![];
+                    let mut ensures_in = vec![];
+                    state.push_scope();
+                    for r in requires.iter() {
+                        let require_exp = expr_to_pure_exp(ctx, state, &r)?;
+                        requires_in.push(require_exp.clone());
+                    }
+                    for e in ensures.iter() {
+                        let ensure_exp = expr_to_pure_exp(ctx, state, &e)?;
+                        ensures_in.push(ensure_exp.clone());
+                    }
+                    state.pop_scope();
+
+                    // Translate as assert, assume in outer query
+                    let mut outer: Vec<Stm> = Vec::new();
+                    for r in requires.iter() {
+                        let require_exp = expr_to_pure_exp(ctx, state, &r)?;
+                        let assert = Spanned::new(
+                            r.span.clone(),
+                            StmX::Assert(
+                                Some(air::errors::error(
+                                    "requires not satisfied".to_string(),
+                                    &r.span.clone(),
+                                )),
+                                require_exp,
+                            ),
+                        );
+                        outer.push(assert);
+                    }
+                    for e in ensures.iter() {
+                        let ensure_exp = expr_to_pure_exp(ctx, state, &e)?;
+                        let assume = Spanned::new(e.span.clone(), StmX::Assume(ensure_exp));
+                        outer.push(assume);
+                    }
+                    let outer_block = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(outer)));
+
+                    let bitvector = Spanned::new(
+                        expr.span.clone(),
+                        StmX::AssertBitVector {
+                            requires: Arc::new(requires_in),
+                            ensures: Arc::new(ensures_in),
+                        },
+                    );
+                    Ok((vec![outer_block, bitvector], ReturnValue::ImplicitUnit(expr.span.clone())))
                 }
             }
-            for e in ensures.iter() {
-                let ensure_exp = expr_to_pure_exp(ctx, state, &e)?;
-                let assume = Spanned::new(e.span.clone(), StmX::Assume(ensure_exp));
-                outer.push(assume);
-            }
-
-            let outer_block = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(outer)));
-
-            let nonlinear = Spanned::new(
-                expr.span.clone(),
-                StmX::AssertQuery {
-                    body: inner_body,
-                    typ_inv_vars: Arc::new(vars.into_iter().collect()),
-                    mode: *mode,
-                },
-            );
-            Ok((vec![outer_block, nonlinear], ReturnValue::ImplicitUnit(expr.span.clone())))
-        }
-        ExprX::AssertBV(e) => {
-            let expr = expr_to_pure_exp(ctx, state, &e)?;
-            let ret = ReturnValue::ImplicitUnit(expr.span.clone());
-            let assert = Spanned::new(e.span.clone(), StmX::AssertBV(expr));
-            Ok((vec![assert], ret))
         }
         ExprX::If(expr0, expr1, None) => {
             let (stms0, e0) = expr_to_stm_opt(ctx, state, expr0)?;
+            if ctx.expand_flag {
+                state.push_fuel_scope();
+            }
             let (stms1, e1) = expr_to_stm_opt(ctx, state, expr1)?;
+            if ctx.expand_flag {
+                state.pop_fuel_scope();
+            }
             let stms2 = vec![];
             let e2 = ReturnValue::ImplicitUnit(expr.span.clone());
             Ok(if_to_stm(state, expr, stms0, &e0, stms1, &e1, stms2, &e2))
         }
         ExprX::If(expr0, expr1, Some(expr2)) => {
             let (stms0, e0) = expr_to_stm_opt(ctx, state, expr0)?;
+            if ctx.expand_flag {
+                state.push_fuel_scope();
+            }
             let (stms1, e1) = expr_to_stm_opt(ctx, state, expr1)?;
+            if ctx.expand_flag {
+                state.pop_fuel_scope();
+                state.push_fuel_scope();
+            }
             let (stms2, e2) = expr_to_stm_opt(ctx, state, expr2)?;
+            if ctx.expand_flag {
+                state.pop_fuel_scope();
+            }
             Ok(if_to_stm(state, expr, stms0, &e0, stms1, &e1, stms2, &e2))
         }
         ExprX::Match(..) => {
@@ -1290,7 +1494,13 @@ fn expr_to_stm_opt(
                 }
             };
 
+            if ctx.expand_flag {
+                state.push_fuel_scope();
+            }
             let (mut stms1, e1) = expr_to_stm_opt(ctx, state, body)?;
+            if ctx.expand_flag {
+                state.pop_fuel_scope();
+            }
             check_unit_or_never(&e1)?;
             let (check_recommends, invs): (Vec<Vec<Stm>>, Vec<Exp>) =
                 vec_map_result(invs, |e| expr_to_pure_exp_check(ctx, state, e))?
@@ -1379,11 +1589,11 @@ fn expr_to_stm_opt(
                 }
                 for ens in enss.iter() {
                     let error = error_with_label(
-                        "postcondition not satisfied".to_string(),
+                        crate::def::POSTCONDITION_FAILURE.to_string(),
                         &expr.span,
                         "at this exit".to_string(),
                     )
-                    .secondary_label(&ens.span, "failed this postcondition".to_string());
+                    .secondary_label(&ens.span, crate::def::THIS_POST_FAILED.to_string());
                     stms.push(Spanned::new(
                         expr.span.clone(),
                         StmX::Assert(Some(error), ens.clone()),

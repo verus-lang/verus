@@ -15,6 +15,7 @@ pub mod modes;
 pub mod multiset;
 pub mod state_machine_internal;
 pub mod thread;
+pub mod string;
 
 #[allow(unused_imports)]
 use builtin::*;
@@ -105,7 +106,7 @@ pub fn print_u64(i: u64) {
 /// ```
 
 #[macro_export]
-macro_rules! assert_by_contradiction {
+macro_rules! assert_by_contradiction_macro {
     ($predicate:expr, $bblock:block) => {
         ::builtin::assert_by($predicate, {
             if !$predicate {
@@ -113,5 +114,11 @@ macro_rules! assert_by_contradiction {
                 crate::pervasive::assert(false);
             }
         });
+    }
+}
+#[macro_export]
+macro_rules! assert_by_contradiction {
+    ($($a:tt)*) => {
+        verus_proof_macro_exprs!(assert_by_contradiction_macro!($($a)*))
     }
 }

@@ -24,6 +24,8 @@ pub fn get_new_nat_not_in(s: Set<nat>) {
     assume(false); // TODO
 }
 
+// These are all arbitrary for now:
+
 pub struct ReadonlyOp {
     u: u8,
 }
@@ -58,12 +60,167 @@ pub fn init_state() -> NRState {
     NRState { u: 0 }
 }
 
+////////// ReadonlyState: used to track the progress of a read-only query.
+//
+// A readonly query, which takes place on a given node `nodeId`,
+// follows the following algorithm:
+//
+//  1. Read the global value 'version_upper_bound'.
+//  2. Wait until node-local value 'local_head' is greater than the value
+//     of 'version_upper_bound' that was read in step 1.
+//  3. Execute the query against the node-local replica and return the result.
+//
+// (In real life, the thread does not just sit around 'waiting' in step 2;
+// it might run a combiner phase in order to advance the local_head.)
+//
+// These 3 steps progress the status of the request through the cycle
+//    Init -> VersionUpperBound -> ReadyToRead -> Done
+//
+// Note that the request itself does not "care" which nodeId it takes place on;
+// we only track the nodeId to make sure that steps 2 and 3 use the same node.
+
 pub enum ReadonlyState {
     Init{op: ReadonlyOp},
     VersionUpperBound{op: ReadonlyOp, version_upper_bound: nat},
     ReadyToRead{op: ReadonlyOp, node_id: nat, version_upper_bound: nat},
     Done{op: ReadonlyOp, ret: ReturnType, node_id: nat, version_upper_bound: nat},
 }
+
+////////// Updates and the combiner phase
+//
+// This part is a lot more complex; the lifecycle of an "update" is inherently
+// tied to the lifecycle of the combiner, so I have to explain the entire combiner
+// cycle for this to make sense.
+//
+// In particular, the combiner cycle starts with some (potentially empty) bulk collection
+// of Update requests, which all start in UpdateState::Init.
+// By the end of the combiner cycle (when it has gone back to 'Ready'), all the updates
+// in that collection will be in UpdateState::Done.
+//
+// The combiner works as follows (keep in mind this is abstracted a bit from the
+// real implementation).
+//
+//  1. Advance the 'global_tail' value by 1 for each update in the collection.
+//     This creates a "LogEntry" for the given op at the given index.
+//     It also updates the update from UpdateState::Init to UpdateState::Placed.
+//
+//      Note: This always appends to the log; there are never any "holes" in the log,
+//      and the 'global_tail' always marks the end of the log. The log is unbounded
+//      and not garbage-collected.
+//      Keep in mind that the 'log' here is just an abstraction, and the "cyclic buffer"
+//      that physically stores the log entries in real life has additional complexities.
+//      We do not handle those complexities at this level of abstraction.
+//
+//      Note: Even when we have a bulk collection of updates, we still append the log
+//      entries one at a time, once for each update. This means the log entries might
+//      interleave with those of another thread.
+//      This is more permissive than the real implementation, which advances the
+//      'global_tail' with a single CAS operation, meaning that all the log entries
+//      for the cycle will be contiguous in the log.
+//      In the original Linear Dafny NR project, we modeled this step as a bulk update,
+//      matching the implemenation. However, it turned out that:
+//          (i) modeling 'bulk update' steps is kind of annoying
+//          (ii) we never took advantage of the contiguity in the invariants
+//      Since the single-step version is easier to model, and we don't lose anything for it,
+//      that's what we do here.
+//
+//  2. Read the 'local_head' value for the given node.
+//
+//  3. Read the global 'global_tail' value.
+//
+//  4. Process all log entries in the range local_head..global_tail.
+//     (This should include both the log entries we just creates, plus maybe some other
+//     log entries from other nodes.)
+//
+//      NOTE: the global 'global_tail' value might change over the course of execution,
+//      but we're going to stick with the local copy that we just read
+//      (i.e., the value on the stack).
+//
+//     To process a log entry, we first apply the operation to the replica, and get
+//     back a "return value". Next, we check if the log entry is for the given nodeId,
+//     classifying it as "remote" or "local".
+//      - If it's remote, we're done.
+//      - If it's local, then we find the Update object in our bulk collection, and
+//        update it from UpdateState::Placed to UpdateState::Applied, recording the
+//        return value.
+//
+//  5. Update the global value of 'version_upper_bound'.
+//     This step lets us move all the updates to UpdateState::Done.
+//
+//  6. Update the value of 'local_head'.
+//
+// Now, there are a bunch of things we need to prove so that the whole thing makes sense
+// and so that the implementation can actually follow along and return data to the clients.
+//
+// Specifically, we have a sequence of "return ids" (recorded in the 'queued_ops' field)
+// that need to get processed. When the implementation handles a "local" operation off the
+// log, it appends the return value into a buffer; when it's done, it expects the buffer
+// of return values to line up with all the update requests that it started with.
+//
+// What this means is that we need to show:
+//   - When we process a "local" operation, its RequestId corresponds to the next
+//     RequestId recorded in the queued_ops (i.e., the one at 'queue_index'.)
+//   - When we have finished the entire loop, we have finished processing all
+//     the RequestIds we expected (i.e., `queue_index == queued_ops.len()`).
+//
+// This means we need to establish an invariant between the combiner state and the
+// log state at all times. Specifically, we need an invariant that relates the combiner
+// state to the log entries whose node_ids match the combiner's node, describing where
+// they are and in what order.
+//
+// The invariant roughly says that during step (4), (the "Loop" state):
+//   The RequestIds in `queued_ops`, sliced from queue_index .. queued_ops.len()
+//   match
+//   The RequestIds in the log that are local, sliced from
+//          local_head .. global_tail
+// (Note that queue_index and local_head are the cursors that advance throughout the loop,
+// while global_tail is the one recorded in step 3, so it's fixed.)
+// Furthermore:
+//   There are no local operations in the log between
+//   the recorded global_tail and the global global_tail.
+// See the invariant `wf_combiner_for_node_id`, as well as the predicates
+// `LogRangeMatchesQueue` and `LogRangeNoNodeId`.
+//
+// Example: suppose N is the local node_id, and [a, b, c, d] are the request ids.
+// We might be in a state that looks like this: (Here, '...' indicates remote entries,
+// and '(N, x)' means a log entry with node id N that corresponds to request id x.)
+//
+//       CombinerState                                           CombinerState   global
+//       local_head                                              global_tail     global_tail
+//          |                                                              |               |
+//       ===================================================================================
+//          |          |       |       |        |       |          |       |       |       |
+//  Log:    |  (N, b)  |  ...  |  ...  | (N, c) |  ...  |  (N, d)  |  ...  |  ...  |  ...  |
+//          |          |       |       |        |       |          |       |       |       |
+//       ===================================================================================
+//
+//  ---- Combiner state (in `CombinerState::Loop` phase).
+//
+//      queued_ops =  [  a,   b,   c,   d   ]
+//                          ^
+//                          |
+//                  queue_index = 1
+//
+// ---- Update state:
+//
+//    a => UpdateState::Applied { ... }
+//    b => UpdateState::Placed { ... }
+//    c => UpdateState::Placed { ... }
+//    d => UpdateState::Placed { ... }
+//
+// In the example, `LogRangeMatchesQueue` is the relation that shows that (b, c, d)
+// agree between the queued_ops and the log; whereas `LogRangeNoNodeId` shows that there
+// are no more local entries between the Combiner global_tail and the global global_tail.
+//
+// And again, in the real implementation, b, c, d will actually be contiguous in the log,
+// but the state shown above is permitted by the model here.
+// If we _were_ going to make use of contiguity, then the place to do it would probably
+// be the definition of `LogRangeMatchesQueue`, but as I explained earlier, I didn't
+// find it helpful.
+//
+// Another technical note: the LogEntry doesn't actually store the RequestId on it;
+// `LogRangeMatchesQueue` has to connect the request id to the UpdateState, which then
+// has a pointer into the log via `idx`. (It's possible that this could be simplified.)
 
 #[is_variant]
 pub enum UpdateState {
@@ -165,7 +322,20 @@ tokenized_state_machine!{
             }
         }
 
-        //// Lifecycle of the combiner
+        //// Updates, init and finish
+
+        /*transition!{
+            update_new(op: UpdateOp) {
+                birds_eye let rid = get_new_nat(
+                    pre.local_reads.dom().union(
+                    ));
+                add local_reads += [ rid => ReadonlyState::Init {op} ] by {
+                    get_new_nat_not_in(pre.local_reads.dom());
+                };
+            }
+        }*/
+
+        //// Lifecycle of the combiner and updates
 
         /*
         transition!{
@@ -445,7 +615,7 @@ tokenized_state_machine!{
         }
 
         #[spec]
-        fn wf_read(&self, rs: ReadonlyState) -> bool {
+        pub fn wf_read(&self, rs: ReadonlyState) -> bool {
             match rs {
                 ReadonlyState::Init{op} => {
                     true
@@ -498,7 +668,7 @@ tokenized_state_machine!{
         }
 
         #[spec]
-        fn wf_combiner_for_node_id(&self, node_id: nat) -> bool {
+        pub fn wf_combiner_for_node_id(&self, node_id: nat) -> bool {
           match self.combiner.index(node_id) {
             CombinerState::Ready => {
               &&& self.local_heads.dom().contains(node_id)
@@ -694,39 +864,52 @@ tokenized_state_machine!{
               && node_id1 != node_id) implies
                 CombinerRidsDistinctTwoNodes(post.combiner.index(node_id1), post.combiner.index(node_id))
             by {
-                /*
                 assert(pre.wf_combiner_for_node_id(node_id1));
 
-                let c1 = post.combiner.index(node_id1);
+                /*let c1 = post.combiner.index(node_id1);
                 let c2 = post.combiner.index(node_id);
 
-                let queued_ops1 = match c1 {
-                  CombinerState::Ready => arbitrary(),
-                  CombinerState::Placed{queued_ops} => queued_ops,
-                  CombinerState::LoadedHead{queued_ops, ..} => queued_ops,
-                  CombinerState::Loop{queued_ops, ..} => queued_ops,
-                  CombinerState::UpdatedVersion{queued_ops, ..} => queued_ops,
-                };
+                if !c1.is_Ready() && !c2.is_Ready() {
+                    let queued_ops1 = match c1 {
+                      CombinerState::Ready => arbitrary(),
+                      CombinerState::Placed{queued_ops} => queued_ops,
+                      CombinerState::LoadedHead{queued_ops, ..} => queued_ops,
+                      CombinerState::Loop{queued_ops, ..} => queued_ops,
+                      CombinerState::UpdatedVersion{queued_ops, ..} => queued_ops,
+                    };
 
-                /*let queued_ops2 = match c2 {
-                  CombinerState::Ready => arbitrary(),
-                  CombinerState::Placed{queued_ops} => queued_ops,
-                  CombinerState::LoadedHead{queued_ops, ..} => queued_ops,
-                  CombinerState::Loop{queued_ops, ..} => queued_ops,
-                  CombinerState::UpdatedVersion{queued_ops, ..} => queued_ops,
-                };*/
+                    /*let queued_ops2 = match c2 {
+                      CombinerState::Ready => arbitrary(),
+                      CombinerState::Placed{queued_ops} => queued_ops,
+                      CombinerState::LoadedHead{queued_ops, ..} => queued_ops,
+                      CombinerState::Loop{queued_ops, ..} => queued_ops,
+                      CombinerState::UpdatedVersion{queued_ops, ..} => queued_ops,
+                    };*/
 
-                assert forall |j| 0 <= j < queued_ops1.len() implies
-                    queued_ops1.index(j) != rid
-                by {
-                  assert(pre.local_updates.index(queued_ops1.index(j)).is_Applied()
-                      || pre.local_updates.index(queued_ops1.index(j)).is_Done());
-                }
+                    assert forall |j| 0 <= j < queued_ops1.len()
+                        && queued_ops1.index(j) == rid implies false
+                    by {
+                      // should follow from QueueRidsUpdatePlaced, QueueRidsUpdateDone
+                      assert(pre.local_updates.index(queued_ops1.index(j)).is_Placed()
+                          || pre.local_updates.index(queued_ops1.index(j)).is_Applied()
+                          || pre.local_updates.index(queued_ops1.index(j)).is_Done());
+                    }
 
-                assert(!queued_ops1.contains(rid));
+                    assert(!queued_ops1.contains(rid));
 
+                    /*assert forall |i, j| 0 <= i < queued_ops1.len() && 0 <= j < queued_ops2.len()
+                        implies #[trigger] queued_ops1.index(i) !== #[trigger] queued_ops2.index(j)
+                    by {
+                    }*/
+
+                    //assert(seqs_disjoint(queued_ops1, queued_ops2));
+                }*/
+
+                //assert(CombinerRidsDistinctTwoNodes(c1, c2));
+
+                //assert(CombinerRidsDistinctTwoNodes(pre.combiner.index(node_id1), pre.combiner.index(node_id)));
+                //assert(CombinerRidsDistinctTwoNodes(post.combiner.index(node_id1), pre.combiner.index(node_id)));
                 assert(CombinerRidsDistinctTwoNodes(post.combiner.index(node_id1), post.combiner.index(node_id)));
-                */
             }
 
         }
@@ -1140,7 +1323,7 @@ decreases logIndexUpper - logIndexLower,
 }
 
 
-spec fn QueueRidsUpdatePlaced(queued_ops: Seq<nat>,
+pub open spec fn QueueRidsUpdatePlaced(queued_ops: Seq<nat>,
     localUpdates: Map<nat, UpdateState>, bound: nat) -> bool
 recommends 0 <= bound <= queued_ops.len(),
 {
@@ -1149,10 +1332,14 @@ recommends 0 <= bound <= queued_ops.len(),
       && localUpdates.index(queued_ops.index(j)).is_Placed()
 }
 
-spec fn QueueRidsUpdateDone(queued_ops: Seq<nat>,
+pub open spec fn QueueRidsUpdateDone(queued_ops: Seq<nat>,
     localUpdates: Map<nat, UpdateState>, bound: nat) -> bool
 recommends 0 <= bound <= queued_ops.len(),
 {
+  // Note that use localUpdates.dom().contains(queued_ops.index(j)) as a *hypothesis*
+  // here. This is because the model actually allows an update to "leave early"
+  // before the combiner phase completes. (This is actually an instance of our
+  // model being overly permissive.)
   forall |j| 0 <= j < bound ==>
       localUpdates.dom().contains(#[trigger] queued_ops.index(j)) ==>
               (localUpdates.index(queued_ops.index(j)).is_Applied()
@@ -1160,21 +1347,21 @@ recommends 0 <= bound <= queued_ops.len(),
 }
 
 
-spec fn seq_unique<V>(rids: Seq<V>) -> bool {
+pub open spec fn seq_unique<V>(rids: Seq<V>) -> bool {
   forall |i, j| 0 <= i < rids.len() && 0 <= j < rids.len() && i != j ==>
       rids.index(i) !== rids.index(j)
 }
 
-spec fn LogContainsEntriesUpToHere(log: Map<nat, LogEntry>, end: nat) -> bool {
+pub open spec fn LogContainsEntriesUpToHere(log: Map<nat, LogEntry>, end: nat) -> bool {
     forall |i: nat| 0 <= i < end ==> log.dom().contains(i)
 }
 
-spec fn seqs_disjoint(s: Seq<nat>, t: Seq<nat>) -> bool
+pub open spec fn seqs_disjoint(s: Seq<nat>, t: Seq<nat>) -> bool
 {
-  forall |i, j| 0 <= i < s.len() && 0 <= j < t.len() ==> s.index(i) !== s.index(j)
+  forall |i, j| 0 <= i < s.len() && 0 <= j < t.len() ==> s.index(i) !== t.index(j)
 }
 
-spec fn CombinerRidsDistinctTwoNodes(c1: CombinerState, c2: CombinerState) -> bool
+pub open spec fn CombinerRidsDistinctTwoNodes(c1: CombinerState, c2: CombinerState) -> bool
 {
   !c1.is_Ready() ==> !c2.is_Ready() ==> {
     let queued_ops1 = match c1 {
@@ -1213,7 +1400,7 @@ decreases version
   if version == 0 {
     init_state()
   } else {
-    update_state(state_at_version(log, version - 1), log.index(version as int - 1)).0
+    update_state(state_at_version(log, (version - 1) as nat), log.index(version as int - 1)).0
   }
 }
 
@@ -1409,9 +1596,6 @@ fn refinement(pre: UnboundedLog::State, post: UnboundedLog::State)
             SimpleLog::show::no_op(interp(pre), interp(post));
         }
         exec_load_global_head(node_id) => {
-            SimpleLog::show::no_op(interp(pre), interp(post));
-        }
-        pre_exec_dispatch_local(node_id) => {
             SimpleLog::show::no_op(interp(pre), interp(post));
         }
         exec_dispatch_local(node_id) => {

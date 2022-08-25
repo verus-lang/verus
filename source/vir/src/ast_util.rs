@@ -51,6 +51,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         }
         (TypX::Boxed(t1), TypX::Boxed(t2)) => types_equal(t1, t2),
         (TypX::TypParam(x1), TypX::TypParam(x2)) => x1 == x2,
+        (TypX::StrSlice, TypX::StrSlice) => true,
         _ => false,
     }
 }
@@ -89,6 +90,15 @@ pub fn generic_bounds_equal(b1: &GenericBound, b2: &GenericBound) -> bool {
     }
 }
 
+pub fn allowed_bitvector_type(typ: &Typ) -> bool {
+    match &**typ {
+        TypX::Bool => true,
+        TypX::Int(IntRange::U(_)) | TypX::Int(IntRange::I(_)) => true,
+        TypX::Boxed(typ) => allowed_bitvector_type(typ),
+        _ => false,
+    }
+}
+
 pub fn bitwidth_from_type(et: &Typ) -> Option<u32> {
     match &**et {
         TypX::Int(IntRange::U(size)) | TypX::Int(IntRange::I(size)) => Some(*size),
@@ -112,20 +122,11 @@ pub(crate) fn fixed_integer_const(n: &String, typ: &Typ) -> bool {
     false
 }
 
-impl TypX {
-    pub fn is_ghost_typ(&self) -> bool {
+impl IntRange {
+    pub fn is_bounded(&self) -> bool {
         match self {
-            TypX::Datatype(path, _) => path_as_rust_name(path) == "crate::pervasive::modes::Ghost",
-            _ => false,
-        }
-    }
-
-    pub fn is_tracked_typ(&self) -> bool {
-        match self {
-            TypX::Datatype(path, _) => {
-                path_as_rust_name(path) == "crate::pervasive::modes::Tracked"
-            }
-            _ => false,
+            IntRange::Int | IntRange::Nat => false,
+            IntRange::U(_) | IntRange::I(_) | IntRange::USize | IntRange::ISize => true,
         }
     }
 }

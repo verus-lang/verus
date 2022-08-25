@@ -37,7 +37,7 @@ impl<A> Seq<A> {
 
     /// Construct a sequence `s` of length `len` where entry `s[i]` is given by `f(i)`.
 
-    pub spec fn new<F: Fn(int) -> A>(len: nat, f: F) -> Seq<A>;
+    pub spec fn new(len: nat, f: impl Fn(int) -> A) -> Seq<A>;
 
     /// The length of a sequence.
 
@@ -162,7 +162,7 @@ pub proof fn axiom_seq_empty<A>()
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub proof fn axiom_seq_new_len<A, F: Fn(int) -> A>(len: nat, f: F)
+pub proof fn axiom_seq_new_len<A>(len: nat, f: impl Fn(int) -> A)
     ensures
         #[trigger] Seq::new(len, f).len() == len,
 {
@@ -170,7 +170,7 @@ pub proof fn axiom_seq_new_len<A, F: Fn(int) -> A>(len: nat, f: F)
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub proof fn axiom_seq_new_index<A, F: Fn(int) -> A>(len: nat, f: F, i: int)
+pub proof fn axiom_seq_new_index<A>(len: nat, f: impl Fn(int) -> A, i: int)
     requires
         0 <= i < len,
     ensures
@@ -297,15 +297,10 @@ pub proof fn axiom_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int)
 
 #[doc(hidden)]
 #[macro_export]
-macro_rules! seq_insert_rec {
-    [$val:expr;] => {
-        $val
-    };
-    [$val:expr;$elem:expr] => {
-        seq_insert_rec![$val.push($elem);]
-    };
-    [$val:expr;$elem:expr,$($tail:tt)*] => {
-        seq_insert_rec![$val.push($elem);$($tail)*]
+macro_rules! seq_internal {
+    [$($elem:expr),* $(,)?] => {
+        $crate::pervasive::seq::Seq::empty()
+            $(.push($elem))*
     }
 }
 
@@ -325,11 +320,11 @@ macro_rules! seq_insert_rec {
 #[macro_export]
 macro_rules! seq {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::pervasive::seq::seq_insert_rec![$crate::pervasive::seq::Seq::empty();$($tail)*])
-    }
+        ::builtin_macros::verus_proof_macro_exprs!($crate::pervasive::seq::seq_internal!($($tail)*))
+    };
 }
 
-pub use seq_insert_rec;
+pub use seq_internal;
 pub use seq;
 
 } // verus!

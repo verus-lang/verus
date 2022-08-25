@@ -1,5 +1,5 @@
 use crate::config::{Args, ShowTriggers};
-use crate::context::{ContextX, ErasureInfo};
+use crate::context::{ArchContextX, ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::unsupported;
 use crate::util::{error, from_raw_span, signalling};
@@ -24,6 +24,7 @@ use vir::ast::{Fun, Function, InferMode, Krate, Mode, VirErr, Visibility};
 use vir::ast_util::{fun_as_rust_dbg, fun_name_crate_relative, is_visible_to};
 use vir::def::{CommandsWithContext, CommandsWithContextX, SnapPos};
 use vir::func_to_air::SstMap;
+use vir::prelude::PreludeConfig;
 use vir::recursion::Node;
 
 const RLIMIT_PER_SECOND: u32 = 3000000;
@@ -54,6 +55,11 @@ pub struct Verifier {
     vir_crate: Option<Krate>,
     air_no_span: Option<air::ast::Span>,
     inferred_modes: Option<HashMap<InferMode, Mode>>,
+
+    // proof debugging purposes
+    expand_flag: bool,
+    pub expand_targets: Vec<air::errors::Error>,
+    pub expand_errors: Vec<Vec<ErrorSpan>>,
 }
 
 #[derive(Debug)]
@@ -177,6 +183,10 @@ impl Verifier {
             vir_crate: None,
             air_no_span: None,
             inferred_modes: None,
+
+            expand_flag: false,
+            expand_targets: vec![],
+            expand_errors: vec![],
         }
     }
 
@@ -365,7 +375,13 @@ impl Verifier {
                     if !self.args.profile && !self.args.profile_all {
                         msg.push_str("; consider rerunning with --profile for more details");
                     }
-                    compiler.diagnostic().span_err(multispan, &msg);
+                    match error_as {
+                        ErrorAs::Error => compiler.diagnostic().span_err(multispan, &msg),
+                        ErrorAs::Warning => compiler.diagnostic().span_warn(multispan, &msg),
+                        ErrorAs::Note => {
+                            compiler.diagnostic().span_note_without_error(multispan, &msg)
+                        }
+                    }
 
                     self.errors.push(vec![ErrorSpan::new_from_air_span(
                         compiler.session().source_map(),
@@ -392,7 +408,9 @@ impl Verifier {
                         self.count_errors += 1;
                         invalidity = true;
                     }
-                    compiler.report_error(&error, error_as);
+                    if !self.expand_flag || vir::split_expression::is_split_error(&error) {
+                        compiler.report_error(&error, error_as);
+                    }
 
                     if error_as == ErrorAs::Error {
                         let mut errors = vec![ErrorSpan::new_from_air_span(
@@ -408,7 +426,43 @@ impl Verifier {
                             ));
                         }
 
-                        self.errors.push(errors);
+                        if !self.expand_flag {
+                            self.errors.push(errors);
+                            if self.args.expand_errors {
+                                self.expand_targets.push(error.clone());
+                            }
+                        } else {
+                            // For testing setup, add error for each relevant span
+                            if vir::split_expression::is_split_error(&error) {
+                                let mut errors: Vec<ErrorSpan> = vec![];
+                                for span in &error.spans {
+                                    let error = ErrorSpan::new_from_air_span(
+                                        compiler.session().source_map(),
+                                        &error.msg,
+                                        span,
+                                    );
+                                    if !errors.iter().any(|x: &ErrorSpan| {
+                                        x.test_span_line == error.test_span_line
+                                    }) {
+                                        errors.push(error);
+                                    }
+                                }
+
+                                for label in &error.labels {
+                                    let error = ErrorSpan::new_from_air_span(
+                                        compiler.session().source_map(),
+                                        &error.msg,
+                                        &label.span,
+                                    );
+                                    if !errors.iter().any(|x: &ErrorSpan| {
+                                        x.test_span_line == error.test_span_line
+                                    }) {
+                                        errors.push(error);
+                                    }
+                                }
+                                self.expand_errors.push(errors);
+                            }
+                        }
                         if self.args.debug {
                             let mut debugger = Debugger::new(
                                 air_model,
@@ -443,6 +497,14 @@ impl Verifier {
                     panic!("unexpected output from solver: {}", err);
                 }
             }
+        }
+        if error_as == ErrorAs::Error && checks_remaining == 0 {
+            let multispan = MultiSpan::from_spans(vec![from_raw_span(&context.0.raw_span)]);
+            let msg = format!(
+                "{}: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function",
+                context.1
+            );
+            compiler.diagnostic().span_warn(multispan, &msg);
         }
 
         if is_check_valid && !is_singular {
@@ -483,6 +545,7 @@ impl Verifier {
         module: &vir::ast::Path,
         function_name: Option<&Fun>,
         comment: &str,
+        desc_prefix: Option<&str>,
     ) -> bool {
         if let Some(verify_function) = &self.args.verify_function {
             if let Some(function_name) = function_name {
@@ -495,11 +558,13 @@ impl Verifier {
             }
         }
         let mut invalidity = false;
-        let CommandsWithContextX { span, desc, commands, prover_choice } = &*commands_with_context;
+        let CommandsWithContextX { span, desc, commands, prover_choice, skip_recommends: _ } =
+            &*commands_with_context;
         if commands.len() > 0 {
             air_context.blank_line();
             air_context.comment(comment);
         }
+        let desc = desc_prefix.unwrap_or("").to_string() + desc;
         for command in commands.iter() {
             let result_invalidity = self.check_result_validity(
                 compiler,
@@ -509,7 +574,7 @@ impl Verifier {
                 snap_map,
                 qid_map,
                 &command,
-                &(span, desc),
+                &(span, &desc),
                 *prover_choice == vir::def::ProverChoice::Singular,
             );
             invalidity = invalidity || result_invalidity;
@@ -521,8 +586,9 @@ impl Verifier {
     fn new_air_context_with_prelude(
         &mut self,
         module_path: &vir::ast::Path,
-        function_path: Option<&vir::ast::Path>,
+        query_function_path_counter: Option<(&vir::ast::Path, usize)>,
         is_rerun: bool,
+        prelude_config: vir::prelude::PreludeConfig,
     ) -> Result<air::context::Context, VirErr> {
         let mut air_context = air::context::Context::new();
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
@@ -531,11 +597,24 @@ impl Verifier {
         air_context.set_profile_all(self.args.profile_all);
 
         let rerun_msg = if is_rerun { "_rerun" } else { "" };
+        let count_msg = query_function_path_counter
+            .map(|(_, ref c)| format!("_{:02}", c))
+            .unwrap_or("".to_string());
+        let expand_msg = if self.expand_flag { "_expand" } else { "" };
+
+        let function_path = query_function_path_counter.map(|(p, _)| p);
         if self.args.log_all || self.args.log_air_initial {
             let file = self.create_log_file(
                 Some(module_path),
                 function_path,
-                format!("{}{}", rerun_msg, crate::config::AIR_INITIAL_FILE_SUFFIX).as_str(),
+                format!(
+                    "{}{}{}{}",
+                    rerun_msg,
+                    count_msg,
+                    expand_msg,
+                    crate::config::AIR_INITIAL_FILE_SUFFIX
+                )
+                .as_str(),
             )?;
             air_context.set_air_initial_log(Box::new(file));
         }
@@ -543,7 +622,14 @@ impl Verifier {
             let file = self.create_log_file(
                 Some(module_path),
                 function_path,
-                format!("{}{}", rerun_msg, crate::config::AIR_FINAL_FILE_SUFFIX).as_str(),
+                format!(
+                    "{}{}{}{}",
+                    rerun_msg,
+                    count_msg,
+                    expand_msg,
+                    crate::config::AIR_FINAL_FILE_SUFFIX
+                )
+                .as_str(),
             )?;
             air_context.set_air_final_log(Box::new(file));
         }
@@ -551,7 +637,14 @@ impl Verifier {
             let file = self.create_log_file(
                 Some(module_path),
                 function_path,
-                format!("{}{}", rerun_msg, crate::config::SMT_FILE_SUFFIX).as_str(),
+                format!(
+                    "{}{}{}{}",
+                    rerun_msg,
+                    count_msg,
+                    expand_msg,
+                    crate::config::SMT_FILE_SUFFIX
+                )
+                .as_str(),
             )?;
             air_context.set_smt_log(Box::new(file));
         }
@@ -565,7 +658,7 @@ impl Verifier {
 
         air_context.blank_line();
         air_context.comment("Prelude");
-        for command in vir::context::Ctx::prelude().iter() {
+        for command in vir::context::Ctx::prelude(prelude_config).iter() {
             Self::check_internal_result(air_context.command(&command, Default::default()));
         }
 
@@ -587,10 +680,15 @@ impl Verifier {
         function_spec_commands: Arc<Vec<(Commands, String)>>,
         function_axiom_commands: Arc<Vec<(Commands, String)>>,
         is_rerun: bool,
+        context_counter: usize,
         span: &air::ast::Span,
     ) -> Result<air::context::Context, VirErr> {
-        let mut air_context =
-            self.new_air_context_with_prelude(module_path, Some(function_path), is_rerun)?;
+        let mut air_context = self.new_air_context_with_prelude(
+            module_path,
+            Some((function_path, context_counter)),
+            is_rerun,
+            PreludeConfig { arch_word_bits: self.args.arch_word_bits },
+        )?;
 
         // Write the span of spun-off query
         air_context.comment(&span.as_string);
@@ -623,7 +721,17 @@ impl Verifier {
         module: &vir::ast::Path,
         ctx: &mut vir::context::Ctx,
     ) -> Result<(Duration, Duration), VirErr> {
-        let mut air_context = self.new_air_context_with_prelude(module, None, false)?;
+        let mut air_context = self.new_air_context_with_prelude(
+            module,
+            None,
+            false,
+            PreludeConfig { arch_word_bits: self.args.arch_word_bits },
+        )?;
+        if self.args.solver_version_check {
+            air_context
+                .set_expected_solver_version(crate::consts::EXPECTED_SOLVER_VERSION.to_string());
+        }
+
         let mut spunoff_time_smt_init = Duration::ZERO;
         let mut spunoff_time_smt_run = Duration::ZERO;
 
@@ -648,6 +756,7 @@ impl Verifier {
         let mk_fun_ctx = |f: &Function, checking_recommends: bool| {
             Some(vir::context::FunctionCtx {
                 checking_recommends,
+                checking_recommends_for_non_spec: checking_recommends && f.x.mode != Mode::Spec,
                 module_for_chosen_triggers: f.x.visibility.owning_module.clone(),
                 current_fun: f.x.name.clone(),
             })
@@ -688,9 +797,10 @@ impl Verifier {
                 .iter()
                 .map(|(_, (f, _))| f)
                 .filter(|f| Some(module.clone()) == f.x.visibility.owning_module);
-            let module_fun_names: Vec<String> =
+            let mut module_fun_names: Vec<String> =
                 module_funs.map(|f| fun_name_crate_relative(&module, &f.x.name)).collect();
             if !module_fun_names.iter().any(|f| f == verify_function) {
+                module_fun_names.sort();
                 let msg = vec![
                     format!(
                         "could not find function {verify_function} specified by --verify-function"
@@ -742,18 +852,21 @@ impl Verifier {
                 let (function, vis_abs) = &funs[f];
 
                 ctx.fun = mk_fun_ctx(&function, false);
+                let not_verifying_owning_module =
+                    Some(module) != function.x.visibility.owning_module.as_ref();
                 let (decl_commands, check_commands, new_fun_ssts) =
                     vir::func_to_air::func_axioms_to_air(
                         ctx,
                         fun_ssts,
                         &function,
                         is_visible_to(&vis_abs, module),
+                        not_verifying_owning_module,
                     )?;
                 fun_ssts = new_fun_ssts;
                 fun_axioms.insert(f.clone(), decl_commands);
                 ctx.fun = None;
 
-                if Some(module.clone()) != function.x.visibility.owning_module {
+                if not_verifying_owning_module {
                     continue;
                 }
                 let invalidity = self.run_commands_queries(
@@ -765,6 +878,7 @@ impl Verifier {
                         desc: "termination proof".to_string(),
                         commands: check_commands,
                         prover_choice: vir::def::ProverChoice::DefaultProver,
+                        skip_recommends: false,
                     }),
                     &HashMap::new(),
                     &vec![],
@@ -772,6 +886,7 @@ impl Verifier {
                     module,
                     Some(&function.x.name),
                     &("Function-Termination ".to_string() + &fun_as_rust_dbg(f)),
+                    Some("function termination: "),
                 );
                 let check_recommends = function.x.attrs.check_recommends;
                 if (invalidity && !self.args.no_auto_recommends_check) || check_recommends {
@@ -801,6 +916,7 @@ impl Verifier {
                             module,
                             Some(&function.x.name),
                             &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),
+                            Some("recommends check: "),
                         );
                     }
                 }
@@ -824,14 +940,24 @@ impl Verifier {
         let function_spec_commands = Arc::new(function_spec_commands);
         let function_axiom_commands = Arc::new(function_axiom_commands);
         // Create queries to check the validity of proof/exec function bodies
+        let no_auto_recommends_check = self.args.no_auto_recommends_check;
+        let expand_errors_check = self.args.expand_errors;
+        self.expand_targets = vec![];
         for function in &krate.functions {
             if Some(module.clone()) != function.x.visibility.owning_module {
                 continue;
             }
-            let mut recommends_rerun = false;
-            let mut is_singular = false;
-            loop {
+            let check_validity = &mut |recommends_rerun: bool,
+                                       expands_rerun: bool,
+                                       mut fun_ssts: SstMap|
+             -> Result<(bool, SstMap), VirErr> {
+                let mut spinoff_context_counter = 1;
                 ctx.fun = mk_fun_ctx(&function, recommends_rerun);
+                ctx.expand_flag = expands_rerun;
+                self.expand_flag = expands_rerun;
+                if expands_rerun {
+                    ctx.debug_expand_targets = self.expand_targets.to_vec();
+                }
                 let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
                     ctx,
                     fun_ssts,
@@ -846,16 +972,21 @@ impl Verifier {
 
                 let mut function_invalidity = false;
                 for command in commands.iter().map(|x| &*x) {
-                    let CommandsWithContextX { span, desc: _, commands: _, prover_choice } =
-                        &**command;
+                    let CommandsWithContextX {
+                        span,
+                        desc: _,
+                        commands: _,
+                        prover_choice,
+                        skip_recommends,
+                    } = &**command;
+                    if recommends_rerun && *skip_recommends {
+                        continue;
+                    }
                     if *prover_choice == vir::def::ProverChoice::Singular {
-                        is_singular = true;
                         #[cfg(not(feature = "singular"))]
-                        if is_singular {
-                            panic!(
-                                "Found singular command when Verus is compiled without Singular feature"
-                            );
-                        }
+                        panic!(
+                            "Found singular command when Verus is compiled without Singular feature"
+                        );
 
                         #[cfg(feature = "singular")]
                         if air_context.singular_log.is_none() {
@@ -878,12 +1009,15 @@ impl Verifier {
                             function_spec_commands.clone(),
                             function_axiom_commands.clone(),
                             recommends_rerun,
+                            spinoff_context_counter,
                             &span,
                         )?;
+                        spinoff_context_counter += 1;
                         &mut spinoff_z3_context
                     } else {
                         &mut air_context
                     };
+                    let desc_prefix = recommends_rerun.then(|| "recommends check: ");
                     let command_invalidity = self.run_commands_queries(
                         compiler,
                         error_as,
@@ -895,6 +1029,7 @@ impl Verifier {
                         module,
                         Some(&function.x.name),
                         &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),
+                        desc_prefix,
                     );
                     if *prover_choice == vir::def::ProverChoice::Spinoff {
                         let (time_smt_init, time_smt_run) = query_air_context.get_time();
@@ -904,17 +1039,15 @@ impl Verifier {
 
                     function_invalidity = function_invalidity || command_invalidity;
                 }
-
-                if function_invalidity
-                    && !recommends_rerun
-                    && !self.args.no_auto_recommends_check
-                    && !is_singular
-                {
-                    // Rerun failed query to report possible recommends violations
-                    recommends_rerun = true;
-                    continue;
-                }
-                break;
+                Ok((function_invalidity, fun_ssts))
+            };
+            let (function_invalidity, new_fun_ssts) = check_validity(false, false, fun_ssts)?;
+            fun_ssts = new_fun_ssts;
+            if function_invalidity && expand_errors_check {
+                fun_ssts = check_validity(false, true, fun_ssts)?.1;
+            }
+            if function_invalidity && !no_auto_recommends_check {
+                fun_ssts = check_validity(true, false, fun_ssts)?.1;
             }
         }
         ctx.fun = None;
@@ -964,6 +1097,7 @@ impl Verifier {
 
         let (time_smt_init, time_smt_run) =
             self.verify_module(compiler, &poly_krate, module, &mut ctx)?;
+
         global_ctx = ctx.free();
 
         self.time_smt_init += time_smt_init;
@@ -1003,65 +1137,65 @@ impl Verifier {
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate_simplified(&krate);
 
-        if (if self.args.verify_module.is_some() { 1 } else { 0 }
-            + if self.args.verify_root { 1 } else { 0 }
-            + if self.args.verify_pervasive { 1 } else { 0 })
-            > 1
+        if self.args.verify_pervasive
+            && (!self.args.verify_module.is_empty() || self.args.verify_root)
         {
             return Err(error(
-                "only one of --verify-module, --verify-root, or --verify-pervasive allowed",
+                "--verify-pervasive not allowed when --verify-root or --verify-module are present",
             ));
         }
 
         if self.args.verify_function.is_some() {
-            if self.args.verify_module.is_none() && !self.args.verify_root {
+            if self.args.verify_module.is_empty() && !self.args.verify_root {
                 return Err(error(
                     "--verify-function option requires --verify-module or --verify-root",
+                ));
+            }
+
+            if self.args.verify_module.len() > 1 {
+                return Err(error(
+                    "--verify-function only allowed with a single --verify-module (or --verify-root)",
                 ));
             }
         }
 
         let module_ids_to_verify: Vec<vir::ast::Path> = {
-            if self.args.verify_root {
-                let root_mod_id = krate
-                    .module_ids
-                    .iter()
-                    .find(|m| m.segments.len() == 0)
-                    .expect("missing root module");
-                vec![root_mod_id.clone()]
-            } else if let Some(mod_name) = &self.args.verify_module {
-                if let Some(id) = krate.module_ids.iter().find(|m| &module_name(m) == mod_name) {
-                    vec![id.clone()]
-                } else {
-                    let msg = vec![
-                        format!("could not find module {mod_name} specified by --verify-module"),
-                        format!("available modules are:"),
-                    ]
-                    .into_iter()
-                    .chain(krate.module_ids.iter().filter_map(|m| {
-                        let name = module_name(m);
-                        (!(name.starts_with("pervasive::") || name == "pervasive")
-                            && m.segments.len() > 0)
-                            .then(|| format!("- {name}"))
-                    }))
-                    .chain(Some(format!("or use --verify-root, --verify-pervasive")).into_iter())
-                    .collect::<Vec<_>>()
-                    .join("\n");
+            let mut remaining_verify_module: HashSet<_> = self.args.verify_module.iter().collect();
+            let module_ids_to_verify = krate
+                .module_ids
+                .iter()
+                .filter(|m| {
+                    let name = module_name(m);
+                    let is_pervasive = name.starts_with("pervasive::") || name == "pervasive";
+                    (!self.args.verify_root
+                        && self.args.verify_module.is_empty()
+                        && (!is_pervasive ^ self.args.verify_pervasive))
+                        || (self.args.verify_root && m.segments.len() == 0)
+                        || remaining_verify_module.take(&name).is_some()
+                })
+                .cloned()
+                .collect();
 
-                    return Err(error(msg));
-                }
-            } else {
-                krate
-                    .module_ids
-                    .iter()
-                    .filter(|m| {
-                        let name = module_name(m);
-                        !(name.starts_with("pervasive::") || name == "pervasive")
-                            ^ self.args.verify_pervasive
-                    })
-                    .cloned()
-                    .collect()
+            if let Some(mod_name) = remaining_verify_module.into_iter().next() {
+                let msg = vec![
+                    format!("could not find module {mod_name} specified by --verify-module"),
+                    format!("available modules are:"),
+                ]
+                .into_iter()
+                .chain(krate.module_ids.iter().filter_map(|m| {
+                    let name = module_name(m);
+                    (!(name.starts_with("pervasive::") || name == "pervasive")
+                        && m.segments.len() > 0)
+                        .then(|| format!("- {name}"))
+                }))
+                .chain(Some(format!("or use --verify-root, --verify-pervasive")).into_iter())
+                .collect::<Vec<_>>()
+                .join("\n");
+
+                return Err(error(msg));
             }
+
+            module_ids_to_verify
         };
 
         for module in &module_ids_to_verify {
@@ -1134,16 +1268,23 @@ impl Verifier {
         Ok(true)
     }
 
-    fn construct_vir_crate<'tcx>(&mut self, tcx: TyCtxt<'tcx>) -> Result<bool, VirErr> {
+    fn construct_vir_crate<'tcx>(
+        &mut self,
+        tcx: TyCtxt<'tcx>,
+        diagnostics: &impl Diagnostics,
+    ) -> Result<bool, VirErr> {
         let autoviewed_call_typs = Arc::new(std::sync::Mutex::new(HashMap::new()));
-        let _ = tcx.formal_verifier_callback.replace(Some(Box::new(crate::typecheck::Typecheck {
-            int_ty_id: None,
-            nat_ty_id: None,
-            enhanced_typecheck: !self.args.no_enhanced_typecheck,
-            exprs_in_spec: Arc::new(std::sync::Mutex::new(HashSet::new())),
-            autoviewed_calls: HashSet::new(),
-            autoviewed_call_typs: autoviewed_call_typs.clone(),
-        })));
+        if !self.args.no_enhanced_typecheck {
+            let _ =
+                tcx.formal_verifier_callback.replace(Some(Box::new(crate::typecheck::Typecheck {
+                    int_ty_id: None,
+                    nat_ty_id: None,
+                    enhanced_typecheck: !self.args.no_enhanced_typecheck,
+                    exprs_in_spec: Arc::new(std::sync::Mutex::new(HashSet::new())),
+                    autoviewed_calls: HashSet::new(),
+                    autoviewed_call_typs: autoviewed_call_typs.clone(),
+                })));
+        }
         match rustc_typeck::check_crate(tcx) {
             Ok(()) => {}
             Err(rustc_errors::ErrorReported {}) => {
@@ -1177,6 +1318,7 @@ impl Verifier {
             erasure_info,
             autoviewed_call_typs,
             unique_id: std::cell::Cell::new(0),
+            arch: Arc::new(ArchContextX { word_bits: self.args.arch_word_bits }),
         });
 
         // Convert HIR -> VIR
@@ -1196,7 +1338,17 @@ impl Verifier {
             );
             vprinter.write_krate(&mut file, &vir_crate);
         }
-        vir::well_formed::check_crate(&vir_crate)?;
+        let mut check_crate_diags = vec![];
+        let check_crate_result = vir::well_formed::check_crate(&vir_crate, &mut check_crate_diags);
+        for diag in check_crate_diags {
+            match diag {
+                vir::ast::VirErrAs::Warning(err) => {
+                    diagnostics.report_error(&err, ErrorAs::Warning)
+                }
+                vir::ast::VirErrAs::Note(err) => diagnostics.report_error(&err, ErrorAs::Note),
+            }
+        }
+        check_crate_result?;
         let (erasure_modes, inferred_modes) = vir::modes::check_crate(&vir_crate)?;
         let vir_crate = vir::traits::demote_foreign_traits(&vir_crate)?;
 
@@ -1307,7 +1459,7 @@ impl rustc_driver::Callbacks for VerifierCallbacks {
         let _result = queries.global_ctxt().expect("global_ctxt").peek_mut().enter(|tcx| {
             {
                 let mut verifier = self.verifier.lock().expect("verifier mutex");
-                if let Err(err) = verifier.construct_vir_crate(tcx) {
+                if let Err(err) = verifier.construct_vir_crate(tcx, compiler) {
                     compiler.report_error(&err, ErrorAs::Error);
                     verifier.encountered_vir_error = true;
                     return;

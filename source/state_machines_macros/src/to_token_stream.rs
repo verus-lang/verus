@@ -25,8 +25,9 @@ use syn_verus::spanned::Spanned;
 use syn_verus::token;
 use syn_verus::{
     AngleBracketedGenericArguments, Attribute, Block, Expr, ExprBlock, FnArg, FnArgKind, FnMode,
-    GenericArgument, GenericParam, Generics, Ident, ImplItemMethod, Meta, MetaList, ModeProof, Pat,
-    Path, PathArguments, PathSegment, Signature, Stmt, Type, TypePath,
+    GenericArgument, GenericParam, Generics, Ident, ImplItemMethod, Meta, MetaList, ModeProof,
+    ModeSpec, Open, Pat, Path, PathArguments, PathSegment, Publish, Signature, Stmt, Type,
+    TypePath,
 };
 
 pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> parse::Result<TokenStream> {
@@ -55,7 +56,7 @@ pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> parse::Result<
     let sm_name = &bundle.sm.name;
 
     let final_code = quote! {
-        ::builtin_macros::verus_old_todo_replace_this!{
+        ::builtin_macros::verus!{
             #[allow(unused_parens)]
             mod #sm_name {
                 use super::*;
@@ -275,18 +276,14 @@ pub fn output_primary_stuff(
             if trans.kind == TransitionKind::Init {
                 let args = post_params(&trans.params);
                 rel_fn = quote! {
-                    #[spec]
-                    #[verifier(publish)]
-                    pub fn #name (#args) -> ::std::primitive::bool {
+                    pub open spec fn #name (#args) -> ::std::primitive::bool {
                         #f
                     }
                 };
             } else {
                 let args = pre_post_params(&trans.params);
                 rel_fn = quote! {
-                    #[spec]
-                    #[verifier(publish)]
-                    pub fn #name (#args) -> ::std::primitive::bool {
+                    pub open spec fn #name (#args) -> ::std::primitive::bool {
                         #f
                     }
                 };
@@ -305,9 +302,7 @@ pub fn output_primary_stuff(
             let f = to_relation(&simplified_body, false /* weak */);
 
             let rel_fn = quote! {
-                #[spec]
-                #[verifier(publish)]
-                pub fn #name (#params) -> ::std::primitive::bool {
+                pub open spec fn #name (#params) -> ::std::primitive::bool {
                     #f
                 }
             };
@@ -342,6 +337,8 @@ pub fn output_primary_stuff(
     let mut show_stream = TokenStream::new();
     output_step_datatype(root_stream, &mut show_stream, impl_stream, sm, false);
     output_step_datatype(root_stream, &mut show_stream, impl_stream, sm, true);
+    sm.init_label.to_tokens(root_stream);
+    sm.transition_label.to_tokens(root_stream);
     root_stream.extend(quote! {
         pub mod show {
             use super::*;
@@ -375,7 +372,7 @@ fn output_step_datatype(
         .iter()
         .filter(|t| filter_fn(t))
         .map(|t| {
-            let p = step_params(&t.params);
+            let p = step_params(sm, &t);
             let tr_name = &t.name;
             quote! { #tr_name(#p) }
         })
@@ -396,13 +393,34 @@ fn output_step_datatype(
         }
     });
 
+    let label_param;
+    let label_arg;
+    let use_label;
+    if is_init && sm.init_label.is_some() {
+        label_param = quote! { init_label: InitLabel, };
+        label_arg = quote! { init_label, };
+        use_label = true;
+    } else if !is_init && sm.transition_label.is_some() {
+        label_param = quote! { label: Label, };
+        label_arg = quote! { label, };
+        use_label = true;
+    } else {
+        label_param = quote! {};
+        label_arg = quote! {};
+        use_label = false;
+    }
+
     let arms: Vec<TokenStream> = sm
         .transitions
         .iter()
         .filter(|t| filter_fn(t))
         .map(|t| {
-            let step_args = just_args(&t.params);
-            let tr_args = if is_init { post_args(&t.params) } else { pre_post_args(&t.params) };
+            let step_args = just_args(&t.params, use_label);
+            let tr_args = if is_init {
+                if use_label { post_label_args(&t.params) } else { post_args(&t.params) }
+            } else {
+                if use_label { pre_post_label_args(&t.params) } else { pre_post_args(&t.params) }
+            };
             let tr_name = &t.name;
             quote! {
                 #type_ident::#tr_name(#step_args) => Self::#tr_name(#tr_args),
@@ -412,8 +430,8 @@ fn output_step_datatype(
 
     if is_init {
         impl_stream.extend(quote! {
-            #[spec] #[verifier(opaque)] #[verifier(publish)]
-            pub fn init_by(post: #self_ty, step: #step_ty) -> ::std::primitive::bool {
+            #[verifier(opaque)]
+            pub open spec fn init_by(post: #self_ty, #label_param step: #step_ty) -> ::std::primitive::bool {
                 match step {
                     #(#arms)*
                     // The dummy step never corresponds to a valid transition.
@@ -421,9 +439,9 @@ fn output_step_datatype(
                 }
             }
 
-            #[spec] #[verifier(opaque)] #[verifier(publish)]
-            pub fn init(post: #self_ty) -> ::std::primitive::bool {
-                ::builtin::exists(|step: #step_ty| Self::init_by(post, step))
+            #[verifier(opaque)]
+            pub open spec fn init(post: #self_ty, #label_param) -> ::std::primitive::bool {
+                ::builtin::exists(|step: #step_ty| Self::init_by(post, #label_arg step))
             }
         });
     } else {
@@ -432,8 +450,13 @@ fn output_step_datatype(
             .iter()
             .filter(|t| filter_fn(t))
             .map(|t| {
-                let step_args = just_args(&t.params);
-                let tr_args = if is_init { post_args(&t.params) } else { pre_post_args(&t.params) };
+                let step_args = just_args(&t.params, use_label);
+                let tr_args = if use_label {
+                    pre_post_label_args(&t.params)
+                } else {
+                    pre_post_args(&t.params)
+                };
+
                 let tr_name = &t.name;
                 let tr_name_strong = Ident::new(&(tr_name.to_string() + "_strong"), tr_name.span());
                 quote! {
@@ -443,30 +466,30 @@ fn output_step_datatype(
             .collect();
 
         impl_stream.extend(quote!{
-            #[spec] #[verifier(opaque)] #[verifier(publish)]
-            pub fn next_by(pre: #self_ty, post: #self_ty, step: #step_ty) -> ::std::primitive::bool {
+            #[verifier(opaque)]
+            pub open spec fn next_by(pre: #self_ty, post: #self_ty, #label_param step: #step_ty) -> ::std::primitive::bool {
                 match step {
                     #(#arms)*
                     #type_ident::dummy_to_use_type_params(_) => false,
                 }
             }
 
-            #[spec] #[verifier(opaque)] #[verifier(publish)]
-            pub fn next(pre: #self_ty, post: #self_ty) -> ::std::primitive::bool {
-                ::builtin::exists(|step: #step_ty| Self::next_by(pre, post, step))
+            #[verifier(opaque)]
+            pub open spec fn next(pre: #self_ty, post: #self_ty, #label_param) -> ::std::primitive::bool {
+                ::builtin::exists(|step: #step_ty| Self::next_by(pre, post, #label_arg step))
             }
 
-            #[spec] #[verifier(opaque)] #[verifier(publish)]
-            pub fn next_strong_by(pre: #self_ty, post: #self_ty, step: #step_ty) -> ::std::primitive::bool {
+            #[verifier(opaque)]
+            pub open spec fn next_strong_by(pre: #self_ty, post: #self_ty, #label_param step: #step_ty) -> ::std::primitive::bool {
                 match step {
                     #(#arms_strong)*
                     #type_ident::dummy_to_use_type_params(_) => false,
                 }
             }
 
-            #[spec] #[verifier(opaque)] #[verifier(publish)]
-            pub fn next_strong(pre: #self_ty, post: #self_ty) -> ::std::primitive::bool {
-                ::builtin::exists(|step: #step_ty| Self::next_by(pre, post, step))
+            #[verifier(opaque)] #[verifier(publish)]
+            pub open spec fn next_strong(pre: #self_ty, post: #self_ty, #label_param) -> ::std::primitive::bool {
+                ::builtin::exists(|step: #step_ty| Self::next_by(pre, post, #label_arg step))
             }
         });
     }
@@ -477,17 +500,24 @@ fn output_step_datatype(
 
     for trans in &sm.transitions {
         if filter_fn(&trans) {
+            let label_arg = if expect_first_param_is_label(sm, trans) {
+                let id = &trans.params[0].name;
+                quote! { , #id }
+            } else {
+                quote! {}
+            };
+
             let tr_name = &trans.name;
             if is_init {
                 let params = post_assoc_params(&super_self_ty, &trans.params);
                 let args = post_args(&trans.params);
+
                 //let step_args = just_args(&trans.params);
                 show_stream.extend(quote! {
-                    #[proof]
                     #[verifier(external_body)]
-                    pub fn #tr_name#gen1(#params) #gen2 {
+                    pub proof fn #tr_name#gen1(#params) #gen2 {
                         ::builtin::requires(super::State::#tr_name(#args));
-                        ::builtin::ensures(super::State::init(post));
+                        ::builtin::ensures(super::State::init(post #label_arg));
 
                         //::builtin::reveal(super::State::init);
                         //::builtin::reveal(super::State::init_by);
@@ -500,11 +530,10 @@ fn output_step_datatype(
                 let args = pre_post_args(&trans.params);
                 //let step_args = just_args(&trans.params);
                 show_stream.extend(quote! {
-                    #[proof]
                     #[verifier(external_body)]
-                    pub fn #tr_name#gen1(#params) #gen2 {
+                    pub proof fn #tr_name#gen1(#params) #gen2 {
                         ::builtin::requires(super::State::#tr_name(#args));
-                        ::builtin::ensures(super::State::next(pre, post));
+                        ::builtin::ensures(super::State::next(pre, post #label_arg));
 
                         //::builtin::reveal(super::State::next);
                         //::builtin::reveal(super::State::next_by);
@@ -534,10 +563,24 @@ fn pre_post_params(params: &Vec<TransitionParam>) -> TokenStream {
     };
 }
 
+fn expect_first_param_is_label(sm: &SM, tr: &Transition) -> bool {
+    match tr.kind {
+        TransitionKind::Property => false,
+        TransitionKind::Init => sm.init_label.is_some(),
+        TransitionKind::Transition | TransitionKind::ReadonlyTransition => {
+            sm.transition_label.is_some()
+        }
+    }
+}
+
 // params... (types only, no identifiers)
-fn step_params(params: &Vec<TransitionParam>) -> TokenStream {
-    let params: Vec<TokenStream> = params
+fn step_params(sm: &SM, tr: &Transition) -> TokenStream {
+    let skip_n = if expect_first_param_is_label(sm, tr) { 1 } else { 0 };
+
+    let params: Vec<TokenStream> = tr
+        .params
         .iter()
+        .skip(skip_n)
         .map(|param| {
             let ty = &param.ty;
             quote! { #ty }
@@ -629,6 +672,23 @@ fn pre_post_args(params: &Vec<TransitionParam>) -> TokenStream {
     };
 }
 
+fn pre_post_label_args(params: &Vec<TransitionParam>) -> TokenStream {
+    let args: Vec<TokenStream> = params
+        .iter()
+        .skip(1)
+        .map(|param| {
+            let ident = &param.name;
+            quote! { #ident }
+        })
+        .collect();
+    return quote! {
+        pre,
+        post,
+        label,
+        #(#args),*
+    };
+}
+
 // post, args...
 fn post_args(params: &Vec<TransitionParam>) -> TokenStream {
     let args: Vec<TokenStream> = params
@@ -644,10 +704,27 @@ fn post_args(params: &Vec<TransitionParam>) -> TokenStream {
     };
 }
 
-// args...
-fn just_args(params: &Vec<TransitionParam>) -> TokenStream {
+fn post_label_args(params: &Vec<TransitionParam>) -> TokenStream {
     let args: Vec<TokenStream> = params
         .iter()
+        .skip(1)
+        .map(|param| {
+            let ident = &param.name;
+            quote! { #ident }
+        })
+        .collect();
+    return quote! {
+        post,
+        init_label,
+        #(#args),*
+    };
+}
+
+// args...
+fn just_args(params: &Vec<TransitionParam>, skip_first: bool) -> TokenStream {
+    let args: Vec<TokenStream> = params
+        .iter()
+        .skip(if skip_first { 1 } else { 0 })
         .map(|param| {
             let ident = &param.name;
             quote! { #ident }
@@ -668,6 +745,9 @@ pub fn shardable_type_to_type(span: Span, stype: &ShardableType) -> Type {
         | ShardableType::StorageOption(ty) => {
             Type::Verbatim(quote_spanned! { span => crate::pervasive::option::Option<#ty> })
         }
+        ShardableType::Set(ty) | ShardableType::PersistentSet(ty) => {
+            Type::Verbatim(quote_spanned! { span => crate::pervasive::set::Set<#ty> })
+        }
         ShardableType::Map(key, val)
         | ShardableType::PersistentMap(key, val)
         | ShardableType::StorageMap(key, val) => {
@@ -676,7 +756,12 @@ pub fn shardable_type_to_type(span: Span, stype: &ShardableType) -> Type {
         ShardableType::Multiset(ty) => {
             Type::Verbatim(quote_spanned! { span => crate::pervasive::multiset::Multiset<#ty> })
         }
-        ShardableType::Count => Type::Verbatim(quote_spanned! { span => ::builtin::nat }),
+        ShardableType::Count | ShardableType::PersistentCount => {
+            Type::Verbatim(quote_spanned! { span => ::builtin::nat })
+        }
+        ShardableType::Bool | ShardableType::PersistentBool => {
+            Type::Verbatim(quote_spanned! { span => ::std::primitive::bool })
+        }
     }
 }
 
@@ -694,17 +779,17 @@ fn output_other_fns(
         quote! { #(self.#inv_names())&&* }
     };
     impl_stream.extend(quote! {
-        #[spec]
-        #[verifier(publish)]
-        pub fn invariant(&self) -> ::std::primitive::bool {
+        pub open spec fn invariant(&self) -> ::std::primitive::bool {
             #conj
         }
     });
 
     for inv in invariants {
-        impl_stream.extend(quote! { #[spec] });
         let mut f = inv.func.clone();
         fix_attrs(&mut f.attrs);
+        // TODO allow spec(checked) or something
+        f.sig.mode = FnMode::Spec(ModeSpec { spec_token: token::Spec { span: inv.func.span() } });
+        f.sig.publish = Publish::Open(Open { token: token::Open { span: inv.func.span() } });
         f.to_tokens(impl_stream);
     }
 
@@ -715,10 +800,9 @@ fn output_other_fns(
         let lemma_msg_ident = Ident::new(&format!("lemma_msg_{:}", inv_name), inv_ident.span());
         let self_ty = get_self_ty(&bundle.sm);
         impl_stream.extend(quote! {
-            #[proof]
             #[verifier(custom_req_err(#error_msg))]
             #[verifier(external_body)]
-            fn #lemma_msg_ident(s: #self_ty) {
+            proof fn #lemma_msg_ident(s: #self_ty) {
                 requires(s.#inv_ident());
                 ensures(s.#inv_ident());
             }

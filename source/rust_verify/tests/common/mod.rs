@@ -13,13 +13,14 @@ use rustc_span::source_map::FileLoader;
 #[derive(Clone, Default)]
 struct TestFileLoader {
     files: std::collections::HashMap<std::path::PathBuf, String>,
+    pervasive_path: String,
 }
 
 impl TestFileLoader {
     fn remap_pervasive_path(&self, path: &std::path::Path) -> std::path::PathBuf {
         if path.parent().and_then(|x| x.file_name()) == Some(std::ffi::OsStr::new("pervasive")) {
             if let Some(file_name) = path.file_name() {
-                return std::path::Path::new("../pervasive").join(file_name).into();
+                return std::path::Path::new(&self.pervasive_path).join(file_name).into();
             }
         }
         path.into()
@@ -47,6 +48,7 @@ impl FileLoader for TestFileLoader {
 #[derive(Debug)]
 pub struct TestErr {
     pub errors: Vec<Vec<ErrorSpan>>,
+    pub expand_errors: Vec<Vec<ErrorSpan>>, // when Verus is with `expand-errors` flag
     pub has_vir_error: bool,
     pub output: String,
 }
@@ -65,6 +67,7 @@ pub fn verify_files_and_pervasive(
     entry_file: String,
     verify_pervasive: bool,
 ) -> Result<(), TestErr> {
+    let files: Vec<(String, String)> = files.into_iter().collect();
     let mut rustc_args = vec![
         "../../rust/install/bin/rust_verify".to_string(),
         "--edition".to_string(),
@@ -123,26 +126,40 @@ pub fn verify_files_and_pervasive(
         } else {
             Default::default()
         };
-        our_args.no_enhanced_typecheck = true;
+
+        if !files.iter().any(|(_, body)| body.contains("#[verifier(integer_ring)]")) {
+            our_args.no_enhanced_typecheck = true;
+        }
         if let Ok(path) = std::env::var("VERIFY_LOG_IR_PATH") {
             our_args.log_dir = Some(path);
             our_args.log_all = true;
         }
         our_args.verify_pervasive |= verify_pervasive;
+        if files.iter().any(|(_, body)| body.contains("EXPAND-ERRORS")) {
+            our_args.expand_errors = true;
+            our_args.multiple_errors = 2;
+        }
         our_args
     };
     let files = files.into_iter().map(|(p, f)| (p.into(), f)).collect();
     let captured_output = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let captured_output_1 = captured_output.clone();
+
+    let pervasive_path = match std::env::var("TEST_PERVASIVE_PATH") {
+        Ok(path) if !verify_pervasive => path,
+        _ => "../pervasive".to_string(),
+    };
+
     let result = std::panic::catch_unwind(move || {
         let mut verifier = Verifier::new(our_args);
         verifier.test_capture_output = Some(captured_output_1);
-        let file_loader: TestFileLoader = TestFileLoader { files };
+        let file_loader: TestFileLoader = TestFileLoader { files, pervasive_path };
         let (verifier, status) = rust_verify::driver::run(verifier, rustc_args, file_loader);
         status.map(|_| ()).map_err(|_| TestErr {
             errors: verifier.errors,
             has_vir_error: verifier.encountered_vir_error,
             output: "".to_string(),
+            expand_errors: verifier.expand_errors,
         })
     });
     let output = std::str::from_utf8(
@@ -172,8 +189,15 @@ pub fn verify_files_and_pervasive(
 
 #[allow(dead_code)]
 pub const USE_PRELUDE: &str = crate::common::code_str! {
-    #[allow(unused_imports)] use builtin::*;
-    #[allow(unused_imports)] use builtin_macros::*;
+    // If we're using the pre-macro-expanded pervasive lib, then it might have
+    // some macro-internal stuff in it, and rustc needs this option in order to accept it.
+    #![feature(fmt_internals)]
+
+    #![allow(unused_imports)]
+    #![allow(unused_macros)]
+
+    use builtin::*;
+    use builtin_macros::*;
 
     mod pervasive; #[allow(unused_imports)] use pervasive::*;
 };
@@ -215,7 +239,7 @@ fn relevant_error_span(err: &Vec<ErrorSpan>) -> &ErrorSpan {
     if let Some(e) = err.iter().find(|e| e.description == Some("at this exit".to_string())) {
         return e;
     } else if let Some(e) = err.iter().find(|e| {
-        e.description == Some("failed this postcondition".to_string())
+        e.description == Some(vir::def::THIS_POST_FAILED.to_string())
             && !e.test_span_line.contains("TRAIT")
     }) {
         return e;
@@ -228,6 +252,18 @@ fn relevant_error_span(err: &Vec<ErrorSpan>) -> &ErrorSpan {
 pub fn assert_one_fails(err: TestErr) {
     assert_eq!(err.errors.len(), 1);
     assert!(relevant_error_span(&err.errors[0]).test_span_line.contains("FAILS"));
+}
+
+/// When this testcase has ONE verification failure,
+/// assert that all spans are properly reported (All spans are respoinsible to the verification failure)
+#[allow(dead_code)]
+pub fn assert_expand_fails(err: TestErr, span_count: usize) {
+    assert_eq!(err.expand_errors.len(), 1);
+    let expand_errors = err.expand_errors.first().expect("EXPAND-ERRORS");
+    assert_eq!(expand_errors.len(), span_count);
+    for c in 0..span_count {
+        assert!(&expand_errors[c].test_span_line.contains("EXPAND-ERRORS"));
+    }
 }
 
 /// Assert that `count` verification failures happened on source lines containin the string "FAILS".

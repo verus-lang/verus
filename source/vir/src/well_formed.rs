@@ -1,6 +1,6 @@
 use crate::ast::{
     CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, FunX, Function, FunctionKind, Krate,
-    MaskSpec, Mode, MultiOp, Path, PathX, TypX, UnaryOpr, VirErr,
+    MaskSpec, Mode, MultiOp, Path, PathX, TypX, UnaryOp, UnaryOpr, VirErr, VirErrAs,
 };
 use crate::ast_util::{err_str, err_string, error, path_as_rust_name, referenced_vars_expr};
 use crate::datatype_to_air::is_datatype_transparent;
@@ -15,12 +15,7 @@ struct Ctxt {
 }
 
 #[warn(unused_must_use)]
-fn check_typ(
-    _ctxt: &Ctxt,
-    _function: &Function,
-    typ: &Arc<TypX>,
-    span: &air::ast::Span,
-) -> Result<(), VirErr> {
+fn check_typ(typ: &Arc<TypX>, span: &air::ast::Span) -> Result<(), VirErr> {
     crate::ast_visitor::typ_visitor_check(typ, &mut |t| {
         if let crate::ast::TypX::Datatype(path, _) = &**t {
             let PathX { krate, segments: _ } = &**path;
@@ -33,7 +28,10 @@ fn check_typ(
                 }
                 Some(_) => err_str(
                     span,
-                    "`{path:}` is not supported (note: currently Verus does not support definitions external to the crate, including most features in std)",
+                    &format!(
+                        "`{:}` is not supported (note: currently Verus does not support definitions external to the crate, including most features in std)",
+                        path_as_rust_name(path)
+                    ),
                 ),
             }
         } else {
@@ -74,7 +72,10 @@ fn check_one_expr(
                 fn is_ok(e: &Expr) -> bool {
                     match &e.x {
                         ExprX::VarLoc(_) => true,
+                        ExprX::Unary(UnaryOp::CoerceMode { .. }, e1) => is_ok(e1),
                         ExprX::UnaryOpr(UnaryOpr::Field { .. }, base) => is_ok(base),
+                        ExprX::Block(stmts, Some(e1)) if stmts.len() == 0 => is_ok(e1),
+                        ExprX::Ghost { alloc_wrapper: None, tracked: true, expr: e1 } => is_ok(e1),
                         _ => false,
                     }
                 }
@@ -100,10 +101,13 @@ fn check_one_expr(
             if let Some(dt) = ctxt.dts.get(path) {
                 if let Some(module) = &function.x.visibility.owning_module {
                     if !is_datatype_transparent(&module, dt) {
-                        return err_str(
+                        return Err(error(
+                            "constructor of datatype with inaccessible fields",
                             &expr.span,
-                            "constructor of datatype with inaccessible fields here",
-                        );
+                        ).secondary_label(
+                            &dt.span,
+                            "a datatype is treated as opaque whenever at least one field is not visible"
+                        ));
                     }
                 }
                 match (disallow_private_access, &dt.x.transparency, dt.x.visibility.is_private) {
@@ -121,10 +125,13 @@ fn check_one_expr(
             if let Some(dt) = ctxt.dts.get(path) {
                 if let Some(module) = &function.x.visibility.owning_module {
                     if !is_datatype_transparent(&module, dt) {
-                        return err_str(
+                        return Err(error(
+                            "field access of datatype with inaccessible fields",
                             &expr.span,
-                            "field access of datatype with inaccessible fields here",
-                        );
+                        ).secondary_label(
+                            &dt.span,
+                            "a datatype is treated as opaque whenever at least one field is not visible"
+                        ));
                     }
                 }
                 if let Some(msg) = disallow_private_access {
@@ -203,7 +210,11 @@ fn check_expr(
     })
 }
 
-fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
+fn check_function(
+    ctxt: &Ctxt,
+    function: &Function,
+    diags: &mut Vec<VirErrAs>,
+) -> Result<(), VirErr> {
     if let FunctionKind::TraitMethodDecl { .. } = function.x.kind {
         if function.x.body.is_some() && function.x.mode != Mode::Exec {
             // REVIEW: If we allow default method implementations, we'll need to make sure
@@ -288,7 +299,7 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
     }
 
     for p in function.x.params.iter() {
-        check_typ(ctxt, function, &p.x.typ, &p.span)?;
+        check_typ(&p.x.typ, &p.span)?;
         if p.x.name == function.x.ret.x.name {
             return err_str(&p.span, "parameter name cannot be same as return value name");
         }
@@ -640,6 +651,14 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
         check_expr(ctxt, function, expr, disallow_private_access)?;
     }
 
+    if function.x.mode == Mode::Exec
+        && (function.x.decrease.len() > 0 || function.x.decrease_by.is_some())
+    {
+        diags.push(VirErrAs::Warning(
+            error("decreases checks in exec functions do not guarantee termination of functions with loops or of their callers", &function.span),
+        ));
+    }
+
     if let Some(body) = &function.x.body {
         // Check that public, non-abstract spec function bodies don't refer to private items:
         let disallow_private_access = function.x.publish.is_some()
@@ -664,6 +683,13 @@ fn check_datatype(dt: &Datatype) -> Result<(), VirErr> {
 
     if unforgeable && dt_mode != Mode::Proof {
         return err_string(&dt.span, format!("an unforgeable datatype must be in #[proof] mode"));
+    }
+
+    for variant in dt.x.variants.iter() {
+        for field in variant.a.iter() {
+            let typ = &field.a.0;
+            check_typ(typ, &dt.span)?;
+        }
     }
 
     // For an 'unforgeable' datatype, all fields must be #[spec]
@@ -737,7 +763,7 @@ fn check_functions_match(
     Ok(())
 }
 
-pub fn check_crate(krate: &Krate) -> Result<(), VirErr> {
+pub fn check_crate(krate: &Krate, diags: &mut Vec<VirErrAs>) -> Result<(), VirErr> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     for function in krate.functions.iter() {
         if funs.contains_key(&function.x.name) {
@@ -780,6 +806,13 @@ pub fn check_crate(krate: &Krate) -> Result<(), VirErr> {
                     &proof_function.span,
                 )
                 .secondary_span(&funs[prev].span)
+                .secondary_span(&function.span));
+            }
+            if proof_fun.path.pop_segment() != function.x.name.path.pop_segment() {
+                return Err(air::errors::error(
+                    "a decreases_by function must be in the same module as the function definition",
+                    &proof_function.span,
+                )
                 .secondary_span(&function.span));
             }
             decreases_by_proof_to_spec.insert(proof_fun.clone(), function.x.name.clone());
@@ -831,7 +864,7 @@ pub fn check_crate(krate: &Krate) -> Result<(), VirErr> {
 
     let ctxt = Ctxt { funs, dts };
     for function in krate.functions.iter() {
-        check_function(&ctxt, function)?;
+        check_function(&ctxt, function, diags)?;
     }
     for dt in krate.datatypes.iter() {
         check_datatype(dt)?;

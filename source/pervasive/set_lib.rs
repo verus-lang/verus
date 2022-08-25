@@ -10,10 +10,13 @@ use crate::pervasive::set::*;
 verus! {
 
 impl<A> Set<A> {
-    pub open spec fn map<B, F: Fn(A) -> B>(self, f: F) -> Set<B> {
+    pub open spec fn map<B>(self, f: impl Fn(A) -> B) -> Set<B> {
         Set::new(|a: B| exists|x: A| self.contains(x) && a === f(x))
     }
 
+    // Note: Currently using an explicit type param here instead of `impl Fn(E, A) -> E`.
+    // It's not possible to explicitly instantiate opaque params, so right now
+    // it's impossible to use opaque params along with `reveal_with_fuel` (see issue #236).
     pub open spec fn fold<E, F: Fn(E, A) -> E>(self, init: E, f: F) -> E
         decreases
             self.len(),
@@ -116,7 +119,7 @@ pub proof fn lemma_len_difference<A>(s1: Set<A>, s2: Set<A>)
     }
 }
 
-pub proof fn lemma_len_filter<A, F: Fn(A) -> bool>(s: Set<A>, f: F)
+pub proof fn lemma_len_filter<A>(s: Set<A>, f: impl Fn(A) -> bool)
     requires
         s.finite(),
     ensures
@@ -149,6 +152,10 @@ pub proof fn lemma_int_range(lo: int, hi: int)
     }
 }
 
+#[doc(hidden)]
+#[verifier(inline)]
+pub open spec fn check_argument_is_set<A>(s: Set<A>) -> Set<A> { s }
+
 /// Prove two sets equal by extensionality. Usage is:
 ///
 /// ```rust
@@ -165,12 +172,20 @@ pub proof fn lemma_int_range(lo: int, hi: int)
 
 #[macro_export]
 macro_rules! assert_sets_equal {
+    [$($tail:tt)*] => {
+        ::builtin_macros::verus_proof_macro_exprs!($crate::pervasive::set_lib::assert_sets_equal_internal!($($tail)*))
+    };
+}
+
+#[macro_export]
+#[doc(hidden)]
+macro_rules! assert_sets_equal_internal {
     ($s1:expr, $s2:expr $(,)?) => {
-        assert_sets_equal!($s1, $s2, elem => { })
+        assert_sets_equal_internal!($s1, $s2, elem => { })
     };
     ($s1:expr, $s2:expr, $elem:ident $( : $t:ty )? => $bblock:block) => {
-        let s1 = $s1;
-        let s2 = $s2;
+        let s1 = $crate::pervasive::set_lib::check_argument_is_set($s1);
+        let s2 = $crate::pervasive::set_lib::check_argument_is_set($s2);
         ::builtin::assert_by(::builtin::equal(s1, s2), {
             ::builtin::assert_forall_by(|$elem $( : $t )?| {
                 ::builtin::ensures(
@@ -185,6 +200,7 @@ macro_rules! assert_sets_equal {
     }
 }
 
+pub use assert_sets_equal_internal;
 pub use assert_sets_equal;
 
 } // verus!

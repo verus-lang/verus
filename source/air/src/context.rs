@@ -82,6 +82,7 @@ pub struct Context {
     pub(crate) time_smt_init: Duration,
     pub(crate) time_smt_run: Duration,
     pub(crate) state: ContextState,
+    pub(crate) expected_solver_version: Option<String>,
 }
 
 impl Context {
@@ -110,6 +111,7 @@ impl Context {
             time_smt_init: Duration::new(0, 0),
             time_smt_run: Duration::new(0, 0),
             state: ContextState::NotStarted,
+            expected_solver_version: None,
         };
         context.axiom_infos.push_scope(false);
         context.lambda_map.push_scope(false);
@@ -173,6 +175,10 @@ impl Context {
 
     pub fn get_time(&self) -> (Duration, Duration) {
         (self.time_smt_init, self.time_smt_run)
+    }
+
+    pub fn set_expected_solver_version(&mut self, version: String) {
+        self.expected_solver_version = Some(version);
     }
 
     pub fn set_rlimit(&mut self, rlimit: u32) {
@@ -241,17 +247,25 @@ impl Context {
         }
     }
 
+    pub(crate) fn set_z3_param_str(&mut self, option: &str, value: &str, write_to_logs: bool) {
+        if write_to_logs {
+            self.log_set_z3_param(option, &value.to_string());
+        }
+    }
+
     pub fn set_z3_param(&mut self, option: &str, value: &str) {
         if value == "true" {
             self.set_z3_param_bool(option, true, true);
         } else if value == "false" {
             self.set_z3_param_bool(option, false, true);
-        } else if value.contains(".") {
-            let v = value.parse::<f64>().expect(&format!("could not parse option value {}", value));
-            self.set_z3_param_f64(option, v, true);
-        } else {
-            let v = value.parse::<u32>().expect(&format!("could not parse option value {}", value));
+        } else if let Ok(v) = value.parse::<u32>() {
             self.set_z3_param_u32(option, v, true);
+        } else if let Ok(v) = value.parse::<f64>() {
+            self.set_z3_param_f64(option, v, true);
+        } else if value.is_ascii() {
+            self.set_z3_param_str(option, value, true);
+        } else {
+            panic!("unexpected z3 param {}", value);
         }
     }
 

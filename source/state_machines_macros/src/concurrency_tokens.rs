@@ -17,7 +17,7 @@ use crate::to_token_stream::{
     name_with_type_args_turbofish, shardable_type_to_type,
 };
 use crate::token_transition_checks::{check_ordering_remove_have_add, check_unsupported_updates};
-use crate::util::{combine_errors_or_ok, is_definitely_irrefutable};
+use crate::util::{combine_errors_or_ok, get_module_path_of_macro_call, is_definitely_irrefutable};
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
@@ -45,12 +45,25 @@ fn field_token_type_name(field: &Field) -> Ident {
     Ident::new(&name, field.name.span())
 }
 
+fn field_token_data_type_name(field: &Field) -> Ident {
+    let name = field.name.to_string() + "_token_data";
+    Ident::new(&name, field.name.span())
+}
+
 fn field_token_type(sm: &SM, field: &Field) -> Type {
     name_with_type_args(&field_token_type_name(field), sm)
 }
 
+fn field_token_data_type(sm: &SM, field: &Field) -> Type {
+    name_with_type_args(&field_token_data_type_name(field), sm)
+}
+
 fn field_token_type_turbofish(sm: &SM, field: &Field) -> Type {
     name_with_type_args_turbofish(&field_token_type_name(field), sm)
+}
+
+fn field_token_data_type_turbofish(sm: &SM, field: &Field) -> Type {
+    name_with_type_args_turbofish(&field_token_data_type_name(field), sm)
 }
 
 fn field_token_field_name(field: &Field) -> Ident {
@@ -75,7 +88,12 @@ fn stored_object_type(field: &Field) -> Type {
         | ShardableType::Map(_, _)
         | ShardableType::PersistentOption(_)
         | ShardableType::PersistentMap(_, _)
+        | ShardableType::PersistentSet(_)
+        | ShardableType::PersistentCount
+        | ShardableType::PersistentBool
         | ShardableType::Multiset(_)
+        | ShardableType::Set(_)
+        | ShardableType::Bool
         | ShardableType::Count => {
             panic!("stored_object_type");
         }
@@ -91,33 +109,73 @@ fn transition_arg_name(field: &Field) -> Ident {
     Ident::new(&name, field.name.span())
 }
 
-fn option_relation_post_condition_name(field: &Field) -> Ident {
-    Ident::new("option_agree", field.name.span())
+fn option_relation_post_condition_name(field: &Field, strict: bool) -> Ident {
+    if strict {
+        Ident::new("option_agree_strict", field.name.span())
+    } else {
+        Ident::new("option_agree", field.name.span())
+    }
 }
 
-fn option_relation_post_condition_qualified_name(sm: &SM, field: &Field) -> Type {
+fn set_relation_post_condition_name(field: &Field, strict: bool) -> Ident {
+    if strict {
+        Ident::new("set_agree_strict", field.name.span())
+    } else {
+        Ident::new("set_agree", field.name.span())
+    }
+}
+
+fn bool_relation_post_condition_name(field: &Field, strict: bool) -> Ident {
+    if strict {
+        Ident::new("bool_agree_strict", field.name.span())
+    } else {
+        Ident::new("bool_agree", field.name.span())
+    }
+}
+
+fn option_relation_post_condition_qualified_name(sm: &SM, field: &Field, strict: bool) -> Type {
     let ty = field_token_type_turbofish(sm, field);
-    let name = option_relation_post_condition_name(field);
+    let name = option_relation_post_condition_name(field, strict);
     Type::Verbatim(quote! { #ty::#name })
 }
 
-fn map_relation_post_condition_name(field: &Field) -> Ident {
-    Ident::new("map_agree", field.name.span())
-}
-
-fn map_relation_post_condition_qualified_name(sm: &SM, field: &Field) -> Type {
+fn set_relation_post_condition_qualified_name(sm: &SM, field: &Field, strict: bool) -> Type {
     let ty = field_token_type_turbofish(sm, field);
-    let name = map_relation_post_condition_name(field);
+    let name = set_relation_post_condition_name(field, strict);
     Type::Verbatim(quote! { #ty::#name })
 }
 
-fn multiset_relation_post_condition_name(field: &Field) -> Ident {
-    Ident::new("multiset_agree", field.name.span())
+fn bool_relation_post_condition_qualified_name(sm: &SM, field: &Field, strict: bool) -> Type {
+    let ty = field_token_type_turbofish(sm, field);
+    let name = bool_relation_post_condition_name(field, strict);
+    Type::Verbatim(quote! { #ty::#name })
 }
 
-fn multiset_relation_post_condition_qualified_name(sm: &SM, field: &Field) -> Type {
+fn map_relation_post_condition_name(field: &Field, strict: bool) -> Ident {
+    if strict {
+        Ident::new("map_agree_strict", field.name.span())
+    } else {
+        Ident::new("map_agree", field.name.span())
+    }
+}
+
+fn map_relation_post_condition_qualified_name(sm: &SM, field: &Field, strict: bool) -> Type {
     let ty = field_token_type_turbofish(sm, field);
-    let name = multiset_relation_post_condition_name(field);
+    let name = map_relation_post_condition_name(field, strict);
+    Type::Verbatim(quote! { #ty::#name })
+}
+
+fn multiset_relation_post_condition_name(field: &Field, strict: bool) -> Ident {
+    if strict {
+        Ident::new("multiset_agree_strict", field.name.span())
+    } else {
+        Ident::new("multiset_agree", field.name.span())
+    }
+}
+
+fn multiset_relation_post_condition_qualified_name(sm: &SM, field: &Field, strict: bool) -> Type {
+    let ty = field_token_type_turbofish(sm, field);
+    let name = multiset_relation_post_condition_name(field, strict);
     Type::Verbatim(quote! { #ty::#name })
 }
 
@@ -161,6 +219,7 @@ fn instance_struct_stream(sm: &SM) -> TokenStream {
         #[allow(non_camel_case_types)]
         #[verifier(unforgeable)]
         pub struct #insttype #gen {
+            // fields intentionally private
             #[spec] send_sync: crate::pervasive::state_machine_internal::SyncSendIfSyncSend<#storage_types>,
             #[spec] state: #self_ty,
             #[spec] location: ::builtin::int,
@@ -203,16 +262,26 @@ fn trusted_clone() -> TokenStream {
 }
 
 /// Create the struct for a Token.
+/// Can create any combination of three fields: key, value, count.
+/// The `count` field, when present, always has type `nat`;
+/// for the other two, when present, the types are provided as arguments.
+///
 /// For map types, include the key type to create both a 'key' and 'value' field;
 /// otherwise, just include the value type.
+///
+/// `count` field is used for `count` and `multiset` strategies
+
 fn token_struct_stream(
     sm: &SM,
     field: &Field,
     key_ty: Option<&Type>,
-    value_ty: &Type,
+    value_ty: Option<&Type>,
+    count: bool,
 ) -> TokenStream {
     let tokenname = field_token_type_name(field);
+    let tokenname_data = field_token_data_type_name(field);
     let insttype = inst_type(sm);
+    let token_data_ty = field_token_data_type(sm, field);
     let gen = &sm.generics;
 
     let impldecl = impl_decl_stream(&field_token_type(sm, field), &sm.generics);
@@ -227,17 +296,39 @@ fn token_struct_stream(
         None => TokenStream::new(),
     };
 
+    let value_field = match value_ty {
+        Some(value_ty) => quote! { #[spec] pub value: #value_ty, },
+        None => TokenStream::new(),
+    };
+
+    let count_field = if count {
+        quote! { #[spec] pub count: ::builtin::nat }
+    } else {
+        TokenStream::new()
+    };
+
     return quote! {
         #[proof]
-        #[verifier(unforgeable)]
         #[allow(non_camel_case_types)]
         pub struct #tokenname#gen {
+            #[proof] dummy_instance: #insttype, // intentionally private
+        }
+
+        #[spec]
+        #[allow(non_camel_case_types)]
+        pub struct #tokenname_data#gen {
             #[spec] pub instance: #insttype,
             #key_field
-            #[spec] pub value: #value_ty,
+            #value_field
+            #count_field
         }
 
         #impldecl {
+            #[verifier(publish)]
+            #[verifier(external_body)]
+            #[spec]
+            pub fn view(self) -> #token_data_ty { ::std::unimplemented!() }
+
             #impl_token_stream
         }
     };
@@ -264,6 +355,86 @@ fn const_fn_stream(field: &Field) -> TokenStream {
     };
 }
 
+fn get_macro_decl(sm: &SM) -> TokenStream {
+    let sm_name = &sm.name;
+    let mod_path = get_module_path_of_macro_call();
+    let arms: Vec<TokenStream> = sm.fields.iter().map(|f| {
+        let field_name = &f.name;
+        let constructor = field_token_data_type_name(f);
+        match &f.stype {
+            ShardableType::Variable(_)
+            | ShardableType::Option(_)
+            | ShardableType::Multiset(_)
+            | ShardableType::Set(_)
+            | ShardableType::PersistentSet(_)
+            | ShardableType::PersistentCount
+            | ShardableType::PersistentOption(_)
+            | ShardableType::Count => {
+                quote!{
+                    ($instance:expr => #field_name => $value:expr) => {
+                        #mod_path::#sm_name::#constructor { instance: $instance, value: $value }
+                    };
+                }
+            }
+
+            ShardableType::Bool | ShardableType::PersistentBool => {
+                quote!{
+                    ($instance:expr => #field_name) => {
+                        #mod_path::#sm_name::#constructor { instance: $instance }
+                    };
+                }
+            }
+
+            ShardableType::Map(_, _) | ShardableType::PersistentMap(_, _) => {
+                quote!{
+                    ($instance:expr => #field_name => $key:expr => $value:expr) => {
+                        #mod_path::#sm_name::#constructor { instance: $instance, value: $value, key: $key }
+                    };
+                }
+            }
+
+            ShardableType::Constant(_) => {
+                let msg_lit = format!("The field `{field_name:}` has sharding strategy `constant`, which does not have an associated token type. To access its value, use `instance.{field_name:}()`");
+
+                quote!{
+                    ($instance:expr => #field_name => $($tt:tt)*) => {
+                        ::std::compile_error!(#msg_lit)
+                    };
+                }
+            }
+
+            ShardableType::NotTokenized(_) | ShardableType::StorageOption(_) | ShardableType::StorageMap(_, _) => {
+                let strat = f.stype.strategy_name();
+                let msg_lit = format!("The field `{field_name:}` has sharding strategy `{strat:}`, which does not have an associated token type.");
+
+                quote!{
+                    ($instance:expr => #field_name => $($tt:tt)*) => {
+                        ::std::compile_error!(#msg_lit)
+                    };
+                }
+            }
+        }
+    }).collect();
+
+    let name = &sm.name;
+
+    let msg_string_lit = format!("`, expected some field defined in `{name:}`");
+
+    quote! {
+        #[macro_export]
+        macro_rules! #name {
+            #(#arms)*
+            ($instance:expr => $id:ident => $($tt:tt)*) => {
+                ::std::compile_error!(::std::concat!(
+                    "unrecognized field name `",
+                    ::std::stringify!($id),
+                    #msg_string_lit
+                ))
+            };
+        }
+    }
+}
+
 // Pull everything together.
 //
 //     struct Instance
@@ -287,27 +458,38 @@ pub fn output_token_types_and_fns(
                 inst_impl_token_stream.extend(const_fn_stream(field));
             }
             ShardableType::Variable(ty) => {
-                token_stream.extend(token_struct_stream(&bundle.sm, field, None, ty));
+                token_stream.extend(token_struct_stream(&bundle.sm, field, None, Some(ty), false));
             }
             ShardableType::NotTokenized(_) => {
                 // don't need to add a struct in this case
             }
             ShardableType::Option(ty) | ShardableType::PersistentOption(ty) => {
-                token_stream.extend(token_struct_stream(&bundle.sm, field, None, ty));
+                token_stream.extend(token_struct_stream(&bundle.sm, field, None, Some(ty), false));
             }
             ShardableType::Map(key, val) | ShardableType::PersistentMap(key, val) => {
-                token_stream.extend(token_struct_stream(&bundle.sm, field, Some(key), val));
+                token_stream.extend(token_struct_stream(
+                    &bundle.sm,
+                    field,
+                    Some(key),
+                    Some(val),
+                    false,
+                ));
             }
             ShardableType::Multiset(ty) => {
-                token_stream.extend(token_struct_stream(&bundle.sm, field, None, ty));
+                token_stream.extend(token_struct_stream(&bundle.sm, field, None, Some(ty), true));
+            }
+            ShardableType::Set(ty) | ShardableType::PersistentSet(ty) => {
+                token_stream.extend(token_struct_stream(&bundle.sm, field, None, Some(ty), false));
             }
             ShardableType::StorageOption(_) | ShardableType::StorageMap(_, _) => {
                 // storage types don't have tokens; the 'token type' is just the
                 // the type of the field
             }
-            ShardableType::Count => {
-                let ty = shardable_type_to_type(field.type_span, &field.stype);
-                token_stream.extend(token_struct_stream(&bundle.sm, field, None, &ty));
+            ShardableType::Count | ShardableType::PersistentCount => {
+                token_stream.extend(token_struct_stream(&bundle.sm, field, None, None, true));
+            }
+            ShardableType::Bool | ShardableType::PersistentBool => {
+                token_stream.extend(token_struct_stream(&bundle.sm, field, None, None, false));
             }
         }
     }
@@ -329,12 +511,16 @@ pub fn output_token_types_and_fns(
     }
     combine_errors_or_ok(errors)?;
 
+    let macro_decl = get_macro_decl(&bundle.sm);
+
     let insttype = inst_type(&bundle.sm);
     let impldecl = impl_decl_stream(&insttype, &bundle.sm.generics);
     token_stream.extend(quote! {
         #impldecl {
             #inst_impl_token_stream
         }
+
+        #macro_decl
     });
 
     Ok(())
@@ -416,6 +602,11 @@ impl Ctxt {
     }
 }
 
+enum Mode {
+    Ghost,
+    Tracked,
+}
+
 /// Primary method to build an exchange method for a given transition.
 ///
 /// To build an exchange method, we need to collect 4 key pieces
@@ -442,7 +633,7 @@ pub fn exchange_stream(
 
     // Initialize the `params` field of the `Ctxt` object. We'll fill this up
     // later; for now, just create an entry with an empty Vec for each relevant field.
-    let mut init_params = HashMap::new();
+    let mut params = HashMap::new();
     for field in &sm.fields {
         ident_to_field.insert(field.name.to_string(), field.clone());
 
@@ -454,11 +645,18 @@ pub fn exchange_stream(
                 | ShardableType::PersistentOption(_)
                 | ShardableType::PersistentMap(_, _)
                 | ShardableType::Count
+                | ShardableType::PersistentCount
+                | ShardableType::Bool
+                | ShardableType::PersistentBool
+                | ShardableType::Set(_)
+                | ShardableType::PersistentSet(_)
                 | ShardableType::StorageOption(_)
                 | ShardableType::StorageMap(_, _) => {
-                    init_params.insert(field.name.to_string(), Vec::new());
+                    params.insert(field.name.to_string(), Vec::new());
                 }
-                _ => {}
+                ShardableType::Variable(_)
+                | ShardableType::Constant(_)
+                | ShardableType::NotTokenized(_) => {}
             }
         }
     }
@@ -467,7 +665,7 @@ pub fn exchange_stream(
         fields_read: HashSet::new(),
         fields_written: HashSet::new(),
         fields_read_birds_eye: HashSet::new(),
-        params: init_params,
+        params: params,
         requires: Vec::new(),
         ensures: Vec::new(),
         ident_to_field,
@@ -534,17 +732,17 @@ pub fn exchange_stream(
     //                                           otherwise, includes storage tokens AND
     //                                           tokens of this instance)
 
-    let mut in_args: Vec<TokenStream> = Vec::new();
-    let mut out_args: Vec<(TokenStream, TokenStream)> = Vec::new();
+    let mut in_params: Vec<TokenStream> = Vec::new();
+    let mut out_params: Vec<(TokenStream, TokenStream, Mode)> = Vec::new();
 
     // First, we create a parameter for the Instance, either an input or output parameter
     // as appropriate.
 
     if ctxt.is_init {
         let itn = inst_type(sm);
-        out_args.push((quote! { instance }, quote! { #itn }));
+        out_params.push((quote! { instance }, quote! { #itn }, Mode::Tracked));
     } else {
-        in_args.push(quote! { #[proof] &self });
+        in_params.push(quote! { #[proof] &self });
     }
 
     // Take the transition parameters (the normal parameters defined in the transition)
@@ -553,7 +751,7 @@ pub fn exchange_stream(
     for param in &tr.params {
         let id = &param.name;
         let ty = &param.ty;
-        in_args.push(quote! { #[spec] #id: #ty });
+        in_params.push(quote! { #[spec] #id: #ty });
     }
 
     // We need some pre/post conditions that the input/output
@@ -605,6 +803,7 @@ pub fn exchange_stream(
                     let e = e_opt.expect("get_post_value_for_variable");
                     let lhs = get_const_field_value(&ctxt, field, field.name.span());
                     ctxt.ensures.push(mk_eq(&lhs, &e));
+                    continue;
                 }
                 _ => {}
             }
@@ -640,8 +839,8 @@ pub fn exchange_stream(
 
                 add_token_param_in_out(
                     &ctxt,
-                    &mut in_args,
-                    &mut out_args,
+                    &mut in_params,
+                    &mut out_params,
                     &mut inst_eq_enss,
                     &mut inst_eq_reqs,
                     &arg_name,
@@ -667,8 +866,8 @@ pub fn exchange_stream(
 
                 add_token_param_in_out(
                     &ctxt,
-                    &mut in_args,
-                    &mut out_args,
+                    &mut in_params,
+                    &mut out_params,
                     &mut inst_eq_enss,
                     &mut inst_eq_reqs,
                     &arg_name,
@@ -691,9 +890,11 @@ pub fn exchange_stream(
                     inst,
                     Expr::Verbatim(quote! { #arg_name }),
                 );
+            } else {
+                panic!("unexpected case: {:#?}", field.stype);
             }
         } else {
-            // The case for a 'transition' or 'readonly' transition.
+            // The case for a 'transition' or 'property'.
             // (At this point, the distinction doesn't matter.)
             //
             // First, we handle fields that have "nondeterminstic reads"
@@ -724,7 +925,7 @@ pub fn exchange_stream(
             if nondeterministic_read {
                 let ty = shardable_type_to_type(field.type_span, &field.stype);
                 let name = nondeterministic_read_spec_out_name(field);
-                out_args.push((quote! { #name }, quote! { crate::modes::Spec<#ty> }));
+                out_params.push((quote! { #name }, quote! { #ty }, Mode::Ghost));
             }
 
             // Now, we handle the actual proof-mode tokens.
@@ -759,8 +960,8 @@ pub fn exchange_stream(
 
                         add_token_param_in_out(
                             &ctxt,
-                            &mut in_args,
-                            &mut out_args,
+                            &mut in_params,
+                            &mut out_params,
                             &mut inst_eq_enss,
                             &mut inst_eq_reqs,
                             &transition_arg_name(field),
@@ -783,12 +984,17 @@ pub fn exchange_stream(
                         ctxt.ensures.push(mk_eq(&lhs, &e));
                     }
                 }
-                ShardableType::Multiset(_)
-                | ShardableType::Option(_)
+                ShardableType::Option(_)
                 | ShardableType::Map(_, _)
-                | ShardableType::PersistentOption(_)
-                | ShardableType::PersistentMap(_, _)
+                | ShardableType::Set(_)
+                | ShardableType::Multiset(_)
                 | ShardableType::Count
+                | ShardableType::Bool
+                | ShardableType::PersistentOption(_)
+                | ShardableType::PersistentSet(_)
+                | ShardableType::PersistentMap(_, _)
+                | ShardableType::PersistentCount
+                | ShardableType::PersistentBool
                 | ShardableType::StorageOption(_)
                 | ShardableType::StorageMap(_, _) => {
                     // These sharding types all use the SpecialOps. The earlier translation
@@ -804,8 +1010,8 @@ pub fn exchange_stream(
                     for p in &ctxt.params[&field.name.to_string()] {
                         add_token_param_in_out(
                             &ctxt,
-                            &mut in_args,
-                            &mut out_args,
+                            &mut in_params,
+                            &mut out_params,
                             &mut inst_eq_enss,
                             &mut inst_eq_reqs,
                             &p.name,
@@ -844,7 +1050,7 @@ pub fn exchange_stream(
     // Output types are a bit tricky
     // because of the lack of named output params.
 
-    let (out_args_ret, ens_stream) = if out_args.len() == 0 {
+    let (out_params_ret, ens_stream, ret_value_mode) = if out_params.len() == 0 {
         let ens_stream = if enss.len() > 0 {
             quote! {
                 ::builtin::ensures([
@@ -855,15 +1061,16 @@ pub fn exchange_stream(
             TokenStream::new()
         };
 
-        (TokenStream::new(), ens_stream)
-    } else if out_args.len() == 1 {
-        let arg_name = &out_args[0].0;
-        let arg_ty = &out_args[0].1;
+        (TokenStream::new(), ens_stream, TokenStream::new())
+    } else if out_params.len() == 1 {
+        let param_name = &out_params[0].0;
+        let param_ty = &out_params[0].1;
+        let param_mode = &out_params[0].2;
 
         let ens_stream = if enss.len() > 0 {
             quote! {
                 ::builtin::ensures(
-                    |#arg_name: #arg_ty| [
+                    |#param_name: #param_ty| [
                         #(#enss),*
                     ]
                 );
@@ -872,16 +1079,47 @@ pub fn exchange_stream(
             TokenStream::new()
         };
 
-        (quote! { -> #arg_ty }, ens_stream)
+        let ret_value_mode = match param_mode {
+            Mode::Tracked => quote! { #[verifier(returns(proof))] },
+            Mode::Ghost => TokenStream::new(),
+        };
+
+        (quote! { -> #param_ty }, ens_stream, ret_value_mode)
     } else {
         // If we have more than one output param (we aren't counting the &mut inputs here,
         // only stuff in the 'return type' position) then we have to package it all into
         // a tuple and unpack it in the 'ensures' clause.
 
-        let arg_tys: Vec<TokenStream> = out_args.iter().map(|oa| oa.1.clone()).collect();
-        let arg_names: Vec<TokenStream> = out_args.iter().map(|oa| oa.0.clone()).collect();
-        let tup_typ = quote! { (#(#arg_tys),*) };
-        let tup_names = quote! { (#(#arg_names),*) };
+        let param_tys: Vec<TokenStream> = out_params
+            .iter()
+            .map(|oa| {
+                let ty = &oa.1;
+                match oa.2 {
+                    Mode::Ghost => {
+                        quote! { crate::pervasive::modes::Gho<#ty> }
+                    }
+                    Mode::Tracked => {
+                        quote! { crate::pervasive::modes::Trk<#ty> }
+                    }
+                }
+            })
+            .collect();
+        let param_names: Vec<TokenStream> = out_params
+            .iter()
+            .map(|oa| {
+                let name = &oa.0;
+                match oa.2 {
+                    Mode::Ghost => {
+                        quote! { crate::pervasive::modes::Gho(#name) }
+                    }
+                    Mode::Tracked => {
+                        quote! { crate::pervasive::modes::Trk(#name) }
+                    }
+                }
+            })
+            .collect();
+        let tup_typ = quote! { (#(#param_tys),*) };
+        let tup_names = quote! { (#(#param_names),*) };
 
         let ens_stream = if enss.len() > 0 {
             quote! {
@@ -896,13 +1134,9 @@ pub fn exchange_stream(
             TokenStream::new()
         };
 
-        (quote! { -> #tup_typ }, ens_stream)
-    };
+        let ret_value_mode = quote! { #[verifier(returns(proof))] };
 
-    let return_value_mode = if out_args.len() == 0 {
-        TokenStream::new()
-    } else {
-        quote! { #[verifier(returns(proof))] }
+        (quote! { -> #tup_typ }, ens_stream, ret_value_mode)
     };
 
     // Tie it all together
@@ -916,10 +1150,9 @@ pub fn exchange_stream(
     };
 
     return Ok(quote! {
-        #[proof]
-        #return_value_mode
+        #ret_value_mode
         #[verifier(external_body)]
-        pub fn #exch_name#gen(#(#in_args),*) #out_args_ret {
+        pub proof fn #exch_name#gen(#(#in_params),*) #out_params_ret {
             #req_stream
             #ens_stream
             #extra_deps
@@ -935,10 +1168,15 @@ fn get_init_param_input_type(_sm: &SM, field: &Field) -> Option<Type> {
         ShardableType::Constant(_) => None,
         ShardableType::NotTokenized(_) => None,
         ShardableType::Multiset(_) => None,
+        ShardableType::Set(_) => None,
+        ShardableType::Bool => None,
         ShardableType::Option(_) => None,
         ShardableType::Map(_, _) => None,
         ShardableType::PersistentOption(_) => None,
+        ShardableType::PersistentSet(_) => None,
         ShardableType::PersistentMap(_, _) => None,
+        ShardableType::PersistentCount => None,
+        ShardableType::PersistentBool => None,
         ShardableType::Count => None,
         ShardableType::StorageOption(ty) => Some(Type::Verbatim(quote! {
             crate::pervasive::option::Option<#ty>
@@ -970,25 +1208,17 @@ fn get_init_param_output_type(sm: &SM, field: &Field) -> Option<Type> {
         ShardableType::Variable(_) => Some(field_token_type(&sm, field)),
         ShardableType::Constant(_) => None, // constants handled separately
         ShardableType::NotTokenized(_) => None, // no tokens
-        ShardableType::Count => Some(field_token_type(&sm, field)),
-        ShardableType::Multiset(_) => {
-            let ty = field_token_type(&sm, field);
-            Some(Type::Verbatim(quote! {
-                crate::pervasive::multiset::Multiset<#ty>
-            }))
-        }
-        ShardableType::Option(_) | ShardableType::PersistentOption(_) => {
-            let ty = field_token_type(&sm, field);
-            Some(Type::Verbatim(quote! {
-                crate::pervasive::option::Option<#ty>
-            }))
-        }
-        ShardableType::Map(key, _val) | ShardableType::PersistentMap(key, _val) => {
-            let ty = field_token_type(&sm, field);
-            Some(Type::Verbatim(quote! {
-                crate::pervasive::map::Map<#key, #ty>
-            }))
-        }
+        ShardableType::Count | ShardableType::PersistentCount => Some(field_token_type(&sm, field)),
+        ShardableType::Multiset(_)
+        | ShardableType::Option(_)
+        | ShardableType::PersistentOption(_)
+        | ShardableType::Bool
+        | ShardableType::PersistentBool
+        | ShardableType::Set(_)
+        | ShardableType::PersistentSet(_)
+        | ShardableType::Map(..)
+        | ShardableType::PersistentMap(..) => Some(field_token_collection_type(sm, field)),
+
         ShardableType::StorageOption(_) => None, // no output tokens for storage
         ShardableType::StorageMap(_, _) => None,
     }
@@ -1004,18 +1234,30 @@ fn add_initialization_output_conditions(
     param_value: Expr,
 ) {
     match &field.stype {
-        ShardableType::Variable(_) | ShardableType::Count => {
+        ShardableType::Variable(_) => {
             inst_eq_enss.push(Expr::Verbatim(quote! {
-                ::builtin::equal(#param_value.instance, #inst_value)
+                ::builtin::equal(#param_value.view().instance, #inst_value)
             }));
             let field_name = field_token_field_name(field);
             ensures.push(Expr::Verbatim(quote! {
-                ::builtin::equal(#param_value.#field_name, #init_value)
+                ::builtin::equal(#param_value.view().#field_name, #init_value)
+            }));
+        }
+        ShardableType::Count | ShardableType::PersistentCount => {
+            inst_eq_enss.push(Expr::Verbatim(quote! {
+                ::builtin::equal(#param_value.view().instance, #inst_value)
+            }));
+            ensures.push(Expr::Verbatim(quote! {
+                ::builtin::equal(#param_value.view().count, #init_value)
             }));
         }
         ShardableType::Option(_)
-        | ShardableType::Map(_, _)
         | ShardableType::PersistentOption(_)
+        | ShardableType::Bool
+        | ShardableType::PersistentBool
+        | ShardableType::Set(_)
+        | ShardableType::PersistentSet(_)
+        | ShardableType::Map(_, _)
         | ShardableType::PersistentMap(_, _)
         | ShardableType::Multiset(_) => {
             ensures.push(relation_for_collection_of_internal_tokens(
@@ -1024,6 +1266,7 @@ fn add_initialization_output_conditions(
                 param_value,
                 init_value,
                 inst_value,
+                true,
             ));
         }
         _ => {
@@ -1038,22 +1281,39 @@ fn relation_for_collection_of_internal_tokens(
     param_value: Expr,
     given_value: Expr,
     inst_value: Expr,
+    output: bool,
 ) -> Expr {
+    // For output tokens, we allow the user to assume a slightly stronger condition about the data.
+    // For input tokens, we require the user to prove a slightly weaker one.
+    let strict = output;
+
     match &field.stype {
         ShardableType::Option(_) | ShardableType::PersistentOption(_) => {
-            let fn_name = option_relation_post_condition_qualified_name(sm, field);
+            let fn_name = option_relation_post_condition_qualified_name(sm, field, strict);
+            Expr::Verbatim(quote! {
+                #fn_name(#param_value, #given_value, #inst_value)
+            })
+        }
+        ShardableType::Set(_) | ShardableType::PersistentSet(_) => {
+            let fn_name = set_relation_post_condition_qualified_name(sm, field, strict);
+            Expr::Verbatim(quote! {
+                #fn_name(#param_value, #given_value, #inst_value)
+            })
+        }
+        ShardableType::Bool | ShardableType::PersistentBool => {
+            let fn_name = bool_relation_post_condition_qualified_name(sm, field, strict);
             Expr::Verbatim(quote! {
                 #fn_name(#param_value, #given_value, #inst_value)
             })
         }
         ShardableType::Map(_, _) | ShardableType::PersistentMap(_, _) => {
-            let fn_name = map_relation_post_condition_qualified_name(sm, field);
+            let fn_name = map_relation_post_condition_qualified_name(sm, field, strict);
             Expr::Verbatim(quote! {
                 #fn_name(#param_value, #given_value, #inst_value)
             })
         }
         ShardableType::Multiset(_) => {
-            let fn_name = multiset_relation_post_condition_qualified_name(sm, field);
+            let fn_name = multiset_relation_post_condition_qualified_name(sm, field, strict);
             Expr::Verbatim(quote! {
                 #fn_name(#param_value, #given_value, #inst_value)
             })
@@ -1069,7 +1329,8 @@ fn relation_for_collection_of_internal_tokens(
 fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
     match &field.stype {
         ShardableType::Option(ty) | ShardableType::PersistentOption(ty) => {
-            let fn_name = option_relation_post_condition_name(field);
+            let fn_name = option_relation_post_condition_name(field, false);
+            let fn_name_strict = option_relation_post_condition_name(field, true);
             let token_ty = field_token_type(sm, field);
             let inst_ty = inst_type(sm);
             let option_token_ty = Type::Verbatim(quote! {
@@ -1086,24 +1347,102 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             // Some(x)        Some(Token { instance: instance, value: x })
 
             quote! {
-                #[spec]
-                #[verifier(publish)]
-                pub fn #fn_name(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
-                    match token_opt {
-                        crate::pervasive::option::Option::None => {
-                            opt.is_None()
-                        }
-                        crate::pervasive::option::Option::Some(token) => {
-                            ::builtin::equal(token.instance, instance)
-                            && opt.is_Some()
-                            && ::builtin::equal(token.value, opt.get_Some_0())
-                        }
-                    }
+                #[verifier(inline)]
+                pub open spec fn #fn_name_strict(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
+                    Self::#fn_name(token_opt, opt, instance)
+                    && ::builtin::imply(opt.is_None(), token_opt.is_None())
+                }
+
+                pub open spec fn #fn_name(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
+                    ::builtin::imply(
+                        opt.is_Some(),
+                        token_opt.is_Some()
+                            && ::builtin::equal(token_opt.get_Some_0().view().value, opt.get_Some_0())
+                            && ::builtin::equal(token_opt.get_Some_0().view().instance, instance)
+                    )
+                }
+            }
+        }
+        ShardableType::Set(ty) | ShardableType::PersistentSet(ty) => {
+            let fn_name_strict = set_relation_post_condition_name(field, true);
+            let fn_name = set_relation_post_condition_name(field, false);
+            let constructor_name = field_token_data_type_turbofish(sm, field);
+            let token_ty = field_token_type(sm, field);
+            let inst_ty = inst_type(sm);
+            let set_token_ty = Type::Verbatim(quote! {
+                crate::pervasive::map::Map<#ty, #token_ty>
+            });
+            let set_normal_ty = Type::Verbatim(quote! {
+                crate::pervasive::set::Set<#ty>
+            });
+
+            // Predicate to check the set values agree:
+            //
+            // set            token_map
+            // {x, y}         { x => { instance, x }, y => { instance, y } }
+
+            quote! {
+                pub open spec fn #fn_name(token_map: #set_token_ty, set: #set_normal_ty, instance: #inst_ty) -> bool {
+                    ::builtin::forall(|elem: #ty| {
+                        ::builtin::with_triggers(
+                            (
+                                ( token_map.dom().contains(elem), ),
+                                ( token_map.index(elem), ),
+                            ),
+                            ::builtin::imply(
+                                set.contains(elem),
+                                (#[trigger] token_map.dom().contains(elem))
+                                && ::builtin::equal(token_map.index(elem).view(),
+                                    #constructor_name {
+                                        instance: instance,
+                                        value: elem,
+                                    }
+                                )
+                            )
+                        )
+                    })
+                }
+
+                #[verifier(inline)]
+                pub open spec fn #fn_name_strict(token_map: #set_token_ty, set: #set_normal_ty, instance: #inst_ty) -> bool {
+                    ::builtin::equal(token_map.dom(), set)
+                      && Self::#fn_name(token_map, set, instance)
+                }
+            }
+        }
+        ShardableType::Bool | ShardableType::PersistentBool => {
+            let fn_name = bool_relation_post_condition_name(field, false);
+            let fn_name_strict = bool_relation_post_condition_name(field, true);
+            let token_ty = field_token_type(sm, field);
+            let inst_ty = inst_type(sm);
+            let option_token_ty = Type::Verbatim(quote! {
+                crate::pervasive::option::Option<#token_ty>
+            });
+
+            // Predicate to check the option values agree:
+            //
+            // b              token_opt
+            // false          None
+            // true           Some(Token { instance: instance })
+
+            quote! {
+                pub open spec fn #fn_name(token_opt: #option_token_ty, b: ::std::primitive::bool, instance: #inst_ty) -> bool {
+                    ::builtin::imply(b,
+                        token_opt.is_Some()
+                        && ::builtin::equal(token_opt.get_Some_0().view().instance, instance)
+                    )
+                }
+
+                #[verifier(inline)]
+                pub open spec fn #fn_name_strict(token_opt: #option_token_ty, b: ::std::primitive::bool, instance: #inst_ty) -> bool {
+                    Self::#fn_name(token_opt, b, instance)
+                    && ::builtin::imply(!b, token_opt.is_None())
                 }
             }
         }
         ShardableType::Map(key, val) | ShardableType::PersistentMap(key, val) => {
-            let fn_name = map_relation_post_condition_name(field);
+            let fn_name = map_relation_post_condition_name(field, false);
+            let fn_name_strict = map_relation_post_condition_name(field, true);
             let token_ty = field_token_type(sm, field);
             let inst_ty = inst_type(sm);
             let map_token_ty = Type::Verbatim(quote! {
@@ -1124,29 +1463,36 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             //    [k1 := Token { instance: instance, value: v2 }]...
 
             quote! {
-                #[spec]
-                #[verifier(publish)]
-                pub fn #fn_name(token_map: #map_token_ty, m: #map_normal_ty, instance: #inst_ty) -> bool {
-                    ::builtin::equal(token_map.dom(), m.dom())
-                    && ::builtin::forall(|key: #key|
-                        ::builtin::imply(
-                            #[trigger] token_map.dom().contains(key),
-                            ::builtin::equal(token_map.index(key).instance, instance)
-                                && ::builtin::equal(token_map.index(key).key, key)
-                                && ::builtin::equal(token_map.index(key).value, m.index(key))
+                pub open spec fn #fn_name(token_map: #map_token_ty, m: #map_normal_ty, instance: #inst_ty) -> bool {
+                    ::builtin::forall(|key: #key|
+                        ::builtin::with_triggers(
+                            (
+                                ( token_map.dom().contains(key), ),
+                                ( token_map.index(key), ),
+                            ),
+                            ::builtin::imply(
+                                token_map.dom().contains(key),
+                                ::builtin::equal(token_map.index(key).view().instance, instance)
+                                    && ::builtin::equal(token_map.index(key).view().key, key)
+                                    && ::builtin::equal(token_map.index(key).view().value, m.index(key))
+                            )
                         )
                     )
+                }
+
+                pub open spec fn #fn_name_strict(token_map: #map_token_ty, m: #map_normal_ty, instance: #inst_ty) -> bool {
+                    ::builtin::equal(token_map.dom(), m.dom())
+                    && Self::#fn_name(token_map, m, instance)
                 }
             }
         }
         ShardableType::Multiset(ty) => {
-            let fn_name = multiset_relation_post_condition_name(field);
-            let constructor_name = field_token_type_turbofish(sm, field);
-            let field_name = field_token_field_name(field);
+            let fn_name = multiset_relation_post_condition_name(field, false);
+            let fn_name_strict = multiset_relation_post_condition_name(field, true);
             let inst_ty = inst_type(sm);
             let token_ty = field_token_type(sm, field);
             let multiset_token_ty = Type::Verbatim(quote! {
-                crate::pervasive::multiset::Multiset<#token_ty>
+                crate::pervasive::map::Map<#ty, #token_ty>
             });
             let multiset_normal_ty = Type::Verbatim(quote! {
                 crate::pervasive::multiset::Multiset<#ty>
@@ -1155,31 +1501,68 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             // Predicate to check the multiset values agree:
             //
             // m:
-            // multiset{v1, v2, ...}
+            // multiset{v1: n1, v2: n2, ...}
             //
             // tokens:
-            // multiset{
-            //    Token { instance: instance, value: v1 }]
-            //    Token { instance: instance, value: v2 }]
+            // map{
+            //    v1 => Token { instance: instance, value: v1, count: n1 }]
+            //    v2 => Token { instance: instance, value: v2, count: n2 }]
             // }
 
             quote! {
-                #[spec]
-                #[verifier(publish)]
-                pub fn #fn_name(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
+                pub open spec fn #fn_name(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|x: #ty|
-                        #[trigger] tokens.count(
-                            #constructor_name {
-                                instance: instance,
-                                #field_name: x,
-                            }) == m.count(x)
-                    )
-                    && ::builtin::forall(|t: #token_ty|
                         ::builtin::imply(
-                            #[trigger] tokens.count(t) > 0,
-                            ::builtin::equal(t.instance, instance)
+                            m.count(x) > ::builtin::spec_literal_nat("0"),
+                            (#[trigger] tokens.dom().contains(x))
+                            && ::builtin::equal(tokens.index(x).view().instance, instance)
+                            && tokens.index(x).view().count >= m.count(x)
+                            && ::builtin::equal(tokens.index(x).view().value, x)
                         )
                     )
+                }
+
+                pub open spec fn #fn_name_strict(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
+                    ::builtin::forall(|x: #ty| {
+                        ::builtin::with_triggers(
+                          (
+                              ( tokens.dom().contains(x), ),
+                              ( tokens.index(x), ),
+                          ),
+                          tokens.dom().contains(x)
+                          && ::builtin::equal(tokens.index(x).view().instance, instance)
+                          && ::builtin::equal(tokens.index(x).view().count, m.count(x))
+                          && ::builtin::equal(tokens.index(x).view().value, x)
+                        )
+                    })
+                }
+
+                #[proof]
+                #[verifier(returns(proof))]
+                #[verifier(external_body)]
+                pub fn join(#[proof] self, #[proof] other: Self) -> Self {
+                    ::builtin::requires(::builtin::equal(self.view().instance, other.view().instance) && ::builtin::equal(self.view().value, other.view().value));
+                    ::builtin::ensures(|s: Self|
+                        ::builtin::equal(s.view().instance, self.view().instance)
+                        && ::builtin::equal(s.view().value, self.view().value)
+                        && ::builtin::equal(s.view().count, self.view().count + other.view().count)
+                    );
+                    ::std::unimplemented!();
+                }
+
+                #[verifier(external_body)]
+                pub proof fn split(tracked self, i: nat) -> tracked (crate::pervasive::modes::Trk<Self>, crate::pervasive::modes::Trk<Self>) {
+                    ::builtin::requires(i <= self.view().count);
+                    ::builtin::ensures(|s: (crate::pervasive::modes::Trk<Self>, crate::pervasive::modes::Trk<Self>)| {
+                        let (crate::pervasive::modes::Trk(x), crate::pervasive::modes::Trk(y)) = s;
+                        ::builtin::equal(x.view().instance, self.view().instance)
+                        && ::builtin::equal(y.view().instance, self.view().instance)
+                        && ::builtin::equal(x.view().value, self.view().value)
+                        && ::builtin::equal(y.view().value, self.view().value)
+                        && ::builtin::equal(x.view().count, i)
+                        && ::builtin::equal(y.view().count as int, self.view().count - i)
+                    });
+                    ::std::unimplemented!();
                 }
             }
         }
@@ -1189,24 +1572,36 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 #[verifier(returns(proof))]
                 #[verifier(external_body)]
                 pub fn join(#[proof] self, #[proof] other: Self) -> Self {
-                    ::builtin::requires(equal(self.instance, other.instance));
+                    ::builtin::requires(::builtin::equal(self.view().instance, other.view().instance));
                     ::builtin::ensures(|s: Self|
-                        equal(s.instance, self.instance)
-                        && equal(s.value, self.value + other.value)
+                        ::builtin::equal(s.view().instance, self.view().instance)
+                        && ::builtin::equal(s.view().count, self.view().count + other.view().count)
                     );
                     ::std::unimplemented!();
                 }
 
-                #[proof]
-                #[verifier(returns(proof))]
                 #[verifier(external_body)]
-                pub fn split(#[proof] self, #[spec] i: nat) -> (Self, Self) {
-                    ::builtin::requires(i <= self.value);
-                    ::builtin::ensures(|s: (Self, Self)|
-                        equal(s.0.instance, self.instance)
-                        && equal(s.1.instance, self.instance)
-                        && equal(s.0.value, i)
-                        && equal(s.1.value, self.value - i)
+                pub proof fn split(tracked self, i: nat) -> tracked (crate::pervasive::modes::Trk<Self>, crate::pervasive::modes::Trk<Self>) {
+                    ::builtin::requires(i <= self.view().count);
+                    ::builtin::ensures(|s: (crate::pervasive::modes::Trk<Self>, crate::pervasive::modes::Trk<Self>)| {
+                        let (crate::pervasive::modes::Trk(x), crate::pervasive::modes::Trk(y)) = s;
+                        ::builtin::equal(x.view().instance, self.view().instance)
+                        && ::builtin::equal(y.view().instance, self.view().instance)
+                        && ::builtin::equal(x.view().count, i)
+                        && ::builtin::equal(y.view().count as int, self.view().count - i)
+                    });
+                    ::std::unimplemented!();
+                }
+            }
+        }
+        ShardableType::PersistentCount => {
+            quote! {
+                #[verifier(external_body)]
+                pub proof fn weaken(tracked self, i: nat) -> tracked Self {
+                    ::builtin::requires(i <= self.view().count);
+                    ::builtin::ensures(|s: Self|
+                        ::builtin::equal(s.view().instance, self.view().instance)
+                        && ::builtin::equal(s.view().count, i)
                     );
                     ::std::unimplemented!();
                 }
@@ -1218,13 +1613,13 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
 
 fn add_token_param_in_out(
     ctxt: &Ctxt,
-    in_args: &mut Vec<TokenStream>,
-    out_args: &mut Vec<(TokenStream, TokenStream)>,
+    in_params: &mut Vec<TokenStream>,
+    out_params: &mut Vec<(TokenStream, TokenStream, Mode)>,
     inst_eq_enss: &mut Vec<Expr>,
     inst_eq_reqs: &mut Vec<Expr>,
 
-    arg_name: &Ident,
-    arg_type: &Type,
+    param_name: &Ident,
+    param_type: &Type,
     inout_type: InoutType,
     apply_instance_condition: bool,
     use_explicit_lifetime: bool,
@@ -1241,49 +1636,49 @@ fn add_token_param_in_out(
     let (is_input, is_output) = match inout_type {
         InoutType::In => {
             assert!(!use_explicit_lifetime);
-            in_args.push(quote! { #[proof] #arg_name: #arg_type });
+            in_params.push(quote! { #[proof] #param_name: #param_type });
             (true, false)
         }
         InoutType::Out => {
             assert!(!use_explicit_lifetime);
-            out_args.push((quote! {#arg_name}, quote! {#arg_type}));
+            out_params.push((quote! {#param_name}, quote! {#param_type}, Mode::Tracked));
             (false, true)
         }
         InoutType::InOut => {
             assert!(!use_explicit_lifetime);
-            in_args.push(quote! { #[proof] #arg_name: &mut #arg_type });
+            in_params.push(quote! { #[proof] #param_name: &mut #param_type });
             (true, true)
         }
         InoutType::BorrowIn => {
             if use_explicit_lifetime {
-                in_args.push(quote! { #[proof] #arg_name: &'a #arg_type });
+                in_params.push(quote! { #[proof] #param_name: &'a #param_type });
             } else {
-                in_args.push(quote! { #[proof] #arg_name: &#arg_type });
+                in_params.push(quote! { #[proof] #param_name: &#param_type });
             }
             (true, false)
         }
         InoutType::BorrowOut => {
             assert!(use_explicit_lifetime);
-            out_args.push((quote! {#arg_name}, quote! {&'a #arg_type}));
+            out_params.push((quote! {#param_name}, quote! {&'a #param_type}, Mode::Tracked));
             (false, true)
         }
     };
 
-    // Add a condition like `token.instance == instance`
+    // Add a condition like `token.view().instance == instance`
 
     if apply_instance_condition {
         let inst = get_inst_value(&ctxt);
         if is_output {
-            let lhs = Expr::Verbatim(quote! { #arg_name.instance });
+            let lhs = Expr::Verbatim(quote! { #param_name.view().instance });
             inst_eq_enss.push(Expr::Verbatim(quote! {
                 ::builtin::equal(#lhs, #inst)
             }));
         }
         if is_input {
             let lhs = if is_output {
-                Expr::Verbatim(quote! { ::builtin::old(#arg_name).instance })
+                Expr::Verbatim(quote! { ::builtin::old(#param_name).view().instance })
             } else {
-                Expr::Verbatim(quote! { #arg_name.instance })
+                Expr::Verbatim(quote! { #param_name.view().instance })
             };
             inst_eq_reqs.push(Expr::Verbatim(quote! {
                 ::builtin::equal(#lhs, #inst)
@@ -1565,7 +1960,10 @@ fn translate_split_kind(ctxt: &mut Ctxt, sk: &mut SplitKind, errors: &mut Vec<Er
 fn field_token_collection_type(sm: &SM, field: &Field) -> Type {
     let ty = field_token_type(sm, field);
     match &field.stype {
-        ShardableType::Option(_) | ShardableType::PersistentOption(_) => {
+        ShardableType::Option(_)
+        | ShardableType::PersistentOption(_)
+        | ShardableType::Bool
+        | ShardableType::PersistentBool => {
             Type::Verbatim(quote! { crate::pervasive::option::Option<#ty> })
         }
 
@@ -1573,12 +1971,16 @@ fn field_token_collection_type(sm: &SM, field: &Field) -> Type {
             Type::Verbatim(quote! { crate::pervasive::map::Map<#key, #ty> })
         }
 
-        ShardableType::Multiset(_) => {
-            Type::Verbatim(quote! { crate::pervasive::multiset::Multiset<#ty> })
+        ShardableType::Set(t) | ShardableType::PersistentSet(t) => {
+            Type::Verbatim(quote! { crate::pervasive::map::Map<#t, #ty> })
+        }
+
+        ShardableType::Multiset(t) => {
+            Type::Verbatim(quote! { crate::pervasive::map::Map<#t, #ty> })
         }
 
         _ => {
-            panic!("field_token_collection_type expected option/map/multiset");
+            panic!("field_token_collection_type expected option/map/multiset/bool");
         }
     }
 }
@@ -1623,6 +2025,7 @@ fn token_matches_elt(
     pat_opt: &Option<Pat>,
     ctxt: &Ctxt,
     field: &Field,
+    output: bool,
 ) -> Expr {
     match elt {
         MonoidElt::OptionSome(None) => {
@@ -1632,25 +2035,29 @@ fn token_matches_elt(
                 Expr::Verbatim(quote! { true })
             } else {
                 Expr::Verbatim(quote! {
-                    match #token_name.value {
+                    match #token_name.view().value {
                         #pat => true,
                         _ => false,
                     }
                 })
             }
         }
-        MonoidElt::OptionSome(Some(e)) | MonoidElt::SingletonMultiset(e) => {
-            mk_eq(&Expr::Verbatim(quote! {#token_name.value}), &e)
+        MonoidElt::OptionSome(Some(e)) => {
+            mk_eq(&Expr::Verbatim(quote! {#token_name.view().value}), &e)
         }
+        MonoidElt::SingletonMultiset(e) => mk_and(
+            mk_eq(&Expr::Verbatim(quote! {#token_name.view().value}), &e),
+            Expr::Verbatim(quote! { #token_name.view().count == 1 }),
+        ),
         MonoidElt::SingletonKV(key, None) => {
-            let e1 = mk_eq(&Expr::Verbatim(quote! {#token_name.key}), &key);
+            let e1 = mk_eq(&Expr::Verbatim(quote! {#token_name.view().key}), &key);
 
             let pat = pat_opt.as_ref().expect("pat should exist for a pattern-binding case");
             if is_definitely_irrefutable(pat) {
                 e1
             } else {
                 let e2 = Expr::Verbatim(quote! {
-                    match #token_name.value {
+                    match #token_name.view().value {
                         #pat => true,
                         _ => false,
                     }
@@ -1659,11 +2066,17 @@ fn token_matches_elt(
             }
         }
         MonoidElt::SingletonKV(key, Some(val)) => mk_and(
-            mk_eq(&Expr::Verbatim(quote! {#token_name.key}), &key),
-            mk_eq(&Expr::Verbatim(quote! {#token_name.value}), &val),
+            mk_eq(&Expr::Verbatim(quote! {#token_name.view().key}), &key),
+            mk_eq(&Expr::Verbatim(quote! {#token_name.view().value}), &val),
         ),
+        MonoidElt::SingletonSet(e) => {
+            mk_eq(&Expr::Verbatim(quote! { #token_name.view().value }), &e)
+        }
+        MonoidElt::True => Expr::Verbatim(quote! { true }),
         MonoidElt::General(e) => match &field.stype {
-            ShardableType::Count => mk_eq(&Expr::Verbatim(quote! {#token_name.value}), &e),
+            ShardableType::Count | ShardableType::PersistentCount => {
+                mk_eq(&Expr::Verbatim(quote! {#token_name.view().count}), &e)
+            }
             _ => {
                 let token_value = if token_is_ref {
                     Expr::Verbatim(quote! { *#token_name })
@@ -1676,6 +2089,7 @@ fn token_matches_elt(
                     token_value,
                     e.clone(),
                     get_inst_value(ctxt),
+                    output,
                 )
             }
         },
@@ -1711,11 +2125,11 @@ fn translate_special_condition(
 
             Some(TransitionStmt::Require(
                 span,
-                token_matches_elt(true, &ident, &elt, pat_opt, ctxt, &field),
+                token_matches_elt(true, &ident, &elt, pat_opt, ctxt, &field, false),
             ))
         }
 
-        SpecialOp { stmt: MonoidStmtType::Add, elt } => {
+        SpecialOp { stmt: MonoidStmtType::Add(_), elt } => {
             let elt = translate_elt(ctxt, elt, false, errors);
 
             let ident = ctxt.get_numbered_token_ident(&field.name);
@@ -1735,7 +2149,7 @@ fn translate_special_condition(
 
             Some(TransitionStmt::PostCondition(
                 span,
-                token_matches_elt(false, &ident, &elt, pat_opt, ctxt, &field),
+                token_matches_elt(false, &ident, &elt, pat_opt, ctxt, &field, true),
             ))
         }
 
@@ -1759,7 +2173,7 @@ fn translate_special_condition(
 
             Some(TransitionStmt::Require(
                 span,
-                token_matches_elt(false, &ident, &elt, pat_opt, ctxt, &field),
+                token_matches_elt(false, &ident, &elt, pat_opt, ctxt, &field, false),
             ))
         }
 
@@ -1851,18 +2265,18 @@ fn translate_special_assignment(op: &SpecialOp, param: &TokenParam) -> Expr {
     match op.stmt {
         MonoidStmtType::Have => {
             assert!(param.inout_type == InoutType::BorrowIn);
-            Expr::Verbatim(quote! { #name.value })
+            Expr::Verbatim(quote! { #name.view().value })
         }
         MonoidStmtType::Remove => {
             assert!(param.inout_type == InoutType::In);
-            Expr::Verbatim(quote! { #name.value })
+            Expr::Verbatim(quote! { #name.view().value })
         }
         MonoidStmtType::Withdraw => {
             assert!(param.inout_type == InoutType::Out);
             Expr::Verbatim(quote! { #name })
         }
 
-        MonoidStmtType::Add | MonoidStmtType::Guard | MonoidStmtType::Deposit => {
+        MonoidStmtType::Add(_) | MonoidStmtType::Guard | MonoidStmtType::Deposit => {
             panic!("unexpected monoid type");
         }
     }
@@ -1884,6 +2298,10 @@ fn translate_elt(
             let e = translate_expr(ctxt, e, birds_eye, errors);
             MonoidElt::SingletonMultiset(e)
         }
+        MonoidElt::SingletonSet(e) => {
+            let e = translate_expr(ctxt, e, birds_eye, errors);
+            MonoidElt::SingletonSet(e)
+        }
         MonoidElt::SingletonKV(e1, None) => {
             let e1 = translate_expr(ctxt, e1, birds_eye, errors);
             MonoidElt::SingletonKV(e1, None)
@@ -1893,6 +2311,7 @@ fn translate_elt(
             let e2 = translate_expr(ctxt, e2, birds_eye, errors);
             MonoidElt::SingletonKV(e1, Some(e2))
         }
+        MonoidElt::True => MonoidElt::True,
         MonoidElt::General(e) => {
             let e = translate_expr(ctxt, e, birds_eye, errors);
             MonoidElt::General(e)
@@ -1914,8 +2333,14 @@ fn translate_value_expr(
         MonoidElt::OptionSome(Some(e))
         | MonoidElt::General(e)
         | MonoidElt::SingletonMultiset(e)
+        | MonoidElt::SingletonSet(e)
         | MonoidElt::SingletonKV(_, Some(e)) => Some(translate_expr(ctxt, e, birds_eye, errors)),
         MonoidElt::OptionSome(None) | MonoidElt::SingletonKV(_, None) => None,
+        MonoidElt::True => {
+            // bool is not supported for storage types.
+            // If this ends up getting called I'm not sure what the intent would be.
+            panic!("translate_value_expr called for 'True'");
+        }
     }
 }
 
@@ -1928,7 +2353,7 @@ fn translate_value_expr(
 ///    from the instance object, e.g., `instance.foo()`.
 ///
 ///  * Reading a 'Variable' field. Replace it with the value from the input token
-///    e.g., `token_foo.value` or `old(token_foo).value`.
+///    e.g., `token_foo.view().value` or `old(token_foo).view().value`.
 ///
 ///  * A nondeterministic read. In this case, we replace it with the value of one of the
 ///    _out_ parameters. Previous well-formedness checks (`check_birds_eye`) should ensure
@@ -2001,23 +2426,23 @@ fn get_const_field_value(ctxt: &Ctxt, field: &Field, span: Span) -> Expr {
 
 fn get_nondeterministic_out_value(_ctxt: &Ctxt, field: &Field, span: Span) -> Expr {
     let name = nondeterministic_read_spec_out_name(field);
-    Expr::Verbatim(quote_spanned! { span => #name.value() })
+    Expr::Verbatim(quote_spanned! { span => #name })
 }
 
 fn get_old_field_value(ctxt: &Ctxt, field: &Field, span: Span) -> Expr {
     let arg = transition_arg_name(&field);
     let field_name = field_token_field_name(&field);
     if ctxt.fields_written.contains(&field.name.to_string()) {
-        Expr::Verbatim(quote_spanned! { span => ::builtin::old(#arg).#field_name })
+        Expr::Verbatim(quote_spanned! { span => ::builtin::old(#arg).view().#field_name })
     } else {
-        Expr::Verbatim(quote_spanned! { span => #arg.#field_name })
+        Expr::Verbatim(quote_spanned! { span => #arg.view().#field_name })
     }
 }
 
 fn get_new_field_value(field: &Field) -> Expr {
     let arg = transition_arg_name(&field);
     let field = field_token_field_name(&field);
-    Expr::Verbatim(quote! { #arg.#field })
+    Expr::Verbatim(quote! { #arg.view().#field })
 }
 
 // Collect requires and ensures. Updates `ctxt.requires` and `ctxt.ensures`

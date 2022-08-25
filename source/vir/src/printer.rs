@@ -29,7 +29,7 @@ impl Printer {
     }
 
     fn path_to_node(&self, path: &Path) -> Node {
-        Node::Atom(crate::def::path_to_string(path))
+        Node::Atom(crate::def::path_to_string(path).replace("{", "_$LBRACE_").replace("}", "_$RBRACE_"))
     }
 
     fn spanned_node(&self, node: Node, span: &Span) -> Node {
@@ -105,6 +105,7 @@ impl Printer {
             TypX::TypParam(ident) => nodes!(TypParam {str_to_node(ident)}),
             TypX::TypeId => nodes!(TypeId),
             TypX::Air(_air_typ) => nodes!({ str_to_node("AirTyp") }),
+            TypX::StrSlice => crate::def::strslice(),
         }
     }
 
@@ -229,6 +230,13 @@ impl Printer {
                     match cnst {
                         Constant::Bool(val) => str_to_node(&format!("{}", val)),
                         Constant::Nat(val) => str_to_node(&format!("{}", val)),
+                        Constant::StrSlice(val) => str_to_node(&format!(
+                            "\"{}\"",
+                            match val.is_ascii() {
+                                true => val,
+                                false => "non_ascii_string_with_unknown_value",
+                            }
+                        )),
                     }
                 }
             ),
@@ -269,6 +277,8 @@ impl Printer {
             }
             ExprX::Unary(unary_op, expr) => Node::List({
                 let mut nodes = match unary_op {
+                    UnaryOp::StrLen => nodes_vec!(strop len {expr_to_node(expr)}),
+                    UnaryOp::StrIsAscii => nodes_vec!(strop is_ascii {expr_to_node(expr)}),
                     UnaryOp::Not => nodes_vec!(not),
                     UnaryOp::BitNot => nodes_vec!(bitnot),
                     UnaryOp::Trigger(group) => {
@@ -279,13 +289,28 @@ impl Printer {
                         }
                         nodes
                     }
-                    UnaryOp::Clip(range) => {
-                        if self.no_encoding {
-                            vec![]
-                        } else {
-                            nodes_vec!(clip {self.int_range_to_node(range)})
+                    UnaryOp::Clip { range, truncate } => {
+                        let mut nodes = nodes_vec!(clip {int_range_to_node(range)});
+                        if *truncate {
+                            nodes.push(str_to_node("+truncate"));
                         }
+                        nodes
                     }
+                    UnaryOp::CoerceMode { op_mode, from_mode, to_mode, kind } => {
+                        nodes_vec!(coerce_mode
+                            {str_to_node(&format!("{op_mode}"))}
+                            {str_to_node(&format!("{from_mode}"))}
+                            {str_to_node(&format!("{to_mode}"))}
+                            {str_to_node(&format!("{:?}", kind))}
+                        )
+                    }
+                    // UnaryOp::Clip(range) => {
+                    //     if self.no_encoding {
+                    //         vec![]
+                    //     } else {
+                    //         nodes_vec!(clip {self.int_range_to_node(range)})
+                    //     }
+                    // }
                     UnaryOp::MustBeFinalized => nodes_vec!(MustBeFinalized),
                 };
                 nodes.push(self.expr_to_node(expr));
@@ -374,6 +399,9 @@ impl Printer {
                     };
                     nodes!({self.expr_to_node(e1)} {str_to_node(aop)} {self.expr_to_node(e2)})
                 }
+                BinaryOp::StrGetChar => {
+                    nodes!(strop get_char {expr_to_node(e1)} {expr_to_node(e2)})
+                }
                 _ if !self.pretty_format => {
                     nodes!({str_to_node(&format!("{:?}", binary_op).to_lowercase())} {self.expr_to_node(e1)} {self.expr_to_node(e2)})
                 }
@@ -427,6 +455,9 @@ impl Printer {
             }
             ExprX::Fuel(fun, fuel) => {
                 nodes!(fuel {self.fun_to_node(fun)} {str_to_node(&format!("{}", fuel))})
+            }
+            ExprX::RevealString(_) => {
+                nodes!(str_reveal)
             }
             ExprX::Header(header_expr) => nodes!(header {self.header_expr_to_node(header_expr)}),
             ExprX::Admit => node!(admit),
@@ -509,6 +540,7 @@ impl Printer {
             }
             _ => unreachable!(),
         };
+        let node = nodes!(expr {node} {typ_to_node(&expr.typ)});
         self.spanned_node(node, &expr.span)
     }
 
@@ -527,7 +559,7 @@ impl Printer {
             decrease,
             decrease_when,
             decrease_by,
-            broadcast_forall: _,
+            broadcast_forall,
             mask_spec,
             is_const,
             publish,
@@ -694,6 +726,12 @@ impl Printer {
             str_to_node(":decrease"),
             self.exprs_to_node(decrease),
         ];
+        if let Some((broadcast_params, req_ens)) = &broadcast_forall {
+            let broadcast_params_node =
+                Node::List(broadcast_params.iter().map(param_to_node).collect());
+            nodes.push(str_to_node(":broadcast_forall"));
+            nodes.push(nodes!({broadcast_params_node} {expr_to_node(req_ens)}));
+        }
         if let Some(decrease_when) = &decrease_when {
             nodes.push(str_to_node(":decrease_when"));
             nodes.push(self.expr_to_node(decrease_when));

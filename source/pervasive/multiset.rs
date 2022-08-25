@@ -104,20 +104,7 @@ impl<V> Multiset<V> {
     }
 
     // TODO define this in terms of a more general constructor?
-    pub spec fn filter<F: Fn(V) -> bool>(self, f: F) -> Self;
-
-    // TODO(tjhance) flesh out remaining proof-mode functions
-    // (note: for collections of 'proof' objects I usually advise using maps when possible)
-
-    #[verifier(external_body)]
-    pub proof fn tracked_remove(tracked &mut self, v: V) -> (tracked out_v: V)
-        requires old(self).count(v) >= 1,
-        ensures
-            out_v === v,
-            *self === old(self).remove(v),
-    {
-        unimplemented!();
-    }
+    pub spec fn filter(self, f: impl Fn(V) -> bool) -> Self;
 }
 
 // Specification of `empty`
@@ -197,7 +184,7 @@ pub proof fn axiom_count_le_len<V>(m: Multiset<V>, v: V)
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub proof fn axiom_filter_count<V, F: Fn(V) -> bool>(m: Multiset<V>, f: F, v: V)
+pub proof fn axiom_filter_count<V>(m: Multiset<V>, f: impl Fn(V) -> bool, v: V)
     ensures (#[trigger] m.filter(f).count(v)) ==
         if f(v) { m.count(v) } else { 0 }
 {}

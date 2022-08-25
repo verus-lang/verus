@@ -43,14 +43,14 @@ impl<K, V> Map<K, V> {
     /// Gives a `Map<K, V>` whose domain contains every key, and maps each key
     /// to the value given by `fv`.
 
-    pub open spec fn total<F: Fn(K) -> V>(fv: F) -> Map<K, V> {
+    pub open spec fn total(fv: impl Fn(K) -> V) -> Map<K, V> {
         Set::full().mk_map(fv)
     }
 
     /// Gives a `Map<K, V>` whose domain is given by the boolean predicate on keys `fk`,
     /// and maps each key to the value given by `fv`.
 
-    pub open spec fn new<FK: Fn(K) -> bool, FV: Fn(K) -> V>(fk: FK, fv: FV) -> Map<K, V> {
+    pub open spec fn new(fk: impl Fn(K) -> bool, fv: impl Fn(K) -> V) -> Map<K, V> {
         Set::new(fk).mk_map(fv)
     }
 
@@ -269,15 +269,10 @@ pub proof fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
 
 #[doc(hidden)]
 #[macro_export]
-macro_rules! map_insert_rec {
-    [$val:expr;] => {
-        $val
-    };
-    [$val:expr;$key:expr => $value:expr] => {
-        map_insert_rec![$val.insert($key, $value);]
-    };
-    [$val:expr;$key:expr => $value:expr,$($tail:tt)*] => {
-        map_insert_rec![$val.insert($key, $value);$($tail)*]
+macro_rules! map_internal {
+    [$($key:expr => $value:expr),* $(,)?] => {
+        $crate::pervasive::map::Map::empty()
+            $(.insert($key, $value))*
     }
 }
 
@@ -291,11 +286,15 @@ macro_rules! map_insert_rec {
 #[macro_export]
 macro_rules! map {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::pervasive::map::map_insert_rec![$crate::pervasive::map::Map::empty();$($tail)*])
-    }
-} 
+        ::builtin_macros::verus_proof_macro_exprs!($crate::pervasive::map::map_internal!($($tail)*))
+    };
+}
 
-pub use map_insert_rec;
+#[doc(hidden)]
+#[verifier(inline)]
+pub open spec fn check_argument_is_map<K, V>(m: Map<K, V>) -> Map<K, V> { m }
+
+pub use map_internal;
 pub use map;
 
 /// Prove two maps equal by _extensionality_. Usage is:
@@ -316,12 +315,20 @@ pub use map;
 
 #[macro_export]
 macro_rules! assert_maps_equal {
+    [$($tail:tt)*] => {
+        ::builtin_macros::verus_proof_macro_exprs!($crate::pervasive::map::assert_maps_equal_internal!($($tail)*))
+    };
+}
+
+#[macro_export]
+#[doc(hidden)]
+macro_rules! assert_maps_equal_internal {
     ($m1:expr, $m2:expr $(,)?) => {
-        assert_maps_equal!($m1, $m2, key => { })
+        assert_maps_equal_internal!($m1, $m2, key => { })
     };
     ($m1:expr, $m2:expr, $k:ident $( : $t:ty )? => $bblock:block) => {
-        #[spec] let m1 = $m1;
-        #[spec] let m2 = $m2;
+        #[spec] let m1 = $crate::pervasive::map::check_argument_is_map($m1);
+        #[spec] let m2 = $crate::pervasive::map::check_argument_is_map($m2);
         ::builtin::assert_by(::builtin::equal(m1, m2), {
             ::builtin::assert_forall_by(|$k $( : $t )?| {
                 // TODO better error message here: show the individual conjunct that fails,
@@ -339,6 +346,7 @@ macro_rules! assert_maps_equal {
     }
 }
 
+pub use assert_maps_equal_internal;
 pub use assert_maps_equal;
 
 } // verus!

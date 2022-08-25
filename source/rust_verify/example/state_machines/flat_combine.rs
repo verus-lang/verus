@@ -59,8 +59,7 @@ tokenized_state_machine!{
             pub responses: Map<nat, Response>,
         }
 
-        #[spec]
-        fn valid_idx(self, i: nat) -> bool {
+        pub open spec fn valid_idx(self, i: nat) -> bool {
             0 <= i && i < self.num_clients
         }
 
@@ -98,14 +97,12 @@ tokenized_state_machine!{
         }
         */
 
-        #[spec]
-        fn client_waiting(self, i: nat) -> bool {
+        pub open spec fn client_waiting(self, i: nat) -> bool {
             self.valid_idx(i)
             && self.clients.index(i).is_Waiting()
         }
 
-        #[spec]
-        fn combiner_has(self, i: nat) -> bool {
+        pub open spec fn combiner_has(self, i: nat) -> bool {
             self.valid_idx(i)
             && match self.combiner {
                 Combiner::Collecting{elems} => i < elems.len() && elems.index(i).is_Some(),
@@ -113,21 +110,18 @@ tokenized_state_machine!{
             }
         }
 
-        #[spec]
-        fn combiner_rid(self, i: nat) -> int {
+        pub open spec fn combiner_rid(self, i: nat) -> int {
             match self.combiner {
                 Combiner::Collecting{elems} => elems.index(i).get_Some_0(),
                 Combiner::Responding{elems, idx} => elems.index(i).get_Some_0(),
             }
         }
 
-        #[spec]
-        fn request_stored(self, i: nat) -> bool {
+        pub open spec fn request_stored(self, i: nat) -> bool {
             self.requests.dom().contains(i)
         }
 
-        #[spec]
-        fn response_stored(self, i: nat) -> bool {
+        pub open spec fn response_stored(self, i: nat) -> bool {
             self.responses.dom().contains(i)
         }
 
@@ -174,11 +168,11 @@ tokenized_state_machine!{
             initialize(num_clients: nat) {
                 init num_clients = num_clients;
                 init clients = Map::new(
-                    |i| 0 <= i && i < num_clients,
-                    |i| Client::Idle);
+                    |i: nat| 0 <= i && i < num_clients,
+                    |i: nat| Client::Idle);
                 init slots = Map::new(
-                    |i| 0 <= i && i < num_clients,
-                    |i| false);
+                    |i: nat| 0 <= i && i < num_clients,
+                    |i: nat| false);
                 init combiner = Combiner::Collecting { elems: Seq::empty() };
                 init requests = Map::empty();
                 init responses = Map::empty();
