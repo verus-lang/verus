@@ -31,6 +31,3 @@ cargo run --bin rust_verify -- \
   --extern state_machines_macros="$REPO"/source/target/debug/libstate_machines_macros.$DYN_LIB_EXT \
   --sysroot /Users/andreal/.rustup/toolchains/nightly-x86_64-apple-darwin \
   --edition=2018 -Z proc-macro-backtrace "$@"
-
-  # --extern core=/Users/andreal/.rustup/toolchains/nightly-x86_64-apple-darwin/lib/libstd-c047ccf37d2c9989.dylib \
-  # --extern std=/Users/andreal/.rustup/toolchains/nightly-x86_64-apple-darwin/lib/libstd-c047ccf37d2c9989.dylib \
