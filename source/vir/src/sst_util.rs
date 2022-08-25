@@ -3,7 +3,7 @@ use crate::def::{unique_bound, Spanned};
 use crate::sst::{BndX, Exp, ExpX, Stm, Trig, Trigs, UniqueIdent};
 use air::ast::{Binder, BinderX, Binders, Ident, Span};
 use air::scope_map::ScopeMap;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 pub(crate) fn free_vars_exp(exp: &Exp) -> HashMap<UniqueIdent, Typ> {
@@ -197,4 +197,23 @@ pub(crate) fn subst_exp(
     assert_eq!(scope_substs.num_scopes(), 0);
     assert_eq!(free_vars.num_scopes(), 0);
     e
+}
+
+// referenced `crate::ast_util::referenced_vars_expr`
+pub(crate) fn referenced_vars_exp(exp: &Exp) -> HashSet<Ident> {
+    let mut vars: HashSet<Ident> = HashSet::new();
+    crate::sst_visitor::exp_visitor_dfs::<(), _>(
+        exp,
+        &mut crate::sst_visitor::VisitorScopeMap::new(),
+        &mut |e: &Exp, _| {
+            match &e.x {
+                ExpX::Var(x) | ExpX::VarLoc(x) => {
+                    vars.insert(x.name.clone());
+                }
+                _ => (),
+            }
+            crate::sst_visitor::VisitorControlFlow::Recurse
+        },
+    );
+    vars
 }

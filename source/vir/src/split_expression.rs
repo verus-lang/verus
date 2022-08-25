@@ -388,10 +388,21 @@ pub(crate) fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: boo
             return Arc::new(split_traced);
         }
         ExpX::Bind(bnd, e1) => {
-            // TODO: shrink binder if the split body does not reference one of the binded variables
-            // Note: trigger selection happens after the AST->SST translation(see crate::ast_to_sst::finalized_exp)
+            let referenced_vars = crate::sst_util::referenced_vars_exp(e1);
+            let shrink_binder = |bndrs: &air::ast::Binders<Typ>| -> air::ast::Binders<Typ> {
+                // Shrink binders if the split body does not reference one of the binded variables anymore
+                let mut new_bndrs = vec![];
+                for binder in &**bndrs {
+                    if referenced_vars.contains(&binder.name) {
+                        new_bndrs.push(binder.clone());
+                    }
+                }
+                Arc::new(new_bndrs)
+            };
+
             let new_bnd = match &bnd.x {
                 BndX::Let(..) if !negated => bnd.clone(),
+                // Note: trigger selection happens after the AST->SST translation(see crate::ast_to_sst::finalized_exp)
                 BndX::Quant(
                     Quant { quant: air::ast::Quant::Forall, boxed_params },
                     bndrs,
@@ -399,7 +410,7 @@ pub(crate) fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: boo
                 ) if !negated => {
                     let bndx = BndX::Quant(
                         Quant { quant: air::ast::Quant::Forall, boxed_params: *boxed_params },
-                        bndrs.clone(),
+                        shrink_binder(bndrs),
                         Arc::new(vec![]), // remove triggers that are already selected
                     );
                     Spanned::new(bnd.span.clone(), bndx)
@@ -412,7 +423,7 @@ pub(crate) fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: boo
                 ) if negated => {
                     let new_bndx = BndX::Quant(
                         Quant { quant: air::ast::Quant::Forall, boxed_params: *boxed_params },
-                        bndrs.clone(),
+                        shrink_binder(bndrs),
                         Arc::new(vec![]), // remove triggers that are already selected
                     );
                     Spanned::new(bnd.span.clone(), new_bndx)
