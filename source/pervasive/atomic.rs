@@ -90,25 +90,25 @@ macro_rules! make_bool_atomic {
 
 macro_rules! atomic_types {
     ($at_ident:ident, $p_ident:ident, $rust_ty: ty, $value_ty: ty) => {
-        #[verifier(external_body)]
+        #[verus::verifier(external_body)]
         pub struct $at_ident {
             ato: $rust_ty,
         }
 
         #[proof]
-        #[verifier(unforgeable)]
+        #[verus::verifier(unforgeable)]
         pub struct $p_ident {
             #[spec] pub patomic: int,
             #[spec] pub value: $value_ty,
         }
 
         impl $p_ident {
-            #[spec] #[verifier(publish)]
+            #[spec] #[verus::verifier(publish)]
             pub fn is_for(&self, patomic: $at_ident) -> bool {
                 self.patomic == patomic.id()
             }
 
-            #[spec] #[verifier(publish)]
+            #[spec] #[verus::verifier(publish)]
             pub fn points_to(&self, v: $value_ty) -> bool {
                 self.value == v
             }
@@ -121,7 +121,7 @@ macro_rules! atomic_common_methods {
         fndecl!(pub fn id(&self) -> int);
 
         #[inline(always)]
-        #[verifier(external_body)]
+        #[verus::verifier(external_body)]
         pub fn new(i: $value_ty) -> ($at_ident, Proof<$p_ident>) {
             ensures(|res : ($at_ident, Proof<$p_ident>)|
                 equal(res.1, Proof($p_ident{ patomic: res.0.id(), value: i }))
@@ -133,8 +133,8 @@ macro_rules! atomic_common_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)]
-        #[verifier(atomic)]
+        #[verus::verifier(external_body)]
+        #[verus::verifier(atomic)]
         pub fn load(&self, #[proof] perm: &$p_ident) -> $value_ty {
             requires([
                 equal(self.id(), perm.patomic),
@@ -146,8 +146,8 @@ macro_rules! atomic_common_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)]
-        #[verifier(atomic)]
+        #[verus::verifier(external_body)]
+        #[verus::verifier(atomic)]
         pub fn store(&self, #[proof] perm: &mut $p_ident, v: $value_ty) {
             requires([
                 equal(self.id(), old(perm).patomic),
@@ -159,8 +159,8 @@ macro_rules! atomic_common_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)]
-        #[verifier(atomic)]
+        #[verus::verifier(external_body)]
+        #[verus::verifier(atomic)]
         pub fn compare_exchange(&self, #[proof] perm: &mut $p_ident, current: $value_ty, new: $value_ty) -> Result<$value_ty, $value_ty> {
             requires([
                 equal(self.id(), old(perm).patomic),
@@ -187,8 +187,8 @@ macro_rules! atomic_common_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)]
-        #[verifier(atomic)]
+        #[verus::verifier(external_body)]
+        #[verus::verifier(atomic)]
         pub fn compare_exchange_weak(&self, #[proof] perm: &mut $p_ident, current: $value_ty, new: $value_ty) -> Result<$value_ty, $value_ty> {
             requires([
                 equal(self.id(), old(perm).patomic),
@@ -214,8 +214,8 @@ macro_rules! atomic_common_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)]
-        #[verifier(atomic)]
+        #[verus::verifier(external_body)]
+        #[verus::verifier(atomic)]
         pub fn swap(&self, #[proof] perm: &mut $p_ident, v: $value_ty) -> $value_ty {
             requires([
                 equal(self.id(), old(perm).patomic),
@@ -231,7 +231,7 @@ macro_rules! atomic_common_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)]
+        #[verus::verifier(external_body)]
         pub fn into_inner(self, #[proof] perm: $p_ident) -> $value_ty {
             requires([
                 equal(self.id(), perm.patomic),
@@ -252,8 +252,8 @@ macro_rules! atomic_integer_methods {
         verus! {
 
         #[inline(always)]
-        #[verifier(external_body)]
-        #[verifier(atomic)]
+        #[verus::verifier(external_body)]
+        #[verus::verifier(atomic)]
         pub fn fetch_add_wrapping(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> (ret: $value_ty)
             requires
                 self.id() === old(perm).patomic,
@@ -268,8 +268,8 @@ macro_rules! atomic_integer_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)]
-        #[verifier(atomic)]
+        #[verus::verifier(external_body)]
+        #[verus::verifier(atomic)]
         pub fn fetch_sub_wrapping(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> (ret: $value_ty)
             requires
                 self.id() === old(perm).patomic,
@@ -287,7 +287,7 @@ macro_rules! atomic_integer_methods {
         // don't expect wrapping
 
         #[inline(always)]
-        #[verifier(atomic)]
+        #[verus::verifier(atomic)]
         pub fn fetch_add(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> (ret: $value_ty)
             requires
                 self.id() === old(perm).patomic,
@@ -304,7 +304,7 @@ macro_rules! atomic_integer_methods {
         }
 
         #[inline(always)]
-        #[verifier(atomic)]
+        #[verus::verifier(atomic)]
         pub fn fetch_sub(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> (ret: $value_ty)
             requires
                 self.id() === old(perm).patomic,
@@ -321,8 +321,8 @@ macro_rules! atomic_integer_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)]
-        #[verifier(atomic)]
+        #[verus::verifier(external_body)]
+        #[verus::verifier(atomic)]
         pub fn fetch_and(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> (ret: $value_ty)
             requires
                 self.id() === old(perm).patomic,
@@ -337,8 +337,8 @@ macro_rules! atomic_integer_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)]
-        #[verifier(atomic)]
+        #[verus::verifier(external_body)]
+        #[verus::verifier(atomic)]
         pub fn fetch_or(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> (ret: $value_ty)
             requires
                 self.id() === old(perm).patomic,
@@ -353,8 +353,8 @@ macro_rules! atomic_integer_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)]
-        #[verifier(atomic)]
+        #[verus::verifier(external_body)]
+        #[verus::verifier(atomic)]
         pub fn fetch_xor(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> (ret: $value_ty)
             requires
                 self.id() === old(perm).patomic,
@@ -369,8 +369,8 @@ macro_rules! atomic_integer_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)]
-        #[verifier(atomic)]
+        #[verus::verifier(external_body)]
+        #[verus::verifier(atomic)]
         pub fn fetch_nand(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> (ret: $value_ty)
             requires
                 self.id() === old(perm).patomic,
@@ -385,8 +385,8 @@ macro_rules! atomic_integer_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)]
-        #[verifier(atomic)]
+        #[verus::verifier(external_body)]
+        #[verus::verifier(atomic)]
         pub fn fetch_max(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> (ret: $value_ty)
             requires
                 self.id() === old(perm).patomic,
@@ -401,8 +401,8 @@ macro_rules! atomic_integer_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)]
-        #[verifier(atomic)]
+        #[verus::verifier(external_body)]
+        #[verus::verifier(atomic)]
         pub fn fetch_min(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> (ret: $value_ty)
             requires
                 self.id() === old(perm).patomic,
@@ -423,8 +423,8 @@ macro_rules! atomic_integer_methods {
 macro_rules! atomic_bool_methods {
     ($at_ident:ident, $p_ident:ident, $rust_ty: ty, $value_ty: ty) => {
         #[inline(always)]
-        #[verifier(external_body)]
-        #[verifier(atomic)]
+        #[verus::verifier(external_body)]
+        #[verus::verifier(atomic)]
         pub fn fetch_and(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
             requires([
                 equal(self.id(), old(perm).patomic),
@@ -439,8 +439,8 @@ macro_rules! atomic_bool_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)]
-        #[verifier(atomic)]
+        #[verus::verifier(external_body)]
+        #[verus::verifier(atomic)]
         pub fn fetch_or(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
             requires([
                 equal(self.id(), old(perm).patomic),
@@ -455,8 +455,8 @@ macro_rules! atomic_bool_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)]
-        #[verifier(atomic)]
+        #[verus::verifier(external_body)]
+        #[verus::verifier(atomic)]
         pub fn fetch_xor(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
             requires([
                 equal(self.id(), old(perm).patomic),
@@ -471,8 +471,8 @@ macro_rules! atomic_bool_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)]
-        #[verifier(atomic)]
+        #[verus::verifier(external_body)]
+        #[verus::verifier(atomic)]
         pub fn fetch_nand(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
             requires([
                 equal(self.id(), old(perm).patomic),

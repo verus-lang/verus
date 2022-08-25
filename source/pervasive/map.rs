@@ -30,8 +30,8 @@ verus! {
 ///
 /// To prove that two maps are equal, it is usually easiest to use the [`assert_maps_equal!`] macro.
 
-#[verifier(external_body)]
-pub tracked struct Map<#[verifier(maybe_negative)] K, #[verifier(strictly_positive)] V> {
+#[verus::verifier(external_body)]
+pub tracked struct Map<#[verus::verifier(maybe_negative)] K, #[verus::verifier(strictly_positive)] V> {
     dummy: std::marker::PhantomData<(K, V)>,
 }
 
@@ -66,7 +66,7 @@ impl<K, V> Map<K, V> {
 
     /// `[]` operator, synonymous with `index`
 
-    #[verifier(inline)]
+    #[verus::verifier(inline)]
     pub open spec fn spec_index(self, key: K) -> V
         recommends self.dom().contains(key)
     {
@@ -171,7 +171,7 @@ impl<K, V> Map<K, V> {
             self[k] === m2[k]
     }
 
-    #[verifier(external_body)]
+    #[verus::verifier(external_body)]
     pub proof fn tracked_empty() -> (tracked out_v: Self)
         ensures
             out_v === Map::empty(),
@@ -179,7 +179,7 @@ impl<K, V> Map<K, V> {
         unimplemented!();
     }
 
-    #[verifier(external_body)]
+    #[verus::verifier(external_body)]
     pub proof fn tracked_insert(tracked &mut self, key: K, tracked value: V)
         ensures
             *self === Map::insert(*old(self), key, value),
@@ -189,7 +189,7 @@ impl<K, V> Map<K, V> {
 
     /// todo fill in documentation
 
-    #[verifier(external_body)]
+    #[verus::verifier(external_body)]
     pub proof fn tracked_remove(tracked &mut self, key: K) -> (tracked v: V)
         requires
             old(self).dom().contains(key),
@@ -203,32 +203,32 @@ impl<K, V> Map<K, V> {
 
 // Trusted axioms
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_map_empty<K, V>()
     ensures
         #[trigger] Map::<K, V>::empty().dom() === Set::empty(),
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_map_insert_domain<K, V>(m: Map<K, V>, key: K, value: V)
     ensures
         #[trigger] m.insert(key, value).dom() === m.dom().insert(key),
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_map_insert_same<K, V>(m: Map<K, V>, key: K, value: V)
     ensures
         #[trigger] m.insert(key, value)[key] === value,
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, value: V)
     requires
         m.dom().contains(key1),
@@ -238,16 +238,16 @@ pub proof fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, va
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_map_remove_domain<K, V>(m: Map<K, V>, key: K)
     ensures
         #[trigger] m.remove(key).dom() === m.dom().remove(key),
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
     requires
         m.dom().contains(key1),
@@ -257,8 +257,8 @@ pub proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
     ensures
         m1.ext_equal(m2) == (m1 === m2),

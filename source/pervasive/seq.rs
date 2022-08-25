@@ -25,8 +25,8 @@ verus! {
 ///
 /// To prove that two sequences are equal, it is usually easiest to use the [`assert_seqs_equal!`] macro.
 
-#[verifier(external_body)]
-pub struct Seq<#[verifier(strictly_positive)] A> {
+#[verus::verifier(external_body)]
+pub struct Seq<#[verus::verifier(strictly_positive)] A> {
     dummy: std::marker::PhantomData<A>,
 }
 
@@ -53,7 +53,7 @@ impl<A> Seq<A> {
 
     /// `[]` operator, synonymous with `index`
 
-    #[verifier(inline)]
+    #[verus::verifier(inline)]
     pub open spec fn spec_index(self, i: int) -> A
         recommends 0 <= i < self.len()
     {
@@ -152,24 +152,24 @@ impl<A> Seq<A> {
 
 // Trusted axioms
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_seq_empty<A>()
     ensures
         #[trigger] Seq::<A>::empty().len() == 0,
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_seq_new_len<A, F: Fn(int) -> A>(len: nat, f: F)
     ensures
         #[trigger] Seq::new(len, f).len() == len,
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_seq_new_index<A, F: Fn(int) -> A>(len: nat, f: F, i: int)
     requires
         0 <= i < len,
@@ -178,16 +178,16 @@ pub proof fn axiom_seq_new_index<A, F: Fn(int) -> A>(len: nat, f: F, i: int)
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_seq_push_len<A>(s: Seq<A>, a: A)
     ensures
         #[trigger] s.push(a).len() == s.len() + 1,
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_seq_push_index_same<A>(s: Seq<A>, a: A, i: int)
     requires
         i == s.len(),
@@ -196,8 +196,8 @@ pub proof fn axiom_seq_push_index_same<A>(s: Seq<A>, a: A, i: int)
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_seq_push_index_different<A>(s: Seq<A>, a: A, i: int)
     requires
         0 <= i < s.len(),
@@ -206,8 +206,8 @@ pub proof fn axiom_seq_push_index_different<A>(s: Seq<A>, a: A, i: int)
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_seq_update_len<A>(s: Seq<A>, i: int, a: A)
     requires
         0 <= i < s.len(),
@@ -216,8 +216,8 @@ pub proof fn axiom_seq_update_len<A>(s: Seq<A>, i: int, a: A)
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_seq_update_same<A>(s: Seq<A>, i: int, a: A)
     requires
         0 <= i < s.len(),
@@ -226,8 +226,8 @@ pub proof fn axiom_seq_update_same<A>(s: Seq<A>, i: int, a: A)
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_seq_update_different<A>(s: Seq<A>, i1: int, i2: int, a: A)
     requires
         0 <= i1 < s.len(),
@@ -238,16 +238,16 @@ pub proof fn axiom_seq_update_different<A>(s: Seq<A>, i1: int, i2: int, a: A)
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_seq_ext_equal<A>(s1: Seq<A>, s2: Seq<A>)
     ensures
         s1.ext_equal(s2) == (s1 === s2),
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_seq_subrange_len<A>(s: Seq<A>, j: int, k: int)
     requires
         0 <= j <= k <= s.len(),
@@ -256,8 +256,8 @@ pub proof fn axiom_seq_subrange_len<A>(s: Seq<A>, j: int, k: int)
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_seq_subrange_index<A>(s: Seq<A>, j: int, k: int, i: int)
     requires
         0 <= j <= k <= s.len(),
@@ -267,15 +267,15 @@ pub proof fn axiom_seq_subrange_index<A>(s: Seq<A>, j: int, k: int, i: int)
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_seq_add_len<A>(s1: Seq<A>, s2: Seq<A>)
     ensures #[trigger] s1.add(s2).len() == s1.len() + s2.len()
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_seq_add_index1<A>(s1: Seq<A>, s2: Seq<A>, i: int)
     requires
         0 <= i < s1.len(),
@@ -284,8 +284,8 @@ pub proof fn axiom_seq_add_index1<A>(s1: Seq<A>, s2: Seq<A>, i: int)
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int)
     requires
         0 <= s1.len(),

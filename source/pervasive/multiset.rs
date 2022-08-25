@@ -35,8 +35,8 @@ verus!{
 // weird properties (e.g., you can't in general define a multiset `map` function
 // since it might map an infinite number of elements to the same one).
 
-#[verifier(external_body)]
-pub struct Multiset<#[verifier(strictly_positive)] V> {
+#[verus::verifier(external_body)]
+pub struct Multiset<#[verus::verifier(strictly_positive)] V> {
     dummy: std::marker::PhantomData<V>,
 }
 
@@ -109,38 +109,38 @@ impl<V> Multiset<V> {
 
 // Specification of `empty`
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_multiset_empty<V>(v: V)
     ensures Multiset::empty().count(v) == 0,
 { }
 
 // Specification of `singleton`
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_multiset_singleton<V>(v: V)
     ensures Multiset::singleton(v).count(v) == 1,
 { }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_multiset_singleton_different<V>(v: V, w: V)
     ensures v !== w ==> Multiset::singleton(v).count(w) == 0,
 { }
 
 // Specification of `add`
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_multiset_add<V>(m1: Multiset<V>, m2: Multiset<V>, v: V)
     ensures m1.add(m2).count(v) == m1.count(v) + m2.count(v),
 { }
 
 // Specification of `sub`
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_multiset_sub<V>(m1: Multiset<V>, m2: Multiset<V>, v: V)
     ensures m1.sub(m2).count(v) ==
         if m1.count(v) >= m2.count(v) { m1.count(v) - m2.count(v) } else { 0 },
@@ -148,42 +148,42 @@ pub proof fn axiom_multiset_sub<V>(m1: Multiset<V>, m2: Multiset<V>, v: V)
 
 // Extensional equality
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_multiset_ext_equal<V>(m1: Multiset<V>, m2: Multiset<V>)
     ensures m1.ext_equal(m2) == equal(m1, m2),
 { }
 
 // Specification of `len`
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_len_empty<V>()
     ensures (#[trigger] Multiset::<V>::empty().len()) == 0,
 {}
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_len_singleton<V>(v: V)
     ensures (#[trigger] Multiset::<V>::singleton(v).len()) == 1,
 {}
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_len_add<V>(m1: Multiset<V>, m2: Multiset<V>)
     ensures (#[trigger] m1.add(m2).len()) == m1.len() + m2.len(),
 {}
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_count_le_len<V>(m: Multiset<V>, v: V)
     ensures #[trigger] m.count(v) <= #[trigger] m.len()
 {}
 
 // Specification of `filter`
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_filter_count<V, F: Fn(V) -> bool>(m: Multiset<V>, f: F, v: V)
     ensures (#[trigger] m.filter(f).count(v)) ==
         if f(v) { m.count(v) } else { 0 }

@@ -19,21 +19,21 @@ pub mod thread;
 #[allow(unused_imports)]
 use builtin::*;
 
-#[proof]
+#[verus::proof]
 pub fn assume(b: bool) {
     ensures(b);
 
     admit();
 }
 
-#[proof]
-#[verifier(custom_req_err("assertion failure"))]
+#[verus::proof]
+#[verus::verifier(custom_req_err("assertion failure"))]
 pub fn assert(b: bool) {
     requires(b);
     ensures(b);
 }
 
-#[proof]
+#[verus::proof]
 pub fn affirm(b: bool) {
     requires(b);
 }
@@ -57,22 +57,22 @@ pub fn affirm(b: bool) {
 ///     }
 /// }
 /// ```
-#[spec] pub fn spec_affirm(b: bool) -> bool {
+#[verus::spec] pub fn spec_affirm(b: bool) -> bool {
     recommends(b);
     b
 }
 
 /// In spec, all types are inhabited
-#[spec]
-#[verifier(external_body)]
+#[verus::spec]
+#[verus::verifier(external_body)]
 #[allow(dead_code)]
 pub fn arbitrary<A>() -> A {
     unimplemented!()
 }
 
-#[proof]
-#[verifier(returns(proof))]
-#[verifier(external_body)]
+#[verus::proof]
+#[verus::verifier(returns(proof))]
+#[verus::verifier(external_body)]
 #[allow(dead_code)]
 pub fn proof_from_false<A>() -> A {
     requires(false);
@@ -80,7 +80,7 @@ pub fn proof_from_false<A>() -> A {
     unimplemented!()
 }
 
-#[verifier(external_body)]
+#[verus::verifier(external_body)]
 #[allow(dead_code)]
 pub fn unreached<A>() -> A {
     requires(false);
@@ -88,7 +88,7 @@ pub fn unreached<A>() -> A {
     panic!("unreached_external")
 }
 
-#[verifier(external_body)]
+#[verus::verifier(external_body)]
 pub fn print_u64(i: u64) {
     println!("{}", i);
 }

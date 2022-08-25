@@ -15,8 +15,8 @@ pub trait Spawnable<Ret: Sized> : Sized {
         ensures self.post(r);
 }
 
-#[verifier(external_body)]
-pub struct JoinHandle<#[verifier(maybe_negative)] Ret>
+#[verus::verifier(external_body)]
+pub struct JoinHandle<#[verus::verifier(maybe_negative)] Ret>
 {
     handle: std::thread::JoinHandle<Ret>,
 }
@@ -25,7 +25,7 @@ impl<Ret> JoinHandle<Ret>
 {
     fndecl!(pub fn predicate(&self, ret: Ret) -> bool);
 
-    #[verifier(external_body)]
+    #[verus::verifier(external_body)]
     pub fn join(self) -> Result<Ret, ()>
     {
         ensures(|r: Result<Ret, ()>|
@@ -47,7 +47,7 @@ impl<Ret> JoinHandle<Ret>
     }
 }
 
-#[verifier(external_body)]
+#[verus::verifier(external_body)]
 pub fn spawn<Param: Spawnable<Ret> + Send + 'static, Ret: Send + 'static>(p: Param) -> JoinHandle<Ret> 
 {
     requires(p.pre());

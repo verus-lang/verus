@@ -28,8 +28,8 @@ verus! {
 ///
 /// To prove that two sequences are equal, it is usually easiest to use the [`assert_seqs_equal!`] macro.
 
-#[verifier(external_body)]
-pub struct Set<#[verifier(maybe_negative)] A> {
+#[verus::verifier(external_body)]
+pub struct Set<#[verus::verifier(maybe_negative)] A> {
     dummy: std::marker::PhantomData<A>,
 }
 
@@ -135,32 +135,32 @@ impl<A> Set<A> {
 
 // Trusted axioms
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_set_empty<A>(a: A)
     ensures
         !Set::empty().contains(a),
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_set_new<A, F: Fn(A) -> bool>(f: F, a: A)
     ensures
         Set::new(f).contains(a) == f(a),
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_set_insert_same<A>(s: Set<A>, a: A)
     ensures
         #[trigger] s.insert(a).contains(a),
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_set_insert_different<A>(s: Set<A>, a1: A, a2: A)
     requires
         a1 !== a2,
@@ -169,16 +169,16 @@ pub proof fn axiom_set_insert_different<A>(s: Set<A>, a1: A, a2: A)
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_set_remove_same<A>(s: Set<A>, a: A)
     ensures
         !(#[trigger] s.remove(a).contains(a)),
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_set_remove_different<A>(s: Set<A>, a1: A, a2: A)
     requires
         a1 !== a2,
@@ -187,56 +187,56 @@ pub proof fn axiom_set_remove_different<A>(s: Set<A>, a1: A, a2: A)
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_set_union<A>(s1: Set<A>, s2: Set<A>, a: A)
     ensures
         s1.union(s2).contains(a) == (s1.contains(a) || s2.contains(a)),
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_set_intersect<A>(s1: Set<A>, s2: Set<A>, a: A)
     ensures
         s1.intersect(s2).contains(a) == (s1.contains(a) && s2.contains(a)),
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_set_difference<A>(s1: Set<A>, s2: Set<A>, a: A)
     ensures
         s1.difference(s2).contains(a) == (s1.contains(a) && !s2.contains(a)),
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_set_complement<A>(s: Set<A>, a: A)
     ensures
         s.complement().contains(a) == !s.contains(a),
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_set_ext_equal<A>(s1: Set<A>, s2: Set<A>)
     ensures
         s1.ext_equal(s2) == (s1 === s2),
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_mk_map_domain<K, V, F: Fn(K) -> V>(s: Set<K>, f: F)
     ensures
         #[trigger] s.mk_map(f).dom() === s,
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_mk_map_index<K, V, F: Fn(K) -> V>(s: Set<K>, f: F, key: K)
     requires
         s.contains(key),
@@ -247,16 +247,16 @@ pub proof fn axiom_mk_map_index<K, V, F: Fn(K) -> V>(s: Set<K>, f: F, key: K)
 
 // Trusted axioms about finite
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_set_empty_finite<A>()
     ensures
         #[trigger] Set::<A>::empty().finite(),
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_set_insert_finite<A>(s: Set<A>, a: A)
     requires
         s.finite(),
@@ -265,8 +265,8 @@ pub proof fn axiom_set_insert_finite<A>(s: Set<A>, a: A)
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_set_remove_finite<A>(s: Set<A>, a: A)
     requires
         s.finite(),
@@ -275,8 +275,8 @@ pub proof fn axiom_set_remove_finite<A>(s: Set<A>, a: A)
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_set_union_finite<A>(s1: Set<A>, s2: Set<A>)
     requires
         s1.finite(),
@@ -286,8 +286,8 @@ pub proof fn axiom_set_union_finite<A>(s1: Set<A>, s2: Set<A>)
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_set_intersect_finite<A>(s1: Set<A>, s2: Set<A>)
     requires
         s1.finite() || s2.finite(),
@@ -296,8 +296,8 @@ pub proof fn axiom_set_intersect_finite<A>(s1: Set<A>, s2: Set<A>)
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_set_difference_finite<A>(s1: Set<A>, s2: Set<A>)
     requires
         s1.finite(),
@@ -306,8 +306,8 @@ pub proof fn axiom_set_difference_finite<A>(s1: Set<A>, s2: Set<A>)
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_set_choose_finite<A>(s: Set<A>)
     requires
         !s.finite(),
@@ -321,16 +321,16 @@ pub proof fn axiom_set_choose_finite<A>(s: Set<A>)
 // Note: we could add more axioms about len, but they would be incomplete.
 // The following, with axiom_set_ext_equal, are enough to build libraries about len.
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_set_empty_len<A>()
     ensures
         #[trigger] Set::<A>::empty().len() == 0,
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_set_insert_len<A>(s: Set<A>, a: A)
     requires
         s.finite(),
@@ -339,8 +339,8 @@ pub proof fn axiom_set_insert_len<A>(s: Set<A>, a: A)
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_set_remove_len<A>(s: Set<A>, a: A)
     requires
         s.finite(),
@@ -349,8 +349,8 @@ pub proof fn axiom_set_remove_len<A>(s: Set<A>, a: A)
 {
 }
 
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+#[verus::verifier(external_body)]
+#[verus::verifier(broadcast_forall)]
 pub proof fn axiom_set_choose_len<A>(s: Set<A>)
     requires
         s.finite(),

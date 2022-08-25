@@ -63,13 +63,13 @@ fn data_mode_attrs(mode: &DataMode) -> Vec<Attribute> {
     match mode {
         DataMode::Default => vec![],
         DataMode::Ghost(token) => {
-            vec![mk_empty_attr(token.ghost_token.span, "spec")]
+            vec![mk_empty_attr_segments(token.ghost_token.span, &["verus", "spec"])]
         }
         DataMode::Tracked(token) => {
-            vec![mk_empty_attr(token.tracked_token.span, "proof")]
+            vec![mk_empty_attr_segments(token.tracked_token.span, &["verus", "proof"])]
         }
         DataMode::Exec(token) => {
-            vec![mk_empty_attr(token.exec_token.span, "exec")]
+            vec![mk_empty_attr_segments(token.exec_token.span, &["verus", "exec"])]
         }
     }
 }
@@ -105,10 +105,10 @@ impl Visitor {
             match (arg.tracked, &mut arg.kind) {
                 (None, _) => {}
                 (Some(token), FnArgKind::Receiver(receiver)) => {
-                    receiver.attrs.push(mk_empty_attr(token.span, "proof"));
+                    receiver.attrs.push(mk_empty_attr_segments(token.span, &["verus", "proof"]));
                 }
                 (Some(token), FnArgKind::Typed(typed)) => {
-                    typed.attrs.push(mk_empty_attr(token.span, "proof"));
+                    typed.attrs.push(mk_empty_attr_segments(token.span, &["verus", "proof"]));
                 }
             }
             arg.tracked = None;
@@ -117,9 +117,9 @@ impl Visitor {
             ReturnType::Default => None,
             ReturnType::Type(_, ref mut tracked, ref mut ret_opt, ty) => {
                 if let Some(token) = tracked {
-                    attrs.push(mk_attr(
+                    attrs.push(mk_attr_segments(
                         token.span,
-                        "verifier",
+                        &["verus", "verifier"],
                         quote_spanned! {
                             token.span => (returns(proof))
                         },
@@ -168,7 +168,7 @@ impl Visitor {
 
         let (inside_ghost, mode_attrs): (u32, Vec<Attribute>) = match &sig.mode {
             FnMode::Default => (0, vec![]),
-            FnMode::Spec(token) => (1, vec![mk_empty_attr(token.spec_token.span, "spec")]),
+            FnMode::Spec(token) => (1, vec![mk_empty_attr_segments(token.spec_token.span, &["verus", "spec"])]),
             FnMode::SpecChecked(token) => (
                 1,
                 vec![mk_attr(
@@ -177,8 +177,8 @@ impl Visitor {
                     quote_spanned! { token.spec_token.span => (checked) },
                 )],
             ),
-            FnMode::Proof(token) => (1, vec![mk_empty_attr(token.proof_token.span, "proof")]),
-            FnMode::Exec(token) => (0, vec![mk_empty_attr(token.exec_token.span, "exec")]),
+            FnMode::Proof(token) => (1, vec![mk_empty_attr_segments(token.proof_token.span, &["verus", "proof"])]),
+            FnMode::Exec(token) => (0, vec![mk_empty_attr_segments(token.exec_token.span, &["verus", "exec"])]),
         };
         self.inside_ghost = inside_ghost;
 
@@ -268,7 +268,7 @@ impl Visitor {
 
         let (inside_ghost, mode_attrs): (u32, Vec<Attribute>) = match &mode {
             FnMode::Default => (0, vec![]),
-            FnMode::Spec(token) => (1, vec![mk_empty_attr(token.spec_token.span, "spec")]),
+            FnMode::Spec(token) => (1, vec![mk_empty_attr_segments(token.spec_token.span, &["verus", "spec"])]),
             FnMode::SpecChecked(token) => (
                 1,
                 vec![mk_attr(
@@ -277,8 +277,8 @@ impl Visitor {
                     quote_spanned! { token.spec_token.span => (checked) },
                 )],
             ),
-            FnMode::Proof(token) => (1, vec![mk_empty_attr(token.proof_token.span, "proof")]),
-            FnMode::Exec(token) => (0, vec![mk_empty_attr(token.exec_token.span, "exec")]),
+            FnMode::Proof(token) => (1, vec![mk_empty_attr_segments(token.proof_token.span, &["verus", "proof"])]),
+            FnMode::Exec(token) => (0, vec![mk_empty_attr_segments(token.exec_token.span, &["verus", "exec"])]),
         };
         self.inside_ghost = inside_ghost;
         *publish = Publish::Default;
@@ -567,27 +567,27 @@ impl VisitMut for Visitor {
                         // proof { ... }
                         let inner = take_expr(&mut *unary.expr);
                         *expr =
-                            Expr::Verbatim(quote_spanned!(span => #[verifier(proof_block)] #inner));
+                            Expr::Verbatim(quote_spanned!(span => #[verus::verifier(proof_block)] #inner));
                     }
                     (false, (true, false), Expr::Paren(..)) => {
                         // ghost(...)
                         let inner = take_expr(&mut *unary.expr);
                         *expr = Expr::Verbatim(
-                            quote_spanned!(span => #[verifier(ghost_wrapper)] crate::pervasive::modes::ghost_exec(#[verifier(ghost_block_wrapped)] #inner)),
+                            quote_spanned!(span => #[verus::verifier(ghost_wrapper)] crate::pervasive::modes::ghost_exec(#[verus::verifier(ghost_block_wrapped)] #inner)),
                         );
                     }
                     (false, (true, true), Expr::Paren(..)) => {
                         // tracked(...)
                         let inner = take_expr(&mut *unary.expr);
                         *expr = Expr::Verbatim(
-                            quote_spanned!(span => #[verifier(ghost_wrapper)] crate::pervasive::modes::tracked_exec(#[verifier(tracked_block_wrapped)] #inner)),
+                            quote_spanned!(span => #[verus::verifier(ghost_wrapper)] crate::pervasive::modes::tracked_exec(#[verus::verifier(tracked_block_wrapped)] #inner)),
                         );
                     }
                     (true, (true, true), _) => {
                         // tracked ...
                         let inner = take_expr(&mut *unary.expr);
                         *expr = Expr::Verbatim(
-                            quote_spanned!(span => #[verifier(tracked_block)] { #inner }),
+                            quote_spanned!(span => #[verus::verifier(tracked_block)] { #inner }),
                         );
                     }
                     _ => {
@@ -1068,7 +1068,7 @@ impl VisitMut for Visitor {
             // automatically put assert/assume in a proof block
             self.inside_ghost -= 1;
             let inner = take_expr(expr);
-            *expr = Expr::Verbatim(quote_spanned!(span => #[verifier(proof_block)] { #inner } ));
+            *expr = Expr::Verbatim(quote_spanned!(span => #[verus::verifier(proof_block)] { #inner } ));
         }
     }
 
@@ -1139,7 +1139,7 @@ impl VisitMut for Visitor {
     fn visit_local_mut(&mut self, local: &mut Local) {
         visit_local_mut(self, local);
         if let Some(tracked) = std::mem::take(&mut local.tracked) {
-            local.attrs.push(mk_empty_attr(tracked.span, "proof"));
+            local.attrs.push(mk_empty_attr_segments(tracked.span, &["verus", "proof"]));
         }
     }
 
@@ -1493,20 +1493,28 @@ pub(crate) fn proof_macro_exprs(
 }
 
 /// Constructs #[name tokens]
-fn mk_attr(span: Span, name: &str, tokens: TokenStream) -> Attribute {
+fn mk_attr_segments(span: Span, name: &[&str], tokens: TokenStream) -> Attribute {
     Attribute {
         pound_token: token::Pound { spans: [span] },
         style: AttrStyle::Outer,
         bracket_token: token::Bracket { span },
         path: Path {
             leading_colon: None,
-            segments: Punctuated::from_iter(vec![PathSegment {
-                ident: Ident::new(name, span),
+            segments: Punctuated::from_iter(name.iter().map(|seg| PathSegment {
+                ident: Ident::new(seg, span),
                 arguments: PathArguments::None,
-            }]),
+            })),
         },
         tokens: tokens,
     }
+}
+
+fn mk_attr(span: Span, name: &str, tokens: TokenStream) -> Attribute {
+    mk_attr_segments(span, &[name], tokens)
+}
+
+fn mk_empty_attr_segments(span: Span, name: &[&str]) -> Attribute {
+    mk_attr_segments(span, name, TokenStream::new())
 }
 
 /// Constructs #[name]
@@ -1517,5 +1525,5 @@ fn mk_empty_attr(span: Span, name: &str) -> Attribute {
 /// Constructs #[verifier(arg)]
 fn mk_verifier_attr(span: Span, arg: &str) -> Attribute {
     let ident = Ident::new(arg, span);
-    mk_attr(span, "verifier", quote_spanned! {span => (#ident)})
+    mk_attr_segments(span, &["verus", "verifier"], quote_spanned! {span => (#ident)})
 }

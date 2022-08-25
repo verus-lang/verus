@@ -32,13 +32,13 @@
 //    Sync+Send   ==>     Send+Sync           Send
 
 #[proof]
-#[verifier(external_body)]
-pub struct AtomicInvariant<#[verifier(maybe_negative)] V> {
+#[verus::verifier(external_body)]
+pub struct AtomicInvariant<#[verus::verifier(maybe_negative)] V> {
     dummy: builtin::SyncSendIfSend<V>,
 }
 
-#[verifier(external_body)]
-pub struct LocalInvariant<#[verifier(maybe_negative)] V> {
+#[verus::verifier(external_body)]
+pub struct LocalInvariant<#[verus::verifier(maybe_negative)] V> {
     dummy: builtin::SendIfSend<V>,
 }
 
@@ -50,8 +50,8 @@ macro_rules! declare_invariant_impl {
             fndecl!(pub fn namespace(&self) -> int);
 
             #[proof]
-            #[verifier(external_body)]
-            #[verifier(returns(proof))]
+            #[verus::verifier(external_body)]
+            #[verus::verifier(returns(proof))]
             pub fn new<F: Fn(V) -> bool>(#[proof] v: V, #[spec] inv: F, #[spec] ns: int) -> $invariant<V> {
                 requires([
                     inv(v),
@@ -65,8 +65,8 @@ macro_rules! declare_invariant_impl {
             }
 
             #[proof]
-            #[verifier(external_body)]
-            #[verifier(returns(proof))]
+            #[verus::verifier(external_body)]
+            #[verus::verifier(returns(proof))]
             pub fn into_inner(#[proof] self) -> V {
                 ensures(|v: V| self.inv(v));
 
@@ -102,21 +102,21 @@ pub struct InvariantBlockGuard;
 //  last the entire block.
 
 #[doc(hidden)]
-#[verifier(external_body)]
+#[verus::verifier(external_body)]
 pub fn open_atomic_invariant_begin<'a, V>(_inv: &'a AtomicInvariant<V>) -> (&'a InvariantBlockGuard, V) {
     requires([false]);
     unimplemented!();
 }
 
 #[doc(hidden)]
-#[verifier(external_body)]
+#[verus::verifier(external_body)]
 pub fn open_local_invariant_begin<'a, V>(_inv: &'a LocalInvariant<V>) -> (&'a InvariantBlockGuard, V) {
     requires([false]);
     unimplemented!();
 }
 
 #[doc(hidden)]
-#[verifier(external_body)]
+#[verus::verifier(external_body)]
 pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
     requires([false]);
     unimplemented!();
@@ -125,7 +125,7 @@ pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
 #[macro_export]
 macro_rules! open_atomic_invariant {
     ($eexpr:expr => $iident:ident => $bblock:block) => {
-        #[verifier(invariant_block)] {
+        #[verus::verifier(invariant_block)] {
             #[allow(unused_mut)] let (guard, mut $iident) = $crate::pervasive::invariant::open_atomic_invariant_begin($eexpr);
             $bblock
             $crate::pervasive::invariant::open_invariant_end(guard, $iident);
@@ -136,7 +136,7 @@ macro_rules! open_atomic_invariant {
 #[macro_export]
 macro_rules! open_local_invariant {
     ($eexpr:expr => $iident:ident => $bblock:block) => {
-        #[verifier(invariant_block)] {
+        #[verus::verifier(invariant_block)] {
             #[allow(unused_mut)] let (guard, mut $iident) = $crate::pervasive::invariant::open_local_invariant_begin($eexpr);
             $bblock
             $crate::pervasive::invariant::open_invariant_end(guard, $iident);

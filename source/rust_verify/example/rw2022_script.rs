@@ -1,3 +1,7 @@
+// TODO
+#![feature(register_tool)]
+#![register_tool(verus)]
+
 fn main() {}
 
 // ## 11 -- 10-program.rs

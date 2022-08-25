@@ -8,13 +8,13 @@ use crate::pervasive::modes::*;
 
 macro_rules! declare_atomic_type {
     ($at_ident:ident, $patomic_ty:ident, $perm_ty:ty, $value_ty: ty) => {
-        pub struct $at_ident<#[verifier(maybe_negative)] G> {
+        pub struct $at_ident<#[verus::verifier(maybe_negative)] G> {
             pub patomic: $patomic_ty,
             #[proof] pub atomic_inv: AtomicInvariant<($perm_ty, G)>,
         }
 
         impl<G> $at_ident<G> {
-            #[spec] #[verifier(publish)]
+            #[spec] #[verus::verifier(publish)]
             pub fn has_inv<F: Fn($value_ty, G) -> bool>(&self, f: F) -> bool {
                 forall(|p| #[trigger] self.atomic_inv.inv(p) == (
                     self.patomic.id() == p.0.patomic
@@ -22,7 +22,7 @@ macro_rules! declare_atomic_type {
                 ))
             }
 
-            #[spec] #[verifier(publish)]
+            #[spec] #[verus::verifier(publish)]
             pub fn has_inv_fn<F: Fn($value_ty) -> G>(&self, f: F) -> bool {
                 self.has_inv(|v: $value_ty, g: G| equal(g, f(v)))
             }

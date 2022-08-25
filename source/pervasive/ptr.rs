@@ -116,18 +116,18 @@ verus!{
 
 // TODO implement: borrow_mut; figure out Drop, see if we can avoid leaking?
 
-#[verifier(external_body)]
-pub struct PPtr<#[verifier(strictly_positive)] V> {
+#[verus::verifier(external_body)]
+pub struct PPtr<#[verus::verifier(strictly_positive)] V> {
     uptr: *mut MaybeUninit<V>,
 }
 
 // PPtr is always safe to Send/Sync. It's the PermissionOpt object where Send/Sync matters.
 // It doesn't matter if you send the pointer to another thread if you can't access it.
 
-#[verifier(external)]
+#[verus::verifier(external)]
 unsafe impl<T> Sync for PPtr<T> {}
 
-#[verifier(external)]
+#[verus::verifier(external)]
 unsafe impl<T> Send for PPtr<T> {}
 
 // TODO split up the "deallocation" permission and the "access" permission?
@@ -140,8 +140,8 @@ unsafe impl<T> Send for PPtr<T> {}
 ///
 /// See the [`PPtr`] documentation for more details.
 
-#[verifier(external_body)]
-pub tracked struct PermissionOpt<#[verifier(strictly_positive)] V> {
+#[verus::verifier(external_body)]
+pub tracked struct PermissionOpt<#[verus::verifier(strictly_positive)] V> {
     phantom: std::marker::PhantomData<V>,
 }
 
@@ -167,14 +167,14 @@ impl<V> PermissionOpt<V> {
     /// however, it is not possible to obtain a `PermissionOpt` token for
     /// any such a pointer.)
 
-    #[verifier(external_body)]
+    #[verus::verifier(external_body)]
     pub proof fn is_nonnull(tracked &self)
         ensures self@.pptr != 0,
     {
         unimplemented!();
     }
 
-    #[verifier(external_body)]
+    #[verus::verifier(external_body)]
     pub proof fn leak_contents(tracked &mut self)
         ensures self@.pptr == old(self)@.pptr && self@.value.is_None(),
     {
@@ -187,7 +187,7 @@ impl<V> PPtr<V> {
     /// Cast a pointer to an integer.
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verus::verifier(external_body)]
     pub fn to_usize(&self) -> (u: usize)
         ensures
             u as int == self.id(),
@@ -212,7 +212,7 @@ impl<V> PPtr<V> {
     /// while dereferencing it is only allowed when the right preconditions are met.
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verus::verifier(external_body)]
     pub fn from_usize(u: usize) -> (p: Self)
         ensures p.id() == u as int,
     {
@@ -223,7 +223,7 @@ impl<V> PPtr<V> {
     /// Allocates heap memory for type `V`, leaving it uninitialized.
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verus::verifier(external_body)]
     pub fn empty() -> (pt: (PPtr<V>, Tracked<PermissionOpt<V>>))
         ensures pt.1@@ === (PermissionOptData{ pptr: pt.0.id(), value: option::Option::None }),
     {
@@ -243,7 +243,7 @@ impl<V> PPtr<V> {
     /// TODO implement the `Clone` and `Copy` traits
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verus::verifier(external_body)]
     pub fn clone(&self) -> (pt: PPtr<V>)
         ensures pt.id() === self.id(),
     {
@@ -259,7 +259,7 @@ impl<V> PPtr<V> {
     /// from `None` to `Some(v)`.
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verus::verifier(external_body)]
     pub fn put(&self, perm: &mut Tracked<PermissionOpt<V>>, v: V)
         requires
             self.id() === old(perm)@@.pptr,
@@ -284,7 +284,7 @@ impl<V> PPtr<V> {
     /// while returning the `v` as an `exec` value.
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verus::verifier(external_body)]
     pub fn take(&self, perm: &mut Tracked<PermissionOpt<V>>) -> (v: V)
         requires
             self.id() === old(perm)@@.pptr,
@@ -307,7 +307,7 @@ impl<V> PPtr<V> {
     /// Requires the memory to be initialized, and leaves it initialized with the new value.
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verus::verifier(external_body)]
     pub fn replace(&self, perm: &mut Tracked<PermissionOpt<V>>, in_v: V) -> (out_v: V)
         requires
             self.id() === old(perm)@@.pptr,
@@ -332,7 +332,7 @@ impl<V> PPtr<V> {
     // the returned borrow.
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verus::verifier(external_body)]
     pub fn borrow<'a>(&self, perm: &'a Tracked<PermissionOpt<V>>) -> (v: &'a V)
         requires
             self.id() === perm@@.pptr,
@@ -353,7 +353,7 @@ impl<V> PPtr<V> {
     /// that memory location.
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verus::verifier(external_body)]
     pub fn dispose(&self, perm: Tracked<PermissionOpt<V>>)
         requires
             self.id() === perm@@.pptr,

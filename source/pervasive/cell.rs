@@ -47,26 +47,26 @@ verus!{
 ///
 /// ### Example (TODO)
 
-#[verifier(external_body)]
-pub struct PCell<#[verifier(strictly_positive)] V> {
+#[verus::verifier(external_body)]
+pub struct PCell<#[verus::verifier(strictly_positive)] V> {
     ucell: UnsafeCell<MaybeUninit<V>>,
 }
 
 // PCell is always safe to Send/Sync. It's the PermissionOpt object where Send/Sync matters.
 // (It doesn't matter if you move the bytes to another thread if you can't access them.)
 
-#[verifier(external)]
+#[verus::verifier(external)]
 unsafe impl<T> Sync for PCell<T> {}
 
-#[verifier(external)]
+#[verus::verifier(external)]
 unsafe impl<T> Send for PCell<T> {}
 
 // PermissionOpt<V>, on the other hand, needs to inherit both Send and Sync from the V,
 // which it does by default in the given definition.
 // (Note: this depends on the current behavior that #[spec] fields are still counted for marker traits)
 
-#[verifier(external_body)]
-pub tracked struct PermissionOpt<#[verifier(strictly_positive)] V> {
+#[verus::verifier(external_body)]
+pub tracked struct PermissionOpt<#[verus::verifier(strictly_positive)] V> {
     phantom: std::marker::PhantomData<V>,
 }
 
@@ -98,7 +98,7 @@ macro_rules! pcell_opt {
 pub use pcell_opt_internal;
 pub use pcell_opt;
 
-#[verifier(external_body)]
+#[verus::verifier(external_body)]
 pub struct CellId {
     id: int,
 }
@@ -115,7 +115,7 @@ impl<V> PCell<V> {
     /// Return an empty ("uninitialized") cell.
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verus::verifier(external_body)]
     pub fn empty() -> (pt: (PCell<V>, Tracked<PermissionOpt<V>>))
         ensures pt.1@@ ===
             pcell_opt![ pt.0.id() => option::Option::None ],
@@ -125,7 +125,7 @@ impl<V> PCell<V> {
     }
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verus::verifier(external_body)]
     pub fn put(&self, perm: &mut Tracked<PermissionOpt<V>>, v: V)
         requires
             old(perm)@@ ===
@@ -142,7 +142,7 @@ impl<V> PCell<V> {
     }
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verus::verifier(external_body)]
     pub fn take(&self, perm: &mut Tracked<PermissionOpt<V>>) -> (v: V)
         requires
             self.id() === old(perm)@@.pcell,
@@ -162,7 +162,7 @@ impl<V> PCell<V> {
     }
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verus::verifier(external_body)]
     pub fn replace(&self, perm: &mut Tracked<PermissionOpt<V>>, in_v: V) -> (out_v: V)
         requires
             self.id() === old(perm)@@.pcell,
@@ -186,7 +186,7 @@ impl<V> PCell<V> {
     // to outlive the returned borrow.
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verus::verifier(external_body)]
     pub fn borrow<'a>(&'a self, perm: &'a Tracked<PermissionOpt<V>>) -> (v: &'a V)
         requires
             self.id() === perm@@.pcell,
