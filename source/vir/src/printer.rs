@@ -5,8 +5,47 @@ use air::printer::{str_to_node, NodeWriter};
 use air::{node, nodes, nodes_vec};
 use sise::Node;
 
+pub const COMPACT: &str = "compact";
+pub const NO_SPAN: &str = "no_span";
+pub const NO_TYPE: &str = "no_type";
+pub const NO_FN_DETAILS: &str = "no_fn_details";
+pub const NO_ENCODING: &str = "no_encoding";
+pub const PRETTY_FORMAT: &str = "pretty_format";
+
 fn str_node(s: &str) -> Node {
     Node::Atom(format!("\"{}\"", s))
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct VirPrinterOption {
+    pub no_span: bool,
+    pub no_type: bool,
+    pub no_fn_details: bool,
+    pub no_encoding: bool,
+    pub pretty_format: bool,
+}
+
+impl Default for VirPrinterOption {
+    fn default() -> Self {
+        VirPrinterOption {
+            no_span: false,
+            no_type: false,
+            no_fn_details: false,
+            no_encoding: false,
+            pretty_format: false,
+        }
+    }
+}
+impl VirPrinterOption {
+    pub fn mk_compact() -> Self {
+        VirPrinterOption {
+            no_span: true,
+            no_type: true,
+            no_fn_details: true,
+            no_encoding: true,
+            pretty_format: true,
+        }
+    }
 }
 
 pub struct Printer {
@@ -18,18 +57,20 @@ pub struct Printer {
 }
 
 impl Printer {
-    pub fn new(
-        no_span: bool,
-        no_type: bool,
-        no_fn_details: bool,
-        no_encoding: bool,
-        pretty_format: bool,
-    ) -> Printer {
-        Printer { no_span, no_type, no_fn_details, no_encoding, pretty_format }
+    pub fn new(opt: &VirPrinterOption) -> Printer {
+        Printer {
+            no_span: opt.no_span,
+            no_type: opt.no_type,
+            no_fn_details: opt.no_fn_details,
+            no_encoding: opt.no_encoding,
+            pretty_format: opt.pretty_format,
+        }
     }
 
     fn path_to_node(&self, path: &Path) -> Node {
-        Node::Atom(crate::def::path_to_string(path).replace("{", "_$LBRACE_").replace("}", "_$RBRACE_"))
+        Node::Atom(
+            crate::def::path_to_string(path).replace("{", "_$LBRACE_").replace("}", "_$RBRACE_"),
+        )
     }
 
     fn spanned_node(&self, node: Node, span: &Span) -> Node {
@@ -243,6 +284,13 @@ impl Printer {
             ExprX::Const(cnst) if self.pretty_format => match cnst {
                 Constant::Bool(val) => str_to_node(&format!("{}", val)),
                 Constant::Nat(val) => str_to_node(&format!("{}", val)),
+                Constant::StrSlice(val) => str_to_node(&format!(
+                    "\"{}\"",
+                    match val.is_ascii() {
+                        true => val,
+                        false => "non_ascii_string_with_unknown_value",
+                    }
+                )),
             },
             ExprX::Var(ident) if !self.pretty_format => nodes!(var {str_to_node(ident)}),
             ExprX::Var(ident) if self.pretty_format => str_to_node(ident),
@@ -277,8 +325,8 @@ impl Printer {
             }
             ExprX::Unary(unary_op, expr) => Node::List({
                 let mut nodes = match unary_op {
-                    UnaryOp::StrLen => nodes_vec!(strop len {expr_to_node(expr)}),
-                    UnaryOp::StrIsAscii => nodes_vec!(strop is_ascii {expr_to_node(expr)}),
+                    UnaryOp::StrLen => nodes_vec!(strop len {self.expr_to_node(expr)}),
+                    UnaryOp::StrIsAscii => nodes_vec!(strop is_ascii {self.expr_to_node(expr)}),
                     UnaryOp::Not => nodes_vec!(not),
                     UnaryOp::BitNot => nodes_vec!(bitnot),
                     UnaryOp::Trigger(group) => {
@@ -290,7 +338,11 @@ impl Printer {
                         nodes
                     }
                     UnaryOp::Clip { range, truncate } => {
-                        let mut nodes = nodes_vec!(clip {int_range_to_node(range)});
+                        let mut nodes = if self.no_encoding {
+                            nodes_vec!({ self.int_range_to_node(range) })
+                        } else {
+                            nodes_vec!(clip {self.int_range_to_node(range)})
+                        };
                         if *truncate {
                             nodes.push(str_to_node("+truncate"));
                         }
@@ -304,13 +356,6 @@ impl Printer {
                             {str_to_node(&format!("{:?}", kind))}
                         )
                     }
-                    // UnaryOp::Clip(range) => {
-                    //     if self.no_encoding {
-                    //         vec![]
-                    //     } else {
-                    //         nodes_vec!(clip {self.int_range_to_node(range)})
-                    //     }
-                    // }
                     UnaryOp::MustBeFinalized => nodes_vec!(MustBeFinalized),
                 };
                 nodes.push(self.expr_to_node(expr));
@@ -400,7 +445,7 @@ impl Printer {
                     nodes!({self.expr_to_node(e1)} {str_to_node(aop)} {self.expr_to_node(e2)})
                 }
                 BinaryOp::StrGetChar => {
-                    nodes!(strop get_char {expr_to_node(e1)} {expr_to_node(e2)})
+                    nodes!(strop get_char {self.expr_to_node(e1)} {self.expr_to_node(e2)})
                 }
                 _ if !self.pretty_format => {
                     nodes!({str_to_node(&format!("{:?}", binary_op).to_lowercase())} {self.expr_to_node(e1)} {self.expr_to_node(e2)})
@@ -467,7 +512,6 @@ impl Printer {
             ExprX::AssertQuery { requires, ensures, proof, mode } => {
                 nodes!(assertQuery {str_to_node(":requires")} {self.exprs_to_node(requires)} {str_to_node(":ensures")} {self.exprs_to_node(ensures)} {str_to_node(":proof")} {self.expr_to_node(proof)} {str_to_node(":mode")} {str_to_node(&format!("{:?}", mode))})
             }
-            ExprX::AssertBV(expr) => nodes!(assertbv {self.expr_to_node(expr)}),
             ExprX::If(e0, e1, e2) => {
                 let mut nodes = nodes_vec!(if { self.expr_to_node(e0) } {
                     self.expr_to_node(e1)
@@ -540,7 +584,7 @@ impl Printer {
             }
             _ => unreachable!(),
         };
-        let node = nodes!(expr {node} {typ_to_node(&expr.typ)});
+        let node = nodes!(expr {node} {self.typ_to_node(&expr.typ)});
         self.spanned_node(node, &expr.span)
     }
 
@@ -730,7 +774,7 @@ impl Printer {
             let broadcast_params_node =
                 Node::List(broadcast_params.iter().map(param_to_node).collect());
             nodes.push(str_to_node(":broadcast_forall"));
-            nodes.push(nodes!({broadcast_params_node} {expr_to_node(req_ens)}));
+            nodes.push(nodes!({broadcast_params_node} {self.expr_to_node(req_ens)}));
         }
         if let Some(decrease_when) = &decrease_when {
             nodes.push(str_to_node(":decrease_when"));

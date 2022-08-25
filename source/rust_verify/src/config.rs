@@ -1,4 +1,5 @@
 use getopts::Options;
+use vir::printer::VirPrinterOption;
 
 pub const DEFAULT_RLIMIT_SECS: u32 = 10;
 
@@ -46,11 +47,7 @@ pub struct Args {
     pub log_all: bool,
     pub log_vir: bool,
     pub log_vir_simple: bool,
-    pub vir_log_no_span: bool,
-    pub vir_log_no_type: bool,
-    pub vir_log_no_encoding: bool,
-    pub vir_log_no_fn_details: bool,
-    pub vir_log_pretty: bool,
+    pub vir_printer_option: VirPrinterOption,
     pub log_vir_poly: bool,
     pub log_air_initial: bool,
     pub log_air_final: bool,
@@ -97,11 +94,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_LOG_VIR: &str = "log-vir";
     const OPT_LOG_VIR_SIMPLE: &str = "log-vir-simple";
     const OPT_LOG_VIR_POLY: &str = "log-vir-poly";
-    const OPT_VIR_LOG_NO_SPAN: &str = "vir-log-no-span";
-    const OPT_VIR_LOG_NO_TYPE: &str = "vir-log-no-type";
-    const OPT_VIR_LOG_NO_ENCODING: &str = "vir-log-no-encoding";
-    const OPT_VIR_LOG_NO_FN_DETAILS: &str = "vir-log-no-fn-details";
-    const OPT_VIR_LOG_PRETTY: &str = "vir-log-pretty";
+    const OPT_VIR_LOG_OPTION: &str = "vir-log-option";
     const OPT_LOG_AIR_INITIAL: &str = "log-air";
     const OPT_LOG_AIR_FINAL: &str = "log-air-final";
     const OPT_LOG_SMT: &str = "log-smt";
@@ -169,19 +162,12 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     opts.optflag("", OPT_LOG_VIR, "Log VIR");
     opts.optflag("", OPT_LOG_VIR_SIMPLE, "Log simplified VIR");
     opts.optflag("", OPT_LOG_VIR_POLY, "Log poly VIR");
-    opts.optflag("", OPT_VIR_LOG_NO_SPAN, "Omit span in VIR logs");
-    opts.optflag("", OPT_VIR_LOG_NO_TYPE, "Omit type in VIR logs");
-    opts.optflag(
+    opts.optmulti(
         "",
-        OPT_VIR_LOG_NO_ENCODING,
-        "Omit SMT related encodings(box/unbox/clip) in VIR logs",
+        OPT_VIR_LOG_OPTION,
+        "Set VIR logging option (e.g. `--vir-log-option compact`. Available options: `compact` `no_span` `no_type` `no_encoding` `no_fn_details` `pretty_print`) (default: Verbose)",
+        "VIR_LOG_OPTION",
     );
-    opts.optflag(
-        "",
-        OPT_VIR_LOG_NO_FN_DETAILS,
-        "Omit all surrounding info on a function, and only print the name and its body in VIR logs",
-    );
-    opts.optflag("", OPT_VIR_LOG_PRETTY, "Pretty print exprs in VIR logs");
     opts.optflag("", OPT_LOG_AIR_INITIAL, "Log AIR queries in initial form");
     opts.optflag("", OPT_LOG_AIR_FINAL, "Log AIR queries in final form");
     opts.optflag("", OPT_LOG_SMT, "Log SMT queries");
@@ -283,11 +269,22 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         log_vir: matches.opt_present(OPT_LOG_VIR),
         log_vir_simple: matches.opt_present(OPT_LOG_VIR_SIMPLE),
         log_vir_poly: matches.opt_present(OPT_LOG_VIR_POLY),
-        vir_log_no_span: matches.opt_present(OPT_VIR_LOG_NO_SPAN),
-        vir_log_no_type: matches.opt_present(OPT_VIR_LOG_NO_TYPE),
-        vir_log_no_encoding: matches.opt_present(OPT_VIR_LOG_NO_ENCODING),
-        vir_log_no_fn_details: matches.opt_present(OPT_VIR_LOG_NO_FN_DETAILS),
-        vir_log_pretty: matches.opt_present(OPT_VIR_LOG_PRETTY),
+        vir_printer_option: {
+            let vir_opts: Vec<String> = matches.opt_strs(OPT_VIR_LOG_OPTION);
+            if vir_opts.len() == 0 {
+                VirPrinterOption::default()
+            } else if vir_opts.contains(&vir::printer::COMPACT.to_string()) {
+                VirPrinterOption::mk_compact()
+            } else {
+                VirPrinterOption {
+                    no_span: vir_opts.contains(&vir::printer::NO_SPAN.to_string()),
+                    no_type: vir_opts.contains(&vir::printer::NO_TYPE.to_string()),
+                    no_fn_details: vir_opts.contains(&vir::printer::NO_FN_DETAILS.to_string()),
+                    no_encoding: vir_opts.contains(&vir::printer::NO_ENCODING.to_string()),
+                    pretty_format: vir_opts.contains(&vir::printer::PRETTY_FORMAT.to_string()),
+                }
+            }
+        },
         log_air_initial: matches.opt_present(OPT_LOG_AIR_INITIAL),
         log_air_final: matches.opt_present(OPT_LOG_AIR_FINAL),
         log_smt: matches.opt_present(OPT_LOG_SMT),
