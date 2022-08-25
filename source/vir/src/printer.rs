@@ -584,7 +584,11 @@ impl Printer {
             }
             _ => unreachable!(),
         };
-        let node = nodes!(expr {node} {self.typ_to_node(&expr.typ)});
+        let node = if !self.pretty_format {
+            nodes!(expr {node} {self.typ_to_node(&expr.typ)})
+        } else {
+            nodes!({node} {self.typ_to_node(&expr.typ)})
+        };
         self.spanned_node(node, &expr.span)
     }
 
