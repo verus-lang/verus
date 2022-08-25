@@ -67,18 +67,18 @@ impl Printer {
         }
     }
 
-    fn path_to_node(&self, path: &Path) -> Node {
-        Node::Atom(
-            crate::def::path_to_string(path).replace("{", "_$LBRACE_").replace("}", "_$RBRACE_"),
-        )
-    }
-
     fn spanned_node(&self, node: Node, span: &Span) -> Node {
         if !self.no_span {
             Node::List(vec![str_to_node("span"), str_node(&span.as_string), node])
         } else {
             node
         }
+    }
+
+    fn path_to_node(&self, path: &Path) -> Node {
+        Node::Atom(
+            crate::def::path_to_string(path).replace("{", "_$LBRACE_").replace("}", "_$RBRACE_"),
+        )
     }
 
     fn visibility_to_node(&self, visibility: &Visibility) -> Node {
