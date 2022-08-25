@@ -998,3 +998,34 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_synthetic_type_params verus_code!{
+        spec fn global_type_id<A>() -> int;
+
+        pub trait SomeTrait : Sized {
+            spec fn x(&self);
+        }
+
+        spec fn type_id<T: SomeTrait>(obj: T) -> int {
+            global_type_id::<T>()
+        }
+
+        struct Stuff<X> {
+            x: X,
+        }
+
+        impl<X: SomeTrait> Stuff<X> {
+            proof fn test1<Y: SomeTrait>(a: X, b: X) {
+                // This passes, since a and b should have the same type
+                assert(type_id(a) == type_id(b));
+            }
+
+            proof fn test2<Y: SomeTrait>(a: X, b: Y, c: impl SomeTrait, d: impl SomeTrait) {
+                // This should fail; although 'c' and 'd' are both 'impl SomeTrait',
+                // these are technically different type parameters.
+                assert(type_id(c) == type_id(d)); // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 1)
+}

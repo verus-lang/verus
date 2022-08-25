@@ -1039,6 +1039,15 @@ fn erase_block(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, block: &Block) -> B
     Block { stmts, id, rules, span, tokens: block.tokens.clone(), could_be_bare_literal: false }
 }
 
+fn get_typ_bound_by_name<'a>(v: &'a vir::ast::TypBounds, name: &str) -> &'a vir::ast::GenericBound {
+    for typ_bound in v.iter() {
+        if *typ_bound.0 == name {
+            return &typ_bound.1;
+        }
+    }
+    panic!("get_typ_bound_by_name failed");
+}
+
 fn erase_fn(
     ctxt: &Ctxt,
     mctxt: &mut MCtxt,
@@ -1058,26 +1067,15 @@ fn erase_fn(
     let Generics { params, where_clause, span: generics_span } = generics;
     let mut new_params: Vec<GenericParam> = Vec::new();
 
-    // Skip over type params in impl<...>
-    let mut num_typ_params = 0;
-    for param in params.iter() {
-        match &param.kind {
-            GenericParamKind::Type { .. } => {
-                num_typ_params += 1;
-            }
-            _ => {}
-        }
-    }
-    let n_skip = f_vir.x.typ_bounds.len() - num_typ_params;
-    let mut typ_bounds_iter = f_vir.x.typ_bounds.iter().skip(n_skip);
-
     for param in params.iter() {
         match param.kind {
             GenericParamKind::Lifetime => {
                 new_params.push(param.clone());
             }
             GenericParamKind::Type { .. } => {
-                let (_, bound) = typ_bounds_iter.next().expect("missing typ_bound");
+                let bound =
+                    get_typ_bound_by_name(&f_vir.x.typ_bounds, &param.ident.name.to_string());
+
                 // erase Fn trait bounds, since the type checker won't be able to infer them
                 // TODO: also erase other type parameters left unused after erasure
                 match &**bound {

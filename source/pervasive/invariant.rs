@@ -52,7 +52,7 @@ macro_rules! declare_invariant_impl {
             #[proof]
             #[verifier(external_body)]
             #[verifier(returns(proof))]
-            pub fn new<F: Fn(V) -> bool>(#[proof] v: V, #[spec] inv: F, #[spec] ns: int) -> $invariant<V> {
+            pub fn new(#[proof] v: V, #[spec] inv: impl Fn(V) -> bool, #[spec] ns: int) -> $invariant<V> {
                 requires([
                     inv(v),
                 ]);
@@ -102,23 +102,20 @@ pub struct InvariantBlockGuard;
 //  last the entire block.
 
 #[doc(hidden)]
-#[verifier(external_body)]
+#[verifier(external)]
 pub fn open_atomic_invariant_begin<'a, V>(_inv: &'a AtomicInvariant<V>) -> (&'a InvariantBlockGuard, V) {
-    requires([false]);
     unimplemented!();
 }
 
 #[doc(hidden)]
-#[verifier(external_body)]
+#[verifier(external)]
 pub fn open_local_invariant_begin<'a, V>(_inv: &'a LocalInvariant<V>) -> (&'a InvariantBlockGuard, V) {
-    requires([false]);
     unimplemented!();
 }
 
 #[doc(hidden)]
-#[verifier(external_body)]
+#[verifier(external)]
 pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
-    requires([false]);
     unimplemented!();
 }
 

@@ -173,9 +173,7 @@ pub(crate) fn check_item_fn<'tcx>(
             check_fn_decl(ctxt.tcx, decl, attrs, mode, fn_sig.output())?
         }
     };
-    let sig_typ_bounds = check_generics_bounds_fun(ctxt.tcx, generics, id)?;
     let vattrs = get_verifier_attrs(attrs)?;
-    let fuel = get_fuel(&vattrs);
 
     if is_new_strlit {
         check_new_strlit(&ctxt, sig)?;
@@ -199,6 +197,9 @@ pub(crate) fn check_item_fn<'tcx>(
         erasure_info.external_functions.push(name);
         return Ok(None);
     }
+
+    let sig_typ_bounds = check_generics_bounds_fun(ctxt.tcx, generics, id)?;
+    let fuel = get_fuel(&vattrs);
 
     let body = find_body(ctxt, body_id);
     let Body { params, value: _, generator_kind } = body;
