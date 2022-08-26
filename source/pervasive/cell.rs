@@ -63,7 +63,7 @@ unsafe impl<T> Send for PCell<T> {}
 
 // PermissionOpt<V>, on the other hand, needs to inherit both Send and Sync from the V,
 // which it does by default in the given definition.
-// (Note: this depends on the current behavior that #[spec] fields are still counted for marker traits)
+// (Note: this depends on the current behavior that #[verus::spec] fields are still counted for marker traits)
 
 #[verus::verifier(external_body)]
 pub tracked struct PermissionOpt<#[verus::verifier(strictly_positive)] V> {

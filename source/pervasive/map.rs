@@ -315,8 +315,8 @@ macro_rules! assert_maps_equal {
         assert_maps_equal!($m1, $m2, key => { })
     };
     ($m1:expr, $m2:expr, $k:ident $( : $t:ty )? => $bblock:block) => {
-        #[spec] let m1 = $m1;
-        #[spec] let m2 = $m2;
+        #[verus::spec] let m1 = $m1;
+        #[verus::spec] let m2 = $m2;
         ::builtin::assert_by(::builtin::equal(m1, m2), {
             ::builtin::assert_forall_by(|$k $( : $t )?| {
                 // TODO better error message here: show the individual conjunct that fails,
@@ -343,8 +343,8 @@ macro_rules! assert_maps_equal_verus {
     };
     ($m1:expr, $m2:expr, $k:ident $( : $t:ty )? => $bblock:block) => {
         ::builtin_macros::verus_proof_expr! {{
-        #[spec] let m1 = $m1;
-        #[spec] let m2 = $m2;
+        #[verus::spec] let m1 = $m1;
+        #[verus::spec] let m2 = $m2;
         ::builtin::assert_by(::builtin::equal(m1, m2), {
             ::builtin::assert_forall_by(|$k $( : $t )?| {
                 // TODO better error message here: show the individual conjunct that fails,

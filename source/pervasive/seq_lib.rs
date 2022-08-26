@@ -47,7 +47,7 @@ impl<A> Seq<A> {
 /// identities without any additional help:
 ///
 /// ```rust
-/// #[proof]
+/// #[verus::proof]
 /// fn subrange_concat(s: Seq<u64>, i: int) {
 ///     requires([
 ///         0 <= i && i <= s.len(),
@@ -67,7 +67,7 @@ impl<A> Seq<A> {
 /// For example,
 /// 
 /// ```rust
-/// #[proof] fn bitvector_seqs() {
+/// #[verus::proof] fn bitvector_seqs() {
 ///     let s = Seq::<u64>::new(5, |i| i as u64);
 ///     let t = Seq::<u64>::new(5, |i| i as u64 | 0);
 /// 

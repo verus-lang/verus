@@ -66,7 +66,7 @@ impl<A> Seq<A> {
     /// ## Example
     ///
     /// ```rust
-    /// #[proof]
+    /// #[verus::proof]
     /// fn push_test() {
     ///     assert_seqs_equal!(
     ///           seq![10, 11, 12].push(13),
@@ -83,7 +83,7 @@ impl<A> Seq<A> {
     /// ## Example
     ///
     /// ```rust
-    /// #[proof]
+    /// #[verus::proof]
     /// fn update_test() {
     ///     let s = seq![10, 11, 12, 13, 14];
     ///     let t = s.update(2, -5);
@@ -112,7 +112,7 @@ impl<A> Seq<A> {
     /// ## Example
     ///
     /// ```rust
-    /// #[proof]
+    /// #[verus::proof]
     /// fn subrange_test() {
     ///     let s = seq![10, 11, 12, 13, 14];
     ///     //                  ^-------^
@@ -130,7 +130,7 @@ impl<A> Seq<A> {
     /// ## Example
     ///
     /// ```rust
-    /// #[proof]
+    /// #[verus::proof]
     /// fn add_test() {
     ///     assert_seqs_equal!(
     ///         seq![10, 11].push(seq![12, 13, 14]),

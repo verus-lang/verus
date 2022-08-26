@@ -11,7 +11,7 @@ pub enum Option<A> {
 }
 
 impl<A> Option<A> {
-    #[spec]
+    #[verus::spec]
     #[verus::verifier(publish)]
     pub fn or(self, optb: Option<A>) -> Option<A> {
         match self {

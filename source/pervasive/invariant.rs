@@ -31,7 +31,7 @@
 //    Sync        ==>     {}                  {}
 //    Sync+Send   ==>     Send+Sync           Send
 
-#[proof]
+#[verus::proof]
 #[verus::verifier(external_body)]
 pub struct AtomicInvariant<#[verus::verifier(maybe_negative)] V> {
     dummy: builtin::SyncSendIfSend<V>,
@@ -44,15 +44,15 @@ pub struct LocalInvariant<#[verus::verifier(maybe_negative)] V> {
 
 macro_rules! declare_invariant_impl {
     ($invariant:ident) => {
-        #[proof]
+        #[verus::proof]
         impl<V> $invariant<V> {
             fndecl!(pub fn inv(&self, _v: V) -> bool);
             fndecl!(pub fn namespace(&self) -> int);
 
-            #[proof]
+            #[verus::proof]
             #[verus::verifier(external_body)]
             #[verus::verifier(returns(proof))]
-            pub fn new<F: Fn(V) -> bool>(#[proof] v: V, #[spec] inv: F, #[spec] ns: int) -> $invariant<V> {
+            pub fn new<F: Fn(V) -> bool>(#[verus::proof] v: V, #[verus::spec] inv: F, #[verus::spec] ns: int) -> $invariant<V> {
                 requires([
                     inv(v),
                 ]);
@@ -64,10 +64,10 @@ macro_rules! declare_invariant_impl {
                 unimplemented!();
             }
 
-            #[proof]
+            #[verus::proof]
             #[verus::verifier(external_body)]
             #[verus::verifier(returns(proof))]
-            pub fn into_inner(#[proof] self) -> V {
+            pub fn into_inner(#[verus::proof] self) -> V {
                 ensures(|v: V| self.inv(v));
 
                 unimplemented!();
@@ -80,7 +80,7 @@ declare_invariant_impl!(AtomicInvariant);
 declare_invariant_impl!(LocalInvariant);
 
 #[doc(hidden)]
-#[proof]
+#[verus::proof]
 pub struct InvariantBlockGuard;
 
 // NOTE: These 3 methods are removed in the conversion to VIR; they are only used

@@ -6,20 +6,20 @@ use std::marker::PhantomData;
 // TODO: the *_exec* functions would be better in builtin,
 // but it's painful to implement the support in erase.rs at the moment.
 #[verus::verifier(external_body)]
-pub fn ghost_exec<A>(#[spec] a: A) -> Ghost<A> {
+pub fn ghost_exec<A>(#[verus::spec] a: A) -> Ghost<A> {
     ensures(|s: Ghost<A>| equal(a, s.view()));
     Ghost::assume_new()
 }
 
 #[verus::verifier(external_body)]
-pub fn tracked_exec<A>(#[proof] a: A) -> Tracked<A> {
+pub fn tracked_exec<A>(#[verus::proof] a: A) -> Tracked<A> {
     ensures(|s: Tracked<A>| equal(a, s.view()));
     opens_invariants_none();
     Tracked::assume_new()
 }
 
 #[verus::verifier(external_body)]
-pub fn tracked_exec_borrow<'a, A>(#[proof] a: &'a A) -> &'a Tracked<A> {
+pub fn tracked_exec_borrow<'a, A>(#[verus::proof] a: &'a A) -> &'a Tracked<A> {
     ensures(|s: Tracked<A>| equal(*a, s.view()));
     opens_invariants_none();
 
@@ -67,19 +67,19 @@ pub struct Spec<#[verus::verifier(strictly_positive)] A> {
 }
 
 pub struct Proof<A>(
-    #[proof] pub A,
+    #[verus::proof] pub A,
 );
 
 impl<A> Spec<A> {
     fndecl!(pub fn value(self) -> A);
 
     #[verus::verifier(external_body)]
-    pub fn exec(#[spec] a: A) -> Spec<A> {
+    pub fn exec(#[verus::spec] a: A) -> Spec<A> {
         ensures(|s: Spec<A>| equal(a, s.value()));
         Spec { phantom: PhantomData }
     }
 
-    #[proof]
+    #[verus::proof]
     #[verus::verifier(returns(proof))]
     #[verus::verifier(external_body)]
     pub fn proof(a: A) -> Spec<A> {

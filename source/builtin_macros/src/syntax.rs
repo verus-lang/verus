@@ -786,7 +786,7 @@ impl VisitMut for Visitor {
                                     Expr::Closure(closure) => {
                                         let body = take_expr(&mut closure.body);
                                         closure.body = Box::new(Expr::Verbatim(
-                                            quote_spanned!(span => #[auto_trigger] (#body)),
+                                            quote_spanned!(span => #[verus::auto_trigger] (#body)),
                                         ));
                                     }
                                     _ => panic!("expected closure for quantifier"),
