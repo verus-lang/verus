@@ -96,7 +96,7 @@ impl<A> Vec<A> {
 #[verus::verifier(broadcast_forall)]
 pub proof fn axiom_spec_len<A>(v: Vec<A>)
     ensures
-        #[trigger] v.spec_len() == v.view().len(),
+        #[verus::trigger] v.spec_len() == v.view().len(),
 {
 }
 

@@ -156,7 +156,7 @@ impl<A> Seq<A> {
 #[verus::verifier(broadcast_forall)]
 pub proof fn axiom_seq_empty<A>()
     ensures
-        #[trigger] Seq::<A>::empty().len() == 0,
+        #[verus::trigger] Seq::<A>::empty().len() == 0,
 {
 }
 
@@ -164,7 +164,7 @@ pub proof fn axiom_seq_empty<A>()
 #[verus::verifier(broadcast_forall)]
 pub proof fn axiom_seq_new_len<A, F: Fn(int) -> A>(len: nat, f: F)
     ensures
-        #[trigger] Seq::new(len, f).len() == len,
+        #[verus::trigger] Seq::new(len, f).len() == len,
 {
 }
 
@@ -182,7 +182,7 @@ pub proof fn axiom_seq_new_index<A, F: Fn(int) -> A>(len: nat, f: F, i: int)
 #[verus::verifier(broadcast_forall)]
 pub proof fn axiom_seq_push_len<A>(s: Seq<A>, a: A)
     ensures
-        #[trigger] s.push(a).len() == s.len() + 1,
+        #[verus::trigger] s.push(a).len() == s.len() + 1,
 {
 }
 
@@ -192,7 +192,7 @@ pub proof fn axiom_seq_push_index_same<A>(s: Seq<A>, a: A, i: int)
     requires
         i == s.len(),
     ensures
-        #[trigger] s.push(a)[i] === a,
+        #[verus::trigger] s.push(a)[i] === a,
 {
 }
 
@@ -212,7 +212,7 @@ pub proof fn axiom_seq_update_len<A>(s: Seq<A>, i: int, a: A)
     requires
         0 <= i < s.len(),
     ensures
-        #[trigger] s.update(i, a).len() == s.len(),
+        #[verus::trigger] s.update(i, a).len() == s.len(),
 {
 }
 
@@ -222,7 +222,7 @@ pub proof fn axiom_seq_update_same<A>(s: Seq<A>, i: int, a: A)
     requires
         0 <= i < s.len(),
     ensures
-        #[trigger] s.update(i, a)[i] === a,
+        #[verus::trigger] s.update(i, a)[i] === a,
 {
 }
 
@@ -252,7 +252,7 @@ pub proof fn axiom_seq_subrange_len<A>(s: Seq<A>, j: int, k: int)
     requires
         0 <= j <= k <= s.len(),
     ensures
-        #[trigger] s.subrange(j, k).len() == k - j,
+        #[verus::trigger] s.subrange(j, k).len() == k - j,
 {
 }
 
@@ -270,7 +270,7 @@ pub proof fn axiom_seq_subrange_index<A>(s: Seq<A>, j: int, k: int, i: int)
 #[verus::verifier(external_body)]
 #[verus::verifier(broadcast_forall)]
 pub proof fn axiom_seq_add_len<A>(s1: Seq<A>, s2: Seq<A>)
-    ensures #[trigger] s1.add(s2).len() == s1.len() + s2.len()
+    ensures #[verus::trigger] s1.add(s2).len() == s1.len() + s2.len()
 {
 }
 

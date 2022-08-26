@@ -16,7 +16,7 @@ macro_rules! declare_atomic_type {
         impl<G> $at_ident<G> {
             #[spec] #[verus::verifier(publish)]
             pub fn has_inv<F: Fn($value_ty, G) -> bool>(&self, f: F) -> bool {
-                forall(|p| #[trigger] self.atomic_inv.inv(p) == (
+                forall(|p| #[verus::trigger] self.atomic_inv.inv(p) == (
                     self.patomic.id() == p.0.patomic
                         && f(p.0.value, p.1)
                 ))

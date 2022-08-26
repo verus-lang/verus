@@ -155,7 +155,7 @@ pub proof fn axiom_set_new<A, F: Fn(A) -> bool>(f: F, a: A)
 #[verus::verifier(broadcast_forall)]
 pub proof fn axiom_set_insert_same<A>(s: Set<A>, a: A)
     ensures
-        #[trigger] s.insert(a).contains(a),
+        #[verus::trigger] s.insert(a).contains(a),
 {
 }
 
@@ -173,7 +173,7 @@ pub proof fn axiom_set_insert_different<A>(s: Set<A>, a1: A, a2: A)
 #[verus::verifier(broadcast_forall)]
 pub proof fn axiom_set_remove_same<A>(s: Set<A>, a: A)
     ensures
-        !(#[trigger] s.remove(a).contains(a)),
+        !(#[verus::trigger] s.remove(a).contains(a)),
 {
 }
 
@@ -231,7 +231,7 @@ pub proof fn axiom_set_ext_equal<A>(s1: Set<A>, s2: Set<A>)
 #[verus::verifier(broadcast_forall)]
 pub proof fn axiom_mk_map_domain<K, V, F: Fn(K) -> V>(s: Set<K>, f: F)
     ensures
-        #[trigger] s.mk_map(f).dom() === s,
+        #[verus::trigger] s.mk_map(f).dom() === s,
 {
 }
 
@@ -251,7 +251,7 @@ pub proof fn axiom_mk_map_index<K, V, F: Fn(K) -> V>(s: Set<K>, f: F, key: K)
 #[verus::verifier(broadcast_forall)]
 pub proof fn axiom_set_empty_finite<A>()
     ensures
-        #[trigger] Set::<A>::empty().finite(),
+        #[verus::trigger] Set::<A>::empty().finite(),
 {
 }
 
@@ -261,7 +261,7 @@ pub proof fn axiom_set_insert_finite<A>(s: Set<A>, a: A)
     requires
         s.finite(),
     ensures
-        #[trigger] s.insert(a).finite(),
+        #[verus::trigger] s.insert(a).finite(),
 {
 }
 
@@ -271,7 +271,7 @@ pub proof fn axiom_set_remove_finite<A>(s: Set<A>, a: A)
     requires
         s.finite(),
     ensures
-        #[trigger] s.remove(a).finite(),
+        #[verus::trigger] s.remove(a).finite(),
 {
 }
 
@@ -282,7 +282,7 @@ pub proof fn axiom_set_union_finite<A>(s1: Set<A>, s2: Set<A>)
         s1.finite(),
         s2.finite(),
     ensures
-        #[trigger] s1.union(s2).finite(),
+        #[verus::trigger] s1.union(s2).finite(),
 {
 }
 
@@ -292,7 +292,7 @@ pub proof fn axiom_set_intersect_finite<A>(s1: Set<A>, s2: Set<A>)
     requires
         s1.finite() || s2.finite(),
     ensures
-        #[trigger] s1.intersect(s2).finite(),
+        #[verus::trigger] s1.intersect(s2).finite(),
 {
 }
 
@@ -302,7 +302,7 @@ pub proof fn axiom_set_difference_finite<A>(s1: Set<A>, s2: Set<A>)
     requires
         s1.finite(),
     ensures
-        #[trigger] s1.difference(s2).finite(),
+        #[verus::trigger] s1.difference(s2).finite(),
 {
 }
 
@@ -312,7 +312,7 @@ pub proof fn axiom_set_choose_finite<A>(s: Set<A>)
     requires
         !s.finite(),
     ensures
-        #[trigger] s.contains(s.choose()),
+        #[verus::trigger] s.contains(s.choose()),
 {
 }
 
@@ -325,7 +325,7 @@ pub proof fn axiom_set_choose_finite<A>(s: Set<A>)
 #[verus::verifier(broadcast_forall)]
 pub proof fn axiom_set_empty_len<A>()
     ensures
-        #[trigger] Set::<A>::empty().len() == 0,
+        #[verus::trigger] Set::<A>::empty().len() == 0,
 {
 }
 
@@ -335,7 +335,7 @@ pub proof fn axiom_set_insert_len<A>(s: Set<A>, a: A)
     requires
         s.finite(),
     ensures
-        #[trigger] s.insert(a).len() == s.len() + (if s.contains(a) { 0int } else { 1 }),
+        #[verus::trigger] s.insert(a).len() == s.len() + (if s.contains(a) { 0int } else { 1 }),
 {
 }
 
@@ -345,7 +345,7 @@ pub proof fn axiom_set_remove_len<A>(s: Set<A>, a: A)
     requires
         s.finite(),
     ensures
-        s.len() == #[trigger] s.remove(a).len() + (if s.contains(a) { 1int } else { 0 }),
+        s.len() == #[verus::trigger] s.remove(a).len() + (if s.contains(a) { 1int } else { 0 }),
 {
 }
 
@@ -354,9 +354,9 @@ pub proof fn axiom_set_remove_len<A>(s: Set<A>, a: A)
 pub proof fn axiom_set_choose_len<A>(s: Set<A>)
     requires
         s.finite(),
-        #[trigger] s.len() != 0,
+        #[verus::trigger] s.len() != 0,
     ensures
-        #[trigger] s.contains(s.choose()),
+        #[verus::trigger] s.contains(s.choose()),
 {
 }
 

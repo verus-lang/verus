@@ -117,8 +117,8 @@ impl<K, V> Map<K, V> {
     /// ```
 
     pub open spec fn le(self, m2: Self) -> bool {
-        forall|k: K| #[trigger] self.dom().contains(k) ==>
-            #[trigger] m2.dom().contains(k) && self[k] === m2[k]
+        forall|k: K| #[verus::trigger] self.dom().contains(k) ==>
+            #[verus::trigger] m2.dom().contains(k) && self[k] === m2[k]
     }
 
     /// Gives the union of two maps, defined as:
@@ -207,7 +207,7 @@ impl<K, V> Map<K, V> {
 #[verus::verifier(broadcast_forall)]
 pub proof fn axiom_map_empty<K, V>()
     ensures
-        #[trigger] Map::<K, V>::empty().dom() === Set::empty(),
+        #[verus::trigger] Map::<K, V>::empty().dom() === Set::empty(),
 {
 }
 
@@ -215,7 +215,7 @@ pub proof fn axiom_map_empty<K, V>()
 #[verus::verifier(broadcast_forall)]
 pub proof fn axiom_map_insert_domain<K, V>(m: Map<K, V>, key: K, value: V)
     ensures
-        #[trigger] m.insert(key, value).dom() === m.dom().insert(key),
+        #[verus::trigger] m.insert(key, value).dom() === m.dom().insert(key),
 {
 }
 
@@ -223,7 +223,7 @@ pub proof fn axiom_map_insert_domain<K, V>(m: Map<K, V>, key: K, value: V)
 #[verus::verifier(broadcast_forall)]
 pub proof fn axiom_map_insert_same<K, V>(m: Map<K, V>, key: K, value: V)
     ensures
-        #[trigger] m.insert(key, value)[key] === value,
+        #[verus::trigger] m.insert(key, value)[key] === value,
 {
 }
 
@@ -242,7 +242,7 @@ pub proof fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, va
 #[verus::verifier(broadcast_forall)]
 pub proof fn axiom_map_remove_domain<K, V>(m: Map<K, V>, key: K)
     ensures
-        #[trigger] m.remove(key).dom() === m.dom().remove(key),
+        #[verus::trigger] m.remove(key).dom() === m.dom().remove(key),
 {
 }
 
@@ -322,7 +322,7 @@ macro_rules! assert_maps_equal {
                 // TODO better error message here: show the individual conjunct that fails,
                 // and maybe give an error message in english as well
                 ::builtin::ensures([
-                    ::builtin::imply(#[trigger] m1.dom().contains($k), m2.dom().contains($k))
+                    ::builtin::imply(#[verus::trigger] m1.dom().contains($k), m2.dom().contains($k))
                     && ::builtin::imply(m2.dom().contains($k), m1.dom().contains($k))
                     && ::builtin::imply(m1.dom().contains($k) && m2.dom().contains($k),
                         ::builtin::equal(m1.index($k), m2.index($k)))
@@ -350,7 +350,7 @@ macro_rules! assert_maps_equal_verus {
                 // TODO better error message here: show the individual conjunct that fails,
                 // and maybe give an error message in english as well
                 ::builtin::ensures([
-                    ::builtin::imply(#[trigger] m1.dom().contains($k), m2.dom().contains($k))
+                    ::builtin::imply(#[verus::trigger] m1.dom().contains($k), m2.dom().contains($k))
                     && ::builtin::imply(m2.dom().contains($k), m1.dom().contains($k))
                     && ::builtin::imply(m1.dom().contains($k) && m2.dom().contains($k),
                         ::builtin::equal(m1.index($k), m2.index($k)))

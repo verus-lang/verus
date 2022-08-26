@@ -159,25 +159,25 @@ pub proof fn axiom_multiset_ext_equal<V>(m1: Multiset<V>, m2: Multiset<V>)
 #[verus::verifier(external_body)]
 #[verus::verifier(broadcast_forall)]
 pub proof fn axiom_len_empty<V>()
-    ensures (#[trigger] Multiset::<V>::empty().len()) == 0,
+    ensures (#[verus::trigger] Multiset::<V>::empty().len()) == 0,
 {}
 
 #[verus::verifier(external_body)]
 #[verus::verifier(broadcast_forall)]
 pub proof fn axiom_len_singleton<V>(v: V)
-    ensures (#[trigger] Multiset::<V>::singleton(v).len()) == 1,
+    ensures (#[verus::trigger] Multiset::<V>::singleton(v).len()) == 1,
 {}
 
 #[verus::verifier(external_body)]
 #[verus::verifier(broadcast_forall)]
 pub proof fn axiom_len_add<V>(m1: Multiset<V>, m2: Multiset<V>)
-    ensures (#[trigger] m1.add(m2).len()) == m1.len() + m2.len(),
+    ensures (#[verus::trigger] m1.add(m2).len()) == m1.len() + m2.len(),
 {}
 
 #[verus::verifier(external_body)]
 #[verus::verifier(broadcast_forall)]
 pub proof fn axiom_count_le_len<V>(m: Multiset<V>, v: V)
-    ensures #[trigger] m.count(v) <= #[trigger] m.len()
+    ensures #[verus::trigger] m.count(v) <= #[verus::trigger] m.len()
 {}
 
 // Specification of `filter`
@@ -185,7 +185,7 @@ pub proof fn axiom_count_le_len<V>(m: Multiset<V>, v: V)
 #[verus::verifier(external_body)]
 #[verus::verifier(broadcast_forall)]
 pub proof fn axiom_filter_count<V, F: Fn(V) -> bool>(m: Multiset<V>, f: F, v: V)
-    ensures (#[trigger] m.filter(f).count(v)) ==
+    ensures (#[verus::trigger] m.filter(f).count(v)) ==
         if f(v) { m.count(v) } else { 0 }
 {}
 
