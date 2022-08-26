@@ -229,7 +229,7 @@ fn check_item<'a, 'tcx>(
                             AssocItemKind::Fn { has_self } => {
                                 let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
                                 // TODO mk_visibility(&Some(module_path.clone()), &impl_item.vis, true);
-                                let mut impl_item_visibility = mk_visibility(ctxt, &Some(module_path.clone()), impl_def_id);
+                                let mut impl_item_visibility = mk_visibility(ctxt, &Some(module_path.clone()), impl_item.def_id.to_def_id());
                                 match &impl_item.kind {
                                     ImplItemKind::Fn(sig, body_id) => {
                                         let fn_attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());

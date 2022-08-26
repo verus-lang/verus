@@ -146,6 +146,7 @@ pub(crate) fn is_visibility_private<'tcx>(ctxt: &Context<'tcx>, def_id: DefId) -
     let vis: rustc_middle::ty::Visibility = ctxt.tcx.visibility(def_id);
     match vis {
         Visibility::Public => false,
+        // TODO reject pub(crate)
         Visibility::Restricted(_) => true,
         Visibility::Invisible => true,
     }
