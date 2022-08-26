@@ -19,9 +19,6 @@ use air::scope_map::ScopeMap;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
-type Arg = (Exp, Typ);
-type Args = Arc<Vec<Arg>>;
-
 pub(crate) struct State {
     // View exec/proof code as spec
     // (used for is_const functions, which are viewable both as spec and exec)
@@ -395,7 +392,7 @@ pub fn can_control_flow_reach_after_loop(expr: &Expr) -> bool {
 }
 
 enum ReturnedCall {
-    Call { fun: Fun, typs: Typs, has_return: bool, args: Args },
+    Call { fun: Fun, typs: Typs, has_return: bool, args: Exps },
     Never,
 }
 
@@ -410,7 +407,7 @@ fn expr_get_call(
         }
         ExprX::Call(CallTarget::Static(x, typs), args) => {
             let mut stms: Vec<Stm> = Vec::new();
-            let mut exps: Vec<Arg> = Vec::new();
+            let mut exps: Vec<Exp> = Vec::new();
             for arg in args.iter() {
                 let (mut stms0, e0) = expr_to_stm_opt(ctx, state, arg)?;
                 stms.append(&mut stms0);
@@ -420,7 +417,7 @@ fn expr_get_call(
                         return Ok(Some((stms, ReturnedCall::Never)));
                     }
                 };
-                exps.push((e0, arg.typ.clone()));
+                exps.push(e0);
             }
             let has_ret = get_function(ctx, &expr.span, x)?.x.has_return();
             Ok(Some((
@@ -686,7 +683,7 @@ fn stm_call(
     span: &Span,
     name: Fun,
     typs: Typs,
-    args: Args,
+    args: Exps,
     dest: Option<Dest>,
 ) -> Result<Stm, VirErr> {
     let fun = get_function(ctx, span, &name)?;
@@ -709,9 +706,8 @@ fn stm_call(
             )
             .expect("pure_ast_expression_to_sst");
 
-            let args_exp = Arc::new(vec_map(&args, |x| x.0.clone()));
             let exp_subsituted = crate::split_expression::inline_expression(
-                &name, &args_exp, &typs, params, typ_bounds, &exp, span,
+                &name, &args, &typs, params, typ_bounds, &exp, span,
             );
             if exp_subsituted.is_err() {
                 continue;
@@ -738,15 +734,15 @@ fn stm_call(
 
     let mut small_args: Vec<Exp> = Vec::new();
     for arg in args.iter() {
-        if is_small_exp_or_loc(&arg.0) {
-            small_args.push(arg.0.clone());
+        if is_small_exp_or_loc(arg) {
+            small_args.push(arg.clone());
         } else {
             // To avoid copying arg in preconditions and postconditions,
             // put arg into a temporary variable
-            let (temp, temp_var) = state.next_temp(&arg.0.span, &arg.1);
+            let (temp, temp_var) = state.next_temp(&arg.span, &arg.typ);
             small_args.push(temp_var);
-            let temp_id = state.declare_new_var(&temp, &arg.1, false, false);
-            stms.push(init_var(&arg.0.span, &temp_id, &arg.0));
+            let temp_id = state.declare_new_var(&temp, &arg.typ, false, false);
+            stms.push(init_var(&arg.span, &temp_id, arg));
         }
     }
     let call = StmX::Call(name, fun.x.mode, typs, Arc::new(small_args), dest);
@@ -942,7 +938,6 @@ fn expr_to_stm_opt(
                 (mut stms, ReturnedCall::Call { fun: x, typs, has_return: ret, args }) => {
                     if function_can_be_exp(ctx, state, expr, &x)? {
                         // ExpX::Call
-                        let args = Arc::new(vec_map(&args, |(a, _)| a.clone()));
                         let call = ExpX::Call(x.clone(), typs.clone(), args);
                         Ok((stms, ReturnValue::Some(mk_exp(call))))
                     } else if ret {
@@ -967,7 +962,6 @@ fn expr_to_stm_opt(
                             if fun.x.mode == Mode::Spec {
                                 // for recommends, we need a StmX::Call for the recommends
                                 // and an ExpX::Call for the value.
-                                let args = Arc::new(vec_map(&args, |(a, _)| a.clone()));
                                 let call = ExpX::Call(x.clone(), typs.clone(), args);
                                 let call = SpannedTyped::new(&expr.span, &expr.typ, call);
                                 stms.push(init_var(&expr.span, &temp_ident, &call));
