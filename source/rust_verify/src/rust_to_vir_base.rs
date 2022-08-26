@@ -1,5 +1,5 @@
 use crate::attributes::get_verifier_attrs;
-use crate::context::BodyCtxt;
+use crate::context::{BodyCtxt, Context};
 use crate::util::{err_span_str, unsupported_err_span};
 use crate::{unsupported, unsupported_err, unsupported_err_unless};
 use rustc_ast::Mutability;
@@ -13,6 +13,7 @@ use rustc_middle::ty::ProjectionPredicate;
 use rustc_middle::ty::ProjectionTy;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
 use rustc_middle::ty::{BoundConstness, ImplPolarity, PredicateKind, TraitPredicate};
+use rustc_middle::ty::Visibility;
 use rustc_span::def_id::{DefId, LOCAL_CRATE};
 use rustc_span::symbol::{kw, Ident};
 use rustc_span::Span;
@@ -141,25 +142,25 @@ pub(crate) fn ident_to_var<'tcx>(ident: &Ident) -> String {
     ident.to_string()
 }
 
-// TODO pub(crate) fn is_visibility_private(vis_kind: &VisibilityKind, inherited_is_private: bool) -> bool {
-// TODO     match vis_kind {
-// TODO         VisibilityKind::Inherited => inherited_is_private,
-// TODO         VisibilityKind::Public => false,
-// TODO         VisibilityKind::Crate(_) => false,
-// TODO         VisibilityKind::Restricted { .. } => unsupported!("restricted visibility"),
-// TODO     }
-// TODO }
-// TODO 
-// TODO pub(crate) fn mk_visibility<'tcx>(
-// TODO     owning_module: &Option<Path>,
-// TODO     vis: &Visibility<'tcx>,
-// TODO     inherited_is_private: bool,
-// TODO ) -> vir::ast::Visibility {
-// TODO     vir::ast::Visibility {
-// TODO         owning_module: owning_module.clone(),
-// TODO         is_private: is_visibility_private(&vis.node, inherited_is_private),
-// TODO     }
-// TODO }
+pub(crate) fn is_visibility_private<'tcx>(ctxt: &Context<'tcx>, def_id: DefId) -> bool {
+    let vis: rustc_middle::ty::Visibility = ctxt.tcx.visibility(def_id);
+    match vis {
+        Visibility::Public => false,
+        Visibility::Restricted(_) => true,
+        Visibility::Invisible => true,
+    }
+}
+
+pub(crate) fn mk_visibility<'tcx>(
+    ctxt: &Context<'tcx>,
+    owning_module: &Option<Path>,
+    def_id: DefId,
+) -> vir::ast::Visibility {
+    vir::ast::Visibility {
+        owning_module: owning_module.clone(),
+        is_private: is_visibility_private(ctxt, def_id),
+    }
+}
 
 pub(crate) fn get_range(typ: &Typ) -> IntRange {
     match &**typ {

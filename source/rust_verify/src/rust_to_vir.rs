@@ -12,7 +12,7 @@ use crate::def::{get_variant_fn_name, is_variant_fn_name};
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
 use crate::rust_to_vir_base::{
     check_generics_bounds, def_id_to_vir_path, fn_item_hir_id_to_self_def_id, hack_get_def_name,
-    ident_to_var, mid_ty_to_vir, typ_path_and_ident_to_vir_path,
+    ident_to_var, mid_ty_to_vir, typ_path_and_ident_to_vir_path, mk_visibility,
 };
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
 use crate::util::{err_span_str, spanned_new, unsupported_err_span};
@@ -31,15 +31,15 @@ use vir::ast::Typ;
 use vir::ast::{Fun, FunX, FunctionKind, Krate, KrateX, Mode, Path, TypX, VirErr};
 use vir::ast_util::path_as_rust_name;
 
-fn check_item<'tcx>(
-    ctxt: &Context<'tcx>,
-    vir: &mut KrateX,
-    module_path: &Path,
-    id: &ItemId,
+fn check_item<'a, 'tcx>(
+    ctxt: &'a Context<'tcx>,
+    vir: &'a mut KrateX,
+    module_path: &'a Path,
+    id: &'a ItemId,
     item: &'tcx Item<'tcx>,
 ) -> Result<(), VirErr> {
-    // TODO let visibility = mk_visibility(&Some(module_path.clone()), &item.vis, true);
-    let visibility = todo!();
+    dbg!(&item.def_id.to_def_id());
+    let visibility = || mk_visibility(ctxt, &Some(module_path.clone()), item.def_id.to_def_id());
     match &item.kind {
         ItemKind::Fn(sig, generics, body_id) => {
             check_item_fn(
@@ -47,7 +47,7 @@ fn check_item<'tcx>(
                 vir,
                 item.def_id.to_def_id(),
                 FunctionKind::Static,
-                visibility,
+                visibility(),
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 sig,
                 None,
@@ -79,11 +79,11 @@ fn check_item<'tcx>(
                 module_path,
                 item.span,
                 id,
-                visibility,
+                visibility(),
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 variant_data,
                 generics,
-                &adt_def,
+                adt_def,
             )?;
         }
         ItemKind::Enum(enum_def, generics) => {
@@ -97,11 +97,11 @@ fn check_item<'tcx>(
                 module_path,
                 item.span,
                 id,
-                visibility,
+                visibility(),
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 enum_def,
                 generics,
-                &adt_def,
+                adt_def,
             )?;
         }
         ItemKind::Impl(impll) => {
@@ -229,7 +229,8 @@ fn check_item<'tcx>(
                         match impl_item_ref.kind {
                             AssocItemKind::Fn { has_self } => {
                                 let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
-                                let mut impl_item_visibility = todo!(); // TODO mk_visibility(&Some(module_path.clone()), &impl_item.vis, true);
+                                // TODO mk_visibility(&Some(module_path.clone()), &impl_item.vis, true);
+                                let mut impl_item_visibility = mk_visibility(ctxt, &Some(module_path.clone()), impl_def_id);
                                 match &impl_item.kind {
                                     ImplItemKind::Fn(sig, body_id) => {
                                         let fn_attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
@@ -381,7 +382,7 @@ fn check_item<'tcx>(
                 vir,
                 item.span,
                 item.def_id.to_def_id(),
-                visibility,
+                visibility(),
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 &vir_ty,
                 body_id,
@@ -424,7 +425,7 @@ fn check_item<'tcx>(
                             vir,
                             def_id.to_def_id(),
                             FunctionKind::TraitMethodDecl { trait_path: trait_path.clone() },
-                            visibility.clone(),
+                            visibility(),
                             attrs,
                             sig,
                             None,

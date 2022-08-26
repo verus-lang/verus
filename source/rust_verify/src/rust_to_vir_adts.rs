@@ -1,6 +1,6 @@
 use crate::attributes::{get_mode, get_verifier_attrs};
 use crate::context::Context;
-use crate::rust_to_vir_base::{ check_generics_bounds, def_id_to_vir_path, hack_get_def_name, mid_ty_to_vir, };
+use crate::rust_to_vir_base::{ check_generics_bounds, def_id_to_vir_path, hack_get_def_name, mid_ty_to_vir, mk_visibility, is_visibility_private};
 use crate::unsupported_unless;
 use crate::util::spanned_new;
 use air::ast_util::str_ident;
@@ -31,6 +31,7 @@ fn check_variant_data<'tcx>(
                 .map(|(field, field_def)| {
                     assert!(field.ident.name == field_def.ident(ctxt.tcx).name);
                     let field_ty = ctxt.tcx.type_of(field_def.did);
+                    let field_def_id = ctxt.tcx.hir().local_def_id(field.hir_id).to_def_id();
 
                     (
                         ident_binder(
@@ -38,10 +39,12 @@ fn check_variant_data<'tcx>(
                             &(
                                 mid_ty_to_vir(ctxt.tcx, field_ty, false),
                                 get_mode(Mode::Exec, ctxt.tcx.hir().attrs(field.hir_id)),
-                                todo!() // mk_visibility(&Some(module_path.clone()), &field.vis, !in_enum),
+                                // TODO mk_visibility(&Some(module_path.clone()), &field.vis, !in_enum),
+                                mk_visibility(ctxt, &Some(module_path.clone()), field_def_id),
                             ),
                         ),
-                        todo!() // is_visibility_private(&field.vis.node, !in_enum),
+                        // TODO is_visibility_private(&field.vis.node, !in_enum),
+                        is_visibility_private(ctxt, field_def_id),
                     )
                 })
                 .unzip();
@@ -55,6 +58,7 @@ fn check_variant_data<'tcx>(
                 .map(|(i, (field, field_def))| {
                     assert!(field.ident.name == field_def.ident(ctxt.tcx).name);
                     let field_ty = ctxt.tcx.type_of(field_def.did);
+                    let field_def_id = ctxt.tcx.hir().local_def_id(field.hir_id).to_def_id();
 
                     (
                         ident_binder(
@@ -62,10 +66,12 @@ fn check_variant_data<'tcx>(
                             &(
                                 mid_ty_to_vir(ctxt.tcx, field_ty, false),
                                 get_mode(Mode::Exec, ctxt.tcx.hir().attrs(field.hir_id)),
-                                todo!() // mk_visibility(&Some(module_path.clone()), &field.vis, !in_enum),
+                                // TODO mk_visibility(&Some(module_path.clone()), &field.vis, !in_enum),
+                                mk_visibility(ctxt, &Some(module_path.clone()), field_def_id),
                             ),
                         ),
-                        todo!() // is_visibility_private(&field.vis.node, !in_enum),
+                        // TODO is_visibility_private(&field.vis.node, !in_enum),
+                        is_visibility_private(ctxt, field_def_id),
                     )
                 })
                 .unzip();
@@ -87,7 +93,7 @@ pub fn check_item_struct<'tcx>(
     attrs: &[Attribute],
     variant_data: &'tcx VariantData<'tcx>,
     generics: &'tcx Generics<'tcx>,
-    adt_def: &'tcx rustc_middle::ty::AdtDef,
+    adt_def: rustc_middle::ty::AdtDef<'tcx>,
 ) -> Result<(), VirErr> {
     assert!(adt_def.is_struct());
 
@@ -120,11 +126,11 @@ pub fn check_item_struct<'tcx>(
     Ok(())
 }
 
-pub fn get_mid_variant_def_by_name<'a>(
-    ctxt: &'a Context<'a>,
-    adt_def: &'a rustc_middle::ty::AdtDef,
-    variant_name: &'a str,
-) -> &'a rustc_middle::ty::VariantDef {
+pub fn get_mid_variant_def_by_name<'tcx>(
+    ctxt: &Context<'tcx>,
+    adt_def: rustc_middle::ty::AdtDef<'tcx>,
+    variant_name: &str,
+) -> &'tcx rustc_middle::ty::VariantDef {
     for variant_def in adt_def.variants().iter() {
         if variant_def.ident(ctxt.tcx).name.as_str() == variant_name {
             return variant_def;
@@ -134,7 +140,7 @@ pub fn get_mid_variant_def_by_name<'a>(
 }
 
 pub fn check_item_enum<'tcx>(
-    ctxt: &'tcx Context<'tcx>,
+    ctxt: &Context<'tcx>,
     vir: &mut KrateX,
     module_path: &Path,
     span: Span,
@@ -143,7 +149,7 @@ pub fn check_item_enum<'tcx>(
     attrs: &[Attribute],
     enum_def: &'tcx EnumDef<'tcx>,
     generics: &'tcx Generics<'tcx>,
-    adt_def: &'tcx rustc_middle::ty::AdtDef,
+    adt_def: rustc_middle::ty::AdtDef<'tcx>,
 ) -> Result<(), VirErr> {
     assert!(adt_def.is_enum());
 
@@ -157,7 +163,7 @@ pub fn check_item_enum<'tcx>(
         .iter()
         .map(|variant| {
             let variant_name = &variant.ident.as_str();
-            let variant_def = get_mid_variant_def_by_name(ctxt, &adt_def, variant_name);
+            let variant_def = get_mid_variant_def_by_name(ctxt, adt_def, variant_name);
             let variant_name = str_ident(variant_name);
             let field_defs = variant_def.fields.iter();
             check_variant_data(ctxt, module_path, &variant_name, &variant.data, true, field_defs)
