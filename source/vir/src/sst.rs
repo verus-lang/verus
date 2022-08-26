@@ -109,7 +109,7 @@ pub enum StmX {
     DeadEnd(Stm),
     If(Exp, Stm, Option<Stm>),
     While {
-        cond_stms: Stms,
+        cond_stm: Stm,
         cond_exp: Exp,
         body: Stm,
         invs: Exps,

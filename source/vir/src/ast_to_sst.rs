@@ -1504,10 +1504,11 @@ fn expr_to_stm_opt(
                 let check_recommends: Vec<Stm> = check_recommends.into_iter().flatten().collect();
                 stms1.splice(0..0, check_recommends);
             }
+            let block0 = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(stms0)));
             let while_stm = Spanned::new(
                 expr.span.clone(),
                 StmX::While {
-                    cond_stms: Arc::new(stms0),
+                    cond_stm: block0,
                     cond_exp: e0,
                     body: stms_to_one_stm(&body.span, stms1),
                     invs: Arc::new(invs),
