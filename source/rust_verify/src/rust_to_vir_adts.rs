@@ -79,8 +79,7 @@ fn check_variant_data<'tcx>(
         }
         VariantData::Unit(_vairant_id) => (Arc::new(vec![]), false),
     };
-    (ident_binder(name, todo!()), one_field_private)
-    // (ident_binder(name, &vir_fields), one_field_private)
+    (ident_binder(name, &vir_fields), one_field_private)
 }
 
 pub fn check_item_struct<'tcx>(

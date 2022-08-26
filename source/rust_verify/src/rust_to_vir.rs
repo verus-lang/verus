@@ -38,7 +38,6 @@ fn check_item<'a, 'tcx>(
     id: &'a ItemId,
     item: &'tcx Item<'tcx>,
 ) -> Result<(), VirErr> {
-    dbg!(&item.def_id.to_def_id());
     let visibility = || mk_visibility(ctxt, &Some(module_path.clone()), item.def_id.to_def_id());
     match &item.kind {
         ItemKind::Fn(sig, generics, body_id) => {
@@ -296,11 +295,16 @@ fn check_item<'a, 'tcx>(
                                                     sig.span,
                                                     "method without self"
                                                 );
-                                                impl_item_visibility = todo!(); // TODO mk_visibility(
-                                                //     &Some(module_path.clone()),
-                                                //     &impl_item.vis,
-                                                //     false,
-                                                // );
+                                                // TODO impl_item_visibility = mk_visibility(
+                                                // TODO     &Some(module_path.clone()),
+                                                // TODO     &impl_item.vis,
+                                                // TODO     false,
+                                                // TODO );
+                                                impl_item_visibility = mk_visibility(
+                                                    ctxt,
+                                                    &Some(module_path.clone()),
+                                                    impl_item.def_id.to_def_id(),
+                                                );
                                                 let ident = ident_to_var(&impl_item_ref.ident);
                                                 let ident = Arc::new(ident);
                                                 let path = typ_path_and_ident_to_vir_path(
@@ -399,7 +403,7 @@ fn check_item<'a, 'tcx>(
                 let trait_item = ctxt.tcx.hir().trait_item(trait_item_ref.id);
                 let TraitItem { ident: _, def_id, generics: item_generics, kind, span, defaultness } =
                     trait_item;
-                todo!(); // defaultness
+                // TODO handle defaultness?
                 let generics_bnds =
                     check_generics_bounds(ctxt.tcx, item_generics, false, def_id.to_def_id())?;
                 unsupported_err_unless!(generics_bnds.len() == 0, *span, "trait generics");

@@ -72,7 +72,8 @@ pub(crate) fn mac_args_to_tree(span: Span, name: String, args: &MacArgs) -> Resu
 pub(crate) fn attr_to_tree(attr: &Attribute) -> Result<AttrTree, ()> {
     match &attr.kind {
         AttrKind::Normal(normal_attr) => match &normal_attr.item.path.segments[..] {
-            [segment] => {
+            // REVIEW performance avoid looking up "verus" in the interner?
+            [verus_segment, segment] if verus_segment.ident.as_str() == "verus" => {
                 let name = ident_to_var(&segment.ident).as_str().to_string();
                 mac_args_to_tree(attr.span, name, &normal_attr.item.args)
             }
