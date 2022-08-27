@@ -161,6 +161,8 @@ pub const SPLIT_ASSERT_FAILURE: &str = "split assertion failure";
 pub const SPLIT_PRE_FAILURE: &str = "split precondition failure";
 pub const SPLIT_POST_FAILURE: &str = "split postcondition failure";
 
+pub const PERVASIVE_ASSERT: &[&str] = &["pervasive", "assert"];
+
 pub fn path_to_string(path: &Path) -> String {
     let s = vec_map(&path.segments, |s| s.to_string()).join(PATH_SEPARATOR) + SUFFIX_PATH;
     if let Some(krate) = &path.krate { krate.to_string() + KRATE_SEPARATOR + &s } else { s }
@@ -588,5 +590,12 @@ pub fn strslice_defn_path() -> Path {
             Arc::new("string".to_string()),
             Arc::new(STRSLICE.to_string()),
         ]),
+    })
+}
+
+pub fn pervasive_assert_path() -> Path {
+    Arc::new(PathX {
+        krate: None,
+        segments: Arc::new(PERVASIVE_ASSERT.iter().map(|x| Arc::new(x.to_string())).collect()),
     })
 }

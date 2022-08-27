@@ -1197,9 +1197,10 @@ fn assume_other_fields_unchanged_inner(
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, VirErr> {
     let expr_ctxt = &ExprCtxt::new();
     let result = match &stm.x {
-        StmX::Call(x, mode, typs, args, dest) => {
+        StmX::Call { fun, mode, typ_args: typs, args, split, dest } => {
+            assert!(split.is_none());
             let mut stmts: Vec<Stmt> = Vec::new();
-            let func = &ctx.func_map[x];
+            let func = &ctx.func_map[fun];
             if func.x.require.len() > 0
                 && (!ctx.checking_recommends_for_non_spec() || *mode == Mode::Spec)
             {

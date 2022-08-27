@@ -1,16 +1,55 @@
 use crate::ast::{
-    BinaryOp, Fun, Function, Ident, Params, SpannedTyped, Typ, TypBounds, TypX, Typs, UnaryOp,
+    BinaryOp, Exprs, Fun, Function, Ident, Params, SpannedTyped, Typ, TypBounds, TypX, Typs,
+    UnaryOp, VirErr,
 };
-use crate::ast_to_sst::{get_function, State};
+use crate::ast_to_sst::get_function;
 use crate::context::Ctx;
 use crate::def::unique_local;
 use crate::def::Spanned;
-use crate::func_to_air::SstInline;
-use crate::sst::{BndX, Exp, ExpX, Exps, Stm, StmX, UniqueIdent};
+use crate::func_to_air::{SstInline, SstMap};
+use crate::sst::{BndX, Exp, ExpX, Exps, Pars, Stm, StmX, UniqueIdent};
+use crate::sst_visitor::map_shallow_stm;
 use air::ast::Span;
 use air::errors::Error;
 use std::collections::HashMap;
 use std::sync::Arc;
+
+struct State<'a> {
+    fun_ssts: &'a SstMap,
+    // Track the status of fuel for each function,
+    // since `reveal`, `reveal_with_fuel` can change the fuel locally.
+    reveal_map: Vec<HashMap<Fun, u32>>, //  HashMap<Fun, fuel>
+}
+
+impl<'a> State<'a> {
+    pub fn new(fun_ssts: &'a SstMap) -> Self {
+        let mut reveal_map = Vec::new();
+        reveal_map.push(HashMap::new());
+        State { fun_ssts, reveal_map }
+    }
+
+    fn record_fuel(&mut self, x: &Fun, fuel: u32) {
+        self.reveal_map.last_mut().expect("reveal_map").insert(x.clone(), fuel);
+    }
+
+    pub(crate) fn find_fuel(&self, x: &Fun) -> Option<u32> {
+        for rmap in self.reveal_map.iter().rev() {
+            if let Some(local_fuel) = rmap.get(x) {
+                return Some(*local_fuel);
+            }
+        }
+        None
+    }
+
+    // if some expr can contain `proof` block, push and pop around that proof block's translation
+    pub(crate) fn push_fuel_scope(&mut self) {
+        self.reveal_map.push(HashMap::new());
+    }
+
+    pub(crate) fn pop_fuel_scope(&mut self) {
+        self.reveal_map.pop();
+    }
+}
 
 fn is_bool_type(t: &Typ) -> bool {
     match &**t {
@@ -48,15 +87,11 @@ pub(crate) fn inline_expression(
     }
     let e = crate::sst_util::subst_exp(typ_substs, substs, body);
 
-    // Note that `pervasive::assert` is merely consisted of `requires` and `ensures`
-    // when `inline_expression` is called to inline the `requires` of `pervasive::assert`, we want to avoid highlighting it.
-    let span = if name.path.segments[0].to_string() == "pervasive".to_string()
-        && name.path.segments[1].to_string() == "assert".to_string()
-    {
-        outer_span
-    } else {
-        &body.span
-    };
+    // Note that `pervasive::assert` merely consists of `requires` and `ensures`
+    // when `inline_expression` is called to inline the `requires` of `pervasive::assert`,
+    // we want to avoid highlighting it.
+    let span =
+        if name.path == crate::def::pervasive_assert_path() { outer_span } else { &body.span };
     let e = SpannedTyped::new(span, &e.typ, e.x.clone());
     return Ok(e);
 }
@@ -95,9 +130,9 @@ fn tr_inline_function(
     };
 
     let mut hidden = false; // track `hide` statement
-    match &state.fun {
+    match &ctx.fun {
         Some(f) => {
-            let fun_owner = get_function(ctx, span, f).unwrap();
+            let fun_owner = get_function(ctx, span, &f.current_fun).unwrap();
             let fs_to_hide = &fun_owner.x.attrs.hidden;
             for f_to_hide in &**fs_to_hide {
                 if **f_to_hide == *fun_to_inline.x.name {
@@ -228,7 +263,7 @@ fn mk_chained_implies(es: TracedExps) -> TracedExps {
 }
 
 // Note: this splitting referenced Dafny - https://github.com/dafny-lang/dafny/blob/cf285b9282499c46eb24f05c7ecc7c72423cd878/Source/Dafny/Verifier/Translator.cs#L11100
-pub(crate) fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> TracedExps {
+fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> TracedExps {
     match *exp.e.typ {
         TypX::Bool => (),
         _ => {
@@ -457,4 +492,123 @@ pub fn is_split_error(error: &Error) -> bool {
     } else {
         false
     }
+}
+
+fn split_call(
+    ctx: &Ctx,
+    state: &State,
+    span: &Span,
+    name: &Fun,
+    typs: &Typs,
+    args: &Exps,
+    error: &Error,
+) -> Result<Vec<Stm>, VirErr> {
+    let fun = get_function(ctx, span, name)?;
+    let mut stms: Vec<Stm> = Vec::new();
+
+    // We split the `requires` expression on the call site.
+    // (If we were to split the `requires` expression on the function itself,
+    // this split encoding would take effect on every call site, which is not desirable.)
+    //
+    // Also, note that pervasive::assert consists of `requires` and `ensures`,
+    // so we are also splitting pervasive::assert here.
+    let params = &fun.x.params;
+    let typ_bounds = &fun.x.typ_bounds;
+    for e in &**fun.x.require {
+        let exp = crate::ast_to_sst::expr_to_exp_as_spec(
+            &ctx,
+            &state.fun_ssts,
+            &crate::func_to_air::params_to_pars(params, true), // REVIEW: is `true` here desirable?
+            &e,
+        )
+        .expect("expr_to_exp_as_spec");
+
+        let exp_subsituted = inline_expression(name, args, typs, params, typ_bounds, &exp, span);
+        if exp_subsituted.is_err() {
+            continue;
+        }
+        let exp_subsituted = exp_subsituted.unwrap();
+        // REVIEW: should we simply use SPLIT_ASSERT_FAILURE?
+        let exprs =
+            split_expr(ctx, &state, &TracedExpX::new(exp_subsituted.clone(), error.clone()), false);
+        stms.extend(register_split_assertions(exprs).into_iter());
+    }
+    Ok(stms)
+}
+
+fn visit_split_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Stm, VirErr> {
+    match &stm.x {
+        StmX::Call { fun, typ_args, args, split: Some(error), dest: None, .. } => {
+            let stms = split_call(ctx, state, &stm.span, fun, typ_args, args, error)?;
+            Ok(Spanned::new(stm.span.clone(), StmX::Block(Arc::new(stms))))
+        }
+        StmX::Fuel(x, fuel) => {
+            state.record_fuel(x, *fuel);
+            Ok(stm.clone())
+        }
+        StmX::DeadEnd(s) => {
+            state.push_fuel_scope();
+            let s = visit_split_stm(ctx, state, s)?;
+            state.pop_fuel_scope();
+            Ok(Spanned::new(stm.span.clone(), StmX::DeadEnd(s)))
+        }
+        StmX::If(cond, lhs, rhs) => {
+            state.push_fuel_scope();
+            state.pop_fuel_scope();
+            let lhs = visit_split_stm(ctx, state, lhs)?;
+            state.push_fuel_scope();
+            let rhs = rhs.as_ref().map(|rhs| visit_split_stm(ctx, state, rhs)).transpose()?;
+            state.pop_fuel_scope();
+            Ok(Spanned::new(stm.span.clone(), StmX::If(cond.clone(), lhs, rhs)))
+        }
+        StmX::While { cond_stm, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
+            let cond_stm = visit_split_stm(ctx, state, cond_stm)?;
+            let mut body_state = State::new(&state.fun_ssts);
+            let body = visit_split_stm(ctx, &mut body_state, body)?;
+            Ok(Spanned::new(
+                stm.span.clone(),
+                StmX::While {
+                    cond_stm,
+                    cond_exp: cond_exp.clone(),
+                    body,
+                    invs: invs.clone(),
+                    typ_inv_vars: typ_inv_vars.clone(),
+                    modified_vars: modified_vars.clone(),
+                },
+            ))
+        }
+        _ => map_shallow_stm(stm, &mut |s| visit_split_stm(ctx, state, s)),
+    }
+}
+
+pub(crate) fn all_split_exp(ctx: &Ctx, fun_ssts: &SstMap, stm: &Stm) -> Result<Stm, VirErr> {
+    let mut state = State::new(fun_ssts);
+    map_shallow_stm(stm, &mut |s| visit_split_stm(ctx, &mut state, s))
+}
+
+pub(crate) fn split_body(
+    ctx: &Ctx,
+    fun_ssts: &SstMap,
+    stm: &Stm,
+    ensures: &Exprs,
+    ens_pars: &Pars,
+) -> Result<Stm, VirErr> {
+    let state = State::new(fun_ssts);
+    let mut small_ens_assertions = vec![];
+    for e in ensures.iter() {
+        if need_split_expression(ctx, &e.span) {
+            let ens_exp = crate::ast_to_sst::expr_to_exp(ctx, &state.fun_ssts, &ens_pars, e)?;
+            let error = air::errors::error(crate::def::SPLIT_POST_FAILURE, &e.span);
+            let split_exprs = split_expr(
+                ctx,
+                &state, // use the state after `body` translation to get the fuel info
+                &TracedExpX::new(ens_exp.clone(), error.clone()),
+                false,
+            );
+            small_ens_assertions.extend(register_split_assertions(split_exprs));
+        }
+    }
+    let mut my_stms = vec![stm.clone()];
+    my_stms.extend(small_ens_assertions);
+    Ok(crate::ast_to_sst::stms_to_one_stm(&stm.span, my_stms))
 }
