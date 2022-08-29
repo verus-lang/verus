@@ -364,3 +364,58 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_unicode_mixed_chars verus_code! {
+        use pervasive::string::*;
+        proof fn test() {
+            let a = new_strlit("è ❤️");
+            reveal_strlit("è ❤️");
+            assert(a@[0] === 'è');
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_string_2_pass verus_code! {
+        use pervasive::string::*;
+        fn test() {
+            let a = String::from_str(new_strlit("ABC"));
+            reveal_strlit("ABC");
+            let b = a.as_str().substring_ascii(1, 2);
+            reveal_strlit("B");
+            assert(b@.ext_equal(new_strlit("B")@));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_string_2_fail verus_code! {
+        use pervasive::string::*;
+        fn test() {
+            let a = String::from_str(new_strlit("ABC"));
+            reveal_strlit("ABC");
+            let b = a.as_str().substring_ascii(2, 3);
+            reveal_strlit("B");
+            reveal_strlit("C");
+            assert(b@.ext_equal(new_strlit("C")@));
+            assert(b@ === new_strlit("B")@); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_string_is_ascii_roundtrip verus_code! {
+        use pervasive::string::*;
+        fn test() {
+            let a = new_strlit("ABC");
+            let b = a.to_string();
+            let c = b.as_str();
+            reveal_strlit("ABC");
+            assert(a@.ext_equal(c@));
+            assert(a.is_ascii());
+            // TODO assert(b.is_ascii());
+            // TODO assert(c.is_ascii());
+        }
+    } => Ok(())
+}
