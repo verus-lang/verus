@@ -611,8 +611,9 @@ pub(crate) fn split_body(
     ensures: &Exprs,
     ens_pars: &Pars,
 ) -> Result<Stm, VirErr> {
-    let state = State::new(fun_ssts);
+    let mut state = State::new(fun_ssts);
     let mut small_ens_assertions = vec![];
+    let _ = map_shallow_stm(stm, &mut |s| visit_split_stm(ctx, &mut state, s)); // Update `state` to get the fuel info at the function exit point
     for e in ensures.iter() {
         if need_split_expression(ctx, &e.span) {
             let ens_exp = crate::ast_to_sst::expr_to_exp(ctx, &state.fun_ssts, &ens_pars, e)?;
