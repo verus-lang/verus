@@ -133,125 +133,175 @@ pub struct LocalDeclX {
     pub mutable: bool,
 }
 
-impl fmt::Display for ExpX {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+// REVIEW: Move this to be an impl of BinaryOp in ast.rs?
+// Based on the "Expression precedence" table here:
+// https://doc.rust-lang.org/reference/expressions.html
+fn prec_of_binary_op(op: BinaryOp) -> (u32, u32, u32) {
+    use ArithOp::*;
+    use BinaryOp::*;
+    use BitwiseOp::*;
+    match op {
+        And => (8, 9, 9),
+        Or => (6, 7, 7),
+        Xor => (6, 7, 7), // REVIEW: Rust doesn't have a logical xor, so it's up to us to define this
+        Implies => (3, 4, 4),
+        Eq(_) | Ne | Inequality(_) => (10, 10, 10),
+        Arith(o, _) => match o {
+            Add | Sub => (30, 30, 31),
+            Mul | EuclideanDiv | EuclideanMod => (40, 40, 41),
+        },
+        Bitwise(o) => match o {
+            BitXor => (22, 22, 23),
+            BitAnd => (24, 24, 25),
+            BitOr => (20, 20, 21),
+            Shr | Shl => (26, 26, 27),
+        },
+    }
+}
+
+impl ExpX {
+    fn to_string_prec(&self, precedence: u32) -> String {
         use ExpX::*;
-        match &self {
+        let (s, inner_precedence) = match &self {
             Const(c) => match c {
-                Constant::Bool(b) => write!(f, "{}", b),
-                Constant::Int(i) => write!(f, "{}", i),
+                Constant::Bool(b) => (format!("{}", b), 99),
+                Constant::Int(i) => (format!("{}", i), 99),
             },
-            Var(id) | VarLoc(id) => write!(f, "{}", id.name),
-            VarAt(id, _at) => write!(f, "old({})", id.name),
-            Loc(exp) => write!(f, "{}", exp), // REVIEW: Additional decoration required?
+            Var(id) | VarLoc(id) => (format!("{}", id.name), 99),
+            VarAt(id, _at) => (format!("old({})", id.name), 99),
+            Loc(exp) => (format!("{}", exp), 99), // REVIEW: Additional decoration required?
             Call(fun, _, exps) => {
                 let args = exps.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
-                write!(f, "{}({})", fun.path.segments.last().unwrap(), args)
+                (format!("{}({})", fun.path.segments.last().unwrap(), args), 90)
             }
             Unary(op, exp) => match op {
-                UnaryOp::Not => write!(f, "!{}", exp),
-                UnaryOp::BitNot => write!(f, "!{}", exp),
-                UnaryOp::Trigger(..) => Ok(()),
-                UnaryOp::Clip(_range) => write!(f, "clip({})", exp),
-                UnaryOp::CoerceMode { .. } => Ok(()),
-                UnaryOp::MustBeFinalized => Ok(()),
+                UnaryOp::Not | UnaryOp::BitNot => (format!("!{}", exp.x.to_string_prec(99)), 90),
+                UnaryOp::Clip(_range) => (format!("clip({})", exp), 99),
+                UnaryOp::Trigger(..) | UnaryOp::CoerceMode { .. } | UnaryOp::MustBeFinalized => {
+                    ("".to_string(), 0)
+                }
             },
             UnaryOpr(op, exp) => {
                 use crate::ast::UnaryOpr::*;
                 match op {
-                    Box(_) => write!(f, "box({})", exp),
-                    Unbox(_) => write!(f, "unbox({})", exp),
-                    HasType(t) => write!(f, "{}.has_type({:?})", exp, t),
-                    IsVariant { datatype: _, variant } => write!(f, "{}.is_type({})", exp, variant),
-                    TupleField { tuple_arity: _, field } => write!(f, "{}.{}", exp, field),
-                    Field(field) => write!(f, "{}.{}", exp, field.field),
+                    Box(_) => (format!("box({})", exp), 99),
+                    Unbox(_) => (format!("unbox({})", exp), 99),
+                    HasType(t) => (format!("{}.has_type({:?})", exp, t), 99),
+                    IsVariant { datatype: _, variant } => {
+                        (format!("{}.is_type({})", exp, variant), 99)
+                    }
+                    TupleField { tuple_arity: _, field } => (format!("{}.{}", exp, field), 99),
+                    Field(field) => (format!("{}.{}", exp, field.field), 99),
                 }
             }
             Binary(op, e1, e2) => {
+                let (prec_exp, prec_left, prec_right) = prec_of_binary_op(*op);
                 use ArithOp::*;
                 use BinaryOp::*;
                 use BitwiseOp::*;
                 use InequalityOp::*;
-                match op {
-                    And => write!(f, "{} && {}", e1, e2),
-                    Or => write!(f, "{} || {}", e1, e2),
-                    Xor => write!(f, "{} ^ {}", e1, e2),
-                    Implies => write!(f, "{} ==> {}", e1, e2),
-                    Eq(_) => write!(f, "{} == {}", e1, e2),
-                    Ne => write!(f, "{} != {}", e1, e2),
+                let left = e1.x.to_string_prec(prec_left);
+                let right = e2.x.to_string_prec(prec_right);
+                let op = match op {
+                    And => "&&",
+                    Or => "||",
+                    Xor => "^",
+                    Implies => "==>",
+                    Eq(_) => "==",
+                    Ne => "!=",
                     Inequality(o) => match o {
-                        Le => write!(f, "{} <= {}", e1, e2),
-                        Ge => write!(f, "{} >= {}", e1, e2),
-                        Lt => write!(f, "{} < {}", e1, e2),
-                        Gt => write!(f, "{} > {}", e1, e2),
+                        Le => "<=",
+                        Ge => ">=",
+                        Lt => "<",
+                        Gt => ">",
                     },
                     Arith(o, _) => match o {
-                        Add => write!(f, "{} + {}", e1, e2),
-                        Sub => write!(f, "{} - {}", e1, e2),
-                        Mul => write!(f, "{} * {}", e1, e2),
-                        EuclideanDiv => write!(f, "{} / {}", e1, e2),
-                        EuclideanMod => write!(f, "{} % {}", e1, e2),
+                        Add => "+",
+                        Sub => "-",
+                        Mul => "*",
+                        EuclideanDiv => "/",
+                        EuclideanMod => "%",
                     },
                     Bitwise(o) => match o {
-                        BitXor => write!(f, "{} ^ {}", e1, e2),
-                        BitAnd => write!(f, "{} & {}", e1, e2),
-                        BitOr => write!(f, "{} | {}", e1, e2),
-                        Shr => write!(f, "{} >> {}", e1, e2),
-                        Shl => write!(f, "{} << {}", e1, e2),
+                        BitXor => "^",
+                        BitAnd => "&",
+                        BitOr => "|",
+                        Shr => ">>",
+                        Shl => "<<",
                     },
-                }
+                };
+                (format!("{} {} {}", left, op, right), prec_exp)
             }
-            If(e1, e2, e3) => write!(f, "if {} {{ {} }} else {{ {} }}", e1, e2, e3),
-            Bind(bnd, exp) => match &bnd.x {
-                BndX::Let(bnds) => {
-                    let assigns = bnds
-                        .iter()
-                        .map(|b| format!("{} = {}", b.name, b.a))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    write!(f, "let {} in {}", assigns, exp)
-                }
-                BndX::Quant(Quant { quant: q, .. }, bnds, _trigs) => {
-                    let q_str = match q {
-                        air::ast::Quant::Forall => "forall",
-                        air::ast::Quant::Exists => "exists",
-                    };
-                    let vars =
-                        bnds.iter().map(|b| format!("{}", b.name)).collect::<Vec<_>>().join(", ");
+            If(e1, e2, e3) => (format!("if {} {{ {} }} else {{ {} }}", e1, e2, e3), 99),
+            Bind(bnd, exp) => {
+                let s = match &bnd.x {
+                    BndX::Let(bnds) => {
+                        let assigns = bnds
+                            .iter()
+                            .map(|b| format!("{} = {}", b.name, b.a))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        format!("let {} in {}", assigns, exp)
+                    }
+                    BndX::Quant(Quant { quant: q, .. }, bnds, _trigs) => {
+                        let q_str = match q {
+                            air::ast::Quant::Forall => "forall",
+                            air::ast::Quant::Exists => "exists",
+                        };
+                        let vars = bnds
+                            .iter()
+                            .map(|b| format!("{}", b.name))
+                            .collect::<Vec<_>>()
+                            .join(", ");
 
-                    write!(f, "({} |{}| {})", q_str, vars, exp)
-                }
-                BndX::Lambda(bnds) => {
-                    let assigns =
-                        bnds.iter().map(|b| format!("{}", b.name)).collect::<Vec<_>>().join(", ");
-                    write!(f, "(|{}| {})", assigns, exp)
-                }
-                BndX::Choose(bnds, _trigs, _cond) => {
-                    // REVIEW: Where is cond used?  Couldn't find an example syntax
-                    let vars =
-                        bnds.iter().map(|b| format!("{}", b.name)).collect::<Vec<_>>().join(", ");
-                    write!(f, "(choose |{}| {})", vars, exp)
-                }
-            },
+                        format!("({} |{}| {})", q_str, vars, exp)
+                    }
+                    BndX::Lambda(bnds) => {
+                        let assigns = bnds
+                            .iter()
+                            .map(|b| format!("{}", b.name))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        format!("(|{}| {})", assigns, exp)
+                    }
+                    BndX::Choose(bnds, _trigs, _cond) => {
+                        // REVIEW: Where is cond used?  Couldn't find an example syntax
+                        let vars = bnds
+                            .iter()
+                            .map(|b| format!("{}", b.name))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        format!("(choose |{}| {})", vars, exp)
+                    }
+                };
+                (s, 99)
+            }
             Ctor(_path, id, bnds) => {
                 let args = bnds.iter().map(|b| b.a.to_string()).collect::<Vec<_>>().join(", ");
-                write!(f, "{}({})", id, args)
+                (format!("{}({})", id, args), 99)
             }
             CallLambda(_typ, e, args) => {
                 let args = args.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
-                write!(f, "{}({})", e, args)
+                (format!("{}({})", e, args), 99)
             }
             Interp(e) => {
                 use InterpExp::*;
                 match e {
-                    FreeVar(id) => write!(f, "{}", id.name),
+                    FreeVar(id) => (format!("{}", id.name), 99),
                     Seq(s) => {
                         let v = s.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
-                        write!(f, "[{}]", v)
+                        (format!("[{}]", v), 99)
                     }
                 }
             }
-            Old(..) | WithTriggers(..) => Ok(()), // We don't show the user these internal expressions
-        }
+            Old(..) | WithTriggers(..) => ("".to_string(), 99), // We don't show the user these internal expressions
+        };
+        if precedence <= inner_precedence { s } else { format!("({})", s) }
+    }
+}
+
+impl fmt::Display for ExpX {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_string_prec(5))
     }
 }
