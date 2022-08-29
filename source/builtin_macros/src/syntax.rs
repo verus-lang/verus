@@ -606,6 +606,12 @@ impl VisitMut for Visitor {
                             quote_spanned!(span => #[verifier(ghost_wrapper)] crate::pervasive::modes::ghost_exec(#[verifier(ghost_block_wrapped)] #inner)),
                         );
                     }
+                    (false, (true, false), _) => {
+                        *expr = Expr::Verbatim(
+                            quote_spanned!(span => compile_error!("Expected parentheses")),
+                        );
+                        return;
+                    }
                     (false, (true, true), Expr::Paren(..)) => {
                         // tracked(...)
                         let inner = take_expr(&mut *unary.expr);
