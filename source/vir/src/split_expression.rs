@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, Exprs, Fun, Function, Ident, Params, SpannedTyped, Typ, TypBounds, TypX, Typs,
-    UnaryOp, VirErr, Quant,
+    BinaryOp, Exprs, Fun, Function, Ident, Params, Quant, SpannedTyped, Typ, TypBounds, TypX, Typs,
+    UnaryOp, VirErr,
 };
 use crate::ast_to_sst::get_function;
 use crate::context::Ctx;
@@ -428,9 +428,7 @@ fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> Trace
                     Quant { quant: air::ast::Quant::Forall, boxed_params: _ },
                     _,
                     _trigs,
-                ) if !negated => {
-                    bnd.clone()
-                }
+                ) if !negated => bnd.clone(),
                 // REVIEW: is this actually useful?
                 BndX::Quant(
                     Quant { quant: air::ast::Quant::Exists, boxed_params },
@@ -574,8 +572,8 @@ fn visit_split_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Stm, VirEr
         }
         StmX::If(cond, lhs, rhs) => {
             state.push_fuel_scope();
-            state.pop_fuel_scope();
             let lhs = visit_split_stm(ctx, state, lhs)?;
+            state.pop_fuel_scope();
             state.push_fuel_scope();
             let rhs = rhs.as_ref().map(|rhs| visit_split_stm(ctx, state, rhs)).transpose()?;
             state.pop_fuel_scope();

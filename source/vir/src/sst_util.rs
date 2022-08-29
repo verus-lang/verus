@@ -3,7 +3,7 @@ use crate::def::{unique_bound, Spanned};
 use crate::sst::{BndX, Exp, ExpX, Stm, Trig, Trigs, UniqueIdent};
 use air::ast::{Binder, BinderX, Binders, Ident, Span};
 use air::scope_map::ScopeMap;
-use std::collections::{HashMap };
+use std::collections::HashMap;
 use std::sync::Arc;
 
 pub(crate) fn free_vars_exp(exp: &Exp) -> HashMap<UniqueIdent, Typ> {
