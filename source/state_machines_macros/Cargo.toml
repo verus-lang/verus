@@ -7,7 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-syn_verus = { git = "https://github.com/secure-foundations/syn", rev = "10a4c83", features = ["full", "visit", "visit-mut", "extra-traits"] }
+syn_verus = { path="../../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
 quote = "1.0"
 proc-macro2 = "1.0"
 
