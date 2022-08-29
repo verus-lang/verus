@@ -267,7 +267,7 @@ mod M4 {
 
 
 
-// example: reveal at ensures
+// example: reveal at ensures 
 #[verifier(opaque)]
 spec fn is_good_integer_13(x: int) -> bool 
 //   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Note: this function is opaque

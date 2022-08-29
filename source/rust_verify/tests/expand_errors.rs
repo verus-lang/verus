@@ -171,3 +171,77 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_expand_fails(e, 3)
 }
+
+test_verify_one_file! {
+    // example: `reveal` does not flow
+    #[test] test7_local_reveal verus_code! {
+        #[derive(PartialEq, Eq)]
+        pub enum Message {
+            Quit(bool),
+            Move { x: i32, y: i32 },
+            Write(bool),
+        }
+
+        #[verifier(opaque)]
+        spec fn is_good_integer(x: int) -> bool
+        {
+            x >= 0 && x != 5
+        }
+
+        #[verifier(opaque)]
+        spec fn is_good_message_10(msg:Message) -> bool {   // EXPAND-ERRORS
+            match msg {
+                Message::Quit(b) => b,
+                Message::Move{x, y} => is_good_integer( (x as int)  - (y as int)),
+                Message::Write(b) => b,
+            }
+        }
+
+        proof fn test_reveal(b: bool) {
+            let good_msg = Message::Move{x: 0, y: 0};
+            if b {
+            reveal(is_good_message_10);
+            } else {
+            assert_by(true, {reveal(is_good_message_10);});
+            assert(is_good_message_10(good_msg));           // EXPAND-ERRORS
+        //    ^^^^^^ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            }
+        }
+    } => Err(e) => assert_expand_fails(e, 2)
+}
+
+test_verify_one_file! {
+    // example: `reveal` does not flow
+    #[test] test8_ensures_reveal verus_code! {
+        #[derive(PartialEq, Eq)]
+        pub enum Message {
+            Quit(bool),
+            Move { x: i32, y: i32 },
+            Write(bool),
+        }
+
+        #[verifier(opaque)]
+        spec fn is_good_integer_13(x: int) -> bool   // EXPAND-ERRORS
+        {
+            x >= 0 && x != 5
+        }
+
+        #[verifier(opaque)]
+        spec fn is_good_message_13(msg:Message) -> bool {
+            match msg {
+                Message::Quit(b) => b,
+                Message::Move{x, y} => is_good_integer_13( (x as int)  - (y as int)),        // EXPAND-ERRORS
+                Message::Write(b) => b,
+            }
+        }
+
+        proof fn test_reveal_at_ensures(b: bool) -> (good_msg: Message)
+        ensures
+            is_good_message_13(good_msg),        // EXPAND-ERRORS
+        {
+            let good_msg = Message::Move{x: 0, y: 0};
+            reveal(is_good_message_13);
+            good_msg
+        }
+    } => Err(e) => assert_expand_fails(e, 3)
+}
