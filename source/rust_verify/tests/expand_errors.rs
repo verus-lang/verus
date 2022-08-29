@@ -200,18 +200,17 @@ test_verify_one_file! {
         proof fn test_reveal(b: bool) {
             let good_msg = Message::Move{x: 0, y: 0};
             if b {
-            reveal(is_good_message_10);
+                reveal(is_good_message_10);
             } else {
-            assert_by(true, {reveal(is_good_message_10);});
-            assert(is_good_message_10(good_msg));           // EXPAND-ERRORS
-        //    ^^^^^^ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                assert_by(true, {reveal(is_good_message_10);});
+                assert(is_good_message_10(good_msg));           // EXPAND-ERRORS
             }
         }
     } => Err(e) => assert_expand_fails(e, 2)
 }
 
 test_verify_one_file! {
-    // example: `reveal` does not flow
+    // example: `reveal` at function exit point
     #[test] test8_ensures_reveal verus_code! {
         #[derive(PartialEq, Eq)]
         pub enum Message {
@@ -236,8 +235,8 @@ test_verify_one_file! {
         }
 
         proof fn test_reveal_at_ensures(b: bool) -> (good_msg: Message)
-        ensures
-            is_good_message_13(good_msg),        // EXPAND-ERRORS
+            ensures
+                is_good_message_13(good_msg),        // EXPAND-ERRORS
         {
             let good_msg = Message::Move{x: 0, y: 0};
             reveal(is_good_message_13);
