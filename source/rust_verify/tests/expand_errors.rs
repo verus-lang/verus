@@ -157,7 +157,6 @@ test_verify_one_file! {
 test_verify_one_file! {
     // credit: (this example is copied from rust_verify/example/rw2022_scripts.rs, example C)
     #[test] test6_expand_forall verus_code! {
-        // this example encounters "could not automatically infer trigger" when inlining `divides`, but proceed without trigger selection
         spec fn divides(factor: nat, candidate: nat) -> bool {
             candidate % factor == 0             // EXPAND-ERRORS
         }
