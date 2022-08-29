@@ -191,29 +191,37 @@ fn exprs_to_node(exprs: &Exprs) -> Node {
 }
 
 fn expr_to_node(expr: &Expr) -> Node {
+    let chars;
     let node = match &expr.x {
         ExprX::Const(cnst) => nodes!(
             const {
                 match cnst {
                     Constant::Bool(val) => str_to_node(&format!("{}", val)),
                     Constant::Nat(val) => str_to_node(&format!("{}", val)),
-                    // HACK HACK
-                    // the printer for sise::Node does not seem to support non-ascii characters
-                    // as a result we need to do this hack
                     Constant::StrSlice(val) => str_to_node(&format!(
                         "\"{}\"",
                         match val.is_ascii() {
-                            true => val,
-                            false => "non_ascii_string_with_unknown_value",
+                            true => &**val,
+                            false => {
+                                chars = val
+                                    .chars()
+                                    .map(|c| {
+                                        if c.is_ascii() {
+                                            c.to_string()
+                                        } else {
+                                            format!("\\char<{:x}>", c as u32)
+                                        }
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join("");
+                                &chars
+                            }
                         }
                     )),
-                    Constant::Char(c) => str_to_node(&format!(
-                        "char#{}",
-                        match c.is_ascii() {
-                            true => c.to_string(),
-                            false => "non_ascii_char".to_string(),
-                        }
-                    )),
+                    Constant::Char(c) => str_to_node(&match c.is_ascii() {
+                        true => format!("char#{}", c.to_string()),
+                        false => format!("char<{:x}>", *c as u32),
+                    }),
                 }
             }
         ),
