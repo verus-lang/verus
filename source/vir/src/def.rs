@@ -71,6 +71,7 @@ const MONOTYPE_APP_END: &str = ">";
 const DECREASE_AT_ENTRY: &str = "decrease%init";
 const TRAIT_SELF_TYPE_PARAM: &str = "Self%";
 
+pub const PREFIX_IMPL_TYPE_PARAM: &str = "impl%";
 pub const SUFFIX_SNAP_MUT: &str = "_mutation";
 pub const SUFFIX_SNAP_JOIN: &str = "_join";
 pub const SUFFIX_SNAP_WHILE_BEGIN: &str = "_while_begin";
@@ -159,6 +160,8 @@ pub const INV_FAIL_LOOP_FRONT: &str = "invariant not satisfied before loop";
 pub const SPLIT_ASSERT_FAILURE: &str = "split assertion failure";
 pub const SPLIT_PRE_FAILURE: &str = "split precondition failure";
 pub const SPLIT_POST_FAILURE: &str = "split postcondition failure";
+
+pub const PERVASIVE_ASSERT: &[&str] = &["pervasive", "assert"];
 
 pub fn path_to_string(path: &Path) -> String {
     let s = vec_map(&path.segments, |s| s.to_string()).join(PATH_SEPARATOR) + SUFFIX_PATH;
@@ -587,5 +590,12 @@ pub fn strslice_defn_path() -> Path {
             Arc::new("string".to_string()),
             Arc::new(STRSLICE.to_string()),
         ]),
+    })
+}
+
+pub fn pervasive_assert_path() -> Path {
+    Arc::new(PathX {
+        krate: None,
+        segments: Arc::new(PERVASIVE_ASSERT.iter().map(|x| Arc::new(x.to_string())).collect()),
     })
 }

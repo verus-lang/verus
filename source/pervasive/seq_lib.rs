@@ -87,33 +87,18 @@ pub open spec fn check_argument_is_seq<A>(s: Seq<A>) -> Seq<A> { s }
 
 #[macro_export]
 macro_rules! assert_seqs_equal {
-    ($s1:expr, $s2:expr $(,)?) => {
-        assert_seqs_equal!($s1, $s2, idx => { })
+    [$($tail:tt)*] => {
+        ::builtin_macros::verus_proof_macro_exprs!($crate::pervasive::seq_lib::assert_seqs_equal_internal!($($tail)*))
     };
-    ($s1:expr, $s2:expr, $idx:ident => $bblock:block) => {
-        let s1 = $crate::pervasive::seq_lib::check_argument_is_seq($s1);
-        let s2 = $crate::pervasive::seq_lib::check_argument_is_seq($s2);
-        ::builtin::assert_by(::builtin::equal(s1, s2), {
-            $crate::pervasive::assert(s1.len() == s2.len());
-            ::builtin::assert_forall_by(|$idx : ::builtin::int| {
-                ::builtin::requires(0 <= $idx && $idx < s1.len());
-                ::builtin::ensures(::builtin::equal(s1.index($idx), s2.index($idx)));
-                { $bblock }
-            });
-            $crate::pervasive::assert(s1.ext_equal(s2));
-        });
-    }
 }
-
-pub use assert_seqs_equal;
 
 #[macro_export]
-macro_rules! assert_seqs_equal_verus {
+#[doc(hidden)]
+macro_rules! assert_seqs_equal_internal {
     ($s1:expr, $s2:expr $(,)?) => {
-        assert_seqs_equal_verus!($s1, $s2, idx => { })
+        assert_seqs_equal_internal!($s1, $s2, idx => { })
     };
     ($s1:expr, $s2:expr, $idx:ident => $bblock:block) => {
-        ::builtin_macros::verus_proof_expr! {{
         let s1 = $crate::pervasive::seq_lib::check_argument_is_seq($s1);
         let s2 = $crate::pervasive::seq_lib::check_argument_is_seq($s2);
         ::builtin::assert_by(::builtin::equal(s1, s2), {
@@ -125,10 +110,10 @@ macro_rules! assert_seqs_equal_verus {
             });
             $crate::pervasive::assert(s1.ext_equal(s2));
         });
-        }}
     }
 }
 
-pub use assert_seqs_equal_verus;
+pub use assert_seqs_equal_internal;
+pub use assert_seqs_equal;
 
 } // verus!

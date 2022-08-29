@@ -523,9 +523,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             let hint = match op {
                 UnaryOp::BitNot => expr_ctxt.bit_vector_typ_hint.clone(),
-                UnaryOp::Clip(range @ (IntRange::U(..) | IntRange::I(..))) => {
-                    Some(Arc::new(TypX::Int(*range)))
-                }
+                UnaryOp::Clip {
+                    range: range @ (IntRange::U(..) | IntRange::I(..)),
+                    truncate: _,
+                } => Some(Arc::new(TypX::Int(*range))),
                 _ => None,
             };
             let expr_ctxt = &expr_ctxt.set_bit_vector_typ_hint(hint);
@@ -541,7 +542,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 }
                 // bitvector type casting by 'as' keyword
                 // via converting Clip into concat/extract
-                UnaryOp::Clip(IntRange::U(new_n) | IntRange::I(new_n)) => {
+                UnaryOp::Clip { range: IntRange::U(new_n) | IntRange::I(new_n), .. } => {
                     match &*exp.typ {
                         TypX::Int(IntRange::U(old_n) | IntRange::I(old_n)) => {
                             // expand with zero using concat
@@ -572,7 +573,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         }
                     }
                 }
-                UnaryOp::Clip(_) => {
+                UnaryOp::Clip { .. } => {
                     return err_string(
                         &exp.span,
                         format!(
@@ -623,8 +624,8 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 clip_bitwise_result(bit_expr, exp)?
             }
             UnaryOp::Trigger(_) => exp_to_expr(ctx, exp, expr_ctxt)?,
-            UnaryOp::Clip(IntRange::Int) => exp_to_expr(ctx, exp, expr_ctxt)?,
-            UnaryOp::Clip(range) => {
+            UnaryOp::Clip { range: IntRange::Int, .. } => exp_to_expr(ctx, exp, expr_ctxt)?,
+            UnaryOp::Clip { range, .. } => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 let f_name = match range {
                     IntRange::Int => panic!("internal error: Int"),
@@ -1196,9 +1197,10 @@ fn assume_other_fields_unchanged_inner(
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, VirErr> {
     let expr_ctxt = &ExprCtxt::new();
     let result = match &stm.x {
-        StmX::Call(x, mode, typs, args, dest) => {
+        StmX::Call { fun, mode, typ_args: typs, args, split, dest } => {
+            assert!(split.is_none());
             let mut stmts: Vec<Stmt> = Vec::new();
-            let func = &ctx.func_map[x];
+            let func = &ctx.func_map[fun];
             if func.x.require.len() > 0
                 && (!ctx.checking_recommends_for_non_spec() || *mode == Mode::Spec)
             {
@@ -1502,7 +1504,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
             stmts
         }
-        StmX::While { cond_stms, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
+        StmX::While { cond_stm, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
             let pos_cond = exp_to_expr(ctx, &cond_exp, expr_ctxt)?;
             let neg_cond = Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond.clone()));
             let pos_assume = Arc::new(StmtX::Assume(pos_cond));
@@ -1523,10 +1525,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 None
             };
 
-            let cond_stmts: Vec<Stmt> = vec_map_result(cond_stms, |s| stm_to_stmts(ctx, state, s))?
-                .into_iter()
-                .flatten()
-                .collect();
+            let cond_stmts = stm_to_stmts(ctx, state, cond_stm)?;
             let mut air_body: Vec<Stmt> = Vec::new();
             air_body.append(&mut cond_stmts.clone());
             air_body.push(pos_assume);

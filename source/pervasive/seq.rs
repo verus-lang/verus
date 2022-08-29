@@ -37,7 +37,7 @@ impl<A> Seq<A> {
 
     /// Construct a sequence `s` of length `len` where entry `s[i]` is given by `f(i)`.
 
-    pub spec fn new<F: Fn(int) -> A>(len: nat, f: F) -> Seq<A>;
+    pub spec fn new(len: nat, f: impl Fn(int) -> A) -> Seq<A>;
 
     /// The length of a sequence.
 
@@ -162,7 +162,7 @@ pub proof fn axiom_seq_empty<A>()
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub proof fn axiom_seq_new_len<A, F: Fn(int) -> A>(len: nat, f: F)
+pub proof fn axiom_seq_new_len<A>(len: nat, f: impl Fn(int) -> A)
     ensures
         #[trigger] Seq::new(len, f).len() == len,
 {
@@ -170,7 +170,7 @@ pub proof fn axiom_seq_new_len<A, F: Fn(int) -> A>(len: nat, f: F)
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub proof fn axiom_seq_new_index<A, F: Fn(int) -> A>(len: nat, f: F, i: int)
+pub proof fn axiom_seq_new_index<A>(len: nat, f: impl Fn(int) -> A, i: int)
     requires
         0 <= i < len,
     ensures

@@ -19,9 +19,6 @@ use air::scope_map::ScopeMap;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
-type Arg = (Exp, Typ);
-type Args = Arc<Vec<Arg>>;
-
 pub(crate) struct State {
     // View exec/proof code as spec
     // (used for is_const functions, which are viewable both as spec and exec)
@@ -45,10 +42,6 @@ pub(crate) struct State {
     disable_recommends: u64,
     // Mapping from a function's name to the SST version of its body.  Used by the interpreter.
     pub fun_ssts: SstMap,
-    // For proof debug purpose, track the status of fuel for each function. Since `reveal`, `reveal_with_fuel` can change the fuel locally.
-    reveal_map: Vec<HashMap<Fun, u32>>, //  HashMap<Fun, fuel>
-    // For proof debug purporse, track the function that is being translated
-    pub(crate) fun: Option<Fun>,
 }
 
 #[derive(Clone)]
@@ -98,8 +91,6 @@ impl State {
     pub fn new() -> Self {
         let mut rename_map = ScopeMap::new();
         rename_map.push_scope(true);
-        let mut reveal_map = Vec::new();
-        reveal_map.push(HashMap::new());
         State {
             view_as_spec: false,
             next_var: 0,
@@ -110,8 +101,6 @@ impl State {
             ret_post: None,
             disable_recommends: 0,
             fun_ssts: HashMap::new(),
-            reveal_map,
-            fun: None,
         }
     }
 
@@ -280,14 +269,19 @@ impl State {
         exp
     }
 
-    // Erase unused unique ids from Vars
+    // Erase unused unique ids from Vars, perform inlining, and choose triggers
     pub(crate) fn finalize_stm(
         &self,
         ctx: &Ctx,
         fun_ssts: &SstMap,
         stm: &Stm,
     ) -> Result<Stm, VirErr> {
-        map_stm_exp_visitor(stm, &|exp| self.finalize_exp(ctx, fun_ssts, exp))
+        let stm = map_stm_exp_visitor(stm, &|exp| self.finalize_exp(ctx, fun_ssts, exp))?;
+        if ctx.expand_flag {
+            crate::split_expression::all_split_exp(ctx, fun_ssts, &stm)
+        } else {
+            Ok(stm)
+        }
     }
 
     pub(crate) fn finalize(&mut self) {
@@ -297,31 +291,6 @@ impl State {
 
     fn checking_recommends(&self, ctx: &Ctx) -> bool {
         ctx.checking_recommends() && self.disable_recommends == 0
-    }
-
-    // debug purposes about fuel
-    fn record_fuel(&mut self, x: &Fun, fuel: u32) {
-        let mut last = self.reveal_map.pop().unwrap();
-        last.insert(x.clone(), fuel);
-        self.reveal_map.push(last);
-    }
-
-    pub(crate) fn find_fuel(&self, x: &Fun) -> Option<u32> {
-        for rmap in &self.reveal_map {
-            if let Some(local_fuel) = rmap.get(x) {
-                return Some(*local_fuel);
-            }
-        }
-        None
-    }
-
-    // debug purposes. if some expr can contain `proof` block, push and pop around that proof block's translation
-    pub(crate) fn push_fuel_scope(&mut self) {
-        self.reveal_map.push(HashMap::new());
-    }
-
-    pub(crate) fn pop_fuel_scope(&mut self) {
-        self.reveal_map.pop();
     }
 }
 
@@ -404,7 +373,7 @@ pub fn can_control_flow_reach_after_loop(expr: &Expr) -> bool {
 }
 
 enum ReturnedCall {
-    Call { fun: Fun, typs: Typs, has_return: bool, args: Args },
+    Call { fun: Fun, typs: Typs, has_return: bool, args: Exps },
     Never,
 }
 
@@ -419,7 +388,7 @@ fn expr_get_call(
         }
         ExprX::Call(CallTarget::Static(x, typs), args) => {
             let mut stms: Vec<Stm> = Vec::new();
-            let mut exps: Vec<Arg> = Vec::new();
+            let mut exps: Vec<Exp> = Vec::new();
             for arg in args.iter() {
                 let (mut stms0, e0) = expr_to_stm_opt(ctx, state, arg)?;
                 stms.append(&mut stms0);
@@ -429,7 +398,7 @@ fn expr_get_call(
                         return Ok(Some((stms, ReturnedCall::Never)));
                     }
                 };
-                exps.push((e0, arg.typ.clone()));
+                exps.push(e0);
             }
             let has_ret = get_function(ctx, &expr.span, x)?.x.has_return();
             Ok(Some((
@@ -676,7 +645,7 @@ fn is_small_exp(exp: &Exp) -> bool {
         ExpX::Const(_) => true,
         ExpX::Var(..) | ExpX::VarAt(..) => true,
         ExpX::Old(..) => true,
-        ExpX::Unary(UnaryOp::Not | UnaryOp::Clip(_), e) => is_small_exp_or_loc(e),
+        ExpX::Unary(UnaryOp::Not | UnaryOp::Clip { .. }, e) => is_small_exp_or_loc(e),
         ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), e) => is_small_exp_or_loc(e),
         _ => false,
     }
@@ -695,70 +664,50 @@ fn stm_call(
     span: &Span,
     name: Fun,
     typs: Typs,
-    args: Args,
+    args: Exps,
     dest: Option<Dest>,
 ) -> Result<Stm, VirErr> {
     let fun = get_function(ctx, span, &name)?;
     let mut stms: Vec<Stm> = Vec::new();
     if ctx.expand_flag && crate::split_expression::need_split_expression(ctx, span) {
-        // we are spliting the `requires` expression on the call site.
-        // If we split the `requires` expression on the function itself,
-        // this split encoding will take effect on every call site, which is not desirable.
-        //
-        // Also, note that prevasive::assert is consisted of `requires` and `ensures`.
-        // therefore, we are also splitting pervaisve::assert here
-        let params = &fun.x.params;
-        let typ_bounds = &fun.x.typ_bounds;
-        for e in &**fun.x.require {
-            let exp = crate::ast_to_sst::expr_to_exp_as_spec(
-                &ctx,
-                &state.fun_ssts,
-                &crate::func_to_air::params_to_pars(params, true), // REVIEW: is `true` here desirable?
-                &e,
-            )
-            .expect("pure_ast_expression_to_sst");
-
-            let args_exp = Arc::new(vec_map(&args, |x| x.0.clone()));
-            let exp_subsituted = crate::split_expression::inline_expression(
-                &name, &args_exp, &typs, params, typ_bounds, &exp, span,
-            );
-            if exp_subsituted.is_err() {
-                continue;
-            }
-            let exp_subsituted = exp_subsituted.unwrap();
-            // REVIEW: should we simply use SPLIT_ASSERT_FAILURE?
-            let message = if name.path.segments[0].to_string() == "pervasive".to_string()
-                && name.path.segments[1].to_string() == "assert".to_string()
-            {
-                crate::def::SPLIT_ASSERT_FAILURE
-            } else {
-                crate::def::SPLIT_PRE_FAILURE
-            };
-            let error = air::errors::error(message.to_string(), span);
-            let exprs = crate::split_expression::split_expr(
-                ctx,
-                state,
-                &crate::split_expression::TracedExpX::new(exp_subsituted.clone(), error.clone()),
-                false,
-            );
-            stms.extend(crate::split_expression::register_split_assertions(exprs).into_iter());
-        }
+        let message = if name.path == crate::def::pervasive_assert_path() {
+            crate::def::SPLIT_ASSERT_FAILURE
+        } else {
+            crate::def::SPLIT_PRE_FAILURE
+        };
+        let error = air::errors::error(message.to_string(), span);
+        let call = StmX::Call {
+            fun: name.clone(),
+            mode: fun.x.mode,
+            typ_args: typs.clone(),
+            args: args.clone(),
+            split: Some(error),
+            dest: None,
+        };
+        stms.push(Spanned::new(span.clone(), call));
     }
 
     let mut small_args: Vec<Exp> = Vec::new();
     for arg in args.iter() {
-        if is_small_exp_or_loc(&arg.0) {
-            small_args.push(arg.0.clone());
+        if is_small_exp_or_loc(arg) {
+            small_args.push(arg.clone());
         } else {
             // To avoid copying arg in preconditions and postconditions,
             // put arg into a temporary variable
-            let (temp, temp_var) = state.next_temp(&arg.0.span, &arg.1);
+            let (temp, temp_var) = state.next_temp(&arg.span, &arg.typ);
             small_args.push(temp_var);
-            let temp_id = state.declare_new_var(&temp, &arg.1, false, false);
-            stms.push(init_var(&arg.0.span, &temp_id, &arg.0));
+            let temp_id = state.declare_new_var(&temp, &arg.typ, false, false);
+            stms.push(init_var(&arg.span, &temp_id, arg));
         }
     }
-    let call = StmX::Call(name, fun.x.mode, typs, Arc::new(small_args), dest);
+    let call = StmX::Call {
+        fun: name,
+        mode: fun.x.mode,
+        typ_args: typs,
+        args: Arc::new(small_args),
+        split: None,
+        dest,
+    };
     stms.push(Spanned::new(span.clone(), call));
     Ok(stms_to_one_stm(span, stms))
 }
@@ -951,7 +900,6 @@ fn expr_to_stm_opt(
                 (mut stms, ReturnedCall::Call { fun: x, typs, has_return: ret, args }) => {
                     if function_can_be_exp(ctx, state, expr, &x)? {
                         // ExpX::Call
-                        let args = Arc::new(vec_map(&args, |(a, _)| a.clone()));
                         let call = ExpX::Call(x.clone(), typs.clone(), args);
                         Ok((stms, ReturnValue::Some(mk_exp(call))))
                     } else if ret {
@@ -976,7 +924,6 @@ fn expr_to_stm_opt(
                             if fun.x.mode == Mode::Spec {
                                 // for recommends, we need a StmX::Call for the recommends
                                 // and an ExpX::Call for the value.
-                                let args = Arc::new(vec_map(&args, |(a, _)| a.clone()));
                                 let call = ExpX::Call(x.clone(), typs.clone(), args);
                                 let call = SpannedTyped::new(&expr.span, &expr.typ, call);
                                 stms.push(init_var(&expr.span, &temp_ident, &call));
@@ -1017,9 +964,23 @@ fn expr_to_stm_opt(
             let ctor = ExpX::Ctor(p.clone(), i.clone(), Arc::new(args));
             Ok((stms, ReturnValue::Some(mk_exp(ctor))))
         }
-        ExprX::Unary(op, expr) => {
-            let (stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
+        ExprX::Unary(op, exprr) => {
+            let (mut stms, exp) = expr_to_stm_opt(ctx, state, exprr)?;
             let exp = unwrap_or_return_never!(exp, stms);
+            if let (true, UnaryOp::Clip { truncate: false, .. }) =
+                (state.checking_recommends(ctx), op)
+            {
+                let unary = UnaryOpr::HasType(expr.typ.clone());
+                let has_type = ExpX::UnaryOpr(unary, exp.clone());
+                let has_type = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), has_type);
+                let error = air::errors::error(
+                    "recommendation not met: value may be out of range of the target type (use `#[verifier(truncate)]` on the cast to silence this warning)",
+                    &expr.span,
+                );
+                let assert = StmX::Assert(Some(error), has_type);
+                let assert = Spanned::new(expr.span.clone(), assert);
+                stms.push(assert);
+            }
             Ok((stms, ReturnValue::Some(mk_exp(ExpX::Unary(*op, exp)))))
         }
         ExprX::UnaryOpr(op, expr) => {
@@ -1210,9 +1171,6 @@ fn expr_to_stm_opt(
         }
         ExprX::Fuel(x, fuel) => {
             let stm = Spanned::new(expr.span.clone(), StmX::Fuel(x.clone(), *fuel));
-            if ctx.expand_flag {
-                state.record_fuel(x, *fuel);
-            }
             Ok((vec![stm], ReturnValue::ImplicitUnit(expr.span.clone())))
         }
         ExprX::RevealString(path) => {
@@ -1242,13 +1200,7 @@ fn expr_to_stm_opt(
                 let x = state.declare_new_var(&var.name, &var.a, false, true);
                 body.push(assume_has_typ(&x, &var.a, &require.span));
             }
-            if ctx.expand_flag {
-                state.push_fuel_scope();
-            }
             let (mut proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
-            if ctx.expand_flag {
-                state.pop_fuel_scope();
-            }
             if let ReturnValue::Some(_) = e {
                 return err_str(&expr.span, "'assert ... by' block cannot end with an expression");
             }
@@ -1298,13 +1250,7 @@ fn expr_to_stm_opt(
                         inner_body.push(assume);
                     }
 
-                    if ctx.expand_flag {
-                        state.pop_fuel_scope();
-                    }
                     let (proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
-                    if ctx.expand_flag {
-                        state.pop_fuel_scope();
-                    }
                     if let ReturnValue::Some(_) = e {
                         return err_str(
                             &expr.span,
@@ -1445,31 +1391,15 @@ fn expr_to_stm_opt(
         }
         ExprX::If(expr0, expr1, None) => {
             let (stms0, e0) = expr_to_stm_opt(ctx, state, expr0)?;
-            if ctx.expand_flag {
-                state.push_fuel_scope();
-            }
             let (stms1, e1) = expr_to_stm_opt(ctx, state, expr1)?;
-            if ctx.expand_flag {
-                state.pop_fuel_scope();
-            }
             let stms2 = vec![];
             let e2 = ReturnValue::ImplicitUnit(expr.span.clone());
             Ok(if_to_stm(state, expr, stms0, &e0, stms1, &e1, stms2, &e2))
         }
         ExprX::If(expr0, expr1, Some(expr2)) => {
             let (stms0, e0) = expr_to_stm_opt(ctx, state, expr0)?;
-            if ctx.expand_flag {
-                state.push_fuel_scope();
-            }
             let (stms1, e1) = expr_to_stm_opt(ctx, state, expr1)?;
-            if ctx.expand_flag {
-                state.pop_fuel_scope();
-                state.push_fuel_scope();
-            }
             let (stms2, e2) = expr_to_stm_opt(ctx, state, expr2)?;
-            if ctx.expand_flag {
-                state.pop_fuel_scope();
-            }
             Ok(if_to_stm(state, expr, stms0, &e0, stms1, &e1, stms2, &e2))
         }
         ExprX::Match(..) => {
@@ -1489,13 +1419,7 @@ fn expr_to_stm_opt(
                 }
             };
 
-            if ctx.expand_flag {
-                state.push_fuel_scope();
-            }
             let (mut stms1, e1) = expr_to_stm_opt(ctx, state, body)?;
-            if ctx.expand_flag {
-                state.pop_fuel_scope();
-            }
             check_unit_or_never(&e1)?;
             let (check_recommends, invs): (Vec<Vec<Stm>>, Vec<Exp>) =
                 vec_map_result(invs, |e| expr_to_pure_exp_check(ctx, state, e))?
@@ -1505,10 +1429,11 @@ fn expr_to_stm_opt(
                 let check_recommends: Vec<Stm> = check_recommends.into_iter().flatten().collect();
                 stms1.splice(0..0, check_recommends);
             }
+            let block0 = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(stms0)));
             let while_stm = Spanned::new(
                 expr.span.clone(),
                 StmX::While {
-                    cond_stms: Arc::new(stms0),
+                    cond_stm: block0,
                     cond_exp: e0,
                     body: stms_to_one_stm(&body.span, stms1),
                     invs: Arc::new(invs),

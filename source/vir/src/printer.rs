@@ -240,7 +240,13 @@ fn expr_to_node(expr: &Expr) -> Node {
                     }
                     nodes
                 }
-                UnaryOp::Clip(range) => nodes_vec!(clip {int_range_to_node(range)}),
+                UnaryOp::Clip { range, truncate } => {
+                    let mut nodes = nodes_vec!(clip {int_range_to_node(range)});
+                    if *truncate {
+                        nodes.push(str_to_node("+truncate"));
+                    }
+                    nodes
+                }
                 UnaryOp::CoerceMode { op_mode, from_mode, to_mode, kind } => {
                     nodes_vec!(coerce_mode
                         {str_to_node(&format!("{op_mode}"))}

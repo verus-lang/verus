@@ -71,6 +71,16 @@ test_verify_one_file! {
             refine_takefun(|x, y| 10);
             assert(apply_to_1(|u| 10) >= 0);
         }
+
+        spec fn specf_with_impl(x: u32, f: impl Fn(u32) -> u32) -> u32 {
+            f(x)
+        }
+
+        proof fn test_specf_with_impl()
+        {
+            assert(specf_with_impl(10, |z: u32| add(z, 1)) == 11);
+        }
+
     } => Ok(())
 }
 

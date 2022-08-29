@@ -147,7 +147,7 @@ where
         VisitorControlFlow::Return => VisitorControlFlow::Recurse,
         VisitorControlFlow::Recurse => {
             match &stm.x {
-                StmX::Call(..)
+                StmX::Call { .. }
                 | StmX::Assert(_, _)
                 | StmX::Assume(_)
                 | StmX::Assign { .. }
@@ -167,16 +167,14 @@ where
                     expr_visitor_control_flow!(stm_visitor_dfs(body, f));
                 }
                 StmX::While {
-                    cond_stms,
+                    cond_stm,
                     cond_exp: _,
                     body,
                     invs: _,
                     typ_inv_vars: _,
                     modified_vars: _,
                 } => {
-                    for s in cond_stms.iter() {
-                        expr_visitor_control_flow!(stm_visitor_dfs(s, f));
-                    }
+                    expr_visitor_control_flow!(stm_visitor_dfs(cond_stm, f));
                     expr_visitor_control_flow!(stm_visitor_dfs(body, f));
                 }
                 StmX::OpenInvariant(_inv, _ident, _ty, body, _atomicity) => {
@@ -200,8 +198,8 @@ where
 {
     stm_visitor_dfs(stm, &mut |stm| {
         match &stm.x {
-            StmX::Call(_path, _mode, _typs, exps, _dest) => {
-                for exp in exps.iter() {
+            StmX::Call { fun: _, mode: _, typ_args: _, args, split: _, dest: _ } => {
+                for exp in args.iter() {
                     expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f));
                 }
             }
@@ -230,7 +228,7 @@ where
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
             }
             StmX::While {
-                cond_stms: _,
+                cond_stm: _,
                 cond_exp,
                 body: _,
                 invs,
@@ -514,39 +512,36 @@ where
     }
 }
 
-pub(crate) fn map_stm_visitor<F>(stm: &Stm, fe: &mut F) -> Result<Stm, VirErr>
+pub(crate) fn map_stm_visitor<F>(stm: &Stm, fs: &mut F) -> Result<Stm, VirErr>
 where
     F: FnMut(&Stm) -> Result<Stm, VirErr>,
 {
     match &stm.x {
-        StmX::Call(..) => fe(stm),
-        StmX::Assert(_, _) => fe(stm),
-        StmX::Assume(_) => fe(stm),
-        StmX::Assign { .. } => fe(stm),
-        StmX::AssertBitVector { .. } => fe(stm),
-        StmX::Fuel(..) => fe(stm),
-        StmX::RevealString(_) => fe(stm),
+        StmX::Call { .. } => fs(stm),
+        StmX::Assert(_, _) => fs(stm),
+        StmX::Assume(_) => fs(stm),
+        StmX::Assign { .. } => fs(stm),
+        StmX::AssertBitVector { .. } => fs(stm),
+        StmX::Fuel(..) => fs(stm),
+        StmX::RevealString(_) => fs(stm),
         StmX::DeadEnd(s) => {
-            let s = map_stm_visitor(s, fe)?;
+            let s = map_stm_visitor(s, fs)?;
             let stm = Spanned::new(stm.span.clone(), StmX::DeadEnd(s));
-            fe(&stm)
+            fs(&stm)
         }
         StmX::If(cond, lhs, rhs) => {
-            let lhs = map_stm_visitor(lhs, fe)?;
-            let rhs = rhs.as_ref().map(|rhs| map_stm_visitor(rhs, fe)).transpose()?;
+            let lhs = map_stm_visitor(lhs, fs)?;
+            let rhs = rhs.as_ref().map(|rhs| map_stm_visitor(rhs, fs)).transpose()?;
             let stm = Spanned::new(stm.span.clone(), StmX::If(cond.clone(), lhs, rhs));
-            fe(&stm)
+            fs(&stm)
         }
-        StmX::While { cond_stms, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
-            let mut cs: Vec<Stm> = Vec::new();
-            for s in cond_stms.iter() {
-                cs.push(map_stm_visitor(s, fe)?);
-            }
-            let body = map_stm_visitor(body, fe)?;
+        StmX::While { cond_stm, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
+            let cond_stm = map_stm_visitor(cond_stm, fs)?;
+            let body = map_stm_visitor(body, fs)?;
             let stm = Spanned::new(
                 stm.span.clone(),
                 StmX::While {
-                    cond_stms: Arc::new(cs),
+                    cond_stm,
                     cond_exp: cond_exp.clone(),
                     body,
                     invs: invs.clone(),
@@ -554,31 +549,92 @@ where
                     modified_vars: modified_vars.clone(),
                 },
             );
-            fe(&stm)
+            fs(&stm)
         }
         StmX::AssertQuery { mode, typ_inv_vars, body } => {
-            let body = map_stm_visitor(body, fe)?;
+            let body = map_stm_visitor(body, fs)?;
             let stm = Spanned::new(
                 stm.span.clone(),
                 StmX::AssertQuery { mode: *mode, typ_inv_vars: typ_inv_vars.clone(), body },
             );
-            fe(&stm)
+            fs(&stm)
         }
         StmX::OpenInvariant(inv, ident, ty, body, atomicity) => {
-            let body = map_stm_visitor(body, fe)?;
+            let body = map_stm_visitor(body, fs)?;
             let stm = Spanned::new(
                 stm.span.clone(),
                 StmX::OpenInvariant(inv.clone(), ident.clone(), ty.clone(), body, *atomicity),
             );
-            fe(&stm)
+            fs(&stm)
         }
         StmX::Block(ss) => {
             let mut stms: Vec<Stm> = Vec::new();
             for s in ss.iter() {
-                stms.push(map_stm_visitor(s, fe)?);
+                stms.push(map_stm_visitor(s, fs)?);
             }
             let stm = Spanned::new(stm.span.clone(), StmX::Block(Arc::new(stms)));
-            fe(&stm)
+            fs(&stm)
+        }
+    }
+}
+
+// non-recursive visitor
+pub(crate) fn map_shallow_stm<F>(stm: &Stm, fs: &mut F) -> Result<Stm, VirErr>
+where
+    F: FnMut(&Stm) -> Result<Stm, VirErr>,
+{
+    match &stm.x {
+        StmX::Call { .. } => Ok(stm.clone()),
+        StmX::Assert(_, _) => Ok(stm.clone()),
+        StmX::Assume(_) => Ok(stm.clone()),
+        StmX::Assign { .. } => Ok(stm.clone()),
+        StmX::AssertBitVector { .. } => Ok(stm.clone()),
+        StmX::Fuel(..) => Ok(stm.clone()),
+        StmX::RevealString(_) => Ok(stm.clone()),
+        StmX::DeadEnd(s) => {
+            let s = fs(s)?;
+            Ok(Spanned::new(stm.span.clone(), StmX::DeadEnd(s)))
+        }
+        StmX::If(cond, lhs, rhs) => {
+            let lhs = fs(lhs)?;
+            let rhs = rhs.as_ref().map(|rhs| fs(rhs)).transpose()?;
+            Ok(Spanned::new(stm.span.clone(), StmX::If(cond.clone(), lhs, rhs)))
+        }
+        StmX::While { cond_stm, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
+            let cond_stm = fs(cond_stm)?;
+            let body = fs(body)?;
+            Ok(Spanned::new(
+                stm.span.clone(),
+                StmX::While {
+                    cond_stm,
+                    cond_exp: cond_exp.clone(),
+                    body,
+                    invs: invs.clone(),
+                    typ_inv_vars: typ_inv_vars.clone(),
+                    modified_vars: modified_vars.clone(),
+                },
+            ))
+        }
+        StmX::AssertQuery { mode, typ_inv_vars, body } => {
+            let body = fs(body)?;
+            Ok(Spanned::new(
+                stm.span.clone(),
+                StmX::AssertQuery { mode: *mode, typ_inv_vars: typ_inv_vars.clone(), body },
+            ))
+        }
+        StmX::OpenInvariant(inv, ident, ty, body, atomicity) => {
+            let body = fs(body)?;
+            Ok(Spanned::new(
+                stm.span.clone(),
+                StmX::OpenInvariant(inv.clone(), ident.clone(), ty.clone(), body, *atomicity),
+            ))
+        }
+        StmX::Block(ss) => {
+            let mut stms: Vec<Stm> = Vec::new();
+            for s in ss.iter() {
+                stms.push(fs(s)?);
+            }
+            Ok(Spanned::new(stm.span.clone(), StmX::Block(Arc::new(stms))))
         }
     }
 }
@@ -590,11 +646,18 @@ where
     map_stm_visitor(stm, &mut |stm| {
         let span = stm.span.clone();
         let stm = match &stm.x {
-            StmX::Call(path, mode, typs, exps, dest) => {
-                let exps = Arc::new(vec_map_result(exps, fe)?);
+            StmX::Call { fun, mode, typ_args, args, split, dest } => {
+                let args = Arc::new(vec_map_result(args, fe)?);
                 Spanned::new(
                     span,
-                    StmX::Call(path.clone(), *mode, typs.clone(), exps, (*dest).clone()),
+                    StmX::Call {
+                        fun: fun.clone(),
+                        mode: *mode,
+                        typ_args: typ_args.clone(),
+                        args,
+                        split: split.clone(),
+                        dest: (*dest).clone(),
+                    },
                 )
             }
             StmX::Assert(span2, exp) => Spanned::new(span, StmX::Assert(span2.clone(), fe(exp)?)),
@@ -617,13 +680,13 @@ where
                 let exp = fe(exp)?;
                 Spanned::new(span, StmX::If(exp, s1.clone(), s2.clone()))
             }
-            StmX::While { cond_stms, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
+            StmX::While { cond_stm, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
                 let cond_exp = fe(cond_exp)?;
                 let invs = Arc::new(vec_map_result(invs, fe)?);
                 Spanned::new(
                     span,
                     StmX::While {
-                        cond_stms: cond_stms.clone(),
+                        cond_stm: cond_stm.clone(),
                         cond_exp,
                         body: body.clone(),
                         invs,
