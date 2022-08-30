@@ -1,9 +1,87 @@
 use crate::ast::*;
 use air::ast::Span;
 use air::printer::macro_push_node;
-use air::printer::{str_to_node, NodeWriter};
+use air::printer::{clean_up_lines, str_to_node};
 use air::{node, nodes, nodes_vec};
 use sise::Node;
+
+const VIR_BREAK_ON: &[&str] = &["block", "call", "forall"];
+const VIR_BREAK_AFTER: &[&str] = &[
+    ":variants",
+    ":typ_params",
+    ":typ_bounds",
+    ":params",
+    ":ret",
+    ":require",
+    ":ensure",
+    ":decrease",
+    ":body",
+    "block",
+    "forall",
+];
+
+pub struct NodeWriter<'a> {
+    pub break_on: std::collections::HashSet<&'a str>,
+    pub break_after: std::collections::HashSet<&'a str>,
+}
+
+impl<'a> NodeWriter<'a> {
+    pub(crate) fn new_vir() -> Self {
+        use std::iter::FromIterator;
+        NodeWriter {
+            break_on: std::collections::HashSet::from_iter(VIR_BREAK_ON.iter().map(|x| *x)),
+            break_after: std::collections::HashSet::from_iter(VIR_BREAK_AFTER.iter().map(|x| *x)),
+        }
+    }
+
+    pub fn write_node(
+        &mut self,
+        writer: &mut sise::SpacedStringWriter,
+        node: &Node,
+        break_len: usize,
+        brk: bool,
+        brk_next: bool,
+    ) {
+        use sise::Writer;
+        let opts =
+            sise::SpacedStringWriterNodeOptions { break_line_len: if brk { 0 } else { break_len } };
+        match node {
+            Node::Atom(a) => {
+                writer.write_atom(a, opts).unwrap();
+            }
+            Node::List(l) => {
+                writer.begin_list(opts).unwrap();
+                let mut brk = brk_next;
+                let mut brk_next = false;
+                for n in l {
+                    self.write_node(writer, n, break_len + 1, brk, brk_next);
+                    brk_next = false;
+                    if let Node::Atom(a) = n {
+                        if self.break_on.contains(a.as_str()) {
+                            brk = true;
+                        }
+                        if self.break_after.contains(a.as_str()) {
+                            brk_next = true;
+                        }
+                    }
+                }
+                writer.end_list(()).unwrap();
+            }
+        }
+    }
+
+    pub fn node_to_string(&mut self, node: &Node) -> String {
+        use sise::Writer;
+        let indentation = " ";
+        let style = sise::SpacedStringWriterStyle { line_break: &("\n".to_string()), indentation };
+        let mut result = String::new();
+        let mut string_writer = sise::SpacedStringWriter::new(style, &mut result);
+        self.write_node(&mut string_writer, &node, 120, false, false);
+        string_writer.finish(()).unwrap();
+        // Clean up result:
+        clean_up_lines(result, indentation)
+    }
+}
 
 fn str_node(s: &str) -> Node {
     Node::Atom(format!("\"{}\"", s))
@@ -601,16 +679,14 @@ fn function_to_node(function: &FunctionX) -> Node {
 }
 
 pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate) {
+    let mut nw = NodeWriter::new_vir();
+
     let KrateX { datatypes, functions, traits, module_ids } = &**vir_crate;
-    let mut nw = NodeWriter::new();
     for datatype in datatypes.iter() {
         writeln!(
             &mut write,
             "{}\n",
-            nw.node_to_string_indent(
-                &" ".to_string(),
-                &spanned_node(datatype_to_node(&datatype.x), &datatype.span)
-            )
+            nw.node_to_string(&spanned_node(datatype_to_node(&datatype.x), &datatype.span))
         )
         .expect("cannot write to vir write");
     }
@@ -618,21 +694,17 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate) {
         writeln!(
             &mut write,
             "{}\n",
-            nw.node_to_string_indent(
-                &" ".to_string(),
-                &spanned_node(function_to_node(&function.x), &function.span)
-            )
+            nw.node_to_string(&spanned_node(function_to_node(&function.x), &function.span))
         )
         .expect("cannot write to vir write");
     }
     for t in traits.iter() {
         let t = nodes!(trait {path_to_node(&t.x.name)});
-        writeln!(&mut write, "{}\n", nw.node_to_string_indent(&" ".to_string(), &t))
-            .expect("cannot write to vir write");
+        writeln!(&mut write, "{}\n", nw.node_to_string(&t)).expect("cannot write to vir write");
     }
     for module_id in module_ids.iter() {
         let module_id_node = nodes!(module_id {path_to_node(module_id)});
-        writeln!(&mut write, "{}\n", nw.node_to_string_indent(&" ".to_string(), &module_id_node))
+        writeln!(&mut write, "{}\n", nw.node_to_string(&module_id_node))
             .expect("cannot write to vir write");
     }
 }
