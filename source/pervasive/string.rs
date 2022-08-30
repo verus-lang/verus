@@ -36,16 +36,16 @@ impl<'a> StrSlice<'a> {
     #[verifier(external_body)]
     pub fn unicode_len(&self) -> (l: usize)
         ensures 
-            l as nat === self.view().len()
+            l as nat === self@.len()
     {
         self.inner.chars().count()
     }
     /// Warning: O(n) not O(1) due to unicode decoding needed
     #[verifier(external_body)]
     pub fn get_char(&self, i: usize) -> (c: char)
-        requires i < self.view().len()
+        requires i < self@.len()
         ensures
-            self.view().index(i as int) === c
+            self@.index(i as int) === c
     {
         self.inner.chars().nth(i).unwrap()
     }
@@ -54,10 +54,10 @@ impl<'a> StrSlice<'a> {
     pub fn substring_ascii(&self, from: usize, to: usize) -> (ret: StrSlice<'a>)
         requires
             self.is_ascii(),
-            from < self.view().len(),
-            to <= self.view().len(),
+            from < self@.len(),
+            to <= self@.len(),
         ensures
-            ret.view() === self.view().subrange(from as int, to as int)
+            ret@ === self@.subrange(from as int, to as int)
     {
         StrSlice {
             inner: &self.inner[from..to],
@@ -67,10 +67,10 @@ impl<'a> StrSlice<'a> {
     #[verifier(external_body)]
     pub fn substring_char(&self, from: usize, to: usize) -> (ret: StrSlice<'a>)
         requires
-            from < self.view().len(),
-            to <= self.view().len()
+            from < self@.len(),
+            to <= self@.len()
         ensures
-            ret.view() === self.view().subrange(from as int, to as int)
+            ret@ === self@.subrange(from as int, to as int)
     {
         let mut char_pos = 0;
         let mut byte_start = None;
@@ -97,11 +97,10 @@ impl<'a> StrSlice<'a> {
         }
     }
 
-    #[rustc_diagnostic_item = "pervasive::string::StrSlice::to_string"]
-    #[verifier(external_body)]
     pub fn to_string(self) -> (ret: String)
         ensures
-            self.view() === ret.view()
+            self@ === ret@,
+            self.is_ascii() === ret.is_ascii()
     {
         String::from_str(self)
     }
@@ -118,14 +117,14 @@ pub proof fn axiom_str_literal_is_ascii<'a>(s: StrSlice<'a>)
 #[verifier(broadcast_forall)]
 pub proof fn axiom_str_literal_len<'a>(s: StrSlice<'a>)
     ensures
-        #[trigger] s.view().len() === builtin::strslice_len(s),
+        #[trigger] s@.len() === builtin::strslice_len(s),
 { }
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_str_literal_get_char<'a>(s: StrSlice<'a>, i: int)
     ensures
-        #[trigger] s.view().index(i) === builtin::strslice_get_char(s, i),
+        #[trigger] s@.index(i) === builtin::strslice_get_char(s, i),
 { }
 
 impl String {
@@ -136,7 +135,7 @@ impl String {
     #[verifier(external_body)]
     pub fn from_str<'a>(s: StrSlice<'a>) -> (ret: String)
         ensures
-            s.view() === ret.view(),
+            s@ === ret@,
             s.is_ascii() === ret.is_ascii(),
 
     {
@@ -146,7 +145,7 @@ impl String {
     #[verifier(external_body)]
     pub fn as_str<'a>(&'a self) -> (ret: StrSlice<'a>)
         ensures
-            self.view() === ret.view(),
+            self@ === ret@,
             self.is_ascii() === ret.is_ascii(),
     {
         let inner = self.inner.as_str();

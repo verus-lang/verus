@@ -414,8 +414,8 @@ test_verify_one_file! {
             reveal_strlit("ABC");
             assert(a@.ext_equal(c@));
             assert(a.is_ascii());
-            // TODO assert(b.is_ascii());
-            // TODO assert(c.is_ascii());
+            assert(b.is_ascii());
+            assert(c.is_ascii());
         }
     } => Ok(())
 }
