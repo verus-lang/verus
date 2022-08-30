@@ -343,14 +343,13 @@ impl ExpX {
                             .join(", ");
                         format!("(|{}| {})", assigns, exp)
                     }
-                    BndX::Choose(bnds, _trigs, _cond) => {
-                        // REVIEW: Where is cond used?  Couldn't find an example syntax
+                    BndX::Choose(bnds, _trigs, cond) => {
                         let vars = bnds
                             .iter()
                             .map(|b| format!("{}", b.name))
                             .collect::<Vec<_>>()
                             .join(", ");
-                        format!("(choose |{}| {})", vars, exp)
+                        format!("(choose |{}| {}, {})", vars, cond, exp)
                     }
                 };
                 (s, 99)
