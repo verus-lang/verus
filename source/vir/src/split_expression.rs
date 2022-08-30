@@ -1,5 +1,5 @@
 use crate::ast::{
-    BinaryOp, Exprs, Fun, Function, Ident, Params, SpannedTyped, Typ, TypBounds, TypX, Typs,
+    BinaryOp, Exprs, Fun, Function, Ident, Params, Quant, SpannedTyped, Typ, TypBounds, TypX, Typs,
     UnaryOp, VirErr,
 };
 use crate::ast_to_sst::get_function;
@@ -423,10 +423,28 @@ fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> Trace
         }
         ExpX::Bind(bnd, e1) => {
             let new_bnd = match &bnd.x {
-                BndX::Let(..) if !negated => bnd.clone(),
-                // TODO(channy1413): split quantifiers
+                BndX::Let(..) if !negated => bnd.clone(), // REVIEW: Can we support `Let` in negated position?
+                BndX::Quant(
+                    Quant { quant: air::ast::Quant::Forall, boxed_params: _ },
+                    _,
+                    _trigs,
+                ) if !negated => bnd.clone(),
+                // REVIEW: is this actually useful?
+                BndX::Quant(
+                    Quant { quant: air::ast::Quant::Exists, boxed_params },
+                    bndrs,
+                    expr_in,
+                ) if negated => {
+                    let new_bndx = BndX::Quant(
+                        Quant { quant: air::ast::Quant::Forall, boxed_params: *boxed_params },
+                        bndrs.clone(),
+                        expr_in.clone(),
+                    );
+                    Spanned::new(bnd.span.clone(), new_bndx)
+                }
                 _ => return mk_atom(exp.clone(), negated),
             };
+
             let es1 =
                 split_expr(ctx, state, &TracedExpX::new(e1.clone(), exp.trace.clone()), negated);
             let mut split_traced: Vec<TracedExp> = vec![];
@@ -554,8 +572,8 @@ fn visit_split_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Stm, VirEr
         }
         StmX::If(cond, lhs, rhs) => {
             state.push_fuel_scope();
-            state.pop_fuel_scope();
             let lhs = visit_split_stm(ctx, state, lhs)?;
+            state.pop_fuel_scope();
             state.push_fuel_scope();
             let rhs = rhs.as_ref().map(|rhs| visit_split_stm(ctx, state, rhs)).transpose()?;
             state.pop_fuel_scope();
@@ -593,8 +611,9 @@ pub(crate) fn split_body(
     ensures: &Exprs,
     ens_pars: &Pars,
 ) -> Result<Stm, VirErr> {
-    let state = State::new(fun_ssts);
+    let mut state = State::new(fun_ssts);
     let mut small_ens_assertions = vec![];
+    let _ = map_shallow_stm(stm, &mut |s| visit_split_stm(ctx, &mut state, s)); // Update `state` to get the fuel info at the function exit point
     for e in ensures.iter() {
         if need_split_expression(ctx, &e.span) {
             let ens_exp = crate::ast_to_sst::expr_to_exp(ctx, &state.fun_ssts, &ens_pars, e)?;
