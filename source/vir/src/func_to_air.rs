@@ -143,7 +143,8 @@ fn func_body_to_air(
     state.fun_ssts = fun_ssts;
     let body_exp = crate::ast_to_sst::expr_to_pure_exp(&ctx, &mut state, &body)?;
     let body_exp = state.finalize_exp(ctx, &state.fun_ssts, &body_exp)?;
-    let inline = SstInline { typ_bounds: function.x.typ_bounds.clone(), do_inline: function.x.attrs.inline };
+    let inline =
+        SstInline { typ_bounds: function.x.typ_bounds.clone(), do_inline: function.x.attrs.inline };
     let info = SstInfo {
         inline,
         params: function.x.params.clone(),

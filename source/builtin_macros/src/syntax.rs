@@ -1032,7 +1032,9 @@ impl VisitMut for Visitor {
                             );
                             true
                         }
-                        (Some(_), Some((_, id)), None, None) if id.to_string() == "compute_only" => {
+                        (Some(_), Some((_, id)), None, None)
+                            if id.to_string() == "compute_only" =>
+                        {
                             *expr = Expr::Verbatim(
                                 quote_spanned!(span => ::builtin::assert_by_compute_only(#arg)),
                             );

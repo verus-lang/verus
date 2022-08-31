@@ -10,7 +10,6 @@ use crate::ast::{
     Typ, TypX, UnaryOp, VirErr,
 };
 use crate::ast_util::{err_str, path_as_rust_name};
-use crate::def::ARCH_SIZE_MIN_BITS;
 use crate::func_to_air::{SstInfo, SstMap};
 use crate::sst::{Bnd, BndX, Exp, ExpX, Exps, Trigs, UniqueIdent};
 use air::ast::{Binder, BinderX, Binders};
@@ -153,6 +152,8 @@ struct Ctx<'a> {
     fun_ssts: &'a SstMap,
     /// We avoid infinite loops by running for a fixed number of intervals
     max_iterations: u64,
+    /// Number of bits we assume the underlying architecture supports
+    arch_size_min_bits: u32,
 }
 
 /// Interpreter-internal expressions
@@ -793,7 +794,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     // Explicitly enumerate UnaryOps, in case more are added
                     match op {
                         Not => bool_new(!b),
-                        BitNot | Clip{..} | Trigger(_) | CoerceMode { .. } => ok,
+                        BitNot
+                        | Clip { .. }
+                        | Trigger(_)
+                        | CoerceMode { .. }
+                        | StrLen
+                        | StrIsAscii => ok,
                         MustBeFinalized => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
                         }
@@ -815,11 +821,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 }
                                 TypX::Int(USize) => {
                                     let i = i.to_u128().unwrap();
-                                    u128_to_fixed_width(!i, ARCH_SIZE_MIN_BITS)
+                                    u128_to_fixed_width(!i, ctx.arch_size_min_bits)
                                 }
                                 TypX::Int(ISize) => {
                                     let i = i.to_i128().unwrap();
-                                    i128_to_fixed_width(!i, ARCH_SIZE_MIN_BITS)
+                                    i128_to_fixed_width(!i, ctx.arch_size_min_bits)
                                 }
 
                                 _ => panic!(
@@ -828,7 +834,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             };
                             int_new(r)
                         }
-                        Clip{ range, truncate } => {
+                        Clip { range, truncate: _ } => {
                             let apply_range = |lower: BigInt, upper: BigInt| {
                                 if i < &lower || i > &upper { ok.clone() } else { Ok(e.clone()) }
                             };
@@ -849,20 +855,20 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 IntRange::USize => {
                                     let u = apply_range(
                                         BigInt::zero(),
-                                        (BigInt::one() << ARCH_SIZE_MIN_BITS) - BigInt::one(),
+                                        (BigInt::one() << ctx.arch_size_min_bits) - BigInt::one(),
                                     );
                                     u
                                 }
                                 IntRange::ISize => apply_range(
-                                    -1 * (BigInt::one() << (ARCH_SIZE_MIN_BITS - 1)),
-                                    (BigInt::one() << (ARCH_SIZE_MIN_BITS - 1)) - BigInt::one(),
+                                    -1 * (BigInt::one() << (ctx.arch_size_min_bits - 1)),
+                                    (BigInt::one() << (ctx.arch_size_min_bits - 1)) - BigInt::one(),
                                 ),
                             }
                         }
                         MustBeFinalized => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
                         }
-                        Not | Trigger(_) | CoerceMode { .. } => ok,
+                        Not | Trigger(_) | CoerceMode { .. } | StrLen | StrIsAscii => ok,
                     }
                 }
                 // !(!(e_inner)) == e_inner
@@ -1100,7 +1106,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                             } else {
                                                 i1 << shift
                                             };
-                                            u128_to_fixed_width(res, ARCH_SIZE_MIN_BITS)
+                                            u128_to_fixed_width(res, ctx.arch_size_min_bits)
                                         }
                                         TypX::Int(ISize) => {
                                             let i1 = i1.to_i128().unwrap();
@@ -1109,7 +1115,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                             } else {
                                                 i1 << shift
                                             };
-                                            i128_to_fixed_width(res, ARCH_SIZE_MIN_BITS)
+                                            i128_to_fixed_width(res, ctx.arch_size_min_bits)
                                         }
                                         _ => panic!(
                                             "Type checker should not allow bitwise ops on non-fixed-width types"
@@ -1142,6 +1148,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         }
                     }
                 }
+                StrGetChar => ok_e2(e2.clone()),
             }
         }
         If(e1, e2, e3) => {
@@ -1276,6 +1283,7 @@ fn eval_expr_launch(
     exp: Exp,
     fun_ssts: SstMap,
     rlimit: u32,
+    arch_size_min_bits: u32,
     mode: ComputeMode,
     log: Arc<Mutex<Option<File>>>,
 ) -> Result<Exp, VirErr> {
@@ -1304,7 +1312,7 @@ fn eval_expr_launch(
     // Don't run for too long
     let max_iterations =
         if rlimit == 0 { std::u64::MAX } else { rlimit as u64 * RLIMIT_MULTIPLIER };
-    let ctx = Ctx { fun_ssts: &fun_ssts, max_iterations };
+    let ctx = Ctx { fun_ssts: &fun_ssts, max_iterations, arch_size_min_bits };
     let res = eval_expr_internal(&ctx, &mut state, &exp)?;
     display_perf_stats(&state);
     if state.log.is_some() {
@@ -1361,6 +1369,7 @@ pub fn eval_expr(
     exp: &Exp,
     fun_ssts: &SstMap,
     rlimit: u32,
+    arch_size_min_bits: u32,
     mode: ComputeMode,
     log: Arc<Mutex<Option<File>>>,
 ) -> Result<Exp, VirErr> {
@@ -1371,7 +1380,9 @@ pub fn eval_expr(
         let exp = exp.clone();
         let fun_ssts = fun_ssts.clone();
         let log = log.clone();
-        builder.spawn(move || eval_expr_launch(exp, fun_ssts, rlimit, mode, log)).unwrap()
+        builder
+            .spawn(move || eval_expr_launch(exp, fun_ssts, rlimit, arch_size_min_bits, mode, log))
+            .unwrap()
     };
     handler.join().unwrap()
 }

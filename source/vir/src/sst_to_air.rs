@@ -472,7 +472,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 _ => &exp.typ,
             };
             if let Some(width) = bitwidth_from_type(typ) {
-                return Ok(Arc::new(ExprX::Const(Constant::BitVec(Arc::new(i.to_string()), width))));
+                return Ok(Arc::new(ExprX::Const(Constant::BitVec(
+                    Arc::new(i.to_string()),
+                    width,
+                ))));
             }
             return err_string(
                 &exp.span,

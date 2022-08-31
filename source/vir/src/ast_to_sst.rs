@@ -1,12 +1,13 @@
 use crate::ast::{
-    ArithOp, AssertQueryMode, BinaryOp, CallTarget, ComputeMode, Constant, Expr, ExprX, Fun, Function, Ident,
-    Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
+    ArithOp, AssertQueryMode, BinaryOp, CallTarget, ComputeMode, Constant, Expr, ExprX, Fun,
+    Function, Ident, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr,
+    VarAt, VirErr,
 };
 use crate::ast_util::{err_str, err_string, types_equal, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{unique_bound, unique_local, Spanned};
-use crate::interpreter::eval_expr;
 use crate::func_to_air::{SstInfo, SstMap};
+use crate::interpreter::eval_expr;
 use crate::sst::{
     Bnd, BndX, Dest, Exp, ExpX, Exps, LocalDecl, LocalDeclX, ParPurpose, Pars, Stm, StmX,
     UniqueIdent,
@@ -199,7 +200,7 @@ impl State {
         });
         let exp = crate::sst_visitor::map_exp_visitor_result(&exp, &mut |exp| match &exp.x {
             ExpX::Call(fun, typs, args) => {
-                if let Some(SstInfo { inline: inline, params, memoize: _, body }) =
+                if let Some(SstInfo { inline, params, memoize: _, body }) =
                     fun_ssts.read().unwrap().get(fun)
                 {
                     if inline.do_inline {
@@ -1395,6 +1396,7 @@ fn expr_to_stm_opt(
                 &state.finalize_exp(ctx, &state.fun_ssts, &expr)?,
                 &state.fun_ssts,
                 ctx.global.rlimit,
+                ctx.global.arch.min_bits(),
                 *mode,
                 ctx.global.interpreter_log.clone(),
             )?;

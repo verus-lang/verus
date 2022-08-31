@@ -234,6 +234,7 @@ impl BinaryOp {
                 BitOr => (20, 20, 21),
                 Shr | Shl => (26, 26, 27),
             },
+            StrGetChar => (90, 90, 90),
         }
     }
 }
@@ -245,6 +246,7 @@ impl ExpX {
             Const(c) => match c {
                 Constant::Bool(b) => (format!("{}", b), 99),
                 Constant::Int(i) => (format!("{}", i), 99),
+                Constant::StrSlice(s) => (format!("\"{}\"", s), 99),
             },
             Var(id) | VarLoc(id) => (format!("{}", id.name), 99),
             VarAt(id, _at) => (format!("old({})", id.name), 99),
@@ -255,7 +257,9 @@ impl ExpX {
             }
             Unary(op, exp) => match op {
                 UnaryOp::Not | UnaryOp::BitNot => (format!("!{}", exp.x.to_string_prec(99)), 90),
-                UnaryOp::Clip{..} => (format!("clip({})", exp), 99),
+                UnaryOp::Clip { .. } => (format!("clip({})", exp), 99),
+                UnaryOp::StrLen => (format!("{}.len()", exp.x.to_string_prec(99)), 90),
+                UnaryOp::StrIsAscii => (format!("{}.is_ascii()", exp.x.to_string_prec(99)), 90),
                 UnaryOp::Trigger(..) | UnaryOp::CoerceMode { .. } | UnaryOp::MustBeFinalized => {
                     ("".to_string(), 0)
                 }
@@ -281,7 +285,7 @@ impl ExpX {
                 use InequalityOp::*;
                 let left = e1.x.to_string_prec(prec_left);
                 let right = e2.x.to_string_prec(prec_right);
-                let op = match op {
+                let op_str = match op {
                     And => "&&",
                     Or => "||",
                     Xor => "^",
@@ -308,8 +312,13 @@ impl ExpX {
                         Shr => ">>",
                         Shl => "<<",
                     },
+                    StrGetChar => "ignored", // This is our only non-inline BinaryOp, so it needs special handling below
                 };
-                (format!("{} {} {}", left, op, right), prec_exp)
+                if let BinaryOp::StrGetChar = op {
+                    (format!("{}.get_char({})", left, e2), prec_exp)
+                } else {
+                    (format!("{} {} {}", left, op_str, right), prec_exp)
+                }
             }
             If(e1, e2, e3) => (format!("if {} {{ {} }} else {{ {} }}", e1, e2, e3), 99),
             Bind(bnd, exp) => {

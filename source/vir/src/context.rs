@@ -5,6 +5,7 @@ use crate::ast::{
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
 use crate::poly::MonoTyp;
+use crate::prelude::ArchWordBits;
 use crate::recursion::Node;
 use crate::scc::Graph;
 use crate::sst::BndInfo;
@@ -43,6 +44,7 @@ pub struct GlobalCtx {
     pub(crate) inferred_modes: HashMap<InferMode, Mode>,
     pub(crate) rlimit: u32,
     pub(crate) interpreter_log: Arc<Mutex<Option<File>>>,
+    pub arch: ArchWordBits,
 }
 
 // Context for verifying one function
@@ -171,6 +173,7 @@ impl GlobalCtx {
         inferred_modes: HashMap<InferMode, Mode>,
         rlimit: u32,
         interpreter_log: Arc<Mutex<Option<File>>>,
+        arch: ArchWordBits,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
             std::cell::RefCell::new(Vec::new());
@@ -230,6 +233,7 @@ impl GlobalCtx {
             inferred_modes,
             rlimit,
             interpreter_log,
+            arch,
         })
     }
 
