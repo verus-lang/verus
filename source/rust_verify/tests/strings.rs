@@ -540,3 +540,15 @@ test_verify_one_file! {
 
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] test_int_as_char_spec verus_code! {
+        use pervasive::string::*;
+        use pervasive::vec::*;
+
+        spec fn test(a: int) -> char {
+            a as char
+        }
+
+    } => Err(err) => assert_vir_error(err)
+}

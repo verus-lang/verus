@@ -1191,7 +1191,7 @@ fn fn_call_to_vir<'tcx>(
             _ => {
                 return err_span_str(
                     expr.span,
-                    "Verus currently only supports casts from integer types to integer types",
+                    "Verus currently only supports casts from integer types and `char` to integer types",
                 );
             }
         }
