@@ -603,7 +603,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 UnaryOp::MustBeFinalized => {
                     panic!("internal error: Exp not finalized: {:?}", exp)
                 }
-                UnaryOp::StrLen | UnaryOp::StrIsAscii => panic!(
+                UnaryOp::StrLen | UnaryOp::StrIsAscii | UnaryOp::CharToInt => panic!(
                     "internal error: matching for bit vector ops on this match should be impossible"
                 ),
             }
@@ -654,6 +654,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             UnaryOp::MustBeFinalized => {
                 panic!("internal error: Exp not finalized: {:?}", exp)
+            }
+            UnaryOp::CharToInt => {
+                let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
+
+                Arc::new(ExprX::Apply(crate::def::char_to_unicode_ident(), Arc::new(vec![expr])))
             }
         },
         (ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), exp), true) => {

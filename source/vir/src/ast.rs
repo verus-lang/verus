@@ -74,6 +74,7 @@ pub enum IntRange {
 
 /// Rust type, but without Box, Rc, Arc, etc.
 pub type Typ = Arc<TypX>;
+
 pub type Typs = Arc<Vec<Typ>>;
 // Deliberately not marked Eq -- use explicit match instead, so we know where types are compared
 #[derive(Debug)]
@@ -150,6 +151,8 @@ pub enum UnaryOp {
     StrLen,
     /// Used only for handling builtin::strslice_is_ascii
     StrIsAscii,
+    /// Used only for handling casts from chars to ints
+    CharToInt,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]

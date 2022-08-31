@@ -419,3 +419,136 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_ascii_handling_passes verus_code! {
+        use pervasive::string::*;
+        fn test_get_ascii_passes() {
+            proof {
+                reveal_strlit("Hello World");
+            }
+            let x = new_strlit("Hello World");
+
+            let x0 = x.get_ascii(0);
+            assert(x0 === 72);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_ascii_ascii_handling_fails verus_code! {
+        use pervasive::string::*;
+        fn test_get_ascii_fails() {
+            proof {
+                reveal_strlit("Hèllo World");
+            }
+
+            let y = new_strlit("Hèllo World");
+            let y0 = y.get_ascii(0); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_char_conversion_passes verus_code! {
+        use pervasive::string::*;
+
+        fn test_char_conversion_passes() {
+            let c = 'c';
+            let d = c as u8;
+            // ascii value
+            assert(d === 99);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_char_conversion_fails verus_code! {
+        use pervasive::string::*;
+        fn test_char_conversion_fails() {
+            let z = 'ž';
+            let d = z as u8;
+            assert(d == 382); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_char_conversion_u32 verus_code! {
+        use pervasive::string::*;
+        fn test() {
+            let z = 'ž';
+            let d = z as u32;
+            assert(d == 382);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_invalid_cast_to_char verus_code! {
+        use pervasive::string::*;
+        fn test() {
+            let v: u8 = 42;
+            let z = v as char;
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] test_strslice_get verus_code! {
+        use pervasive::string::*;
+        fn test_strslice_get_passes<'a>(x: StrSlice<'a>) -> (ret: u8)
+            requires
+                x.is_ascii(),
+                x@.len() > 10
+        {
+            let x0 = x.get_char(0);
+            x0 as u8
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_strslice_as_bytes_passes verus_code! {
+        use pervasive::string::*;
+        use pervasive::vec::*;
+        fn test_strslice_as_bytes<'a>(x: StrSlice<'a>) -> (ret: Vec<u8>)
+            requires
+                x.is_ascii(),
+                x@.len() > 10
+            ensures
+                ret@.len() > 10
+        {
+            x.as_bytes()
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_strslice_as_bytes_fails verus_code! {
+        use pervasive::string::*;
+        use pervasive::vec::*;
+
+        fn test_strslice_as_bytes_fails<'a>(x: StrSlice<'a>) -> (ret: Vec<u8>)
+            requires
+                x@.len() > 10
+            ensures
+                ret@.len() > 10
+        {
+            x.as_bytes() // FAILS
+        }
+
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_int_as_char_spec verus_code! {
+        use pervasive::string::*;
+        use pervasive::vec::*;
+
+        spec fn test(a: int) -> char {
+            a as char
+        }
+
+    } => Err(err) => assert_vir_error(err)
+}

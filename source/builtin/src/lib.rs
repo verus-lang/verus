@@ -557,6 +557,7 @@ impl Integer for i128 {}
 impl Integer for isize {}
 impl Integer for int {}
 impl Integer for nat {}
+impl Integer for char {}
 
 // spec literals of the form "33", which could have any Integer type
 #[allow(non_camel_case_types)]

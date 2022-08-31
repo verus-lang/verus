@@ -152,7 +152,7 @@ fn typ_to_node(typ: &Typ) -> Node {
         TypX::TypeId => nodes!(TypeId),
         TypX::Air(_air_typ) => nodes!({ str_to_node("AirTyp") }),
         TypX::StrSlice => crate::def::strslice(),
-        TypX::Char => nodes!(str_to_node("Char")),
+        TypX::Char => node!(Char),
     }
 }
 
@@ -329,6 +329,7 @@ fn expr_to_node(expr: &Expr) -> Node {
                 UnaryOp::StrIsAscii => nodes_vec!(strop is_ascii {expr_to_node(expr)}),
                 UnaryOp::Not => nodes_vec!(not),
                 UnaryOp::BitNot => nodes_vec!(bitnot),
+                UnaryOp::CharToInt => nodes_vec!(char_to_int),
                 UnaryOp::Trigger(group) => {
                     let mut nodes = nodes_vec!(trigger);
                     if let crate::ast::TriggerAnnotation::Trigger(Some(group)) = group {

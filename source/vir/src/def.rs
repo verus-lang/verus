@@ -625,6 +625,10 @@ pub fn char_from_unicode() -> Node {
     str_to_node(&char_from_unicode_ident())
 }
 
+pub fn char_to_unicode_ident() -> Ident {
+    prefix_char(&std::sync::Arc::new(CHAR_TO_UNICODE.to_string()))
+}
+
 pub fn char_to_unicode() -> Node {
-    str_to_node(&prefix_char(&std::sync::Arc::new(CHAR_TO_UNICODE.to_string())))
+    str_to_node(&char_to_unicode_ident())
 }
