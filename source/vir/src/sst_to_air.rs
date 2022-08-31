@@ -641,11 +641,20 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             UnaryOp::Clip { range: IntRange::Int, .. } => exp_to_expr(ctx, exp, expr_ctxt)?,
             UnaryOp::Clip { range, .. } => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
+
                 let f_name = match range {
                     IntRange::Int => panic!("internal error: Int"),
                     IntRange::Nat => crate::def::NAT_CLIP,
                     IntRange::U(_) | IntRange::USize => crate::def::U_CLIP,
                     IntRange::I(_) | IntRange::ISize => crate::def::I_CLIP,
+                };
+
+                let expr = match *exp.typ {
+                    TypX::Char => Arc::new(ExprX::Apply(
+                        crate::def::char_to_unicode_ident(),
+                        Arc::new(vec![expr]),
+                    )),
+                    _ => expr,
                 };
                 apply_range_fun(&f_name, &range, vec![expr])
             }
@@ -670,6 +679,13 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             UnaryOpr::HasType(typ) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
+                let expr = match *exp.typ {
+                    TypX::Char => Arc::new(ExprX::Apply(
+                        crate::def::char_to_unicode_ident(),
+                        Arc::new(vec![expr]),
+                    )),
+                    _ => expr,
+                };
                 typ_invariant(ctx, typ, &expr).expect("HasType")
             }
             UnaryOpr::IsVariant { datatype, variant } => {

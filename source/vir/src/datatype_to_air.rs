@@ -240,6 +240,7 @@ fn datatype_or_fun_to_air_commands(
             for field in variant.a.iter() {
                 let (typ, _, _) = &field.a;
                 let name = suffix_local_stmt_id(&field.name);
+
                 if let Some(inv) = typ_invariant(ctx, typ, &ident_var(&name)) {
                     pre.push(inv);
                 }

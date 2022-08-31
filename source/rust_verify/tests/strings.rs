@@ -419,3 +419,56 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_ascii_handling_passes verus_code! {
+        use pervasive::string::*;
+        fn test_get_ascii_passes() {
+            proof {
+                reveal_strlit("Hello World");
+            }
+            let x = new_strlit("Hello World");
+
+            let x0 = x.get_ascii_at(0);
+            assert(x0 === 72);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_ascii_ascii_handling_fails verus_code! {
+        use pervasive::string::*;
+        fn test_get_ascii_fails() {
+            proof {
+                reveal_strlit("Hèllo World");
+            }
+
+            let y = new_strlit("Hèllo World");
+            let y0 = y.get_ascii_at(0); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_char_conversion_passes verus_code! {
+        use pervasive::string::*;
+
+        fn test_char_conversion_passes() {
+            let c = 'c';
+            let d = c as u8;
+            // ascii value
+            assert(d === 99);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_char_conversion_fails verus_code! {
+        use pervasive::string::*;
+        fn test_char_conversion_fails() {
+            let z = 'ž';
+            let d = z as u8;
+            assert(d == 382); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

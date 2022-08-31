@@ -1,6 +1,7 @@
 #![feature(rustc_attrs)]
 
 use super::seq::Seq;
+use super::vec::Vec;
 use builtin::*;
 use builtin_macros::verus;
 
@@ -28,14 +29,14 @@ impl<'a> StrSlice<'a> {
     pub spec fn view(&self) -> Seq<char>;
 
     pub spec fn is_ascii(&self) -> bool;
-    
-    /// The len() function in rust returns the byte length. 
-    /// It is more useful to talk about the length of characters and therefore this function was added. 
-    /// Please note that this function counts the unicode variation selectors as characters. 
+
+    /// The len() function in rust returns the byte length.
+    /// It is more useful to talk about the length of characters and therefore this function was added.
+    /// Please note that this function counts the unicode variation selectors as characters.
     /// Warning: O(n)
     #[verifier(external_body)]
     pub fn unicode_len(&self) -> (l: usize)
-        ensures 
+        ensures
             l as nat === self@.len()
     {
         self.inner.chars().count()
@@ -104,7 +105,38 @@ impl<'a> StrSlice<'a> {
     {
         String::from_str(self)
     }
+
+    #[verifier(external_body)]
+    pub fn get_ascii_at(&self, i: usize) -> (b: u8)
+        requires
+            self.is_ascii()
+        ensures
+            self.view().index(i as int) as u8 === b
+    {
+        self.inner.as_bytes()[i]
+    }
+
+
+    
+    // TODO:This should be the as_bytes function after 
+    // slice support is added
+    // pub fn as_bytes<'a>(&'a [u8]) -> (ret: &'a [u8])
+
+    #[verifier(external_body)]
+    pub fn as_bytes(&self) -> (ret: Vec<u8>)
+        requires
+            self.is_ascii()
+        ensures
+            ret.view() === Seq::new(self.view().len(), |i| self.view().index(i) as u8)
+    {
+        let mut v = Vec::new();
+        for c in self.inner.as_bytes().iter() {
+            v.push(*c);
+        }
+        v
+    }
 }
+
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
