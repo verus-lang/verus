@@ -603,7 +603,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 UnaryOp::MustBeFinalized => {
                     panic!("internal error: Exp not finalized: {:?}", exp)
                 }
-                UnaryOp::StrLen | UnaryOp::StrIsAscii => panic!(
+                UnaryOp::StrLen | UnaryOp::StrIsAscii | UnaryOp::CharToInt => panic!(
                     "internal error: matching for bit vector ops on this match should be impossible"
                 ),
             }
@@ -649,13 +649,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     IntRange::I(_) | IntRange::ISize => crate::def::I_CLIP,
                 };
 
-                let expr = match *exp.typ {
-                    TypX::Char => Arc::new(ExprX::Apply(
-                        crate::def::char_to_unicode_ident(),
-                        Arc::new(vec![expr]),
-                    )),
-                    _ => expr,
-                };
                 apply_range_fun(&f_name, &range, vec![expr])
             }
             UnaryOp::CoerceMode { .. } => {
@@ -663,6 +656,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             UnaryOp::MustBeFinalized => {
                 panic!("internal error: Exp not finalized: {:?}", exp)
+            }
+            UnaryOp::CharToInt => {
+                let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
+
+                Arc::new(ExprX::Apply(crate::def::char_to_unicode_ident(), Arc::new(vec![expr])))
             }
         },
         (ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), exp), true) => {

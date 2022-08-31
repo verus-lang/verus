@@ -46,7 +46,8 @@ impl<'a> StrSlice<'a> {
     pub fn get_char(&self, i: usize) -> (c: char)
         requires i < self@.len()
         ensures
-            self@.index(i as int) === c
+            self@.index(i as int) === c,
+            self.is_ascii() ==> forall|i: nat| i < self@.len() ==> (self@.index(i) as nat) < 256,
     {
         self.inner.chars().nth(i).unwrap()
     }

@@ -1185,7 +1185,8 @@ fn fn_call_to_vir<'tcx>(
             (TypX::Char, TypX::Int(_)) => {
                 let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
                 let expr_vattrs = get_verifier_attrs(expr_attrs)?;
-                return Ok(mk_ty_clip(&to_ty, &source_vir, expr_vattrs.truncate));
+                let source_unicode = mk_expr(ExprX::Unary(UnaryOp::CharToInt, source_vir.clone()));
+                return Ok(mk_ty_clip(&to_ty, &source_unicode, expr_vattrs.truncate));
             }
             _ => {
                 return err_span_str(
@@ -2032,8 +2033,13 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             let source_ty = &source_vir.typ;
             let to_ty = expr_typ();
             match (&**source_ty, &*to_ty) {
-                (TypX::Int(_) | TypX::Char, TypX::Int(_)) => {
+                (TypX::Int(_), TypX::Int(_)) => {
                     Ok(mk_ty_clip(&to_ty, &source_vir, expr_vattrs.truncate))
+                }
+                (TypX::Char, TypX::Int(_)) => {
+                    let source_unicode =
+                        mk_expr(ExprX::Unary(UnaryOp::CharToInt, source_vir.clone()));
+                    Ok(mk_ty_clip(&to_ty, &source_unicode, expr_vattrs.truncate))
                 }
                 _ => {
                     return err_span_str(

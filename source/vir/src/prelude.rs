@@ -264,38 +264,6 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :skolemid skolem_prelude_has_type_strslice
         )))
 
-        // Chars
-        (axiom (forall ((x [Poly])) (!
-            (=>
-                ([has_type] x [type_id_char])
-                (= x ([box_char] ([unbox_char] x)))
-            )
-            :pattern (([has_type] x [type_id_char]))
-            :qid prelude_box_unbox_char
-            :skolemid skolem_prelude_box_unbox_char
-        )))
-
-        (axiom (forall ((x [char_])) (!
-            (= x ([unbox_char] ([box_char] x)))
-            :pattern (([box_char] x))
-            :qid prelude_unbox_box_char
-            :skolemid skolem_prelude_unbox_box_char
-        )))
-
-        (axiom (forall ((x [char_])) (!
-            ([has_type] ([box_char] x) [type_id_char])
-            :pattern ((has_type ([box_char] x) [type_id_char]))
-            :qid prelude_has_type_char
-            :skolemid skolem_prelude_has_type_char
-        )))
-
-        (axiom (forall ((x Int)) (!
-            (= ([to_unicode] ([from_unicode] x)) x)
-            :pattern (([from_unicode] x))
-            :qid prelude_char_injective
-            :skolemid skolem_prelude_char_injective
-        )))
-
         // Integers
         // TODO: make this more configurable via options or HeaderExpr directives
         (declare-const [arch_size] Int) // number of bits for usize/isize
@@ -466,6 +434,45 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :qid prelude_eucmod
             :skolemid skolem_prelude_eucmod
         )))
+
+        // Chars
+        (axiom (forall ((x [Poly])) (!
+            (=>
+                ([has_type] x [type_id_char])
+                (= x ([box_char] ([unbox_char] x)))
+            )
+            :pattern (([has_type] x [type_id_char]))
+            :qid prelude_box_unbox_char
+            :skolemid skolem_prelude_box_unbox_char
+        )))
+        (axiom (forall ((x [char_])) (!
+            (= x ([unbox_char] ([box_char] x)))
+            :pattern (([box_char] x))
+            :qid prelude_unbox_box_char
+            :skolemid skolem_prelude_unbox_box_char
+        )))
+        (axiom (forall ((x [char_])) (!
+            ([has_type] ([box_char] x) [type_id_char])
+            :pattern ((has_type ([box_char] x) [type_id_char]))
+            :qid prelude_has_type_char
+            :skolemid skolem_prelude_has_type_char
+        )))
+        (axiom (forall ((x Int)) (!
+            (= ([to_unicode] ([from_unicode] x)) x)
+            :pattern (([from_unicode] x))
+            :qid prelude_char_injective
+            :skolemid skolem_prelude_char_injective
+        )))
+        (axiom (forall ((c Char)) (!
+            (and
+                (<= 0 ([to_unicode] c))
+                (< ([to_unicode] c) ([u_hi] 32))
+            )
+            :pattern (([to_unicode] c))
+            :qid prelude_to_unicode_bounds
+            :skolemid skolem_prelude_to_unicode_bounds
+        )))
+
 
         // Decreases
         (declare-fun [check_decrease_int] (Int Int Bool) Bool)

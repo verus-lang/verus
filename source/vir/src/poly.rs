@@ -311,7 +311,8 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 | UnaryOp::Clip { .. }
                 | UnaryOp::BitNot
                 | UnaryOp::StrLen
-                | UnaryOp::StrIsAscii => {
+                | UnaryOp::StrIsAscii
+                | UnaryOp::CharToInt => {
                     let e1 = coerce_expr_to_native(ctx, &e1);
                     mk_expr(ExprX::Unary(op.clone(), e1))
                 }

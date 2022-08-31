@@ -151,6 +151,8 @@ pub enum UnaryOp {
     StrLen,
     /// Used only for handling builtin::strslice_is_ascii
     StrIsAscii,
+    /// TODO
+    CharToInt,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
