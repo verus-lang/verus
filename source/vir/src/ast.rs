@@ -151,7 +151,7 @@ pub enum UnaryOp {
     StrLen,
     /// Used only for handling builtin::strslice_is_ascii
     StrIsAscii,
-    /// TODO
+    /// Used only for handling casts from chars to ints
     CharToInt,
 }
 
