@@ -76,6 +76,7 @@ pub enum IntRange {
 
 /// Rust type, but without Box, Rc, Arc, etc.
 pub type Typ = Arc<TypX>;
+
 pub type Typs = Arc<Vec<Typ>>;
 // Deliberately not marked Eq -- use explicit match instead, so we know where types are compared
 #[derive(Debug, Hash)]
@@ -101,6 +102,9 @@ pub enum TypX {
     /// StrSlice type. Currently the pervasive StrSlice struct is "seen" as this type
     /// despite the fact that it is in fact a datatype
     StrSlice,
+
+    /// UTF-8 character type
+    Char,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -149,6 +153,8 @@ pub enum UnaryOp {
     StrLen,
     /// Used only for handling builtin::strslice_is_ascii
     StrIsAscii,
+    /// Used only for handling casts from chars to ints
+    CharToInt,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -294,6 +300,8 @@ pub enum Constant {
     Int(BigInt),
     /// Hold generated string slices in here
     StrSlice(Arc<String>),
+    // Hold unicode values here
+    Char(char),
 }
 
 #[derive(Debug)]

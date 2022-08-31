@@ -69,12 +69,16 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let box_strslice = str_to_node(BOX_STRSLICE);
     let unbox_strslice = str_to_node(UNBOX_STRSLICE);
 
+    let box_char = str_to_node(BOX_CHAR);
+    let unbox_char = str_to_node(UNBOX_CHAR);
+
     let typ = str_to_node(TYPE);
     let type_id_bool = str_to_node(TYPE_ID_BOOL);
     let type_id_int = str_to_node(TYPE_ID_INT);
     let type_id_nat = str_to_node(TYPE_ID_NAT);
     let type_id_uint = str_to_node(TYPE_ID_UINT);
     let type_id_sint = str_to_node(TYPE_ID_SINT);
+    let type_id_char = str_to_node(TYPE_ID_CHAR);
     let has_type = str_to_node(HAS_TYPE);
     let as_type = str_to_node(AS_TYPE);
     let mk_fun = str_to_node(MK_FUN);
@@ -87,6 +91,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let uint_not = str_to_node(UINT_NOT);
 
     let strslice = strslice();
+    let char_ = char_();
 
     let strslice_is_ascii = strslice_is_ascii();
     let strslice_len = strslice_len();
@@ -94,6 +99,9 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let type_id_strslice = str_to_node(TYPE_ID_STRSLICE);
     let new_strlit = strslice_new_strlit();
     let from_strlit = strslice_from_strlit();
+
+    let from_unicode = char_from_unicode();
+    let to_unicode = char_to_unicode();
 
     nodes_vec!(
         // Fuel
@@ -112,10 +120,17 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
                 :skolemid skolem_prelude_fuel_defaults
             ))
         ))
+
+        // Chars
+        (declare-sort [char_] 0)
+        (declare-fun [from_unicode] (Int) [char_])
+        (declare-fun [to_unicode] ([char_]) Int)
+
+        // Strings
         (declare-sort [strslice] 0)
         (declare-fun [strslice_is_ascii] ([strslice]) Bool)
         (declare-fun [strslice_len] ([strslice]) Int)
-        (declare-fun [strslice_get_char] ([strslice] Int) Int)
+        (declare-fun [strslice_get_char] ([strslice] Int) [char_])
         (declare-fun [new_strlit] (Int) [strslice])
 
         (declare-fun [from_strlit] ([strslice]) Int)
@@ -128,11 +143,14 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [unbox_bool] ([Poly]) Bool)
         (declare-fun [box_strslice] ([strslice]) [Poly])
         (declare-fun [unbox_strslice] ([Poly]) [strslice])
+        (declare-fun [box_char] ([char_]) [Poly])
+        (declare-fun [unbox_char] ([Poly]) [char_])
         (declare-sort [typ] 0)
         (declare-const [type_id_bool] [typ])
         (declare-const [type_id_int] [typ])
         (declare-const [type_id_nat] [typ])
         (declare-const [type_id_strslice] [typ])
+        (declare-const [type_id_char] [typ])
         (declare-fun [type_id_uint] (Int) [typ])
         (declare-fun [type_id_sint] (Int) [typ])
         (declare-fun [has_type] ([Poly] [typ]) Bool)
@@ -416,6 +434,45 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :qid prelude_eucmod
             :skolemid skolem_prelude_eucmod
         )))
+
+        // Chars
+        (axiom (forall ((x [Poly])) (!
+            (=>
+                ([has_type] x [type_id_char])
+                (= x ([box_char] ([unbox_char] x)))
+            )
+            :pattern (([has_type] x [type_id_char]))
+            :qid prelude_box_unbox_char
+            :skolemid skolem_prelude_box_unbox_char
+        )))
+        (axiom (forall ((x [char_])) (!
+            (= x ([unbox_char] ([box_char] x)))
+            :pattern (([box_char] x))
+            :qid prelude_unbox_box_char
+            :skolemid skolem_prelude_unbox_box_char
+        )))
+        (axiom (forall ((x [char_])) (!
+            ([has_type] ([box_char] x) [type_id_char])
+            :pattern ((has_type ([box_char] x) [type_id_char]))
+            :qid prelude_has_type_char
+            :skolemid skolem_prelude_has_type_char
+        )))
+        (axiom (forall ((x Int)) (!
+            (= ([to_unicode] ([from_unicode] x)) x)
+            :pattern (([from_unicode] x))
+            :qid prelude_char_injective
+            :skolemid skolem_prelude_char_injective
+        )))
+        (axiom (forall ((c Char)) (!
+            (and
+                (<= 0 ([to_unicode] c))
+                (< ([to_unicode] c) ([u_hi] 32))
+            )
+            :pattern (([to_unicode] c))
+            :qid prelude_to_unicode_bounds
+            :skolemid skolem_prelude_to_unicode_bounds
+        )))
+
 
         // Decreases
         (declare-fun [check_decrease_int] (Int Int Bool) Bool)

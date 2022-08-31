@@ -1196,10 +1196,16 @@ fn fn_call_to_vir<'tcx>(
                 let expr_vattrs = get_verifier_attrs(expr_attrs)?;
                 return Ok(mk_ty_clip(&to_ty, &source_vir, expr_vattrs.truncate));
             }
+            (TypX::Char, TypX::Int(_)) => {
+                let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
+                let expr_vattrs = get_verifier_attrs(expr_attrs)?;
+                let source_unicode = mk_expr(ExprX::Unary(UnaryOp::CharToInt, source_vir.clone()));
+                return Ok(mk_ty_clip(&to_ty, &source_unicode, expr_vattrs.truncate));
+            }
             _ => {
                 return err_span_str(
                     expr.span,
-                    "Verus currently only supports casts from integer types to integer types",
+                    "Verus currently only supports casts from integer types and `char` to integer types",
                 );
             }
         }
@@ -2029,6 +2035,10 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 Ok(mk_expr(ExprX::Const(c)))
             }
             LitKind::Int(i, _) => mk_lit_int(false, i, typ_of_node(bctx, &expr.hir_id, false)),
+            LitKind::Char(c) => {
+                let c = vir::ast::Constant::Char(c);
+                Ok(mk_expr(ExprX::Const(c)))
+            }
             _ => {
                 panic!("unexpected constant: {:?}", lit)
             }
@@ -2041,10 +2051,15 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 (TypX::Int(_), TypX::Int(_)) => {
                     Ok(mk_ty_clip(&to_ty, &source_vir, expr_vattrs.truncate))
                 }
+                (TypX::Char, TypX::Int(_)) => {
+                    let source_unicode =
+                        mk_expr(ExprX::Unary(UnaryOp::CharToInt, source_vir.clone()));
+                    Ok(mk_ty_clip(&to_ty, &source_unicode, expr_vattrs.truncate))
+                }
                 _ => {
                     return err_span_str(
                         expr.span,
-                        "Verus currently only supports casts from integer types to integer types",
+                        "Verus currently only supports casts from integer types and `char` to integer types",
                     );
                 }
             }

@@ -567,6 +567,7 @@ impl Integer for i128 {}
 impl Integer for isize {}
 impl Integer for int {}
 impl Integer for nat {}
+impl Integer for char {}
 
 // spec literals of the form "33", which could have any Integer type
 #[allow(non_camel_case_types)]
@@ -919,7 +920,7 @@ pub fn strslice_len<A>(_a: A) -> nat {
 
 #[rustc_diagnostic_item = "builtin::strslice_get_char"]
 #[spec]
-pub fn strslice_get_char<A>(_a: A, _i: int) -> u8 {
+pub fn strslice_get_char<A>(_a: A, _i: int) -> char {
     unimplemented!()
 }
 

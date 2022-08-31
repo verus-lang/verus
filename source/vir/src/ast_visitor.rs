@@ -38,6 +38,7 @@ where
             match &**typ {
                 TypX::Bool
                 | TypX::StrSlice
+                | TypX::Char
                 | TypX::Int(_)
                 | TypX::TypParam(_)
                 | TypX::TypeId
@@ -74,6 +75,7 @@ where
     match &**typ {
         TypX::Bool
         | TypX::StrSlice
+        | TypX::Char
         | TypX::Int(_)
         | TypX::TypParam(_)
         | TypX::TypeId

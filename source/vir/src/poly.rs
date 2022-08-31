@@ -131,7 +131,7 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
 
 pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::StrSlice => false,
+        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::StrSlice | TypX::Char => false,
         TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
         TypX::Datatype(path, _) => {
             if ctx.datatype_is_transparent[path] {
@@ -148,7 +148,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
 
 fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::StrSlice => typ.clone(),
+        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::StrSlice | TypX::Char => typ.clone(),
         TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
         TypX::Datatype(path, _) => {
             if ctx.datatype_is_transparent[path] {
@@ -169,7 +169,7 @@ fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
 
 fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::StrSlice => {
+        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::StrSlice | TypX::Char => {
             Arc::new(TypX::Boxed(typ.clone()))
         }
         TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
@@ -182,9 +182,12 @@ fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
 
 fn coerce_expr_to_native(ctx: &Ctx, expr: &Expr) -> Expr {
     match &*expr.typ {
-        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::Datatype(..) | TypX::StrSlice => {
-            expr.clone()
-        }
+        TypX::Bool
+        | TypX::Int(_)
+        | TypX::Lambda(..)
+        | TypX::Datatype(..)
+        | TypX::StrSlice
+        | TypX::Char => expr.clone(),
         TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
         TypX::Boxed(typ) => {
             if typ_is_poly(ctx, typ) {
@@ -208,7 +211,12 @@ fn coerce_expr_to_poly(ctx: &Ctx, expr: &Expr) -> Expr {
         {
             expr.clone()
         }
-        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::Datatype(..) | TypX::StrSlice => {
+        TypX::Bool
+        | TypX::Int(_)
+        | TypX::Lambda(..)
+        | TypX::Datatype(..)
+        | TypX::StrSlice
+        | TypX::Char => {
             let op = UnaryOpr::Box(expr.typ.clone());
             let exprx = ExprX::UnaryOpr(op, expr.clone());
             let typ = Arc::new(TypX::Boxed(expr.typ.clone()));
@@ -303,7 +311,8 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 | UnaryOp::Clip { .. }
                 | UnaryOp::BitNot
                 | UnaryOp::StrLen
-                | UnaryOp::StrIsAscii => {
+                | UnaryOp::StrIsAscii
+                | UnaryOp::CharToInt => {
                     let e1 = coerce_expr_to_native(ctx, &e1);
                     mk_expr(ExprX::Unary(*op, e1))
                 }
