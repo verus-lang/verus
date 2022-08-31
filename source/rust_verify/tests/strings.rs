@@ -429,7 +429,7 @@ test_verify_one_file! {
             }
             let x = new_strlit("Hello World");
 
-            let x0 = x.get_ascii_at(0);
+            let x0 = x.get_ascii(0);
             assert(x0 === 72);
         }
     } => Ok(())
@@ -444,7 +444,7 @@ test_verify_one_file! {
             }
 
             let y = new_strlit("Hèllo World");
-            let y0 = y.get_ascii_at(0); // FAILS
+            let y0 = y.get_ascii(0); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -492,4 +492,51 @@ test_verify_one_file! {
             let z = v as char;
         }
     } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] test_strslice_get verus_code! {
+        use pervasive::string::*;
+        fn test_strslice_get_passes<'a>(x: StrSlice<'a>) -> (ret: u8)
+            requires
+                x.is_ascii(),
+                x@.len() > 10
+        {
+            let x0 = x.get_char(0);
+            x0 as u8
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_strslice_as_bytes_passes verus_code! {
+        use pervasive::string::*;
+        use pervasive::vec::*;
+        fn test_strslice_as_bytes<'a>(x: StrSlice<'a>) -> (ret: Vec<u8>)
+            requires
+                x.is_ascii(),
+                x@.len() > 10
+            ensures
+                ret@.len() > 10
+        {
+            x.as_bytes()
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_strslice_as_bytes_fails verus_code! {
+        use pervasive::string::*;
+        use pervasive::vec::*;
+
+        fn test_strslice_as_bytes_fails<'a>(x: StrSlice<'a>) -> (ret: Vec<u8>)
+            requires
+                x@.len() > 10
+            ensures
+                ret@.len() > 10
+        {
+            x.as_bytes() // FAILS
+        }
+
+    } => Err(err) => assert_one_fails(err)
 }

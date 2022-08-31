@@ -972,7 +972,7 @@ fn expr_to_stm_opt(
                 let assert = Spanned::new(expr.span.clone(), assert);
                 stms.push(assert);
             }
-            Ok((stms, ReturnValue::Some(mk_exp(ExpX::Unary(op.clone(), exp)))))
+            Ok((stms, ReturnValue::Some(mk_exp(ExpX::Unary(*op, exp)))))
         }
         ExprX::UnaryOpr(op, expr) => {
             let (stms, exp) = expr_to_stm_opt(ctx, state, expr)?;

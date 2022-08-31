@@ -47,7 +47,7 @@ impl<'a> StrSlice<'a> {
         requires i < self@.len()
         ensures
             self@.index(i as int) === c,
-            self.is_ascii() ==> forall|i: nat| i < self@.len() ==> (self@.index(i) as nat) < 256,
+            self.is_ascii() ==> forall|i: int| i < self@.len() ==> (self@.index(i) as nat) < 256,
     {
         self.inner.chars().nth(i).unwrap()
     }
@@ -108,7 +108,7 @@ impl<'a> StrSlice<'a> {
     }
 
     #[verifier(external_body)]
-    pub fn get_ascii_at(&self, i: usize) -> (b: u8)
+    pub fn get_ascii(&self, i: usize) -> (b: u8)
         requires
             self.is_ascii()
         ensures

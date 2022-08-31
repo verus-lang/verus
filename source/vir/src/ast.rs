@@ -131,7 +131,7 @@ pub enum ModeCoercion {
 
 /// Primitive unary operations
 /// (not arbitrary user-defined functions -- these are represented by ExprX::Call)
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum UnaryOp {
     /// boolean not
     Not,
