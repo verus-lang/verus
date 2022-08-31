@@ -679,13 +679,13 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             UnaryOpr::HasType(typ) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
-                let expr = match *exp.typ {
-                    TypX::Char => Arc::new(ExprX::Apply(
-                        crate::def::char_to_unicode_ident(),
-                        Arc::new(vec![expr]),
-                    )),
-                    _ => expr,
-                };
+                // TODO let expr = match *exp.typ {
+                // TODO     TypX::Char => Arc::new(ExprX::Apply(
+                // TODO         crate::def::char_to_unicode_ident(),
+                // TODO         Arc::new(vec![expr]),
+                // TODO     )),
+                // TODO     _ => expr,
+                // TODO };
                 typ_invariant(ctx, typ, &expr).expect("HasType")
             }
             UnaryOpr::IsVariant { datatype, variant } => {

@@ -472,3 +472,24 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] test_char_conversion_u32 verus_code! {
+        use pervasive::string::*;
+        fn test() {
+            let z = 'ž';
+            let d = z as u32;
+            assert(d == 382);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_invalid_cast_to_char verus_code! {
+        use pervasive::string::*;
+        fn test() {
+            let v: u8 = 42;
+            let z = v as char;
+        }
+    } => Err(e) => assert_vir_error(e)
+}

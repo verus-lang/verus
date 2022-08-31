@@ -165,7 +165,6 @@ pub(crate) fn mk_visibility<'tcx>(
 pub(crate) fn get_range(typ: &Typ) -> IntRange {
     match &**typ {
         TypX::Int(range) => *range,
-        TypX::Char => IntRange::U(8),
         _ => panic!("get_range {:?}", typ),
     }
 }

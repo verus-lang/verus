@@ -1895,6 +1895,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
     let expr_vattrs = get_verifier_attrs(expr_attrs)?;
     if expr_vattrs.truncate {
         if !match &expr.kind {
+            ExprKind::Cast(_, _) => true,
             ExprKind::Call(target, _) => match &target.kind {
                 ExprKind::Path(qpath) => {
                     let def = bctx.types.qpath_res(&qpath, expr.hir_id);
@@ -2037,7 +2038,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 _ => {
                     return err_span_str(
                         expr.span,
-                        "Verus currently only supports casts from integer types to integer types",
+                        "Verus currently only supports casts from integer types and `char` to integer types",
                     );
                 }
             }
