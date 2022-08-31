@@ -339,6 +339,7 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "memoize" => {
                     v.push(Attr::Memoize)
+                }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "truncate" => {
                     v.push(Attr::Truncate)
                 }

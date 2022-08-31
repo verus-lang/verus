@@ -799,7 +799,8 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | Trigger(_)
                         | CoerceMode { .. }
                         | StrLen
-                        | StrIsAscii => ok,
+                        | StrIsAscii
+                        | CharToInt => ok,
                         MustBeFinalized => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
                         }
@@ -868,7 +869,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         MustBeFinalized => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
                         }
-                        Not | Trigger(_) | CoerceMode { .. } | StrLen | StrIsAscii => ok,
+                        Not | Trigger(_) | CoerceMode { .. } | StrLen | StrIsAscii | CharToInt => {
+                            ok
+                        }
                     }
                 }
                 // !(!(e_inner)) == e_inner

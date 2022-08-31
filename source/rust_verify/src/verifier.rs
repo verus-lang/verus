@@ -1120,6 +1120,7 @@ impl Verifier {
             inferred_modes,
             self.args.rlimit,
             file,
+            self.args.arch_word_bits,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;

@@ -247,6 +247,7 @@ impl ExpX {
                 Constant::Bool(b) => (format!("{}", b), 99),
                 Constant::Int(i) => (format!("{}", i), 99),
                 Constant::StrSlice(s) => (format!("\"{}\"", s), 99),
+                Constant::Char(c) => (format!("'{}'", c), 99),
             },
             Var(id) | VarLoc(id) => (format!("{}", id.name), 99),
             VarAt(id, _at) => (format!("old({})", id.name), 99),
@@ -260,6 +261,7 @@ impl ExpX {
                 UnaryOp::Clip { .. } => (format!("clip({})", exp), 99),
                 UnaryOp::StrLen => (format!("{}.len()", exp.x.to_string_prec(99)), 90),
                 UnaryOp::StrIsAscii => (format!("{}.is_ascii()", exp.x.to_string_prec(99)), 90),
+                UnaryOp::CharToInt => (format!("{} as char", exp.x.to_string_prec(99)), 90),
                 UnaryOp::Trigger(..) | UnaryOp::CoerceMode { .. } | UnaryOp::MustBeFinalized => {
                     ("".to_string(), 0)
                 }
