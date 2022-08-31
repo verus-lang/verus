@@ -47,6 +47,11 @@ fn check_inherent_condition_for_special_op(
         ShardableType::StorageOption(_) => CollectionType::Option,
         ShardableType::StorageMap(_, _) => CollectionType::Map,
         ShardableType::Count => CollectionType::Nat,
+        ShardableType::PersistentCount => CollectionType::PersistentNat,
+        ShardableType::Bool => CollectionType::Bool,
+        ShardableType::PersistentBool => CollectionType::PersistentBool,
+        ShardableType::Set(_) => CollectionType::Set,
+        ShardableType::PersistentSet(_) => CollectionType::PersistentSet,
 
         ShardableType::Variable(_)
         | ShardableType::Constant(_)
@@ -80,8 +85,12 @@ fn check_inherent_condition_for_special_op(
                 Ok("".to_string())
             }
         }
-        MonoidStmtType::Add | MonoidStmtType::Deposit => match coll_type {
-            CollectionType::Multiset | CollectionType::Nat => {
+        MonoidStmtType::Add(_) | MonoidStmtType::Deposit => match coll_type {
+            CollectionType::Multiset
+            | CollectionType::Nat
+            | CollectionType::PersistentNat
+            | CollectionType::PersistentBool
+            | CollectionType::PersistentSet => {
                 if user_gave_proof_body {
                     let name = op.stmt.name();
                     let cname = coll_type.name();
@@ -98,6 +107,8 @@ fn check_inherent_condition_for_special_op(
             CollectionType::Option
             | CollectionType::PersistentOption
             | CollectionType::Map
+            | CollectionType::Set
+            | CollectionType::Bool
             | CollectionType::PersistentMap => {
                 let name = op.stmt.name();
                 let type_name = coll_type.name();
@@ -119,17 +130,27 @@ enum CollectionType {
     Option,
     PersistentOption,
     Nat,
+    PersistentNat,
+    Set,
+    PersistentSet,
+    Bool,
+    PersistentBool,
 }
 
 impl CollectionType {
     fn name(self) -> &'static str {
         match self {
-            CollectionType::Nat => "nat",
+            CollectionType::Nat => "count",
+            CollectionType::PersistentNat => "persistent_count",
             CollectionType::Map => "map",
             CollectionType::PersistentMap => "persistent_map",
+            CollectionType::Set => "set",
+            CollectionType::PersistentSet => "persistent_set",
             CollectionType::PersistentOption => "persistent_option",
             CollectionType::Multiset => "multiset",
             CollectionType::Option => "option",
+            CollectionType::Bool => "bool",
+            CollectionType::PersistentBool => "persistent_bool",
         }
     }
 }

@@ -4,18 +4,17 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] test1 code! {
+    #[test] test1 verus_code! {
         use crate::pervasive::seq::*;
         use crate::pervasive::seq_lib::*;
 
-        #[proof]
-        fn test_seq() {
+        proof fn test_seq() {
             let s1 = Seq::new(5, |i: int| 10 * i);
             assert(s1.len() == 5);
             assert(s1.index(3) == 30);
             let s2 = Seq::<int>::empty().push(0).push(10).push(20).push(30).push(40);
             assert(s1.ext_equal(s2));
-            assert(equal(s1, s2));
+            assert(s1 === s2);
             let s3 = s2.subrange(1, 4);
             assert(s3.len() == 3);
             let s4 = Seq::<int>::empty().push(10).push(20).push(30);
@@ -35,11 +34,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test1_fails1 code! {
+    #[test] test1_fails1 verus_code! {
         use crate::pervasive::seq::*;
 
-        #[proof]
-        fn test_seq() {
+        proof fn test_seq() {
             let s1 = Seq::new(5, |i: int| 10 * i);
             assert(s1.len() == 5);
             assert(s1.index(3) == 30);
@@ -49,17 +47,16 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test1_fails2 code! {
+    #[test] test1_fails2 verus_code! {
         use crate::pervasive::seq::*;
 
-        #[proof]
-        fn test_seq() {
+        proof fn test_seq() {
             let s1 = Seq::new(5, |i: int| 10 * i);
             assert(s1.len() == 5);
             assert(s1.index(3) == 30);
             let s2 = Seq::<int>::empty().push(0).push(10).push(20).push(30).push(40);
             assert(s1.ext_equal(s2));
-            assert(equal(s1, s2));
+            assert(s1 === s2);
             let s3 = s2.subrange(1, 4);
             assert(s3.len() == 3);
             let s4 = Seq::<int>::empty().push(10).push(20).push(30);

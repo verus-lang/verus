@@ -1,8 +1,11 @@
 // rust_verify/tests/example.rs expect-failures
 
 use builtin::*;
+use builtin_macros::*;
 mod pervasive;
 use pervasive::*;
+
+verus! {
 
 fn main() {}
 
@@ -20,14 +23,13 @@ fn test_mutation(i: int, n: nat, u: u8) {
 }
 */
 
-#[spec]
-fn add_one(i: int) -> int {
+spec fn add_one(i: int) -> int {
     i + 1
 }
 
-fn very_simple(z:int) {
+fn very_simple(z: int) {
     let mut x = z;      // 1_mutation
-    assert (add_one(x) < 3);
+    assert(add_one(x) < 3);
 }
 
 // fn test_if_else(b:bool, z:int) {
@@ -78,3 +80,5 @@ fn test_loop() {
     assert(true);   // 7_while_end
 }
 */
+
+} // verus!

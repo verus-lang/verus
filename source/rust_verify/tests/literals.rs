@@ -4,12 +4,11 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] set_literal_0 code! {
+    #[test] set_literal_0 verus_code! {
         #[allow(unused)]
         use set::*;
 
-        #[proof]
-        fn sl() {
+        proof fn sl() {
             let s1: Set<int> = set![];
             let s2: Set<int> = set![];
             assert(s1.ext_equal(s2));
@@ -18,42 +17,52 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] set_literal_1 code! {
+    #[test] set_literal_1 verus_code! {
         #[allow(unused)]
         use set::*;
 
-        #[proof]
-        fn sl() {
-            let s1 = set![2];
-            let s2 = set![2];
+        proof fn sl() {
+            let s1 = set![2int];
+            let s2 = set![2int];
             assert(s1.ext_equal(s2));
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] set_literal_2 code! {
+    #[test] set_literal_2 verus_code! {
         #[allow(unused)]
         use set::*;
 
-        #[proof]
-        fn sl() {
-            let s1 = set![2, 4];
-            let s2 = set![4, 2];
+        proof fn sl() {
+            let s1: Set<int> = set![2, 4];
+            let s2: Set<int> = set![4, 2];
+            assert(s1.ext_equal(s2));
+        }
+
+        proof fn comma_at_end() {
+            let s1: Set<int> = set![2, 4,];
+            let s2: Set<int> = set![4, 2,];
             assert(s1.ext_equal(s2));
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] seq_literals code! {
+    #[test] seq_literals verus_code! {
         #[allow(unused)]
         use seq::*;
 
-        #[proof]
-        fn sl() {
-            let s1 = seq![2, 4, 6, 8, 10];
+        proof fn sl() {
+            let s1: Seq<int> = seq![2, 4, 6, 8, 10];
             assert(s1.index(2) == 6);
         }
+
+
+        proof fn comma_at_end() {
+            let s1: Seq<int> = seq![2, 4, 6, 8, 10,];
+            assert(s1.index(2) == 6);
+        }
+
     } => Ok(())
 }

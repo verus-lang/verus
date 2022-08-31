@@ -472,28 +472,32 @@ impl NodeWriter {
         self.write_node(&mut string_writer, &node, 80, false);
         string_writer.finish(()).unwrap();
         // Clean up result:
-        let lines: Vec<&str> = result.lines().collect();
-        let mut result: String = "".to_string();
-        let mut i = 0;
-        while i < lines.len() {
-            let mut line = lines[i].to_owned();
-            // Consolidate closing ) lines:
-            if line.trim() == ")" {
-                while i + 1 < lines.len() && lines[i + 1].trim() == ")" {
-                    line = lines[i + 1].to_string() + &indentation[1..] + line.trim();
-                    i += 1;
-                }
-            }
-            result.push_str(&line);
-            i += 1;
-            if i < lines.len() {
-                result.push_str("\n");
-            }
-        }
-        result
+        clean_up_lines(result, indentation)
     }
 }
 
 pub(crate) fn node_to_string(node: &Node) -> String {
     NodeWriter::new().node_to_string_indent(&"".to_string(), node)
+}
+
+pub fn clean_up_lines(input: String, indentation: &str) -> String {
+    let lines: Vec<&str> = input.lines().collect();
+    let mut result: String = "".to_string();
+    let mut i = 0;
+    while i < lines.len() {
+        let mut line = lines[i].to_owned();
+        // Consolidate closing ) lines:
+        if line.trim() == ")" {
+            while i + 1 < lines.len() && lines[i + 1].trim() == ")" {
+                line = lines[i + 1].to_string() + &indentation[1..] + line.trim();
+                i += 1;
+            }
+        }
+        result.push_str(&line);
+        i += 1;
+        if i < lines.len() {
+            result.push_str("\n");
+        }
+    }
+    result
 }

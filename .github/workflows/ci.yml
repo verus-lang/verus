@@ -1,6 +1,6 @@
 name: run_CI_test
 
-on: [push, pull_request, workflow_dispatch]      # to disable pull_request, change this to ->  on: [push]
+on: [push, workflow_dispatch]
 
 jobs:
   run_ci_test:
@@ -11,20 +11,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v2
 
-      - name: check Z3 version
-        working-directory: ./source   # "cd source"   
-        run: |
-          /home/chanheec/local_bin/z3 --version  # 4.8.5 expected
       # run "cargo test" using our latest rustc binary
-      - name: cargo test with default Z3
+      - name: cargo test
         working-directory: ./source   # "cd source"   
         run: |
           mkdir ../rust
           ln -sf ~/local_bin/install ../rust/install
           echo rustc version `../rust/install/bin/rustc --version`           # check rustc version
+          ../.github/workflows/get-z3.sh
+          echo `./z3 --version`
           RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo clean    # cargo clean
           RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo build    # cargo build   
-          VERUS_Z3_PATH="/home/chanheec/local_bin/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ../rust/install/bin/cargo test
+          VERUS_Z3_PATH="$(pwd)/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc ./tools/run-tests.sh 
       
       - name: check cargo fmt
         working-directory: ./source   # "cd source"   
@@ -35,21 +33,6 @@ jobs:
       - name: cargo test with singular feature 
         working-directory: ./source
         run: |
+          ../.github/workflows/get-z3.sh
           RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo build --features singular       # build with singular feature 
-          VERUS_SINGULAR_PATH="/usr/bin/Singular" VERUS_Z3_PATH="/home/chanheec/local_bin/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ../rust/install/bin/cargo test -p rust_verify --features singular
-
-      # Second run with latest Z3
-      - name: cargo test with z3_4_9_1
-        id: z3_4_9_1
-        working-directory: ./source   # "cd source"   
-        continue-on-error: true
-        run: |
-          VERUS_Z3_PATH="/home/chanheec/local_bin/z3_4_9_1" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ../rust/install/bin/cargo test
-
-      - name: summarize_z3_4_9_1_fail
-        if: steps.z3_4_9_1.outcome != 'success'
-        run: echo '#### cargo test with z3 4.9.1 failed, but marked as suceess' >> $GITHUB_STEP_SUMMARY
-
-      - name: summarize_z3_4_9_1_success
-        if: steps.z3_4_9_1.outcome == 'success'
-        run: echo '### All tests passed! :rocket:' >> $GITHUB_STEP_SUMMARY
+          VERUS_SINGULAR_PATH="/usr/bin/Singular" VERUS_Z3_PATH=""$(pwd)/z3"" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ./tools/run-tests.sh -p rust_verify --features singular

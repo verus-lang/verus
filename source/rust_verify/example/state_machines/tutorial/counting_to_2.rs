@@ -28,7 +28,7 @@ tokenized_state_machine!(
         // ANCHOR: inv 
         #[invariant]
         pub fn main_inv(&self) -> bool {
-            self.counter == (if self.inc_a { 1 } else { 0 }) + (if self.inc_b { 1 } else { 0 })
+            self.counter == (if self.inc_a { 1 as int } else { 0 }) + (if self.inc_b { 1 as int } else { 0 })
         }
         // ANCHOR_END: inv 
 
@@ -100,8 +100,7 @@ impl Global {
     #[spec]
     pub fn wf(self) -> bool {
         self.atomic.has_inv(|v, g|
-            equal(g.instance, self.instance)
-            && equal(g.value, v as int)
+            equal(g.view(), X![self.instance => counter => v as int])
         )
     }
 }
@@ -119,14 +118,16 @@ impl Spawnable<Proof<X::inc_a>> for Thread1Data {
     #[spec]
     fn pre(self) -> bool {
         (*self.globals).wf()
-        && equal(self.token.instance, (*self.globals).instance)
-        && !self.token.value
+        && equal(self.token.view(),
+            X![(*self.globals).instance => inc_a => false]
+        )
     }
 
     #[spec]
     fn post(self, new_token: Proof<X::inc_a>) -> bool {
-        equal(new_token.0.instance, (*self.globals).instance)
-        && new_token.0.value
+        equal(new_token.0.view(),
+            X![(*self.globals).instance => inc_a => true]
+        )
     }
 
     fn run(self) -> Proof<X::inc_a> {
@@ -155,14 +156,16 @@ impl Spawnable<Proof<X::inc_b>> for Thread2Data {
     #[spec]
     fn pre(self) -> bool {
         (*self.globals).wf()
-        && equal(self.token.instance, (*self.globals).instance)
-        && !self.token.value
+        && equal(self.token.view(),
+            X![(*self.globals).instance => inc_b => false]
+        )
     }
 
     #[spec]
     fn post(self, new_token: Proof<X::inc_b>) -> bool {
-        equal(new_token.0.instance, (*self.globals).instance)
-        && new_token.0.value
+        equal(new_token.0.view(),
+            X![(*self.globals).instance => inc_b => true]
+        )
     }
 
     fn run(self) -> Proof<X::inc_b> {
@@ -182,15 +185,15 @@ impl Spawnable<Proof<X::inc_b>> for Thread2Data {
 fn main() {
   // Initialize protocol 
 
-  #[proof] let (instance,
-      counter_token,
-      inc_a_token,
-      inc_b_token) = X::Instance::initialize();
+  #[proof] let (Trk(instance),
+      Trk(counter_token),
+      Trk(inc_a_token),
+      Trk(inc_b_token)) = X::Instance::initialize();
 
   // Initialize the counter
 
   let atomic = AtomicU32::new(0, counter_token, |v, g| {
-      equal(g.instance, instance) && equal(g.value, v as int)
+      equal(g.view().instance, instance) && equal(g.view().value, v as int)
   });
 
   let global = Global { atomic, instance: instance.clone() };

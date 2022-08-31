@@ -35,20 +35,28 @@ pub(crate) fn stm_assign(
     stm: &Stm,
 ) -> Stm {
     let result = match &stm.x {
-        StmX::Call(_, _, _, _, Some(dest)) => {
-            let var: UniqueIdent = get_loc_var(&dest.dest);
-            assigned.insert(var.clone());
-            if !dest.is_init {
-                modified.insert(var.clone());
+        StmX::Call { args, dest, .. } => {
+            if let Some(dest) = dest {
+                let var: UniqueIdent = get_loc_var(&dest.dest);
+                assigned.insert(var.clone());
+                if !dest.is_init {
+                    modified.insert(var.clone());
+                }
+            }
+            for arg in args.iter() {
+                if let ExpX::Loc(loc) = &arg.x {
+                    let var = get_loc_var(loc);
+                    modified.insert(var);
+                }
             }
             stm.clone()
         }
-        StmX::Call(..)
-        | StmX::Assert(..)
-        | StmX::AssertBV(..)
+        StmX::Assert(..)
+        | StmX::AssertBitVector { .. }
         | StmX::AssertQuery { .. }
         | StmX::Assume(_)
-        | StmX::Fuel(..) => stm.clone(),
+        | StmX::Fuel(..)
+        | StmX::RevealString(_) => stm.clone(),
         StmX::Assign { lhs: Dest { dest, is_init }, rhs: _ } => {
             let var = get_loc_var(dest);
             assigned.insert(var.clone());
@@ -81,10 +89,10 @@ pub(crate) fn stm_assign(
             *assigned = pre_assigned;
             Spanned::new(stm.span.clone(), StmX::If(cond.clone(), lhs, rhs))
         }
-        StmX::While { cond_stms, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
+        StmX::While { cond_stm, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
             let mut pre_modified = modified.clone();
             *modified = HashSet::new();
-            let cond_stms = stms_assign(assign_map, declared, assigned, modified, cond_stms);
+            let cond_stm = stm_assign(assign_map, declared, assigned, modified, cond_stm);
 
             let pre_assigned = assigned.clone();
             let body = stm_assign(assign_map, declared, assigned, modified, body);
@@ -106,7 +114,7 @@ pub(crate) fn stm_assign(
                 typ_inv_vars.push((x.clone(), declared[x].clone()));
             }
             let while_x = StmX::While {
-                cond_stms,
+                cond_stm,
                 cond_exp: cond_exp.clone(),
                 body,
                 invs: invs.clone(),

@@ -4,25 +4,26 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] test1 code! {
+    #[test] test1 verus_code! {
         use crate::pervasive::set::*;
         use crate::pervasive::map::*;
 
-        #[proof]
-        fn test_map() {
+        proof fn test_map() {
             let s1 = Set::<int>::empty().insert(1).insert(2).insert(3);
             let m1 = s1.mk_map(|k: int| 10 * k);
             assert(m1.index(2) == 20);
             let s2 = Set::<int>::empty().insert(1).insert(3).insert(2);
             let m2 = s2.mk_map(|k: int| 3 * k + 7 * k);
             assert(m1.ext_equal(m2));
-            let m3 = map![10 => true ==> false, 20 => false ==> true];
+            let m3 = map![10int => true ==> false, 20int => false ==> true];
             assert(!m3.index(10));
             assert(m3.index(20));
+            let m4 = map![10int => true ==> false, 20int => false ==> true,];
+            assert(!m4.index(10));
+            assert(m4.index(20));
         }
 
-        #[proof]
-        fn testfun_eq() {
+        proof fn testfun_eq() {
             let s = Set::<int>::empty().insert(1).insert(2).insert(3);
             let m1 = s.mk_map(|x: int| x + 4);
             let m2 = s.mk_map(|y: int| y + (2 + 2));
@@ -33,12 +34,11 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test1_fails1 code! {
+    #[test] test1_fails1 verus_code! {
         use crate::pervasive::set::*;
         use crate::pervasive::map::*;
 
-        #[proof]
-        fn test_map() {
+        proof fn test_map() {
             let s1 = Set::<int>::empty().insert(1).insert(2).insert(3);
             let m1 = s1.mk_map(|k: int| 10 * k);
             assert(m1.index(2) == 20);
@@ -51,12 +51,11 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test1_fails2 code! {
+    #[test] test1_fails2 verus_code! {
         use crate::pervasive::set::*;
         use crate::pervasive::map::*;
 
-        #[proof]
-        fn test_map() {
+        proof fn test_map() {
             let s1 = Set::<int>::empty().insert(1).insert(2).insert(3);
             let m1 = s1.mk_map(|k: int| 10 * k);
             assert(m1.index(2) == 20);
@@ -68,12 +67,11 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test1_fails_subtype code! {
+    #[test] test1_fails_subtype verus_code! {
         use crate::pervasive::set::*;
         use crate::pervasive::map::*;
 
-        #[proof]
-        fn test_map() {
+        proof fn test_map() {
             let s1 = Set::<int>::empty().insert(1).insert(2).insert(3);
             let m1 = s1.mk_map(|k: int| 10 * k);
             let m3: Map<int, int> = m1;
@@ -83,17 +81,16 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test1_fails_eq code! {
+    #[test] test1_fails_eq verus_code! {
         use crate::pervasive::set::*;
         use crate::pervasive::map::*;
 
-        #[proof]
-        fn testfun_eq() {
+        proof fn testfun_eq() {
             let s = Set::<int>::empty().insert(1).insert(2).insert(3);
             let m1 = s.mk_map(|x: int| x + 4);
             let m2 = s.mk_map(|y: int| (2 + 2) + y);
             // would require extensional equality:
-            assert(equal(m1, m2)); // FAILS
+            assert(m1 === m2); // FAILS
         }
     } => Err(_)
 }

@@ -24,7 +24,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_needs_pub_abstract2 code! {
+    #[test] test_needs_pub_abstract2 verus_code! {
         mod M1 {
             use builtin::*;
 
@@ -34,9 +34,7 @@ test_verify_one_file! {
                 pub four_doors: bool,
             }
 
-            #[spec]
-            #[verifier(publish)] // illegal
-            pub fn get_passengers() -> Car {
+            pub open spec fn get_passengers() -> Car {
                 Car { passengers: 0, four_doors: true }
             }
         }
@@ -99,14 +97,16 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_opaque_struct_1 M1.to_string() + code_str! {
+    #[test] test_opaque_struct_1 M1.to_string() + verus_code_str! {
         mod M2 {
             use crate::M1::{Car, get_passengers, Bike};
             use builtin::*;
             use crate::pervasive::*;
 
-            fn test_opaque_struct_1(c: Car) {
-                requires(get_passengers(c) == 12);
+            fn test_opaque_struct_1(c: Car)
+                requires
+                    get_passengers(c) == 12,
+            {
                 assert(get_passengers(c) == 12);
             }
         }

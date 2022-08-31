@@ -54,7 +54,7 @@ fn check_trigger_expr(
     } else {
         match &exp.x {
             ExpX::Unary(UnaryOp::Trigger(_), _)
-            | ExpX::Unary(UnaryOp::Clip(_), _)
+            | ExpX::Unary(UnaryOp::Clip { .. }, _)
             | ExpX::Binary(BinaryOp::Arith(..), _, _) => {}
             _ => {
                 return err_str(
@@ -103,7 +103,11 @@ fn check_trigger_expr(
                 ExpX::VarAt(_, VarAt::Pre) => Ok(()),
                 ExpX::Old(_, _) => panic!("internal error: Old"),
                 ExpX::Unary(op, _) => match op {
-                    UnaryOp::Trigger(_) | UnaryOp::Clip(_) | UnaryOp::BitNot => Ok(()),
+                    UnaryOp::Trigger(_)
+                    | UnaryOp::Clip { .. }
+                    | UnaryOp::BitNot
+                    | UnaryOp::StrLen
+                    | UnaryOp::StrIsAscii => Ok(()),
                     UnaryOp::CoerceMode { .. } => Ok(()),
                     UnaryOp::MustBeFinalized => Ok(()),
                     UnaryOp::Not => err_str(&exp.span, "triggers cannot contain boolean operators"),
@@ -128,6 +132,7 @@ fn check_trigger_expr(
                             "triggers cannot contain integer arithmetic\nuse forall_arith for quantifiers on integer arithmetic",
                         ),
                         Bitwise(..) => Ok(()),
+                        StrGetChar => Ok(()),
                     }
                 }
                 ExpX::If(_, _, _) => err_str(&exp.span, "triggers cannot contain if/else"),
@@ -160,9 +165,9 @@ fn check_trigger_expr(
                 ExpX::VarAt(_, VarAt::Pre) => true,
                 ExpX::Old(_, _) => panic!("internal error: Old"),
                 ExpX::Unary(op, _) => match op {
-                    UnaryOp::Trigger(_) | UnaryOp::Clip(_) | UnaryOp::CoerceMode { .. } => true,
+                    UnaryOp::Trigger(_) | UnaryOp::Clip { .. } | UnaryOp::CoerceMode { .. } => true,
                     UnaryOp::MustBeFinalized => true,
-                    UnaryOp::Not | UnaryOp::BitNot => false,
+                    UnaryOp::Not | UnaryOp::BitNot | UnaryOp::StrLen | UnaryOp::StrIsAscii => false,
                 },
                 ExpX::Binary(op, _, _) => {
                     use BinaryOp::*;

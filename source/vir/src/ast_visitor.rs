@@ -36,7 +36,12 @@ where
         VisitorControlFlow::Return => VisitorControlFlow::Recurse,
         VisitorControlFlow::Recurse => {
             match &**typ {
-                TypX::Bool | TypX::Int(_) | TypX::TypParam(_) | TypX::TypeId | TypX::Air(_) => (),
+                TypX::Bool
+                | TypX::StrSlice
+                | TypX::Int(_)
+                | TypX::TypParam(_)
+                | TypX::TypeId
+                | TypX::Air(_) => (),
                 TypX::Tuple(ts) => {
                     for t in ts.iter() {
                         expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
@@ -67,7 +72,12 @@ where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::TypParam(_) | TypX::TypeId | TypX::Air(_) => ft(env, typ),
+        TypX::Bool
+        | TypX::StrSlice
+        | TypX::Int(_)
+        | TypX::TypParam(_)
+        | TypX::TypeId
+        | TypX::Air(_) => ft(env, typ),
         TypX::Tuple(ts) => {
             let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
             ft(env, &Arc::new(TypX::Tuple(Arc::new(ts))))
@@ -250,17 +260,15 @@ where
                     }
                     expr_visitor_control_flow!(expr_visitor_dfs(body, map, mf));
                 }
-                ExprX::Assign { init_not_mut: _, lhs_type_mode: _, lhs: e1, rhs: e2 } => {
+                ExprX::Assign { init_not_mut: _, lhs: e1, rhs: e2 } => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
                     expr_visitor_control_flow!(expr_visitor_dfs(e2, map, mf));
-                }
-                ExprX::AssertBV(e) => {
-                    expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
                 }
                 ExprX::AssertCompute(e, _) => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
                 }
                 ExprX::Fuel(_, _) => (),
+                ExprX::RevealString(_) => (),
                 ExprX::Header(_) => {
                     panic!("header expression not allowed here: {:?}", &expr.span);
                 }
@@ -580,14 +588,13 @@ where
             let body = map_expr_visitor_env(body, map, env, fe, fs, ft)?;
             ExprX::WithTriggers { triggers, body }
         }
-        ExprX::Assign { init_not_mut, lhs_type_mode, lhs: e1, rhs: e2 } => {
+        ExprX::Assign { init_not_mut, lhs: e1, rhs: e2 } => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             let expr2 = map_expr_visitor_env(e2, map, env, fe, fs, ft)?;
-            let init_not_mut = *init_not_mut;
-            let lhs_type_mode = *lhs_type_mode;
-            ExprX::Assign { init_not_mut, lhs_type_mode, lhs: expr1, rhs: expr2 }
+            ExprX::Assign { init_not_mut: *init_not_mut, lhs: expr1, rhs: expr2 }
         }
         ExprX::Fuel(path, fuel) => ExprX::Fuel(path.clone(), *fuel),
+        ExprX::RevealString(path) => ExprX::RevealString(path.clone()),
         ExprX::Header(_) => {
             return err_str(&expr.span, "header expression not allowed here");
         }
@@ -614,10 +621,6 @@ where
             })?);
             let proof = map_expr_visitor_env(proof, map, env, fe, fs, ft)?;
             ExprX::AssertQuery { requires, ensures, proof, mode: *mode }
-        }
-        ExprX::AssertBV(e) => {
-            let expr1 = map_expr_visitor_env(e, map, env, fe, fs, ft)?;
-            ExprX::AssertBV(expr1)
         }
         ExprX::AssertCompute(e, m) => {
             let expr1 = map_expr_visitor_env(e, map, env, fe, fs, ft)?;

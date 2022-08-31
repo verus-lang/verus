@@ -255,7 +255,7 @@ impl ExpX {
             }
             Unary(op, exp) => match op {
                 UnaryOp::Not | UnaryOp::BitNot => (format!("!{}", exp.x.to_string_prec(99)), 90),
-                UnaryOp::Clip(_range) => (format!("clip({})", exp), 99),
+                UnaryOp::Clip{..} => (format!("clip({})", exp), 99),
                 UnaryOp::Trigger(..) | UnaryOp::CoerceMode { .. } | UnaryOp::MustBeFinalized => {
                     ("".to_string(), 0)
                 }

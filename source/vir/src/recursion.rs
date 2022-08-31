@@ -141,7 +141,7 @@ fn check_decrease_call(
     let mut decreases_exps: Vec<Exp> = Vec::new();
     for expr in function.x.decrease.iter() {
         let decreases_exp =
-            expr_to_exp(ctxt.ctx, fun_ssts, &params_to_pars(&function.x.params, false), expr)?;
+            expr_to_exp(ctxt.ctx, fun_ssts, &params_to_pars(&function.x.params, true), expr)?;
         let dec_exp = exp_rename_vars(&decreases_exp, &renames);
         let e_decx = ExpX::Bind(
             Spanned::new(span.clone(), BndX::Let(Arc::new(binders.clone()))),
@@ -280,7 +280,7 @@ pub(crate) fn is_recursive_stm(ctx: &Ctx, name: &Fun, body: &Stm) -> bool {
     } else {
         // Check for self-recursion, which SCC computation does not account for
         match stm_visitor_dfs(body, &mut |stm| match &stm.x {
-            StmX::Call(x, _, targs, _, _) if is_self_call(ctx, x, targs, name) => {
+            StmX::Call { fun, typ_args, .. } if is_self_call(ctx, fun, typ_args, name) => {
                 VisitorControlFlow::Stop(())
             }
             _ => VisitorControlFlow::Recurse,
@@ -347,7 +347,7 @@ pub(crate) fn check_termination_exp(
     }
 
     let decreases_exps = vec_map_result(&function.x.decrease, |e| {
-        expr_to_exp(ctx, fun_ssts, &params_to_pars(&function.x.params, false), e)
+        expr_to_exp(ctx, fun_ssts, &params_to_pars(&function.x.params, true), e)
     })?;
     let scc_rep = ctx.global.func_call_graph.get_scc_rep(&Node::Fun(function.x.name.clone()));
     let ctxt =
@@ -381,7 +381,7 @@ pub(crate) fn check_termination_exp(
         false,
         false,
         false,
-    );
+    )?;
 
     assert_eq!(commands.len(), 1);
     let commands = commands.into_iter().next().unwrap().commands.clone();
@@ -420,14 +420,14 @@ pub(crate) fn check_termination_stm(
     }
 
     let decreases_exps = vec_map_result(&function.x.decrease, |e| {
-        expr_to_exp(ctx, fun_ssts, &params_to_pars(&function.x.params, false), e)
+        expr_to_exp(ctx, fun_ssts, &params_to_pars(&function.x.params, true), e)
     })?;
     let scc_rep = ctx.global.func_call_graph.get_scc_rep(&Node::Fun(function.x.name.clone()));
     let ctxt =
         Ctxt { recursive_function_name: function.x.name.clone(), num_decreases, scc_rep, ctx };
     let stm = map_stm_visitor(body, &mut |s| match &s.x {
-        StmX::Call(x, _, targs, args, _) if is_recursive_call(&ctxt, x, targs) => {
-            let check = check_decrease_call(&ctxt, fun_ssts, &s.span, x, targs, args)?;
+        StmX::Call { fun, typ_args, args, .. } if is_recursive_call(&ctxt, fun, typ_args) => {
+            let check = check_decrease_call(&ctxt, fun_ssts, &s.span, fun, typ_args, args)?;
             let error = error("could not prove termination", &s.span);
             let stm_assert = Spanned::new(s.span.clone(), StmX::Assert(Some(error), check));
             let stm_block =

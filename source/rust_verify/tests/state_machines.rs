@@ -9,6 +9,7 @@ const IMPORTS: &str = code_str! {
     #[allow(unused_imports)] use crate::pervasive::result::*;
     #[allow(unused_imports)] use crate::pervasive::option::*;
     #[allow(unused_imports)] use crate::pervasive::map::*;
+    #[allow(unused_imports)] use crate::pervasive::set::*;
     #[allow(unused_imports)] use crate::pervasive::multiset::*;
     #[allow(unused_imports)] use builtin::*;
     #[allow(unused_imports)] use builtin_macros::*;
@@ -22,6 +23,26 @@ const IMPORTS: &str = code_str! {
         Duck(int),
     }
 };
+
+test_verify_one_file! {
+    #[test] dupe_name_fail IMPORTS.to_string() + code_str! {
+        state_machine!{ X {
+            fields {
+                pub v: Map<int, int>,
+            }
+
+            transition!{
+                some_name() {
+                }
+            }
+
+            transition!{
+                some_name() {
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "duplicate item name")
+}
 
 test_verify_one_file! {
     #[test] test_birds_eye_init_error IMPORTS.to_string() + code_str! {
@@ -435,12 +456,16 @@ test_verify_one_file! {
             }
         }}
 
-        fn foo(#[proof] m: Map<int, int>) {
+        verus!{
+
+        proof fn foo(tracked m: Map<int, int>) {
             requires(equal(m, Map::empty()));
 
-            #[proof] let inst = X::Instance::initialize(m);
-            #[proof] let t = inst.tr();
-            assert(equal(t, 5));
+            let tracked inst = X::Instance::initialize(tracked m);
+            let tracked t = (tracked inst).tr();
+            assert(t === 5);
+        }
+
         }
     } => Ok(())
 }
@@ -1216,6 +1241,17 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] wrong_form_set IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(set)]
+                pub t: Multiset<int>,
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "must be of the form Set<_>")
+}
+
+test_verify_one_file! {
     #[test] wrong_form_count IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1224,6 +1260,17 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_error_msg(e, "must be nat")
+}
+
+test_verify_one_file! {
+    #[test] wrong_form_bool IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(bool)]
+                pub t: int,
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "must be bool")
 }
 
 test_verify_one_file! {
@@ -2316,7 +2363,10 @@ test_verify_one_file! {
                     guard t >= (Map::<int,int>::empty().insert(5, 7)) by { }; // FAILS
 
                     birds_eye let t = pre.t;
-                    assert(t.dom().contains(5) && t.index(5) == 7);
+                    assert(t.dom().contains(5) && t.index(5) == 7) by {
+                        assert(Map::<int,int>::empty().insert(5, 7).dom().contains(5));
+                        assert(Map::<int,int>::empty().insert(5, 7).index(5) == 7);
+                    };
                 }
             }
         }}
@@ -2515,6 +2565,40 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] wrong_op_multiset_add_set IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(multiset)]
+                pub t: Multiset<int>,
+            }
+
+            transition!{
+                tr() {
+                    add t += set { 5 };
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "element but the given field has sharding strategy 'multiset'")
+}
+
+test_verify_one_file! {
+    #[test] wrong_op_set_add_multiset IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(set)]
+                pub t: Set<int>,
+            }
+
+            transition!{
+                tr() {
+                    add t += { 5 };
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "element but the given field has sharding strategy 'set'")
+}
+
+test_verify_one_file! {
     #[test] wrong_op_multiset_add_option_with_binding IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2643,7 +2727,7 @@ test_verify_one_file! {
 
             transition!{
                 tr() {
-                    add t += Some(5);
+                    add t += Some(spec_literal_nat("5"));
                 }
             }
         }}
@@ -2805,7 +2889,7 @@ test_verify_one_file! {
 
             #[inductive(initialize)]
             fn inductive_init(post: Self) {
-                #[proof] let tracked (inst, token) = X::Instance::initialize();
+                #[proof] let tracked (Trk(inst), Trk(token)) = X::Instance::initialize();
                 tracked inst.ro(&token);
                 // this should derive a contradiction if not for the recursion checking
             }
@@ -2838,7 +2922,7 @@ test_verify_one_file! {
 
         #[proof]
         fn foo_lemma() {
-            #[proof] let (inst, token) = X::Instance::initialize();
+            #[proof] let (Trk(inst), Trk(token)) = X::Instance::initialize();
             inst.ro(&token);
         }
     } => Err(e) => assert_vir_error_msg(e, "recursive function must call decreases")
@@ -2915,13 +2999,12 @@ test_verify_one_file! {
 
         }}
 
-        #[spec]
-        fn rel_init(post: X::State, x: int, y: int, z: int) -> bool {
+        verus! {
+
+        spec fn rel_init(post: X::State, x: int, y: int, z: int) -> bool {
             post.x == x && post.y == y && y <= z &&
             if x == y { post.z == z } else { post.z == z + 1 }
         }
-
-        verus! {
 
         spec fn rel_tr1(pre: X::State, post: X::State, b: bool, c: bool) -> bool {
             &&& b
@@ -2979,92 +3062,77 @@ test_verify_one_file! {
             }
         }
 
-        } // verus!
-
-
-        #[proof]
-        fn correct_init(post: X::State, x: int, y: int, z: int) {
+        proof fn correct_init(post: X::State, x: int, y: int, z: int) {
             requires(X::State::initialize(post, x, y, z));
             ensures(rel_init(post, x, y, z));
         }
 
-        #[proof]
-        fn rev_init(post: X::State, x: int, y: int, z: int) {
+        proof fn rev_init(post: X::State, x: int, y: int, z: int) {
             requires(rel_init(post, x, y, z));
             ensures(X::State::initialize(post, x, y, z));
         }
 
-        #[proof]
-        fn correct_tr1(pre: X::State, post: X::State, b: bool, c: bool) {
+        proof fn correct_tr1(pre: X::State, post: X::State, b: bool, c: bool) {
             requires(X::State::tr1(pre, post, b, c));
             ensures(rel_tr1(pre, post, b, c));
         }
 
-        #[proof]
-        fn rev_tr1(pre: X::State, post: X::State, b: bool, c: bool) {
+        proof fn rev_tr1(pre: X::State, post: X::State, b: bool, c: bool) {
             requires(rel_tr1(pre, post, b, c));
             ensures(X::State::tr1(pre, post, b, c));
         }
 
-        #[proof]
-        fn correct_tr1_strong(pre: X::State, post: X::State, b: bool, c: bool) {
+        proof fn correct_tr1_strong(pre: X::State, post: X::State, b: bool, c: bool) {
             requires(X::State::tr1_strong(pre, post, b, c));
             ensures(rel_tr1_strong(pre, post, b, c));
         }
 
-        #[proof]
-        fn rev_tr1_strong(pre: X::State, post: X::State, b: bool, c: bool) {
+        proof fn rev_tr1_strong(pre: X::State, post: X::State, b: bool, c: bool) {
             requires(rel_tr1_strong(pre, post, b, c));
             ensures(X::State::tr1_strong(pre, post, b, c));
         }
 
-        #[proof]
-        fn correct_tr2(pre: X::State, post: X::State, b: bool, c: bool) {
+        proof fn correct_tr2(pre: X::State, post: X::State, b: bool, c: bool) {
             requires(X::State::tr2(pre, post, b, c));
             ensures(rel_tr2(pre, post, b, c));
         }
 
-        #[proof]
-        fn rev_tr2(pre: X::State, post: X::State, b: bool, c: bool) {
+        proof fn rev_tr2(pre: X::State, post: X::State, b: bool, c: bool) {
             requires(rel_tr2(pre, post, b, c));
             ensures(X::State::tr2(pre, post, b, c));
         }
 
-        #[proof]
-        fn correct_tr2_strong(pre: X::State, post: X::State, b: bool, c: bool) {
+        proof fn correct_tr2_strong(pre: X::State, post: X::State, b: bool, c: bool) {
             requires(X::State::tr2_strong(pre, post, b, c));
             ensures(rel_tr2_strong(pre, post, b, c));
         }
 
-        #[proof]
-        fn rev_tr2_strong(pre: X::State, post: X::State, b: bool, c: bool) {
+        proof fn rev_tr2_strong(pre: X::State, post: X::State, b: bool, c: bool) {
             requires(rel_tr2_strong(pre, post, b, c));
             ensures(X::State::tr2_strong(pre, post, b, c));
         }
 
-        #[proof]
-        fn correct_tr3(pre: X::State, post: X::State, b: bool, c: bool) {
+        proof fn correct_tr3(pre: X::State, post: X::State, b: bool, c: bool) {
             requires(X::State::tr3(pre, post, b, c));
             ensures(rel_tr3(pre, post, b, c));
         }
 
-        #[proof]
-        fn rev_tr3(pre: X::State, post: X::State, b: bool, c: bool) {
+        proof fn rev_tr3(pre: X::State, post: X::State, b: bool, c: bool) {
             requires(rel_tr3(pre, post, b, c));
             ensures(X::State::tr3(pre, post, b, c));
         }
 
-        #[proof]
-        fn correct_tr3_strong(pre: X::State, post: X::State, b: bool, c: bool) {
+        proof fn correct_tr3_strong(pre: X::State, post: X::State, b: bool, c: bool) {
             requires(X::State::tr3_strong(pre, post, b, c));
             ensures(rel_tr3_strong(pre, post, b, c));
         }
 
-        #[proof]
-        fn rev_tr3_strong(pre: X::State, post: X::State, b: bool, c: bool) {
+        proof fn rev_tr3_strong(pre: X::State, post: X::State, b: bool, c: bool) {
             requires(rel_tr3_strong(pre, post, b, c));
             ensures(X::State::tr3_strong(pre, post, b, c));
         }
+
+        } // verus!
     } => Ok(())
 }
 
@@ -3144,54 +3212,48 @@ test_verify_one_file! {
             })
         }
 
-        } // verus!
-
-        #[spec]
-        fn rel_tr1_strong(pre: X::State, post: X::State, foo: Foo, c: bool) -> bool {
-            (match foo {
+        spec fn rel_tr1_strong(pre: X::State, post: X::State, foo: Foo, c: bool) -> bool {
+            &&& (match foo {
                 Foo::Bar(a) => { post.z == pre.z + 1 }
                 Foo::Qax(b) if b == 20 => { post.z == pre.z && pre.y <= pre.z }
                 Foo::Duck(d) => { post.z == pre.z }
                 _ => { post.z == pre.z }
             })
-            && (c && pre.x == post.x && pre.y == post.y)
+            &&& (c && pre.x == post.x && pre.y == post.y)
         }
 
-        #[proof]
-        fn correct_init(post: X::State, x: int, y: int, z: int, foo: Foo) {
+        proof fn correct_init(post: X::State, x: int, y: int, z: int, foo: Foo) {
             requires(X::State::initialize(post, x, y, z, foo));
             ensures(rel_init(post, x, y, z, foo));
         }
 
-        #[proof]
-        fn rev_init(post: X::State, x: int, y: int, z: int, foo: Foo) {
+        proof fn rev_init(post: X::State, x: int, y: int, z: int, foo: Foo) {
             requires(rel_init(post, x, y, z, foo));
             ensures(X::State::initialize(post, x, y, z, foo));
         }
 
-        #[proof]
-        fn correct_tr1(pre: X::State, post: X::State, foo: Foo, c: bool) {
+        proof fn correct_tr1(pre: X::State, post: X::State, foo: Foo, c: bool) {
             requires(X::State::tr1(pre, post, foo, c));
             ensures(rel_tr1(pre, post, foo, c));
         }
 
-        #[proof]
-        fn rev_tr1(pre: X::State, post: X::State, foo: Foo, c: bool) {
+        proof fn rev_tr1(pre: X::State, post: X::State, foo: Foo, c: bool) {
             requires(rel_tr1(pre, post, foo, c));
             ensures(X::State::tr1(pre, post, foo, c));
         }
 
-        #[proof]
-        fn correct_tr1_strong(pre: X::State, post: X::State, foo: Foo, c: bool) {
+        proof fn correct_tr1_strong(pre: X::State, post: X::State, foo: Foo, c: bool) {
             requires(X::State::tr1_strong(pre, post, foo, c));
             ensures(rel_tr1_strong(pre, post, foo, c));
         }
 
-        #[proof]
-        fn rev_tr1_strong(pre: X::State, post: X::State, foo: Foo, c: bool) {
+        proof fn rev_tr1_strong(pre: X::State, post: X::State, foo: Foo, c: bool) {
             requires(rel_tr1_strong(pre, post, foo, c));
             ensures(X::State::tr1_strong(pre, post, foo, c));
         }
+
+        } // verus!
+
     } => Ok(())
 }
 
@@ -3257,7 +3319,6 @@ test_verify_one_file! {
                 }
             }
         }}
-
 
         verus! {
 
@@ -3353,114 +3414,98 @@ test_verify_one_file! {
             )
         }
 
-        } // verus!
-
-        #[spec]
-        fn rel_tr4_strong(pre: Y::State, post: Y::State) -> bool {
-            equal(pre.opt, Option::None)
-            && equal(post.opt, Option::Some(7))
-            && equal(pre.storage_opt, Option::None)
-            && equal(post.storage_opt, Option::Some(12))
-            && equal(post.map, pre.map)
-            && equal(post.storage_map, pre.storage_map)
-            && equal(post.mset, pre.mset)
+        spec fn rel_tr4_strong(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt === Option::None
+            &&& post.opt === Option::Some(7)
+            &&& pre.storage_opt === Option::None
+            &&& post.storage_opt === Option::Some(12)
+            &&& post.map === pre.map
+            &&& post.storage_map === pre.storage_map
+            &&& post.mset === pre.mset
         }
 
-        #[proof]
-        fn correct_tr1(pre: Y::State, post: Y::State) {
+        proof fn correct_tr1(pre: Y::State, post: Y::State) {
             requires(Y::State::tr1(pre, post));
             ensures(rel_tr1(pre, post));
         }
 
-        #[proof]
-        fn rev_tr1(pre: Y::State, post: Y::State) {
+        proof fn rev_tr1(pre: Y::State, post: Y::State) {
             requires(rel_tr1(pre, post));
             ensures(Y::State::tr1(pre, post));
         }
 
-        #[proof]
-        fn correct_tr1_strong(pre: Y::State, post: Y::State) {
+        proof fn correct_tr1_strong(pre: Y::State, post: Y::State) {
             requires(Y::State::tr1_strong(pre, post));
             ensures(rel_tr1_strong(pre, post));
         }
 
-        #[proof]
-        fn rev_tr1_strong(pre: Y::State, post: Y::State) {
+        proof fn rev_tr1_strong(pre: Y::State, post: Y::State) {
             requires(rel_tr1_strong(pre, post));
             ensures(Y::State::tr1_strong(pre, post));
         }
 
-        #[proof]
-        fn correct_tr2(pre: Y::State, post: Y::State) {
+        proof fn correct_tr2(pre: Y::State, post: Y::State) {
             requires(Y::State::tr2(pre, post));
             ensures(rel_tr2(pre, post));
         }
 
-        #[proof]
-        fn rev_tr2(pre: Y::State, post: Y::State) {
+        proof fn rev_tr2(pre: Y::State, post: Y::State) {
             requires(rel_tr2(pre, post));
             ensures(Y::State::tr2(pre, post));
         }
 
-        #[proof]
-        fn correct_tr2_strong(pre: Y::State, post: Y::State) {
+        proof fn correct_tr2_strong(pre: Y::State, post: Y::State) {
             requires(Y::State::tr2_strong(pre, post));
             ensures(rel_tr2_strong(pre, post));
         }
 
-        #[proof]
-        fn rev_tr2_strong(pre: Y::State, post: Y::State) {
+        proof fn rev_tr2_strong(pre: Y::State, post: Y::State) {
             requires(rel_tr2_strong(pre, post));
             ensures(Y::State::tr2_strong(pre, post));
         }
 
-        #[proof]
-        fn correct_tr3(pre: Y::State, post: Y::State) {
+        proof fn correct_tr3(pre: Y::State, post: Y::State) {
             requires(Y::State::tr3(pre, post));
             ensures(rel_tr3(pre, post));
         }
 
-        #[proof]
-        fn rev_tr3(pre: Y::State, post: Y::State) {
+        proof fn rev_tr3(pre: Y::State, post: Y::State) {
             requires(rel_tr3(pre, post));
             ensures(Y::State::tr3(pre, post));
         }
 
-        #[proof]
-        fn correct_tr3_strong(pre: Y::State, post: Y::State) {
+        proof fn correct_tr3_strong(pre: Y::State, post: Y::State) {
             requires(Y::State::tr3_strong(pre, post));
             ensures(rel_tr3_strong(pre, post));
         }
 
-        #[proof]
-        fn rev_tr3_strong(pre: Y::State, post: Y::State) {
+        proof fn rev_tr3_strong(pre: Y::State, post: Y::State) {
             requires(rel_tr3_strong(pre, post));
             ensures(Y::State::tr3_strong(pre, post));
         }
 
-        #[proof]
-        fn correct_tr4(pre: Y::State, post: Y::State) {
+        proof fn correct_tr4(pre: Y::State, post: Y::State) {
             requires(Y::State::tr4(pre, post));
             ensures(rel_tr4(pre, post));
         }
 
-        #[proof]
-        fn rev_tr4(pre: Y::State, post: Y::State) {
+        proof fn rev_tr4(pre: Y::State, post: Y::State) {
             requires(rel_tr4(pre, post));
             ensures(Y::State::tr4(pre, post));
         }
 
-        #[proof]
-        fn correct_tr4_strong(pre: Y::State, post: Y::State) {
+        proof fn correct_tr4_strong(pre: Y::State, post: Y::State) {
             requires(Y::State::tr4_strong(pre, post));
             ensures(rel_tr4_strong(pre, post));
         }
 
-        #[proof]
-        fn rev_tr4_strong(pre: Y::State, post: Y::State) {
+        proof fn rev_tr4_strong(pre: Y::State, post: Y::State) {
             requires(rel_tr4_strong(pre, post));
             ensures(Y::State::tr4_strong(pre, post));
         }
+
+        } // verus!
+
     } => Ok(())
 }
 
@@ -3533,8 +3578,8 @@ test_verify_one_file! {
             &&& pre.opt === Option::Some(5)
 
             &&& map![0 => 1].le(pre.map)
-            &&& map![2 => 3].le(pre.map.remove_keys(map![0 => 1].dom()))
-            &&& pre.map.remove_keys(map![0 => 1].dom()).dom().disjoint(map![4 => 5].dom())
+            &&& map![2 => 3].le(pre.map.remove_keys(map![0 => 1int].dom()))
+            &&& pre.map.remove_keys(map![0 => 1int].dom()).dom().disjoint(map![4 => 5int].dom())
 
             ==> {
 
@@ -3549,17 +3594,17 @@ test_verify_one_file! {
 
             ==>
 
-            (pre.storage_map.remove_keys(map![15 => 16].dom()).dom().disjoint(map![17 => 18].dom())
+            (pre.storage_map.remove_keys(map![15 => 16int].dom()).dom().disjoint(map![17 => 18int].dom())
 
             ==> {
 
             &&& post.opt === Option::Some(8)
-            &&& post.map === pre.map.remove_keys(map![0 => 1].dom()).union_prefer_right(map![4 => 5])
+            &&& post.map === pre.map.remove_keys(map![0 => 1int].dom()).union_prefer_right(map![4 => 5])
             &&& post.mset ===
                 pre.mset.sub(Multiset::singleton(10)).add(Multiset::singleton(12))
             &&& post.storage_opt === Option::Some(14)
             &&& post.storage_map ===
-                pre.storage_map.remove_keys(map![15 => 16].dom()).union_prefer_right(map![17 => 18])
+                pre.storage_map.remove_keys(map![15 => 16int].dom()).union_prefer_right(map![17 => 18])
             })))}
         }
 
@@ -3568,9 +3613,9 @@ test_verify_one_file! {
             &&& post.opt === Option::Some(8)
 
             &&& map![0 => 1].le(pre.map)
-            &&& map![2 => 3].le(pre.map.remove_keys(map![0 => 1].dom()))
-            &&& pre.map.remove_keys(map![0 => 1].dom()).dom().disjoint(map![4 => 5].dom())
-            &&& post.map === pre.map.remove_keys(map![0 => 1].dom()).union_prefer_right(map![4 => 5])
+            &&& map![2 => 3].le(pre.map.remove_keys(map![0 => 1int].dom()))
+            &&& pre.map.remove_keys(map![0 => 1int].dom()).dom().disjoint(map![4 => 5int].dom())
+            &&& post.map === pre.map.remove_keys(map![0 => 1int].dom()).union_prefer_right(map![4 => 5])
 
             &&& Multiset::singleton(10).le(pre.mset)
             &&& Multiset::singleton(11).le(pre.mset.sub(Multiset::singleton(10)))
@@ -3581,9 +3626,9 @@ test_verify_one_file! {
             &&& post.storage_opt === Option::Some(14)
 
             &&& map![15 => 16].le(pre.storage_map)
-            &&& pre.storage_map.remove_keys(map![15 => 16].dom()).dom().disjoint(map![17 => 18].dom())
+            &&& pre.storage_map.remove_keys(map![15 => 16int].dom()).dom().disjoint(map![17 => 18int].dom())
             &&& post.storage_map ===
-                pre.storage_map.remove_keys(map![15 => 16].dom()).union_prefer_right(map![17 => 18])
+                pre.storage_map.remove_keys(map![15 => 16int].dom()).union_prefer_right(map![17 => 18])
         }
 
         spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
@@ -3607,8 +3652,7 @@ test_verify_one_file! {
             &&& post.mset === pre.mset
         }
 
-        #[spec]
-        fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
+        spec fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
             &&& pre.opt === Option::Some(7)
             &&& pre.storage_opt === Option::Some(12) ==> {
                 &&& post.storage_opt === Option::None
@@ -3651,103 +3695,87 @@ test_verify_one_file! {
             &&& post.mset === pre.mset
         }
 
-        } // verus!
-
-        #[proof]
-        fn correct_tr1(pre: Y::State, post: Y::State) {
+        proof fn correct_tr1(pre: Y::State, post: Y::State) {
             requires(Y::State::tr1(pre, post));
             ensures(rel_tr1(pre, post));
         }
 
-        #[proof]
-        fn rev_tr1(pre: Y::State, post: Y::State) {
+        proof fn rev_tr1(pre: Y::State, post: Y::State) {
             requires(rel_tr1(pre, post));
             ensures(Y::State::tr1(pre, post));
         }
 
-        #[proof]
-        fn correct_tr1_strong(pre: Y::State, post: Y::State) {
+        proof fn correct_tr1_strong(pre: Y::State, post: Y::State) {
             requires(Y::State::tr1_strong(pre, post));
             ensures(rel_tr1_strong(pre, post));
         }
 
-        #[proof]
-        fn rev_tr1_strong(pre: Y::State, post: Y::State) {
+        proof fn rev_tr1_strong(pre: Y::State, post: Y::State) {
             requires(rel_tr1_strong(pre, post));
             ensures(Y::State::tr1_strong(pre, post));
         }
 
-        #[proof]
-        fn correct_tr2(pre: Y::State, post: Y::State) {
+        proof fn correct_tr2(pre: Y::State, post: Y::State) {
             requires(Y::State::tr2(pre, post));
             ensures(rel_tr2(pre, post));
         }
 
-        #[proof]
-        fn rev_tr2(pre: Y::State, post: Y::State) {
+        proof fn rev_tr2(pre: Y::State, post: Y::State) {
             requires(rel_tr2(pre, post));
             ensures(Y::State::tr2(pre, post));
         }
 
-        #[proof]
-        fn correct_tr2_strong(pre: Y::State, post: Y::State) {
+        proof fn correct_tr2_strong(pre: Y::State, post: Y::State) {
             requires(Y::State::tr2_strong(pre, post));
             ensures(rel_tr2_strong(pre, post));
         }
 
-        #[proof]
-        fn rev_tr2_strong(pre: Y::State, post: Y::State) {
+        proof fn rev_tr2_strong(pre: Y::State, post: Y::State) {
             requires(rel_tr2_strong(pre, post));
             ensures(Y::State::tr2_strong(pre, post));
         }
 
-        #[proof]
-        fn correct_tr3(pre: Y::State, post: Y::State) {
+        proof fn correct_tr3(pre: Y::State, post: Y::State) {
             requires(Y::State::tr3(pre, post));
             ensures(rel_tr3(pre, post));
         }
 
-        #[proof]
-        fn rev_tr3(pre: Y::State, post: Y::State) {
+        proof fn rev_tr3(pre: Y::State, post: Y::State) {
             requires(rel_tr3(pre, post));
             ensures(Y::State::tr3(pre, post));
         }
 
-        #[proof]
-        fn correct_tr3_strong(pre: Y::State, post: Y::State) {
+        proof fn correct_tr3_strong(pre: Y::State, post: Y::State) {
             requires(Y::State::tr3_strong(pre, post));
             ensures(rel_tr3_strong(pre, post));
         }
 
-        #[proof]
-        fn rev_tr3_strong(pre: Y::State, post: Y::State) {
+        proof fn rev_tr3_strong(pre: Y::State, post: Y::State) {
             requires(rel_tr3_strong(pre, post));
             ensures(Y::State::tr3_strong(pre, post));
         }
 
-        #[proof]
-        fn correct_tr4(pre: Y::State, post: Y::State) {
+        proof fn correct_tr4(pre: Y::State, post: Y::State) {
             requires(Y::State::tr4(pre, post));
             ensures(rel_tr4(pre, post));
         }
 
-        #[proof]
-        fn rev_tr4(pre: Y::State, post: Y::State) {
+        proof fn rev_tr4(pre: Y::State, post: Y::State) {
             requires(rel_tr4(pre, post));
             ensures(Y::State::tr4(pre, post));
         }
 
-        #[proof]
-        fn correct_tr4_strong(pre: Y::State, post: Y::State) {
+        proof fn correct_tr4_strong(pre: Y::State, post: Y::State) {
             requires(Y::State::tr4_strong(pre, post));
             ensures(rel_tr4_strong(pre, post));
         }
 
-        #[proof]
-        fn rev_tr4_strong(pre: Y::State, post: Y::State) {
+        proof fn rev_tr4_strong(pre: Y::State, post: Y::State) {
             requires(rel_tr4_strong(pre, post));
             ensures(Y::State::tr4_strong(pre, post));
         }
+
+        } // verus!
     } => Ok(())
 }
 
@@ -3789,106 +3817,92 @@ test_verify_one_file! {
             }
         }}
 
-        #[spec]
-        fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+        verus!{
+
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
             equal(pre.opt, post.opt) && equal(pre.storage_opt, post.storage_opt)
         }
 
-        #[spec]
-        fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
             equal(pre.opt, post.opt) && equal(pre.storage_opt, post.storage_opt)
         }
 
-        #[spec]
-        fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+        spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
             equal(pre.opt, post.opt) && equal(pre.storage_opt, post.storage_opt)
         }
 
-        #[spec]
-        fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+        spec fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
             equal(pre.opt, post.opt) && equal(pre.storage_opt, post.storage_opt)
         }
 
-        #[spec]
-        fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
+        spec fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
             equal(pre.opt, post.opt) && equal(pre.storage_opt, post.storage_opt)
         }
 
-        #[spec]
-        fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
+        spec fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
             equal(pre.opt, post.opt) && equal(pre.storage_opt, post.storage_opt)
         }
 
-        #[proof]
-        fn correct_tr1(pre: Y::State, post: Y::State) {
+        proof fn correct_tr1(pre: Y::State, post: Y::State) {
             requires(Y::State::tr1(pre, post));
             ensures(rel_tr1(pre, post));
         }
 
-        #[proof]
-        fn rev_tr1(pre: Y::State, post: Y::State) {
+        proof fn rev_tr1(pre: Y::State, post: Y::State) {
             requires(rel_tr1(pre, post));
             ensures(Y::State::tr1(pre, post));
         }
 
-        #[proof]
-        fn correct_tr1_strong(pre: Y::State, post: Y::State) {
+        proof fn correct_tr1_strong(pre: Y::State, post: Y::State) {
             requires(Y::State::tr1_strong(pre, post));
             ensures(rel_tr1_strong(pre, post));
         }
 
-        #[proof]
-        fn rev_tr1_strong(pre: Y::State, post: Y::State) {
+        proof fn rev_tr1_strong(pre: Y::State, post: Y::State) {
             requires(rel_tr1_strong(pre, post));
             ensures(Y::State::tr1_strong(pre, post));
         }
 
-        #[proof]
-        fn correct_tr2(pre: Y::State, post: Y::State) {
+        proof fn correct_tr2(pre: Y::State, post: Y::State) {
             requires(Y::State::tr2(pre, post));
             ensures(rel_tr2(pre, post));
         }
 
-        #[proof]
-        fn rev_tr2(pre: Y::State, post: Y::State) {
+        proof fn rev_tr2(pre: Y::State, post: Y::State) {
             requires(rel_tr2(pre, post));
             ensures(Y::State::tr2(pre, post));
         }
 
-        #[proof]
-        fn correct_tr2_strong(pre: Y::State, post: Y::State) {
+        proof fn correct_tr2_strong(pre: Y::State, post: Y::State) {
             requires(Y::State::tr2_strong(pre, post));
             ensures(rel_tr2_strong(pre, post));
         }
 
-        #[proof]
-        fn rev_tr2_strong(pre: Y::State, post: Y::State) {
+        proof fn rev_tr2_strong(pre: Y::State, post: Y::State) {
             requires(rel_tr2_strong(pre, post));
             ensures(Y::State::tr2_strong(pre, post));
         }
 
-        #[proof]
-        fn correct_tr3(pre: Y::State, post: Y::State) {
+        proof fn correct_tr3(pre: Y::State, post: Y::State) {
             requires(Y::State::tr3(pre, post));
             ensures(rel_tr3(pre, post));
         }
 
-        #[proof]
-        fn rev_tr3(pre: Y::State, post: Y::State) {
+        proof fn rev_tr3(pre: Y::State, post: Y::State) {
             requires(rel_tr3(pre, post));
             ensures(Y::State::tr3(pre, post));
         }
 
-        #[proof]
-        fn correct_tr3_strong(pre: Y::State, post: Y::State) {
+        proof fn correct_tr3_strong(pre: Y::State, post: Y::State) {
             requires(Y::State::tr3_strong(pre, post));
             ensures(rel_tr3_strong(pre, post));
         }
 
-        #[proof]
-        fn rev_tr3_strong(pre: Y::State, post: Y::State) {
+        proof fn rev_tr3_strong(pre: Y::State, post: Y::State) {
             requires(rel_tr3_strong(pre, post));
             ensures(Y::State::tr3_strong(pre, post));
+        }
+
         }
     } => Ok(())
 }
@@ -3945,27 +3959,27 @@ test_verify_one_file! {
 
         #[proof]
         fn go() {
-            #[proof] let (instance, mut v1, v2) = Z::Instance::initialize();
-            assert(equal(v1.instance, instance));
-            assert(equal(v2.instance, instance));
-            assert(equal(v1.value, 0));
-            assert(equal(v2.value, 1));
-            assert(equal(instance.c(), 3));
+            #[proof] let (Trk(instance), Trk(mut v1), Trk(v2)) = Z::Instance::initialize();
+            assert(equal(v1.view().instance, instance));
+            assert(equal(v2.view().instance, instance));
+            assert(equal(v1.view().value, spec_literal_int("0")));
+            assert(equal(v2.view().value, spec_literal_int("1")));
+            assert(equal(instance.c(), spec_literal_int("3")));
 
             #[proof] instance.tr1(&mut v1);
-            assert(equal(v1.instance, instance));
-            assert(equal(v1.value, 2));
+            assert(equal(v1.view().instance, instance));
+            assert(equal(v1.view().value, spec_literal_int("2")));
 
-            #[spec] let old_v1_value = v1.value;
-            #[proof] let (birds_eye_v2, birds_eye_nt) = instance.tr2(&mut v1);
-            assert(equal(v1.instance, instance));
-            assert(equal(v1.value,
-                birds_eye_nt.value() + instance.c() + old_v1_value - birds_eye_v2.value()));
+            #[spec] let old_v1_value = v1.view().value;
+            #[proof] let (Gho(birds_eye_v2), Gho(birds_eye_nt)) = instance.tr2(&mut v1);
+            assert(equal(v1.view().instance, instance));
+            assert(equal(v1.view().value,
+                birds_eye_nt + instance.c() + old_v1_value - birds_eye_v2));
 
-            #[spec] let old_v1_value = v1.value;
-            #[proof] let birds_eye_nt = instance.tr3(&mut v1, &v2);
-            assert(equal(v1.instance, instance));
-            assert(equal(v1.value, birds_eye_nt.value() + instance.c() + old_v1_value + 3 * v2.value));
+            #[spec] let old_v1_value = v1.view().value;
+            #[spec] let birds_eye_nt = instance.tr3(&mut v1, &v2);
+            assert(equal(v1.view().instance, instance));
+            assert(equal(v1.view().value, birds_eye_nt + instance.c() + old_v1_value + spec_literal_int("3") * v2.view().value));
         }
     } => Ok(())
 }
@@ -4145,8 +4159,7 @@ test_verify_one_file! {
                 }
             }
 
-            #[spec] #[verifier(publish)]
-            pub fn add1(x: int) -> int {
+            pub open spec fn add1(x: int) -> int {
                 x + 1
             }
 
@@ -4172,17 +4185,17 @@ test_verify_one_file! {
         }}
 
         pub fn foo() {
-            #[proof] let (inst, mut x_tok, mut r_tok) = Y::Instance::ini(
-                Y::State { x: 5, recursing: Option::None }
+            #[proof] let (Trk(inst), Trk(mut x_tok), Trk(mut r_tok)) = Y::Instance::ini(
+                Y::State { x: spec_literal_int("5"), recursing: Option::None }
             );
-            inst.tr(19, &mut x_tok);
-            assert(x_tok.value == 20);
+            inst.tr(spec_literal_int("19"), &mut x_tok);
+            assert(x_tok.view().value == spec_literal_int("20"));
 
             inst.tr2(Option::<Box<Y::State>>::None, &mut r_tok);
-            assert(equal(Option::<Box<Y::State>>::None, r_tok.value));
+            assert(equal(Option::<Box<Y::State>>::None, r_tok.view().value));
 
             inst.tr3(&mut r_tok);
-            assert(equal(Option::<Box<Y::State>>::None, r_tok.value));
+            assert(equal(Option::<Box<Y::State>>::None, r_tok.view().value));
         }
     } => Ok(())
 }
@@ -4266,25 +4279,22 @@ test_verify_one_file! {
             fn tr2_inductive(pre: Self, post: Self, key: int) { }
         }}
 
-        #[spec]
-        fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
-            equal(pre.opt, Option::Some(2))
-            && equal(post.opt, Option::None)
-            && equal(post.map, pre.map)
-            && equal(post.storage_map, pre.storage_map)
-        }
-
-        #[spec]
-        fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
-            equal(pre.opt, Option::Some(2))
-            && equal(post.opt, Option::None)
-            && equal(post.map, pre.map)
-            && equal(post.storage_map, pre.storage_map)
-        }
-
         verus! {
-        #[spec]
-        fn rel_tr2(pre: Y::State, post: Y::State, key: int) -> bool {
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt === Option::Some(2)
+            &&& post.opt === Option::None
+            &&& post.map === pre.map
+            &&& post.storage_map === pre.storage_map
+        }
+
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt === Option::Some(2)
+            &&& post.opt === Option::None
+            &&& post.map === pre.map
+            &&& post.storage_map === pre.storage_map
+        }
+
+        spec fn rel_tr2(pre: Y::State, post: Y::State, key: int) -> bool {
             &&& pre.map.dom().contains(key)
             &&& pre.map.index(key) == 5
 
@@ -4297,24 +4307,20 @@ test_verify_one_file! {
               }
            )
         }
-        }
 
-        #[spec]
-        fn rel_tr2_strong(pre: Y::State, post: Y::State, key: int) -> bool {
-            pre.map.dom().contains(key)
-            && pre.map.index(key) == 5
-
-            && (
+        spec fn rel_tr2_strong(pre: Y::State, post: Y::State, key: int) -> bool {
+            &&& pre.map.dom().contains(key)
+            &&& pre.map.index(key) == 5
+            &&& (
               (pre.storage_map.dom().contains(key) && pre.storage_map.index(key) == 6)
-              && (
-                   equal(post.map, pre.map.remove(key))
-                && equal(post.storage_map, pre.storage_map.remove(key))
-                && equal(post.opt, pre.opt)
-              )
+              && {
+                &&& post.map === pre.map.remove(key)
+                &&& post.storage_map === pre.storage_map.remove(key)
+                &&& post.opt === pre.opt
+              }
            )
         }
 
-        verus! {
         spec fn rel_tr3(pre: Y::State, post: Y::State, key: int) -> bool {
             &&& pre.map.dom().contains(key)
             &&& pre.map.index(key) == 5
@@ -4328,22 +4334,21 @@ test_verify_one_file! {
               }
            )
         }
-        }
 
-        #[spec]
-        fn rel_tr3_strong(pre: Y::State, post: Y::State, key: int) -> bool {
-            pre.map.dom().contains(key)
-            && pre.map.index(key) == 5
+        spec fn rel_tr3_strong(pre: Y::State, post: Y::State, key: int) -> bool {
+            &&& pre.map.dom().contains(key)
+            &&& pre.map.index(key) == 5
 
-            && (
+            &&& (
               (pre.storage_map.dom().contains(key) && pre.storage_map.index(key) == 6)
-              && (
-                   equal(post.map, pre.map)
-                && equal(post.storage_map, pre.storage_map)
-                && equal(post.opt, pre.opt)
-              )
+              && {
+                &&& post.map === pre.map
+                &&& post.storage_map === pre.storage_map
+                &&& post.opt === pre.opt
+              }
            )
         }
+        } // verus!
 
         #[proof]
         fn correct_tr1(pre: Y::State, post: Y::State) {
@@ -4419,20 +4424,21 @@ test_verify_one_file! {
 
         fn do_tokens() {
             #[proof] let mut m: Map<int, u64> = Map::tracked_empty();
-            m.tracked_insert(1, 6);
-            #[proof] let (inst, opt_token, mut map_tokens) = Y::Instance::initialize(m);
+            m.tracked_insert(spec_literal_int("1"), 6);
+            #[proof] let (Trk(inst), Trk(opt_token), Trk(mut map_tokens)) = Y::Instance::initialize(m);
 
             match opt_token {
                 Option::None => { assert(false); }
                 Option::Some(opt_token) => {
                     inst.tr1(opt_token);
 
-                    #[proof] let map_token = map_tokens.tracked_remove(1);
+                    assert(map_tokens.dom().contains(spec_literal_int("1")));
+                    #[proof] let map_token = map_tokens.tracked_remove(spec_literal_int("1"));
 
-                    #[proof] let the_guard = inst.tr4(1, &map_token);
+                    #[proof] let the_guard = inst.tr4(spec_literal_int("1"), &map_token);
                     assert(*the_guard == 6);
 
-                    #[proof] let t = inst.tr2(1, map_token);
+                    #[proof] let t = inst.tr2(spec_literal_int("1"), map_token);
                     assert(t == 6);
                 }
             };
@@ -4443,7 +4449,6 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] bind_fail_add IMPORTS.to_string() + code_str! {
-
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(option)]
@@ -4461,7 +4466,6 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] bind_fail_deposit IMPORTS.to_string() + code_str! {
-
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(storage_option)]
@@ -4479,7 +4483,6 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] bind_fail_guard IMPORTS.to_string() + code_str! {
-
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(storage_option)]
@@ -4531,7 +4534,6 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] assert_require_let_codegen IMPORTS.to_string() + code_str! {
-
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(variable)]
@@ -4586,6 +4588,7 @@ test_verify_one_file! {
         }}
 
         verus! {
+
         spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
             match (pre.opt1, pre.opt2) {
                 (Option::Some(x), Option::Some(y)) => {
@@ -4608,10 +4611,8 @@ test_verify_one_file! {
                 }
             }
         }
-        } // verus!
 
-        #[spec]
-        fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
             match (pre.opt1, pre.opt2) {
                 (Option::Some(x), Option::Some(y)) => {
                     match (pre.opt3, pre.opt4) {
@@ -4633,31 +4634,27 @@ test_verify_one_file! {
             }
         }
 
-        #[proof]
-        fn correct_tr1(pre: Y::State, post: Y::State) {
+        proof fn correct_tr1(pre: Y::State, post: Y::State) {
             requires(Y::State::tr1(pre, post));
             ensures(rel_tr1(pre, post));
         }
 
-        #[proof]
-        fn rev_tr1(pre: Y::State, post: Y::State) {
+        proof fn rev_tr1(pre: Y::State, post: Y::State) {
             requires(rel_tr1(pre, post));
             ensures(Y::State::tr1(pre, post));
         }
 
-        #[proof]
-        fn correct_tr1_strong(pre: Y::State, post: Y::State) {
+        proof fn correct_tr1_strong(pre: Y::State, post: Y::State) {
             requires(Y::State::tr1_strong(pre, post));
             ensures(rel_tr1_strong(pre, post));
         }
 
-        #[proof]
-        fn rev_tr1_strong(pre: Y::State, post: Y::State) {
+        proof fn rev_tr1_strong(pre: Y::State, post: Y::State) {
             requires(rel_tr1_strong(pre, post));
             ensures(Y::State::tr1_strong(pre, post));
         }
 
-        fn test_transition(
+        proof fn test_transition(
             #[proof] inst: Y::Instance,
             #[proof] t1: Y::opt1,
             #[proof] t2: Y::opt2,
@@ -4665,39 +4662,40 @@ test_verify_one_file! {
             #[proof] t4: Y::opt4
         ) {
             requires([
-                equal(inst, t1.instance),
-                equal(inst, t2.instance),
-                equal(inst, t3.instance),
-                equal(inst, t4.instance),
-                equal(t1.value, Option::Some(0)),
-                equal(t2.value, Option::Some(5)),
+                equal(inst, t1@.instance),
+                equal(inst, t2@.instance),
+                equal(inst, t3@.instance),
+                equal(inst, t4@.instance),
+                equal(t1@.value, Option::Some(0)),
+                equal(t2@.value, Option::Some(5)),
             ]);
 
             #[spec] let old_t1 = t1;
             #[spec] let old_t3 = t3;
 
-            #[proof] let mut t1 = t1;
-            #[proof] let mut t3 = t3;
+            #[proof] let mut t1 = tracked t1;
+            #[proof] let mut t3 = tracked t3;
 
-            inst.tr1(&mut t1, &t2, &mut t3, &t4);
+            tracked inst.tr1(&mut t1, &t2, &mut t3, &t4);
 
-            assert(equal(old_t3.value, Option::None));
-            assert(equal(t4.value, Option::Some(5)));
-            assert(equal(t1.value, Option::None));
-            assert(equal(t3.value, Option::Some(10)));
+            assert(equal(old_t3@.value, Option::None));
+            assert(equal(t4@.value, Option::Some(5)));
+            assert(equal(t1@.value, Option::None));
+            assert(equal(t3@.value, Option::Some(10)));
         }
 
-        fn test_start() {
-            #[proof] let (inst, t1, t2, t3, t4) = Y::Instance::initialize();
-            test_transition(inst, t1, t2, t3, t4);
+        proof fn test_start() {
+            #[proof] let (Trk(inst), Trk(t1), Trk(t2), Trk(t3), Trk(t4)) = Y::Instance::initialize();
+            test_transition(tracked inst, tracked t1, tracked t2, tracked t3, tracked t4);
         }
+
+        } // verus!
 
     } => Ok(())
 }
 
 test_verify_one_file! {
     #[test] count_codegen IMPORTS.to_string() + code_str! {
-
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(count)]
@@ -4712,51 +4710,51 @@ test_verify_one_file! {
 
             transition!{
                 tr_add() {
-                    add c += (2);
+                    add c += (spec_literal_nat("2"));
                 }
             }
 
             transition!{
                 tr_have() {
-                    have c >= (2);
+                    have c >= (spec_literal_nat("2"));
                 }
             }
 
             transition!{
                 tr_remove() {
-                    remove c -= (2);
+                    remove c -= (spec_literal_nat("2"));
                 }
             }
         }}
 
         #[spec]
         fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
-            post.c == pre.c + 2
+            post.c == pre.c + spec_literal_nat("2")
         }
 
         #[spec]
         fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
-            post.c == pre.c + 2
+            post.c == pre.c + spec_literal_nat("2")
         }
 
         #[spec]
         fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
-            pre.c >= 2 && post.c == pre.c
+            pre.c >= spec_literal_nat("2") && post.c == pre.c
         }
 
         #[spec]
         fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
-            pre.c >= 2 && post.c == pre.c
+            pre.c >= spec_literal_nat("2") && post.c == pre.c
         }
 
         #[spec]
         fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
-            pre.c >= 2 && post.c == pre.c - 2
+            pre.c >= spec_literal_nat("2") && post.c == pre.c - spec_literal_nat("2")
         }
 
         #[spec]
         fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
-            pre.c >= 2 && post.c == pre.c - 2
+            pre.c >= spec_literal_nat("2") && post.c == pre.c - spec_literal_nat("2")
         }
 
         #[proof]
@@ -4772,34 +4770,34 @@ test_verify_one_file! {
         }
 
         fn test_inst() {
-            #[proof] let (inst, t1) = Y::Instance::initialize();
-            assert(t1.value == 9);
+            #[proof] let (Trk(inst), Trk(t1)) = Y::Instance::initialize();
+            assert(t1.view().count == spec_literal_nat("9"));
 
-            #[proof] let (t2, t3) = t1.split(2);
+            #[proof] let (Trk(t2), Trk(t3)) = t1.split(spec_literal_nat("2"));
 
-            assert(t2.value == 2);
-            assert(t3.value == 7);
+            assert(t2.view().count == spec_literal_nat("2"));
+            assert(t3.view().count == spec_literal_nat("7"));
 
             inst.tr_have(&t2);
             inst.tr_remove(t2);
 
             #[proof] let t4 = inst.tr_add();
-            assert(t4.value == 2);
+            assert(t4.view().count == spec_literal_nat("2"));
 
             #[proof] let q = t4.join(t3);
-            assert(q.value == 9);
+            assert(q.view().count == spec_literal_nat("9"));
         }
 
         fn test_join_fail() {
-            #[proof] let (inst1, t1) = Y::Instance::initialize();
-            #[proof] let (inst2, t2) = Y::Instance::initialize();
+            #[proof] let (Trk(inst1), Trk(t1)) = Y::Instance::initialize();
+            #[proof] let (Trk(inst2), Trk(t2)) = Y::Instance::initialize();
             #[proof] let t = t1.join(t2); // FAILS
         }
 
         fn test_split_fail() {
-            #[proof] let (inst, t1) = Y::Instance::initialize();
+            #[proof] let (Trk(inst), Trk(t1)) = Y::Instance::initialize();
 
-            #[proof] let (t2, t3) = t1.split(10); // FAILS
+            #[proof] let (Trk(t2), Trk(t3)) = t1.split(spec_literal_nat("10")); // FAILS
         }
     } => Err(e) => assert_fails(e, 2)
 }
@@ -4839,6 +4837,91 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] persistent_bool_remove_fail IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(persistent_bool)]
+                pub c: bool,
+            }
+
+            transition!{
+                tr_remove() {
+                    remove c -= true;
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
+}
+
+test_verify_one_file! {
+    #[test] use_plus_for_persistent_fail IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(persistent_bool)]
+                pub c: bool,
+            }
+
+            transition!{
+                tr_add() {
+                    add c += true;
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "for the persistent strategy `persistent_bool`, use `(union)=` instead of `+=`")
+}
+
+test_verify_one_file! {
+    #[test] use_union_for_nonpersistent_fail IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(bool)]
+                pub c: bool,
+            }
+
+            transition!{
+                tr_add() {
+                    add c (union)= true;
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "use `+=` instead of `(union)=`")
+}
+
+test_verify_one_file! {
+    #[test] persistent_count_remove_fail IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(persistent_count)]
+                pub c: nat,
+            }
+
+            transition!{
+                tr_remove() {
+                    remove c -= (1);
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
+}
+
+test_verify_one_file! {
+    #[test] persistent_set_remove_fail IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(persistent_set)]
+                pub c: Set<int>,
+            }
+
+            transition!{
+                tr_remove() {
+                    remove c -= set { 1 };
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
+}
+
+test_verify_one_file! {
     #[test] persistent_option_codegen IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -4859,13 +4942,13 @@ test_verify_one_file! {
             transition!{
                 tr1() {
                     have d >= Some(7);
-                    add c += Some(3);
+                    add c (union)= Some(3);
                 }
             }
 
             transition!{
                 tr2() {
-                    add c += ( Option::Some(3) );
+                    add c (union)= ( Option::Some(3) );
                 }
             }
 
@@ -4942,31 +5025,29 @@ test_verify_one_file! {
                 &&& post.c === Option::Some(3)
             }
         }
-        } // verus!
 
-        #[spec]
-        fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
-            (match pre.c {
+        spec fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+            &&& (match pre.c {
                 Option::Some(x) => x == 3,
                 Option::None => true,
             })
-            && (
-                equal(pre.d, post.d)
-                && equal(post.c, Option::Some(3))
-            )
+            &&& {
+                &&& pre.d === post.d
+                &&& post.c === Option::Some(3)
+            }
         }
 
-        #[spec]
-        fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
-            equal(pre.c, Option::Some(3))
-            && equal(post.c, pre.c)
-            && equal(post.d, pre.d)
+        spec fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.c === Option::Some(3)
+            &&& post.c === pre.c
+            &&& post.d === pre.d
         }
 
-        #[spec]
-        fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
+        spec fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
             rel_tr3(pre, post)
         }
+
+        } // verus!
 
         #[proof]
         fn correct_tr(pre: Y::State, post: Y::State) {
@@ -4981,7 +5062,7 @@ test_verify_one_file! {
         }
 
         fn test_inst() {
-            #[proof] let (inst, _c, d_opt) = Y::Instance::initialize();
+            #[proof] let (Trk(inst), Trk(_c), Trk(d_opt)) = Y::Instance::initialize();
 
             #[proof] let d = match d_opt {
                 Option::Some(d) => d,
@@ -4989,20 +5070,20 @@ test_verify_one_file! {
             };
 
             #[proof] let cloned = d.clone();
-            assert(equal(cloned.instance, inst));
-            assert(d.value == 7);
+            assert(equal(cloned.view().instance, inst));
+            assert(d.view().value == spec_literal_int("7"));
 
             #[proof] let c = inst.tr1(&d);
-            assert(c.value == 3);
-            assert(equal(c.instance, inst));
+            assert(c.view().value == spec_literal_int("3"));
+            assert(equal(c.view().instance, inst));
 
             #[proof] let c2_opt = inst.tr2();
             #[proof] let c2 = match c2_opt {
                 Option::Some(c2) => c2,
                 Option::None => proof_from_false(),
             };
-            assert(c2.value == 3);
-            assert(equal(c2.instance, inst));
+            assert(c2.view().value == spec_literal_int("3"));
+            assert(equal(c2.view().instance, inst));
 
             #[proof] let c_opt = Option::Some(c);
             inst.tr3(&c_opt);
@@ -5027,13 +5108,13 @@ test_verify_one_file! {
             transition!{
                 tr1() {
                     have c >= [1 => 2];
-                    add c += [3 => 4];
+                    add c (union)= [3 => 4];
                 }
             }
 
             transition!{
                 tr2() {
-                    add c += (
+                    add c (union)= (
                         Map::empty().insert(5, 9).insert(12, 15)
                     );
                 }
@@ -5105,33 +5186,28 @@ test_verify_one_file! {
             && post.c ===
                   pre.c.insert(5, 9).insert(12, 15)
         }
-        } // verus!
 
-        #[spec]
-        fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
-            ((pre.c.dom().contains(5) && pre.c.index(5) == 9)
-            && (pre.c.dom().contains(12) && pre.c.index(12) == 15))
-            && equal(pre.c, post.c)
+        spec fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
+            &&& ((pre.c.dom().contains(5) && pre.c.index(5) == 9)
+            &&& (pre.c.dom().contains(12) && pre.c.index(12) == 15))
+            &&& pre.c === post.c
         }
 
-        #[spec]
-        fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
-            ((pre.c.dom().contains(5) && pre.c.index(5) == 9)
-            && (pre.c.dom().contains(12) && pre.c.index(12) == 15))
-            && equal(pre.c, post.c)
+        spec fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
+            &&& ((pre.c.dom().contains(5) && pre.c.index(5) == 9)
+            &&& (pre.c.dom().contains(12) && pre.c.index(12) == 15))
+            &&& pre.c === post.c
         }
 
-        #[proof]
-        fn correct_tr(pre: Y::State, post: Y::State) {
-            ensures([
+        proof fn correct_tr(pre: Y::State, post: Y::State)
+            ensures
                 rel_tr1(pre, post) == Y::State::tr1(pre, post),
                 rel_tr1_strong(pre, post) == Y::State::tr1_strong(pre, post),
                 rel_tr2(pre, post) == Y::State::tr2(pre, post),
                 rel_tr2_strong(pre, post) == Y::State::tr2_strong(pre, post),
                 rel_tr3(pre, post) == Y::State::tr3(pre, post),
                 rel_tr3_strong(pre, post) == Y::State::tr3_strong(pre, post),
-            ]);
-
+        {
             assert_maps_equal!(
                 pre.c.insert(5, 9).insert(12, 15),
                 pre.c.union_prefer_right(
@@ -5157,25 +5233,27 @@ test_verify_one_file! {
                 assert(rel_tr3(pre, post));
             }
         }
+        } // verus!
 
         fn test_inst() {
-            #[proof] let (inst, mut init_m) = Y::Instance::initialize();
-            #[proof] let m_1 = init_m.tracked_remove(1);
-            assert(m_1.value == 2);
+            #[proof] let (Trk(inst), Trk(mut init_m)) = Y::Instance::initialize();
+            assert(init_m.dom().contains(spec_literal_int("1")));
+            #[proof] let m_1 = init_m.tracked_remove(spec_literal_int("1"));
+            assert(m_1.view().value == spec_literal_int("2"));
 
             #[proof] let cloned = m_1.clone();
-            assert(equal(cloned.instance, inst));
-            assert(cloned.key == 1);
-            assert(cloned.value == 2);
+            assert(equal(cloned.view().instance, inst));
+            assert(cloned.view().key == spec_literal_int("1"));
+            assert(cloned.view().value == spec_literal_int("2"));
 
             #[proof] let m_3 = inst.tr1(&m_1);
-            assert(m_3.value == 4);
+            assert(m_3.view().value == spec_literal_int("4"));
 
             #[proof] let m_5_12 = inst.tr2();
-            assert(m_5_12.dom().contains(5));
-            assert(m_5_12.index(5).value == 9);
-            assert(m_5_12.dom().contains(12));
-            assert(m_5_12.index(12).value == 15);
+            assert(m_5_12.dom().contains(spec_literal_int("5")));
+            assert(m_5_12.index(spec_literal_int("5")).view().value == spec_literal_int("9"));
+            assert(m_5_12.dom().contains(spec_literal_int("12")));
+            assert(m_5_12.index(spec_literal_int("12")).view().value == spec_literal_int("15"));
 
             inst.tr3(&m_5_12);
         }
@@ -5391,6 +5469,7 @@ test_verify_one_file! {
                 fn tr9_inductive(pre: Self, post: Self, key: int) { }
         }}
 
+        verus! {
         #[spec]
         fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
             match pre.opt {
@@ -5427,7 +5506,6 @@ test_verify_one_file! {
             }
         }
 
-        verus! {
         spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
             match pre.opt {
                 Option::Some(Goo::Qux(i1)) => {
@@ -5601,7 +5679,6 @@ test_verify_one_file! {
                 _ => false,
             }
         }
-        } // verus!
 
         #[spec]
         fn rel_tr6_strong(pre: Y::State, post: Y::State, key: int) -> bool {
@@ -5681,8 +5758,6 @@ test_verify_one_file! {
             rel_tr9(pre, post, key)
         }
 
-
-
         #[proof]
         fn correct_tr(pre: Y::State, post: Y::State, key: int) {
           ensures([
@@ -5707,148 +5782,157 @@ test_verify_one_file! {
           ]);
         }
 
+        } // verus!
+
         fn test_inst1() {
             #[proof] let mut p_m = Map::tracked_empty();
-            p_m.tracked_insert(1, Goo::Bar);
+            p_m.tracked_insert(spec_literal_int("1"), Goo::Bar);
 
-            #[proof] let (inst, mut m_token, opt_token) = Y::Instance::initialize(
-                map![1 => Goo::Bar],
+            #[proof] let (Trk(inst), Trk(mut m_token), Trk(opt_token)) = Y::Instance::initialize(
+                map![spec_literal_int("1") => Goo::Bar],
                 Option::Some(Goo::Bar),
                 p_m,
                 Option::Some(Goo::Bar),
             );
 
-            #[proof] let kv = m_token.tracked_remove(1);
+            assert(m_token.dom().contains(spec_literal_int("1")));
+            #[proof] let kv = m_token.tracked_remove(spec_literal_int("1"));
             #[proof] let o = match opt_token {
                 Option::None => proof_from_false(),
                 Option::Some(t) => t,
             };
 
-            inst.tr7(1, &kv, &o);
+            inst.tr7(spec_literal_int("1"), &kv, &o);
 
             #[proof] let wi = inst.tr1(o);
             assert(equal(wi, Goo::Bar));
 
-            #[proof] let wi2 = inst.tr4(1, kv);
+            #[proof] let wi2 = inst.tr4(spec_literal_int("1"), kv);
             assert(equal(wi2, Goo::Bar));
         }
 
         fn test_inst2() {
             #[proof] let mut p_m = Map::tracked_empty();
-            p_m.tracked_insert(1, Goo::Qux(8));
+            p_m.tracked_insert(spec_literal_int("1"), Goo::Qux(8));
 
-            #[proof] let (inst, mut m_token, opt_token) = Y::Instance::initialize(
-                map![1 => Goo::Qux(8)],
+            #[proof] let (Trk(inst), Trk(mut m_token), Trk(opt_token)) = Y::Instance::initialize(
+                map![spec_literal_int("1") => Goo::Qux(8)],
                 Option::Some(Goo::Qux(8)),
                 p_m,
                 Option::Some(Goo::Qux(8)),
             );
 
-            #[proof] let kv = m_token.tracked_remove(1);
+            assert(m_token.dom().contains(spec_literal_int("1")));
+            #[proof] let kv = m_token.tracked_remove(spec_literal_int("1"));
             #[proof] let o = match opt_token {
                 Option::None => proof_from_false(),
                 Option::Some(t) => t,
             };
 
-            inst.tr8(1, &kv, &o);
+            inst.tr8(spec_literal_int("1"), &kv, &o);
 
             #[proof] let wi = inst.tr2(o);
             assert(equal(wi, Goo::Qux(8)));
 
-            #[proof] let wi2 = inst.tr5(1, kv);
+            #[proof] let wi2 = inst.tr5(spec_literal_int("1"), kv);
             assert(equal(wi2, Goo::Qux(8)));
         }
 
         fn test_inst3() {
             #[proof] let mut p_m = Map::tracked_empty();
-            p_m.tracked_insert(1, Goo::Tal(8, 9));
+            p_m.tracked_insert(spec_literal_int("1"), Goo::Tal(8, 9));
 
-            #[proof] let (inst, mut m_token, opt_token) = Y::Instance::initialize(
-                map![1 => Goo::Tal(8, 9)],
+            #[proof] let (Trk(inst), Trk(mut m_token), Trk(opt_token)) = Y::Instance::initialize(
+                map![spec_literal_int("1") => Goo::Tal(8, 9)],
                 Option::Some(Goo::Tal(8, 9)),
                 p_m,
                 Option::Some(Goo::Tal(8, 9)),
             );
 
-            #[proof] let kv = m_token.tracked_remove(1);
+            assert(m_token.dom().contains(spec_literal_int("1")));
+            #[proof] let kv = m_token.tracked_remove(spec_literal_int("1"));
             #[proof] let o = match opt_token {
                 Option::None => proof_from_false(),
                 Option::Some(t) => t,
             };
 
-            inst.tr9(1, &kv, &o);
+            inst.tr9(spec_literal_int("1"), &kv, &o);
 
             #[proof] let wi = inst.tr3(o);
             assert(equal(wi, Goo::Tal(8, 9)));
 
-            #[proof] let wi2 = inst.tr6(1, kv);
+            #[proof] let wi2 = inst.tr6(spec_literal_int("1"), kv);
             assert(equal(wi2, Goo::Tal(8, 9)));
         }
 
         fn test_precondition_remove1(inst: Y::Instance, t: Y::opt)
         {
-          requires(equal(t.instance, inst));
+          requires(equal(t.view().instance, inst));
           #[proof] let k = inst.tr1(t); // FAILS
         }
 
         fn test_precondition_remove2(inst: Y::Instance, t: Y::opt)
         {
-          requires(equal(t.instance, inst));
+          requires(equal(t.view().instance, inst));
           #[proof] let k = inst.tr2(t); // FAILS
         }
 
         fn test_precondition_remove3(inst: Y::Instance, t: Y::opt)
         {
-          requires(equal(t.instance, inst));
+          requires(equal(t.view().instance, inst));
           #[proof] let k = inst.tr3(t); // FAILS
         }
 
         fn test_precondition_map_remove1(inst: Y::Instance, t: Y::m)
         {
-          requires(equal(t.instance, inst) && t.key == 1);
-          #[proof] let k = inst.tr4(1, t); // FAILS
+          requires(equal(t.view().instance, inst) && t.view().key == spec_literal_int("1"));
+          #[proof] let k = inst.tr4(spec_literal_int("1"), t); // FAILS
         }
 
         fn test_precondition_map_remove2(inst: Y::Instance, t: Y::m)
         {
-          requires(equal(t.instance, inst) && t.key == 1);
-          #[proof] let k = inst.tr5(1, t); // FAILS
+          requires(equal(t.view().instance, inst) && t.view().key == spec_literal_int("1"));
+          #[proof] let k = inst.tr5(spec_literal_int("1"), t); // FAILS
         }
 
         fn test_precondition_map_remove3(inst: Y::Instance, t: Y::m)
         {
-          requires(equal(t.instance, inst) && t.key == 1);
-          #[proof] let k = inst.tr6(1, t); // FAILS
+          requires(equal(t.view().instance, inst) && t.view().key == spec_literal_int("1"));
+          #[proof] let k = inst.tr6(spec_literal_int("1"), t); // FAILS
         }
 
         fn test_precondition_have1(inst: Y::Instance, t: Y::opt, u: Y::m)
         {
-          requires(equal(t.instance, inst) && equal(u.instance, inst) && u.key == 1
-              && equal(t.value, Goo::Bar)
+          requires(equal(t.view().instance, inst) && equal(u.view().instance, inst) && u.view().key == spec_literal_int("1")
+              && equal(t.view().value, Goo::Bar)
           );
-          #[proof] let k = inst.tr7(1, &u, &t); // FAILS
+          #[proof] let k = inst.tr7(spec_literal_int("1"), &u, &t); // FAILS
         }
 
         fn test_precondition_have2(inst: Y::Instance, t: Y::opt, u: Y::m)
         {
-          requires(equal(t.instance, inst) && equal(u.instance, inst) && u.key == 1
-              && equal(u.value, Goo::Bar)
+          requires(equal(t.view().instance, inst) && equal(u.view().instance, inst) && u.view().key == spec_literal_int("1")
+              && equal(u.view().value, Goo::Bar)
           );
-          #[proof] let k = inst.tr7(1, &u, &t); // FAILS
+          #[proof] let k = inst.tr7(spec_literal_int("1"), &u, &t); // FAILS
         }
 
         fn test_precondition_have3(inst: Y::Instance, t: Y::opt, u: Y::m)
         {
-          requires(equal(t.instance, inst) && equal(u.instance, inst) && u.key == 1
-              && equal(u.value, t.value));
-          #[proof] let k = inst.tr8(1, &u, &t); // FAILS
+          requires(equal(t.view().instance, inst) && equal(u.view().instance, inst) && u.view().key == spec_literal_int("1")
+              && equal(u.view().value, t.view().value));
+          #[proof] let k = inst.tr8(spec_literal_int("1"), &u, &t); // FAILS
         }
 
-        fn test_precondition_have4(inst: Y::Instance, t: Y::opt, u: Y::m)
+        verus!{
+
+        proof fn test_precondition_have4(tracked inst: Y::Instance, tracked t: Y::opt, tracked u: Y::m)
         {
-          requires(equal(t.instance, inst) && equal(u.instance, inst) && u.key == 1
-              && equal(u.value, t.value));
-          #[proof] let k = inst.tr9(1, &u, &t); // FAILS
+          requires(equal(t.view().instance, inst) && equal(u.view().instance, inst) && u.view().key == spec_literal_int("1")
+              && equal(u.view().value, t.view().value));
+          let k = tracked inst.tr9(1, tracked &u, tracked &t); // FAILS
+        }
+
         }
     } => Err(e) => assert_fails(e, 10)
 }
@@ -5935,4 +6019,668 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_error_msg(e, "the first param to a 'readonly'")
+}
+
+test_verify_one_file! {
+    #[test] bool_codegen IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(bool)]
+                pub b: bool,
+            }
+
+            init!{
+                init_false() {
+                    init b = false;
+                }
+            }
+
+            init!{
+                init_true() {
+                    init b = true;
+                }
+            }
+
+            transition!{
+                tr_add() {
+                    add b += true by {
+                        assert(pre.b === false); // FAILS
+                    };
+                }
+            }
+
+            transition!{
+                tr_have() {
+                    have b >= true;
+                }
+            }
+
+            transition!{
+                tr_remove() {
+                    remove b -= true;
+                }
+            }
+
+            transition!{
+                tr_add_gen(x: bool) {
+                    add b += (x) by {
+                        assert(pre.b === false || x === false); // FAILS
+                    };
+                }
+            }
+
+            transition!{
+                tr_have_gen(x: bool) {
+                    have b >= (x);
+                }
+            }
+
+            transition!{
+                tr_remove_gen(x: bool) {
+                    remove b -= (x);
+                }
+            }
+        }}
+
+        verus!{
+
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            pre.b === false ==> post.b === true
+        }
+
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.b === false && post.b === true
+        }
+
+        spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+            pre.b === true && post.b === true
+        }
+
+        spec fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.b === true && post.b === true
+        }
+
+        spec fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
+            pre.b === true && post.b === false
+        }
+
+        spec fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.b === true && post.b === false
+        }
+
+        spec fn rel_tr4(pre: Y::State, post: Y::State, x: bool) -> bool {
+            (!pre.b || !x) ==> (post.b === (pre.b || x))
+        }
+
+        spec fn rel_tr4_strong(pre: Y::State, post: Y::State, x: bool) -> bool {
+            (!pre.b || !x) && (post.b === (pre.b || x))
+        }
+
+        spec fn rel_tr5(pre: Y::State, post: Y::State, x: bool) -> bool {
+            (x ==> pre.b) && (post.b === pre.b)
+        }
+
+        spec fn rel_tr5_strong(pre: Y::State, post: Y::State, x: bool) -> bool {
+            (x ==> pre.b) && (post.b === pre.b)
+        }
+
+        spec fn rel_tr6(pre: Y::State, post: Y::State, x: bool) -> bool {
+            (x ==> pre.b) && (post.b === (pre.b && !x))
+        }
+
+        spec fn rel_tr6_strong(pre: Y::State, post: Y::State, x: bool) -> bool {
+            (x ==> pre.b) && (post.b === (pre.b && !x))
+        }
+
+        proof fn correct_tr(pre: Y::State, post: Y::State, x: bool) {
+            ensures([
+                rel_tr1(pre, post) == Y::State::tr_add(pre, post),
+                rel_tr1_strong(pre, post) == Y::State::tr_add_strong(pre, post),
+                rel_tr2(pre, post) == Y::State::tr_have(pre, post),
+                rel_tr2_strong(pre, post) == Y::State::tr_have_strong(pre, post),
+                rel_tr3(pre, post) == Y::State::tr_remove(pre, post),
+                rel_tr3_strong(pre, post) == Y::State::tr_remove_strong(pre, post),
+
+                rel_tr4(pre, post, x) == Y::State::tr_add_gen(pre, post, x),
+                rel_tr4_strong(pre, post, x) == Y::State::tr_add_gen_strong(pre, post, x),
+                rel_tr5(pre, post, x) == Y::State::tr_have_gen(pre, post, x),
+                rel_tr5_strong(pre, post, x) == Y::State::tr_have_gen_strong(pre, post, x),
+                rel_tr6(pre, post, x) == Y::State::tr_remove_gen(pre, post, x),
+                rel_tr6_strong(pre, post, x) == Y::State::tr_remove_gen_strong(pre, post, x),
+            ]);
+        }
+
+        }
+
+        fn test_inst1() {
+            #[proof] let (Trk(inst), Trk(token_f)) = Y::Instance::init_false();
+            assert(token_f.is_None());
+
+            #[proof] let tok = inst.tr_add();
+            assert(equal(tok.view().instance, inst));
+            inst.tr_have(&tok);
+            inst.tr_remove(tok);
+
+            #[proof] let opt_tok = inst.tr_add_gen(true);
+            assert(opt_tok.is_Some());
+            assert(equal(opt_tok.get_Some_0().view().instance, inst));
+            inst.tr_have_gen(true, &opt_tok);
+            inst.tr_remove_gen(true, opt_tok);
+
+            #[proof] let opt_tok = inst.tr_add_gen(false);
+            assert(opt_tok.is_None());
+            inst.tr_have_gen(false, &opt_tok);
+            inst.tr_remove_gen(false, opt_tok);
+        }
+
+        fn test_inst1_fail() {
+            #[proof] let (Trk(inst), Trk(token_f)) = Y::Instance::init_false();
+            assert(token_f.is_None());
+
+            #[proof] let opt_tok = inst.tr_add_gen(false);
+            assert(opt_tok.is_None());
+            inst.tr_have_gen(true, &opt_tok);   // FAILS
+        }
+
+        fn test_inst2() {
+            #[proof] let (Trk(inst), Trk(token_t)) = Y::Instance::init_true();
+            assert(token_t.is_Some());
+            assert(equal(token_t.get_Some_0().view().instance, inst));
+        }
+    } => Err(e) => assert_fails(e, 3)
+}
+
+test_verify_one_file! {
+    #[test] persistent_bool_codegen IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(persistent_bool)]
+                pub b: bool,
+            }
+
+            init!{
+                init_false() {
+                    init b = false;
+                }
+            }
+
+            init!{
+                init_true() {
+                    init b = true;
+                }
+            }
+
+            transition!{
+                tr_add() {
+                    add b (union)= true;
+                }
+            }
+
+            transition!{
+                tr_have() {
+                    have b >= true;
+                }
+            }
+
+            transition!{
+                tr_add_gen(x: bool) {
+                    add b (union)= (x);
+                }
+            }
+
+            transition!{
+                tr_have_gen(x: bool) {
+                    have b >= (x);
+                }
+            }
+        }}
+
+        verus!{
+
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            post.b === true
+        }
+
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            post.b === true
+        }
+
+        spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+            pre.b === true && post.b === true
+        }
+
+        spec fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.b === true && post.b === true
+        }
+
+        spec fn rel_tr4(pre: Y::State, post: Y::State, x: bool) -> bool {
+            (post.b === (pre.b || x))
+        }
+
+        spec fn rel_tr4_strong(pre: Y::State, post: Y::State, x: bool) -> bool {
+            (post.b === (pre.b || x))
+        }
+
+        spec fn rel_tr5(pre: Y::State, post: Y::State, x: bool) -> bool {
+            (x ==> pre.b) && (post.b === pre.b)
+        }
+
+        spec fn rel_tr5_strong(pre: Y::State, post: Y::State, x: bool) -> bool {
+            (x ==> pre.b) && (post.b === pre.b)
+        }
+
+        }
+
+        #[proof]
+        fn correct_tr(pre: Y::State, post: Y::State, x: bool) {
+            ensures([
+                rel_tr1(pre, post) == Y::State::tr_add(pre, post),
+                rel_tr1_strong(pre, post) == Y::State::tr_add_strong(pre, post),
+                rel_tr2(pre, post) == Y::State::tr_have(pre, post),
+                rel_tr2_strong(pre, post) == Y::State::tr_have_strong(pre, post),
+
+                rel_tr4(pre, post, x) == Y::State::tr_add_gen(pre, post, x),
+                rel_tr4_strong(pre, post, x) == Y::State::tr_add_gen_strong(pre, post, x),
+                rel_tr5(pre, post, x) == Y::State::tr_have_gen(pre, post, x),
+                rel_tr5_strong(pre, post, x) == Y::State::tr_have_gen_strong(pre, post, x),
+            ]);
+        }
+
+        fn test_inst1() {
+            #[proof] let (Trk(inst), Trk(token_f)) = Y::Instance::init_false();
+            assert(token_f.is_None());
+
+            #[proof] let tok = inst.tr_add();
+            assert(equal(tok.view().instance, inst));
+            inst.tr_have(&tok);
+
+            #[proof] let tok1 = tok.clone();
+            assert(equal(tok, tok1));
+
+            #[proof] let opt_tok = inst.tr_add_gen(true);
+            assert(opt_tok.is_Some());
+            assert(equal(opt_tok.get_Some_0().view().instance, inst));
+            inst.tr_have_gen(true, &opt_tok);
+
+            #[proof] let opt_tok = inst.tr_add_gen(false);
+            assert(opt_tok.is_None());
+            inst.tr_have_gen(false, &opt_tok);
+        }
+
+        fn test_inst1_fail() {
+            #[proof] let (Trk(inst), Trk(token_f)) = Y::Instance::init_false();
+            assert(token_f.is_None());
+
+            #[proof] let opt_tok = inst.tr_add_gen(false);
+            assert(opt_tok.is_None());
+            inst.tr_have_gen(true, &opt_tok);   // FAILS
+        }
+
+        fn test_inst2() {
+            #[proof] let (Trk(inst), Trk(token_t)) = Y::Instance::init_true();
+            assert(token_t.is_Some());
+            assert(equal(token_t.get_Some_0().view().instance, inst));
+        }
+    } => Err(e) => assert_fails(e, 1)
+}
+
+test_verify_one_file! {
+    #[test] persistent_count_codegen IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(persistent_count)]
+                pub c: nat,
+            }
+
+            init!{
+                initialize() {
+                    init c = 9;
+                }
+            }
+
+            transition!{
+                tr_add() {
+                    add c (union)= (2);
+                }
+            }
+
+            transition!{
+                tr_have() {
+                    have c >= (2);
+                }
+            }
+        }}
+
+        verus!{
+
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            post.c == if pre.c <= 2 { 2 } else { pre.c }
+        }
+
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            post.c == if pre.c <= 2 { 2 } else { pre.c }
+        }
+
+        spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+            pre.c >= 2 && post.c == pre.c
+        }
+
+        spec fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.c >= 2 && post.c == pre.c
+        }
+
+        proof fn correct_tr(pre: Y::State, post: Y::State) {
+            ensures([
+                rel_tr1(pre, post) == Y::State::tr_add(pre, post),
+                rel_tr1_strong(pre, post) == Y::State::tr_add_strong(pre, post),
+                rel_tr2(pre, post) == Y::State::tr_have(pre, post),
+                rel_tr2_strong(pre, post) == Y::State::tr_have_strong(pre, post),
+            ]);
+        }
+
+        }
+
+        fn test_inst() {
+            #[proof] let (Trk(inst), Trk(t1)) = Y::Instance::initialize();
+            assert(t1.view().count == spec_literal_nat("9"));
+
+            #[proof] let t2 = t1.weaken(spec_literal_nat("2"));
+
+            inst.tr_have(&t2);
+
+            #[proof] let t4 = inst.tr_add();
+            assert(t4.view().count == spec_literal_nat("2"));
+
+            #[proof] let t2_clone = t2.clone();
+            assert(equal(t2, t2_clone));
+        }
+
+        fn test_weaken_fail() {
+            #[proof] let (Trk(inst), Trk(t1)) = Y::Instance::initialize();
+            #[proof] let t2 = t1.weaken(spec_literal_nat("800")); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 1)
+}
+
+test_verify_one_file! {
+    #[test] set_codegen IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(set)]
+                pub b: Set<int>,
+            }
+
+            init!{
+                initialize() {
+                    init b = Set::empty().insert(19);
+                }
+            }
+
+            transition!{
+                tr_add() {
+                    add b += set { 5 }; // FAILS
+                }
+            }
+
+            transition!{
+                tr_have() {
+                    have b >= set { 5 };
+                }
+            }
+
+            transition!{
+                tr_remove() {
+                    remove b -= set { 5 };
+                }
+            }
+
+            transition!{
+                tr_add_gen() {
+                    add b += (Set::empty().insert(6)); // FAILS
+                }
+            }
+
+            transition!{
+                tr_have_gen() {
+                    have b >= (Set::empty().insert(6));
+                }
+            }
+
+            transition!{
+                tr_remove_gen() {
+                    remove b -= (Set::empty().insert(6));
+                }
+            }
+        }}
+
+        verus!{
+
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            !pre.b.contains(5)
+            ==> post.b === pre.b.insert(5)
+        }
+
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            !pre.b.contains(5)
+            && post.b === pre.b.insert(5)
+        }
+
+        spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(5)
+            && pre.b === post.b
+        }
+
+        spec fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(5)
+            && pre.b === post.b
+        }
+
+        spec fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(5)
+            && post.b === pre.b.remove(5)
+        }
+
+        spec fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(5)
+            && post.b === pre.b.remove(5)
+        }
+
+        spec fn rel_tr4(pre: Y::State, post: Y::State) -> bool {
+            !pre.b.contains(6)
+            ==> post.b === pre.b.union(Set::empty().insert(6))
+        }
+
+        spec fn rel_tr4_strong(pre: Y::State, post: Y::State) -> bool {
+            !pre.b.contains(6)
+            && post.b === pre.b.union(Set::empty().insert(6))
+        }
+
+        spec fn rel_tr5(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(6)
+            && pre.b === post.b
+        }
+
+        spec fn rel_tr5_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(6)
+            && pre.b === post.b
+        }
+
+        spec fn rel_tr6(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(6)
+            && post.b === pre.b.difference(Set::empty().insert(6))
+        }
+
+        spec fn rel_tr6_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(6)
+            && post.b === pre.b.difference(Set::empty().insert(6))
+        }
+
+        }
+
+        #[proof]
+        fn correct_tr(pre: Y::State, post: Y::State) {
+            ensures([
+                rel_tr1(pre, post) == Y::State::tr_add(pre, post),
+                rel_tr1_strong(pre, post) == Y::State::tr_add_strong(pre, post),
+                rel_tr2(pre, post) == Y::State::tr_have(pre, post),
+                rel_tr2_strong(pre, post) == Y::State::tr_have_strong(pre, post),
+                rel_tr3(pre, post) == Y::State::tr_remove(pre, post),
+                rel_tr3_strong(pre, post) == Y::State::tr_remove_strong(pre, post),
+
+                rel_tr4(pre, post) == Y::State::tr_add_gen(pre, post),
+                rel_tr4_strong(pre, post) == Y::State::tr_add_gen_strong(pre, post),
+                rel_tr5(pre, post) == Y::State::tr_have_gen(pre, post),
+                rel_tr5_strong(pre, post) == Y::State::tr_have_gen_strong(pre, post),
+                rel_tr6(pre, post) == Y::State::tr_remove_gen(pre, post),
+                rel_tr6_strong(pre, post) == Y::State::tr_remove_gen_strong(pre, post),
+            ]);
+        }
+
+        #[proof]
+        fn test_inst1() {
+            #[proof] let (Trk(inst), Trk(token_f)) = Y::Instance::initialize();
+            assert(Set::empty().insert(spec_literal_int("19")).contains(spec_literal_int("19")));
+            assert(token_f.dom().contains(spec_literal_int("19")));
+            assert(equal(token_f.index(spec_literal_int("19")).view(), Y![
+                inst => b => spec_literal_int("19")
+            ]));
+
+            #[proof] let token1 = inst.tr_add();
+            assert(equal(token1.view().instance, inst));
+            assert(token1.view().value == spec_literal_int("5"));
+            inst.tr_have(&token1);
+            inst.tr_remove(token1);
+
+            #[proof] let token_set = inst.tr_add_gen();
+            assert(Set::empty().insert(spec_literal_int("6")).contains(spec_literal_int("6")));
+            assert(token_set.dom().contains(spec_literal_int("6")));
+            assert(equal(token_set.index(spec_literal_int("6")).view(), Y![
+                inst => b => spec_literal_int("6")
+            ]));
+            inst.tr_have_gen(&token_set);
+            inst.tr_remove_gen(token_set);
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file! {
+    #[test] persistent_set_codegen IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(persistent_set)]
+                pub b: Set<int>,
+            }
+
+            init!{
+                initialize() {
+                    init b = Set::empty().insert(19);
+                }
+            }
+
+            transition!{
+                tr_add() {
+                    add b (union)= set { 5 };
+                }
+            }
+
+            transition!{
+                tr_have() {
+                    have b >= set { 5 };
+                }
+            }
+
+            transition!{
+                tr_add_gen() {
+                    add b (union)= (Set::empty().insert(6));
+                }
+            }
+
+            transition!{
+                tr_have_gen() {
+                    have b >= (Set::empty().insert(6));
+                }
+            }
+        }}
+
+        verus!{
+
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            post.b === pre.b.insert(5)
+        }
+
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            post.b === pre.b.insert(5)
+        }
+
+        spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(5)
+            && pre.b === post.b
+        }
+
+        spec fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(5)
+            && pre.b === post.b
+        }
+
+        spec fn rel_tr4(pre: Y::State, post: Y::State) -> bool {
+            post.b === pre.b.union(Set::empty().insert(6))
+        }
+
+        spec fn rel_tr4_strong(pre: Y::State, post: Y::State) -> bool {
+            post.b === pre.b.union(Set::empty().insert(6))
+        }
+
+        spec fn rel_tr5(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(6)
+            && pre.b === post.b
+        }
+
+        spec fn rel_tr5_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(6)
+            && pre.b === post.b
+        }
+
+        }
+
+        #[proof]
+        fn correct_tr(pre: Y::State, post: Y::State) {
+            ensures([
+                rel_tr1(pre, post) == Y::State::tr_add(pre, post),
+                rel_tr1_strong(pre, post) == Y::State::tr_add_strong(pre, post),
+                rel_tr2(pre, post) == Y::State::tr_have(pre, post),
+                rel_tr2_strong(pre, post) == Y::State::tr_have_strong(pre, post),
+
+                rel_tr4(pre, post) == Y::State::tr_add_gen(pre, post),
+                rel_tr4_strong(pre, post) == Y::State::tr_add_gen_strong(pre, post),
+                rel_tr5(pre, post) == Y::State::tr_have_gen(pre, post),
+                rel_tr5_strong(pre, post) == Y::State::tr_have_gen_strong(pre, post),
+            ]);
+        }
+
+        #[proof]
+        fn test_inst1() {
+            #[proof] let (Trk(inst), Trk(token_f)) = Y::Instance::initialize();
+            assert(Set::empty().insert(spec_literal_int("19")).contains(spec_literal_int("19")));
+            assert(token_f.dom().contains(spec_literal_int("19")));
+            assert(equal(token_f.index(spec_literal_int("19")).view(), Y![
+                inst => b => spec_literal_int("19")
+            ]));
+
+            #[proof] let token1 = inst.tr_add();
+            assert(equal(token1.view().instance, inst));
+            assert(token1.view().value == spec_literal_int("5"));
+            inst.tr_have(&token1);
+
+            let token1_clone = token1.clone();
+            assert(equal(token1_clone, token1));
+
+            #[proof] let token_set = inst.tr_add_gen();
+            assert(Set::empty().insert(spec_literal_int("6")).contains(spec_literal_int("6")));
+            assert(token_set.dom().contains(spec_literal_int("6")));
+            assert(equal(token_set.index(spec_literal_int("6")).view(), Y![
+                inst => b => spec_literal_int("6")
+            ]));
+            inst.tr_have_gen(&token_set);
+        }
+    } => Ok(())
 }

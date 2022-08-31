@@ -44,37 +44,32 @@ test_verify_one_file! {
 
 // -- e03 --
 
-const E03_SHARED: &str = code_str! {
-    #[spec]
-    fn double(val: int) -> int {
+const E03_SHARED: &str = verus_code_str! {
+    spec fn double(val: int) -> int {
         2 * val
     }
 };
 
 test_verify_one_file! {
-    #[test] e03_pass E03_SHARED.to_string() + code_str! {
-        #[proof]
-        fn double_is_like_plus(p: int) {
+    #[test] e03_pass E03_SHARED.to_string() + verus_code_str! {
+        proof fn double_is_like_plus(p: int) {
             assert(double(6) == 6 + 6);
             assert(double(-2) == -4);
         }
 
-        #[proof]
-        fn foo4(val: int) {
+        proof fn foo4(val: int) {
             assert(double(val) == val + val);
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] e03_fail E03_SHARED.to_string() + code_str! {
-        #[proof]
-        fn double_is_like_plus(p: int) {
+    #[test] e03_fail E03_SHARED.to_string() + verus_code_str! {
+        proof fn double_is_like_plus(p: int) {
             assert(double(-2) == 4); // FAILS
         }
 
-        #[proof]
-        fn foo4(val: int) {
+        proof fn foo4(val: int) {
             assert(double(val) == val + val + val); // FAILS
         }
     } => Err(err) => assert_fails(err, 2)
@@ -82,47 +77,40 @@ test_verify_one_file! {
 
 // -- e04 --
 
-const E04_SHARED: &str = code_str! {
-    #[spec]
-    fn at_least_twice_as_big_a(a: int, b: int) -> bool {
+const E04_SHARED: &str = verus_code_str! {
+    spec fn at_least_twice_as_big_a(a: int, b: int) -> bool {
         a >= 2 * b
     }
 
     // this is less interesting in Verus because, contrary to Dafny, there's no predicate keyword
     // in Verus
-    #[spec]
-    fn at_least_twice_as_big_b(a: int, b: int) -> bool {
+    spec fn at_least_twice_as_big_b(a: int, b: int) -> bool {
         a >= 2 * b
     }
 
-    #[spec]
-    fn double(a: int) -> int {
+    spec fn double(a: int) -> int {
         2 * a
     }
 };
 
 test_verify_one_file! {
-    #[test] e04_pass E04_SHARED.to_string() + code_str! {
-        #[proof]
-        fn these_two_predicates_are_equivalent(x: int, y: int)
+    #[test] e04_pass E04_SHARED.to_string() + verus_code_str! {
+        proof fn these_two_predicates_are_equivalent(x: int, y: int)
         {
             assert(at_least_twice_as_big_a(x, y) == at_least_twice_as_big_b(x, y));
         }
 
-        #[proof]
-        fn four_times_is_pretty_big(x: int)
+        proof fn four_times_is_pretty_big(x: int)
+            requires x >= 0
         {
-            requires(x >= 0);
             assert(at_least_twice_as_big_a(double(double(x)), x));
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] e04_fail E04_SHARED.to_string() + code_str! {
-        #[proof]
-        fn four_times_is_pretty_big(x: int)
-        {
+    #[test] e04_fail E04_SHARED.to_string() + verus_code_str! {
+        proof fn four_times_is_pretty_big(x: int) {
             assert(at_least_twice_as_big_a(double(double(x)), x)); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
@@ -130,21 +118,18 @@ test_verify_one_file! {
 
 // -- e05 --
 
-const E05_SHARED: &str = code_str! {
+const E05_SHARED: &str = verus_code_str! {
     use set::*;
 
-    #[spec]
-    fn has_seven_and_not_nine(intset: Set::<int>) -> bool {
-        intset.contains(7) && (!intset.contains(9))
+    spec fn has_seven_and_not_nine(intset: Set::<int>) -> bool {
+        intset.contains(7) && !intset.contains(9)
     }
 };
 
 test_verify_one_file! {
-    #[test] e05_pass E05_SHARED.to_string() + code_str! {
+    #[test] e05_pass E05_SHARED.to_string() + verus_code_str! {
 
-        #[proof]
-        fn try_out_some_set_literals(x: int, y: int)
-        {
+        proof fn try_out_some_set_literals(x: int, y: int) {
             let set138: Set<int> = set![1, 3, 8];
             let set813: Set<int> = set![8, 1, 3];
             assert(set138.ext_equal(set813));
@@ -159,10 +144,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] e05_fail E05_SHARED.to_string() + code_str! {
-        #[proof]
-        fn try_out_some_set_literals_1(x: int, y: int)
-        {
+    #[test] e05_fail E05_SHARED.to_string() + verus_code_str! {
+        proof fn try_out_some_set_literals_1(x: int, y: int) {
             assert(has_seven_and_not_nine(set![])); // FAILS
         }
 
@@ -178,27 +161,25 @@ test_verify_one_file! {
 
 // -- e06 --
 
-const E06_SHARED: &str = code_str! {
+const E06_SHARED: &str = verus_code_str! {
     use set::*;
 
-    #[spec]
-    fn has_four_five_six(intset: Set<int>) -> bool {
+    spec fn has_four_five_six(intset: Set<int>) -> bool {
         let s = set![4, 5, 6];
         s.subset_of(intset)
     }
 };
 
 test_verify_one_file! {
-    #[test] e06_pass E06_SHARED.to_string() + code_str! {
-        #[proof]
-        fn some_assertions_about_sets()
-        {
+    #[test] e06_pass E06_SHARED.to_string() + verus_code_str! {
+        proof fn some_assertions_about_sets() {
             let sadSet: Set<int> = set![1, 2, 4, 6, 7];
-            assert_by(!has_four_five_six(sadSet),
+            assert(!has_four_five_six(sadSet)) by {
                 // NOTE it's interesting that Dafny can get this without the witness
                 // maybe dafny is more aggressive in introducing contains when there are set
                 // literals around
-                assert(!sadSet.contains(5)));
+                assert(!sadSet.contains(5));
+            }
 
             let happySet: Set<int> = set![1, 2, 4, 6, 7, 5];
 
@@ -214,10 +195,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] e06_fail E06_SHARED.to_string() + code_str! {
-        #[proof]
-        fn some_assertions_about_sets()
-        {
+    #[test] e06_fail E06_SHARED.to_string() + verus_code_str! {
+        proof fn some_assertions_about_sets() {
             let happySet: Set<int> = set![1, 2, 4, 6, 7, 5];
 
             assert(happySet.len() == 7); // FAILS
@@ -270,30 +249,26 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] e07_fail code! {
+    #[test] e07_fail verus_code! {
         #[allow(unused_imports)]
         use seq::*;
         #[allow(unused_imports)]
         use set::*;
 
-        #[proof]
-        fn experiments_with_sequences_1()
-        {
+        proof fn experiments_with_sequences_1() {
             let fibo: Seq<int> = seq![1, 1, 2, 3, 5, 8, 13, 21, 34];
 
             // TODO should this cause a diagnostics warning?
             assert(fibo.index(9) == 55); // FAILS
         }
 
-        #[proof]
-        fn experiments_with_sequences_2() {
+        proof fn experiments_with_sequences_2() {
             let fibo: Seq<int> = seq![1, 1, 2, 3, 5, 8, 13, 21, 34];
 
             assert(fibo.subrange(2, 5).len() == 4); // FAILS
         }
 
-        #[proof]
-        fn experiments_with_sequences_3() {
+        proof fn experiments_with_sequences_3() {
             let seq_of_sets: Seq<Set<int>> = seq![set![0], set![0, 1], set![0, 1, 2]];
 
             assert(seq_of_sets.index(1).len() == 3); // FAILS
@@ -342,7 +317,7 @@ test_verify_one_file! {
 
 // -- e09 --
 
-const E09_SHARED: &str = code_str! {
+const E09_SHARED: &str = verus_code_str! {
     #[derive(PartialEq, Eq, Structural)]
     struct Point {
         x: int,
@@ -351,16 +326,12 @@ const E09_SHARED: &str = code_str! {
 };
 
 test_verify_one_file! {
-    #[test] e09_pass E09_SHARED.to_string() + code_str! {
-        #[spec]
-        fn subtract_points(tip: Point, tail: Point) -> Point
-        {
+    #[test] e09_pass E09_SHARED.to_string() + verus_code_str! {
+        spec fn subtract_points(tip: Point, tail: Point) -> Point {
             Point { x: tip.x - tail.x, y: tip.y - tail.y }
         }
 
-        #[proof]
-        fn point_arithmetic()
-        {
+        proof fn point_arithmetic() {
             let a = Point { x: 1, y: 13 };
             let b = Point { x: 2, y: 7 };
 
@@ -370,16 +341,12 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] e09_fail E09_SHARED.to_string() + code_str! {
-        #[spec]
-        fn subtract_points(tip: Point, tail: Point) -> Point
-        {
+    #[test] e09_fail E09_SHARED.to_string() + verus_code_str! {
+        spec fn subtract_points(tip: Point, tail: Point) -> Point {
             Point { x: tip.x - tail.x, y: tip.y - tail.x }
         }
 
-        #[proof]
-        fn point_arithmetic()
-        {
+        proof fn point_arithmetic() {
             let a = Point { x: 1, y: 13 };
             let b = Point { x: 2, y: 7 };
 
@@ -390,7 +357,7 @@ test_verify_one_file! {
 
 // -- e10 --
 
-const DIRECTIONS_SHARED_CODE: &str = code_str! {
+const DIRECTIONS_SHARED_CODE: &str = verus_code_str! {
     #[allow(unused_imports)] use builtin::*;
     #[allow(unused_imports)] use builtin_macros::*;
     use crate::pervasive::*;
@@ -403,8 +370,7 @@ const DIRECTIONS_SHARED_CODE: &str = code_str! {
         West,
     }
 
-    #[spec] #[verifier(publish)]
-    pub fn turn_right(direction: Direction) -> Direction {
+    pub open spec fn turn_right(direction: Direction) -> Direction {
         // TODO do we want the ADT dependent typing that dafny does for enums?
         // NOTE(Chris): there is already an expression in VIR for this
         if direction == Direction::North {
@@ -418,13 +384,11 @@ const DIRECTIONS_SHARED_CODE: &str = code_str! {
         }
     }
 
-    #[proof]
-    fn rotation() {
+    proof fn rotation() {
         assert(turn_right(Direction::North) == Direction::East);
     }
 
-    #[spec] #[verifier(publish)]
-    pub fn turn_left(direction: Direction) -> Direction {
+    pub open spec fn turn_left(direction: Direction) -> Direction {
         match direction {
             Direction::North => Direction::West,
             Direction::West => Direction::South,
@@ -441,6 +405,8 @@ fn e10_pass() {
         (
             "test.rs".to_string(),
             code! {
+                #![feature(fmt_internals)]
+
                 mod pervasive;
                 mod directions;
 
@@ -463,7 +429,7 @@ fn e10_pass() {
 // -- e11 --
 
 test_verify_one_file! {
-    #[test] e11_pass code! {
+    #[test] e11_pass verus_code! {
         use set::*;
 
         #[derive(PartialEq, Eq, Structural)]
@@ -487,38 +453,30 @@ test_verify_one_file! {
             Graphics(GraphicsAlign),
         }
 
-        #[proof]
-        fn num_page_elements()
+        proof fn num_page_elements()
+            ensures
+                exists|eltSet:Set<HAlign>| eltSet.len() == 3, // bound is tight
+                forall|eltSet:Set<HAlign>| eltSet.len() <= 3, // bound is upper
         {
-            ensures([
-                exists(|eltSet:Set<HAlign>| eltSet.len() == 3), // bound is tight
-                forall(|eltSet:Set<HAlign>| eltSet.len() <= 3), // bound is upper
-            ]);
-
             let maxSet =  set![HAlign::Left, HAlign::Center, HAlign::Right];
 
             assert(maxSet.len() == 3);
 
-            assert_forall_by(|eltSet: Set<HAlign>| {
-                ensures(eltSet.len() <= 3);
-
+            assert forall|eltSet: Set<HAlign>| eltSet.len() <= 3 by {
                 // Prove eltSet <= maxSet
-                assert_forall_by(|elt: HAlign| {
-                    requires(eltSet.contains(elt));
-                    ensures(maxSet.contains(elt));
-
+                assert forall|elt: HAlign| eltSet.contains(elt) implies maxSet.contains(elt) by {
                     if let HAlign::Left = elt { }  // hint at a case analysis
-                });
+                }
 
                 crate::pervasive::set_lib::lemma_len_subset(eltSet, maxSet);
-            });
+            }
         }
     } => Ok(())
 }
 
 // -- e12 --
 //
-const LUNCH_SHARED_CODE: &str = code_str! {
+const LUNCH_SHARED_CODE: &str = verus_code_str! {
     #[allow(unused_imports)] use builtin::*;
     #[allow(unused_imports)] use builtin_macros::*;
 
@@ -546,74 +504,67 @@ fn e13_pass() {
         ("lunch.rs".to_string(), LUNCH_SHARED_CODE.to_string()),
         (
             "test.rs".to_string(),
-            code! {
-                #[allow(unused_imports)] use builtin::*;
-                #[allow(unused_imports)] use builtin_macros::*;
-                mod pervasive; use pervasive::*;
-                mod directions; use directions::{Direction, turn_left, turn_right};
-                mod lunch; use lunch::*;
+            "#![feature(fmt_internals)]\n".to_string()
+                + &verus_code! {
+                    #[allow(unused_imports)] use builtin::*;
+                    #[allow(unused_imports)] use builtin_macros::*;
+                    mod pervasive; use pervasive::*;
+                    mod directions; use directions::{Direction, turn_left, turn_right};
+                    mod lunch; use lunch::*;
 
-                #[spec]
-                fn add(x: int, y:int) -> int {
-                    x + y
-                }
-
-                #[proof]
-                fn forall_lemma() {
-                    // NB: The original version here fails with:
-                    // "Could not automatically infer triggers for this quantifer."
-                    // We decided that this use case -- a forall that can be proven but
-                    // never used (in any reasonable setting because no way is Chris
-                    // gonna trigger on '+'!) -- is extremely rare. Relevant in teaching,
-                    // perhaps, but not even in proof debugging.
-                    // assert(forall(|x:int| x + x == 2 * x));
-
-                    assert(forall(|x:int| add(x, x) == 2 * x));
-                }
-
-                #[proof]
-                fn another_forall_lemma() {
-                    assert(forall(|dir: Direction| turn_left(turn_left(dir))
-                                    == turn_right(turn_right(dir))));
-                }
-
-                // TODO(chris): auto-generate these predicates
-                impl Order {
-                    #[spec]
-                    fn is_appetizer(self) -> bool {
-                        match self { Order::Appetizer { .. } => true, _ => false }
+                    spec fn add(x: int, y: int) -> int {
+                        x + y
                     }
 
-                    #[spec]
-                    fn is_sandwich(self) -> bool {
-                        match self { Order::Sandwich { .. } => true, _ => false }
+                    proof fn forall_lemma() {
+                        // NB: The original version here fails with:
+                        // "Could not automatically infer triggers for this quantifer."
+                        // We decided that this use case -- a forall that can be proven but
+                        // never used (in any reasonable setting because no way is Chris
+                        // gonna trigger on '+'!) -- is extremely rare. Relevant in teaching,
+                        // perhaps, but not even in proof debugging.
+                        // assert(forall(|x: int| x + x == 2 * x));
+
+                        assert(forall|x: int| add(x, x) == 2 * x);
                     }
 
-                    #[spec]
-                    fn get_cheese(self) -> Cheese {
-                        // TODO() use Order::*;
-                        match self {
-                            Order::Sandwich { cheese: cheese, .. } => cheese,
-                            Order::Appetizer { cheese: cheese, .. } => cheese,
-                            Order::Pizza { .. }  => arbitrary(),
+                    proof fn another_forall_lemma() {
+                        assert(forall|dir: Direction|
+                            turn_left(turn_left(dir)) == turn_right(turn_right(dir)));
+                    }
+
+                    // TODO(utaal/jon): use utaal's auto-generated predicates
+                    impl Order {
+                        spec fn is_appetizer(self) -> bool {
+                            match self { Order::Appetizer { .. } => true, _ => false }
+                        }
+
+                        spec fn is_sandwich(self) -> bool {
+                            match self { Order::Sandwich { .. } => true, _ => false }
+                        }
+
+                        spec fn get_cheese(self) -> Cheese {
+                            // TODO() use Order::*;
+                            match self {
+                                Order::Sandwich { cheese: cheese, .. } => cheese,
+                                Order::Appetizer { cheese: cheese, .. } => cheese,
+                                Order::Pizza { .. }  => arbitrary(),
+                            }
                         }
                     }
-                }
 
-                #[proof]
-                fn cheese_take_two() {
-                    assert_forall_by(|o1:Order| {
-                        requires(o1.is_appetizer());
+                    proof fn cheese_take_two() {
+                        assert forall|o1:Order| o1.is_appetizer() implies
+                            exists(|o2:Order| o2.is_sandwich() && o1.get_cheese() == o2.get_cheese()) by
+                        {
+                            // ensures(exists(|o2: Order| matches!((o1, o2), (Order::Appetizer { cheese: c1, .. }, Order::Sanwhich { cheese: c2, .. }) if c1 == c2)))
 
-                        // ensures(exists(|o2: Order| matches!((o1, o2), (Order::Appetizer { cheese: c1, .. }, Order::Sanwhich { cheese: c2, .. }) if c1 == c2)))
-
-                        // ensures(exists(|o2:Order| o2.is_sandwich() && o1.get_cheese() == o2.get_sandwich().cheese));
-                        ensures(exists(|o2:Order| o2.is_sandwich() && o1.get_cheese() == o2.get_cheese()));
-                        let o3 = Order::Sandwich { meat: Meat::Ham, cheese: o1.get_cheese() };
-                        assert(o3.is_sandwich() /*&& o1.get_cheese() == o3.get_cheese()*/); // witness to ensures.
-                    });
-                }
-            },
+                            // ensures(exists(|o2:Order| o2.is_sandwich() && o1.get_cheese() == o2.get_sandwich().cheese));
+                            let o3 = Order::Sandwich { meat: Meat::Ham, cheese: o1.get_cheese() };
+                            assert(o3.is_sandwich() /*&& o1.get_cheese() == o3.get_cheese()*/); // witness to ensures.
+                        }
+                    }
+                },
         ),
     ];
     let result = verify_files(files, "test.rs".to_string());
@@ -624,135 +575,110 @@ fn e13_pass() {
 // extensional equality?
 
 test_verify_one_file! {
-    #[test] e14_pass code! {
+    #[test] e14_pass verus_code! {
         use set::*;
         use set_lib::*;
         use map::*;
         use seq::*;
 
-        #[spec]
-        fn is_even(x: int) -> bool
-        {
-            x/2*2 == x
+        spec fn is_even(x: int) -> bool {
+            x / 2 * 2 == x
         }
 
-        #[proof]
-        fn set_comprehension()
-        {
-            let modest_evens = Set::new(|x:int| 0 <= x && x < 10 && is_even(x));
-            assert(modest_evens.ext_equal(set![0,2,4,6,8]));
+        proof fn set_comprehension() {
+            let modest_evens = Set::new(|x: int| 0 <= x < 10 && is_even(x));
+            assert(modest_evens.ext_equal(set![0, 2, 4, 6, 8]));
 
             /* This is beyond summer school, but shows a verus-preferred style */
-            let equivalent_evens = set_int_range(0, 10).filter(|x:int| is_even(x));
+            let equivalent_evens = set_int_range(0, 10).filter(|x: int| is_even(x));
             assert(modest_evens.ext_equal(equivalent_evens));
         }
 
-        #[proof]
-        fn maps()
-        {
-            let double_map = map![1=>2, 2=>4, 3=>6, 4=>8];
+        proof fn maps() {
+            let double_map = map![1 => 2, 2 => 4, 3 => 6, 4 => 8];
 
-            // TODO(utaal): square-bracket syntax for indexing
-            assert(double_map.index(3) == 6);
+            assert(double_map[3] == 6);
 
             let replace_map = double_map.insert(3, 7);
-            assert(replace_map.index(1) == 2);
-            assert(replace_map.index(2) == 4);
-            assert(replace_map.index(3) == 7);
+            assert(replace_map[1] == 2);
+            assert(replace_map[2] == 4);
+            assert(replace_map[3] == 7);
 
             /* This is beyond summer school, but shows a verus-preferred style */
-            let equivalent_double_map = set_int_range(1,5).mk_map(|x:int| x*2);
+            let equivalent_double_map = set_int_range(1, 5).mk_map(|x: int| x * 2);
             assert(equivalent_double_map.ext_equal(double_map));
         }
 
-        #[proof]
-        fn map_comprehension()
-        {
-            let doubly_map = set_int_range(0,5).mk_map(|x:int| 2*x);
-            assert(doubly_map.index(1) == 2);
-            assert(doubly_map.index(4) == 8);
+        proof fn map_comprehension() {
+            let doubly_map = set_int_range(0, 5).mk_map(|x: int| 2 * x);
+            assert(doubly_map[1] == 2);
+            assert(doubly_map[4] == 8);
         }
 
-        #[proof]
-        fn seq_comprehension()
-        {
-            let evens_in_order = Seq::new(5, |i:int| i*2);
-            assert(evens_in_order.index(2) == 4);
-            assert(evens_in_order.ext_equal(seq![0,2,4,6,8]));
+        proof fn seq_comprehension() {
+            let evens_in_order = Seq::new(5, |i: int| i * 2);
+            assert(evens_in_order[2] == 4);
+            assert(evens_in_order.ext_equal(seq![0, 2, 4, 6, 8]));
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] e14_fail code! {
+    #[test] e14_fail verus_code! {
         use set::*;
         use set_lib::*;
         use seq::*;
+        use map::*;
 
-        #[spec]
-        fn is_even(x: int) -> bool
-        {
-            x/2*2 == x
+        spec fn is_even(x: int) -> bool {
+            x / 2 * 2 == x
         }
 
-        #[proof]
-        fn set_comprehension()
-        {
-            let modest_evens = Set::new(|x:int| 0 <= x && x < 10 && is_even(x));
-            assert(modest_evens.ext_equal(set![0,2,4,8]));   // FAILS
+        proof fn set_comprehension() {
+            let modest_evens = Set::new(|x: int| 0 <= x < 10 && is_even(x));
+            assert(modest_evens.ext_equal(set![0, 2, 4, 8]));   // FAILS
         }
 
-        #[proof]
-        fn maps()
-        {
-            let double_map = map![1=>2, 2=>4, 3=>6, 4=>8];
+        proof fn maps() {
+            let double_map: Map<int, int> = map![1 => 2, 2 => 4, 3 => 6, 4 => 8];
 
-            // TODO(utaal): square-bracket syntax for indexing
-            assert(double_map.index(3) == 6);
+            assert(double_map[3] == 6);
 
             let replace_map = double_map.insert(3, 7);
-            assert(replace_map.index(1) == 2);
-            assert(replace_map.index(2) == 4);
-            assert(replace_map.index(3) == 6);  // FAILS
+            assert(replace_map[1] == 2);
+            assert(replace_map[2] == 4);
+            assert(replace_map[3] == 6);  // FAILS
         }
 
-        #[proof]
-        fn map_comprehension()
-        {
-            let doubly_map = set_int_range(0,5).mk_map(|x:int| 2*x);
-            assert(doubly_map.index(1) == 2);
-            assert(doubly_map.index(4) == 4);   // FAILS
+        proof fn map_comprehension() {
+            let doubly_map = set_int_range(0, 5).mk_map(|x: int| 2 * x);
+            assert(doubly_map[1] == 2);
+            assert(doubly_map[4] == 4);   // FAILS
         }
 
-        #[proof]
-        fn seq_comprehension()
-        {
-            let evens_in_order = Seq::new(5, |i:int| i*2);
-            assert(evens_in_order.index(2) == 4);
-            assert(evens_in_order.ext_equal(seq![8,6,4,2,0]));  // FAILS
+        proof fn seq_comprehension() {
+            let evens_in_order = Seq::new(5, |i: int| i * 2);
+            assert(evens_in_order[2] == 4);
+            assert(evens_in_order.ext_equal(seq![8, 6, 4, 2, 0]));  // FAILS
         }
     } => Err(err) => assert_fails(err, 4)
 }
 
 test_verify_one_file! {
-    #[test] e15_pass code! {
+    #[test] e15_pass verus_code! {
         use set::*;
         use set_lib::*;
 
-        #[spec]
-        fn is_modest(x:int) -> bool {
-            0 <= x && x < 10
+        spec fn is_modest(x: int) -> bool {
+            0 <= x < 10
         }
 
-        #[spec]
-        fn is_even(x:int) -> bool {
-            x/2*2==x
+        spec fn is_even(x: int) -> bool {
+            x / 2 * 2 == x
         }
 
-        #[proof]
-        fn is_this_set_finite()
-        {
-            let modest_evens = Set::new(|x:int| is_modest(x) && is_even(x));
+        proof fn is_this_set_finite() {
+            let modest_evens = Set::new(|x: int| is_modest(x) && is_even(x));
             // In verus, unlike Dafny, it's fine to have infinite sets, but you may want a finite
             // one (say because you're using it as a decreases to well-found an induction).
             let modest_numbers = set_int_range(0, 10);
@@ -768,23 +694,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] e15_fail code! {
+    #[test] e15_fail verus_code! {
         use set::*;
 
-        #[spec]
-        fn is_modest(x:int) -> bool {
-            0 <= x && x < 10
+        spec fn is_modest(x: int) -> bool {
+            0 <= x < 10
         }
 
-        #[spec]
-        fn is_even(x:int) -> bool {
-            x/2*2==x
+        spec fn is_even(x: int) -> bool {
+            x / 2 * 2 == x
         }
 
-        #[proof]
-        fn is_this_set_finite()
-        {
-            let modest_evens = Set::new(|x:int| is_modest(x) && is_even(x));
+        proof fn is_this_set_finite() {
+            let modest_evens = Set::new(|x: int| is_modest(x) && is_even(x));
             // Need additional proof to show that this construction is finite.
             assert(modest_evens.finite());  // FAILS
         }
@@ -792,59 +714,54 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] e16_pass code! {
-        #[spec]
-        fn is_even(x:int) -> bool {
-            x/2*2==x
+    #[test] e16_pass verus_code! {
+        spec fn is_even(x: int) -> bool {
+            x / 2 * 2 == x
         }
 
-        #[proof]
-        fn explain_even_numbers(x: int) -> int
+        proof fn explain_even_numbers(x: int) -> (twocount: int)
+            requires
+                is_even(x),
+            ensures
+                twocount * 2 == x,
         {
-            requires(is_even(x));
-            ensures(|twocount:int| twocount*2 == x);
-            x/2
+            x / 2
         }
 
-        #[spec]
-        fn double(x:int) -> int
-        {
+        spec fn double(x: int) -> int {
             x * 2
         }
 
-        #[spec]
-        fn alternate_even(x:int) -> bool
-        {
+        spec fn alternate_even(x: int) -> bool {
             // TODO(chris): Change no-trigger error message from "Use #[trigger] annotations to
             // manually mark trigger terms instead." to "Consider using a named function for some
             // subexpression to provide a trigger."
             // In Verus, we need a trgger for the exists, so we pull the x*2 expression out into a
             // named fn.
-            exists(|twocount:int| double(twocount) == x)
+            exists|twocount: int| double(twocount) == x
         }
 
-        #[proof]
-        fn even_definitions_are_equivalent(x: int)
+        proof fn even_definitions_are_equivalent(x: int)
+            ensures is_even(x) == alternate_even(x)
         {
-            ensures(is_even(x) == alternate_even(x));
-            assert(double(x/2) == x/2*2);   // trigger double.
+            assert(double(x / 2) == x / 2 * 2);   // trigger double.
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] e16_fail code! {
-        #[spec]
-        fn is_even(x:int) -> bool {
-            x/2*2==x
+    #[test] e16_fail verus_code! {
+        spec fn is_even(x: int) -> bool {
+            x / 2 * 2 == x
         }
 
-        #[proof]
-        fn explain_even_numbers(x: int) -> int
+        proof fn explain_even_numbers(x: int) -> (twocount: int)
+            requires
+                is_even(x),
+            ensures
+                twocount * 2 == x,    // FAILS
         {
-            requires(is_even(x));
-            ensures(|twocount:int| twocount*2 == x);    // FAILS
-            x/3
+            x / 3
         }
     } => Err(err) => assert_fails(err, 1)
 }
@@ -1111,7 +1028,7 @@ test_verify_one_file! {
                         assert(view_u64(haystack.view())[mid as int] <= view_u64(haystack.view())[i]);
                     }
                 }
-                assert(high - low < *decreases); // Termination check
+                assert(high - low < decreases@); // Termination check
             }
             low
         }

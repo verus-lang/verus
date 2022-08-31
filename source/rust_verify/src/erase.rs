@@ -537,11 +537,14 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
             }
         }
         ExprKind::Assign(e1, e2, span) => {
-            let e1_var_span = match &e1.kind {
-                rustc_ast::ExprKind::Unary(rustc_ast::UnOp::Deref, e) => e.span,
-                _ => e1.span,
-            };
-            let mode1 = *mctxt.find_span(&ctxt.var_modes, e1_var_span);
+            fn underef(e: &Expr) -> &Expr {
+                match &e.kind {
+                    rustc_ast::ExprKind::Paren(e) => underef(e),
+                    rustc_ast::ExprKind::Unary(rustc_ast::UnOp::Deref, e) => e,
+                    _ => e,
+                }
+            }
+            let mode1 = *mctxt.find_span(&ctxt.var_modes, underef(e1).span);
             if keep_mode(ctxt, mode1) {
                 let e1 = erase_expr(ctxt, mctxt, mode1, e1);
                 let e2 = erase_expr(ctxt, mctxt, mode1, e2);
@@ -1036,6 +1039,15 @@ fn erase_block(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, block: &Block) -> B
     Block { stmts, id, rules, span, tokens: block.tokens.clone(), could_be_bare_literal: false }
 }
 
+fn get_typ_bound_by_name<'a>(v: &'a vir::ast::TypBounds, name: &str) -> &'a vir::ast::GenericBound {
+    for typ_bound in v.iter() {
+        if *typ_bound.0 == name {
+            return &typ_bound.1;
+        }
+    }
+    panic!("get_typ_bound_by_name failed");
+}
+
 fn erase_fn(
     ctxt: &Ctxt,
     mctxt: &mut MCtxt,
@@ -1055,26 +1067,15 @@ fn erase_fn(
     let Generics { params, where_clause, span: generics_span } = generics;
     let mut new_params: Vec<GenericParam> = Vec::new();
 
-    // Skip over type params in impl<...>
-    let mut num_typ_params = 0;
-    for param in params.iter() {
-        match &param.kind {
-            GenericParamKind::Type { .. } => {
-                num_typ_params += 1;
-            }
-            _ => {}
-        }
-    }
-    let n_skip = f_vir.x.typ_bounds.len() - num_typ_params;
-    let mut typ_bounds_iter = f_vir.x.typ_bounds.iter().skip(n_skip);
-
     for param in params.iter() {
         match param.kind {
             GenericParamKind::Lifetime => {
                 new_params.push(param.clone());
             }
             GenericParamKind::Type { .. } => {
-                let (_, bound) = typ_bounds_iter.next().expect("missing typ_bound");
+                let bound =
+                    get_typ_bound_by_name(&f_vir.x.typ_bounds, &param.ident.name.to_string());
+
                 // erase Fn trait bounds, since the type checker won't be able to infer them
                 // TODO: also erase other type parameters left unused after erasure
                 match &**bound {
@@ -1282,6 +1283,7 @@ fn erase_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &Item) -> Vec<P<Item>> {
         ItemKind::MacroDef(..) => item.kind.clone(),
         ItemKind::TyAlias(..) => item.kind.clone(),
         ItemKind::Trait(tr) => ItemKind::Trait(erase_trait(ctxt, mctxt, tr)),
+        ItemKind::GlobalAsm(..) => item.kind.clone(),
         _ => {
             unsupported!("unsupported item", item)
         }

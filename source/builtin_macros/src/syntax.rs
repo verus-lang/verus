@@ -1,24 +1,34 @@
 use crate::rustdoc::env_rustdoc;
+use proc_macro2::Span;
 use proc_macro2::TokenStream;
+use quote::quote_spanned;
+use std::iter::FromIterator;
 use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::punctuated::Punctuated;
-use syn_verus::token::{Brace, Bracket, Paren};
+use syn_verus::token;
+use syn_verus::token::{Brace, Bracket, Paren, Semi};
 use syn_verus::visit_mut::{
-    visit_expr_loop_mut, visit_expr_mut, visit_expr_while_mut, visit_field_mut,
-    visit_impl_item_method_mut, visit_item_enum_mut, visit_item_fn_mut, visit_item_struct_mut,
-    visit_local_mut, visit_trait_item_method_mut, VisitMut,
+    visit_block_mut, visit_expr_loop_mut, visit_expr_mut, visit_expr_while_mut, visit_field_mut,
+    visit_impl_item_method_mut, visit_item_const_mut, visit_item_enum_mut, visit_item_fn_mut,
+    visit_item_struct_mut, visit_local_mut, visit_trait_item_method_mut, VisitMut,
 };
 use syn_verus::{
-    braced, bracketed, parenthesized, parse_macro_input, parse_quote_spanned, Attribute, BinOp,
-    Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop, ExprPath,
-    ExprTuple, ExprUnary, ExprWhile, Field, FnArgKind, FnMode, ImplItemMethod, Invariant, Item,
-    ItemEnum, ItemFn, ItemStruct, Lit, Local, ModeSpec, ModeSpecChecked, Path, Publish, Recommends,
-    Requires, ReturnType, Signature, Stmt, Token, TraitItemMethod, UnOp, Visibility,
+    braced, bracketed, parenthesized, parse_macro_input, AttrStyle, Attribute, BinOp, Block,
+    DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop, ExprTuple,
+    ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Ident, ImplItemMethod, Invariant, Item,
+    ItemConst, ItemEnum, ItemFn, ItemStruct, Lit, Local, Meta, ModeSpec, ModeSpecChecked, Pat,
+    Path, PathArguments, PathSegment, Publish, Recommends, Requires, ReturnType, Signature, Stmt,
+    Token, TraitItemMethod, UnOp, Visibility,
 };
 
 fn take_expr(expr: &mut Expr) -> Expr {
-    let dummy: Expr = syn_verus::parse_quote!(());
+    let dummy: Expr = Expr::Verbatim(TokenStream::new());
     std::mem::replace(expr, dummy)
+}
+
+fn take_pat(pat: &mut Pat) -> Pat {
+    let dummy: Pat = Pat::Verbatim(TokenStream::new());
+    std::mem::replace(pat, dummy)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,24 +52,44 @@ struct Visitor {
     // Fixed is used for bitwise operations, where we use Rust's native integer literals
     // rather than an int literal.
     inside_arith: InsideArith,
+    // assign_to == true means we're an expression being assigned to by Assign
+    assign_to: bool,
 
     // Add extra verus signature information to the docstring
     rustdoc: bool,
+
+    // if we are inside bit-vector assertion, warn users to use add/sub/mul for fixed-width operators,
+    // rather than +/-/*, which will be promoted to integer operators
+    inside_bitvector: bool,
 }
 
 fn data_mode_attrs(mode: &DataMode) -> Vec<Attribute> {
     match mode {
         DataMode::Default => vec![],
         DataMode::Ghost(token) => {
-            vec![parse_quote_spanned!(token.ghost_token.span => #[spec])]
+            vec![mk_empty_attr(token.ghost_token.span, "spec")]
         }
         DataMode::Tracked(token) => {
-            vec![parse_quote_spanned!(token.tracked_token.span => #[proof])]
+            vec![mk_empty_attr(token.tracked_token.span, "proof")]
         }
         DataMode::Exec(token) => {
-            vec![parse_quote_spanned!(token.exec_token.span => #[exec])]
+            vec![mk_empty_attr(token.exec_token.span, "exec")]
         }
     }
+}
+
+fn path_is_ident(path: &Path, s: &str) -> bool {
+    let segments = &path.segments;
+    segments.len() == 1 && segments.first().unwrap().ident.to_string() == s
+}
+
+macro_rules! stmt_with_semi {
+    ($span:expr => $($tok:tt)*) => {
+        Stmt::Semi(
+            Expr::Verbatim(quote_spanned!{ $span => $($tok)* }),
+            Semi { spans: [ $span ] },
+        )
+    };
 }
 
 impl Visitor {
@@ -73,16 +103,24 @@ impl Visitor {
     ) -> Vec<Stmt> {
         let mut stmts: Vec<Stmt> = Vec::new();
 
-        attrs.push(parse_quote_spanned!(sig.fn_token.span => #[verifier(verus_macro)]));
+        let inside_bitvector = if attrs.len() == 1 {
+            let attr = attrs.first().unwrap();
+            let arg = get_arg_from_verifier_attr(&attr);
+            if arg.is_some() { arg.unwrap() == "bit_vector".to_string() } else { false }
+        } else {
+            false
+        };
+
+        attrs.push(mk_verifier_attr(sig.fn_token.span, "verus_macro"));
 
         for arg in &mut sig.inputs {
             match (arg.tracked, &mut arg.kind) {
                 (None, _) => {}
                 (Some(token), FnArgKind::Receiver(receiver)) => {
-                    receiver.attrs.push(parse_quote_spanned!(token.span => #[proof]));
+                    receiver.attrs.push(mk_empty_attr(token.span, "proof"));
                 }
                 (Some(token), FnArgKind::Typed(typed)) => {
-                    typed.attrs.push(parse_quote_spanned!(token.span => #[proof]));
+                    typed.attrs.push(mk_empty_attr(token.span, "proof"));
                 }
             }
             arg.tracked = None;
@@ -91,7 +129,13 @@ impl Visitor {
             ReturnType::Default => None,
             ReturnType::Type(_, ref mut tracked, ref mut ret_opt, ty) => {
                 if let Some(token) = tracked {
-                    attrs.push(parse_quote_spanned!(token.span => #[verifier(returns(proof))]));
+                    attrs.push(mk_attr(
+                        token.span,
+                        "verifier",
+                        quote_spanned! {
+                            token.span => (returns(proof))
+                        },
+                    ));
                     *tracked = None;
                 }
                 match std::mem::take(ret_opt) {
@@ -110,9 +154,10 @@ impl Visitor {
                 | FnMode::SpecChecked(ModeSpecChecked { spec_token, .. }),
                 None,
             ) => {
-                let e: Expr = parse_quote_spanned!(spec_token.span =>
-                    compile_error!("non-private spec function must be marked open or closed to indicate whether the function body is public (pub open) or private (pub closed)"));
-                stmts.push(parse_quote_spanned!(spec_token.span => {#e}));
+                stmts.push(stmt_with_semi!(
+                    spec_token.span =>
+                    compile_error!("non-private spec function must be marked open or closed to indicate whether the function body is public (pub open) or private (pub closed)")
+                ));
             }
             _ => {}
         }
@@ -120,7 +165,7 @@ impl Visitor {
         let publish_attrs = match &sig.publish {
             Publish::Default => vec![],
             Publish::Closed(_) => vec![],
-            Publish::Open(o) => vec![parse_quote_spanned!(o.token.span => #[verifier(publish)])],
+            Publish::Open(o) => vec![mk_verifier_attr(o.token.span, "publish")],
             Publish::OpenRestricted(_) => {
                 unimplemented!("TODO: support open(...)")
             }
@@ -128,52 +173,85 @@ impl Visitor {
 
         let (unimpl, ext_attrs) = match (&sig.mode, semi_token, is_trait) {
             (FnMode::Spec(_) | FnMode::SpecChecked(_), Some(semi), false) => (
-                vec![Stmt::Expr(parse_quote_spanned!(semi.span => unimplemented!()))],
-                vec![parse_quote_spanned!(semi.span => #[verifier(external_body)])],
+                vec![Stmt::Expr(Expr::Verbatim(quote_spanned!(semi.span => unimplemented!())))],
+                vec![mk_verifier_attr(semi.span, "external_body")],
             ),
             _ => (vec![], vec![]),
         };
 
         let (inside_ghost, mode_attrs): (u32, Vec<Attribute>) = match &sig.mode {
             FnMode::Default => (0, vec![]),
-            FnMode::Spec(token) => {
-                (1, vec![parse_quote_spanned!(token.spec_token.span => #[spec])])
-            }
-            FnMode::SpecChecked(token) => {
-                (1, vec![parse_quote_spanned!(token.spec_token.span => #[spec(checked)])])
-            }
-            FnMode::Proof(token) => {
-                (1, vec![parse_quote_spanned!(token.proof_token.span => #[proof])])
-            }
-            FnMode::Exec(token) => {
-                (0, vec![parse_quote_spanned!(token.exec_token.span => #[exec])])
-            }
+            FnMode::Spec(token) => (1, vec![mk_empty_attr(token.spec_token.span, "spec")]),
+            FnMode::SpecChecked(token) => (
+                1,
+                vec![mk_attr(
+                    token.spec_token.span,
+                    "spec",
+                    quote_spanned! { token.spec_token.span => (checked) },
+                )],
+            ),
+            FnMode::Proof(token) => (1, vec![mk_empty_attr(token.proof_token.span, "proof")]),
+            FnMode::Exec(token) => (0, vec![mk_empty_attr(token.exec_token.span, "exec")]),
         };
         self.inside_ghost = inside_ghost;
+
+        self.inside_ghost += 1; // for requires, ensures, etc.
+        self.inside_bitvector = inside_bitvector;
 
         let requires = std::mem::take(&mut sig.requires);
         let recommends = std::mem::take(&mut sig.recommends);
         let ensures = std::mem::take(&mut sig.ensures);
         let decreases = std::mem::take(&mut sig.decreases);
         // TODO: wrap specs inside ghost blocks
-        if let Some(Requires { token, exprs }) = requires {
-            stmts.push(parse_quote_spanned!(token.span => ::builtin::requires([#exprs]);));
+        if let Some(Requires { token, mut exprs }) = requires {
+            for expr in exprs.exprs.iter_mut() {
+                self.visit_expr_mut(expr);
+            }
+            stmts.push(Stmt::Semi(
+                Expr::Verbatim(quote_spanned!(token.span => ::builtin::requires([#exprs]))),
+                Semi { spans: [token.span] },
+            ));
         }
-        if let Some(Recommends { token, exprs }) = recommends {
-            stmts.push(parse_quote_spanned!(token.span => ::builtin::recommends([#exprs]);));
+        if let Some(Recommends { token, mut exprs }) = recommends {
+            for expr in exprs.exprs.iter_mut() {
+                self.visit_expr_mut(expr);
+            }
+            stmts.push(Stmt::Semi(
+                Expr::Verbatim(quote_spanned!(token.span => ::builtin::recommends([#exprs]))),
+                Semi { spans: [token.span] },
+            ));
         }
-        if let Some(Ensures { token, exprs }) = ensures {
+        if let Some(Ensures { token, mut exprs }) = ensures {
+            for expr in exprs.exprs.iter_mut() {
+                self.visit_expr_mut(expr);
+            }
             if let Some((p, ty)) = ret_pat {
-                stmts.push(
-                    parse_quote_spanned!(token.span => ::builtin::ensures(|#p: #ty| [#exprs]);),
-                );
+                stmts.push(Stmt::Semi(
+                    Expr::Verbatim(
+                        quote_spanned!(token.span => ::builtin::ensures(|#p: #ty| [#exprs])),
+                    ),
+                    Semi { spans: [token.span] },
+                ));
             } else {
-                stmts.push(parse_quote_spanned!(token.span => ::builtin::ensures([#exprs]);));
+                stmts.push(Stmt::Semi(
+                    Expr::Verbatim(quote_spanned!(token.span => ::builtin::ensures([#exprs]))),
+                    Semi { spans: [token.span] },
+                ));
             }
         }
-        if let Some(Decreases { token, exprs }) = decreases {
-            stmts.push(parse_quote_spanned!(token.span => ::builtin::decreases((#exprs));));
+        if let Some(Decreases { token, mut exprs }) = decreases {
+            for expr in exprs.exprs.iter_mut() {
+                self.visit_expr_mut(expr);
+            }
+            stmts.push(Stmt::Semi(
+                Expr::Verbatim(quote_spanned!(token.span => ::builtin::decreases((#exprs)))),
+                Semi { spans: [token.span] },
+            ));
         }
+
+        self.inside_ghost -= 1;
+        self.inside_bitvector = false;
+
         sig.publish = Publish::Default;
         sig.mode = FnMode::Default;
         attrs.extend(publish_attrs);
@@ -181,6 +259,143 @@ impl Visitor {
         attrs.extend(ext_attrs);
         stmts.extend(unimpl);
         stmts
+    }
+
+    fn visit_const(
+        &mut self,
+        span: proc_macro2::Span,
+        attrs: &mut Vec<Attribute>,
+        vis: Option<&Visibility>,
+        publish: &mut Publish,
+        mode: &mut FnMode,
+    ) {
+        attrs.push(mk_verifier_attr(span, "verus_macro"));
+
+        let publish_attrs = match (vis, &publish) {
+            (Some(Visibility::Inherited), _) => vec![],
+            (_, Publish::Default) => vec![mk_verifier_attr(span, "publish")],
+            (_, Publish::Closed(_)) => vec![],
+            (_, Publish::Open(o)) => vec![mk_verifier_attr(o.token.span, "publish")],
+            (_, Publish::OpenRestricted(_)) => {
+                unimplemented!("TODO: support open(...)")
+            }
+        };
+
+        let (inside_ghost, mode_attrs): (u32, Vec<Attribute>) = match &mode {
+            FnMode::Default => (0, vec![]),
+            FnMode::Spec(token) => (1, vec![mk_empty_attr(token.spec_token.span, "spec")]),
+            FnMode::SpecChecked(token) => (
+                1,
+                vec![mk_attr(
+                    token.spec_token.span,
+                    "spec",
+                    quote_spanned! { token.spec_token.span => (checked) },
+                )],
+            ),
+            FnMode::Proof(token) => (1, vec![mk_empty_attr(token.proof_token.span, "proof")]),
+            FnMode::Exec(token) => (0, vec![mk_empty_attr(token.exec_token.span, "exec")]),
+        };
+        self.inside_ghost = inside_ghost;
+        *publish = Publish::Default;
+        *mode = FnMode::Default;
+        attrs.extend(publish_attrs);
+        attrs.extend(mode_attrs);
+    }
+
+    fn exec_ghost_match(
+        &mut self,
+        pat: &mut Pat,
+        splitter: &mut Option<&str>,
+        stmts: &mut Vec<Stmt>,
+        n: &mut u64,
+    ) {
+        let mut replace: Option<Pat> = None;
+        match pat {
+            Pat::TupleStruct(pts)
+                if self.inside_ghost == 0
+                    && pts.pat.elems.len() == 1
+                    && (path_is_ident(&pts.path, "Ghost")
+                        || path_is_ident(&pts.path, "Tracked")) =>
+            {
+                // change
+                //   let Tracked((Trk(x), Gho(y))) = e;
+                // to
+                //   let (x, y) = tracked_split_tuple2(e);
+                //   let x = tracked_unwrap_trk(x);
+                //   let y = tracked_unwrap_gho(y);
+                let mut tuple_pat = take_pat(&mut pts.pat.elems[0]);
+                if let Pat::Tuple(pt) = &mut tuple_pat {
+                    for elem in &mut pt.elems {
+                        match elem {
+                            Pat::TupleStruct(trk)
+                                if trk.pat.elems.len() == 1
+                                    && (path_is_ident(&trk.path, "Gho")
+                                        || path_is_ident(&trk.path, "Trk")) =>
+                            {
+                                if let Pat::Ident(x) = &trk.pat.elems[0] {
+                                    let x = x.ident.clone();
+                                    let span = x.span();
+                                    let f: TokenStream = if path_is_ident(&trk.path, "Gho") {
+                                        quote_spanned!(span => crate::pervasive::modes::tracked_unwrap_gho)
+                                    } else {
+                                        quote_spanned!(span => crate::pervasive::modes::tracked_unwrap_trk)
+                                    };
+                                    stmts.push(Stmt::Semi(
+                                        Expr::Verbatim(quote_spanned!(span => let #x = #f(#x))),
+                                        Semi { spans: [span] },
+                                    ));
+                                    *elem = trk.pat.elems[0].clone();
+                                }
+                            }
+                            _ => {}
+                        }
+                        *n += 1;
+                    }
+                }
+                if path_is_ident(&pts.path, "Ghost") {
+                    *splitter = Some("ghost_split_tuple");
+                } else {
+                    *splitter = Some("tracked_split_tuple");
+                };
+                replace = Some(tuple_pat);
+            }
+            _ => {}
+        }
+        if let Some(replace) = replace {
+            *pat = replace;
+        }
+    }
+
+    fn visit_local_extend(&mut self, local: &mut Local) -> Vec<Stmt> {
+        let mut splitter: Option<&str> = None;
+        let mut stmts: Vec<Stmt> = Vec::new();
+        let mut n: u64 = 0;
+        match &mut local.pat {
+            Pat::Type(pt) => {
+                self.exec_ghost_match(&mut pt.pat, &mut splitter, &mut stmts, &mut n);
+            }
+            pat => {
+                self.exec_ghost_match(pat, &mut splitter, &mut stmts, &mut n);
+            }
+        }
+        if let Some(splitter) = splitter {
+            if let Some((eq, mut box_init)) = std::mem::replace(&mut local.init, None) {
+                let span = eq.span;
+                let name = format!("{splitter}{n}");
+                let ident = Ident::new(&name, span);
+                self.visit_expr_mut(&mut box_init);
+                let init = Expr::Verbatim(quote_spanned!(span => ::builtin::#ident(#box_init)));
+                local.init = Some((eq, Box::new(init)));
+            }
+        }
+        stmts
+    }
+
+    fn visit_stmt_extend(&mut self, stmt: &mut Stmt) -> Vec<Stmt> {
+        match stmt {
+            Stmt::Local(local) => self.visit_local_extend(local),
+            _ => vec![],
+        }
     }
 }
 
@@ -197,60 +412,99 @@ fn chain_count(expr: &Expr) -> u32 {
     }
 }
 
-fn chain_operators(expr: &mut Expr) {
-    use syn_verus::spanned::Spanned;
-    let count = chain_count(expr);
-    if count < 2 {
-        return;
-    }
-    let mut rights: Vec<(Expr, Path, proc_macro2::Span)> = Vec::new();
-    for _ in 0..count {
-        if let Expr::Binary(binary) = take_expr(expr) {
-            let span = binary.span();
-            let op = match binary.op {
-                BinOp::Le(_) => parse_quote_spanned!(span => ::builtin::spec_chained_le),
-                BinOp::Lt(_) => parse_quote_spanned!(span => ::builtin::spec_chained_lt),
-                BinOp::Ge(_) => parse_quote_spanned!(span => ::builtin::spec_chained_ge),
-                BinOp::Gt(_) => parse_quote_spanned!(span => ::builtin::spec_chained_gt),
-                _ => panic!("chain_operators"),
-            };
-            rights.push((*binary.right, op, span));
-            *expr = *binary.left;
-        } else {
-            panic!("chain_operators");
+impl Visitor {
+    fn chain_operators(&mut self, expr: &mut Expr) -> bool {
+        use syn_verus::spanned::Spanned;
+        let count = chain_count(expr);
+        if count < 2 {
+            return false;
         }
+        let mut rights: Vec<(Expr, &'static str, proc_macro2::Span)> = Vec::new();
+
+        let mut cur_expr = take_expr(expr);
+
+        let inside_arith = self.inside_arith;
+        self.inside_arith = InsideArith::Widen;
+
+        for _ in 0..count {
+            if let Expr::Binary(binary) = cur_expr {
+                let span = binary.span();
+                let op = match binary.op {
+                    BinOp::Le(_) => "spec_chained_le",
+                    BinOp::Lt(_) => "spec_chained_lt",
+                    BinOp::Ge(_) => "spec_chained_ge",
+                    BinOp::Gt(_) => "spec_chained_gt",
+                    _ => panic!("chain_operators"),
+                };
+                let left = *binary.left;
+                let mut right = *binary.right;
+                self.visit_expr_mut(&mut right);
+                rights.push((right, op, span));
+
+                cur_expr = left;
+            } else {
+                panic!("chain_operators");
+            }
+        }
+        self.visit_expr_mut(&mut cur_expr);
+
+        self.inside_arith = inside_arith;
+
+        // example:
+        //   ((e0 <= e1) <= e2) <= e3
+        //   count == 3
+        //   cur_expr = e0
+        //   rights = [e3, e2, e1]
+        // goal:
+        //   spec_chained_cmp(spec_chained_le(spec_chained_le(spec_chained_le(spec_chained_value(e0), e1), e2), e3))
+
+        let span = cur_expr.span();
+        let mut toks = quote_spanned!(span => ::builtin::spec_chained_value(#cur_expr));
+        for (right, op, span) in rights.iter().rev() {
+            let ident = Ident::new(op, *span);
+            toks = quote_spanned!(*span => ::builtin::#ident(#toks, #right));
+        }
+        toks = quote_spanned!(span => ::builtin::spec_chained_cmp(#toks));
+
+        *expr = Expr::Verbatim(toks);
+
+        true
     }
-    // example:
-    //   ((e0 <= e1) <= e2) <= e3
-    //   count == 3
-    //   expr = e0
-    //   rights = [e3, e2, e1]
-    // goal:
-    //   spec_chained_cmp(spec_chained_le(spec_chained_le(spec_chained_le(spec_chained_value(e0), e1), e2), e3))
-    let span = expr.span();
-    *expr = parse_quote_spanned!(span => ::builtin::spec_chained_value(#expr));
-    while let Some((right, op, span)) = rights.pop() {
-        *expr = parse_quote_spanned!(span => #op(#expr, #right));
-    }
-    *expr = parse_quote_spanned!(span => ::builtin::spec_chained_cmp(#expr));
 }
 
 impl VisitMut for Visitor {
     fn visit_expr_mut(&mut self, expr: &mut Expr) {
-        chain_operators(expr);
+        if self.chain_operators(expr) {
+            return;
+        }
 
-        if self.inside_ghost == 0 {
-            let is_auto_proof_block = match &expr {
+        let is_inside_bitvector = match &expr {
+            Expr::Assert(a) => match &a.prover {
+                Some((_, id)) => {
+                    if id.to_string() == "bit_vector" {
+                        self.inside_bitvector = true;
+                        true
+                    } else {
+                        false
+                    }
+                }
+                None => false,
+            },
+            _ => false,
+        };
+
+        let is_auto_proof_block = if self.inside_ghost == 0 {
+            match &expr {
                 Expr::Assume(a) => Some(a.assume_token.span),
                 Expr::Assert(a) => Some(a.assert_token.span),
                 Expr::AssertForall(a) => Some(a.assert_token.span),
                 _ => None,
-            };
-            if let Some(span) = is_auto_proof_block {
-                // automatically put assert/assume in a proof block
-                let inner = take_expr(expr);
-                *expr = parse_quote_spanned!(span => proof { #inner });
             }
+        } else {
+            None
+        };
+        if let Some(_) = is_auto_proof_block {
+            self.inside_ghost += 1;
         }
 
         let mode_block = if let Expr::Unary(unary) = expr {
@@ -264,25 +518,8 @@ impl VisitMut for Visitor {
             None
         };
 
-        let ghost_intrinsic = match &expr {
-            Expr::Call(ExprCall {
-                func: box Expr::Path(syn_verus::ExprPath { path: Path { segments, .. }, .. }),
-                ..
-            }) if segments.len() == 2 => {
-                if segments.first().unwrap().ident.to_string() == "builtin" {
-                    match segments.last().unwrap().ident.to_string().as_str() {
-                        "requires" | "ensures" | "recommends" | "decreases" | "invariant" => true,
-                        _ => false,
-                    }
-                } else {
-                    false
-                }
-            }
-            _ => false,
-        };
-
         let sub_inside_arith = match expr {
-            Expr::Paren(..) | Expr::Block(..) => self.inside_arith,
+            Expr::Paren(..) | Expr::Block(..) | Expr::Group(..) => self.inside_arith,
             Expr::Cast(..) => InsideArith::Widen,
             Expr::Unary(unary) => match unary.op {
                 UnOp::Neg(..) => InsideArith::Widen,
@@ -307,37 +544,41 @@ impl VisitMut for Visitor {
                 | BinOp::Shr(..) => InsideArith::Fixed,
                 _ => InsideArith::None,
             },
-            Expr::Call(ExprCall {
-                func: box Expr::Path(ExprPath { path: Path { segments, .. }, .. }),
-                ..
-            }) if segments.len() == 2 => {
-                if segments.first().unwrap().ident.to_string() == "builtin" {
-                    match segments.last().unwrap().ident.to_string().as_str() {
-                        "spec_chained_value" | "spec_chained_cmp" | "spec_chained_le"
-                        | "spec_chained_lt" | "spec_chained_ge" | "spec_chained_gt" => {
-                            InsideArith::Widen
-                        }
-                        _ => InsideArith::None,
-                    }
-                } else {
-                    InsideArith::None
-                }
-            }
             _ => InsideArith::None,
         };
+        let sub_assign_to = match expr {
+            Expr::Field(..) => self.assign_to,
+            _ => false,
+        };
 
+        // Recursively call visit_expr_mut
         let is_inside_ghost = self.inside_ghost > 0;
         let is_inside_arith = self.inside_arith;
+        let is_assign_to = self.assign_to;
         let use_spec_traits = self.use_spec_traits && is_inside_ghost;
-        if mode_block.is_some() || ghost_intrinsic {
+        if mode_block.is_some() {
             self.inside_ghost += 1;
         }
         self.inside_arith = sub_inside_arith;
+        self.assign_to = sub_assign_to;
+        let assign_left = if let Expr::Assign(assign) = expr {
+            let mut left = take_expr(&mut assign.left);
+            self.assign_to = true;
+            self.visit_expr_mut(&mut left);
+            self.assign_to = false;
+            Some(left)
+        } else {
+            None
+        };
         visit_expr_mut(self, expr);
-        if mode_block.is_some() || ghost_intrinsic {
+        if let Expr::Assign(assign) = expr {
+            assign.left = Box::new(assign_left.expect("assign_left"));
+        }
+        if mode_block.is_some() {
             self.inside_ghost -= 1;
         }
         self.inside_arith = is_inside_arith;
+        self.assign_to = is_assign_to;
 
         if let Expr::Unary(unary) = expr {
             use syn_verus::spanned::Spanned;
@@ -355,25 +596,40 @@ impl VisitMut for Visitor {
                     (false, (false, _), Expr::Block(..)) => {
                         // proof { ... }
                         let inner = take_expr(&mut *unary.expr);
-                        *expr = parse_quote_spanned!(span => #[verifier(proof_block)] #inner);
+                        *expr =
+                            Expr::Verbatim(quote_spanned!(span => #[verifier(proof_block)] #inner));
                     }
                     (false, (true, false), Expr::Paren(..)) => {
                         // ghost(...)
                         let inner = take_expr(&mut *unary.expr);
-                        *expr = parse_quote_spanned!(span => #[verifier(ghost_wrapper)] crate::pervasive::modes::ghost_exec(#[verifier(ghost_block_wrapped)] #inner));
+                        *expr = Expr::Verbatim(
+                            quote_spanned!(span => #[verifier(ghost_wrapper)] crate::pervasive::modes::ghost_exec(#[verifier(ghost_block_wrapped)] #inner)),
+                        );
+                    }
+                    (false, (true, false), _) => {
+                        *expr = Expr::Verbatim(
+                            quote_spanned!(span => compile_error!("Expected parentheses")),
+                        );
+                        return;
                     }
                     (false, (true, true), Expr::Paren(..)) => {
                         // tracked(...)
                         let inner = take_expr(&mut *unary.expr);
-                        *expr = parse_quote_spanned!(span => #[verifier(ghost_wrapper)] crate::pervasive::modes::tracked_exec(#[verifier(tracked_block_wrapped)] #inner));
+                        *expr = Expr::Verbatim(
+                            quote_spanned!(span => #[verifier(ghost_wrapper)] crate::pervasive::modes::tracked_exec(#[verifier(tracked_block_wrapped)] #inner)),
+                        );
                     }
                     (true, (true, true), _) => {
                         // tracked ...
                         let inner = take_expr(&mut *unary.expr);
-                        *expr = parse_quote_spanned!(span => #[verifier(tracked_block)] { #inner });
+                        *expr = Expr::Verbatim(
+                            quote_spanned!(span => #[verifier(tracked_block)] { #inner }),
+                        );
                     }
                     _ => {
-                        *expr = parse_quote_spanned!(span => compile_error!("unexpected proof/ghost/tracked"));
+                        *expr = Expr::Verbatim(
+                            quote_spanned!(span => compile_error!("unexpected proof/ghost/tracked")),
+                        );
                         return;
                     }
                 }
@@ -408,28 +664,30 @@ impl VisitMut for Visitor {
             };
             if let Some(op) = low_prec_op {
                 let attrs = std::mem::take(&mut binary.attrs);
-                let left = Box::new(take_expr(&mut *binary.left));
-                let right = Box::new(take_expr(&mut *binary.right));
-                let left = parse_quote_spanned!(span => (#left));
-                let right = parse_quote_spanned!(span => (#right));
+                let left = take_expr(&mut *binary.left);
+                let right = take_expr(&mut *binary.right);
+                let left = Box::new(Expr::Verbatim(quote_spanned!(span => (#left))));
+                let right = Box::new(Expr::Verbatim(quote_spanned!(span => (#right))));
                 let bin = ExprBinary { attrs, op, left, right };
                 *expr = Expr::Binary(bin);
             } else if let Some(imply) = ply {
                 let attrs = std::mem::take(&mut binary.attrs);
-                let func = parse_quote_spanned!(span => ::builtin::imply);
+                let func = Box::new(Expr::Verbatim(quote_spanned!(span => ::builtin::imply)));
                 let paren_token = Paren { span };
                 let mut args = Punctuated::new();
                 if imply {
+                    // imply `left ==> right`
                     args.push(take_expr(&mut *binary.left));
                     args.push(take_expr(&mut *binary.right));
                 } else {
+                    // exply `left <== right` (flip the arguments)
                     args.push(take_expr(&mut *binary.right));
                     args.push(take_expr(&mut *binary.left));
                 }
                 *expr = Expr::Call(ExprCall { attrs, func, paren_token, args });
             } else if let Some(eq) = big_eq {
                 let attrs = std::mem::take(&mut binary.attrs);
-                let func = parse_quote_spanned!(span => ::builtin::equal);
+                let func = Box::new(Expr::Verbatim(quote_spanned!(span => ::builtin::equal)));
                 let paren_token = Paren { span };
                 let mut args = Punctuated::new();
                 args.push(take_expr(&mut *binary.left));
@@ -438,7 +696,7 @@ impl VisitMut for Visitor {
                 if eq {
                     *expr = call;
                 } else {
-                    *expr = parse_quote_spanned!(span => ! #call);
+                    *expr = Expr::Verbatim(quote_spanned!(span => ! #call));
                 }
             }
         }
@@ -485,19 +743,23 @@ impl VisitMut for Visitor {
                             InsideArith::None => {
                                 // We don't know which integer type to use,
                                 // so defer the decision to type inference.
-                                *expr = parse_quote_spanned!(span => ::builtin::spec_literal_integer(#n));
+                                *expr = Expr::Verbatim(
+                                    quote_spanned!(span => ::builtin::spec_literal_integer(#n)),
+                                );
                                 expr.replace_attrs(attrs);
                             }
                             InsideArith::Widen if n.starts_with("-") => {
                                 // Use int inside +, -, etc., since these promote to int anyway
-                                *expr =
-                                    parse_quote_spanned!(span => ::builtin::spec_literal_int(#n));
+                                *expr = Expr::Verbatim(
+                                    quote_spanned!(span => ::builtin::spec_literal_int(#n)),
+                                );
                                 expr.replace_attrs(attrs);
                             }
                             InsideArith::Widen => {
                                 // Use int inside +, -, etc., since these promote to int anyway
-                                *expr =
-                                    parse_quote_spanned!(span => ::builtin::spec_literal_nat(#n));
+                                *expr = Expr::Verbatim(
+                                    quote_spanned!(span => ::builtin::spec_literal_nat(#n)),
+                                );
                                 expr.replace_attrs(attrs);
                             }
                             InsideArith::Fixed => {
@@ -507,10 +769,12 @@ impl VisitMut for Visitor {
                             }
                         }
                     } else if lit.suffix() == "int" {
-                        *expr = parse_quote_spanned!(span => ::builtin::spec_literal_int(#n));
+                        *expr =
+                            Expr::Verbatim(quote_spanned!(span => ::builtin::spec_literal_int(#n)));
                         expr.replace_attrs(attrs);
                     } else if lit.suffix() == "nat" {
-                        *expr = parse_quote_spanned!(span => ::builtin::spec_literal_nat(#n));
+                        *expr =
+                            Expr::Verbatim(quote_spanned!(span => ::builtin::spec_literal_nat(#n)));
                         expr.replace_attrs(attrs);
                     } else {
                         // Has a native Rust integer suffix, so leave it as a native Rust literal
@@ -523,8 +787,9 @@ impl VisitMut for Visitor {
                     let src = cast.expr;
                     let attrs = cast.attrs;
                     let ty = cast.ty;
-                    *expr =
-                        parse_quote_spanned!(span => ::builtin::spec_cast_integer::<_, #ty>(#src));
+                    *expr = Expr::Verbatim(
+                        quote_spanned!(span => ::builtin::spec_cast_integer::<_, #ty>(#src)),
+                    );
                     expr.replace_attrs(attrs);
                 }
                 Expr::Index(idx) => {
@@ -533,7 +798,7 @@ impl VisitMut for Visitor {
                     let src = idx.expr;
                     let attrs = idx.attrs;
                     let index = idx.index;
-                    *expr = parse_quote_spanned!(span => #src.spec_index(#index));
+                    *expr = Expr::Verbatim(quote_spanned!(span => #src.spec_index(#index)));
                     expr.replace_attrs(attrs);
                 }
                 Expr::Unary(unary) if quant => {
@@ -556,8 +821,9 @@ impl VisitMut for Visitor {
                                 match &mut *arg {
                                     Expr::Closure(closure) => {
                                         let body = take_expr(&mut closure.body);
-                                        closure.body =
-                                            parse_quote_spanned!(span => #[auto_trigger] (#body));
+                                        closure.body = Box::new(Expr::Verbatim(
+                                            quote_spanned!(span => #[auto_trigger] (#body)),
+                                        ));
                                     }
                                     _ => panic!("expected closure for quantifier"),
                                 }
@@ -573,12 +839,15 @@ impl VisitMut for Visitor {
                             (Err(err), _) => {
                                 let span = attr.span();
                                 let err = err.to_string();
-                                *expr = parse_quote_spanned!(span => compile_error!(#err));
+                                *expr =
+                                    Expr::Verbatim(quote_spanned!(span => compile_error!(#err)));
                                 return;
                             }
                             _ => {
                                 let span = attr.span();
-                                *expr = parse_quote_spanned!(span => compile_error!("expected trigger"));
+                                *expr = Expr::Verbatim(
+                                    quote_spanned!(span => compile_error!("expected trigger")),
+                                );
                                 return;
                             }
                         }
@@ -593,24 +862,28 @@ impl VisitMut for Visitor {
                         match &mut *arg {
                             Expr::Closure(closure) => {
                                 let body = take_expr(&mut closure.body);
-                                closure.body =
-                                    parse_quote_spanned!(span => with_triggers(#tuple, #body));
+                                closure.body = Box::new(Expr::Verbatim(
+                                    quote_spanned!(span => ::builtin::with_triggers(#tuple, #body)),
+                                ));
                             }
                             _ => panic!("expected closure for quantifier"),
                         }
                     }
                     match unary.op {
                         UnOp::Forall(..) => {
-                            *expr = parse_quote_spanned!(span => ::builtin::forall(#arg));
+                            *expr = Expr::Verbatim(quote_spanned!(span => ::builtin::forall(#arg)));
                         }
                         UnOp::Exists(..) => {
-                            *expr = parse_quote_spanned!(span => ::builtin::exists(#arg));
+                            *expr = Expr::Verbatim(quote_spanned!(span => ::builtin::exists(#arg)));
                         }
                         UnOp::Choose(..) => {
                             if n_inputs == 1 {
-                                *expr = parse_quote_spanned!(span => ::builtin::choose(#arg));
+                                *expr =
+                                    Expr::Verbatim(quote_spanned!(span => ::builtin::choose(#arg)));
                             } else {
-                                *expr = parse_quote_spanned!(span => ::builtin::choose_tuple(#arg));
+                                *expr = Expr::Verbatim(
+                                    quote_spanned!(span => ::builtin::choose_tuple(#arg)),
+                                );
                             }
                         }
                         _ => panic!("unary"),
@@ -624,7 +897,7 @@ impl VisitMut for Visitor {
                     match unary.op {
                         UnOp::Neg(..) => {
                             let arg = unary.expr;
-                            *expr = parse_quote_spanned!(span => (#arg).spec_neg());
+                            *expr = Expr::Verbatim(quote_spanned!(span => (#arg).spec_neg()));
                         }
                         _ => panic!("unary"),
                     }
@@ -638,120 +911,216 @@ impl VisitMut for Visitor {
                     let right = binary.right;
                     match binary.op {
                         BinOp::Eq(..) => {
-                            *expr = parse_quote_spanned!(span => spec_eq(#left, #right));
+                            *expr = Expr::Verbatim(
+                                quote_spanned!(span => ::builtin::spec_eq(#left, #right)),
+                            );
                         }
                         BinOp::Ne(..) => {
-                            *expr = parse_quote_spanned!(span => !spec_eq(#left, #right));
+                            *expr = Expr::Verbatim(
+                                quote_spanned!(span => ! ::builtin::spec_eq(#left, #right)),
+                            );
                         }
                         BinOp::Le(..) => {
-                            *expr = parse_quote_spanned!(span => (#left).spec_le(#right));
+                            *expr = Expr::Verbatim(quote_spanned!(span => (#left).spec_le(#right)));
                         }
                         BinOp::Lt(..) => {
-                            *expr = parse_quote_spanned!(span => (#left).spec_lt(#right));
+                            *expr = Expr::Verbatim(quote_spanned!(span => (#left).spec_lt(#right)));
                         }
                         BinOp::Ge(..) => {
-                            *expr = parse_quote_spanned!(span => (#left).spec_ge(#right));
+                            *expr = Expr::Verbatim(quote_spanned!(span => (#left).spec_ge(#right)));
                         }
                         BinOp::Gt(..) => {
-                            *expr = parse_quote_spanned!(span => (#left).spec_gt(#right));
+                            *expr = Expr::Verbatim(quote_spanned!(span => (#left).spec_gt(#right)));
                         }
-                        BinOp::Add(..) => {
-                            *expr = parse_quote_spanned!(span => (#left).spec_add(#right));
+                        BinOp::Add(..) if !self.inside_bitvector => {
+                            *expr =
+                                Expr::Verbatim(quote_spanned!(span => (#left).spec_add(#right)));
                         }
-                        BinOp::Sub(..) => {
-                            *expr = parse_quote_spanned!(span => (#left).spec_sub(#right));
+                        BinOp::Sub(..) if !self.inside_bitvector => {
+                            *expr =
+                                Expr::Verbatim(quote_spanned!(span => (#left).spec_sub(#right)));
                         }
-                        BinOp::Mul(..) => {
-                            *expr = parse_quote_spanned!(span => (#left).spec_mul(#right));
+                        BinOp::Mul(..) if !self.inside_bitvector => {
+                            *expr =
+                                Expr::Verbatim(quote_spanned!(span => (#left).spec_mul(#right)));
+                        }
+                        BinOp::Add(..) | BinOp::Sub(..) | BinOp::Mul(..) => {
+                            *expr = Expr::Verbatim(
+                                quote_spanned!(span => compile_error!("Inside bit-vector assertion, use `add` `sub` `mul` for fixed-bit operators, instead of `+` `-` `*`. (see the functions builtin::add(left, right), builtin::sub(left, right), and builtin::mul(left, right))")),
+                            );
                         }
                         BinOp::Div(..) => {
-                            *expr =
-                                parse_quote_spanned!(span => (#left).spec_euclidean_div(#right));
+                            *expr = Expr::Verbatim(
+                                quote_spanned!(span => (#left).spec_euclidean_div(#right)),
+                            );
                         }
                         BinOp::Rem(..) => {
-                            *expr =
-                                parse_quote_spanned!(span => (#left).spec_euclidean_mod(#right));
+                            *expr = Expr::Verbatim(
+                                quote_spanned!(span => (#left).spec_euclidean_mod(#right)),
+                            );
                         }
                         BinOp::BitAnd(..) => {
-                            *expr = parse_quote_spanned!(span => (#left).spec_bitand(#right));
+                            *expr =
+                                Expr::Verbatim(quote_spanned!(span => (#left).spec_bitand(#right)));
                         }
                         BinOp::BitOr(..) => {
-                            *expr = parse_quote_spanned!(span => (#left).spec_bitor(#right));
+                            *expr =
+                                Expr::Verbatim(quote_spanned!(span => (#left).spec_bitor(#right)));
                         }
                         BinOp::BitXor(..) => {
-                            *expr = parse_quote_spanned!(span => (#left).spec_bitxor(#right));
+                            *expr =
+                                Expr::Verbatim(quote_spanned!(span => (#left).spec_bitxor(#right)));
                         }
                         BinOp::Shl(..) => {
-                            *expr = parse_quote_spanned!(span => (#left).spec_shl(#right));
+                            *expr =
+                                Expr::Verbatim(quote_spanned!(span => (#left).spec_shl(#right)));
                         }
                         BinOp::Shr(..) => {
-                            *expr = parse_quote_spanned!(span => (#left).spec_shr(#right));
+                            *expr =
+                                Expr::Verbatim(quote_spanned!(span => (#left).spec_shr(#right)));
                         }
                         _ => panic!("binary"),
                     }
                     expr.replace_attrs(attrs);
                 }
-                Expr::View(view) => {
+                Expr::View(view) if !self.assign_to => {
                     let at_token = view.at_token;
                     let span = at_token.span;
                     let base = view.expr;
-                    *expr = parse_quote_spanned!(span => (#base.view()));
+                    *expr = Expr::Verbatim(quote_spanned!(span => (#base.view())));
+                }
+                Expr::View(view) => {
+                    use syn_verus::spanned::Spanned;
+                    assert!(self.assign_to);
+                    let at_token = view.at_token;
+                    let span1 = at_token.span;
+                    let span2 = view.span();
+                    let base = view.expr;
+                    let borrowed: Expr =
+                        Expr::Verbatim(quote_spanned!(span1 => #base.borrow_mut()));
+                    *expr = Expr::Verbatim(quote_spanned!(span2 => (*(#borrowed))));
                 }
                 Expr::Assume(assume) => {
                     let span = assume.assume_token.span;
                     let arg = assume.expr;
                     let attrs = assume.attrs;
-                    *expr = parse_quote_spanned!(span => crate::pervasive::assume(#arg));
+                    *expr = Expr::Verbatim(quote_spanned!(span => crate::pervasive::assume(#arg)));
                     expr.replace_attrs(attrs);
                 }
                 Expr::Assert(assert) => {
                     let span = assert.assert_token.span;
                     let arg = assert.expr;
                     let attrs = assert.attrs;
-                    match (assert.by_token, assert.prover, assert.body) {
-                        (None, None, None) => {
-                            *expr = parse_quote_spanned!(span => crate::pervasive::assert(#arg));
+                    if match (assert.by_token, assert.prover, assert.requires, assert.body) {
+                        (None, None, None, None) => {
+                            *expr = Expr::Verbatim(
+                                quote_spanned!(span => crate::pervasive::assert(#arg)),
+                            );
+                            true
                         }
-                        (None, _, _) => panic!("missing by token"),
-                        (Some(_), None, None) => panic!("extra by token"),
-                        (Some(_), None, Some(box (None, block))) => {
-                            *expr =
-                                parse_quote_spanned!(span => {::builtin::assert_by(#arg, #block);});
+                        (None, _, _, _) => panic!("missing by token"),
+                        (Some(_), None, None, None) => panic!("extra by token"),
+                        (Some(_), None, None, Some(box block)) => {
+                            *expr = Expr::Verbatim(
+                                quote_spanned!(span => {::builtin::assert_by(#arg, #block);}),
+                            );
+                            true
                         }
-                        (Some(_), Some((_, id)), None) if id.to_string() == "compute" => {
-                            *expr =
-                                parse_quote_spanned!(span => ::builtin::assert_by_compute(#arg));
+                        (Some(_), Some((_, id)), None, None) if id.to_string() == "compute" => {
+                            *expr = Expr::Verbatim(
+                                quote_spanned!(span => ::builtin::assert_by_compute(#arg)),
+                            );
+                            true
                         }
-                        (Some(_), Some((_, id)), None) if id.to_string() == "compute_only" => {
-                            *expr = parse_quote_spanned!(span => ::builtin::assert_by_compute_only(#arg));
+                        (Some(_), Some((_, id)), None, None) if id.to_string() == "compute_only" => {
+                            *expr = Expr::Verbatim(
+                                quote_spanned!(span => ::builtin::assert_by_compute_only(#arg)),
+                            );
+                            true
                         }
-                        (Some(_), Some((_, id)), None) if id.to_string() == "bit_vector" => {
-                            *expr =
-                                parse_quote_spanned!(span => ::builtin::assert_bit_vector(#arg));
+                        (Some(_), Some((_, id)), None, None) if id.to_string() == "bit_vector" => {
+                            *expr = Expr::Verbatim(
+                                quote_spanned!(span => ::builtin::assert_bitvector_by({::builtin::ensures(#arg);})),
+                            );
+                            true
                         }
-                        (Some(_), Some((_, id)), None) if id.to_string() == "nonlinear_arith" => {
-                            *expr = parse_quote_spanned!(span => ::builtin::assert_nonlinear_by({::builtin::ensures(#arg);}));
+                        (Some(_), Some((_, id)), requires, block)
+                            if id.to_string() == "bit_vector" =>
+                        {
+                            let mut block = if let Some(box block) = block {
+                                block
+                            } else {
+                                Block { brace_token: token::Brace { span }, stmts: vec![] }
+                            };
+                            let mut stmts: Vec<Stmt> = Vec::new();
+                            if let Some(Requires { token, exprs }) = requires {
+                                stmts.push(Stmt::Semi(
+                                    Expr::Verbatim(
+                                        quote_spanned!(token.span => ::builtin::requires([#exprs])),
+                                    ),
+                                    Semi { spans: [token.span] },
+                                ));
+                            }
+                            stmts.push(Stmt::Semi(
+                                Expr::Verbatim(quote_spanned!(span => ::builtin::ensures(#arg))),
+                                Semi { spans: [span] },
+                            ));
+                            block.stmts.splice(0..0, stmts);
+                            let mut assert_bitvector_by: Expr = Expr::Verbatim(
+                                quote_spanned!(span => ::builtin::assert_bitvector_by(#block)),
+                            );
+                            assert_bitvector_by.replace_attrs(attrs.clone());
+                            *expr = Expr::Verbatim(quote_spanned!(span => {#assert_bitvector_by}));
+                            false
                         }
-                        (Some(_), Some((_, id)), Some(box (requires, mut block)))
+                        (Some(_), Some((_, id)), None, None)
+                            if id.to_string() == "nonlinear_arith" =>
+                        {
+                            *expr = Expr::Verbatim(
+                                quote_spanned!(span => ::builtin::assert_nonlinear_by({::builtin::ensures(#arg);})),
+                            );
+                            true
+                        }
+                        (Some(_), Some((_, id)), requires, Some(box mut block))
                             if id.to_string() == "nonlinear_arith" =>
                         {
                             let mut stmts: Vec<Stmt> = Vec::new();
                             if let Some(Requires { token, exprs }) = requires {
-                                stmts.push(parse_quote_spanned!(token.span => ::builtin::requires([#exprs]);));
+                                stmts.push(Stmt::Semi(
+                                    Expr::Verbatim(
+                                        quote_spanned!(token.span => ::builtin::requires([#exprs])),
+                                    ),
+                                    Semi { spans: [token.span] },
+                                ));
                             }
-                            stmts.push(parse_quote_spanned!(span => ::builtin::ensures(#arg);));
+                            stmts.push(Stmt::Semi(
+                                Expr::Verbatim(quote_spanned!(span => ::builtin::ensures(#arg))),
+                                Semi { spans: [span] },
+                            ));
                             block.stmts.splice(0..0, stmts);
-                            *expr = parse_quote_spanned!(span => {::builtin::assert_nonlinear_by(#block);});
+                            let mut assert_nonlinear_by: Expr = Expr::Verbatim(
+                                quote_spanned!(span => ::builtin::assert_nonlinear_by(#block)),
+                            );
+                            assert_nonlinear_by.replace_attrs(attrs.clone());
+                            *expr = Expr::Verbatim(quote_spanned!(span => {#assert_nonlinear_by}));
+                            false
                         }
-                        (Some(_), Some((_, id)), _) => {
+                        (Some(_), Some((_, id)), _, _) => {
                             let span = id.span();
-                            *expr = parse_quote_spanned!(span => compile_error!("unsupported kind of assert-by"));
+                            *expr = Expr::Verbatim(
+                                quote_spanned!(span => compile_error!("unsupported kind of assert-by")),
+                            );
+                            true
                         }
                         _ => {
-                            *expr = parse_quote_spanned!(span => compile_error!("unsupported kind of assert-by"));
+                            *expr = Expr::Verbatim(
+                                quote_spanned!(span => compile_error!("unsupported kind of assert-by")),
+                            );
+                            true
                         }
+                    } {
+                        expr.replace_attrs(attrs);
                     }
-                    expr.replace_attrs(attrs);
                 }
                 Expr::AssertForall(assert) => {
                     let span = assert.assert_token.span;
@@ -761,17 +1130,29 @@ impl VisitMut for Visitor {
                     let mut block = assert.body;
                     let mut stmts: Vec<Stmt> = Vec::new();
                     if let Some((_, rhs)) = assert.implies {
-                        stmts.push(parse_quote_spanned!(span => ::builtin::requires(#arg);));
-                        stmts.push(parse_quote_spanned!(span => ::builtin::ensures(#rhs);));
+                        stmts.push(stmt_with_semi!(span => ::builtin::requires(#arg)));
+                        stmts.push(stmt_with_semi!(span => ::builtin::ensures(#rhs)));
                     } else {
-                        stmts.push(parse_quote_spanned!(span => ::builtin::ensures(#arg);));
+                        stmts.push(stmt_with_semi!(span => ::builtin::ensures(#arg)));
                     }
                     block.stmts.splice(0..0, stmts);
-                    *expr = parse_quote_spanned!(span => {::builtin::assert_forall_by(|#inputs| #block);});
+                    *expr = Expr::Verbatim(
+                        quote_spanned!(span => {::builtin::assert_forall_by(|#inputs| #block);}),
+                    );
                     expr.replace_attrs(attrs);
                 }
                 _ => panic!("expected to replace expression"),
             }
+        }
+
+        if let Some(span) = is_auto_proof_block {
+            // automatically put assert/assume in a proof block
+            self.inside_ghost -= 1;
+            let inner = take_expr(expr);
+            *expr = Expr::Verbatim(quote_spanned!(span => #[verifier(proof_block)] { #inner } ));
+        }
+        if is_inside_bitvector {
+            self.inside_bitvector = false;
         }
     }
 
@@ -780,12 +1161,22 @@ impl VisitMut for Visitor {
         let decreases = std::mem::take(&mut expr_while.decreases);
         let mut stmts: Vec<Stmt> = Vec::new();
         // TODO: wrap specs inside ghost blocks
-        if let Some(Invariant { token, exprs }) = invariants {
-            stmts.push(parse_quote_spanned!(token.span => ::builtin::invariant([#exprs]);));
+
+        self.inside_ghost += 1;
+        if let Some(Invariant { token, mut exprs }) = invariants {
+            for expr in exprs.exprs.iter_mut() {
+                self.visit_expr_mut(expr);
+            }
+            stmts.push(stmt_with_semi!(token.span => ::builtin::invariant([#exprs])));
         }
-        if let Some(Decreases { token, exprs }) = decreases {
-            stmts.push(parse_quote_spanned!(token.span => ::builtin::decreases((#exprs));));
+        if let Some(Decreases { token, mut exprs }) = decreases {
+            for expr in exprs.exprs.iter_mut() {
+                self.visit_expr_mut(expr);
+            }
+            stmts.push(stmt_with_semi!(token.span => ::builtin::decreases((#exprs))));
         }
+        self.inside_ghost -= 1;
+
         expr_while.body.stmts.splice(0..0, stmts);
         visit_expr_while_mut(self, expr_while);
     }
@@ -796,19 +1187,35 @@ impl VisitMut for Visitor {
         let ensures = std::mem::take(&mut expr_loop.ensures);
         let decreases = std::mem::take(&mut expr_loop.decreases);
         let mut stmts: Vec<Stmt> = Vec::new();
+
         // TODO: wrap specs inside ghost blocks
-        if let Some(Requires { token, exprs }) = requires {
-            stmts.push(parse_quote_spanned!(token.span => ::builtin::requires([#exprs]);));
+        self.inside_ghost += 1;
+        if let Some(Requires { token, mut exprs }) = requires {
+            for expr in exprs.exprs.iter_mut() {
+                self.visit_expr_mut(expr);
+            }
+            stmts.push(stmt_with_semi!(token.span => ::builtin::requires([#exprs])));
         }
-        if let Some(Invariant { token, exprs }) = invariants {
-            stmts.push(parse_quote_spanned!(token.span => ::builtin::invariant([#exprs]);));
+        if let Some(Invariant { token, mut exprs }) = invariants {
+            for expr in exprs.exprs.iter_mut() {
+                self.visit_expr_mut(expr);
+            }
+            stmts.push(stmt_with_semi!(token.span => ::builtin::invariant([#exprs])));
         }
-        if let Some(Ensures { token, exprs }) = ensures {
-            stmts.push(parse_quote_spanned!(token.span => ::builtin::ensures([#exprs]);));
+        if let Some(Ensures { token, mut exprs }) = ensures {
+            for expr in exprs.exprs.iter_mut() {
+                self.visit_expr_mut(expr);
+            }
+            stmts.push(stmt_with_semi!(token.span => ::builtin::ensures([#exprs])));
         }
-        if let Some(Decreases { token, exprs }) = decreases {
-            stmts.push(parse_quote_spanned!(token.span => ::builtin::decreases((#exprs));));
+        if let Some(Decreases { token, mut exprs }) = decreases {
+            for expr in exprs.exprs.iter_mut() {
+                self.visit_expr_mut(expr);
+            }
+            stmts.push(stmt_with_semi!(token.span => ::builtin::decreases((#exprs))));
         }
+        self.inside_ghost -= 1;
+
         expr_loop.body.stmts.splice(0..0, stmts);
         visit_expr_loop_mut(self, expr_loop);
     }
@@ -816,8 +1223,20 @@ impl VisitMut for Visitor {
     fn visit_local_mut(&mut self, local: &mut Local) {
         visit_local_mut(self, local);
         if let Some(tracked) = std::mem::take(&mut local.tracked) {
-            local.attrs.push(parse_quote_spanned!(tracked.span => #[proof]));
+            local.attrs.push(mk_empty_attr(tracked.span, "proof"));
         }
+    }
+
+    fn visit_block_mut(&mut self, block: &mut Block) {
+        let mut stmts: Vec<Stmt> = Vec::new();
+        let block_stmts = std::mem::replace(&mut block.stmts, vec![]);
+        for mut stmt in block_stmts {
+            let extra_stmts = self.visit_stmt_extend(&mut stmt);
+            stmts.push(stmt);
+            stmts.extend(extra_stmts);
+        }
+        block.stmts = stmts;
+        visit_block_mut(self, block);
     }
 
     fn visit_item_fn_mut(&mut self, fun: &mut ItemFn) {
@@ -863,12 +1282,25 @@ impl VisitMut for Visitor {
             block.stmts.splice(0..0, stmts);
         } else {
             let span = method.sig.fn_token.span;
-            stmts.push(Stmt::Expr(parse_quote_spanned!(span => ::builtin::no_method_body())));
+            stmts.push(Stmt::Expr(Expr::Verbatim(
+                quote_spanned!(span => ::builtin::no_method_body()),
+            )));
             let block = Block { brace_token: Brace(span), stmts };
             method.default = Some(block);
         }
         method.semi_token = None;
         visit_trait_item_method_mut(self, method);
+    }
+
+    fn visit_item_const_mut(&mut self, con: &mut ItemConst) {
+        self.visit_const(
+            con.const_token.span,
+            &mut con.attrs,
+            Some(&con.vis),
+            &mut con.publish,
+            &mut con.mode,
+        );
+        visit_item_const_mut(self, con);
     }
 
     fn visit_field_mut(&mut self, field: &mut Field) {
@@ -1025,16 +1457,21 @@ pub(crate) fn rewrite_items(
     use_spec_traits: bool,
 ) -> proc_macro::TokenStream {
     use quote::ToTokens;
+    let stream = rejoin_tokens(stream);
     let items: Items = parse_macro_input!(stream as Items);
     let mut new_stream = TokenStream::new();
     let mut visitor = Visitor {
         use_spec_traits,
         inside_ghost: 0,
         inside_arith: InsideArith::None,
+        assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_bitvector: false,
     };
     for mut item in items.items {
         visitor.visit_item_mut(&mut item);
+        visitor.inside_ghost = 0;
+        visitor.inside_arith = InsideArith::None;
         item.to_tokens(&mut new_stream);
     }
     proc_macro::TokenStream::from(new_stream)
@@ -1045,13 +1482,16 @@ pub(crate) fn rewrite_expr(
     stream: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     use quote::ToTokens;
+    let stream = rejoin_tokens(stream);
     let mut expr: Expr = parse_macro_input!(stream as Expr);
     let mut new_stream = TokenStream::new();
     let mut visitor = Visitor {
-        use_spec_traits: false,
+        use_spec_traits: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
         inside_arith: InsideArith::None,
+        assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_bitvector: false,
     };
     visitor.visit_expr_mut(&mut expr);
     expr.to_tokens(&mut new_stream);
@@ -1062,7 +1502,6 @@ pub(crate) fn rewrite_expr(
 // Try to put the original tokens back together here.
 fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
     use proc_macro::{Group, Punct, Spacing::*, Span, TokenTree};
-    use std::iter::FromIterator;
     let mut tokens: Vec<TokenTree> = stream.into_iter().collect();
     let pun = |t: &TokenTree| match t {
         TokenTree::Punct(p) => Some((p.as_char(), p.spacing(), p.span())),
@@ -1123,10 +1562,12 @@ pub(crate) fn proof_macro_exprs(
     let mut invoke: MacroInvoke = parse_macro_input!(stream as MacroInvoke);
     let mut new_stream = TokenStream::new();
     let mut visitor = Visitor {
-        use_spec_traits: false,
+        use_spec_traits: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
         inside_arith: InsideArith::None,
+        assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_bitvector: false,
     };
     for element in &mut invoke.elements.elements {
         match element {
@@ -1136,4 +1577,77 @@ pub(crate) fn proof_macro_exprs(
     }
     invoke.to_tokens(&mut new_stream);
     proc_macro::TokenStream::from(new_stream)
+}
+
+/// Constructs #[name tokens]
+fn mk_attr(span: Span, name: &str, tokens: TokenStream) -> Attribute {
+    Attribute {
+        pound_token: token::Pound { spans: [span] },
+        style: AttrStyle::Outer,
+        bracket_token: token::Bracket { span },
+        path: Path {
+            leading_colon: None,
+            segments: Punctuated::from_iter(vec![PathSegment {
+                ident: Ident::new(name, span),
+                arguments: PathArguments::None,
+            }]),
+        },
+        tokens: tokens,
+    }
+}
+
+/// Constructs #[name]
+fn mk_empty_attr(span: Span, name: &str) -> Attribute {
+    mk_attr(span, name, TokenStream::new())
+}
+
+/// Constructs #[verifier(arg)]
+fn mk_verifier_attr(span: Span, arg: &str) -> Attribute {
+    let ident = Ident::new(arg, span);
+    mk_attr(span, "verifier", quote_spanned! {span => (#ident)})
+}
+
+/// Get `arg` from `#[verifier(arg)]`, and if `attr` is not a verifier attribute, return `None`
+fn get_arg_from_verifier_attr(attr: &Attribute) -> Option<String> {
+    let parsed = attr.parse_meta();
+    if parsed.is_err() {
+        return None;
+    }
+    let parsed = parsed.unwrap();
+    let ids = get_idents_from_meta(&parsed);
+    if ids.len() == 2 && ids.contains(&"verifier".to_string()) {
+        let mut id: Vec<String> =
+            ids.into_iter().filter(|x| x != &"verifier".to_string()).collect();
+        if id.len() == 1 { id.pop() } else { None }
+    } else {
+        None
+    }
+}
+
+/// Get idents from all "Path" in attributes(e.g. collect "verifier"` and `arg` from  `#[verifier(arg)]`)
+fn get_idents_from_meta(parsed: &Meta) -> Vec<String> {
+    match parsed {
+        syn_verus::Meta::List(meta_list) => {
+            let mut ids = get_ident_from_path(&meta_list.path);
+            for meta in &meta_list.nested {
+                match meta {
+                    syn_verus::NestedMeta::Meta(meta) => {
+                        ids.append(&mut get_idents_from_meta(&meta));
+                    }
+                    syn_verus::NestedMeta::Lit(_) => (),
+                }
+            }
+            ids
+        }
+        syn_verus::Meta::Path(path) => get_ident_from_path(&path),
+        syn_verus::Meta::NameValue(meta_name_value) => get_ident_from_path(&meta_name_value.path),
+    }
+}
+
+fn get_ident_from_path(path: &Path) -> Vec<String> {
+    let mut ids = vec![];
+    for seg in &path.segments {
+        ids.push(seg.ident.to_string().clone());
+    }
+    ids
 }

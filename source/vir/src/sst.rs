@@ -95,20 +95,32 @@ pub type Stms = Arc<Vec<Stm>>;
 #[derive(Debug)]
 pub enum StmX {
     // call to exec/proof function (or spec function for checking_recommends)
-    Call(Fun, Mode, Typs, Exps, Option<Dest>),
+    Call {
+        fun: Fun,
+        mode: Mode,
+        typ_args: Typs,
+        args: Exps,
+        // if split is Some, this is a dummy call to be replaced with assertions for error splitting
+        split: Option<Error>,
+        dest: Option<Dest>,
+    },
     // note: failed assertion reports Stm's span, plus an optional additional span
     Assert(Option<Error>, Exp),
-    AssertBV(Exp),
+    AssertBitVector {
+        requires: Exps,
+        ensures: Exps,
+    },
     Assume(Exp),
     Assign {
         lhs: Dest,
         rhs: Exp,
     },
     Fuel(Fun, u32),
+    RevealString(Arc<String>),
     DeadEnd(Stm),
     If(Exp, Stm, Option<Stm>),
     While {
-        cond_stms: Stms,
+        cond_stm: Stm,
         cond_exp: Exp,
         body: Stm,
         invs: Exps,

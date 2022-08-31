@@ -13,6 +13,7 @@ sise = "0.6.0"
 num-bigint = "0.4.3"
 num-traits= "0.2.15"
 im = "15.1.0"
+sha2 = "0.10.2"
 
 [features]
 singular = ["air/singular"]

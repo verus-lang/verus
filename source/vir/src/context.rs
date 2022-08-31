@@ -12,6 +12,7 @@ use crate::sst_to_air::fun_to_air_ident;
 use crate::util::vec_map;
 use air::ast::{Command, CommandX, Commands, DeclX, MultiOp, Span};
 use air::ast_util::str_typ;
+use num_bigint::BigUint;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -48,9 +49,11 @@ pub struct GlobalCtx {
 pub struct FunctionCtx {
     // false normally, true if we're just checking recommends
     pub checking_recommends: bool,
+    // false normally, true if we're just checking recommends for a non-spec function
+    pub checking_recommends_for_non_spec: bool,
     // used to print diagnostics for triggers
     pub module_for_chosen_triggers: Option<Path>,
-    // used to create quantifier identifiers
+    // used to create quantifier identifiers and for checking_recommends
     pub current_fun: Fun,
 }
 
@@ -68,15 +71,30 @@ pub struct Ctx {
     pub(crate) funcs_with_ensure_predicate: HashSet<Fun>,
     pub(crate) datatype_map: HashMap<Path, Datatype>,
     pub(crate) trait_map: HashMap<Path, Trait>,
-    pub(crate) debug: bool,
     pub fun: Option<FunctionCtx>,
     pub global: GlobalCtx,
+    // In the very unlikely case where we get sha512 collisions
+    // we use this to panic rather than introduce unsoundness.
+    // Of course it can be argued that accounting for sha512 collisions
+    // is overkill, perhaps this should be revisited.
+    pub(crate) string_hashes: RefCell<HashMap<BigUint, Arc<String>>>,
+    // proof debug purposes
+    pub debug: bool,
+    pub expand_flag: bool,
+    pub debug_expand_targets: Vec<air::errors::Error>,
 }
 
 impl Ctx {
     pub fn checking_recommends(&self) -> bool {
         match self.fun {
             Some(FunctionCtx { checking_recommends: true, .. }) => true,
+            _ => false,
+        }
+    }
+
+    pub fn checking_recommends_for_non_spec(&self) -> bool {
+        match self.fun {
+            Some(FunctionCtx { checking_recommends_for_non_spec: true, .. }) => true,
             _ => false,
         }
     }
@@ -253,6 +271,7 @@ impl Ctx {
             trait_map.insert(tr.x.name.clone(), tr.clone());
         }
         let quantifier_count = Cell::new(0);
+        let string_hashes = RefCell::new(HashMap::new());
         Ok(Ctx {
             module,
             datatype_is_transparent,
@@ -265,9 +284,12 @@ impl Ctx {
             funcs_with_ensure_predicate,
             datatype_map,
             trait_map,
-            debug,
             fun: None,
             global,
+            string_hashes,
+            debug,
+            expand_flag: false,
+            debug_expand_targets: vec![],
         })
     }
 
@@ -275,8 +297,8 @@ impl Ctx {
         self.global
     }
 
-    pub fn prelude() -> Commands {
-        let nodes = crate::prelude::prelude_nodes();
+    pub fn prelude(prelude_config: crate::prelude::PreludeConfig) -> Commands {
+        let nodes = crate::prelude::prelude_nodes(prelude_config);
         air::parser::Parser::new()
             .nodes_to_commands(&nodes)
             .expect("internal error: malformed prelude")

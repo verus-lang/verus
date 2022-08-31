@@ -45,7 +45,9 @@ fn check_well_founded_typ(
     typ: &Typ,
 ) -> Result<bool, VirErr> {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::TypParam(_) | TypX::Lambda(..) => Ok(true),
+        TypX::Bool | TypX::Int(_) | TypX::TypParam(_) | TypX::Lambda(..) | TypX::StrSlice => {
+            Ok(true)
+        }
         TypX::Boxed(_) | TypX::TypeId | TypX::Air(_) => {
             panic!("internal error: unexpected type in check_well_founded_typ")
         }
@@ -90,6 +92,7 @@ fn check_positive_uses(
     match &**typ {
         TypX::Bool => Ok(()),
         TypX::Int(..) => Ok(()),
+        TypX::StrSlice => Ok(()),
         TypX::Lambda(ts, tr) => {
             /* REVIEW: we could track both positive and negative polarity,
                but strict positivity is more conservative

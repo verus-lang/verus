@@ -1,0 +1,27 @@
+[package]
+name = "syn-internal-codegen"
+version = "0.0.0"
+authors = ["David Tolnay <dtolnay@gmail.com>", "Nika Layzell <nika@thelayzells.com>"]
+edition = "2018"
+
+publish = false # this is an internal crate which should never be published
+
+[dependencies]
+anyhow = "1.0"
+color-backtrace = "0.4"
+indexmap = { version = "1.0", features = ["serde-1"] }
+inflections = "1.1"
+prettyplease = "0.1"
+proc-macro2 = { version = "1.0.20", features = ["span-locations"] }
+quote = "1.0"
+semver = { version = "1.0", features = ["serde"] }
+serde = { version = "1.0.88", features = ["derive"] }
+serde_json = "1.0.38"
+syn-codegen = { path = "../json" }
+syn = { version = "1.0", features = ["derive", "parsing", "printing", "full"], default-features = false }
+thiserror = "1.0"
+toml = "0.5"
+
+[workspace]
+[patch.crates-io]
+syn_verus = { path = ".." }

@@ -43,8 +43,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test3 verus_code! {
         proof fn test3(b: u32) {
-            assert(mul(2, b) - b == b) by(bit_vector);
-            assert(mul(2, b) - b == b);
+            assert(sub(mul(2, b), b) == b) by(bit_vector);
+            assert(sub(mul(2, b), b) == b);
 
             assert(b <= b) by(bit_vector);
             assert(b >= b) by(bit_vector);
@@ -98,8 +98,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test8 verus_code! {
         proof fn test8(b: u32) {
-            assert_bit_vector(forall|a: u32, b: u32| #[trigger] (a & b) == b & a);
-            assert_bit_vector(b & 0xff < 0x100);
+            assert(forall|a: u32, b: u32| #[trigger] (a & b) == b & a) by(bit_vector);
+            assert(b & 0xff < 0x100) by(bit_vector);
             assert(0xff & b < 0x100);
         }
     } => Ok(())
@@ -169,6 +169,15 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test6_fails2 verus_code! {
+        proof fn test6(b: u32) {
+            assert(b << 2 == b * 4) by(bit_vector);
+            assert(b << 2 == b * 4);  // FAILS
+        }
+    } => Err(_)
+}
+
+test_verify_one_file! {
     #[test] test7_fails verus_code! {
         proof fn test7(b: u32) {
             assert(!0u32 == 0xffffffffu32) by(bit_vector);
@@ -178,11 +187,20 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-// test_verify_one_file! {
-//     #[test] test6_fails code! {
-//         #[proof]
-//         fn test6(b: i32) {
-//             assert_bit_vector(b < b); // FAILS, signed int
-//         }
-//     } => Err(err) => assert_one_fails(err)
-// }
+test_verify_one_file! {
+    #[test] test8_fails verus_code! {
+        proof fn test8(b: i32) {
+            assert(b <= b) by(bit_vector); // VIR Error: signed int
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    //https://github.com/secure-foundations/verus/issues/191 (@matthias-brun)
+    #[test] test10_fails verus_code! {
+        #[verifier(bit_vector)]
+        proof fn f2() {
+            ensures(forall |i: u64| (1 << i) > 0); // FAILS: should not panic
+        }
+    } => Err(err) => assert_one_fails(err)
+}

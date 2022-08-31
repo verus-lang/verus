@@ -169,6 +169,8 @@ pub(crate) enum Attr {
     SpinoffProver,
     // Memoize function call results during interpretation
     Memoize,
+    // Suppress the recommends check for narrowing casts that may truncate
+    Truncate,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -337,6 +339,8 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "memoize" => {
                     v.push(Attr::Memoize)
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "truncate" => {
+                    v.push(Attr::Truncate)
                 }
                 _ => return err_span_str(*span, "unrecognized verifier attribute"),
             },
@@ -447,6 +451,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) nonlinear: bool,
     pub(crate) spinoff_prover: bool,
     pub(crate) memoize: bool,
+    pub(crate) truncate: bool,
 }
 
 pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, VirErr> {
@@ -476,6 +481,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         nonlinear: false,
         spinoff_prover: false,
         memoize: false,
+        truncate: false,
     };
     for attr in parse_attrs(attrs)? {
         match attr {
@@ -506,6 +512,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::NonLinear => vs.nonlinear = true,
             Attr::SpinoffProver => vs.spinoff_prover = true,
             Attr::Memoize => vs.memoize = true,
+            Attr::Truncate => vs.truncate = true,
             _ => {}
         }
     }

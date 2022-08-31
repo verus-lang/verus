@@ -5,6 +5,7 @@ use crate::simplification::UPDATE_TMP_PREFIX;
 use crate::util::combine_errors_or_ok;
 use syn_verus::parse;
 use syn_verus::spanned::Spanned;
+use syn_verus::visit;
 use syn_verus::visit::Visit;
 use syn_verus::{Error, Expr, ExprMacro, Ident, Macro, Pat, PatIdent, Path, Type};
 
@@ -108,8 +109,10 @@ fn validate_idents_transition_stmt(ts: &TransitionStmt, kind: TransitionKind) ->
 fn validate_idents_op(op: &SpecialOp, kind: TransitionKind) -> parse::Result<()> {
     match &op.elt {
         MonoidElt::OptionSome(None) => {}
+        MonoidElt::True => {}
         MonoidElt::OptionSome(Some(e))
         | MonoidElt::SingletonMultiset(e)
+        | MonoidElt::SingletonSet(e)
         | MonoidElt::General(e) => {
             validate_idents_expr(e, kind)?;
         }
@@ -175,6 +178,26 @@ impl<'ast> Visit<'ast> for IdentVisitor {
     fn visit_expr_macro(&mut self, node: &'ast ExprMacro) {
         self.errors
             .push(Error::new(node.span(), format!("macro not allowed in transition expression")));
+    }
+
+    fn visit_expr(&mut self, node: &'ast Expr) {
+        match node {
+            Expr::Verbatim(_) => {
+                // In some odd cases, syn can return parse results that use
+                // Expr::Verbatim. For example, a lone underscore returns
+                // an Expr::Verbatim even though I don't think that's a valid expression.
+                // Anyway, in the event of something unexpected like this,
+                // just error on it immediately. Later, we will assume that any
+                // Expr::Verbatim node was produced by our own code.
+                self.errors.push(Error::new(
+                    node.span(),
+                    format!("Verus does not support this expression"),
+                ));
+            }
+            _ => {
+                visit::visit_expr(self, node);
+            }
+        }
     }
 }
 

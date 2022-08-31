@@ -1,9 +1,87 @@
 use crate::ast::*;
 use air::ast::Span;
 use air::printer::macro_push_node;
-use air::printer::{str_to_node, NodeWriter};
+use air::printer::{clean_up_lines, str_to_node};
 use air::{node, nodes, nodes_vec};
 use sise::Node;
+
+const VIR_BREAK_ON: &[&str] = &["block", "call", "forall"];
+const VIR_BREAK_AFTER: &[&str] = &[
+    ":variants",
+    ":typ_params",
+    ":typ_bounds",
+    ":params",
+    ":ret",
+    ":require",
+    ":ensure",
+    ":decrease",
+    ":body",
+    "block",
+    "forall",
+];
+
+pub struct NodeWriter<'a> {
+    pub break_on: std::collections::HashSet<&'a str>,
+    pub break_after: std::collections::HashSet<&'a str>,
+}
+
+impl<'a> NodeWriter<'a> {
+    pub(crate) fn new_vir() -> Self {
+        use std::iter::FromIterator;
+        NodeWriter {
+            break_on: std::collections::HashSet::from_iter(VIR_BREAK_ON.iter().map(|x| *x)),
+            break_after: std::collections::HashSet::from_iter(VIR_BREAK_AFTER.iter().map(|x| *x)),
+        }
+    }
+
+    pub fn write_node(
+        &mut self,
+        writer: &mut sise::SpacedStringWriter,
+        node: &Node,
+        break_len: usize,
+        brk: bool,
+        brk_next: bool,
+    ) {
+        use sise::Writer;
+        let opts =
+            sise::SpacedStringWriterNodeOptions { break_line_len: if brk { 0 } else { break_len } };
+        match node {
+            Node::Atom(a) => {
+                writer.write_atom(a, opts).unwrap();
+            }
+            Node::List(l) => {
+                writer.begin_list(opts).unwrap();
+                let mut brk = brk_next;
+                let mut brk_next = false;
+                for n in l {
+                    self.write_node(writer, n, break_len + 1, brk, brk_next);
+                    brk_next = false;
+                    if let Node::Atom(a) = n {
+                        if self.break_on.contains(a.as_str()) {
+                            brk = true;
+                        }
+                        if self.break_after.contains(a.as_str()) {
+                            brk_next = true;
+                        }
+                    }
+                }
+                writer.end_list(()).unwrap();
+            }
+        }
+    }
+
+    pub fn node_to_string(&mut self, node: &Node) -> String {
+        use sise::Writer;
+        let indentation = " ";
+        let style = sise::SpacedStringWriterStyle { line_break: &("\n".to_string()), indentation };
+        let mut result = String::new();
+        let mut string_writer = sise::SpacedStringWriter::new(style, &mut result);
+        self.write_node(&mut string_writer, &node, 120, false, false);
+        string_writer.finish(()).unwrap();
+        // Clean up result:
+        clean_up_lines(result, indentation)
+    }
+}
 
 fn str_node(s: &str) -> Node {
     Node::Atom(format!("\"{}\"", s))
@@ -73,6 +151,7 @@ fn typ_to_node(typ: &Typ) -> Node {
         TypX::TypParam(ident) => nodes!(TypParam {str_to_node(ident)}),
         TypX::TypeId => nodes!(TypeId),
         TypX::Air(_air_typ) => nodes!({ str_to_node("AirTyp") }),
+        TypX::StrSlice => crate::def::strslice(),
     }
 }
 
@@ -195,6 +274,13 @@ fn expr_to_node(expr: &Expr) -> Node {
                 match cnst {
                     Constant::Bool(val) => str_to_node(&format!("{}", val)),
                     Constant::Int(val) => str_to_node(&format!("{}", val)),
+                    Constant::StrSlice(val) => str_to_node(&format!(
+                        "\"{}\"",
+                        match val.is_ascii() {
+                            true => val,
+                            false => "non_ascii_string_with_unknown_value",
+                        }
+                    )),
                 }
             }
         ),
@@ -220,6 +306,8 @@ fn expr_to_node(expr: &Expr) -> Node {
         }
         ExprX::Unary(unary_op, expr) => Node::List({
             let mut nodes = match unary_op {
+                UnaryOp::StrLen => nodes_vec!(strop len {expr_to_node(expr)}),
+                UnaryOp::StrIsAscii => nodes_vec!(strop is_ascii {expr_to_node(expr)}),
                 UnaryOp::Not => nodes_vec!(not),
                 UnaryOp::BitNot => nodes_vec!(bitnot),
                 UnaryOp::Trigger(group) => {
@@ -230,9 +318,20 @@ fn expr_to_node(expr: &Expr) -> Node {
                     }
                     nodes
                 }
-                UnaryOp::Clip(range) => nodes_vec!(clip {int_range_to_node(range)}),
-                UnaryOp::CoerceMode { op_mode, from_mode, to_mode } => {
-                    nodes_vec!(coerce_mode {str_to_node(&format!("{op_mode}"))} {str_to_node(&format!("{from_mode}"))} {str_to_node(&format!("{to_mode}"))})
+                UnaryOp::Clip { range, truncate } => {
+                    let mut nodes = nodes_vec!(clip {int_range_to_node(range)});
+                    if *truncate {
+                        nodes.push(str_to_node("+truncate"));
+                    }
+                    nodes
+                }
+                UnaryOp::CoerceMode { op_mode, from_mode, to_mode, kind } => {
+                    nodes_vec!(coerce_mode
+                        {str_to_node(&format!("{op_mode}"))}
+                        {str_to_node(&format!("{from_mode}"))}
+                        {str_to_node(&format!("{to_mode}"))}
+                        {str_to_node(&format!("{:?}", kind))}
+                    )
                 }
                 UnaryOp::MustBeFinalized => nodes_vec!(MustBeFinalized),
             };
@@ -270,6 +369,9 @@ fn expr_to_node(expr: &Expr) -> Node {
             BinaryOp::Bitwise(op) => {
                 nodes!({str_to_node(&format!("{:?}", op))} {expr_to_node(e1)} {expr_to_node(e2)})
             }
+            BinaryOp::StrGetChar => {
+                nodes!(strop get_char {expr_to_node(e1)} {expr_to_node(e2)})
+            }
             _ => {
                 nodes!({str_to_node(&format!("{:?}", binary_op).to_lowercase())} {expr_to_node(e1)} {expr_to_node(e2)})
             }
@@ -292,13 +394,10 @@ fn expr_to_node(expr: &Expr) -> Node {
             let ts = Node::List(triggers.iter().map(exprs_to_node).collect());
             nodes!(with_triggers {ts} {expr_to_node(body)})
         }
-        ExprX::Assign { init_not_mut, lhs_type_mode, lhs: e0, rhs: e1 } => {
+        ExprX::Assign { init_not_mut, lhs: e0, rhs: e1 } => {
             let mut nodes = nodes_vec!(assign);
             if *init_not_mut {
                 nodes.push(str_to_node(":init_not_mut"));
-            }
-            if let Some(mode) = lhs_type_mode {
-                nodes.push(str_to_node(&format!("{:?}", mode)));
             }
             nodes.push(expr_to_node(e0));
             nodes.push(expr_to_node(e1));
@@ -306,6 +405,9 @@ fn expr_to_node(expr: &Expr) -> Node {
         }
         ExprX::Fuel(fun, fuel) => {
             nodes!(fuel {fun_to_node(fun)} {str_to_node(&format!("{}", fuel))})
+        }
+        ExprX::RevealString(_) => {
+            nodes!(str_reveal)
         }
         ExprX::Header(header_expr) => nodes!(header {header_expr_to_node(header_expr)}),
         ExprX::Admit => node!(admit),
@@ -315,7 +417,6 @@ fn expr_to_node(expr: &Expr) -> Node {
         ExprX::AssertQuery { requires, ensures, proof, mode } => {
             nodes!(assertQuery {str_to_node(":requires")} {exprs_to_node(requires)} {str_to_node(":ensures")} {exprs_to_node(ensures)} {str_to_node(":proof")} {expr_to_node(proof)} {str_to_node(":mode")} {str_to_node(&format!("{:?}", mode))})
         }
-        ExprX::AssertBV(expr) => nodes!(assertbv {expr_to_node(expr)}),
         ExprX::AssertCompute(expr, mode) => {
             nodes!(assert_by_compute {expr_to_node(expr)} {str_to_node(&format!("{:?}", mode))} )
         }
@@ -378,6 +479,7 @@ fn expr_to_node(expr: &Expr) -> Node {
             Node::List(nodes)
         }
     };
+    let node = nodes!(expr {node} {typ_to_node(&expr.typ)});
     spanned_node(node, &expr.span)
 }
 
@@ -396,7 +498,7 @@ fn function_to_node(function: &FunctionX) -> Node {
         decrease,
         decrease_when,
         decrease_by,
-        broadcast_forall: _,
+        broadcast_forall,
         mask_spec,
         is_const,
         publish,
@@ -553,6 +655,12 @@ fn function_to_node(function: &FunctionX) -> Node {
         str_to_node(":decrease"),
         exprs_to_node(decrease),
     ];
+    if let Some((broadcast_params, req_ens)) = &broadcast_forall {
+        let broadcast_params_node =
+            Node::List(broadcast_params.iter().map(param_to_node).collect());
+        nodes.push(str_to_node(":broadcast_forall"));
+        nodes.push(nodes!({broadcast_params_node} {expr_to_node(req_ens)}));
+    }
     if let Some(decrease_when) = &decrease_when {
         nodes.push(str_to_node(":decrease_when"));
         nodes.push(expr_to_node(decrease_when));
@@ -578,16 +686,14 @@ fn function_to_node(function: &FunctionX) -> Node {
 }
 
 pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate) {
+    let mut nw = NodeWriter::new_vir();
+
     let KrateX { datatypes, functions, traits, module_ids } = &**vir_crate;
-    let mut nw = NodeWriter::new();
     for datatype in datatypes.iter() {
         writeln!(
             &mut write,
             "{}\n",
-            nw.node_to_string_indent(
-                &" ".to_string(),
-                &spanned_node(datatype_to_node(&datatype.x), &datatype.span)
-            )
+            nw.node_to_string(&spanned_node(datatype_to_node(&datatype.x), &datatype.span))
         )
         .expect("cannot write to vir write");
     }
@@ -595,21 +701,17 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate) {
         writeln!(
             &mut write,
             "{}\n",
-            nw.node_to_string_indent(
-                &" ".to_string(),
-                &spanned_node(function_to_node(&function.x), &function.span)
-            )
+            nw.node_to_string(&spanned_node(function_to_node(&function.x), &function.span))
         )
         .expect("cannot write to vir write");
     }
     for t in traits.iter() {
         let t = nodes!(trait {path_to_node(&t.x.name)});
-        writeln!(&mut write, "{}\n", nw.node_to_string_indent(&" ".to_string(), &t))
-            .expect("cannot write to vir write");
+        writeln!(&mut write, "{}\n", nw.node_to_string(&t)).expect("cannot write to vir write");
     }
     for module_id in module_ids.iter() {
         let module_id_node = nodes!(module_id {path_to_node(module_id)});
-        writeln!(&mut write, "{}\n", nw.node_to_string_indent(&" ".to_string(), &module_id_node))
+        writeln!(&mut write, "{}\n", nw.node_to_string(&module_id_node))
             .expect("cannot write to vir write");
     }
 }

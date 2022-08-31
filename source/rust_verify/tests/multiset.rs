@@ -4,58 +4,57 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] multiset_basics code! {
+    #[test] multiset_basics verus_code! {
         use crate::pervasive::multiset::*;
 
-        #[proof]
-        pub fn commutative<V>(a: Multiset<V>, b: Multiset<V>) {
-            ensures(equal(a.add(b), b.add(a)));
-
+        pub proof fn commutative<V>(a: Multiset<V>, b: Multiset<V>)
+            ensures
+                a.add(b) === b.add(a),
+        {
             assert(a.add(b).ext_equal(b.add(a)));
         }
 
-        #[proof]
-        pub fn associative<V>(a: Multiset<V>, b: Multiset<V>, c: Multiset<V>) {
-            ensures(equal(
-                a.add(b.add(c)),
-                a.add(b).add(c)));
-
+        pub proof fn associative<V>(a: Multiset<V>, b: Multiset<V>, c: Multiset<V>)
+            ensures
+                a.add(b.add(c)) ===
+                a.add(b).add(c),
+        {
             assert(a.add(b.add(c)).ext_equal(
                 a.add(b).add(c)));
         }
 
-        #[proof]
-        pub fn insert2<V>(a: V, b: V) {
-            ensures(equal(
-                Multiset::empty().insert(a).insert(b),
-                Multiset::empty().insert(b).insert(a)));
-
+        pub proof fn insert2<V>(a: V, b: V)
+            ensures
+                Multiset::empty().insert(a).insert(b) ===
+                Multiset::empty().insert(b).insert(a),
+        {
             assert(
                 Multiset::empty().insert(a).insert(b).ext_equal(
                 Multiset::empty().insert(b).insert(a)));
         }
 
-        #[proof]
-        pub fn insert2_count<V>(a: V, b: V, c: V) {
-            requires(!equal(a, b) && !equal(b, c) && !equal(c, a));
-
+        pub proof fn insert2_count<V>(a: V, b: V, c: V)
+            requires
+                a !== b && b !== c && c !== a,
+        {
             assert(Multiset::empty().insert(a).insert(b).count(a) == 1);
             assert(Multiset::empty().insert(a).insert(b).count(b) == 1);
             assert(Multiset::empty().insert(a).insert(b).count(c) == 0);
         }
 
-        #[proof]
-        pub fn add_sub_cancel<V>(a: Multiset<V>, b: Multiset<V>) {
-            ensures(equal(a.add(b).sub(b), a));
-
+        pub proof fn add_sub_cancel<V>(a: Multiset<V>, b: Multiset<V>)
+            ensures
+                a.add(b).sub(b) === a,
+        {
             assert(a.add(b).sub(b).ext_equal(a));
         }
 
-        #[proof]
-        pub fn sub_add_cancel<V>(a: Multiset<V>, b: Multiset<V>) {
-            requires(b.le(a));
-            ensures(equal(a.sub(b).add(b), a));
-
+        pub proof fn sub_add_cancel<V>(a: Multiset<V>, b: Multiset<V>)
+            requires
+                b.le(a),
+            ensures
+                a.sub(b).add(b) === a,
+        {
             assert(a.sub(b).add(b).ext_equal(a));
         }
 
@@ -63,11 +62,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] multiset_fail code! {
+    #[test] multiset_fail verus_code! {
         use crate::pervasive::multiset::*;
 
-        #[proof]
-        pub fn insert2_fail<V>(a: V, b: V, c: V) {
+        pub proof fn insert2_fail<V>(a: V, b: V, c: V) {
             // should fail because we do not have precondition `a != b`
             assert(Multiset::empty().insert(a).insert(b).count(a) == 1); // FAILS
         }

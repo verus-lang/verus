@@ -29,10 +29,11 @@ use std::sync::{Arc, RwLock};
 
 pub struct SstInline {
     pub(crate) typ_bounds: TypBounds,
+    pub do_inline: bool,
 }
 
 pub struct SstInfo {
-    pub(crate) inline: Option<SstInline>,
+    pub(crate) inline: SstInline,
     pub(crate) params: Params,
     pub(crate) memoize: bool,
     pub(crate) body: Exp,
@@ -129,6 +130,7 @@ fn func_body_to_air(
     check_commands: &mut Vec<Command>,
     function: &Function,
     body: &crate::ast::Expr,
+    not_verifying_owning_module: bool,
 ) -> Result<SstMap, VirErr> {
     let id_fuel = prefix_fuel_id(&fun_to_air_ident(&function.x.name));
 
@@ -141,39 +143,39 @@ fn func_body_to_air(
     state.fun_ssts = fun_ssts;
     let body_exp = crate::ast_to_sst::expr_to_pure_exp(&ctx, &mut state, &body)?;
     let body_exp = state.finalize_exp(ctx, &state.fun_ssts, &body_exp)?;
-    let inline = if function.x.attrs.inline {
-        Some(SstInline { typ_bounds: function.x.typ_bounds.clone() })
-    } else {
-        None
-    };
+    let inline = SstInline { typ_bounds: function.x.typ_bounds.clone(), do_inline: function.x.attrs.inline };
     let info = SstInfo {
         inline,
         params: function.x.params.clone(),
         memoize: function.x.attrs.memoize,
         body: body_exp.clone(),
     };
+    assert!(!state.fun_ssts.read().unwrap().contains_key(&function.x.name));
     state.fun_ssts.write().unwrap().insert(function.x.name.clone(), info);
 
     let mut decrease_by_stms: Vec<Stm> = Vec::new();
     let decrease_by_reqs = if let Some(req) = &function.x.decrease_when {
         let exp = crate::ast_to_sst::expr_to_exp(ctx, &state.fun_ssts, &pars, req)?;
-        let expr = exp_to_expr(ctx, &exp, &ExprCtxt::new_mode(ExprMode::Spec));
+        let expr = exp_to_expr(ctx, &exp, &ExprCtxt::new_mode(ExprMode::Spec))?;
         decrease_by_stms.push(Spanned::new(req.span.clone(), StmX::Assume(exp)));
         vec![expr]
     } else {
         vec![]
     };
     if let Some(fun) = &function.x.decrease_by {
-        let decrease_by_fun = &ctx.func_map[fun];
         state.view_as_spec = false;
-        let (body_stms, _exp) = crate::ast_to_sst::expr_to_stm_or_error(
-            &ctx,
-            &mut state,
-            decrease_by_fun.x.body.as_ref().expect("decreases_by has body"),
-        )?;
-        let body_stms: Result<Vec<Stm>, VirErr> =
-            body_stms.iter().map(|s| state.finalize_stm(ctx, &state.fun_ssts, s)).collect();
-        decrease_by_stms.extend(body_stms?);
+        if let Some(decrease_by_fun) = ctx.func_map.get(fun) {
+            let (body_stms, _exp) = crate::ast_to_sst::expr_to_stm_or_error(
+                &ctx,
+                &mut state,
+                decrease_by_fun.x.body.as_ref().expect("decreases_by has body"),
+            )?;
+            let body_stms: Result<Vec<Stm>, VirErr> =
+                body_stms.iter().map(|s| state.finalize_stm(ctx, &state.fun_ssts, s)).collect();
+            decrease_by_stms.extend(body_stms?);
+        } else {
+            assert!(not_verifying_owning_module);
+        }
     }
     state.finalize();
 
@@ -221,7 +223,7 @@ fn func_body_to_air(
     //   (axiom (forall (... fuel) (= (rec%f ... fuel) (rec%f ... zero) )))
     //   (axiom (forall (... fuel) (= (rec%f ... (succ fuel)) body[rec%f ... fuel] )))
     //   (axiom (=> (fuel_bool fuel%f) (forall (...) (= (f ...) (rec%f ... (succ fuel_nat%f))))))
-    let body_expr = exp_to_expr(&ctx, &body_exp, &ExprCtxt::new());
+    let body_expr = exp_to_expr(&ctx, &body_exp, &ExprCtxt::new())?;
     let def_body = if !is_recursive {
         body_expr
     } else {
@@ -300,7 +302,7 @@ pub fn req_ens_to_air(
         }
         for e in specs.iter() {
             let exp = crate::ast_to_sst::expr_to_exp(ctx, fun_ssts, params, e)?;
-            let expr = exp_to_expr(ctx, &exp, &ExprCtxt::new_mode(ExprMode::Spec));
+            let expr = exp_to_expr(ctx, &exp, &ExprCtxt::new_mode(ExprMode::Spec))?;
             let loc_expr = match msg {
                 None => expr,
                 Some(msg) => {
@@ -455,6 +457,7 @@ pub fn func_axioms_to_air(
     fun_ssts: SstMap,
     function: &Function,
     public_body: bool,
+    not_verifying_owning_module: bool,
 ) -> Result<(Commands, Commands, SstMap), VirErr> {
     let mut ens_typs: Vec<_> = function
         .x
@@ -480,6 +483,7 @@ pub fn func_axioms_to_air(
                         &mut check_commands,
                         function,
                         body,
+                        not_verifying_owning_module,
                     )?;
                 }
             }
@@ -604,7 +608,7 @@ pub fn func_axioms_to_air(
                 let bndx = BndX::Quant(QUANT_FORALL, Arc::new(binders), triggers);
                 let forallx = ExpX::Bind(Spanned::new(span.clone(), bndx), exp);
                 let forall = SpannedTyped::new(&span, &Arc::new(TypX::Bool), forallx);
-                let expr = exp_to_expr(ctx, &forall, &ExprCtxt::new_mode(ExprMode::Spec));
+                let expr = exp_to_expr(ctx, &forall, &ExprCtxt::new_mode(ExprMode::Spec))?;
                 let axiom = Arc::new(DeclX::Axiom(expr));
                 decl_commands.push(Arc::new(CommandX::Global(axiom)));
             }
@@ -725,11 +729,28 @@ pub fn func_def_to_air(
                 }
                 stm = crate::ast_to_sst::stms_to_one_stm(&body.span, req_stms);
             }
+
             let stm = state.finalize_stm(&ctx, &state.fun_ssts, &stm)?;
             state.ret_post = None;
 
+            let stm = if !ctx.checking_recommends() && ctx.expand_flag {
+                // split ensures expressions for error localization
+                crate::split_expression::split_body(
+                    ctx,
+                    &state.fun_ssts,
+                    &stm,
+                    &req_ens_function.x.ensure,
+                    &ens_pars,
+                )?
+            } else {
+                stm
+            };
+
             // Check termination
-            let (decls, stm) = if ctx.checking_recommends() {
+            //
+            let no_termination_check =
+                function.x.mode == Mode::Exec && function.x.decrease.len() == 0;
+            let (decls, stm) = if no_termination_check || ctx.checking_recommends() {
                 (vec![], stm)
             } else {
                 crate::recursion::check_termination_stm(ctx, &state.fun_ssts, function, &stm)?
@@ -759,7 +780,7 @@ pub fn func_def_to_air(
                 skip_ensures,
                 function.x.attrs.nonlinear,
                 function.x.attrs.spinoff_prover,
-            );
+            )?;
 
             state.finalize();
             Ok((Arc::new(commands), snap_map, state.fun_ssts))

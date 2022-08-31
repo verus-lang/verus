@@ -793,7 +793,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     // Explicitly enumerate UnaryOps, in case more are added
                     match op {
                         Not => bool_new(!b),
-                        BitNot | Clip(_) | Trigger(_) | CoerceMode { .. } => ok,
+                        BitNot | Clip{..} | Trigger(_) | CoerceMode { .. } => ok,
                         MustBeFinalized => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
                         }
@@ -828,7 +828,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             };
                             int_new(r)
                         }
-                        Clip(range) => {
+                        Clip{ range, truncate } => {
                             let apply_range = |lower: BigInt, upper: BigInt| {
                                 if i < &lower || i > &upper { ok.clone() } else { Ok(e.clone()) }
                             };

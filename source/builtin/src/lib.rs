@@ -191,6 +191,11 @@ pub fn assert_nonlinear_by(_: ()) {
 }
 
 #[proof]
+pub fn assert_bitvector_by(_: ()) {
+    unimplemented!();
+}
+
+#[proof]
 pub fn assert_forall_by<A>(_a: A) {
     unimplemented!();
 }
@@ -222,7 +227,7 @@ pub struct Tracked<#[verifier(strictly_positive)] A> {
 
 impl<A> Ghost<A> {
     #[spec]
-    pub fn value(self) -> A {
+    pub fn view(self) -> A {
         unimplemented!()
     }
 
@@ -238,11 +243,25 @@ impl<A> Ghost<A> {
     pub fn assume_new() -> Self {
         Ghost { phantom: PhantomData }
     }
+
+    // note that because we return #[spec], not #[exec], we do not implement the Borrow trait
+    #[spec]
+    #[verifier(external_body)]
+    pub fn borrow(&self) -> &A {
+        unimplemented!()
+    }
+
+    // note that because we return #[spec], not #[exec], we do not implement the BorrowMut trait
+    #[proof]
+    #[verifier(external)]
+    pub fn borrow_mut(#[proof] &mut self) -> &mut A {
+        unimplemented!()
+    }
 }
 
 impl<A> Tracked<A> {
     #[spec]
-    pub fn value(self) -> A {
+    pub fn view(self) -> A {
         unimplemented!()
     }
 
@@ -251,6 +270,29 @@ impl<A> Tracked<A> {
     #[inline(always)]
     pub fn assume_new() -> Self {
         Tracked { phantom: PhantomData }
+    }
+
+    #[proof]
+    #[verifier(external_body)]
+    #[verifier(returns(proof))]
+    pub fn get(#[proof] self) -> A {
+        unimplemented!()
+    }
+
+    // note that because we return #[proof], not #[exec], we do not implement the Borrow trait
+    #[proof]
+    #[verifier(external_body)]
+    #[verifier(returns(proof))]
+    pub fn borrow(#[proof] &self) -> &A {
+        unimplemented!()
+    }
+
+    // note that because we return #[proof], not #[exec], we do not implement the BorrowMut trait
+    #[proof]
+    #[verifier(external_body)]
+    #[verifier(returns(proof))]
+    pub fn borrow_mut(#[proof] &mut self) -> &mut A {
+        unimplemented!()
     }
 }
 
@@ -264,23 +306,47 @@ impl<A> Clone for Ghost<A> {
 
 impl<A> Copy for Ghost<A> {}
 
-impl<A> std::ops::Deref for Ghost<A> {
-    type Target = A;
-    #[spec]
-    #[verifier(external)]
-    fn deref(&self) -> &A {
-        unimplemented!()
+macro_rules! emit_phantom {
+    ($x:ident) => {
+        PhantomData
+    };
+}
+macro_rules! split_tuple {
+    /*
+        #[inline(always)]
+        pub fn tracked_split_tuple2<A1, A2>(_t: Tracked<(A1, A2)>) -> (Tracked<A1>, Tracked<A2>) {
+            (Tracked { phantom: PhantomData }, Tracked { phantom: PhantomData })
+        }
+    */
+    ($fun:ident, $typ:ident, [$($t:ident)*]) => {
+        #[inline(always)]
+        pub fn $fun
+            <$( $t, )* >
+            (_t: $typ<($( $t, )*)>)
+            ->
+            ($( $typ<$t>, )*) {
+            ($( $typ { phantom: emit_phantom!($t) }, )*)
+        }
     }
 }
-
-impl<A> std::ops::Deref for Tracked<A> {
-    type Target = A;
-    #[spec]
-    #[verifier(external)]
-    fn deref(&self) -> &A {
-        unimplemented!()
-    }
-}
+split_tuple!(ghost_split_tuple0, Ghost, []);
+split_tuple!(ghost_split_tuple1, Ghost, [A1]);
+split_tuple!(ghost_split_tuple2, Ghost, [A1 A2]);
+split_tuple!(ghost_split_tuple3, Ghost, [A1 A2 A3]);
+split_tuple!(ghost_split_tuple4, Ghost, [A1 A2 A3 A4]);
+split_tuple!(ghost_split_tuple5, Ghost, [A1 A2 A3 A4 A5]);
+split_tuple!(ghost_split_tuple6, Ghost, [A1 A2 A3 A4 A5 A6]);
+split_tuple!(ghost_split_tuple7, Ghost, [A1 A2 A3 A4 A5 A6 A7]);
+split_tuple!(ghost_split_tuple8, Ghost, [A1 A2 A3 A4 A5 A6 A7 A8]);
+split_tuple!(tracked_split_tuple0, Tracked, []);
+split_tuple!(tracked_split_tuple1, Tracked, [A1]);
+split_tuple!(tracked_split_tuple2, Tracked, [A1 A2]);
+split_tuple!(tracked_split_tuple3, Tracked, [A1 A2 A3]);
+split_tuple!(tracked_split_tuple4, Tracked, [A1 A2 A3 A4]);
+split_tuple!(tracked_split_tuple5, Tracked, [A1 A2 A3 A4 A5]);
+split_tuple!(tracked_split_tuple6, Tracked, [A1 A2 A3 A4 A5 A6]);
+split_tuple!(tracked_split_tuple7, Tracked, [A1 A2 A3 A4 A5 A6 A7]);
+split_tuple!(tracked_split_tuple8, Tracked, [A1 A2 A3 A4 A5 A6 A7 A8]);
 
 //
 // int and nat
@@ -838,3 +904,27 @@ impl_binary_op_rhs!(SpecShr, spec_shr, Self, Self, [
     usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128
 ]);
+
+#[rustc_diagnostic_item = "builtin::strslice_is_ascii"]
+#[spec]
+pub fn strslice_is_ascii<A>(_a: A) -> bool {
+    unimplemented!()
+}
+
+#[rustc_diagnostic_item = "builtin::strslice_len"]
+#[spec]
+pub fn strslice_len<A>(_a: A) -> nat {
+    unimplemented!()
+}
+
+#[rustc_diagnostic_item = "builtin::strslice_get_char"]
+#[spec]
+pub fn strslice_get_char<A>(_a: A, _i: int) -> u8 {
+    unimplemented!()
+}
+
+#[rustc_diagnostic_item = "builtin::reveal_strlit"]
+#[proof]
+pub fn reveal_strlit<A>(_a: A) {
+    unimplemented!()
+}

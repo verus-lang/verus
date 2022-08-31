@@ -143,6 +143,41 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_not_yet_supported_11 code! {
+        trait T {
+            #[spec]
+            fn f(&self) -> bool { no_method_body() }
+        }
+
+        trait S : T {
+            #[spec]
+            fn g(&self) -> bool { no_method_body() }
+        }
+    } => Err(_)
+}
+
+test_verify_one_file! {
+    #[test] test_not_yet_supported_12 code!{
+        struct Abc<T> {
+            t: T,
+        }
+
+        trait SomeTrait {
+            #[spec]
+            fn f(&self) -> bool { no_method_body() }
+        }
+
+        impl<S> Abc<S> {
+            fn foo(&self)
+                where S: SomeTrait
+            {
+                assert(self.t.f() == self.t.f());
+            }
+        }
+    } => Err(_)
+}
+
+test_verify_one_file! {
     #[test] test_ill_formed_1 code! {
         trait T1 {
             fn f(&self); // need to call no_method_body()
@@ -449,11 +484,13 @@ test_verify_one_file! {
         }
         struct S {}
         impl T for S {
-            fn f(&self, x: &Self, n: u64) {
-                self.f(x, n - 1);
+            fn f(&self, x: &Self, n: u64)
+                decreases 0nat
+            {
+                self.f(x, n - 1); // FAILS
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
@@ -500,11 +537,13 @@ test_verify_one_file! {
         }
         struct S {}
         impl T for S {
-            fn f(&self, x: &Self, n: u64) {
-                x.f(self, n - 1);
+            fn f(&self, x: &Self, n: u64)
+                decreases 0nat
+            {
+                x.f(self, n - 1); // FAILS
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
@@ -919,4 +958,74 @@ test_verify_one_file! {
             assert(s1.0 == s3.0); // FAILS
         }
     } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] test_ok_where_clause verus_code! {
+        trait Tr {
+            spec fn f(&self) -> bool;
+        }
+
+        spec fn not_f<S>(x: S) -> bool
+            where S: Tr
+        {
+            !x.f()
+        }
+
+        proof fn foo<S>(x: S, y: S) where S : Tr
+            requires x.f() ==> y.f(),
+            ensures not_f(y) ==> not_f(x),
+        {
+        }
+
+        struct Bar<X>
+        {
+            x: X,
+        }
+
+        impl<X> Bar<X>
+            where X: Tr
+        {
+            spec fn bar_not_f(&self) -> bool {
+                not_f(self.x)
+            }
+
+            proof fn easy_lemma(bar1: &Self, bar2: &Self)
+                requires bar1.x.f() ==> bar2.x.f(),
+                ensures not_f(bar2.x) ==> not_f(bar1.x)
+            {
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_synthetic_type_params verus_code!{
+        spec fn global_type_id<A>() -> int;
+
+        pub trait SomeTrait : Sized {
+            spec fn x(&self);
+        }
+
+        spec fn type_id<T: SomeTrait>(obj: T) -> int {
+            global_type_id::<T>()
+        }
+
+        struct Stuff<X> {
+            x: X,
+        }
+
+        impl<X: SomeTrait> Stuff<X> {
+            proof fn test1<Y: SomeTrait>(a: X, b: X) {
+                // This passes, since a and b should have the same type
+                assert(type_id(a) == type_id(b));
+            }
+
+            proof fn test2<Y: SomeTrait>(a: X, b: Y, c: impl SomeTrait, d: impl SomeTrait) {
+                // This should fail; although 'c' and 'd' are both 'impl SomeTrait',
+                // these are technically different type parameters.
+                assert(type_id(c) == type_id(d)); // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 1)
 }

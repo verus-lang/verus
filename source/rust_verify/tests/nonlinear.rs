@@ -5,9 +5,8 @@
 mod common;
 use common::*;
 
-// TODO: make sure testcases do not timeout
-
 // Test #[verifier(nonlinear)]
+
 test_verify_one_file! {
     #[test] test1 verus_code! {
         #[verifier(nonlinear)]

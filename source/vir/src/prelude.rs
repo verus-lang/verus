@@ -3,10 +3,35 @@ use crate::def::*;
 use crate::sst_to_air::{fun_to_air_ident, path_to_air_ident};
 use air::ast::Ident;
 use air::printer::{macro_push_node, str_to_node};
-use air::{node, nodes_vec};
+use air::{node, nodes, nodes_vec};
 use sise::Node;
 
-pub(crate) fn prelude_nodes() -> Vec<Node> {
+#[derive(Copy, Clone, Debug)]
+pub enum ArchWordBits {
+    Either32Or64,
+    Exactly(u32),
+}
+
+impl ArchWordBits {
+    pub fn min_bits(&self) -> u32 {
+        match self {
+            ArchWordBits::Either32Or64 => 32,
+            ArchWordBits::Exactly(v) => *v,
+        }
+    }
+}
+
+impl Default for ArchWordBits {
+    fn default() -> Self {
+        ArchWordBits::Either32Or64
+    }
+}
+
+pub struct PreludeConfig {
+    pub arch_word_bits: ArchWordBits,
+}
+
+pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     #[allow(non_snake_case)]
     let FuelId = str_to_node(FUEL_ID);
     #[allow(non_snake_case)]
@@ -40,6 +65,10 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
     let box_bool = str_to_node(BOX_BOOL);
     let unbox_int = str_to_node(UNBOX_INT);
     let unbox_bool = str_to_node(UNBOX_BOOL);
+
+    let box_strslice = str_to_node(BOX_STRSLICE);
+    let unbox_strslice = str_to_node(UNBOX_STRSLICE);
+
     let typ = str_to_node(TYPE);
     let type_id_bool = str_to_node(TYPE_ID_BOOL);
     let type_id_int = str_to_node(TYPE_ID_INT);
@@ -56,6 +85,15 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
     let uint_shr = str_to_node(UINT_SHR);
     let uint_shl = str_to_node(UINT_SHL);
     let uint_not = str_to_node(UINT_NOT);
+
+    let strslice = strslice();
+
+    let strslice_is_ascii = strslice_is_ascii();
+    let strslice_len = strslice_len();
+    let strslice_get_char = strslice_get_char();
+    let type_id_strslice = str_to_node(TYPE_ID_STRSLICE);
+    let new_strlit = strslice_new_strlit();
+    let from_strlit = strslice_from_strlit();
 
     nodes_vec!(
         // Fuel
@@ -74,6 +112,13 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
                 :skolemid skolem_prelude_fuel_defaults
             ))
         ))
+        (declare-sort [strslice] 0)
+        (declare-fun [strslice_is_ascii] ([strslice]) Bool)
+        (declare-fun [strslice_len] ([strslice]) Int)
+        (declare-fun [strslice_get_char] ([strslice] Int) Int)
+        (declare-fun [new_strlit] (Int) [strslice])
+
+        (declare-fun [from_strlit] ([strslice]) Int)
 
         // Polymorphism
         (declare-sort [Poly] 0)
@@ -81,10 +126,13 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
         (declare-fun [box_bool] (Bool) [Poly])
         (declare-fun [unbox_int] ([Poly]) Int)
         (declare-fun [unbox_bool] ([Poly]) Bool)
+        (declare-fun [box_strslice] ([strslice]) [Poly])
+        (declare-fun [unbox_strslice] ([Poly]) [strslice])
         (declare-sort [typ] 0)
         (declare-const [type_id_bool] [typ])
         (declare-const [type_id_int] [typ])
         (declare-const [type_id_nat] [typ])
+        (declare-const [type_id_strslice] [typ])
         (declare-fun [type_id_uint] (Int) [typ])
         (declare-fun [type_id_sint] (Int) [typ])
         (declare-fun [has_type] ([Poly] [typ]) Bool)
@@ -168,10 +216,47 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
             :skolemid skolem_prelude_box_unbox_sint
         )))
 
+        // String literals
+        (axiom (forall ((x Int)) (!
+            (= ([from_strlit] ([new_strlit] x)) x)
+            :pattern (([new_strlit] x))
+            :qid prelude_strlit_injective
+            :skolemid skolem_prelude_strlit_injective
+        )))
+
+        (axiom (forall ((x [Poly])) (!
+            (=>
+                ([has_type] x [type_id_strslice])
+                (= x ([box_strslice] ([unbox_strslice] x)))
+            )
+            :pattern (([has_type] x [type_id_strslice]))
+            :qid prelude_box_unbox_strslice
+            :skolemid skolem_prelude_box_unbox_strslice
+        )))
+        (axiom (forall ((x [strslice])) (!
+            (= x ([unbox_strslice] ([box_strslice] x)))
+            :pattern (([box_strslice] x))
+            :qid prelude_unbox_box_strslice
+            :skolemid skolem_prelude_unbox_box_strslice
+        )))
+        (axiom (forall ((x [strslice])) (!
+            ([has_type] ([box_strslice] x) [type_id_strslice])
+            :pattern ((has_type ([box_strslice] x) [type_id_strslice]))
+            :qid prelude_has_type_strslice
+            :skolemid skolem_prelude_has_type_strslice
+        )))
+
         // Integers
         // TODO: make this more configurable via options or HeaderExpr directives
         (declare-const [arch_size] Int) // number of bits for usize/isize
-        (axiom (or (= [arch_size] {str_to_node(&ARCH_SIZE_MIN_BITS.to_string())}) (= [arch_size] 64)))
+        (axiom
+            {
+                match config.arch_word_bits {
+                    ArchWordBits::Either32Or64 => nodes!(or (= [arch_size] 32) (= [arch_size] 64)),
+                    ArchWordBits::Exactly(bits) => nodes!(= [arch_size] {str_to_node(&bits.to_string())}),
+                }
+            }
+        )
         (declare-fun [u_hi] (Int) Int) // \
         (declare-fun [i_lo] (Int) Int) // - convert number of bits to integer ranges
         (declare-fun [i_hi] (Int) Int) // /

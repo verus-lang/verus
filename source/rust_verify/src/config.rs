@@ -30,17 +30,19 @@ pub const TRIGGERS_FILE_SUFFIX: &str = ".triggers";
 pub struct Args {
     pub pervasive_path: Option<String>,
     pub verify_root: bool,
-    pub verify_module: Option<String>,
+    pub verify_module: Vec<String>,
     pub verify_function: Option<String>,
     pub verify_pervasive: bool,
     pub no_verify: bool,
     pub no_lifetime: bool,
     pub no_auto_recommends_check: bool,
     pub no_enhanced_typecheck: bool,
+    pub arch_word_bits: vir::prelude::ArchWordBits,
     pub time: bool,
     pub rlimit: u32,
     pub smt_options: Vec<(String, String)>,
     pub multiple_errors: u32,
+    pub expand_errors: bool,
     pub log_dir: Option<String>,
     pub log_all: bool,
     pub log_vir: bool,
@@ -59,10 +61,13 @@ pub struct Args {
     pub profile: bool,
     pub profile_all: bool,
     pub compile: bool,
+    pub solver_version_check: bool,
 }
 
 pub fn enable_default_features(rustc_args: &mut Vec<String>) {
-    for feature in &["stmt_expr_attributes", "box_syntax", "box_patterns", "negative_impls"] {
+    for feature in
+        &["stmt_expr_attributes", "box_syntax", "box_patterns", "negative_impls", "rustc_attrs"]
+    {
         rustc_args.push("-Z".to_string());
         rustc_args.push(format!("enable_feature={}", feature));
     }
@@ -78,10 +83,12 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_NO_LIFETIME: &str = "no-lifetime";
     const OPT_NO_AUTO_RECOMMENDS_CHECK: &str = "no-auto-recommends-check";
     const OPT_NO_ENHANCED_TYPECHECK: &str = "no-enhanced-typecheck";
+    const OPT_ARCH_WORD_BITS: &str = "arch-word-bits";
     const OPT_TIME: &str = "time";
     const OPT_RLIMIT: &str = "rlimit";
     const OPT_SMT_OPTION: &str = "smt-option";
     const OPT_MULTIPLE_ERRORS: &str = "multiple-errors";
+    const OPT_EXPAND_ERRORS: &str = "expand-errors";
     const OPT_LOG_DIR: &str = "log-dir";
     const OPT_LOG_ALL: &str = "log-all";
     const OPT_LOG_VIR: &str = "log-vir";
@@ -103,14 +110,15 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_PROFILE: &str = "profile";
     const OPT_PROFILE_ALL: &str = "profile-all";
     const OPT_COMPILE: &str = "compile";
+    const OPT_NO_SOLVER_VERSION_CHECK: &str = "no-solver-version-check";
 
     let mut opts = Options::new();
     opts.optopt("", OPT_PERVASIVE_PATH, "Path of the pervasive module", "PATH");
     opts.optflag("", OPT_VERIFY_ROOT, "Verify just the root module of crate");
-    opts.optopt(
+    opts.optmulti(
         "",
         OPT_VERIFY_MODULE,
-        "Verify just one submodule within crate (e.g. 'foo' or 'foo::bar')",
+        "Verify just one submodule within crate (e.g. 'foo' or 'foo::bar'), can be repeated to verify only certain modules",
         "MODULE",
     );
     opts.optopt(
@@ -128,6 +136,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         "Do not automatically check recommends after verification failures",
     );
     opts.optflag("", OPT_NO_ENHANCED_TYPECHECK, "Disable extensions to Rust type checker");
+    opts.optopt("", OPT_ARCH_WORD_BITS, "Size in bits for usize/isize: valid options are either '32', '64', or '32,64'. (default: 32,64)\nWARNING: this flag is a temporary workaround and will be removed in the near future", "BITS");
     opts.optflag("", OPT_TIME, "Measure and report time taken");
     opts.optopt(
         "",
@@ -138,6 +147,11 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     );
     opts.optmulti("", OPT_SMT_OPTION, "Set an SMT option (e.g. smt.random_seed=7)", "OPTION=VALUE");
     opts.optopt("", OPT_MULTIPLE_ERRORS, "If 0, look for at most one error per function; if > 0, always find first error in function and make extra queries to find more errors (default: 2)", "INTEGER");
+    opts.optflag(
+        "",
+        OPT_EXPAND_ERRORS,
+        "When the proof fails, try to minimize the failing predicate",
+    );
     opts.optopt(
         "",
         OPT_LOG_DIR,
@@ -168,6 +182,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     );
     opts.optflag("", OPT_PROFILE_ALL, "Always collect and report prover performance data");
     opts.optflag("", OPT_COMPILE, "Run Rustc compiler after verification");
+    opts.optflag("", OPT_NO_SOLVER_VERSION_CHECK, "Skip the check that the solver has the expected version (useful to experiment with different versions of z3)");
     opts.optflag("h", "help", "print this help menu");
 
     let print_usage = || {
@@ -200,13 +215,28 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     let args = Args {
         pervasive_path: matches.opt_str(OPT_PERVASIVE_PATH),
         verify_root: matches.opt_present(OPT_VERIFY_ROOT),
-        verify_module: matches.opt_str(OPT_VERIFY_MODULE),
+        verify_module: matches.opt_strs(OPT_VERIFY_MODULE),
         verify_function: matches.opt_str(OPT_VERIFY_FUNCTION),
         verify_pervasive: matches.opt_present(OPT_VERIFY_PERVASIVE),
         no_verify: matches.opt_present(OPT_NO_VERIFY),
         no_lifetime: matches.opt_present(OPT_NO_LIFETIME),
         no_auto_recommends_check: matches.opt_present(OPT_NO_AUTO_RECOMMENDS_CHECK),
         no_enhanced_typecheck: matches.opt_present(OPT_NO_ENHANCED_TYPECHECK),
+        arch_word_bits: matches
+            .opt_str(OPT_ARCH_WORD_BITS)
+            .map(|bits| {
+                use vir::prelude::ArchWordBits;
+                match bits.as_str() {
+                    "32" => ArchWordBits::Exactly(32),
+                    "64" => ArchWordBits::Exactly(64),
+                    "32,64" => ArchWordBits::Either32Or64,
+                    _ => error(format!(
+                        "invalid {} option: it must be either '32', '64', or '32,64'",
+                        OPT_ARCH_WORD_BITS
+                    )),
+                }
+            })
+            .unwrap_or(vir::prelude::ArchWordBits::Either32Or64),
         time: matches.opt_present(OPT_TIME),
         rlimit: matches
             .opt_get::<u32>(OPT_RLIMIT)
@@ -228,6 +258,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
             .opt_get::<u32>(OPT_MULTIPLE_ERRORS)
             .unwrap_or_else(|_| error("expected integer after multiple-errors".to_string()))
             .unwrap_or(2),
+        expand_errors: matches.opt_present(OPT_EXPAND_ERRORS),
         log_dir: matches.opt_str(OPT_LOG_DIR),
         log_all: matches.opt_present(OPT_LOG_ALL),
         log_vir: matches.opt_present(OPT_LOG_VIR),
@@ -256,6 +287,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         profile: matches.opt_present(OPT_PROFILE),
         profile_all: matches.opt_present(OPT_PROFILE_ALL),
         compile: matches.opt_present(OPT_COMPILE),
+        solver_version_check: !matches.opt_present(OPT_NO_SOLVER_VERSION_CHECK),
     };
 
     (args, unmatched)
