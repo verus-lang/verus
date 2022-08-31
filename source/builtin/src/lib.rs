@@ -909,7 +909,7 @@ pub fn strslice_len<A>(_a: A) -> nat {
 
 #[rustc_diagnostic_item = "builtin::strslice_get_char"]
 #[spec]
-pub fn strslice_get_char<A>(_a: A, _i: int) -> u8 {
+pub fn strslice_get_char<A>(_a: A, _i: int) -> char {
     unimplemented!()
 }
 

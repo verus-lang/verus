@@ -305,6 +305,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let ret = mid_ty_to_vir_ghost(tcx, sig.output().skip_binder(), allow_mut_ref).0;
             (Arc::new(TypX::Lambda(Arc::new(args), ret)), false)
         }
+        TyKind::Char => (Arc::new(TypX::Char), false),
         _ => {
             unsupported!(format!("type {:?}", ty))
         }
@@ -398,6 +399,7 @@ pub(crate) fn is_smt_equality<'tcx>(
     match (&*t1, &*t2) {
         (TypX::Bool, TypX::Bool) => true,
         (TypX::Int(_), TypX::Int(_)) => true,
+        (TypX::Char, TypX::Char) => true,
         (TypX::Datatype(..), TypX::Datatype(..)) if types_equal(&t1, &t2) => {
             let ty = bctx.types.node_type(*id1);
             implements_structural(bctx.ctxt.tcx, &ty)

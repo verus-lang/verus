@@ -152,6 +152,7 @@ fn typ_to_node(typ: &Typ) -> Node {
         TypX::TypeId => nodes!(TypeId),
         TypX::Air(_air_typ) => nodes!({ str_to_node("AirTyp") }),
         TypX::StrSlice => crate::def::strslice(),
+        TypX::Char => nodes!(str_to_node("Char")),
     }
 }
 
@@ -268,6 +269,7 @@ fn exprs_to_node(exprs: &Exprs) -> Node {
 }
 
 fn expr_to_node(expr: &Expr) -> Node {
+    let chars;
     let node = match &expr.x {
         ExprX::Const(cnst) => nodes!(
             const {
@@ -277,10 +279,27 @@ fn expr_to_node(expr: &Expr) -> Node {
                     Constant::StrSlice(val) => str_to_node(&format!(
                         "\"{}\"",
                         match val.is_ascii() {
-                            true => val,
-                            false => "non_ascii_string_with_unknown_value",
+                            true => &**val,
+                            false => {
+                                chars = val
+                                    .chars()
+                                    .map(|c| {
+                                        if c.is_ascii() {
+                                            c.to_string()
+                                        } else {
+                                            format!("\\char<{:x}>", c as u32)
+                                        }
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join("");
+                                &chars
+                            }
                         }
                     )),
+                    Constant::Char(c) => str_to_node(&match c.is_ascii() {
+                        true => format!("char#{}", c.to_string()),
+                        false => format!("char<{:x}>", *c as u32),
+                    }),
                 }
             }
         ),

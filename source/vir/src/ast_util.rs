@@ -52,6 +52,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Boxed(t1), TypX::Boxed(t2)) => types_equal(t1, t2),
         (TypX::TypParam(x1), TypX::TypParam(x2)) => x1 == x2,
         (TypX::StrSlice, TypX::StrSlice) => true,
+        (TypX::Char, TypX::Char) => true,
         _ => false,
     }
 }
