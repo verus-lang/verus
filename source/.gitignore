@@ -2,3 +2,4 @@ target/
 z3
 Cargo.lock
 /.verus-log/
+doc/
