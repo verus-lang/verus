@@ -45,8 +45,32 @@
 - [Ghost and tracked variables]()
 - [Low-level pointers and concurrency]()
 - [Attributes]()
-    - [external and extern_body]()
+    - [external and external_body]()
+    - [inline]()
 - [Tools and command-line options]()
+    - [Proof Debugger]()
+    - [IDE Support]()
+    - [Syntax Highlighting]()
+
+- [Verification and Rust]()
+  - [Why Rust?]()
+  - [Supported Rust features]()
+  - [Borrowing and lifetimes]()
+  - [Mutable borrows]()
+  - [Interior mutability]()
+  - [Alternatives to unsafe]()
+
+- [Understanding the guarantees of a verified program]()
+  - [Assumptions and trusted components]()
+  - [Identifying a project's TCB]()
+  - [Memory safety is conditional on preconditions]()
+
+- [Project setup and development]()
+  - [Working with crates]()
+  - [Invoking Verus code from Rust]()
+  - [Documentation with Rustdoc]()
+
+
 
 # Reference
 
