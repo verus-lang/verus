@@ -241,7 +241,7 @@ test_verify_one_file! {
 
         spec fn g(x: int) -> bool { f(3int, x) }
 
-        spec fn sum(x: nat) -> nat 
+        spec fn sum(x: nat) -> nat
             decreases(x)
         {
             if x == 0 { 0 } else { 1 + sum((x - 1) as nat) }
