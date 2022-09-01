@@ -50,20 +50,17 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] arith verus_code! {
-        proof fn test(x: u64) {
+        proof fn test(x: int) {
             assert((7 + 7 * 2 > 20) && (22 - 5 <= 10 * 10)) by (compute_only);
-            // TODO: The examples below that don't use the "_only" version
-            // result in something like: uClip(64, x) == x,
-            // due to the same issue mentioned in if_then_else below
-            assert(x + 0 == x) by (compute);
-            assert(0int + x == x) by (compute_only);
-            assert(x - 0 == x) by (compute);
-            assert(x * 1 == x) by (compute);
-            assert(1 * x == x) by (compute);
+            assert(x + 0 == x) by (compute_only);
+            assert(0 + x == x) by (compute_only);
+            assert(x - 0 == x) by (compute_only);
+            assert(x * 1 == x) by (compute_only);
+            assert(1 * x == x) by (compute_only);
             assert(x * 0 == 0) by (compute_only);
             assert(0 * x == 0) by (compute_only);
             assert(x - x == 0) by (compute_only);
-            assert(x / 1 == x) by (compute);
+            assert(x / 1 == x) by (compute_only);
             assert(x % 1 == 0) by (compute_only);
 
             // Make sure we've implemented Euclidean div and mod
@@ -93,19 +90,12 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] if_then_else verus_code! {
 
-        proof fn test(x: u64) {
+        proof fn test() {
             assert(9int == if 7 > 3 { 9int } else { 5 }) by (compute);
             assert(if true { true } else { false }) by (compute_only);
             assert(if !true { false } else { true }) by (compute_only);
             assert(if !!true { true } else { false }) by (compute_only);
-            // TODO: The example below fails the expr_to_pure_exp check,
-            // due to the overflow checks that are inserted.
-            // They are inserted because the mode checker treats constants as Exec,
-            // which leads to the arith being marked as Exec, and the mode checker
-            // confirms that an Exec expression can be passed as a Spec arg,
-            // but it doesn't "upgrade" the expression to Spec.
-            // This should be addressed when we move to the new syntax.
-            //assert_by_compute_only(9 == if (7 + 7 * 2 > 20) { 7 + 2 } else { 22 - 5 + 10*10 });
+            assert(9int == if (7 + 7 * 2 > 20) { 7int + 2 } else { 22 - 5 + 10*10 }) by (compute_only);
         }
     } => Ok(())
 }
@@ -113,7 +103,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] lets verus_code! {
 
-        fn test(x: u64) {
+        fn test() {
             assert({
                 let x = true;
                 x
