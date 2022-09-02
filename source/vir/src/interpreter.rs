@@ -149,7 +149,7 @@ impl State {
 /// Static context for the interpreter
 struct Ctx<'a> {
     /// Maps each function to the SST expression representing its body
-    fun_ssts: &'a SstMap,
+    fun_ssts: &'a HashMap<Fun, SstInfo>,
     /// We avoid infinite loops by running for a fixed number of intervals
     max_iterations: u64,
     /// Number of bits we assume the underlying architecture supports
@@ -1188,7 +1188,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 Some(seq_fn) => eval_seq(ctx, state, seq_fn, exp, &new_args),
                 None => {
                     // Try to find the function's body
-                    match ctx.fun_ssts.read().unwrap().get(fun) {
+                    match ctx.fun_ssts.get(fun) {
                         None => {
                             // We don't have the body for this function, so we can't simplify further
                             exp_new(Call(fun.clone(), typs.clone(), new_args.clone()))
@@ -1284,7 +1284,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
 /// We run the interpreter on a separate thread, so that we can give it a larger-than-default stack
 fn eval_expr_launch(
     exp: Exp,
-    fun_ssts: SstMap,
+    fun_ssts: &HashMap<Fun, SstInfo>,
     rlimit: u32,
     arch_size_min_bits: u32,
     mode: ComputeMode,
@@ -1370,7 +1370,7 @@ fn eval_expr_launch(
 /// Symbolically evaluate an expression, simplifying it as much as possible
 pub fn eval_expr(
     exp: &Exp,
-    fun_ssts: &SstMap,
+    fun_ssts: &mut SstMap,
     rlimit: u32,
     arch_size_min_bits: u32,
     mode: ComputeMode,
@@ -1378,14 +1378,19 @@ pub fn eval_expr(
 ) -> Result<Exp, VirErr> {
     let builder =
         thread::Builder::new().name("interpreter".to_string()).stack_size(1024 * 1024 * 1024); // 1 GB
-    let handler = {
-        // Create local versions that we own and hence can pass to the closure
-        let exp = exp.clone();
-        let fun_ssts = fun_ssts.clone();
-        let log = log.clone();
-        builder
-            .spawn(move || eval_expr_launch(exp, fun_ssts, rlimit, arch_size_min_bits, mode, log))
-            .unwrap()
-    };
-    handler.join().unwrap()
+    fun_ssts.update(|fun_ssts| {
+        let handler = {
+            // Create local versions that we own and hence can pass to the closure
+            let exp = exp.clone();
+            let log = log.clone();
+            builder
+                .spawn(move || {
+                    let res =
+                        eval_expr_launch(exp, &fun_ssts, rlimit, arch_size_min_bits, mode, log);
+                    (fun_ssts, res)
+                })
+                .unwrap()
+        };
+        handler.join().unwrap()
+    })
 }

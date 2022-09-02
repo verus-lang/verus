@@ -60,6 +60,7 @@ mod sst_visitor;
 pub mod traits;
 mod triggers;
 mod triggers_auto;
+pub mod update_cell;
 mod util;
 mod visitor;
 pub mod well_formed;

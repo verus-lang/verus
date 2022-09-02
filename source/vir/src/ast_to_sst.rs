@@ -21,7 +21,7 @@ use air::scope_map::ScopeMap;
 use num_bigint::BigInt;
 use num_traits::identities::Zero;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 pub(crate) struct State {
     // View exec/proof code as spec
@@ -104,7 +104,7 @@ impl State {
             dont_rename: HashSet::new(),
             ret_post: None,
             disable_recommends: 0,
-            fun_ssts: Arc::new(RwLock::new(HashMap::new())),
+            fun_ssts: crate::update_cell::UpdateCell::new(HashMap::new()),
         }
     }
 
@@ -201,7 +201,7 @@ impl State {
         let exp = crate::sst_visitor::map_exp_visitor_result(&exp, &mut |exp| match &exp.x {
             ExpX::Call(fun, typs, args) => {
                 if let Some(SstInfo { inline, params, memoize: _, body }) =
-                    fun_ssts.read().unwrap().get(fun)
+                    fun_ssts.borrow().get(fun)
                 {
                     if inline.do_inline {
                         let typ_bounds = &inline.typ_bounds;
@@ -1394,7 +1394,7 @@ fn expr_to_stm_opt(
             // of any ensures, triggers, etc., that it might provide
             let interp_expr = eval_expr(
                 &state.finalize_exp(ctx, &state.fun_ssts, &expr)?,
-                &state.fun_ssts,
+                &mut state.fun_ssts,
                 ctx.global.rlimit,
                 ctx.global.arch.min_bits(),
                 *mode,
