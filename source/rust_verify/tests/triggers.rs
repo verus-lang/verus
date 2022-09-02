@@ -120,3 +120,20 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_one_fails(e)
 }
+
+test_verify_one_file! {
+    #[test] test_spec_index_trigger_regression_262 verus_code! {
+        use pervasive::seq::*;
+
+        spec fn foo(a: nat) -> bool;
+
+        proof fn f(s: Seq<nat>)
+            requires
+                s.len() == 10,
+                forall|r: nat| foo(r) && 0 < #[trigger] s[r as int],
+                //             ^^^^^^ is automatically selected
+        {
+            assert(0 < s.index(3));
+        }
+    } => Ok(())
+}
