@@ -22,7 +22,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::hash::{Hash, Hasher};
 use std::io::Write;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 
 // An approximation of how many interpreter invocations we can do in 1 second (in release mode)
@@ -1288,18 +1288,17 @@ fn eval_expr_launch(
     rlimit: u32,
     arch_size_min_bits: u32,
     mode: ComputeMode,
-    log: Arc<Mutex<Option<File>>>,
+    log: &mut Option<File>,
 ) -> Result<Exp, VirErr> {
     let env = ScopeMap::new();
     let cache = HashMap::new();
-    let mut file_log_opt = log.lock().unwrap();
-    let logging = file_log_opt.is_some();
+    let logging = log.is_some();
     let debug = logging;
     let mut state = State {
         depth: 0,
         env,
         iterations: 1,
-        log: file_log_opt.take(),
+        log: log.take(),
         debug,
         perf: logging,
         cache,
@@ -1319,7 +1318,7 @@ fn eval_expr_launch(
     let res = eval_expr_internal(&ctx, &mut state, &exp)?;
     display_perf_stats(&state);
     if state.log.is_some() {
-        file_log_opt.replace(state.log.unwrap());
+        log.replace(state.log.unwrap());
     }
     if let ExpX::Const(Constant::Bool(false)) = res.x {
         err_str(&exp.span, "assert simplifies to false")
@@ -1374,23 +1373,31 @@ pub fn eval_expr(
     rlimit: u32,
     arch_size_min_bits: u32,
     mode: ComputeMode,
-    log: Arc<Mutex<Option<File>>>,
+    log: &mut Option<File>,
 ) -> Result<Exp, VirErr> {
     let builder =
         thread::Builder::new().name("interpreter".to_string()).stack_size(1024 * 1024 * 1024); // 1 GB
-    fun_ssts.update(|fun_ssts| {
+    let mut taken_log = log.take();
+    let (taken_log, res) = fun_ssts.update(|fun_ssts| {
         let handler = {
             // Create local versions that we own and hence can pass to the closure
             let exp = exp.clone();
-            let log = log.clone();
             builder
                 .spawn(move || {
-                    let res =
-                        eval_expr_launch(exp, &fun_ssts, rlimit, arch_size_min_bits, mode, log);
-                    (fun_ssts, res)
+                    let res = eval_expr_launch(
+                        exp,
+                        &fun_ssts,
+                        rlimit,
+                        arch_size_min_bits,
+                        mode,
+                        &mut taken_log,
+                    );
+                    (fun_ssts, (taken_log, res))
                 })
                 .unwrap()
         };
         handler.join().unwrap()
-    })
+    });
+    *log = taken_log;
+    res
 }

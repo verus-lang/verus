@@ -1398,7 +1398,7 @@ fn expr_to_stm_opt(
                 ctx.global.rlimit,
                 ctx.global.arch.min_bits(),
                 *mode,
-                ctx.global.interpreter_log.clone(),
+                &mut ctx.global.interpreter_log.borrow_mut(),
             )?;
             let err = error_with_label(
                 "assertion failed",

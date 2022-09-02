@@ -18,7 +18,8 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
-use std::sync::{Arc, Mutex};
+use std::rc::Rc;
+use std::sync::Arc;
 
 pub type ChosenTrigger = Vec<(Span, String)>;
 #[derive(Debug, Clone)]
@@ -43,7 +44,7 @@ pub struct GlobalCtx {
     pub method_map: HashMap<(Fun, Path), Fun>,
     pub(crate) inferred_modes: HashMap<InferMode, Mode>,
     pub(crate) rlimit: u32,
-    pub(crate) interpreter_log: Arc<Mutex<Option<File>>>,
+    pub(crate) interpreter_log: Rc<RefCell<Option<File>>>,
     pub arch: ArchWordBits,
 }
 
@@ -172,7 +173,7 @@ impl GlobalCtx {
         no_span: Span,
         inferred_modes: HashMap<InferMode, Mode>,
         rlimit: u32,
-        interpreter_log: Arc<Mutex<Option<File>>>,
+        interpreter_log: Rc<RefCell<Option<File>>>,
         arch: ArchWordBits,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =

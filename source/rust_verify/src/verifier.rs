@@ -14,9 +14,11 @@ use num_format::{Locale, ToFormattedString};
 use rustc_middle::ty::TyCtxt;
 use rustc_span::source_map::SourceMap;
 use rustc_span::{CharPos, FileName, MultiSpan, Span};
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Write;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -1110,17 +1112,18 @@ impl Verifier {
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate(&krate);
 
-        let file = Arc::new(Mutex::new(if self.args.log_all || self.args.log_vir_simple {
-            Some(self.create_log_file(None, None, crate::config::INTERPRETER_FILE_SUFFIX)?)
-        } else {
-            None
-        }));
+        let interpreter_log_file =
+            Rc::new(RefCell::new(if self.args.log_all || self.args.log_vir_simple {
+                Some(self.create_log_file(None, None, crate::config::INTERPRETER_FILE_SUFFIX)?)
+            } else {
+                None
+            }));
         let mut global_ctx = vir::context::GlobalCtx::new(
             &krate,
             air_no_span.clone(),
             inferred_modes,
             self.args.rlimit,
-            file,
+            interpreter_log_file,
             self.args.arch_word_bits,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
