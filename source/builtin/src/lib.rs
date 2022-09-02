@@ -823,13 +823,11 @@ impl_binary_op!(SpecAdd, spec_add, int, [
     isize i8 i16 i32 i64 i128
 ]);
 
-impl_binary_op_nat!(SpecAdd, spec_add, nat, [
-    nat
-    usize u8 u16 u32 u64 u128
-]);
+impl_binary_op_nat!(SpecAdd, spec_add, nat, [nat]);
 
 impl_binary_op_nat!(SpecAdd, spec_add, int, [
     int
+    usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128
 ]);
 
@@ -845,13 +843,11 @@ impl_binary_op!(SpecMul, spec_mul, int, [
     isize i8 i16 i32 i64 i128
 ]);
 
-impl_binary_op_nat!(SpecMul, spec_mul, nat, [
-    nat
-    usize u8 u16 u32 u64 u128
-]);
+impl_binary_op_nat!(SpecMul, spec_mul, nat, [nat]);
 
 impl_binary_op_nat!(SpecMul, spec_mul, int, [
     int
+    usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128
 ]);
 
