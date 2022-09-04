@@ -14,6 +14,7 @@ use crate::sst::{BndX, Exp, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst_to_air::{
     exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, ExprCtxt, ExprMode,
 };
+use crate::update_cell::UpdateCell;
 use crate::util::vec_map;
 use air::ast::{
     BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Commands, DeclX, Expr, ExprX, Quant,
@@ -25,7 +26,7 @@ use air::ast_util::{
 };
 use air::errors::ErrorLabel;
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 pub struct SstInline {
     pub(crate) typ_bounds: TypBounds,
@@ -39,7 +40,7 @@ pub struct SstInfo {
     pub(crate) body: Exp,
 }
 
-pub type SstMap = Arc<RwLock<HashMap<Fun, SstInfo>>>;
+pub type SstMap = UpdateCell<HashMap<Fun, SstInfo>>;
 
 // binder for forall (typ_params params)
 pub(crate) fn func_bind_trig(
@@ -151,8 +152,8 @@ fn func_body_to_air(
         memoize: function.x.attrs.memoize,
         body: body_exp.clone(),
     };
-    assert!(!state.fun_ssts.read().unwrap().contains_key(&function.x.name));
-    state.fun_ssts.write().unwrap().insert(function.x.name.clone(), info);
+    assert!(!state.fun_ssts.borrow().contains_key(&function.x.name));
+    state.fun_ssts.borrow_mut().insert(function.x.name.clone(), info);
 
     let mut decrease_by_stms: Vec<Stm> = Vec::new();
     let decrease_by_reqs = if let Some(req) = &function.x.decrease_when {
@@ -352,7 +353,7 @@ pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
         if let Some(body) = &function.x.body {
             let body_exp = crate::ast_to_sst::expr_to_exp_as_spec(
                 &ctx,
-                &Arc::new(RwLock::new(HashMap::new())),
+                &UpdateCell::new(HashMap::new()),
                 &params_to_pars(&function.x.params, false),
                 &body,
             )?;

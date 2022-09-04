@@ -14,10 +14,12 @@ use num_format::{Locale, ToFormattedString};
 use rustc_middle::ty::TyCtxt;
 use rustc_span::source_map::SourceMap;
 use rustc_span::{CharPos, FileName, MultiSpan, Span};
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Write;
-use std::sync::{Arc, Mutex, RwLock};
+use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use vir::ast::{Fun, Function, InferMode, Krate, Mode, VirErr, Visibility};
@@ -26,6 +28,7 @@ use vir::def::{CommandsWithContext, CommandsWithContextX, SnapPos};
 use vir::func_to_air::SstMap;
 use vir::prelude::PreludeConfig;
 use vir::recursion::Node;
+use vir::update_cell::UpdateCell;
 
 const RLIMIT_PER_SECOND: u32 = 3000000;
 
@@ -820,7 +823,7 @@ impl Verifier {
         // Declare them in SCC (strongly connected component) sorted order so that
         // termination checking precedes consequence axioms for each SCC.
         let mut fun_axioms: HashMap<Fun, Commands> = HashMap::new();
-        let mut fun_ssts = Arc::new(RwLock::new(HashMap::new()));
+        let mut fun_ssts = UpdateCell::new(HashMap::new());
         for scc in &ctx.global.func_call_sccs.clone() {
             let scc_nodes = ctx.global.func_call_graph.get_scc_nodes(scc);
             let mut scc_fun_nodes: Vec<Fun> = Vec::new();
@@ -1109,17 +1112,18 @@ impl Verifier {
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate(&krate);
 
-        let file = Arc::new(Mutex::new(if self.args.log_all || self.args.log_vir_simple {
-            Some(self.create_log_file(None, None, crate::config::INTERPRETER_FILE_SUFFIX)?)
-        } else {
-            None
-        }));
+        let interpreter_log_file =
+            Rc::new(RefCell::new(if self.args.log_all || self.args.log_vir_simple {
+                Some(self.create_log_file(None, None, crate::config::INTERPRETER_FILE_SUFFIX)?)
+            } else {
+                None
+            }));
         let mut global_ctx = vir::context::GlobalCtx::new(
             &krate,
             air_no_span.clone(),
             inferred_modes,
             self.args.rlimit,
-            file,
+            interpreter_log_file,
             self.args.arch_word_bits,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;

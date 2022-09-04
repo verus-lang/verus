@@ -188,7 +188,7 @@ fn tr_inline_function(
         }
         let fun = &fun_to_inline.x.name;
         let fun_ssts = &state.fun_ssts;
-        if let Some(SstInfo { inline, params, body, .. }) = fun_ssts.read().unwrap().get(fun) {
+        if let Some(SstInfo { inline, params, body, .. }) = fun_ssts.borrow().get(fun) {
             return inline_expression(
                 fun,
                 args,

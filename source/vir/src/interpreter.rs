@@ -22,7 +22,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::hash::{Hash, Hasher};
 use std::io::Write;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 
 // An approximation of how many interpreter invocations we can do in 1 second (in release mode)
@@ -149,7 +149,7 @@ impl State {
 /// Static context for the interpreter
 struct Ctx<'a> {
     /// Maps each function to the SST expression representing its body
-    fun_ssts: &'a SstMap,
+    fun_ssts: &'a HashMap<Fun, SstInfo>,
     /// We avoid infinite loops by running for a fixed number of intervals
     max_iterations: u64,
     /// Number of bits we assume the underlying architecture supports
@@ -1188,7 +1188,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 Some(seq_fn) => eval_seq(ctx, state, seq_fn, exp, &new_args),
                 None => {
                     // Try to find the function's body
-                    match ctx.fun_ssts.read().unwrap().get(fun) {
+                    match ctx.fun_ssts.get(fun) {
                         None => {
                             // We don't have the body for this function, so we can't simplify further
                             exp_new(Call(fun.clone(), typs.clone(), new_args.clone()))
@@ -1284,22 +1284,21 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
 /// We run the interpreter on a separate thread, so that we can give it a larger-than-default stack
 fn eval_expr_launch(
     exp: Exp,
-    fun_ssts: SstMap,
+    fun_ssts: &HashMap<Fun, SstInfo>,
     rlimit: u32,
     arch_size_min_bits: u32,
     mode: ComputeMode,
-    log: Arc<Mutex<Option<File>>>,
+    log: &mut Option<File>,
 ) -> Result<Exp, VirErr> {
     let env = ScopeMap::new();
     let cache = HashMap::new();
-    let mut file_log_opt = log.lock().unwrap();
-    let logging = file_log_opt.is_some();
+    let logging = log.is_some();
     let debug = logging;
     let mut state = State {
         depth: 0,
         env,
         iterations: 1,
-        log: file_log_opt.take(),
+        log: log.take(),
         debug,
         perf: logging,
         cache,
@@ -1319,7 +1318,7 @@ fn eval_expr_launch(
     let res = eval_expr_internal(&ctx, &mut state, &exp)?;
     display_perf_stats(&state);
     if state.log.is_some() {
-        file_log_opt.replace(state.log.unwrap());
+        log.replace(state.log.unwrap());
     }
     if let ExpX::Const(Constant::Bool(false)) = res.x {
         err_str(&exp.span, "assert simplifies to false")
@@ -1370,22 +1369,35 @@ fn eval_expr_launch(
 /// Symbolically evaluate an expression, simplifying it as much as possible
 pub fn eval_expr(
     exp: &Exp,
-    fun_ssts: &SstMap,
+    fun_ssts: &mut SstMap,
     rlimit: u32,
     arch_size_min_bits: u32,
     mode: ComputeMode,
-    log: Arc<Mutex<Option<File>>>,
+    log: &mut Option<File>,
 ) -> Result<Exp, VirErr> {
     let builder =
         thread::Builder::new().name("interpreter".to_string()).stack_size(1024 * 1024 * 1024); // 1 GB
-    let handler = {
-        // Create local versions that we own and hence can pass to the closure
-        let exp = exp.clone();
-        let fun_ssts = fun_ssts.clone();
-        let log = log.clone();
-        builder
-            .spawn(move || eval_expr_launch(exp, fun_ssts, rlimit, arch_size_min_bits, mode, log))
-            .unwrap()
-    };
-    handler.join().unwrap()
+    let mut taken_log = log.take();
+    let (taken_log, res) = fun_ssts.update(|fun_ssts| {
+        let handler = {
+            // Create local versions that we own and hence can pass to the closure
+            let exp = exp.clone();
+            builder
+                .spawn(move || {
+                    let res = eval_expr_launch(
+                        exp,
+                        &fun_ssts,
+                        rlimit,
+                        arch_size_min_bits,
+                        mode,
+                        &mut taken_log,
+                    );
+                    (fun_ssts, (taken_log, res))
+                })
+                .unwrap()
+        };
+        handler.join().unwrap()
+    });
+    *log = taken_log;
+    res
 }
