@@ -57,3 +57,23 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[ignore] #[test] test_bad_span_for_postcondition_failure_regression_281 verus_code! {
+        #[is_variant]
+        enum Enum {
+            A,
+            B,
+        }
+
+
+        fn test(a: u32) -> (res: Enum)
+            ensures (match res {
+                Enum::A => a <= 10,
+                Enum::B => a > 10, // FAILS
+            }) {
+
+            Enum::B
+        }
+    } => Err(e) => assert_one_fails(e)
+}
