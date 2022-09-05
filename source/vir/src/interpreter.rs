@@ -591,6 +591,7 @@ enum SeqFn {
     Last,
 }
 
+// TODO: Make the matching here more robust to changes in pervasive
 /// Identify sequence functions for which we provide custom interpretation
 fn is_sequence_fn(fun: &Fun) -> Option<SeqFn> {
     use SeqFn::*;
