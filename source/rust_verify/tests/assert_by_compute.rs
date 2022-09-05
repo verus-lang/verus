@@ -366,3 +366,19 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] mut_ref_and_ghost verus_code! {
+        #[allow(unused_imports)]
+        use crate::pervasive::seq::*;
+
+        fn test(a: &mut u64)
+            requires *old(a) < 1000,
+            ensures *a == *old(a) + 30,
+        {
+            let old_a: Ghost<u64> = ghost(*a);
+            *a = *a + 5 * 6;
+            assert(*a == old_a@ + 5 * 6) by (compute);
+        }
+    } => Ok(())
+}
