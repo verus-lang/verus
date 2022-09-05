@@ -724,8 +724,26 @@ fn eval_seq(
                     Interp(Seq(s)) => match &args[1].x {
                         UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => match &e.x {
                             Const(Constant::Int(index)) => {
-                                let index = BigInt::to_usize(index).unwrap();
-                                if index < s.len() { Ok(s[index].clone()) } else { ok }
+                                match BigInt::to_usize(index) {
+                                    None => {
+                                        // TODO: Use Diagnostics instead of println
+                                        println!(
+                                            "WARNING: Computation tried to index into a sequence using a value that does not fit into usize"
+                                        );
+                                        ok
+                                    }
+                                    Some(index) => {
+                                        if index < s.len() {
+                                            Ok(s[index].clone())
+                                        } else {
+                                            // TODO: Use Diagnostics instead of println
+                                            println!(
+                                                "WARNING: Computation tried to index past the length of a sequence"
+                                            );
+                                            ok
+                                        }
+                                    }
+                                }
                             }
                             _ => ok,
                         },
