@@ -290,7 +290,18 @@ impl SyntacticEquality for Exp {
         let def_eq = |b| if b { Some(true) } else { None };
         use ExpX::*;
         match (&self.x, &other.x) {
-            (Const(l), Const(r)) => Some(l == r),
+            (Const(l), Const(r)) => {
+                // Explicitly enumerate cases here, in case we someday introduce
+                // a constant type that doesn't have a unique representation
+                use Constant::*;
+                match (l, r) {
+                    (Bool(l), Bool(r)) => Some(l == r),
+                    (Int(l), Int(r)) => Some(l == r),
+                    (StrSlice(l), StrSlice(r)) => Some(l == r),
+                    (Char(l), Char(r)) => Some(l == r),
+                    _ => None,
+                }
+            }
             (Var(l), Var(r)) => def_eq(l == r),
             (VarLoc(l), VarLoc(r)) => def_eq(l == r),
             (VarAt(l, at_l), VarAt(r, at_r)) => def_eq(l == r && at_l == at_r),
