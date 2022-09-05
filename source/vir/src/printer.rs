@@ -430,7 +430,12 @@ fn expr_to_node(expr: &Expr) -> Node {
             nodes!(str_reveal)
         }
         ExprX::Header(header_expr) => nodes!(header {header_expr_to_node(header_expr)}),
-        ExprX::Admit => node!(admit),
+        ExprX::AssertAssume { is_assume: false, expr: e1 } => {
+            nodes!(assert {expr_to_node(e1)})
+        }
+        ExprX::AssertAssume { is_assume: true, expr: e1 } => {
+            nodes!(assume {expr_to_node(e1)})
+        }
         ExprX::Forall { vars, require, ensure, proof } => {
             nodes!(forall {binders_node(vars, &typ_to_node)} {str_to_node(":require")} {expr_to_node(require)} {str_to_node(":ensure")} {expr_to_node(ensure)} {str_to_node(":proof")} {expr_to_node(proof)})
         }

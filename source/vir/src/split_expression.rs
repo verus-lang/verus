@@ -209,6 +209,7 @@ fn tr_inline_function(
 //  For details, See BinaryOp::And/OR, `implies`, `If`, `Bind`.
 pub type TracedExp = Arc<TracedExpX>;
 pub type TracedExps = Arc<Vec<TracedExp>>;
+#[derive(Debug)]
 pub struct TracedExpX {
     pub e: Exp,                    //  Exp to be discharged to Z3
     pub trace: air::errors::Error, //  when inlining function, record call stack into `trace`
@@ -556,6 +557,21 @@ fn split_call(
 
 fn visit_split_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Stm, VirErr> {
     match &stm.x {
+        StmX::Assert(_err, e1) => {
+            if need_split_expression(ctx, &stm.span) {
+                let error = air::errors::error(crate::def::SPLIT_ASSERT_FAILURE, &stm.span);
+                let split_exprs = split_expr(
+                    ctx,
+                    &state, // use the state after `body` translation to get the fuel info
+                    &TracedExpX::new(e1.clone(), error),
+                    false,
+                );
+                let stms = register_split_assertions(split_exprs);
+                Ok(Spanned::new(stm.span.clone(), StmX::Block(Arc::new(stms))))
+            } else {
+                Ok(stm.clone())
+            }
+        }
         StmX::Call { fun, typ_args, args, split: Some(error), dest: None, .. } => {
             let stms = split_call(ctx, state, &stm.span, fun, typ_args, args, error)?;
             Ok(Spanned::new(stm.span.clone(), StmX::Block(Arc::new(stms))))
