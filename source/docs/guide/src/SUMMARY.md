@@ -1,10 +1,10 @@
 # Summary
 
-[Verus Overview](./overview.md)
+[Verus overview](./overview.md)
 
-# Getting Started
+# Getting started
 
-- [Getting Started](./getting_started.md)
+- [Getting started](./getting_started.md)
 
 # Tutorial
 

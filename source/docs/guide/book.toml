@@ -4,6 +4,9 @@ multilingual = false
 src = "src"
 title = "Verus Tutorial and Reference"
 
+[rust]
+edition = "2018"
+
 [output.html]
 curly-quotes = true
 
