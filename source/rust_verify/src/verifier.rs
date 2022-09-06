@@ -504,7 +504,7 @@ impl Verifier {
                 "{}: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function",
                 context.1
             );
-            compiler.diagnostic().span_warn(multispan, &msg);
+            compiler.diagnostic().span_note_without_error(multispan, &msg);
         }
 
         if is_check_valid && !is_singular {
