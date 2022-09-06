@@ -171,6 +171,16 @@ pub fn old<A>(_: A) -> A {
 }
 
 #[proof]
+pub fn assume_(_: bool) {
+    unimplemented!();
+}
+
+#[proof]
+pub fn assert_(_: bool) {
+    unimplemented!();
+}
+
+#[proof]
 pub fn assert_by(_: bool, _: ()) {
     unimplemented!();
 }

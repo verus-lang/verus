@@ -125,6 +125,10 @@ impl Diagnostics for Compiler {
             let span: Span = from_raw_span(&sp.raw_span);
             v.push(span);
         }
+        while let Some(i) = v.iter().position(|a| v.iter().any(|b| a != b && a.contains(*b))) {
+            // Remove i in favor of the more specific spans contained by i
+            v.remove(i);
+        }
 
         let mut multispan = MultiSpan::from_spans(v);
 

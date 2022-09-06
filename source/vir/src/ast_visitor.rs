@@ -271,7 +271,9 @@ where
                 ExprX::Header(_) => {
                     panic!("header expression not allowed here: {:?}", &expr.span);
                 }
-                ExprX::Admit => (),
+                ExprX::AssertAssume { is_assume: _, expr: e1 } => {
+                    expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
+                }
                 ExprX::Forall { vars, require, ensure, proof } => {
                     map.push_scope(true);
                     for binder in vars.iter() {
@@ -597,7 +599,10 @@ where
         ExprX::Header(_) => {
             return err_str(&expr.span, "header expression not allowed here");
         }
-        ExprX::Admit => ExprX::Admit,
+        ExprX::AssertAssume { is_assume, expr: e1 } => {
+            let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
+            ExprX::AssertAssume { is_assume: *is_assume, expr: expr1 }
+        }
         ExprX::Forall { vars, require, ensure, proof } => {
             let vars =
                 vec_map_result(&**vars, |x| x.map_result(|t| map_typ_visitor_env(t, env, ft)))?;

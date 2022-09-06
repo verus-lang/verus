@@ -976,7 +976,7 @@ impl VisitMut for Visitor {
                     let span = assume.assume_token.span;
                     let arg = assume.expr;
                     let attrs = assume.attrs;
-                    *expr = quote_verbatim!(span, attrs => crate::pervasive::assume(#arg));
+                    *expr = quote_verbatim!(span, attrs => ::builtin::assume_(#arg));
                 }
                 Expr::Assert(assert) => {
                     let span = assert.assert_token.span;
@@ -984,7 +984,7 @@ impl VisitMut for Visitor {
                     let attrs = assert.attrs;
                     match (assert.by_token, assert.prover, assert.requires, assert.body) {
                         (None, None, None, None) => {
-                            *expr = quote_verbatim!(span, attrs => crate::pervasive::assert(#arg));
+                            *expr = quote_verbatim!(span, attrs => ::builtin::assert_(#arg));
                         }
                         (None, _, _, _) => panic!("missing by token"),
                         (Some(_), None, None, None) => panic!("extra by token"),

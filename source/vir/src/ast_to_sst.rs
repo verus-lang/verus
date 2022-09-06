@@ -1171,8 +1171,33 @@ fn expr_to_stm_opt(
         ExprX::Header(_) => {
             return err_str(&expr.span, "header expression not allowed here");
         }
-        ExprX::Admit => {
-            let stm = assume_false(&expr.span);
+        ExprX::AssertAssume { is_assume: false, expr: e } => {
+            if state.checking_recommends(ctx) {
+                let stms = check_pure_expr(ctx, state, &e)?;
+                Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
+            } else {
+                let mut stms: Vec<Stm> = Vec::new();
+                let split = crate::split_expression::need_split_expression(ctx, &e.span);
+                let exp = expr_to_pure_exp(ctx, state, e)?;
+                let small = is_small_exp_or_loc(&exp);
+                let exp = if small || split {
+                    exp.clone()
+                } else {
+                    // To avoid copying exp in Assert and Assume,
+                    // put exp into a temporary variable
+                    let (temp, temp_var) = state.next_temp(&exp.span, &exp.typ);
+                    let temp_id = state.declare_new_var(&temp, &exp.typ, false, false);
+                    stms.push(init_var(&exp.span, &temp_id, &exp));
+                    temp_var
+                };
+                stms.push(Spanned::new(e.span.clone(), StmX::Assert(None, exp.clone())));
+                stms.push(Spanned::new(e.span.clone(), StmX::Assume(exp)));
+                Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
+            }
+        }
+        ExprX::AssertAssume { is_assume: true, expr: e } => {
+            let exp = expr_to_pure_exp(ctx, state, e)?;
+            let stm = Spanned::new(expr.span.clone(), StmX::Assume(exp));
             Ok((vec![stm], ReturnValue::ImplicitUnit(expr.span.clone())))
         }
         ExprX::Forall { vars, require, ensure, proof } => {
