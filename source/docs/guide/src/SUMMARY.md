@@ -9,7 +9,7 @@
 # Tutorial
 
 - [Basic specifications]()
-    - [assert, requires, ensures]()
+    - [assert, requires, ensures, ghost code](./requires_ensures.md)
     - [Specifications: expressions and operators]()
     - [Integers and arithmetic](./integers.md)
 - [Executable code, proof code, specification code]()

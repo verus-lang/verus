@@ -89,6 +89,6 @@ For example:
 
 This will generate an executable for `getting_started.rs`.
 (However, in this example, the executable won't do anything interesting,
-because the `main` function contains no executable code --
+because the `main` function contains no executable code ---
 it contains only statically-checked assertions,
 which are erased before compilation.)

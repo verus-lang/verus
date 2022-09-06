@@ -78,7 +78,7 @@ so that you can omit the suffixes unless the Rust type checker complains about n
 ```
 
 Note that the values `0`, `u`, `i`, `n`, and `4` in the expression `0 <= u < i < n < 4`
-are allowed to all have different types --
+are allowed to all have different types ---
 you can use `<=`, `<`, `>=`, `>`, `==`, and `!=` to compare values of different integer types inside ghost code
 (e.g. comparing a `u8` to an `int` in `u < i`).
 
