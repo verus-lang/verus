@@ -12,6 +12,7 @@ use air::errors::Error;
 use num_bigint::BigInt;
 use std::fmt::Display;
 use std::sync::Arc;
+use vir_macros::ToNode;
 
 /// Result<T, VirErr> is used when an error might need to be reported to the user
 pub type VirErr = Error;
@@ -27,14 +28,14 @@ pub type Idents = Arc<Vec<Ident>>;
 
 /// A fully-qualified name, such as a module name, function name, or datatype name
 pub type Path = Arc<PathX>;
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ToNode)]
 pub struct PathX {
     pub krate: Option<Ident>, // None for local crate
     pub segments: Idents,
 }
 
 /// Describes what access other modules have to a function, datatype, etc.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, ToNode)]
 pub struct Visibility {
     /// Module that owns this item, or None for a foreign module
     pub owning_module: Option<Path>,
@@ -43,7 +44,7 @@ pub struct Visibility {
 }
 
 /// Describes whether a variable, function, etc. is compiled or just used for verification
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, ToNode, PartialEq, Eq, Hash)]
 pub enum Mode {
     /// Ghost (not compiled), used to represent specifications (requires, ensures, invariant)
     Spec,
@@ -58,7 +59,7 @@ pub enum Mode {
 pub type InferMode = u64;
 
 /// Describes integer types
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, ToNode, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum IntRange {
     /// The set of all mathematical integers Z (..., -2, -1, 0, 1, 2, ...)
     Int,
@@ -79,7 +80,7 @@ pub type Typ = Arc<TypX>;
 
 pub type Typs = Arc<Vec<Typ>>;
 // Deliberately not marked Eq -- use explicit match instead, so we know where types are compared
-#[derive(Debug, Hash)]
+#[derive(Debug, Hash, ToNode)]
 pub enum TypX {
     /// Bool, Int, Datatype are translated directly into corresponding SMT types (they are not SMT-boxed)
     Bool,
@@ -108,7 +109,7 @@ pub enum TypX {
     Char,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, ToNode)]
 pub enum TriggerAnnotation {
     /// Automatically choose triggers for the expression containing this annotation,
     /// with no diagnostics printed
@@ -122,7 +123,7 @@ pub enum TriggerAnnotation {
 }
 
 /// Operations on Ghost and Tracked
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, ToNode)]
 pub enum ModeCoercion {
     /// Mutable borrows (Ghost::borrow_mut and Tracked::borrow_mut) are treated specially by
     /// the mode checker when checking assignments.
@@ -134,7 +135,7 @@ pub enum ModeCoercion {
 
 /// Primitive unary operations
 /// (not arbitrary user-defined functions -- these are represented by ExprX::Call)
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, ToNode)]
 pub enum UnaryOp {
     /// boolean not
     Not,
@@ -158,7 +159,7 @@ pub enum UnaryOp {
     CharToInt,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ToNode)]
 pub struct FieldOpr {
     pub datatype: Path,
     pub variant: Ident,
@@ -167,7 +168,7 @@ pub struct FieldOpr {
 
 /// More complex unary operations (requires Clone rather than Copy)
 /// (Below, "boxed" refers to boxing types in the SMT encoding, not the Rust Box type)
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, ToNode)]
 pub enum UnaryOpr {
     /// coerce Typ --> Boxed(Typ)
     Box(Typ),
@@ -185,7 +186,7 @@ pub enum UnaryOpr {
 }
 
 /// Arithmetic operation that might fail (overflow or divide by zero)
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, ToNode)]
 pub enum ArithOp {
     /// IntRange::Int +
     Add,
@@ -200,7 +201,7 @@ pub enum ArithOp {
 }
 
 /// Bitwise operation
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, ToNode)]
 pub enum BitwiseOp {
     BitXor,
     BitAnd,
@@ -209,7 +210,7 @@ pub enum BitwiseOp {
     Shl,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, ToNode)]
 pub enum InequalityOp {
     /// IntRange::Int <=
     Le,
@@ -227,7 +228,7 @@ pub enum InequalityOp {
 /// not on finite-width integer types or nat.
 /// Finite-width and nat operations are represented with a combination of IntRange::Int operations
 /// and UnaryOp::Clip.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, ToNode)]
 pub enum BinaryOp {
     /// boolean and (short-circuiting: right side is evaluated only if left side is true)
     And,
@@ -253,7 +254,7 @@ pub enum BinaryOp {
     StrGetChar,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, ToNode)]
 pub enum MultiOp {
     Chained(Arc<Vec<InequalityOp>>),
 }
@@ -261,7 +262,7 @@ pub enum MultiOp {
 /// Ghost annotations on functions and while loops; must appear at the beginning of function body
 /// or while loop body
 pub type HeaderExpr = Arc<HeaderExprX>;
-#[derive(Debug)]
+#[derive(Debug, ToNode)]
 pub enum HeaderExprX {
     /// Marker that trait declaration method body is omitted and should be erased
     NoMethodBody,
@@ -293,7 +294,7 @@ pub enum HeaderExprX {
 }
 
 /// Primitive constant values
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, ToNode, PartialEq, Eq, Hash)]
 pub enum Constant {
     /// true or false
     Bool(bool),
@@ -321,7 +322,7 @@ impl<X: Display> Display for SpannedTyped<X> {
 /// Patterns for match expressions
 pub type Pattern = Arc<SpannedTyped<PatternX>>;
 pub type Patterns = Arc<Vec<Pattern>>;
-#[derive(Debug, Clone)]
+#[derive(Debug, ToNode, Clone)]
 pub enum PatternX {
     /// _
     Wildcard,
@@ -338,7 +339,7 @@ pub enum PatternX {
 /// Arms of match expressions
 pub type Arm = Arc<Spanned<ArmX>>;
 pub type Arms = Arc<Vec<Arm>>;
-#[derive(Debug)]
+#[derive(Debug, ToNode)]
 pub struct ArmX {
     /// pattern
     pub pattern: Pattern,
@@ -350,7 +351,7 @@ pub struct ArmX {
 
 /// Static function identifier
 pub type Fun = Arc<FunX>;
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, ToNode, Clone, PartialEq, Eq, Hash)]
 pub struct FunX {
     /// Path of function
     pub path: Path,
@@ -360,7 +361,7 @@ pub struct FunX {
     pub trait_path: Option<Path>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, ToNode)]
 pub enum CallTarget {
     /// Call a statically known function, passing some type arguments
     Static(Fun, Typs),
@@ -369,18 +370,18 @@ pub enum CallTarget {
     FnSpec(Expr),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, ToNode, PartialEq, Eq, Hash)]
 pub enum VarAt {
     Pre,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, ToNode, PartialEq, Eq, Hash)]
 pub enum InvAtomicity {
     Atomic,
     NonAtomic,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, ToNode, PartialEq, Eq, Hash)]
 pub enum AssertQueryMode {
     NonLinear,
     BitVector,
@@ -393,7 +394,7 @@ pub struct Quant {
 }
 
 /// Computation mode for assert_by_compute
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, ToNode)]
 pub enum ComputeMode {
     /// After simplifying an expression as far as possible,
     /// pass the remainder as an assertion to Z3
@@ -405,7 +406,8 @@ pub enum ComputeMode {
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
-#[derive(Debug)]
+#[derive(Debug, ToNode)]
+#[to_node(name = ">")]
 pub enum ExprX {
     /// Constant
     Const(Constant),
@@ -486,7 +488,7 @@ pub enum ExprX {
 /// Statement, similar to rustc_hir::Stmt
 pub type Stmt = Arc<Spanned<StmtX>>;
 pub type Stmts = Arc<Vec<Stmt>>;
-#[derive(Debug)]
+#[derive(Debug, ToNode)]
 pub enum StmtX {
     /// Single expression
     Expr(Expr),
@@ -499,7 +501,7 @@ pub enum StmtX {
 /// Function parameter
 pub type Param = Arc<Spanned<ParamX>>;
 pub type Params = Arc<Vec<Param>>;
-#[derive(Debug, Clone)]
+#[derive(Debug, ToNode, Clone)]
 pub struct ParamX {
     pub name: Ident,
     pub typ: Typ,
@@ -509,7 +511,7 @@ pub struct ParamX {
 }
 
 pub type GenericBound = Arc<GenericBoundX>;
-#[derive(Debug)]
+#[derive(Debug, ToNode)]
 pub enum GenericBoundX {
     /// List of implemented traits
     Traits(Vec<Path>),
@@ -523,7 +525,7 @@ pub type TypBounds = Arc<Vec<(Ident, GenericBound)>>;
 pub type TypPositiveBounds = Arc<Vec<(Ident, GenericBound, bool)>>;
 
 pub type FunctionAttrs = Arc<FunctionAttrsX>;
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, ToNode, Default, Clone)]
 pub struct FunctionAttrsX {
     /// Erasure and lifetime checking based on ghost blocks
     pub uses_ghost_blocks: bool,
@@ -560,14 +562,14 @@ pub struct FunctionAttrsX {
 }
 
 /// Function specification of its invariant mask
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, ToNode)]
 pub enum MaskSpec {
     InvariantOpens(Exprs),
     InvariantOpensExcept(Exprs),
     NoSpec,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, ToNode, Clone)]
 pub enum FunctionKind {
     Static,
     /// Method declaration inside a trait
@@ -586,7 +588,7 @@ pub enum FunctionKind {
 
 /// Function, including signature and body
 pub type Function = Arc<Spanned<FunctionX>>;
-#[derive(Debug, Clone)]
+#[derive(Debug, ToNode, Clone)]
 pub struct FunctionX {
     /// Name of function
     pub name: Fun,
@@ -653,7 +655,7 @@ pub type Fields = Binders<(Typ, Mode, Visibility)>;
 pub type Variant = Binder<Fields>;
 pub type Variants = Binders<Fields>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, ToNode)]
 pub enum DatatypeTransparency {
     Never,
     WithinModule,
@@ -661,7 +663,7 @@ pub enum DatatypeTransparency {
 }
 
 /// struct or enum
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, ToNode)]
 pub struct DatatypeX {
     pub path: Path,
     pub visibility: Visibility,
@@ -674,7 +676,7 @@ pub type Datatype = Arc<Spanned<DatatypeX>>;
 pub type Datatypes = Vec<Datatype>;
 
 pub type Trait = Arc<Spanned<TraitX>>;
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, ToNode)]
 pub struct TraitX {
     pub name: Path,
     pub typ_params: TypPositiveBounds,
@@ -683,7 +685,7 @@ pub struct TraitX {
 
 /// An entire crate
 pub type Krate = Arc<KrateX>;
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, ToNode, Default)]
 pub struct KrateX {
     /// All functions in the crate, plus foreign functions
     pub functions: Vec<Function>,

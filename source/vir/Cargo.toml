@@ -9,6 +9,7 @@ edition = "2018"
 # Note: do not add any dependencies on rustc -- VIR deliberately abstracts away from rustc's internals
 [dependencies]
 air = { path = "../air" }
+vir-macros = { path = "../vir_macros" }
 sise = "0.6.0"
 num-bigint = "0.4.3"
 num-traits= "0.2.15"
