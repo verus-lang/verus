@@ -11,7 +11,7 @@
 - [Basic specifications]()
     - [assert, requires, ensures]()
     - [Specifications: expressions and operators]()
-    - [Integers and arithmetic]()
+    - [Integers and arithmetic](./integers.md)
 - [Executable code, proof code, specification code]()
     - [Modes: exec, proof, spec]()
     - [spec functions]()
