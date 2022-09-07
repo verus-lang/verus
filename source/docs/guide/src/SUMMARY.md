@@ -63,7 +63,7 @@
 - [Understanding the guarantees of a verified program]()
   - [Assumptions and trusted components]()
   - [Identifying a project's TCB]()
-  - [Memory safety is conditional on preconditions]()
+  - [Memory safety is conditional on verification](./memory-safety.md)
 
 - [Project setup and development]()
   - [Working with crates]()
