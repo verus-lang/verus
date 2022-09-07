@@ -22,6 +22,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::hash::{Hash, Hasher};
 use std::io::Write;
+use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::thread;
 
@@ -193,9 +194,23 @@ impl<T: SyntacticEquality> SyntacticEquality for Arc<Vec<T>> {
         if self.len() != other.len() {
             Some(false)
         } else {
-            self.iter()
-                .zip(other.iter())
-                .try_fold(true, |acc, (l, r)| Some(acc && l.syntactic_eq(r)?))
+            let check = self.iter().zip(other.iter()).try_fold(true, |def_true, (l, r)| {
+                match l.syntactic_eq(r) {
+                    None => ControlFlow::Continue(false), // We still continue, since we might see a definitely false result
+                    Some(false) => ControlFlow::Break(()), // Short circuit
+                    Some(true) => ControlFlow::Continue(def_true),
+                }
+            });
+            match check {
+                ControlFlow::Break(_) => Some(false),
+                ControlFlow::Continue(def_true) => {
+                    if def_true {
+                        Some(true)
+                    } else {
+                        None
+                    }
+                }
+            }
         }
     }
 }
@@ -205,9 +220,23 @@ impl<T: Clone + SyntacticEquality> SyntacticEquality for Vector<T> {
         if self.len() != other.len() {
             Some(false)
         } else {
-            self.iter()
-                .zip(other.iter())
-                .try_fold(true, |acc, (l, r)| Some(acc && l.syntactic_eq(r)?))
+            let check = self.iter().zip(other.iter()).try_fold(true, |def_true, (l, r)| {
+                match l.syntactic_eq(r) {
+                    None => ControlFlow::Continue(false), // We still continue, since we might see a definitely false result
+                    Some(false) => ControlFlow::Break(()), // Short circuit
+                    Some(true) => ControlFlow::Continue(def_true),
+                }
+            });
+            match check {
+                ControlFlow::Break(_) => Some(false),
+                ControlFlow::Continue(def_true) => {
+                    if def_true {
+                        Some(true)
+                    } else {
+                        None
+                    }
+                }
+            }
         }
     }
 }
