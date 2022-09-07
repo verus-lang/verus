@@ -44,14 +44,16 @@ On the other hand, consider this (possible) implementation of `index` for Verus'
 `Vec` collection:
 
 ```rust,ignore
-#[verifier(external_body)]
-pub fn index(&self, i: usize) -> (r: &A)
-    requires
-        i < self.len(),
-    ensures
-        *r === self[i as int],
-{
-    unsafe { self.vec.get_unchecked(i) }
+impl<A> Vec<A> {
+    #[verifier(external_body)]
+    pub fn index(&self, i: usize) -> (r: &A)
+        requires
+            i < self.len(),
+        ensures
+            *r === self[i as int],
+    {
+        unsafe { self.vec.get_unchecked(i) }
+    }
 }
 ```
 
@@ -73,3 +75,5 @@ even if their code otherwise has bugs.
 In Verus, there is no staggered notion of correctness. If the program verifies, then it is
 memory safe, and it will execute according to all its specifications.
 If the program fails to verify, then all bets are off.
+
+(TODO remark on implications for calling Verus code from ordinary rust code)
