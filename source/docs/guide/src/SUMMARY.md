@@ -8,10 +8,11 @@
 
 # Tutorial
 
-- [Basic specifications]()
+- [Basic specifications](specs.md)
     - [assert, requires, ensures, ghost code](./requires_ensures.md)
-    - [Specifications: expressions and operators]()
+    - [Expressions and operators for specifications](./operators.md)
     - [Integers and arithmetic](./integers.md)
+    - [Equality](./equality.md)
 - [Executable code, proof code, specification code]()
     - [Modes: exec, proof, spec]()
     - [spec functions]()
