@@ -1964,48 +1964,16 @@ pub(crate) mod parsing {
             }
         }
 
-        if (allow_struct.0 || is_certainly_not_a_block(input)) && input.peek(token::Brace) {
+        if allow_struct.0 && input.peek(token::Brace) {
             let expr_struct = expr_struct_helper(input, expr.path)?;
             if expr.qself.is_some() {
                 Ok(Expr::Verbatim(verbatim::between(begin, input)))
             } else {
-                if allow_struct.0 {
-                    Ok(Expr::Struct(expr_struct))
-                } else {
-                    Err(Error::new(expr_struct.span(),
-                        "struct literals are not allowed here; try surrounding the struct literal with parentheses"))
-                }
+                Ok(Expr::Struct(expr_struct))
             }
         } else {
             Ok(Expr::Path(expr))
         }
-    }
-
-    fn is_certainly_not_a_block(input: ParseStream) -> bool {
-        if !input.peek(token::Brace) {
-            return true;
-        }
-
-        let input = input.fork();
-        let content;
-        let brace_token = braced!(content in input);
-
-        if content.peek(Ident::peek_any) {
-            if content.peek2(Token![,]) {
-                true
-            } else if content.peek2(Token![:]) {
-                let ident: Ident = content.parse()?;
-                let colon: Token![:] = content.parse()?;
-                !can_begin_type(content)
-            } else {
-                false
-            }
-        } else {
-            false
-        }
-    }
-
-    fn can_begin_type(input: ParseStream) -> bool {
     }
 
     #[cfg(feature = "full")]
