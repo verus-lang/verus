@@ -1,6 +1,13 @@
-name: test
+name: ci
 
-on: [push, workflow_dispatch]
+on:
+  push:
+    paths-ignore:
+      - 'README.md'
+      - 'source/CODE.md'
+      - 'source/docs/**'
+
+  workflow_dispatch:
 
 jobs:
   fmt:
