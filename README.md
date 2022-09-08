@@ -1,4 +1,4 @@
-See [Goals](../../wiki/Goals) for a brief description of the project's goals. See the (work-in-progress) [📖 tutorial and guide](https://verus-lang.github.io/verus/guide/) and the [📖 API documentation](https://verus-lang.github.io/verus/verusdoc/lib/).
+See [Goals](../../wiki/Goals) for a brief description of the project's goals. See the (work-in-progress) [📖 tutorial and reference](https://verus-lang.github.io/verus/guide/) and the [📖 API documentation](https://verus-lang.github.io/verus/verusdoc/lib/).
 
 ## Building the project
 
