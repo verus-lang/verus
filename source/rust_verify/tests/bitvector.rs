@@ -196,7 +196,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    //https://github.com/secure-foundations/verus/issues/191 (@matthias-brun)
+    //https://github.com/verus-lang/verus/issues/191 (@matthias-brun)
     #[test] test10_fails verus_code! {
         #[verifier(bit_vector)]
         proof fn f2() {

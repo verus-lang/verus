@@ -199,3 +199,21 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error(err)
 }
+
+test_verify_one_file! {
+    #[test] open_fn_refers_to_private_const_fail verus_code! {
+        mod A {
+            spec const X: usize = 1;
+            pub open spec fn f() -> usize {
+                X
+            }
+        }
+
+        mod B {
+            use crate::A;
+            pub open spec fn g() -> bool {
+                A::f() == 1
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "public spec function cannot refer to private items")
+}

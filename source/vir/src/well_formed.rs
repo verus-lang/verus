@@ -40,6 +40,34 @@ fn check_typ(typ: &Arc<TypX>, span: &air::ast::Span) -> Result<(), VirErr> {
     })
 }
 
+fn check_path_and_get_function<'a>(
+    ctxt: &'a Ctxt,
+    x: &Fun,
+    disallow_private_access: Option<&str>,
+    span: &air::ast::Span,
+) -> Result<&'a Function, VirErr> {
+    let f = match ctxt.funs.get(x) {
+        Some(f) => f,
+        None => {
+            let path = path_as_rust_name(&x.path);
+            return err_str(
+                span,
+                &format!(
+                    "`{path:}` is not supported (note: currently Verus does not support definitions external to the crate, including most features in std)"
+                ),
+            );
+        }
+    };
+
+    if let Some(msg) = disallow_private_access {
+        if f.x.visibility.is_private {
+            return err_str(&span, msg);
+        }
+    }
+
+    Ok(f)
+}
+
 fn check_one_expr(
     ctxt: &Ctxt,
     function: &Function,
@@ -47,19 +75,11 @@ fn check_one_expr(
     disallow_private_access: Option<&str>,
 ) -> Result<(), VirErr> {
     match &expr.x {
+        ExprX::ConstVar(x) => {
+            check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
+        }
         ExprX::Call(CallTarget::Static(x, _), args) => {
-            let f = match ctxt.funs.get(x) {
-                Some(f) => f,
-                None => {
-                    let path = path_as_rust_name(&x.path);
-                    return err_str(
-                        &expr.span,
-                        &format!(
-                            "`{path:}` is not supported (note: currently Verus does not support definitions external to the crate, including most features in std)"
-                        ),
-                    );
-                }
-            };
+            let f = check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
             if f.x.attrs.is_decrease_by {
                 // a decreases_by function isn't a real function;
                 // it's just a container for proof code that goes in the corresponding spec function
@@ -88,12 +108,6 @@ fn check_one_expr(
                         &arg.span,
                         "complex arguments to &mut parameters are currently unsupported",
                     );
-                }
-            }
-            if let Some(msg) = disallow_private_access {
-                let callee = &ctxt.funs[x];
-                if callee.x.visibility.is_private {
-                    return err_str(&expr.span, msg);
                 }
             }
         }

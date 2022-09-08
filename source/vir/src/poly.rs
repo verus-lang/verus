@@ -445,7 +445,10 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         ExprX::Fuel(..) => expr.clone(),
         ExprX::RevealString(_) => expr.clone(),
         ExprX::Header(..) => panic!("Header should already be removed"),
-        ExprX::Admit => expr.clone(),
+        ExprX::AssertAssume { is_assume, expr: e1 } => {
+            let e1 = coerce_expr_to_native(ctx, &poly_expr(ctx, state, e1));
+            mk_expr(ExprX::AssertAssume { is_assume: *is_assume, expr: e1 })
+        }
         ExprX::Forall { vars, require, ensure, proof } => {
             let mut bs: Vec<Binder<Typ>> = Vec::new();
             state.types.push_scope(true);

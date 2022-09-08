@@ -9,8 +9,28 @@ test_verify_one_file! {
             i + 1
         }
 
+        spec fn add1_int_left(i: int) -> int {
+            1 + i
+        }
+
         spec fn add1_nat(i: nat) -> nat {
             i + 1
+        }
+
+        spec fn add1_nat_left(i: nat) -> nat {
+            1 + i
+        }
+
+        spec fn add_nat_nat(i: nat, j: nat) -> nat {
+            i + j
+        }
+
+        spec fn add_nat_u8(i: nat, j: u8) -> int {
+            i + j
+        }
+
+        spec fn add_u8_nat(i: u8, j: nat) -> int {
+            i + j
         }
 
         #[verifier(opaque)]

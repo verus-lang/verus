@@ -452,8 +452,8 @@ pub enum ExprX {
     /// Note: this only appears temporarily during rust_to_vir construction, and should not
     /// appear in the final Expr produced by rust_to_vir (see vir::headers::read_header).
     Header(HeaderExpr),
-    /// Assume false
-    Admit,
+    /// Assert or assume
+    AssertAssume { is_assume: bool, expr: Expr },
     /// Forall or assert-by statement; proves "forall vars. ensure" via proof.
     Forall { vars: Binders<Typ>, require: Expr, ensure: Expr, proof: Expr },
     /// If-else

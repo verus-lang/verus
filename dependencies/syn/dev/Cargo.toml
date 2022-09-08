@@ -16,7 +16,7 @@ name = "syn-dev"
 [dependencies]
 quote = "1.0"
 
-[dependencies.syn]
+[dependencies.syn_verus]
 path = ".."
 default-features = false
-features = ["parsing", "full", "extra-traits", "proc-macro"]
+features = ["parsing", "full", "extra-traits", "proc-macro", "clone-impls"]

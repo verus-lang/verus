@@ -92,6 +92,12 @@ macro_rules! stmt_with_semi {
     };
 }
 
+macro_rules! quote_verbatim {
+    ($span:expr, $attrs:tt => $($tok:tt)*) => {
+        Expr::Verbatim(quote_spanned!{ $span => #(#$attrs)* $($tok)* })
+    }
+}
+
 impl Visitor {
     fn visit_fn(
         &mut self,
@@ -743,24 +749,17 @@ impl VisitMut for Visitor {
                             InsideArith::None => {
                                 // We don't know which integer type to use,
                                 // so defer the decision to type inference.
-                                *expr = Expr::Verbatim(
-                                    quote_spanned!(span => ::builtin::spec_literal_integer(#n)),
-                                );
-                                expr.replace_attrs(attrs);
+                                *expr = quote_verbatim!(span, attrs => ::builtin::spec_literal_integer(#n));
                             }
                             InsideArith::Widen if n.starts_with("-") => {
                                 // Use int inside +, -, etc., since these promote to int anyway
-                                *expr = Expr::Verbatim(
-                                    quote_spanned!(span => ::builtin::spec_literal_int(#n)),
-                                );
-                                expr.replace_attrs(attrs);
+                                *expr =
+                                    quote_verbatim!(span, attrs => ::builtin::spec_literal_int(#n));
                             }
                             InsideArith::Widen => {
                                 // Use int inside +, -, etc., since these promote to int anyway
-                                *expr = Expr::Verbatim(
-                                    quote_spanned!(span => ::builtin::spec_literal_nat(#n)),
-                                );
-                                expr.replace_attrs(attrs);
+                                *expr =
+                                    quote_verbatim!(span, attrs => ::builtin::spec_literal_nat(#n));
                             }
                             InsideArith::Fixed => {
                                 // We generally won't want int/nat literals for bitwise ops,
@@ -769,13 +768,9 @@ impl VisitMut for Visitor {
                             }
                         }
                     } else if lit.suffix() == "int" {
-                        *expr =
-                            Expr::Verbatim(quote_spanned!(span => ::builtin::spec_literal_int(#n)));
-                        expr.replace_attrs(attrs);
+                        *expr = quote_verbatim!(span, attrs => ::builtin::spec_literal_int(#n));
                     } else if lit.suffix() == "nat" {
-                        *expr =
-                            Expr::Verbatim(quote_spanned!(span => ::builtin::spec_literal_nat(#n)));
-                        expr.replace_attrs(attrs);
+                        *expr = quote_verbatim!(span, attrs => ::builtin::spec_literal_nat(#n));
                     } else {
                         // Has a native Rust integer suffix, so leave it as a native Rust literal
                         *expr = Expr::Lit(ExprLit { lit: Lit::Int(lit), attrs });
@@ -787,10 +782,7 @@ impl VisitMut for Visitor {
                     let src = cast.expr;
                     let attrs = cast.attrs;
                     let ty = cast.ty;
-                    *expr = Expr::Verbatim(
-                        quote_spanned!(span => ::builtin::spec_cast_integer::<_, #ty>(#src)),
-                    );
-                    expr.replace_attrs(attrs);
+                    *expr = quote_verbatim!(span, attrs => ::builtin::spec_cast_integer::<_, #ty>(#src));
                 }
                 Expr::Index(idx) => {
                     use syn_verus::spanned::Spanned;
@@ -798,8 +790,7 @@ impl VisitMut for Visitor {
                     let src = idx.expr;
                     let attrs = idx.attrs;
                     let index = idx.index;
-                    *expr = Expr::Verbatim(quote_spanned!(span => #src.spec_index(#index)));
-                    expr.replace_attrs(attrs);
+                    *expr = quote_verbatim!(span, attrs => #src.spec_index(#index));
                 }
                 Expr::Unary(unary) if quant => {
                     use syn_verus::spanned::Spanned;
@@ -871,24 +862,21 @@ impl VisitMut for Visitor {
                     }
                     match unary.op {
                         UnOp::Forall(..) => {
-                            *expr = Expr::Verbatim(quote_spanned!(span => ::builtin::forall(#arg)));
+                            *expr = quote_verbatim!(span, attrs => ::builtin::forall(#arg));
                         }
                         UnOp::Exists(..) => {
-                            *expr = Expr::Verbatim(quote_spanned!(span => ::builtin::exists(#arg)));
+                            *expr = quote_verbatim!(span, attrs => ::builtin::exists(#arg));
                         }
                         UnOp::Choose(..) => {
                             if n_inputs == 1 {
-                                *expr =
-                                    Expr::Verbatim(quote_spanned!(span => ::builtin::choose(#arg)));
+                                *expr = quote_verbatim!(span, attrs => ::builtin::choose(#arg));
                             } else {
-                                *expr = Expr::Verbatim(
-                                    quote_spanned!(span => ::builtin::choose_tuple(#arg)),
-                                );
+                                *expr =
+                                    quote_verbatim!(span, attrs => ::builtin::choose_tuple(#arg));
                             }
                         }
                         _ => panic!("unary"),
                     }
-                    expr.replace_attrs(attrs);
                 }
                 Expr::Unary(unary) if !quant => {
                     use syn_verus::spanned::Spanned;
@@ -897,11 +885,10 @@ impl VisitMut for Visitor {
                     match unary.op {
                         UnOp::Neg(..) => {
                             let arg = unary.expr;
-                            *expr = Expr::Verbatim(quote_spanned!(span => (#arg).spec_neg()));
+                            *expr = quote_verbatim!(span, attrs => (#arg).spec_neg());
                         }
                         _ => panic!("unary"),
                     }
-                    expr.replace_attrs(attrs);
                 }
                 Expr::Binary(binary) => {
                     use syn_verus::spanned::Spanned;
@@ -911,77 +898,62 @@ impl VisitMut for Visitor {
                     let right = binary.right;
                     match binary.op {
                         BinOp::Eq(..) => {
-                            *expr = Expr::Verbatim(
-                                quote_spanned!(span => ::builtin::spec_eq(#left, #right)),
-                            );
+                            *expr =
+                                quote_verbatim!(span, attrs => ::builtin::spec_eq(#left, #right));
                         }
                         BinOp::Ne(..) => {
-                            *expr = Expr::Verbatim(
-                                quote_spanned!(span => ! ::builtin::spec_eq(#left, #right)),
-                            );
+                            *expr =
+                                quote_verbatim!(span, attrs => ! ::builtin::spec_eq(#left, #right));
                         }
                         BinOp::Le(..) => {
-                            *expr = Expr::Verbatim(quote_spanned!(span => (#left).spec_le(#right)));
+                            *expr = quote_verbatim!(span, attrs => (#left).spec_le(#right));
                         }
                         BinOp::Lt(..) => {
-                            *expr = Expr::Verbatim(quote_spanned!(span => (#left).spec_lt(#right)));
+                            *expr = quote_verbatim!(span, attrs => (#left).spec_lt(#right));
                         }
                         BinOp::Ge(..) => {
-                            *expr = Expr::Verbatim(quote_spanned!(span => (#left).spec_ge(#right)));
+                            *expr = quote_verbatim!(span, attrs => (#left).spec_ge(#right));
                         }
                         BinOp::Gt(..) => {
-                            *expr = Expr::Verbatim(quote_spanned!(span => (#left).spec_gt(#right)));
+                            *expr = quote_verbatim!(span, attrs => (#left).spec_gt(#right));
                         }
                         BinOp::Add(..) if !self.inside_bitvector => {
-                            *expr =
-                                Expr::Verbatim(quote_spanned!(span => (#left).spec_add(#right)));
+                            *expr = quote_verbatim!(span, attrs => (#left).spec_add(#right));
                         }
                         BinOp::Sub(..) if !self.inside_bitvector => {
-                            *expr =
-                                Expr::Verbatim(quote_spanned!(span => (#left).spec_sub(#right)));
+                            *expr = quote_verbatim!(span, attrs => (#left).spec_sub(#right));
                         }
                         BinOp::Mul(..) if !self.inside_bitvector => {
-                            *expr =
-                                Expr::Verbatim(quote_spanned!(span => (#left).spec_mul(#right)));
+                            *expr = quote_verbatim!(span, attrs => (#left).spec_mul(#right));
                         }
                         BinOp::Add(..) | BinOp::Sub(..) | BinOp::Mul(..) => {
-                            *expr = Expr::Verbatim(
-                                quote_spanned!(span => compile_error!("Inside bit-vector assertion, use `add` `sub` `mul` for fixed-bit operators, instead of `+` `-` `*`. (see the functions builtin::add(left, right), builtin::sub(left, right), and builtin::mul(left, right))")),
-                            );
+                            *expr = quote_verbatim!(span, attrs => compile_error!("Inside bit-vector assertion, use `add` `sub` `mul` for fixed-bit operators, instead of `+` `-` `*`. (see the functions builtin::add(left, right), builtin::sub(left, right), and builtin::mul(left, right))"));
                         }
                         BinOp::Div(..) => {
-                            *expr = Expr::Verbatim(
-                                quote_spanned!(span => (#left).spec_euclidean_div(#right)),
-                            );
+                            *expr =
+                                quote_verbatim!(span, attrs => (#left).spec_euclidean_div(#right));
                         }
                         BinOp::Rem(..) => {
-                            *expr = Expr::Verbatim(
-                                quote_spanned!(span => (#left).spec_euclidean_mod(#right)),
-                            );
+                            *expr =
+                                quote_verbatim!(span, attrs => (#left).spec_euclidean_mod(#right));
                         }
                         BinOp::BitAnd(..) => {
-                            *expr =
-                                Expr::Verbatim(quote_spanned!(span => (#left).spec_bitand(#right)));
+                            *expr = quote_verbatim!(span, attrs => (#left).spec_bitand(#right));
                         }
                         BinOp::BitOr(..) => {
-                            *expr =
-                                Expr::Verbatim(quote_spanned!(span => (#left).spec_bitor(#right)));
+                            *expr = quote_verbatim!(span, attrs => (#left).spec_bitor(#right));
                         }
                         BinOp::BitXor(..) => {
-                            *expr =
-                                Expr::Verbatim(quote_spanned!(span => (#left).spec_bitxor(#right)));
+                            *expr = quote_verbatim!(span, attrs => (#left).spec_bitxor(#right));
                         }
                         BinOp::Shl(..) => {
-                            *expr =
-                                Expr::Verbatim(quote_spanned!(span => (#left).spec_shl(#right)));
+                            *expr = quote_verbatim!(span, attrs => (#left).spec_shl(#right));
                         }
                         BinOp::Shr(..) => {
-                            *expr =
-                                Expr::Verbatim(quote_spanned!(span => (#left).spec_shr(#right)));
+                            *expr = quote_verbatim!(span, attrs => (#left).spec_shr(#right));
                         }
                         _ => panic!("binary"),
                     }
-                    expr.replace_attrs(attrs);
                 }
                 Expr::View(view) if !self.assign_to => {
                     let at_token = view.at_token;
@@ -1004,27 +976,20 @@ impl VisitMut for Visitor {
                     let span = assume.assume_token.span;
                     let arg = assume.expr;
                     let attrs = assume.attrs;
-                    *expr = Expr::Verbatim(quote_spanned!(span => crate::pervasive::assume(#arg)));
-                    expr.replace_attrs(attrs);
+                    *expr = quote_verbatim!(span, attrs => ::builtin::assume_(#arg));
                 }
                 Expr::Assert(assert) => {
                     let span = assert.assert_token.span;
                     let arg = assert.expr;
                     let attrs = assert.attrs;
-                    if match (assert.by_token, assert.prover, assert.requires, assert.body) {
+                    match (assert.by_token, assert.prover, assert.requires, assert.body) {
                         (None, None, None, None) => {
-                            *expr = Expr::Verbatim(
-                                quote_spanned!(span => crate::pervasive::assert(#arg)),
-                            );
-                            true
+                            *expr = quote_verbatim!(span, attrs => ::builtin::assert_(#arg));
                         }
                         (None, _, _, _) => panic!("missing by token"),
                         (Some(_), None, None, None) => panic!("extra by token"),
                         (Some(_), None, None, Some(box block)) => {
-                            *expr = Expr::Verbatim(
-                                quote_spanned!(span => {::builtin::assert_by(#arg, #block);}),
-                            );
-                            true
+                            *expr = quote_verbatim!(span, attrs => {::builtin::assert_by(#arg, #block);});
                         }
                         (Some(_), Some((_, id)), None, None) if id.to_string() == "compute" => {
                             *expr = Expr::Verbatim(
@@ -1041,10 +1006,7 @@ impl VisitMut for Visitor {
                             true
                         }
                         (Some(_), Some((_, id)), None, None) if id.to_string() == "bit_vector" => {
-                            *expr = Expr::Verbatim(
-                                quote_spanned!(span => ::builtin::assert_bitvector_by({::builtin::ensures(#arg);})),
-                            );
-                            true
+                            *expr = quote_verbatim!(span, attrs => ::builtin::assert_bitvector_by({::builtin::ensures(#arg);}));
                         }
                         (Some(_), Some((_, id)), requires, block)
                             if id.to_string() == "bit_vector" =>
@@ -1068,20 +1030,13 @@ impl VisitMut for Visitor {
                                 Semi { spans: [span] },
                             ));
                             block.stmts.splice(0..0, stmts);
-                            let mut assert_bitvector_by: Expr = Expr::Verbatim(
-                                quote_spanned!(span => ::builtin::assert_bitvector_by(#block)),
-                            );
-                            assert_bitvector_by.replace_attrs(attrs.clone());
+                            let assert_bitvector_by: Expr = quote_verbatim!(span, attrs => ::builtin::assert_bitvector_by(#block));
                             *expr = Expr::Verbatim(quote_spanned!(span => {#assert_bitvector_by}));
-                            false
                         }
                         (Some(_), Some((_, id)), None, None)
                             if id.to_string() == "nonlinear_arith" =>
                         {
-                            *expr = Expr::Verbatim(
-                                quote_spanned!(span => ::builtin::assert_nonlinear_by({::builtin::ensures(#arg);})),
-                            );
-                            true
+                            *expr = quote_verbatim!(span, attrs => ::builtin::assert_nonlinear_by({::builtin::ensures(#arg);}));
                         }
                         (Some(_), Some((_, id)), requires, Some(box mut block))
                             if id.to_string() == "nonlinear_arith" =>
@@ -1100,28 +1055,16 @@ impl VisitMut for Visitor {
                                 Semi { spans: [span] },
                             ));
                             block.stmts.splice(0..0, stmts);
-                            let mut assert_nonlinear_by: Expr = Expr::Verbatim(
-                                quote_spanned!(span => ::builtin::assert_nonlinear_by(#block)),
-                            );
-                            assert_nonlinear_by.replace_attrs(attrs.clone());
+                            let assert_nonlinear_by: Expr = quote_verbatim!(span, attrs => ::builtin::assert_nonlinear_by(#block));
                             *expr = Expr::Verbatim(quote_spanned!(span => {#assert_nonlinear_by}));
-                            false
                         }
                         (Some(_), Some((_, id)), _, _) => {
                             let span = id.span();
-                            *expr = Expr::Verbatim(
-                                quote_spanned!(span => compile_error!("unsupported kind of assert-by")),
-                            );
-                            true
+                            *expr = quote_verbatim!(span, attrs => compile_error!("unsupported kind of assert-by"));
                         }
                         _ => {
-                            *expr = Expr::Verbatim(
-                                quote_spanned!(span => compile_error!("unsupported kind of assert-by")),
-                            );
-                            true
+                            *expr = quote_verbatim!(span, attrs => compile_error!("unsupported kind of assert-by"));
                         }
-                    } {
-                        expr.replace_attrs(attrs);
                     }
                 }
                 Expr::AssertForall(assert) => {
@@ -1138,10 +1081,7 @@ impl VisitMut for Visitor {
                         stmts.push(stmt_with_semi!(span => ::builtin::ensures(#arg)));
                     }
                     block.stmts.splice(0..0, stmts);
-                    *expr = Expr::Verbatim(
-                        quote_spanned!(span => {::builtin::assert_forall_by(|#inputs| #block);}),
-                    );
-                    expr.replace_attrs(attrs);
+                    *expr = quote_verbatim!(span, attrs => {::builtin::assert_forall_by(|#inputs| #block);});
                 }
                 _ => panic!("expected to replace expression"),
             }

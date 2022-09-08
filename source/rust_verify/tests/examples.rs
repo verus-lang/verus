@@ -34,6 +34,7 @@ enum Mode {
 }
 
 examples_in_dir!("example");
+examples_in_dir!("example/guide");
 examples_in_dir!("example/state_machines");
 examples_in_dir!("example/summer_school");
 examples_in_dir!("example/state_machines/tutorial");

@@ -685,10 +685,11 @@ fn check_expr_handle_mut_arg(
         ExprX::Fuel(_, _) => Ok(outer_mode),
         ExprX::RevealString(_) => Ok(outer_mode),
         ExprX::Header(_) => panic!("internal error: Header shouldn't exist here"),
-        ExprX::Admit => {
+        ExprX::AssertAssume { is_assume: _, expr: e } => {
             if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
-                return err_str(&expr.span, "cannot use admit in exec mode");
+                return err_str(&expr.span, "cannot use assert or assume in exec mode");
             }
+            check_expr_has_mode(typing, Mode::Spec, e, Mode::Spec)?;
             Ok(outer_mode)
         }
         ExprX::Forall { vars, require, ensure, proof } => {

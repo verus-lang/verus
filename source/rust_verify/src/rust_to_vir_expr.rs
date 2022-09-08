@@ -461,6 +461,8 @@ fn fn_call_to_vir<'tcx>(
     let is_reveal = f_name == "builtin::reveal";
     let is_reveal_fuel = f_name == "builtin::reveal_with_fuel";
     let is_implies = f_name == "builtin::imply";
+    let is_assume = f_name == "builtin::assume_";
+    let is_assert = f_name == "builtin::assert_";
     let is_assert_by = f_name == "builtin::assert_by";
     let is_assert_by_compute = f_name == "builtin::assert_by_compute";
     let is_assert_by_compute_only = f_name == "builtin::assert_by_compute_only";
@@ -637,6 +639,8 @@ fn fn_call_to_vir<'tcx>(
             || is_choose
             || is_choose_tuple
             || is_with_triggers
+            || is_assume
+            || is_assert
             || is_assert_by
             || is_assert_by_compute
             || is_assert_by_compute_only
@@ -1178,7 +1182,18 @@ fn fn_call_to_vir<'tcx>(
         Ok(mk_expr(ExprX::Header(header)))
     } else if is_admit {
         unsupported_err_unless!(len == 0, expr.span, "expected admit", args);
-        Ok(mk_expr(ExprX::Admit))
+        let f = spanned_typed_new(
+            expr.span,
+            &Arc::new(TypX::Bool),
+            ExprX::Const(Constant::Bool(false)),
+        );
+        Ok(mk_expr(ExprX::AssertAssume { is_assume: true, expr: f }))
+    } else if is_assume {
+        unsupported_err_unless!(len == 1, expr.span, "expected assume", args);
+        Ok(mk_expr(ExprX::AssertAssume { is_assume: true, expr: vir_args[0].clone() }))
+    } else if is_assert {
+        unsupported_err_unless!(len == 1, expr.span, "expected assert", args);
+        Ok(mk_expr(ExprX::AssertAssume { is_assume: false, expr: vir_args[0].clone() }))
     } else if is_spec_cast_integer {
         unsupported_err_unless!(len == 1, expr.span, "spec_cast_integer", args);
         let source_vir = vir_args[0].clone();

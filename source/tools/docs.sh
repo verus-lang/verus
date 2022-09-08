@@ -24,7 +24,7 @@ fi
 TEMPD=$(mktemp -d)
 
 cp -r pervasive $TEMPD
-echo "#[allow(rustdoc::invalid_rust_codeblocks)] pub mod pervasive;" >> $TEMPD/lib.rs
+echo "#![feature(rustc_attrs)] #[allow(rustdoc::invalid_rust_codeblocks)] pub mod pervasive;" >> $TEMPD/lib.rs
 
 echo "Running rustdoc..."
 eval ""VERUSDOC=1 VERUS_Z3_PATH="$(pwd)/z3" $LIB_PATH ../rust/install/bin/rustdoc --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/libbuiltin_macros.$DYN_LIB_EXT --extern state_machines_macros=../rust/install/bin/libstate_machines_macros.$DYN_LIB_EXT --edition=2018 -Zenable_feature=stmt_expr_attributes -Zenable_feature=box_syntax -Zenable_feature=box_patterns -Zenable_feature=negative_impls -Zproc-macro-backtrace $TEMPD/lib.rs""

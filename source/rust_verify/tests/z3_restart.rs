@@ -24,7 +24,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-// From https://github.com/secure-foundations/verus/blob/ad92b2a8908a219ec84c277d2bb701934e9a8d9c/source/rust_verify/tests/adts_generics.rs#L1
+// From https://github.com/verus-lang/verus/blob/ad92b2a8908a219ec84c277d2bb701934e9a8d9c/source/rust_verify/tests/adts_generics.rs#L1
 test_verify_one_file! {
     #[test] test_box_unbox_struct code! {
         #[derive(Eq, PartialEq)]
@@ -46,7 +46,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-// From https://github.com/secure-foundations/verus/blob/826e59f3774927f1cc61dd87e39e015b1ec51abf/source/rust_verify/tests/nonlinear.rs#L46
+// From https://github.com/verus-lang/verus/blob/826e59f3774927f1cc61dd87e39e015b1ec51abf/source/rust_verify/tests/nonlinear.rs#L46
 test_verify_one_file! {
     #[test] test_with_nlarith verus_code! {
         #[verifier(nonlinear)]
@@ -62,7 +62,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-// From https://github.com/secure-foundations/verus/blob/main/source/rust_verify/example/bitvector_basic.rs
+// From https://github.com/verus-lang/verus/blob/main/source/rust_verify/example/bitvector_basic.rs
 test_verify_one_file! {
     #[test] test_with_bv code! {
         #[verifier(bit_vector)]
@@ -91,7 +91,7 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-// From https://github.com/secure-foundations/verus/blob/826e59f3774927f1cc61dd87e39e015b1ec51abf/source/rust_verify/tests/nonlinear.rs#L46
+// From https://github.com/verus-lang/verus/blob/826e59f3774927f1cc61dd87e39e015b1ec51abf/source/rust_verify/tests/nonlinear.rs#L46
 test_verify_one_file! {
     #[test] test2_fails verus_code! {
         #[verifier(nonlinear)]
@@ -107,7 +107,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-// From https://github.com/secure-foundations/verus/blob/21a4774a6fb18295fe5bbcd6abb3e19c6df1e851/source/rust_verify/tests/multiset.rs#L63
+// From https://github.com/verus-lang/verus/blob/21a4774a6fb18295fe5bbcd6abb3e19c6df1e851/source/rust_verify/tests/multiset.rs#L63
 test_verify_one_file! {
     #[test] multiset_basics verus_code! {
         use crate::pervasive::multiset::*;

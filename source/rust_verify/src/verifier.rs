@@ -128,6 +128,10 @@ impl Diagnostics for Compiler {
             let span: Span = from_raw_span(&sp.raw_span);
             v.push(span);
         }
+        while let Some(i) = v.iter().position(|a| v.iter().any(|b| a != b && a.contains(*b))) {
+            // Remove i in favor of the more specific spans contained by i
+            v.remove(i);
+        }
 
         let mut multispan = MultiSpan::from_spans(v);
 
@@ -507,7 +511,7 @@ impl Verifier {
                 "{}: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function",
                 context.1
             );
-            compiler.diagnostic().span_warn(multispan, &msg);
+            compiler.diagnostic().span_note_without_error(multispan, &msg);
         }
 
         if is_check_valid && !is_singular {

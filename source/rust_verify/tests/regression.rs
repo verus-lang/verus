@@ -40,3 +40,40 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[ignore] #[test] test_hygienic_identifiers_regression_279 verus_code! {
+        macro_rules! assert_with_binding {
+            ($s1:expr) => {
+                let s1 = $s1;
+                assert(s1);
+            }
+        }
+
+        proof fn test() {
+            let s1: nat = 0;
+            assert_with_binding!(true);
+            assert(s1 === 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[ignore] #[test] test_bad_span_for_postcondition_failure_regression_281 verus_code! {
+        #[is_variant]
+        enum Enum {
+            A,
+            B,
+        }
+
+
+        fn test(a: u32) -> (res: Enum)
+            ensures (match res {
+                Enum::A => a <= 10,
+                Enum::B => a > 10, // FAILS
+            }) {
+
+            Enum::B
+        }
+    } => Err(e) => assert_one_fails(e)
+}

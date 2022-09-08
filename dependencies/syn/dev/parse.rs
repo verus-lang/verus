@@ -1,10 +1,10 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::File;
+use syn_verus::File;
 
 #[proc_macro]
 pub fn r#mod(input: TokenStream) -> TokenStream {
-    let compile_error = syn::parse::<File>(input)
+    let compile_error = syn_verus::parse::<File>(input)
         .map(|file| println!("{:#?}", file))
         .map_err(|err| err.to_compile_error())
         .err();
