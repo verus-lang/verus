@@ -90,7 +90,7 @@ impl<T> PtrSet<T> {
 
 /// Mutable interpreter state
 struct State {
-    /// Depth of our current recursion; used for formatting debug output
+    /// Depth of our current recursion; used for formatting log output
     depth: usize,
     /// Symbol table mapping bound variables to their values
     env: Env,
@@ -98,8 +98,6 @@ struct State {
     iterations: u64,
     /// Log to write out extra info
     log: Option<File>,
-    /// Enable debug output
-    debug: bool,
     /// Collect and display performance data
     perf: bool,
     /// Cache function invocations, based on their arguments, so we can directly return the
@@ -140,7 +138,7 @@ impl State {
     }
 
     fn log(&self, s: String) {
-        if self.debug {
+        if self.log.is_some() {
             let mut log = self.log.as_ref().unwrap();
             writeln!(log, "{}", s).expect("I/O error writing to the interpreter's log");
         }
@@ -834,9 +832,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
         Const(_) => ok,
         Var(id) => match state.env.get(id) {
             None => {
-                if state.debug {
-                    state.log(format!("Failed to find a match for variable {:?}", id));
-                };
+                state.log(format!("Failed to find a match for variable {:?}", id));
                 // "Hide" the variable, so that we don't accidentally
                 // mix free and bound variables while interpreting
                 exp_new(Interp(InterpExp::FreeVar(id.clone())))
@@ -1358,13 +1354,11 @@ fn eval_expr_launch(
     let env = ScopeMap::new();
     let cache = HashMap::new();
     let logging = log.is_some();
-    let debug = logging;
     let mut state = State {
         depth: 0,
         env,
         iterations: 1,
         log: log.take(),
-        debug,
         perf: logging,
         cache,
         enable_cache: true,
@@ -1398,20 +1392,14 @@ fn eval_expr_launch(
                     }
                     _ => e.clone(),
                 });
-                if debug {
-                    if exp.definitely_eq(&res) {
-                        println!();
-                        println!(
-                            "Could not take advantage of compute to simplify expression before sending to z3"
-                        );
-                        println!("  Unchanged: {}", exp);
-                        println!();
-                    } else {
-                        println!("Was able to simplify before sending to Z3");
-                        println!("  Old: {}", exp);
-                        println!("  New: {}", res);
-                        println!();
-                    }
+                if exp.definitely_eq(&res) {
+                    // TODO: Convert to use Diagnostics
+                    println!();
+                    println!(
+                        "WARNING: Could not take advantage of compute to simplify expression before sending to Z3"
+                    );
+                    println!("  Unchanged: {}", exp);
+                    println!();
                 }
                 Ok(res)
             }
