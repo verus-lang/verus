@@ -37,13 +37,13 @@ Since there are 14 different integer types (counting `int`, `nat`, `u8`...`usize
 it's not always obvious which type to use when writing a specification.
 Our advice is to be as general as possible by default:
 - Use `int` by default, since this is the most general type and is supported most efficiently by the SMT solver.
-  - Example: the Verus [sequence library](https://github.com/secure-foundations/verus/blob/main/source/pervasive/seq.rs)
+  - Example: the Verus [sequence library](https://github.com/verus-lang/verus/blob/main/source/pervasive/seq.rs)
     uses `int` for most operations, such as indexing into a sequence.
   - Note: as discussed below, most arithmetic operations in specifications produce values of type `int`,
     so it is usually most convenient to write specifications in terms of `int`.
 - Use `nat` for return values and datatype fields where the 0 lower bound is likely to provide useful information,
   such as lengths of sequences.
-  - Example: the Verus [`Seq::len()` function](https://github.com/secure-foundations/verus/blob/main/source/pervasive/seq.rs)
+  - Example: the Verus [`Seq::len()` function](https://github.com/verus-lang/verus/blob/main/source/pervasive/seq.rs)
     returns a `nat` to represent the length of a sequence.
   - The type `nat` is also handy for proving that recursive definitions terminate;
     you might to define a recursive `factorial` function to take a parameter of type `nat`,

@@ -25,14 +25,14 @@ tools/update-rust.sh
 ```
 
 The first command will download Verus' compiler fork; the second will make sure it is up-to-date and re-compile `rustc`.
-You can use the [`tools/update-rust.sh`](./tools/update-rust.sh) script to update the compiler when necessary (when new changes are pushed to the [compiler repository](https://github.com/secure-foundations/rust)).
+You can use the [`tools/update-rust.sh`](./tools/update-rust.sh) script to update the compiler when necessary (when new changes are pushed to the [compiler repository](https://github.com/verus-lang/rust)).
 
 #### Manual Install (Linux, macOS, Windows)
 
-Build the rust compiler from [https://github.com/secure-foundations/rust](https://github.com/secure-foundations/rust) with `python x.py install` in the `rust` directory:
+Build the rust compiler from [https://github.com/verus-lang/rust](https://github.com/verus-lang/rust) with `python x.py install` in the `rust` directory:
 
 ```
-git clone https://github.com/secure-foundations/rust.git
+git clone https://github.com/verus-lang/rust.git
 cd rust
 cp config.toml.verify config.toml
 python x.py install

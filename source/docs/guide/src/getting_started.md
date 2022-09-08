@@ -1,13 +1,13 @@
 # Getting Started
 
 To get started with Verus, use `git clone` to fetch the Verus source code from
-the [Verus GitHub page](https://github.com/secure-foundations/verus),
+the [Verus GitHub page](https://github.com/verus-lang/verus),
 and then follow the directions on
-the [Verus GitHub page](https://github.com/secure-foundations/verus)
+the [Verus GitHub page](https://github.com/verus-lang/verus)
 to build Verus.
 
 Let's try running Verus on the following sample Rust program,
-found at [getting_started.rs](https://github.com/secure-foundations/verus/tree/main/source/rust_verify/example/guide/getting_started.rs):
+found at [getting_started.rs](https://github.com/verus-lang/verus/tree/main/source/rust_verify/example/guide/getting_started.rs):
 
 ```rust
 {{#include ../../../rust_verify/example/guide/getting_started.rs}}
