@@ -42,7 +42,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_hygienic_identifiers_regression_279 verus_code! {
+    #[test] test_hygienic_identifiers_regression_279 verus_code! {
         macro_rules! assert_with_binding {
             ($s1:expr) => {
                 let s1 = $s1;
@@ -54,6 +54,48 @@ test_verify_one_file! {
             let s1: nat = 0;
             assert_with_binding!(true);
             assert(s1 === 0);
+        }
+
+        macro_rules! recursor {
+            () => { };
+            ($e:expr, $($tail:tt)*) => {
+                let s: u8 = $e;
+                recursor!($($tail)*);   // this recursive call defines a *distinct* variable called `s`
+                assert_(s == $e);       // this `s` should refer to the decl from 2 lines above
+            };
+        }
+
+        macro_rules! iterer {
+            ($($e:expr),*) => {
+                $( let s: u8 = $e; )*   // This makes two let statements, but rustc treats them as the same identifier
+                assert_(s == 3);        // So this always refers to the last `s` that was declared
+            };
+        }
+
+        proof fn test_more_complex() {
+            let s: u8 = 20;
+
+            recursor!(5, 6,);
+            iterer!(2, 3);
+
+            assert_(s == 20);
+
+            let s: u8 = 19;
+            assert_(s == 19);
+        }
+
+        macro_rules! closure {
+            ($e:expr) => {
+                |s: u8| { $e }
+            };
+        }
+
+        proof fn test_closure_param_names() {
+            let foo = |s: u8| {
+                closure!(s)(20) // when we pass `s` into the macro, it should refer to the `s` in the line above
+            };
+
+            assert_(foo(5) == 5);
         }
     } => Ok(())
 }

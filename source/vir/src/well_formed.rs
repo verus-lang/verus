@@ -4,6 +4,7 @@ use crate::ast::{
 };
 use crate::ast_util::{err_str, err_string, error, path_as_rust_name, referenced_vars_expr};
 use crate::datatype_to_air::is_datatype_transparent;
+use crate::def::user_local_name;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -312,10 +313,11 @@ fn check_function(
         }
     }
 
+    let ret_name = user_local_name(&*function.x.ret.x.name);
     for p in function.x.params.iter() {
         check_typ(&p.x.typ, &p.span)?;
-        if p.x.name == function.x.ret.x.name {
-            return err_str(&p.span, "parameter name cannot be same as return value name");
+        if user_local_name(&*p.x.name) == ret_name {
+            return err_str(&p.span, "parameter name cannot be the same as the return value name");
         }
     }
 

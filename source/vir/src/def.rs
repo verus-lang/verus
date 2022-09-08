@@ -632,3 +632,10 @@ pub fn char_to_unicode_ident() -> Ident {
 pub fn char_to_unicode() -> Node {
     str_to_node(&char_to_unicode_ident())
 }
+
+pub fn user_local_name<'a>(s: &'a str) -> &'a str {
+    match s.find('$') {
+        None => s,
+        Some(idx) => &s[0..idx],
+    }
+}

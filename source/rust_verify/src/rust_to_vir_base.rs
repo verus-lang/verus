@@ -138,8 +138,15 @@ pub(crate) fn hack_get_def_name<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Strin
     debug_name[last_colon + 1..].to_string()
 }
 
-pub(crate) fn ident_to_var<'tcx>(ident: &Ident) -> String {
+pub(crate) fn foreign_param_to_var<'tcx>(ident: &Ident) -> String {
     ident.to_string()
+}
+
+pub(crate) fn local_to_var<'tcx>(
+    ident: &Ident,
+    local_id: rustc_hir::hir_id::ItemLocalId,
+) -> String {
+    ident.to_string() + "$$" + &local_id.index().to_string()
 }
 
 pub(crate) fn is_visibility_private(vis_kind: &VisibilityKind, inherited_is_private: bool) -> bool {

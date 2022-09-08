@@ -1,4 +1,3 @@
-use crate::rust_to_vir_base::ident_to_var;
 use crate::util::{err_span_str, err_span_string};
 use rustc_ast::token::{Token, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
@@ -72,7 +71,7 @@ pub(crate) fn attr_to_tree(attr: &Attribute) -> Result<AttrTree, ()> {
     match &attr.kind {
         AttrKind::Normal(item, _) => match &item.path.segments[..] {
             [segment] => {
-                let name = ident_to_var(&segment.ident).as_str().to_string();
+                let name = segment.ident.to_string();
                 mac_args_to_tree(attr.span, name, &item.args)
             }
             _ => Err(()),
