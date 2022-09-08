@@ -3,10 +3,10 @@ name: pages
 on:
   push:
     branches: ['main']
-      # paths:
-      #   - 'README.md'
-      #   - 'source/CODE.md'
-      #   - 'source/docs/**'
+    paths:
+      - 'README.md'
+      - 'source/CODE.md'
+      - 'source/docs/**'
 
   workflow_dispatch:
 
