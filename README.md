@@ -1,4 +1,4 @@
-See [Goals](../../wiki/Goals) for a brief description of the project's goals.
+See [Goals](../../wiki/Goals) for a brief description of the project's goals. See the (work-in-progress) [📖 tutorial and guide](https://verus-lang.github.io/verus/guide/) and the [📖 API documentation](https://verus-lang.github.io/verus/verusdoc/lib/).
 
 ## Building the project
 
@@ -172,11 +172,20 @@ Commenting the code is strongly encouraged.  Use `///` to create comments
 that [`rustdoc`](https://doc.rust-lang.org/rustdoc/what-is-rustdoc.html) can
 automatically extract into HTML documentation.
 
+The rustdoc (verusdoc) for `main` is automatically published
+[📖 here](https://verus-lang.github.io/verus/verusdoc/lib/) (if the build succeeds).
+
 You can compile the current documentation by running (in the `verify` directory)
 ```
 RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc ../rust/install/bin/cargo doc 
 ```
 which will produce documentation files, e.g., `./target/doc/rust_verify/index.html`
+
+## Guide
+
+A work-in-progress tutorial and reference document is automatically published
+[📖 here](https://verus-lang.github.io/verus/guide/) from the sources in
+[`source/docs/guide`](./source/docs/guide).
 
 ## Running tests for the rust to vir translation, and inspecting the resulting vir/air/smt
 
