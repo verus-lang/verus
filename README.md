@@ -211,3 +211,4 @@ erased rust ast, you can use the `VERIFY_EXTRA_ARGS` environment variable, like 
 ```
 VERIFY_EXTRA_ARGS="--print-erased-spec" RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo test -p rust_verify --test refs -- --nocapture test_ref_0
 ```
+

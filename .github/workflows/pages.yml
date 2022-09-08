@@ -1,0 +1,60 @@
+name: pages
+
+on:
+  push:
+    branches: ['main']
+      # paths:
+      #   - 'README.md'
+      #   - 'source/CODE.md'
+      #   - 'source/docs/**'
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v3
+      - name: setup mdbook
+        run: |
+          curl -L https://github.com/rust-lang/mdBook/releases/download/v0.4.21/mdbook-v0.4.21-x86_64-unknown-linux-gnu.tar.gz > mdbook.tar.gz
+          tar -xvf mdbook.tar.gz
+          rm mdbook.tar.gz
+          chmod +x mdbook
+      - name: set-up dir structure
+        run: |
+          mkdir ./_site
+
+      - name: build guide book
+        run: |
+          mkdir ./_site/guide
+          ./mdbook build -d ../../../_site/guide source/docs/guide
+
+      - name: build state_machines book
+        run: |
+          mkdir ./_site/state_machines
+          ./mdbook build -d ../../../_site/state_machines source/docs/state_machines
+
+      - name: upload artifact
+        uses: actions/upload-pages-artifact@v1
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: deploy to github pages
+        id: deployment
+        uses: actions/deploy-pages@v1
