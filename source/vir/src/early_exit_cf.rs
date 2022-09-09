@@ -71,6 +71,7 @@ fn expr_get_early_exits_rec(
             | ExprX::Closure(..)
             | ExprX::Choose { .. }
             | ExprX::WithTriggers { .. }
+            | ExprX::AssertCompute(..)
             | ExprX::Fuel(..)
             | ExprX::Header(..)
             | ExprX::AssertAssume { .. }

@@ -14,6 +14,7 @@ use crate::sst::{BndX, Exp, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst_to_air::{
     exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, ExprCtxt, ExprMode,
 };
+use crate::update_cell::UpdateCell;
 use crate::util::vec_map;
 use air::ast::{
     BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Commands, DeclX, Expr, ExprX, Quant,
@@ -29,10 +30,17 @@ use std::sync::Arc;
 
 pub struct SstInline {
     pub(crate) typ_bounds: TypBounds,
-    pub(crate) params: Params,
     pub do_inline: bool,
 }
-pub type SstMap = HashMap<Fun, (SstInline, Exp)>;
+
+pub struct SstInfo {
+    pub(crate) inline: SstInline,
+    pub(crate) params: Params,
+    pub(crate) memoize: bool,
+    pub(crate) body: Exp,
+}
+
+pub type SstMap = UpdateCell<HashMap<Fun, SstInfo>>;
 
 // binder for forall (typ_params params)
 pub(crate) fn func_bind_trig(
@@ -136,14 +144,16 @@ fn func_body_to_air(
     state.fun_ssts = fun_ssts;
     let body_exp = crate::ast_to_sst::expr_to_pure_exp(&ctx, &mut state, &body)?;
     let body_exp = state.finalize_exp(ctx, &state.fun_ssts, &body_exp)?;
-    let inline = SstInline {
-        typ_bounds: function.x.typ_bounds.clone(),
+    let inline =
+        SstInline { typ_bounds: function.x.typ_bounds.clone(), do_inline: function.x.attrs.inline };
+    let info = SstInfo {
+        inline,
         params: function.x.params.clone(),
-        do_inline: function.x.attrs.inline,
+        memoize: function.x.attrs.memoize,
+        body: body_exp.clone(),
     };
-
-    assert!(!state.fun_ssts.contains_key(&function.x.name));
-    state.fun_ssts.insert(function.x.name.clone(), (inline, body_exp.clone()));
+    assert!(!state.fun_ssts.borrow().contains_key(&function.x.name));
+    state.fun_ssts.borrow_mut().insert(function.x.name.clone(), info);
 
     let mut decrease_by_stms: Vec<Stm> = Vec::new();
     let decrease_by_reqs = if let Some(req) = &function.x.decrease_when {
@@ -343,7 +353,7 @@ pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
         if let Some(body) = &function.x.body {
             let body_exp = crate::ast_to_sst::expr_to_exp_as_spec(
                 &ctx,
-                &SstMap::new(),
+                &UpdateCell::new(HashMap::new()),
                 &params_to_pars(&function.x.params, false),
                 &body,
             )?;

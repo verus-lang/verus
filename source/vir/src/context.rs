@@ -5,6 +5,7 @@ use crate::ast::{
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
 use crate::poly::MonoTyp;
+use crate::prelude::ArchWordBits;
 use crate::recursion::Node;
 use crate::scc::Graph;
 use crate::sst::BndInfo;
@@ -16,6 +17,8 @@ use num_bigint::BigUint;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::fs::File;
+use std::rc::Rc;
 use std::sync::Arc;
 
 pub type ChosenTrigger = Vec<(Span, String)>;
@@ -40,6 +43,9 @@ pub struct GlobalCtx {
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
     pub method_map: HashMap<(Fun, Path), Fun>,
     pub(crate) inferred_modes: HashMap<InferMode, Mode>,
+    pub(crate) rlimit: u32,
+    pub(crate) interpreter_log: Rc<RefCell<Option<File>>>,
+    pub arch: ArchWordBits,
 }
 
 // Context for verifying one function
@@ -166,6 +172,9 @@ impl GlobalCtx {
         krate: &Krate,
         no_span: Span,
         inferred_modes: HashMap<InferMode, Mode>,
+        rlimit: u32,
+        interpreter_log: Rc<RefCell<Option<File>>>,
+        arch: ArchWordBits,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
             std::cell::RefCell::new(Vec::new());
@@ -223,6 +232,9 @@ impl GlobalCtx {
             qid_map,
             method_map,
             inferred_modes,
+            rlimit,
+            interpreter_log,
+            arch,
         })
     }
 

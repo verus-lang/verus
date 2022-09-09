@@ -11,6 +11,7 @@ use crate::ast::{
     Typs, UnaryOp, UnaryOpr, VarAt,
 };
 use crate::def::Spanned;
+use crate::interpreter::InterpExp;
 use air::ast::{Binders, Ident, Span};
 use air::errors::Error;
 use std::sync::Arc;
@@ -60,6 +61,8 @@ pub enum ExpX {
     If(Exp, Exp, Exp),
     WithTriggers(Trigs, Exp),
     Bind(Bnd, Exp),
+    // only used internally by the interpreter; should never be seen outside it
+    Interp(InterpExp),
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -8,20 +8,22 @@ pub(crate) fn to_raw_span(span: Span) -> air::ast::RawSpan {
     Arc::new(span.data())
 }
 
+pub(crate) fn to_air_span(span: Span) -> air::ast::Span {
+    let raw_span = to_raw_span(span);
+    let as_string = format!("{:?}", span);
+    air::ast::Span { raw_span, as_string }
+}
+
 pub(crate) fn from_raw_span(raw_span: &air::ast::RawSpan) -> Span {
     (**raw_span).downcast_ref::<SpanData>().expect("internal error: failed to cast to Span").span()
 }
 
 pub(crate) fn spanned_new<X>(span: Span, x: X) -> Arc<Spanned<X>> {
-    let raw_span = to_raw_span(span);
-    let as_string = format!("{:?}", span);
-    Spanned::new(air::ast::Span { raw_span, as_string }, x)
+    Spanned::new(to_air_span(span), x)
 }
 
 pub(crate) fn spanned_typed_new<X>(span: Span, typ: &Typ, x: X) -> Arc<SpannedTyped<X>> {
-    let raw_span = to_raw_span(span);
-    let as_string = format!("{:?}", span);
-    SpannedTyped::new(&air::ast::Span { raw_span, as_string }, typ, x)
+    SpannedTyped::new(&to_air_span(span), typ, x)
 }
 
 pub(crate) fn err_span_str<A>(span: Span, msg: &str) -> Result<A, VirErr> {
@@ -29,10 +31,7 @@ pub(crate) fn err_span_str<A>(span: Span, msg: &str) -> Result<A, VirErr> {
 }
 
 pub(crate) fn err_span_string<A>(span: Span, msg: String) -> Result<A, VirErr> {
-    let raw_span = to_raw_span(span);
-    let as_string = format!("{:?}", span);
-    let air_span = air::ast::Span { raw_span, as_string };
-    err_string(&air_span, msg)
+    err_string(&to_air_span(span), msg)
 }
 
 pub(crate) fn unsupported_err_span<A>(span: Span, msg: String) -> Result<A, VirErr> {

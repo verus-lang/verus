@@ -9,6 +9,8 @@ use crate::def::Spanned;
 use air::ast::Span;
 pub use air::ast::{Binder, Binders};
 use air::errors::Error;
+use num_bigint::BigInt;
+use std::fmt::Display;
 use std::sync::Arc;
 
 /// Result<T, VirErr> is used when an error might need to be reported to the user
@@ -41,7 +43,7 @@ pub struct Visibility {
 }
 
 /// Describes whether a variable, function, etc. is compiled or just used for verification
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Mode {
     /// Ghost (not compiled), used to represent specifications (requires, ensures, invariant)
     Spec,
@@ -77,7 +79,7 @@ pub type Typ = Arc<TypX>;
 
 pub type Typs = Arc<Vec<Typ>>;
 // Deliberately not marked Eq -- use explicit match instead, so we know where types are compared
-#[derive(Debug)]
+#[derive(Debug, Hash)]
 pub enum TypX {
     /// Bool, Int, Datatype are translated directly into corresponding SMT types (they are not SMT-boxed)
     Bool,
@@ -105,7 +107,7 @@ pub enum TypX {
     Char,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum TriggerAnnotation {
     /// Automatically choose triggers for the expression containing this annotation,
     /// with no diagnostics printed
@@ -119,7 +121,7 @@ pub enum TriggerAnnotation {
 }
 
 /// Operations on Ghost and Tracked
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum ModeCoercion {
     /// Mutable borrows (Ghost::borrow_mut and Tracked::borrow_mut) are treated specially by
     /// the mode checker when checking assignments.
@@ -131,7 +133,7 @@ pub enum ModeCoercion {
 
 /// Primitive unary operations
 /// (not arbitrary user-defined functions -- these are represented by ExprX::Call)
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum UnaryOp {
     /// boolean not
     Not,
@@ -155,7 +157,7 @@ pub enum UnaryOp {
     CharToInt,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FieldOpr {
     pub datatype: Path,
     pub variant: Ident,
@@ -164,7 +166,7 @@ pub struct FieldOpr {
 
 /// More complex unary operations (requires Clone rather than Copy)
 /// (Below, "boxed" refers to boxing types in the SMT encoding, not the Rust Box type)
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum UnaryOpr {
     /// coerce Typ --> Boxed(Typ)
     Box(Typ),
@@ -182,7 +184,7 @@ pub enum UnaryOpr {
 }
 
 /// Arithmetic operation that might fail (overflow or divide by zero)
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ArithOp {
     /// IntRange::Int +
     Add,
@@ -197,7 +199,7 @@ pub enum ArithOp {
 }
 
 /// Bitwise operation
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum BitwiseOp {
     BitXor,
     BitAnd,
@@ -206,7 +208,7 @@ pub enum BitwiseOp {
     Shl,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum InequalityOp {
     /// IntRange::Int <=
     Le,
@@ -224,7 +226,7 @@ pub enum InequalityOp {
 /// not on finite-width integer types or nat.
 /// Finite-width and nat operations are represented with a combination of IntRange::Int operations
 /// and UnaryOp::Clip.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum BinaryOp {
     /// boolean and (short-circuiting: right side is evaluated only if left side is true)
     And,
@@ -294,8 +296,8 @@ pub enum HeaderExprX {
 pub enum Constant {
     /// true or false
     Bool(bool),
-    /// non-negative integer of arbitrary size (IntRange::Nat); use subtraction to get negative numbers
-    Nat(Arc<String>),
+    /// integer of arbitrary size
+    Int(BigInt),
     /// Hold generated string slices in here
     StrSlice(Arc<String>),
     // Hold unicode values here
@@ -307,6 +309,12 @@ pub struct SpannedTyped<X> {
     pub span: Span,
     pub typ: Typ,
     pub x: X,
+}
+
+impl<X: Display> Display for SpannedTyped<X> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.x)
+    }
 }
 
 /// Patterns for match expressions
@@ -377,10 +385,20 @@ pub enum AssertQueryMode {
     BitVector,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Quant {
     pub quant: air::ast::Quant,
     pub boxed_params: bool,
+}
+
+/// Computation mode for assert_by_compute
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ComputeMode {
+    /// After simplifying an expression as far as possible,
+    /// pass the remainder as an assertion to Z3
+    Z3,
+    /// Asserted expression must simplify all the way to True
+    ComputeOnly,
 }
 
 /// Expression, similar to rustc_hir::Expr
@@ -458,6 +476,8 @@ pub enum ExprX {
     Block(Stmts, Option<Expr>),
     /// `assert_by` with a dedicated prover option (nonlinear_arith, bit_vector)
     AssertQuery { requires: Exprs, ensures: Exprs, proof: Expr, mode: AssertQueryMode },
+    /// Assertion discharged via computation
+    AssertCompute(Expr, ComputeMode),
     /// Reveal a string
     RevealString(Arc<String>),
 }
@@ -534,6 +554,8 @@ pub struct FunctionAttrsX {
     pub nonlinear: bool,
     /// Use a dedicated Z3 process for this single query
     pub spinoff_prover: bool,
+    /// Memoize function call results during interpretation
+    pub memoize: bool,
 }
 
 /// Function specification of its invariant mask

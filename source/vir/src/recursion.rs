@@ -248,6 +248,9 @@ fn terminates(ctxt: &Ctxt, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp, VirErr> 
                 }
             }
         }
+        ExpX::Interp(_) => {
+            panic!("Found an interpreter expression {:?} outside the interpreter", exp)
+        }
     }
 }
 

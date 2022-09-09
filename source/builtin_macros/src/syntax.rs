@@ -991,6 +991,18 @@ impl VisitMut for Visitor {
                         (Some(_), None, None, Some(box block)) => {
                             *expr = quote_verbatim!(span, attrs => {::builtin::assert_by(#arg, #block);});
                         }
+                        (Some(_), Some((_, id)), None, None) if id.to_string() == "compute" => {
+                            *expr = Expr::Verbatim(
+                                quote_spanned!(span => ::builtin::assert_by_compute(#arg)),
+                            );
+                        }
+                        (Some(_), Some((_, id)), None, None)
+                            if id.to_string() == "compute_only" =>
+                        {
+                            *expr = Expr::Verbatim(
+                                quote_spanned!(span => ::builtin::assert_by_compute_only(#arg)),
+                            );
+                        }
                         (Some(_), Some((_, id)), None, None) if id.to_string() == "bit_vector" => {
                             *expr = quote_verbatim!(span, attrs => ::builtin::assert_bitvector_by({::builtin::ensures(#arg);}));
                         }

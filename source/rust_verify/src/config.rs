@@ -19,6 +19,7 @@ pub const LOG_DIR: &str = ".verus-log";
 pub const VIR_FILE_SUFFIX: &str = ".vir";
 pub const VIR_SIMPLE_FILE_SUFFIX: &str = "-simple.vir";
 pub const VIR_POLY_FILE_SUFFIX: &str = "-poly.vir";
+pub const INTERPRETER_FILE_SUFFIX: &str = ".interp";
 pub const AIR_INITIAL_FILE_SUFFIX: &str = ".air";
 pub const AIR_FINAL_FILE_SUFFIX: &str = "-final.air";
 pub const SMT_FILE_SUFFIX: &str = ".smt2";
@@ -47,6 +48,7 @@ pub struct Args {
     pub log_vir: bool,
     pub log_vir_simple: bool,
     pub log_vir_poly: bool,
+    pub log_interpreter: bool,
     pub log_air_initial: bool,
     pub log_air_final: bool,
     pub log_smt: bool,
@@ -92,6 +94,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_LOG_VIR: &str = "log-vir";
     const OPT_LOG_VIR_SIMPLE: &str = "log-vir-simple";
     const OPT_LOG_VIR_POLY: &str = "log-vir-poly";
+    const OPT_LOG_INTERPRETER: &str = "log-interpreter";
     const OPT_LOG_AIR_INITIAL: &str = "log-air";
     const OPT_LOG_AIR_FINAL: &str = "log-air-final";
     const OPT_LOG_SMT: &str = "log-smt";
@@ -159,6 +162,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     opts.optflag("", OPT_LOG_VIR, "Log VIR");
     opts.optflag("", OPT_LOG_VIR_SIMPLE, "Log simplified VIR");
     opts.optflag("", OPT_LOG_VIR_POLY, "Log poly VIR");
+    opts.optflag("", OPT_LOG_INTERPRETER, "Log assert_by_compute's interpreter progress");
     opts.optflag("", OPT_LOG_AIR_INITIAL, "Log AIR queries in initial form");
     opts.optflag("", OPT_LOG_AIR_FINAL, "Log AIR queries in final form");
     opts.optflag("", OPT_LOG_SMT, "Log SMT queries");
@@ -260,6 +264,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         log_vir: matches.opt_present(OPT_LOG_VIR),
         log_vir_simple: matches.opt_present(OPT_LOG_VIR_SIMPLE),
         log_vir_poly: matches.opt_present(OPT_LOG_VIR_POLY),
+        log_interpreter: matches.opt_present(OPT_LOG_INTERPRETER),
         log_air_initial: matches.opt_present(OPT_LOG_AIR_INITIAL),
         log_air_final: matches.opt_present(OPT_LOG_AIR_FINAL),
         log_smt: matches.opt_present(OPT_LOG_SMT),
