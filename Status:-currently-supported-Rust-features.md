@@ -43,7 +43,7 @@ The following items are fully or partially supported:
     - const/safe/async/extern: low priority
 - struct definitions
     - generic bounds and where clauses: medium priority
-    - tuple structs: medium priority
+    - tuple structs: supported
     - unit struct constructors as constants: low priority
 - enumeration definitions: supported, except for:
     - generic bounds and where clauses: medium priority
@@ -55,7 +55,7 @@ The following items are fully or partially supported:
 
 The following items are not yet supported:
 - type aliases: high priority
-- trait definitions: high priority
+- trait definitions: supported (with limitations)
 - constant items: supported, for the most common uses
 - static items: low priority
 - union definitions: unsafe, and therefore unsupported
@@ -77,7 +77,7 @@ The following statements are not yet supported:
 # Expressions
 
 - literals:
-    - supported for integer and boolean literals
+    - supported for integer, boolean, and string literals
     - other types: medium priority
 - path expressions: supported
 - block expressions: supported
@@ -87,7 +87,7 @@ The following statements are not yet supported:
     - `*`, `&`
         - supported for `&` types and in some cases `&mut`, work-in-progress
     - `&mut`
-        - partially supported, work-in-progress, high priority
+        - partially supported, high priority
     - `?`
         - low priority
     - `!`
@@ -114,7 +114,7 @@ The following statements are not yet supported:
     - `&&`, `||`
         - supported
     - type cast
-        - integer numeric casts supported
+        - integer numeric casts and `char` to integer supported
         - other casts: low priority
     - assignment
         - place expressions (the only supported place is a mut local variable): medium priority
@@ -122,19 +122,19 @@ The following statements are not yet supported:
         - (note: need to remember that evaluation order isn't strictly left-to-right here)
 - grouped expression (parentheses): supported
 - array expressions: medium priority
-- index expressions: high priority, but probably needs to wait for traits
+- index expressions: high priority, supported only in spec mode
 - tuple expressions: supported
 - struct expressions:
     - field struct expression: supported
     - functional update syntax: supported
     - struct field init shorthand: supported
-    - tuple struct expression: medium priority
+    - tuple struct expression: supported
     - unit struct expression: low priority (use `S {}`, which is supported)
 - call expressions:
     - function is a simple name: supported
-    - function is an expression (higher-order functions): low priority
+    - function is an expression (higher-order functions): supported for spec closures, low priority
 - method-call expressions
-    - supported (for non-trait methods)
+    - supported
 - field access expressions: supported
 - closure expressions:
     - spec closures (not proof/exec) are supported, at least as function arguments
@@ -159,7 +159,7 @@ The following statements are not yet supported:
 - identifier patterns: supported
 - binding modes:
     - default mode: supported
-    - other modes: low priority
+    - other modes: medium priority
 - wildcard pattern: supported
 - rest pattern: low priority
 - range patterns: low priority
@@ -180,7 +180,7 @@ The following statements are not yet supported:
 - integer types: supported
 - floating point types: low priority
 - usize/isize: supported, but assumes that they are either 32-bit or 64-bit
-- char and str: medium priority
+- char and str: supported (with limitations)
 - never type: high priority
 - tuple types: supported
 - array and slice types:
@@ -194,7 +194,7 @@ The following statements are not yet supported:
 - closure types: low priority for exec/proof; for specs, you can use the Map type, which can be initialized with a closure
 - pointer types:
     - shared references: supported
-    - mutable references: partially supported, work-in-progress, high priority
+    - mutable references: partially supported, high priority
     - raw pointers: unsupported
 - function pointer types: unsupported
 - trait object types: low priority
