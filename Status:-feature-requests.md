@@ -1,8 +1,12 @@
 This document tracks paper-cuts and other usability issues that are not critical at this stage, but we would like to record for the future.
 
-## Modes
+## Using ghost() in spec mode should either be allowed or emit a better error message (@matthias-brun)
 
-Consider defaulting a variable's mode to the least upper bound of a datatype's constructor mode and the current mode:
+Sometimes it's necessary to wrap types in `Ghost` inside spec code (e.g. to construct a struct with a ghost field). Using `ghost()` in spec code results in the error message `unexpected proof/ghost/tracked`.
+
+One can just use `Ghost::new()` instead but this isn't easily discoverable. We should either change the error message to point out `Ghost::new()` to the user or alternatively directly allow `ghost()` to be used in spec mode.
+
+## Consider defaulting a variable's mode to the least upper bound of a datatype's constructor mode and the current mode (@tjhance)
 
 ```
 #[proof] struct A { … }
@@ -17,9 +21,7 @@ Variable `a` should be `proof` by default.
 
 Suggested by @tjhance. There is no consensus yet that this is desirable in general.
 
-## Functions taking mutable arguments
-
-@tjhance reports:
+## Functions taking mutable arguments (@tjhance)
 
 I find "new as default, explicitly use old(...) even in requires clause" to be a little confusing. To be specific, as I write the atomics library, some methods takes a &mut argument and some don't, and I constantly have to switch my way of thinking as I work on the specs. In particular, there is no type-level error if I screw up and forget to use old in a postcondition.
 
@@ -29,12 +31,4 @@ I think my ideal would be something like:
 * in requires, doesn't matter - could omit old, or use old to be explicit
 * in ensures, MUST either use old or new to be explicit
 
-## Report the first assertion in the source code that fails
-
-Verus currently reports the first error reported by Z3, which isn't guaranteed to be the first failing assertion in the source code. This is surprising when coming from Dafny, it can be problematic for certain tests, but it's also why Verus is often much faster at reporting errors (as Dafny has to start a separate query for each error).
-
-@Chris-Hawblitzel suggests
-
-> So we could have Verus automatically double-check that the earlier assertions all succeed.
-> [...] it would require one additional Z3 query to double-check the earlier assertions, potentially doubling the total Z3 time whenever there's an error.  So if we do this, I would prefer for Verus to print the first error message immediately, and then start the additional Z3 query.
 
