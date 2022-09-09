@@ -1,6 +1,6 @@
 This document tracks paper-cuts and other usability issues that are not critical at this stage, but we would like to record for the future.
 
-## Using ghost() in spec mode should either be allowed or emit a better error message (@matthias-brun)
+## Using `ghost()` in spec mode should either be allowed or emit a better error message (@matthias-brun)
 
 Sometimes it's necessary to wrap types in `Ghost` inside spec code (e.g. to construct a struct with a ghost field). Using `ghost()` in spec code results in the error message `unexpected proof/ghost/tracked`.
 
