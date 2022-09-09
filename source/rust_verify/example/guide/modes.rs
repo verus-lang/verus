@@ -299,6 +299,67 @@ spec(checked) fn caller2() -> nat {
 }
 // ANCHOR_END: recommends4
 
+/*
+// ANCHOR: ghost_abilities0
+fn divide_by_zero() {
+    let x: u8 = 1;
+    assert(x / 0 == x / 0); // succeeds in ghost code
+    let y = x / 0; // FAILS in exec code
+}
+// ANCHOR_END: ghost_abilities0
+*/
+
+// ANCHOR: ghost_abilities1
+mod MA {
+    // does not implement Copy
+    // does not allow construction by other modules
+    pub struct S {
+        private_field: u8,
+    }
+}
+
+mod MB {
+    use builtin::*;
+    use crate::MA::*;
+
+    // construct a ghost S
+    spec fn make_S() -> S;
+
+    // duplicate an S
+    spec fn duplicate_S(s: S) -> (S, S) {
+        (s, s)
+    }
+}
+// ANCHOR_END: ghost_abilities1
+
+/*
+// ANCHOR: ghost_abilities2
+fn test(s: S) {
+    let pair = duplicate_S(s); // FAILS
+}
+// ANCHOR_END: ghost_abilities2
+*/
+
+// ANCHOR: const1
+spec const spec_one: int = 1;
+
+spec fn spec_add_one(x: int) -> int {
+    x + spec_one
+}
+
+
+const one: u8 = 1;
+
+fn add_one(x: u8) -> (ret: u8)
+    requires
+        x < 0xff,
+    ensures
+        ret == x + one // use "one" in spec code
+{
+    x + one // use "one" in exec code
+}
+// ANCHOR_END: const1
+
 fn main() {
 }
 
