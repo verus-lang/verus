@@ -58,6 +58,7 @@ const PREFIX_TUPLE_PARAM: &str = "T%";
 const PREFIX_TUPLE_FIELD: &str = "field%";
 const PREFIX_LAMBDA_TYPE: &str = "fun%";
 const PREFIX_SNAPSHOT: &str = "snap%";
+const LOCAL_UNIQUE_ID_SEPARATOR: char = '~';
 const SUBST_RENAME_SEPARATOR: &str = "$$";
 const KRATE_SEPARATOR: &str = "!";
 const PATH_SEPARATOR: &str = ".";
@@ -633,9 +634,15 @@ pub fn char_to_unicode() -> Node {
     str_to_node(&char_to_unicode_ident())
 }
 
+/// Inverse of unique_local_name: extracts the user_given_name from
+/// a unique name (e.g., given "a~2", returns "a"
 pub fn user_local_name<'a>(s: &'a str) -> &'a str {
-    match s.find('$') {
+    match s.find(LOCAL_UNIQUE_ID_SEPARATOR) {
         None => s,
         Some(idx) => &s[0..idx],
     }
+}
+
+pub fn unique_local_name(user_given_name: String, uniq_id: usize) -> String {
+    user_given_name + &LOCAL_UNIQUE_ID_SEPARATOR.to_string() + &uniq_id.to_string()
 }
