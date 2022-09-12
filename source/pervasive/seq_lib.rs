@@ -51,8 +51,7 @@ pub open spec fn check_argument_is_seq<A>(s: Seq<A>) -> Seq<A> { s }
 /// identities without any additional help:
 ///
 /// ```rust
-/// #[proof]
-/// fn subrange_concat(s: Seq<u64>, i: int) {
+/// proof fn subrange_concat(s: Seq<u64>, i: int) {
 ///     requires([
 ///         0 <= i && i <= s.len(),
 ///     ]);
@@ -63,7 +62,7 @@ pub open spec fn check_argument_is_seq<A>(s: Seq<A>) -> Seq<A> { s }
 /// 
 ///     assert_seqs_equal!(s, t);
 /// 
-///     assert(equal(s, t));
+///     assert(s === t);
 /// }
 /// ```
 ///
@@ -71,7 +70,7 @@ pub open spec fn check_argument_is_seq<A>(s: Seq<A>) -> Seq<A> { s }
 /// For example,
 /// 
 /// ```rust
-/// #[proof] fn bitvector_seqs() {
+/// proof fn bitvector_seqs() {
 ///     let s = Seq::<u64>::new(5, |i| i as u64);
 ///     let t = Seq::<u64>::new(5, |i| i as u64 | 0);
 /// 
@@ -113,6 +112,7 @@ macro_rules! assert_seqs_equal_internal {
     }
 }
 
+#[doc(hidden)]
 pub use assert_seqs_equal_internal;
 pub use assert_seqs_equal;
 
