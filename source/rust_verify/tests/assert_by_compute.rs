@@ -18,7 +18,7 @@ test_verify_one_file! {
         const one64: u64 = 1;
         const two64: u64 = 2;
         fn test(x: u64) {
-            assert(!sub(0i32,1) == 0) by (compute);
+            assert(!sub(0i32,1) == 0) by (compute_only);
             assert(!sub(0i32,2) == 1) by (compute_only);
             assert(!one32 == 0xFFFF_FFFE) by (compute_only);
             assert(!two32 == 0xFFFF_FFFD) by (compute_only);
@@ -91,7 +91,7 @@ test_verify_one_file! {
     #[test] if_then_else verus_code! {
 
         proof fn test() {
-            assert(9int == if 7 > 3 { 9int } else { 5 }) by (compute);
+            assert(9int == if 7 > 3 { 9int } else { 5 }) by (compute_only);
             assert(if true { true } else { false }) by (compute_only);
             assert(if !true { false } else { true }) by (compute_only);
             assert(if !!true { true } else { false }) by (compute_only);
@@ -225,6 +225,8 @@ test_verify_one_file! {
         fn test(x: u64) {
             assert((|x:int| x + 1)(5) == 6) by (compute_only);
             let y = 5;
+            // This cannot use compute_only, since it relies on
+            // z3 filling in the value of y
             assert((|x:int| x + y)(5) == 10) by (compute);
             assert({
                 let y:int = 10;
