@@ -73,8 +73,9 @@ declare_atomic_type!(AtomicI8, PAtomicI8, PermissionI8, i8);
 
 declare_atomic_type!(AtomicBool, PAtomicBool, PermissionBool, bool);
 
-/// Macro to perform a given atomic operation on a given atomic
+/// Performs a given atomic operation on a given atomic
 /// while providing access to its ghost state.
+///
 /// `atomic_with_ghost!` supports the types
 /// [`AtomicU64`] [`AtomicU32`], [`AtomicU16`], [`AtomicU8`],
 /// [`AtomicI64`], [`AtomicI32`], [`AtomicI16`], [`AtomicI8`], and [`AtomicBool`].

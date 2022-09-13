@@ -95,7 +95,10 @@ pub fn print_u64(i: u64) {
 }
 
 /// Allows you to prove a boolean predicate by assuming its negation and proving
-/// a contradiction. Equivalent to writing `if !b { /* proof here */; assert(false); }`
+/// a contradiction.
+///
+/// `assert_by_contradiction!(b, { /* proof */ });`
+/// Equivalent to writing `if !b { /* proof */; assert(false); }`
 /// but is more concise and documents intent.
 ///
 /// ```rust
@@ -106,7 +109,15 @@ pub fn print_u64(i: u64) {
 /// ```
 
 #[macro_export]
-macro_rules! assert_by_contradiction_macro {
+macro_rules! assert_by_contradiction {
+    ($($a:tt)*) => {
+        verus_proof_macro_exprs!(assert_by_contradiction_internal!($($a)*))
+    }
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! assert_by_contradiction_internal {
     ($predicate:expr, $bblock:block) => {
         ::builtin::assert_by($predicate, {
             if !$predicate {
@@ -114,11 +125,5 @@ macro_rules! assert_by_contradiction_macro {
                 crate::pervasive::assert(false);
             }
         });
-    }
-}
-#[macro_export]
-macro_rules! assert_by_contradiction {
-    ($($a:tt)*) => {
-        verus_proof_macro_exprs!(assert_by_contradiction_macro!($($a)*))
     }
 }
