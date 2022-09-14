@@ -29,23 +29,24 @@
     - [Specification libraries: Seq, Set, Map](spec_lib.md)
     - [INTERLUDE: using assert and assume to develop proofs](develop_proofs.md)
     - [Executable libraries: Vec](exec_lib.md)
-- [Quantifiers and spec closures]()
-    - [spec closures]()
-    - [forall, exists, choose, triggers, assert-forall-by]()
-    - [broadcast_forall]()
-- [SMT solving, automation, and where automation fails]()
-    - [What's decidable, what's undecidable, what's fast, what's slow]()
-    - [integers: nonlinear arithmetic and bit vectors]()
-    - [forall and exists: writing and using triggers, inline functions]()
-    - [recursive functions]()
-    - [extensional equality]()
-    - [libraries: incomplete axioms for Seq, Set, Map]()
-- [Troubleshooting SMT performance]()
-    - [Modules, hiding, opaque, reveal]()
-    - [Quantifier profiling]()
-    - [assert-by]()
+- [Quantifiers and spec closures]() <!--- Chris --->
+    - [spec closures]() <!--- Chris --->
+    - [forall, exists, choose, triggers, assert-forall-by]() <!--- Chris --->
+    - [broadcast_forall]() <!--- Chris --->
+- [SMT solving, automation, and where automation fails]() <!--- Chris --->
+    - [What's decidable, what's undecidable, what's fast, what's slow]() <!--- Chris --->
+    - [integers: nonlinear arithmetic and bit vectors]() <!--- Chris and Chanhee --->
+    - [forall and exists: writing and using triggers, inline functions]() <!--- Chris --->
+    - [recursive functions]() <!--- Chris --->
+    - [extensional equality]() <!--- Chris --->
+    - [libraries: incomplete axioms for Seq, Set, Map]() <!--- Chris --->
+- [Improving SMT performance]() <!--- Chris --->
+    - [Modules, hiding, opaque, reveal]() <!--- Chris --->
+    - [Quantifier profiling]() <!--- Bryan --->
+    - [assert-by]() <!--- Chris --->
+    - [assert-by-compute]() <!--- Bryan --->
     - [Spinning off separate SMT queries]()
-    - [Breaking proofs into smaller pieces]()
+    - [Breaking proofs into smaller pieces]() <!--- Chris --->
 - [Mutation, references, and borrowing]()
 - [Traits]()
 - [Ghost and tracked variables]()
@@ -59,8 +60,8 @@
     - [when_used_as_spec]()
 - [Macros]()
 - [Tools and command-line options]()
-    - [Proof Debugger]()
-    - [IDE Support]()
+    - [Proof Debugger]() <!--- Chanhee --->
+    - [IDE Support]() <!--- Chanhee --->
     - [Syntax Highlighting]()
 
 - [Verification and Rust]()
