@@ -1,5 +1,4 @@
-use core::mem::MaybeUninit;
-use core::marker;
+use core::{marker, mem, mem::MaybeUninit, alloc};
 #[allow(unused_imports)] use builtin::*;
 #[allow(unused_imports)] use builtin_macros::*;
 #[allow(unused_imports)] use crate::pervasive::*;
@@ -10,7 +9,7 @@ verus!{
 /// `PPtr<V>` (which stands for "permissioned pointer")
 /// is a wrapper around a raw pointer to `V` on the heap.
 ///
-/// Technically, it is a wrapper around `*mut core::mem::MaybeUninit<V>`, that is, the object
+/// Technically, it is a wrapper around `*mut mem::MaybeUninit<V>`, that is, the object
 /// it points to may be uninitialized.
 ///
 /// In order to access (read or write) the value behind the pointer, the user needs
@@ -140,7 +139,7 @@ unsafe impl<T> Send for PPtr<T> {}
 
 #[verifier(external_body)]
 pub tracked struct PermissionOpt<#[verifier(strictly_positive)] V> {
-    phantom: std::marker::PhantomData<V>,
+    phantom: marker::PhantomData<V>,
 }
 
 /// Represents the meaning of a [`PermissionOpt`] object.
@@ -296,7 +295,7 @@ impl<V> PPtr<V> {
 
         unsafe {
             let mut m = MaybeUninit::uninit();
-            core::mem::swap(&mut m, &mut *self.uptr);
+            mem::swap(&mut m, &mut *self.uptr);
             m.assume_init()
         }
     }
@@ -319,7 +318,7 @@ impl<V> PPtr<V> {
 
         unsafe {
             let mut m = MaybeUninit::new(in_v);
-            core::mem::swap(&mut m, &mut *self.uptr);
+            mem::swap(&mut m, &mut *self.uptr);
             m.assume_init()
         }
     }
@@ -360,7 +359,8 @@ impl<V> PPtr<V> {
         opens_invariants_none();
 
         unsafe {
-           // alloc::alloc::dealloc(self.uptr as *mut u8, Layout::for_value(&*self.uptr));
+            #[cfg(not(feature = "non_std"))]
+            std::alloc::dealloc(self.uptr as *mut u8, std::alloc::Layout::for_value(&*self.uptr));
         }
     }
 

@@ -1,5 +1,6 @@
 use core::cell::UnsafeCell;
-use core::mem::MaybeUninit;
+use core::{mem, mem::MaybeUninit};
+use core::marker;
 
 #[allow(unused_imports)] use builtin::*;
 #[allow(unused_imports)] use builtin_macros::*;
@@ -67,7 +68,7 @@ unsafe impl<T> Send for PCell<T> {}
 
 #[verifier(external_body)]
 pub tracked struct PermissionOpt<#[verifier(strictly_positive)] V> {
-    phantom: core::marker::PhantomData<V>,
+    phantom: marker::PhantomData<V>,
 }
 
 pub ghost struct PermissionOptData<V> {
@@ -156,7 +157,7 @@ impl<V> PCell<V> {
 
         unsafe {
             let mut m = MaybeUninit::uninit();
-            core::mem::swap(&mut m, &mut *self.ucell.get());
+            mem::swap(&mut m, &mut *self.ucell.get());
             m.assume_init()
         }
     }
@@ -176,7 +177,7 @@ impl<V> PCell<V> {
 
         unsafe {
             let mut m = MaybeUninit::new(in_v);
-            core::mem::swap(&mut m, &mut *self.ucell.get());
+            mem::swap(&mut m, &mut *self.ucell.get());
             m.assume_init()
         }
     }

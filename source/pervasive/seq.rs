@@ -1,3 +1,5 @@
+use core::{marker};
+
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
@@ -27,7 +29,7 @@ verus! {
 
 #[verifier(external_body)]
 pub struct Seq<#[verifier(strictly_positive)] A> {
-    dummy: core::marker::PhantomData<A>,
+    dummy: marker::PhantomData<A>,
 }
 
 impl<A> Seq<A> {
