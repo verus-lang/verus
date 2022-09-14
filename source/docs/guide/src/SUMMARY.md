@@ -68,7 +68,7 @@
   - [Supported Rust features]()
   - [Borrowing and lifetimes]()
   - [Mutable borrows]()
-  - [Interior mutability]()
+  - [Interior mutability](./interior_mutability.md)
   - [Alternatives to unsafe]()
 
 - [Understanding the guarantees of a verified program]()
