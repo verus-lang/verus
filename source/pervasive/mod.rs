@@ -23,11 +23,10 @@ pub mod vec;
 #[allow(unused_imports)]
 use builtin::*;
 
+#[cfg(feature = "non_std")]
 macro_rules! println {
-    () => {
+    ($($arg:tt)*) => {
     };
-    ($($arg:tt)*) => {{
-    }};
 }
 
 #[proof]
