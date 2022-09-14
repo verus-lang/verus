@@ -542,10 +542,11 @@ fn fn_call_to_vir<'tcx>(
     let is_quant = is_forall || is_exists || is_forall_arith;
     let is_directive =
         is_extra_dependency || is_hide || is_reveal || is_reveal_fuel || is_reveal_strlit;
-    let is_cmp = is_equal || is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
+    let is_cmp = is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
     let is_arith_binary =
         is_builtin_add || is_builtin_sub || is_builtin_mul || is_add || is_sub || is_mul;
-    let is_spec_cmp = is_spec_eq || is_spec_le || is_spec_ge || is_spec_lt || is_spec_gt;
+    let is_spec_cmp =
+        is_equal || is_spec_eq || is_spec_le || is_spec_ge || is_spec_lt || is_spec_gt;
     let is_spec_arith_binary =
         is_spec_add || is_spec_sub || is_spec_mul || is_spec_euclidean_div || is_spec_euclidean_mod;
     let is_spec_bitwise_binary =

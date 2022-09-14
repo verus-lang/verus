@@ -83,6 +83,13 @@ impl<A> Set<A> {
 
     pub spec fn union(self, s2: Set<A>) -> Set<A>;
 
+    /// `+` operator, synonymous with `union`
+
+    #[verifier(inline)]
+    pub open spec fn spec_add(self, s2: Set<A>) -> Set<A> {
+        self.union(s2)
+    }
+
     /// Intersection of two sets.
 
     pub spec fn intersect(self, s2: Set<A>) -> Set<A>;

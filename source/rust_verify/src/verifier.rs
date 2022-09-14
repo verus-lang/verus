@@ -1245,10 +1245,10 @@ impl Verifier {
                 To suppress these messages, do one of the following:\n  \
                 (1) manually annotate a single desired trigger using #[trigger]\n      \
                 (example: forall(|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j))),\n  \
-                (2) manually annotate multiple desired triggers using with_triggers\n      \
-                (example: forall(|i: int| with_triggers!([f(i)], [g(i)] => f(i) && g(i)))),\n  \
-                (3) accept the automatically chosen trigger using #[auto_trigger]\n      \
-                (example: forall(|i: int, j: int| #[auto_trigger] f(i) && g(i) && h(j)))\n  \
+                (2) manually annotate multiple desired triggers using #![trigger ...]\n      \
+                (example: forall(|i: int| #![trigger f(i)] #![trigger g(i)] => f(i) && g(i)))),\n  \
+                (3) accept the automatically chosen trigger using #![auto]\n      \
+                (example: forall(|i: int, j: int| #![auto] f(i) && g(i) && h(j)))\n  \
                 (4) use the --triggers-silent command-line option to suppress all printing of triggers.\n\
                 (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;\n\
                 the theorem prover instantiates a quantifier whenever some expression matches the\n\

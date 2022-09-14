@@ -10,6 +10,19 @@ use crate::pervasive::set::*;
 verus! {
 
 impl<A> Set<A> {
+    pub proof fn is_empty(self) -> (b: bool)
+        requires
+            self.finite(),
+        ensures
+            b <==> self.finite() && self.len() == 0,
+            b <==> self.ext_equal(Set::empty()),
+    {
+        if self.finite() && self.len() == 0 {
+            lemma_len0_is_empty::<A>(self);
+        }
+        self.ext_equal(Set::empty())
+    }
+
     pub open spec fn map<B>(self, f: impl Fn(A) -> B) -> Set<B> {
         Set::new(|a: B| exists|x: A| self.contains(x) && a === f(x))
     }
@@ -57,8 +70,7 @@ pub proof fn lemma_len_union<A>(s1: Set<A>, s2: Set<A>)
     decreases
         s1.len(),
 {
-    if s1.len() == 0 {
-        lemma_len0_is_empty::<A>(s1);
+    if s1.is_empty() {
         assert(s1.union(s2).ext_equal(s2));
     } else {
         let a = s1.choose();
@@ -79,8 +91,7 @@ pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
     decreases
         s1.len(),
 {
-    if s1.len() == 0 {
-        lemma_len0_is_empty::<A>(s1);
+    if s1.is_empty() {
         assert(s1.intersect(s2).ext_equal(s1));
     } else {
         let a = s1.choose();
@@ -109,8 +120,7 @@ pub proof fn lemma_len_difference<A>(s1: Set<A>, s2: Set<A>)
     decreases
         s1.len(),
 {
-    if s1.len() == 0 {
-        lemma_len0_is_empty::<A>(s1);
+    if s1.is_empty() {
         assert(s1.difference(s2).ext_equal(s1));
     } else {
         let a = s1.choose();

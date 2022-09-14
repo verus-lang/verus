@@ -137,6 +137,13 @@ impl<A> Seq<A> {
 
     pub spec fn add(self, rhs: Seq<A>) -> Seq<A>;
 
+    /// `+` operator, synonymous with `add`
+
+    #[verifier(inline)]
+    pub open spec fn spec_add(self, rhs: Seq<A>) -> Seq<A> {
+        self.add(rhs)
+    }
+
     /// Returns the last element of the sequence.
 
     pub open spec fn last(self) -> A
