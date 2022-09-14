@@ -5,7 +5,7 @@ extern crate rustc_span;
 pub use rust_verify::verifier::ErrorSpan;
 pub use rust_verify_test_macros::{code, code_str, verus_code, verus_code_str};
 
-use rust_verify::config::{enable_default_features, parse_args, Args};
+use rust_verify::config::{enable_default_features, parse_args, Args, DEFAULT_RLIMIT_SECS};
 use rust_verify::verifier::Verifier;
 
 use rustc_span::source_map::FileLoader;
@@ -135,6 +135,7 @@ pub fn verify_files_and_pervasive(
             our_args.log_all = true;
         }
         our_args.verify_pervasive |= verify_pervasive;
+        our_args.rlimit = DEFAULT_RLIMIT_SECS;
         if files.iter().any(|(_, body)| body.contains("EXPAND-ERRORS")) {
             our_args.expand_errors = true;
             our_args.multiple_errors = 2;
