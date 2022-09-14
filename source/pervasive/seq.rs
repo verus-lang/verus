@@ -21,7 +21,7 @@ verus! {
 ///  * [`Seq::new`] construct a sequence of a given length, initialized according
 ///     to a given function mapping indices `i` to values `A`.
 ///  * The [`seq!`] macro, to construct small sequences of a fixed size (analagous to the
-///     [`alloc::vec!`] macro).
+///     [`std::vec!`] macro).
 ///  * By manipulating an existing sequence with [`Seq::push`], [`Seq::update`],
 ///    or [`Seq::add`].
 ///
