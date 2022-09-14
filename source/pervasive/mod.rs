@@ -1,8 +1,6 @@
 pub mod map;
 pub mod option;
 pub mod result;
-#[cfg(not(feature = "non_std"))]
-pub mod vec;
 pub mod seq;
 pub mod seq_lib;
 pub mod set;
@@ -17,7 +15,10 @@ pub mod multiset;
 pub mod state_machine_internal;
 #[cfg(not(feature = "non_std"))]
 pub mod thread;
+#[cfg(not(feature = "no_global_allocator"))] 
 pub mod string;
+#[cfg(not(feature = "no_global_allocator"))] 
+pub mod vec;
 
 #[allow(unused_imports)]
 use builtin::*;

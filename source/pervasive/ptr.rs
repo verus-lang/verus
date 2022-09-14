@@ -1,4 +1,6 @@
-use core::{marker, mem, mem::MaybeUninit, alloc};
+use core::{marker, mem, mem::MaybeUninit};
+#[cfg(not(feature = "no_global_allocator"))] extern crate alloc;
+
 #[allow(unused_imports)] use builtin::*;
 #[allow(unused_imports)] use builtin_macros::*;
 #[allow(unused_imports)] use crate::pervasive::*;
@@ -227,6 +229,10 @@ impl<V> PPtr<V> {
         opens_invariants_none();
 
         let p = PPtr {
+            #[cfg(not(feature = "no_global_allocator"))]
+            uptr: alloc::boxed::Box::leak(alloc::boxed::Box::new(MaybeUninit::uninit())).as_mut_ptr(),
+
+            #[cfg(feature = "no_global_allocator")]
             uptr: MaybeUninit::uninit().as_mut_ptr(),
         };
 
@@ -359,8 +365,8 @@ impl<V> PPtr<V> {
         opens_invariants_none();
 
         unsafe {
-            #[cfg(not(feature = "non_std"))]
-            std::alloc::dealloc(self.uptr as *mut u8, std::alloc::Layout::for_value(&*self.uptr));
+            #[cfg(not(feature = "no_global_allocator"))]
+            alloc::alloc::dealloc(self.uptr as *mut u8, alloc::alloc::Layout::for_value(&*self.uptr));
         }
     }
 
