@@ -70,6 +70,7 @@ unsafe impl<T> Send for PCell<T> {}
 #[verifier(external_body)]
 pub tracked struct PermissionOpt<#[verifier(strictly_positive)] V> {
     phantom: std::marker::PhantomData<V>,
+    no_copy: NoCopy,
 }
 
 pub ghost struct PermissionOptData<V> {

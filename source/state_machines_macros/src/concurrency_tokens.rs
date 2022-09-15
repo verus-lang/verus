@@ -311,7 +311,13 @@ fn token_struct_stream(
         #[proof]
         #[allow(non_camel_case_types)]
         pub struct #tokenname#gen {
-            #[proof] dummy_instance: #insttype, // intentionally private
+            // These are private so they can't be accessed outside this module.
+            // I would have marked it external_body, but I want to make sure
+            // VIR knows about the dummy_instance field. It is important for
+            // the type well-foundedness checks.
+
+            #[proof] dummy_instance: #insttype,
+            no_copy: crate::pervasive::state_machine_internal::NoCopy,
         }
 
         #[spec]
