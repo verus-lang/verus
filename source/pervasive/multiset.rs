@@ -1,3 +1,5 @@
+use core::{marker};
+
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
@@ -37,7 +39,7 @@ verus!{
 
 #[verifier(external_body)]
 pub struct Multiset<#[verifier(strictly_positive)] V> {
-    dummy: std::marker::PhantomData<V>,
+    dummy: marker::PhantomData<V>,
 }
 
 impl<V> Multiset<V> {

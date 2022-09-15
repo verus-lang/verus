@@ -1,3 +1,5 @@
+use core::marker;
+
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
@@ -30,7 +32,7 @@ verus! {
 
 #[verifier(external_body)]
 pub struct Set<#[verifier(maybe_negative)] A> {
-    dummy: std::marker::PhantomData<A>,
+    dummy: marker::PhantomData<A>,
 }
 
 impl<A> Set<A> {

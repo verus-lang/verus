@@ -215,7 +215,7 @@ fn call_arbitrary(ctxt: &Ctxt, mctxt: &mut MCtxt, span: Span) -> Expr {
 
 fn phantom_data_segments(mctxt: &mut MCtxt, span: Span) -> Vec<PathSegment> {
     let phantom_data = Symbol::intern("PhantomData");
-    let syms = vec![rustc_span::sym::std, rustc_span::sym::marker, phantom_data];
+    let syms = vec![rustc_span::sym::core, rustc_span::sym::marker, phantom_data];
     syms.into_iter()
         .map(|s| PathSegment { ident: Ident::new(s, span), id: mctxt.next_node_id(), args: None })
         .collect()

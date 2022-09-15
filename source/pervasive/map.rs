@@ -6,6 +6,7 @@ use builtin_macros::*;
 use crate::pervasive::*;
 #[allow(unused_imports)]
 use crate::pervasive::set::*;
+use core::marker;
 
 verus! {
 
@@ -32,7 +33,7 @@ verus! {
 
 #[verifier(external_body)]
 pub tracked struct Map<#[verifier(maybe_negative)] K, #[verifier(strictly_positive)] V> {
-    dummy: std::marker::PhantomData<(K, V)>,
+    dummy: marker::PhantomData<(K, V)>,
 }
 
 impl<K, V> Map<K, V> {
