@@ -31,4 +31,40 @@ But pure equality, `===`, which must depend on the SMT encoding values,
 cannot possibly depend on the contents!
 Instead, `===` compares two cells as equal only if they are _the same cell_.
 
+So, with these challenges in mind, how _do_ we handle interior mutability in Verus?
+
+There are a few different approaches we can take.
+
+ * When retrieving a value from the interior of a Cell-like data structure, we can model
+   this as non-deterministically receiving a value of the given type.
+   At first, this might seem like it gives us too little to work with for verifying
+   correctness properties. However, we can impose additional structure by specifying
+   _data invariants_ to restrict the space of possible values.
+
+ * Track the exact value using `tracked ghost` code.
+
+More sophisticated data structures---especially concurrent ones---often require a careful
+balance of both approaches. We'll cover both here.
+
+### Data Invariants with `InvCell`.
+
+[`InvCell`](https://verus-lang.github.io/verus/verusdoc/lib/pervasive/cell/struct.InvCell.html),
+provided by Verus' standard library, is an example of the "data invariant" approach.
+When constructing a new `InvCell<T>`, the user specifies a data invariant: some boolean predicate
+over the type `T` which tells the cell what values are allowed to be stored.
+Then, the `InvCell` only has to impose the restriction that whenever the user writes to the cell,
+the value `val` being written has to satisfy the predicate, `cell.inv(val)`.
+In exchange, though, whenever the user _reads_ from the cell, they know the value they
+receive satisfies `cell.inv(val)`.
+
+Here's an example using an `InvCell` to implement a memoized function:
+
+```rust
+{{#include ../../../rust_verify/example/guide/interior_mutability.rs:inv_cell_example}}
+```
+
+### Tracked ghost state with `PCell`.
+
 (TODO finish writing this chapter)
+
+
