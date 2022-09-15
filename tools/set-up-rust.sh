@@ -13,4 +13,4 @@ if [ -d rust ]; then
     exit 1
 fi
 
-git clone git@github.com:secure-foundations/rust.git
+git clone https://github.com/verus-lang/rust.git

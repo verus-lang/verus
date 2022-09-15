@@ -360,7 +360,9 @@ fn char_to_unicode_repr(c: char) -> u32 {
 pub(crate) fn constant_to_expr(ctx: &Ctx, constant: &crate::ast::Constant) -> Expr {
     match constant {
         crate::ast::Constant::Bool(b) => Arc::new(ExprX::Const(Constant::Bool(*b))),
-        crate::ast::Constant::Nat(s) => Arc::new(ExprX::Const(Constant::Nat(s.clone()))),
+        crate::ast::Constant::Int(i) => {
+            Arc::new(ExprX::Const(Constant::Nat(Arc::new(i.to_string()))))
+        }
         crate::ast::Constant::StrSlice(s) => str_to_const_str(ctx, s.clone()),
         crate::ast::Constant::Char(c) => Arc::new(ExprX::Apply(
             crate::def::char_from_unicode_ident(),
@@ -474,17 +476,20 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
     let bit_vector_typ_hint = &expr_ctxt.bit_vector_typ_hint;
     let expr_ctxt = &expr_ctxt.set_bit_vector_typ_hint(None);
     let result = match (&exp.x, expr_ctxt.is_bit_vector) {
-        (ExpX::Const(crate::ast::Constant::Nat(s)), true) => {
+        (ExpX::Const(crate::ast::Constant::Int(i)), true) => {
             let typ = match (&*exp.typ, bit_vector_typ_hint) {
                 (TypX::Int(IntRange::Int | IntRange::Nat), Some(hint))
-                    if crate::ast_util::fixed_integer_const(s, hint) =>
+                    if crate::ast_util::fixed_integer_const(&i.to_string(), hint) =>
                 {
                     hint
                 }
                 _ => &exp.typ,
             };
             if let Some(width) = bitwidth_from_type(typ) {
-                return Ok(Arc::new(ExprX::Const(Constant::BitVec(s.clone(), width))));
+                return Ok(Arc::new(ExprX::Const(Constant::BitVec(
+                    Arc::new(i.to_string()),
+                    width,
+                ))));
             }
             return err_string(
                 &exp.span,
@@ -998,6 +1003,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 );
             }
         },
+        (ExpX::Interp(_), _) => {
+            panic!("Found an interpreter expression {:?} outside the interpreter", exp)
+        }
         (_, true) => {
             return err_string(
                 &exp.span,

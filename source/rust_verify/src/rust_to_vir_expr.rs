@@ -12,7 +12,7 @@ use crate::rust_to_vir_base::{
 };
 use crate::util::{
     err_span_str, err_span_string, slice_vec_map_result, spanned_new, spanned_typed_new,
-    unsupported_err_span, vec_map, vec_map_result,
+    to_air_span, unsupported_err_span, vec_map, vec_map_result,
 };
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
 use air::ast::{Binder, BinderX};
@@ -32,12 +32,12 @@ use rustc_span::symbol::Symbol;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, ArmX, AssertQueryMode, BinaryOp, BitwiseOp, CallTarget, Constant, ExprX, FieldOpr,
-    FunX, HeaderExpr, HeaderExprX, Ident, InequalityOp, IntRange, InvAtomicity, Mode, ModeCoercion,
-    MultiOp, PatternX, Quant, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
-    VirErr,
+    ArithOp, ArmX, AssertQueryMode, BinaryOp, BitwiseOp, CallTarget, ComputeMode, Constant, ExprX,
+    FieldOpr, FunX, HeaderExpr, HeaderExprX, Ident, InequalityOp, IntRange, InvAtomicity, Mode,
+    ModeCoercion, MultiOp, PatternX, Quant, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp,
+    UnaryOpr, VarAt, VirErr,
 };
-use vir::ast_util::{ident_binder, path_as_rust_name};
+use vir::ast_util::{const_int_from_string, ident_binder, path_as_rust_name};
 use vir::def::positional_field_ident;
 
 pub(crate) fn pat_to_var<'tcx>(pat: &Pat) -> String {
@@ -464,6 +464,8 @@ fn fn_call_to_vir<'tcx>(
     let is_assume = f_name == "builtin::assume_";
     let is_assert = f_name == "builtin::assert_";
     let is_assert_by = f_name == "builtin::assert_by";
+    let is_assert_by_compute = f_name == "builtin::assert_by_compute";
+    let is_assert_by_compute_only = f_name == "builtin::assert_by_compute_only";
     let is_assert_nonlinear_by = f_name == "builtin::assert_nonlinear_by";
     let is_assert_bitvector_by = f_name == "builtin::assert_bitvector_by";
     let is_assert_forall_by = f_name == "builtin::assert_forall_by";
@@ -540,10 +542,11 @@ fn fn_call_to_vir<'tcx>(
     let is_quant = is_forall || is_exists || is_forall_arith;
     let is_directive =
         is_extra_dependency || is_hide || is_reveal || is_reveal_fuel || is_reveal_strlit;
-    let is_cmp = is_equal || is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
+    let is_cmp = is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
     let is_arith_binary =
         is_builtin_add || is_builtin_sub || is_builtin_mul || is_add || is_sub || is_mul;
-    let is_spec_cmp = is_spec_eq || is_spec_le || is_spec_ge || is_spec_lt || is_spec_gt;
+    let is_spec_cmp =
+        is_equal || is_spec_eq || is_spec_le || is_spec_ge || is_spec_lt || is_spec_gt;
     let is_spec_arith_binary =
         is_spec_add || is_spec_sub || is_spec_mul || is_spec_euclidean_div || is_spec_euclidean_mod;
     let is_spec_bitwise_binary =
@@ -640,6 +643,8 @@ fn fn_call_to_vir<'tcx>(
             || is_assume
             || is_assert
             || is_assert_by
+            || is_assert_by_compute
+            || is_assert_by_compute_only
             || is_assert_nonlinear_by
             || is_assert_bitvector_by
             || is_assert_forall_by
@@ -684,7 +689,7 @@ fn fn_call_to_vir<'tcx>(
                     let in_negative_literal = false;
                     check_lit_int(&bctx.ctxt, expr.span, in_negative_literal, i, &expr_typ())?
                 }
-                return Ok(mk_expr(ExprX::Const(vir::ast::Constant::Nat(Arc::new(s.to_string())))));
+                return Ok(mk_expr(ExprX::Const(const_int_from_string(s.to_string()))));
             }
             _ => {
                 return err_span_str(arg.span, "spec_literal_* requires a string literal");
@@ -859,8 +864,8 @@ fn fn_call_to_vir<'tcx>(
         unsupported_err_unless!(len == 2, expr.span, "expected reveal_fuel", &args);
         let x = get_fn_path(bctx, &args[0])?;
         match &expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?.x {
-            ExprX::Const(Constant::Nat(s)) => {
-                let n = s.parse::<u32>().expect(&format!("internal error: parse {}", s));
+            ExprX::Const(Constant::Int(i)) => {
+                let n = vir::ast_util::const_int_to_u32(&to_air_span(expr.span), i)?;
                 return Ok(mk_expr(ExprX::Fuel(x, n)));
             }
             _ => panic!("internal error: is_reveal_fuel"),
@@ -874,6 +879,16 @@ fn fn_call_to_vir<'tcx>(
         let ensure = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
         let proof = expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?;
         return Ok(mk_expr(ExprX::Forall { vars, require, ensure, proof }));
+    }
+    if is_assert_by_compute {
+        unsupported_err_unless!(len == 1, expr.span, "expected assert_by_compute", &args);
+        let exp = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+        return Ok(mk_expr(ExprX::AssertCompute(exp, ComputeMode::Z3)));
+    }
+    if is_assert_by_compute_only {
+        unsupported_err_unless!(len == 1, expr.span, "expected assert_by_compute_only", &args);
+        let exp = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+        return Ok(mk_expr(ExprX::AssertCompute(exp, ComputeMode::ComputeOnly)));
     }
     if is_assert_nonlinear_by || is_assert_bitvector_by {
         unsupported_err_unless!(
@@ -1214,7 +1229,7 @@ fn fn_call_to_vir<'tcx>(
         unsupported_err_unless!(len == 1, expr.span, "expected unary op", args);
         let varg = vir_args[0].clone();
         if is_spec_neg {
-            let zero_const = vir::ast::Constant::Nat(Arc::new("0".to_string()));
+            let zero_const = vir::ast_util::const_int_from_u128(0);
             let zero = mk_expr(ExprX::Const(zero_const));
             Ok(mk_expr(ExprX::Binary(BinaryOp::Arith(ArithOp::Sub, None), zero, varg)))
         } else {
@@ -1904,7 +1919,8 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
 
     let mk_lit_int = |in_negative_literal: bool, i: u128, typ: Typ| {
         check_lit_int(&bctx.ctxt, expr.span, in_negative_literal, i, &typ)?;
-        Ok(mk_expr(ExprX::Const(vir::ast::Constant::Nat(Arc::new(i.to_string())))))
+        let c = vir::ast_util::const_int_from_u128(i);
+        Ok(mk_expr(ExprX::Const(c)))
     };
 
     let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
@@ -2079,7 +2095,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 Ok(mk_expr(ExprX::Unary(not_op, varg)))
             }
             UnOp::Neg => {
-                let zero_const = vir::ast::Constant::Nat(Arc::new("0".to_string()));
+                let zero_const = vir::ast_util::const_int_from_u128(0);
                 let zero = mk_expr(ExprX::Const(zero_const));
                 let varg =
                     if let ExprKind::Lit(Spanned { node: LitKind::Int(i, _), .. }) = &arg.kind {

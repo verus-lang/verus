@@ -14,9 +14,11 @@ use num_format::{Locale, ToFormattedString};
 use rustc_middle::ty::TyCtxt;
 use rustc_span::source_map::SourceMap;
 use rustc_span::{CharPos, FileName, MultiSpan, Span};
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Write;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -26,6 +28,7 @@ use vir::def::{CommandsWithContext, CommandsWithContextX, SnapPos};
 use vir::func_to_air::SstMap;
 use vir::prelude::PreludeConfig;
 use vir::recursion::Node;
+use vir::update_cell::UpdateCell;
 
 const RLIMIT_PER_SECOND: u32 = 3000000;
 
@@ -824,7 +827,7 @@ impl Verifier {
         // Declare them in SCC (strongly connected component) sorted order so that
         // termination checking precedes consequence axioms for each SCC.
         let mut fun_axioms: HashMap<Fun, Commands> = HashMap::new();
-        let mut fun_ssts = SstMap::new();
+        let mut fun_ssts = UpdateCell::new(HashMap::new());
         for scc in &ctx.global.func_call_sccs.clone() {
             let scc_nodes = ctx.global.func_call_graph.get_scc_nodes(scc);
             let mut scc_fun_nodes: Vec<Fun> = Vec::new();
@@ -1113,8 +1116,20 @@ impl Verifier {
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate(&krate);
 
-        let mut global_ctx =
-            vir::context::GlobalCtx::new(&krate, air_no_span.clone(), inferred_modes)?;
+        let interpreter_log_file =
+            Rc::new(RefCell::new(if self.args.log_all || self.args.log_vir_simple {
+                Some(self.create_log_file(None, None, crate::config::INTERPRETER_FILE_SUFFIX)?)
+            } else {
+                None
+            }));
+        let mut global_ctx = vir::context::GlobalCtx::new(
+            &krate,
+            air_no_span.clone(),
+            inferred_modes,
+            self.args.rlimit,
+            interpreter_log_file,
+            self.args.arch_word_bits,
+        )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
 
@@ -1230,10 +1245,10 @@ impl Verifier {
                 To suppress these messages, do one of the following:\n  \
                 (1) manually annotate a single desired trigger using #[trigger]\n      \
                 (example: forall(|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j))),\n  \
-                (2) manually annotate multiple desired triggers using with_triggers\n      \
-                (example: forall(|i: int| with_triggers!([f(i)], [g(i)] => f(i) && g(i)))),\n  \
-                (3) accept the automatically chosen trigger using #[auto_trigger]\n      \
-                (example: forall(|i: int, j: int| #[auto_trigger] f(i) && g(i) && h(j)))\n  \
+                (2) manually annotate multiple desired triggers using #![trigger ...]\n      \
+                (example: forall(|i: int| #![trigger f(i)] #![trigger g(i)] => f(i) && g(i)))),\n  \
+                (3) accept the automatically chosen trigger using #![auto]\n      \
+                (example: forall(|i: int, j: int| #![auto] f(i) && g(i) && h(j)))\n  \
                 (4) use the --triggers-silent command-line option to suppress all printing of triggers.\n\
                 (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;\n\
                 the theorem prover instantiates a quantifier whenever some expression matches the\n\

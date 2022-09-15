@@ -6,6 +6,7 @@ use builtin_macros::*;
 use crate::pervasive::*;
 #[allow(unused_imports)]
 use crate::pervasive::set::*;
+use core::marker;
 
 verus! {
 
@@ -32,7 +33,7 @@ verus! {
 
 #[verifier(external_body)]
 pub tracked struct Map<#[verifier(maybe_negative)] K, #[verifier(strictly_positive)] V> {
-    dummy: std::marker::PhantomData<(K, V)>,
+    dummy: marker::PhantomData<(K, V)>,
 }
 
 impl<K, V> Map<K, V> {
@@ -294,23 +295,54 @@ macro_rules! map {
 #[verifier(inline)]
 pub open spec fn check_argument_is_map<K, V>(m: Map<K, V>) -> Map<K, V> { m }
 
+#[doc(hidden)]
 pub use map_internal;
 pub use map;
 
-/// Prove two maps equal by _extensionality_. Usage is:
+/// Prove two maps `map1` and `map2` are equal by proving that their values are equal at each key.
+///
+/// More precisely, `assert_maps_equal!` requires that for each key `k`:
+///  * `map1` contains `k` in its domain if and only if `map2` does (`map1.dom().contains(k) <==> map2.dom().contains(k)`)
+///  * If they contain `k` in their domains, then their values are equal (`map1.dom().contains(k) && map2.dom().contains(k) ==> map1[k] === map2[k]`)
+///
+/// The property that equality follows from these facts is often called _extensionality_.
+///
+/// `assert_maps_equal!` can handle many trivial-looking
+/// identities without any additional help:
 ///
 /// ```rust
-/// assert_maps_equal!(map1, map2);
+/// proof fn insert_remove(m: Map<int, int>, k: int, v: int)
+///     requires !m.dom().contains(k)
+///     ensures m.insert(k, v).remove(k) === m
+/// {
+///     let m2 = m.insert(k, v).remove(k);
+///     assert_maps_equal!(m, m2);
+///     assert(m === m2);
+/// }
 /// ```
 /// 
-/// or,
-/// 
+/// For more complex cases, a proof may be required for each key:
+///
 /// ```rust
-/// assert_maps_equal!(map1, map2, k: Key => {
-///     // proof goes here that `map1` and `map2` agree on key `k`,
-///     // i.e., `k` is in the domain of `map`` iff it is in the domain of `map2`
-///     // and if so, then their values agree.
-/// });
+/// proof fn bitvector_maps() {
+///     let m1 = Map::<u64, u64>::new(
+///         |key: u64| key & 31 == key,
+///         |key: u64| key | 5);
+/// 
+///     let m2 = Map::<u64, u64>::new(
+///         |key: u64| key < 32,
+///         |key: u64| 5 | key);
+/// 
+///     assert_maps_equal!(m1, m2, key => {
+///         // Show that the domains of m1 and m2 are the same by showing their predicates
+///         // are equivalent.
+///         assert_bit_vector((key & 31 == key) <==> (key < 32));
+/// 
+///         // Show that the values are the same by showing that these expressions
+///         // are equivalent.
+///         assert_bit_vector(key | 5 == 5 | key);
+///     });
+/// }
 /// ```
 
 #[macro_export]
@@ -346,6 +378,7 @@ macro_rules! assert_maps_equal_internal {
     }
 }
 
+#[doc(hidden)]
 pub use assert_maps_equal_internal;
 pub use assert_maps_equal;
 

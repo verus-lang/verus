@@ -1,3 +1,5 @@
+use core::marker;
+
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
@@ -30,7 +32,7 @@ verus! {
 
 #[verifier(external_body)]
 pub struct Set<#[verifier(maybe_negative)] A> {
-    dummy: std::marker::PhantomData<A>,
+    dummy: marker::PhantomData<A>,
 }
 
 impl<A> Set<A> {
@@ -82,6 +84,13 @@ impl<A> Set<A> {
     /// Union of two sets.
 
     pub spec fn union(self, s2: Set<A>) -> Set<A>;
+
+    /// `+` operator, synonymous with `union`
+
+    #[verifier(inline)]
+    pub open spec fn spec_add(self, s2: Set<A>) -> Set<A> {
+        self.union(s2)
+    }
 
     /// Intersection of two sets.
 

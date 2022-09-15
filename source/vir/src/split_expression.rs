@@ -6,7 +6,7 @@ use crate::ast_to_sst::get_function;
 use crate::context::Ctx;
 use crate::def::unique_local;
 use crate::def::Spanned;
-use crate::func_to_air::{SstInline, SstMap};
+use crate::func_to_air::{SstInfo, SstMap};
 use crate::sst::{BndX, Exp, ExpX, Exps, Pars, Stm, StmX, UniqueIdent};
 use crate::sst_visitor::map_shallow_stm;
 use air::ast::Span;
@@ -180,8 +180,14 @@ fn tr_inline_function(
         }
         let fun = &fun_to_inline.x.name;
         let fun_ssts = &state.fun_ssts;
-        if let Some((SstInline { params, typ_bounds, do_inline: _ }, body)) = fun_ssts.get(fun) {
-            return inline_expression(args, typs, params, typ_bounds, body);
+        if let Some(SstInfo { inline, params, body, .. }) = fun_ssts.borrow().get(fun) {
+            return inline_expression(
+                args,
+                typs,
+                params,
+                &inline.typ_bounds,
+                body,
+            );
         } else {
             return Err((fun_to_inline.span.clone(), format!("Note: not found on SstMap")));
         }

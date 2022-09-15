@@ -167,6 +167,8 @@ pub(crate) enum Attr {
     IntegerRing,
     // Use a new dedicated Z3 process just for this query
     SpinoffProver,
+    // Memoize function call results during interpretation
+    Memoize,
     // Suppress the recommends check for narrowing casts that may truncate
     Truncate,
 }
@@ -335,6 +337,9 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "spinoff_prover" => {
                     v.push(Attr::SpinoffProver)
                 }
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "memoize" => {
+                    v.push(Attr::Memoize)
+                }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "truncate" => {
                     v.push(Attr::Truncate)
                 }
@@ -446,6 +451,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) check_recommends: bool,
     pub(crate) nonlinear: bool,
     pub(crate) spinoff_prover: bool,
+    pub(crate) memoize: bool,
     pub(crate) truncate: bool,
 }
 
@@ -475,6 +481,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         check_recommends: false,
         nonlinear: false,
         spinoff_prover: false,
+        memoize: false,
         truncate: false,
     };
     for attr in parse_attrs(attrs)? {
@@ -505,6 +512,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::CheckRecommends => vs.check_recommends = true,
             Attr::NonLinear => vs.nonlinear = true,
             Attr::SpinoffProver => vs.spinoff_prover = true,
+            Attr::Memoize => vs.memoize = true,
             Attr::Truncate => vs.truncate = true,
             _ => {}
         }

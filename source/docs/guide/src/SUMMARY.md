@@ -8,48 +8,60 @@
 
 # Tutorial
 
-- [Basic specifications]()
+- [Basic specifications](specs.md)
     - [assert, requires, ensures, ghost code](./requires_ensures.md)
-    - [Specifications: expressions and operators]()
+    - [Expressions and operators for specifications](./operators.md)
     - [Integers and arithmetic](./integers.md)
-- [Executable code, proof code, specification code]()
-    - [Modes: exec, proof, spec]()
-    - [spec functions]()
-    - [proof functions, proof blocks, assert-by]()
-- [Recursion and loops]()
-    - [Recursive functions, decreases, proofs by induction]()
-    - [Loops and invariants]()
+    - [Equality](./equality.md)
+- [Specification code, proof code, executable code](modes.md)
+    - [spec functions](spec_functions.md)
+    - [proof functions, proof blocks, assert-by](proof_functions.md)
+    - [spec functions vs. proof functions, recommends](spec_vs_proof.md)
+    - [Ghost code vs. exec code](ghost_vs_exec.md)
+    - [const declarations](const.md)
+- [Recursion and loops](recursion_loops.md)
+    - [Recursive spec functions, decreases, fuel](recursion.md)
+    - [Recursive exec and proof functions, proofs by induction](induction.md)
+    - [Loops and invariants](while.md)
+    - [Lexicographic decreases clauses and mutual recursion](lex_mutual.md)
 - [Datatypes: struct and enum]()
-- [Basic libraries]()
-    - [view and spec_index operations]()
-    - [Mathematical libraries: Seq, Set, Map]()
-    - [Executable libraries: Vec]()
-- [Quantifiers and spec closures]()
-    - [spec closures]()
-    - [forall, exists, choose, triggers, assert-forall-by]()
-    - [broadcast_forall]()
-- [SMT solving, automation, and where automation fails]()
-    - [What's decidable, what's undecidable, what's fast, what's slow]()
-    - [forall and exists: writing and using triggers]()
-    - [extensional equality]()
-    - [integers: nonlinear arithmetic and bit vectors]()
-    - [recursive functions]()
-- [Troubleshooting SMT performance]()
-    - [Modules, hiding, opaque, reveal]()
-    - [Quantifier profiling]()
-    - [assert-by]()
+- [Basic libraries](pervasive.md)
+    - [Specification libraries: Seq, Set, Map](spec_lib.md)
+    - [INTERLUDE: using assert and assume to develop proofs](develop_proofs.md)
+    - [Executable libraries: Vec](exec_lib.md)
+- [Quantifiers and spec closures]() <!--- Chris --->
+    - [spec closures]() <!--- Chris --->
+    - [forall, exists, choose, triggers, assert-forall-by]() <!--- Chris --->
+    - [broadcast_forall]() <!--- Chris --->
+- [SMT solving, automation, and where automation fails]() <!--- Chris --->
+    - [What's decidable, what's undecidable, what's fast, what's slow]() <!--- Chris --->
+    - [integers: nonlinear arithmetic and bit vectors]() <!--- Chris and Chanhee --->
+    - [forall and exists: writing and using triggers, inline functions]() <!--- Chris --->
+    - [recursive functions]() <!--- Chris --->
+    - [extensional equality]() <!--- Chris --->
+    - [libraries: incomplete axioms for Seq, Set, Map]() <!--- Chris --->
+- [Improving SMT performance]() <!--- Chris --->
+    - [Modules, hiding, opaque, reveal]() <!--- Chris --->
+    - [Quantifier profiling]() <!--- Bryan --->
+    - [assert-by]() <!--- Chris --->
+    - [assert-by-compute]() <!--- Bryan --->
     - [Spinning off separate SMT queries]()
-    - [Breaking proofs into smaller pieces]()
+    - [Breaking proofs into smaller pieces]() <!--- Chris --->
 - [Mutation, references, and borrowing]()
 - [Traits]()
 - [Ghost and tracked variables]()
 - [Low-level pointers and concurrency]()
-- [Attributes]()
+- [Attributes and directives]()
     - [external and external_body]()
     - [inline]()
+    - [opaque]()
+    - [decreases_by]()
+    - [broadcast_forall]()
+    - [when_used_as_spec]()
+- [Macros]()
 - [Tools and command-line options]()
-    - [Proof Debugger]()
-    - [IDE Support]()
+    - [Proof Debugger]() <!--- Chanhee --->
+    - [IDE Support]() <!--- Chanhee --->
     - [Syntax Highlighting]()
 
 - [Verification and Rust]()
@@ -57,13 +69,13 @@
   - [Supported Rust features]()
   - [Borrowing and lifetimes]()
   - [Mutable borrows]()
-  - [Interior mutability]()
+  - [Interior mutability](./interior_mutability.md)
   - [Alternatives to unsafe]()
 
 - [Understanding the guarantees of a verified program]()
   - [Assumptions and trusted components]()
   - [Identifying a project's TCB]()
-  - [Memory safety is conditional on preconditions]()
+  - [Memory safety is conditional on verification](./memory-safety.md)
 
 - [Project setup and development]()
   - [Working with crates]()
@@ -74,5 +86,6 @@
 
 # Reference
 
+- [Verus syntax reference]()
 - [Supported and unsupported features]()
 - [Planned future work]()

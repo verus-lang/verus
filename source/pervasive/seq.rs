@@ -1,3 +1,5 @@
+use core::{marker};
+
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
@@ -27,7 +29,7 @@ verus! {
 
 #[verifier(external_body)]
 pub struct Seq<#[verifier(strictly_positive)] A> {
-    dummy: std::marker::PhantomData<A>,
+    dummy: marker::PhantomData<A>,
 }
 
 impl<A> Seq<A> {
@@ -66,8 +68,7 @@ impl<A> Seq<A> {
     /// ## Example
     ///
     /// ```rust
-    /// #[proof]
-    /// fn push_test() {
+    /// proof fn push_test() {
     ///     assert_seqs_equal!(
     ///           seq![10, 11, 12].push(13),
     ///           seq![10, 11, 12, 13],
@@ -83,8 +84,7 @@ impl<A> Seq<A> {
     /// ## Example
     ///
     /// ```rust
-    /// #[proof]
-    /// fn update_test() {
+    /// proof fn update_test() {
     ///     let s = seq![10, 11, 12, 13, 14];
     ///     let t = s.update(2, -5);
     ///     assert_seqs_equal!(t, seq![10, 11, -5, 13, 14]);
@@ -112,8 +112,7 @@ impl<A> Seq<A> {
     /// ## Example
     ///
     /// ```rust
-    /// #[proof]
-    /// fn subrange_test() {
+    /// proof fn subrange_test() {
     ///     let s = seq![10, 11, 12, 13, 14];
     ///     //                  ^-------^
     ///     //          0   1   2   3   4   5
@@ -130,8 +129,7 @@ impl<A> Seq<A> {
     /// ## Example
     ///
     /// ```rust
-    /// #[proof]
-    /// fn add_test() {
+    /// proof fn add_test() {
     ///     assert_seqs_equal!(
     ///         seq![10, 11].push(seq![12, 13, 14]),
     ///         seq![10, 11, 12, 13, 14],
@@ -140,6 +138,13 @@ impl<A> Seq<A> {
     /// ```
 
     pub spec fn add(self, rhs: Seq<A>) -> Seq<A>;
+
+    /// `+` operator, synonymous with `add`
+
+    #[verifier(inline)]
+    pub open spec fn spec_add(self, rhs: Seq<A>) -> Seq<A> {
+        self.add(rhs)
+    }
 
     /// Returns the last element of the sequence.
 
@@ -324,6 +329,7 @@ macro_rules! seq {
     };
 }
 
+#[doc(hidden)]
 pub use seq_internal;
 pub use seq;
 

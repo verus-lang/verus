@@ -1,7 +1,7 @@
 #[allow(unused_imports)] use builtin::*;
 #[allow(unused_imports)] use builtin_macros::*;
 #[allow(unused_imports)] use crate::pervasive::*;
-use std::marker::PhantomData;
+use core::marker::PhantomData;
 
 // TODO: the *_exec* functions would be better in builtin,
 // but it's painful to implement the support in erase.rs at the moment.

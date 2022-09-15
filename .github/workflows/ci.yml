@@ -1,38 +1,126 @@
-name: run_CI_test
+name: ci
 
-on: [push, workflow_dispatch]
+on:
+  push:
+    paths-ignore:
+      - 'README.md'
+      - 'source/CODE.md'
+      - 'source/docs/**'
+
+  workflow_dispatch:
 
 jobs:
-  run_ci_test:
-    # only one self-hosted runner available now, "yi-rust"
-    runs-on: [self-hosted, linux]       
+  fmt:
+    runs-on: ubuntu-latest
     steps:
-      # make our repository available for github workflow
-      - name: Checkout repository
+      - name: checkout
         uses: actions/checkout@v2
-
-      # run "cargo test" using our latest rustc binary
-      - name: cargo test
-        working-directory: ./source   # "cd source"   
+      - name: download rust
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          workflow: compile-rust.yml
+          workflow_conclusion: success
+          branch: verification
+          event: push
+          name: rust-bin-lib-etc
+          path: ./rust/install
+          repo: verus-lang/rust
+      - name: unpack rust
         run: |
-          mkdir ../rust
-          ln -sf ~/local_bin/install ../rust/install
-          echo rustc version `../rust/install/bin/rustc --version`           # check rustc version
-          ../.github/workflows/get-z3.sh
-          echo `./z3 --version`
-          RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo clean    # cargo clean
-          RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo build    # cargo build   
-          VERUS_Z3_PATH="$(pwd)/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc ./tools/run-tests.sh 
-      
+          cd rust/install
+          tar -xf rust_install.tar.gz
+
       - name: check cargo fmt
-        working-directory: ./source   # "cd source"   
+        working-directory: ./source
         run: |
-          export PATH=/home/chanheec/local_bin/install/bin:$PATH 
-          RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo fmt -- --check
+          RUSTC=../rust/install/bin/rustc RUSTFMT=../rust/install/bin/rustfmt ../rust/install/bin/cargo-fmt -- --check
 
-      - name: cargo test with singular feature 
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        partition: [1, 2, 3, 4, 5]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: download rust
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          workflow: compile-rust.yml
+          workflow_conclusion: success
+          branch: verification
+          event: push
+          name: rust-bin-lib-etc
+          path: ./rust/install
+          repo: verus-lang/rust
+      - name: unpack rust
+        run: |
+          cd rust/install
+          tar -xf rust_install.tar.gz
+      - name: prepare nextest
+        run: |
+          mkdir -p ~/.cargo/bin
+          rustup toolchain link rust-verify rust/install
+          cd source; rustup override set rust-verify
+      - name: install nextest
+        uses: taiki-e/install-action@nextest
+      - name: get z3
         working-directory: ./source
         run: |
           ../.github/workflows/get-z3.sh
+          echo z3 version `./z3 --version`
+
+      - name: cargo test
+        working-directory: ./source
+        run: |
+          echo rustc version `../rust/install/bin/rustc --version`
+          RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo clean
+          RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo build
+          LD_LIBRARY_PATH="$(pwd)/../rust/install/lib/rustlib/x86_64-unknown-linux-gnu/lib" VERUS_Z3_PATH="$(pwd)/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc ./tools/run-tests.sh run --partition count:${{ matrix.partition }}/5
+
+  test-with-singular:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        partition: [1, 2, 3, 4, 5]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: download rust
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          workflow: compile-rust.yml
+          workflow_conclusion: success
+          branch: verification
+          event: push
+          name: rust-bin-lib-etc
+          path: ./rust/install
+          repo: verus-lang/rust
+      - name: unpack rust
+        run: |
+          cd rust/install
+          tar -xf rust_install.tar.gz
+      - name: prepare nextest
+        run: |
+          mkdir -p ~/.cargo/bin
+          rustup toolchain link rust-verify rust/install
+          cd source; rustup override set rust-verify
+      - name: install nextest
+        uses: taiki-e/install-action@nextest
+      - name: get z3
+        working-directory: ./source
+        run: |
+          ../.github/workflows/get-z3.sh
+          echo z3 version `./z3 --version`
+
+      - name: install singular
+        run: |
+          sudo apt update
+          sudo apt install singular
+
+      - name: cargo test
+        working-directory: ./source
+        run: |
+          echo rustc version `../rust/install/bin/rustc --version`
           RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo build --features singular       # build with singular feature 
-          VERUS_SINGULAR_PATH="/usr/bin/Singular" VERUS_Z3_PATH=""$(pwd)/z3"" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ./tools/run-tests.sh -p rust_verify --features singular
+          VERUS_SINGULAR_PATH="/usr/bin/Singular" LD_LIBRARY_PATH="$(pwd)/../rust/install/lib/rustlib/x86_64-unknown-linux-gnu/lib" VERUS_Z3_PATH="$(pwd)/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc ./tools/run-tests.sh run --features singular --partition count:${{ matrix.partition }}/5

@@ -1,4 +1,4 @@
-See [Goals](../../wiki/Goals) for a brief description of the project's goals.
+See [Goals](../../wiki/Goals) for a brief description of the project's goals. See the (work-in-progress) [📖 tutorial and reference](https://verus-lang.github.io/verus/guide/) and the [📖 API documentation](https://verus-lang.github.io/verus/verusdoc/lib/).
 
 ## Building the project
 
@@ -25,14 +25,14 @@ tools/update-rust.sh
 ```
 
 The first command will download Verus' compiler fork; the second will make sure it is up-to-date and re-compile `rustc`.
-You can use the [`tools/update-rust.sh`](./tools/update-rust.sh) script to update the compiler when necessary (when new changes are pushed to the [compiler repository](https://github.com/secure-foundations/rust)).
+You can use the [`tools/update-rust.sh`](./tools/update-rust.sh) script to update the compiler when necessary (when new changes are pushed to the [compiler repository](https://github.com/verus-lang/rust)).
 
 #### Manual Install (Linux, macOS, Windows)
 
-Build the rust compiler from [https://github.com/secure-foundations/rust](https://github.com/secure-foundations/rust) with `python x.py install` in the `rust` directory:
+Build the rust compiler from [https://github.com/verus-lang/rust](https://github.com/verus-lang/rust) with `python x.py install` in the `rust` directory:
 
 ```
-git clone https://github.com/secure-foundations/rust.git
+git clone https://github.com/verus-lang/rust.git
 cd rust
 cp config.toml.verify config.toml
 python x.py install
@@ -172,11 +172,20 @@ Commenting the code is strongly encouraged.  Use `///` to create comments
 that [`rustdoc`](https://doc.rust-lang.org/rustdoc/what-is-rustdoc.html) can
 automatically extract into HTML documentation.
 
+The rustdoc (verusdoc) for `main` is automatically published
+[📖 here](https://verus-lang.github.io/verus/verusdoc/lib/) (if the build succeeds).
+
 You can compile the current documentation by running (in the `verify` directory)
 ```
 RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc ../rust/install/bin/cargo doc 
 ```
 which will produce documentation files, e.g., `./target/doc/rust_verify/index.html`
+
+## Guide
+
+A work-in-progress tutorial and reference document is automatically published
+[📖 here](https://verus-lang.github.io/verus/guide/) from the sources in
+[`source/docs/guide`](./source/docs/guide).
 
 ## Running tests for the rust to vir translation, and inspecting the resulting vir/air/smt
 
@@ -211,3 +220,4 @@ erased rust ast, you can use the `VERIFY_EXTRA_ARGS` environment variable, like 
 ```
 VERIFY_EXTRA_ARGS="--print-erased-spec" RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo test -p rust_verify --test refs -- --nocapture test_ref_0
 ```
+

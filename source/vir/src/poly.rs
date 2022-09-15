@@ -441,6 +441,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             };
             mk_expr(ExprX::Assign { init_not_mut: *init_not_mut, lhs: e1, rhs: e2 })
         }
+        ExprX::AssertCompute(e, m) => mk_expr(ExprX::AssertCompute(poly_expr(ctx, state, e), *m)),
         ExprX::Fuel(..) => expr.clone(),
         ExprX::RevealString(_) => expr.clone(),
         ExprX::Header(..) => panic!("Header should already be removed"),

@@ -1,11 +1,11 @@
 # Three kinds of code ... specification, proof, and executable
 
-As stated in the project [goals](https://github.com/secure-foundations/verus/wiki/Goals),
+As stated in the project [goals](https://github.com/verus-lang/verus/wiki/Goals),
 we want to provide a language that expresses specifications, proofs, and executable code.
 These three kinds of code differ in significant ways.
 For example, executable code is compiled, while proofs and specifications are erased.
 In addition, to enable efficient SMT solving,
-we [aim](https://github.com/secure-foundations/verus/wiki/Goals) to keep the specification language close to the SMT solving language,
+we [aim](https://github.com/verus-lang/verus/wiki/Goals) to keep the specification language close to the SMT solving language,
 whereas executable code and proofs are more similar to programming languages
 than to SMT formulas.
 

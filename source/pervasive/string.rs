@@ -1,5 +1,8 @@
 #![feature(rustc_attrs)]
 
+extern crate alloc;
+use alloc::string;
+
 use super::seq::Seq;
 use super::vec::Vec;
 use builtin::*;
@@ -9,7 +12,7 @@ verus! {
 
 #[verifier(external_body)]
 pub struct String {
-    inner: std::string::String,
+    inner: string::String,
 }
 
 #[rustc_diagnostic_item = "pervasive::string::StrSlice"]

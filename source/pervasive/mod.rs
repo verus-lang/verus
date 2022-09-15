@@ -1,24 +1,34 @@
 pub mod map;
 pub mod option;
 pub mod result;
-pub mod vec;
 pub mod seq;
 pub mod seq_lib;
 pub mod set;
 pub mod set_lib;
 pub mod cell;
-pub mod ptr;
 pub mod invariant;
 pub mod atomic;
 pub mod atomic_ghost;
 pub mod modes;
 pub mod multiset;
 pub mod state_machine_internal;
+#[cfg(not(feature = "non_std"))]
 pub mod thread;
+#[cfg(not(feature = "no_global_allocator"))] 
+pub mod ptr;
+#[cfg(not(feature = "no_global_allocator"))] 
 pub mod string;
+#[cfg(not(feature = "no_global_allocator"))] 
+pub mod vec;
 
 #[allow(unused_imports)]
 use builtin::*;
+
+#[cfg(feature = "non_std")]
+macro_rules! println {
+    ($($arg:tt)*) => {
+    };
+}
 
 #[proof]
 pub fn assume(b: bool) {
@@ -95,7 +105,10 @@ pub fn print_u64(i: u64) {
 }
 
 /// Allows you to prove a boolean predicate by assuming its negation and proving
-/// a contradiction. Equivalent to writing `if !b { /* proof here */; assert(false); }`
+/// a contradiction.
+///
+/// `assert_by_contradiction!(b, { /* proof */ });`
+/// Equivalent to writing `if !b { /* proof */; assert(false); }`
 /// but is more concise and documents intent.
 ///
 /// ```rust
@@ -106,7 +119,15 @@ pub fn print_u64(i: u64) {
 /// ```
 
 #[macro_export]
-macro_rules! assert_by_contradiction_macro {
+macro_rules! assert_by_contradiction {
+    ($($a:tt)*) => {
+        verus_proof_macro_exprs!(assert_by_contradiction_internal!($($a)*))
+    }
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! assert_by_contradiction_internal {
     ($predicate:expr, $bblock:block) => {
         ::builtin::assert_by($predicate, {
             if !$predicate {
@@ -114,11 +135,5 @@ macro_rules! assert_by_contradiction_macro {
                 crate::pervasive::assert(false);
             }
         });
-    }
-}
-#[macro_export]
-macro_rules! assert_by_contradiction {
-    ($($a:tt)*) => {
-        verus_proof_macro_exprs!(assert_by_contradiction_macro!($($a)*))
     }
 }

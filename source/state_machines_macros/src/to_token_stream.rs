@@ -276,14 +276,14 @@ pub fn output_primary_stuff(
             if trans.kind == TransitionKind::Init {
                 let args = post_params(&trans.params);
                 rel_fn = quote! {
-                    pub open spec fn #name (#args) -> ::std::primitive::bool {
+                    pub open spec fn #name (#args) -> ::core::primitive::bool {
                         #f
                     }
                 };
             } else {
                 let args = pre_post_params(&trans.params);
                 rel_fn = quote! {
-                    pub open spec fn #name (#args) -> ::std::primitive::bool {
+                    pub open spec fn #name (#args) -> ::core::primitive::bool {
                         #f
                     }
                 };
@@ -302,7 +302,7 @@ pub fn output_primary_stuff(
             let f = to_relation(&simplified_body, false /* weak */);
 
             let rel_fn = quote! {
-                pub open spec fn #name (#params) -> ::std::primitive::bool {
+                pub open spec fn #name (#params) -> ::core::primitive::bool {
                     #f
                 }
             };
@@ -431,7 +431,7 @@ fn output_step_datatype(
     if is_init {
         impl_stream.extend(quote! {
             #[verifier(opaque)]
-            pub open spec fn init_by(post: #self_ty, #label_param step: #step_ty) -> ::std::primitive::bool {
+            pub open spec fn init_by(post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
                 match step {
                     #(#arms)*
                     // The dummy step never corresponds to a valid transition.
@@ -440,7 +440,7 @@ fn output_step_datatype(
             }
 
             #[verifier(opaque)]
-            pub open spec fn init(post: #self_ty, #label_param) -> ::std::primitive::bool {
+            pub open spec fn init(post: #self_ty, #label_param) -> ::core::primitive::bool {
                 ::builtin::exists(|step: #step_ty| Self::init_by(post, #label_arg step))
             }
         });
@@ -467,7 +467,7 @@ fn output_step_datatype(
 
         impl_stream.extend(quote!{
             #[verifier(opaque)]
-            pub open spec fn next_by(pre: #self_ty, post: #self_ty, #label_param step: #step_ty) -> ::std::primitive::bool {
+            pub open spec fn next_by(pre: #self_ty, post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
                 match step {
                     #(#arms)*
                     #type_ident::dummy_to_use_type_params(_) => false,
@@ -475,12 +475,12 @@ fn output_step_datatype(
             }
 
             #[verifier(opaque)]
-            pub open spec fn next(pre: #self_ty, post: #self_ty, #label_param) -> ::std::primitive::bool {
+            pub open spec fn next(pre: #self_ty, post: #self_ty, #label_param) -> ::core::primitive::bool {
                 ::builtin::exists(|step: #step_ty| Self::next_by(pre, post, #label_arg step))
             }
 
             #[verifier(opaque)]
-            pub open spec fn next_strong_by(pre: #self_ty, post: #self_ty, #label_param step: #step_ty) -> ::std::primitive::bool {
+            pub open spec fn next_strong_by(pre: #self_ty, post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
                 match step {
                     #(#arms_strong)*
                     #type_ident::dummy_to_use_type_params(_) => false,
@@ -488,7 +488,7 @@ fn output_step_datatype(
             }
 
             #[verifier(opaque)] #[verifier(publish)]
-            pub open spec fn next_strong(pre: #self_ty, post: #self_ty, #label_param) -> ::std::primitive::bool {
+            pub open spec fn next_strong(pre: #self_ty, post: #self_ty, #label_param) -> ::core::primitive::bool {
                 ::builtin::exists(|step: #step_ty| Self::next_by(pre, post, #label_arg step))
             }
         });
@@ -760,7 +760,7 @@ pub fn shardable_type_to_type(span: Span, stype: &ShardableType) -> Type {
             Type::Verbatim(quote_spanned! { span => ::builtin::nat })
         }
         ShardableType::Bool | ShardableType::PersistentBool => {
-            Type::Verbatim(quote_spanned! { span => ::std::primitive::bool })
+            Type::Verbatim(quote_spanned! { span => ::core::primitive::bool })
         }
     }
 }
@@ -779,7 +779,7 @@ fn output_other_fns(
         quote! { #(self.#inv_names())&&* }
     };
     impl_stream.extend(quote! {
-        pub open spec fn invariant(&self) -> ::std::primitive::bool {
+        pub open spec fn invariant(&self) -> ::core::primitive::bool {
             #conj
         }
     });

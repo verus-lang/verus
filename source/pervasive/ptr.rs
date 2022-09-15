@@ -1,6 +1,5 @@
-use std::mem::MaybeUninit;
-use std::alloc::{Layout};
-use std::alloc::{dealloc};
+use core::{marker, mem, mem::MaybeUninit};
+extern crate alloc;
 
 #[allow(unused_imports)] use builtin::*;
 #[allow(unused_imports)] use builtin_macros::*;
@@ -12,7 +11,7 @@ verus!{
 /// `PPtr<V>` (which stands for "permissioned pointer")
 /// is a wrapper around a raw pointer to `V` on the heap.
 ///
-/// Technically, it is a wrapper around `*mut std::mem::MaybeUninit<V>`, that is, the object
+/// Technically, it is a wrapper around `*mut mem::MaybeUninit<V>`, that is, the object
 /// it points to may be uninitialized.
 ///
 /// In order to access (read or write) the value behind the pointer, the user needs
@@ -142,7 +141,8 @@ unsafe impl<T> Send for PPtr<T> {}
 
 #[verifier(external_body)]
 pub tracked struct PermissionOpt<#[verifier(strictly_positive)] V> {
-    phantom: std::marker::PhantomData<V>,
+    phantom: marker::PhantomData<V>,
+    no_copy: NoCopy,
 }
 
 /// Represents the meaning of a [`PermissionOpt`] object.
@@ -230,7 +230,7 @@ impl<V> PPtr<V> {
         opens_invariants_none();
 
         let p = PPtr {
-            uptr: Box::leak(box MaybeUninit::uninit()).as_mut_ptr(),
+            uptr: alloc::boxed::Box::leak(alloc::boxed::Box::new(MaybeUninit::uninit())).as_mut_ptr(),
         };
 
         // See explanation about exposing pointers, above
@@ -298,7 +298,7 @@ impl<V> PPtr<V> {
 
         unsafe {
             let mut m = MaybeUninit::uninit();
-            std::mem::swap(&mut m, &mut *self.uptr);
+            mem::swap(&mut m, &mut *self.uptr);
             m.assume_init()
         }
     }
@@ -321,7 +321,7 @@ impl<V> PPtr<V> {
 
         unsafe {
             let mut m = MaybeUninit::new(in_v);
-            std::mem::swap(&mut m, &mut *self.uptr);
+            mem::swap(&mut m, &mut *self.uptr);
             m.assume_init()
         }
     }
@@ -362,7 +362,7 @@ impl<V> PPtr<V> {
         opens_invariants_none();
 
         unsafe {
-            dealloc(self.uptr as *mut u8, Layout::for_value(&*self.uptr));
+            alloc::alloc::dealloc(self.uptr as *mut u8, alloc::alloc::Layout::for_value(&*self.uptr));
         }
     }
 

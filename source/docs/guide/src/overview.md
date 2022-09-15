@@ -28,7 +28,7 @@ In more detail, Verus aims to:
 - provide a low-level, imperative language for expressing executable code (like VCC),
   based on Rust (like Prusti, Creusot, and Aeneas)
 - generate small, simple verification conditions that an SMT solver
-  like [Z3](https://github.com/Z3Prover/z3) can solve efficiently,
+  like [Z3](https://microsoft.github.io/z3guide/docs/logic/intro) can solve efficiently,
   based on the following principles:
   - keep the mathematical specification language close to
     the SMT solver's mathematical language (like Boogie)
@@ -72,7 +72,8 @@ and then on to more advanced topics such as proofs about arrays using `forall` a
 and proofs about concurrent code.
 
 All of these proofs are aided by an automated theorem prover
-(specifically, Z3, a satisfiability-modulo-theories solver, or "SMT solver" for short).
+(specifically, [Z3](https://microsoft.github.io/z3guide/docs/logic/intro),
+a satisfiability-modulo-theories solver, or "SMT solver" for short).
 The SMT solver will often be able to prove simple properties,
 such as basic properties about booleans or integer arithmetic,
 with no additional help from the programmer.

@@ -501,6 +501,13 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     let traits = traits.clone();
     let module_ids = module_ids.clone();
     let krate = Arc::new(KrateX { functions, datatypes, traits, module_ids });
-    *ctx = crate::context::GlobalCtx::new(&krate, ctx.no_span.clone(), ctx.inferred_modes.clone())?;
+    *ctx = crate::context::GlobalCtx::new(
+        &krate,
+        ctx.no_span.clone(),
+        ctx.inferred_modes.clone(),
+        ctx.rlimit,
+        ctx.interpreter_log.clone(),
+        ctx.arch,
+    )?;
     Ok(krate)
 }

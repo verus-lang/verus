@@ -275,7 +275,7 @@ fn expr_to_node(expr: &Expr) -> Node {
             const {
                 match cnst {
                     Constant::Bool(val) => str_to_node(&format!("{}", val)),
-                    Constant::Nat(val) => str_to_node(&format!("{}", val)),
+                    Constant::Int(val) => str_to_node(&format!("{}", val)),
                     Constant::StrSlice(val) => str_to_node(&format!(
                         "\"{}\"",
                         match val.is_ascii() {
@@ -442,6 +442,9 @@ fn expr_to_node(expr: &Expr) -> Node {
         ExprX::AssertQuery { requires, ensures, proof, mode } => {
             nodes!(assertQuery {str_to_node(":requires")} {exprs_to_node(requires)} {str_to_node(":ensures")} {exprs_to_node(ensures)} {str_to_node(":proof")} {expr_to_node(proof)} {str_to_node(":mode")} {str_to_node(&format!("{:?}", mode))})
         }
+        ExprX::AssertCompute(expr, mode) => {
+            nodes!(assert_by_compute {expr_to_node(expr)} {str_to_node(&format!("{:?}", mode))} )
+        }
         ExprX::If(e0, e1, e2) => {
             let mut nodes = nodes_vec!(if { expr_to_node(e0) } {
                 expr_to_node(e1)
@@ -570,6 +573,7 @@ fn function_to_node(function: &FunctionX) -> Node {
             check_recommends,
             nonlinear,
             spinoff_prover,
+            memoize,
         } = &**attrs;
 
         let mut nodes = vec![
@@ -620,6 +624,9 @@ fn function_to_node(function: &FunctionX) -> Node {
         }
         if *spinoff_prover {
             nodes.push(str_to_node("+spinoff_prover"));
+        }
+        if *memoize {
+            nodes.push(str_to_node("+memoize"));
         }
 
         Node::List(nodes)

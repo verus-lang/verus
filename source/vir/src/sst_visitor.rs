@@ -132,6 +132,7 @@ where
                     expr_visitor_control_flow!(exp_visitor_dfs(e1, map, f));
                     map.pop_scope();
                 }
+                ExpX::Interp(_) => (),
             }
             VisitorControlFlow::Recurse
         }
@@ -385,6 +386,7 @@ where
             let exp = exp_new(expx);
             f(&exp, map)
         }
+        ExpX::Interp(_) => f(exp, map),
     }
 }
 
@@ -508,6 +510,9 @@ where
                 }
             };
             ok_exp(ExpX::Bind(bnd, fe(env, e1)?))
+        }
+        ExpX::Interp(_) => {
+            panic!("Found an interpreter expression {:?} outside the interpreter", exp)
         }
     }
 }

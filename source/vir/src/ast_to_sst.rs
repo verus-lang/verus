@@ -1,11 +1,13 @@
 use crate::ast::{
-    ArithOp, AssertQueryMode, BinaryOp, CallTarget, Constant, Expr, ExprX, Fun, Function, Ident,
-    Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
+    ArithOp, AssertQueryMode, BinaryOp, CallTarget, ComputeMode, Constant, Expr, ExprX, Fun,
+    Function, Ident, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr,
+    VarAt, VirErr,
 };
 use crate::ast_util::{err_str, err_string, types_equal, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{unique_bound, unique_local, Spanned};
-use crate::func_to_air::{SstInline, SstMap};
+use crate::func_to_air::{SstInfo, SstMap};
+use crate::interpreter::eval_expr;
 use crate::sst::{
     Bnd, BndX, Dest, Exp, ExpX, Exps, LocalDecl, LocalDeclX, ParPurpose, Pars, Stm, StmX,
     UniqueIdent,
@@ -16,6 +18,8 @@ use crate::util::{vec_map, vec_map_result};
 use air::ast::{Binder, BinderX, Binders, Span};
 use air::errors::error_with_label;
 use air::scope_map::ScopeMap;
+use num_bigint::BigInt;
+use num_traits::identities::Zero;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
@@ -100,7 +104,7 @@ impl State {
             dont_rename: HashSet::new(),
             ret_post: None,
             disable_recommends: 0,
-            fun_ssts: HashMap::new(),
+            fun_ssts: crate::update_cell::UpdateCell::new(HashMap::new()),
         }
     }
 
@@ -196,26 +200,29 @@ impl State {
         });
         let exp = crate::sst_visitor::map_exp_visitor_result(&exp, &mut |exp| match &exp.x {
             ExpX::Call(fun, typs, args) => {
-                if let Some((SstInline { params, typ_bounds, do_inline: true }, body)) =
-                    fun_ssts.get(fun)
+                if let Some(SstInfo { inline, params, memoize: _, body }) =
+                    fun_ssts.borrow().get(fun)
                 {
-                    let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
-                    let mut substs: HashMap<UniqueIdent, Exp> = HashMap::new();
-                    assert!(typ_bounds.len() == typs.len());
-                    for ((name, _), typ) in typ_bounds.iter().zip(typs.iter()) {
-                        assert!(!typ_substs.contains_key(name));
-                        typ_substs.insert(name.clone(), typ.clone());
+                    if inline.do_inline {
+                        let typ_bounds = &inline.typ_bounds;
+                        let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
+                        let mut substs: HashMap<UniqueIdent, Exp> = HashMap::new();
+                        assert!(typ_bounds.len() == typs.len());
+                        for ((name, _), typ) in typ_bounds.iter().zip(typs.iter()) {
+                            assert!(!typ_substs.contains_key(name));
+                            typ_substs.insert(name.clone(), typ.clone());
+                        }
+                        assert!(params.len() == args.len());
+                        for (param, arg) in params.iter().zip(args.iter()) {
+                            let unique = unique_local(&param.x.name);
+                            assert!(!substs.contains_key(&unique));
+                            substs.insert(unique, arg.clone());
+                        }
+                        let e = crate::sst_util::subst_exp(typ_substs, substs, body);
+                        // keep the original outer span for better trigger messages
+                        let e = SpannedTyped::new(&exp.span, &e.typ, e.x.clone());
+                        return Ok(e);
                     }
-                    assert!(params.len() == args.len());
-                    for (param, arg) in params.iter().zip(args.iter()) {
-                        let unique = unique_local(&param.x.name);
-                        assert!(!substs.contains_key(&unique));
-                        substs.insert(unique, arg.clone());
-                    }
-                    let e = crate::sst_util::subst_exp(typ_substs, substs, body);
-                    // keep the original outer span for better trigger messages
-                    let e = SpannedTyped::new(&exp.span, &e.typ, e.x.clone());
-                    return Ok(e);
                 }
                 Ok(exp.clone())
             }
@@ -1042,8 +1049,7 @@ fn expr_to_stm_opt(
                                         (has_type, "possible arithmetic underflow/overflow")
                                     }
                                     ArithOp::EuclideanDiv | ArithOp::EuclideanMod => {
-                                        let zero =
-                                            ExpX::Const(Constant::Nat(Arc::new("0".to_string())));
+                                        let zero = ExpX::Const(Constant::Int(BigInt::zero()));
                                         let ne =
                                             ExpX::Binary(BinaryOp::Ne, e2.clone(), e2.new_x(zero));
                                         let ne = SpannedTyped::new(
@@ -1399,6 +1405,34 @@ fn expr_to_stm_opt(
                     Ok((vec![outer_block, bitvector], ReturnValue::ImplicitUnit(expr.span.clone())))
                 }
             }
+        }
+        ExprX::AssertCompute(e, mode) => {
+            let expr = expr_to_pure_exp(ctx, state, &e)?;
+            let ret = ReturnValue::ImplicitUnit(expr.span.clone());
+            // We assert the (hopefully simplified) result of calling the interpreter
+            // but assume the original expression, so we get the benefits
+            // of any ensures, triggers, etc., that it might provide
+            let interp_expr = eval_expr(
+                &state.finalize_exp(ctx, &state.fun_ssts, &expr)?,
+                &mut state.fun_ssts,
+                ctx.global.rlimit,
+                ctx.global.arch.min_bits(),
+                *mode,
+                &mut ctx.global.interpreter_log.borrow_mut(),
+            )?;
+            let err = error_with_label(
+                "assertion failed",
+                &expr.span.clone(),
+                format!("simplified to {}", interp_expr),
+            );
+            let mut stmts = Vec::new();
+            if matches!(mode, ComputeMode::Z3) {
+                let assert = Spanned::new(expr.span.clone(), StmX::Assert(Some(err), interp_expr));
+                stmts.push(assert);
+            }
+            let assume = Spanned::new(expr.span.clone(), StmX::Assume(expr));
+            stmts.push(assume);
+            Ok((stmts, ret))
         }
         ExprX::If(expr0, expr1, None) => {
             let (stms0, e0) = expr_to_stm_opt(ctx, state, expr0)?;

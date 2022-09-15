@@ -1,4 +1,4 @@
-use std::sync::atomic::{
+use core::sync::atomic::{
     AtomicBool,
     AtomicU8, AtomicU16, AtomicU32, AtomicU64,
     AtomicI8, AtomicI16, AtomicI32, AtomicI64,
@@ -12,7 +12,7 @@ use std::sync::atomic::{
 
 macro_rules! make_unsigned_integer_atomic {
     ($at_ident:ident, $p_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident, $int_min:expr, $int_max: expr) => {
-        // TODO when we support `std::intrinsics::wrapping_add`,
+        // TODO when we support `core::intrinsics::wrapping_add`,
         // use that instead.
 
         verus!{
@@ -95,6 +95,7 @@ macro_rules! atomic_types {
             ato: $rust_ty,
         }
 
+        // TODO make sure this gets NoCopy when converting it from unforgeable
         #[proof]
         #[verifier(unforgeable)]
         pub struct $p_ident {
