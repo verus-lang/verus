@@ -668,12 +668,7 @@ fn stm_call(
     let fun = get_function(ctx, span, &name)?;
     let mut stms: Vec<Stm> = Vec::new();
     if ctx.expand_flag && crate::split_expression::need_split_expression(ctx, span) {
-        let message = if name.path == crate::def::pervasive_assert_path() {
-            crate::def::SPLIT_ASSERT_FAILURE
-        } else {
-            crate::def::SPLIT_PRE_FAILURE
-        };
-        let error = air::errors::error(message.to_string(), span);
+        let error = air::errors::error(crate::def::SPLIT_PRE_FAILURE.to_string(), span);
         let call = StmX::Call {
             fun: name.clone(),
             mode: fun.x.mode,

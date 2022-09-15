@@ -62,14 +62,12 @@ fn is_bool_type(t: &Typ) -> bool {
 // This function is to
 // 1) inline a function body at a call site
 // 2) inline a function's requires expression at a call site
-pub(crate) fn inline_expression(
-    name: &Fun,
+fn inline_expression(
     args: &Exps,
     typs: &Typs,
     params: &Params,
     typ_bounds: &TypBounds,
     body: &Exp,
-    outer_span: &Span,
 ) -> Result<Exp, (Span, String)> {
     // code copied from crate::ast_to_sst::finalized_exp
     let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
@@ -86,13 +84,7 @@ pub(crate) fn inline_expression(
         substs.insert(unique, arg.clone());
     }
     let e = crate::sst_util::subst_exp(typ_substs, substs, body);
-
-    // Note that `pervasive::assert` merely consists of `requires` and `ensures`
-    // when `inline_expression` is called to inline the `requires` of `pervasive::assert`,
-    // we want to avoid highlighting it.
-    let span =
-        if name.path == crate::def::pervasive_assert_path() { outer_span } else { &body.span };
-    let e = SpannedTyped::new(span, &e.typ, e.x.clone());
+    let e = SpannedTyped::new(&body.span, &e.typ, e.x.clone());
     return Ok(e);
 }
 
@@ -189,15 +181,7 @@ fn tr_inline_function(
         let fun = &fun_to_inline.x.name;
         let fun_ssts = &state.fun_ssts;
         if let Some(SstInfo { inline, params, body, .. }) = fun_ssts.borrow().get(fun) {
-            return inline_expression(
-                fun,
-                args,
-                typs,
-                params,
-                &inline.typ_bounds,
-                body,
-                &body.span.clone(),
-            );
+            return inline_expression(args, typs, params, &inline.typ_bounds, body);
         } else {
             return Err((fun_to_inline.span.clone(), format!("Note: not found on SstMap")));
         }
@@ -462,7 +446,7 @@ fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> Trace
     }
 }
 
-pub(crate) fn register_split_assertions(traced_exprs: TracedExps) -> Vec<Stm> {
+fn register_split_assertions(traced_exprs: TracedExps) -> Vec<Stm> {
     let mut stms: Vec<Stm> = Vec::new();
     if traced_exprs.len() == 1 && traced_exprs[0].trace.labels.len() == 0 {
         // if the length of the vector is 1, this indicate split failure
@@ -542,7 +526,7 @@ fn split_call(
         )
         .expect("expr_to_exp_as_spec");
 
-        let exp_subsituted = inline_expression(name, args, typs, params, typ_bounds, &exp, span);
+        let exp_subsituted = inline_expression(args, typs, params, typ_bounds, &exp);
         if exp_subsituted.is_err() {
             continue;
         }
