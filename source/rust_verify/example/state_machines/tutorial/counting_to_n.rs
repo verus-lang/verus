@@ -102,14 +102,14 @@ pub struct G {
 impl G {
     #[spec]
     pub fn wf(self, instance: X::Instance, patomic: PAtomicU32) -> bool {
-        equal(self.perm.patomic, patomic.id())
-        && equal(self.perm.value as int, self.counter.view().value)
+        equal(self.perm.view().patomic, patomic.id())
+        && equal(self.perm.view().value as int, self.counter.view().value)
         && equal(self.counter.view().instance, instance)
     }
 }
 
 pub struct Global {
-    pub atomic: PAtomicU32,
+    pub atomic: PAtomicU32, // TODO should use atomic_ghost here instead
     #[proof] pub instance: X::Instance,
     #[proof] pub inv: AtomicInvariant<G>,
 }
