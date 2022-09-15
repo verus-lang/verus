@@ -520,6 +520,9 @@ impl_structural! {
     bool char
 }
 
+pub struct NoCopy {}
+impl !Copy for NoCopy {}
+
 struct NoSyncSend {}
 impl !Sync for NoSyncSend {}
 impl !Send for NoSyncSend {}

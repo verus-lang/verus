@@ -15,6 +15,11 @@ pub struct SyncSendIfSyncSend<#[verifier(strictly_positive)] T> {
     _sync_send: builtin::SyncSendIfSyncSend<T>,
 }
 
+#[verifier(external_body)]
+pub struct NoCopy {
+    _no_copy: builtin::NoCopy,
+}
+
 #[proof]
 #[verifier(custom_req_err("unable to prove assertion safety condition"))]
 pub fn assert_safety(b: bool) { requires(b); ensures(b); }

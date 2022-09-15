@@ -6,6 +6,8 @@ use core::marker;
 #[allow(unused_imports)] use builtin_macros::*;
 #[allow(unused_imports)] use crate::pervasive::*;
 #[allow(unused_imports)] use crate::pervasive::modes::*;
+#[allow(unused_imports)] use crate::pervasive::invariant::*;
+#[allow(unused_imports)] use crate::pervasive::set::*;
 
 verus!{
 
@@ -69,6 +71,7 @@ unsafe impl<T> Send for PCell<T> {}
 #[verifier(external_body)]
 pub tracked struct PermissionOpt<#[verifier(strictly_positive)] V> {
     phantom: marker::PhantomData<V>,
+    no_copy: NoCopy,
 }
 
 pub ghost struct PermissionOptData<V> {
@@ -229,4 +232,75 @@ impl<V> PCell<V> {
     }
 }
 
+pub struct InvCell<#[verifier(maybe_negative)] T> {
+    possible_values: Ghost<Set<T>>,
+    pcell: PCell<T>,
+    perm_inv: Tracked<LocalInvariant<PermissionOpt<T>>>,
+}
+
+}
+
+impl<T> InvCell<T> {
+    verus!{
+    pub closed spec fn wf(&self) -> bool {
+        &&& (forall |perm| self.perm_inv@.inv(perm) <==> {
+            &&& perm@.value.is_Some()
+            &&& self.possible_values@.contains(perm@.value.get_Some_0())
+            &&& self.pcell.id() === perm@.pcell
+        })
+    }
+
+    pub closed spec fn inv(&self, val: T) -> bool {
+        &&& self.possible_values@.contains(val)
+    }
+
+    pub fn new<F: Fn(T) -> bool>(val: T, #[spec] f: Ghost<F>) -> (cell: Self)
+        requires f@(val),
+        ensures forall |v| f@(v) <==> cell.inv(v),
+    {
+        let (pcell, perm) = PCell::new(val);
+        let possible_values = ghost(Set::new(f@));
+        let perm_inv = tracked(LocalInvariant::new(perm.get(), |perm| {
+            &&& perm@.value.is_Some()
+            &&& possible_values@.contains(perm@.value.get_Some_0())
+            &&& pcell.id() === perm@.pcell
+        }, 0));
+        InvCell {
+            possible_values,
+            pcell,
+            perm_inv,
+        }
+    }
+    }
+
+    // note: can't use verus! for these right now because the invariants blocks
+    // do not yet support Tracked/Ghost
+
+    pub fn replace(&self, val: T) -> T
+    {
+        requires(self.wf() && self.inv(val));
+        ensures(|old_val| self.inv(old_val));
+
+        let r;
+        crate::open_local_invariant!(self.perm_inv.borrow() => perm => {
+            let mut t = tracked_exec(perm);
+            r = self.pcell.replace(&mut t, val);
+            perm = t.get();
+        });
+        r
+    }
+}
+
+impl<T: Copy> InvCell<T> {
+    pub fn get(&self) -> T
+    {
+        requires(self.wf());
+        ensures(|val| self.inv(val));
+
+        let r;
+        crate::open_local_invariant!(self.perm_inv.borrow() => perm => {
+            r = *self.pcell.borrow(tracked_exec_borrow(&perm));
+        });
+        r
+    }
 }

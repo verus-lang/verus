@@ -95,6 +95,7 @@ macro_rules! atomic_types {
             ato: $rust_ty,
         }
 
+        // TODO make sure this gets NoCopy when converting it from unforgeable
         #[proof]
         #[verifier(unforgeable)]
         pub struct $p_ident {
