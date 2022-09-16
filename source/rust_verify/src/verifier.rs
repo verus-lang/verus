@@ -973,7 +973,7 @@ impl Verifier {
                     recommends_rerun,
                 )?;
                 fun_ssts = new_fun_ssts;
-                let error_as = if recommends_rerun { ErrorAs::Note } else { ErrorAs::Error };
+                let error_as = if recommends_rerun || expands_rerun { ErrorAs::Note } else { ErrorAs::Error };
                 let s =
                     if recommends_rerun { "Function-Check-Recommends " } else { "Function-Def " };
 
