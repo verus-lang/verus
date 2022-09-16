@@ -432,44 +432,12 @@ impl Verifier {
                                 span,
                             ));
                         }
-
-                        if !self.expand_flag {
-                            self.errors.push(errors);
-                            if self.args.expand_errors {
-                                self.expand_targets.push(error.clone());
-                            }
-                        } else {
-                            // For testing setup, add error for each relevant span
-                            if vir::split_expression::is_split_error(&error) {
-                                let mut errors: Vec<ErrorSpan> = vec![];
-                                for span in &error.spans {
-                                    let error = ErrorSpan::new_from_air_span(
-                                        compiler.session().source_map(),
-                                        &error.msg,
-                                        span,
-                                    );
-                                    if !errors.iter().any(|x: &ErrorSpan| {
-                                        x.test_span_line == error.test_span_line
-                                    }) {
-                                        errors.push(error);
-                                    }
-                                }
-
-                                for label in &error.labels {
-                                    let error = ErrorSpan::new_from_air_span(
-                                        compiler.session().source_map(),
-                                        &error.msg,
-                                        &label.span,
-                                    );
-                                    if !errors.iter().any(|x: &ErrorSpan| {
-                                        x.test_span_line == error.test_span_line
-                                    }) {
-                                        errors.push(error);
-                                    }
-                                }
-                                self.expand_errors.push(errors);
-                            }
+                        self.errors.push(errors);
+                        if self.args.expand_errors {
+                            assert!(!self.expand_flag);
+                            self.expand_targets.push(error.clone());
                         }
+
                         if self.args.debug {
                             let mut debugger = Debugger::new(
                                 air_model,
@@ -478,6 +446,41 @@ impl Verifier {
                                 compiler.session().source_map(),
                             );
                             debugger.start_shell(air_context);
+                        }
+                    }
+
+                    if self.expand_flag {
+                        // For testing setup, add error for each relevant span
+                        if vir::split_expression::is_split_error(&error) {
+                            let mut errors: Vec<ErrorSpan> = vec![];
+                            for span in &error.spans {
+                                let error = ErrorSpan::new_from_air_span(
+                                    compiler.session().source_map(),
+                                    &error.msg,
+                                    span,
+                                );
+                                if !errors
+                                    .iter()
+                                    .any(|x: &ErrorSpan| x.test_span_line == error.test_span_line)
+                                {
+                                    errors.push(error);
+                                }
+                            }
+
+                            for label in &error.labels {
+                                let error = ErrorSpan::new_from_air_span(
+                                    compiler.session().source_map(),
+                                    &error.msg,
+                                    &label.span,
+                                );
+                                if !errors
+                                    .iter()
+                                    .any(|x: &ErrorSpan| x.test_span_line == error.test_span_line)
+                                {
+                                    errors.push(error);
+                                }
+                            }
+                            self.expand_errors.push(errors);
                         }
                     }
 
@@ -973,7 +976,8 @@ impl Verifier {
                     recommends_rerun,
                 )?;
                 fun_ssts = new_fun_ssts;
-                let error_as = if recommends_rerun || expands_rerun { ErrorAs::Note } else { ErrorAs::Error };
+                let error_as =
+                    if recommends_rerun || expands_rerun { ErrorAs::Note } else { ErrorAs::Error };
                 let s =
                     if recommends_rerun { "Function-Check-Recommends " } else { "Function-Def " };
 
