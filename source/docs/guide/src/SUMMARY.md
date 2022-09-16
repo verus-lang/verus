@@ -24,7 +24,10 @@
     - [Recursive exec and proof functions, proofs by induction](induction.md)
     - [Loops and invariants](while.md)
     - [Lexicographic decreases clauses and mutual recursion](lex_mutual.md)
-- [Datatypes: struct and enum]()
+- [Datatypes: struct and enum]() <!--- Andrea --->
+    - [Defining datatypes]() <!--- Andrea --->
+    - [Querying the discriminant (`#[is_variant]`)]() <!--- Andrea --->
+    - [Proving properties of fields]() <!--- Andrea --->
 - [Basic libraries](pervasive.md)
     - [Specification libraries: Seq, Set, Map](spec_lib.md)
     - [INTERLUDE: using assert and assume to develop proofs](develop_proofs.md)
@@ -47,7 +50,9 @@
     - [assert-by-compute]() <!--- Bryan --->
     - [Spinning off separate SMT queries]()
     - [Breaking proofs into smaller pieces]() <!--- Chris --->
-- [Mutation, references, and borrowing]()
+- [Mutation, references, and borrowing]() <!--- Andrea --->
+    - [Requires and ensures with mutable references]() <!--- Andrea --->
+    - [Assertions containing mutable references]() <!--- Andrea --->
 - [Traits]()
 - [Ghost and tracked variables]()
 - [Low-level pointers and concurrency]()
@@ -58,6 +63,9 @@
     - [decreases_by]()
     - [broadcast_forall]()
     - [when_used_as_spec]()
+- [Strings]() <!--- Andrea --->
+    - [String library]() <!--- Andrea --->
+    - [String literals]() <!--- Andrea --->
 - [Macros]()
 - [Tools and command-line options]()
     - [Proof Debugger]() <!--- Chanhee --->
@@ -87,5 +95,5 @@
 # Reference
 
 - [Verus syntax reference]()
-- [Supported and unsupported features]()
+- [Supported and unsupported features](./features.md)
 - [Planned future work]()
