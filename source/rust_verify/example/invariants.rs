@@ -1,7 +1,8 @@
-// rust_verify/tests/example.rs deprecated-enhanced-typecheck
+// rust_verify/tests/example.rs
 
 #[allow(unused_imports)]
 use builtin::*;
+use builtin_macros::*;
 mod pervasive;
 use pervasive::*;
 use crate::pervasive::{invariant::*};
@@ -9,7 +10,9 @@ use crate::pervasive::{invariant::*};
 pub fn main() {
   #[proof] let u: u32 = 5;
 
-  #[proof] let i = AtomicInvariant::new(u, |u: u32| u % 2 == 1, 0);
+  #[proof] let i = AtomicInvariant::new(u,
+      verus_proof_expr!(|u: u32| u % 2 == 1),
+      verus_proof_expr!(0));
 
   open_atomic_invariant!(&i => inner => {
     if inner == 1 {
@@ -17,7 +20,9 @@ pub fn main() {
     }
   });
 
-  #[proof] let j = AtomicInvariant::new(7, |u: u32| u % 2 == 1, 1);
+  #[proof] let j = AtomicInvariant::new(7,
+      verus_proof_expr!(|u: u32| u % 2 == 1),
+      verus_proof_expr!(1));
 
   open_atomic_invariant!(&i => inner_i => {
     open_atomic_invariant!(&j => inner_j => {
@@ -28,5 +33,6 @@ pub fn main() {
   });
 
   #[proof] let j = i.into_inner();
-  assert(j % 2 == 1);
+
+  assert(verus_proof_expr!(j % 2 == 1));
 }
