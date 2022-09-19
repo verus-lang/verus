@@ -56,9 +56,9 @@ fn run_example_for_file(file_path: &str) {
     };
 
     let mut mode = Mode::ExpectSuccess;
-    let mut deprecated_enhanced_typecheck = "";
+    let mut set_deprecated_enhanced_typecheck = false;
     if file_path.starts_with("example/state_machines") {
-        deprecated_enhanced_typecheck = "--deprecated-enhanced-typecheck";
+        set_deprecated_enhanced_typecheck = true;
     }
 
     if let ["//", "rust_verify/tests/example.rs", command] = &first_line_elements[..] {
@@ -67,16 +67,23 @@ fn run_example_for_file(file_path: &str) {
             "expect-errors" => mode = Mode::ExpectErrors,
             "expect-failures" => mode = Mode::ExpectFailures,
             "deprecated-enhanced-typecheck" => {
-                deprecated_enhanced_typecheck = "--deprecated-enhanced-typecheck";
+                mode = Mode::ExpectSuccess;
+                set_deprecated_enhanced_typecheck = true;
             }
             "ignore" => {
                 return;
             }
             _ => panic!(
-                "invalid command for example file test: use one of 'expect-success', 'expect-errors', 'expect-failures' or 'ignore'"
+                "invalid command for example file test: use one of 'expect-success', 'expect-errors', 'expect-failures', 'deprecated-enhanced-typecheck' or 'ignore'"
             ),
         }
     }
+    let deprecated_enhanced_typecheck = if set_deprecated_enhanced_typecheck {
+        // TODO: remove this once we've ported everything to no_enhanced_typecheck
+        "--deprecated-enhanced-typecheck"
+    } else {
+        ""
+    };
 
     #[cfg(target_os = "windows")]
     let script = format!(
