@@ -504,7 +504,7 @@ fn e13_pass() {
         ("lunch.rs".to_string(), LUNCH_SHARED_CODE.to_string()),
         (
             "test.rs".to_string(),
-            "#![feature(fmt_internals)]\n".to_string()
+            "#![feature(fmt_internals)]#![allow(macro_expanded_macro_exports_accessed_by_absolute_paths)]\n".to_string()
                 + &verus_code! {
                     #[allow(unused_imports)] use builtin::*;
                     #[allow(unused_imports)] use builtin_macros::*;
