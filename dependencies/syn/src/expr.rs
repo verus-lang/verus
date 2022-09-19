@@ -1964,15 +1964,56 @@ pub(crate) mod parsing {
             }
         }
 
-        if allow_struct.0 && input.peek(token::Brace) {
+        if (allow_struct.0 || is_certainly_not_a_block(input)) && input.peek(token::Brace) {
             let expr_struct = expr_struct_helper(input, expr.path)?;
-            if expr.qself.is_some() {
-                Ok(Expr::Verbatim(verbatim::between(begin, input)))
-            } else {
-                Ok(Expr::Struct(expr_struct))
+            if allow_struct.0 {
+                if expr.qself.is_some() {
+                    Ok(Expr::Verbatim(verbatim::between(begin, input)))
+                } else {
+                    Ok(Expr::Struct(expr_struct))
+                }
+             } else {
+                use crate::spanned::Spanned;
+                Err(Error::new(expr_struct.span(),
+                    "struct literals are not allowed here; try surrounding the struct literal with parentheses"))
             }
         } else {
             Ok(Expr::Path(expr))
+        }
+    }
+
+    // This is based on `is_certainly_not_a_block` from rustc_parse.
+    // The point is to provide a better diagnostic if the user writes a struct literal
+    // in a place where it isn't allowed due to parsing reasons.
+    // This can happen in places where the parser is looking for a block expression.
+    // I added this in here because
+    //
+    // (i) without the diagnostic, syn's error message would otherwise be baffling
+    //
+    // (ii) this case is a little more relevant due to verus specifications in
+    //      function signatures, e.g., `requires x === Foo { a: 5 }` is not allowed
+    //      without additional parentheses.
+
+    fn is_certainly_not_a_block(input: ParseStream) -> bool {
+        let input = input.fork();
+
+        use crate::group::parse_braces;
+
+        match parse_braces(&input) {
+            Result::Ok(braces) => {
+                let content = braces.content;
+
+                use crate::ext::IdentExt;
+
+                if content.peek(Ident::peek_any) {
+                    content.peek2(Token![,]) || (content.peek2(Token![:]) && !content.peek3(Token![:]))
+                } else {
+                    false
+                }
+            }
+            Result::Err(_) => {
+                true
+            }
         }
     }
 
