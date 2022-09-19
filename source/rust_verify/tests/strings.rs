@@ -552,3 +552,87 @@ test_verify_one_file! {
 
     } => Err(err) => assert_vir_error(err)
 }
+
+test_verify_one_file! {
+    #[test] test_append_1 verus_code! {
+        use pervasive::string::*;
+        use pervasive::vec::*;
+
+        fn foo() -> (ret: String)
+            ensures ret@ === new_strlit("hello world")@
+        {
+            reveal_strlit("hello world");
+            reveal_strlit("hello ");
+            reveal_strlit("world");
+
+            let mut s = new_strlit("hello ").to_string();
+            s.append(new_strlit("world"));
+            assert(s@.ext_equal(new_strlit("hello world")@));
+            s
+        }
+
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_append_2 verus_code! {
+        use pervasive::string::*;
+        use pervasive::vec::*;
+
+        fn foo() -> (ret: String)
+            ensures ret@ !== new_strlit("hello worlds")@
+        {
+            reveal_strlit("hello worlds");
+            reveal_strlit("hello ");
+            reveal_strlit("world");
+
+            let mut s = new_strlit("hello ").to_string();
+            s.append(new_strlit("world"));
+            assert(!s@.ext_equal(new_strlit("hello worlds")@));
+            s
+        }
+
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_concat_1 verus_code! {
+        use pervasive::string::*;
+        use pervasive::vec::*;
+
+        fn foo() -> (ret: String)
+            ensures ret@ === new_strlit("hello world")@
+        {
+            reveal_strlit("hello world");
+            reveal_strlit("hello ");
+            reveal_strlit("world");
+
+            let s1 = new_strlit("hello ").to_string();
+            let s = s1.concat(new_strlit("world"));
+            assert(s@.ext_equal(new_strlit("hello world")@));
+            s
+        }
+
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_concat_2 verus_code! {
+        use pervasive::string::*;
+        use pervasive::vec::*;
+
+        fn foo() -> (ret: String)
+            ensures ret@ !== new_strlit("hello worlds")@
+        {
+            reveal_strlit("hello worlds");
+            reveal_strlit("hello ");
+            reveal_strlit("world");
+
+            let s1 = new_strlit("hello ").to_string();
+            let s = s1.concat(new_strlit("world"));
+            assert(!s@.ext_equal(new_strlit("hello worlds")@));
+            s
+        }
+
+    } => Ok(())
+}
