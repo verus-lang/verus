@@ -103,7 +103,7 @@ macro_rules! assert_seqs_equal_internal {
         ::builtin::assert_by(::builtin::equal(s1, s2), {
             $crate::pervasive::assert(s1.len() == s2.len());
             ::builtin::assert_forall_by(|$idx : ::builtin::int| {
-                ::builtin::requires(0 <= $idx && $idx < s1.len());
+                ::builtin::requires(::builtin_macros::verus_proof_expr!(0 <= $idx && $idx < s1.len()));
                 ::builtin::ensures(::builtin::equal(s1.index($idx), s2.index($idx)));
                 { $bblock }
             });

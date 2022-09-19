@@ -1,3 +1,5 @@
+// rust_verify/tests/example.rs deprecated-enhanced-typecheck
+
 #[allow(unused_imports)]
 use builtin::*;
 mod pervasive;
