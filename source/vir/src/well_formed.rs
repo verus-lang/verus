@@ -694,33 +694,10 @@ fn check_function(
 }
 
 fn check_datatype(dt: &Datatype) -> Result<(), VirErr> {
-    let unforgeable = dt.x.unforgeable;
-    let dt_mode = dt.x.mode;
-
-    if unforgeable && dt_mode != Mode::Proof {
-        return err_string(&dt.span, format!("an unforgeable datatype must be in #[proof] mode"));
-    }
-
     for variant in dt.x.variants.iter() {
         for field in variant.a.iter() {
             let typ = &field.a.0;
             check_typ(typ, &dt.span)?;
-        }
-    }
-
-    // For an 'unforgeable' datatype, all fields must be #[spec]
-
-    if unforgeable {
-        for variant in dt.x.variants.iter() {
-            for binder in variant.a.iter() {
-                let (_typ, field_mode, _vis) = &binder.a;
-                if *field_mode != Mode::Spec {
-                    return err_string(
-                        &dt.span,
-                        format!("all fields of a unforgeable datatype must be marked #[spec]"),
-                    );
-                }
-            }
         }
     }
 

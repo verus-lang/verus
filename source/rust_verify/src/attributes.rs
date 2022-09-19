@@ -146,8 +146,6 @@ pub(crate) enum Attr {
     CustomReqErr(String),
     // verify using bitvector theory
     BitVector,
-    // for unforgeable token types
-    Unforgeable,
     // for 'atomic' operations (e.g., CAS)
     Atomic,
     // specifies an invariant block
@@ -266,9 +264,6 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                     if arg == "when_used_as_spec" =>
                 {
                     v.push(Attr::Autospec(ident.clone()))
-                }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "unforgeable" => {
-                    v.push(Attr::Unforgeable)
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "atomic" => v.push(Attr::Atomic),
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "invariant_block" => {
@@ -441,7 +436,6 @@ pub(crate) struct VerifierAttrs {
     pub(crate) autospec: Option<String>,
     pub(crate) custom_req_err: Option<String>,
     pub(crate) bit_vector: bool,
-    pub(crate) unforgeable: bool,
     pub(crate) atomic: bool,
     pub(crate) integer_ring: bool,
     pub(crate) is_variant: Option<String>,
@@ -471,7 +465,6 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         autospec: None,
         custom_req_err: None,
         bit_vector: false,
-        unforgeable: false,
         atomic: false,
         integer_ring: false,
         is_variant: None,
@@ -500,7 +493,6 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::Autospec(method_ident) => vs.autospec = Some(method_ident),
             Attr::CustomReqErr(s) => vs.custom_req_err = Some(s.clone()),
             Attr::BitVector => vs.bit_vector = true,
-            Attr::Unforgeable => vs.unforgeable = true,
             Attr::Atomic => vs.atomic = true,
             Attr::IntegerRing => vs.integer_ring = true,
             Attr::IsVariant(variant_ident) => vs.is_variant = Some(variant_ident),
