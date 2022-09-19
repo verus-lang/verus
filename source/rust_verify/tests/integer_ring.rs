@@ -228,12 +228,12 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test]
     #[cfg_attr(not(feature = "singular"), ignore)]
-    test6_fails_reserved_keyword code! {
+    test6_reserved_keyword_is_hygenic code! {
         #[proof]
         #[verifier(integer_ring)]
         fn test1(singular_tmp_1 : int, y: int, z:int, m:int){
             requires( (singular_tmp_1 - y) % m == 0);
             ensures( (singular_tmp_1 * z- y*z) % m == 0);
         }
-    } => Err(_)
+    } => Ok(())
 }

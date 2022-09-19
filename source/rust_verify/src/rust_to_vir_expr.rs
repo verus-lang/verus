@@ -6,7 +6,7 @@ use crate::context::{BodyCtxt, Context};
 use crate::erase::ResolvedCall;
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, def_to_path_ident, get_function_def, get_range, hack_get_def_name,
-    ident_to_var, is_smt_arith, is_smt_equality, is_type_std_rc_or_arc, mid_ty_simplify,
+    is_smt_arith, is_smt_equality, is_type_std_rc_or_arc, local_to_var, mid_ty_simplify,
     mid_ty_to_vir, mid_ty_to_vir_ghost, mk_range, typ_of_node, typ_of_node_expect_mut_ref,
     typ_path_and_ident_to_vir_path,
 };
@@ -49,7 +49,7 @@ pub(crate) fn pat_to_mut_var<'tcx>(pat: &Pat) -> (bool, String) {
     let Pat { hir_id: _, kind, span: _, default_binding_modes } = pat;
     unsupported_unless!(default_binding_modes, "default_binding_modes");
     match kind {
-        PatKind::Binding(annotation, _id, ident, pat) => {
+        PatKind::Binding(annotation, id, ident, pat) => {
             let mutable = match annotation {
                 BindingAnnotation::Unannotated => false,
                 BindingAnnotation::Mutable => true,
@@ -63,7 +63,7 @@ pub(crate) fn pat_to_mut_var<'tcx>(pat: &Pat) -> (bool, String) {
                     unsupported!(format!("pattern {:?}", kind))
                 }
             }
-            (mutable, ident_to_var(ident))
+            (mutable, local_to_var(ident, id.local_id))
         }
         _ => {
             unsupported!(format!("pattern {:?}", kind))
@@ -1524,11 +1524,11 @@ pub(crate) fn pattern_to_vir<'tcx>(
     unsupported_err_unless!(pat.default_binding_modes, pat.span, "complex pattern");
     let pattern = match &pat.kind {
         PatKind::Wild => PatternX::Wildcard,
-        PatKind::Binding(BindingAnnotation::Unannotated, _canonical, x, None) => {
-            PatternX::Var { name: Arc::new(x.as_str().to_string()), mutable: false }
+        PatKind::Binding(BindingAnnotation::Unannotated, canonical, x, None) => {
+            PatternX::Var { name: Arc::new(local_to_var(x, canonical.local_id)), mutable: false }
         }
-        PatKind::Binding(BindingAnnotation::Mutable, _canonical, x, None) => {
-            PatternX::Var { name: Arc::new(x.as_str().to_string()), mutable: true }
+        PatKind::Binding(BindingAnnotation::Mutable, canonical, x, None) => {
+            PatternX::Var { name: Arc::new(local_to_var(x, canonical.local_id)), mutable: true }
         }
         PatKind::Path(QPath::Resolved(
             None,

@@ -3,7 +3,7 @@ use crate::attributes::{
 };
 use crate::context::{BodyCtxt, Context};
 use crate::rust_to_vir_base::{
-    check_generics_bounds_fun, def_id_to_vir_path, ident_to_var, mid_ty_to_vir,
+    check_generics_bounds_fun, def_id_to_vir_path, foreign_param_to_var, mid_ty_to_vir,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_var, ExprModifier};
 use crate::util::{err_span_str, err_span_string, spanned_new, unsupported_err_span};
@@ -456,7 +456,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
 
     assert!(idents.len() == inputs.len());
     for (param, input) in idents.iter().zip(inputs.iter()) {
-        let name = Arc::new(ident_to_var(param));
+        let name = Arc::new(foreign_param_to_var(param));
         let is_mut = is_mut_ty(input);
         let typ = mid_ty_to_vir(ctxt.tcx, is_mut.unwrap_or(input), false);
         // REVIEW: the parameters don't have attributes, so we use the overall mode

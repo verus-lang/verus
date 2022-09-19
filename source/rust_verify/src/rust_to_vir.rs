@@ -12,7 +12,7 @@ use crate::def::{get_variant_fn_name, is_variant_fn_name};
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
 use crate::rust_to_vir_base::{
     check_generics_bounds, def_id_to_vir_path, fn_item_hir_id_to_self_def_id, hack_get_def_name,
-    ident_to_var, mid_ty_to_vir, mk_visibility, typ_path_and_ident_to_vir_path,
+    mid_ty_to_vir, mk_visibility, typ_path_and_ident_to_vir_path,
 };
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
 use crate::util::{err_span_str, spanned_new, unsupported_err_span};
@@ -301,7 +301,7 @@ fn check_item<'tcx>(
                                                     &impl_item.vis,
                                                     false,
                                                 );
-                                                let ident = ident_to_var(&impl_item_ref.ident);
+                                                let ident = impl_item_ref.ident.to_string();
                                                 let ident = Arc::new(ident);
                                                 let path = typ_path_and_ident_to_vir_path(
                                                     &trait_path,

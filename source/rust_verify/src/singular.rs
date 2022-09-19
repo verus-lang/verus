@@ -21,6 +21,7 @@ const RING_R: &str = "ring_R";
 const IDEAL_I: &str = "ideal_I";
 const IDEAL_G: &str = "ideal_G";
 const TMP_PREFIX: &str = "singular_tmp_";
+const USER_VAR_PREFIX: &str = "user_var_";
 
 const RESERVED_KEYWORDS: [&str; 10] = [
     RING_DECL,
@@ -35,7 +36,34 @@ const RESERVED_KEYWORDS: [&str; 10] = [
     IDEAL_G,
 ];
 
-fn assert_not_reserved(name: String) -> Result<(), String> {
+fn sanitize_var_name(name: String) -> String {
+    // From singular docs
+    // (See Sec. 3.5.3 of https://www.singular.uni-kl.de/index.php/singular.pdf)
+    // Var names should start with a letter
+    // May only include letters, digits, @, and _
+
+    // Sanitization scheme:
+    //  - Begin with USER_VAR_PREFIX to avoid any reserved identifiers
+    //  - Any character can be sanitized as `_{unicode_value}_`
+    //  - Encode _ as __
+    //  - All other characters can stay the same
+
+    let mut res = USER_VAR_PREFIX.to_string();
+    for c in name.chars() {
+        if c.is_ascii_alphanumeric() || c == '@' {
+            res.push(c);
+        } else if c == '_' {
+            res.push_str("__");
+        } else {
+            res.push('_');
+            res.push_str(&format!("{:x}", c as u32));
+            res.push('_');
+        }
+    }
+    res
+}
+
+fn assert_not_reserved(name: &str) -> Result<(), String> {
     for keyword in RESERVED_KEYWORDS {
         if name == keyword {
             return Err(format!(
@@ -61,9 +89,9 @@ pub(crate) fn expr_to_singular(
     let result_string = match &**expr {
         ExprX::Const(Constant::Nat(n)) => n.to_string(),
         ExprX::Var(x) => {
-            // during SST -> AIR translation, '@' is already added in x
-            let _ = assert_not_reserved(x.to_string())?;
-            x.to_string()
+            let sanitized = sanitize_var_name(x.to_string());
+            assert_not_reserved(&sanitized)?;
+            sanitized
         }
         ExprX::Binary(BinaryOp::EuclideanMod, lhs, rhs) => {
             // x % y ->  x - y*tmp
@@ -160,7 +188,7 @@ pub fn singular_printer(
     for v in vars {
         let mut v2 = v.to_string();
         v2.push('@');
-        vars2.push(v2);
+        vars2.push(sanitize_var_name(v2));
     }
 
     // gather polynomials that will be the basis of ideal
