@@ -44,12 +44,34 @@ There are a few different approaches we can take.
  * Track the exact value using `tracked ghost` code.
 
 More sophisticated data structures---especially concurrent ones---often require a careful
-balance of both approaches. We'll cover both here.
+balance of both approaches. We'll introduce both here.
 
 ### Data Invariants with `InvCell`.
 
+Suppose we have an expensive computation and we want to memoize its value. The first time
+we need to compute the value, we perform the computation and store its value for whenever
+it's needed later. To do this, we'll use a `Cell`, whose interior is intialized to `None`
+to store the computed value.
+The memoized compute function will then:
+
+ * Read the value in the `Cell`.
+   * If it's `None`, then the value hasn't been computed yet.
+     Compute the value, store it for later, then return it.
+   * If it's `Some(x)`, then the value has already been computed,
+     so return it immediately.
+
+Crucially, the correctness of this approach doesn't actually depend on being able to
+predict which of these cases any invocation will take. (It might be a different story if
+we were attempting to prove a bound on the time the program will take.)
+All we need to know is that it will take _one_ of these cases.
+Therefore, we can verify this code by using a cell with a data invariant:
+
+ * _Invariant:_ the value stored in the interior of the cell is either `None` or `Some(x)`,
+   where `x` is the expected result of the computation.
+
+Concretely, the above can be implemented in Verus using
 [`InvCell`](https://verus-lang.github.io/verus/verusdoc/lib/pervasive/cell/struct.InvCell.html),
-provided by Verus' standard library, is an example of the "data invariant" approach.
+provided by Verus' standard library, which provides a data-invariant-based specification.
 When constructing a new `InvCell<T>`, the user specifies a data invariant: some boolean predicate
 over the type `T` which tells the cell what values are allowed to be stored.
 Then, the `InvCell` only has to impose the restriction that whenever the user writes to the cell,

@@ -62,7 +62,8 @@ impl<'a> StrSlice<'a> {
             from < self@.len(),
             to <= self@.len(),
         ensures
-            ret@ === self@.subrange(from as int, to as int)
+            ret@ === self@.subrange(from as int, to as int),
+            ret.is_ascii() === self.is_ascii()
     {
         StrSlice {
             inner: &self.inner[from..to],
@@ -75,7 +76,8 @@ impl<'a> StrSlice<'a> {
             from < self@.len(),
             to <= self@.len()
         ensures
-            ret@ === self@.subrange(from as int, to as int)
+            ret@ === self@.subrange(from as int, to as int),
+            ret.is_ascii() === self.is_ascii()
     {
         let mut char_pos = 0;
         let mut byte_start = None;
@@ -187,6 +189,25 @@ impl String {
         let inner = self.inner.as_str();
         StrSlice { inner }
     }
+
+    #[verifier(external_body)]
+    pub fn append<'a, 'b>(&'a mut self, other: StrSlice<'b>)
+        ensures
+            self@ === old(self)@ + other@,
+            self.is_ascii() === old(self).is_ascii() && other.is_ascii(),
+    {
+        self.inner += other.inner;
+    }
+
+    #[verifier(external_body)]
+    pub fn concat<'b>(self, other: StrSlice<'b>) -> (ret: String)
+        ensures
+            ret@ === self@ + other@,
+            ret.is_ascii() === self.is_ascii() && other.is_ascii(),
+    {
+        String { inner: self.inner + other.inner }
+    }
+
 }
 
 }
