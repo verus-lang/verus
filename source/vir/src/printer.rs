@@ -164,8 +164,7 @@ fn atomicity_to_node(atomicity: InvAtomicity) -> Node {
 }
 
 fn datatype_to_node(datatype: &DatatypeX) -> Node {
-    let DatatypeX { path, visibility, transparency, typ_params, variants, mode, unforgeable } =
-        datatype;
+    let DatatypeX { path, visibility, transparency, typ_params, variants, mode } = datatype;
     let typ_params_node = Node::List(
         typ_params
             .iter()
@@ -187,7 +186,7 @@ fn datatype_to_node(datatype: &DatatypeX) -> Node {
             ])
         })
     });
-    let mut nodes = vec![
+    let nodes = vec![
         str_to_node("datatype"),
         path_to_node(path),
         visibility_to_node(visibility),
@@ -200,9 +199,6 @@ fn datatype_to_node(datatype: &DatatypeX) -> Node {
         str_to_node(":mode"),
         Node::Atom(format!("{:?}", mode)),
     ];
-    if *unforgeable {
-        nodes.push(str_to_node("+unforgeable"));
-    }
     Node::List(nodes)
 }
 

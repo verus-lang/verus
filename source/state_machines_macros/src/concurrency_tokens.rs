@@ -217,9 +217,14 @@ fn instance_struct_stream(sm: &SM) -> TokenStream {
     return quote! {
         #[proof]
         #[allow(non_camel_case_types)]
-        #[verifier(unforgeable)]
         pub struct #insttype #gen {
-            // fields intentionally private
+            // This is not marked external_body, but the fields are private, so the
+            // user should not be able to do illegal things with this type from outside
+            // the module created by the macro.
+            // For example, this prevents the user from constructing an instance.
+            // However, since it's not marked external_body,
+            // Verus will still look at the fields when doing its type hierarchy analysis.
+
             #[spec] send_sync: crate::pervasive::state_machine_internal::SyncSendIfSyncSend<#storage_types>,
             #[spec] state: #self_ty,
             #[spec] location: ::builtin::int,
@@ -343,10 +348,7 @@ fn token_struct_stream(
 /// For a given sharding(constant) field, add that constant
 /// as a #[spec] fn on the Instance type. (The field is constant
 /// for the entire instance.)
-///
-/// note: we could make these fields on the Instance type instead
-/// (this is safe as long as the Instance type is an unforgeable proof type)
-/// but currently we have the body of the Instance as private
+
 fn const_fn_stream(field: &Field) -> TokenStream {
     let fieldname = &field.name;
     let fieldtype = match &field.stype {

@@ -298,9 +298,6 @@ fn get_var_loc_mode(
             let rcvr_mode =
                 get_var_loc_mode(typing, outer_mode, expr_inner_mode, rcvr, init_not_mut)?;
             let datatype = &typing.datatypes[datatype].x;
-            if datatype.unforgeable {
-                return err_str(&expr.span, "unforgeable datatypes cannot be updated");
-            }
             assert!(datatype.variants.len() == 1);
             let (_, field_mode, _) = &datatype.variants[0]
                 .a
@@ -524,10 +521,6 @@ fn check_expr_handle_mut_arg(
                     // allow this arg by weakening whole struct's mode
                     mode = mode_join(mode, mode_arg);
                 }
-            }
-
-            if datatype.x.unforgeable && mode == Mode::Proof {
-                return err_str(&expr.span, "cannot construct an unforgeable proof object");
             }
 
             Ok(mode)

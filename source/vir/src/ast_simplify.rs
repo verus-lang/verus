@@ -486,15 +486,8 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         }
         let variant = ident_binder(&prefix_tuple_variant(arity), &Arc::new(fields));
         let variants = Arc::new(vec![variant]);
-        let datatypex = DatatypeX {
-            path,
-            visibility,
-            transparency,
-            typ_params,
-            variants,
-            mode: Mode::Exec,
-            unforgeable: false,
-        };
+        let datatypex =
+            DatatypeX { path, visibility, transparency, typ_params, variants, mode: Mode::Exec };
         datatypes.push(Spanned::new(ctx.no_span.clone(), datatypex));
     }
 
