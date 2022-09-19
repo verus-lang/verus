@@ -11,6 +11,8 @@ use pervasive::*;
 #[allow(unused_imports)]
 use seq::*;
 
+verus! {
+
 fn main() {}
 
 /// Different components of this file can be enabled/disabled quickly and easily using
@@ -21,24 +23,24 @@ fn main() {}
 mod fib {
     use super::*;
 
-    #[spec]
     #[verifier(memoize)]
-    fn fib(x: nat) -> nat {
-        decreases(x);
+    spec fn fib(x: nat) -> nat
+        decreases x
+    {
         if x == 0 {
             0
         } else if x == 1 {
             1
         } else {
-            fib(x - 1) + fib(x - 2)
+            fib((x - 1) as nat) + fib((x - 2) as nat)
         }
     }
 
     fn test() {
         //assert(fib(10) == 55);  // Fails without more fuel
-        assert_by_compute_only(fib(10) == 55);
-        assert_by_compute_only(fib(100) == 354224848179261915075);
-        assert_by_compute_only(fib(101) == 573147844013817084101);
+        assert(fib(10) == 55) by(compute_only);
+        assert(fib(100) == 354224848179261915075) by(compute_only);
+        assert(fib(101) == 573147844013817084101) by(compute_only);
         assert(fib(102) == 927372692193078999176);  // Succeeds based on the two results above
     }
 }
@@ -48,21 +50,21 @@ mod verititan_example {
     use super::*;
 
     // Naive definition of exponentiation
-    #[spec]
-    fn pow(base: nat, exp: nat) -> nat {
-        decreases(exp);
-        if exp == 0 { 1 } else { base * pow(base, exp - 1) }
+    spec fn pow(base: nat, exp: nat) -> nat
+        decreases exp
+    {
+        if exp == 0 { 1 } else { base * pow(base, (exp - 1) as nat) }
     }
 
-    const Q: nat = 12289;
-    const L: nat = 11;
-    const G: nat = 7;
+    spec const Q: nat = 12289;
+    spec const L: nat = 11;
+    spec const G: nat = 7;
 
     fn compute_verititan() {
         // Fails, since Z3 doesn't have nearly enough fuel to calculate this
         // assert(pow(G, pow(2, L) / 2) % Q == Q - 1); 
         
-        assert_by_compute_only(pow(G, pow(2, L) / 2) % Q == Q - 1); 
+        assert(pow(G, pow(2, L) / 2) % Q == Q - 1) by(compute_only); 
     }
 }
 
@@ -76,35 +78,34 @@ mod recursive_data_structures {
         Cons(T, Box<List<T>>),
     }
 
-    #[spec]
-    fn len<T>(l: List<T>) -> nat {
-        decreases(l);
+    spec fn len<T>(l: List<T>) -> nat
+        decreases l
+    {
         match l {
             List::Nil => 0,
             List::Cons(_, tl) => 1 + len(*tl),
         }
     }
 
-    #[spec]
-    fn append<T>(l: List<T>, x: T) -> List<T> {
-        decreases(l);
+    spec fn append<T>(l: List<T>, x: T) -> List<T>
+        decreases l
+    {
         match l {
             List::Nil => List::Cons(x, box List::Nil),
             List::Cons(hd, tl) => List::Cons(hd, box append(*tl, x)),
         }
     }
 
-    #[spec]
-    fn reverse<T>(l: List<T>) -> List<T> {
-        decreases(l);
+    spec fn reverse<T>(l: List<T>) -> List<T>
+        decreases l
+    {
         match l {
             List::Nil => List::Nil,
             List::Cons(hd, tl) => append(reverse(*tl), hd),
         }
     }
 
-    #[spec]
-    fn ex1() -> List<nat> {
+    spec fn ex1() -> List<nat> {
         List::Cons(
             1,
             box List::Cons(
@@ -114,8 +115,7 @@ mod recursive_data_structures {
         )
     }
 
-    #[spec]
-    fn ex1_rev() -> List<nat> {
+    spec fn ex1_rev() -> List<nat> {
         List::Cons(
             5,
             box List::Cons(
@@ -126,9 +126,9 @@ mod recursive_data_structures {
     }
 
     fn compute_list() {
-        assert_by_compute_only(len(ex1()) == 5);
-        assert_by_compute_only(len(append(ex1(), 6)) == 6);
-        assert_by_compute_only(equal(reverse(ex1()), ex1_rev()));
+        assert(len(ex1()) == 5) by(compute_only);
+        assert(len(append(ex1(), 6)) == 6) by(compute_only);
+        assert(equal(reverse(ex1()), ex1_rev())) by(compute_only);
     }
 }
 
@@ -136,18 +136,18 @@ mod recursive_data_structures {
 mod sequences {
     use super::*;
 
-    #[spec]
-    fn reverse<T>(s: Seq<T>) -> Seq<T> {
-        decreases(s.len());
-        if s.len() == 0 { Seq::empty() } else { reverse(s.subrange(1, s.len())).push(s.index(0)) }
+    spec fn reverse<T>(s: Seq<T>) -> Seq<T>
+        decreases s.len()
+    {
+        if s.len() == 0 { Seq::empty() } else { reverse(s.subrange(1, s.len() as int)).push(s.index(0)) }
     }
 
     fn compute_seq_symbolic<T>(a: T, b: T, c: T, d: T) {
-        assert_by_compute_only(seq![a, b, c, d].len() == 4);
-        assert_by_compute_only(seq![a, b, c, d].ext_equal(seq![a, b].add(seq![c, d])));
-        assert_by_compute_only(seq![a, b, c, d].ext_equal(seq![a, b].push(c).push(d)));
-        assert_by_compute_only(seq![a, b, c, d].subrange(1, 3).ext_equal(seq![b].push(c)));
-        assert_by_compute_only(seq![a, b, c, d].ext_equal(reverse(seq![d, c, b, a])));
+        assert(seq![a, b, c, d].len() == 4) by(compute_only);
+        assert(seq![a, b, c, d].ext_equal(seq![a, b].add(seq![c, d]))) by(compute_only);
+        assert(seq![a, b, c, d].ext_equal(seq![a, b].push(c).push(d))) by(compute_only);
+        assert(seq![a, b, c, d].subrange(1, 3).ext_equal(seq![b].push(c))) by(compute_only);
+        assert(seq![a, b, c, d].ext_equal(reverse(seq![d, c, b, a]))) by(compute_only);
     }
 
 }
@@ -158,97 +158,95 @@ mod veribetrkv_example_original {
     // VeriBetrKV example original:
     // https://github.com/vmware-labs/verified-betrfs/blob/ee4b18d553933440bb5ecda037c6a1c411a49a5f/lib/Crypto/CRC32Lut.i.dfy
 
-    #[spec]
-    fn bits_of_int(n: nat, len: nat) -> Seq<bool> {
-        decreases(len);
-        if len == 0 { Seq::empty() } else { seq![n % 2 == 1].add(bits_of_int(n / 2, len - 1)) }
+    spec fn bits_of_int(n: nat, len: nat) -> Seq<bool>
+        decreases len
+    {
+        if len == 0 { Seq::empty() } else { seq![n % 2 == 1].add(bits_of_int(n / 2, (len - 1) as nat)) }
     }
 
-    #[spec]
-    fn zeroes(l: nat) -> Seq<bool> {
-        decreases(l);
-        if l == 0 { Seq::empty() } else { zeroes(l - 1).push(false) }
+    spec fn zeroes(l: nat) -> Seq<bool>
+        decreases l
+    {
+        if l == 0 { Seq::empty() } else { zeroes((l - 1) as nat).push(false) }
     }
 
-    #[proof]
-    fn zeroes_len(l: nat) {
-        ensures(zeroes(l).len() == l);
-        decreases(l);
+    proof fn zeroes_len(l: nat)
+        ensures
+            zeroes(l).len() == l,
+        decreases l
+    {
         if l == 0 {
         } else {
-            zeroes_len(l - 1);
+            zeroes_len((l - 1) as nat);
         }
     }
 
-    #[spec]
-    fn shift(p: Seq<bool>, t: nat) -> Seq<bool> {
+    spec fn shift(p: Seq<bool>, t: nat) -> Seq<bool> {
         zeroes(t).add(p)
     }
 
-    #[spec]
-    fn xor(p: Seq<bool>, q: Seq<bool>) -> Seq<bool> {
-        recommends(p.len() == q.len());
-        decreases(p.len());
+    spec fn xor(p: Seq<bool>, q: Seq<bool>) -> Seq<bool>
+        recommends p.len() == q.len()
+        decreases p.len()
+    {
         if p.len() == 0 {
             Seq::empty()
         } else {
-            xor(p.subrange(0, p.len() as int - 1), q.subrange(0, q.len() as int - 1))
+            xor(p.subrange(0, p.len() - 1), q.subrange(0, q.len() - 1))
                 .push(p.last() ^ q.last())
         }
     }
 
-    #[proof]
-    fn xor_len(p: Seq<bool>, q: Seq<bool>) {
-        requires(p.len() == q.len());
-        decreases(p.len());
-        ensures(xor(p, q).len() == p.len());
-
+    proof fn xor_len(p: Seq<bool>, q: Seq<bool>)
+        requires
+            p.len() == q.len(),
+        ensures
+            xor(p, q).len() == p.len(),
+        decreases p.len()
+    {
         if p.len() == 0 {
             assert(xor(p, q).len() == p.len());
         } else {
-            xor_len(p.subrange(0, p.len() as int - 1), q.subrange(0, q.len() as int - 1));
+            xor_len(p.subrange(0, p.len() - 1), q.subrange(0, q.len() - 1));
         }
     }
 
-    #[spec]
-    fn mod_F2_X(p: Seq<bool>, q: Seq<bool>) -> Seq<bool> {
-        recommends(q.len() > 0);
-        decreases(p.len());
+    spec fn mod_F2_X(p: Seq<bool>, q: Seq<bool>) -> Seq<bool>
+        recommends q.len() > 0
+        decreases p.len()
+    {
         recommends_by(mod_F2_X_rec);
-        if p.len() <= q.len() - 1 {
-            p.add(zeroes(q.len() - 1 - p.len()))
+        if p.len() <= (q.len() - 1) as nat {
+            p.add(zeroes((q.len() - 1 - p.len()) as nat))
         } else {
             if p.last() {
-                mod_F2_X(xor(p, shift(q, p.len() - q.len())).subrange(0, p.len() as int - 1), q)
+                mod_F2_X(xor(p, shift(q, (p.len() - q.len()) as nat)).subrange(0, p.len() - 1), q)
             } else {
-                mod_F2_X(p.subrange(0, p.len() as int - 1), q)
+                mod_F2_X(p.subrange(0, p.len() - 1), q)
             }
         }
     }
 
-    #[proof]
     #[verifier(recommends_by)]
-    fn mod_F2_X_rec(p: Seq<bool>, q: Seq<bool>) {
-        if p.len() > q.len() - 1 {
-            zeroes_len(p.len() - q.len());
-            xor_len(p, shift(q, p.len() - q.len()));
+    proof fn mod_F2_X_rec(p: Seq<bool>, q: Seq<bool>) {
+        if p.len() > (q.len() - 1) as nat {
+            zeroes_len((p.len() - q.len()) as nat);
+            xor_len(p, shift(q, (p.len() - q.len()) as nat));
         }
     }
 
-    #[spec]
-    fn reverse(s: Seq<bool>) -> Seq<bool> {
-        decreases(s.len());
-        if s.len() == 0 { Seq::empty() } else { reverse(s.subrange(1, s.len())).push(s.index(0)) }
+    spec fn reverse(s: Seq<bool>) -> Seq<bool>
+        decreases s.len()
+    {
+        if s.len() == 0 { Seq::empty() } else { reverse(s.subrange(1, s.len() as int)).push(s.index(0)) }
     }
 
-    #[spec]
-    fn pow_mod_crc(n: nat) -> Seq<bool> {
-        reverse(mod_F2_X(zeroes(n - 33).push(true), bits_of_int(0x1_1EDC_6F41, 33)))
+    spec fn pow_mod_crc(n: nat) -> Seq<bool> {
+        reverse(mod_F2_X(zeroes((n - 33) as nat).push(true), bits_of_int(0x1_1EDC_6F41, 33)))
     }
 
     // TODO: pops the stack if we use the full lut definition
-    #[spec]
-    const lut: Seq<u64> =
+    spec const lut: Seq<u64> =
         seq![0x00000001493c7d27, 0x493c7d27ba4fc28e, 0xf20c0dfeddc0152b, 0xba4fc28e9e4addf8];
     //    0x3da6d0cb39d3b296, 0xddc0152b0715ce53, 0x1c291d0447db8317, 0x9e4addf80d3b6092,
     //    0x740eef02c96cfdc0, 0x39d3b296878a92a7, 0x083a6eecdaece73e, 0x0715ce53ab7aff2a,
@@ -317,13 +315,12 @@ mod veribetrkv_example_original {
 
     //assert (forall n | 1 <= n <= 256 :: bits_of_int(lut[n-1] as int, 64) == pow_mod_crc(2*64*n) + pow_mod_crc(64*n))
     //    by(computation);
-    #[spec]
-    const v: int = 1;
+    spec const v: int = 1;
     fn crc_compute() {
-        assert_by_compute(
+        assert(
             bits_of_int(lut.index(v - 1) as nat, 64)
-                .ext_equal(pow_mod_crc(2 * 64 * v as nat).add(pow_mod_crc(64 * v as nat))),
-        );
+                .ext_equal(pow_mod_crc(2 * 64 * v as nat).add(pow_mod_crc(64 * v as nat)))
+        ) by(compute);
     }
 }
 
@@ -333,68 +330,64 @@ mod veribetrkv_example_list_comprehension {
 
     // VeriBetrKV example using sequence comprehension:
     // https://github.com/vmware-labs/verified-betrfs/blob/ee4b18d553933440bb5ecda037c6a1c411a49a5f/lib/Crypto/CRC32Lut.i.dfy
-    #[spec]
-    fn bits_of_int(n: nat, len: nat) -> Seq<bool> {
-        decreases(len);
-        if len == 0 { Seq::empty() } else { seq![n % 2 == 1].add(bits_of_int(n / 2, len - 1)) }
+    spec fn bits_of_int(n: nat, len: nat) -> Seq<bool>
+        decreases len
+    {
+        if len == 0 { Seq::empty() } else { seq![n % 2 == 1].add(bits_of_int(n / 2, (len - 1) as nat)) }
     }
 
-    #[spec]
-    fn zeroes(l: nat) -> Seq<bool> {
+    spec fn zeroes(l: nat) -> Seq<bool> {
         Seq::new(l, |i| false)
     }
 
-    #[spec]
-    fn shift(p: Seq<bool>, t: nat) -> Seq<bool> {
+    spec fn shift(p: Seq<bool>, t: nat) -> Seq<bool> {
         zeroes(t).add(p)
     }
 
-    #[spec]
-    fn xor(p: Seq<bool>, q: Seq<bool>) -> Seq<bool> {
+    spec fn xor(p: Seq<bool>, q: Seq<bool>) -> Seq<bool> {
         recommends(p.len() == q.len());
         Seq::new(p.len(), |i| p.index(i) ^ q.index(i))
     }
 
-    #[spec]
-    fn mod_F2_X(p: Seq<bool>, q: Seq<bool>) -> Seq<bool> {
-        recommends(q.len() > 0);
-        decreases(p.len());
+    spec fn mod_F2_X(p: Seq<bool>, q: Seq<bool>) -> Seq<bool>
+        recommends q.len() > 0
+        decreases p.len()
+    {
         //recommends_by(mod_F2_X_rec);
-        if p.len() <= q.len() - 1 {
-            p.add(zeroes(q.len() - 1 - p.len()))
+        if p.len() <= (q.len() - 1) as nat {
+            p.add(zeroes((q.len() - 1 - p.len()) as nat))
         } else {
             if p.last() {
-                mod_F2_X(xor(p, shift(q, p.len() - q.len())).subrange(0, p.len() as int - 1), q)
+                mod_F2_X(xor(p, shift(q, (p.len() - q.len()) as nat)).subrange(0, p.len() - 1), q)
             } else {
-                mod_F2_X(p.subrange(0, p.len() as int - 1), q)
+                mod_F2_X(p.subrange(0, p.len() - 1), q)
             }
         }
     }
 
-    #[spec]
-    fn reverse(s: Seq<bool>) -> Seq<bool> {
-        decreases(s.len());
-        if s.len() == 0 { Seq::empty() } else { reverse(s.subrange(1, s.len())).push(s.index(0)) }
+    spec fn reverse(s: Seq<bool>) -> Seq<bool>
+        decreases s.len()
+    {
+        if s.len() == 0 { Seq::empty() } else { reverse(s.subrange(1, s.len() as int)).push(s.index(0)) }
     }
 
-    #[spec]
-    fn pow_mod_crc(n: nat) -> Seq<bool> {
-        reverse(mod_F2_X(zeroes(n - 33).push(true), bits_of_int(0x1_1EDC_6F41, 33)))
+    spec fn pow_mod_crc(n: nat) -> Seq<bool> {
+        reverse(mod_F2_X(zeroes((n - 33) as nat).push(true), bits_of_int(0x1_1EDC_6F41, 33)))
     }
 
     // TODO: pops the stack if we use the full lut definition
-    #[spec]
-    const lut: Seq<u64> =
+    spec const lut: Seq<u64> =
         seq![0x00000001493c7d27, 0x493c7d27ba4fc28e, 0xf20c0dfeddc0152b, 0xba4fc28e9e4addf8];
 
     //assert (forall n | 1 <= n <= 256 :: bits_of_int(lut[n-1] as int, 64) == pow_mod_crc(2*64*n) + pow_mod_crc(64*n))
     //    by(computation);
-    #[spec]
-    const v: int = 1;
+    spec const v: int = 1;
     fn crc_compute() {
-        assert_by_compute_only(
+        assert(
             bits_of_int(lut.index(v - 1) as nat, 64)
-                .ext_equal(pow_mod_crc(2 * 64 * v as nat).add(pow_mod_crc(64 * v as nat))),
-        );
+                .ext_equal(pow_mod_crc(2 * 64 * v as nat).add(pow_mod_crc(64 * v as nat)))
+        ) by(compute_only);
     }
 }
+
+} // verus!

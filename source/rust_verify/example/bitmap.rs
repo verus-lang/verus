@@ -53,7 +53,7 @@ proof fn set_bit64_proof(bv_new: u64, bv_old: u64, index: u64, bit: bool)
         index < 64 ,
     ensures
         get_bit64!(bv_new, index) == bit,
-        forall |loc2:u64| (loc2 < 64 && loc2 != index) >>= (get_bit64!(bv_new, loc2) == get_bit64!(bv_old, loc2)),
+        forall |loc2:u64| (loc2 < 64 && loc2 != index) ==> (get_bit64!(bv_new, loc2) == get_bit64!(bv_old, loc2)),
 {
 }
 
@@ -62,7 +62,7 @@ proof fn bit_or_64_proof(bv1: u64, bv2: u64, bv_new:u64)
     requires
         bv_new == bv1 | bv2,
     ensures
-        forall |i: u64| (i < 64) >>= get_bit64!(bv_new, i)  == (get_bit64!(bv1, i) || get_bit64!(bv2, i)),
+        forall |i: u64| (i < 64) ==> get_bit64!(bv_new, i)  == (get_bit64!(bv1, i) || get_bit64!(bv2, i)),
 {
 }
 
@@ -100,7 +100,7 @@ impl BitMap {
         requires
             index < self@.len(),
         ensures
-            bit == self@[index],
+            bit == self@[index as int],
     {
         // REVIEW: at this moment, usize is assumed to be 32 or 64.
         // Therefore, if `index` is u64, verification fails due to the possibility of truncation
@@ -117,7 +117,7 @@ impl BitMap {
             index < old(self)@.len(),
         
         ensures
-            self@ === old(self)@.update(index,bit),
+            self@ === old(self)@.update(index as int, bit),
     {
         // REVEIW: Same problem here with above regarding `usize`.
         let seq_index:usize = (index/64) as usize;
@@ -132,7 +132,7 @@ impl BitMap {
         proof{
             assert_seqs_equal!(
                 self.view(),
-                old(self).view().update(index,bit)
+                old(self).view().update(index as int, bit)
             );
         };
     }
@@ -143,7 +143,7 @@ impl BitMap {
             self@.len() == bm@.len(),
         ensures
             self@.len() == ret@.len(),
-            forall |i: u32| (i < ret@.len()) ==> (ret@[i] == (self@[i] || bm@[i])),
+            forall |i: int| 0 <= i < ret@.len() ==> ret@[i] == (self@[i] || bm@[i]),
     {
         let n:usize = self.bits.len();
         let mut i:usize = 0;
@@ -155,8 +155,8 @@ impl BitMap {
                 n == self.bits@.len(),
                 n == bm.bits@.len(),
                 i == result.bits.len(),
-                forall |k: usize| k < i >>=  or_u64_relation(self.bits@[k], bm.bits@[k], result.bits@[k]),
-                forall |k: usize| k < i*64 >>= (result@[k] == (self@[k] || bm@[k])),
+                forall |k: int| 0 <= k < i ==> or_u64_relation(self.bits@[k], bm.bits@[k], result.bits@[k]),
+                forall |k: int| 0 <= k < i*64 ==> result@[k] == (self@[k] || bm@[k]),
         {
             res_bits = result.bits;
             let u1:u64 = *self.bits.index(i);

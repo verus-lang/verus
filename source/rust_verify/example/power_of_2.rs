@@ -11,35 +11,31 @@ use pervasive::*;
 #[allow(unused_imports)]
 use builtin_macros::*;
 
+verus! {
 
-// TODO: update to new syntax
 #[verifier(bit_vector)]
-#[proof]
-fn left_shift_by_one(bv:u32, e:u32) {
-    requires([
+proof fn left_shift_by_one(bv: u32, e: u32)
+    requires
         e > 0,
         e <= 32,
-    ]);
-    ensures(bv << e == (bv << (e - 1u32)) << 1u32);     
+    ensures
+        bv << e == (bv << sub(e, 1)) << 1u32,
+    decreases e
+{
     // REVIEW:                 ^^^^^^^^^^ expected `u32`, found struct `builtin::int`
     // get this error when updated to new syntax. Type casting (i.e. `(e - 1u32) as u32`) does not make this error disappear
-    decreases(e);
 }
 
-// TODO: update to new syntax
-#[proof]
 #[verifier(bit_vector)]
-fn left_shift_by_one_is_mul2(bv:u32, e:u32) {
-    requires([
+proof fn left_shift_by_one_is_mul2(bv: u32, e: u32)
+    requires
         e > 0,
         e <= 32,
-        bv << e == (bv << (e-1)) << 1,
-    ]);
-    ensures( (bv << e)  == 2 * (bv << (e-1)));
+        bv << e == (bv << sub(e, 1)) << 1,
+    ensures
+        (bv << e) == mul(2, bv << sub(e, 1)),
+{
 }
-
-
-verus!{
 
 spec fn pow2(e: nat) -> nat 
     decreases(e),
@@ -134,7 +130,7 @@ proof fn left_shift_is_pow2(bv:u32, e:u32)
         {}
     }
     else {
-        lemma_pow2_increase(e);
+        lemma_pow2_increase(e as nat);
         // assert(pow2((e-1) as nat) < pow2(e as nat));
         lemma_mul_upper_bound( pow2((e-1) as nat), pow2(e as nat), bv as nat);
         // assert((bv as nat) * pow2( (e-1) as nat) <= (bv as nat) * pow2(e as nat));
