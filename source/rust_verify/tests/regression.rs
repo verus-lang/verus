@@ -77,3 +77,43 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_one_fails(e)
 }
+
+test_verify_one_file! {
+    #[test] fields_from_macros_not_treated_as_distinct_identifiers verus_code! {
+        struct Foo(pub u64);
+
+        // Internally, the use of .0 in the macro creates an identifier `0`
+        // with some extra info that is used for macro hygeine purposes.
+        // However, that info needs to be ignored: the field access .0
+        // should be treated like any other .0 access.
+
+        macro_rules! some_macro {
+            ($foo:ident) => {
+                assert($foo.0 == 20);
+            }
+        }
+
+        proof fn some_func() {
+            let foo = Foo(20);
+            assert(foo.0 == 20);
+
+            some_macro!(foo);
+        }
+
+        struct Bar { val: u64 }
+
+        macro_rules! some_macro2 {
+            ($bar:ident) => {
+                assert($bar.val == 30);
+            }
+        }
+
+        proof fn some_func2() {
+            let bar = Bar { val: 30 };
+            assert(bar.val == 30);
+
+            some_macro2!(bar);
+
+        }
+    } => Ok(())
+}

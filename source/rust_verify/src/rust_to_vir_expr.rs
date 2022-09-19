@@ -2329,7 +2329,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         let field_idx = variant
                             .fields
                             .iter()
-                            .position(|f| f.ident == *name)
+                            .position(|f| f.ident.as_str() == name.as_str())
                             .expect("positional field not found");
                         positional_field_ident(field_idx)
                     }
