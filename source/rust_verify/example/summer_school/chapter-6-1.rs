@@ -1,7 +1,6 @@
-// rust_verify/tests/example.rs deprecated-enhanced-typecheck
-
 #[allow(unused_imports)]
 use builtin::*;
+use builtin_macros::*;
 mod pervasive;
 use pervasive::*;
 use pervasive::seq::*;
@@ -57,16 +56,16 @@ state_machine!{
     ShardedKVProtocol {
         fields {
             // TODO have a way to annotate this as a constant outside of tokenized mode
-            pub map_count: nat,
+            pub map_count: int,
 
             pub maps: Seq<Map<Key, Value>>,
         }
 
         init!{
-            initialize(map_count: nat) {
+            initialize(map_count: int) {
                 require(0 < map_count);
                 init map_count = map_count;
-                init maps = Seq::new(map_count, |i| {
+                init maps = Seq::new(map_count as nat, |i| {
                     if i == 0 {
                         Map::total(|k| default())
                     } else {
@@ -77,12 +76,12 @@ state_machine!{
         }
 
         #[spec] #[verifier(publish)]
-        pub fn valid_host(&self, i: nat) -> bool {
-            i < self.map_count
+        pub fn valid_host(&self, i: int) -> bool {
+            0 <= i < self.map_count
         }
 
         transition!{
-            insert(idx: nat, key: Key, value: Value) {
+            insert(idx: int, key: Key, value: Value) {
                 require(pre.valid_host(idx));
                 require(pre.maps.index(idx).dom().contains(key));
                 update maps[idx][key] = value;
@@ -90,14 +89,14 @@ state_machine!{
         }
 
         transition!{
-            query(idx: nat, key: Key, value: Value) {
+            query(idx: int, key: Key, value: Value) {
                 require(pre.valid_host(idx));
                 require(pre.maps.index(idx).contains_pair(key, value));
             }
         }
 
         transition!{
-            transfer(send_idx: nat, recv_idx: nat, key: Key, value: Value) {
+            transfer(send_idx: int, recv_idx: int, key: Key, value: Value) {
                 require(pre.valid_host(send_idx));
                 require(pre.valid_host(recv_idx));
                 require(pre.maps.index(send_idx).contains_pair(key, value));
@@ -108,13 +107,13 @@ state_machine!{
         }
 
         #[spec] #[verifier(publish)]
-        pub fn host_has_key(&self, hostidx: nat, key: Key) -> bool {
+        pub fn host_has_key(&self, hostidx: int, key: Key) -> bool {
             self.valid_host(hostidx)
             && self.maps.index(hostidx).dom().contains(key)
         }
 
         #[spec] #[verifier(publish)]
-        pub fn key_holder(&self, key: Key) -> nat {
+        pub fn key_holder(&self, key: Key) -> int {
             choose(|idx| self.host_has_key(idx, key))
         }
 
@@ -141,29 +140,29 @@ state_machine!{
         #[invariant]
         #[verifier(publish)]
         pub fn inv_no_dupes(&self) -> bool {
-            forall(|i: nat, j: nat, key: Key|
-                self.host_has_key(i, key) && self.host_has_key(j, key) >>= i == j)
+            forall(|i: int, j: int, key: Key|
+                self.host_has_key(i, key) && self.host_has_key(j, key) ==> i == j)
         }
 
         #[inductive(initialize)]
-        fn initialize_inductive(post: Self, map_count: nat) {
+        fn initialize_inductive(post: Self, map_count: int) {
         }
        
         #[inductive(insert)]
-        fn insert_inductive(pre: Self, post: Self, idx: nat, key: Key, value: Value) {
-            //assert(forall(|k: Key| pre.host_has_key(idx, k) >>= post.host_has_key(idx, k)));
-            //assert(forall(|k: Key| post.host_has_key(idx, k) >>= pre.host_has_key(idx, k)));
+        fn insert_inductive(pre: Self, post: Self, idx: int, key: Key, value: Value) {
+            //assert(forall(|k: Key| pre.host_has_key(idx, k) ==> post.host_has_key(idx, k)));
+            //assert(forall(|k: Key| post.host_has_key(idx, k) ==> pre.host_has_key(idx, k)));
             //assert(forall(|k: Key| pre.host_has_key(idx, k) == post.host_has_key(idx, k)));
-            assert(forall(|i: nat, k: Key| pre.host_has_key(i, k) == post.host_has_key(i, k)));
+            assert(forall(|i: int, k: Key| pre.host_has_key(i, k) == post.host_has_key(i, k)));
         }
        
         #[inductive(query)]
-        fn query_inductive(pre: Self, post: Self, idx: nat, key: Key, value: Value) { }
+        fn query_inductive(pre: Self, post: Self, idx: int, key: Key, value: Value) { }
        
         #[inductive(transfer)]
-        fn transfer_inductive(pre: Self, post: Self, send_idx: nat, recv_idx: nat, key: Key, value: Value) {
-            assert(forall(|i: nat, k: Key| !equal(k, key) >>= pre.host_has_key(i, k) == post.host_has_key(i, k)));
-            assert(forall(|i: nat| i != send_idx && i != recv_idx >>= pre.host_has_key(i, key) == post.host_has_key(i, key)));
+        fn transfer_inductive(pre: Self, post: Self, send_idx: int, recv_idx: int, key: Key, value: Value) {
+            assert(forall(|i: int, k: Key| !equal(k, key) ==> pre.host_has_key(i, k) == post.host_has_key(i, k)));
+            assert(forall(|i: int| i != send_idx && i != recv_idx ==> pre.host_has_key(i, key) == post.host_has_key(i, key)));
 
             assert(equal(post.maps.index(send_idx),
                 pre.maps.index(send_idx).remove(key)));
@@ -171,7 +170,7 @@ state_machine!{
             assert(!post.host_has_key(send_idx, key));
             assert(pre.host_has_key(send_idx, key));
 
-            /*assert_forall_by(|i: nat, j: nat, k: Key| {
+            /*assert_forall_by(|i: int, j: int, k: Key| {
                 requires(post.host_has_key(i, k) && post.host_has_key(j, k));
                 ensures(i == j);
                 if equal(k, key) {
@@ -196,25 +195,24 @@ state_machine!{
 }
 
 
+verus!{
 
-
-#[spec]
-fn interp(a: ShardedKVProtocol::State) -> MapSpec::State {
+spec fn interp(a: ShardedKVProtocol::State) -> MapSpec::State {
     MapSpec::State {
         map: a.interp_map()
     }
 }
 
 
-#[proof]
-fn next_refines_next_with_macro(pre: ShardedKVProtocol::State, post: ShardedKVProtocol::State) {
-    requires(pre.invariant()
-        && post.invariant()
-        && interp(pre).invariant()
-        && ShardedKVProtocol::State::next(pre, post)
-    );
+proof fn next_refines_next_with_macro(pre: ShardedKVProtocol::State, post: ShardedKVProtocol::State)
+    requires
+        pre.invariant(),
+        post.invariant(),
+        interp(pre).invariant(),
+        ShardedKVProtocol::State::next(pre, post),
 
-    ensures(MapSpec::State::next(interp(pre), interp(post)));
+    ensures MapSpec::State::next(interp(pre), interp(post)),
+{
 
     case_on_next!{pre, post, ShardedKVProtocol => {
         insert(idx, key, value) => {
@@ -232,7 +230,7 @@ fn next_refines_next_with_macro(pre: ShardedKVProtocol::State, post: ShardedKVPr
                         assert(post.host_has_key(i, k));
                         assert(equal(pre.interp_map().index(k), post.interp_map().index(k)));
                     } else {
-                        assert(forall(|idx| post.host_has_key(idx, k) >>= pre.host_has_key(idx, k)));
+                        assert(forall(|idx| post.host_has_key(idx, k) ==> pre.host_has_key(idx, k)));
                         /*assert(forall(|idx| !post.host_has_key(idx, k)));
                         assert(!exists(|idx| post.host_has_key(idx, k)));
                         assert(equal(pre.abstraction_one_key(k), default()));
@@ -240,11 +238,11 @@ fn next_refines_next_with_macro(pre: ShardedKVProtocol::State, post: ShardedKVPr
                         assert(equal(pre.interp_map().index(k), post.interp_map().index(k)));*/
                     }
 
-                    /*assert(pre.interp_map().dom().contains(k) >>=
+                    /*assert(pre.interp_map().dom().contains(k) ==>
                         post.interp_map().dom().contains(k)
                         && equal(pre.interp_map().index(k), post.interp_map().index(k))
                     );
-                    assert(post.interp_map().dom().contains(k) >>=
+                    assert(post.interp_map().dom().contains(k) ==>
                         pre.interp_map().dom().contains(k));*/
                 }
             });
@@ -288,7 +286,7 @@ fn next_refines_next_with_macro(pre: ShardedKVProtocol::State, post: ShardedKVPr
                         assert(post.host_has_key(i, k));
                         assert(equal(pre.interp_map().index(k), post.interp_map().index(k)));
                     } else {
-                        assert(forall(|idx| post.host_has_key(idx, k) >>= pre.host_has_key(idx, k)));
+                        assert(forall(|idx| post.host_has_key(idx, k) ==> pre.host_has_key(idx, k)));
                     }
                 }
             });
@@ -297,12 +295,10 @@ fn next_refines_next_with_macro(pre: ShardedKVProtocol::State, post: ShardedKVPr
     }}
 }
 
-#[proof]
-fn init_refines_init_with_macro(post: ShardedKVProtocol::State) {
-    requires(post.invariant() && ShardedKVProtocol::State::init(post));
-
-    ensures(MapSpec::State::init(interp(post)));
-
+proof fn init_refines_init_with_macro(post: ShardedKVProtocol::State)
+    requires post.invariant() && ShardedKVProtocol::State::init(post),
+    ensures MapSpec::State::init(interp(post)),
+{
     case_on_init!{post, ShardedKVProtocol => {
         initialize(n) => {
             assert_maps_equal!(interp(post).map, Map::total(|k| default()), k: Key => {
@@ -315,5 +311,6 @@ fn init_refines_init_with_macro(post: ShardedKVProtocol::State) {
     }}
 }
 
-fn main() {
+fn main() { }
+
 }
