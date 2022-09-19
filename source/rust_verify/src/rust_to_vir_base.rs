@@ -22,6 +22,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{GenericBoundX, IntRange, Path, PathX, Typ, TypBounds, TypX, Typs, VirErr};
 use vir::ast_util::types_equal;
+use vir::def::unique_local_name;
 
 pub(crate) fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Path {
     let krate = if def_path.krate == LOCAL_CRATE {
@@ -138,8 +139,15 @@ pub(crate) fn hack_get_def_name<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Strin
     debug_name[last_colon + 1..].to_string()
 }
 
-pub(crate) fn ident_to_var<'tcx>(ident: &Ident) -> String {
+pub(crate) fn foreign_param_to_var<'tcx>(ident: &Ident) -> String {
     ident.to_string()
+}
+
+pub(crate) fn local_to_var<'tcx>(
+    ident: &Ident,
+    local_id: rustc_hir::hir_id::ItemLocalId,
+) -> String {
+    unique_local_name(ident.to_string(), local_id.index())
 }
 
 pub(crate) fn is_visibility_private(vis_kind: &VisibilityKind, inherited_is_private: bool) -> bool {
