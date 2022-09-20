@@ -3,8 +3,10 @@
 extern crate alloc;
 use alloc::string;
 
+#[allow(unused_imports)]
 use super::seq::Seq;
 use super::vec::Vec;
+#[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::verus;
 
