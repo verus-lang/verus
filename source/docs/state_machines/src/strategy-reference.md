@@ -24,7 +24,7 @@ out of all the defined token types.
    no tokens for this type (yielding `Option::None`), or exactly one
    (yielding `Option::Some(v)`).
 
-![Graphic visualization of the examples](../graphics/strategy-reference-examples.png)
+![Graphic visualization of the examples](graphics/strategy-reference-examples.png)
 
 Each transition of the system can be viewed both as a transition relation in the same sense
 as in an orindary transition, but _also_ as an "exchange" of tokens,
