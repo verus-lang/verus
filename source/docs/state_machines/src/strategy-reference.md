@@ -103,8 +103,8 @@ that there are other tokens elsewhere. As such, the values of these fields are n
 three commands called `remove`, `have`, and `add`.
 
 To describe these, we will first establish a notion of _composition_ on the field types.
-Specifically, we define the composition `a + b` by the idea that if `a` and `b` each represent some collection
-of tokens, then `a + b` should represent the union of those two collections.
+Specifically, we define the composition `a · b` by the idea that if `a` and `b` each represent some collection
+of tokens, then `a · b` should represent the union of those two collections.
 Of course, this may not always be well defined: as we have discussed, not all possible collections of tokens
 are valid collections for the given strategy. Thus, we let `a ## b` indicate that the composition is well-defined.
 
@@ -134,7 +134,7 @@ Now, with these operators defined, we can give a general meaning for the three t
 |--------------------|-------------------------------------|-----------------------------------------|
 | `remove f -= (x);` | `require f >= x;`<br>`update f = f - x;` | Input argument, consumed           |
 | `have f >= (x);`   | `require f >= x;`                   | Input argument of type `&_`             |
-| `add f += (x);`    | `assert f ## x;`<br>`update f = f + x;`  | Output argument                    |
+| `add f += (x);`    | `assert f ## x;`<br>`update f = f · x;`  | Output argument                    |
 
 Furthermore, for a given field, the commands always go in the order `remove` before `have` before `add`.
 There could be multiple, or none, of each one.
@@ -302,7 +302,7 @@ for reference:
 |--------------------|-------------------------------------|-----------------------------------------|
 | `remove f -= (x);` | `require f >= x;`<br>`update f = f - x;` | Input argument, consumed           |
 | `have f >= (x);`   | `require f >= x;`                   | Input argument of type `&_`             |
-| `add f += (x);`    | `assert f ## x;`<br>`update f = f + x;`  | Output argument                    |
+| `add f += (x);`    | `assert f ## x;`<br>`update f = f · x;`  | Output argument                    |
 
 The reader may wonder, why do we use `assert` for `add`, but not for the other two?
 
