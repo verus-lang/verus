@@ -8,8 +8,10 @@ use builtin_macros::*;
 use pervasive::*;
 mod pervasive;
 
+// ANCHOR: def_f_g
 fndecl!(fn f(x: nat, y: nat) -> bool);
 fndecl!(fn g(x: nat) -> bool);
+// ANCHOR_END: def_f_g
 fndecl!(fn h(x:nat, y: nat) -> bool);
 fndecl!(fn j(x: nat) -> bool);
 
@@ -55,14 +57,17 @@ fn trigger_forever() {
 
 
 // Split the triggering over two different quantifiers
+// ANCHOR: trigger_forever2
 #[proof]
 fn trigger_forever2() {
    requires([forall(|x: nat| g(x)),
              forall(|x: nat, y: nat| h(x, y) == f(x, y)),
-             forall(|x: nat, y: nat| f(x + 1, 2 * y) && f(2 * x, y + x) || f(y, x) >>= (#[trigger] f(x, y)))]);
+             forall(|x: nat, y: nat| f(x + 1, 2 * y) && f(2 * x, y + x) 
+                                  || f(y, x) >>= (#[trigger] f(x, y)))]);
    ensures(forall(|x: nat, y: nat| x > 2318 && y < 100 >>= h(x, y)));
    assert(g(4));
 }
+// ANCHOR_END: trigger_forever2
 
 #[exec]
 fn simple_loop() {
@@ -71,7 +76,7 @@ fn simple_loop() {
     while (x < 10) {
         invariant([0 <= x && x <= 10,
                   forall(|i:u32| 0 <= i && i < x >>= g(i))]);
-        decreases(x);
+        //decreases(x);
 
         assume(g(x));
         x = x + 1;
@@ -84,7 +89,7 @@ fn bad_loop() {
     let mut x = 10;
     while (x > 10) {
         invariant(forall(|x: nat, y: nat| f(x + 1, 2 * y) && f(2 * x, y + x) || f(y, x) >>= (#[trigger] f(x, y))));
-        decreases(x);
+        //decreases(x);
 
         x = x - 1;
         assert(forall(|x: nat, y: nat| x > 2318 && y < 100 >>= f(x, y)));

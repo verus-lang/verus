@@ -50,9 +50,9 @@
     - [libraries: incomplete axioms for Seq, Set, Map]() <!--- Chris --->
 - [Improving SMT performance]() <!--- Chris --->
     - [Modules, hiding, opaque, reveal]() <!--- Chris --->
-    - [Quantifier profiling]() <!--- Bryan --->
+    - [Quantifier profiling](profiling.md) <!--- Bryan --->
     - [assert-by]() <!--- Chris --->
-    - [assert-by-compute]() <!--- Bryan --->
+    - [Proof by computation](assert_by_compute.md) <!--- Bryan --->
     - [Spinning off separate SMT queries]()
     - [Breaking proofs into smaller pieces]() <!--- Chris --->
 - [Mutation, references, and borrowing]() <!--- Andrea --->
