@@ -117,7 +117,7 @@ are valid collections for the given strategy. Thus, we let `a ## b` indicate tha
 | multiset | `true`                       | `a.add(b)`                      |
 | set      | `a.disjoint(b)`              | `a.union(b)`                    |
 | count    | `true`                       | `a + b`                         |
-| bool     | !(a && b)                    | <code>a \|\| b</code>           |
+| bool     | `!(a && b)`                  | <code>a \|\| b</code>           |
 
 Note that despite any apparent asymmetries, `a · b` is always commutative whenever `a ## b`, and these definitions
 are all consistent with the union of token collections, given by the relationships in the above table.
@@ -164,8 +164,8 @@ The `remove`, `have`, and `add` commands all allows a syntactic shorthand for "s
 
 Of course, this applies to `remove` and `have` as well.
 
-The general form is `add f += (x)` as above, with `x` taking the same type as field `f`,
-(The parenthesis are necessary.)
+The general form is `add f += (x)` as above, with `x` taking the same type as field `f`.
+(The parentheses are necessary.)
 The general form works for all the collection strategies.
 
 Note that there is no "special" form for either `count`, since the general form
