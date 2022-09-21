@@ -144,8 +144,10 @@ pub(crate) fn smt_check_assertion<'ctx>(
     };
 
     context.smt_log.log_get_info("version");
+    let smt_init_start_time = std::time::Instant::now();
     let smt_data = context.smt_log.take_pipe_data();
     let early_smt_output = context.get_smt_process().send_commands(smt_data);
+    context.time_smt_init += smt_init_start_time.elapsed();
     for line in early_smt_output {
         if line.starts_with(GET_VERSION_RESPONSE_PREFIX) {
             if let Some(expected_version) = &context.expected_solver_version {
@@ -179,8 +181,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
     context.smt_log.log_word("check-sat");
 
     // Run SMT solver
-    let time0 = std::time::Instant::now();
-    let time1 = std::time::Instant::now();
+    let smt_run_start_time = std::time::Instant::now();
     let smt_data = context.smt_log.take_pipe_data();
     let mut commands_handle = context.get_smt_process().send_commands_async(smt_data);
     let smt_output = if let Some((report_interval, report_fn)) = report_long_running {
@@ -188,7 +189,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
             match commands_handle.wait_timeout(*report_interval) {
                 Ok(smt_output) => break smt_output,
                 Err(handle) => {
-                    report_fn(time1.elapsed());
+                    report_fn(smt_run_start_time.elapsed());
                     commands_handle = handle;
                 }
             }
@@ -196,9 +197,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
     } else {
         commands_handle.wait()
     };
-    let time2 = std::time::Instant::now();
-    context.time_smt_init += time1 - time0;
-    context.time_smt_run += time2 - time1;
+    context.time_smt_run += smt_run_start_time.elapsed();
 
     #[derive(PartialEq, Eq)]
     enum SmtOutput {
