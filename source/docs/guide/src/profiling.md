@@ -43,9 +43,9 @@ If we run the profiler on the example above, we'll see something along the lines
 
 ```
 error: function body check: Resource limit (rlimit) exceeded
-  --> rust_verify/example/trigger_loops.rs:62:1
+  --> rust_verify/example/trigger_loops.rs:64:1
    |
-62 | fn trigger_forever2() {
+64 | fn trigger_forever2() {
    | ^^^^^^^^^^^^^^^^^^^^^
 
 Analyzing prover log...
@@ -55,22 +55,22 @@ Analyzing prover log...
 note: Observed 27,184 total instantiations of user-level quantifiers
 
 note: Cost * Instantiations: 5391549700 (Instantiated 13,591 times - 49% of the total, cost 396700) top 1 of 3 user-level quantifiers.
-  --> rust_verify/example/trigger_loops.rs:65:88
+  --> rust_verify/example/trigger_loops.rs:68:78
    |
-65 |              forall(|x: nat, y: nat| f(x + 1, 2 * y) && f(2 * x, y + x) || f(y, x) >>= (#[trigger] f(x, y)))]);
-   |              --------------------------------------------------------------------------^^^^^^^^^^^^^^^^^^^^- Triggers selected for this quantifier
+68 |    forall|x: nat, y: nat| f(x + 1, 2 * y) && f(2 * x, y + x) || f(y, x) ==> #[trigger] f(x, y),
+   |    -------------------------------------------------------------------------^^^^^^^^^^^^^^^^^^ Triggers selected for this quantifier
 
 note: Cost * Instantiations: 1037237938 (Instantiated 13,591 times - 49% of the total, cost 76318) top 2 of 3 user-level quantifiers.
-  --> rust_verify/example/trigger_loops.rs:64:38
+  --> rust_verify/example/trigger_loops.rs:67:28
    |
-64 |              forall(|x: nat, y: nat| h(x, y) == f(x, y)),
-   |              ------------------------^^^^^^^----^^^^^^^- Triggers selected for this quantifier
+67 |    forall|x: nat, y: nat| h(x, y) == f(x, y),
+   |    -----------------------^^^^^^^----^^^^^^^ Triggers selected for this quantifier
 
 note: Cost * Instantiations: 16 (Instantiated 2 times - 0% of the total, cost 8) top 3 of 3 user-level quantifiers.
-  --> rust_verify/example/trigger_loops.rs:63:30
+  --> rust_verify/example/trigger_loops.rs:66:20
    |
-63 |    requires([forall(|x: nat| g(x)),
-   |              ----------------^^^^- Triggers selected for this quantifier
+66 |    forall|x: nat| g(x),
+   |    ---------------^^^^ Triggers selected for this quantifier
 
 error: aborting due to previous error
 ```

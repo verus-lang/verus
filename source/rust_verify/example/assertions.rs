@@ -1,8 +1,11 @@
 // rust_verify/tests/example.rs expect-failures
 
+use builtin_macros::*;
 use builtin::*;
 mod pervasive;
 use pervasive::*;
+
+verus! {
 
 fn main() {}
 
@@ -18,9 +21,13 @@ fn fails_expectations() {
     has_expectations(false);
 }
 
-fn fails_post() {
-    ensures(false);
+fn fails_post()
+    ensures
+        false,
+{
 
     let x = 5;
     let y = 7;
 }
+
+} // verus!

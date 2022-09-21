@@ -1,21 +1,22 @@
 #[allow(unused_imports)]
 use builtin::*;
+use builtin_macros::*;
 mod pervasive;
 #[allow(unused_imports)]
 use crate::pervasive::*;
 
+verus! {
+
 trait T<A> {
-    #[spec]
-    fn req(&self, a: A) -> bool { no_method_body() }
+    spec fn req(&self, a: A) -> bool;
 
-    #[spec]
-    fn ens(&self, a: A, r: A) -> bool { no_method_body() }
+    spec fn ens(&self, a: A, r: A) -> bool;
 
-    fn f(&self, a: &A) -> A {
-        requires(self.req(*a));
-        ensures(|ra: A| self.ens(*a, ra));
-        no_method_body()
-    }
+    fn f(&self, a: &A) -> (ra: A)
+        requires
+            self.req(*a),
+        ensures
+            self.ens(*a, ra);
 }
 
 struct B {
@@ -27,13 +28,11 @@ struct I {
 }
 
 impl T<bool> for B {
-    #[spec]
-    fn req(&self, a: bool) -> bool {
+    spec fn req(&self, a: bool) -> bool {
         a
     }
 
-    #[spec]
-    fn ens(&self, a: bool, r: bool) -> bool {
+    spec fn ens(&self, a: bool, r: bool) -> bool {
         r == (a && self.x)
     }
 
@@ -43,13 +42,11 @@ impl T<bool> for B {
 }
 
 impl T<u64> for I {
-    #[spec]
-    fn req(&self, a: u64) -> bool {
+    spec fn req(&self, a: u64) -> bool {
         self.x < a && a < 100
     }
 
-    #[spec]
-    fn ens(&self, a: u64, r: u64) -> bool {
+    spec fn ens(&self, a: u64, r: u64) -> bool {
         self.x <= r && r < 100
     }
 
@@ -58,9 +55,12 @@ impl T<u64> for I {
     }
 }
 
-fn p<A, Z: T<A>>(a: &A, z: &Z) -> A {
-    requires(z.req(*a));
-    ensures(|rz: A| z.ens(*a, rz));
+fn p<A, Z: T<A>>(a: &A, z: &Z) -> (rz: A)
+    requires
+        z.req(*a),
+    ensures
+        z.ens(*a, rz),
+{
     z.f(a)
 }
 
@@ -72,7 +72,9 @@ fn test() -> bool {
     b.f(&true) && p(&true, &b)
 }
 
-#[verifier(external)]
+#[verifier(external_body)]
 fn main() {
     println!("{}", test());
 }
+
+} // verus!

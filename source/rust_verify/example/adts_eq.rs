@@ -1,8 +1,11 @@
 // rust_verify/tests/example.rs expect-errors
 
+use builtin_macros::*;
 use builtin::*;
 mod pervasive;
 use pervasive::*;
+
+verus! {
 
 struct Thing {
 }
@@ -29,3 +32,5 @@ fn one() {
 }
 
 fn main() { }
+
+}

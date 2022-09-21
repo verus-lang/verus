@@ -6,6 +6,7 @@ use pervasive::{*, option::Option, result::Result};
 use pervasive::seq::*;
 use crate::pervasive::vec::*;
 
+verus! {
 
 #[derive(PartialEq, Eq, Structural)]
 struct S<A> {
@@ -13,13 +14,12 @@ struct S<A> {
     b: bool,
 }
 
-fn add1(a: &mut u32) {
-    requires([
+fn add1(a: &mut u32)
+    requires
         *old(a) < 10,
-    ]);
-    ensures([
+    ensures
         *a == *old(a) + 1,
-    ]);
+{
     *a = *a + 1;
 }
 
@@ -29,7 +29,7 @@ fn foo(s: S<u32>) {
     add1(&mut s.a);
     assert(s.a == 6);
     assert(s.b == false);
-    assert(s == S { a: 6, b: false });
+    assert(s == S { a: 6u32, b: false });
 }
 
 // The following causes a trigger loop (useful for testing rlimit-related features):
@@ -43,3 +43,4 @@ fn foo(s: S<u32>) {
 
 fn main() {}
 
+} // verus!
