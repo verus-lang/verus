@@ -32,9 +32,14 @@
     - [Specification libraries: Seq, Set, Map](spec_lib.md)
     - [INTERLUDE: using assert and assume to develop proofs](develop_proofs.md)
     - [Executable libraries: Vec](exec_lib.md)
-- [Quantifiers and spec closures]() <!--- Chris --->
+- [Quantifiers and spec closures](quants.md)
+    - [forall and triggers](forall.md)
+    - [Multiple variables, multiple triggers, matching loops]() <!--- Chris --->
+    - [exists]() <!--- Chris --->
+    - [choose]() <!--- Chris --->
+    - [Using and proving forall and exists]() <!--- Chris --->
+    - [Example: binary search]() <!--- Chris --->
     - [spec closures]() <!--- Chris --->
-    - [forall, exists, choose, triggers, assert-forall-by]() <!--- Chris --->
     - [broadcast_forall]() <!--- Chris --->
 - [SMT solving, automation, and where automation fails]() <!--- Chris --->
     - [What's decidable, what's undecidable, what's fast, what's slow]() <!--- Chris --->
