@@ -6,13 +6,13 @@
 //! https://github.com/secure-foundations/verus/discussions/120
 
 use crate::ast::{
-    ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Fun, InequalityOp, IntRange, SpannedTyped,
-    Typ, TypX, UnaryOp, VirErr,
+    ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Fun, FunX, Idents, InequalityOp, IntRange,
+    PathX, SpannedTyped, Typ, TypX, UnaryOp, VirErr,
 };
 use crate::ast_util::{err_str, path_as_rust_name};
 use crate::func_to_air::{SstInfo, SstMap};
 use crate::sst::{Bnd, BndX, Exp, ExpX, Exps, Trigs, UniqueIdent};
-use air::ast::{Binder, BinderX, Binders};
+use air::ast::{Binder, BinderX, Binders, Span};
 use air::scope_map::ScopeMap;
 use im::Vector;
 use num_bigint::{BigInt, Sign};
@@ -637,6 +637,35 @@ fn is_sequence_fn(fun: &Fun) -> Option<SeqFn> {
     }
 }
 
+fn strs_to_idents(s: Vec<&str>) -> Idents {
+    let idents = s.iter().map(|s| Arc::new(s.to_string())).collect();
+    Arc::new(idents)
+}
+
+/// Convert an interpreter-internal sequence representation back into a
+/// representation we can pass to AIR
+// TODO: More robust way of pointing to pervasive's sequence functions
+fn seq_to_sst(span: &Span, typ: Typ, s: &Vector<Exp>) -> Exp {
+    let exp_new = |e: ExpX| SpannedTyped::new(span, &typ, e);
+    let typs = Arc::new(vec![typ.clone()]);
+    let path_empty = Arc::new(PathX {
+        krate: None,
+        segments: strs_to_idents(vec!["pervasive", "seq", "Seq", "empty"]),
+    });
+    let path_push = Arc::new(PathX {
+        krate: None,
+        segments: strs_to_idents(vec!["pervasive", "seq", "Seq", "push"]),
+    });
+    let fun_empty = Arc::new(FunX { path: path_empty, trait_path: None });
+    let fun_push = Arc::new(FunX { path: path_push, trait_path: None });
+    let empty = exp_new(ExpX::Call(fun_empty, typs.clone(), Arc::new(vec![])));
+    let seq = s.iter().fold(empty, |acc, e| {
+        let args = Arc::new(vec![acc, e.clone()]);
+        exp_new(ExpX::Call(fun_push.clone(), typs.clone(), args))
+    });
+    seq
+}
+
 /// Custom interpretation for sequence functions.
 /// Expects to be called after is_sequence_fn has already identified
 /// the relevant sequence function.  We still pass in the original Call Exp,
@@ -651,17 +680,21 @@ fn eval_seq(
     use ExpX::*;
     use InterpExp::*;
     match &exp.x {
-        Call(fun, typs, old_args) => {
+        Call(fun, typs, _old_args) => {
             let exp_new = |e: ExpX| SpannedTyped::new(&exp.span, &exp.typ, e);
             let bool_new = |b: bool| Ok(exp_new(Const(Constant::Bool(b))));
             let int_new = |i: BigInt| Ok(exp_new(Const(Constant::Int(i))));
             let seq_new = |v| Ok(exp_new(Interp(Seq(v))));
-            // If we can't process a call with a InterpExp::Seq arg,
-            // we return the original (unsimplified) expression, since
-            // we can't safely return InterpExp::Seq expressions to AIR
-            let ok = Ok(exp.clone());
-            // Otherwise, we can return the partially simplified call
-            let ok_partial = Ok(exp_new(Call(fun.clone(), typs.clone(), args.clone())));
+            // If we can't make any progress at all, we return the partially simplified call
+            let ok = Ok(exp_new(Call(fun.clone(), typs.clone(), args.clone())));
+            // We made partial progress, so convert the internal sequence back to SST
+            // and reassemble a call from the rest of the args
+            let ok_seq = |seq_exp: &Exp, seq: &Vector<Exp>, args: &[Exp]| {
+                let mut new_args = vec![seq_to_sst(&seq_exp.span, typs[0].clone(), &seq)];
+                new_args.extend(args.iter().map(|arg| arg.clone()));
+                let new_args = Arc::new(new_args);
+                Ok(exp_new(Call(fun.clone(), typs.clone(), new_args)))
+            };
             let get_int = |e: &Exp| match &e.x {
                 UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => match &e.x {
                     Const(Constant::Int(index)) => Some(BigInt::to_usize(index).unwrap()),
@@ -713,7 +746,7 @@ fn eval_seq(
                         s.push_back(args[1].clone());
                         seq_new(s)
                     }
-                    _ => ok_partial,
+                    _ => ok,
                 },
                 Update => match &args[0].x {
                     Interp(Seq(s)) => match get_int(&args[1]) {
@@ -721,9 +754,9 @@ fn eval_seq(
                             let s = s.update(index, args[2].clone());
                             seq_new(s)
                         }
-                        _ => ok,
+                        _ => ok_seq(&args[0], &s, &args[1..]),
                     },
-                    _ => ok_partial,
+                    _ => ok,
                 },
                 Subrange => match &args[0].x {
                     Interp(Seq(s)) => {
@@ -733,10 +766,10 @@ fn eval_seq(
                             (Some(start), Some(end)) if start <= end && end <= s.len() => {
                                 seq_new(s.clone().slice(start..end))
                             }
-                            _ => ok,
+                            _ => ok_seq(&args[0], &s, &args[1..]),
                         }
                     }
-                    _ => ok_partial,
+                    _ => ok,
                 },
                 Add => match (&args[0].x, &args[1].x) {
                     (Interp(Seq(s1)), Interp(Seq(s2))) => {
@@ -744,19 +777,13 @@ fn eval_seq(
                         s.append(s2.clone());
                         seq_new(s)
                     }
-                    (_, Interp(Seq(_))) => {
-                        let new_args = Arc::new(vec![args[0].clone(), old_args[1].clone()]);
-                        Ok(exp_new(Call(fun.clone(), typs.clone(), new_args)))
-                    }
-                    (Interp(Seq(_)), _) => {
-                        let new_args = Arc::new(vec![old_args[0].clone(), args[1].clone()]);
-                        Ok(exp_new(Call(fun.clone(), typs.clone(), new_args)))
-                    }
-                    _ => ok_partial,
+                    (_, Interp(Seq(s2))) => ok_seq(&args[1], &s2, &args[0..1]),
+                    (Interp(Seq(s1)), _) => ok_seq(&args[0], &s1, &args[1..]),
+                    _ => ok,
                 },
                 Len => match &args[0].x {
                     Interp(Seq(s)) => int_new(BigInt::from_usize(s.len()).unwrap()),
-                    _ => ok_partial,
+                    _ => ok,
                 },
                 Index => match &args[0].x {
                     Interp(Seq(s)) => match &args[1].x {
@@ -768,7 +795,7 @@ fn eval_seq(
                                         println!(
                                             "WARNING: Computation tried to index into a sequence using a value that does not fit into usize"
                                         );
-                                        ok
+                                        ok_seq(&args[0], &s, &args[1..])
                                     }
                                     Some(index) => {
                                         if index < s.len() {
@@ -778,41 +805,42 @@ fn eval_seq(
                                             println!(
                                                 "WARNING: Computation tried to index past the length of a sequence"
                                             );
-                                            ok
+                                            ok_seq(&args[0], &s, &args[1..])
                                         }
                                     }
                                 }
                             }
-                            _ => ok,
+                            _ => ok_seq(&args[0], &s, &args[1..]),
                         },
-                        _ => ok,
+                        _ => ok_seq(&args[0], &s, &args[1..]),
                     },
-                    _ => ok_partial,
+                    _ => ok,
                 },
                 ExtEqual => match (&args[0].x, &args[1].x) {
                     (Interp(Seq(l)), Interp(Seq(r))) => match l.syntactic_eq(r) {
-                        None => ok,
+                        None => {
+                            let new_args = vec![
+                                seq_to_sst(&args[0].span, args[0].typ.clone(), &l),
+                                seq_to_sst(&args[1].span, args[1].typ.clone(), &r),
+                            ];
+                            let new_args = Arc::new(new_args);
+                            Ok(exp_new(Call(fun.clone(), typs.clone(), new_args)))
+                        }
                         Some(b) => bool_new(b),
                     },
-                    (_, Interp(Seq(_))) => {
-                        let new_args = Arc::new(vec![args[0].clone(), old_args[1].clone()]);
-                        Ok(exp_new(Call(fun.clone(), typs.clone(), new_args)))
-                    }
-                    (Interp(Seq(_)), _) => {
-                        let new_args = Arc::new(vec![old_args[0].clone(), args[1].clone()]);
-                        Ok(exp_new(Call(fun.clone(), typs.clone(), new_args)))
-                    }
-                    _ => ok_partial,
+                    (_, Interp(Seq(r))) => ok_seq(&args[1], &r, &args[0..1]),
+                    (Interp(Seq(l)), _) => ok_seq(&args[0], &l, &args[1..]),
+                    _ => ok,
                 },
                 Last => match &args[0].x {
                     Interp(Seq(s)) => {
                         if s.len() > 0 {
                             Ok(s.last().unwrap().clone())
                         } else {
-                            ok
+                            ok_seq(&args[0], &s, &args[1..])
                         }
                     }
-                    _ => ok_partial,
+                    _ => ok,
                 },
             }
         }

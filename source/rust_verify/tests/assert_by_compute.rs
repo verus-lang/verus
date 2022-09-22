@@ -386,7 +386,13 @@ test_verify_one_file! {
             assert(g(&x, y).len() == 6) by (compute);
             assert({
                 let z = seq![7, 8, 9];
-                g(&x, z).len() == 6
+                g(&x, z).len() == 6 &&
+                g(&z, x).len() == 6
+            }) by (compute);
+            assert({
+                let z = seq![4, 5, 6];
+                y.ext_equal(z) &&
+                z.ext_equal(y)
             }) by (compute);
         }
     } => Ok(())
