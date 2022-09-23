@@ -366,6 +366,35 @@ test_verify_one_file! {
                 use_seq(&v).0 == 42 && use_seq(&v).1 == 14 && v.index(1) == 1
             }) by (compute_only);
         }
+
+        // GitHub issue 294: Make sure we don't let local variable names
+        // leak out, even when a sequence function can't concretely evaluate
+        spec fn f(s: &Seq<int>, idx: int) -> int {
+            s.index(idx)
+        }
+
+        spec fn g(a: &Seq<int>, b: Seq<int>) -> Seq<int> {
+            a.add(b)
+        }
+
+        // Try various combinations of simplified sequence
+        // literal and symbolic values
+        proof fn test_github_issue_294() {
+            let x = seq![1, 2, 3];
+            assert(f(&x, 0) == 1) by (compute);
+            let y = seq![4, 5, 6];
+            assert(g(&x, y).len() == 6) by (compute);
+            assert({
+                let z = seq![7, 8, 9];
+                g(&x, z).len() == 6 &&
+                g(&z, x).len() == 6
+            }) by (compute);
+            assert({
+                let z = seq![4, 5, 6];
+                y.ext_equal(z) &&
+                z.ext_equal(y)
+            }) by (compute);
+        }
     } => Ok(())
 }
 
