@@ -249,12 +249,10 @@ fn mk_chained_implies(es: TracedExps) -> TracedExps {
 
 // Note: this splitting referenced Dafny - https://github.com/dafny-lang/dafny/blob/cf285b9282499c46eb24f05c7ecc7c72423cd878/Source/Dafny/Verifier/Translator.cs#L11100
 fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> TracedExps {
-    match *exp.e.typ {
-        TypX::Bool => (),
-        _ => {
-            panic!("internal error: attempt to split non-boolean expression");
-        }
+    if !is_bool_type(&exp.e.typ) {
+        panic!("internal error: attempt to split non-boolean expression");
     }
+
     match &exp.e.x {
         ExpX::Unary(UnaryOp::Not, e1) => {
             let tr_exp = TracedExpX::new(e1.clone(), exp.trace.clone());
