@@ -309,7 +309,11 @@ pub(crate) fn build_triggers(
                     };
                     return err_string(
                         span,
-                        format!("trigger{} does not cover variable {}", group_name, x),
+                        format!(
+                            "trigger{} does not cover variable {}",
+                            group_name,
+                            crate::def::user_local_name(x)
+                        ),
                     );
                 }
             }
