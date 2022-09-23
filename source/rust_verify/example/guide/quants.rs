@@ -146,6 +146,129 @@ proof fn test_use_forall_bad2(s: Seq<int>)
 // ANCHOR_END: test_use_forall_bad2
 */
 
+// ANCHOR: test_distinct1
+spec fn is_distinct(x: int, y: int) -> bool {
+    x != y
+}
+
+proof fn test_distinct1(s: Seq<int>)
+    requires
+        5 <= s.len(),
+        forall|i: int, j: int|
+            0 <= i < j < s.len() ==> #[trigger] is_distinct(s[i], s[j]),
+{
+    assert(is_distinct(s[4], s[2]));
+}
+// ANCHOR_END: test_distinct1
+
+// ANCHOR: test_distinct2
+proof fn test_distinct2(s: Seq<int>)
+    requires
+        5 <= s.len(),
+        forall|i: int, j: int|
+            0 <= i < j < s.len() ==> #[trigger] s[i] != #[trigger] s[j],
+{
+    assert(s[4] != s[2]);
+}
+// ANCHOR_END: test_distinct2
+
+// ANCHOR: test_distinct3
+proof fn test_distinct3(s: Seq<int>)
+    requires
+        5 <= s.len(),
+        forall|i: int, j: int| #![trigger s[i], s[j]]
+            0 <= i < j < s.len() ==> s[i] != s[j],
+{
+    assert(s[4] != s[2]);
+}
+// ANCHOR_END: test_distinct3
+
+/*
+// ANCHOR: test_distinct_fail1
+proof fn test_distinct_fail1(s: Seq<int>)
+    requires
+        5 <= s.len(),
+        forall|i: int, j: int|
+            0 <= i < j < s.len() ==> s[i] != #[trigger] s[j], // error: trigger fails to mention i
+{
+    assert(s[4] != s[2]);
+}
+// ANCHOR_END: test_distinct_fail1
+*/
+
+/*
+// ANCHOR: test_distinct_fail2
+proof fn test_distinct_fail2(s: Seq<int>)
+    requires
+        5 <= s.len(),
+        forall|i: int, j: int| #![trigger s[i], s[j], is_even(i)]
+            0 <= i < j < s.len() ==> s[i] != s[j],
+{
+    assert(s[4] != s[2]); // FAILS, because nothing matches is_even(i)
+}
+// ANCHOR_END: test_distinct_fail2
+*/
+
+// ANCHOR: test_distinct4
+proof fn test_distinct4(s: Seq<int>)
+    requires
+        5 <= s.len(),
+        forall|i: int, j: int|
+            #![trigger s[i], s[j]]
+            #![trigger is_even(i), is_even(j)]
+            0 <= i < j < s.len() ==> s[i] != s[j],
+{
+    assert(s[4] != s[2]);
+}
+// ANCHOR_END: test_distinct4
+
+// ANCHOR: test_multitriggers
+proof fn test_multitriggers(a: Seq<int>, b: Seq<int>, c: Seq<int>)
+    requires
+        5 <= a.len(),
+        a.len() == b.len(),
+        a.len() == c.len(),
+        forall|i: int, j: int|
+            #![trigger a[i], b[j]]
+            #![trigger a[i], c[j]]
+            0 <= i < j < a.len() ==> a[i] != b[j] && a[i] != c[j]
+{
+    assert(a[2] != c[4]); // succeeds, matches a[i], c[j]
+}
+// ANCHOR_END: test_multitriggers
+
+// ANCHOR: seq_update_different
+proof fn seq_update_different<A>(s: Seq<A>, i: int, j: int, a: A) {
+    assert(forall|i: int, j: int|
+        0 <= i < s.len() && 0 <= j < s.len() && i != j ==> s.update(j, a)[i] === s[i]
+    );
+}
+// ANCHOR_END: seq_update_different
+
+// ANCHOR: test_sorted_good
+proof fn test_sorted_good(s: Seq<int>)
+    requires
+        5 <= s.len(),
+        forall|i: int, j: int|
+            0 <= i <= j < s.len() ==> s[i] <= s[j],
+{
+    assert(s[2] <= s[4]);
+}
+// ANCHOR_END: test_sorted_good
+
+/*
+// ANCHOR: test_sorted_bad1
+proof fn test_sorted_bad(s: Seq<int>)
+    requires
+        5 <= s.len(),
+        forall|i: int|
+            0 <= i < s.len() - 1 ==> s[i] <= s[i + 1],
+{
+    assert(s[2] <= s[4]);
+}
+// ANCHOR_END: test_sorted_bad1
+*/
+
 fn main() {
 }
 

@@ -4,7 +4,7 @@ Suppose that we want to specify that all the elements of a sequence are even.
 If the sequence has a small, fixed size,
 we could write a specification for every element element separately:
 
-```
+```rust
 {{#include ../../../rust_verify/example/guide/quants.rs:quants_finite}}
 ```
 
@@ -12,7 +12,7 @@ Clearly, though, this won't scale well to larger sequences or sequences of unkno
 
 We could write a recursive specification:
 
-```
+```rust
 {{#include ../../../rust_verify/example/guide/quants.rs:quants_recursion}}
 ```
 
@@ -31,7 +31,7 @@ which we can think of as infinite conjunctions or disjunctions:
 
 With this, it's much more convenient to write a specification about all elements of a sequence:
 
-```
+```rust
 {{#include ../../../rust_verify/example/guide/quants.rs:quants_use_forall}}
 ```
 

@@ -34,7 +34,7 @@
     - [Executable libraries: Vec](exec_lib.md)
 - [Quantifiers and spec closures](quants.md)
     - [forall and triggers](forall.md)
-    - [Multiple variables, multiple triggers, matching loops]() <!--- Chris --->
+    - [Multiple variables, multiple triggers, matching loops](multitriggers.md)
     - [exists]() <!--- Chris --->
     - [choose]() <!--- Chris --->
     - [Using and proving forall and exists]() <!--- Chris --->

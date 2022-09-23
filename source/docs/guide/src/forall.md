@@ -4,14 +4,14 @@ Let's take a closer look at the following code,
 which uses a `forall` expression in a `requires` clause
 to prove an assertion:
 
-```
+```rust
 {{#include ../../../rust_verify/example/guide/quants.rs:quants_use_forall}}
 ```
 
 The `forall` expression means that `0 <= i < s.len() ==> is_even(s[i])`
 for all possible integers `i`:
 
-```rust
+```
 ...
 0 <= -3 < s.len() ==> is_even(s[-3])
 0 <= -2 < s.len() ==> is_even(s[-2])
@@ -68,7 +68,7 @@ Suppose, for example, we change the assertion slightly so that we assert
 Mathematically, these are both equivalent.
 However, the assertion about `s[3] % 2 == 0` fails:
 
-```
+```rust
 {{#include ../../../rust_verify/example/guide/quants.rs:trigger_fails}}
 ```
 
@@ -77,7 +77,7 @@ the expression `s[3] % 2 == 0` doesn't mention `is_even` at all.
 In order to prove `s[3] % 2 == 0`,
 we'd first have to mention `is_even(s[3])` explicitly:
 
-```
+```rust
 {{#include ../../../rust_verify/example/guide/quants.rs:test_use_forall_succeeds1}}
 ```
 
@@ -91,14 +91,14 @@ For example, the trigger `s[i]` matches any expression of the form
 `s[...]`, which includes the `s[3]` inside `s[3] % 2 == 0` and
 also includes the `s[3]` inside `is_even(s[3])`:
 
-```
+```rust
 {{#include ../../../rust_verify/example/guide/quants.rs:test_use_forall_succeeds2}}
 ```
 
 In fact, if we omit the `#[trigger]` attribute entirely,
 Verus chooses the trigger `s[i]` automatically:
 
-```
+```rust
 {{#include ../../../rust_verify/example/guide/quants.rs:test_use_forall_succeeds3}}
 ```
 
@@ -127,7 +127,7 @@ but it also prints out the note encouraging the programmer to review the decisio
 The programmer can accept this decision by writing `#![auto]` before the quantifier body,
 which suppresses the note:
 
-```
+```rust
 {{#include ../../../rust_verify/example/guide/quants.rs:test_use_forall_succeeds4}}
 ```
 
@@ -149,7 +149,7 @@ talks about an element of the sequence `s`,
 yielding a fact that is likely to be useful for reasoning about `s`.
 By contrast, suppose we chose the following bad trigger, `0 <= i`:
 
-```
+```rust
 {{#include ../../../rust_verify/example/guide/quants.rs:test_use_forall_bad1}}
 ```
 
@@ -157,7 +157,7 @@ In principle, this would match any value that is greater than or equal to 0,
 which would include values that have nothing to do with `s` and are unlikely
 to be relevant to `s`.
 In practice, Verus doesn't even let you do this:
-triggers cannot contain equality (`==` or `===`),
+triggers cannot contain equality or disequality (`==`, `===`, `!=`, or `!==`),
 any basic integer arithmetic operator (like `<=` or `+`),
 or any basic boolean operator (like `&&`):
 
@@ -170,7 +170,7 @@ error: trigger must be a function call, a field access, or a bitwise operator
 
 If we really wanted, we could work around this by introducing an extra function:
 
-```
+```rust
 {{#include ../../../rust_verify/example/guide/quants.rs:test_use_forall_bad2}}
 ```
 
