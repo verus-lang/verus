@@ -681,8 +681,8 @@ impl VisitMut for Visitor {
                 let attrs = std::mem::take(&mut binary.attrs);
                 let left = take_expr(&mut *binary.left);
                 let right = take_expr(&mut *binary.right);
-                let left = Box::new(Expr::Verbatim(quote_spanned!(span => (#left))));
-                let right = Box::new(Expr::Verbatim(quote_spanned!(span => (#right))));
+                let left = Box::new(Expr::Verbatim(quote_spanned!(left.span() => (#left))));
+                let right = Box::new(Expr::Verbatim(quote_spanned!(right.span() => (#right))));
                 let bin = ExprBinary { attrs, op, left, right };
                 *expr = Expr::Binary(bin);
             } else if let Some(imply) = ply {
