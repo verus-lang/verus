@@ -198,3 +198,17 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] manual_trigger verus_code! {
+        use crate::pervasive::seq::*;
+        proof fn test_distinct3(s: Seq<int>)
+            requires
+                5 <= s.len(),
+                forall|i: int, j: int| #![trigger s[i], s[j]]
+                    0 <= i < j < s.len() ==> s[i] != s[j],
+        {
+            assert(s[4] != s[2]);
+        }
+    } => Ok(())
+}

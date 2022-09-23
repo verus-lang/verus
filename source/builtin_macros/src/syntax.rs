@@ -403,6 +403,15 @@ impl Visitor {
             _ => vec![],
         }
     }
+
+    fn visit_stream_expr(&mut self, stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
+        use quote::ToTokens;
+        let mut expr: Expr = parse_macro_input!(stream as Expr);
+        let mut new_stream = TokenStream::new();
+        self.visit_expr_mut(&mut expr);
+        expr.to_tokens(&mut new_stream);
+        proc_macro::TokenStream::from(new_stream)
+    }
 }
 
 fn chain_count(expr: &Expr) -> u32 {
@@ -1093,6 +1102,31 @@ impl VisitMut for Visitor {
         }
         if is_inside_bitvector {
             self.inside_bitvector = false;
+        }
+    }
+
+    fn visit_attribute_mut(&mut self, attr: &mut Attribute) {
+        if let syn_verus::AttrStyle::Inner(_) = attr.style {
+            if path_is_ident(&attr.path, "trigger") {
+                // process something like: #![trigger f(a, b), g(c, d)]
+                // attr.tokens is f(a, b), g(c, d)
+                // turn this into a tuple (f(a, b), g(c, d)),
+                // parse it into an Expr, visit the Expr, turn the Expr back into tokens,
+                // remove the ( and ).
+                let old_stream = proc_macro::TokenStream::from(attr.tokens.clone());
+                let mut tuple_stream = proc_macro::TokenStream::new();
+                let group = proc_macro::Group::new(proc_macro::Delimiter::Parenthesis, old_stream);
+                tuple_stream.extend(vec![proc_macro::TokenTree::Group(group)]);
+                let mut new_tuples = self.visit_stream_expr(tuple_stream).into_iter();
+                let new_tuple = new_tuples.next().expect("visited tuple");
+                assert!(new_tuples.next().is_none());
+                if let proc_macro::TokenTree::Group(group) = new_tuple {
+                    assert!(group.delimiter() == proc_macro::Delimiter::Parenthesis);
+                    attr.tokens = proc_macro2::TokenStream::from(group.stream());
+                } else {
+                    panic!("expected tuple");
+                }
+            }
         }
     }
 
