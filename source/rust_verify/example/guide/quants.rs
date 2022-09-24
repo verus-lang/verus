@@ -6,6 +6,7 @@ use builtin::*;
 mod pervasive;
 #[allow(unused_imports)]
 use pervasive::seq::*;
+use pervasive::vec::*;
 
 verus! {
 
@@ -26,6 +27,10 @@ proof fn test_seq_5_is_evens(s: Seq<int>)
     assert(is_even(s[3]));
 }
 // ANCHOR_END: quants_finite
+
+spec fn is_odd(i: int) -> bool {
+    i % 2 == 1
+}
 
 // ANCHOR: quants_recursion
 spec fn all_evens(s: Seq<int>) -> bool
@@ -269,7 +274,227 @@ proof fn test_sorted_bad(s: Seq<int>)
 // ANCHOR_END: test_sorted_bad1
 */
 
-fn main() {
+// ANCHOR: test_exists_succeeds
+proof fn test_exists_succeeds() {
+    assert(is_even(4));
+    assert(!is_even(5));
+    assert(is_even(6));
+    assert(exists|i: int| #[trigger] is_even(i)); // succeeds with witness i = 4 or i = 6
 }
+// ANCHOR_END: test_exists_succeeds
+
+/*
+// ANCHOR: test_exists_fails
+proof fn test_exists_fails() {
+    assert(exists|i: int| #[trigger] is_even(i)); // FAILS, no match for trigger
+}
+// ANCHOR_END: test_exists_fails
+*/
+
+// ANCHOR: test_choose_succeeds
+spec fn f(i: int) -> bool;
+
+proof fn test_choose_succeeds()
+    requires
+        exists|i: int| f(i),
+{
+    let i_witness = choose|i: int| f(i);
+    assert(f(i_witness));
+}
+// ANCHOR_END: test_choose_succeeds
+
+/*
+// ANCHOR: test_choose_fails
+proof fn test_choose_fails() {
+    let i_witness = choose|i: int| f(i);
+    assert(i_witness < 0 || i_witness >= 0); // i_witness is some integer
+    assert(f(i_witness)); // FAILS because we don't know exists|i: int| f(i)
+}
+// ANCHOR_END: test_choose_fails
+*/
+
+// ANCHOR: test_choose_same
+proof fn test_choose_same() {
+    let x = choose|i: int| f(i);
+    let y = choose|i: int| f(i);
+    assert(x == y);
+}
+// ANCHOR_END: test_choose_same
+
+// ANCHOR: test_choose_succeeds2
+spec fn less_than(x: int, y: int) -> bool {
+    x < y
+}
+
+proof fn test_choose_succeeds2() {
+    assert(less_than(3, 7)); // promote i = 3, i = 7 as a witness
+    let (x, y): (int, int) = choose|i: int, j: int| less_than(i, j);
+    assert(x < y);
+}
+// ANCHOR_END: test_choose_succeeds2
+
+mod M {
+#[allow(unused_imports)]
+use builtin::*;
+// ANCHOR: just_works
+spec fn is_distinct(x: int, y: int) -> bool {
+    x != y
+}
+
+spec fn dummy(i: int) -> bool;
+
+proof fn prove_forall()
+    ensures
+        forall|i: int, j: int| #![trigger dummy(i), dummy(j)]
+            is_distinct(i, j) ==> is_distinct(j, i)
+{
+    // proving the forall just works; the trigger is irrelevant
+}
+
+proof fn use_exists(x: int)
+    requires
+        exists|i: int| #![trigger dummy(i)]
+            x == i + 1 && is_distinct(i, 5)
+{
+    // using the exists just works; the trigger is irrelevant
+    assert(x != 6);
+}
+// ANCHOR_END: just_works
+}
+
+// ANCHOR: hoist
+proof fn hoisted_forall(i:int, j: int)
+    ensures
+        is_distinct(i, j) ==> is_distinct(j, i)
+{
+}
+
+proof fn hosted_exists(x: int, i: int)
+    requires
+        x == i + 1 && is_distinct(i, 5)
+{
+    assert(x != 6);
+}
+// ANCHOR_END: hoist
+
+#[verifier(external_body)]
+proof fn lemma_even_f(i: int)
+    requires
+        is_even(i),
+    ensures
+        f(i),
+{
+}
+
+/*
+// ANCHOR: test_even_f_fail1
+proof fn test_even_f()
+    ensures
+        forall|i: int| is_even(i) ==> f(i), // FAILS because we don't call the lemma
+{
+}
+// ANCHOR_END: test_even_f_fail1
+*/
+
+/*
+// ANCHOR: test_even_f_fail2
+proof fn test_even_f()
+    ensures
+        forall|i: int| is_even(i) ==> f(i),
+{
+    lemma_even_f(i); // ERROR: i is not in scope here
+}
+// ANCHOR_END: test_even_f_fail2
+*/
+
+// ANCHOR: test_even_f
+proof fn test_even_f()
+    ensures
+        forall|i: int| is_even(i) ==> f(i),
+{
+    assert forall|i: int| is_even(i) implies f(i) by {
+        // First, i is in scope here
+        // Second, we assume is_even(i) here
+        lemma_even_f(i);
+        // Finally, we have to prove f(i) here
+    }
+}
+// ANCHOR_END: test_even_f
+
+spec fn g(i: int, j: int) -> bool;
+
+#[verifier(external_body)]
+proof fn lemma_g_proves_f(i: int, j: int)
+    requires
+        g(i, j),
+    ensures
+        f(i),
+{
+}
+
+/*
+// ANCHOR: test_g_proves_f_fails
+proof fn test_g_proves_f(i: int)
+    requires
+        exists|j: int| g(i, j),
+    ensures
+        f(i),
+{
+    lemma_g_proves_f(i, j); // ERROR: j is not in scope here
+}
+// ANCHOR_END: test_g_proves_f_fails
+*/
+
+// ANCHOR: test_g_proves_f
+proof fn test_g_proves_f(i: int)
+    requires
+        exists|j: int| g(i, j),
+    ensures
+        f(i),
+{
+    lemma_g_proves_f(i, choose|j: int| g(i, j));
+}
+// ANCHOR_END: test_g_proves_f
+
+
+// ANCHOR: binary_search
+fn binary_search(v: &Vec<u64>, k: u64) -> (r: usize)
+    requires
+        forall|i: int, j: int| 0 <= i <= j < v.len() ==> v[i] <= v[j],
+        exists|i: int| 0 <= i < v.len() && k == v[i],
+    ensures
+        r < v.len(),
+        k == v[r as int],
+{
+    let mut i1: usize = 0;
+    let mut i2: usize = v.len() - 1;
+    while i1 != i2
+        invariant
+            i2 < v.len(),
+            exists|i: int| i1 <= i <= i2 && k == v[i],
+            forall|i: int, j: int| 0 <= i <= j < v.len() ==> v[i] <= v[j],
+    {
+        let ix = i1 + (i2 - i1) / 2;
+        if *v.index(ix) < k {
+            i1 = ix + 1;
+        } else {
+            i2 = ix;
+        }
+    }
+    i1
+}
+
+fn main() {
+    let mut v: Vec<u64> = Vec::new();
+    v.push(0);
+    v.push(10);
+    v.push(20);
+    v.push(30);
+    v.push(40);
+    assert(v[3] == 30); // needed to trigger exists|i: int| ... k == v[i]
+    let r = binary_search(&v, 30);
+    assert(r == 3);
+}
+// ANCHOR_END: binary_search
 
 } // verus!

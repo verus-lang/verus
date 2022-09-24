@@ -35,10 +35,9 @@
 - [Quantifiers and spec closures](quants.md)
     - [forall and triggers](forall.md)
     - [Multiple variables, multiple triggers, matching loops](multitriggers.md)
-    - [exists]() <!--- Chris --->
-    - [choose]() <!--- Chris --->
-    - [Using and proving forall and exists]() <!--- Chris --->
-    - [Example: binary search]() <!--- Chris --->
+    - [exists and choose](exists.md)
+    - [Proofs about forall and exists](quantproofs.md)
+    - [Example: binary search](binary_search.md)
     - [spec closures]() <!--- Chris --->
     - [broadcast_forall]() <!--- Chris --->
 - [SMT solving, automation, and where automation fails]() <!--- Chris --->
