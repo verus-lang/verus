@@ -381,6 +381,7 @@ impl ExpX {
                         let v = s.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
                         (format!("[{}]", v), 99)
                     }
+                    Closure(e, _ctx) => (format!("{}", e), 99),
                 }
             }
             Old(..) | WithTriggers(..) => ("".to_string(), 99), // We don't show the user these internal expressions

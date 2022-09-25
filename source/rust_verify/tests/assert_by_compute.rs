@@ -234,6 +234,19 @@ test_verify_one_file! {
             }) by (compute_only);
             assert((|x:int,y:int| x + y)(40, 2) == 42) by (compute_only);
         }
+
+        spec fn call_it(f: impl Fn(int) -> int, arg: int) -> int {
+            let y: int = 100;
+            f(arg)
+        }
+
+        proof fn scoping_test() {
+            assert({
+                let y: int = 10;
+                call_it(|x: int| x + y, 3) == 13
+            }) by (compute_only);
+        }
+
     } => Ok(())
 }
 

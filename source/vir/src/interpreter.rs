@@ -163,6 +163,8 @@ pub enum InterpExp {
     FreeVar(UniqueIdent),
     /// Optimized representation of intermediate sequence results
     Seq(Vector<Exp>),
+    /// A lambda expression that carries with it the original context
+    Closure(Exp, HashMap<UniqueIdent, Exp>),
 }
 
 /*****************************************************************
@@ -494,6 +496,7 @@ fn hash_exp<H: Hasher>(state: &mut H, exp: &Exp) {
             match e {
                 InterpExp::FreeVar(id) => dohash!(0, id),
                 InterpExp::Seq(exps) => dohash!(1; hash_exps_vector(exps)),
+                InterpExp::Closure(e, _ctx) => dohash!(2; hash_exp(e)),
             }
         }
     }
@@ -1327,25 +1330,41 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 }
             }
         }
-        CallLambda(_typ, lambda, args) => match &lambda.x {
-            Bind(bnd, body) => match &bnd.x {
-                BndX::Lambda(bnds) => {
-                    let new_args: Result<Vec<Exp>, VirErr> =
-                        args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
-                    let new_args = Arc::new(new_args?);
-                    state.env.push_scope(true);
-                    for (formal, actual) in bnds.iter().zip(new_args.iter()) {
-                        let formal_id = UniqueIdent { name: formal.name.clone(), local: None };
-                        state.env.insert(formal_id, actual.clone()).unwrap();
-                    }
-                    let e = eval_expr_internal(ctx, state, body);
-                    state.env.pop_scope();
-                    e
-                }
-                _ => panic!("CallLambda's binder to contain a lambda.  Instead found {:?}", bnd),
-            },
-            _ => panic!("CallLambda to contain a lambda.  Instead found {:}", lambda),
-        },
+        CallLambda(_typ, lambda, args) => {
+            let lambda = eval_expr_internal(ctx, state, lambda)?;
+            match &lambda.x {
+                Interp(InterpExp::Closure(lambda, context)) => match &lambda.x {
+                    Bind(bnd, body) => match &bnd.x {
+                        BndX::Lambda(bnds) => {
+                            let new_args: Result<Vec<Exp>, VirErr> =
+                                args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
+                            let new_args = Arc::new(new_args?);
+                            state.env.push_scope(true);
+                            // Process the original context first, so formal args take precedence
+                            context.iter().for_each(|(k, v)| {
+                                state.env.insert(k.clone(), v.clone()).unwrap();
+                            });
+                            state.env.push_scope(true);
+                            for (formal, actual) in bnds.iter().zip(new_args.iter()) {
+                                let formal_id =
+                                    UniqueIdent { name: formal.name.clone(), local: None };
+                                state.env.insert(formal_id, actual.clone()).unwrap();
+                            }
+                            let e = eval_expr_internal(ctx, state, body);
+                            state.env.pop_scope();
+                            state.env.pop_scope();
+                            e
+                        }
+                        _ => panic!(
+                            "Expected CallLambda's binder to contain a lambda.  Instead found {:?}",
+                            bnd
+                        ),
+                    },
+                    _ => ok,
+                },
+                _ => ok,
+            }
+        }
         Bind(bnd, e) => match &bnd.x {
             BndX::Let(bnds) => {
                 state.env.push_scope(true);
@@ -1357,6 +1376,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 let e = eval_expr_internal(ctx, state, e);
                 state.env.pop_scope();
                 e
+            }
+            BndX::Lambda(_) => {
+                let mut env = HashMap::new();
+                env.extend(state.env.map().iter().map(|(k, v)| (k.clone(), v.clone())));
+                exp_new(Interp(InterpExp::Closure(exp.clone(), env)))
             }
             _ => ok,
         },
@@ -1375,6 +1399,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
         Interp(e) => match e {
             InterpExp::FreeVar(_) => ok,
             InterpExp::Seq(_) => ok,
+            InterpExp::Closure(_, _) => ok,
         },
         // Ignored by the interpreter at present (i.e., treated as symbolic)
         VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | WithTriggers(..) => ok,
