@@ -73,7 +73,7 @@
 - [Macros]()
 - [Tools and command-line options]()
     - [Proof Debugger]() <!--- Chanhee --->
-    - [IDE Support]() <!--- Chanhee --->
+    - [IDE Support](ide_support.md)
     - [Syntax Highlighting]()
 
 - [Verification and Rust]()
