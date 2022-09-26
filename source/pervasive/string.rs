@@ -12,15 +12,31 @@ use builtin_macros::verus;
 
 verus! {
 
+#[derive(PartialEq, Eq)]
 #[verifier(external_body)]
 pub struct String {
     inner: string::String,
 }
 
+impl std::hash::Hash for String {
+    #[verifier(external)]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.inner.hash(state)
+    }
+}
+
+#[derive(PartialEq, Eq)]
 #[rustc_diagnostic_item = "pervasive::string::StrSlice"]
 #[verifier(external_body)]
 pub struct StrSlice<'a> {
     inner: &'a str,
+}
+
+impl<'a> std::hash::Hash for StrSlice<'a> {
+    #[verifier(external)]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.inner.hash(state)
+    }
 }
 
 
@@ -125,8 +141,8 @@ impl<'a> StrSlice<'a> {
     }
 
 
-    
-    // TODO:This should be the as_bytes function after 
+
+    // TODO:This should be the as_bytes function after
     // slice support is added
     // pub fn as_bytes<'a>(&'a [u8]) -> (ret: &'a [u8])
 
