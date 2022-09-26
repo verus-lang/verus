@@ -18,6 +18,13 @@ pub struct String {
     inner: string::String,
 }
 
+impl Clone for String {
+    #[verifier(external)]
+    fn clone(&self) -> (ret: String) {
+        String { inner: self.inner.clone() }
+    }
+}
+
 impl std::hash::Hash for String {
     #[verifier(external)]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -32,13 +39,19 @@ pub struct StrSlice<'a> {
     inner: &'a str,
 }
 
+impl<'a> Clone for StrSlice<'a> {
+    #[verifier(external)]
+    fn clone(&self) -> (ret: StrSlice<'a>) {
+        StrSlice { inner: self.inner.clone() }
+    }
+}
+
 impl<'a> std::hash::Hash for StrSlice<'a> {
     #[verifier(external)]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.inner.hash(state)
     }
 }
-
 
 #[rustc_diagnostic_item = "pervasive::string::new_strlit"]
 #[verifier(external_body)]
