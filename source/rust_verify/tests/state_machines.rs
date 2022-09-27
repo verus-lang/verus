@@ -6547,7 +6547,7 @@ test_verify_one_file! {
 
             #[proof] let token1 = inst.tr_add();
             assert(equal(token1.view().instance, inst));
-            assert(token1.view().value == spec_literal_int("5"));
+            assert(token1.view().key == spec_literal_int("5"));
             inst.tr_have(&token1);
             inst.tr_remove(token1);
 
@@ -6668,7 +6668,7 @@ test_verify_one_file! {
 
             #[proof] let token1 = inst.tr_add();
             assert(equal(token1.view().instance, inst));
-            assert(token1.view().value == spec_literal_int("5"));
+            assert(token1.view().key == spec_literal_int("5"));
             inst.tr_have(&token1);
 
             let token1_clone = token1.clone();

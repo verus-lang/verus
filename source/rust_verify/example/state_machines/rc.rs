@@ -242,17 +242,17 @@ impl<S> MyRc<S> {
     verus!{
 
     spec fn wf(self) -> bool {
-        &&& self.reader@.value.view().pptr === self.ptr.id()
+        &&& self.reader@.key.view().pptr === self.ptr.id()
         &&& self.reader@.instance === self.inst
         &&& self.reader@.count === 1
-        &&& self.reader@.value@.value.is_Some()
+        &&& self.reader@.key@.value.is_Some()
         &&& self.inv.wf()
         &&& (forall(|g: GhostStuff<S>| self.inv.view().inv(g) ==
-            g.wf(self.inst, self.reader@.value.view().value.get_Some_0().rc_cell)))
+            g.wf(self.inst, self.reader@.key.view().value.get_Some_0().rc_cell)))
     }
 
     spec fn view(self) -> S {
-        self.reader@.value@.value.get_Some_0().s
+        self.reader@.key@.value.get_Some_0().s
     }
 
     }
@@ -277,7 +277,7 @@ impl<S> MyRc<S> {
 
         #[proof] let inv = LocalInvariant::new(g,
             |g: GhostStuff<S>|
-                g.wf(reader.view().instance, reader.view().value.view().value.get_Some_0().rc_cell),
+                g.wf(reader.view().instance, reader.view().key.view().value.get_Some_0().rc_cell),
             0);
         #[proof] let inv = Duplicable::new(inv);
 
@@ -289,7 +289,7 @@ impl<S> MyRc<S> {
         ensures(|s: &'b S| equal(*s, self.view()));
 
         #[proof] let perm = self.inst.reader_guard(
-            self.reader.view().value,
+            self.reader.view().key,
             &self.reader);
         &self.ptr.borrow(tracked_exec_borrow(perm)).s
     }
@@ -299,7 +299,7 @@ impl<S> MyRc<S> {
         ensures(|s: Self| s.wf() && equal(s.view(), self.view()));
 
         #[proof] let perm = self.inst.reader_guard(
-            self.reader.view().value,
+            self.reader.view().key,
             &self.reader);
         let inner_rc_ref = &self.ptr.borrow(tracked_exec_borrow(perm));
 
@@ -316,7 +316,7 @@ impl<S> MyRc<S> {
             inner_rc_ref.rc_cell.put(&mut rc_perm, count);
 
             new_reader = self.inst.do_clone(
-                self.reader.view().value,
+                self.reader.view().key,
                 &mut rc_token,
                 &self.reader);
                 
@@ -337,7 +337,7 @@ impl<S> MyRc<S> {
         let MyRc { inst, inv, reader, ptr } = self;
 
         #[proof] let perm = inst.reader_guard(
-            reader.view().value,
+            reader.view().key,
             &reader);
         let inner_rc_ref = &ptr.borrow(tracked_exec_borrow(perm));
 
@@ -351,12 +351,12 @@ impl<S> MyRc<S> {
                 inner_rc_ref.rc_cell.put(&mut rc_perm, count);
 
                 inst.dec_basic(
-                    reader.view().value,
+                    reader.view().key,
                     &mut rc_token,
                     reader);
             } else {
                 #[proof] let inner_rc_perm = inst.dec_to_zero(
-                    reader.view().value,
+                    reader.view().key,
                     &mut rc_token,
                     reader);
                 let mut inner_rc_perm = tracked_exec(inner_rc_perm);

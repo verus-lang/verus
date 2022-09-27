@@ -372,15 +372,24 @@ fn get_macro_decl(sm: &SM) -> TokenStream {
         match &f.stype {
             ShardableType::Variable(_)
             | ShardableType::Option(_)
-            | ShardableType::Multiset(_)
-            | ShardableType::Set(_)
-            | ShardableType::PersistentSet(_)
             | ShardableType::PersistentCount
             | ShardableType::PersistentOption(_)
-            | ShardableType::Count => {
+            | ShardableType::Count
+            => {
                 quote!{
                     ($instance:expr => #field_name => $value:expr) => {
                         #mod_path::#sm_name::#constructor { instance: $instance, value: $value }
+                    };
+                }
+            }
+
+            | ShardableType::Multiset(_)
+            | ShardableType::Set(_)
+            | ShardableType::PersistentSet(_)
+            => {
+                quote!{
+                    ($instance:expr => #field_name => $key:expr) => {
+                        #mod_path::#sm_name::#constructor { instance: $instance, key: $key }
                     };
                 }
             }
@@ -484,10 +493,10 @@ pub fn output_token_types_and_fns(
                 ));
             }
             ShardableType::Multiset(ty) => {
-                token_stream.extend(token_struct_stream(&bundle.sm, field, None, Some(ty), true));
+                token_stream.extend(token_struct_stream(&bundle.sm, field, Some(ty), None, true));
             }
             ShardableType::Set(ty) | ShardableType::PersistentSet(ty) => {
-                token_stream.extend(token_struct_stream(&bundle.sm, field, None, Some(ty), false));
+                token_stream.extend(token_struct_stream(&bundle.sm, field, Some(ty), None, false));
             }
             ShardableType::StorageOption(_) | ShardableType::StorageMap(_, _) => {
                 // storage types don't have tokens; the 'token type' is just the
@@ -1403,7 +1412,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                                 && ::builtin::equal(token_map.index(elem).view(),
                                     #constructor_name {
                                         instance: instance,
-                                        value: elem,
+                                        key: elem,
                                     }
                                 )
                             )
@@ -1513,8 +1522,8 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             //
             // tokens:
             // map{
-            //    v1 => Token { instance: instance, value: v1, count: n1 }]
-            //    v2 => Token { instance: instance, value: v2, count: n2 }]
+            //    v1 => Token { instance: instance, key: v1, count: n1 }]
+            //    v2 => Token { instance: instance, key: v2, count: n2 }]
             // }
 
             quote! {
@@ -1525,7 +1534,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                             (#[trigger] tokens.dom().contains(x))
                             && ::builtin::equal(tokens.index(x).view().instance, instance)
                             && tokens.index(x).view().count >= m.count(x)
-                            && ::builtin::equal(tokens.index(x).view().value, x)
+                            && ::builtin::equal(tokens.index(x).view().key, x)
                         )
                     )
                 }
@@ -1540,7 +1549,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                           tokens.dom().contains(x)
                           && ::builtin::equal(tokens.index(x).view().instance, instance)
                           && ::builtin::equal(tokens.index(x).view().count, m.count(x))
-                          && ::builtin::equal(tokens.index(x).view().value, x)
+                          && ::builtin::equal(tokens.index(x).view().key, x)
                         )
                     })
                 }
@@ -1549,10 +1558,10 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 #[verifier(returns(proof))]
                 #[verifier(external_body)]
                 pub fn join(#[proof] self, #[proof] other: Self) -> Self {
-                    ::builtin::requires(::builtin::equal(self.view().instance, other.view().instance) && ::builtin::equal(self.view().value, other.view().value));
+                    ::builtin::requires(::builtin::equal(self.view().instance, other.view().instance) && ::builtin::equal(self.view().key, other.view().key));
                     ::builtin::ensures(|s: Self|
                         ::builtin::equal(s.view().instance, self.view().instance)
-                        && ::builtin::equal(s.view().value, self.view().value)
+                        && ::builtin::equal(s.view().key, self.view().key)
                         && ::builtin::equal(s.view().count, self.view().count + other.view().count)
                     );
                     ::std::unimplemented!();
@@ -1565,8 +1574,8 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                         let (crate::pervasive::modes::Trk(x), crate::pervasive::modes::Trk(y)) = s;
                         ::builtin::equal(x.view().instance, self.view().instance)
                         && ::builtin::equal(y.view().instance, self.view().instance)
-                        && ::builtin::equal(x.view().value, self.view().value)
-                        && ::builtin::equal(y.view().value, self.view().value)
+                        && ::builtin::equal(x.view().key, self.view().key)
+                        && ::builtin::equal(y.view().key, self.view().key)
                         && ::builtin::equal(x.view().count, i)
                         && ::builtin::equal(y.view().count as int, self.view().count - i)
                     });
@@ -2054,7 +2063,7 @@ fn token_matches_elt(
             mk_eq(&Expr::Verbatim(quote! {#token_name.view().value}), &e)
         }
         MonoidElt::SingletonMultiset(e) => mk_and(
-            mk_eq(&Expr::Verbatim(quote! {#token_name.view().value}), &e),
+            mk_eq(&Expr::Verbatim(quote! {#token_name.view().key}), &e),
             Expr::Verbatim(quote! { #token_name.view().count == 1 }),
         ),
         MonoidElt::SingletonKV(key, None) => {
@@ -2077,9 +2086,7 @@ fn token_matches_elt(
             mk_eq(&Expr::Verbatim(quote! {#token_name.view().key}), &key),
             mk_eq(&Expr::Verbatim(quote! {#token_name.view().value}), &val),
         ),
-        MonoidElt::SingletonSet(e) => {
-            mk_eq(&Expr::Verbatim(quote! { #token_name.view().value }), &e)
-        }
+        MonoidElt::SingletonSet(e) => mk_eq(&Expr::Verbatim(quote! { #token_name.view().key }), &e),
         MonoidElt::True => Expr::Verbatim(quote! { true }),
         MonoidElt::General(e) => match &field.stype {
             ShardableType::Count | ShardableType::PersistentCount => {
