@@ -6541,7 +6541,7 @@ test_verify_one_file! {
             #[proof] let (Trk(inst), Trk(token_f)) = Y::Instance::initialize();
             assert(Set::empty().insert(spec_literal_int("19")).contains(spec_literal_int("19")));
             assert(token_f.dom().contains(spec_literal_int("19")));
-            assert(equal(token_f.index(spec_literal_int("19")).view(), Y![
+            assert(equal(token_f.index(spec_literal_int("19")).view(), Y::token![
                 inst => b => spec_literal_int("19")
             ]));
 
@@ -6554,7 +6554,7 @@ test_verify_one_file! {
             #[proof] let token_set = inst.tr_add_gen();
             assert(Set::empty().insert(spec_literal_int("6")).contains(spec_literal_int("6")));
             assert(token_set.dom().contains(spec_literal_int("6")));
-            assert(equal(token_set.index(spec_literal_int("6")).view(), Y![
+            assert(equal(token_set.index(spec_literal_int("6")).view(), Y::token![
                 inst => b => spec_literal_int("6")
             ]));
             inst.tr_have_gen(&token_set);
@@ -6662,7 +6662,7 @@ test_verify_one_file! {
             #[proof] let (Trk(inst), Trk(token_f)) = Y::Instance::initialize();
             assert(Set::empty().insert(spec_literal_int("19")).contains(spec_literal_int("19")));
             assert(token_f.dom().contains(spec_literal_int("19")));
-            assert(equal(token_f.index(spec_literal_int("19")).view(), Y![
+            assert(equal(token_f.index(spec_literal_int("19")).view(), Y::token![
                 inst => b => spec_literal_int("19")
             ]));
 
@@ -6677,7 +6677,7 @@ test_verify_one_file! {
             #[proof] let token_set = inst.tr_add_gen();
             assert(Set::empty().insert(spec_literal_int("6")).contains(spec_literal_int("6")));
             assert(token_set.dom().contains(spec_literal_int("6")));
-            assert(equal(token_set.index(spec_literal_int("6")).view(), Y![
+            assert(equal(token_set.index(spec_literal_int("6")).view(), Y::token![
                 inst => b => spec_literal_int("6")
             ]));
             inst.tr_have_gen(&token_set);

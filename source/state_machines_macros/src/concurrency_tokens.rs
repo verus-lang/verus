@@ -365,7 +365,7 @@ fn const_fn_stream(field: &Field) -> TokenStream {
 
 fn get_macro_decl(sm: &SM) -> TokenStream {
     let sm_name = &sm.name;
-    let mod_path = get_module_path_of_macro_call();
+    let (mod_segments, mod_path) = get_module_path_of_macro_call();
     let arms: Vec<TokenStream> = sm.fields.iter().map(|f| {
         let field_name = &f.name;
         let constructor = field_token_data_type_name(f);
@@ -433,13 +433,18 @@ fn get_macro_decl(sm: &SM) -> TokenStream {
         }
     }).collect();
 
-    let name = &sm.name;
+    let msg_string_lit = format!("`, expected some field defined in `{:}`", sm.name.to_string());
 
-    let msg_string_lit = format!("`, expected some field defined in `{name:}`");
+    // A macro_rules! gets exported at the root of the crate.
+    // Best effort to avoid name collisions.
+    let macro_name = Ident::new(
+        &("_".to_string() + &mod_segments.join("_") + &sm.name.to_string() + "_token"),
+        sm.name.span(),
+    );
 
     quote! {
         #[macro_export]
-        macro_rules! #name {
+        macro_rules! #macro_name {
             #(#arms)*
             ($instance:expr => $id:ident => $($tt:tt)*) => {
                 ::std::compile_error!(::std::concat!(
@@ -449,6 +454,8 @@ fn get_macro_decl(sm: &SM) -> TokenStream {
                 ))
             };
         }
+
+        pub use #macro_name as token;
     }
 }
 
