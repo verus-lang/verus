@@ -1213,7 +1213,13 @@ fn erase_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &Item) -> Vec<P<Item>> {
     let kind = match &item.kind {
         ItemKind::ExternCrate(_) => item.kind.clone(),
         ItemKind::Use(_) => item.kind.clone(),
-        ItemKind::Mod(unsafety, kind) => ItemKind::Mod(*unsafety, erase_mod(ctxt, mctxt, kind)),
+        ItemKind::Mod(unsafety, kind) => {
+            let vattrs = get_verifier_attrs(&item.attrs).expect("get_verifier_attrs");
+            if vattrs.external {
+                return vec![P(item.clone())];
+            }
+            ItemKind::Mod(*unsafety, erase_mod(ctxt, mctxt, kind))
+        }
         ItemKind::ForeignMod { .. } => item.kind.clone(),
         ItemKind::Struct(variant, generics) => {
             ItemKind::Struct(erase_variant_data(ctxt, mctxt, variant), generics.clone())
