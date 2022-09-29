@@ -161,6 +161,7 @@ fn check_item<'tcx>(
                     || path_name == "core::cmp::Eq"
                     || path_name == "core::marker::StructuralPartialEq"
                     || path_name == "core::cmp::PartialEq"
+                    || path_name == "core::hash::Hash"
                     || path_name == "builtin::Structural"
                 {
                     // TODO SOUNDNESS additional checks of the implementation
@@ -447,6 +448,16 @@ fn check_item<'tcx>(
                 typ_params: Arc::new(generics_bnds),
             };
             vir.traits.push(spanned_new(item.span, traitx));
+        }
+        ItemKind::Trait(IsAuto::No, Unsafety::Unsafe, _trait_generics, _bounds, _trait_items) => {
+            let attrs = ctxt.tcx.hir().attrs(item.hir_id());
+            let vattrs = get_verifier_attrs(attrs)?;
+
+            if vattrs.external {
+                return Ok(());
+            } else {
+                unsupported_err!(item.span, "unsupported item", item);
+            }
         }
         ItemKind::TyAlias(_ty, _generics) => {
             // type alias (like lines of the form `type X = ...;`
