@@ -70,8 +70,8 @@ proof fn lemma_pow2_2e(e: nat)
     ensures (pow2(2*e)) == 4 * pow2(2*((e - 1) as nat)),
     decreases e ,
 {
-    reveal_with_fuel(pow2, 2);
-    if e ==1 { 
+    reveal_with_fuel(pow2, 3);
+    if e == 1 { 
         assert(pow2(2) == 4);
     }
     else {lemma_pow2_2e((e-1)as nat)}
@@ -79,13 +79,12 @@ proof fn lemma_pow2_2e(e: nat)
 
 #[verifier(nonlinear)]
 proof fn lemma_pow2_two_e(e: nat) 
-    requires e > 0,
+    requires e >= 0,
     ensures pow2(e) * pow2(e) == pow2(2*e),
     decreases e,
 {
-    if e == 1 {}
-    else {
-        lemma_pow2_two_e((e-1)as nat);
+    if e != 0 {
+        lemma_pow2_two_e((e - 1) as nat);
         lemma_pow2_2e(e);
     }
 }
