@@ -119,7 +119,7 @@ state_machine!{
 
         #[spec] #[verifier(publish)]
         pub fn abstraction_one_key(&self, key: Key) -> Value {
-            if exists(|idx| self.host_has_key(idx, key)) {
+            if exists |idx| self.host_has_key(idx, key) {
                 self.maps.index(self.key_holder(key)).index(key)
             } else {
                 default()
@@ -140,8 +140,8 @@ state_machine!{
         #[invariant]
         #[verifier(publish)]
         pub fn inv_no_dupes(&self) -> bool {
-            forall(|i: int, j: int, key: Key|
-                self.host_has_key(i, key) && self.host_has_key(j, key) ==> i == j)
+            forall |i: int, j: int, key: Key|
+                self.host_has_key(i, key) && self.host_has_key(j, key) ==> i == j
         }
 
         #[inductive(initialize)]
@@ -153,7 +153,7 @@ state_machine!{
             //assert(forall(|k: Key| pre.host_has_key(idx, k) ==> post.host_has_key(idx, k)));
             //assert(forall(|k: Key| post.host_has_key(idx, k) ==> pre.host_has_key(idx, k)));
             //assert(forall(|k: Key| pre.host_has_key(idx, k) == post.host_has_key(idx, k)));
-            assert(forall(|i: int, k: Key| pre.host_has_key(i, k) == post.host_has_key(i, k)));
+            assert(forall |i: int, k: Key| pre.host_has_key(i, k) == post.host_has_key(i, k));
         }
        
         #[inductive(query)]
@@ -161,8 +161,8 @@ state_machine!{
        
         #[inductive(transfer)]
         fn transfer_inductive(pre: Self, post: Self, send_idx: int, recv_idx: int, key: Key, value: Value) {
-            assert(forall(|i: int, k: Key| !equal(k, key) ==> pre.host_has_key(i, k) == post.host_has_key(i, k)));
-            assert(forall(|i: int| i != send_idx && i != recv_idx ==> pre.host_has_key(i, key) == post.host_has_key(i, key)));
+            assert(forall |i: int, k: Key| !equal(k, key) ==> pre.host_has_key(i, k) == post.host_has_key(i, k));
+            assert(forall |i: int| i != send_idx && i != recv_idx ==> pre.host_has_key(i, key) == post.host_has_key(i, key));
 
             assert(equal(post.maps.index(send_idx),
                 pre.maps.index(send_idx).remove(key)));
@@ -224,14 +224,14 @@ proof fn next_refines_next_with_macro(pre: ShardedKVProtocol::State, post: Shard
                     assert(pre.interp_map().dom().contains(k));
                     assert(post.interp_map().dom().contains(k));
 
-                    if exists(|idx| pre.host_has_key(idx, k)) {
+                    if exists |idx| pre.host_has_key(idx, k) {
                         let i = pre.key_holder(k);
                         assert(pre.host_has_key(i, k));
                         assert(post.host_has_key(i, k));
                         assert(equal(pre.interp_map().index(k), post.interp_map().index(k)));
                     } else {
-                        assert(forall(|idx| post.host_has_key(idx, k) ==> pre.host_has_key(idx, k)));
-                        /*assert(forall(|idx| !post.host_has_key(idx, k)));
+                        assert(forall |idx| post.host_has_key(idx, k) ==> pre.host_has_key(idx, k));
+                        /*assert(forall |idx| !post.host_has_key(idx, k));
                         assert(!exists(|idx| post.host_has_key(idx, k)));
                         assert(equal(pre.abstraction_one_key(k), default()));
                         assert(equal(post.abstraction_one_key(k), default()));
@@ -280,13 +280,13 @@ proof fn next_refines_next_with_macro(pre: ShardedKVProtocol::State, post: Shard
                     assert(pre.interp_map().dom().contains(k));
                     assert(post.interp_map().dom().contains(k));
 
-                    if exists(|idx| pre.host_has_key(idx, k)) {
+                    if exists |idx| pre.host_has_key(idx, k) {
                         let i = pre.key_holder(k);
                         assert(pre.host_has_key(i, k));
                         assert(post.host_has_key(i, k));
                         assert(equal(pre.interp_map().index(k), post.interp_map().index(k)));
                     } else {
-                        assert(forall(|idx| post.host_has_key(idx, k) ==> pre.host_has_key(idx, k)));
+                        assert(forall |idx| post.host_has_key(idx, k) ==> pre.host_has_key(idx, k));
                     }
                 }
             });

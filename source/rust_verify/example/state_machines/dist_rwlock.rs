@@ -172,7 +172,7 @@ tokenized_state_machine!{
         }
 
         pub closed spec fn filter_r(shared_guard: Multiset<(int, T)>, r: int) -> Multiset<(int, T)> {
-            shared_guard.filter(|val| val.0 == r)
+            shared_guard.filter(|val: (int, T)| val.0 == r)
         }
 
         #[invariant]

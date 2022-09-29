@@ -184,6 +184,17 @@ ast_struct! {
     }
 }
 
+ast_struct! {
+    /// A FnSpec type: `FnSpec(usize) -> bool`.
+    /// Parsed similarly to TypeBareFn
+    pub struct TypeFnSpec {
+        pub fn_spec_token: Token![FnSpec],
+        pub paren_token: token::Paren,
+        pub inputs: Punctuated<BareFnArg, Token![,]>,
+        pub output: ReturnType,
+    }
+}
+
 #[cfg(feature = "parsing")]
 pub mod parsing {
     use super::*;
@@ -727,6 +738,17 @@ mod printing {
             crate::expr::printing::outer_attrs_to_tokens(&self.attrs, tokens);
             self.expr.to_tokens(tokens);
             self.at_token.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for TypeFnSpec {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.fn_spec_token.to_tokens(tokens);
+            self.paren_token.surround(tokens, |tokens| {
+                self.inputs.to_tokens(tokens);
+            });
+            self.output.to_tokens(tokens);
         }
     }
 }

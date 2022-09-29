@@ -298,6 +298,19 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                 {
                     return (typ_args[0].0.clone(), true);
                 }
+                if def_name == "builtin::FnSpec" {
+                    assert!(typ_args.len() == 2);
+                    let typ_arg_tuple = typ_args[0].0.clone();
+                    let ret_typ = typ_args[1].0.clone();
+                    let param_typs = match &*typ_arg_tuple {
+                        TypX::Tuple(typs) => typs.clone(),
+                        _ => {
+                            // TODO proper user-facing error msg here
+                            panic!("expected first type argument of FnSpec to be a tuple");
+                        }
+                    };
+                    return (Arc::new(TypX::Lambda(param_typs, ret_typ)), false);
+                }
                 let typ_args = typ_args.into_iter().map(|(t, _)| t).collect();
                 (Arc::new(def_id_to_datatype(tcx, *did, Arc::new(typ_args))), false)
             }

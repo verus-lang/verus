@@ -2085,6 +2085,7 @@ impl PartialEq for Type {
             (Type::Verbatim(self0), Type::Verbatim(other0)) => {
                 TokenStreamHelper(self0) == TokenStreamHelper(other0)
             }
+            (Type::FnSpec(self0), Type::FnSpec(other0)) => self0 == other0,
             _ => false,
         }
     }
@@ -2109,6 +2110,14 @@ impl PartialEq for TypeBareFn {
         self.lifetimes == other.lifetimes && self.unsafety == other.unsafety
             && self.abi == other.abi && self.inputs == other.inputs
             && self.variadic == other.variadic && self.output == other.output
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for TypeFnSpec {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for TypeFnSpec {
+    fn eq(&self, other: &Self) -> bool {
+        self.inputs == other.inputs && self.output == other.output
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]

@@ -108,8 +108,8 @@ tokenized_state_machine!(RefCounter<#[verifier(maybe_negative)] T> {
 
     #[invariant]
     pub fn reader_agrees_storage(&self) -> bool {
-        forall(|t: T| self.reader.count(t) > 0 >>=
-            equal(self.storage, Option::Some(t)))
+        forall |t: T| self.reader.count(t) > 0 >>=
+            equal(self.storage, Option::Some(t))
     }
 
     #[invariant]
@@ -247,8 +247,8 @@ impl<S> MyRc<S> {
         &&& self.reader@.count === 1
         &&& self.reader@.key@.value.is_Some()
         &&& self.inv.wf()
-        &&& (forall(|g: GhostStuff<S>| self.inv.view().inv(g) ==
-            g.wf(self.inst, self.reader@.key.view().value.get_Some_0().rc_cell)))
+        &&& (forall |g: GhostStuff<S>| self.inv.view().inv(g) ==
+            g.wf(self.inst, self.reader@.key.view().value.get_Some_0().rc_cell))
     }
 
     spec fn view(self) -> S {

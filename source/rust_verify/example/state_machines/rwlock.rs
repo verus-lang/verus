@@ -156,8 +156,8 @@ tokenized_state_machine!(RwLock {
 
     #[invariant]
     pub fn reader_agrees_storage(&self) -> bool {
-        forall(|t: T| self.reader.count(t) > 0 >>=
-            equal(self.storage, Option::Some(t)))
+        forall |t: T| self.reader.count(t) > 0 >>=
+            equal(self.storage, Option::Some(t))
     }
 
     #[invariant]

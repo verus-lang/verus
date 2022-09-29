@@ -732,6 +732,9 @@ pub trait Fold {
     fn fold_type_bare_fn(&mut self, i: TypeBareFn) -> TypeBareFn {
         fold_type_bare_fn(self, i)
     }
+    fn fold_type_fn_spec(&mut self, i: TypeFnSpec) -> TypeFnSpec {
+        fold_type_fn_spec(self, i)
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn fold_type_group(&mut self, i: TypeGroup) -> TypeGroup {
         fold_type_group(self, i)
@@ -3355,6 +3358,7 @@ where
         }
         Type::Tuple(_binding_0) => Type::Tuple(f.fold_type_tuple(_binding_0)),
         Type::Verbatim(_binding_0) => Type::Verbatim(_binding_0),
+        Type::FnSpec(_binding_0) => Type::FnSpec(f.fold_type_fn_spec(_binding_0)),
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
     }
@@ -3384,6 +3388,17 @@ where
         paren_token: Paren(tokens_helper(f, &node.paren_token.span)),
         inputs: FoldHelper::lift(node.inputs, |it| f.fold_bare_fn_arg(it)),
         variadic: (node.variadic).map(|it| f.fold_variadic(it)),
+        output: f.fold_return_type(node.output),
+    }
+}
+pub fn fold_type_fn_spec<F>(f: &mut F, node: TypeFnSpec) -> TypeFnSpec
+where
+    F: Fold + ?Sized,
+{
+    TypeFnSpec {
+        fn_spec_token: Token![FnSpec](tokens_helper(f, &node.fn_spec_token.span)),
+        paren_token: Paren(tokens_helper(f, &node.paren_token.span)),
+        inputs: FoldHelper::lift(node.inputs, |it| f.fold_bare_fn_arg(it)),
         output: f.fold_return_type(node.output),
     }
 }

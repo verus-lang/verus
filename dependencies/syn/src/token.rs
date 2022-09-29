@@ -724,6 +724,7 @@ define_keywords! {
     "exists"      pub struct Exists       /// `exists`
     "choose"      pub struct Choose       /// `choose`
     "is"          pub struct Is           /// `is`
+    "FnSpec"      pub struct FnSpec       /// `FnSpec`
 }
 
 define_punctuation! {
@@ -924,6 +925,7 @@ macro_rules! export_token_macro {
             [exists]      => { $crate::token::Exists };
             [choose]      => { $crate::token::Choose };
             [is]          => { $crate::token::Is };
+            [FnSpec]      => { $crate::token::FnSpec };
             [&&&]         => { $crate::token::BigAnd };
             [|||]         => { $crate::token::BigOr };
             [<==>]        => { $crate::token::Equiv };
