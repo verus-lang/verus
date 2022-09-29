@@ -13,16 +13,23 @@ use builtin_macros::verus;
 verus! {
 
 #[verifier(external_body)]
+#[derive(Eq, PartialEq, Hash)]
 pub struct String {
     inner: string::String,
 }
 
+#[verifier(external)]
+impl Structural for String {}
+
 #[rustc_diagnostic_item = "pervasive::string::StrSlice"]
 #[verifier(external_body)]
+#[derive(Eq, PartialEq, Hash)]
 pub struct StrSlice<'a> {
     inner: &'a str,
 }
 
+#[verifier(external)]
+impl<'a> Structural for StrSlice<'a> {}
 
 #[rustc_diagnostic_item = "pervasive::string::new_strlit"]
 #[verifier(external_body)]

@@ -11,6 +11,7 @@ pub mod atomic;
 pub mod atomic_ghost;
 pub mod modes;
 pub mod multiset;
+pub mod hash;
 pub mod state_machine_internal;
 #[cfg(not(feature = "non_std"))]
 pub mod thread;
