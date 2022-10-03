@@ -14,9 +14,11 @@ After following the below steps, when you save a file, rust-analyzer will run Ve
 
 
 ### 2. VS Code
-We need to change the configuration inside `settings.json`. Specifically, we need to set below two variables.
-1. `rust-analyzer.server.path` to the above rust-analyzer binary's path.
-2. `"rust-analyzer.checkOnSave.overrideCommand"` to the command to run Verus. When doing this, please include `-- --error-format=json`.
+
+1. Please install the rust-analyzer extension in VS Code's extensions tab.
+2. We need to change the configuration inside `settings.json`. Specifically, we need to set below two variables.
+- `rust-analyzer.server.path` to the above rust-analyzer binary's path.
+- `"rust-analyzer.checkOnSave.overrideCommand"` to the command to run Verus. When doing this, please include `-- --error-format=json`.
 
 For example:
 ```
@@ -45,5 +47,6 @@ When you connect Verus with another IDE, please share how to do so on this docum
   
 
 ### Current limitations
-(We are still improving this IDE support.)
-Currently, it does not provide Verus syntax errors. We are currently extending rust-analyzer's grammar for Verus' syntax.
+
+1. This is currently only tested on macOS.
+2. This currently does not provide Verus syntax errors on the fly. We are currently extending rust-analyzer's grammar for Verus' syntax.
