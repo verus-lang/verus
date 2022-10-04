@@ -93,7 +93,7 @@ fn check_trigger_expr(
                     if lets.contains(x) {
                         return err_str(
                             &exp.span,
-                            "let variables in triggers not supported, use with_triggers! instead",
+                            "let variables in triggers not supported, use #![trigger ...] instead",
                         );
                     }
                     free_vars.insert(x.clone());
@@ -138,7 +138,7 @@ fn check_trigger_expr(
                 }
                 ExpX::If(_, _, _) => err_str(&exp.span, "triggers cannot contain if/else"),
                 ExpX::WithTriggers(..) => {
-                    err_str(&exp.span, "triggers cannot contain with_triggers")
+                    err_str(&exp.span, "triggers cannot contain #![trigger ...]")
                 }
                 ExpX::Bind(_, _) => {
                     err_str(&exp.span, "triggers cannot contain let/forall/exists/lambda/choose")
@@ -156,7 +156,7 @@ fn check_trigger_expr(
                     if lets.contains(x) {
                         return err_str(
                             &exp.span,
-                            "let variables in triggers not supported, use with_triggers! instead",
+                            "let variables in triggers not supported, use #![trigger ...] instead",
                         );
                     }
                     free_vars.insert(x.clone());
@@ -296,7 +296,7 @@ pub(crate) fn build_triggers(
         if state.auto_trigger {
             return err_str(
                 span,
-                "cannot use both manual triggers (#[trigger] or with_triggers) and #[auto_trigger]",
+                "cannot use both manual triggers (#[trigger] or #![trigger ...]) and #![auto]",
             );
         }
         let mut trigs: Vec<Trig> = Vec::new();
@@ -323,6 +323,6 @@ pub(crate) fn build_triggers(
     } else if boxed_params {
         crate::triggers_auto::build_triggers(ctx, span, vars, exp, state.auto_trigger)
     } else {
-        return err_str(span, "manual trigger (#[trigger] or with_triggers) is required");
+        return err_str(span, "manual trigger (#[trigger] or #![trigger ...]) is required");
     }
 }
