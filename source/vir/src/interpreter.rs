@@ -1457,12 +1457,16 @@ fn eval_expr_launch(
             // Send partial result to Z3
             ComputeMode::Z3 => {
                 // Restore the free variables we hid during interpretation
-                let res = crate::sst_visitor::map_exp_visitor(&res, &mut |e| match &e.x {
+                let res = crate::sst_visitor::map_exp_visitor_result(&res, &mut |e| match &e.x {
                     ExpX::Interp(InterpExp::FreeVar(v)) => {
-                        SpannedTyped::new(&e.span, &e.typ, ExpX::Var(v.clone()))
+                        Ok(SpannedTyped::new(&e.span, &e.typ, ExpX::Var(v.clone())))
                     }
-                    _ => e.clone(),
-                });
+                    ExpX::Interp(InterpExp::Closure(..)) => err_str(
+                        &e.span,
+                        "Proof by computation included a closure literal that wasn't applied.  This is not yet supported.",
+                    ),
+                    _ => Ok(e.clone()),
+                })?;
                 if exp.definitely_eq(&res) {
                     // TODO: Convert to use Diagnostics
                     println!();

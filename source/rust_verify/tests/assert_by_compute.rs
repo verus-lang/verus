@@ -250,6 +250,27 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+
+test_verify_one_file! {
+    #[test] closures_fail verus_code! {
+
+        #[verifier(external_body)]
+        spec fn call_it(f: impl Fn(int) -> int, arg: int) -> bool
+        {
+            true
+        }
+
+        fn test(x: u64) {
+            assert({
+                let f = |x:int| x + 7;
+                call_it(f, 2)
+            }) by (compute);   // FAILS
+        }
+
+    } => Err(err) => assert_vir_error(err)
+}
+
+
 test_verify_one_file! {
     #[test] fn_calls_good verus_code! {
         spec fn f(x: int, y: int) -> bool { x == y }
