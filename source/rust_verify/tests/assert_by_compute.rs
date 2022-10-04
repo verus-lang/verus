@@ -250,7 +250,6 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-
 test_verify_one_file! {
     #[test] closures_fail verus_code! {
 
@@ -269,7 +268,6 @@ test_verify_one_file! {
 
     } => Err(err) => assert_vir_error(err)
 }
-
 
 test_verify_one_file! {
     #[test] fn_calls_good verus_code! {
