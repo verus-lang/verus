@@ -228,3 +228,11 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] fnspec_positivity verus_code! {
+        struct S {
+            f: FnSpec(S) -> int,
+        }
+    } => Err(_)
+}

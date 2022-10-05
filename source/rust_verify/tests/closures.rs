@@ -81,6 +81,17 @@ test_verify_one_file! {
             assert(specf_with_impl(10, |z: u32| add(z, 1)) == 11);
         }
 
+        struct S {
+            f: FnSpec(u8) -> u8,
+        }
+
+        proof fn test_fnspec_refinement_types(f: FnSpec(u8) -> u8, s: S) {
+            let x = f(10);
+            assert(x < 300);
+            let g = s.f;
+            let y = g(10);
+            assert(y < 300);
+        }
     } => Ok(())
 }
 
