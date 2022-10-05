@@ -149,3 +149,16 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] test_fn_spec_type verus_code! {
+        spec fn stuff(t: FnSpec(int) -> int, x: int) -> int {
+            t(x)
+        }
+
+        proof fn some_proof() {
+            let y = stuff(|x: int| x + 1, 5);
+            assert(y == 6);
+        }
+    } => Ok(())
+}

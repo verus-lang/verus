@@ -1,6 +1,8 @@
 use super::*;
 use crate::punctuated::Punctuated;
+use crate::spanned::Spanned;
 use proc_macro2::TokenStream;
+use verus::TypeFnSpec;
 
 ast_enum_of_structs! {
     /// The possible types that a Rust value could have.
@@ -63,6 +65,9 @@ ast_enum_of_structs! {
 
         /// Tokens in type position not interpreted by Syn.
         Verbatim(TokenStream),
+
+        // Verus stuff
+        FnSpec(TypeFnSpec),
 
         // Not public API.
         //
@@ -529,6 +534,21 @@ pub mod parsing {
             } else {
                 Ok(Type::Verbatim(verbatim::between(begin, input)))
             }
+        } else if lookahead.peek(Token![FnSpec]) {
+            if let Some(fn_spec) = parse_fn_spec(input, false)? {
+                if lifetimes.is_some() {
+                    Err(Error::new(
+                        Type::FnSpec(fn_spec).span(),
+                        "FnSpec should not have any lifetimes",
+                    ))
+                } else {
+                    Ok(Type::FnSpec(fn_spec))
+                }
+            } else {
+                Err(begin.error(
+                    "Expected `FnSpec(...) -> ...`",
+                ))
+            }
         } else if lookahead.peek(Ident)
             || input.peek(Token![super])
             || input.peek(Token![self])
@@ -753,6 +773,46 @@ pub mod parsing {
             Ok(None)
         } else {
             Ok(Some(bare_fn))
+        }
+    }
+
+    fn parse_fn_spec(input: ParseStream, allow_mut_self: bool) -> Result<Option<TypeFnSpec>> {
+        let args;
+        let mut has_mut_self = false;
+
+        let fn_spec = TypeFnSpec {
+            fn_spec_token: input.parse()?,
+            paren_token: parenthesized!(args in input),
+            inputs: {
+                let mut inputs = Punctuated::new();
+
+                while !args.is_empty() {
+                    let attrs = args.call(Attribute::parse_outer)?;
+
+                    if let Some(arg) = parse_bare_fn_arg(&args, allow_mut_self)? {
+                        inputs.push_value(BareFnArg { attrs, ..arg });
+                    } else {
+                        has_mut_self = true;
+                    }
+                    if args.is_empty() {
+                        break;
+                    }
+
+                    let comma = args.parse()?;
+                    if !has_mut_self {
+                        inputs.push_punct(comma);
+                    }
+                }
+
+                inputs
+            },
+            output: input.call(ReturnType::without_plus)?,
+        };
+
+        if has_mut_self {
+            Ok(None)
+        } else {
+            Ok(Some(fn_spec))
         }
     }
 

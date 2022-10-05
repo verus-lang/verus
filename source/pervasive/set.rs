@@ -138,7 +138,7 @@ impl<A> Set<A> {
     /// the empty set.
 
     pub open spec fn disjoint(self, s2: Self) -> bool {
-        forall(|a: A| self.contains(a) ==> !s2.contains(a))
+        forall |a: A| self.contains(a) ==> !s2.contains(a)
     }
 }
 

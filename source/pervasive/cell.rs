@@ -260,11 +260,13 @@ impl<T> InvCell<T> {
     {
         let (pcell, perm) = PCell::new(val);
         let possible_values = ghost(Set::new(f@));
-        let perm_inv = tracked(LocalInvariant::new(perm.get(), |perm| {
-            &&& perm@.value.is_Some()
-            &&& possible_values@.contains(perm@.value.get_Some_0())
-            &&& pcell.id() === perm@.pcell
-        }, 0));
+        let perm_inv = tracked(LocalInvariant::new(perm.get(),
+            |perm: cell::PermissionOpt<T>| {
+                &&& perm@.value.is_Some()
+                &&& possible_values@.contains(perm@.value.get_Some_0())
+                &&& pcell.id() === perm@.pcell
+            },
+            0));
         InvCell {
             possible_values,
             pcell,

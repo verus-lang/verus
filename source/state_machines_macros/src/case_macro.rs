@@ -82,7 +82,7 @@ pub fn case_on(
         ::builtin_macros::verus_proof_expr!{
             {
                 ::builtin::reveal(#next);
-                match ::builtin::choose(|step: #step| #next_by(#pre_post, #label_arg step)) {
+                match (choose |step: #step| #next_by(#pre_post, #label_arg step)) {
                     #step::dummy_to_use_type_params(_) => {
                         ::builtin::assert_by(false, {
                             ::builtin::reveal(#next_by);

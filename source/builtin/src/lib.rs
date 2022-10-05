@@ -1,6 +1,8 @@
 #![feature(rustc_attrs)]
 #![feature(negative_impls)]
 #![no_std]
+#![feature(unboxed_closures)]
+#![feature(fn_traits)]
 
 use core::marker::PhantomData;
 
@@ -938,4 +940,32 @@ pub fn strslice_get_char<A>(_a: A, _i: int) -> char {
 #[proof]
 pub fn reveal_strlit<A>(_a: A) {
     unimplemented!()
+}
+
+pub struct FnSpec<Args, Output> {
+    phantom: PhantomData<(Args, Output)>,
+}
+
+impl<Args, Output> FnOnce<Args> for FnSpec<Args, Output> {
+    type Output = Output;
+    extern "rust-call" fn call_once(self, _: Args) -> <Self as FnOnce<Args>>::Output {
+        todo!()
+    }
+}
+
+impl<Args, Output> FnMut<Args> for FnSpec<Args, Output> {
+    extern "rust-call" fn call_mut(&mut self, _: Args) -> <Self as FnOnce<Args>>::Output {
+        todo!()
+    }
+}
+
+impl<Args, Output> Fn<Args> for FnSpec<Args, Output> {
+    extern "rust-call" fn call(&self, _: Args) -> <Self as FnOnce<Args>>::Output {
+        todo!()
+    }
+}
+
+#[rustc_diagnostic_item = "builtin::closure_to_fn_spec"]
+pub fn closure_to_fn_spec<Args, F: FnOnce<Args>>(_f: F) -> FnSpec<Args, F::Output> {
+    unimplemented!();
 }

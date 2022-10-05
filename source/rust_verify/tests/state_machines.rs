@@ -4230,8 +4230,8 @@ test_verify_one_file! {
 
             #[invariant]
             pub fn maps_6(&self) -> bool {
-                forall(|k| imply(self.storage_map.dom().contains(k),
-                    self.storage_map.index(k) == 6))
+                forall |k| imply(self.storage_map.dom().contains(k),
+                    self.storage_map.index(k) == 6)
             }
 
             transition!{

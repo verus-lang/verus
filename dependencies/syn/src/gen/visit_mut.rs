@@ -729,6 +729,9 @@ pub trait VisitMut {
     fn visit_type_bare_fn_mut(&mut self, i: &mut TypeBareFn) {
         visit_type_bare_fn_mut(self, i);
     }
+    fn visit_type_fn_spec_mut(&mut self, i: &mut TypeFnSpec) {
+        visit_type_fn_spec_mut(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_type_group_mut(&mut self, i: &mut TypeGroup) {
         visit_type_group_mut(self, i);
@@ -3807,6 +3810,9 @@ where
         Type::Verbatim(_binding_0) => {
             skip!(_binding_0);
         }
+        Type::FnSpec(_binding_0) => {
+            v.visit_type_fn_spec_mut(_binding_0);
+        }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
     }
@@ -3846,6 +3852,21 @@ where
     }
     if let Some(it) = &mut node.variadic {
         v.visit_variadic_mut(it);
+    }
+    v.visit_return_type_mut(&mut node.output);
+}
+pub fn visit_type_fn_spec_mut<V>(v: &mut V, node: &mut TypeFnSpec)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.fn_spec_token.span);
+    tokens_helper(v, &mut node.paren_token.span);
+    for el in Punctuated::pairs_mut(&mut node.inputs) {
+        let (it, p) = el.into_tuple();
+        v.visit_bare_fn_arg_mut(it);
+        if let Some(p) = p {
+            tokens_helper(v, &mut p.spans);
+        }
     }
     v.visit_return_type_mut(&mut node.output);
 }

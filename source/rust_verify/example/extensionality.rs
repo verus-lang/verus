@@ -96,8 +96,8 @@ proof fn assert_maps_equal_with_proof(m: Map<int, int>, q: Map<int, int>)
 }
 
 proof fn assert_maps_equal_with_proof2() {
-    let m = Map::<u64, u64>::total(|t| t & 184);
-    let q = Map::<u64, u64>::new(|t| t ^ t == 0, |t| 184 & t);
+    let m = Map::<u64, u64>::total(|t: u64| t & 184);
+    let q = Map::<u64, u64>::new(|t: u64| t ^ t == 0, |t: u64| 184 & t);
 
     assert_maps_equal!(m, q, t => {
         // show that the `q` map is total:

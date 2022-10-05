@@ -71,14 +71,14 @@ state_machine!(
 
         #[invariant]
         pub fn safety_condition(self) -> bool {
-            forall(|i: int, j: int|
-                self.is_leader(i) && self.is_leader(j) >>= i == j)
+            forall |i: int, j: int|
+                self.is_leader(i) && self.is_leader(j) >>= i == j
         }
 
         #[spec]
         pub fn OnChordHeardDominatesId(self, start: int, end: int) -> bool {
-            forall(|node: int| between(start, node, end) && self.valid_idx(node)
-                >>= self.highest_heard.index(node) > self.ids.index(node))
+            forall |node: int| between(start, node, end) && self.valid_idx(node)
+                >>= self.highest_heard.index(node) > self.ids.index(node)
         }
 
         #[spec]
@@ -95,8 +95,8 @@ state_machine!(
 
         #[invariant]
         pub fn on_chord_heard_dominates_id_inv(self) -> bool {
-            forall(|start: int, end: int|
-                self.is_chord(start, end) >>= self.OnChordHeardDominatesId(start, end))
+            forall |start: int, end: int|
+                self.is_chord(start, end) >>= self.OnChordHeardDominatesId(start, end)
         }
 
         #[inductive(transmission)]
@@ -108,12 +108,13 @@ state_machine!(
             let dst_new_max = max(pre.highest_heard.index(dstidx), message);
 
             assert_by(post.on_chord_heard_dominates_id_inv(), {
-              assert_forall_by(|start: int, end: int| {
-                requires(post.is_chord(start, end));
-                ensures(post.OnChordHeardDominatesId(start, end));
-                assert_forall_by(|node: int| {
-                  requires(between(start, node, end) && post.valid_idx(node));
-                  ensures(post.highest_heard.index(node) > post.ids.index(node));
+              assert forall |start: int, end: int| post.is_chord(start, end)
+                implies post.OnChordHeardDominatesId(start, end)
+              by {
+                assert forall |node: int|
+                  between(start, node, end) && post.valid_idx(node)
+                  implies post.highest_heard.index(node) > post.ids.index(node)
+                by {
                   if dstidx == end {
                     // maybe this chord just sprung into existence
                     if post.highest_heard.index(end) == pre.highest_heard.index(end) {
@@ -136,14 +137,14 @@ state_machine!(
                     assert(pre.valid_idx(node)); // trigger
                     assert(post.highest_heard.index(node) > post.ids.index(node));
                   }
-                });
-              });
+                }
+              }
             });
 
             assert_by(post.safety_condition(), {
-                assert_forall_by(|i: int, j: int| {
-                    requires(post.is_leader(i) && post.is_leader(j));
-                    ensures(i == j);
+                assert forall |i: int, j: int|
+                    post.is_leader(i) && post.is_leader(j) implies i == j
+                by {
 
                     if i != j {
                         if pre.is_leader(i) {
@@ -163,7 +164,7 @@ state_machine!(
                             assert(false);
                         }
                     }
-                });
+                }
             });
         }
 

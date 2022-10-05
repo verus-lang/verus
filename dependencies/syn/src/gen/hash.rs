@@ -2813,6 +2813,10 @@ impl Hash for Type {
                 state.write_u8(14u8);
                 TokenStreamHelper(v0).hash(state);
             }
+            Type::FnSpec(v0) => {
+                state.write_u8(15u8);
+                v0.hash(state);
+            }
             #[cfg(syn_no_non_exhaustive)]
             _ => unreachable!(),
         }
@@ -2841,6 +2845,16 @@ impl Hash for TypeBareFn {
         self.abi.hash(state);
         self.inputs.hash(state);
         self.variadic.hash(state);
+        self.output.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for TypeFnSpec {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.inputs.hash(state);
         self.output.hash(state);
     }
 }

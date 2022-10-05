@@ -121,6 +121,7 @@ fn extract_ensures<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &'tcx Expr<'tcx>,
 ) -> Result<HeaderExpr, VirErr> {
+    let expr = skip_closure_coercion(bctx, expr);
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
         ExprKind::Closure(_, _fn_decl, body_id, _, _) => {
@@ -149,6 +150,7 @@ fn extract_quant<'tcx>(
     quant: Quant,
     expr: &'tcx Expr<'tcx>,
 ) -> Result<vir::ast::Expr, VirErr> {
+    let expr = skip_closure_coercion(bctx, expr);
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
         ExprKind::Closure(_, _fn_decl, body_id, _, _) => {
@@ -182,6 +184,7 @@ fn extract_assert_forall_by<'tcx>(
     span: Span,
     expr: &'tcx Expr<'tcx>,
 ) -> Result<vir::ast::Expr, VirErr> {
+    let expr = skip_closure_coercion(bctx, expr);
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
         ExprKind::Closure(_, _fn_decl, body_id, _, _) => {
@@ -228,6 +231,7 @@ fn extract_choose<'tcx>(
     tuple: bool,
     expr_typ: Typ,
 ) -> Result<vir::ast::Expr, VirErr> {
+    let expr = skip_closure_coercion(bctx, expr);
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
         ExprKind::Closure(_, _fn_decl, body_id, _, _) => {
@@ -270,6 +274,35 @@ fn extract_choose<'tcx>(
         }
         _ => err_span_str(expr.span, "argument to choose must be a closure"),
     }
+}
+
+/// If `expr` is of the form `closure_to_spec_fn(e)` then return `e`.
+/// Otherwise, return `expr`.
+///
+/// This is needed because the syntax macro can often create expressions that look like:
+/// forall(closure_to_fn_spec(|x| { ... }))
+
+fn skip_closure_coercion<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &'tcx Expr<'tcx>) -> &'tcx Expr<'tcx> {
+    match &expr.kind {
+        ExprKind::Call(fun, args_slice) => match &fun.kind {
+            ExprKind::Path(qpath) => {
+                let def = bctx.types.qpath_res(&qpath, fun.hir_id);
+                match def {
+                    rustc_hir::def::Res::Def(_, def_id) => {
+                        let f_name = bctx.ctxt.tcx.def_path_str(def_id);
+                        if f_name == "builtin::closure_to_fn_spec" {
+                            return &args_slice[0];
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        },
+        _ => {}
+    }
+
+    expr
 }
 
 fn mk_clip<'tcx>(
@@ -525,6 +558,8 @@ fn fn_call_to_vir<'tcx>(
         tcx.is_diagnostic_item(Symbol::intern("builtin::strslice_get_char"), f);
     let is_strslice_is_ascii =
         tcx.is_diagnostic_item(Symbol::intern("builtin::strslice_is_ascii"), f);
+    let is_closure_to_fn_spec =
+        tcx.is_diagnostic_item(Symbol::intern("builtin::closure_to_fn_spec"), f);
 
     let is_spec = is_admit
         || is_no_method_body
@@ -651,6 +686,7 @@ fn fn_call_to_vir<'tcx>(
             || is_assert_bit_vector
             || is_old
             || is_spec_ghost_tracked
+            || is_closure_to_fn_spec
             || is_get_variant.is_some(),
         is_implies
             || is_ignored_fn
@@ -760,6 +796,17 @@ fn fn_call_to_vir<'tcx>(
         };
         let quant = Quant { quant, boxed_params: !is_forall_arith };
         return extract_quant(bctx, expr.span, quant, args[0]);
+    }
+    if is_closure_to_fn_spec {
+        unsupported_err_unless!(len == 1, expr.span, "expected closure_to_spec_fn", &args);
+        if let ExprKind::Closure(..) = &args[0].kind {
+            return closure_to_vir(bctx, &args[0], ExprModifier::REGULAR);
+        } else {
+            return err_span_str(
+                args[0].span,
+                "the argument to `closure_to_spec_fn` must be a closure",
+            );
+        }
     }
     if is_choose {
         unsupported_err_unless!(len == 1, expr.span, "expected choose", &args);
@@ -2580,20 +2627,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 modifier,
             )
         }
-        ExprKind::Closure(_, _fn_decl, body_id, _, _) => {
-            let body = tcx.hir().body(*body_id);
-            let typs = closure_param_typs(bctx, expr);
-            assert!(typs.len() == body.params.len());
-            let params: Vec<Binder<Typ>> = body
-                .params
-                .iter()
-                .zip(typs.clone())
-                .map(|(x, t)| Arc::new(BinderX { name: Arc::new(pat_to_var(x.pat)), a: t }))
-                .collect();
-            let body = expr_to_vir(bctx, &body.value, modifier)?;
-            let typ = Arc::new(TypX::Lambda(Arc::new(typs), body.typ.clone()));
-            Ok(spanned_typed_new(expr.span, &typ, ExprX::Closure(Arc::new(params), body)))
-        }
+        ExprKind::Closure(..) => closure_to_vir(bctx, expr, modifier),
         ExprKind::Index(tgt_expr, idx_expr) => {
             let tgt_vir = expr_to_vir(bctx, tgt_expr, modifier)?;
             if let TypX::Datatype(path, _dt_typs) = &*tgt_vir.typ {
@@ -2660,5 +2694,28 @@ pub(crate) fn stmt_to_vir<'tcx>(
         _ => {
             unsupported_err!(stmt.span, "statement", stmt)
         }
+    }
+}
+
+fn closure_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    closure_expr: &Expr<'tcx>,
+    modifier: ExprModifier,
+) -> Result<vir::ast::Expr, VirErr> {
+    if let ExprKind::Closure(_, _fn_decl, body_id, _, _) = &closure_expr.kind {
+        let body = bctx.ctxt.tcx.hir().body(*body_id);
+        let typs = closure_param_typs(bctx, closure_expr);
+        assert!(typs.len() == body.params.len());
+        let params: Vec<Binder<Typ>> = body
+            .params
+            .iter()
+            .zip(typs.clone())
+            .map(|(x, t)| Arc::new(BinderX { name: Arc::new(pat_to_var(x.pat)), a: t }))
+            .collect();
+        let body = expr_to_vir(bctx, &body.value, modifier)?;
+        let typ = Arc::new(TypX::Lambda(Arc::new(typs), body.typ.clone()));
+        Ok(spanned_typed_new(closure_expr.span, &typ, ExprX::Closure(Arc::new(params), body)))
+    } else {
+        panic!("closure_to_vir expects ExprKind::Closure");
     }
 }

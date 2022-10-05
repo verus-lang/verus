@@ -1063,9 +1063,9 @@ pub fn exchange_stream(
 
     let req_stream = if reqs.len() > 0 {
         quote! {
-            ::builtin::requires([
+            ::builtin::requires(::builtin_macros::verus_proof_expr!([
                 #(#reqs),*
-            ]);
+            ]));
         }
     } else {
         TokenStream::new()
@@ -1077,9 +1077,9 @@ pub fn exchange_stream(
     let (out_params_ret, ens_stream, ret_value_mode) = if out_params.len() == 0 {
         let ens_stream = if enss.len() > 0 {
             quote! {
-                ::builtin::ensures([
+                ::builtin::ensures(::builtin_macros::verus_proof_expr!([
                     #(#enss),*
-                ]);
+                ]));
             }
         } else {
             TokenStream::new()
@@ -1094,9 +1094,9 @@ pub fn exchange_stream(
         let ens_stream = if enss.len() > 0 {
             quote! {
                 ::builtin::ensures(
-                    |#param_name: #param_ty| [
+                    |#param_name: #param_ty| ::builtin_macros::verus_proof_expr!([
                         #(#enss),*
-                    ]
+                    ])
                 );
             }
         } else {
@@ -1148,10 +1148,10 @@ pub fn exchange_stream(
         let ens_stream = if enss.len() > 0 {
             quote! {
                 ::builtin::ensures(
-                    |tmp_tuple: #tup_typ| [{
+                    |tmp_tuple: #tup_typ| ::builtin_macros::verus_proof_expr!([{
                         let #tup_names = tmp_tuple;
                         #((#enss))&&*
-                    }]
+                    }])
                 );
             }
         } else {
@@ -1176,7 +1176,8 @@ pub fn exchange_stream(
     return Ok(quote! {
         #ret_value_mode
         #[verifier(external_body)]
-        pub proof fn #exch_name#gen(#(#in_params),*) #out_params_ret {
+        #[proof]
+        pub fn #exch_name#gen(#(#in_params),*) #out_params_ret {
             #req_stream
             #ens_stream
             #extra_deps
@@ -1372,12 +1373,16 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
 
             quote! {
                 #[verifier(inline)]
-                pub open spec fn #fn_name_strict(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
+                #[verifier(publish)]
+                #[spec]
+                pub fn #fn_name_strict(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
                     Self::#fn_name(token_opt, opt, instance)
                     && ::builtin::imply(opt.is_None(), token_opt.is_None())
                 }
 
-                pub open spec fn #fn_name(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
+                #[verifier(publish)]
+                #[spec]
+                pub fn #fn_name(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::imply(
                         opt.is_Some(),
                         token_opt.is_Some()
@@ -1406,7 +1411,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             // {x, y}         { x => { instance, x }, y => { instance, y } }
 
             quote! {
-                pub open spec fn #fn_name(token_map: #set_token_ty, set: #set_normal_ty, instance: #inst_ty) -> bool {
+                #[verifier(publish)]
+                #[spec]
+                pub fn #fn_name(token_map: #set_token_ty, set: #set_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|elem: #ty| {
                         ::builtin::with_triggers(
                             (
@@ -1428,7 +1435,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 }
 
                 #[verifier(inline)]
-                pub open spec fn #fn_name_strict(token_map: #set_token_ty, set: #set_normal_ty, instance: #inst_ty) -> bool {
+                #[verifier(publish)]
+                #[spec]
+                pub fn #fn_name_strict(token_map: #set_token_ty, set: #set_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::equal(token_map.dom(), set)
                       && Self::#fn_name(token_map, set, instance)
                 }
@@ -1450,7 +1459,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             // true           Some(Token { instance: instance })
 
             quote! {
-                pub open spec fn #fn_name(token_opt: #option_token_ty, b: ::std::primitive::bool, instance: #inst_ty) -> bool {
+                #[verifier(publish)]
+                #[spec]
+                pub fn #fn_name(token_opt: #option_token_ty, b: ::std::primitive::bool, instance: #inst_ty) -> bool {
                     ::builtin::imply(b,
                         token_opt.is_Some()
                         && ::builtin::equal(token_opt.get_Some_0().view().instance, instance)
@@ -1458,7 +1469,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 }
 
                 #[verifier(inline)]
-                pub open spec fn #fn_name_strict(token_opt: #option_token_ty, b: ::std::primitive::bool, instance: #inst_ty) -> bool {
+                #[verifier(publish)]
+                #[spec]
+                pub fn #fn_name_strict(token_opt: #option_token_ty, b: ::std::primitive::bool, instance: #inst_ty) -> bool {
                     Self::#fn_name(token_opt, b, instance)
                     && ::builtin::imply(!b, token_opt.is_None())
                 }
@@ -1487,7 +1500,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             //    [k1 := Token { instance: instance, value: v2 }]...
 
             quote! {
-                pub open spec fn #fn_name(token_map: #map_token_ty, m: #map_normal_ty, instance: #inst_ty) -> bool {
+                #[verifier(publish)]
+                #[spec]
+                pub fn #fn_name(token_map: #map_token_ty, m: #map_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|key: #key|
                         ::builtin::with_triggers(
                             (
@@ -1504,7 +1519,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                     )
                 }
 
-                pub open spec fn #fn_name_strict(token_map: #map_token_ty, m: #map_normal_ty, instance: #inst_ty) -> bool {
+                #[verifier(publish)]
+                #[spec]
+                pub fn #fn_name_strict(token_map: #map_token_ty, m: #map_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::equal(token_map.dom(), m.dom())
                     && Self::#fn_name(token_map, m, instance)
                 }
@@ -1534,7 +1551,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             // }
 
             quote! {
-                pub open spec fn #fn_name(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
+                #[verifier(publish)]
+                #[spec]
+                pub fn #fn_name(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|x: #ty|
                         ::builtin::imply(
                             m.count(x) > ::builtin::spec_literal_nat("0"),
@@ -1546,7 +1565,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                     )
                 }
 
-                pub open spec fn #fn_name_strict(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
+                #[verifier(publish)]
+                #[spec]
+                pub fn #fn_name_strict(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|x: #ty| {
                         ::builtin::with_triggers(
                           (
@@ -1575,7 +1596,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 }
 
                 #[verifier(external_body)]
-                pub proof fn split(tracked self, i: nat) -> tracked (crate::pervasive::modes::Trk<Self>, crate::pervasive::modes::Trk<Self>) {
+                #[verifier(returns(proof))]
+                #[proof]
+                pub fn split(#[proof] self, i: nat) -> (crate::pervasive::modes::Trk<Self>, crate::pervasive::modes::Trk<Self>) {
                     ::builtin::requires(i <= self.view().count);
                     ::builtin::ensures(|s: (crate::pervasive::modes::Trk<Self>, crate::pervasive::modes::Trk<Self>)| {
                         let (crate::pervasive::modes::Trk(x), crate::pervasive::modes::Trk(y)) = s;
@@ -1584,7 +1607,10 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                         && ::builtin::equal(x.view().key, self.view().key)
                         && ::builtin::equal(y.view().key, self.view().key)
                         && ::builtin::equal(x.view().count, i)
-                        && ::builtin::equal(y.view().count as int, self.view().count - i)
+                        && ::builtin::equal(
+                            ::builtin::spec_cast_integer::<nat, int>(y.view().count),
+                            self.view().count.spec_sub(i)
+                        )
                     });
                     ::std::unimplemented!();
                 }
@@ -1605,14 +1631,19 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 }
 
                 #[verifier(external_body)]
-                pub proof fn split(tracked self, i: nat) -> tracked (crate::pervasive::modes::Trk<Self>, crate::pervasive::modes::Trk<Self>) {
+                #[verifier(returns(proof))]
+                #[proof]
+                pub fn split(#[proof] self, i: nat) -> (crate::pervasive::modes::Trk<Self>, crate::pervasive::modes::Trk<Self>) {
                     ::builtin::requires(i <= self.view().count);
                     ::builtin::ensures(|s: (crate::pervasive::modes::Trk<Self>, crate::pervasive::modes::Trk<Self>)| {
                         let (crate::pervasive::modes::Trk(x), crate::pervasive::modes::Trk(y)) = s;
                         ::builtin::equal(x.view().instance, self.view().instance)
                         && ::builtin::equal(y.view().instance, self.view().instance)
                         && ::builtin::equal(x.view().count, i)
-                        && ::builtin::equal(y.view().count as int, self.view().count - i)
+                        && ::builtin::equal(
+                            ::builtin::spec_cast_integer::<nat, int>(y.view().count),
+                            self.view().count.spec_sub(i)
+                        )
                     });
                     ::std::unimplemented!();
                 }
@@ -1621,7 +1652,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
         ShardableType::PersistentCount => {
             quote! {
                 #[verifier(external_body)]
-                pub proof fn weaken(tracked self, i: nat) -> tracked Self {
+                #[verifier(returns(proof))]
+                #[proof]
+                pub fn weaken(#[proof] self, i: nat) -> Self {
                     ::builtin::requires(i <= self.view().count);
                     ::builtin::ensures(|s: Self|
                         ::builtin::equal(s.view().instance, self.view().instance)

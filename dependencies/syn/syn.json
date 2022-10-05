@@ -5417,6 +5417,11 @@
           {
             "proc_macro2": "TokenStream"
           }
+        ],
+        "FnSpec": [
+          {
+            "syn": "TypeFnSpec"
+          }
         ]
       },
       "exhaustive": false
@@ -5487,6 +5492,31 @@
         "variadic": {
           "option": {
             "syn": "Variadic"
+          }
+        },
+        "output": {
+          "syn": "ReturnType"
+        }
+      }
+    },
+    {
+      "ident": "TypeFnSpec",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "fn_spec_token": {
+          "token": "FnSpec"
+        },
+        "paren_token": {
+          "group": "Paren"
+        },
+        "inputs": {
+          "punctuated": {
+            "element": {
+              "syn": "BareFnArg"
+            },
+            "punct": "Comma"
           }
         },
         "output": {
@@ -6250,6 +6280,7 @@
     "FatArrow": "=>",
     "Final": "final",
     "Fn": "fn",
+    "FnSpec": "FnSpec",
     "For": "for",
     "Forall": "forall",
     "Ge": ">=",
