@@ -991,9 +991,10 @@ impl VisitMut for Visitor {
                 }
                 Expr::View(view) if !self.assign_to => {
                     let at_token = view.at_token;
-                    let span = at_token.span;
+                    let view_call = quote_spanned!(at_token.span => .view());
+                    let span = view.span();
                     let base = view.expr;
-                    *expr = Expr::Verbatim(quote_spanned!(span => (#base.view())));
+                    *expr = Expr::Verbatim(quote_spanned!(span => (#base#view_call)));
                 }
                 Expr::View(view) => {
                     assert!(self.assign_to);
