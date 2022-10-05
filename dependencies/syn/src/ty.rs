@@ -545,9 +545,7 @@ pub mod parsing {
                     Ok(Type::FnSpec(fn_spec))
                 }
             } else {
-                Err(begin.error(
-                    "Expected `FnSpec(...) -> ...`",
-                ))
+                Err(begin.error("Expected `FnSpec(...) -> ...`"))
             }
         } else if lookahead.peek(Ident)
             || input.peek(Token![super])
@@ -905,12 +903,23 @@ pub mod parsing {
             if input.peek(token::Paren) {
                 let content;
                 let _ = parenthesized!(content in input);
+
                 // if one of the trees is a comma, this is a tuple, not a pattern return:
-                Ok(!content
-                    .cursor()
-                    .token_stream()
-                    .into_iter()
-                    .any(|t| matches!(t, TokenTree::Punct(p) if p.as_char() == ',')))
+                let mut triangle_brace_depth = 0;
+                for t in content.cursor().token_stream().into_iter() {
+                    if let TokenTree::Punct(p) = t {
+                        let c = p.as_char();
+                        if c == ',' && triangle_brace_depth == 0 {
+                            return Ok(false);
+                        } else if c == '<' {
+                            triangle_brace_depth += 1;
+                        } else if c == '>' {
+                            triangle_brace_depth -= 1;
+                        }
+                    }
+                }
+
+                return Ok(true);
             } else {
                 Ok(false)
             }
