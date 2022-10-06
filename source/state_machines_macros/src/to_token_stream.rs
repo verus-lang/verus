@@ -57,7 +57,7 @@ pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> parse::Result<
 
     let final_code = quote! {
         #[allow(unused_parens)]
-        mod #sm_name {
+        pub mod #sm_name {
             use super::*;
 
             #root_stream
