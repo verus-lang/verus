@@ -671,6 +671,7 @@ pub fn func_def_to_air(
 
             let mut state = crate::ast_to_sst::State::new();
             state.fun_ssts = fun_ssts;
+
             let mut ens_params = (*function.x.params).clone();
             let dest = if function.x.has_return() {
                 let ParamX { name, typ, .. } = &function.x.ret.x;
@@ -680,6 +681,7 @@ pub fn func_def_to_air(
             } else {
                 None
             };
+
             let ens_params = Arc::new(ens_params);
             let req_pars = params_to_pars(&function.x.params, true);
             let ens_pars = params_to_pars(&ens_params, true);
@@ -700,11 +702,12 @@ pub fn func_def_to_air(
                     reqs.push(crate::ast_to_sst::expr_to_exp(ctx, &state.fun_ssts, &req_pars, e)?);
                 }
             }
-            let mut ens_stmts: Vec<Stm> = Vec::new();
+            let mut ens_recommend_stms: Vec<Stm> = Vec::new();
             let mut enss: Vec<Exp> = Vec::new();
             for e in req_ens_function.x.ensure.iter() {
                 if ctx.checking_recommends() {
-                    ens_stmts.extend(crate::ast_to_sst::check_pure_expr(ctx, &mut state, e)?);
+                    ens_recommend_stms
+                        .extend(crate::ast_to_sst::check_pure_expr(ctx, &mut state, e)?);
                 } else {
                     enss.push(crate::ast_to_sst::expr_to_exp(ctx, &state.fun_ssts, &ens_pars, e)?);
                 }
@@ -712,9 +715,7 @@ pub fn func_def_to_air(
             let enss = Arc::new(enss);
 
             // AST --> SST
-            state.ret_post = Some((dest.clone(), ens_stmts.clone(), enss.clone()));
-            let (mut stm, skip_ensures) =
-                crate::ast_to_sst::expr_to_one_stm_dest(&ctx, &mut state, &body, &dest)?;
+            let mut stm = crate::ast_to_sst::expr_to_one_stm_with_post(&ctx, &mut state, &body)?;
             if ctx.checking_recommends() && trait_typ_substs.len() == 0 {
                 if let Some(fun) = &function.x.decrease_by {
                     let decrease_by_fun = &ctx.func_map[fun];
@@ -726,14 +727,10 @@ pub fn func_def_to_air(
                     req_stms.extend(body_stms);
                 }
                 req_stms.push(stm);
-                if !skip_ensures {
-                    req_stms.extend(ens_stmts);
-                }
                 stm = crate::ast_to_sst::stms_to_one_stm(&body.span, req_stms);
             }
 
             let stm = state.finalize_stm(&ctx, &state.fun_ssts, &stm)?;
-            state.ret_post = None;
 
             let stm = if !ctx.checking_recommends() && ctx.expand_flag {
                 // split ensures expressions for error localization
@@ -774,14 +771,15 @@ pub fn func_def_to_air(
                 &function.x.attrs.hidden,
                 &reqs,
                 &enss,
+                &ens_recommend_stms,
                 &function.x.mask_spec,
                 function.x.mode,
                 &stm,
                 function.x.attrs.integer_ring,
                 function.x.attrs.bit_vector,
-                skip_ensures,
                 function.x.attrs.nonlinear,
                 function.x.attrs.spinoff_prover,
+                dest,
             )?;
 
             state.finalize();

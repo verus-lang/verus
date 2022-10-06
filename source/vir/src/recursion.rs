@@ -373,6 +373,7 @@ pub(crate) fn check_termination_exp(
         &Arc::new(vec![]),
         &Arc::new(vec![]),
         &Arc::new(vec![]),
+        &Arc::new(vec![]),
         &MaskSpec::NoSpec,
         function.x.mode,
         &stm_block,
@@ -380,7 +381,7 @@ pub(crate) fn check_termination_exp(
         false,
         false,
         false,
-        false,
+        None,
     )?;
 
     assert_eq!(commands.len(), 1);

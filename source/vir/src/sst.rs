@@ -110,6 +110,8 @@ pub enum StmX {
         requires: Exps,
         ensures: Exps,
     },
+    // Assert that the post condition holds with the given return value
+    AssertPostConditions(Error, Exp),
     Assume(Exp),
     Assign {
         lhs: Dest,
