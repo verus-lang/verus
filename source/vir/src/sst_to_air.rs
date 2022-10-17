@@ -1099,7 +1099,7 @@ fn loc_is_var(e: &Exp) -> Option<&UniqueIdent> {
     }
 }
 
-fn assume_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
+pub(crate) fn assume_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
     let x_var = SpannedTyped::new(&span, &exp.typ, ExpX::Var(x.clone()));
     let eqx = ExpX::Binary(BinaryOp::Eq(Mode::Spec), x_var, exp.clone());
     let eq = SpannedTyped::new(&span, &Arc::new(TypX::Bool), eqx);

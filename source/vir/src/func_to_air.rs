@@ -174,7 +174,19 @@ fn func_body_to_air(
                 &mut state,
                 decrease_by_fun.x.body.as_ref().expect("decreases_by has body"),
             )?;
-            let body_stm = state.finalize_stm(ctx, &state.fun_ssts, &body_stm)?;
+
+            let body_stm = state.finalize_stm(
+                ctx,
+                &state.fun_ssts,
+                &body_stm,
+                // note: these arguments are just for splitting, and (unless we support
+                // special splitting for decrease_by lemmas) they shouldn't matter.
+                // passing in an empty vec![] will cause splitting to just skip over this
+                &Arc::new(vec![]),
+                &Arc::new(vec![]),
+                None,
+            )?;
+
             decrease_by_stms.push(body_stm);
         } else {
             assert!(not_verifying_owning_module);
@@ -748,20 +760,14 @@ pub fn func_def_to_air(
                 stm = crate::ast_to_sst::stms_to_one_stm(&body.span, req_stms);
             }
 
-            let stm = state.finalize_stm(&ctx, &state.fun_ssts, &stm)?;
-
-            let stm = if !ctx.checking_recommends() && ctx.expand_flag {
-                // split ensures expressions for error localization
-                crate::split_expression::split_body(
-                    ctx,
-                    &state.fun_ssts,
-                    &stm,
-                    &req_ens_function.x.ensure,
-                    &ens_pars,
-                )?
-            } else {
-                stm
-            };
+            let stm = state.finalize_stm(
+                &ctx,
+                &state.fun_ssts,
+                &stm,
+                &req_ens_function.x.ensure,
+                &ens_pars,
+                dest.clone(),
+            )?;
 
             // Check termination
             //

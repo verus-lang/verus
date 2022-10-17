@@ -1,3 +1,4 @@
+use crate::ast::Exprs;
 use crate::ast::{
     ArithOp, AssertQueryMode, BinaryOp, CallTarget, ComputeMode, Constant, Expr, ExprX, Fun,
     Function, Ident, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr,
@@ -264,16 +265,20 @@ impl State {
         exp
     }
 
-    // Erase unused unique ids from Vars, perform inlining, and choose triggers
+    // Erase unused unique ids from Vars, perform inlining, choose triggers,
+    // and perform splitting if necessary
     pub(crate) fn finalize_stm(
         &self,
         ctx: &Ctx,
         fun_ssts: &SstMap,
         stm: &Stm,
+        ensures: &Exprs,
+        ens_pars: &Pars,
+        dest: Option<UniqueIdent>,
     ) -> Result<Stm, VirErr> {
         let stm = map_stm_exp_visitor(stm, &|exp| self.finalize_exp(ctx, fun_ssts, exp))?;
         if ctx.expand_flag {
-            crate::split_expression::all_split_exp(ctx, fun_ssts, &stm)
+            crate::split_expression::all_split_exp(ctx, fun_ssts, &stm, ensures, ens_pars, dest)
         } else {
             Ok(stm)
         }

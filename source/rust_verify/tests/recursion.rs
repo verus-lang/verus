@@ -974,11 +974,12 @@ test_verify_one_file! {
             decreases_when(i >= 0);
             decreases_by(check_arith_sum);
 
-            if i == 0 { 0 } else { i + arith_sum(i - 1) } // FAILS
+            if i == 0 { 0 } else { i + arith_sum(i - 1) }
         }
 
         #[verifier(decreases_by)]
         proof fn check_arith_sum(i: int) {
+            // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
