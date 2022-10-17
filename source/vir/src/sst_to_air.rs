@@ -1401,6 +1401,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 // Set `dest_id` variable to the returned expression.
 
                 let mut stmts = if let Some(dest_id) = state.post_condition_info.dest.clone() {
+                    let expr = expr.as_ref().expect("if dest is provided, expr must be provided");
                     stm_to_stmts(ctx, state, &assume_var(&stm.span, &dest_id, expr))?
                 } else {
                     // If there is no `dest_id`, then the returned expression

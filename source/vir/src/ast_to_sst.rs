@@ -620,7 +620,10 @@ pub(crate) fn expr_to_one_stm_with_post(
             // terminates with an expression to be returned (or an implicit
             // return value of 'unit').
 
-            stms.push(Spanned::new(expr.span.clone(), StmX::AssertPostConditions(base_error, exp)));
+            stms.push(Spanned::new(
+                expr.span.clone(),
+                StmX::AssertPostConditions(base_error, Some(exp)),
+            ));
         }
         None => {
             // Program execution never gets to this point, so we don't need to check
@@ -1552,7 +1555,7 @@ fn expr_to_stm_opt(
 
             stms.push(Spanned::new(
                 expr.span.clone(),
-                StmX::AssertPostConditions(base_error, ret_exp),
+                StmX::AssertPostConditions(base_error, Some(ret_exp)),
             ));
             stms.push(assume_false(&expr.span));
             Ok((stms, ReturnValue::Never))

@@ -208,7 +208,8 @@ where
             StmX::Assert(_span2, exp) => {
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
             }
-            StmX::AssertPostConditions(_span2, exp) => {
+            StmX::AssertPostConditions(_span2, None) => {}
+            StmX::AssertPostConditions(_span2, Some(exp)) => {
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
             }
             StmX::AssertBitVector { requires, ensures } => {
@@ -672,8 +673,11 @@ where
                 )
             }
             StmX::Assert(span2, exp) => Spanned::new(span, StmX::Assert(span2.clone(), fe(exp)?)),
-            StmX::AssertPostConditions(span2, exp) => {
-                Spanned::new(span, StmX::AssertPostConditions(span2.clone(), fe(exp)?))
+            StmX::AssertPostConditions(span2, None) => {
+                Spanned::new(span, StmX::AssertPostConditions(span2.clone(), None))
+            }
+            StmX::AssertPostConditions(span2, Some(exp)) => {
+                Spanned::new(span, StmX::AssertPostConditions(span2.clone(), Some(fe(exp)?)))
             }
             StmX::AssertBitVector { requires, ensures } => {
                 let requires = Arc::new(vec_map_result(requires, fe)?);

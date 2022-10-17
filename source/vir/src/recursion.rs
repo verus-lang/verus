@@ -355,9 +355,6 @@ pub(crate) fn check_termination_exp(
     let check = terminates(&ctxt, fun_ssts, &body)?;
     let (mut decls, mut stm_assigns) = mk_decreases_at_entry(&ctxt, &body.span, &decreases_exps);
     stm_assigns.extend(proof_body.clone());
-    let error = error("could not prove termination", &body.span);
-    let stm_assert = Spanned::new(body.span.clone(), StmX::Assert(Some(error), check));
-    stm_assigns.push(stm_assert);
     let stm_block = Spanned::new(body.span.clone(), StmX::Block(Arc::new(stm_assigns)));
 
     // TODO: If we decide to support debugging decreases failures, we should plumb _snap_map
@@ -372,7 +369,7 @@ pub(crate) fn check_termination_exp(
         &Arc::new(local_decls),
         &Arc::new(vec![]),
         &Arc::new(vec![]),
-        &Arc::new(vec![]),
+        &Arc::new(vec![check]),
         &Arc::new(vec![]),
         &MaskSpec::NoSpec,
         function.x.mode,

@@ -24,6 +24,7 @@ use air::ast_util::{
     bool_typ, ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies,
     str_apply, str_ident, str_typ, str_var, string_apply,
 };
+use air::errors::error_with_label;
 use air::errors::ErrorLabel;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -167,17 +168,32 @@ fn func_body_to_air(
     if let Some(fun) = &function.x.decrease_by {
         state.view_as_spec = false;
         if let Some(decrease_by_fun) = ctx.func_map.get(fun) {
-            let (body_stms, _exp) = crate::ast_to_sst::expr_to_stm_or_error(
+            let body_stm = crate::ast_to_sst::expr_to_one_stm_with_post(
                 &ctx,
                 &mut state,
                 decrease_by_fun.x.body.as_ref().expect("decreases_by has body"),
             )?;
-            let body_stms: Result<Vec<Stm>, VirErr> =
-                body_stms.iter().map(|s| state.finalize_stm(ctx, &state.fun_ssts, s)).collect();
-            decrease_by_stms.extend(body_stms?);
+            let body_stm = state.finalize_stm(ctx, &state.fun_ssts, &body_stm)?;
+            decrease_by_stms.push(body_stm);
         } else {
             assert!(not_verifying_owning_module);
         }
+    } else {
+        let base_error = error_with_label(
+            "could not prove termination".to_string(),
+            &body_exp.span,
+            "of this function body".to_string(),
+        );
+
+        // In this case, the user hasn't provided a proof body, so we just need to make
+        // our own trivial proof body. A trivial proof body is just a single
+        // AssertPostConditions statement.
+        // check_termination_exp will set the "ensures clause" to be the
+        // termination conditions.
+        decrease_by_stms.push(Spanned::new(
+            body_exp.span.clone(),
+            StmX::AssertPostConditions(base_error, None),
+        ));
     }
     state.finalize();
 
