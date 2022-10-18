@@ -49,7 +49,9 @@ pub type Message = Arc<MessageX>;
 
 pub trait Diagnostics {
     /// Display the corresponding message
-    fn report(&self, msg: &Message);
+    fn report(&self, msg: &Message) {
+        self.report_as(msg, msg.level)
+    }
 
     /// Override the msg's reporting level
     fn report_as(&self, msg: &Message, msg_as: MessageLevel);

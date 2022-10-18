@@ -71,10 +71,6 @@ impl Diagnostics for Reporter<'_> {
             Error => self.compiler_diagnostics.span_err(multispan, &msg.note),
         }
     }
-
-    fn report(&self, msg: &Message) {
-        self.report_as(msg, msg.level)
-    }
 }
 
 pub struct VerifierCallbacks {
