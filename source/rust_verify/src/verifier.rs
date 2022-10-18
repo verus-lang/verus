@@ -32,22 +32,20 @@ use vir::update_cell::UpdateCell;
 
 const RLIMIT_PER_SECOND: u32 = 3000000;
 
-pub struct Reporter {
-    //compiler_diagnostics: rustc_errors::Handler,
-    //compiler_diagnostics: rustc_interface::interface::Session,
-    compiler_diagnostics: rustc_session::session::Session,
+pub struct Reporter<'tcx> {
+    compiler_diagnostics: &'tcx rustc_errors::Handler,
 }
 
-impl Reporter {
-    pub fn new(compiler: &Compiler) -> Self {
-        Reporter { compiler_diagnostics: compiler.session().clone() }
+impl <'tcx> Reporter<'tcx> {
+    pub fn new(compiler: &'tcx Compiler) -> Self {
+        Reporter { compiler_diagnostics: compiler.session().diagnostic() }
     }
 }
 
 /// N.B.: The compiler performs deduplication on diagnostic messages, so reporting an error twice,
 /// or emitting the same note twice will be surpressed (even if separated in time by other
 /// errors/notes)
-impl Diagnostics for Reporter {
+impl Diagnostics for Reporter<'_> {
     fn report_as(&self, msg: &Message, level: MessageLevel) {
         let mut v = Vec::new();
         for sp in &msg.spans {
@@ -283,7 +281,7 @@ impl Verifier {
             let bnd_info = qid_map
                 .get(&cost.quant)
                 .expect(format!("Failed to find quantifier {}", cost.quant).as_str());
-            let msg = note_bare(note);
+            let mut msg = note_bare(note);
 
             // Summarize the triggers it used
             let triggers = &bnd_info.trigs;
@@ -311,12 +309,12 @@ impl Verifier {
         context: &(&air::ast::Span, &str),
         is_singular: bool,
     ) -> bool {
-        let reporter = Reporter::new(compiler);
         let report_long_running = || {
             let mut counter = 0;
             let report_fn: Box<dyn FnMut(std::time::Duration) -> ()> = Box::new(move |elapsed| {
                 let msg =
                     format!("{} has been running for {} seconds", context.1, elapsed.as_secs());
+                let reporter = Reporter::new(compiler);
                 if counter % 5 == 0 {
                     reporter.report(&note(msg, &context.0));
                 } else {
@@ -355,6 +353,7 @@ impl Verifier {
         let mut checks_remaining = self.args.multiple_errors;
         let mut only_check_earlier = false;
         let mut invalidity = false;
+        let reporter = Reporter::new(compiler);
         loop {
             match result {
                 ValidityResult::Valid => {
