@@ -5,7 +5,7 @@ use crate::unsupported;
 use crate::util::{error, from_raw_span, signalling};
 use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, ValidityResult};
-use air::messages::{Message, MessageLabel};
+use air::messages::{Diagnostics, Message, MessageLabel, MessageLevel, note, note_bare, message};
 use air::profiler::Profiler;
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
@@ -31,6 +31,53 @@ use vir::recursion::Node;
 use vir::update_cell::UpdateCell;
 
 const RLIMIT_PER_SECOND: u32 = 3000000;
+
+pub struct Reporter {
+    //compiler_diagnostics: rustc_errors::Handler,
+    //compiler_diagnostics: rustc_interface::interface::Session,
+    compiler_diagnostics: rustc_session::session::Session,
+}
+
+impl Reporter {
+    pub fn new(compiler: &Compiler) -> Self {
+        Reporter { compiler_diagnostics: compiler.session().clone() }
+    }
+}
+
+/// N.B.: The compiler performs deduplication on diagnostic messages, so reporting an error twice,
+/// or emitting the same note twice will be surpressed (even if separated in time by other
+/// errors/notes)
+impl Diagnostics for Reporter {
+    fn report_as(&self, msg: &Message, level: MessageLevel) {
+        let mut v = Vec::new();
+        for sp in &msg.spans {
+            let span: Span = from_raw_span(&sp.raw_span);
+            v.push(span);
+        }
+        while let Some(i) = v.iter().position(|a| v.iter().any(|b| a != b && a.contains(*b))) {
+            // Remove i in favor of the more specific spans contained by i
+            v.remove(i);
+        }
+
+        let mut multispan = MultiSpan::from_spans(v);
+
+        for MessageLabel { note, span: sp } in &msg.labels {
+            let span: Span = from_raw_span(&sp.raw_span);
+            multispan.push_span_label(span, note.clone());
+        }
+
+        use MessageLevel::*;
+        match level {
+            Note => self.compiler_diagnostics.span_note_without_error(multispan, &msg.note),
+            Warning => self.compiler_diagnostics.span_warn(multispan, &msg.note),
+            Error => self.compiler_diagnostics.span_err(multispan, &msg.note),
+        }
+    }
+
+    fn report(&self, msg: &Message) {
+        self.report_as(msg, msg.level)
+    }
+}
 
 pub struct VerifierCallbacks {
     pub verifier: Arc<Mutex<Verifier>>,
@@ -101,63 +148,16 @@ impl ErrorSpan {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ErrorAs {
-    Error,
-    Warning,
-    Note,
-}
 
-trait Diagnostics {
-    fn diagnostic(&self) -> &rustc_errors::Handler;
-
-    fn report_error(&self, error: &Message, error_as: ErrorAs);
-}
-
-/// N.B.: The compiler performs deduplication on diagnostic messages, so reporting an error twice,
-/// or emitting the same note twice will be surpressed (even if separated in time by other
-/// errors/notes)
-impl Diagnostics for Compiler {
-    fn diagnostic(&self) -> &rustc_errors::Handler {
-        self.session().diagnostic()
-    }
-
-    fn report_error(&self, error: &Message, error_as: ErrorAs) {
-        let mut v = Vec::new();
-        for sp in &error.spans {
-            let span: Span = from_raw_span(&sp.raw_span);
-            v.push(span);
-        }
-        while let Some(i) = v.iter().position(|a| v.iter().any(|b| a != b && a.contains(*b))) {
-            // Remove i in favor of the more specific spans contained by i
-            v.remove(i);
-        }
-
-        let mut multispan = MultiSpan::from_spans(v);
-
-        for MessageLabel { note, span: sp } in &error.labels {
-            let span: Span = from_raw_span(&sp.raw_span);
-            multispan.push_span_label(span, note.clone());
-        }
-
-        match error_as {
-            ErrorAs::Note => self.diagnostic().span_note_without_error(multispan, &error.note),
-            ErrorAs::Warning => self.diagnostic().span_warn(multispan, &error.note),
-            ErrorAs::Error => self.diagnostic().span_err(multispan, &error.note),
-        }
-    }
-}
-
-fn report_chosen_triggers(compiler: &Compiler, chosen: &vir::context::ChosenTriggers) {
-    let span: Span = from_raw_span(&chosen.span.raw_span);
-    let msg = "automatically chose triggers for this expression:";
-    compiler.diagnostic().span_note_without_error(span, msg);
+fn report_chosen_triggers(diagnostics: &impl Diagnostics, chosen: &vir::context::ChosenTriggers) {
+    let msg = note("automatically chose triggers for this expression:", &chosen.span);
+    diagnostics.report(&msg);
+    
     for (n, trigger) in chosen.triggers.iter().enumerate() {
-        let spans = MultiSpan::from_spans(
-            trigger.iter().map(|(s, _)| from_raw_span(&s.raw_span)).collect(),
-        );
-        let msg = format!("  trigger {} of {}:", n + 1, chosen.triggers.len());
-        compiler.diagnostic().span_note_without_error(spans, &msg);
+        let note = format!("  trigger {} of {}:", n + 1, chosen.triggers.len());
+        let msg = note_bare(note);
+        let msg = trigger.iter().fold(msg, |m, (s, _)| m.primary_span(s));
+        diagnostics.report(&msg);
     }
 }
 
@@ -255,7 +255,7 @@ impl Verifier {
 
     fn print_profile_stats(
         &self,
-        compiler: &Compiler,
+        diagnostics: &impl Diagnostics,
         profiler: Profiler,
         qid_map: &HashMap<String, vir::sst::BndInfo>,
     ) {
@@ -266,18 +266,12 @@ impl Verifier {
             "Observed {} total instantiations of user-level quantifiers",
             total.to_formatted_string(&Locale::en)
         );
-        compiler.diagnostic().note_without_error(&msg);
+        diagnostics.report(&note_bare(&msg));
 
         for (index, cost) in profiler.iter().take(max).enumerate() {
             // Report the quantifier
-            let bnd_info = qid_map
-                .get(&cost.quant)
-                .expect(format!("Failed to find quantifier {}", cost.quant).as_str());
-            let span = from_raw_span(&bnd_info.span.raw_span);
-            let mut spans = Vec::new();
-            //spans.push(span);
             let count = cost.instantiations;
-            let msg = format!(
+            let note = format!(
                 "Cost * Instantiations: {} (Instantiated {} times - {}% of the total, cost {}) top {} of {} user-level quantifiers.\n",
                 count * cost.cost,
                 count.to_formatted_string(&Locale::en),
@@ -286,15 +280,19 @@ impl Verifier {
                 index + 1,
                 num_quants
             );
+            let bnd_info = qid_map
+                .get(&cost.quant)
+                .expect(format!("Failed to find quantifier {}", cost.quant).as_str());
+            let msg = note_bare(note);
 
             // Summarize the triggers it used
             let triggers = &bnd_info.trigs;
             for trigger in triggers.iter() {
-                spans.extend(trigger.iter().map(|e| from_raw_span(&e.span.raw_span)));
+                msg = trigger.iter().fold(msg, |m, e| m.primary_span(&e.span));
             }
-            let mut multi = MultiSpan::from_spans(spans);
-            multi.push_span_label(span, "Triggers selected for this quantifier".to_string());
-            compiler.diagnostic().span_note_without_error(multi, &msg);
+            msg = msg.secondary_label(&bnd_info.span, "Triggers selected for this quantifier".to_string());
+
+            diagnostics.report(&msg);
         }
     }
 
@@ -304,7 +302,7 @@ impl Verifier {
     fn check_result_validity(
         &mut self,
         compiler: &Compiler,
-        error_as: ErrorAs,
+        level: MessageLevel,
         air_context: &mut air::context::Context,
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<std::string::String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
@@ -313,16 +311,16 @@ impl Verifier {
         context: &(&air::ast::Span, &str),
         is_singular: bool,
     ) -> bool {
+        let reporter = Reporter::new(compiler);
         let report_long_running = || {
             let mut counter = 0;
             let report_fn: Box<dyn FnMut(std::time::Duration) -> ()> = Box::new(move |elapsed| {
                 let msg =
                     format!("{} has been running for {} seconds", context.1, elapsed.as_secs());
                 if counter % 5 == 0 {
-                    let span = from_raw_span(&context.0.raw_span);
-                    compiler.diagnostic().span_note_without_error(span, &msg);
+                    reporter.report(&note(msg, &context.0));
                 } else {
-                    compiler.diagnostic().note_without_error(&msg);
+                    reporter.report(&note_bare(msg));
                 }
                 counter += 1;
             });
@@ -360,7 +358,7 @@ impl Verifier {
         loop {
             match result {
                 ValidityResult::Valid => {
-                    if (is_check_valid && is_first_check && error_as == ErrorAs::Error)
+                    if (is_check_valid && is_first_check && level == MessageLevel::Error)
                         || is_singular
                     {
                         self.count_verified += 1;
@@ -371,24 +369,15 @@ impl Verifier {
                     panic!("internal error: generated ill-typed AIR code: {}", err);
                 }
                 ValidityResult::Canceled => {
-                    if is_first_check && error_as == ErrorAs::Error {
+                    if is_first_check && level == MessageLevel::Error {
                         self.count_errors += 1;
                         invalidity = true;
                     }
-                    let mut v = Vec::new();
-                    v.push(from_raw_span(&context.0.raw_span));
-                    let multispan = MultiSpan::from_spans(v);
                     let mut msg = format!("{}: Resource limit (rlimit) exceeded", context.1);
                     if !self.args.profile && !self.args.profile_all {
                         msg.push_str("; consider rerunning with --profile for more details");
                     }
-                    match error_as {
-                        ErrorAs::Error => compiler.diagnostic().span_err(multispan, &msg),
-                        ErrorAs::Warning => compiler.diagnostic().span_warn(multispan, &msg),
-                        ErrorAs::Note => {
-                            compiler.diagnostic().span_note_without_error(multispan, &msg)
-                        }
-                    }
+                    reporter.report(&message(level, msg, &context.0));
 
                     self.errors.push(vec![ErrorSpan::new_from_air_span(
                         compiler.session().source_map(),
@@ -398,7 +387,7 @@ impl Verifier {
 
                     if self.args.profile {
                         let profiler = Profiler::new();
-                        self.print_profile_stats(compiler, profiler, qid_map);
+                        self.print_profile_stats(&reporter, profiler, qid_map);
                     }
                     break;
                 }
@@ -406,20 +395,20 @@ impl Verifier {
                     if air_model.is_none() {
                         // singular_invalid case
                         self.count_errors += 1;
-                        compiler.report_error(&error, error_as);
+                        reporter.report_as(&error, level);
                         break;
                     }
                     let air_model = air_model.unwrap();
 
-                    if is_first_check && error_as == ErrorAs::Error {
+                    if is_first_check && level == MessageLevel::Error {
                         self.count_errors += 1;
                         invalidity = true;
                     }
                     if !self.expand_flag || vir::split_expression::is_split_error(&error) {
-                        compiler.report_error(&error, error_as);
+                        reporter.report_as(&error, level);
                     }
 
-                    if error_as == ErrorAs::Error {
+                    if level == MessageLevel::Error {
                         let mut errors = vec![ErrorSpan::new_from_air_span(
                             compiler.session().source_map(),
                             &error.note,
@@ -508,13 +497,12 @@ impl Verifier {
                 }
             }
         }
-        if error_as == ErrorAs::Error && checks_remaining == 0 {
-            let multispan = MultiSpan::from_spans(vec![from_raw_span(&context.0.raw_span)]);
+        if level == MessageLevel::Error && checks_remaining == 0 {
             let msg = format!(
                 "{}: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function",
                 context.1
             );
-            compiler.diagnostic().span_note_without_error(multispan, &msg);
+            reporter.report(&note(msg, context.0));
         }
 
         if is_check_valid && !is_singular {
@@ -546,7 +534,7 @@ impl Verifier {
     fn run_commands_queries(
         &mut self,
         compiler: &Compiler,
-        error_as: ErrorAs,
+        level: MessageLevel,
         air_context: &mut air::context::Context,
         commands_with_context: CommandsWithContext,
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<String>>>,
@@ -578,7 +566,7 @@ impl Verifier {
         for command in commands.iter() {
             let result_invalidity = self.check_result_validity(
                 compiler,
-                error_as,
+                level,
                 air_context,
                 assign_map,
                 snap_map,
@@ -881,7 +869,7 @@ impl Verifier {
                 }
                 let invalidity = self.run_commands_queries(
                     compiler,
-                    ErrorAs::Error,
+                    MessageLevel::Error,
                     &mut air_context,
                     Arc::new(CommandsWithContextX {
                         span: function.span.clone(),
@@ -912,12 +900,12 @@ impl Verifier {
                     )?;
                     ctx.fun = None;
                     fun_ssts = new_fun_ssts;
-                    let error_as = if invalidity { ErrorAs::Note } else { ErrorAs::Warning };
+                    let level = if invalidity { MessageLevel::Note } else { MessageLevel::Warning };
                     let s = "Function-Decl-Check-Recommends ";
                     for command in commands.iter().map(|x| &*x) {
                         self.run_commands_queries(
                             compiler,
-                            error_as,
+                            level,
                             &mut air_context,
                             command.clone(),
                             &HashMap::new(),
@@ -976,8 +964,8 @@ impl Verifier {
                     recommends_rerun,
                 )?;
                 fun_ssts = new_fun_ssts;
-                let error_as =
-                    if recommends_rerun || expands_rerun { ErrorAs::Note } else { ErrorAs::Error };
+                let level =
+                    if recommends_rerun || expands_rerun { MessageLevel::Note } else { MessageLevel::Error };
                 let s =
                     if recommends_rerun { "Function-Check-Recommends " } else { "Function-Def " };
 
@@ -1031,7 +1019,7 @@ impl Verifier {
                     let desc_prefix = recommends_rerun.then(|| "recommends check: ");
                     let command_invalidity = self.run_commands_queries(
                         compiler,
-                        error_as,
+                        level,
                         query_air_context,
                         command.clone(),
                         &HashMap::new(),
@@ -1075,11 +1063,12 @@ impl Verifier {
         module: &vir::ast::Path,
         mut global_ctx: vir::context::GlobalCtx,
     ) -> Result<vir::context::GlobalCtx, VirErr> {
+        let reporter = Reporter::new(compiler);
         let module_name = module_name(module);
         if module.segments.len() == 0 {
-            compiler.diagnostic().note_without_error("verifying root module");
+            reporter.report(&note_bare("verifying root module"));
         } else {
-            compiler.diagnostic().note_without_error(&format!("verifying module {}", &module_name));
+            reporter.report(&note_bare(&format!("verifying module {}", &module_name)));
         }
 
         let (pruned_krate, mono_abstract_datatypes, lambda_types) =
@@ -1112,6 +1101,7 @@ impl Verifier {
 
     // Verify one or more modules in a crate
     fn verify_crate_inner(&mut self, compiler: &Compiler) -> Result<(), VirErr> {
+        let reporter = Reporter::new(compiler);
         let krate = self.vir_crate.clone().expect("vir_crate should be initialized");
         let air_no_span = self.air_no_span.clone().expect("air_no_span should be initialized");
         let inferred_modes =
@@ -1215,7 +1205,7 @@ impl Verifier {
 
         if self.args.profile_all {
             let profiler = Profiler::new();
-            self.print_profile_stats(compiler, profiler, &global_ctx.qid_map.borrow());
+            self.print_profile_stats(&reporter, profiler, &global_ctx.qid_map.borrow());
         }
         // Log/display triggers
         if self.args.log_all || self.args.log_triggers {
@@ -1230,20 +1220,19 @@ impl Verifier {
         for chosen in chosen_triggers {
             match (self.args.show_triggers, verified_modules.contains(&chosen.module)) {
                 (ShowTriggers::Selective, true) if chosen.low_confidence => {
-                    report_chosen_triggers(compiler, &chosen);
+                    report_chosen_triggers(&reporter, &chosen);
                     low_confidence_triggers = Some(chosen.span);
                 }
                 (ShowTriggers::Module, true) => {
-                    report_chosen_triggers(compiler, &chosen);
+                    report_chosen_triggers(&reporter, &chosen);
                 }
                 (ShowTriggers::Verbose, _) => {
-                    report_chosen_triggers(compiler, &chosen);
+                    report_chosen_triggers(&reporter, &chosen);
                 }
                 _ => {}
             }
         }
         if let Some(span) = low_confidence_triggers {
-            let span = from_raw_span(&span.raw_span);
             let msg = "Verus printed one or more automatically chosen quantifier triggers\n\
                 because it had low confidence in the chosen triggers.\n\
                 To suppress these messages, do one of the following:\n  \
@@ -1258,7 +1247,7 @@ impl Verifier {
                 the theorem prover instantiates a quantifier whenever some expression matches the\n\
                 pattern specified by one of the quantifier's triggers.)\
                 ";
-            compiler.diagnostic().span_note_without_error(span, &msg);
+            reporter.report(&note(msg, &span));
         }
 
         Ok(())
@@ -1345,9 +1334,9 @@ impl Verifier {
         for diag in check_crate_diags {
             match diag {
                 vir::ast::VirErrAs::Warning(err) => {
-                    diagnostics.report_error(&err, ErrorAs::Warning)
+                    diagnostics.report_as(&err, MessageLevel::Warning)
                 }
-                vir::ast::VirErrAs::Note(err) => diagnostics.report_error(&err, ErrorAs::Note),
+                vir::ast::VirErrAs::Note(err) => diagnostics.report_as(&err, MessageLevel::Note),
             }
         }
         check_crate_result?;
@@ -1461,8 +1450,9 @@ impl rustc_driver::Callbacks for VerifierCallbacks {
         let _result = queries.global_ctxt().expect("global_ctxt").peek_mut().enter(|tcx| {
             {
                 let mut verifier = self.verifier.lock().expect("verifier mutex");
-                if let Err(err) = verifier.construct_vir_crate(tcx, compiler) {
-                    compiler.report_error(&err, ErrorAs::Error);
+                let reporter = Reporter::new(compiler);
+                if let Err(err) = verifier.construct_vir_crate(tcx, &reporter) {
+                    reporter.report_as(&err, MessageLevel::Error);
                     verifier.encountered_vir_error = true;
                     return;
                 }
@@ -1484,7 +1474,8 @@ impl rustc_driver::Callbacks for VerifierCallbacks {
                 match verifier.verify_crate(compiler) {
                     Ok(_) => {}
                     Err(err) => {
-                        compiler.report_error(&err, ErrorAs::Error);
+                        let reporter = Reporter::new(compiler);
+                        reporter.report_as(&err, MessageLevel::Error);
                         verifier.encountered_vir_error = true;
                     }
                 }

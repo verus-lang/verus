@@ -8,7 +8,7 @@ pub struct MessageLabel {
 }
 pub type MessageLabels = Arc<Vec<MessageLabel>>;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MessageLevel {
     Error,
     Warning,
@@ -47,7 +47,7 @@ pub struct MessageX {
 pub type Message = Arc<MessageX>;
 
 
-trait Diagnostics {
+pub trait Diagnostics {
     /// Display the corresponding message
     fn report(&self, msg: &Message);
 
