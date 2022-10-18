@@ -943,7 +943,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             let apply_range = |lower: BigInt, upper: BigInt| {
                                 if i < &lower || i > &upper {
                                     // TODO: Use Diagnostics instead of println
-                                    println!("WARNING: Clipped an integer that was out of range");
+                                    println!("WARNING: Computation clipped an integer that was out of range");
                                     ok.clone()
                                 } else {
                                     Ok(e.clone())
