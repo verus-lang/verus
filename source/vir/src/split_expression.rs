@@ -10,7 +10,7 @@ use crate::func_to_air::{SstInfo, SstMap};
 use crate::sst::{BndX, Exp, ExpX, Exps, Pars, Stm, StmX, UniqueIdent};
 use crate::sst_visitor::map_shallow_stm;
 use air::ast::Span;
-use air::errors::Error;
+use air::messages::Message;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -196,10 +196,10 @@ pub type TracedExps = Arc<Vec<TracedExp>>;
 #[derive(Debug)]
 pub struct TracedExpX {
     pub e: Exp,                    //  Exp to be discharged to Z3
-    pub trace: air::errors::Error, //  when inlining function, record call stack into `trace`
+    pub trace: air::messages::Message, //  when inlining function, record call stack into `trace`
 }
 impl TracedExpX {
-    pub fn new(e: Exp, trace: air::errors::Error) -> TracedExp {
+    pub fn new(e: Exp, trace: air::messages::Message) -> TracedExp {
         Arc::new(TracedExpX { e, trace })
     }
 }
@@ -462,9 +462,9 @@ fn register_split_assertions(traced_exprs: TracedExps) -> Vec<Stm> {
 
 pub(crate) fn need_split_expression(ctx: &Ctx, span: &Span) -> bool {
     for err in &*ctx.debug_expand_targets {
-        if err.msg == crate::def::POSTCONDITION_FAILURE.to_string() {
+        if err.note == crate::def::POSTCONDITION_FAILURE.to_string() {
             for label in &err.labels {
-                if label.msg == crate::def::THIS_POST_FAILED.to_string() {
+                if label.note == crate::def::THIS_POST_FAILED.to_string() {
                     if label.span.as_string == span.as_string {
                         return true;
                     }
@@ -483,12 +483,12 @@ pub(crate) fn need_split_expression(ctx: &Ctx, span: &Span) -> bool {
 }
 
 // check if this error is generated from splitting
-pub fn is_split_error(error: &Error) -> bool {
-    if error.msg == crate::def::SPLIT_ASSERT_FAILURE {
+pub fn is_split_error(error: &Message) -> bool {
+    if error.note == crate::def::SPLIT_ASSERT_FAILURE {
         true
-    } else if error.msg == crate::def::SPLIT_PRE_FAILURE {
+    } else if error.note == crate::def::SPLIT_PRE_FAILURE {
         true
-    } else if error.msg == crate::def::SPLIT_POST_FAILURE {
+    } else if error.note == crate::def::SPLIT_POST_FAILURE {
         true
     } else {
         false
@@ -502,7 +502,7 @@ fn split_call(
     name: &Fun,
     typs: &Typs,
     args: &Exps,
-    error: &Error,
+    error: &Message,
 ) -> Result<Vec<Stm>, VirErr> {
     let fun = get_function(ctx, span, name)?;
     let mut stms: Vec<Stm> = Vec::new();
@@ -541,7 +541,7 @@ fn visit_split_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Stm, VirEr
     match &stm.x {
         StmX::Assert(_err, e1) => {
             if need_split_expression(ctx, &stm.span) {
-                let error = air::errors::error(crate::def::SPLIT_ASSERT_FAILURE, &stm.span);
+                let error = air::messages::error(crate::def::SPLIT_ASSERT_FAILURE, &stm.span);
                 let split_exprs = split_expr(
                     ctx,
                     &state, // use the state after `body` translation to get the fuel info
@@ -615,7 +615,7 @@ pub(crate) fn split_body(
     for e in ensures.iter() {
         if need_split_expression(ctx, &e.span) {
             let ens_exp = crate::ast_to_sst::expr_to_exp(ctx, &state.fun_ssts, &ens_pars, e)?;
-            let error = air::errors::error(crate::def::SPLIT_POST_FAILURE, &e.span);
+            let error = air::messages::error(crate::def::SPLIT_POST_FAILURE, &e.span);
             let split_exprs = split_expr(
                 ctx,
                 &state, // use the state after `body` translation to get the fuel info

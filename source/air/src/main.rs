@@ -1,6 +1,6 @@
 use air::ast::CommandX;
 use air::context::{Context, ValidityResult};
-use air::errors::ErrorLabel;
+use air::messages::MessageLabel;
 use air::profiler::Profiler;
 use getopts::Options;
 use sise::Node;
@@ -139,9 +139,9 @@ pub fn main() {
             }
             ValidityResult::Invalid(_m, err) => {
                 count_errors += 1;
-                println!("Error at {}", err.msg);
-                for ErrorLabel { msg, .. } in &err.labels {
-                    println!("Additional error detail at {}", msg);
+                println!("Error at {}", err.note);
+                for MessageLabel { note, .. } in &err.labels {
+                    println!("Additional error detail at {}", note);
                 }
             }
             ValidityResult::Canceled => {

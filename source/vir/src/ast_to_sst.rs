@@ -16,7 +16,7 @@ use crate::sst_util::{free_vars_exp, free_vars_stm};
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{Binder, BinderX, Binders, Span};
-use air::errors::error_with_label;
+use air::messages::error_with_label;
 use air::scope_map::ScopeMap;
 use num_bigint::BigInt;
 use num_traits::identities::Zero;
@@ -668,7 +668,7 @@ fn stm_call(
     let fun = get_function(ctx, span, &name)?;
     let mut stms: Vec<Stm> = Vec::new();
     if ctx.expand_flag && crate::split_expression::need_split_expression(ctx, span) {
-        let error = air::errors::error(crate::def::SPLIT_PRE_FAILURE.to_string(), span);
+        let error = air::messages::error(crate::def::SPLIT_PRE_FAILURE.to_string(), span);
         let call = StmX::Call {
             fun: name.clone(),
             mode: fun.x.mode,
@@ -966,7 +966,7 @@ fn expr_to_stm_opt(
                 let unary = UnaryOpr::HasType(expr.typ.clone());
                 let has_type = ExpX::UnaryOpr(unary, exp.clone());
                 let has_type = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), has_type);
-                let error = air::errors::error(
+                let error = air::messages::error(
                     "recommendation not met: value may be out of range of the target type (use `#[verifier(truncate)]` on the cast to silence this warning)",
                     &expr.span,
                 );
@@ -1060,7 +1060,7 @@ fn expr_to_stm_opt(
                                         (ne, "possible division by zero")
                                     }
                                 };
-                                let error = air::errors::error(msg, &expr.span);
+                                let error = air::messages::error(msg, &expr.span);
                                 let assert = StmX::Assert(Some(error), assert_exp);
                                 let assert = Spanned::new(expr.span.clone(), assert);
                                 stms1.push(assert);
@@ -1307,7 +1307,7 @@ fn expr_to_stm_opt(
                             let assert = Spanned::new(
                                 r.span.clone(),
                                 StmX::Assert(
-                                    Some(air::errors::error(
+                                    Some(air::messages::error(
                                         "requires not satisfied".to_string(),
                                         &r.span.clone(),
                                     )),
@@ -1379,7 +1379,7 @@ fn expr_to_stm_opt(
                         let assert = Spanned::new(
                             r.span.clone(),
                             StmX::Assert(
-                                Some(air::errors::error(
+                                Some(air::messages::error(
                                     "requires not satisfied".to_string(),
                                     &r.span.clone(),
                                 )),

@@ -5,7 +5,7 @@ use crate::unsupported;
 use crate::util::{error, from_raw_span, signalling};
 use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, ValidityResult};
-use air::errors::{Error, ErrorLabel};
+use air::messages::{Message, MessageLabel};
 use air::profiler::Profiler;
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
@@ -61,7 +61,7 @@ pub struct Verifier {
 
     // proof debugging purposes
     expand_flag: bool,
-    pub expand_targets: Vec<air::errors::Error>,
+    pub expand_targets: Vec<air::messages::Message>,
     pub expand_errors: Vec<Vec<ErrorSpan>>,
 }
 
@@ -111,7 +111,7 @@ enum ErrorAs {
 trait Diagnostics {
     fn diagnostic(&self) -> &rustc_errors::Handler;
 
-    fn report_error(&self, error: &Error, error_as: ErrorAs);
+    fn report_error(&self, error: &Message, error_as: ErrorAs);
 }
 
 /// N.B.: The compiler performs deduplication on diagnostic messages, so reporting an error twice,
@@ -122,7 +122,7 @@ impl Diagnostics for Compiler {
         self.session().diagnostic()
     }
 
-    fn report_error(&self, error: &Error, error_as: ErrorAs) {
+    fn report_error(&self, error: &Message, error_as: ErrorAs) {
         let mut v = Vec::new();
         for sp in &error.spans {
             let span: Span = from_raw_span(&sp.raw_span);
@@ -135,15 +135,15 @@ impl Diagnostics for Compiler {
 
         let mut multispan = MultiSpan::from_spans(v);
 
-        for ErrorLabel { msg, span: sp } in &error.labels {
+        for MessageLabel { note, span: sp } in &error.labels {
             let span: Span = from_raw_span(&sp.raw_span);
-            multispan.push_span_label(span, msg.clone());
+            multispan.push_span_label(span, note.clone());
         }
 
         match error_as {
-            ErrorAs::Note => self.diagnostic().span_note_without_error(multispan, &error.msg),
-            ErrorAs::Warning => self.diagnostic().span_warn(multispan, &error.msg),
-            ErrorAs::Error => self.diagnostic().span_err(multispan, &error.msg),
+            ErrorAs::Note => self.diagnostic().span_note_without_error(multispan, &error.note),
+            ErrorAs::Warning => self.diagnostic().span_warn(multispan, &error.note),
+            ErrorAs::Error => self.diagnostic().span_err(multispan, &error.note),
         }
     }
 }
@@ -422,13 +422,13 @@ impl Verifier {
                     if error_as == ErrorAs::Error {
                         let mut errors = vec![ErrorSpan::new_from_air_span(
                             compiler.session().source_map(),
-                            &error.msg,
+                            &error.note,
                             &error.spans[0],
                         )];
-                        for ErrorLabel { msg, span } in &error.labels {
+                        for MessageLabel { note, span } in &error.labels {
                             errors.push(ErrorSpan::new_from_air_span(
                                 compiler.session().source_map(),
-                                msg,
+                                note,
                                 span,
                             ));
                         }
@@ -456,7 +456,7 @@ impl Verifier {
                             for span in &error.spans {
                                 let error = ErrorSpan::new_from_air_span(
                                     compiler.session().source_map(),
-                                    &error.msg,
+                                    &error.note,
                                     span,
                                 );
                                 if !errors
@@ -470,7 +470,7 @@ impl Verifier {
                             for label in &error.labels {
                                 let error = ErrorSpan::new_from_air_span(
                                     compiler.session().source_map(),
-                                    &error.msg,
+                                    &error.note,
                                     &label.span,
                                 );
                                 if !errors

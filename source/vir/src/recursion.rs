@@ -19,7 +19,7 @@ use crate::sst_visitor::{
 use crate::util::vec_map_result;
 use air::ast::{Binder, Commands, Span};
 use air::ast_util::{ident_binder, str_ident, str_typ};
-use air::errors::error;
+use air::messages::error;
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;

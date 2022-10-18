@@ -24,7 +24,7 @@ use air::ast_util::{
     bool_typ, ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies,
     str_apply, str_ident, str_typ, str_var, string_apply,
 };
-use air::errors::ErrorLabel;
+use air::messages::MessageLabel;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -308,7 +308,7 @@ pub fn req_ens_to_air(
             let loc_expr = match msg {
                 None => expr,
                 Some(msg) => {
-                    let l = ErrorLabel { span: e.span.clone(), msg: msg.clone() };
+                    let l = MessageLabel { span: e.span.clone(), note: msg.clone() };
                     let ls = Arc::new(vec![l]);
                     Arc::new(ExprX::LabeledAxiom(ls, expr))
                 }

@@ -713,7 +713,7 @@ fn check_functions_match(
     f2: &Function,
 ) -> Result<(), VirErr> {
     if f1.x.typ_bounds.len() != f2.x.typ_bounds.len() {
-        return Err(air::errors::error(
+        return Err(air::messages::error(
             format!("{msg} function should have the same type bounds"),
             &f1.span,
         )
@@ -721,7 +721,7 @@ fn check_functions_match(
     }
     for ((px, pb), (fx, fb)) in f1.x.typ_bounds.iter().zip(f2.x.typ_bounds.iter()) {
         if px != fx || !crate::ast_util::generic_bounds_equal(&pb, &fb) {
-            return Err(air::errors::error(
+            return Err(air::messages::error(
                 format!("{msg} function should have the same type bounds"),
                 &f1.span,
             )
@@ -729,7 +729,7 @@ fn check_functions_match(
         }
     }
     if f1.x.params.len() != f2.x.params.len() {
-        return Err(air::errors::error(
+        return Err(air::messages::error(
             format!("{msg} function should have the same number of parameters"),
             &f1.span,
         )
@@ -737,7 +737,7 @@ fn check_functions_match(
     }
     for (pp, fp) in f1.x.params.iter().zip(f2.x.params.iter()) {
         if !crate::ast_util::params_equal_opt(&pp, &fp, check_names, check_modes) {
-            return Err(air::errors::error(
+            return Err(air::messages::error(
                 format!("{msg} function should have the same parameter types"),
                 &pp.span,
             )
@@ -746,7 +746,7 @@ fn check_functions_match(
     }
     if check_return {
         if !crate::ast_util::params_equal_opt(&f1.x.ret, &f2.x.ret, check_names, check_modes) {
-            return Err(air::errors::error(
+            return Err(air::messages::error(
                 format!("{msg} function should have the same return types"),
                 &f1.x.ret.span,
             )
@@ -760,7 +760,7 @@ pub fn check_crate(krate: &Krate, diags: &mut Vec<VirErrAs>) -> Result<(), VirEr
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     for function in krate.functions.iter() {
         if funs.contains_key(&function.x.name) {
-            return Err(air::errors::error(
+            return Err(air::messages::error(
                 "not supported: multiple definitions of same function",
                 &function.span,
             )
@@ -787,14 +787,14 @@ pub fn check_crate(krate: &Krate, diags: &mut Vec<VirErrAs>) -> Result<(), VirEr
                 );
             };
             if !proof_function.x.attrs.is_decrease_by {
-                return Err(air::errors::error(
+                return Err(air::messages::error(
                     "proof function must be marked #[verifier(decreases_by)] or #[verifier(recommends_by)] to be used as decreases_by/recommends_by",
                     &proof_function.span,
                 )
                 .secondary_span(&function.span));
             }
             if let Some(prev) = decreases_by_proof_to_spec.get(proof_fun) {
-                return Err(air::errors::error(
+                return Err(air::messages::error(
                     "same proof function used for two different decreases_by/recommends_by",
                     &proof_function.span,
                 )
@@ -802,7 +802,7 @@ pub fn check_crate(krate: &Krate, diags: &mut Vec<VirErrAs>) -> Result<(), VirEr
                 .secondary_span(&function.span));
             }
             if proof_fun.path.pop_segment() != function.x.name.path.pop_segment() {
-                return Err(air::errors::error(
+                return Err(air::messages::error(
                     "a decreases_by function must be in the same module as the function definition",
                     &proof_function.span,
                 )
@@ -828,7 +828,7 @@ pub fn check_crate(krate: &Krate, diags: &mut Vec<VirErrAs>) -> Result<(), VirEr
                 );
             };
             if function.x.mode != Mode::Exec || spec_function.x.mode != Mode::Spec {
-                return Err(air::errors::error(
+                return Err(air::messages::error(
                     "when_used_as_spec must point from an exec function to a spec function",
                     &spec_function.span,
                 )

@@ -6,7 +6,7 @@ use crate::ast::{
 use crate::ast_util::{err_str, err_string, get_field};
 use crate::util::vec_map_result;
 use air::ast::Span;
-use air::errors::{error, error_with_label};
+use air::messages::{error, error_with_label};
 use air::scope_map::ScopeMap;
 use std::cmp::min;
 use std::collections::{HashMap, HashSet};

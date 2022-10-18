@@ -4,7 +4,7 @@ use crate::ast::{
 use crate::ast_util::{ident_var, mk_and, mk_implies, mk_not, str_ident, str_var};
 use crate::context::{AssertionInfo, AxiomInfo, Context, ContextState, ValidityResult};
 use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL, QUERY};
-use crate::errors::{Error, ErrorLabel};
+use crate::messages::{Message, MessageLabel};
 pub use crate::model::{Model, ModelDef};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -171,8 +171,8 @@ pub(crate) fn smt_check_assertion<'ctx>(
         context.smt_log.log_assert(&disabled_expr);
     }
 
-    let mut discovered_error: Option<Error> = None;
-    let mut discovered_additional_info: Vec<ErrorLabel> = Vec::new();
+    let mut discovered_error: Option<Message> = None;
+    let mut discovered_additional_info: Vec<MessageLabel> = Vec::new();
     context.smt_log.log_assert(&str_var(QUERY));
 
     context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
@@ -355,7 +355,7 @@ pub(crate) fn smt_check_query<'ctx>(
     let mut axiom_infos: Vec<AxiomInfo> = Vec::new();
     let labeled_assertion = label_asserts(context, &mut infos, &mut axiom_infos, &assertion);
     for info in &infos {
-        context.smt_log.comment(&info.error.msg);
+        context.smt_log.comment(&info.error.note);
         if let Err(err) = crate::typecheck::add_decl(context, &info.decl, false) {
             return ValidityResult::TypeError(err);
         }
