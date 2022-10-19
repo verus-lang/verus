@@ -1,6 +1,6 @@
 use air::ast::CommandX;
 use air::context::{Context, ValidityResult};
-use air::messages::MessageLabel;
+use air::messages::{Reporter, MessageLabel};
 use air::profiler::Profiler;
 use getopts::Options;
 use sise::Node;
@@ -126,8 +126,9 @@ pub fn main() {
     // Send commands
     let mut count_errors = 0;
     let mut count_verified = 0;
+    let reporter = Reporter {};
     for command in commands.iter() {
-        let result = air_context.command(&command, Default::default());
+        let result = air_context.command(&reporter, &command, Default::default());
         match result {
             ValidityResult::Valid => {
                 if let CommandX::CheckValid(_) = &**command {
@@ -148,8 +149,8 @@ pub fn main() {
                 count_errors += 1;
                 if profile {
                     println!("Resource limit (rlimit) exceeded");
-                    let profiler = Profiler::new();
-                    profiler.print_raw_stats();
+                    let profiler = Profiler::new(&reporter);
+                    profiler.print_raw_stats(&reporter);
                 } else if !profile_all {
                     println!(
                         "Resource limit (rlimit) exceeded; consider rerunning with --profile for more details"
@@ -167,8 +168,8 @@ pub fn main() {
         }
     }
     if profile_all {
-        let profiler = Profiler::new();
-        profiler.print_raw_stats();
+        let profiler = Profiler::new(&reporter);
+        profiler.print_raw_stats(&reporter);
     }
     println!("Verification results:: verified: {} errors: {}", count_verified, count_errors);
 }

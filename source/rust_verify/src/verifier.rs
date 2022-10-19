@@ -339,8 +339,11 @@ impl Verifier {
             )
         };
 
+        let reporter = Reporter::new(compiler);
+
         #[cfg(not(feature = "singular"))]
         let mut result = air_context.command(
+            &reporter,
             &command,
             QueryContext { report_long_running: Some(&mut report_long_running()) },
         );
@@ -351,7 +354,6 @@ impl Verifier {
         let mut checks_remaining = self.args.multiple_errors;
         let mut only_check_earlier = false;
         let mut invalidity = false;
-        let reporter = Reporter::new(compiler);
         loop {
             match result {
                 ValidityResult::Valid => {
@@ -383,7 +385,7 @@ impl Verifier {
                     )]);
 
                     if self.args.profile {
-                        let profiler = Profiler::new();
+                        let profiler = Profiler::new(&reporter);
                         self.print_profile_stats(&reporter, profiler, qid_map);
                     }
                     break;
@@ -483,6 +485,7 @@ impl Verifier {
 
                     let time0 = Instant::now();
                     result = air_context.check_valid_again(
+                        &reporter,
                         only_check_earlier,
                         QueryContext { report_long_running: Some(&mut report_long_running()) },
                     );
@@ -511,6 +514,7 @@ impl Verifier {
 
     fn run_commands(
         &mut self,
+        diagnostics: &impl Diagnostics,
         air_context: &mut air::context::Context,
         commands: &Vec<Command>,
         comment: &str,
@@ -521,7 +525,7 @@ impl Verifier {
         }
         for command in commands.iter() {
             let time0 = Instant::now();
-            Self::check_internal_result(air_context.command(&command, Default::default()));
+            Self::check_internal_result(air_context.command(diagnostics, &command, Default::default()));
             let time1 = Instant::now();
             self.time_air += time1 - time0;
         }
@@ -580,6 +584,7 @@ impl Verifier {
 
     fn new_air_context_with_prelude(
         &mut self,
+        diagnostics: &impl Diagnostics,
         module_path: &vir::ast::Path,
         query_function_path_counter: Option<(&vir::ast::Path, usize)>,
         is_rerun: bool,
@@ -654,7 +659,7 @@ impl Verifier {
         air_context.blank_line();
         air_context.comment("Prelude");
         for command in vir::context::Ctx::prelude(prelude_config).iter() {
-            Self::check_internal_result(air_context.command(&command, Default::default()));
+            Self::check_internal_result(air_context.command(diagnostics, &command, Default::default()));
         }
 
         let module_name =
@@ -668,6 +673,7 @@ impl Verifier {
     fn new_air_context_with_module_context(
         &mut self,
         ctx: &vir::context::Ctx,
+        diagnostics: &impl Diagnostics,
         module_path: &vir::ast::Path,
         function_path: &vir::ast::Path,
         datatype_commands: Arc<Vec<Arc<CommandX>>>,
@@ -679,6 +685,7 @@ impl Verifier {
         span: &air::ast::Span,
     ) -> Result<air::context::Context, VirErr> {
         let mut air_context = self.new_air_context_with_prelude(
+            diagnostics,
             module_path,
             Some((function_path, context_counter)),
             is_rerun,
@@ -691,19 +698,19 @@ impl Verifier {
         air_context.blank_line();
         air_context.comment("Fuel");
         for command in ctx.fuel().iter() {
-            Self::check_internal_result(air_context.command(&command, Default::default()));
+            Self::check_internal_result(air_context.command(diagnostics, &command, Default::default()));
         }
 
         // set up module context
-        self.run_commands(&mut air_context, &datatype_commands, &("Datatypes".to_string()));
+        self.run_commands(diagnostics, &mut air_context, &datatype_commands, &("Datatypes".to_string()));
         for commands in &*function_decl_commands {
-            self.run_commands(&mut air_context, &commands.0, &commands.1);
+            self.run_commands(diagnostics, &mut air_context, &commands.0, &commands.1);
         }
         for commands in &*function_spec_commands {
-            self.run_commands(&mut air_context, &commands.0, &commands.1);
+            self.run_commands(diagnostics, &mut air_context, &commands.0, &commands.1);
         }
         for commands in &*function_axiom_commands {
-            self.run_commands(&mut air_context, &commands.0, &commands.1);
+            self.run_commands(diagnostics, &mut air_context, &commands.0, &commands.1);
         }
         Ok(air_context)
     }
@@ -718,6 +725,7 @@ impl Verifier {
     ) -> Result<(Duration, Duration), VirErr> {
         let reporter = Reporter::new(compiler);
         let mut air_context = self.new_air_context_with_prelude(
+            &reporter,
             module,
             None,
             false,
@@ -735,7 +743,7 @@ impl Verifier {
         air_context.blank_line();
         air_context.comment("Fuel");
         for command in ctx.fuel().iter() {
-            Self::check_internal_result(air_context.command(&command, Default::default()));
+            Self::check_internal_result(air_context.command(&reporter, &command, Default::default()));
         }
 
         let datatype_commands = vir::datatype_to_air::datatypes_to_air(
@@ -747,7 +755,7 @@ impl Verifier {
                 .filter(|d| is_visible_to(&d.x.visibility, module))
                 .collect(),
         );
-        self.run_commands(&mut air_context, &datatype_commands, &("Datatypes".to_string()));
+        self.run_commands(&reporter, &mut air_context, &datatype_commands, &("Datatypes".to_string()));
 
         let mk_fun_ctx = |f: &Function, checking_recommends: bool| {
             Some(vir::context::FunctionCtx {
@@ -770,7 +778,7 @@ impl Verifier {
             }
             let commands = vir::func_to_air::func_name_to_air(ctx, &reporter, &function)?;
             let comment = "Function-Decl ".to_string() + &fun_as_rust_dbg(&function.x.name);
-            self.run_commands(&mut air_context, &commands, &comment);
+            self.run_commands(&reporter, &mut air_context, &commands, &comment);
             function_decl_commands.push((commands.clone(), comment.clone()));
         }
         ctx.fun = None;
@@ -838,7 +846,7 @@ impl Verifier {
                     vir::func_to_air::func_decl_to_air(ctx, &reporter, &fun_ssts, &function)?;
                 ctx.fun = None;
                 let comment = "Function-Specs ".to_string() + &fun_as_rust_dbg(f);
-                self.run_commands(&mut air_context, &decl_commands, &comment);
+                self.run_commands(&reporter, &mut air_context, &decl_commands, &comment);
                 function_spec_commands.push((decl_commands.clone(), comment.clone()));
             }
             // Check termination
@@ -928,7 +936,7 @@ impl Verifier {
                 }
                 let decl_commands = &fun_axioms[f];
                 let comment = "Function-Axioms ".to_string() + &fun_as_rust_dbg(f);
-                self.run_commands(&mut air_context, &decl_commands, &comment);
+                self.run_commands(&reporter, &mut air_context, &decl_commands, &comment);
                 function_axiom_commands.push((decl_commands.clone(), comment.clone()));
                 funs.remove(f);
             }
@@ -1006,6 +1014,7 @@ impl Verifier {
                     let query_air_context = if *prover_choice == vir::def::ProverChoice::Spinoff {
                         spinoff_z3_context = self.new_air_context_with_module_context(
                             ctx,
+                            &reporter,
                             module,
                             &(function.x.name).path,
                             datatype_commands.clone(),
@@ -1209,7 +1218,7 @@ impl Verifier {
         let verified_modules: HashSet<_> = module_ids_to_verify.iter().collect();
 
         if self.args.profile_all {
-            let profiler = Profiler::new();
+            let profiler = Profiler::new(&reporter);
             self.print_profile_stats(&reporter, profiler, &global_ctx.qid_map.borrow());
         }
         // Log/display triggers

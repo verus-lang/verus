@@ -56,6 +56,20 @@ pub trait Diagnostics {
     fn report_as(&self, msg: &Message, msg_as: MessageLevel);
 }
 
+/// Very simple implementation of Diagnostics for use in AIR
+pub struct Reporter {}
+impl Diagnostics for Reporter {
+    fn report_as(&self, msg: &Message, level: MessageLevel) {
+        use MessageLevel::*;
+        match level {
+            Note => println!("Note: {}", msg.note),
+            Warning => println!("Warning: {}", msg.note),
+            Error => eprintln!("Error: {}", msg.note),
+        }
+    }
+}
+
+
 // Basic Message constructors
 
 /// Basic message, with a note and a single span to be highlighted with ^^^^^^
@@ -93,6 +107,11 @@ pub fn note_bare<S: Into<String>>(note: S) -> Message {
 /// Basic note, with a message and a single span to be highlighted with ^^^^^^
 pub fn note<S: Into<String>>(note: S, span: &Span) -> Message {
     message(MessageLevel::Note, note, span)
+}
+
+/// Bare warning without any spans 
+pub fn warning_bare<S: Into<String>>(note: S) -> Message {
+    message_bare(MessageLevel::Warning, note)
 }
 
 /// Basic warning, with a message and a single span to be highlighted with ^^^^^^

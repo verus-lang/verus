@@ -4,7 +4,7 @@ use crate::ast::{
 use crate::ast_util::{ident_var, mk_and, mk_implies, mk_not, str_ident, str_var};
 use crate::context::{AssertionInfo, AxiomInfo, Context, ContextState, ValidityResult};
 use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL, QUERY};
-use crate::messages::{Message, MessageLabel};
+use crate::messages::{Message, MessageLabel, Diagnostics, warning_bare};
 pub use crate::model::{Model, ModelDef};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -113,6 +113,7 @@ const GET_VERSION_RESPONSE_PREFIX: &str = "(:version";
 
 pub(crate) fn smt_check_assertion<'ctx>(
     context: &mut Context,
+    diagnostics: &impl Diagnostics,
     mut infos: Vec<AssertionInfo>,
     air_model: Model,
     only_check_earlier: bool,
@@ -161,7 +162,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
                 }
             }
         } else if context.ignore_unexpected_smt {
-            println!("warning: unexpected SMT output: {}", line);
+            diagnostics.report(&warning_bare(format!("warning: unexpected SMT output: {}", line)));
         } else {
             return ValidityResult::UnexpectedOutput(line);
         }
@@ -219,7 +220,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
             assert!(unsat == None);
             unsat = Some(SmtOutput::Unknown);
         } else if context.ignore_unexpected_smt {
-            println!("warning: unexpected SMT output: {}", line);
+            diagnostics.report(&warning_bare(format!("warning: unexpected SMT output: {}", line)));
         } else {
             return ValidityResult::UnexpectedOutput(line);
         }
@@ -257,7 +258,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Incomplete);
                 } else if context.ignore_unexpected_smt {
-                    println!("warning: unexpected SMT output: {}", line);
+                    diagnostics.report(&warning_bare(format!("warning: unexpected SMT output: {}", line)));
                 } else {
                     return ValidityResult::UnexpectedOutput(line);
                 }
@@ -328,6 +329,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
 
 pub(crate) fn smt_check_query<'ctx>(
     context: &mut Context,
+    diagnostics: &impl Diagnostics,
     query: &Query,
     air_model: Model,
     report_long_running: Option<&mut ReportLongRunning>,
@@ -366,7 +368,7 @@ pub(crate) fn smt_check_query<'ctx>(
     let not_expr = Arc::new(ExprX::Unary(UnaryOp::Not, labeled_assertion));
     context.smt_log.log_decl(&Arc::new(DeclX::Const(str_ident(QUERY), Arc::new(TypX::Bool))));
     context.smt_log.log_assert(&mk_implies(&str_var(QUERY), &not_expr));
-    let result = smt_check_assertion(context, infos, air_model, false, report_long_running);
+    let result = smt_check_assertion(context, diagnostics, infos, air_model, false, report_long_running);
 
     result
 }
