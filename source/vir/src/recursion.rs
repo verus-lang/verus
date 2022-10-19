@@ -19,7 +19,7 @@ use crate::sst_visitor::{
 use crate::util::vec_map_result;
 use air::ast::{Binder, Commands, Span};
 use air::ast_util::{ident_binder, str_ident, str_typ};
-use air::messages::error;
+use air::messages::{Diagnostics, error};
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -110,6 +110,7 @@ fn check_decrease(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> Exp {
 
 fn check_decrease_call(
     ctxt: &Ctxt,
+    diagnostics: &impl Diagnostics,
     fun_ssts: &SstMap,
     span: &Span,
     target: &Fun,
@@ -141,7 +142,7 @@ fn check_decrease_call(
     let mut decreases_exps: Vec<Exp> = Vec::new();
     for expr in function.x.decrease.iter() {
         let decreases_exp =
-            expr_to_exp(ctxt.ctx, fun_ssts, &params_to_pars(&function.x.params, true), expr)?;
+            expr_to_exp(ctxt.ctx, diagnostics, fun_ssts, &params_to_pars(&function.x.params, true), expr)?;
         let dec_exp = exp_rename_vars(&decreases_exp, &renames);
         let e_decx = ExpX::Bind(
             Spanned::new(span.clone(), BndX::Let(Arc::new(binders.clone()))),
@@ -153,9 +154,11 @@ fn check_decrease_call(
 }
 
 // Check that exp terminates
-fn terminates(ctxt: &Ctxt, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp, VirErr> {
+fn terminates(ctxt: &Ctxt, 
+    diagnostics: &impl Diagnostics,
+              fun_ssts: &SstMap, exp: &Exp) -> Result<Exp, VirErr> {
     let bool_exp = |expx: ExpX| SpannedTyped::new(&exp.span, &Arc::new(TypX::Bool), expx);
-    let r = |e: &Exp| terminates(ctxt, fun_ssts, e);
+    let r = |e: &Exp| terminates(ctxt, diagnostics, fun_ssts, e);
     match &exp.x {
         ExpX::Const(_) | ExpX::Var(..) | ExpX::VarAt(..) | ExpX::VarLoc(..) | ExpX::Old(..) => {
             Ok(bool_exp(ExpX::Const(Constant::Bool(true))))
@@ -163,7 +166,7 @@ fn terminates(ctxt: &Ctxt, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp, VirErr> 
         ExpX::Loc(e) => r(e),
         ExpX::Call(x, targs, args) => {
             let mut e = if is_recursive_call(ctxt, x, targs) {
-                check_decrease_call(ctxt, fun_ssts, &exp.span, x, targs, args)?
+                check_decrease_call(ctxt, diagnostics, fun_ssts, &exp.span, x, targs, args)?
             } else {
                 bool_exp(ExpX::Const(Constant::Bool(true)))
             };
@@ -332,6 +335,7 @@ fn disallow_recursion_exp(ctxt: &Ctxt, exp: &Exp) -> Result<(), VirErr> {
 
 pub(crate) fn check_termination_exp(
     ctx: &Ctx,
+    diagnostics: &impl Diagnostics,
     fun_ssts: &SstMap,
     function: &Function,
     mut local_decls: Vec<LocalDecl>,
@@ -347,12 +351,12 @@ pub(crate) fn check_termination_exp(
     }
 
     let decreases_exps = vec_map_result(&function.x.decrease, |e| {
-        expr_to_exp(ctx, fun_ssts, &params_to_pars(&function.x.params, true), e)
+        expr_to_exp(ctx, diagnostics, fun_ssts, &params_to_pars(&function.x.params, true), e)
     })?;
     let scc_rep = ctx.global.func_call_graph.get_scc_rep(&Node::Fun(function.x.name.clone()));
     let ctxt =
         Ctxt { recursive_function_name: function.x.name.clone(), num_decreases, scc_rep, ctx };
-    let check = terminates(&ctxt, fun_ssts, &body)?;
+    let check = terminates(&ctxt, diagnostics, fun_ssts, &body)?;
     let (mut decls, mut stm_assigns) = mk_decreases_at_entry(&ctxt, &body.span, &decreases_exps);
     stm_assigns.extend(proof_body.clone());
     let error = error("could not prove termination", &body.span);
@@ -407,6 +411,7 @@ pub(crate) fn check_termination_exp(
 
 pub(crate) fn check_termination_stm(
     ctx: &Ctx,
+    diagnostics: &impl Diagnostics,
     fun_ssts: &SstMap,
     function: &Function,
     body: &Stm,
@@ -420,14 +425,14 @@ pub(crate) fn check_termination_stm(
     }
 
     let decreases_exps = vec_map_result(&function.x.decrease, |e| {
-        expr_to_exp(ctx, fun_ssts, &params_to_pars(&function.x.params, true), e)
+        expr_to_exp(ctx, diagnostics, fun_ssts, &params_to_pars(&function.x.params, true), e)
     })?;
     let scc_rep = ctx.global.func_call_graph.get_scc_rep(&Node::Fun(function.x.name.clone()));
     let ctxt =
         Ctxt { recursive_function_name: function.x.name.clone(), num_decreases, scc_rep, ctx };
     let stm = map_stm_visitor(body, &mut |s| match &s.x {
         StmX::Call { fun, typ_args, args, .. } if is_recursive_call(&ctxt, fun, typ_args) => {
-            let check = check_decrease_call(&ctxt, fun_ssts, &s.span, fun, typ_args, args)?;
+            let check = check_decrease_call(&ctxt, diagnostics, fun_ssts, &s.span, fun, typ_args, args)?;
             let error = error("could not prove termination", &s.span);
             let stm_assert = Spanned::new(s.span.clone(), StmX::Assert(Some(error), check));
             let stm_block =

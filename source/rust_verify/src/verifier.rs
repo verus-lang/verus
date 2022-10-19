@@ -714,6 +714,7 @@ impl Verifier {
         module: &vir::ast::Path,
         ctx: &mut vir::context::Ctx,
     ) -> Result<(Duration, Duration), VirErr> {
+        let reporter = Reporter::new(compiler);
         let mut air_context = self.new_air_context_with_prelude(
             module,
             None,
@@ -765,7 +766,7 @@ impl Verifier {
             if !is_visible_to(&function.x.visibility, module) || function.x.attrs.is_decrease_by {
                 continue;
             }
-            let commands = vir::func_to_air::func_name_to_air(ctx, &function)?;
+            let commands = vir::func_to_air::func_name_to_air(ctx, &reporter, &function)?;
             let comment = "Function-Decl ".to_string() + &fun_as_rust_dbg(&function.x.name);
             self.run_commands(&mut air_context, &commands, &comment);
             function_decl_commands.push((commands.clone(), comment.clone()));
@@ -831,7 +832,7 @@ impl Verifier {
                 let (function, _vis_abs) = &funs[f];
 
                 ctx.fun = mk_fun_ctx(&function, false);
-                let decl_commands = vir::func_to_air::func_decl_to_air(ctx, &fun_ssts, &function)?;
+                let decl_commands = vir::func_to_air::func_decl_to_air(ctx, &reporter, &fun_ssts, &function)?;
                 ctx.fun = None;
                 let comment = "Function-Specs ".to_string() + &fun_as_rust_dbg(f);
                 self.run_commands(&mut air_context, &decl_commands, &comment);
@@ -850,6 +851,7 @@ impl Verifier {
                 let (decl_commands, check_commands, new_fun_ssts) =
                     vir::func_to_air::func_axioms_to_air(
                         ctx,
+                        &reporter,
                         fun_ssts,
                         &function,
                         is_visible_to(&vis_abs, module),
@@ -888,6 +890,7 @@ impl Verifier {
                     ctx.fun = mk_fun_ctx(&function, true);
                     let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
                         ctx,
+                        &reporter,
                         fun_ssts,
                         &function,
                         vir::func_to_air::FuncDefPhase::CheckingSpecs,
@@ -953,6 +956,7 @@ impl Verifier {
                 }
                 let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
                     ctx,
+                    &reporter,
                     fun_ssts,
                     &function,
                     vir::func_to_air::FuncDefPhase::CheckingProofExec,

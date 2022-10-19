@@ -14,6 +14,7 @@ use crate::func_to_air::{SstInfo, SstMap};
 use crate::sst::{Bnd, BndX, Exp, ExpX, Exps, Trigs, UniqueIdent};
 use air::ast::{Binder, BinderX, Binders, Span};
 use air::scope_map::ScopeMap;
+use air::messages::{Diagnostics};
 use im::Vector;
 use num_bigint::{BigInt, Sign};
 use num_traits::identities::Zero;
@@ -1416,6 +1417,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
 /// We run the interpreter on a separate thread, so that we can give it a larger-than-default stack
 fn eval_expr_launch(
     exp: Exp,
+    diagnostics: &(impl Diagnostics + ?Sized),
     fun_ssts: &HashMap<Fun, SstInfo>,
     rlimit: u32,
     arch_size_min_bits: u32,
@@ -1497,6 +1499,7 @@ fn eval_expr_launch(
 /// Symbolically evaluate an expression, simplifying it as much as possible
 pub fn eval_expr(
     exp: &Exp,
+    diagnostics: &(impl Diagnostics + ?Sized),
     fun_ssts: &mut SstMap,
     rlimit: u32,
     arch_size_min_bits: u32,
@@ -1514,6 +1517,7 @@ pub fn eval_expr(
                 .spawn(move || {
                     let res = eval_expr_launch(
                         exp,
+                        diagnostics,
                         &fun_ssts,
                         rlimit,
                         arch_size_min_bits,
