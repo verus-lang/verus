@@ -182,7 +182,10 @@ impl<V> PermissionOpt<V> {
     }
 }
 
+}
+
 impl<V> PPtr<V> {
+    verus!{
 
     /// Cast a pointer to an integer.
 
@@ -285,14 +288,14 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn take(&self, perm: &mut Tracked<PermissionOpt<V>>) -> (v: V)
+    pub fn take(&self, #[proof] perm: &mut PermissionOpt<V>) -> (v: V)
         requires
-            self.id() === old(perm)@@.pptr,
-            old(perm)@@.value.is_Some(),
+            self.id() === old(perm)@.pptr,
+            old(perm)@.value.is_Some(),
         ensures
-            perm@@.pptr === old(perm)@@.pptr,
-            perm@@.value === option::Option::None,
-            v === old(perm)@@.value.get_Some_0(),
+            perm@.pptr === old(perm)@.pptr,
+            perm@.value === option::Option::None,
+            v === old(perm)@.value.get_Some_0(),
     {
         opens_invariants_none();
 
@@ -308,14 +311,14 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn replace(&self, perm: &mut Tracked<PermissionOpt<V>>, in_v: V) -> (out_v: V)
+    pub fn replace(&self, #[proof] perm: &mut PermissionOpt<V>, in_v: V) -> (out_v: V)
         requires
-            self.id() === old(perm)@@.pptr,
-            old(perm)@@.value.is_Some(),
+            self.id() === old(perm)@.pptr,
+            old(perm)@.value.is_Some(),
         ensures
-            perm@@.pptr === old(perm)@@.pptr,
-            perm@@.value === option::Option::Some(in_v),
-            out_v === old(perm)@@.value.get_Some_0(),
+            perm@.pptr === old(perm)@.pptr,
+            perm@.value === option::Option::Some(in_v),
+            out_v === old(perm)@.value.get_Some_0(),
     {
         opens_invariants_none();
 
@@ -333,11 +336,11 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn borrow<'a>(&self, perm: &'a Tracked<PermissionOpt<V>>) -> (v: &'a V)
+    pub fn borrow<'a>(&self, #[proof] perm: &'a PermissionOpt<V>) -> (v: &'a V)
         requires
-            self.id() === perm@@.pptr,
-            perm@@.value.is_Some(),
-        ensures *v === perm@@.value.get_Some_0(),
+            self.id() === perm@.pptr,
+            perm@.value.is_Some(),
+        ensures *v === perm@.value.get_Some_0(),
     {
         opens_invariants_none();
         
@@ -354,16 +357,18 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn dispose(&self, perm: Tracked<PermissionOpt<V>>)
+    pub fn dispose(&self, #[proof] perm: PermissionOpt<V>)
         requires
-            self.id() === perm@@.pptr,
-            perm@@.value === option::Option::None,
+            self.id() === perm@.pptr,
+            perm@.value === option::Option::None,
     {
         opens_invariants_none();
 
         unsafe {
             alloc::alloc::dealloc(self.uptr as *mut u8, alloc::alloc::Layout::for_value(&*self.uptr));
         }
+    }
+
     }
 
     //////////////////////////////////
@@ -376,20 +381,24 @@ impl<V> PPtr<V> {
     /// access to the memory by freeing it.
 
     #[inline(always)]
-    pub fn into_inner(self, perm: Tracked<PermissionOpt<V>>) -> (v: V)
-        requires
-            self.id() === perm@@.pptr,
-            perm@@.value.is_Some(),
-        ensures
-            v === perm@@.value.get_Some_0(),
+    pub fn into_inner(self, #[proof] perm: PermissionOpt<V>) -> V
     {
+        requires([
+            equal(self.id(), perm.view().pptr),
+            perm.view().value.is_Some(),
+        ]);
+        ensures(|v: V| [
+            equal(v, perm.view().value.get_Some_0()),
+        ]);
         opens_invariants_none();
 
-        let mut perm = perm;
+        #[proof] let mut perm = perm;
         let v = self.take(&mut perm);
         self.dispose(perm);
         v
     }
+
+    verus!{
 
     /// Allocates heap memory for type `V`, leaving it initialized
     /// with the given value `v`.
@@ -403,6 +412,6 @@ impl<V> PPtr<V> {
         p.put(&mut t, v);
         (p, Trk(t))
     }
-}
 
+    }
 }
