@@ -1,6 +1,6 @@
 use air::ast::CommandX;
 use air::context::{Context, ValidityResult};
-use air::messages::{Reporter, MessageLabel};
+use air::messages::{MessageLabel, Reporter};
 use air::profiler::Profiler;
 use getopts::Options;
 use sise::Node;

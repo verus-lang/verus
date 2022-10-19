@@ -1,9 +1,9 @@
 //! Analyzes prover performance of the SMT solver
 
+use crate::messages::{note_bare, Diagnostics};
 use std::io::BufRead;
 use z3tracer::model::QuantCost;
 use z3tracer::{Model, ModelConfig};
-use crate::messages::{Diagnostics, note_bare};
 
 pub const PROVER_LOG_FILE: &str = "verus-prover-trace.log";
 

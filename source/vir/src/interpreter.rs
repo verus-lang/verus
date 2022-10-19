@@ -13,7 +13,7 @@ use crate::ast_util::{err_str, path_as_rust_name};
 use crate::func_to_air::{SstInfo, SstMap};
 use crate::sst::{Bnd, BndX, Exp, ExpX, Exps, Trigs, UniqueIdent};
 use air::ast::{Binder, BinderX, Binders, Span};
-use air::messages::{Message, Diagnostics, warning};
+use air::messages::{warning, Diagnostics, Message};
 use air::scope_map::ScopeMap;
 use im::Vector;
 use num_bigint::{BigInt, Sign};
@@ -794,24 +794,22 @@ fn eval_seq(
                 Index => match &args[0].x {
                     Interp(Seq(s)) => match &args[1].x {
                         UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => match &e.x {
-                            Const(Constant::Int(index)) => {
-                                match BigInt::to_usize(index) {
-                                    None => {
-                                        let msg = "Computation tried to index into a sequence using a value that does not fit into usize";
+                            Const(Constant::Int(index)) => match BigInt::to_usize(index) {
+                                None => {
+                                    let msg = "Computation tried to index into a sequence using a value that does not fit into usize";
+                                    state.msgs.push(warning(msg, &exp.span));
+                                    ok_seq(&args[0], &s, &args[1..])
+                                }
+                                Some(index) => {
+                                    if index < s.len() {
+                                        Ok(s[index].clone())
+                                    } else {
+                                        let msg = "Computation tried to index past the length of a sequence";
                                         state.msgs.push(warning(msg, &exp.span));
                                         ok_seq(&args[0], &s, &args[1..])
                                     }
-                                    Some(index) => {
-                                        if index < s.len() {
-                                            Ok(s[index].clone())
-                                        } else {
-                                            let msg = "Computation tried to index past the length of a sequence";
-                                            state.msgs.push(warning(msg, &exp.span));
-                                            ok_seq(&args[0], &s, &args[1..])
-                                        }
-                                    }
                                 }
-                            }
+                            },
                             _ => ok_seq(&args[0], &s, &args[1..]),
                         },
                         _ => ok_seq(&args[0], &s, &args[1..]),
@@ -941,7 +939,8 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         Clip { range, truncate: _ } => {
                             let mut apply_range = |lower: BigInt, upper: BigInt| {
                                 if i < &lower || i > &upper {
-                                    let msg = "Computation clipped an integer that was out of range";
+                                    let msg =
+                                        "Computation clipped an integer that was out of range";
                                     state.msgs.push(warning(msg, &exp.span));
                                     ok.clone()
                                 } else {
@@ -1469,7 +1468,8 @@ fn eval_expr_launch(
                     _ => Ok(e.clone()),
                 })?;
                 if exp.definitely_eq(&res) {
-                    let msg = format!("Failed to simplify expression <<{}>> before sending to Z3", exp);
+                    let msg =
+                        format!("Failed to simplify expression <<{}>> before sending to Z3", exp);
                     state.msgs.push(warning(msg, &exp.span));
                 }
                 Ok((res, state.msgs))

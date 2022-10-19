@@ -525,7 +525,11 @@ impl Verifier {
         }
         for command in commands.iter() {
             let time0 = Instant::now();
-            Self::check_internal_result(air_context.command(diagnostics, &command, Default::default()));
+            Self::check_internal_result(air_context.command(
+                diagnostics,
+                &command,
+                Default::default(),
+            ));
             let time1 = Instant::now();
             self.time_air += time1 - time0;
         }
@@ -659,7 +663,11 @@ impl Verifier {
         air_context.blank_line();
         air_context.comment("Prelude");
         for command in vir::context::Ctx::prelude(prelude_config).iter() {
-            Self::check_internal_result(air_context.command(diagnostics, &command, Default::default()));
+            Self::check_internal_result(air_context.command(
+                diagnostics,
+                &command,
+                Default::default(),
+            ));
         }
 
         let module_name =
@@ -698,11 +706,20 @@ impl Verifier {
         air_context.blank_line();
         air_context.comment("Fuel");
         for command in ctx.fuel().iter() {
-            Self::check_internal_result(air_context.command(diagnostics, &command, Default::default()));
+            Self::check_internal_result(air_context.command(
+                diagnostics,
+                &command,
+                Default::default(),
+            ));
         }
 
         // set up module context
-        self.run_commands(diagnostics, &mut air_context, &datatype_commands, &("Datatypes".to_string()));
+        self.run_commands(
+            diagnostics,
+            &mut air_context,
+            &datatype_commands,
+            &("Datatypes".to_string()),
+        );
         for commands in &*function_decl_commands {
             self.run_commands(diagnostics, &mut air_context, &commands.0, &commands.1);
         }
@@ -743,7 +760,11 @@ impl Verifier {
         air_context.blank_line();
         air_context.comment("Fuel");
         for command in ctx.fuel().iter() {
-            Self::check_internal_result(air_context.command(&reporter, &command, Default::default()));
+            Self::check_internal_result(air_context.command(
+                &reporter,
+                &command,
+                Default::default(),
+            ));
         }
 
         let datatype_commands = vir::datatype_to_air::datatypes_to_air(
@@ -755,7 +776,12 @@ impl Verifier {
                 .filter(|d| is_visible_to(&d.x.visibility, module))
                 .collect(),
         );
-        self.run_commands(&reporter, &mut air_context, &datatype_commands, &("Datatypes".to_string()));
+        self.run_commands(
+            &reporter,
+            &mut air_context,
+            &datatype_commands,
+            &("Datatypes".to_string()),
+        );
 
         let mk_fun_ctx = |f: &Function, checking_recommends: bool| {
             Some(vir::context::FunctionCtx {
