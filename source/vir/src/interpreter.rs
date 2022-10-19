@@ -13,7 +13,7 @@ use crate::ast_util::{err_str, path_as_rust_name};
 use crate::func_to_air::{SstInfo, SstMap};
 use crate::sst::{Bnd, BndX, Exp, ExpX, Exps, Trigs, UniqueIdent};
 use air::ast::{Binder, BinderX, Binders, Span};
-use air::messages::Diagnostics;
+use air::messages::{Message, Diagnostics, warning};
 use air::scope_map::ScopeMap;
 use im::Vector;
 use num_bigint::{BigInt, Sign};
@@ -99,6 +99,8 @@ struct State {
     iterations: u64,
     /// Log to write out extra info
     log: Option<File>,
+    /// Collect messages to be displayed after the computation
+    msgs: Vec<Message>,
     /// Collect and display performance data
     perf: bool,
     /// Cache function invocations, based on their arguments, so we can directly return the
@@ -795,20 +797,16 @@ fn eval_seq(
                             Const(Constant::Int(index)) => {
                                 match BigInt::to_usize(index) {
                                     None => {
-                                        // TODO: Use Diagnostics instead of println
-                                        println!(
-                                            "WARNING: Computation tried to index into a sequence using a value that does not fit into usize"
-                                        );
+                                        let msg = "Computation tried to index into a sequence using a value that does not fit into usize";
+                                        state.msgs.push(warning(msg, &exp.span));
                                         ok_seq(&args[0], &s, &args[1..])
                                     }
                                     Some(index) => {
                                         if index < s.len() {
                                             Ok(s[index].clone())
                                         } else {
-                                            // TODO: Use Diagnostics instead of println
-                                            println!(
-                                                "WARNING: Computation tried to index past the length of a sequence"
-                                            );
+                                            let msg = "Computation tried to index past the length of a sequence";
+                                            state.msgs.push(warning(msg, &exp.span));
                                             ok_seq(&args[0], &s, &args[1..])
                                         }
                                     }
@@ -941,12 +939,10 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             int_new(r)
                         }
                         Clip { range, truncate: _ } => {
-                            let apply_range = |lower: BigInt, upper: BigInt| {
+                            let mut apply_range = |lower: BigInt, upper: BigInt| {
                                 if i < &lower || i > &upper {
-                                    // TODO: Use Diagnostics instead of println
-                                    println!(
-                                        "WARNING: Computation clipped an integer that was out of range"
-                                    );
+                                    let msg = "Computation clipped an integer that was out of range";
+                                    state.msgs.push(warning(msg, &exp.span));
                                     ok.clone()
                                 } else {
                                     Ok(e.clone())
@@ -1419,20 +1415,21 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
 /// We run the interpreter on a separate thread, so that we can give it a larger-than-default stack
 fn eval_expr_launch(
     exp: Exp,
-    diagnostics: &(impl Diagnostics + ?Sized),
     fun_ssts: &HashMap<Fun, SstInfo>,
     rlimit: u32,
     arch_size_min_bits: u32,
     mode: ComputeMode,
     log: &mut Option<File>,
-) -> Result<Exp, VirErr> {
+) -> Result<(Exp, Vec<Message>), VirErr> {
     let env = ScopeMap::new();
     let cache = HashMap::new();
     let logging = log.is_some();
+    let msgs = Vec::new();
     let mut state = State {
         depth: 0,
         env,
         iterations: 1,
+        msgs,
         log: log.take(),
         perf: logging,
         cache,
@@ -1472,19 +1469,14 @@ fn eval_expr_launch(
                     _ => Ok(e.clone()),
                 })?;
                 if exp.definitely_eq(&res) {
-                    // TODO: Convert to use Diagnostics
-                    println!();
-                    println!(
-                        "WARNING: Could not take advantage of compute to simplify expression before sending to Z3"
-                    );
-                    println!("  Unchanged: {}", exp);
-                    println!();
+                    let msg = format!("Failed to simplify expression <<{}>> before sending to Z3", exp);
+                    state.msgs.push(warning(msg, &exp.span));
                 }
-                Ok(res)
+                Ok((res, state.msgs))
             }
             // Proof must succeed purely through computation
             ComputeMode::ComputeOnly => match res.x {
-                ExpX::Const(Constant::Bool(true)) => Ok(res),
+                ExpX::Const(Constant::Bool(true)) => Ok((res, state.msgs)),
                 _ => err_str(
                     &exp.span,
                     &format!(
@@ -1519,7 +1511,6 @@ pub fn eval_expr(
                 .spawn(move || {
                     let res = eval_expr_launch(
                         exp,
-                        diagnostics,
                         &fun_ssts,
                         rlimit,
                         arch_size_min_bits,
@@ -1533,5 +1524,7 @@ pub fn eval_expr(
         handler.join().unwrap()
     });
     *log = taken_log;
-    res
+    let (e, msgs) = res?;
+    msgs.iter().for_each(|m| diagnostics.report(m));
+    Ok(e)
 }
