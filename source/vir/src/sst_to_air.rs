@@ -1016,6 +1016,12 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
     Ok(result)
 }
 
+pub(crate) enum PostConditionKind {
+    Ensures,
+    DecreasesImplicitLemma,
+    DecreasesBy,
+}
+
 struct PostConditionInfo {
     /// Identifier that holds the return value.
     /// May be referenced by `ens_exprs` or `ens_recommend_stms`.
@@ -1024,6 +1030,8 @@ struct PostConditionInfo {
     ens_exprs: Vec<(Span, Expr)>,
     /// Recommends checks (only used in recommends-checking mode)
     ens_recommend_stms: Vec<Stm>,
+    /// Extra info about PostCondition for error reporting
+    kind: PostConditionKind,
 }
 
 struct State {
@@ -1422,8 +1430,20 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         // The base_error should point to the return-statement or
                         // return-expression. Augment with an additional label pointing
                         // to the 'ensures' clause that fails.
-                        let error = base_error
-                            .secondary_label(&span, crate::def::THIS_POST_FAILED.to_string());
+                        let error = match state.post_condition_info.kind {
+                            PostConditionKind::Ensures => base_error
+                                .secondary_label(&span, crate::def::THIS_POST_FAILED.to_string()),
+                            PostConditionKind::DecreasesImplicitLemma => base_error.clone(),
+                            PostConditionKind::DecreasesBy => {
+                                let mut e = (**base_error).clone();
+                                e.msg = "unable to show termination via `decreases_by` lemma"
+                                    .to_string();
+                                e.secondary_label(
+                                    &span,
+                                    "need to show decreases conditions for this body",
+                                )
+                            }
+                        };
 
                         let ens_stmt = StmtX::Assert(error, ens.clone());
                         stmts.push(Arc::new(ens_stmt));
@@ -1882,7 +1902,7 @@ fn set_fuel(ctx: &Ctx, local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
     local.push(Arc::new(DeclX::Axiom(fuel_expr)));
 }
 
-pub fn body_stm_to_air(
+pub(crate) fn body_stm_to_air(
     ctx: &Ctx,
     func_span: &Span,
     trait_typ_substs: &Vec<(Ident, Typ)>,
@@ -1901,6 +1921,7 @@ pub fn body_stm_to_air(
     is_nonlinear: bool,
     is_spinoff_prover: bool,
     dest: Option<UniqueIdent>,
+    post_condition_kind: PostConditionKind,
 ) -> Result<(Vec<CommandsWithContext>, Vec<(Span, SnapPos)>), VirErr> {
     // Verifying a single function can generate multiple SMT queries.
     // Some declarations (local_shared) are shared among the queries.
@@ -1971,6 +1992,7 @@ pub fn body_stm_to_air(
             dest,
             ens_exprs,
             ens_recommend_stms: ens_recommend_stms.clone(),
+            kind: post_condition_kind,
         },
     };
 

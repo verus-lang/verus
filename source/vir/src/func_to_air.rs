@@ -33,6 +33,7 @@ pub struct SstInline {
     pub(crate) typ_bounds: TypBounds,
     pub do_inline: bool,
 }
+use crate::sst_to_air::PostConditionKind;
 
 pub struct SstInfo {
     pub(crate) inline: SstInline,
@@ -205,6 +206,7 @@ fn func_body_to_air(
         state.local_decls,
         &body_exp,
         decrease_by_stms,
+        function.x.decrease_by.is_some(),
     )?;
     check_commands.extend(termination_commands.iter().cloned());
 
@@ -796,6 +798,7 @@ pub fn func_def_to_air(
                 function.x.attrs.nonlinear,
                 function.x.attrs.spinoff_prover,
                 dest,
+                PostConditionKind::Ensures,
             )?;
 
             state.finalize();

@@ -12,6 +12,7 @@ use crate::def::{
 use crate::func_to_air::{params_to_pars, SstMap};
 use crate::scc::Graph;
 use crate::sst::{BndX, Dest, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, StmX, UniqueIdent};
+use crate::sst_to_air::PostConditionKind;
 use crate::sst_visitor::{
     exp_rename_vars, exp_visitor_check, exp_visitor_dfs, map_exp_visitor, map_stm_visitor,
     stm_visitor_dfs, VisitorControlFlow,
@@ -337,6 +338,7 @@ pub(crate) fn check_termination_exp(
     mut local_decls: Vec<LocalDecl>,
     body: &Exp,
     proof_body: Vec<Stm>,
+    uses_decreases_by: bool,
 ) -> Result<(bool, Commands, Exp), VirErr> {
     if !is_recursive_exp(ctx, &function.x.name, body) {
         return Ok((false, Arc::new(vec![]), body.clone()));
@@ -379,6 +381,11 @@ pub(crate) fn check_termination_exp(
         false,
         false,
         None,
+        if uses_decreases_by {
+            PostConditionKind::DecreasesBy
+        } else {
+            PostConditionKind::DecreasesImplicitLemma
+        },
     )?;
 
     assert_eq!(commands.len(), 1);
