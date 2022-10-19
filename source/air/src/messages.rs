@@ -12,7 +12,7 @@ pub type MessageLabels = Arc<Vec<MessageLabel>>;
 pub enum MessageLevel {
     Error,
     Warning,
-    Note
+    Note,
 }
 
 /// If you just want to build a simple message, see the builders below.
@@ -41,11 +41,10 @@ pub enum MessageLevel {
 pub struct MessageX {
     pub level: MessageLevel,
     pub note: String,
-    pub spans: Vec<Span>,        // "primary" spans
+    pub spans: Vec<Span>,          // "primary" spans
     pub labels: Vec<MessageLabel>, // additional spans, with string annotations
 }
 pub type Message = Arc<MessageX>;
-
 
 pub trait Diagnostics {
     /// Display the corresponding message
@@ -57,7 +56,7 @@ pub trait Diagnostics {
     fn report_as(&self, msg: &Message, msg_as: MessageLevel);
 }
 
-// Basic Message constructors 
+// Basic Message constructors
 
 /// Basic message, with a note and a single span to be highlighted with ^^^^^^
 pub fn message<S: Into<String>>(level: MessageLevel, note: S, span: &Span) -> Message {
@@ -65,14 +64,19 @@ pub fn message<S: Into<String>>(level: MessageLevel, note: S, span: &Span) -> Me
 }
 
 /// Bare message without any span
-pub fn message_bare<S: Into<String>>(level: MessageLevel, note: S ) -> Message {
+pub fn message_bare<S: Into<String>>(level: MessageLevel, note: S) -> Message {
     Arc::new(MessageX { level, note: note.into(), spans: vec![], labels: Vec::new() })
 }
 
 /// Message with a span to be highlighted with ^^^^^^, and a label for that span
-pub fn message_with_label<S: Into<String>, T: Into<String>>(level: MessageLevel, note: S, span: &Span, label: T) -> Message {
+pub fn message_with_label<S: Into<String>, T: Into<String>>(
+    level: MessageLevel,
+    note: S,
+    span: &Span,
+    label: T,
+) -> Message {
     Arc::new(MessageX {
-        level, 
+        level,
         note: note.into(),
         spans: vec![span.clone()],
         labels: vec![MessageLabel { span: span.clone(), note: label.into() }],
@@ -107,7 +111,11 @@ pub fn error<S: Into<String>>(note: S, span: &Span) -> Message {
 }
 
 /// Error message with a span to be highlighted with ^^^^^^, and a label for that span
-pub fn error_with_label<S: Into<String>, T: Into<String>>(note: S, span: &Span, label: T) -> Message {
+pub fn error_with_label<S: Into<String>, T: Into<String>>(
+    note: S,
+    span: &Span,
+    label: T,
+) -> Message {
     message_with_label(MessageLevel::Error, note, span, label)
 }
 
@@ -149,23 +157,43 @@ impl MessageX {
         for label in labels {
             l.push(label.clone());
         }
-        Arc::new(MessageX { level: self.level, note: self.note.clone(), spans: self.spans.clone(), labels: l })
+        Arc::new(MessageX {
+            level: self.level,
+            note: self.note.clone(),
+            spans: self.spans.clone(),
+            labels: l,
+        })
     }
 }
 
 /// (Lossy) conversions between the complicated Message format and the simpler format used by air
 
 pub fn error_from_spans(spans: Vec<Span>) -> Message {
-    Arc::new(MessageX { level: MessageLevel::Error, note: "".to_string(), spans: spans, labels: Vec::new() })
+    Arc::new(MessageX {
+        level: MessageLevel::Error,
+        note: "".to_string(),
+        spans: spans,
+        labels: Vec::new(),
+    })
 }
 
 pub fn error_from_labels(labels: MessageLabels) -> Message {
     if labels.len() == 0 {
-        Arc::new(MessageX { level: MessageLevel::Error, note: "".to_string(), spans: Vec::new(), labels: Vec::new() })
+        Arc::new(MessageX {
+            level: MessageLevel::Error,
+            note: "".to_string(),
+            spans: Vec::new(),
+            labels: Vec::new(),
+        })
     } else {
         // Choose the first label to make the "primary" span.
         let MessageLabel { note, span } = labels[0].clone();
-        Arc::new(MessageX { level: MessageLevel::Error, note: note, spans: vec![span], labels: labels[1..].to_vec() })
+        Arc::new(MessageX {
+            level: MessageLevel::Error,
+            note: note,
+            spans: vec![span],
+            labels: labels[1..].to_vec(),
+        })
     }
 }
 

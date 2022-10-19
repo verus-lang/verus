@@ -16,7 +16,7 @@ use crate::sst_util::{free_vars_exp, free_vars_stm};
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{Binder, BinderX, Binders, Span};
-use air::messages::{Diagnostics, error_with_label};
+use air::messages::{error_with_label, Diagnostics};
 use air::scope_map::ScopeMap;
 use num_bigint::BigInt;
 use num_traits::identities::Zero;
@@ -274,7 +274,7 @@ impl<'a> State<'a> {
     pub(crate) fn finalize_stm(
         &self,
         ctx: &Ctx,
-    diagnostics: &impl Diagnostics,
+        diagnostics: &impl Diagnostics,
         fun_ssts: &SstMap,
         stm: &Stm,
     ) -> Result<Stm, VirErr> {

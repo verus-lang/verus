@@ -19,7 +19,7 @@ use crate::sst_visitor::{
 use crate::util::vec_map_result;
 use air::ast::{Binder, Commands, Span};
 use air::ast_util::{ident_binder, str_ident, str_typ};
-use air::messages::{Diagnostics, error};
+use air::messages::{error, Diagnostics};
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -141,8 +141,13 @@ fn check_decrease_call(
         .collect();
     let mut decreases_exps: Vec<Exp> = Vec::new();
     for expr in function.x.decrease.iter() {
-        let decreases_exp =
-            expr_to_exp(ctxt.ctx, diagnostics, fun_ssts, &params_to_pars(&function.x.params, true), expr)?;
+        let decreases_exp = expr_to_exp(
+            ctxt.ctx,
+            diagnostics,
+            fun_ssts,
+            &params_to_pars(&function.x.params, true),
+            expr,
+        )?;
         let dec_exp = exp_rename_vars(&decreases_exp, &renames);
         let e_decx = ExpX::Bind(
             Spanned::new(span.clone(), BndX::Let(Arc::new(binders.clone()))),
@@ -154,9 +159,12 @@ fn check_decrease_call(
 }
 
 // Check that exp terminates
-fn terminates(ctxt: &Ctxt, 
+fn terminates(
+    ctxt: &Ctxt,
     diagnostics: &impl Diagnostics,
-              fun_ssts: &SstMap, exp: &Exp) -> Result<Exp, VirErr> {
+    fun_ssts: &SstMap,
+    exp: &Exp,
+) -> Result<Exp, VirErr> {
     let bool_exp = |expx: ExpX| SpannedTyped::new(&exp.span, &Arc::new(TypX::Bool), expx);
     let r = |e: &Exp| terminates(ctxt, diagnostics, fun_ssts, e);
     match &exp.x {
@@ -432,7 +440,8 @@ pub(crate) fn check_termination_stm(
         Ctxt { recursive_function_name: function.x.name.clone(), num_decreases, scc_rep, ctx };
     let stm = map_stm_visitor(body, &mut |s| match &s.x {
         StmX::Call { fun, typ_args, args, .. } if is_recursive_call(&ctxt, fun, typ_args) => {
-            let check = check_decrease_call(&ctxt, diagnostics, fun_ssts, &s.span, fun, typ_args, args)?;
+            let check =
+                check_decrease_call(&ctxt, diagnostics, fun_ssts, &s.span, fun, typ_args, args)?;
             let error = error("could not prove termination", &s.span);
             let stm_assert = Spanned::new(s.span.clone(), StmX::Assert(Some(error), check));
             let stm_block =

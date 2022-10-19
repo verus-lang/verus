@@ -5,7 +5,7 @@ use crate::unsupported;
 use crate::util::{error, from_raw_span, signalling};
 use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, ValidityResult};
-use air::messages::{Diagnostics, Message, MessageLabel, MessageLevel, note, note_bare, message};
+use air::messages::{message, note, note_bare, Diagnostics, Message, MessageLabel, MessageLevel};
 use air::profiler::Profiler;
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
@@ -36,7 +36,7 @@ pub struct Reporter<'tcx> {
     compiler_diagnostics: &'tcx rustc_errors::Handler,
 }
 
-impl <'tcx> Reporter<'tcx> {
+impl<'tcx> Reporter<'tcx> {
     pub fn new(compiler: &'tcx Compiler) -> Self {
         Reporter { compiler_diagnostics: compiler.session().diagnostic() }
     }
@@ -142,11 +142,10 @@ impl ErrorSpan {
     }
 }
 
-
 fn report_chosen_triggers(diagnostics: &impl Diagnostics, chosen: &vir::context::ChosenTriggers) {
     let msg = note("automatically chose triggers for this expression:", &chosen.span);
     diagnostics.report(&msg);
-    
+
     for (n, trigger) in chosen.triggers.iter().enumerate() {
         let note = format!("  trigger {} of {}:", n + 1, chosen.triggers.len());
         let msg = note_bare(note);
@@ -284,7 +283,10 @@ impl Verifier {
             for trigger in triggers.iter() {
                 msg = trigger.iter().fold(msg, |m, e| m.primary_span(&e.span));
             }
-            msg = msg.secondary_label(&bnd_info.span, "Triggers selected for this quantifier".to_string());
+            msg = msg.secondary_label(
+                &bnd_info.span,
+                "Triggers selected for this quantifier".to_string(),
+            );
 
             diagnostics.report(&msg);
         }
@@ -832,7 +834,8 @@ impl Verifier {
                 let (function, _vis_abs) = &funs[f];
 
                 ctx.fun = mk_fun_ctx(&function, false);
-                let decl_commands = vir::func_to_air::func_decl_to_air(ctx, &reporter, &fun_ssts, &function)?;
+                let decl_commands =
+                    vir::func_to_air::func_decl_to_air(ctx, &reporter, &fun_ssts, &function)?;
                 ctx.fun = None;
                 let comment = "Function-Specs ".to_string() + &fun_as_rust_dbg(f);
                 self.run_commands(&mut air_context, &decl_commands, &comment);
@@ -963,8 +966,11 @@ impl Verifier {
                     recommends_rerun,
                 )?;
                 fun_ssts = new_fun_ssts;
-                let level =
-                    if recommends_rerun || expands_rerun { MessageLevel::Note } else { MessageLevel::Error };
+                let level = if recommends_rerun || expands_rerun {
+                    MessageLevel::Note
+                } else {
+                    MessageLevel::Error
+                };
                 let s =
                     if recommends_rerun { "Function-Check-Recommends " } else { "Function-Def " };
 

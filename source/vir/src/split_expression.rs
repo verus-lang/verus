@@ -195,7 +195,7 @@ pub type TracedExp = Arc<TracedExpX>;
 pub type TracedExps = Arc<Vec<TracedExp>>;
 #[derive(Debug)]
 pub struct TracedExpX {
-    pub e: Exp,                    //  Exp to be discharged to Z3
+    pub e: Exp,                        //  Exp to be discharged to Z3
     pub trace: air::messages::Message, //  when inlining function, record call stack into `trace`
 }
 impl TracedExpX {
@@ -539,9 +539,12 @@ fn split_call(
     Ok(stms)
 }
 
-fn visit_split_stm(ctx: &Ctx, state: &mut State, 
+fn visit_split_stm(
+    ctx: &Ctx,
+    state: &mut State,
     diagnostics: &impl Diagnostics,
-                   stm: &Stm) -> Result<Stm, VirErr> {
+    stm: &Stm,
+) -> Result<Stm, VirErr> {
     match &stm.x {
         StmX::Assert(_err, e1) => {
             if need_split_expression(ctx, &stm.span) {
@@ -577,7 +580,10 @@ fn visit_split_stm(ctx: &Ctx, state: &mut State,
             let lhs = visit_split_stm(ctx, state, diagnostics, lhs)?;
             state.pop_fuel_scope();
             state.push_fuel_scope();
-            let rhs = rhs.as_ref().map(|rhs| visit_split_stm(ctx, state, diagnostics, rhs)).transpose()?;
+            let rhs = rhs
+                .as_ref()
+                .map(|rhs| visit_split_stm(ctx, state, diagnostics, rhs))
+                .transpose()?;
             state.pop_fuel_scope();
             Ok(Spanned::new(stm.span.clone(), StmX::If(cond.clone(), lhs, rhs)))
         }
@@ -601,9 +607,12 @@ fn visit_split_stm(ctx: &Ctx, state: &mut State,
     }
 }
 
-pub(crate) fn all_split_exp(ctx: &Ctx, 
+pub(crate) fn all_split_exp(
+    ctx: &Ctx,
     diagnostics: &impl Diagnostics,
-                            fun_ssts: &SstMap, stm: &Stm) -> Result<Stm, VirErr> {
+    fun_ssts: &SstMap,
+    stm: &Stm,
+) -> Result<Stm, VirErr> {
     let mut state = State::new(fun_ssts);
     map_shallow_stm(stm, &mut |s| visit_split_stm(ctx, &mut state, diagnostics, s))
 }
@@ -621,7 +630,8 @@ pub(crate) fn split_body(
     let _ = map_shallow_stm(stm, &mut |s| visit_split_stm(ctx, &mut state, diagnostics, s)); // Update `state` to get the fuel info at the function exit point
     for e in ensures.iter() {
         if need_split_expression(ctx, &e.span) {
-            let ens_exp = crate::ast_to_sst::expr_to_exp(ctx, diagnostics, &state.fun_ssts, &ens_pars, e)?;
+            let ens_exp =
+                crate::ast_to_sst::expr_to_exp(ctx, diagnostics, &state.fun_ssts, &ens_pars, e)?;
             let error = air::messages::error(crate::def::SPLIT_POST_FAILURE, &e.span);
             let split_exprs = split_expr(
                 ctx,

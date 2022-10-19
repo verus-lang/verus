@@ -13,8 +13,8 @@ use crate::ast_util::{err_str, path_as_rust_name};
 use crate::func_to_air::{SstInfo, SstMap};
 use crate::sst::{Bnd, BndX, Exp, ExpX, Exps, Trigs, UniqueIdent};
 use air::ast::{Binder, BinderX, Binders, Span};
+use air::messages::Diagnostics;
 use air::scope_map::ScopeMap;
-use air::messages::{Diagnostics};
 use im::Vector;
 use num_bigint::{BigInt, Sign};
 use num_traits::identities::Zero;
@@ -944,7 +944,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             let apply_range = |lower: BigInt, upper: BigInt| {
                                 if i < &lower || i > &upper {
                                     // TODO: Use Diagnostics instead of println
-                                    println!("WARNING: Computation clipped an integer that was out of range");
+                                    println!(
+                                        "WARNING: Computation clipped an integer that was out of range"
+                                    );
                                     ok.clone()
                                 } else {
                                     Ok(e.clone())

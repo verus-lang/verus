@@ -173,8 +173,10 @@ fn func_body_to_air(
                 &mut state,
                 decrease_by_fun.x.body.as_ref().expect("decreases_by has body"),
             )?;
-            let body_stms: Result<Vec<Stm>, VirErr> =
-                body_stms.iter().map(|s| state.finalize_stm(ctx, diagnostics, &state.fun_ssts, s)).collect();
+            let body_stms: Result<Vec<Stm>, VirErr> = body_stms
+                .iter()
+                .map(|s| state.finalize_stm(ctx, diagnostics, &state.fun_ssts, s))
+                .collect();
             decrease_by_stms.extend(body_stms?);
         } else {
             assert!(not_verifying_owning_module);
@@ -332,10 +334,12 @@ pub fn req_ens_to_air(
 /// Returns vector of commands that declare the function symbol itself,
 /// as well as any related functions symbols (e.g., recursive versions),
 /// if the function is a spec function.
-pub fn func_name_to_air(ctx: &Ctx, 
+pub fn func_name_to_air(
+    ctx: &Ctx,
 
     diagnostics: &impl Diagnostics,
-                        function: &Function) -> Result<Commands, VirErr> {
+    function: &Function,
+) -> Result<Commands, VirErr> {
     let mut commands: Vec<Command> = Vec::new();
     if function.x.mode == Mode::Spec {
         if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
@@ -711,7 +715,13 @@ pub fn func_def_to_air(
                     req_stms.extend(stms);
                     req_stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));
                 } else {
-                    reqs.push(crate::ast_to_sst::expr_to_exp(ctx, diagnostics, &state.fun_ssts, &req_pars, e)?);
+                    reqs.push(crate::ast_to_sst::expr_to_exp(
+                        ctx,
+                        diagnostics,
+                        &state.fun_ssts,
+                        &req_pars,
+                        e,
+                    )?);
                 }
             }
             let mut ens_stmts: Vec<Stm> = Vec::new();
@@ -720,7 +730,13 @@ pub fn func_def_to_air(
                 if ctx.checking_recommends() {
                     ens_stmts.extend(crate::ast_to_sst::check_pure_expr(ctx, &mut state, e)?);
                 } else {
-                    enss.push(crate::ast_to_sst::expr_to_exp(ctx, diagnostics, &state.fun_ssts, &ens_pars, e)?);
+                    enss.push(crate::ast_to_sst::expr_to_exp(
+                        ctx,
+                        diagnostics,
+                        &state.fun_ssts,
+                        &ens_pars,
+                        e,
+                    )?);
                 }
             }
             let enss = Arc::new(enss);
@@ -770,7 +786,13 @@ pub fn func_def_to_air(
             let (decls, stm) = if no_termination_check || ctx.checking_recommends() {
                 (vec![], stm)
             } else {
-                crate::recursion::check_termination_stm(ctx, diagnostics, &state.fun_ssts, function, &stm)?
+                crate::recursion::check_termination_stm(
+                    ctx,
+                    diagnostics,
+                    &state.fun_ssts,
+                    function,
+                    &stm,
+                )?
             };
 
             // SST --> AIR
