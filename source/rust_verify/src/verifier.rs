@@ -322,11 +322,13 @@ impl Verifier {
             });
             (std::time::Duration::from_secs(2), report_fn)
         };
+        let reporter = Reporter::new(compiler);
         let is_check_valid = matches!(**command, CommandX::CheckValid(_));
         let time0 = Instant::now();
         #[cfg(feature = "singular")]
         let mut result = if !is_singular {
             air_context.command(
+                &reporter,
                 &command,
                 QueryContext { report_long_running: Some(&mut report_long_running()) },
             )
@@ -338,8 +340,6 @@ impl Verifier {
                 QueryContext { report_long_running: Some(&mut report_long_running()) },
             )
         };
-
-        let reporter = Reporter::new(compiler);
 
         #[cfg(not(feature = "singular"))]
         let mut result = air_context.command(
