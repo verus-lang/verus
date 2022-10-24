@@ -159,6 +159,29 @@ pub ghost struct PermissionOptData<V> {
     pub value: option::Option<V>,
 }
 
+#[doc(hidden)]
+#[macro_export]
+macro_rules! ptr_perm_internal {
+    [$pcell:expr => $val:expr] => {
+        $crate::pervasive::ptr_old_style::PermissionOptData {
+            pptr: $pcell,
+            value: $val,
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! ptr_perm {
+    [$($tail:tt)*] => {
+        ::builtin_macros::verus_proof_macro_exprs!(
+            $crate::pervasive::ptr_old_style::ptr_perm_internal!($($tail)*)
+        )
+    }
+}
+
+pub use ptr_perm_internal;
+pub use ptr_perm;
+
 impl<V> PermissionOpt<V> {
     pub spec fn view(self) -> PermissionOptData<V>;
 
