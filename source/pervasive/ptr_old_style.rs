@@ -169,14 +169,14 @@ impl<V> PermissionOpt<V> {
 
     #[verifier(external_body)]
     pub proof fn is_nonnull(tracked &self)
-        ensures self@.pptr != 0,
+        ensures self.view().pptr != 0,
     {
         unimplemented!();
     }
 
     #[verifier(external_body)]
     pub proof fn leak_contents(tracked &mut self)
-        ensures self@.pptr == old(self)@.pptr && self@.value.is_None(),
+        ensures self.view().pptr == old(self).view().pptr && self.view().value.is_None(),
     {
         unimplemented!();
     }
@@ -223,13 +223,16 @@ impl<V> PPtr<V> {
         PPtr { uptr }
     }
 
+    }
+
     /// Allocates heap memory for type `V`, leaving it uninitialized.
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn empty() -> (pt: (PPtr<V>, Trk<PermissionOpt<V>>))
-        ensures pt.1.0@ === (PermissionOptData{ pptr: pt.0.id(), value: option::Option::None }),
+    pub fn empty() -> (PPtr<V>, Trk<PermissionOpt<V>>)
     {
+        ensures(|pt: (PPtr<V>, Trk<PermissionOpt<V>>)|
+            equal(pt.1.0.view(), PermissionOptData{ pptr: pt.0.id(), value: option::Option::None }));
         opens_invariants_none();
 
         let p = PPtr {
@@ -241,6 +244,8 @@ impl<V> PPtr<V> {
 
         (p, Trk(proof_from_false()))
     }
+
+    verus!{
 
     /// Clones the pointer.
     /// TODO implement the `Clone` and `Copy` traits
@@ -255,6 +260,8 @@ impl<V> PPtr<V> {
         PPtr { uptr: self.uptr }
     }
 
+    }
+
     /// Moves `v` into the location pointed to by the pointer `self`.
     /// Requires the memory to be uninitialized, and leaves it initialized.
     ///
@@ -264,13 +271,15 @@ impl<V> PPtr<V> {
     #[inline(always)]
     #[verifier(external_body)]
     pub fn put(&self, #[proof] perm: &mut PermissionOpt<V>, v: V)
-        requires
-            self.id() === old(perm)@.pptr,
-            old(perm)@.value === option::Option::None,
-        ensures
-            perm@.pptr === old(perm)@.pptr,
-            perm@.value === option::Option::Some(v),
     {
+        requires([
+            self.id() == old(perm).view().pptr,
+            equal(old(perm).view().value, option::Option::None),
+        ]);
+        ensures([
+            equal(perm.view().pptr, old(perm).view().pptr),
+            equal(perm.view().value, option::Option::Some(v)),
+        ]);
         opens_invariants_none();
 
         unsafe {
@@ -282,21 +291,24 @@ impl<V> PPtr<V> {
     /// and returns it.
     /// Requires the memory to be initialized, and leaves it uninitialized.
     ///
-    /// In the ghost perspective, this updates `perm@.value`
+    /// In the ghost perspective, this updates `perm.view().value`
     /// from `Some(v)` to `None`,
     /// while returning the `v` as an `exec` value.
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn take(&self, #[proof] perm: &mut PermissionOpt<V>) -> (v: V)
-        requires
-            self.id() === old(perm)@.pptr,
-            old(perm)@.value.is_Some(),
-        ensures
-            perm@.pptr === old(perm)@.pptr,
-            perm@.value === option::Option::None,
-            v === old(perm)@.value.get_Some_0(),
+    pub fn take(&self, #[proof] perm: &mut PermissionOpt<V>) -> V
     {
+        requires([
+            self.id() == old(perm).view().pptr,
+            old(perm).view().value.is_Some(),
+        ]);
+        ensures(|v: V| [
+            perm.view().pptr == old(perm).view().pptr,
+            equal(perm.view().value, option::Option::None),
+            equal(v, old(perm).view().value.get_Some_0()),
+        ]);
+
         opens_invariants_none();
 
         unsafe {
@@ -306,6 +318,8 @@ impl<V> PPtr<V> {
         }
     }
 
+    verus!{
+
     /// Swaps the `in_v: V` passed in as an argument with the value in memory.
     /// Requires the memory to be initialized, and leaves it initialized with the new value.
 
@@ -313,12 +327,12 @@ impl<V> PPtr<V> {
     #[verifier(external_body)]
     pub fn replace(&self, #[proof] perm: &mut PermissionOpt<V>, in_v: V) -> (out_v: V)
         requires
-            self.id() === old(perm)@.pptr,
-            old(perm)@.value.is_Some(),
+            self.id() === old(perm).view().pptr,
+            old(perm).view().value.is_Some(),
         ensures
-            perm@.pptr === old(perm)@.pptr,
-            perm@.value === option::Option::Some(in_v),
-            out_v === old(perm)@.value.get_Some_0(),
+            perm.view().pptr === old(perm).view().pptr,
+            perm.view().value === option::Option::Some(in_v),
+            out_v === old(perm).view().value.get_Some_0(),
     {
         opens_invariants_none();
 
@@ -329,6 +343,8 @@ impl<V> PPtr<V> {
         }
     }
 
+    }
+
     /// Given a shared borrow of the `PermissionOpt<V>`, obtain a shared borrow of `V`.
 
     // Note that `self` is just a pointer, so it doesn't need to outlive 
@@ -336,18 +352,22 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn borrow<'a>(&self, #[proof] perm: &'a PermissionOpt<V>) -> (v: &'a V)
-        requires
-            self.id() === perm@.pptr,
-            perm@.value.is_Some(),
-        ensures *v === perm@.value.get_Some_0(),
+    pub fn borrow<'a>(&self, #[proof] perm: &'a PermissionOpt<V>) -> &'a V
     {
+        requires([
+            equal(self.id(), perm.view().pptr),
+            perm.view().value.is_Some(),
+        ]);
+        ensures(|v: &V| equal(*v, perm.view().value.get_Some_0()));
+
         opens_invariants_none();
         
         unsafe {
             (*self.uptr).assume_init_ref()
         }
     }
+
+    verus!{
 
     /// Free the memory pointed to be `perm`.
     /// Requires the memory to be uninitialized.
@@ -359,8 +379,8 @@ impl<V> PPtr<V> {
     #[verifier(external_body)]
     pub fn dispose(&self, #[proof] perm: PermissionOpt<V>)
         requires
-            self.id() === perm@.pptr,
-            perm@.value === option::Option::None,
+            self.id() === perm.view().pptr,
+            perm.view().value === option::Option::None,
     {
         opens_invariants_none();
 
