@@ -265,13 +265,13 @@ impl<T> InvCell<T> {
         self.possible_values.contains(val)
     }
 
-    pub fn new<F: Fn(T) -> bool>(val: T, #[spec] f: Ghost<F>) -> Self
+    pub fn new<F: Fn(T) -> bool>(val: T, #[spec] f: F) -> Self
     {
-        requires(f.view()(val));
-        ensures(|cell: Self| forall(|v| f.view()(v) == cell.inv(v)));
+        requires(f(val));
+        ensures(|cell: Self| forall(|v| f(v) == cell.inv(v)));
 
         let (pcell, Trk(perm)) = PCell::new(val);
-        #[spec] let possible_values = Set::new(f.view());
+        #[spec] let possible_values = Set::new(f);
         #[proof] let perm_inv = LocalInvariant::new(perm,
             |perm: PermissionOpt<T>| {
                 perm.view().value.is_Some()
