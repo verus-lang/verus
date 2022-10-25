@@ -458,3 +458,16 @@ impl<V> PPtr<V> {
 
     }
 }
+
+impl<V: Copy> PPtr<V> {
+    #[inline(always)]
+    pub fn read(self, #[proof] perm: &PermissionOpt<V>) -> V {
+        requires([
+            equal(self.id(), perm.view().pptr),
+            perm.view().value.is_Some(),
+        ]);
+        ensures(|v: V| equal(option::Option::Some(v), perm.view().value));
+
+        *self.borrow(perm)
+    }
+}
