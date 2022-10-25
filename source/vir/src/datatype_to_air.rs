@@ -328,6 +328,16 @@ fn datatype_or_fun_to_air_commands(
                             .expect("internal error: malformed datatype axiom");
                         axiom_commands.push(axiom);
                     }
+                    TypX::TypParam(_) => {
+                        let node = crate::prelude::datatype_height_axiom_generic(
+                            &dpath,
+                            &variant_field_ident(&dpath, &variant.name, &field.name),
+                        );
+                        let axiom = air::parser::Parser::new()
+                            .node_to_command(&node)
+                            .expect("internal error: malformed datatype axiom");
+                        axiom_commands.push(axiom);
+                    },
                     _ => {}
                 }
             }

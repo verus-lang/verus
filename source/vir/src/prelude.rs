@@ -523,3 +523,21 @@ pub(crate) fn datatype_height_axiom(typ_name1: &Path, typ_name2: &Path, field: &
         )))
     )
 }
+
+pub(crate) fn datatype_height_axiom_generic(typ_name1: &Path, field: &Ident) -> Node {
+    let height = str_to_node(&suffix_global_id(&fun_to_air_ident(&height())));
+    let field = str_to_node(field.as_str());
+    let typ1 = str_to_node(path_to_air_ident(typ_name1).as_str());
+    let box_t1 = str_to_node(prefix_box(typ_name1).as_str());
+    node!(
+        (axiom (forall ((x [typ1])) (!
+            (<
+                ([height] ([field] x))
+                ([height] ([box_t1] x))
+            )
+            :pattern (([height] ([field] x)))
+            :qid prelude_datatype_height
+            :skolemid skolem_prelude_datatype_height
+        )))
+    )
+}
