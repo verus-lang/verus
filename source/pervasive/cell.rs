@@ -256,7 +256,7 @@ impl<T> InvCell<T> {
 
     pub fn new<F: Fn(T) -> bool>(val: T, #[spec] f: Ghost<F>) -> (cell: Self)
         requires f@(val),
-        ensures forall |v| f@(v) <==> cell.inv(v),
+        ensures cell.wf() && forall |v| f@(v) <==> cell.inv(v),
     {
         let (pcell, perm) = PCell::new(val);
         let possible_values = ghost(Set::new(f@));

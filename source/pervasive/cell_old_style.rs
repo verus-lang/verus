@@ -268,7 +268,7 @@ impl<T> InvCell<T> {
     pub fn new<F: Fn(T) -> bool>(val: T, #[spec] f: F) -> Self
     {
         requires(f(val));
-        ensures(|cell: Self| forall(|v| f(v) == cell.inv(v)));
+        ensures(|cell: Self| cell.wf() && forall(|v| f(v) == cell.inv(v)));
 
         let (pcell, Trk(perm)) = PCell::new(val);
         #[spec] let possible_values = Set::new(f);
