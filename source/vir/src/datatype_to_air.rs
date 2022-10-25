@@ -337,7 +337,7 @@ fn datatype_or_fun_to_air_commands(
                             .node_to_command(&node)
                             .expect("internal error: malformed datatype axiom");
                         axiom_commands.push(axiom);
-                    },
+                    }
                     _ => {}
                 }
             }

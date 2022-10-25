@@ -1194,7 +1194,6 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error(e) // the decreases_by function must be in the same module
 }
 
-
 test_verify_one_file! {
     #[test] decreases_on_non_recursive_generic_datatype verus_code! {
         // https://github.com/verus-lang/verus/issues/315
@@ -1215,7 +1214,7 @@ test_verify_one_file! {
                 max(
                     if let Option::Some(l) = *self.left { l.height() } else { 0 },
                     if let Option::Some(r) = *self.right { r.height() } else { 0 },
-                ) 
+                )
             }
         }
     } => Ok(())
