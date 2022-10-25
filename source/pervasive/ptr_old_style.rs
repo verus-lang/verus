@@ -461,7 +461,7 @@ impl<V> PPtr<V> {
 
 impl<V: Copy> PPtr<V> {
     #[inline(always)]
-    pub fn read(self, #[proof] perm: &PermissionOpt<V>) -> V {
+    pub fn read(&self, #[proof] perm: &PermissionOpt<V>) -> V {
         requires([
             equal(self.id(), perm.view().pptr),
             perm.view().value.is_Some(),
@@ -470,4 +470,27 @@ impl<V: Copy> PPtr<V> {
 
         *self.borrow(perm)
     }
+
+    #[inline(always)]
+    #[exec] pub fn write(&self, #[proof] perm: &mut PermissionOpt<V>, v: V) {
+        requires(equal(self.id(), old(perm).view().pptr));
+        ensures([
+            equal(perm.view().pptr, self.id()),
+            equal(perm.view().value, option::Option::Some(v)),
+        ]);
+
+        perm.leak_contents();
+        self.put(perm, v);
+    }
+
+    #[inline(always)]
+    pub fn free(&self, #[proof] perm: PermissionOpt<V>) {
+        requires(equal(self.id(), perm.view().pptr));
+
+        #[proof] let mut perm = perm;
+        perm.leak_contents();
+        self.dispose(perm);
+    }
+
+
 }
