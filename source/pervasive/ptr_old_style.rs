@@ -276,7 +276,7 @@ impl<V> PPtr<V> {
     #[inline(always)]
     #[verifier(external_body)]
     pub fn clone(&self) -> (pt: PPtr<V>)
-        ensures pt.id() === self.id(),
+        ensures pt === *self,
     {
         opens_invariants_none();
 

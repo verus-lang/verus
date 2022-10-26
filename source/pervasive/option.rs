@@ -34,4 +34,15 @@ impl<A> Option<A> {
             Option::Some(s) => self,
         }
     }
+
+    #[exec]
+    pub fn unwrap(&self) -> &A {
+        requires(self.is_Some());
+        ensures(|a: &A| equal(*a, self.get_Some_0()));
+
+        match self {
+            Option::Some(a) => a,
+            Option::None => unreached(),
+        }
+    }
 }
