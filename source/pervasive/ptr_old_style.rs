@@ -15,23 +15,23 @@ verus!{
 /// it points to may be uninitialized.
 ///
 /// In order to access (read or write) the value behind the pointer, the user needs
-/// a special _ghost permission token_, [`PermissionOpt<V>`](PermissionOpt). This object is `tracked`,
+/// a special _ghost permission token_, [`PermData<V>`](PermData). This object is `tracked`,
 /// which means that it is "only a proof construct" that does not appear in code,
 /// but its uses _are_ checked by the borrow-checker. This ensures memory safety,
 /// data-race-freedom, prohibits use-after-free, etc.
 ///
-/// ### PermissionOpt objects.
+/// ### PermData objects.
 ///
-/// The [`PermissionOpt`] object represents both the ability to access the data behind the
+/// The [`PermData`] object represents both the ability to access the data behind the
 /// pointer _and_ the ability to free it (return it to the memory allocator).
 ///
 /// In particular:
-///  * When the user owns a `PermissionOpt<V>` object associated to a given pointer,
+///  * When the user owns a `PermData<V>` object associated to a given pointer,
 ///    they can either read or write its contents, or deallocate ("free") it.
-///  * When the user has a shared borrow, `&PermissionOpt<V>`, they can read
+///  * When the user has a shared borrow, `&PermData<V>`, they can read
 ///    the contents (i.e., obtained a shared borrow `&V`).
 ///
-/// The `perm: PermissionOpt<V>` object tracks two pieces of data:
+/// The `perm: PermData<V>` object tracks two pieces of data:
 ///  * `perm.pptr` is the pointer that the permission is associated to,
 ///     given by [`ptr.id()`](PPtr::id).
 ///  * `perm.value` tracks the data that is behind the pointer. Thereby:
@@ -40,7 +40,7 @@ verus!{
 ///      * When the user uses the permission to _write_ a value, the `perm.value`
 ///        data is updated.
 ///
-/// For those familiar with separation logic, the `PermissionOpt` object plays a role
+/// For those familiar with separation logic, the `PermData` object plays a role
 /// similar to that of the "points-to" operator, _ptr_ ↦ _value_.
 ///
 /// ### Differences from `PCell`.
@@ -49,7 +49,7 @@ verus!{
 ///  * In `PCell<T>`, the type `T` is placed internally to the `PCell`, whereas with `PPtr`,
 ///    the type `T` is placed at some location on the heap.
 ///  * Since `PPtr` is just a pointer (represented by an integer), it can be `Copy`.
-///  * The `ptr::PermissionOpt` token represents not just the permission to read/write
+///  * The `ptr::PermData` token represents not just the permission to read/write
 ///    the contents, but also to deallocate.
 ///
 /// ### Example (TODO)
@@ -67,7 +67,7 @@ verus!{
 // a much simpler story, which is the following:
 //
 //   ***** VERUS POINTER MODEL *****
-//    "Provenance" comes from the `tracked ghost` PermissionOpt object.
+//    "Provenance" comes from the `tracked ghost` PermData object.
 //   *******************************
 // 
 // Pretty simple, right?
@@ -75,15 +75,15 @@ verus!{
 // Of course, this trusted pointer library still needs to actually run and
 // be sound in the Rust backend.
 // Rust's abstract pointer model is unchanged, and it doesn't know anything
-// about Verus's special ghost `PermissionOpt` object, which gets erased, anyway.
+// about Verus's special ghost `PermData` object, which gets erased, anyway.
 //
-// Maybe someday the ghost PermissionOpt model will become a real
+// Maybe someday the ghost PermData model will become a real
 // memory model. That isn't true today.
 // So we still need to know something about actual, real memory models that
 // are used right now in order to implement this API soundly.
 //
 // Our goal is to allow the *user of Verus* to think in terms of the
-// VERUS POINTER MODEL where provenance is tracked via the `PermissionOpt` object.
+// VERUS POINTER MODEL where provenance is tracked via the `PermData` object.
 // The rest of this is just details for the trusted implementation of PPtr
 // that will be sound in the Rust backend.
 //
@@ -120,7 +120,7 @@ pub struct PPtr<#[verifier(strictly_positive)] V> {
     uptr: *mut MaybeUninit<V>,
 }
 
-// PPtr is always safe to Send/Sync. It's the PermissionOpt object where Send/Sync matters.
+// PPtr is always safe to Send/Sync. It's the PermData object where Send/Sync matters.
 // It doesn't matter if you send the pointer to another thread if you can't access it.
 
 #[verifier(external)]
@@ -134,20 +134,20 @@ unsafe impl<T> Send for PPtr<T> {}
 /// A `tracked` ghost object that gives the user permission to dereference a pointer
 /// for reading or writing, or to free the memory at that pointer.
 ///
-/// The meaning of a `PermissionOpt` object is given by the data in its
-/// `View` object, [`PermissionOptData`].
+/// The meaning of a `PermData` object is given by the data in its
+/// `View` object, [`PermDataData`].
 ///
 /// See the [`PPtr`] documentation for more details.
 
 #[verifier(external_body)]
-pub tracked struct PermissionOpt<#[verifier(strictly_positive)] V> {
+pub tracked struct PermData<#[verifier(strictly_positive)] V> {
     phantom: marker::PhantomData<V>,
     no_copy: NoCopy,
 }
 
-/// Represents the meaning of a [`PermissionOpt`] object.
+/// Represents the meaning of a [`PermData`] object.
 
-pub ghost struct PermissionOptData<V> {
+pub ghost struct PermDataData<V> {
     /// Indicates that this token is for a pointer `ptr: PPtr<V>`
     /// such that [`ptr.id()`](PPtr::id) equal to this value.
 
@@ -163,7 +163,7 @@ pub ghost struct PermissionOptData<V> {
 #[macro_export]
 macro_rules! ptr_perm_internal {
     [$pcell:expr => $val:expr] => {
-        $crate::pervasive::ptr_old_style::PermissionOptData {
+        $crate::pervasive::ptr_old_style::PermDataData {
             pptr: $pcell,
             value: $val,
         }
@@ -182,12 +182,12 @@ macro_rules! ptr_perm {
 pub use ptr_perm_internal;
 pub use ptr_perm;
 
-impl<V> PermissionOpt<V> {
-    pub spec fn view(self) -> PermissionOptData<V>;
+impl<V> PermData<V> {
+    pub spec fn view(self) -> PermDataData<V>;
 
     /// Any dereferenceable pointer must be non-null.
     /// (Note that null pointers _do_ exist and are representable by `PPtr`;
-    /// however, it is not possible to obtain a `PermissionOpt` token for
+    /// however, it is not possible to obtain a `PermData` token for
     /// any such a pointer.)
 
     #[verifier(external_body)]
@@ -229,7 +229,7 @@ impl<V> PPtr<V> {
     /// 
     /// Note that this does _not_ require or ensure that the pointer is valid.
     /// Of course, if the user creates an invalid pointer, they would still not be able to
-    /// create a valid [`PermissionOpt`] token for it, and thus they would never
+    /// create a valid [`PermData`] token for it, and thus they would never
     /// be able to access the data behind the pointer.
     ///
     /// This is analogous to normal Rust, where casting to a pointer is always possible,
@@ -252,10 +252,10 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn empty() -> (PPtr<V>, Trk<PermissionOpt<V>>)
+    pub fn empty() -> (PPtr<V>, Trk<PermData<V>>)
     {
-        ensures(|pt: (PPtr<V>, Trk<PermissionOpt<V>>)|
-            equal(pt.1.0.view(), PermissionOptData{ pptr: pt.0.id(), value: option::Option::None }));
+        ensures(|pt: (PPtr<V>, Trk<PermData<V>>)|
+            equal(pt.1.0.view(), PermDataData{ pptr: pt.0.id(), value: option::Option::None }));
         opens_invariants_none();
 
         let p = PPtr {
@@ -293,7 +293,7 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn put(&self, #[proof] perm: &mut PermissionOpt<V>, v: V)
+    pub fn put(&self, #[proof] perm: &mut PermData<V>, v: V)
     {
         requires([
             self.id() == old(perm).view().pptr,
@@ -320,7 +320,7 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn take(&self, #[proof] perm: &mut PermissionOpt<V>) -> V
+    pub fn take(&self, #[proof] perm: &mut PermData<V>) -> V
     {
         requires([
             self.id() == old(perm).view().pptr,
@@ -348,7 +348,7 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn replace(&self, #[proof] perm: &mut PermissionOpt<V>, in_v: V) -> (out_v: V)
+    pub fn replace(&self, #[proof] perm: &mut PermData<V>, in_v: V) -> (out_v: V)
         requires
             self.id() === old(perm).view().pptr,
             old(perm).view().value.is_Some(),
@@ -368,14 +368,14 @@ impl<V> PPtr<V> {
 
     }
 
-    /// Given a shared borrow of the `PermissionOpt<V>`, obtain a shared borrow of `V`.
+    /// Given a shared borrow of the `PermData<V>`, obtain a shared borrow of `V`.
 
     // Note that `self` is just a pointer, so it doesn't need to outlive 
     // the returned borrow.
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn borrow<'a>(&self, #[proof] perm: &'a PermissionOpt<V>) -> &'a V
+    pub fn borrow<'a>(&self, #[proof] perm: &'a PermData<V>) -> &'a V
     {
         requires([
             equal(self.id(), perm.view().pptr),
@@ -400,7 +400,7 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn dispose(&self, #[proof] perm: PermissionOpt<V>)
+    pub fn dispose(&self, #[proof] perm: PermData<V>)
         requires
             self.id() === perm.view().pptr,
             perm.view().value === option::Option::None,
@@ -420,11 +420,11 @@ impl<V> PPtr<V> {
     /// Free the memory pointed to be `perm` and return the 
     /// value that was previously there.
     /// Requires the memory to be initialized.
-    /// This consumes the [`PermissionOpt`] token, since the user is giving up
+    /// This consumes the [`PermData`] token, since the user is giving up
     /// access to the memory by freeing it.
 
     #[inline(always)]
-    pub fn into_inner(self, #[proof] perm: PermissionOpt<V>) -> V
+    pub fn into_inner(self, #[proof] perm: PermData<V>) -> V
     {
         requires([
             equal(self.id(), perm.view().pptr),
@@ -447,9 +447,9 @@ impl<V> PPtr<V> {
     /// with the given value `v`.
 
     #[inline(always)]
-    pub fn new(v: V) -> (pt: (PPtr<V>, Trk<PermissionOpt<V>>))
+    pub fn new(v: V) -> (pt: (PPtr<V>, Trk<PermData<V>>))
         ensures
-            (pt.1.0.view() === PermissionOptData{ pptr: pt.0.id(), value: option::Option::Some(v) }),
+            (pt.1.0.view() === PermDataData{ pptr: pt.0.id(), value: option::Option::Some(v) }),
     {
         let (p, Trk(mut t)) = Self::empty();
         p.put(&mut t, v);
@@ -461,7 +461,7 @@ impl<V> PPtr<V> {
 
 impl<V: Copy> PPtr<V> {
     #[inline(always)]
-    pub fn read(&self, #[proof] perm: &PermissionOpt<V>) -> V {
+    pub fn read(&self, #[proof] perm: &PermData<V>) -> V {
         requires([
             equal(self.id(), perm.view().pptr),
             perm.view().value.is_Some(),
@@ -472,7 +472,7 @@ impl<V: Copy> PPtr<V> {
     }
 
     #[inline(always)]
-    #[exec] pub fn write(&self, #[proof] perm: &mut PermissionOpt<V>, v: V) {
+    #[exec] pub fn write(&self, #[proof] perm: &mut PermData<V>, v: V) {
         requires(equal(self.id(), old(perm).view().pptr));
         ensures([
             equal(perm.view().pptr, self.id()),
@@ -484,7 +484,7 @@ impl<V: Copy> PPtr<V> {
     }
 
     #[inline(always)]
-    pub fn free(&self, #[proof] perm: PermissionOpt<V>) {
+    pub fn free(&self, #[proof] perm: PermData<V>) {
         requires(equal(self.id(), perm.view().pptr));
 
         #[proof] let mut perm = perm;
