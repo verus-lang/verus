@@ -336,7 +336,6 @@ pub fn req_ens_to_air(
 /// if the function is a spec function.
 pub fn func_name_to_air(
     ctx: &Ctx,
-
     diagnostics: &impl Diagnostics,
     function: &Function,
 ) -> Result<Commands, VirErr> {
