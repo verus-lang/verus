@@ -125,6 +125,7 @@ pub const TYPE_ID_SINT: &str = "SINT";
 pub const HAS_TYPE: &str = "has_type";
 pub const AS_TYPE: &str = "as_type";
 pub const MK_FUN: &str = "mk_fun";
+pub const DUMMY_PARAM: &str = "no%param";
 const CHECK_DECREASE_INT: &str = "check_decrease_int";
 const HEIGHT: &str = "height";
 

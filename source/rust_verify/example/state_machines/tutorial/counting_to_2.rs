@@ -100,7 +100,7 @@ impl Global {
     #[spec]
     pub fn wf(self) -> bool {
         self.atomic.has_inv(|v, g|
-            equal(g.view(), X![self.instance => counter => v as int])
+            equal(g.view(), X::token![self.instance => counter => v as int])
         )
     }
 }
@@ -119,14 +119,14 @@ impl Spawnable<Proof<X::inc_a>> for Thread1Data {
     fn pre(self) -> bool {
         (*self.globals).wf()
         && equal(self.token.view(),
-            X![(*self.globals).instance => inc_a => false]
+            X::token![(*self.globals).instance => inc_a => false]
         )
     }
 
     #[spec]
     fn post(self, new_token: Proof<X::inc_a>) -> bool {
         equal(new_token.0.view(),
-            X![(*self.globals).instance => inc_a => true]
+            X::token![(*self.globals).instance => inc_a => true]
         )
     }
 
@@ -157,14 +157,14 @@ impl Spawnable<Proof<X::inc_b>> for Thread2Data {
     fn pre(self) -> bool {
         (*self.globals).wf()
         && equal(self.token.view(),
-            X![(*self.globals).instance => inc_b => false]
+            X::token![(*self.globals).instance => inc_b => false]
         )
     }
 
     #[spec]
     fn post(self, new_token: Proof<X::inc_b>) -> bool {
         equal(new_token.0.view(),
-            X![(*self.globals).instance => inc_b => true]
+            X::token![(*self.globals).instance => inc_b => true]
         )
     }
 

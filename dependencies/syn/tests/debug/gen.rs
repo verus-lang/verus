@@ -5871,6 +5871,14 @@ impl Debug for Lite<syn::Type> {
                 formatter.write_str("`)")?;
                 Ok(())
             }
+            syn::Type::FnSpec(_val) => {
+                let mut formatter = formatter.debug_struct("Type::FnSpec");
+                if !_val.inputs.is_empty() {
+                    formatter.field("inputs", Lite(&_val.inputs));
+                }
+                formatter.field("output", Lite(&_val.output));
+                formatter.finish()
+            }
             _ => unreachable!(),
         }
     }
@@ -5950,6 +5958,17 @@ impl Debug for Lite<syn::TypeBareFn> {
                 }
             }
             formatter.field("variadic", Print::ref_cast(val));
+        }
+        formatter.field("output", Lite(&_val.output));
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::TypeFnSpec> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("TypeFnSpec");
+        if !_val.inputs.is_empty() {
+            formatter.field("inputs", Lite(&_val.inputs));
         }
         formatter.field("output", Lite(&_val.output));
         formatter.finish()

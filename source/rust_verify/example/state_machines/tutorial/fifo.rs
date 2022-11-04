@@ -589,7 +589,7 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
         |i| backing_cells_vec.view().index(i).id());
 
     // Initialize an instance of the FIFO queue
-    #[proof] let (instance, head_token, tail_token, producer_token, consumer_token)
+    #[proof] let (Trk(instance), Trk(head_token), Trk(tail_token), Trk(producer_token), Trk(consumer_token))
         = FifoQueue::Instance::initialize(backing_cells_ids, perms, perms);
 
     // Initialize atomics
@@ -645,7 +645,7 @@ impl<T> Producer<T> {
             // the `tail` to this value.
             let next_tail = if self.tail + 1 == len { 0 } else { self.tail + 1 };
 
-            #[proof] let cell_perm;
+            #[proof] let cell_perm: Option<cell::PermissionOpt<T>>;
 
             // Get the current `head` value from the shared atomic.
             let head = atomic_with_ghost!(&queue.head => load();
@@ -710,12 +710,12 @@ impl<T> Consumer<T> {
 
             let next_head = if self.head + 1 == len { 0 } else { self.head + 1 };
 
-            #[proof] let cell_perm;
+            #[proof] let cell_perm: Option<cell::PermissionOpt<T>>;
             let tail = atomic_with_ghost!(&queue.tail => load();
                 returning tail;
                 ghost tail_token => {
                     cell_perm = if self.head as u64 != tail {
-                        #[proof] let (_, cp) = queue.instance.consume_start(&tail_token, &mut self.consumer);
+                        #[proof] let (_, Trk(cp)) = queue.instance.consume_start(&tail_token, &mut self.consumer);
                         Option::Some(cp)
                     } else {
                         Option::None

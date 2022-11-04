@@ -4230,8 +4230,8 @@ test_verify_one_file! {
 
             #[invariant]
             pub fn maps_6(&self) -> bool {
-                forall(|k| imply(self.storage_map.dom().contains(k),
-                    self.storage_map.index(k) == 6))
+                forall |k| imply(self.storage_map.dom().contains(k),
+                    self.storage_map.index(k) == 6)
             }
 
             transition!{
@@ -6541,20 +6541,20 @@ test_verify_one_file! {
             #[proof] let (Trk(inst), Trk(token_f)) = Y::Instance::initialize();
             assert(Set::empty().insert(spec_literal_int("19")).contains(spec_literal_int("19")));
             assert(token_f.dom().contains(spec_literal_int("19")));
-            assert(equal(token_f.index(spec_literal_int("19")).view(), Y![
+            assert(equal(token_f.index(spec_literal_int("19")).view(), Y::token![
                 inst => b => spec_literal_int("19")
             ]));
 
             #[proof] let token1 = inst.tr_add();
             assert(equal(token1.view().instance, inst));
-            assert(token1.view().value == spec_literal_int("5"));
+            assert(token1.view().key == spec_literal_int("5"));
             inst.tr_have(&token1);
             inst.tr_remove(token1);
 
             #[proof] let token_set = inst.tr_add_gen();
             assert(Set::empty().insert(spec_literal_int("6")).contains(spec_literal_int("6")));
             assert(token_set.dom().contains(spec_literal_int("6")));
-            assert(equal(token_set.index(spec_literal_int("6")).view(), Y![
+            assert(equal(token_set.index(spec_literal_int("6")).view(), Y::token![
                 inst => b => spec_literal_int("6")
             ]));
             inst.tr_have_gen(&token_set);
@@ -6662,13 +6662,13 @@ test_verify_one_file! {
             #[proof] let (Trk(inst), Trk(token_f)) = Y::Instance::initialize();
             assert(Set::empty().insert(spec_literal_int("19")).contains(spec_literal_int("19")));
             assert(token_f.dom().contains(spec_literal_int("19")));
-            assert(equal(token_f.index(spec_literal_int("19")).view(), Y![
+            assert(equal(token_f.index(spec_literal_int("19")).view(), Y::token![
                 inst => b => spec_literal_int("19")
             ]));
 
             #[proof] let token1 = inst.tr_add();
             assert(equal(token1.view().instance, inst));
-            assert(token1.view().value == spec_literal_int("5"));
+            assert(token1.view().key == spec_literal_int("5"));
             inst.tr_have(&token1);
 
             let token1_clone = token1.clone();
@@ -6677,7 +6677,7 @@ test_verify_one_file! {
             #[proof] let token_set = inst.tr_add_gen();
             assert(Set::empty().insert(spec_literal_int("6")).contains(spec_literal_int("6")));
             assert(token_set.dom().contains(spec_literal_int("6")));
-            assert(equal(token_set.index(spec_literal_int("6")).view(), Y![
+            assert(equal(token_set.index(spec_literal_int("6")).view(), Y::token![
                 inst => b => spec_literal_int("6")
             ]));
             inst.tr_have_gen(&token_set);

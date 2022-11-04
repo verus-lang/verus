@@ -365,22 +365,31 @@ fn const_fn_stream(field: &Field) -> TokenStream {
 
 fn get_macro_decl(sm: &SM) -> TokenStream {
     let sm_name = &sm.name;
-    let mod_path = get_module_path_of_macro_call();
+    let (mod_segments, mod_path) = get_module_path_of_macro_call();
     let arms: Vec<TokenStream> = sm.fields.iter().map(|f| {
         let field_name = &f.name;
         let constructor = field_token_data_type_name(f);
         match &f.stype {
             ShardableType::Variable(_)
             | ShardableType::Option(_)
-            | ShardableType::Multiset(_)
-            | ShardableType::Set(_)
-            | ShardableType::PersistentSet(_)
             | ShardableType::PersistentCount
             | ShardableType::PersistentOption(_)
-            | ShardableType::Count => {
+            | ShardableType::Count
+            => {
                 quote!{
                     ($instance:expr => #field_name => $value:expr) => {
                         #mod_path::#sm_name::#constructor { instance: $instance, value: $value }
+                    };
+                }
+            }
+
+            | ShardableType::Multiset(_)
+            | ShardableType::Set(_)
+            | ShardableType::PersistentSet(_)
+            => {
+                quote!{
+                    ($instance:expr => #field_name => $key:expr) => {
+                        #mod_path::#sm_name::#constructor { instance: $instance, key: $key }
                     };
                 }
             }
@@ -424,13 +433,18 @@ fn get_macro_decl(sm: &SM) -> TokenStream {
         }
     }).collect();
 
-    let name = &sm.name;
+    let msg_string_lit = format!("`, expected some field defined in `{:}`", sm.name.to_string());
 
-    let msg_string_lit = format!("`, expected some field defined in `{name:}`");
+    // A macro_rules! gets exported at the root of the crate.
+    // Best effort to avoid name collisions.
+    let macro_name = Ident::new(
+        &("_".to_string() + &mod_segments.join("_") + &sm.name.to_string() + "_token"),
+        sm.name.span(),
+    );
 
     quote! {
         #[macro_export]
-        macro_rules! #name {
+        macro_rules! #macro_name {
             #(#arms)*
             ($instance:expr => $id:ident => $($tt:tt)*) => {
                 ::std::compile_error!(::std::concat!(
@@ -440,6 +454,8 @@ fn get_macro_decl(sm: &SM) -> TokenStream {
                 ))
             };
         }
+
+        pub use #macro_name as token;
     }
 }
 
@@ -484,10 +500,10 @@ pub fn output_token_types_and_fns(
                 ));
             }
             ShardableType::Multiset(ty) => {
-                token_stream.extend(token_struct_stream(&bundle.sm, field, None, Some(ty), true));
+                token_stream.extend(token_struct_stream(&bundle.sm, field, Some(ty), None, true));
             }
             ShardableType::Set(ty) | ShardableType::PersistentSet(ty) => {
-                token_stream.extend(token_struct_stream(&bundle.sm, field, None, Some(ty), false));
+                token_stream.extend(token_struct_stream(&bundle.sm, field, Some(ty), None, false));
             }
             ShardableType::StorageOption(_) | ShardableType::StorageMap(_, _) => {
                 // storage types don't have tokens; the 'token type' is just the
@@ -1047,9 +1063,9 @@ pub fn exchange_stream(
 
     let req_stream = if reqs.len() > 0 {
         quote! {
-            ::builtin::requires([
+            ::builtin::requires(::builtin_macros::verus_proof_expr!([
                 #(#reqs),*
-            ]);
+            ]));
         }
     } else {
         TokenStream::new()
@@ -1061,9 +1077,9 @@ pub fn exchange_stream(
     let (out_params_ret, ens_stream, ret_value_mode) = if out_params.len() == 0 {
         let ens_stream = if enss.len() > 0 {
             quote! {
-                ::builtin::ensures([
+                ::builtin::ensures(::builtin_macros::verus_proof_expr!([
                     #(#enss),*
-                ]);
+                ]));
             }
         } else {
             TokenStream::new()
@@ -1078,9 +1094,9 @@ pub fn exchange_stream(
         let ens_stream = if enss.len() > 0 {
             quote! {
                 ::builtin::ensures(
-                    |#param_name: #param_ty| [
+                    |#param_name: #param_ty| ::builtin_macros::verus_proof_expr!([
                         #(#enss),*
-                    ]
+                    ])
                 );
             }
         } else {
@@ -1132,10 +1148,10 @@ pub fn exchange_stream(
         let ens_stream = if enss.len() > 0 {
             quote! {
                 ::builtin::ensures(
-                    |tmp_tuple: #tup_typ| [{
+                    |tmp_tuple: #tup_typ| ::builtin_macros::verus_proof_expr!([{
                         let #tup_names = tmp_tuple;
                         #((#enss))&&*
-                    }]
+                    }])
                 );
             }
         } else {
@@ -1160,7 +1176,8 @@ pub fn exchange_stream(
     return Ok(quote! {
         #ret_value_mode
         #[verifier(external_body)]
-        pub proof fn #exch_name#gen(#(#in_params),*) #out_params_ret {
+        #[proof]
+        pub fn #exch_name#gen(#(#in_params),*) #out_params_ret {
             #req_stream
             #ens_stream
             #extra_deps
@@ -1356,12 +1373,16 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
 
             quote! {
                 #[verifier(inline)]
-                pub open spec fn #fn_name_strict(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
+                #[verifier(publish)]
+                #[spec]
+                pub fn #fn_name_strict(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
                     Self::#fn_name(token_opt, opt, instance)
                     && ::builtin::imply(opt.is_None(), token_opt.is_None())
                 }
 
-                pub open spec fn #fn_name(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
+                #[verifier(publish)]
+                #[spec]
+                pub fn #fn_name(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::imply(
                         opt.is_Some(),
                         token_opt.is_Some()
@@ -1390,7 +1411,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             // {x, y}         { x => { instance, x }, y => { instance, y } }
 
             quote! {
-                pub open spec fn #fn_name(token_map: #set_token_ty, set: #set_normal_ty, instance: #inst_ty) -> bool {
+                #[verifier(publish)]
+                #[spec]
+                pub fn #fn_name(token_map: #set_token_ty, set: #set_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|elem: #ty| {
                         ::builtin::with_triggers(
                             (
@@ -1403,7 +1426,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                                 && ::builtin::equal(token_map.index(elem).view(),
                                     #constructor_name {
                                         instance: instance,
-                                        value: elem,
+                                        key: elem,
                                     }
                                 )
                             )
@@ -1412,7 +1435,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 }
 
                 #[verifier(inline)]
-                pub open spec fn #fn_name_strict(token_map: #set_token_ty, set: #set_normal_ty, instance: #inst_ty) -> bool {
+                #[verifier(publish)]
+                #[spec]
+                pub fn #fn_name_strict(token_map: #set_token_ty, set: #set_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::equal(token_map.dom(), set)
                       && Self::#fn_name(token_map, set, instance)
                 }
@@ -1434,7 +1459,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             // true           Some(Token { instance: instance })
 
             quote! {
-                pub open spec fn #fn_name(token_opt: #option_token_ty, b: ::std::primitive::bool, instance: #inst_ty) -> bool {
+                #[verifier(publish)]
+                #[spec]
+                pub fn #fn_name(token_opt: #option_token_ty, b: ::std::primitive::bool, instance: #inst_ty) -> bool {
                     ::builtin::imply(b,
                         token_opt.is_Some()
                         && ::builtin::equal(token_opt.get_Some_0().view().instance, instance)
@@ -1442,7 +1469,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 }
 
                 #[verifier(inline)]
-                pub open spec fn #fn_name_strict(token_opt: #option_token_ty, b: ::std::primitive::bool, instance: #inst_ty) -> bool {
+                #[verifier(publish)]
+                #[spec]
+                pub fn #fn_name_strict(token_opt: #option_token_ty, b: ::std::primitive::bool, instance: #inst_ty) -> bool {
                     Self::#fn_name(token_opt, b, instance)
                     && ::builtin::imply(!b, token_opt.is_None())
                 }
@@ -1471,7 +1500,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             //    [k1 := Token { instance: instance, value: v2 }]...
 
             quote! {
-                pub open spec fn #fn_name(token_map: #map_token_ty, m: #map_normal_ty, instance: #inst_ty) -> bool {
+                #[verifier(publish)]
+                #[spec]
+                pub fn #fn_name(token_map: #map_token_ty, m: #map_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|key: #key|
                         ::builtin::with_triggers(
                             (
@@ -1488,7 +1519,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                     )
                 }
 
-                pub open spec fn #fn_name_strict(token_map: #map_token_ty, m: #map_normal_ty, instance: #inst_ty) -> bool {
+                #[verifier(publish)]
+                #[spec]
+                pub fn #fn_name_strict(token_map: #map_token_ty, m: #map_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::equal(token_map.dom(), m.dom())
                     && Self::#fn_name(token_map, m, instance)
                 }
@@ -1513,24 +1546,28 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             //
             // tokens:
             // map{
-            //    v1 => Token { instance: instance, value: v1, count: n1 }]
-            //    v2 => Token { instance: instance, value: v2, count: n2 }]
+            //    v1 => Token { instance: instance, key: v1, count: n1 }]
+            //    v2 => Token { instance: instance, key: v2, count: n2 }]
             // }
 
             quote! {
-                pub open spec fn #fn_name(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
+                #[verifier(publish)]
+                #[spec]
+                pub fn #fn_name(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|x: #ty|
                         ::builtin::imply(
                             m.count(x) > ::builtin::spec_literal_nat("0"),
                             (#[trigger] tokens.dom().contains(x))
                             && ::builtin::equal(tokens.index(x).view().instance, instance)
                             && tokens.index(x).view().count >= m.count(x)
-                            && ::builtin::equal(tokens.index(x).view().value, x)
+                            && ::builtin::equal(tokens.index(x).view().key, x)
                         )
                     )
                 }
 
-                pub open spec fn #fn_name_strict(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
+                #[verifier(publish)]
+                #[spec]
+                pub fn #fn_name_strict(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|x: #ty| {
                         ::builtin::with_triggers(
                           (
@@ -1540,7 +1577,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                           tokens.dom().contains(x)
                           && ::builtin::equal(tokens.index(x).view().instance, instance)
                           && ::builtin::equal(tokens.index(x).view().count, m.count(x))
-                          && ::builtin::equal(tokens.index(x).view().value, x)
+                          && ::builtin::equal(tokens.index(x).view().key, x)
                         )
                     })
                 }
@@ -1549,26 +1586,31 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 #[verifier(returns(proof))]
                 #[verifier(external_body)]
                 pub fn join(#[proof] self, #[proof] other: Self) -> Self {
-                    ::builtin::requires(::builtin::equal(self.view().instance, other.view().instance) && ::builtin::equal(self.view().value, other.view().value));
+                    ::builtin::requires(::builtin::equal(self.view().instance, other.view().instance) && ::builtin::equal(self.view().key, other.view().key));
                     ::builtin::ensures(|s: Self|
                         ::builtin::equal(s.view().instance, self.view().instance)
-                        && ::builtin::equal(s.view().value, self.view().value)
+                        && ::builtin::equal(s.view().key, self.view().key)
                         && ::builtin::equal(s.view().count, self.view().count + other.view().count)
                     );
                     ::std::unimplemented!();
                 }
 
                 #[verifier(external_body)]
-                pub proof fn split(tracked self, i: nat) -> tracked (crate::pervasive::modes::Trk<Self>, crate::pervasive::modes::Trk<Self>) {
+                #[verifier(returns(proof))]
+                #[proof]
+                pub fn split(#[proof] self, i: nat) -> (crate::pervasive::modes::Trk<Self>, crate::pervasive::modes::Trk<Self>) {
                     ::builtin::requires(i <= self.view().count);
                     ::builtin::ensures(|s: (crate::pervasive::modes::Trk<Self>, crate::pervasive::modes::Trk<Self>)| {
                         let (crate::pervasive::modes::Trk(x), crate::pervasive::modes::Trk(y)) = s;
                         ::builtin::equal(x.view().instance, self.view().instance)
                         && ::builtin::equal(y.view().instance, self.view().instance)
-                        && ::builtin::equal(x.view().value, self.view().value)
-                        && ::builtin::equal(y.view().value, self.view().value)
+                        && ::builtin::equal(x.view().key, self.view().key)
+                        && ::builtin::equal(y.view().key, self.view().key)
                         && ::builtin::equal(x.view().count, i)
-                        && ::builtin::equal(y.view().count as int, self.view().count - i)
+                        && ::builtin::equal(
+                            ::builtin::spec_cast_integer::<nat, int>(y.view().count),
+                            self.view().count.spec_sub(i)
+                        )
                     });
                     ::std::unimplemented!();
                 }
@@ -1589,14 +1631,19 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 }
 
                 #[verifier(external_body)]
-                pub proof fn split(tracked self, i: nat) -> tracked (crate::pervasive::modes::Trk<Self>, crate::pervasive::modes::Trk<Self>) {
+                #[verifier(returns(proof))]
+                #[proof]
+                pub fn split(#[proof] self, i: nat) -> (crate::pervasive::modes::Trk<Self>, crate::pervasive::modes::Trk<Self>) {
                     ::builtin::requires(i <= self.view().count);
                     ::builtin::ensures(|s: (crate::pervasive::modes::Trk<Self>, crate::pervasive::modes::Trk<Self>)| {
                         let (crate::pervasive::modes::Trk(x), crate::pervasive::modes::Trk(y)) = s;
                         ::builtin::equal(x.view().instance, self.view().instance)
                         && ::builtin::equal(y.view().instance, self.view().instance)
                         && ::builtin::equal(x.view().count, i)
-                        && ::builtin::equal(y.view().count as int, self.view().count - i)
+                        && ::builtin::equal(
+                            ::builtin::spec_cast_integer::<nat, int>(y.view().count),
+                            self.view().count.spec_sub(i)
+                        )
                     });
                     ::std::unimplemented!();
                 }
@@ -1605,7 +1652,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
         ShardableType::PersistentCount => {
             quote! {
                 #[verifier(external_body)]
-                pub proof fn weaken(tracked self, i: nat) -> tracked Self {
+                #[verifier(returns(proof))]
+                #[proof]
+                pub fn weaken(#[proof] self, i: nat) -> Self {
                     ::builtin::requires(i <= self.view().count);
                     ::builtin::ensures(|s: Self|
                         ::builtin::equal(s.view().instance, self.view().instance)
@@ -2054,7 +2103,7 @@ fn token_matches_elt(
             mk_eq(&Expr::Verbatim(quote! {#token_name.view().value}), &e)
         }
         MonoidElt::SingletonMultiset(e) => mk_and(
-            mk_eq(&Expr::Verbatim(quote! {#token_name.view().value}), &e),
+            mk_eq(&Expr::Verbatim(quote! {#token_name.view().key}), &e),
             Expr::Verbatim(quote! { #token_name.view().count == 1 }),
         ),
         MonoidElt::SingletonKV(key, None) => {
@@ -2077,9 +2126,7 @@ fn token_matches_elt(
             mk_eq(&Expr::Verbatim(quote! {#token_name.view().key}), &key),
             mk_eq(&Expr::Verbatim(quote! {#token_name.view().value}), &val),
         ),
-        MonoidElt::SingletonSet(e) => {
-            mk_eq(&Expr::Verbatim(quote! { #token_name.view().value }), &e)
-        }
+        MonoidElt::SingletonSet(e) => mk_eq(&Expr::Verbatim(quote! { #token_name.view().key }), &e),
         MonoidElt::True => Expr::Verbatim(quote! { true }),
         MonoidElt::General(e) => match &field.stype {
             ShardableType::Count | ShardableType::PersistentCount => {

@@ -159,3 +159,20 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] parse_named_return_type_with_comma_in_type_args verus_code! {
+        use map::*;
+
+        proof fn some_proof() -> (m: Map<int, int>)
+            ensures m === Map::empty()
+        {
+            Map::empty()
+        }
+
+        proof fn cats() {
+            let m = some_proof();
+            assert(m === Map::empty());
+        }
+    } => Ok(())
+}

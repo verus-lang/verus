@@ -68,7 +68,7 @@ pub fn is_definitely_irrefutable(pat: &Pat) -> bool {
     }
 }
 
-pub fn get_module_path_of_macro_call() -> TokenStream {
+pub fn get_module_path_of_macro_call() -> (Vec<String>, TokenStream) {
     let ts: proc_macro::TokenStream = quote::quote! { ::std::module_path!() }.into();
     let mod_name_ts = ts.expand_expr();
     let mod_name_ts = match mod_name_ts {
@@ -84,16 +84,20 @@ pub fn get_module_path_of_macro_call() -> TokenStream {
     let span = Span::call_site();
 
     // Skip the first one (it's the crate name)
-    let segments: Vec<TokenStream> = mod_name
-        .split("::")
-        .skip(1)
+    let segments: Vec<String> = mod_name.split("::").skip(1).map(|s| s.to_string()).collect();
+
+    let segments_idents: Vec<TokenStream> = segments
+        .iter()
         .map(|s| {
             let ident = Ident::new(s, span);
             quote::quote! { :: #ident }
         })
         .collect();
 
-    quote::quote! {
-        $crate #(#segments)*
-    }
+    (
+        segments,
+        quote::quote! {
+            $crate #(#segments_idents)*
+        },
+    )
 }

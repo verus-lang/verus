@@ -57,6 +57,15 @@ pub fn tracked_unwrap_trk<A>(a: Tracked<Trk<A>>) -> (ret: Tracked<A>)
     Tracked::assume_new()
 }
 
+#[verifier(external_body)]
+pub proof fn tracked_swap<V>(tracked a: &mut V, tracked b: &mut V)
+    ensures
+        a === old(b),
+        b === old(a)
+{
+    unimplemented!();
+}
+
 } // verus
 
 // TODO: replace Spec and Proof entirely with Ghost and Tracked

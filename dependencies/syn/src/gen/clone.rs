@@ -2167,6 +2167,7 @@ impl Clone for Type {
             Type::TraitObject(v0) => Type::TraitObject(v0.clone()),
             Type::Tuple(v0) => Type::Tuple(v0.clone()),
             Type::Verbatim(v0) => Type::Verbatim(v0.clone()),
+            Type::FnSpec(v0) => Type::FnSpec(v0.clone()),
             #[cfg(syn_no_non_exhaustive)]
             _ => unreachable!(),
         }
@@ -2196,6 +2197,17 @@ impl Clone for TypeBareFn {
             paren_token: self.paren_token.clone(),
             inputs: self.inputs.clone(),
             variadic: self.variadic.clone(),
+            output: self.output.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for TypeFnSpec {
+    fn clone(&self) -> Self {
+        TypeFnSpec {
+            fn_spec_token: self.fn_spec_token.clone(),
+            paren_token: self.paren_token.clone(),
+            inputs: self.inputs.clone(),
             output: self.output.clone(),
         }
     }

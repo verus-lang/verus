@@ -19,7 +19,7 @@ spec fn is_sorted(seqint: Seq<int>) -> bool {
 //    TODO(utaal): Could not automatically infer triggers for this quantifer.  Use #[trigger] annotations to manually mark trigger terms instead.
 
     // But jonh hates that summer school definition! Better to forall pairs of indices.
-    forall(|i: int, j: int| 0 <= i <= j < seqint.len() ==> seqint[i] <= seqint[j])
+    forall |i: int, j: int| 0 <= i <= j < seqint.len() ==> seqint[i] <= seqint[j]
 }
 
 spec fn count_in_seq<T>(a: Seq<T>, t: T) -> nat

@@ -61,14 +61,14 @@ tokenized_state_machine!(
 
         #[invariant]
         pub fn inv1(self) -> bool {
-            forall(|i: int|
-              self.storage_map.dom().contains(i) >>= (0 <= i && i < self.m))
+            forall |i: int|
+              self.storage_map.dom().contains(i) ==> (0 <= i && i < self.m)
         }
 
         #[invariant]
         pub fn inv2(self) -> bool {
-            forall(|i: int|
-              (0 <= i && i < self.m) >>= self.storage_map.dom().contains(i))
+            forall |i: int|
+              (0 <= i && i < self.m) ==> self.storage_map.dom().contains(i)
         }
 
         #[invariant]

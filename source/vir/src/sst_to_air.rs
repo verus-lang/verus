@@ -1247,7 +1247,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
 
             let callee_mask_set = mask_set_from_spec(&func.x.mask_spec, func.x.mode);
-            callee_mask_set.assert_is_contained_in(&state.mask, &stm.span, &mut stmts);
+            if !ctx.checking_recommends() {
+                callee_mask_set.assert_is_contained_in(&state.mask, &stm.span, &mut stmts);
+            }
 
             let typ_args: Vec<Expr> = vec_map(typs, typ_to_id);
             if func.x.params.iter().any(|p| p.x.is_mut) && ctx.debug {
@@ -1662,7 +1664,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             // Assert that the namespace of the inv we are opening is in the mask set
             let namespace_expr = call_namespace(inv_expr.clone(), typ, *atomicity);
-            state.mask.assert_contains(&inv_exp.span, &namespace_expr, &mut stmts);
+            if !ctx.checking_recommends() {
+                state.mask.assert_contains(&inv_exp.span, &namespace_expr, &mut stmts);
+            }
 
             // add an 'assume' that inv holds
             let inner_var = SpannedTyped::new(&stm.span, typ, ExpX::Var(uid.clone()));
@@ -1686,8 +1690,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             // Note that we re-use main_inv here; but main_inv references the variable
             // given by `uid` which may have been assigned to since the start of the block.
             // so this may evaluate differently in the SMT.
-            let error = error("Cannot show invariant holds at end of block", &body_stm.span);
-            stmts.push(Arc::new(StmtX::Assert(error, main_inv)));
+            if !ctx.checking_recommends() {
+                let error = error("Cannot show invariant holds at end of block", &body_stm.span);
+                stmts.push(Arc::new(StmtX::Assert(error, main_inv)));
+            }
 
             stmts
         }

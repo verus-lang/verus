@@ -86,7 +86,8 @@ pub enum TypX {
     Int(IntRange),
     /// Tuple type (t1, ..., tn).  Note: ast_simplify replaces Tuple with Datatype.
     Tuple(Typs),
-    /// Spec closure type (t1, ..., tn) -> t0.
+    /// Both the `FnSpec` type and the rust anonymous closure type map to this.
+    /// (t1, ..., tn) -> t0.
     Lambda(Typs, Typ),
     /// Datatype (concrete or abstract) applied to type arguments
     Datatype(Path, Typs),

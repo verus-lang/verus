@@ -1972,7 +1972,7 @@ pub(crate) mod parsing {
                 } else {
                     Ok(Expr::Struct(expr_struct))
                 }
-             } else {
+            } else {
                 use crate::spanned::Spanned;
                 Err(Error::new(expr_struct.span(),
                     "struct literals are not allowed here; try surrounding the struct literal with parentheses"))
@@ -2006,14 +2006,13 @@ pub(crate) mod parsing {
                 use crate::ext::IdentExt;
 
                 if content.peek(Ident::peek_any) {
-                    content.peek2(Token![,]) || (content.peek2(Token![:]) && !content.peek3(Token![:]))
+                    content.peek2(Token![,])
+                        || (content.peek2(Token![:]) && !content.peek3(Token![:]))
                 } else {
                     false
                 }
             }
-            Result::Err(_) => {
-                true
-            }
+            Result::Err(_) => true,
         }
     }
 

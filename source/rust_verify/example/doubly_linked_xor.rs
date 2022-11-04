@@ -129,7 +129,7 @@ impl<V> DListXor<V> {
         }
     }
 
-    fn push_first(&mut self, v: V)
+    fn push_empty_case(&mut self, v: V)
         requires
             old(self).wf(),
             old(self).ptrs@.len() == 0,
@@ -171,7 +171,7 @@ impl<V> DListXor<V> {
                 });
             }
 
-            self.push_first(v);
+            self.push_empty_case(v);
         } else {
             assert(self.ptrs@.len() > 0);
             assert(self.wf_perm((self.ptrs@.len() - 1) as nat));
@@ -347,19 +347,231 @@ impl<V> DListXor<V> {
         v
     }
 
-    // TODO push_front, pop_front
+    fn pop_front(&mut self) -> (v: V)
+        requires
+            old(self).wf(),
+            old(self)@.len() > 0,
+        ensures
+            self.wf(),
+            self@ === old(self)@.subrange(1, old(self)@.len() as int),
+            v === old(self)@[0],
+    {
+        assert(self.wf_perm(0));
+
+        let first_u64 = self.head;
+        proof { lemma_usize_u64(first_u64); }
+        let first_ptr = PPtr::<Node<V>>::from_usize(first_u64 as usize);
+        let first_perm: Tracked<PermissionOpt<Node<V>>> = tracked(
+            (tracked self.perms.borrow_mut()).tracked_remove(0)
+        );
+        let first_node = first_ptr.into_inner(first_perm);
+
+        let second_u64 = first_node.xored;
+        let v = first_node.v;
+
+        proof {
+            let self_tail = self.tail;
+            assert(self_tail ^ 0 == self_tail) by(bit_vector);
+            assert(0u64 ^ 0 == 0) by(bit_vector);
+        }
+
+        if second_u64 == 0 {
+            self.tail = 0;
+            self.head = 0;
+
+            proof {
+                assert_by_contradiction!(self.ptrs@.len() == 1, {
+                    assert(old(self).wf_perm(1));
+                    #[spec] let actual_second_u64 = self.next_of(0);
+                    assert(0 ^ actual_second_u64 == actual_second_u64) by(bit_vector);
+                });
+            }
+        } else {
+            self.head = second_u64;
+
+            assert(old(self)@.len() != 1);
+            assert(old(self)@.len() >= 2);
+            assert(old(self).wf_perm(1));
+
+            proof {
+                let actual_second_u64 = self.next_of(0);
+                assert(0 ^ actual_second_u64 == actual_second_u64) by(bit_vector);
+
+                lemma_usize_u64(second_u64);
+            }
+            let second_ptr = PPtr::<Node<V>>::from_usize(second_u64 as usize);
+            let mut second_perm = tracked(
+                (tracked self.perms.borrow_mut()).tracked_remove(1)
+            );
+            let mut second_node = second_ptr.take(&mut second_perm);
+            let t: Ghost<u64> = ghost(self.next_of(1));
+            assert((first_u64 ^ t@) ^ first_u64 == 0 ^ t@) by(bit_vector);
+
+            second_node.xored = second_node.xored ^ first_u64;
+
+            assert(second_node.xored == 0 ^ t@);
+
+            second_ptr.put(&mut second_perm, second_node);
+            proof {
+                (tracked self.perms.borrow_mut())
+                    .tracked_insert(1, (tracked second_perm).get());
+
+                assert forall |j: nat| 1 <= j < old(self)@.len() implies
+                    self.perms@.dom().contains(j)
+                by { assert(old(self).wf_perm(j)); }
+
+                (tracked self.perms.borrow_mut()).tracked_map_keys_in_place(
+                    Map::<nat, nat>::new(
+                        |j: nat| 0 <= j < old(self)@.len() - 1,
+                        |j: nat| (j + 1) as nat,
+                    )
+                );
+            }
+        }
+
+        proof {
+            self.ptrs@ = self.ptrs@.subrange(1, self.ptrs@.len() as int);
+        }
+
+        proof {
+            assert(self.wf_tail());
+            assert(self.wf_head());
+
+            if self.ptrs@.len() > 0 {
+                assert(self.wf_perm(0));
+            }
+
+            assert(forall|i: nat| i < self@.len() ==>
+                old(self).wf_perm(i + 1) ==> self.wf_perm(i));
+            assert(self.wf_perms());
+
+            assert forall|i: int|
+                0 <= i < self@.len() implies
+                #[trigger] self@[i] === old(self)@.subrange(1, old(self)@.len() as int)[i] by
+            {
+                assert(old(self).wf_perm(i as nat + 1)); // trigger
+            }
+
+            assert(self@.ext_equal(old(self)@.subrange(1, old(self)@.len() as int)));
+        }
+
+        v
+    }
+
+    fn push_front(&mut self, v: V)
+        requires
+            old(self).wf(),
+        ensures
+            self.wf(),
+            self@ === seq![v].add(old(self)@)
+    {
+        if self.tail == 0 {
+            // Special case: list is empty
+
+            proof {
+                assert_by_contradiction!(self.ptrs@.len() == 0, {
+                    assert(self.wf_perm((self.ptrs@.len() - 1) as nat));
+                });
+            }
+
+            self.push_empty_case(v);
+            assert(self@.ext_equal(seq![v].add(old(self)@)));
+        } else {
+            assert(self.ptrs@.len() > 0);
+            assert(self.wf_perm(0));
+
+            let head_ptr_u64 = self.head;
+            proof { lemma_usize_u64(head_ptr_u64); }
+            let head_ptr = PPtr::<Node<V>>::from_usize(head_ptr_u64 as usize);
+            let mut head_perm: Tracked<PermissionOpt<Node<V>>> = tracked(
+                (tracked self.perms.borrow_mut()).tracked_remove(0)
+            );
+            let mut head_node = head_ptr.take(&mut head_perm);
+            let second_ptr = head_node.xored;
+
+            let (ptr, perm) = PPtr::new(
+                Node::<V> { xored: head_ptr_u64, v }
+            );
+
+            proof {
+                (tracked perm.borrow()).is_nonnull();
+            }
+
+            let new_ptr_u64 = ptr.to_usize() as u64;
+
+            head_node.xored = new_ptr_u64 ^ second_ptr;
+            head_ptr.put(&mut head_perm, head_node);
+            proof {
+                (tracked self.perms.borrow_mut())
+                    .tracked_insert(0, (tracked head_perm).get());
+
+                assert forall |j: nat| 0 <= j < old(self)@.len() implies
+                    self.perms@.dom().contains(j)
+                by { assert(old(self).wf_perm(j)); }
+
+                (tracked self.perms.borrow_mut()).tracked_map_keys_in_place(
+                    Map::<nat, nat>::new(
+                        |j: nat| 1 <= j <= old(self)@.len(),
+                        |j: nat| (j - 1) as nat,
+                    )
+                );
+
+                (tracked self.perms.borrow_mut())
+                    .tracked_insert(0, (tracked perm).get());
+                self.ptrs@ = seq![ptr].add(self.ptrs@);
+            }
+            self.head = new_ptr_u64;
+
+            proof {
+                assert(0 ^ head_ptr_u64 == head_ptr_u64) by(bit_vector);
+
+                let i = 1;
+                //assert(self.perms@.dom().contains(i));
+                //assert(self.perms@[i]@.pptr === self.ptrs@[i]@);
+                //assert(self.perms@[i].value.is_Some());
+                let next_of_i = self.next_of(i);
+                assert(0 ^ next_of_i == next_of_i) by(bit_vector);
+                //assert(self.prev_of(i) == second_to_last_ptr);
+                //assert(self.next_of(i) == new_ptr_int);
+                //assert(self.perms@[i].value.get_Some_0().xored == (
+                //    self.prev_of(i) ^ self.next_of(i)
+                //));
+
+                assert(self.perms@.index(1)@.value.get_Some_0().xored === new_ptr_u64 ^ second_ptr);
+                assert(self.perms@.index(0)@.value.get_Some_0().xored === head_ptr_u64);
+                assert(self.perms@.index(1)@.pptr === head_ptr_u64 as int);
+
+                assert(self.wf_perm(1));
+                assert(self.wf_perm(0));
+                assert(forall|i: nat| 1 <= i <= old(self).ptrs@.len() ==>
+                    old(self).wf_perm((i - 1) as nat) ==> #[trigger] self.wf_perm(i));
+                assert(self.wf_perms());
+                assert(self.wf_tail());
+
+                assert(self@[0] === v);
+                assert forall|i: int| 1 <= i <= self.ptrs@.len() - 1 implies old(self)@[i - 1] === self@[i] by {
+                    assert(old(self).wf_perm((i - 1) as nat)); // trigger
+                };
+                assert(self@.ext_equal(seq![v].add(old(self)@)));
+            }
+        }
+    }
 }
 
 fn main() {
     let mut t = DListXor::<u32>::new();
-    t.push_back(5);
-    t.push_back(7);
 
-    let x = t.pop_back();
-    let y = t.pop_back();
+    t.push_back(2);
+    t.push_back(3);
+    t.push_front(1);  // 1, 2, 3
 
-    assert(x == 7);
-    assert(y == 5);
+    let x = t.pop_back();  // 3
+    let y = t.pop_front(); // 1
+    let z = t.pop_front(); // 2
+
+    assert(x == 3);
+    assert(y == 1);
+    assert(z == 2);
 }
 
 } // verus!

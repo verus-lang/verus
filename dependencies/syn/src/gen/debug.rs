@@ -3006,6 +3006,11 @@ impl Debug for Type {
                 formatter.field(v0);
                 formatter.finish()
             }
+            Type::FnSpec(v0) => {
+                let mut formatter = formatter.debug_tuple("FnSpec");
+                formatter.field(v0);
+                formatter.finish()
+            }
             #[cfg(syn_no_non_exhaustive)]
             _ => unreachable!(),
         }
@@ -3035,6 +3040,17 @@ impl Debug for TypeBareFn {
         formatter.field("paren_token", &self.paren_token);
         formatter.field("inputs", &self.inputs);
         formatter.field("variadic", &self.variadic);
+        formatter.field("output", &self.output);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for TypeFnSpec {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("TypeFnSpec");
+        formatter.field("fn_spec_token", &self.fn_spec_token);
+        formatter.field("paren_token", &self.paren_token);
+        formatter.field("inputs", &self.inputs);
         formatter.field("output", &self.output);
         formatter.finish()
     }

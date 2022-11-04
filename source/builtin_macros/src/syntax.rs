@@ -5,6 +5,7 @@ use quote::quote_spanned;
 use std::iter::FromIterator;
 use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::punctuated::Punctuated;
+use syn_verus::spanned::Spanned;
 use syn_verus::token;
 use syn_verus::token::{Brace, Bracket, Paren, Semi};
 use syn_verus::visit_mut::{
@@ -13,16 +14,21 @@ use syn_verus::visit_mut::{
     visit_item_struct_mut, visit_local_mut, visit_trait_item_method_mut, VisitMut,
 };
 use syn_verus::{
-    braced, bracketed, parenthesized, parse_macro_input, AttrStyle, Attribute, BinOp, Block,
-    DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop, ExprTuple,
+    braced, bracketed, parenthesized, parse_macro_input, AttrStyle, Attribute, BareFnArg, BinOp,
+    Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop, ExprTuple,
     ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Ident, ImplItemMethod, Invariant, Item,
     ItemConst, ItemEnum, ItemFn, ItemStruct, Lit, Local, Meta, ModeSpec, ModeSpecChecked, Pat,
     Path, PathArguments, PathSegment, Publish, Recommends, Requires, ReturnType, Signature, Stmt,
-    Token, TraitItemMethod, UnOp, Visibility,
+    Token, TraitItemMethod, Type, TypeFnSpec, UnOp, Visibility,
 };
 
 fn take_expr(expr: &mut Expr) -> Expr {
     let dummy: Expr = Expr::Verbatim(TokenStream::new());
+    std::mem::replace(expr, dummy)
+}
+
+fn take_type(expr: &mut Type) -> Type {
+    let dummy: Type = Type::Verbatim(TokenStream::new());
     std::mem::replace(expr, dummy)
 }
 
@@ -429,7 +435,6 @@ fn chain_count(expr: &Expr) -> u32 {
 
 impl Visitor {
     fn chain_operators(&mut self, expr: &mut Expr) -> bool {
-        use syn_verus::spanned::Spanned;
         let count = chain_count(expr);
         if count < 2 {
             return false;
@@ -485,11 +490,122 @@ impl Visitor {
 
         true
     }
+
+    /// Turn `forall |x| { ... }`
+    /// into `::builtin::forall(|x| { ... })`
+    /// and similarly for `exists` and `choose`
+    ///
+    /// Also handle trigger attributes.
+    ///
+    /// Returns true if the transform is attempted, false if the transform is inapplicable.
+
+    fn closure_quant_operators(&mut self, expr: &mut Expr) -> bool {
+        let unary = match expr {
+            Expr::Unary(u @ ExprUnary { op: UnOp::Forall(..), .. }) => u,
+            Expr::Unary(u @ ExprUnary { op: UnOp::Exists(..), .. }) => u,
+            Expr::Unary(u @ ExprUnary { op: UnOp::Choose(..), .. }) => u,
+            _ => {
+                return false;
+            }
+        };
+
+        // Recursively visit the closure expression, but *don't* call our
+        // custom visitor fn on the closure node itself.
+        visit_expr_mut(self, &mut unary.expr);
+
+        let span = unary.span();
+
+        let attrs = std::mem::take(&mut unary.attrs);
+
+        let arg = &mut *unary.expr;
+        let (inner_attrs, n_inputs) = match &mut *arg {
+            Expr::Closure(closure) => {
+                (std::mem::take(&mut closure.inner_attrs), closure.inputs.len())
+            }
+            _ => panic!("expected closure for quantifier"),
+        };
+
+        let mut triggers: Vec<Expr> = Vec::new();
+
+        for attr in inner_attrs {
+            let trigger: syn_verus::Result<syn_verus::Specification> =
+                syn_verus::parse2(attr.tokens.clone());
+            match (trigger, attr.path.get_ident()) {
+                (Ok(trigger), Some(id)) if id == "auto" && trigger.exprs.len() == 0 => {
+                    match &mut *arg {
+                        Expr::Closure(closure) => {
+                            let body = take_expr(&mut closure.body);
+                            closure.body = Box::new(Expr::Verbatim(
+                                quote_spanned!(span => #[auto_trigger] (#body)),
+                            ));
+                        }
+                        _ => panic!("expected closure for quantifier"),
+                    }
+                }
+                (Ok(trigger), Some(id)) if id == "trigger" => {
+                    let tuple =
+                        ExprTuple { attrs: vec![], paren_token: Paren(span), elems: trigger.exprs };
+                    triggers.push(Expr::Tuple(tuple));
+                }
+                (Err(err), _) => {
+                    let span = attr.span();
+                    let err = err.to_string();
+                    *expr = Expr::Verbatim(quote_spanned!(span => compile_error!(#err)));
+                    return true;
+                }
+                _ => {
+                    let span = attr.span();
+                    *expr =
+                        Expr::Verbatim(quote_spanned!(span => compile_error!("expected trigger")));
+                    return true;
+                }
+            }
+        }
+
+        if triggers.len() > 0 {
+            let mut elems = Punctuated::new();
+            for elem in triggers {
+                elems.push(elem);
+                elems.push_punct(Token![,](span));
+            }
+            let tuple = ExprTuple { attrs: vec![], paren_token: Paren(span), elems };
+            match &mut *arg {
+                Expr::Closure(closure) => {
+                    let body = take_expr(&mut closure.body);
+                    closure.body = Box::new(Expr::Verbatim(
+                        quote_spanned!(span => ::builtin::with_triggers(#tuple, #body)),
+                    ));
+                }
+                _ => panic!("expected closure for quantifier"),
+            }
+        }
+
+        match unary.op {
+            UnOp::Forall(..) => {
+                *expr = quote_verbatim!(span, attrs => ::builtin::forall(#arg));
+            }
+            UnOp::Exists(..) => {
+                *expr = quote_verbatim!(span, attrs => ::builtin::exists(#arg));
+            }
+            UnOp::Choose(..) => {
+                if n_inputs == 1 {
+                    *expr = quote_verbatim!(span, attrs => ::builtin::choose(#arg));
+                } else {
+                    *expr = quote_verbatim!(span, attrs => ::builtin::choose_tuple(#arg));
+                }
+            }
+            _ => panic!("unary"),
+        }
+
+        true
+    }
 }
 
 impl VisitMut for Visitor {
     fn visit_expr_mut(&mut self, expr: &mut Expr) {
         if self.chain_operators(expr) {
+            return;
+        } else if self.closure_quant_operators(expr) {
             return;
         }
 
@@ -596,7 +712,6 @@ impl VisitMut for Visitor {
         self.assign_to = is_assign_to;
 
         if let Expr::Unary(unary) = expr {
-            use syn_verus::spanned::Spanned;
             let span = unary.span();
             let low_prec_op = match unary.op {
                 UnOp::BigAnd(..) => true,
@@ -650,7 +765,6 @@ impl VisitMut for Visitor {
                 }
             }
         } else if let Expr::Binary(binary) = expr {
-            use syn_verus::spanned::Spanned;
             let span = binary.span();
             let low_prec_op = match binary.op {
                 BinOp::BigAnd(syn_verus::token::BigAnd { spans }) => {
@@ -716,14 +830,14 @@ impl VisitMut for Visitor {
             }
         }
 
-        let (do_replace, quant) = match &expr {
-            Expr::Lit(ExprLit { lit: Lit::Int(..), .. }) if use_spec_traits => (true, false),
-            Expr::Cast(..) if use_spec_traits => (true, false),
-            Expr::Index(..) if use_spec_traits => (true, false),
-            Expr::Unary(ExprUnary { op: UnOp::Forall(..), .. }) => (true, true),
-            Expr::Unary(ExprUnary { op: UnOp::Exists(..), .. }) => (true, true),
-            Expr::Unary(ExprUnary { op: UnOp::Choose(..), .. }) => (true, true),
-            Expr::Unary(ExprUnary { op: UnOp::Neg(..), .. }) if use_spec_traits => (true, false),
+        let do_replace = match &expr {
+            Expr::Lit(ExprLit { lit: Lit::Int(..), .. }) if use_spec_traits => true,
+            Expr::Cast(..) if use_spec_traits => true,
+            Expr::Index(..) if use_spec_traits => true,
+            Expr::Unary(ExprUnary { op: UnOp::Forall(..), .. }) => true,
+            Expr::Unary(ExprUnary { op: UnOp::Exists(..), .. }) => true,
+            Expr::Unary(ExprUnary { op: UnOp::Choose(..), .. }) => true,
+            Expr::Unary(ExprUnary { op: UnOp::Neg(..), .. }) if use_spec_traits => true,
             Expr::Binary(ExprBinary {
                 op:
                     BinOp::Eq(..)
@@ -743,10 +857,11 @@ impl VisitMut for Visitor {
                     | BinOp::Shl(..)
                     | BinOp::Shr(..),
                 ..
-            }) if use_spec_traits => (true, false),
-            Expr::Assume(..) | Expr::Assert(..) | Expr::AssertForall(..) => (true, false),
-            Expr::View(..) => (true, false),
-            _ => (false, false),
+            }) if use_spec_traits => true,
+            Expr::Assume(..) | Expr::Assert(..) | Expr::AssertForall(..) => true,
+            Expr::View(..) => true,
+            Expr::Closure(..) if self.inside_ghost > 0 => true,
+            _ => false,
         };
         if do_replace {
             match take_expr(expr) {
@@ -786,7 +901,6 @@ impl VisitMut for Visitor {
                     }
                 }
                 Expr::Cast(cast) => {
-                    use syn_verus::spanned::Spanned;
                     let span = cast.span();
                     let src = cast.expr;
                     let attrs = cast.attrs;
@@ -794,101 +908,13 @@ impl VisitMut for Visitor {
                     *expr = quote_verbatim!(span, attrs => ::builtin::spec_cast_integer::<_, #ty>(#src));
                 }
                 Expr::Index(idx) => {
-                    use syn_verus::spanned::Spanned;
                     let span = idx.span();
                     let src = idx.expr;
                     let attrs = idx.attrs;
                     let index = idx.index;
                     *expr = quote_verbatim!(span, attrs => #src.spec_index(#index));
                 }
-                Expr::Unary(unary) if quant => {
-                    use syn_verus::spanned::Spanned;
-                    let span = unary.span();
-                    let mut arg = unary.expr;
-                    let attrs = unary.attrs;
-                    let (inner_attrs, n_inputs) = match &mut *arg {
-                        Expr::Closure(closure) => {
-                            (std::mem::take(&mut closure.inner_attrs), closure.inputs.len())
-                        }
-                        _ => panic!("expected closure for quantifier"),
-                    };
-                    let mut triggers: Vec<Expr> = Vec::new();
-                    for attr in inner_attrs {
-                        let trigger: syn_verus::Result<syn_verus::Specification> =
-                            syn_verus::parse2(attr.tokens.clone());
-                        match (trigger, attr.path.get_ident()) {
-                            (Ok(trigger), Some(id)) if id == "auto" && trigger.exprs.len() == 0 => {
-                                match &mut *arg {
-                                    Expr::Closure(closure) => {
-                                        let body = take_expr(&mut closure.body);
-                                        closure.body = Box::new(Expr::Verbatim(
-                                            quote_spanned!(span => #[auto_trigger] (#body)),
-                                        ));
-                                    }
-                                    _ => panic!("expected closure for quantifier"),
-                                }
-                            }
-                            (Ok(trigger), Some(id)) if id == "trigger" => {
-                                let tuple = ExprTuple {
-                                    attrs: vec![],
-                                    paren_token: Paren(span),
-                                    elems: trigger.exprs,
-                                };
-                                triggers.push(Expr::Tuple(tuple));
-                            }
-                            (Err(err), _) => {
-                                let span = attr.span();
-                                let err = err.to_string();
-                                *expr =
-                                    Expr::Verbatim(quote_spanned!(span => compile_error!(#err)));
-                                return;
-                            }
-                            _ => {
-                                let span = attr.span();
-                                *expr = Expr::Verbatim(
-                                    quote_spanned!(span => compile_error!("expected trigger")),
-                                );
-                                return;
-                            }
-                        }
-                    }
-                    if triggers.len() > 0 {
-                        let mut elems = Punctuated::new();
-                        for elem in triggers {
-                            elems.push(elem);
-                            elems.push_punct(Token![,](span));
-                        }
-                        let tuple = ExprTuple { attrs: vec![], paren_token: Paren(span), elems };
-                        match &mut *arg {
-                            Expr::Closure(closure) => {
-                                let body = take_expr(&mut closure.body);
-                                closure.body = Box::new(Expr::Verbatim(
-                                    quote_spanned!(span => ::builtin::with_triggers(#tuple, #body)),
-                                ));
-                            }
-                            _ => panic!("expected closure for quantifier"),
-                        }
-                    }
-                    match unary.op {
-                        UnOp::Forall(..) => {
-                            *expr = quote_verbatim!(span, attrs => ::builtin::forall(#arg));
-                        }
-                        UnOp::Exists(..) => {
-                            *expr = quote_verbatim!(span, attrs => ::builtin::exists(#arg));
-                        }
-                        UnOp::Choose(..) => {
-                            if n_inputs == 1 {
-                                *expr = quote_verbatim!(span, attrs => ::builtin::choose(#arg));
-                            } else {
-                                *expr =
-                                    quote_verbatim!(span, attrs => ::builtin::choose_tuple(#arg));
-                            }
-                        }
-                        _ => panic!("unary"),
-                    }
-                }
-                Expr::Unary(unary) if !quant => {
-                    use syn_verus::spanned::Spanned;
+                Expr::Unary(unary) => {
                     let span = unary.span();
                     let attrs = unary.attrs;
                     match unary.op {
@@ -900,7 +926,6 @@ impl VisitMut for Visitor {
                     }
                 }
                 Expr::Binary(binary) => {
-                    use syn_verus::spanned::Spanned;
                     let span = binary.span();
                     let attrs = binary.attrs;
                     let left = binary.left;
@@ -966,12 +991,12 @@ impl VisitMut for Visitor {
                 }
                 Expr::View(view) if !self.assign_to => {
                     let at_token = view.at_token;
-                    let span = at_token.span;
+                    let view_call = quote_spanned!(at_token.span => .view());
+                    let span = view.span();
                     let base = view.expr;
-                    *expr = Expr::Verbatim(quote_spanned!(span => (#base.view())));
+                    *expr = Expr::Verbatim(quote_spanned!(span => (#base#view_call)));
                 }
                 Expr::View(view) => {
-                    use syn_verus::spanned::Spanned;
                     assert!(self.assign_to);
                     let at_token = view.at_token;
                     let span1 = at_token.span;
@@ -1089,6 +1114,12 @@ impl VisitMut for Visitor {
                     }
                     block.stmts.splice(0..0, stmts);
                     *expr = quote_verbatim!(span, attrs => {::builtin::assert_forall_by(|#inputs| #block);});
+                }
+                Expr::Closure(clos) => {
+                    let span = clos.span();
+                    *expr = Expr::Verbatim(quote_spanned!(span =>
+                        ::builtin::closure_to_fn_spec(#clos)
+                    ));
                 }
                 _ => panic!("expected to replace expression"),
             }
@@ -1293,6 +1324,63 @@ impl VisitMut for Visitor {
         visit_item_struct_mut(self, item);
         item.attrs.extend(data_mode_attrs(&item.mode));
         item.mode = DataMode::Default;
+    }
+
+    fn visit_type_mut(&mut self, ty: &mut Type) {
+        syn_verus::visit_mut::visit_type_mut(self, ty);
+
+        let span = ty.span();
+        let tmp_ty = take_type(ty);
+
+        match tmp_ty {
+            Type::FnSpec(TypeFnSpec { fn_spec_token: _, paren_token: _, inputs, output }) => {
+                // Turn `FnSpec(Args...) -> Output`
+                // into `FnSpec<Args, Output>`
+                // Note that we have to turn `Args` into a tuple type, e.g.
+                //
+                // `FnSpec() -> Output`      -->  `FnSpec<(), Output>`
+                // `FnSpec(X) -> Output`     -->  `FnSpec<(X, ), Output>`
+                // `FnSpec(X, Y) -> Output`  -->  `FnSpec<(X, Y, ), Output>`
+
+                let mut param_types: Vec<&Type> = Vec::new();
+                for bare_fn_arg in inputs.iter() {
+                    let BareFnArg { attrs, name: _, ty: param_ty } = bare_fn_arg;
+                    if attrs.len() > 0 {
+                        *ty = Type::Verbatim(quote_spanned!(attrs[0].span() =>
+                            compile_error!("'tracked' not supported here")
+                        ));
+                        return;
+                    }
+                    param_types.push(param_ty);
+                }
+
+                let out_type: Type = match output {
+                    ReturnType::Default => Type::Verbatim(quote_spanned! { span => () }),
+                    ReturnType::Type(_, opt_tracked, opt_name, out_type) => {
+                        if let Some(tracked) = opt_tracked {
+                            *ty = Type::Verbatim(quote_spanned!(tracked.span() =>
+                                compile_error!("'tracked' not supported here")
+                            ));
+                            return;
+                        }
+                        if let Some(name) = opt_name {
+                            *ty = Type::Verbatim(quote_spanned!(name.1.span() =>
+                                compile_error!("return-value name not expected here")
+                            ));
+                            return;
+                        }
+                        *out_type
+                    }
+                };
+
+                *ty = Type::Verbatim(quote_spanned! { span =>
+                    ::builtin::FnSpec<(#(#param_types ,)*), #out_type>
+                });
+            }
+            _ => {
+                *ty = tmp_ty;
+            }
+        }
     }
 }
 

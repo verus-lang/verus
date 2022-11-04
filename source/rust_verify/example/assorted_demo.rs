@@ -26,7 +26,7 @@ spec fn mul(a: u64, b: u64)  -> u64 {
 }
 
 spec fn divides(v: u64, d: u64) -> bool {
-    exists(|k: u64| mul(d, k) == v)
+    exists |k: u64| mul(d, k) == v
 }
 
 #[verifier(external)]

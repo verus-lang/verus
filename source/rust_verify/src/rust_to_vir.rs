@@ -496,21 +496,56 @@ fn check_foreign_item<'tcx>(
     Ok(())
 }
 
+struct VisitMod<'tcx> {
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    ids: Vec<ItemId>,
+}
+
+impl<'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'tcx> {
+    type Map = rustc_middle::hir::map::Map<'tcx>;
+
+    fn nested_visit_map(&mut self) -> rustc_hir::intravisit::NestedVisitorMap<Self::Map> {
+        rustc_hir::intravisit::NestedVisitorMap::All(self.tcx.hir())
+    }
+
+    fn visit_item(&mut self, item: &'tcx Item<'tcx>) {
+        self.ids.push(item.item_id());
+        rustc_hir::intravisit::walk_item(self, item);
+    }
+}
+
 pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
     let mut vir: KrateX = Default::default();
-    let mut item_to_module: HashMap<ItemId, Path> = HashMap::new();
+
+    // Map each item to the module that contains it, or None if the module is external
+    let mut item_to_module: HashMap<ItemId, Option<Path>> = HashMap::new();
     for (owner_id, owner_opt) in ctxt.krate.owners.iter_enumerated() {
         if let Some(owner) = owner_opt {
             match owner.node() {
-                OwnerNode::Item(Item { kind: ItemKind::Mod(mod_), def_id, .. }) => {
-                    let path = def_id_to_vir_path(ctxt.tcx, def_id.to_def_id());
-                    vir.module_ids.push(path.clone());
-                    item_to_module.extend(mod_.item_ids.iter().map(move |ii| (*ii, path.clone())))
+                OwnerNode::Item(item @ Item { kind: ItemKind::Mod(mod_), def_id, .. }) => {
+                    let attrs = ctxt.tcx.hir().attrs(item.hir_id());
+                    let vattrs = get_verifier_attrs(attrs)?;
+                    if vattrs.external {
+                        // Recursively mark every item in the module external,
+                        // even in nested modules
+                        use crate::rustc_hir::intravisit::Visitor;
+                        let mut visitor = VisitMod { tcx: ctxt.tcx, ids: Vec::new() };
+                        visitor.visit_item(item);
+                        item_to_module.extend(visitor.ids.iter().map(move |ii| (*ii, None)))
+                    } else {
+                        // Shallowly visit just the top-level items (don't visit nested modules)
+                        let path = def_id_to_vir_path(ctxt.tcx, def_id.to_def_id());
+                        vir.module_ids.push(path.clone());
+                        let path = Some(path);
+                        item_to_module
+                            .extend(mod_.item_ids.iter().map(move |ii| (*ii, path.clone())))
+                    };
                 }
                 OwnerNode::Crate(mod_) => {
                     let path = def_id_to_vir_path(ctxt.tcx, owner_id.to_def_id());
                     vir.module_ids.push(path.clone());
-                    item_to_module.extend(mod_.item_ids.iter().map(move |ii| (*ii, path.clone())))
+                    item_to_module
+                        .extend(mod_.item_ids.iter().map(move |ii| (*ii, Some(path.clone()))))
                 }
                 _ => (),
             }
@@ -523,7 +558,12 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
                     let item_path;
                     // If the item does not belong to a module, use the def_id of its owner as the
                     // module path
-                    let module_path = if let Some(path) = item_to_module.get(&item.item_id()) {
+                    let mpath = item_to_module.get(&item.item_id());
+                    if let Some(None) = mpath {
+                        // whole module is external, so skip the item
+                        continue;
+                    }
+                    let module_path = if let Some(Some(path)) = mpath {
                         path
                     } else {
                         let owned_by = ctxt.krate.owners[item.hir_id().owner]

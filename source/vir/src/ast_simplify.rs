@@ -2,9 +2,9 @@
 
 use crate::ast::{
     BinaryOp, Binder, CallTarget, Constant, Datatype, DatatypeTransparency, DatatypeX, Expr, ExprX,
-    Field, FieldOpr, Function, GenericBound, GenericBoundX, Ident, Krate, KrateX, Mode, MultiOp,
-    Path, Pattern, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr, VirErr,
-    Visibility,
+    Field, FieldOpr, Function, GenericBound, GenericBoundX, Ident, IntRange, Krate, KrateX, Mode,
+    MultiOp, Path, Pattern, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr,
+    VirErr, Visibility,
 };
 use crate::ast_util::{err_str, err_string};
 use crate::context::GlobalCtx;
@@ -172,7 +172,17 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
                 .filter(|(_, bound)| keep_bound(bound))
                 .map(|(t, _)| t.clone())
                 .collect();
-            let call = ExprX::Call(CallTarget::Static(tgt.clone(), Arc::new(typs)), args.clone());
+            let args = if typs.len() == 0 && args.len() == 0 {
+                // To simplify the AIR/SMT encoding, add a dummy argument to any function with 0 arguments
+                let typ = Arc::new(TypX::Int(IntRange::Int));
+                use num_traits::Zero;
+                let argx = ExprX::Const(Constant::Int(num_bigint::BigInt::zero()));
+                let arg = SpannedTyped::new(&expr.span, &typ, argx);
+                Arc::new(vec![arg])
+            } else {
+                args.clone()
+            };
+            let call = ExprX::Call(CallTarget::Static(tgt.clone(), Arc::new(typs)), args);
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
         ExprX::Tuple(args) => {
@@ -401,6 +411,18 @@ fn simplify_function(
             .map(|x| x.clone())
             .collect(),
     );
+
+    // To simplify the AIR/SMT encoding, add a dummy argument to any function with 0 arguments
+    if functionx.typ_bounds.len() == 0 && functionx.params.len() == 0 && !functionx.is_const {
+        let paramx = crate::ast::ParamX {
+            name: Arc::new(crate::def::DUMMY_PARAM.to_string()),
+            typ: Arc::new(TypX::Int(IntRange::Int)),
+            mode: Mode::Spec,
+            is_mut: false,
+        };
+        let param = Spanned::new(function.span.clone(), paramx);
+        functionx.params = Arc::new(vec![param]);
+    }
 
     let function = Spanned::new(function.span.clone(), functionx);
     let mut map: ScopeMap<Ident, Typ> = ScopeMap::new();

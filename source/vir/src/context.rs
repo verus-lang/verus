@@ -117,7 +117,7 @@ fn datatypes_inv_visit(
     }
 }
 
-// If a datatype's fields have invariants, the datatype need an invariant
+// If a datatype's fields have invariants, the datatype needs an invariant
 fn datatypes_invs(
     module: &Path,
     datatype_is_transparent: &HashMap<Path, bool>,
@@ -139,9 +139,7 @@ fn datatypes_invs(
                             roots.insert(container_path.clone());
                         }
                         TypX::Lambda(..) => {
-                            panic!(
-                                "not supported: function types in datatype fields (use Map instead)"
-                            )
+                            roots.insert(container_path.clone());
                         }
                         TypX::Datatype(field_path, _) => {
                             if datatype_is_transparent[field_path] {

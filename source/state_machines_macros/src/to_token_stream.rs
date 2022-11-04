@@ -56,16 +56,14 @@ pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> parse::Result<
     let sm_name = &bundle.sm.name;
 
     let final_code = quote! {
-        ::builtin_macros::verus!{
-            #[allow(unused_parens)]
-            mod #sm_name {
-                use super::*;
+        #[allow(unused_parens)]
+        pub mod #sm_name {
+            use super::*;
 
-                #root_stream
+            #root_stream
 
-                #impl_decl {
-                    #impl_stream
-                }
+            #impl_decl {
+                #impl_stream
             }
         }
     };
@@ -276,15 +274,19 @@ pub fn output_primary_stuff(
             if trans.kind == TransitionKind::Init {
                 let args = post_params(&trans.params);
                 rel_fn = quote! {
-                    pub open spec fn #name (#args) -> ::core::primitive::bool {
-                        #f
+                    #[spec]
+                    #[verifier(publish)]
+                    pub fn #name (#args) -> ::core::primitive::bool {
+                        ::builtin_macros::verus_proof_expr!({ #f })
                     }
                 };
             } else {
                 let args = pre_post_params(&trans.params);
                 rel_fn = quote! {
-                    pub open spec fn #name (#args) -> ::core::primitive::bool {
-                        #f
+                    #[spec]
+                    #[verifier(publish)]
+                    pub fn #name (#args) -> ::core::primitive::bool {
+                        ::builtin_macros::verus_proof_expr!({ #f })
                     }
                 };
             }
@@ -302,8 +304,10 @@ pub fn output_primary_stuff(
             let f = to_relation(&simplified_body, false /* weak */);
 
             let rel_fn = quote! {
-                pub open spec fn #name (#params) -> ::core::primitive::bool {
-                    #f
+                #[spec]
+                #[verifier(publish)]
+                pub fn #name (#params) -> ::core::primitive::bool {
+                    ::builtin_macros::verus_proof_expr!({ #f })
                 }
             };
             impl_stream.extend(rel_fn);
@@ -324,9 +328,12 @@ pub fn output_primary_stuff(
                 None => TokenStream::new(),
             };
             impl_stream.extend(quote! {
-                pub proof fn #name(#params) {
+                #[proof]
+                pub fn #name(#params) {
                     crate::pervasive::assume(pre.invariant());
-                    #b
+                    ::builtin_macros::verus_proof_expr!({
+                        #b
+                    })
                 }
             });
 
@@ -431,7 +438,9 @@ fn output_step_datatype(
     if is_init {
         impl_stream.extend(quote! {
             #[verifier(opaque)]
-            pub open spec fn init_by(post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
+            #[verifier(publish)]
+            #[spec]
+            pub fn init_by(post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
                 match step {
                     #(#arms)*
                     // The dummy step never corresponds to a valid transition.
@@ -440,7 +449,9 @@ fn output_step_datatype(
             }
 
             #[verifier(opaque)]
-            pub open spec fn init(post: #self_ty, #label_param) -> ::core::primitive::bool {
+            #[verifier(publish)]
+            #[spec]
+            pub fn init(post: #self_ty, #label_param) -> ::core::primitive::bool {
                 ::builtin::exists(|step: #step_ty| Self::init_by(post, #label_arg step))
             }
         });
@@ -467,7 +478,9 @@ fn output_step_datatype(
 
         impl_stream.extend(quote!{
             #[verifier(opaque)]
-            pub open spec fn next_by(pre: #self_ty, post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
+            #[verifier(publish)]
+            #[spec]
+            pub fn next_by(pre: #self_ty, post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
                 match step {
                     #(#arms)*
                     #type_ident::dummy_to_use_type_params(_) => false,
@@ -475,20 +488,26 @@ fn output_step_datatype(
             }
 
             #[verifier(opaque)]
-            pub open spec fn next(pre: #self_ty, post: #self_ty, #label_param) -> ::core::primitive::bool {
+            #[verifier(publish)]
+            #[spec]
+            pub fn next(pre: #self_ty, post: #self_ty, #label_param) -> ::core::primitive::bool {
                 ::builtin::exists(|step: #step_ty| Self::next_by(pre, post, #label_arg step))
             }
 
             #[verifier(opaque)]
-            pub open spec fn next_strong_by(pre: #self_ty, post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
+            #[verifier(publish)]
+            #[spec]
+            pub fn next_strong_by(pre: #self_ty, post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
                 match step {
                     #(#arms_strong)*
                     #type_ident::dummy_to_use_type_params(_) => false,
                 }
             }
 
-            #[verifier(opaque)] #[verifier(publish)]
-            pub open spec fn next_strong(pre: #self_ty, post: #self_ty, #label_param) -> ::core::primitive::bool {
+            #[verifier(opaque)]
+            #[verifier(publish)]
+            #[spec]
+            pub fn next_strong(pre: #self_ty, post: #self_ty, #label_param) -> ::core::primitive::bool {
                 ::builtin::exists(|step: #step_ty| Self::next_by(pre, post, #label_arg step))
             }
         });
@@ -515,7 +534,8 @@ fn output_step_datatype(
                 //let step_args = just_args(&trans.params);
                 show_stream.extend(quote! {
                     #[verifier(external_body)]
-                    pub proof fn #tr_name#gen1(#params) #gen2 {
+                    #[proof]
+                    pub fn #tr_name#gen1(#params) #gen2 {
                         ::builtin::requires(super::State::#tr_name(#args));
                         ::builtin::ensures(super::State::init(post #label_arg));
 
@@ -531,7 +551,8 @@ fn output_step_datatype(
                 //let step_args = just_args(&trans.params);
                 show_stream.extend(quote! {
                     #[verifier(external_body)]
-                    pub proof fn #tr_name#gen1(#params) #gen2 {
+                    #[proof]
+                    pub fn #tr_name#gen1(#params) #gen2 {
                         ::builtin::requires(super::State::#tr_name(#args));
                         ::builtin::ensures(super::State::next(pre, post #label_arg));
 
@@ -779,7 +800,9 @@ fn output_other_fns(
         quote! { #(self.#inv_names())&&* }
     };
     impl_stream.extend(quote! {
-        pub open spec fn invariant(&self) -> ::core::primitive::bool {
+        #[spec]
+        #[verifier(publish)]
+        pub fn invariant(&self) -> ::core::primitive::bool {
             #conj
         }
     });
@@ -790,7 +813,7 @@ fn output_other_fns(
         // TODO allow spec(checked) or something
         f.sig.mode = FnMode::Spec(ModeSpec { spec_token: token::Spec { span: inv.func.span() } });
         f.sig.publish = Publish::Open(Open { token: token::Open { span: inv.func.span() } });
-        f.to_tokens(impl_stream);
+        impl_stream.extend(quote! { ::builtin_macros::verus!{ #f } });
     }
 
     for inv in invariants {
@@ -802,7 +825,8 @@ fn output_other_fns(
         impl_stream.extend(quote! {
             #[verifier(custom_req_err(#error_msg))]
             #[verifier(external_body)]
-            proof fn #lemma_msg_ident(s: #self_ty) {
+            #[proof]
+            fn #lemma_msg_ident(s: #self_ty) {
                 requires(s.#inv_ident());
                 ensures(s.#inv_ident());
             }
@@ -815,11 +839,19 @@ fn output_other_fns(
         let span = f.sig.span(); // TODO better span choice
         set_mode_proof(&mut f.sig, span);
         fix_attrs(&mut f.attrs);
-        f.to_tokens(impl_stream);
+        impl_stream.extend(quote! { ::builtin_macros::verus!{ #f } })
     }
+
+    let mut normal_fn_stream = TokenStream::new();
     for iim in normal_fns {
-        iim.to_tokens(impl_stream);
+        iim.to_tokens(&mut normal_fn_stream);
     }
+
+    impl_stream.extend(quote! {
+        ::builtin_macros::verus!{
+            #normal_fn_stream
+        }
+    });
 }
 
 fn left_of_colon<'a>(fn_arg: &'a FnArg) -> &'a Pat {
