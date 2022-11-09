@@ -1,9 +1,8 @@
-# Verus IDE support with custom rust-analyzer
+# Adding IDE Support for Verus Using a Custom Version of rust-analyzer
 
 
 ## Quickstart
-
-After following the below steps, when you save a file, this custom rust-analyzer will run Verus for that file and display Verus results. It also provides Verus syntax support, IDE functionalities, and Verus-specific code actions.
+The steps below walk you through compiling a Verus-specific version of rust-analyzer and installing it in VS Code. After following the below steps, when you save a file, this custom rust-analyzer will run Verus for that file and display Verus results. It also provides Verus syntax support, IDE functionalities, and Verus-specific code actions.
 
 
 #### 1. Compile custom rust-analyzer
@@ -19,11 +18,11 @@ After following the below steps, when you save a file, this custom rust-analyzer
 #### 2. VS Code
 
 1. Please install the rust-analyzer extension in VS Code's extensions tab.
-2. We need to change the configuration inside `settings.json`. Specifically, we need to set below two variables.
-- `rust-analyzer.server.path` to the above custom rust-analyzer binary's path.
+2. We need to change the configuration inside `settings.json`. Specifically, we need to set the two variables below.
+- `rust-analyzer.server.path` should be set to the path of the custom rust-analyzer binary produced in step 1 above (e.g., the full path to `./dist/rust-analyzer-x86_64-apple-darwin`)
 - `"rust-analyzer.checkOnSave.overrideCommand"` to the command to run Verus. 
 
-For `rust-analyzer.checkOnSave.overrideCommand`, the first argument needs to be the path to the `verus/source/tools/rust-verify.sh` script. The second argument needs to be `${file}`, which will be replaced with the filename when the user hits the save button. After these two, you could add additional Verus flags. For example, setting a low `rlimit` prevents long waits from Verus. Most importantly, please include `-- --error-format=json` as the last argument to make Verus output readable to rust-analyzer.
+For `rust-analyzer.checkOnSave.overrideCommand`, the first argument needs to be the absolute path to the `verus/source/tools/rust-verify.sh` script. The second argument needs to be `${file}`, which will be replaced with the filename when the user hits the save button. After these two, you could add additional Verus flags. For example, setting a low `rlimit` prevents long waits from Verus. Most importantly, please include `-- --error-format=json` as the last argument to make Verus output readable to rust-analyzer.
 
 For example:
 ```
@@ -59,13 +58,13 @@ When you connect Verus' rust-analyzer with another IDE, please share how to do s
 ## Functionalities and Details
 
 #### 1.Syntax
-We extended rust-analyzer's grammar for Verus-specific syntax. This custom rust-analyzer highlights reserved Verus keywords(e.g. `spec`, `proof`, `requires`, `ensures`). If a user types `prooof` instead of `proof`, a syntax error will be generated for it. It parses most of the Verus syntax, but there are currently a few limitations. For more details, please find the below limitation section.
+We extended rust-analyzer's grammar for Verus-specific syntax. This custom rust-analyzer highlights reserved Verus keywords (e.g. `spec`, `proof`, `requires`, `ensures`). If a user types `prooof` instead of `proof`, a syntax error will be generated for it. It parses most of the Verus syntax, but there are currently a few limitations. For more details, please see the limitation section below.
 
 
 #### 2.IDE functionalities
 To use IDE functionalities, please make a new project using `cargo new`, and generate a local symlink `pervasive` which points to `verus/source/pervasive`. For example, at the `src` directory of the new project, `ln -s /Users/chanhee/Works/secure-foundations/verus/source/pervasive/ pervasive`. Also, please insert `mod pervasive` at the top of the `main.rs`. 
 
-Rust-analyzer scans the project root and all files that are reachable from the root. If the file you are working on is not reachable from the project root, most of the IDE functionalities like "goto definition" might not work. Therefore, when you open `verus` repository and open up one of the examples, these functionalities might not work. 
+Rust-analyzer scans the project root and all files that are reachable from the root. If the file you are working on is not reachable from the project root, most of the IDE functionalities like "goto definition" might not work. For example, if you open the `verus` repository and open up one of the examples, these functionalities might not work. 
 
 You can find more documents for IDE functionalities on the following links.
 - `Go to Definition` (https://rust-analyzer.github.io/manual.html#go-to-definition)
@@ -75,14 +74,14 @@ You can find more documents for IDE functionalities on the following links.
 
 
 #### 3.Running Verus inside the editor
-By default, rust-analyzer uses `cargo check` to get diagnostics, but we intercept that and make the rust-analyzer use Verus by setting `rust-analyzer.checkOnSave.overrideCommand` on VS Code. 
+By default, rust-analyzer uses `cargo check` to get diagnostics, but we intercept that and make the rust-analyzer use Verus by setting `rust-analyzer.checkOnSave.overrideCommand` in the plugin's VS code configuration settings. 
 
-The propagated verification error will generate red squiggles at the corresponding code location. At VS Code, `View > Problems` tab will list the entire set of diagnostics generated by Verus. Error messages that are not from diagnostic will be appended on the Verus result notification.
+The propagated verification error will generate red squiggles at the corresponding code location. In VS Code, the `View > Problems` tab will list the entire set of diagnostics generated by Verus. Error messages that are not from diagnostic will be appended to the Verus result notification.
 
 #### 4.Verus code actions
 Code actions try to automate common code rewrites. When a user puts the cursor on a certain location, rust-analyzer calculates the list of applicable code actions. After the user clicks the lightbulb icon, the user can apply one of the actions in the list. If the lightbulb does not show up, it means that there are no applicable code actions at that code location. 
 
-If the action includes invoking Verus, it is may take a few second after you apply the code action.
+If the action includes invoking Verus, it is may take a few seconds after you apply the code action.
 
 
 ##### 4.1. `Add proof block for this assert`
@@ -120,16 +119,16 @@ This is already implemented in the original rust-analyzer. Although this is not 
 
 ## Limitations 
 General limitations are the following:
-1. This is currently experimental, and only tested using VS Code on macOS.
-2. It is currently intened to be used only for Verus code. It could potentially produce syntax errors for correct normal rust codes.
+1. This is currently experimental, and only tested using VS Code on macOS.  
+2. It is currently intended to be used only for Verus code. It could potentially produce syntax errors for correct normal Rust code.  
 
 
 #### 1.Syntax
 It can generate Verus syntax errors when the code is indeed correct. It could produce several false alarms as red squiggles. 
 
-1.1. `tracked` and `ghost` keywords are not currently handled.
-1.2. `&&&`, `|||` is assumed to be wrapped within a pair of curly braces, and either &&& or ||| is assumed to be the outmost operator.
-1.3. Currently, some trigger attributes are not properly handled when inside of `assume` clauses.
+1.1. `tracked` and `ghost` keywords are not currently handled.   
+1.2. `&&&`, `|||` is assumed to be wrapped within a pair of curly braces, and either &&& or ||| is assumed to be the outmost operator.   
+1.3. Currently, some trigger attributes are not properly handled when inside of `assume` clauses.   
 
 
 #### 2.IDE functionalities
@@ -141,7 +140,7 @@ When it runs with `expand-errors`, on `View > Problems` tab of VS Code, the loca
 
 
 #### 4.Verus code actions
-4.1. It may take a few seconds for the lightbulb to be generated.
-4.2.`Check if this assertion is essential`. It currently works inside the root module only.
-4.3. `Insert requires clauses of this function call`. Inlining arguments are not fully implemented. Only arguments with a single variable will be inlined, and the other arguments will produce let-binding. 
-4.4. `Inline function`. `&&&` and `|||` are not converted to `&&` and `||`.
+4.1. It may take a few seconds for the lightbulb to be generated.   
+4.2.`Check if this assertion is essential`. It currently works inside the root module only.   
+4.3. `Insert requires clauses of this function call`. Inlining arguments are not fully implemented. Only arguments with a single variable will be inlined, and the other arguments will produce let-binding.   
+4.4. `Inline function`. `&&&` and `|||` are not converted to `&&` and `||`.    
