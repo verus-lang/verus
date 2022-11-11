@@ -21,6 +21,7 @@ use crate::def::{CommandsWithContext, CommandsWithContextX};
 use crate::inv_masks::MaskSet;
 use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
 use crate::sst::{BndInfo, BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX, UniqueIdent};
+use crate::sst_util::subst_exp;
 use crate::sst_vars::{get_loc_var, AssignMap};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
@@ -29,7 +30,7 @@ use air::ast::{
 };
 use air::ast_util::{
     bool_typ, bv_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and,
-    mk_bind_expr, mk_bitvector_option, mk_eq, mk_exists, mk_implies, mk_ite, mk_let, mk_not,
+    mk_bind_expr, mk_bitvector_option, mk_eq, mk_exists, mk_implies, mk_ite, mk_not,
     mk_option_command, mk_or, mk_xor, str_apply, str_ident, str_typ, str_var, string_var,
 };
 use air::errors::{error, error_with_label};
@@ -1905,7 +1906,7 @@ fn set_fuel(ctx: &Ctx, local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
 pub(crate) fn body_stm_to_air(
     ctx: &Ctx,
     func_span: &Span,
-    trait_typ_substs: &Vec<(Ident, Typ)>,
+    trait_typ_substs: &HashMap<Ident, Typ>,
     typ_params: &Idents,
     params: &Params,
     local_decls: &Vec<LocalDecl>,
@@ -1928,9 +1929,6 @@ pub(crate) fn body_stm_to_air(
     // Others are private to each query.
     let mut local_shared: Vec<Decl> = Vec::new();
     let mut local_bv_shared: Vec<Decl> = Vec::new();
-
-    let trait_typ_bind =
-        vec_map(trait_typ_substs, |(x, t)| ident_binder(&suffix_typ_param_id(x), &typ_to_id(t)));
 
     for x in typ_params.iter() {
         local_shared
@@ -1972,8 +1970,9 @@ pub(crate) fn body_stm_to_air(
 
     let mut ens_exprs: Vec<(Span, Expr)> = Vec::new();
     for ens in enss {
+        let ens = subst_exp(&trait_typ_substs, &HashMap::new(), ens);
         let expr_ctxt = &ExprCtxt::new_mode_bv(ExprMode::Body, is_bit_vector_mode);
-        let e = mk_let(&trait_typ_bind, &exp_to_expr(ctx, ens, expr_ctxt)?);
+        let e = exp_to_expr(ctx, &ens, expr_ctxt)?;
         ens_exprs.push((ens.span.clone(), e));
     }
 
@@ -2038,8 +2037,9 @@ pub(crate) fn body_stm_to_air(
     }
 
     for req in reqs {
+        let req = subst_exp(&trait_typ_substs, &HashMap::new(), req);
         let expr_ctxt = &ExprCtxt::new_mode_bv(ExprMode::BodyPre, is_bit_vector_mode);
-        let e = mk_let(&trait_typ_bind, &exp_to_expr(ctx, req, expr_ctxt)?);
+        let e = exp_to_expr(ctx, &req, expr_ctxt)?;
         local.push(Arc::new(DeclX::Axiom(e)));
     }
 

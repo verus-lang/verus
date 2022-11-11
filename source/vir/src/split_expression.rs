@@ -95,7 +95,7 @@ fn inline_expression(
         assert!(!substs.contains_key(&unique));
         substs.insert(unique, arg.clone());
     }
-    let e = crate::sst_util::subst_exp(typ_substs, substs, body);
+    let e = crate::sst_util::subst_exp(&typ_substs, &substs, body);
     let e = SpannedTyped::new(&body.span, &e.typ, e.x.clone());
     return Ok(e);
 }

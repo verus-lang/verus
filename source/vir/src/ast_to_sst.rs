@@ -216,7 +216,7 @@ impl State {
                             assert!(!substs.contains_key(&unique));
                             substs.insert(unique, arg.clone());
                         }
-                        let e = crate::sst_util::subst_exp(typ_substs, substs, body);
+                        let e = crate::sst_util::subst_exp(&typ_substs, &substs, body);
                         // keep the original outer span for better trigger messages
                         let e = SpannedTyped::new(&exp.span, &e.typ, e.x.clone());
                         return Ok(e);

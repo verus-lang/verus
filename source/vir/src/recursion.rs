@@ -365,7 +365,7 @@ pub(crate) fn check_termination_exp(
     let (commands, _snap_map) = crate::sst_to_air::body_stm_to_air(
         ctx,
         &function.span,
-        &vec![],
+        &HashMap::new(),
         &function.x.typ_params(),
         &function.x.params,
         &Arc::new(local_decls),
