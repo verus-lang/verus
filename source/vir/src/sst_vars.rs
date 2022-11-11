@@ -51,6 +51,21 @@ pub(crate) fn stm_assign(
             }
             stm.clone()
         }
+        StmX::DynCall { arg_fn, arg_param_tuple, typ_args: _, dest } => {
+            let var: UniqueIdent = get_loc_var(&dest.dest);
+            assigned.insert(var.clone());
+            if !dest.is_init {
+                modified.insert(var.clone());
+            }
+
+            for arg in vec![arg_fn, arg_param_tuple].into_iter() {
+                if let ExpX::Loc(loc) = &arg.x {
+                    let var = get_loc_var(loc);
+                    modified.insert(var);
+                }
+            }
+            stm.clone()
+        }
         StmX::Assert(..)
         | StmX::AssertBitVector { .. }
         | StmX::AssertPostConditions { .. }
@@ -69,6 +84,15 @@ pub(crate) fn stm_assign(
         StmX::DeadEnd(s) => {
             let s = stm_assign(assign_map, declared, assigned, modified, s);
             Spanned::new(stm.span.clone(), StmX::DeadEnd(s))
+        }
+        StmX::ClosureInner(s) => {
+            let pre_modified = modified.clone();
+            let pre_assigned = assigned.clone();
+            let s = stm_assign(assign_map, declared, assigned, modified, s);
+            *assigned = pre_assigned;
+            *modified = pre_modified;
+
+            Spanned::new(stm.span.clone(), StmX::ClosureInner(s))
         }
         StmX::If(cond, lhs, rhs) => {
             let mut pre_assigned = assigned.clone();

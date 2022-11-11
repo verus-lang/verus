@@ -14,18 +14,17 @@ pub fn demote_foreign_traits(krate: &Krate) -> Result<Krate, VirErr> {
     let mut kratex = (**krate).clone();
     for function in &mut kratex.functions {
         for (_, bounds) in function.x.typ_bounds.iter() {
-            if let GenericBoundX::Traits(traits) = &**bounds {
-                for trait_path in traits {
-                    let our_trait = traits.contains(trait_path);
-                    if !our_trait {
-                        return err_string(
-                            &function.span,
-                            format!(
-                                "cannot use trait {} from another crate as a bound",
-                                crate::ast_util::path_as_rust_name(trait_path)
-                            ),
-                        );
-                    }
+            let GenericBoundX::Traits(traits) = &**bounds;
+            for trait_path in traits {
+                let our_trait = traits.contains(trait_path);
+                if !our_trait {
+                    return err_string(
+                        &function.span,
+                        format!(
+                            "cannot use trait {} from another crate as a bound",
+                            crate::ast_util::path_as_rust_name(trait_path)
+                        ),
+                    );
                 }
             }
         }

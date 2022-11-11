@@ -86,6 +86,8 @@ pub enum ResolvedCall {
     Call(Fun),
     /// Path and variant of datatype constructor
     Ctor(Path, vir::ast::Ident),
+    /// The call is to a dynamically computed function, and is exec
+    NonStaticExec,
 }
 
 #[derive(Clone)]
@@ -393,7 +395,6 @@ fn erase_call(
                                     typ_bounds_iter.next().expect("missing typ_bound");
                                 match &**bounds {
                                     GenericBoundX::Traits(_) => new_args.push(arg.clone()),
-                                    GenericBoundX::FnSpec(..) => {}
                                 }
                             }
                             AngleBracketedArg::Arg(GenericArg::Lifetime(_)) => {
@@ -427,8 +428,10 @@ fn erase_call(
 }
 
 fn erase_expr(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> Expr {
-    erase_expr_opt(ctxt, mctxt, expect, expr)
-        .unwrap_or_else(|| panic!("internal error: expected Some(Expr) {:?}", &expr.span))
+    erase_expr_opt(ctxt, mctxt, expect, expr).unwrap_or_else(|| {
+        println!("tried to erase: {:#?}", expr);
+        panic!("internal error: expected Some(Expr) {:?}", &expr.span)
+    })
 }
 
 /// Erase ghost code from expr, and return Some resulting expression.
@@ -556,17 +559,8 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
             }
         }
         ExprKind::Call(f_expr, args) => {
-            let (qself, path, call) = match &f_expr.kind {
-                ExprKind::Path(qself, path)
-                    if mctxt.find_span_opt(&ctxt.calls, f_expr.span).is_some() =>
-                {
-                    (qself, path, mctxt.find_span(&ctxt.calls, f_expr.span).clone())
-                }
-                ExprKind::Path(..) => panic!("internal error: missing function: {:?}", f_expr.span),
-                _ => {
-                    unsupported!("complex function call", f_expr)
-                }
-            };
+            let call = mctxt.find_span(&ctxt.calls, f_expr.span).clone();
+
             match &call {
                 ResolvedCall::Spec => return None,
                 ResolvedCall::CompilableOperator => {
@@ -580,6 +574,20 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                     }
                 }
                 ResolvedCall::Call(f_name) => {
+                    let (qself, path) = match &f_expr.kind {
+                        ExprKind::Path(qself, path)
+                            if mctxt.find_span_opt(&ctxt.calls, f_expr.span).is_some() =>
+                        {
+                            (qself, path)
+                        }
+                        ExprKind::Path(..) => {
+                            panic!("internal error: missing function: {:?}", f_expr.span)
+                        }
+                        _ => {
+                            unsupported!("complex function call", f_expr)
+                        }
+                    };
+
                     let segment = path.segments.last().expect("path with segments");
                     match erase_call(ctxt, mctxt, segment, f_name, args) {
                         None => return Some(expr.clone()),
@@ -592,6 +600,14 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                             ExprKind::Call(f_expr, args)
                         }
                     }
+                }
+                ResolvedCall::NonStaticExec => {
+                    let new_f_expr = P(erase_expr(ctxt, mctxt, Mode::Exec, f_expr));
+                    let mut new_args: Vec<P<Expr>> = Vec::new();
+                    for arg in args.iter() {
+                        new_args.push(P(erase_expr(ctxt, mctxt, Mode::Exec, arg)));
+                    }
+                    ExprKind::Call(new_f_expr, new_args)
                 }
                 ResolvedCall::Ctor(path, variant) => {
                     if keep_mode(ctxt, expect) {
@@ -722,7 +738,17 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                 return replace_with_exprs(mctxt, expr, vec![e1]);
             }
         }
-        ExprKind::Closure(..) => return None,
+        ExprKind::Closure(cby, asyn, mov, fn_decl, body, span) => {
+            let e = erase_expr(ctxt, mctxt, Mode::Exec, body);
+            ExprKind::Closure(
+                cby.clone(),
+                asyn.clone(),
+                mov.clone(),
+                fn_decl.clone(),
+                P(e),
+                span.clone(),
+            )
+        }
         ExprKind::If(eb, e1, e2_opt) => {
             let modeb = *mctxt.find_span(&ctxt.condition_modes, expr.span);
             let eb_erase = match &eb.kind {
@@ -1076,11 +1102,9 @@ fn erase_fn(
                 let bound =
                     get_typ_bound_by_name(&f_vir.x.typ_bounds, &param.ident.name.to_string());
 
-                // erase Fn trait bounds, since the type checker won't be able to infer them
                 // TODO: also erase other type parameters left unused after erasure
                 match &**bound {
                     GenericBoundX::Traits(_) => new_params.push(param.clone()),
-                    GenericBoundX::FnSpec(..) => {}
                 }
             }
             _ => {}

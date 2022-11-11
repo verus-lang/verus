@@ -404,15 +404,8 @@ impl<T> RwLock<T> {
         };
 
         assert(s.inst.rc_width() == s.ref_counts.view().len());
-        //assert(s.exc_locked.has_inv(|b: bool, g: DistRwLock::exc_locked<T>|
-        //    equal(g.view(), DistRwLock::token![ s.inst => exc_locked => b ])));
-        //assert(forall(|i: int| { (0 <= i && i < s.ref_counts.view().len()) >>=
-        //    s.ref_counts.view().index(i).has_inv(|r: u64, g: DistRwLock::ref_counts<T>|
-        //        equal(g.view(), DistRwLock::token![ s.inst => ref_counts => i => r ]))
-        //}));
 
         s
-
     }
 }
 

@@ -87,9 +87,11 @@ pub enum TypX {
     Int(IntRange),
     /// Tuple type (t1, ..., tn).  Note: ast_simplify replaces Tuple with Datatype.
     Tuple(Typs),
-    /// Both the `FnSpec` type and the rust anonymous closure type map to this.
+    /// `FnSpec` type (TODO rename from 'Lambda' to just 'FnSpec')
     /// (t1, ..., tn) -> t0.
     Lambda(Typs, Typ),
+    /// Executable function types (with a requires and ensures)
+    AnonymousClosure(Typs, Typ, usize),
     /// Datatype (concrete or abstract) applied to type arguments
     Datatype(Path, Typs),
     /// Boxed for SMT encoding (unrelated to Rust Box type), can be unboxed:
@@ -361,6 +363,12 @@ pub struct FunX {
     pub trait_path: Option<Path>,
 }
 
+#[derive(Clone, Copy, Debug, ToDebugSNode)]
+pub enum BuiltinSpecFun {
+    ClosureReq,
+    ClosureEns,
+}
+
 #[derive(Clone, Debug, ToDebugSNode)]
 pub enum CallTarget {
     /// Call a statically known function, passing some type arguments
@@ -368,6 +376,11 @@ pub enum CallTarget {
     /// Call a dynamically computed FnSpec (no type arguments allowed),
     /// where the function type is specified by the GenericBound of typ_param.
     FnSpec(Expr),
+    /// Call a dynamically computed Fn / FnMut / FnOnce using its pre- and post-conditions
+    /// Any Call that uses this call target should have *exactly 1 argument*
+    /// (a tuple representing a collection of arguments).
+    FnExec(Expr),
+    BuiltinSpecFun(BuiltinSpecFun, Typs),
 }
 
 #[derive(Clone, Copy, Debug, ToDebugSNode, PartialEq, Eq, Hash)]
@@ -442,6 +455,18 @@ pub enum ExprX {
     Quant(Quant, Binders<Typ>, Expr),
     /// Specification closure
     Closure(Binders<Typ>, Expr),
+    /// Executable closure
+    ExecClosure {
+        params: Binders<Typ>,
+        body: Expr,
+        requires: Exprs,
+        ensures: Exprs,
+        ret: Binder<Typ>,
+        /// The 'external spec' is an Option because it gets filled in during
+        /// ast_simplify. It contains the assumptions that surrounding context
+        /// can assume about a closure object after it is created.
+        external_spec: Option<(Ident, Expr)>,
+    },
     /// Choose specification values satisfying a condition, compute body
     Choose { params: Binders<Typ>, cond: Expr, body: Expr },
     /// Manually supply triggers for body of quantifier
@@ -515,9 +540,6 @@ pub type GenericBound = Arc<GenericBoundX>;
 pub enum GenericBoundX {
     /// List of implemented traits
     Traits(Vec<Path>),
-    /// Spec function type (t1, ..., tn) -> t0.
-    /// Note: ast_simplify removes FnSpec type parameters, using a Datatype to represent FnSpec.
-    FnSpec(Typs, Typ),
 }
 
 pub type TypBounds = Arc<Vec<(Ident, GenericBound)>>;

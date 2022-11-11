@@ -1,8 +1,8 @@
 use crate::ast::Exprs;
 use crate::ast::{
-    ArithOp, AssertQueryMode, BinaryOp, CallTarget, ComputeMode, Constant, Expr, ExprX, Fun,
-    Function, Ident, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr,
-    VarAt, VirErr,
+    ArithOp, AssertQueryMode, BinaryOp, BuiltinSpecFun, CallTarget, ComputeMode, Constant, Expr,
+    ExprX, Fun, Function, Ident, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs,
+    UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use crate::ast_util::{err_str, err_string, types_equal, QUANT_FORALL};
 use crate::context::Ctx;
@@ -23,6 +23,12 @@ use num_bigint::BigInt;
 use num_traits::identities::Zero;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
+
+#[derive(Clone)]
+pub(crate) struct ClosureState {
+    ensures: Exps,
+    dest: UniqueIdent,
+}
 
 pub(crate) struct State<'a> {
     // View exec/proof code as spec
@@ -47,6 +53,8 @@ pub(crate) struct State<'a> {
     pub fun_ssts: SstMap,
     // Diagnostic output
     pub diagnostics: &'a (dyn Diagnostics + 'a),
+    // If inside a closure
+    containing_closure: Option<ClosureState>,
 }
 
 #[derive(Clone)]
@@ -106,6 +114,7 @@ impl<'a> State<'a> {
             disable_recommends: 0,
             fun_ssts: crate::update_cell::UpdateCell::new(HashMap::new()),
             diagnostics,
+            containing_closure: None,
         }
     }
 
@@ -384,8 +393,14 @@ pub fn can_control_flow_reach_after_loop(expr: &Expr) -> bool {
     }
 }
 
+#[derive(PartialEq)]
+enum FunOrDyn {
+    Fun(Fun),
+    Dyn,
+}
+
 enum ReturnedCall {
-    Call { fun: Fun, typs: Typs, has_return: bool, args: Exps },
+    Call { fun: FunOrDyn, typs: Typs, has_return: bool, args: Exps },
     Never,
 }
 
@@ -395,34 +410,71 @@ fn expr_get_call(
     expr: &Expr,
 ) -> Result<Option<(Vec<Stm>, ReturnedCall)>, VirErr> {
     match &expr.x {
-        ExprX::Call(CallTarget::FnSpec(..), _) => {
-            panic!("internal error: CallTarget::FnSpec")
-        }
-        ExprX::Call(CallTarget::Static(x, typs), args) => {
-            let mut stms: Vec<Stm> = Vec::new();
-            let mut exps: Vec<Exp> = Vec::new();
-            for arg in args.iter() {
-                let (mut stms0, e0) = expr_to_stm_opt(ctx, state, arg)?;
-                stms.append(&mut stms0);
+        ExprX::Call(target, args) => match target {
+            CallTarget::BuiltinSpecFun(..) => {
+                panic!("internal error: CallTarget::BuiltinSpecFun");
+            }
+            CallTarget::FnSpec(..) => {
+                panic!("internal error: CallTarget::FnSpec");
+            }
+            CallTarget::FnExec(e0) => {
+                let (mut stms, e0) = expr_to_stm_opt(ctx, state, e0)?;
                 let e0 = match e0.to_value() {
                     Some(e) => e,
                     None => {
                         return Ok(Some((stms, ReturnedCall::Never)));
                     }
                 };
-                exps.push(e0);
+
+                assert!(args.len() == 1);
+                let (mut stms1, e1) = expr_to_stm_opt(ctx, state, &args[0])?;
+                stms.append(&mut stms1);
+                let e1 = match e1.to_value() {
+                    Some(e) => e,
+                    None => {
+                        return Ok(Some((stms, ReturnedCall::Never)));
+                    }
+                };
+
+                let clos_typ = e0.typ.clone();
+                let arg_typ = e1.typ.clone();
+
+                Ok(Some((
+                    stms,
+                    ReturnedCall::Call {
+                        fun: FunOrDyn::Dyn,
+                        typs: Arc::new(vec![clos_typ, arg_typ]),
+                        has_return: true,
+                        args: Arc::new(vec![e0, e1]),
+                    },
+                )))
             }
-            let has_ret = get_function(ctx, &expr.span, x)?.x.has_return();
-            Ok(Some((
-                stms,
-                ReturnedCall::Call {
-                    fun: x.clone(),
-                    typs: typs.clone(),
-                    has_return: has_ret,
-                    args: Arc::new(exps),
-                },
-            )))
-        }
+            CallTarget::Static(x, typs) => {
+                let mut stms: Vec<Stm> = Vec::new();
+                let mut exps: Vec<Exp> = Vec::new();
+                for arg in args.iter() {
+                    let (mut stms0, e0) = expr_to_stm_opt(ctx, state, arg)?;
+                    stms.append(&mut stms0);
+                    let e0 = match e0.to_value() {
+                        Some(e) => e,
+                        None => {
+                            return Ok(Some((stms, ReturnedCall::Never)));
+                        }
+                    };
+                    exps.push(e0);
+                }
+                let has_ret = get_function(ctx, &expr.span, x)?.x.has_return();
+                Ok(Some((
+                    stms,
+                    ReturnedCall::Call {
+                        fun: FunOrDyn::Fun(x.clone()),
+                        typs: typs.clone(),
+                        has_return: has_ret,
+                        args: Arc::new(exps),
+                    },
+                )))
+            }
+        },
         _ => Ok(None),
     }
 }
@@ -437,6 +489,7 @@ fn expr_must_be_call_stm(
         ExprX::Call(CallTarget::Static(x, _), _) if !function_can_be_exp(ctx, state, expr, x)? => {
             expr_get_call(ctx, state, expr)
         }
+        ExprX::Call(CallTarget::FnExec(_e), _) => expr_get_call(ctx, state, expr),
         _ => Ok(None),
     }
 }
@@ -886,7 +939,31 @@ fn expr_to_stm_opt(
                             Some(assign),
                         )
                     };
-                    stms.push(stm_call(ctx, state, &expr.span, fun, typs, args, Some(dest))?);
+                    match fun {
+                        FunOrDyn::Fun(fun) => {
+                            stms.push(stm_call(
+                                ctx,
+                                state,
+                                &expr.span,
+                                fun,
+                                typs,
+                                args,
+                                Some(dest),
+                            )?);
+                        }
+                        FunOrDyn::Dyn => {
+                            assert!(args.len() == 2);
+                            stms.push(Spanned::new(
+                                expr.span.clone(),
+                                StmX::DynCall {
+                                    arg_fn: args[0].clone(),
+                                    arg_param_tuple: args[1].clone(),
+                                    typ_args: typs,
+                                    dest,
+                                },
+                            ));
+                        }
+                    }
                     stms.extend(assign.into_iter());
                     Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
                 }
@@ -916,10 +993,56 @@ fn expr_to_stm_opt(
             let call = ExpX::CallLambda(expr.typ.clone(), e0, args);
             Ok((vec![], ReturnValue::Some(mk_exp(call))))
         }
+        ExprX::Call(CallTarget::BuiltinSpecFun(bsf, typ_args), args) => {
+            let args = Arc::new(vec_map_result(args, |e| expr_to_pure_exp(ctx, state, e))?);
+            let f = match bsf {
+                BuiltinSpecFun::ClosureReq => crate::def::closure_req(),
+                BuiltinSpecFun::ClosureEns => crate::def::closure_ens(),
+            };
+            let call =
+                SpannedTyped::new(&expr.span, &expr.typ, ExpX::Call(f, typ_args.clone(), args));
+            Ok((vec![], ReturnValue::Some(call)))
+        }
+        ExprX::Call(CallTarget::FnExec(_callee), _args) => {
+            let (mut stms, call) = expr_get_call(ctx, state, expr)?.expect("Call");
+            match call {
+                ReturnedCall::Never => Ok((stms, ReturnValue::Never)),
+                ReturnedCall::Call { fun, typs, has_return, args } => {
+                    assert!(fun == FunOrDyn::Dyn);
+                    assert!(has_return);
+                    assert!(args.len() == 2);
+
+                    let (temp, temp_var) = state.next_temp(&expr.span, &expr.typ);
+                    let temp_ident = state.declare_new_var(&temp, &expr.typ, false, false);
+                    let dest = Dest {
+                        dest: var_loc_exp(&expr.span, &expr.typ, temp_ident.clone()),
+                        is_init: true,
+                    };
+
+                    let dyn_call = Spanned::new(
+                        expr.span.clone(),
+                        StmX::DynCall {
+                            arg_fn: args[0].clone(),
+                            arg_param_tuple: args[1].clone(),
+                            typ_args: typs,
+                            dest,
+                        },
+                    );
+                    stms.push(dyn_call);
+                    Ok((stms, ReturnValue::Some(temp_var)))
+                }
+            }
+        }
         ExprX::Call(CallTarget::Static(..), _) => {
             match expr_get_call(ctx, state, expr)?.expect("Call") {
                 (stms, ReturnedCall::Never) => Ok((stms, ReturnValue::Never)),
                 (mut stms, ReturnedCall::Call { fun: x, typs, has_return: ret, args }) => {
+                    let x = match x {
+                        FunOrDyn::Dyn => {
+                            panic!("static call should not be Dyn");
+                        }
+                        FunOrDyn::Fun(fun) => fun,
+                    };
                     if function_can_be_exp(ctx, state, expr, &x)? {
                         // ExpX::Call
                         let call = ExpX::Call(x.clone(), typs.clone(), args);
@@ -1160,6 +1283,35 @@ fn expr_to_stm_opt(
 
             let bnd = Spanned::new(body.span.clone(), BndX::Lambda(Arc::new(boxed_params)));
             Ok((vec![], ReturnValue::Some(mk_exp(ExpX::Bind(bnd, exp)))))
+        }
+        ExprX::ExecClosure { params, body, requires, ensures, ret, external_spec } => {
+            let mut all_stms = Vec::new();
+
+            // Emit the internals of the closure (ClosureInner behaves like a dead-end)
+            // This includes assuming the requires, asserting the ensures, everything else
+
+            let inner_stms =
+                exec_closure_body_stms(ctx, state, params, ret, body, requires, ensures)?;
+            let block = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(inner_stms)));
+            let clos = Spanned::new(expr.span.clone(), StmX::ClosureInner(block));
+            all_stms.push(clos);
+
+            // Create the closure object and assume all the information given in its
+            // specification that the world external to the closure gets to assume.
+
+            let (cid, cexpr) = external_spec
+                .as_ref()
+                .expect("external_spec should have been added in ast_simplifiy");
+            state.push_scope();
+            let uid = state.declare_new_var(&cid, &expr.typ, false, false);
+            let cexp = expr_to_pure_exp(ctx, state, &cexpr)?;
+            state.pop_scope();
+
+            all_stms.push(Spanned::new(expr.span.clone(), StmX::Assume(cexp)));
+
+            let v = mk_exp(ExpX::Var(uid));
+
+            Ok((all_stms, ReturnValue::Some(v)))
         }
         ExprX::Choose { params, cond, body } => {
             let mut check_recommends_stms = check_pure_expr_bind(ctx, state, params, true, cond)?;
@@ -1569,17 +1721,25 @@ fn expr_to_stm_opt(
                 }
             };
 
-            let base_error = error_with_label(
-                crate::def::POSTCONDITION_FAILURE.to_string(),
-                &expr.span,
-                "at this exit".to_string(),
-            );
+            let containing_closure = state.containing_closure.clone();
+            match &containing_closure {
+                None => {
+                    let base_error = error_with_label(
+                        crate::def::POSTCONDITION_FAILURE.to_string(),
+                        &expr.span,
+                        "at this exit".to_string(),
+                    );
 
-            stms.push(Spanned::new(
-                expr.span.clone(),
-                StmX::AssertPostConditions(base_error, Some(ret_exp)),
-            ));
-            stms.push(assume_false(&expr.span));
+                    stms.push(Spanned::new(
+                        expr.span.clone(),
+                        StmX::AssertPostConditions(base_error, Some(ret_exp)),
+                    ));
+                    stms.push(assume_false(&expr.span));
+                }
+                Some(closure_state) => {
+                    closure_emit_postconditions(ctx, state, closure_state, &ret_exp, &mut stms);
+                }
+            }
             Ok((stms, ReturnValue::Never))
         }
         ExprX::Ghost { .. } => {
@@ -1715,7 +1875,31 @@ fn stmt_to_stm(
                             dest: var_loc_exp(&pattern.span, &typ, decl.ident.clone()),
                             is_init: true,
                         };
-                        stms.push(stm_call(ctx, state, &init.span, fun, typs, args, Some(dest))?);
+                        match fun {
+                            FunOrDyn::Fun(fun) => {
+                                stms.push(stm_call(
+                                    ctx,
+                                    state,
+                                    &init.span,
+                                    fun,
+                                    typs,
+                                    args,
+                                    Some(dest),
+                                )?);
+                            }
+                            FunOrDyn::Dyn => {
+                                assert!(args.len() == 2);
+                                stms.push(Spanned::new(
+                                    stmt.span.clone(),
+                                    StmX::DynCall {
+                                        arg_fn: args[0].clone(),
+                                        arg_param_tuple: args[1].clone(),
+                                        typ_args: typs,
+                                        dest: dest,
+                                    },
+                                ));
+                            }
+                        }
                         let ret = ReturnValue::ImplicitUnit(stmt.span.clone());
                         return Ok((stms, ret, Some((decl, None))));
                     }
@@ -1759,6 +1943,87 @@ fn stmt_to_stm(
 
             let ret = ReturnValue::ImplicitUnit(stmt.span.clone());
             Ok((stms, ret, Some((decl, bnd))))
+        }
+    }
+}
+
+/// Handle the internal of a closure
+
+fn exec_closure_body_stms(
+    ctx: &Ctx,
+    state: &mut State,
+    params: &Binders<Typ>,
+    ret: &Binder<Typ>,
+    body: &Expr,
+    requires: &Exprs,
+    ensures: &Exprs,
+) -> Result<Vec<Stm>, VirErr> {
+    state.push_scope();
+    for param in params.iter() {
+        state.declare_new_var(&param.name, &param.a, false, false);
+    }
+
+    // Assert all the requires
+
+    let mut stms = Vec::new();
+    for req in requires.iter() {
+        let exp = expr_to_pure_exp(ctx, state, req)?;
+        let stm = Spanned::new(req.span.clone(), StmX::Assume(exp));
+        stms.push(stm);
+    }
+
+    state.declare_new_var(&ret.name, &ret.a, false, false);
+    let dest = unique_local(&ret.name);
+
+    let mut ens_exps = Vec::new();
+    for ens in ensures.iter() {
+        ens_exps.push(expr_to_pure_exp(ctx, state, ens)?);
+    }
+
+    // Set up the ClosureState so any 'return' statements inside know what to do
+
+    let mut containing_closure = Some(ClosureState { ensures: Arc::new(ens_exps), dest: dest });
+    std::mem::swap(&mut state.containing_closure, &mut containing_closure);
+
+    let (mut body_stms, exp) = expr_to_stm_opt(ctx, state, body)?;
+    stms.append(&mut body_stms);
+
+    std::mem::swap(&mut state.containing_closure, &mut containing_closure);
+
+    match exp.to_value() {
+        Some(e) => {
+            // Post condition for the return-value expression
+
+            let closure_state = containing_closure.as_ref().unwrap();
+            closure_emit_postconditions(ctx, state, closure_state, &e, &mut stms);
+        }
+        None => { /* never-return case */ }
+    }
+
+    state.pop_scope();
+
+    Ok(stms)
+}
+
+fn closure_emit_postconditions(
+    ctx: &Ctx,
+    state: &mut State,
+    containing_closure: &ClosureState,
+    ret_value: &Exp,
+    stms: &mut Vec<Stm>,
+) {
+    let ClosureState { dest, ensures } = containing_closure;
+    if ensures.len() > 0 && !state.checking_recommends(ctx) {
+        stms.push(init_var(&ret_value.span, dest, &ret_value));
+        for ens in ensures.iter() {
+            let er = error_with_label(
+                "unable to prove post-condition of closure",
+                &ret_value.span,
+                "returning this expression",
+            )
+            .secondary_label(&ens.span, "this post-condition fails");
+            let stm = Spanned::new(ens.span.clone(), StmX::Assert(Some(er), ens.clone()));
+            stms.push(stm);
         }
     }
 }

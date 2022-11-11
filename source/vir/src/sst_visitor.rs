@@ -149,6 +149,7 @@ where
         VisitorControlFlow::Recurse => {
             match &stm.x {
                 StmX::Call { .. }
+                | StmX::DynCall { .. }
                 | StmX::Assert(_, _)
                 | StmX::AssertPostConditions(_, _)
                 | StmX::Assume(_)
@@ -157,6 +158,9 @@ where
                 | StmX::Fuel(..)
                 | StmX::RevealString(_) => (),
                 StmX::DeadEnd(s) => {
+                    expr_visitor_control_flow!(stm_visitor_dfs(s, f));
+                }
+                StmX::ClosureInner(s) => {
                     expr_visitor_control_flow!(stm_visitor_dfs(s, f));
                 }
                 StmX::If(_cond, lhs, rhs) => {
@@ -205,6 +209,14 @@ where
                     expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f));
                 }
             }
+            StmX::DynCall { arg_fn, arg_param_tuple, typ_args: _, dest: _ } => {
+                expr_visitor_control_flow!(exp_visitor_dfs(arg_fn, &mut ScopeMap::new(), f));
+                expr_visitor_control_flow!(exp_visitor_dfs(
+                    arg_param_tuple,
+                    &mut ScopeMap::new(),
+                    f
+                ));
+            }
             StmX::Assert(_span2, exp) => {
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
             }
@@ -229,6 +241,7 @@ where
                 expr_visitor_control_flow!(exp_visitor_dfs(rhs, &mut ScopeMap::new(), f))
             }
             StmX::Fuel(..) | StmX::DeadEnd(..) | StmX::RevealString(_) => (),
+            StmX::ClosureInner(_s) => (),
 
             StmX::If(exp, _s1, _s2) => {
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
@@ -528,6 +541,7 @@ where
 {
     match &stm.x {
         StmX::Call { .. } => fs(stm),
+        StmX::DynCall { .. } => fs(stm),
         StmX::Assert(_, _) => fs(stm),
         StmX::AssertPostConditions(_, _) => fs(stm),
         StmX::Assume(_) => fs(stm),
@@ -538,6 +552,11 @@ where
         StmX::DeadEnd(s) => {
             let s = map_stm_visitor(s, fs)?;
             let stm = Spanned::new(stm.span.clone(), StmX::DeadEnd(s));
+            fs(&stm)
+        }
+        StmX::ClosureInner(s) => {
+            let s = map_stm_visitor(s, fs)?;
+            let stm = Spanned::new(stm.span.clone(), StmX::ClosureInner(s));
             fs(&stm)
         }
         StmX::If(cond, lhs, rhs) => {
@@ -596,6 +615,7 @@ where
 {
     match &stm.x {
         StmX::Call { .. } => Ok(stm.clone()),
+        StmX::DynCall { .. } => Ok(stm.clone()),
         StmX::Assert(_, _) => Ok(stm.clone()),
         StmX::AssertPostConditions(_, _) => Ok(stm.clone()),
         StmX::Assume(_) => Ok(stm.clone()),
@@ -606,6 +626,10 @@ where
         StmX::DeadEnd(s) => {
             let s = fs(s)?;
             Ok(Spanned::new(stm.span.clone(), StmX::DeadEnd(s)))
+        }
+        StmX::ClosureInner(s) => {
+            let s = fs(s)?;
+            Ok(Spanned::new(stm.span.clone(), StmX::ClosureInner(s)))
         }
         StmX::If(cond, lhs, rhs) => {
             let lhs = fs(lhs)?;
@@ -672,6 +696,15 @@ where
                     },
                 )
             }
+            StmX::DynCall { arg_fn, arg_param_tuple, typ_args, dest } => Spanned::new(
+                span,
+                StmX::DynCall {
+                    arg_fn: fe(arg_fn)?,
+                    arg_param_tuple: fe(arg_param_tuple)?,
+                    typ_args: typ_args.clone(),
+                    dest: (*dest).clone(),
+                },
+            ),
             StmX::Assert(span2, exp) => Spanned::new(span, StmX::Assert(span2.clone(), fe(exp)?)),
             StmX::AssertPostConditions(span2, None) => {
                 Spanned::new(span, StmX::AssertPostConditions(span2.clone(), None))
@@ -694,6 +727,7 @@ where
             StmX::Fuel(..) => stm.clone(),
             StmX::RevealString(_) => stm.clone(),
             StmX::DeadEnd(..) => stm.clone(),
+            StmX::ClosureInner(_s) => stm.clone(),
             StmX::If(exp, s1, s2) => {
                 let exp = fe(exp)?;
                 Spanned::new(span, StmX::If(exp, s1.clone(), s2.clone()))

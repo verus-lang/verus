@@ -7,7 +7,7 @@ use crate::ast_util::{
     allowed_bitvector_type, bitwidth_from_type, err_string, fun_as_rust_dbg, get_field, get_variant,
 };
 use crate::context::Ctx;
-use crate::def::{fn_inv_name, fn_namespace_name, new_user_qid_name};
+use crate::def::{closure_ens, closure_req, fn_inv_name, fn_namespace_name, new_user_qid_name};
 use crate::def::{
     fun_to_string, new_internal_qid, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id,
     prefix_lambda_type, prefix_pre_var, prefix_requires, prefix_unbox, snapshot_ident,
@@ -89,6 +89,9 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::Bool => bool_typ(),
         TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
         TypX::Lambda(..) => Arc::new(air::ast::TypX::Lambda),
+        TypX::AnonymousClosure(..) => {
+            panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
+        }
         TypX::Datatype(path, _) => {
             if ctx.datatype_is_transparent[path] {
                 ident_typ(&path_to_air_ident(path))
@@ -143,6 +146,9 @@ pub fn typ_to_id(typ: &Typ) -> Expr {
         TypX::Bool => str_var(crate::def::TYPE_ID_BOOL),
         TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
         TypX::Lambda(typs, typ) => fun_id(typs, typ),
+        TypX::AnonymousClosure(..) => {
+            panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
+        }
         TypX::Datatype(path, typs) => datatype_id(path, typs),
         TypX::Boxed(typ) => typ_to_id(typ),
         TypX::TypParam(x) => ident_var(&suffix_typ_param_id(x)),
@@ -231,6 +237,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Int(_) => Some(str_ident(crate::def::BOX_INT)),
         TypX::Tuple(_) => None,
         TypX::Lambda(typs, _) => Some(prefix_box(&prefix_lambda_type(typs.len()))),
+        TypX::AnonymousClosure(..) => unimplemented!(),
         TypX::Datatype(path, _) => {
             if ctx.datatype_is_transparent[path] {
                 Some(prefix_box(&path))
@@ -271,6 +278,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         }
         TypX::Tuple(_) => None,
         TypX::Lambda(typs, _) => Some(prefix_unbox(&prefix_lambda_type(typs.len()))),
+        TypX::AnonymousClosure(..) => unimplemented!(),
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
         TypX::TypeId => None,
@@ -1403,6 +1411,51 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
             vec![Arc::new(StmtX::Block(Arc::new(stmts)))] // wrap in block for readability
         }
+        StmX::DynCall { arg_fn, arg_param_tuple, typ_args: typs, dest } => {
+            let typ_args: Vec<Expr> = vec_map(typs, typ_to_id);
+
+            let mut stmts: Vec<Stmt> = Vec::new();
+            if !ctx.checking_recommends_for_non_spec() {
+                let f_req = suffix_global_id(&fun_to_air_ident(&closure_req()));
+                let mut req_args = typ_args.clone();
+                req_args.push(exp_to_expr(ctx, arg_fn, expr_ctxt)?);
+                req_args.push(exp_to_expr(ctx, arg_param_tuple, expr_ctxt)?);
+                let e_req = Arc::new(ExprX::Apply(f_req, Arc::new(req_args)));
+                let description = crate::def::PRECONDITION_FAILURE.to_string();
+                let error = error(description, &stm.span);
+                stmts.push(Arc::new(StmtX::Assert(error, e_req)));
+            }
+
+            let callee_mask_set = MaskSet::full();
+            if !ctx.checking_recommends() {
+                callee_mask_set.assert_is_contained_in(&state.mask, &stm.span, &mut stmts);
+            }
+
+            let mut ens_args = typ_args;
+            ens_args.push(exp_to_expr(ctx, arg_fn, expr_ctxt)?);
+            ens_args.push(exp_to_expr(ctx, arg_param_tuple, expr_ctxt)?);
+
+            let Dest { dest, is_init } = dest;
+
+            let var = suffix_local_unique_id(&get_loc_var(dest));
+            ens_args.push(exp_to_expr(ctx, &dest, expr_ctxt)?);
+            if !*is_init {
+                let havoc = StmtX::Havoc(var.clone());
+                stmts.push(Arc::new(havoc));
+            }
+
+            let mut typ_inv_stmts = typ_invariant(ctx, &dest.typ, &string_var(&var))
+                .into_iter()
+                .map(|e| Arc::new(StmtX::Assume(e)))
+                .collect();
+            stmts.append(&mut typ_inv_stmts);
+
+            let f_ens = suffix_global_id(&fun_to_air_ident(&closure_ens()));
+            let e_ens = Arc::new(ExprX::Apply(f_ens, Arc::new(ens_args)));
+            stmts.push(Arc::new(StmtX::Assume(e_ens)));
+
+            vec![Arc::new(StmtX::Block(Arc::new(stmts)))] // wrap in block for readability
+        }
         StmX::Assert(error, expr) => {
             let air_expr = exp_to_expr(ctx, &expr, expr_ctxt)?;
             let error = match error {
@@ -1606,6 +1659,16 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
         }
         StmX::DeadEnd(s) => {
             vec![Arc::new(StmtX::DeadEnd(one_stmt(stm_to_stmts(ctx, state, s)?)))]
+        }
+        StmX::ClosureInner(s) => {
+            // Right now there is no way to specify an invariant mask on a closure function
+            // All closure funcs are assumed to have mask set 'full'
+            let mut mask = MaskSet::full();
+            std::mem::swap(&mut state.mask, &mut mask);
+            let stmts = stm_to_stmts(ctx, state, s)?;
+            std::mem::swap(&mut state.mask, &mut mask);
+
+            vec![Arc::new(StmtX::DeadEnd(one_stmt(stmts)))]
         }
         StmX::If(cond, lhs, rhs) => {
             let pos_cond = exp_to_expr(ctx, &cond, expr_ctxt)?;

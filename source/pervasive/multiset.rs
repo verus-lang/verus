@@ -194,7 +194,7 @@ pub proof fn axiom_count_le_len<V>(m: Multiset<V>, v: V)
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub proof fn axiom_filter_count<V>(m: Multiset<V>, f: impl Fn(V) -> bool, v: V)
+pub proof fn axiom_filter_count<V>(m: Multiset<V>, f: FnSpec(V) -> bool, v: V)
     ensures (#[trigger] m.filter(f).count(v)) ==
         if f(v) { m.count(v) } else { 0 }
 {}

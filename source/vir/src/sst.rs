@@ -104,6 +104,12 @@ pub enum StmX {
         split: Option<Message>,
         dest: Option<Dest>,
     },
+    DynCall {
+        arg_fn: Exp,
+        arg_param_tuple: Exp,
+        typ_args: Typs,
+        dest: Dest,
+    },
     // note: failed assertion reports Stm's span, plus an optional additional span
     Assert(Option<Message>, Exp),
     AssertBitVector {
@@ -131,6 +137,7 @@ pub enum StmX {
     },
     OpenInvariant(Exp, UniqueIdent, Typ, Stm, InvAtomicity),
     Block(Stms),
+    ClosureInner(Stm),
     AssertQuery {
         mode: AssertQueryMode,
         typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,

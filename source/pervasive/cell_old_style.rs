@@ -266,7 +266,7 @@ impl<T> InvCell<T> {
         self.possible_values.contains(val)
     }
 
-    pub fn new<F: Fn(T) -> bool>(val: T, #[spec] f: F) -> Self
+    pub fn new(val: T, #[spec] f: FnSpec<(T,), bool>) -> Self
     {
         requires(f(val));
         ensures(|cell: Self| cell.wf() && forall(|v| f(v) == cell.inv(v)));

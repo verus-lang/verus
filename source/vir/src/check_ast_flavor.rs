@@ -4,7 +4,7 @@ use crate::ast_visitor::{
 };
 pub use air::ast_util::{ident_binder, str_ident};
 
-fn check_expr_simplified(expr: &Expr) -> Result<(), ()> {
+fn check_expr_simplified(_scope_map: &VisitorScopeMap, expr: &Expr) -> Result<(), ()> {
     match expr.x {
         ExprX::ConstVar(_)
         | ExprX::UnaryOpr(UnaryOpr::TupleField { .. }, _)
@@ -41,14 +41,6 @@ pub fn check_krate_simplified(krate: &Krate) {
         for (_, bound) in typ_bounds.iter() {
             match &**bound {
                 GenericBoundX::Traits(_) => {}
-                GenericBoundX::FnSpec(typs, typ) => {
-                    let all_typs = typs.iter().chain(std::iter::once(typ));
-                    for typ in all_typs {
-                        typ_visitor_check(typ, &mut check_typ_simplified).expect(
-                            "function typ bound uses node that should have been simplified",
-                        );
-                    }
-                }
             }
         }
 

@@ -642,7 +642,6 @@ pub fn func_axioms_to_air(
                         GenericBoundX::Traits(_) => {
                             todo!()
                         }
-                        GenericBoundX::FnSpec(..) => {}
                     }
                 }
                 for param in params.iter() {
