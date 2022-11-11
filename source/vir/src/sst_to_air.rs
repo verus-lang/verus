@@ -1016,6 +1016,24 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
     Ok(result)
 }
 
+pub(crate) enum PostConditionKind {
+    Ensures,
+    DecreasesImplicitLemma,
+    DecreasesBy,
+}
+
+struct PostConditionInfo {
+    /// Identifier that holds the return value.
+    /// May be referenced by `ens_exprs` or `ens_recommend_stms`.
+    dest: Option<UniqueIdent>,
+    /// Post-conditions (only used in non-recommends-checking mode)
+    ens_exprs: Vec<(Span, Expr)>,
+    /// Recommends checks (only used in recommends-checking mode)
+    ens_recommend_stms: Vec<Stm>,
+    /// Extra info about PostCondition for error reporting
+    kind: PostConditionKind,
+}
+
 struct State {
     local_shared: Vec<Decl>, // shared between all queries for a single function
     local_bv_shared: Vec<Decl>, // used in bv mode, fixed width uint variables have corresponding bv types
@@ -1025,6 +1043,7 @@ struct State {
     snap_map: Vec<(Span, SnapPos)>, // Maps each statement's span to the closest dominating snapshot's ID
     assign_map: AssignMap, // Maps Maps each statement's span to the assigned variables (that can potentially be queried)
     mask: MaskSet,         // set of invariants that are allowed to be opened
+    post_condition_info: PostConditionInfo,
 }
 
 impl State {
@@ -1080,7 +1099,7 @@ fn loc_is_var(e: &Exp) -> Option<&UniqueIdent> {
     }
 }
 
-fn assume_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
+pub(crate) fn assume_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
     let x_var = SpannedTyped::new(&span, &exp.typ, ExpX::Var(x.clone()));
     let eqx = ExpX::Binary(BinaryOp::Eq(Mode::Spec), x_var, exp.clone());
     let eq = SpannedTyped::new(&span, &Arc::new(TypX::Bool), eqx);
@@ -1376,6 +1395,63 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 state.map_span(&stm, SpanKind::Full);
             }
             vec![Arc::new(StmtX::Assert(error, air_expr))]
+        }
+        StmX::AssertPostConditions(base_error, expr) => {
+            let skip = if ctx.checking_recommends() {
+                state.post_condition_info.ens_recommend_stms.len() == 0
+            } else {
+                state.post_condition_info.ens_exprs.len() == 0
+            };
+
+            if skip {
+                vec![]
+            } else {
+                // Set `dest_id` variable to the returned expression.
+
+                let mut stmts = if let Some(dest_id) = state.post_condition_info.dest.clone() {
+                    let expr = expr.as_ref().expect("if dest is provided, expr must be provided");
+                    stm_to_stmts(ctx, state, &assume_var(&stm.span, &dest_id, expr))?
+                } else {
+                    // If there is no `dest_id`, then the returned expression
+                    // gets ignored. This should happen for functions that
+                    // don't return anything (more technically, that return
+                    // implicit unit) or other functions that don't have a name
+                    // associated to their return value.
+                    vec![]
+                };
+
+                if ctx.checking_recommends() {
+                    for stm in state.post_condition_info.ens_recommend_stms.clone().iter() {
+                        let mut new_stmts = stm_to_stmts(ctx, state, stm)?;
+                        stmts.append(&mut new_stmts);
+                    }
+                } else {
+                    for (span, ens) in state.post_condition_info.ens_exprs.clone().iter() {
+                        // The base_error should point to the return-statement or
+                        // return-expression. Augment with an additional label pointing
+                        // to the 'ensures' clause that fails.
+                        let error = match state.post_condition_info.kind {
+                            PostConditionKind::Ensures => base_error
+                                .secondary_label(&span, crate::def::THIS_POST_FAILED.to_string()),
+                            PostConditionKind::DecreasesImplicitLemma => base_error.clone(),
+                            PostConditionKind::DecreasesBy => {
+                                let mut e = (**base_error).clone();
+                                e.msg = "unable to show termination via `decreases_by` lemma"
+                                    .to_string();
+                                e.secondary_label(
+                                    &span,
+                                    "need to show decreases conditions for this body",
+                                )
+                            }
+                        };
+
+                        let ens_stmt = StmtX::Assert(error, ens.clone());
+                        stmts.push(Arc::new(ens_stmt));
+                    }
+                }
+
+                stmts
+            }
         }
         StmX::AssertQuery { typ_inv_vars, body, mode } => {
             if ctx.debug {
@@ -1826,7 +1902,7 @@ fn set_fuel(ctx: &Ctx, local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
     local.push(Arc::new(DeclX::Axiom(fuel_expr)));
 }
 
-pub fn body_stm_to_air(
+pub(crate) fn body_stm_to_air(
     ctx: &Ctx,
     func_span: &Span,
     trait_typ_substs: &Vec<(Ident, Typ)>,
@@ -1836,14 +1912,16 @@ pub fn body_stm_to_air(
     hidden: &Vec<Fun>,
     reqs: &Vec<Exp>,
     enss: &Vec<Exp>,
+    ens_recommend_stms: &Vec<Stm>,
     mask_spec: &MaskSpec,
     mode: Mode,
     stm: &Stm,
     is_integer_ring: bool,
     is_bit_vector_mode: bool,
-    skip_ensures: bool,
     is_nonlinear: bool,
     is_spinoff_prover: bool,
+    dest: Option<UniqueIdent>,
+    post_condition_kind: PostConditionKind,
 ) -> Result<(Vec<CommandsWithContext>, Vec<(Span, SnapPos)>), VirErr> {
     // Verifying a single function can generate multiple SMT queries.
     // Some declarations (local_shared) are shared among the queries.
@@ -1892,6 +1970,13 @@ pub fn body_stm_to_air(
 
     let initial_sid = Arc::new("0_entry".to_string());
 
+    let mut ens_exprs: Vec<(Span, Expr)> = Vec::new();
+    for ens in enss {
+        let expr_ctxt = &ExprCtxt::new_mode_bv(ExprMode::Body, is_bit_vector_mode);
+        let e = mk_let(&trait_typ_bind, &exp_to_expr(ctx, ens, expr_ctxt)?);
+        ens_exprs.push((ens.span.clone(), e));
+    }
+
     let mask = mask_set_from_spec(mask_spec, mode);
 
     let mut state = State {
@@ -1903,6 +1988,12 @@ pub fn body_stm_to_air(
         snap_map: Vec::new(),
         assign_map: HashMap::new(),
         mask,
+        post_condition_info: PostConditionInfo {
+            dest,
+            ens_exprs,
+            ens_recommend_stms: ens_recommend_stms.clone(),
+            kind: post_condition_kind,
+        },
     };
 
     let mut _modified = HashSet::new();
@@ -1934,24 +2025,6 @@ pub fn body_stm_to_air(
         state.local_bv_shared.clone()
     };
 
-    if !skip_ensures {
-        // This generates postconditions for the end of the function.
-        // Note: Postconditions for 'return' statements are handled in ast_to_sst.
-
-        for ens in enss {
-            let error = error_with_label(
-                crate::def::POSTCONDITION_FAILURE.to_string(),
-                &stm.span,
-                "at the end of the function body".to_string(),
-            )
-            .secondary_label(&ens.span, crate::def::THIS_POST_FAILED.to_string());
-
-            let expr_ctxt = &ExprCtxt::new_mode_bv(ExprMode::Body, is_bit_vector_mode);
-            let e = mk_let(&trait_typ_bind, &exp_to_expr(ctx, ens, expr_ctxt)?);
-            let ens_stmt = StmtX::Assert(error, e);
-            stmts.push(Arc::new(ens_stmt));
-        }
-    }
     let assertion = one_stmt(stmts);
 
     if !is_bit_vector_mode && !is_integer_ring {

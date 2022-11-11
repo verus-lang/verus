@@ -1029,3 +1029,44 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file! {
+    #[test] test_explicit_return_stmt verus_code!{
+        trait Tr<T> {
+            spec fn f(&self) -> T;
+
+            fn compute_f(&self) -> (t: T)
+                ensures t === self.f();
+        }
+
+        struct X { }
+
+        impl Tr<u64> for X {
+
+            spec fn f(&self) -> u64 {
+                2
+            }
+
+            fn compute_f(&self) -> (t: u64)
+            {
+                // test using an explicit 'return' statement rather than
+                // an expression-return
+                return 2;
+            }
+        }
+
+        struct Y { }
+
+        impl Tr<u64> for Y {
+
+            spec fn f(&self) -> u64 {
+                2
+            }
+
+            fn compute_f(&self) -> (t: u64)
+            {
+                return 3; // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
