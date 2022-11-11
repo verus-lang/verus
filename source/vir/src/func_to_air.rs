@@ -768,6 +768,20 @@ pub fn func_def_to_air(
                 &ens_pars,
                 dest.clone(),
             )?;
+            let ens_recommend_stms: Result<Vec<_>, _> = ens_recommend_stms
+                .iter()
+                .map(|s| {
+                    state.finalize_stm(
+                        &ctx,
+                        &state.fun_ssts,
+                        &s,
+                        &req_ens_function.x.ensure,
+                        &ens_pars,
+                        dest.clone(),
+                    )
+                })
+                .collect();
+            let ens_recommend_stms = ens_recommend_stms?;
 
             // Check termination
             //
