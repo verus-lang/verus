@@ -12,7 +12,7 @@ use air::errors::Error;
 use num_bigint::BigInt;
 use std::fmt::Display;
 use std::sync::Arc;
-use vir_macros::ToNode;
+use vir_macros::{to_node_impl, ToNode};
 
 /// Result<T, VirErr> is used when an error might need to be reported to the user
 pub type VirErr = Error;
@@ -28,7 +28,7 @@ pub type Idents = Arc<Vec<Ident>>;
 
 /// A fully-qualified name, such as a module name, function name, or datatype name
 pub type Path = Arc<PathX>;
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ToNode)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PathX {
     pub krate: Option<Ident>, // None for local crate
     pub segments: Idents,
@@ -44,7 +44,7 @@ pub struct Visibility {
 }
 
 /// Describes whether a variable, function, etc. is compiled or just used for verification
-#[derive(Copy, Clone, Debug, ToNode, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Mode {
     /// Ghost (not compiled), used to represent specifications (requires, ensures, invariant)
     Spec,
@@ -406,8 +406,8 @@ pub enum ComputeMode {
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
-#[derive(Debug, ToNode)]
-#[to_node(name = ">")]
+#[derive(Debug)]
+#[to_node_impl(name = ">")]
 pub enum ExprX {
     /// Constant
     Const(Constant),
@@ -588,7 +588,8 @@ pub enum FunctionKind {
 
 /// Function, including signature and body
 pub type Function = Arc<Spanned<FunctionX>>;
-#[derive(Debug, ToNode, Clone)]
+#[derive(Debug, Clone)]
+#[to_node_impl]
 pub struct FunctionX {
     /// Name of function
     pub name: Fun,

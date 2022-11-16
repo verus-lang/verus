@@ -93,76 +93,102 @@ impl<'a> NodeWriter<'a> {
     }
 }
 
+#[derive(Debug)]
+pub struct ToNodeOpts {
+    pub no_span: bool,
+    pub no_type: bool,
+    pub no_fn_details: bool,
+    pub no_encoding: bool,
+}
+
+pub const COMPACT_TONODEOPTS: ToNodeOpts =
+    ToNodeOpts { no_span: true, no_type: true, no_fn_details: true, no_encoding: true };
+
+impl Default for ToNodeOpts {
+    fn default() -> Self {
+        Self { no_span: false, no_type: false, no_fn_details: false, no_encoding: false }
+    }
+}
+
 pub(crate) trait ToNode {
-    fn to_node(&self) -> Node;
+    fn to_node(&self, opts: &ToNodeOpts) -> Node;
 }
 
 impl<A: ToNode> ToNode for crate::def::Spanned<A> {
-    fn to_node(&self) -> Node {
-        Node::List(vec![
-            Node::Atom("@".to_string()),
-            Node::Atom(format!("\"{}\"", self.span.as_string)),
-            self.x.to_node(),
-        ])
+    fn to_node(&self, opts: &ToNodeOpts) -> Node {
+        if opts.no_span {
+            self.x.to_node(opts)
+        } else {
+            Node::List(vec![
+                Node::Atom("@".to_string()),
+                Node::Atom(format!("\"{}\"", self.span.as_string)),
+                self.x.to_node(opts),
+            ])
+        }
     }
 }
 
 impl<A: ToNode> ToNode for Vec<A> {
-    fn to_node(&self) -> Node {
-        let nodes = self.iter().map(|x| x.to_node()).collect();
+    fn to_node(&self, opts: &ToNodeOpts) -> Node {
+        let nodes = self.iter().map(|x| x.to_node(opts)).collect();
         Node::List(nodes)
     }
 }
 
 impl<A: ToNode> ToNode for std::sync::Arc<A> {
-    fn to_node(&self) -> Node {
-        (**self).to_node()
+    fn to_node(&self, opts: &ToNodeOpts) -> Node {
+        (**self).to_node(opts)
     }
 }
 
 impl ToNode for String {
-    fn to_node(&self) -> Node {
+    fn to_node(&self, _opts: &ToNodeOpts) -> Node {
         Node::Atom(format!("\"{}\"", self))
     }
 }
 
 impl<A: ToNode> ToNode for Option<A> {
-    fn to_node(&self) -> Node {
+    fn to_node(&self, opts: &ToNodeOpts) -> Node {
         match self {
-            Some(v) => v.to_node(),
+            Some(v) => v.to_node(opts),
             None => Node::Atom("None".to_string()),
         }
     }
 }
 
 impl<A: ToNode, B: ToNode> ToNode for (A, B) {
-    fn to_node(&self) -> Node {
+    fn to_node(&self, opts: &ToNodeOpts) -> Node {
         let (a, b) = self;
-        Node::List(vec![Node::Atom("tuple".to_string()), a.to_node(), b.to_node()])
+        Node::List(vec![Node::Atom("tuple".to_string()), a.to_node(opts), b.to_node(opts)])
     }
 }
 
 impl<A: ToNode, B: ToNode, C: ToNode> ToNode for (A, B, C) {
-    fn to_node(&self) -> Node {
+    fn to_node(&self, opts: &ToNodeOpts) -> Node {
         let (a, b, c) = self;
-        Node::List(vec![Node::Atom("tuple".to_string()), a.to_node(), b.to_node(), c.to_node()])
+        Node::List(vec![
+            Node::Atom("tuple".to_string()),
+            a.to_node(opts),
+            b.to_node(opts),
+            c.to_node(opts),
+        ])
     }
 }
 
 impl ToNode for bool {
-    fn to_node(&self) -> Node {
+    fn to_node(&self, _opts: &ToNodeOpts) -> Node {
         Node::Atom(format!("{:?}", self))
     }
 }
 
 impl ToNode for u32 {
-    fn to_node(&self) -> Node {
+    fn to_node(&self, _opts: &ToNodeOpts) -> Node {
         Node::Atom(self.to_string())
     }
 }
 
 impl ToNode for char {
-    fn to_node(&self) -> Node {
+    fn to_node(&self, _opts: &ToNodeOpts) -> Node {
         let a = match self.is_ascii() {
             true => format!("'{}'", self.to_string()),
             false => format!("char<{:x}>", *self as u32),
@@ -172,96 +198,157 @@ impl ToNode for char {
 }
 
 impl ToNode for u64 {
-    fn to_node(&self) -> Node {
+    fn to_node(&self, _opts: &ToNodeOpts) -> Node {
         Node::Atom(self.to_string())
     }
 }
 
 impl ToNode for usize {
-    fn to_node(&self) -> Node {
+    fn to_node(&self, _opts: &ToNodeOpts) -> Node {
         Node::Atom(self.to_string())
     }
 }
 
 impl ToNode for num_bigint::BigInt {
-    fn to_node(&self) -> Node {
+    fn to_node(&self, _opts: &ToNodeOpts) -> Node {
         Node::Atom(self.to_string())
     }
 }
 
 impl ToNode for air::ast::TypX {
-    fn to_node(&self) -> Node {
+    fn to_node(&self, opts: &ToNodeOpts) -> Node {
         use air::ast::TypX::*;
         match self {
             Bool => Node::Atom("Bool".to_string()),
             Int => Node::Atom("Int".to_string()),
             Lambda => Node::Atom("Lambda".to_string()),
-            Named(ident) => Node::List(vec![Node::Atom("Named".to_string()), ident.to_node()]),
-            BitVec(size) => Node::List(vec![Node::Atom("BitVec".to_string()), size.to_node()]),
+            Named(ident) => Node::List(vec![Node::Atom("Named".to_string()), ident.to_node(opts)]),
+            BitVec(size) => Node::List(vec![Node::Atom("BitVec".to_string()), size.to_node(opts)]),
         }
     }
 }
 
 impl<A: ToNode> ToNode for SpannedTyped<A> {
-    fn to_node(&self) -> Node {
-        Node::List(vec![
-            Node::Atom("@@".to_string()),
-            Node::Atom(format!("\"{}\"", self.span.as_string)),
-            self.x.to_node(),
-            self.typ.to_node(),
-        ])
+    fn to_node(&self, opts: &ToNodeOpts) -> Node {
+        if opts.no_span && opts.no_type {
+            self.x.to_node(opts)
+        } else {
+            let mut v = vec![Node::Atom("@@".to_string())];
+            if !opts.no_span {
+                v.push(Node::Atom(format!("\"{}\"", self.span.as_string)));
+            }
+            v.push(self.x.to_node(opts));
+            if !opts.no_type {
+                v.push(self.typ.to_node(opts));
+            }
+            Node::List(v)
+        }
     }
 }
 
 impl<A: ToNode + Clone> ToNode for Binder<A> {
-    fn to_node(&self) -> Node {
+    fn to_node(&self, opts: &ToNodeOpts) -> Node {
         Node::List(vec![
             Node::Atom("->".to_string()),
             Node::Atom((**self.name).to_string()),
-            self.a.to_node(),
+            self.a.to_node(opts),
         ])
     }
 }
 
 impl ToNode for Quant {
-    fn to_node(&self) -> Node {
+    fn to_node(&self, opts: &ToNodeOpts) -> Node {
         let Quant { quant, boxed_params } = self;
-        let nodes = vec![Node::Atom(format!("{:?}", quant)), boxed_params.to_node()];
+        let nodes = vec![
+            Node::Atom(format!("{:?}", quant)),
+            Node::Atom(":boxed_params".to_string()),
+            boxed_params.to_node(opts),
+        ];
         Node::List(nodes)
     }
 }
 
-fn str_node(s: &str) -> Node {
-    Node::Atom(format!("\"{}\"", s))
+impl ToNode for Mode {
+    fn to_node(&self, _opts: &ToNodeOpts) -> Node {
+        Node::Atom(format!("{:?}", self))
+    }
 }
 
-fn spanned_node(node: Node, span: &Span) -> Node {
-    Node::List(vec![str_to_node("span"), str_node(&span.as_string), node])
+impl ToNode for FunctionX {
+    fn to_node(&self, opts: &ToNodeOpts) -> Node {
+        if opts.no_fn_details {
+            nodes!(
+                Function
+                {self.name.to_node(opts)}
+                {Node::Atom(":mode".to_string())}
+                {self.mode.to_node(opts)}
+                {Node::Atom(":typ_bounds".to_string())}
+                {self.typ_bounds.to_node(opts)}
+                {Node::Atom(":params".to_string())}
+                {self.params.to_node(opts)}
+                {Node::Atom(":ret".to_string())}
+                {self.ret.to_node(opts)}
+                {Node::Atom(":require".to_string())}
+                {self.require.to_node(opts)}
+                {Node::Atom(":ensure".to_string())}
+                {self.ensure.to_node(opts)}
+                {Node::Atom(":body".to_string())}
+                {self.body.to_node(opts)}
+            )
+        } else {
+            self.to_node_inner(opts)
+        }
+    }
+}
+
+impl ToNode for ExprX {
+    fn to_node(&self, opts: &ToNodeOpts) -> Node {
+        if opts.no_encoding {
+            match self {
+                ExprX::Unary(UnaryOp::Clip { .. }, inner) => inner.to_node(opts),
+                ExprX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), inner) => {
+                    inner.to_node(opts)
+                }
+                _ => self.to_node_inner(opts),
+            }
+        } else {
+            self.to_node_inner(opts)
+        }
+    }
 }
 
 fn path_to_node(path: &Path) -> Node {
-    Node::Atom(crate::def::path_to_string(path).replace("{", "_$LBRACE_").replace("}", "_$RBRACE_"))
+    Node::Atom(format!(
+        "\"{}\"",
+        crate::def::path_to_string(path).replace("{", "_$LBRACE_").replace("}", "_$RBRACE_")
+    ))
 }
 
-pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate) {
+impl ToNode for Path {
+    fn to_node(&self, _opts: &ToNodeOpts) -> Node {
+        path_to_node(self)
+    }
+}
+
+pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToNodeOpts) {
     let mut nw = NodeWriter::new_vir();
 
     let KrateX { datatypes, functions, traits, module_ids } = &**vir_crate;
     for datatype in datatypes.iter() {
-        writeln!(
-            &mut write,
-            "{}\n",
-            nw.node_to_string(&spanned_node(datatype.x.to_node(), &datatype.span))
-        )
-        .expect("cannot write to vir write");
+        if opts.no_span {
+            writeln!(&mut write, ";; {}", &datatype.span.as_string)
+                .expect("cannot write to vir write");
+        }
+        writeln!(&mut write, "{}\n", nw.node_to_string(&datatype.to_node(opts)))
+            .expect("cannot write to vir write");
     }
     for function in functions.iter() {
-        writeln!(
-            &mut write,
-            "{}\n",
-            nw.node_to_string(&spanned_node(function.x.to_node(), &function.span))
-        )
-        .expect("cannot write to vir write");
+        if opts.no_span {
+            writeln!(&mut write, ";; {}", &function.span.as_string)
+                .expect("cannot write to vir write");
+        }
+        writeln!(&mut write, "{}\n", nw.node_to_string(&function.to_node(opts)))
+            .expect("cannot write to vir write");
     }
     for t in traits.iter() {
         let t = nodes!(trait {path_to_node(&t.x.name)});

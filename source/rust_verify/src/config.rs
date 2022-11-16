@@ -1,4 +1,5 @@
 use getopts::Options;
+use vir::printer::ToNodeOpts as VirLogOption;
 
 pub const DEFAULT_RLIMIT_SECS: u32 = 10;
 
@@ -48,6 +49,7 @@ pub struct Args {
     pub log_vir: bool,
     pub log_vir_simple: bool,
     pub log_vir_poly: bool,
+    pub vir_log_option: VirLogOption,
     pub log_interpreter: bool,
     pub log_air_initial: bool,
     pub log_air_final: bool,
@@ -94,6 +96,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_LOG_VIR: &str = "log-vir";
     const OPT_LOG_VIR_SIMPLE: &str = "log-vir-simple";
     const OPT_LOG_VIR_POLY: &str = "log-vir-poly";
+    const OPT_VIR_LOG_OPTION: &str = "vir-log-option";
     const OPT_LOG_INTERPRETER: &str = "log-interpreter";
     const OPT_LOG_AIR_INITIAL: &str = "log-air";
     const OPT_LOG_AIR_FINAL: &str = "log-air-final";
@@ -166,6 +169,12 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     opts.optflag("", OPT_LOG_VIR, "Log VIR");
     opts.optflag("", OPT_LOG_VIR_SIMPLE, "Log simplified VIR");
     opts.optflag("", OPT_LOG_VIR_POLY, "Log poly VIR");
+    opts.optmulti(
+         "",
+         OPT_VIR_LOG_OPTION,
+         "Set VIR logging option (e.g. `--vir-log-option no_span+no_type`. Available options: `compact` `no_span` `no_type` `no_encoding` `no_fn_details`) (default: verbose)",
+         "VIR_LOG_OPTION",
+    );
     opts.optflag("", OPT_LOG_INTERPRETER, "Log assert_by_compute's interpreter progress");
     opts.optflag("", OPT_LOG_AIR_INITIAL, "Log AIR queries in initial form");
     opts.optflag("", OPT_LOG_AIR_FINAL, "Log AIR queries in final form");
@@ -268,6 +277,26 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         log_vir: matches.opt_present(OPT_LOG_VIR),
         log_vir_simple: matches.opt_present(OPT_LOG_VIR_SIMPLE),
         log_vir_poly: matches.opt_present(OPT_LOG_VIR_POLY),
+        vir_log_option: {
+            let vir_opts: Vec<String> = matches.opt_strs(OPT_VIR_LOG_OPTION);
+            if vir_opts.len() == 0 {
+                Default::default()
+            } else if vir_opts.len() > 1 {
+                error("expected VIR_LOG_OPTION of form OPT1+OPT2+OPT3".to_string())
+            } else {
+                let vir_opts = vir_opts[0].split('+').map(|s| s.trim()).collect::<Vec<_>>();
+                if vir_opts.contains(&"compact") {
+                    vir::printer::COMPACT_TONODEOPTS
+                } else {
+                    VirLogOption {
+                        no_span: vir_opts.contains(&"no_span"),
+                        no_type: vir_opts.contains(&"no_type"),
+                        no_fn_details: vir_opts.contains(&"no_fn_details"),
+                        no_encoding: vir_opts.contains(&"no_encoding"),
+                    }
+                }
+            }
+        },
         log_interpreter: matches.opt_present(OPT_LOG_INTERPRETER),
         log_air_initial: matches.opt_present(OPT_LOG_AIR_INITIAL),
         log_air_final: matches.opt_present(OPT_LOG_AIR_FINAL),
