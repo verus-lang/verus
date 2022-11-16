@@ -687,16 +687,16 @@ pub fn func_def_to_air(
                 // Inherit requires/ensures from trait method declaration
                 let self_typ =
                     Arc::new(TypX::Datatype(datatype.clone(), datatype_typ_args.clone()));
-                let mut trait_typ_substs: Vec<(Ident, Typ)> =
-                    vec![(crate::def::trait_self_type_param(), self_typ)];
+                let mut trait_typ_substs: HashMap<Ident, Typ> = HashMap::new();
+                trait_typ_substs.insert(crate::def::trait_self_type_param(), self_typ);
                 let tr = &ctx.trait_map[trait_path];
                 assert!(tr.x.typ_params.len() == trait_typ_args.len());
                 for ((x, _, _), t) in tr.x.typ_params.iter().zip(trait_typ_args.iter()) {
-                    trait_typ_substs.push((x.clone(), t.clone()));
+                    trait_typ_substs.insert(x.clone(), t.clone());
                 }
                 (trait_typ_substs, &ctx.func_map[method])
             } else {
-                (vec![], function)
+                (HashMap::new(), function)
             };
 
             let mut state = crate::ast_to_sst::State::new();
