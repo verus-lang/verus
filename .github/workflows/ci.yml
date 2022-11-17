@@ -36,10 +36,7 @@ jobs:
           RUSTC=../rust/install/bin/rustc RUSTFMT=../rust/install/bin/rustfmt ../rust/install/bin/cargo-fmt -- --check
 
   test:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        partition: [1, 2, 3, 4, 5]
+    runs-on: self-hosted
     steps:
       - name: checkout
         uses: actions/checkout@v2
@@ -59,11 +56,10 @@ jobs:
           tar -xf rust_install.tar.gz
       - name: prepare nextest
         run: |
+          export PATH=/home/chanheec/.cargo/bin/:$PATH 
           mkdir -p ~/.cargo/bin
           rustup toolchain link rust-verify rust/install
           cd source; rustup override set rust-verify
-      - name: install nextest
-        uses: taiki-e/install-action@nextest
       - name: get z3
         working-directory: ./source
         run: |
@@ -76,13 +72,10 @@ jobs:
           echo rustc version `../rust/install/bin/rustc --version`
           RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo clean
           RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo build
-          LD_LIBRARY_PATH="$(pwd)/../rust/install/lib/rustlib/x86_64-unknown-linux-gnu/lib" VERUS_Z3_PATH="$(pwd)/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc ./tools/run-tests.sh --partition count:${{ matrix.partition }}/5
+          LD_LIBRARY_PATH="$(pwd)/../rust/install/lib/rustlib/x86_64-unknown-linux-gnu/lib" VERUS_Z3_PATH="$(pwd)/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc ./tools/run-tests.sh
 
   test-with-singular:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        partition: [1, 2, 3, 4, 5]
+    runs-on: self-hosted
     steps:
       - name: checkout
         uses: actions/checkout@v2
@@ -102,25 +95,18 @@ jobs:
           tar -xf rust_install.tar.gz
       - name: prepare nextest
         run: |
+          export PATH=$PATH:/home/chanheec/.cargo/bin/ 
           mkdir -p ~/.cargo/bin
           rustup toolchain link rust-verify rust/install
           cd source; rustup override set rust-verify
-      - name: install nextest
-        uses: taiki-e/install-action@nextest
       - name: get z3
         working-directory: ./source
         run: |
           ../.github/workflows/get-z3.sh
           echo z3 version `./z3 --version`
-
-      - name: install singular
-        run: |
-          sudo apt update
-          sudo apt install singular
-
       - name: cargo test
         working-directory: ./source
         run: |
           echo rustc version `../rust/install/bin/rustc --version`
           RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo build --features singular       # build with singular feature 
-          VERUS_SINGULAR_PATH="/usr/bin/Singular" LD_LIBRARY_PATH="$(pwd)/../rust/install/lib/rustlib/x86_64-unknown-linux-gnu/lib" VERUS_Z3_PATH="$(pwd)/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc ./tools/run-tests.sh --features singular --partition count:${{ matrix.partition }}/5
+          VERUS_SINGULAR_PATH="/usr/bin/Singular" LD_LIBRARY_PATH="$(pwd)/../rust/install/lib/rustlib/x86_64-unknown-linux-gnu/lib" VERUS_Z3_PATH="$(pwd)/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc ./tools/run-tests.sh --features singular
