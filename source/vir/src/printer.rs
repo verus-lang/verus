@@ -1,7 +1,5 @@
 use crate::ast::*;
-use air::ast::Span;
 use air::printer::macro_push_node;
-use air::printer::str_to_node;
 use air::{node, nodes};
 use sise::Node;
 
