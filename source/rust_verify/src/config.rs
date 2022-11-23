@@ -1,5 +1,5 @@
 use getopts::Options;
-use vir::printer::ToNodeOpts as VirLogOption;
+use vir::printer::ToDebugSNodeOpts as VirLogOption;
 
 pub const DEFAULT_RLIMIT_SECS: u32 = 10;
 

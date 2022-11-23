@@ -92,28 +92,28 @@ impl<'a> NodeWriter<'a> {
 }
 
 #[derive(Debug)]
-pub struct ToNodeOpts {
+pub struct ToDebugSNodeOpts {
     pub no_span: bool,
     pub no_type: bool,
     pub no_fn_details: bool,
     pub no_encoding: bool,
 }
 
-pub const COMPACT_TONODEOPTS: ToNodeOpts =
-    ToNodeOpts { no_span: true, no_type: true, no_fn_details: true, no_encoding: true };
+pub const COMPACT_TONODEOPTS: ToDebugSNodeOpts =
+    ToDebugSNodeOpts { no_span: true, no_type: true, no_fn_details: true, no_encoding: true };
 
-impl Default for ToNodeOpts {
+impl Default for ToDebugSNodeOpts {
     fn default() -> Self {
         Self { no_span: false, no_type: false, no_fn_details: false, no_encoding: false }
     }
 }
 
-pub(crate) trait ToNode {
-    fn to_node(&self, opts: &ToNodeOpts) -> Node;
+pub(crate) trait ToDebugSNode {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node;
 }
 
-impl<A: ToNode> ToNode for crate::def::Spanned<A> {
-    fn to_node(&self, opts: &ToNodeOpts) -> Node {
+impl<A: ToDebugSNode> ToDebugSNode for crate::def::Spanned<A> {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         if opts.no_span {
             self.x.to_node(opts)
         } else {
@@ -126,21 +126,21 @@ impl<A: ToNode> ToNode for crate::def::Spanned<A> {
     }
 }
 
-impl<A: ToNode> ToNode for Vec<A> {
-    fn to_node(&self, opts: &ToNodeOpts) -> Node {
+impl<A: ToDebugSNode> ToDebugSNode for Vec<A> {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         let nodes = self.iter().map(|x| x.to_node(opts)).collect();
         Node::List(nodes)
     }
 }
 
-impl<A: ToNode> ToNode for std::sync::Arc<A> {
-    fn to_node(&self, opts: &ToNodeOpts) -> Node {
+impl<A: ToDebugSNode> ToDebugSNode for std::sync::Arc<A> {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         (**self).to_node(opts)
     }
 }
 
-impl ToNode for String {
-    fn to_node(&self, _opts: &ToNodeOpts) -> Node {
+impl ToDebugSNode for String {
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
         Node::Atom(match self.is_ascii() {
             true => format!("\"{}\"", self),
             false => "non_ascii_string".to_string(),
@@ -148,8 +148,8 @@ impl ToNode for String {
     }
 }
 
-impl<A: ToNode> ToNode for Option<A> {
-    fn to_node(&self, opts: &ToNodeOpts) -> Node {
+impl<A: ToDebugSNode> ToDebugSNode for Option<A> {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         match self {
             Some(v) => v.to_node(opts),
             None => Node::Atom("None".to_string()),
@@ -157,15 +157,15 @@ impl<A: ToNode> ToNode for Option<A> {
     }
 }
 
-impl<A: ToNode, B: ToNode> ToNode for (A, B) {
-    fn to_node(&self, opts: &ToNodeOpts) -> Node {
+impl<A: ToDebugSNode, B: ToDebugSNode> ToDebugSNode for (A, B) {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         let (a, b) = self;
         Node::List(vec![Node::Atom("tuple".to_string()), a.to_node(opts), b.to_node(opts)])
     }
 }
 
-impl<A: ToNode, B: ToNode, C: ToNode> ToNode for (A, B, C) {
-    fn to_node(&self, opts: &ToNodeOpts) -> Node {
+impl<A: ToDebugSNode, B: ToDebugSNode, C: ToDebugSNode> ToDebugSNode for (A, B, C) {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         let (a, b, c) = self;
         Node::List(vec![
             Node::Atom("tuple".to_string()),
@@ -176,20 +176,20 @@ impl<A: ToNode, B: ToNode, C: ToNode> ToNode for (A, B, C) {
     }
 }
 
-impl ToNode for bool {
-    fn to_node(&self, _opts: &ToNodeOpts) -> Node {
+impl ToDebugSNode for bool {
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
         Node::Atom(format!("{:?}", self))
     }
 }
 
-impl ToNode for u32 {
-    fn to_node(&self, _opts: &ToNodeOpts) -> Node {
+impl ToDebugSNode for u32 {
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
         Node::Atom(self.to_string())
     }
 }
 
-impl ToNode for char {
-    fn to_node(&self, _opts: &ToNodeOpts) -> Node {
+impl ToDebugSNode for char {
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
         let a = match self.is_ascii() {
             true => format!("'{}'", self.to_string()),
             false => format!("char<{:x}>", *self as u32),
@@ -198,26 +198,26 @@ impl ToNode for char {
     }
 }
 
-impl ToNode for u64 {
-    fn to_node(&self, _opts: &ToNodeOpts) -> Node {
+impl ToDebugSNode for u64 {
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
         Node::Atom(self.to_string())
     }
 }
 
-impl ToNode for usize {
-    fn to_node(&self, _opts: &ToNodeOpts) -> Node {
+impl ToDebugSNode for usize {
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
         Node::Atom(self.to_string())
     }
 }
 
-impl ToNode for num_bigint::BigInt {
-    fn to_node(&self, _opts: &ToNodeOpts) -> Node {
+impl ToDebugSNode for num_bigint::BigInt {
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
         Node::Atom(self.to_string())
     }
 }
 
-impl ToNode for air::ast::TypX {
-    fn to_node(&self, opts: &ToNodeOpts) -> Node {
+impl ToDebugSNode for air::ast::TypX {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         use air::ast::TypX::*;
         match self {
             Bool => Node::Atom("Bool".to_string()),
@@ -229,8 +229,8 @@ impl ToNode for air::ast::TypX {
     }
 }
 
-impl<A: ToNode> ToNode for SpannedTyped<A> {
-    fn to_node(&self, opts: &ToNodeOpts) -> Node {
+impl<A: ToDebugSNode> ToDebugSNode for SpannedTyped<A> {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         if opts.no_span && opts.no_type {
             self.x.to_node(opts)
         } else {
@@ -247,8 +247,8 @@ impl<A: ToNode> ToNode for SpannedTyped<A> {
     }
 }
 
-impl<A: ToNode + Clone> ToNode for Binder<A> {
-    fn to_node(&self, opts: &ToNodeOpts) -> Node {
+impl<A: ToDebugSNode + Clone> ToDebugSNode for Binder<A> {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         Node::List(vec![
             Node::Atom("->".to_string()),
             Node::Atom((**self.name).to_string()),
@@ -257,8 +257,8 @@ impl<A: ToNode + Clone> ToNode for Binder<A> {
     }
 }
 
-impl ToNode for Quant {
-    fn to_node(&self, opts: &ToNodeOpts) -> Node {
+impl ToDebugSNode for Quant {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         let Quant { quant, boxed_params } = self;
         let nodes = vec![
             Node::Atom(format!("{:?}", quant)),
@@ -269,14 +269,14 @@ impl ToNode for Quant {
     }
 }
 
-impl ToNode for Mode {
-    fn to_node(&self, _opts: &ToNodeOpts) -> Node {
+impl ToDebugSNode for Mode {
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
         Node::Atom(format!("{:?}", self))
     }
 }
 
-impl ToNode for FunctionX {
-    fn to_node(&self, opts: &ToNodeOpts) -> Node {
+impl ToDebugSNode for FunctionX {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         if opts.no_fn_details {
             nodes!(
                 Function
@@ -302,8 +302,8 @@ impl ToNode for FunctionX {
     }
 }
 
-impl ToNode for ExprX {
-    fn to_node(&self, opts: &ToNodeOpts) -> Node {
+impl ToDebugSNode for ExprX {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         if opts.no_encoding {
             match self {
                 ExprX::Unary(UnaryOp::Clip { .. }, inner) => inner.to_node(opts),
@@ -325,13 +325,13 @@ fn path_to_node(path: &Path) -> Node {
     ))
 }
 
-impl ToNode for Path {
-    fn to_node(&self, _opts: &ToNodeOpts) -> Node {
+impl ToDebugSNode for Path {
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
         path_to_node(self)
     }
 }
 
-pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToNodeOpts) {
+pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToDebugSNodeOpts) {
     let mut nw = NodeWriter::new_vir();
 
     let KrateX { datatypes, functions, traits, module_ids } = &**vir_crate;

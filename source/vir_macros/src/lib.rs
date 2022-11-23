@@ -76,7 +76,7 @@ fn to_node_inner(
         syn::Data::Struct(_) => false,
         syn::Data::Enum(_) => true,
         syn::Data::Union(_) => {
-            return quote! { compile_error!("ToNode derive doesn't support unions") };
+            return quote! { compile_error!("ToDebugSNode derive doesn't support unions") };
         }
     };
 
@@ -101,7 +101,7 @@ fn to_node_inner(
                 let field_name = field_name.to_string();
                 stmts.push(quote!(nodes.push(::sise::Node::Atom(format!(":{}", #field_name.to_string())));));
             }
-            stmts.push(quote!(nodes.push(crate::printer::ToNode::to_node(#bi, opts.clone()));));
+            stmts.push(quote!(nodes.push(crate::printer::ToDebugSNode::to_node(#bi, opts.clone()));));
         }
         stmts.into_iter().collect::<proc_macro2::TokenStream>()
     });
@@ -109,8 +109,8 @@ fn to_node_inner(
     if trait_impl {
         s.gen_impl(quote! {
             #[automatically_derived]
-            gen impl crate::printer::ToNode for @Self {
-                fn to_node(&self, opts: &crate::printer::ToNodeOpts) -> ::sise::Node {
+            gen impl crate::printer::ToDebugSNode for @Self {
+                fn to_node(&self, opts: &crate::printer::ToDebugSNodeOpts) -> ::sise::Node {
                     let mut nodes = vec![];
                     nodes.push(::sise::Node::Atom(#name.to_string()));
                     match *self {
@@ -127,7 +127,7 @@ fn to_node_inner(
 
             #[automatically_derived]
             impl #item_name {
-                pub fn to_node_inner(&self, opts: &crate::printer::ToNodeOpts) -> ::sise::Node {
+                pub fn to_node_inner(&self, opts: &crate::printer::ToDebugSNodeOpts) -> ::sise::Node {
                     let mut nodes = vec![];
                     nodes.push(::sise::Node::Atom(#name.to_string()));
                     match *self {
@@ -151,6 +151,6 @@ fn to_node_impl_m(
     to_node_inner(s, Some(attr))
 }
 
-synstructure::decl_derive!([ToNode, attributes(to_node)] => to_node_m);
+synstructure::decl_derive!([ToDebugSNode, attributes(to_node)] => to_node_m);
 
 synstructure::decl_attribute!([to_node_impl] => to_node_impl_m);
