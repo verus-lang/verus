@@ -184,15 +184,19 @@ fn subst_exp_rec(
 }
 
 pub(crate) fn subst_exp(
-    typ_substs: HashMap<Ident, Typ>,
-    substs: HashMap<UniqueIdent, Exp>,
+    typ_substs: &HashMap<Ident, Typ>,
+    substs: &HashMap<UniqueIdent, Exp>,
     exp: &Exp,
 ) -> Exp {
+    if typ_substs.len() == 0 && substs.len() == 0 {
+        return exp.clone();
+    }
+
     let mut scope_substs: ScopeMap<UniqueIdent, Exp> = ScopeMap::new();
     let mut free_vars: ScopeMap<UniqueIdent, ()> = ScopeMap::new();
     scope_substs.push_scope(false);
     free_vars.push_scope(false);
-    for (x, v) in &substs {
+    for (x, v) in substs {
         scope_substs.insert(x.clone(), v.clone()).expect("subst_exp scope_substs.insert");
         for (y, _) in free_vars_exp(v) {
             let _ = free_vars.insert(y.clone(), ());

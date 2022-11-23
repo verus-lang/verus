@@ -176,3 +176,17 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] forall_in_ensures_with_return_keyword_regression_216 verus_code! {
+        #[spec]
+        fn f(a: nat) -> bool {
+            true
+        }
+
+        fn g() -> bool {
+            ensures(|res: bool| forall(|i: nat| f(i)));
+            return true;
+        }
+    } => Ok(())
+}

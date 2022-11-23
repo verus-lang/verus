@@ -974,11 +974,12 @@ test_verify_one_file! {
             decreases_when(i >= 0);
             decreases_by(check_arith_sum);
 
-            if i == 0 { 0 } else { i + arith_sum(i - 1) } // FAILS
+            if i == 0 { 0 } else { i + arith_sum(i - 1) }
         }
 
         #[verifier(decreases_by)]
         proof fn check_arith_sum(i: int) {
+            // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -1192,6 +1193,27 @@ test_verify_one_file! {
             }
         }
     } => Err(e) => assert_vir_error(e) // the decreases_by function must be in the same module
+}
+
+test_verify_one_file! {
+    #[test] decreases_by_lemma_with_return_stmt_checks_postcondition verus_code! {
+        spec fn some_fun(i: nat) -> nat
+            decreases i
+        {
+            decreases_by(decby_lemma);
+
+            some_fun((i - 1) as nat)
+        }
+
+        #[verifier(decreases_by)]
+        proof fn decby_lemma(i: nat)
+        {
+            if i > 0 {
+            } else {
+                return; // FAILS
+            }
+        }
+    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {

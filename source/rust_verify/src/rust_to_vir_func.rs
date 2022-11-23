@@ -5,7 +5,7 @@ use crate::context::{BodyCtxt, Context};
 use crate::rust_to_vir_base::{
     check_generics_bounds_fun, def_id_to_vir_path, foreign_param_to_var, mid_ty_to_vir,
 };
-use crate::rust_to_vir_expr::{expr_to_vir, pat_to_var, ExprModifier};
+use crate::rust_to_vir_expr::{expr_to_vir, pat_to_mut_var, ExprModifier};
 use crate::util::{err_span_str, err_span_string, spanned_new, unsupported_err_span};
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
 use rustc_ast::Attribute;
@@ -209,7 +209,20 @@ pub(crate) fn check_item_fn<'tcx>(
     for (param, input) in params.iter().zip(inputs.iter()) {
         let Param { hir_id, pat, ty_span: _, span } = param;
 
-        let name = Arc::new(pat_to_var(pat));
+        // is_mut_var: means a parameter is like `mut x: X` (unsupported)
+        // is_mut: means a parameter is like `x: &mut X`
+
+        let (is_mut_var, name) = pat_to_mut_var(pat);
+        if is_mut_var {
+            return err_span_string(
+                *span,
+                format!(
+                    "Verus does not support `mut` arguments (try writing `let mut param = param;` in the body of the function)"
+                ),
+            );
+        }
+
+        let name = Arc::new(name);
         let param_mode = get_var_mode(mode, ctxt.tcx.hir().attrs(*hir_id));
         let is_mut = is_mut_ty(input);
         if is_mut.is_some() && mode == Mode::Spec {

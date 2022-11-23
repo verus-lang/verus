@@ -24,6 +24,7 @@ use air::ast_util::{
     bool_typ, ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies,
     str_apply, str_ident, str_typ, str_var, string_apply,
 };
+use air::errors::error_with_label;
 use air::errors::ErrorLabel;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -32,6 +33,7 @@ pub struct SstInline {
     pub(crate) typ_bounds: TypBounds,
     pub do_inline: bool,
 }
+use crate::sst_to_air::PostConditionKind;
 
 pub struct SstInfo {
     pub(crate) inline: SstInline,
@@ -167,17 +169,44 @@ fn func_body_to_air(
     if let Some(fun) = &function.x.decrease_by {
         state.view_as_spec = false;
         if let Some(decrease_by_fun) = ctx.func_map.get(fun) {
-            let (body_stms, _exp) = crate::ast_to_sst::expr_to_stm_or_error(
+            let body_stm = crate::ast_to_sst::expr_to_one_stm_with_post(
                 &ctx,
                 &mut state,
                 decrease_by_fun.x.body.as_ref().expect("decreases_by has body"),
             )?;
-            let body_stms: Result<Vec<Stm>, VirErr> =
-                body_stms.iter().map(|s| state.finalize_stm(ctx, &state.fun_ssts, s)).collect();
-            decrease_by_stms.extend(body_stms?);
+
+            let body_stm = state.finalize_stm(
+                ctx,
+                &state.fun_ssts,
+                &body_stm,
+                // note: these arguments are just for splitting, and (unless we support
+                // special splitting for decrease_by lemmas) they shouldn't matter.
+                // passing in an empty vec![] will cause splitting to just skip over this
+                &Arc::new(vec![]),
+                &Arc::new(vec![]),
+                None,
+            )?;
+
+            decrease_by_stms.push(body_stm);
         } else {
             assert!(not_verifying_owning_module);
         }
+    } else {
+        let base_error = error_with_label(
+            "could not prove termination".to_string(),
+            &body_exp.span,
+            "of this function body".to_string(),
+        );
+
+        // In this case, the user hasn't provided a proof body, so we just need to make
+        // our own trivial proof body. A trivial proof body is just a single
+        // AssertPostConditions statement.
+        // check_termination_exp will set the "ensures clause" to be the
+        // termination conditions.
+        decrease_by_stms.push(Spanned::new(
+            body_exp.span.clone(),
+            StmX::AssertPostConditions(base_error, None),
+        ));
     }
     state.finalize();
 
@@ -189,6 +218,7 @@ fn func_body_to_air(
         state.local_decls,
         &body_exp,
         decrease_by_stms,
+        function.x.decrease_by.is_some(),
     )?;
     check_commands.extend(termination_commands.iter().cloned());
 
@@ -657,20 +687,21 @@ pub fn func_def_to_air(
                 // Inherit requires/ensures from trait method declaration
                 let self_typ =
                     Arc::new(TypX::Datatype(datatype.clone(), datatype_typ_args.clone()));
-                let mut trait_typ_substs: Vec<(Ident, Typ)> =
-                    vec![(crate::def::trait_self_type_param(), self_typ)];
+                let mut trait_typ_substs: HashMap<Ident, Typ> = HashMap::new();
+                trait_typ_substs.insert(crate::def::trait_self_type_param(), self_typ);
                 let tr = &ctx.trait_map[trait_path];
                 assert!(tr.x.typ_params.len() == trait_typ_args.len());
                 for ((x, _, _), t) in tr.x.typ_params.iter().zip(trait_typ_args.iter()) {
-                    trait_typ_substs.push((x.clone(), t.clone()));
+                    trait_typ_substs.insert(x.clone(), t.clone());
                 }
                 (trait_typ_substs, &ctx.func_map[method])
             } else {
-                (vec![], function)
+                (HashMap::new(), function)
             };
 
             let mut state = crate::ast_to_sst::State::new();
             state.fun_ssts = fun_ssts;
+
             let mut ens_params = (*function.x.params).clone();
             let dest = if function.x.has_return() {
                 let ParamX { name, typ, .. } = &function.x.ret.x;
@@ -680,6 +711,7 @@ pub fn func_def_to_air(
             } else {
                 None
             };
+
             let ens_params = Arc::new(ens_params);
             let req_pars = params_to_pars(&function.x.params, true);
             let ens_pars = params_to_pars(&ens_params, true);
@@ -700,11 +732,12 @@ pub fn func_def_to_air(
                     reqs.push(crate::ast_to_sst::expr_to_exp(ctx, &state.fun_ssts, &req_pars, e)?);
                 }
             }
-            let mut ens_stmts: Vec<Stm> = Vec::new();
+            let mut ens_recommend_stms: Vec<Stm> = Vec::new();
             let mut enss: Vec<Exp> = Vec::new();
             for e in req_ens_function.x.ensure.iter() {
                 if ctx.checking_recommends() {
-                    ens_stmts.extend(crate::ast_to_sst::check_pure_expr(ctx, &mut state, e)?);
+                    ens_recommend_stms
+                        .extend(crate::ast_to_sst::check_pure_expr(ctx, &mut state, e)?);
                 } else {
                     enss.push(crate::ast_to_sst::expr_to_exp(ctx, &state.fun_ssts, &ens_pars, e)?);
                 }
@@ -712,9 +745,7 @@ pub fn func_def_to_air(
             let enss = Arc::new(enss);
 
             // AST --> SST
-            state.ret_post = Some((dest.clone(), ens_stmts.clone(), enss.clone()));
-            let (mut stm, skip_ensures) =
-                crate::ast_to_sst::expr_to_one_stm_dest(&ctx, &mut state, &body, &dest)?;
+            let mut stm = crate::ast_to_sst::expr_to_one_stm_with_post(&ctx, &mut state, &body)?;
             if ctx.checking_recommends() && trait_typ_substs.len() == 0 {
                 if let Some(fun) = &function.x.decrease_by {
                     let decrease_by_fun = &ctx.func_map[fun];
@@ -726,27 +757,31 @@ pub fn func_def_to_air(
                     req_stms.extend(body_stms);
                 }
                 req_stms.push(stm);
-                if !skip_ensures {
-                    req_stms.extend(ens_stmts);
-                }
                 stm = crate::ast_to_sst::stms_to_one_stm(&body.span, req_stms);
             }
 
-            let stm = state.finalize_stm(&ctx, &state.fun_ssts, &stm)?;
-            state.ret_post = None;
-
-            let stm = if !ctx.checking_recommends() && ctx.expand_flag {
-                // split ensures expressions for error localization
-                crate::split_expression::split_body(
-                    ctx,
-                    &state.fun_ssts,
-                    &stm,
-                    &req_ens_function.x.ensure,
-                    &ens_pars,
-                )?
-            } else {
-                stm
-            };
+            let stm = state.finalize_stm(
+                &ctx,
+                &state.fun_ssts,
+                &stm,
+                &req_ens_function.x.ensure,
+                &ens_pars,
+                dest.clone(),
+            )?;
+            let ens_recommend_stms: Result<Vec<_>, _> = ens_recommend_stms
+                .iter()
+                .map(|s| {
+                    state.finalize_stm(
+                        &ctx,
+                        &state.fun_ssts,
+                        &s,
+                        &req_ens_function.x.ensure,
+                        &ens_pars,
+                        dest.clone(),
+                    )
+                })
+                .collect();
+            let ens_recommend_stms = ens_recommend_stms?;
 
             // Check termination
             //
@@ -774,14 +809,16 @@ pub fn func_def_to_air(
                 &function.x.attrs.hidden,
                 &reqs,
                 &enss,
+                &ens_recommend_stms,
                 &function.x.mask_spec,
                 function.x.mode,
                 &stm,
                 function.x.attrs.integer_ring,
                 function.x.attrs.bit_vector,
-                skip_ensures,
                 function.x.attrs.nonlinear,
                 function.x.attrs.spinoff_prover,
+                dest,
+                PostConditionKind::Ensures,
             )?;
 
             state.finalize();

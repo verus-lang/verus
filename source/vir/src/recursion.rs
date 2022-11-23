@@ -12,6 +12,7 @@ use crate::def::{
 use crate::func_to_air::{params_to_pars, SstMap};
 use crate::scc::Graph;
 use crate::sst::{BndX, Dest, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, StmX, UniqueIdent};
+use crate::sst_to_air::PostConditionKind;
 use crate::sst_visitor::{
     exp_rename_vars, exp_visitor_check, exp_visitor_dfs, map_exp_visitor, map_stm_visitor,
     stm_visitor_dfs, VisitorControlFlow,
@@ -337,6 +338,7 @@ pub(crate) fn check_termination_exp(
     mut local_decls: Vec<LocalDecl>,
     body: &Exp,
     proof_body: Vec<Stm>,
+    uses_decreases_by: bool,
 ) -> Result<(bool, Commands, Exp), VirErr> {
     if !is_recursive_exp(ctx, &function.x.name, body) {
         return Ok((false, Arc::new(vec![]), body.clone()));
@@ -355,9 +357,6 @@ pub(crate) fn check_termination_exp(
     let check = terminates(&ctxt, fun_ssts, &body)?;
     let (mut decls, mut stm_assigns) = mk_decreases_at_entry(&ctxt, &body.span, &decreases_exps);
     stm_assigns.extend(proof_body.clone());
-    let error = error("could not prove termination", &body.span);
-    let stm_assert = Spanned::new(body.span.clone(), StmX::Assert(Some(error), check));
-    stm_assigns.push(stm_assert);
     let stm_block = Spanned::new(body.span.clone(), StmX::Block(Arc::new(stm_assigns)));
 
     // TODO: If we decide to support debugging decreases failures, we should plumb _snap_map
@@ -366,12 +365,13 @@ pub(crate) fn check_termination_exp(
     let (commands, _snap_map) = crate::sst_to_air::body_stm_to_air(
         ctx,
         &function.span,
-        &vec![],
+        &HashMap::new(),
         &function.x.typ_params(),
         &function.x.params,
         &Arc::new(local_decls),
         &Arc::new(vec![]),
         &Arc::new(vec![]),
+        &Arc::new(vec![check]),
         &Arc::new(vec![]),
         &MaskSpec::NoSpec,
         function.x.mode,
@@ -380,7 +380,12 @@ pub(crate) fn check_termination_exp(
         false,
         false,
         false,
-        false,
+        None,
+        if uses_decreases_by {
+            PostConditionKind::DecreasesBy
+        } else {
+            PostConditionKind::DecreasesImplicitLemma
+        },
     )?;
 
     assert_eq!(commands.len(), 1);

@@ -29,7 +29,7 @@ verus!{
 ///
 /// `PCell` uses a _ghost permission token_ similar to [`ptr::PPtr`] -- see the [`ptr::PPtr`]
 /// documentation for the basics.
-/// For `PCell`, the associated type of the permission token is [`cell::PermissionOpt`].
+/// For `PCell`, the associated type of the permission token is [`cell::PermData`].
 ///
 /// ### Differences from `PPtr`.
 ///
@@ -44,8 +44,8 @@ verus!{
 /// has no concept of a "null ID",
 /// and has no runtime representation.
 ///
-/// Also note that the `PCell` might be dropped before the `PermissionOpt` token is dropped,
-/// although in that case it will no longer be possible to use the `PermissionOpt` in `exec` code
+/// Also note that the `PCell` might be dropped before the `PermData` token is dropped,
+/// although in that case it will no longer be possible to use the `PermData` in `exec` code
 /// to extract data from the cell.
 ///
 /// ### Example (TODO)
@@ -55,7 +55,7 @@ pub struct PCell<#[verifier(strictly_positive)] V> {
     ucell: UnsafeCell<MaybeUninit<V>>,
 }
 
-// PCell is always safe to Send/Sync. It's the PermissionOpt object where Send/Sync matters.
+// PCell is always safe to Send/Sync. It's the PermData object where Send/Sync matters.
 // (It doesn't matter if you move the bytes to another thread if you can't access them.)
 
 #[verifier(external)]
@@ -64,17 +64,17 @@ unsafe impl<T> Sync for PCell<T> {}
 #[verifier(external)]
 unsafe impl<T> Send for PCell<T> {}
 
-// PermissionOpt<V>, on the other hand, needs to inherit both Send and Sync from the V,
+// PermData<V>, on the other hand, needs to inherit both Send and Sync from the V,
 // which it does by default in the given definition.
 // (Note: this depends on the current behavior that #[spec] fields are still counted for marker traits)
 
 #[verifier(external_body)]
-pub tracked struct PermissionOpt<#[verifier(strictly_positive)] V> {
+pub tracked struct PermData<#[verifier(strictly_positive)] V> {
     phantom: marker::PhantomData<V>,
     no_copy: NoCopy,
 }
 
-pub ghost struct PermissionOptData<V> {
+pub ghost struct PermDataData<V> {
     pub pcell: CellId,
     pub value: option::Option<V>,
 }
@@ -83,7 +83,7 @@ pub ghost struct PermissionOptData<V> {
 #[macro_export]
 macro_rules! old_style_pcell_opt_internal {
     [$pcell:expr => $val:expr] => {
-        $crate::pervasive::cell_old_style::PermissionOptData {
+        $crate::pervasive::cell_old_style::PermDataData {
             pcell: $pcell,
             value: $val,
         }
@@ -107,8 +107,8 @@ pub struct CellId {
     id: int,
 }
 
-impl<V> PermissionOpt<V> {
-    pub spec fn view(self) -> PermissionOptData<V>;
+impl<V> PermData<V> {
+    pub spec fn view(self) -> PermDataData<V>;
 }
 
 }
@@ -124,7 +124,7 @@ impl<V> PCell<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn empty() -> (pt: (PCell<V>, Trk<PermissionOpt<V>>))
+    pub fn empty() -> (pt: (PCell<V>, Trk<PermData<V>>))
         ensures pt.1.0@ ===
             pcell_opt![ pt.0.id() => option::Option::None ],
     {
@@ -134,7 +134,7 @@ impl<V> PCell<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn put(&self, #[proof] perm: &mut PermissionOpt<V>, v: V)
+    pub fn put(&self, #[proof] perm: &mut PermData<V>, v: V)
         requires
             old(perm)@ ===
               pcell_opt![ self.id() => option::Option::None ],
@@ -151,7 +151,7 @@ impl<V> PCell<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn take(&self, #[proof] perm: &mut PermissionOpt<V>) -> (v: V)
+    pub fn take(&self, #[proof] perm: &mut PermData<V>) -> (v: V)
         requires
             self.id() === old(perm)@.pcell,
             old(perm)@.value.is_Some(),
@@ -171,7 +171,7 @@ impl<V> PCell<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn replace(&self, #[proof] perm: &mut PermissionOpt<V>, in_v: V) -> (out_v: V)
+    pub fn replace(&self, #[proof] perm: &mut PermData<V>, in_v: V) -> (out_v: V)
         requires
             self.id() === old(perm)@.pcell,
             old(perm)@.value.is_Some(),
@@ -195,7 +195,7 @@ impl<V> PCell<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn borrow<'a>(&'a self, #[proof] perm: &'a PermissionOpt<V>) -> (v: &'a V)
+    pub fn borrow<'a>(&'a self, #[proof] perm: &'a PermData<V>) -> (v: &'a V)
         requires
             self.id() === perm@.pcell,
             perm@.value.is_Some(),
@@ -215,7 +215,7 @@ impl<V> PCell<V> {
     // Untrusted functions below here
 
     #[inline(always)]
-    pub fn into_inner(self, #[proof] perm: PermissionOpt<V>) -> V
+    pub fn into_inner(self, #[proof] perm: PermData<V>) -> V
     {
         requires([
             equal(self.id(), perm.view().pcell),
@@ -233,8 +233,8 @@ impl<V> PCell<V> {
     verus!{
 
     #[inline(always)]
-    pub fn new(v: V) -> (pt: (PCell<V>, Trk<PermissionOpt<V>>))
-        ensures (pt.1.0@ === PermissionOptData{ pcell: pt.0.id(), value: option::Option::Some(v) }),
+    pub fn new(v: V) -> (pt: (PCell<V>, Trk<PermData<V>>))
+        ensures (pt.1.0@ === PermDataData{ pcell: pt.0.id(), value: option::Option::Some(v) }),
     {
         let (p, Trk(mut t)) = Self::empty();
         p.put(&mut t, v);
@@ -247,7 +247,7 @@ impl<V> PCell<V> {
 pub struct InvCell<#[verifier(maybe_negative)] T> {
     #[spec] possible_values: Set<T>,
     pcell: PCell<T>,
-    #[proof] perm_inv: LocalInvariant<PermissionOpt<T>>,
+    #[proof] perm_inv: LocalInvariant<PermData<T>>,
 }
 
 impl<T> InvCell<T> {
@@ -265,15 +265,15 @@ impl<T> InvCell<T> {
         self.possible_values.contains(val)
     }
 
-    pub fn new<F: Fn(T) -> bool>(val: T, #[spec] f: Ghost<F>) -> Self
+    pub fn new<F: Fn(T) -> bool>(val: T, #[spec] f: F) -> Self
     {
-        requires(f.view()(val));
-        ensures(|cell: Self| forall(|v| f.view()(v) == cell.inv(v)));
+        requires(f(val));
+        ensures(|cell: Self| cell.wf() && forall(|v| f(v) == cell.inv(v)));
 
         let (pcell, Trk(perm)) = PCell::new(val);
-        #[spec] let possible_values = Set::new(f.view());
+        #[spec] let possible_values = Set::new(f);
         #[proof] let perm_inv = LocalInvariant::new(perm,
-            |perm: PermissionOpt<T>| {
+            |perm: PermData<T>| {
                 perm.view().value.is_Some()
                 && possible_values.contains(perm.view().value.get_Some_0())
                 && equal(pcell.id(), perm.view().pcell)
