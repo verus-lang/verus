@@ -137,3 +137,43 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+const TRIGGER_ON_LAMBDA_COMMON: &str = verus_code_str! {
+    struct S { a: int, }
+
+    spec fn prop_1(s: S) -> bool;
+    spec fn prop_2(s: S) -> bool;
+};
+
+test_verify_one_file! {
+    #[test] test_trigger_on_lambda_1 TRIGGER_ON_LAMBDA_COMMON.to_string() + verus_code_str! {
+        #[verifier(external_body)]
+        proof fn something(fn1: FnSpec(S)->bool, fn2: FnSpec(S)->bool)
+        ensures forall|s: S| #[trigger] fn1(s) ==> fn2(s) { }
+
+        proof fn foo(s: S) {
+          let p1 = |s1| prop_1(s1);
+          something(p1, |s1| prop_2(s1));
+          assert forall|s: S| prop_1(s) implies prop_2(s) by {
+            assert(p1(s));
+            assert(prop_2(s));
+          }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_trigger_on_lambda_2 TRIGGER_ON_LAMBDA_COMMON.to_string() + verus_code_str! {
+        #[verifier(external_body)]
+        proof fn something(fn1: FnSpec(S)->bool, fn2: FnSpec(S)->bool)
+        ensures forall|s: S| #[trigger] fn1(s) ==> fn2(s) { }
+
+        proof fn foo(s: S) {
+          something(|s1| #[trigger] prop_1(s1), |s1| prop_2(s1));
+          assert forall|s: S| prop_1(s) implies prop_2(s) by {
+            assert(prop_1(s));
+            assert(prop_2(s));
+          }
+        }
+    } => Ok(())
+}

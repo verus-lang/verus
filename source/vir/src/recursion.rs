@@ -239,7 +239,7 @@ fn terminates(ctxt: &Ctxt, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp, VirErr> 
                     ),
                     t_e1,
                 ))),
-                BndX::Lambda(_) => {
+                BndX::Lambda(_, _) => {
                     disallow_recursion_exp(ctxt, e1)?;
                     Ok(bool_exp(ExpX::Const(Constant::Bool(true))))
                 }

@@ -1337,6 +1337,65 @@ fn no_lambda6() {
 }
 
 #[test]
+fn yes_lambda_trigger1() {
+    yes!(
+        (declare-fun f (Int) Bool)
+        (declare-fun g (Int) Bool)
+        (declare-const lf Fun)
+        (declare-const lg Fun)
+        (declare-const i Int)
+        // (axiom (= lf (lambda ((x Int)) (f x)))) // fails without the trigger
+        (axiom (= lf (lambda ((x Int)) (!
+            (f x)
+            :pattern ((f x))
+        ))))
+        (axiom (= lg (lambda ((x Int)) (g x))))
+        (declare-fun enslemma (Fun Fun) Bool)
+        (axiom (forall ((x Int)) (!
+            (=> (apply Bool lf x) (apply Bool lg x))
+            :pattern ((apply Bool lf x))
+            :pattern ((apply Bool lg x))
+        )))
+        (check-valid (block
+            (assume (f i))
+            (assert (g i))
+        ))
+    )
+}
+
+#[test]
+fn yes_lambda_trigger2() {
+    yes!(
+        (declare-fun f (Int) Bool)
+        (declare-fun g (Int) Bool)
+        (declare-const lf Fun)
+        (declare-const lg Fun)
+        (declare-const i Int)
+        // (axiom (= lf (lambda ((x Int)) (f x)))) // fails without the trigger
+        (axiom (= lf (lambda ((x Int)) (!
+            (f x)
+            :pattern ((f x))
+        ))))
+        (axiom (= lg (lambda ((x Int)) (g x))))
+        (declare-fun enslemma (Fun Fun) Bool)
+        (axiom (forall ((fn1 Fun) (fn2 Fun)) (!
+            (= (enslemma fn1 fn2)
+                (forall ((x Int)) (!
+                    (=> (apply Bool fn1 x) (apply Bool fn2 x))
+                    :pattern ((apply Bool fn1 x))
+                    :pattern ((apply Bool fn2 x))
+                )))
+            :pattern ((enslemma fn1 fn2))
+        )))
+        (check-valid (block
+            (assume (enslemma lf lg))
+            (assume (f i))
+            (assert (g i))
+        ))
+    )
+}
+
+#[test]
 fn yes_choose1() {
     yes!(
         (declare-fun f (Int Int) Bool)

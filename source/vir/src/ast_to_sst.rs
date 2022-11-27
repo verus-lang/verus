@@ -240,6 +240,7 @@ impl State {
                         &vars,
                         &body,
                         quant.boxed_params,
+                        false,
                     )?;
                     let bnd =
                         Spanned::new(bnd.span.clone(), BndX::Quant(*quant, bs.clone(), trigs));
@@ -249,11 +250,19 @@ impl State {
                     assert!(trigs.len() == 0);
                     let vars = vec_map(bs, |b| b.name.clone());
                     let trigs =
-                        crate::triggers::build_triggers(ctx, &exp.span, &vars, &cond, true)?;
+                        crate::triggers::build_triggers(ctx, &exp.span, &vars, &cond, true, false)?;
                     let bnd = Spanned::new(
                         bnd.span.clone(),
                         BndX::Choose(bs.clone(), trigs, cond.clone()),
                     );
+                    Ok(SpannedTyped::new(&exp.span, &exp.typ, ExpX::Bind(bnd, body.clone())))
+                }
+                BndX::Lambda(bs, trigs) => {
+                    assert!(trigs.len() == 0);
+                    let vars = vec_map(bs, |b| b.name.clone());
+                    let trigs =
+                        crate::triggers::build_triggers(ctx, &exp.span, &vars, &body, true, true)?;
+                    let bnd = Spanned::new(bnd.span.clone(), BndX::Lambda(bs.clone(), trigs));
                     Ok(SpannedTyped::new(&exp.span, &exp.typ, ExpX::Bind(bnd, body.clone())))
                 }
                 _ => Ok(exp.clone()),
@@ -1142,7 +1151,8 @@ fn expr_to_stm_opt(
                 exp = SpannedTyped::new(&body.span, &exp.typ, ExpX::Bind(bnd, exp.clone()));
             }
 
-            let bnd = Spanned::new(body.span.clone(), BndX::Lambda(Arc::new(boxed_params)));
+            let trigs = Arc::new(vec![]); // real triggers will be set by finalize_exp
+            let bnd = Spanned::new(body.span.clone(), BndX::Lambda(Arc::new(boxed_params), trigs));
             Ok((vec![], ReturnValue::Some(mk_exp(ExpX::Bind(bnd, exp)))))
         }
         ExprX::Choose { params, cond, body } => {

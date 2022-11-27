@@ -105,7 +105,7 @@ pub type Bind = Arc<BindX>;
 pub enum BindX {
     Let(Binders<Expr>),
     Quant(Quant, Binders<Typ>, Triggers, Qid),
-    Lambda(Binders<Typ>),
+    Lambda(Binders<Typ>, Triggers, Qid),
     // choose Binders s.t. Expr is true
     Choose(Binders<Typ>, Triggers, Qid, Expr),
 }

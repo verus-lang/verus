@@ -636,7 +636,8 @@ pub fn func_axioms_to_air(
                     vars.push(param.x.name.clone());
                     binders.push(crate::ast_util::par_to_binder(&param));
                 }
-                let triggers = crate::triggers::build_triggers(ctx, span, &vars, &exp, true)?;
+                let triggers =
+                    crate::triggers::build_triggers(ctx, span, &vars, &exp, true, false)?;
                 let bndx = BndX::Quant(QUANT_FORALL, Arc::new(binders), triggers);
                 let forallx = ExpX::Bind(Spanned::new(span.clone(), bndx), exp);
                 let forall = SpannedTyped::new(&span, &Arc::new(TypX::Bool), forallx);
