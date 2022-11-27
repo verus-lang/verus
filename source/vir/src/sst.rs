@@ -29,7 +29,7 @@ pub type Bnd = Arc<Spanned<BndX>>;
 pub enum BndX {
     Let(Binders<Exp>),
     Quant(Quant, Binders<Typ>, Trigs),
-    Lambda(Binders<Typ>),
+    Lambda(Binders<Typ>, Trigs),
     Choose(Binders<Typ>, Trigs, Exp),
 }
 

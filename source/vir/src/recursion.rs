@@ -250,7 +250,7 @@ fn terminates(
                     ),
                     t_e1,
                 ))),
-                BndX::Lambda(_) => {
+                BndX::Lambda(_, _) => {
                     disallow_recursion_exp(ctxt, e1)?;
                     Ok(bool_exp(ExpX::Const(Constant::Bool(true))))
                 }

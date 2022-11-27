@@ -174,6 +174,8 @@ fn simplify_lambda(
     ctxt: &mut Context,
     state: &mut State,
     binders: &Binders<Typ>,
+    triggers: &Triggers,
+    qid: &Qid,
     e1: &Expr,
 ) -> (Typ, Expr, Option<Term>) {
     let closure_state =
@@ -223,8 +225,12 @@ fn simplify_lambda(
             let apply = Arc::new(ExprX::Apply(apply_fun, Arc::new(eparams)));
             let eq = Arc::new(ExprX::Binary(BinaryOp::Eq, apply.clone(), e1));
             let trig = Arc::new(vec![apply]);
-            let trigs = Arc::new(vec![trig]);
-            let forall = mk_forall(&bs, &trigs, None, &eq);
+            let trigs = Arc::new({
+                let mut trigs = vec![trig];
+                trigs.extend(triggers.iter().cloned());
+                trigs
+            });
+            let forall = mk_forall(&bs, &trigs, qid.clone(), &eq);
             let decl = Arc::new(DeclX::Axiom(forall));
             state.generated_decls.push(decl);
 
@@ -559,7 +565,9 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                     BindX::Quant(*quant, binders.clone(), Arc::new(new_triggers), qid.clone());
                 (typ, Arc::new(ExprX::Bind(Arc::new(bind), e1)), t)
             }
-            BindX::Lambda(binders) => simplify_lambda(ctxt, state, binders, e1),
+            BindX::Lambda(binders, triggers, qid) => {
+                simplify_lambda(ctxt, state, binders, triggers, qid, e1)
+            }
             BindX::Choose(binders, triggers, qid, cond) => {
                 simplify_choose(ctxt, state, binders, triggers, qid, cond, e1)
             }

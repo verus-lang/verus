@@ -40,6 +40,7 @@ fn check_trigger_expr(
     if state.boxed_params {
         match &exp.x {
             ExpX::Call(..)
+            | ExpX::CallLambda(..)
             | ExpX::UnaryOpr(UnaryOpr::Field { .. }, _)
             | ExpX::Unary(UnaryOp::Trigger(_), _) => {}
             // allow triggers for bitvector operators
@@ -254,7 +255,7 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                 let bvars: Vec<Ident> = match &bnd.x {
                     BndX::Let(binders) => binders.iter().map(|b| b.name.clone()).collect(),
                     BndX::Quant(_, binders, _)
-                    | BndX::Lambda(binders)
+                    | BndX::Lambda(binders, _)
                     | BndX::Choose(binders, _, _) => {
                         binders.iter().map(|b| b.name.clone()).collect()
                     }
@@ -283,6 +284,7 @@ pub(crate) fn build_triggers(
     vars: &Vec<Ident>,
     exp: &Exp,
     boxed_params: bool,
+    allow_empty: bool,
 ) -> Result<Trigs, VirErr> {
     let mut state = State {
         auto_trigger: false,
@@ -292,7 +294,7 @@ pub(crate) fn build_triggers(
         coverage: HashMap::new(),
     };
     get_manual_triggers(&mut state, exp)?;
-    if state.triggers.len() > 0 {
+    if state.triggers.len() > 0 || allow_empty {
         if state.auto_trigger {
             return err_str(
                 span,
