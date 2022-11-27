@@ -273,8 +273,10 @@ pub enum HeaderExprX {
     /// Recommended preconditions on spec functions, used to help diagnose mistakes in specifications.
     /// Checking of recommends is disabled by default.
     Recommends(Exprs),
-    /// Invariants on while loops
+    /// Invariants on loops
     Invariant(Exprs),
+    /// Invariants + ensures on loops
+    InvariantEnsures(Exprs),
     /// Decreases clauses for functions (possibly also for while loops, but this isn't implemented yet)
     Decreases(Exprs),
     /// Recursive function is uninterpreted when Expr is false
@@ -347,6 +349,20 @@ pub struct ArmX {
     pub guard: Expr,
     /// expression or statement the executes when case matches
     pub body: Expr,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ToDebugSNode)]
+pub enum LoopInvariantKind {
+    Invariant,
+    InvariantEnsures,
+    Ensures,
+}
+
+pub type LoopInvariants = Arc<Vec<LoopInvariant>>;
+#[derive(Debug, Clone, ToDebugSNode)]
+pub struct LoopInvariant {
+    pub kind: LoopInvariantKind,
+    pub inv: Expr,
 }
 
 /// Static function identifier
@@ -463,12 +479,14 @@ pub enum ExprX {
     If(Expr, Expr, Option<Expr>),
     /// Match (Note: ast_simplify replaces Match with other expressions)
     Match(Expr, Arms),
-    /// While loop, with invariants
-    While { cond: Expr, body: Expr, invs: Exprs },
+    /// Loop (either "while", cond = Some(...), or "loop", cond = None), with invariants
+    Loop { label: Option<String>, cond: Option<Expr>, body: Expr, invs: LoopInvariants },
     /// Open invariant
     OpenInvariant(Expr, Binder<Typ>, Expr, InvAtomicity),
     /// Return from function
     Return(Option<Expr>),
+    /// break or continue
+    BreakOrContinue { label: Option<String>, is_break: bool },
     /// Enter a Rust ghost block, which will be erased during compilation.
     /// In principle, this is not needed, because we can infer which code to erase using modes.
     /// However, we can't easily communicate the inferred modes back to rustc for erasure

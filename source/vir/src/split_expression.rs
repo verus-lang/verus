@@ -566,13 +566,14 @@ fn visit_split_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Stm, VirEr
                 Ok(stm.clone())
             }
         }
-        StmX::AssertPostConditions(_err, expr) => {
+        StmX::Return { base_error: _, ret_exp, inside_body: _ } => {
             let split_stms = if state.ensures.len() == 0 {
                 vec![]
             } else {
                 let mut stms = if let Some(dest_id) = state.dest.clone() {
-                    let expr = expr.as_ref().expect("if dest is provided, expr must be provided");
-                    vec![crate::sst_to_air::assume_var(&stm.span, &dest_id, expr)]
+                    let ret_exp =
+                        ret_exp.as_ref().expect("if dest is provided, expr must be provided");
+                    vec![crate::sst_to_air::assume_var(&stm.span, &dest_id, ret_exp)]
                 } else {
                     vec![]
                 };
@@ -622,16 +623,21 @@ fn visit_split_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Stm, VirEr
             state.pop_fuel_scope();
             Ok(Spanned::new(stm.span.clone(), StmX::If(cond.clone(), lhs, rhs)))
         }
-        StmX::While { cond_stm, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
-            let cond_stm = visit_split_stm(ctx, state, cond_stm)?;
+        StmX::Loop { label, cond, body, invs, typ_inv_vars, modified_vars } => {
+            let cond = if let Some((cond_stm, cond_exp)) = cond {
+                let cond_stm = visit_split_stm(ctx, state, cond_stm)?;
+                Some((cond_stm, cond_exp.clone()))
+            } else {
+                None
+            };
             let mut body_state =
                 State::new(&state.fun_ssts, &state.ensures, &state.ens_pars, state.dest.clone());
             let body = visit_split_stm(ctx, &mut body_state, body)?;
             Ok(Spanned::new(
                 stm.span.clone(),
-                StmX::While {
-                    cond_stm,
-                    cond_exp: cond_exp.clone(),
+                StmX::Loop {
+                    label: label.clone(),
+                    cond,
                     body,
                     invs: invs.clone(),
                     typ_inv_vars: typ_inv_vars.clone(),

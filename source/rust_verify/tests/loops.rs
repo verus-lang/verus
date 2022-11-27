@@ -372,3 +372,405 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_vir_error(e)
 }
+
+test_verify_one_file! {
+    #[test] example_loop_break verus_code! {
+        fn test() {
+            let mut i: i8 = 0;
+            loop
+                invariant i <= 9
+                invariant_ensures 0 <= i <= 10
+                ensures 1 <= i
+            {
+                assert(i <= 9);
+                i = i + 1;
+                if i == 10 {
+                    break;
+                }
+            }
+            assert(1 <= i <= 10);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] example_loop_break_fail1 verus_code! {
+        fn test() {
+            let mut i: i8 = 10;
+            loop
+                invariant i <= 9 // FAILS
+                invariant_ensures 0 <= i <= 10
+                ensures 1 <= i
+            {
+                assert(i <= 9);
+                i = i + 1;
+                if i == 10 {
+                    break;
+                }
+            }
+            assert(1 <= i <= 10);
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] example_loop_break_fail2 verus_code! {
+        fn test() {
+            let mut i: i8 = 0;
+            loop
+                invariant i <= 8 // FAILS
+                invariant_ensures 0 <= i <= 10
+                ensures 1 <= i
+            {
+                assert(i <= 9);
+                i = i + 1;
+                if i == 10 {
+                    break;
+                }
+            }
+            assert(1 <= i <= 10);
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] example_loop_break_fail3 verus_code! {
+        fn test() {
+            let mut i: i8 = 0;
+            loop
+                invariant i <= 9
+                invariant_ensures 0 <= i <= 10
+                ensures 1 <= i
+            {
+                break; // FAILS
+            }
+            assert(1 <= i <= 10);
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] example_loop_break_fail4 verus_code! {
+        fn test() {
+            let mut i: i8 = 0;
+            loop
+                invariant i <= 9
+                invariant_ensures 0 <= i <= 10
+                ensures 1 <= i
+            {
+                assert(i <= 9);
+                i = i + 1;
+                if i == 10 {
+                    break;
+                }
+            }
+            assert(i <= 9); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] example_loop_continue verus_code! {
+        fn test() {
+            let mut i: i8 = 0;
+            loop
+                invariant i <= 9
+                invariant_ensures 0 <= i <= 10
+                ensures 1 <= i
+            {
+                assert(i <= 9);
+                i = i + 1;
+                if i == 5 {
+                    continue;
+                }
+                if i == 10 {
+                    break;
+                }
+            }
+            assert(1 <= i <= 10);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] example_loop_continue_fail verus_code! {
+        fn test() {
+            let mut i: i8 = 0;
+            loop
+                invariant i <= 9
+                invariant_ensures 0 <= i <= 10
+                ensures 1 <= i
+            {
+                assert(i <= 9);
+                i = i + 1;
+                if i == 10 {
+                    continue; // FAILS
+                }
+                if i == 10 {
+                    break;
+                }
+            }
+            assert(1 <= i <= 10);
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] infinite_loop verus_code! {
+        fn test() {
+            loop {
+            }
+            assert(false);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] loop_break_false verus_code! {
+        fn test() {
+            loop {
+                break;
+            }
+            assert(false); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] loop_break_false_y verus_code! {
+        fn test() {
+            'y: loop {
+                break;
+            }
+            assert(false); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] while_b verus_code! {
+        fn test(b: bool) {
+            while b {
+            }
+            assert(!b);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] while_b_ok verus_code! {
+        fn test(b: bool) {
+            while b
+                ensures !b
+            {
+            }
+            assert(!b);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] while_b_fail verus_code! {
+        fn test(b: bool) {
+            while b
+                ensures !b
+            {
+                break; // FAILS
+            }
+            assert(!b);
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] while_b2 verus_code! {
+        fn test(b: bool) {
+            while b {
+                while b {
+                    break;
+                }
+            }
+            assert(!b);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] while_b2_x verus_code! {
+        fn test(b: bool) {
+            'x: while b {
+                'y: while b {
+                    break 'x;
+                }
+            }
+            assert(!b); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] while_b2_y verus_code! {
+        fn test(b: bool) {
+            'x: while b {
+                'y: while b {
+                    break 'y;
+                }
+            }
+            assert(!b);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] while_to_loop_ensures verus_code! {
+        fn test(b: bool) {
+            while b
+                ensures true
+            {
+            }
+            assert(!b); // FAILS (while converted to loop due to ensures)
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] while_to_loop_break verus_code! {
+        fn test(b: bool) {
+            while b {
+                break;
+            }
+            assert(!b); // FAILS (while converted to loop due to break)
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] loop_infinite2 verus_code! {
+        fn test() {
+            'x: loop {
+                'y: loop {
+                    break;
+                }
+            }
+            assert(false);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] loop_infinite2y verus_code! {
+        fn test() {
+            'x: loop {
+                'y: loop {
+                    break 'y;
+                }
+            }
+            assert(false);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] loop_infinite2x verus_code! {
+        fn test() {
+            'x: loop {
+                'y: loop {
+                    break 'x;
+                }
+            }
+            assert(false); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] loop2_ok verus_code! {
+        fn test(b: bool) {
+            let mut i: i8 = 0;
+            'x: loop
+                invariant_ensures i == 0
+            {
+                i = i + 1;
+                'y: loop
+                    invariant_ensures i == 1
+                {
+                    break;
+                }
+                i = i - 1;
+                if b {
+                    break;
+                }
+            }
+            assert(i == 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] loop2_ok_y verus_code! {
+        fn test(b: bool) {
+            let mut i: i8 = 0;
+            'x: loop
+                invariant_ensures i == 0
+            {
+                i = i + 1;
+                'y: loop
+                    invariant_ensures i == 1
+                {
+                    break 'y;
+                }
+                i = i - 1;
+                if b {
+                    break;
+                }
+            }
+            assert(i == 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] loop2_fail1 verus_code! {
+        fn test(b: bool) {
+            let mut i: i8 = 0;
+            'x: loop
+                invariant_ensures i == 0
+            {
+                i = i + 1;
+                'y: loop
+                    invariant_ensures i == 1
+                {
+                    break 'x; // FAILS
+                }
+                i = i - 1;
+                if b {
+                    break;
+                }
+            }
+            assert(i == 0);
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] loop2_fail2 verus_code! {
+        fn test(b: bool) {
+            let mut i: i8 = 0;
+            'x: loop
+                invariant_ensures i == 0
+            {
+                i = i + 1;
+                'y: loop
+                    invariant_ensures i == 1
+                {
+                    break;
+                }
+                if b {
+                    break; // FAILS
+                }
+                i = i - 1;
+            }
+            assert(i == 0);
+        }
+    } => Err(e) => assert_one_fails(e)
+}

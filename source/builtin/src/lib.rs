@@ -41,6 +41,12 @@ pub fn invariant<A>(_a: A) {
     unimplemented!();
 }
 
+// Can only appear at beginning of loop body
+#[proof]
+pub fn invariant_ensures<A>(_a: A) {
+    unimplemented!();
+}
+
 // Can only appear at beginning of function body
 #[proof]
 pub fn decreases<A>(_a: A) {

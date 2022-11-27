@@ -469,6 +469,7 @@ fn fn_call_to_vir<'tcx>(
     let is_recommends = f_name == "builtin::recommends";
     let is_ensures = f_name == "builtin::ensures";
     let is_invariant = f_name == "builtin::invariant";
+    let is_invariant_ensures = f_name == "builtin::invariant_ensures";
     let is_decreases = f_name == "builtin::decreases";
     let is_decreases_when = f_name == "builtin::decreases_when";
     let is_decreases_by = f_name == "builtin::decreases_by" || f_name == "builtin::recommends_by";
@@ -567,6 +568,7 @@ fn fn_call_to_vir<'tcx>(
         || is_recommends
         || is_ensures
         || is_invariant
+        || is_invariant_ensures
         || is_decreases
         || is_decreases_when
         || is_decreases_by
@@ -774,7 +776,7 @@ fn fn_call_to_vir<'tcx>(
         // extract_ensures does most of the necessary work, so we can return at this point
         return Ok(expr);
     }
-    if is_invariant {
+    if is_invariant || is_invariant_ensures {
         unsupported_err_unless!(len == 1, expr.span, "expected invariant", &args);
         args = extract_array(args[0]);
         for arg in &args {
@@ -1126,7 +1128,7 @@ fn fn_call_to_vir<'tcx>(
                 };
                 let expr = expr_to_vir(bctx, arg_x, ExprModifier { addr_of: true, deref_mut })?;
                 Ok(spanned_typed_new(arg.span, &expr.typ.clone(), ExprX::Loc(expr)))
-            } else if is_decreases || is_invariant {
+            } else if is_decreases || is_invariant || is_invariant_ensures {
                 let bctx = &BodyCtxt { in_ghost: true, ..bctx.clone() };
                 expr_to_vir(bctx, arg, is_expr_typ_mut_ref(bctx, arg, ExprModifier::REGULAR)?)
             } else if is_ghost_borrow_mut || is_tracked_borrow_mut {
@@ -1220,6 +1222,9 @@ fn fn_call_to_vir<'tcx>(
 
     if is_invariant {
         let header = Arc::new(HeaderExprX::Invariant(Arc::new(vir_args)));
+        Ok(mk_expr(ExprX::Header(header)))
+    } else if is_invariant_ensures {
+        let header = Arc::new(HeaderExprX::InvariantEnsures(Arc::new(vir_args)));
         Ok(mk_expr(ExprX::Header(header)))
     } else if is_decreases {
         let header = Arc::new(HeaderExprX::Decreases(Arc::new(vir_args)));
@@ -2468,20 +2473,18 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             }
             Ok(mk_expr(ExprX::Match(vir_expr, Arc::new(vir_arms))))
         }
-        ExprKind::Loop(block, None, LoopSource::Loop, _span) => {
-            // A rust `loop { body }` is equivalent to `while true { body }`
-            let cond = mk_expr(ExprX::Const(vir::ast::Constant::Bool(true)));
+        ExprKind::Loop(block, label, LoopSource::Loop, _span) => {
             let typ = typ_of_node(bctx, &block.hir_id, false);
             let mut body = block_to_vir(bctx, block, &expr.span, &typ, ExprModifier::REGULAR)?;
             let header = vir::headers::read_header(&mut body)?;
-            let invs = header.invariant;
-            Ok(mk_expr(ExprX::While { cond, body, invs }))
+            let label = label.map(|l| l.ident.to_string());
+            Ok(mk_expr(ExprX::Loop { label, cond: None, body, invs: header.loop_invariants() }))
         }
         ExprKind::Loop(
             Block {
                 stmts: [], expr: Some(Expr { kind: ExprKind::If(cond, body, other), .. }), ..
             },
-            None,
+            label,
             LoopSource::While,
             _span,
         ) => {
@@ -2521,14 +2524,14 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 unsupported!("loop else", expr);
             }
             assert!(modifier == ExprModifier::REGULAR);
-            let cond = expr_to_vir(bctx, cond, ExprModifier::REGULAR)?;
+            let cond = Some(expr_to_vir(bctx, cond, ExprModifier::REGULAR)?);
             let mut body = expr_to_vir(bctx, body, ExprModifier::REGULAR)?;
             let header = vir::headers::read_header(&mut body)?;
             if header.decrease.len() > 0 {
                 return err_span_str(expr.span, "termination checking of loops is not supported");
             }
-            let invs = header.invariant;
-            Ok(mk_expr(ExprX::While { cond, body, invs }))
+            let label = label.map(|l| l.ident.to_string());
+            Ok(mk_expr(ExprX::Loop { label, cond, body, invs: header.loop_invariants() }))
         }
         ExprKind::Ret(expr) => {
             let expr = match expr {
@@ -2536,6 +2539,14 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 Some(expr) => Some(expr_to_vir(bctx, expr, modifier)?),
             };
             Ok(mk_expr(ExprX::Return(expr)))
+        }
+        ExprKind::Break(dest, None) => {
+            let label = dest.label.map(|l| l.ident.to_string());
+            Ok(mk_expr(ExprX::BreakOrContinue { label, is_break: true }))
+        }
+        ExprKind::Continue(dest) => {
+            let label = dest.label.map(|l| l.ident.to_string());
+            Ok(mk_expr(ExprX::BreakOrContinue { label, is_break: false }))
         }
         ExprKind::Struct(qpath, fields, spread) => {
             let update = match spread {

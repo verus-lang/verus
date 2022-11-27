@@ -4,9 +4,10 @@ use air::ast::Span;
 use air::errors::error;
 use air::scope_map::ScopeMap;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 enum StatementType {
-    Return, // TODO add Break and Continue when they are supported
+    Return,
+    BreakOrContinue { _label: Option<String> },
 }
 
 #[derive(Clone, Debug)]
@@ -78,8 +79,10 @@ fn expr_get_early_exits_rec(
             | ExprX::Forall { .. }
             | ExprX::RevealString(_) => VisitorControlFlow::Return,
             ExprX::AssertQuery { .. } => VisitorControlFlow::Return,
-            ExprX::While { cond, body, invs: _ } => {
-                expr_get_early_exits_rec(cond, in_loop, scope_map, results);
+            ExprX::Loop { label: _, cond, body, invs: _ } => {
+                if let Some(cond) = cond {
+                    expr_get_early_exits_rec(cond, in_loop, scope_map, results);
+                }
                 expr_get_early_exits_rec(body, true, scope_map, results);
                 VisitorControlFlow::Return
             }
@@ -87,6 +90,13 @@ fn expr_get_early_exits_rec(
                 results.push(EarlyExitInst {
                     span: expr.span.clone(),
                     _statement: StatementType::Return,
+                });
+                VisitorControlFlow::Recurse
+            }
+            ExprX::BreakOrContinue { label, .. } => {
+                results.push(EarlyExitInst {
+                    span: expr.span.clone(),
+                    _statement: StatementType::BreakOrContinue { _label: label.clone() },
                 });
                 VisitorControlFlow::Recurse
             }

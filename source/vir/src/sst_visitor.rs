@@ -1,6 +1,6 @@
 use crate::ast::{Ident, SpannedTyped, Typ, UnaryOpr, VirErr};
 use crate::def::Spanned;
-use crate::sst::{BndX, Dest, Exp, ExpX, Exps, Stm, StmX, Trig, Trigs, UniqueIdent};
+use crate::sst::{BndX, Dest, Exp, ExpX, Exps, LoopInv, Stm, StmX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map_result;
 use crate::visitor::expr_visitor_control_flow;
 pub(crate) use crate::visitor::VisitorControlFlow;
@@ -150,15 +150,16 @@ where
             match &stm.x {
                 StmX::Call { .. }
                 | StmX::Assert(_, _)
-                | StmX::AssertPostConditions(_, _)
                 | StmX::Assume(_)
                 | StmX::Assign { .. }
                 | StmX::AssertBitVector { .. }
                 | StmX::Fuel(..)
-                | StmX::RevealString(_) => (),
+                | StmX::RevealString(_)
+                | StmX::Return { .. } => (),
                 StmX::DeadEnd(s) => {
                     expr_visitor_control_flow!(stm_visitor_dfs(s, f));
                 }
+                StmX::BreakOrContinue { label: _, is_break: _ } => (),
                 StmX::If(_cond, lhs, rhs) => {
                     expr_visitor_control_flow!(stm_visitor_dfs(lhs, f));
                     if let Some(rhs) = rhs {
@@ -168,15 +169,10 @@ where
                 StmX::AssertQuery { body, mode: _, typ_inv_vars: _ } => {
                     expr_visitor_control_flow!(stm_visitor_dfs(body, f));
                 }
-                StmX::While {
-                    cond_stm,
-                    cond_exp: _,
-                    body,
-                    invs: _,
-                    typ_inv_vars: _,
-                    modified_vars: _,
-                } => {
-                    expr_visitor_control_flow!(stm_visitor_dfs(cond_stm, f));
+                StmX::Loop { label: _, cond, body, invs: _, typ_inv_vars: _, modified_vars: _ } => {
+                    if let Some((cond_stm, _cond_exp)) = cond {
+                        expr_visitor_control_flow!(stm_visitor_dfs(cond_stm, f));
+                    }
                     expr_visitor_control_flow!(stm_visitor_dfs(body, f));
                 }
                 StmX::OpenInvariant(_inv, _ident, _ty, body, _atomicity) => {
@@ -208,10 +204,6 @@ where
             StmX::Assert(_span2, exp) => {
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
             }
-            StmX::AssertPostConditions(_span2, None) => {}
-            StmX::AssertPostConditions(_span2, Some(exp)) => {
-                expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
-            }
             StmX::AssertBitVector { requires, ensures } => {
                 for req in requires.iter() {
                     expr_visitor_control_flow!(exp_visitor_dfs(req, &mut ScopeMap::new(), f));
@@ -229,21 +221,20 @@ where
                 expr_visitor_control_flow!(exp_visitor_dfs(rhs, &mut ScopeMap::new(), f))
             }
             StmX::Fuel(..) | StmX::DeadEnd(..) | StmX::RevealString(_) => (),
-
+            StmX::Return { base_error: _, ret_exp: None, inside_body: _ } => {}
+            StmX::Return { base_error: _, ret_exp: Some(exp), inside_body: _ } => {
+                expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
+            }
+            StmX::BreakOrContinue { label: _, is_break: _ } => (),
             StmX::If(exp, _s1, _s2) => {
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
             }
-            StmX::While {
-                cond_stm: _,
-                cond_exp,
-                body: _,
-                invs,
-                typ_inv_vars: _,
-                modified_vars: _,
-            } => {
-                expr_visitor_control_flow!(exp_visitor_dfs(cond_exp, &mut ScopeMap::new(), f));
+            StmX::Loop { label: _, cond, body: _, invs, typ_inv_vars: _, modified_vars: _ } => {
+                if let Some((_cond_stm, cond_exp)) = cond {
+                    expr_visitor_control_flow!(exp_visitor_dfs(cond_exp, &mut ScopeMap::new(), f));
+                }
                 for inv in invs.iter() {
-                    expr_visitor_control_flow!(exp_visitor_dfs(inv, &mut ScopeMap::new(), f));
+                    expr_visitor_control_flow!(exp_visitor_dfs(&inv.inv, &mut ScopeMap::new(), f));
                 }
             }
             StmX::OpenInvariant(inv, _ident, _ty, _body, _atomicity) => {
@@ -529,7 +520,6 @@ where
     match &stm.x {
         StmX::Call { .. } => fs(stm),
         StmX::Assert(_, _) => fs(stm),
-        StmX::AssertPostConditions(_, _) => fs(stm),
         StmX::Assume(_) => fs(stm),
         StmX::Assign { .. } => fs(stm),
         StmX::AssertBitVector { .. } => fs(stm),
@@ -540,20 +530,27 @@ where
             let stm = Spanned::new(stm.span.clone(), StmX::DeadEnd(s));
             fs(&stm)
         }
+        StmX::Return { .. } => fs(stm),
+        StmX::BreakOrContinue { label: _, is_break: _ } => fs(stm),
         StmX::If(cond, lhs, rhs) => {
             let lhs = map_stm_visitor(lhs, fs)?;
             let rhs = rhs.as_ref().map(|rhs| map_stm_visitor(rhs, fs)).transpose()?;
             let stm = Spanned::new(stm.span.clone(), StmX::If(cond.clone(), lhs, rhs));
             fs(&stm)
         }
-        StmX::While { cond_stm, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
-            let cond_stm = map_stm_visitor(cond_stm, fs)?;
+        StmX::Loop { label, cond, body, invs, typ_inv_vars, modified_vars } => {
+            let cond = if let Some((cond_stm, cond_exp)) = cond {
+                let cond_stm = map_stm_visitor(cond_stm, fs)?;
+                Some((cond_stm, cond_exp.clone()))
+            } else {
+                None
+            };
             let body = map_stm_visitor(body, fs)?;
             let stm = Spanned::new(
                 stm.span.clone(),
-                StmX::While {
-                    cond_stm,
-                    cond_exp: cond_exp.clone(),
+                StmX::Loop {
+                    label: label.clone(),
+                    cond,
                     body,
                     invs: invs.clone(),
                     typ_inv_vars: typ_inv_vars.clone(),
@@ -597,7 +594,6 @@ where
     match &stm.x {
         StmX::Call { .. } => Ok(stm.clone()),
         StmX::Assert(_, _) => Ok(stm.clone()),
-        StmX::AssertPostConditions(_, _) => Ok(stm.clone()),
         StmX::Assume(_) => Ok(stm.clone()),
         StmX::Assign { .. } => Ok(stm.clone()),
         StmX::AssertBitVector { .. } => Ok(stm.clone()),
@@ -607,19 +603,26 @@ where
             let s = fs(s)?;
             Ok(Spanned::new(stm.span.clone(), StmX::DeadEnd(s)))
         }
+        StmX::Return { .. } => Ok(stm.clone()),
+        StmX::BreakOrContinue { label: _, is_break: _ } => Ok(stm.clone()),
         StmX::If(cond, lhs, rhs) => {
             let lhs = fs(lhs)?;
             let rhs = rhs.as_ref().map(|rhs| fs(rhs)).transpose()?;
             Ok(Spanned::new(stm.span.clone(), StmX::If(cond.clone(), lhs, rhs)))
         }
-        StmX::While { cond_stm, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
-            let cond_stm = fs(cond_stm)?;
+        StmX::Loop { label, cond, body, invs, typ_inv_vars, modified_vars } => {
+            let cond = if let Some((cond_stm, cond_exp)) = cond {
+                let cond_stm = fs(cond_stm)?;
+                Some((cond_stm, cond_exp.clone()))
+            } else {
+                None
+            };
             let body = fs(body)?;
             Ok(Spanned::new(
                 stm.span.clone(),
-                StmX::While {
-                    cond_stm,
-                    cond_exp: cond_exp.clone(),
+                StmX::Loop {
+                    label: label.clone(),
+                    cond,
                     body,
                     invs: invs.clone(),
                     typ_inv_vars: typ_inv_vars.clone(),
@@ -673,12 +676,6 @@ where
                 )
             }
             StmX::Assert(span2, exp) => Spanned::new(span, StmX::Assert(span2.clone(), fe(exp)?)),
-            StmX::AssertPostConditions(span2, None) => {
-                Spanned::new(span, StmX::AssertPostConditions(span2.clone(), None))
-            }
-            StmX::AssertPostConditions(span2, Some(exp)) => {
-                Spanned::new(span, StmX::AssertPostConditions(span2.clone(), Some(fe(exp)?)))
-            }
             StmX::AssertBitVector { requires, ensures } => {
                 let requires = Arc::new(vec_map_result(requires, fe)?);
                 let ensures = Arc::new(vec_map_result(ensures, fe)?);
@@ -694,20 +691,40 @@ where
             StmX::Fuel(..) => stm.clone(),
             StmX::RevealString(_) => stm.clone(),
             StmX::DeadEnd(..) => stm.clone(),
+            StmX::Return { base_error, ret_exp: None, inside_body } => {
+                let base_error = base_error.clone();
+                let inside_body = *inside_body;
+                Spanned::new(span, StmX::Return { base_error, ret_exp: None, inside_body })
+            }
+            StmX::Return { base_error, ret_exp: Some(exp), inside_body } => {
+                let base_error = base_error.clone();
+                let ret_exp = Some(fe(exp)?);
+                let inside_body = *inside_body;
+                Spanned::new(span, StmX::Return { base_error, ret_exp, inside_body })
+            }
+            StmX::BreakOrContinue { label: _, is_break: _ } => stm.clone(),
             StmX::If(exp, s1, s2) => {
                 let exp = fe(exp)?;
                 Spanned::new(span, StmX::If(exp, s1.clone(), s2.clone()))
             }
-            StmX::While { cond_stm, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
-                let cond_exp = fe(cond_exp)?;
-                let invs = Arc::new(vec_map_result(invs, fe)?);
+            StmX::Loop { label, cond, body, invs, typ_inv_vars, modified_vars } => {
+                let cond = if let Some((cond_stm, cond_exp)) = cond {
+                    let cond_exp = fe(cond_exp)?;
+                    Some((cond_stm.clone(), cond_exp))
+                } else {
+                    None
+                };
+                let mut invs1: Vec<LoopInv> = Vec::new();
+                for inv in invs.iter() {
+                    invs1.push(LoopInv { inv: fe(&inv.inv)?, ..inv.clone() });
+                }
                 Spanned::new(
                     span,
-                    StmX::While {
-                        cond_stm: cond_stm.clone(),
-                        cond_exp,
+                    StmX::Loop {
+                        label: label.clone(),
+                        cond,
                         body: body.clone(),
-                        invs,
+                        invs: Arc::new(invs1),
                         typ_inv_vars: typ_inv_vars.clone(),
                         modified_vars: modified_vars.clone(),
                     },

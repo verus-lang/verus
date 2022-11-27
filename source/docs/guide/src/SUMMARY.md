@@ -23,6 +23,7 @@
     - [Recursive spec functions, decreases, fuel](recursion.md)
     - [Recursive exec and proof functions, proofs by induction](induction.md)
     - [Loops and invariants](while.md)
+        - [Loops with break](break.md)
     - [Lexicographic decreases clauses and mutual recursion](lex_mutual.md)
 - [Datatypes: struct and enum]() <!--- Andrea --->
     - [Defining datatypes]() <!--- Andrea --->

@@ -89,9 +89,19 @@ pub struct Dest {
     pub is_init: bool,
 }
 
+pub type LoopInvs = Arc<Vec<LoopInv>>;
+#[derive(Debug, Clone)]
+pub struct LoopInv {
+    // "invariant": at_entry = true, at_exit = false
+    // "invariant_ensures": at_entry = true, at_exit = true
+    // "ensures": at_entry = false, at_exit = true
+    pub at_entry: bool,
+    pub at_exit: bool,
+    pub inv: Exp,
+}
+
 pub type Stm = Arc<Spanned<StmX>>;
 pub type Stms = Arc<Vec<Stm>>;
-
 #[derive(Debug)]
 pub enum StmX {
     // call to exec/proof function (or spec function for checking_recommends)
@@ -110,8 +120,6 @@ pub enum StmX {
         requires: Exps,
         ensures: Exps,
     },
-    // Assert that the post condition holds with the given return value
-    AssertPostConditions(Error, Option<Exp>),
     Assume(Exp),
     Assign {
         lhs: Dest,
@@ -120,12 +128,27 @@ pub enum StmX {
     Fuel(Fun, u32),
     RevealString(Arc<String>),
     DeadEnd(Stm),
+    // Assert that the postcondition holds with the given return value
+    Return {
+        base_error: Error,
+        ret_exp: Option<Exp>,
+        // If inside_body = true, we will add an assume false after the statement
+        inside_body: bool,
+    },
+    BreakOrContinue {
+        label: Option<String>,
+        is_break: bool,
+    },
     If(Exp, Stm, Option<Stm>),
-    While {
-        cond_stm: Stm,
-        cond_exp: Exp,
+    Loop {
+        // We either have (1) a simple while loop or (2) a complex loop:
+        // 1. cond = Some(...), all invs are true on entry and exit, no break statements
+        // 2. cond = None, invs may have false at_entry/at_exit, may have break statements
+        // Any while loop not satisfying (1) is converted to (2).
+        label: Option<String>,
+        cond: Option<(Stm, Exp)>,
         body: Stm,
-        invs: Exps,
+        invs: LoopInvs,
         typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
         modified_vars: Arc<Vec<UniqueIdent>>,
     },

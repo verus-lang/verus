@@ -788,7 +788,7 @@ fn check_expr_handle_mut_arg(
             }
             Ok(final_mode)
         }
-        ExprX::While { cond, body, invs } => {
+        ExprX::Loop { label: _, cond, body, invs } => {
             // We could also allow this for proof, if we check it for termination
             if typing.check_ghost_blocks && typing.block_ghostness != Ghost::Exec {
                 return err_str(&expr.span, "cannot use while in proof or spec mode");
@@ -797,12 +797,14 @@ fn check_expr_handle_mut_arg(
                 None => {}
                 Some(ai) => ai.add_loop(&expr.span),
             }
-            check_expr_has_mode(typing, outer_mode, cond, Mode::Exec)?;
+            if let Some(cond) = cond {
+                check_expr_has_mode(typing, outer_mode, cond, Mode::Exec)?;
+            }
             check_expr_has_mode(typing, outer_mode, body, Mode::Exec)?;
             for inv in invs.iter() {
                 let prev = typing.block_ghostness;
                 typing.block_ghostness = Ghost::Ghost { tracked: false };
-                check_expr_has_mode(typing, Mode::Spec, inv, Mode::Spec)?;
+                check_expr_has_mode(typing, Mode::Spec, &inv.inv, Mode::Spec)?;
                 typing.block_ghostness = prev;
             }
             Ok(Mode::Exec)
@@ -851,6 +853,7 @@ fn check_expr_handle_mut_arg(
             }
             Ok(Mode::Exec)
         }
+        ExprX::BreakOrContinue { label: _, is_break: _ } => Ok(Mode::Exec),
         ExprX::Ghost { alloc_wrapper, tracked, expr: e1 } => {
             let prev = typing.block_ghostness;
             let block_ghostness = match (prev, alloc_wrapper, tracked) {

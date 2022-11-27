@@ -313,11 +313,13 @@ where
                         map.pop_scope();
                     }
                 }
-                ExprX::While { cond, body, invs } => {
-                    expr_visitor_control_flow!(expr_visitor_dfs(cond, map, mf));
+                ExprX::Loop { label: _, cond, body, invs } => {
+                    if let Some(cond) = cond {
+                        expr_visitor_control_flow!(expr_visitor_dfs(cond, map, mf));
+                    }
                     expr_visitor_control_flow!(expr_visitor_dfs(body, map, mf));
                     for inv in invs.iter() {
-                        expr_visitor_control_flow!(expr_visitor_dfs(inv, map, mf));
+                        expr_visitor_control_flow!(expr_visitor_dfs(&inv.inv, map, mf));
                     }
                 }
                 ExprX::OpenInvariant(inv, binder, body, _atomicity) => {
@@ -331,6 +333,7 @@ where
                     None => (),
                     Some(e) => expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf)),
                 },
+                ExprX::BreakOrContinue { label: _, is_break: _ } => (),
                 ExprX::Ghost { alloc_wrapper: _, tracked: _, expr: e1 } => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf))
                 }
@@ -353,6 +356,14 @@ where
             VisitorControlFlow::Recurse
         }
     }
+}
+
+pub(crate) fn expr_visitor_walk<MF>(expr: &Expr, mf: &mut MF)
+where
+    MF: FnMut(&Expr) -> VisitorControlFlow<()>,
+{
+    let mut scope_map: VisitorScopeMap = ScopeMap::new();
+    expr_visitor_dfs(expr, &mut scope_map, &mut |_scope_map, expr| mf(expr));
 }
 
 pub(crate) fn stmt_visitor_dfs<T, MF>(
@@ -653,12 +664,16 @@ where
             });
             ExprX::Match(expr1, Arc::new(arms?))
         }
-        ExprX::While { cond, body, invs } => {
-            let cond = map_expr_visitor_env(cond, map, env, fe, fs, ft)?;
+        ExprX::Loop { label, cond, body, invs } => {
+            let cond =
+                cond.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
             let body = map_expr_visitor_env(body, map, env, fe, fs, ft)?;
-            let invs =
-                Arc::new(vec_map_result(invs, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
-            ExprX::While { cond, body, invs }
+            let mut invs1: Vec<crate::ast::LoopInvariant> = Vec::new();
+            for inv in invs.iter() {
+                let e1 = map_expr_visitor_env(&inv.inv, map, env, fe, fs, ft)?;
+                invs1.push(crate::ast::LoopInvariant { inv: e1, ..inv.clone() });
+            }
+            ExprX::Loop { label: label.clone(), cond, body, invs: Arc::new(invs1) }
         }
         ExprX::Return(e1) => {
             let e1 = match e1 {
@@ -666,6 +681,9 @@ where
                 Some(e) => Some(map_expr_visitor_env(e, map, env, fe, fs, ft)?),
             };
             ExprX::Return(e1)
+        }
+        ExprX::BreakOrContinue { label, is_break } => {
+            ExprX::BreakOrContinue { label: label.clone(), is_break: *is_break }
         }
         ExprX::Ghost { alloc_wrapper, tracked, expr: e1 } => {
             let expr = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;

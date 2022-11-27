@@ -53,11 +53,11 @@ pub(crate) fn stm_assign(
         }
         StmX::Assert(..)
         | StmX::AssertBitVector { .. }
-        | StmX::AssertPostConditions { .. }
         | StmX::AssertQuery { .. }
         | StmX::Assume(_)
         | StmX::Fuel(..)
-        | StmX::RevealString(_) => stm.clone(),
+        | StmX::RevealString(_)
+        | StmX::Return { .. } => stm.clone(),
         StmX::Assign { lhs: Dest { dest, is_init }, rhs: _ } => {
             let var = get_loc_var(dest);
             assigned.insert(var.clone());
@@ -70,6 +70,7 @@ pub(crate) fn stm_assign(
             let s = stm_assign(assign_map, declared, assigned, modified, s);
             Spanned::new(stm.span.clone(), StmX::DeadEnd(s))
         }
+        StmX::BreakOrContinue { label: _, is_break: _ } => stm.clone(),
         StmX::If(cond, lhs, rhs) => {
             let mut pre_assigned = assigned.clone();
 
@@ -90,10 +91,15 @@ pub(crate) fn stm_assign(
             *assigned = pre_assigned;
             Spanned::new(stm.span.clone(), StmX::If(cond.clone(), lhs, rhs))
         }
-        StmX::While { cond_stm, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
+        StmX::Loop { label, cond, body, invs, typ_inv_vars, modified_vars } => {
             let mut pre_modified = modified.clone();
             *modified = HashSet::new();
-            let cond_stm = stm_assign(assign_map, declared, assigned, modified, cond_stm);
+            let cond = if let Some((cond_stm, cond_exp)) = cond {
+                let cond_stm = stm_assign(assign_map, declared, assigned, modified, cond_stm);
+                Some((cond_stm, cond_exp.clone()))
+            } else {
+                None
+            };
 
             let pre_assigned = assigned.clone();
             let body = stm_assign(assign_map, declared, assigned, modified, body);
@@ -114,15 +120,15 @@ pub(crate) fn stm_assign(
             for x in assigned.iter() {
                 typ_inv_vars.push((x.clone(), declared[x].clone()));
             }
-            let while_x = StmX::While {
-                cond_stm,
-                cond_exp: cond_exp.clone(),
+            let loop_x = StmX::Loop {
+                label: label.clone(),
+                cond,
                 body,
                 invs: invs.clone(),
                 typ_inv_vars: Arc::new(typ_inv_vars),
                 modified_vars: Arc::new(modified_vars),
             };
-            Spanned::new(stm.span.clone(), while_x)
+            Spanned::new(stm.span.clone(), loop_x)
         }
         StmX::OpenInvariant(inv, ident, ty, body_stm, atomicity) => {
             assigned.insert(ident.clone());
