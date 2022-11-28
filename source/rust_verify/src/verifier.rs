@@ -1125,7 +1125,7 @@ impl Verifier {
         if self.args.log_all || self.args.log_vir_poly {
             let mut file =
                 self.create_log_file(Some(&module), None, crate::config::VIR_POLY_FILE_SUFFIX)?;
-            vir::printer::write_krate(&mut file, &poly_krate);
+            vir::printer::write_krate(&mut file, &poly_krate, &self.args.vir_log_option);
         }
 
         let (time_smt_init, time_smt_run) =
@@ -1170,7 +1170,7 @@ impl Verifier {
         if self.args.log_all || self.args.log_vir_simple {
             let mut file =
                 self.create_log_file(None, None, crate::config::VIR_SIMPLE_FILE_SUFFIX)?;
-            vir::printer::write_krate(&mut file, &krate);
+            vir::printer::write_krate(&mut file, &krate, &self.args.vir_log_option);
         }
 
         #[cfg(debug_assertions)]
@@ -1367,7 +1367,7 @@ impl Verifier {
 
         if self.args.log_all || self.args.log_vir {
             let mut file = self.create_log_file(None, None, crate::config::VIR_FILE_SUFFIX)?;
-            vir::printer::write_krate(&mut file, &vir_crate);
+            vir::printer::write_krate(&mut file, &vir_crate, &self.args.vir_log_option);
         }
         let mut check_crate_diags = vec![];
         let check_crate_result = vir::well_formed::check_crate(&vir_crate, &mut check_crate_diags);
