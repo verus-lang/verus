@@ -816,3 +816,110 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_vir_error(e)
 }
+
+const TRACKED_TYP_PARAMS_COMMON: &str = verus_code_str! {
+    tracked struct Tok {
+        v: nat,
+    }
+
+    tracked struct B<T> {
+        t: T,
+    }
+};
+
+test_verify_one_file! {
+    #[test] tracked_ghost_typ_params_make verus_code! {
+        use pervasive::modes::*;
+
+        tracked struct Tok {
+            ghost v: nat,
+        }
+
+        struct B<T> {
+            t: T,
+        }
+
+        proof fn make_tracked_proof() {
+            let tracked t2: B<Tok> = tracked(B { t: Tok { v: 12 } });
+        }
+
+        fn make_tracked_exec() {
+            let t: Tracked<Tok> = tracked({
+                let v = 12nat;
+                Tok { v: v }
+            });
+            let b: B<Tracked<Tok>> = B { t: t };
+        }
+
+        // This isn't currently possible
+        // proof fn make_ghost_proof() {
+        //     let tracked t2: B<Ghost<Tok>> = tracked(B { t: Ghost::new(Tok { v: 12 }) });
+        // }
+
+        fn make_ghost_exec() {
+            let g: Ghost<Tok> = ghost(Tok { v: 12nat });
+            let b: B<Ghost<Tok>> = B { t: g };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] tracked_tracked_typ_params_misc TRACKED_TYP_PARAMS_COMMON.to_owned() + verus_code_str! {
+        proof fn identity(tracked b: B<Tracked<Tok>>) -> (tracked out: B<Tracked<Tok>>) {
+            tracked b
+        }
+
+        fn foo_exec(tok: Tracked<Tok>) -> Tracked<Tok> {
+            let b: Tracked<B<Tracked<Tok>>> = tracked(B { t: tok });
+            let t = tracked({
+                let tracked B { t } = (tracked b).get();
+                t.get()
+            });
+            t
+        }
+
+        proof fn foo_proof(tracked tok: Tracked<Tok>) -> (tracked out: B<Tracked<Tok>>) {
+            let tracked b1: B<Tracked<Tok>> = tracked(B { t: tracked tok });
+            let tracked b2 = identity(tracked b1);
+            tracked b2
+        }
+
+        fn caller(tok: Tracked<Tok>) -> Tracked<B<Tracked<Tok>>> {
+            let b: Tracked<B<Tracked<Tok>>> = tracked(B { t: tok });
+            let b1 = tracked({
+                identity(tracked b.get())
+            });
+            b1
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] tracked_ghost_typ_params_misc TRACKED_TYP_PARAMS_COMMON.to_owned() + verus_code_str! {
+        use pervasive::modes::*;
+
+        proof fn identity(tracked b: B<Ghost<Tok>>) -> (tracked out: B<Ghost<Tok>>) {
+            tracked b
+        }
+
+        fn foo_exec() -> Ghost<Tok> {
+            let g = ghost(Tok { v: 12nat });
+            // The exec->tracked coercion may be removed
+            let b: Tracked<B<Ghost<Tok>>> = tracked(B { t: (tracked g) });
+            let t = ghost({
+                let tracked B { t } = (tracked b).get();
+                t@
+            });
+            t
+        }
+
+        proof fn foo_proof(tracked tok: Ghost<Tok>) -> tracked Ghost<Tok> {
+            let tracked b: B<Ghost<Tok>> = tracked(B { t: tok });
+            let tracked t = tracked({
+                let tracked B { t } = tracked b;
+                t
+            });
+            tracked t
+        }
+    } => Ok(())
+}
