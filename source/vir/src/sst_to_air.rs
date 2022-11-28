@@ -33,7 +33,7 @@ use air::ast_util::{
     mk_bind_expr, mk_bitvector_option, mk_eq, mk_exists, mk_implies, mk_ite, mk_not,
     mk_option_command, mk_or, mk_xor, str_apply, str_ident, str_typ, str_var, string_var,
 };
-use air::errors::{error, error_with_label};
+use air::messages::{error, error_with_label};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem::swap;
 use std::sync::Arc;
@@ -1437,7 +1437,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                             PostConditionKind::DecreasesImplicitLemma => base_error.clone(),
                             PostConditionKind::DecreasesBy => {
                                 let mut e = (**base_error).clone();
-                                e.msg = "unable to show termination via `decreases_by` lemma"
+                                e.note = "unable to show termination via `decreases_by` lemma"
                                     .to_string();
                                 e.secondary_label(
                                     &span,

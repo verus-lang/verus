@@ -3,7 +3,7 @@ use crate::ast::{
     MultiOp, Qid, Quant, Query, QueryX, Stmt, StmtX, Triggers, Typ, TypX, Typs, UnaryOp,
 };
 use crate::def::mk_skolem_id;
-use crate::errors::all_msgs_from_error;
+use crate::messages::all_msgs_from_error;
 use crate::util::vec_map;
 use sise::{Node, Writer};
 use std::sync::Arc;
@@ -272,7 +272,7 @@ impl Printer {
                 }
             }
             ExprX::LabeledAxiom(labels, expr) => {
-                let spans = vec_map(labels, |s| Node::Atom(format!("\"{}\"", s.msg)));
+                let spans = vec_map(labels, |s| Node::Atom(format!("\"{}\"", s.note)));
                 if spans.len() == 0 {
                     self.expr_to_node(expr)
                 } else {

@@ -13,7 +13,7 @@ use crate::ast::{
 use crate::def::Spanned;
 use crate::interpreter::InterpExp;
 use air::ast::{Binders, Ident, Span};
-use air::errors::Error;
+use air::messages::Message;
 use std::sync::Arc;
 
 pub type Trig = Exps;
@@ -101,17 +101,17 @@ pub enum StmX {
         typ_args: Typs,
         args: Exps,
         // if split is Some, this is a dummy call to be replaced with assertions for error splitting
-        split: Option<Error>,
+        split: Option<Message>,
         dest: Option<Dest>,
     },
     // note: failed assertion reports Stm's span, plus an optional additional span
-    Assert(Option<Error>, Exp),
+    Assert(Option<Message>, Exp),
     AssertBitVector {
         requires: Exps,
         ensures: Exps,
     },
     // Assert that the post condition holds with the given return value
-    AssertPostConditions(Error, Option<Exp>),
+    AssertPostConditions(Message, Option<Exp>),
     Assume(Exp),
     Assign {
         lhs: Dest,
