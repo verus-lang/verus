@@ -1359,9 +1359,28 @@ impl Verifier {
             arch: Arc::new(ArchContextX { word_bits: self.args.arch_word_bits }),
         });
 
+        self.air_no_span = {
+            let no_span = hir
+                .krate()
+                .owners
+                .iter()
+                .filter_map(|oi| {
+                    oi.as_ref().and_then(|o| {
+                        if let OwnerNode::Crate(c) = o.node() { Some(c.inner) } else { None }
+                    })
+                })
+                .next()
+                .expect("OwnerNode::Crate missing");
+            Some(air::ast::Span {
+                raw_span: crate::util::to_raw_span(no_span),
+                as_string: "no location".to_string(),
+            })
+        };
+        let air_no_span = self.air_no_span.clone().unwrap();
+
         // Convert HIR -> VIR
         let time1 = Instant::now();
-        let vir_crate = crate::rust_to_vir::crate_to_vir(&ctxt)?;
+        let vir_crate = crate::rust_to_vir::crate_to_vir(&ctxt, &air_no_span)?;
         let time2 = Instant::now();
         let vir_crate = vir::ast_sort::sort_krate(&vir_crate);
 
@@ -1384,23 +1403,6 @@ impl Verifier {
         let vir_crate = vir::traits::demote_foreign_traits(&vir_crate)?;
 
         self.vir_crate = Some(vir_crate.clone());
-        self.air_no_span = (!self.args.no_verify).then(|| {
-            let no_span = hir
-                .krate()
-                .owners
-                .iter()
-                .filter_map(|oi| {
-                    oi.as_ref().and_then(|o| {
-                        if let OwnerNode::Crate(c) = o.node() { Some(c.inner) } else { None }
-                    })
-                })
-                .next()
-                .expect("OwnerNode::Crate missing");
-            air::ast::Span {
-                raw_span: crate::util::to_raw_span(no_span),
-                as_string: "no location".to_string(),
-            }
-        });
         self.inferred_modes = Some(inferred_modes);
 
         let erasure_info = ctxt.erasure_info.borrow();

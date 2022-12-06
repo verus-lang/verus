@@ -96,6 +96,35 @@ pub(crate) fn fn_item_hir_id_to_self_def_id<'tcx>(
     }
 }
 
+pub(crate) fn fn_item_hir_id_to_self_path<'tcx>(tcx: TyCtxt<'tcx>, hir_id: HirId) -> Option<Path> {
+    let parent_id = tcx.hir().get_parent_node(hir_id);
+    let parent_node = tcx.hir().get(parent_id);
+    match parent_node {
+        rustc_hir::Node::Item(rustc_hir::Item {
+            kind: rustc_hir::ItemKind::Impl(impll),
+            def_id,
+            ..
+        }) => match &impll.self_ty.kind {
+            rustc_hir::TyKind::Path(QPath::Resolved(
+                None,
+                rustc_hir::Path { res: rustc_hir::def::Res::Def(_, self_def_id), .. },
+            )) => Some(def_path_to_vir_path(tcx, tcx.def_path(*self_def_id))),
+            _ => {
+                // To handle cases like [T] which are not syntactically datatypes
+                // but converted into VIR datatypes.
+
+                let self_ty = tcx.type_of(def_id.to_def_id());
+                let vir_ty = mid_ty_to_vir_ghost(tcx, self_ty, false).0;
+                match &*vir_ty {
+                    TypX::Datatype(p, _typ_args) => Some(p.clone()),
+                    _ => panic!("impl type is not given by a path"),
+                }
+            }
+        },
+        _ => None,
+    }
+}
+
 pub(crate) fn def_id_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Path {
     // The path that rustc gives a DefId might be given in terms of an 'impl' path
     // However, it makes for a better path name to use the path to the *type*.
@@ -104,8 +133,7 @@ pub(crate) fn def_id_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Path
     if let Some(local_id) = def_id.as_local() {
         let hir = tcx.hir().local_def_id_to_hir_id(local_id);
         if get_function_def_impl_item_node(tcx, hir).is_some() {
-            if let Some(self_def_id) = fn_item_hir_id_to_self_def_id(tcx, hir) {
-                let ty_path = def_path_to_vir_path(tcx, tcx.def_path(self_def_id));
+            if let Some(ty_path) = fn_item_hir_id_to_self_path(tcx, hir) {
                 return typ_path_and_ident_to_vir_path(&ty_path, def_to_path_ident(tcx, def_id));
             }
         }
@@ -260,6 +288,11 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let typs: Vec<Typ> =
                 ty.tuple_fields().map(|t| mid_ty_to_vir_ghost(tcx, t, allow_mut_ref).0).collect();
             (Arc::new(TypX::Tuple(Arc::new(typs))), false)
+        }
+        TyKind::Slice(ty) => {
+            let typ = mid_ty_to_vir_ghost(tcx, ty, allow_mut_ref).0;
+            let typs = Arc::new(vec![typ]);
+            (Arc::new(TypX::Datatype(vir::def::slice_type(), typs)), false)
         }
         TyKind::Adt(AdtDef { did, .. }, args) => {
             let s = ty.to_string();
