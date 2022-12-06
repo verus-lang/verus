@@ -1,4 +1,4 @@
-use crate::ast::{DatatypeTransparency, DatatypeX, GenericBoundX, KrateX, Mode, TypX, Visibility};
+use crate::ast::{DatatypeTransparency, DatatypeX, GenericBoundX, KrateX, Mode, Visibility};
 use crate::def::Spanned;
 use air::ast::Span;
 use air::ast_util::ident_binder;
@@ -11,16 +11,9 @@ pub fn krate_add_builtins(no_span: &Span, krate: &mut KrateX) {
     let visibility = Visibility { owning_module: None, is_private: false };
     let transparency = DatatypeTransparency::Never;
 
-    // Create a fake variant with a single field of the given type,
-    // though it shouldn't matter, since transparency is Never.
-
-    let typ = Arc::new(TypX::TypParam(crate::def::slice_param()));
-    let field = ident_binder(
-        &Arc::new("DummySliceField".to_string()),
-        &(typ, Mode::Exec, visibility.clone()),
-    );
-    let fields = vec![field];
-    let variant = ident_binder(&Arc::new("DummySliceVariant".to_string()), &Arc::new(fields));
+    // Create a fake variant; it shouldn't matter, since transparency is Never.
+    let fields = Arc::new(vec![]);
+    let variant = ident_binder(&Arc::new("DummySliceVariant".to_string()), &fields);
     let variants = Arc::new(vec![variant]);
 
     let bound = Arc::new(GenericBoundX::Traits(vec![]));

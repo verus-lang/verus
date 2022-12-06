@@ -21,7 +21,7 @@ impl<T> SliceAdditionalSpecFns<T> for [T] {
 
 #[verifier(external_body)]
 pub exec fn slice_index_get<T>(slice: &[T], i: usize) -> (out: &T)
-    requires 0 <= (i as int) < slice.view().len(),
+    requires 0 <= i < slice.view().len(),
     ensures *out === slice@.index(i as int),
 {
     &slice[i]
