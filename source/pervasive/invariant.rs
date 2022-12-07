@@ -48,7 +48,7 @@ pub struct AtomicInvariant<#[verifier(strictly_positive)] K, #[verifier(strictly
 #[verifier(external_body)]
 pub struct LocalInvariant<#[verifier(strictly_positive)] K, #[verifier(strictly_positive)] V, #[verifier(strictly_positive)] Pred> {
     dummy: builtin::SendIfSend<V>,
-    dummy1: core::marker::PhantomData<(K, Pred)>,
+    dummy1: core::marker::PhantomData<(K, Pred)>, // TODO ignore Send/Sync here
 }
 
 macro_rules! declare_invariant_impl {
@@ -58,6 +58,7 @@ macro_rules! declare_invariant_impl {
             fndecl!(pub fn constant(&self) -> K);
             fndecl!(pub fn namespace(&self) -> int);
 
+            #[spec] #[verifier(publish)]
             pub fn inv(&self, v: V) -> bool {
                 Pred::inv(self.constant(), v)
             }

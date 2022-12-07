@@ -37,6 +37,7 @@ use air::messages::{error, error_with_label};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem::swap;
 use std::sync::Arc;
+use crate::ast_util::types_equal;
 
 #[inline(always)]
 pub(crate) fn fun_to_air_ident(fun: &Fun) -> Ident {
@@ -281,18 +282,29 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
 }
 
-fn call_inv(ctx: &Ctx, outer: Expr, inner: Expr, typ: &Typ, atomicity: InvAtomicity) -> Expr {
+fn get_inv_typ_args(typ: &Typ) -> Typs {
+    match &**typ {
+        TypX::Datatype(_, typs) => typs.clone(),
+        TypX::Boxed(typ) => get_inv_typ_args(typ),
+        _ => { panic!("get_inv_typ_args failed, expected some Invariant type"); }
+    }
+}
+
+fn call_inv(ctx: &Ctx, outer: Expr, inner: Expr, typ_args: &Typs, typ: &Typ, atomicity: InvAtomicity) -> Expr {
     let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&fn_inv_name(atomicity)));
-    let typ_expr = typ_to_id(typ);
     let boxed_inner = try_box(ctx, inner.clone(), typ).unwrap_or(inner);
-    let args = vec![typ_expr, outer, boxed_inner];
+
+    let mut args: Vec<Expr> = typ_args.iter().map(|t| typ_to_id(t)).collect();
+    args.push(outer);
+    args.push(boxed_inner);
     ident_apply(&inv_fn_ident, &args)
 }
 
-fn call_namespace(arg: Expr, typ: &Typ, atomicity: InvAtomicity) -> Expr {
+fn call_namespace(arg: Expr, typ_args: &Typs, atomicity: InvAtomicity) -> Expr {
     let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&fn_namespace_name(atomicity)));
-    let typ_expr = typ_to_id(typ);
-    let args = vec![typ_expr, arg];
+
+    let mut args: Vec<Expr> = typ_args.iter().map(|t| typ_to_id(t)).collect();
+    args.push(arg);
     ident_apply(&inv_fn_ident, &args)
 }
 
@@ -1740,7 +1752,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let inv_expr = exp_to_expr(ctx, inv_exp, &ExprCtxt::new())?;
 
             // Assert that the namespace of the inv we are opening is in the mask set
-            let namespace_expr = call_namespace(inv_expr.clone(), typ, *atomicity);
+            let typ_args = get_inv_typ_args(&inv_exp.typ);
+            assert!(types_equal(&typ_args[1], &typ));
+            let namespace_expr = call_namespace(inv_expr.clone(), &typ_args, *atomicity);
             if !ctx.checking_recommends() {
                 state.mask.assert_contains(&inv_exp.span, &namespace_expr, &mut stmts);
             }
@@ -1752,7 +1766,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             if let Some(ty_inv) = ty_inv_opt {
                 stmts.push(Arc::new(StmtX::Assume(ty_inv)));
             }
-            let main_inv = call_inv(ctx, inv_expr, inner_expr, typ, *atomicity);
+            let main_inv = call_inv(ctx, inv_expr, inner_expr, &typ_args, &typ, *atomicity);
             stmts.push(Arc::new(StmtX::Assume(main_inv.clone())));
 
             // process the body

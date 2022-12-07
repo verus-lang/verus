@@ -5,12 +5,12 @@
 /// 3) Also compute names for abstract datatype sorts for the module,
 ///    since we're traversing the module-visible datatypes anyway.
 use crate::ast::{
-    CallTarget, Datatype, Expr, ExprX, Fun, Function, FunctionKind, Ident, InvAtomicity, Krate,
+    CallTarget, Datatype, Expr, ExprX, Fun, Function, FunctionKind, Ident, Krate,
     KrateX, Mode, Path, Stmt, Typ, TypX,
 };
 use crate::ast_util::{is_visible_to, is_visible_to_of_owner};
 use crate::datatype_to_air::is_datatype_transparent;
-use crate::def::{datatype_invariant_path, fn_inv_name, fn_namespace_name, Spanned};
+use crate::def::{fn_inv_name, fn_namespace_name, Spanned};
 use crate::poly::MonoTyp;
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
@@ -134,6 +134,12 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                         reach_function(ctxt, state, name)
                     }
                     ExprX::Ctor(path, _, _, _) => reach_datatype(ctxt, state, path),
+                    ExprX::OpenInvariant(_, _, _, atomicity) => {
+                        // SST -> AIR conversion for OpenInvariant may introduce
+                        // references to these particular names.
+                        reach_function(ctxt, state, &fn_inv_name(*atomicity));
+                        reach_function(ctxt, state, &fn_namespace_name(*atomicity));
+                    }
                     _ => {}
                 }
                 Ok(e.clone())
@@ -285,14 +291,6 @@ pub fn prune_krate_for_module(krate: &Krate, module: &Path) -> (Krate, Vec<MonoT
         all_functions_in_each_module,
     };
     traverse_reachable(&ctxt, &mut state);
-
-    // Add function decls that should always exist
-    // (references to these might be generated in SST -> AIR)
-    for atomicity in vec![InvAtomicity::Atomic, InvAtomicity::NonAtomic] {
-        state.reached_functions.insert(fn_inv_name(atomicity));
-        state.reached_functions.insert(fn_namespace_name(atomicity));
-        state.reached_datatypes.insert(datatype_invariant_path(atomicity));
-    }
 
     let kratex = KrateX {
         functions: functions
