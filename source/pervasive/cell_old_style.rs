@@ -244,6 +244,7 @@ impl<V> PCell<V> {
     }
 }
 
+/*
 pub struct InvCell<#[verifier(maybe_negative)] T> {
     #[spec] possible_values: Set<T>,
     pcell: PCell<T>,
@@ -312,3 +313,4 @@ impl<T: Copy> InvCell<T> {
         r
     }
 }
+*/

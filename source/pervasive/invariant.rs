@@ -31,35 +31,48 @@
 //    Sync        ==>     {}                  {}
 //    Sync+Send   ==>     Send+Sync           Send
 
-#[proof]
-#[verifier(external_body)]
-pub struct AtomicInvariant<#[verifier(maybe_negative)] V> {
-    dummy: builtin::SyncSendIfSend<V>,
+verus!{
+pub trait InvariantPredicate<K, V> {
+    spec fn inv(k: K, v: V) -> bool;
+}
 }
 
+#[proof]
 #[verifier(external_body)]
-pub struct LocalInvariant<#[verifier(maybe_negative)] V> {
+pub struct AtomicInvariant<#[verifier(strictly_positive)] K, #[verifier(strictly_positive)] V, #[verifier(strictly_positive)] Pred> {
+    dummy: builtin::SyncSendIfSend<V>,
+    dummy1: core::marker::PhantomData<(K, Pred)>,
+}
+
+#[proof]
+#[verifier(external_body)]
+pub struct LocalInvariant<#[verifier(strictly_positive)] K, #[verifier(strictly_positive)] V, #[verifier(strictly_positive)] Pred> {
     dummy: builtin::SendIfSend<V>,
+    dummy1: core::marker::PhantomData<(K, Pred)>,
 }
 
 macro_rules! declare_invariant_impl {
     ($invariant:ident) => {
         #[proof]
-        impl<V> $invariant<V> {
-            fndecl!(pub fn inv(&self, _v: V) -> bool);
+        impl<K, V, Pred: InvariantPredicate<K, V>> $invariant<K, V, Pred> {
+            fndecl!(pub fn constant(&self) -> K);
             fndecl!(pub fn namespace(&self) -> int);
+
+            pub fn inv(&self, v: V) -> bool {
+                Pred::inv(self.constant(), v)
+            }
 
             #[proof]
             #[verifier(external_body)]
             #[verifier(returns(proof))]
-            pub fn new(#[proof] v: V, #[spec] inv: impl Fn(V) -> bool, #[spec] ns: int) -> $invariant<V> {
+            pub fn new(#[spec] k: K, #[proof] v: V, #[spec] ns: int) -> $invariant<K, V, Pred> {
                 requires([
-                    inv(v),
+                    Pred::inv(k, v),
                 ]);
-                ensures(|i: $invariant<V>|
-                    forall(|v: V| i.inv(v) == inv(v)) // TODO replace this with function equality?
-                    && equal(i.namespace(), ns)
-                );
+                ensures(|i: $invariant<K, V, Pred>| [
+                    equal(i.constant(), k),
+                    equal(i.namespace(), ns),
+                ]);
 
                 unimplemented!();
             }
@@ -103,13 +116,13 @@ pub struct InvariantBlockGuard;
 
 #[doc(hidden)]
 #[verifier(external)]
-pub fn open_atomic_invariant_begin<'a, V>(_inv: &'a AtomicInvariant<V>) -> (&'a InvariantBlockGuard, V) {
+pub fn open_atomic_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(_inv: &'a AtomicInvariant<K, V, Pred>) -> (&'a InvariantBlockGuard, V) {
     unimplemented!();
 }
 
 #[doc(hidden)]
 #[verifier(external)]
-pub fn open_local_invariant_begin<'a, V>(_inv: &'a LocalInvariant<V>) -> (&'a InvariantBlockGuard, V) {
+pub fn open_local_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(_inv: &'a LocalInvariant<K, V, Pred>) -> (&'a InvariantBlockGuard, V) {
     unimplemented!();
 }
 
