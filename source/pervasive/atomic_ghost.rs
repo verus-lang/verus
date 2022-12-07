@@ -1,17 +1,27 @@
 #![allow(unused_imports)]
 
-/*
 use builtin::*;
 use builtin_macros::*;
 use crate::pervasive::invariant::*;
 use crate::pervasive::atomic::*;
 use crate::pervasive::modes::*;
 
+// TODO replace this with an API based on InvariantPredicate to be consistent with
+// the APIs for AtomicInvariant and LocalInvariant
+
+pub struct ArbitraryFnPredicate { }
+impl<V> InvariantPredicate<FnSpec<(V,), bool>, V> for ArbitraryFnPredicate {
+    #[spec] #[verifier(publish)]
+    fn inv(f: FnSpec<(V,), bool>, v: V) -> bool {
+        f(v)
+    }
+}
+
 macro_rules! declare_atomic_type {
     ($at_ident:ident, $patomic_ty:ident, $perm_ty:ty, $value_ty: ty) => {
         pub struct $at_ident<#[verifier(maybe_negative)] G> {
             pub patomic: $patomic_ty,
-            #[proof] pub atomic_inv: AtomicInvariant<($perm_ty, G)>,
+            #[proof] pub atomic_inv: AtomicInvariant<FnSpec<(($perm_ty, G),), bool>, ($perm_ty, G), ArbitraryFnPredicate>,
         }
 
         impl<G> $at_ident<G> {
@@ -35,8 +45,9 @@ macro_rules! declare_atomic_type {
 
                 let (patomic, Proof(perm)) = $patomic_ty::new(u);
                 #[proof] let pair = (perm, g);
-                #[proof] let atomic_inv = AtomicInvariant::new(pair,
-                    |p| patomic.id() == p.0.view().patomic && f(p.0.view().value, p.1),
+                #[proof] let atomic_inv = AtomicInvariant::new(
+                    closure_to_fn_spec(|p: ($perm_ty, G)| patomic.id() == p.0.view().patomic && f(p.0.view().value, p.1)),
+                    pair,
                     spec_literal_int("0"));
 
                 $at_ident {
@@ -451,4 +462,3 @@ macro_rules! atomic_with_ghost_update_fetch_sub {
         }
     }
 }
-*/

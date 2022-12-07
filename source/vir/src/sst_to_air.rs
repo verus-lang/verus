@@ -37,7 +37,6 @@ use air::messages::{error, error_with_label};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem::swap;
 use std::sync::Arc;
-use crate::ast_util::types_equal;
 
 #[inline(always)]
 pub(crate) fn fun_to_air_ident(fun: &Fun) -> Ident {
@@ -1753,7 +1752,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             // Assert that the namespace of the inv we are opening is in the mask set
             let typ_args = get_inv_typ_args(&inv_exp.typ);
-            assert!(types_equal(&typ_args[1], &typ));
             let namespace_expr = call_namespace(inv_expr.clone(), &typ_args, *atomicity);
             if !ctx.checking_recommends() {
                 state.mask.assert_contains(&inv_exp.span, &namespace_expr, &mut stmts);
