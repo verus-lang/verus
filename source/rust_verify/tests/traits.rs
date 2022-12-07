@@ -51,24 +51,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_5 verus_code! {
-        trait T1 {
-            // methods without a self argument are still todo
-            fn f(b: bool);
-        }
-    } => Err(err) => assert_vir_error(err)
-}
-
-test_verify_one_file! {
-    #[test] test_not_yet_supported_6 verus_code! {
-        trait T1 {
-            // methods without a self argument are still todo
-            fn f(not_named_self: &Self);
-        }
-    } => Err(err) => assert_vir_error(err)
-}
-
-test_verify_one_file! {
     #[test] test_not_yet_supported_7 verus_code! {
         // might need to add F: Fn(...) to termination checking before supporting this
         struct S<F: Fn(bool) -> bool> {
@@ -612,6 +594,25 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_verify_3_not_named_self verus_code! {
+        trait T {
+            spec fn req(not_named_self: &Self) -> bool;
+            fn f(not_named_self: &Self)
+                requires Self::req(not_named_self);
+        }
+        struct S {}
+        impl T for S {
+            spec fn req(not_named_self: &Self) -> bool { false }
+            fn f(not_named_self: &Self) {}
+        }
+        fn test() {
+            let s = S {};
+            S::f(&s); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] test_verify_4 verus_code! {
         trait T {
             spec fn ens(&self) -> bool;
@@ -704,6 +705,66 @@ test_verify_one_file! {
         fn test() {
             let i = I { x: 30 };
             print_u64(p(&10, &i)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] test_verify_6_no_self verus_code! {
+        trait T<A> {
+            spec fn req(a: A) -> bool;
+            spec fn ens(a: A, r: A) -> bool;
+
+            fn f(a: &A) -> (ra: A)
+                requires Self::req(*a)
+                ensures Self::ens(*a, ra); // TRAIT
+        }
+
+        struct B {
+            x: bool,
+        }
+
+        struct I {
+            x: u64,
+        }
+
+        impl T<bool> for B {
+            spec fn req(a: bool) -> bool {
+                a
+            }
+
+            spec fn ens(a: bool, r: bool) -> bool {
+                r == !a
+            }
+
+            fn f(a: &bool) -> bool {
+                !*a
+            }
+        }
+
+        impl T<u64> for I {
+            spec fn req(a: u64) -> bool {
+                a < 100
+            }
+
+            spec fn ens(a: u64, r: u64) -> bool {
+                r < 100
+            }
+
+            fn f(a: &u64) -> u64 {
+                a * 2
+            } // FAILS
+        }
+
+        fn p<A, Z: T<A>>(a: &A) -> (rz: A)
+            requires Z::req(*a)
+            ensures Z::ens(*a, rz)
+        {
+            Z::f(a)
+        }
+
+        fn test() {
+            print_u64(p::<u64, I>(&105)); // FAILS
         }
     } => Err(err) => assert_fails(err, 2)
 }
