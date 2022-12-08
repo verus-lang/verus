@@ -29,7 +29,7 @@ enum VerusDocAttr {
 }
 
 // Types of spec clauses we handle.
-static SPEC_NAMES: [&str; 3] = ["requires", "ensures", "recommends"];
+static SPEC_NAMES: [&str; 4] = ["requires", "ensures", "recommends", "body"];
 
 fn main() {
     // Manipulate the auto-generated files in `doc/` to clean them up to make
@@ -256,12 +256,18 @@ fn update_docblock(docblock_elem: &NodeRef, attrs: &Vec<VerusDocAttr>) {
             })
             .collect();
 
-        if code_blocks.len() > 0 {
+        let is_body = spec_name == &"body";
+
+        if code_blocks.len() > 0 && !is_body {
             elems.push(mk_spec_keyword_node(spec_name));
         }
 
         for code_block in code_blocks.into_iter() {
-            set_class_attribute(&code_block, "rust rest-example-rendered verus-spec-code");
+            if is_body {
+                set_class_attribute(&code_block, "rust rest-example-rendered verus-body-code");
+            } else {
+                set_class_attribute(&code_block, "rust rest-example-rendered verus-spec-code");
+            }
             elems.push(code_block);
         }
     }
@@ -468,7 +474,22 @@ pre.verus-spec-code {
   margin-left: 40px !important;
 }
 
+.verus-body-code {
+  padding: 0px !important;
+  background-color: #ffffff !important;
+  margin: 0px;
+  font-size: 14px;
+}
+
+pre.verus-body-code {
+  margin-left: 8px !important;
+}
+
 .verus-spec-code code {
+  background-color: #ffffff !important;
+}
+
+.verus-body-code code {
   background-color: #ffffff !important;
 }
 
