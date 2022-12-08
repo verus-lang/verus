@@ -9,6 +9,7 @@
 // predicate `V -> bool`. However, doing this naively with a fully configurable
 // predicate function would result in V being maybe_negative,
 // which is too limiting and prevents important use cases with recursive types.
+
 //
 // Instead, we allow the user to specify a predicate which is fixed *at the type level*
 // which we do through this trait, InvariantPredicate. However, the predicate still
@@ -46,6 +47,10 @@
 // for the flexibility.
 
 verus!{
+
+/// Trait used to specify an _invariant predicate_ for
+/// [`LocalInvariant`] and [`AtomicInvariant`].
+
 pub trait InvariantPredicate<K, V> {
     spec fn inv(k: K, v: V) -> bool;
 }
@@ -75,12 +80,81 @@ pub trait InvariantPredicate<K, V> {
 //    Sync        ==>     {}                  {}
 //    Sync+Send   ==>     Send+Sync           Send
 
+/// An `AtomicInvariant` is a ghost object that provides "interior mutability"
+/// for ghost objects, specifically, for `tracked` ghost objects.
+/// A reference `&AtomicInvariant` may be shared between clients.
+/// A client holding such a reference may _open_ the invariant
+/// to obtain ghost ownership of `v1: V`, and then _close_ the invariant by returning
+/// ghost ownership of a (potentially) different object `v2: V`.
+///
+/// An `AtomicInvariant` implements [`Sync`](https://doc.rust-lang.org/std/sync/)
+/// and may be shared between threads.
+/// However, this means that an `AtomicInvariant` can be only opened for
+/// the duration of a single _sequentially consistent atomic_ operation.
+/// Such operations are provided by our [`PAtomic`](crate::pervasive::atomic) library.
+/// For an invariant object without this atomicity restriction,
+/// see [`LocalInvariant`], which gives up thread safety in exchange.
+///
+/// An `AtomicInvariant` consists of:
+///
+///  * A _predicate_ specified via the `InvariantPredicate` type bound, that determines
+///    what values `V` may be saved inside the invariant.
+///  * A _constant_ `K`, specified at construction type. The predicate function takes
+///    this constant as a parameter, so the constant allows users to dynamically configure
+///    the predicate function in a way that can't be done at the type level.
+///  * A _namespace_. This is a bit of a technicality, and you can often just declare
+///    it as an arbitrary integer with no issues. See the [`open_local_invariant!`]
+///    documentation for more details.
+///
+/// The constant and namespace are specified at construction time ([`AtomicInvariant::new`]).
+/// These values are fixed for the lifetime of the `AtomicInvariant` object.
+/// To open the invariant and access the stored object `V`,
+/// use the macro [`open_local_invariant!`].
+///
+/// The `AtomicInvariant` API is an instance of the ["invariant" method in Verus's general philosophy on interior mutability](https://verus-lang.github.io/verus/guide/interior_mutability.html).
+///
+/// **Note:** Rather than using `AtomicInvariant` directly, we generally recommend
+/// using the [`atomic_ghost` APIs](atomic_ghost).
+
+
 #[proof]
 #[verifier(external_body)]
 pub struct AtomicInvariant<#[verifier(strictly_positive)] K, #[verifier(strictly_positive)] V, #[verifier(strictly_positive)] Pred> {
     dummy: builtin::SyncSendIfSend<V>,
     dummy1: core::marker::PhantomData<(K, Pred)>,
 }
+
+/// A `LocalInvariant` is a ghost object that provides "interior mutability"
+/// for ghost objects, specifically, for `tracked` ghost objects.
+/// A reference `&LocalInvariant` may be shared between clients.
+/// A client holding such a reference may _open_ the invariant
+/// to obtain ghost ownership of `v1: V`, and then _close_ the invariant by returning
+/// ghost ownership of a (potentially) different object `v2: V`.
+///
+/// A `LocalInvariant` cannot be shared between threads
+/// (that is, it does not implement [`Sync`](https://doc.rust-lang.org/std/sync/)).
+/// However, this means that a `LocalInvariant` can be opened for an indefinite length
+/// of time, since there is no risk of a race with another thread.
+/// For an invariant object with the opposite properties, see [`AtomicInvariant`].
+///
+/// A `LocalInvariant` consists of:
+///
+///  * A _predicate_ specified via the `InvariantPredicate` type bound, that determines
+///    what values `V` may be saved inside the invariant.
+///  * A _constant_ `K`, specified at construction type. The predicate function takes
+///    this constant as a parameter, so the constant allows users to dynamically configure
+///    the predicate function in a way that can't be done at the type level.
+///  * A _namespace_. This is a bit of a technicality, and you can often just declare
+///    it as an arbitrary integer with no issues. See the [`open_local_invariant!`]
+///    documentation for more details.
+///
+/// The constant and namespace are specified at construction time ([`LocalInvariant::new`]).
+/// These values are fixed for the lifetime of the `LocalInvariant` object.
+/// To open the invariant and access the stored object `V`,
+/// use the macro [`open_local_invariant!`].
+///
+/// The `LocalInvariant` API is an instance of the ["invariant" method in Verus's general philosophy on interior mutability](https://verus-lang.github.io/verus/guide/interior_mutability.html).
+
 
 #[proof]
 #[verifier(external_body)]
@@ -93,39 +167,55 @@ macro_rules! declare_invariant_impl {
     ($invariant:ident) => {
         // note the path names of `inv` and `namespace` are harcoded into the VIR crate.
 
-        #[proof]
-        impl<K, V, Pred: InvariantPredicate<K, V>> $invariant<K, V, Pred> {
-            fndecl!(pub fn constant(&self) -> K);
-            fndecl!(pub fn namespace(&self) -> int);
+        verus!{
 
-            #[spec] #[verifier(publish)]
-            pub fn inv(&self, v: V) -> bool {
+        impl<K, V, Pred: InvariantPredicate<K, V>> $invariant<K, V, Pred> {
+            /// The constant specified upon the initialization of this `
+            #[doc = stringify!($invariant)]
+            ///`.
+            pub spec fn constant(&self) -> K;
+
+            /// Namespace the invariant was declared in.
+            pub spec fn namespace(&self) -> int;
+
+            /// Returns `true` if it is possible to store the value `v` into the `
+            #[doc = stringify!($invariant)]
+            ///`.
+            ///
+            /// This is equivalent to `Pred::inv(self.constant(), v)`.
+
+            pub open spec fn inv(&self, v: V) -> bool {
                 Pred::inv(self.constant(), v)
             }
 
-            #[proof]
+            /// Initialize a new `
+            #[doc = stringify!($invariant)]
+            ///` with constant `k`. initial stored (tracked) value `v`,
+            /// and in the namespace `ns`.
+
             #[verifier(external_body)]
-            #[verifier(returns(proof))]
-            pub fn new(#[spec] k: K, #[proof] v: V, #[spec] ns: int) -> $invariant<K, V, Pred> {
-                requires([
+            pub proof fn new(k: K, tracked v: V, ns: int) -> (tracked i: $invariant<K, V, Pred>)
+                requires
                     Pred::inv(k, v),
-                ]);
-                ensures(|i: $invariant<K, V, Pred>| [
-                    equal(i.constant(), k),
-                    equal(i.namespace(), ns),
-                ]);
-
+                ensures
+                    i.constant() === k,
+                    i.namespace() === ns,
+            {
                 unimplemented!();
             }
 
-            #[proof]
+            /// Destroys the `
+            #[doc = stringify!($invariant)]
+            ///`, returning the tracked value contained within.
+
             #[verifier(external_body)]
-            #[verifier(returns(proof))]
-            pub fn into_inner(#[proof] self) -> V {
-                ensures(|v: V| self.inv(v));
-
+            pub proof fn into_inner(#[proof] self) -> (tracked v: V)
+                ensures self.inv(v),
+            {
                 unimplemented!();
             }
+        }
+
         }
     }
 }

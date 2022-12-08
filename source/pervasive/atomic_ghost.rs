@@ -1,3 +1,6 @@
+//! Provides sequentially-consistent atomic memory locations with associated ghost state.
+//! See the [`atomic_with_ghost!`] documentation for more information.
+
 #![allow(unused_imports)]
 
 use builtin::*;
@@ -9,7 +12,9 @@ use crate::pervasive::modes::*;
 // TODO replace this with an API based on InvariantPredicate to be consistent with
 // the APIs for AtomicInvariant and LocalInvariant
 
+#[doc(hidden)]
 pub struct ArbitraryFnPredicate { }
+
 impl<V> InvariantPredicate<FnSpec<(V,), bool>, V> for ArbitraryFnPredicate {
     #[spec] #[verifier(publish)]
     fn inv(f: FnSpec<(V,), bool>, v: V) -> bool {
@@ -19,8 +24,14 @@ impl<V> InvariantPredicate<FnSpec<(V,), bool>, V> for ArbitraryFnPredicate {
 
 macro_rules! declare_atomic_type {
     ($at_ident:ident, $patomic_ty:ident, $perm_ty:ty, $value_ty: ty) => {
+        /// Sequentially-consistent atomic memory location with associated ghost state.
+        /// See the [`atomic_with_ghost!`] documentation for usage information.
+
         pub struct $at_ident<#[verifier(maybe_negative)] G> {
+            #[doc(hidden)]
             pub patomic: $patomic_ty,
+
+            #[doc(hidden)]
             #[proof] pub atomic_inv: AtomicInvariant<FnSpec<(($perm_ty, G),), bool>, ($perm_ty, G), ArbitraryFnPredicate>,
         }
 
