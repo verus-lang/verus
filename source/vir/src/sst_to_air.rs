@@ -285,11 +285,20 @@ fn get_inv_typ_args(typ: &Typ) -> Typs {
     match &**typ {
         TypX::Datatype(_, typs) => typs.clone(),
         TypX::Boxed(typ) => get_inv_typ_args(typ),
-        _ => { panic!("get_inv_typ_args failed, expected some Invariant type"); }
+        _ => {
+            panic!("get_inv_typ_args failed, expected some Invariant type");
+        }
     }
 }
 
-fn call_inv(ctx: &Ctx, outer: Expr, inner: Expr, typ_args: &Typs, typ: &Typ, atomicity: InvAtomicity) -> Expr {
+fn call_inv(
+    ctx: &Ctx,
+    outer: Expr,
+    inner: Expr,
+    typ_args: &Typs,
+    typ: &Typ,
+    atomicity: InvAtomicity,
+) -> Expr {
     let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&fn_inv_name(atomicity)));
     let boxed_inner = try_box(ctx, inner.clone(), typ).unwrap_or(inner);
 

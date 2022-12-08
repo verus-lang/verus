@@ -5,8 +5,8 @@
 /// 3) Also compute names for abstract datatype sorts for the module,
 ///    since we're traversing the module-visible datatypes anyway.
 use crate::ast::{
-    CallTarget, Datatype, Expr, ExprX, Fun, Function, FunctionKind, Ident, Krate,
-    KrateX, Mode, Path, Stmt, Typ, TypX,
+    CallTarget, Datatype, Expr, ExprX, Fun, Function, FunctionKind, Ident, Krate, KrateX, Mode,
+    Path, Stmt, Typ, TypX,
 };
 use crate::ast_util::{is_visible_to, is_visible_to_of_owner};
 use crate::datatype_to_air::is_datatype_transparent;
