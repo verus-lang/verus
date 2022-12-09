@@ -471,35 +471,34 @@ tokenized_state_machine!{FifoQueue<T> {
 }}
 
 // ANCHOR: impl_queue_struct
+struct_decl_with_invariants!{
+    struct Queue<T> {
+        buffer: Vec<PCell<T>>,
+        head: AtomicU64<_, FifoQueue::head<T>, _>,
+        tail: AtomicU64<_, FifoQueue::tail<T>, _>,
 
-struct Queue<T> {
-    buffer: Vec<PCell<T>>,
-    head: AtomicU64<FifoQueue::head<T>>,
-    tail: AtomicU64<FifoQueue::tail<T>>,
-
-    #[proof] instance: FifoQueue::Instance<T>,
-}
-
-verus!{
-impl<T> Queue<T> {
-    pub closed spec fn wf(&self) -> bool {
-        // The Cell IDs in the instance protocol match the cell IDs in the actual vector:
-        &&& self.instance.backing_cells().len() == self.buffer@.len()
-        &&& (forall|i: int| 0 <= i && i < self.buffer@.len() as int ==>
-            self.instance.backing_cells().index(i) ===
-                self.buffer@.index(i).id())
-
-        // HeadTailTokens are well-formed:
-        &&& self.head.has_inv(|v, g|
-            equal(g@.instance, self.instance)
-            && g@.value == v as int
-        )
-        &&& self.tail.has_inv(|v, g|
-            equal(g@.instance, self.instance)
-            && g@.value == v as int
-        )
+        #[proof] instance: FifoQueue::Instance<T>,
     }
-}
+
+    pub closed spec fn wf(&self) -> bool {
+        predicate {
+            // The Cell IDs in the instance protocol match the cell IDs in the actual vector:
+            &&& self.instance.backing_cells().len() == self.buffer@.len()
+            &&& (forall|i: int| 0 <= i && i < self.buffer@.len() as int ==>
+                self.instance.backing_cells().index(i) ===
+                    self.buffer@.index(i).id())
+        }
+
+        invariant on head with (instance) is (v: u64, g: FifoQueue::head<T>) {
+            &&& g@.instance === instance
+            &&& g@.value == v as int
+        }
+
+        invariant on tail with (instance) is (v: u64, g: FifoQueue::tail<T>) {
+            &&& g@.instance === instance
+            &&& g@.value == v as int
+        }
+    }
 }
 // ANCHOR_END: impl_queue_struct
 
@@ -593,10 +592,8 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
         = FifoQueue::Instance::initialize(backing_cells_ids, perms, perms);
 
     // Initialize atomics
-    let head_atomic = AtomicU64::new(0, head_token,
-        |v, g| equal(g.view().instance, instance) && g.view().value == v as int);
-    let tail_atomic = AtomicU64::new(0, tail_token,
-        |v, g| equal(g.view().instance, instance) && g.view().value == v as int);
+    let head_atomic = AtomicU64::new(instance, 0, head_token);
+    let tail_atomic = AtomicU64::new(instance, 0, tail_token);
 
     // Initialize the queue
     let queue = Queue::<T> {

@@ -92,18 +92,20 @@ tokenized_state_machine!{
     }
 }
 
-pub struct Global {
-    pub atomic: AtomicU32<X::counter>,
-    #[proof] pub instance: X::Instance,
-}
+struct_with_invariants!{
+    pub struct Global {
+        pub atomic: AtomicU32<_, X::counter, _>,
+        #[proof] pub instance: X::Instance,
+    }
 
-impl Global {
-    #[spec]
-    pub fn wf(self) -> bool {
-        self.atomic.has_inv(|v, g|
-            equal(g.view(), X::token![self.instance => counter => v as int])
-        )
-        && self.instance.num_threads() < 0x100000000
+    spec fn wf(&self) -> bool {
+        invariant on atomic with (instance) is (v: u32, g: X::counter) {
+            g@ === X::token![instance => counter => v as int]
+        }
+
+        predicate {
+            self.instance.num_threads() < 0x100000000
+        }
     }
 }
 
@@ -159,9 +161,7 @@ fn do_count(num_threads: u32) {
 
     // Initialize the counter
 
-    let atomic = AtomicU32::new(0, counter_token, |v, g| {
-        equal(g.view().instance, instance) && equal(g.view().value, v as int)
-    });
+    let atomic = AtomicU32::new(instance, 0, counter_token);
 
     let global = Global { atomic, instance: instance.clone() };
     let global_arc = Arc::new(global);

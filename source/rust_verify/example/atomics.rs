@@ -1,22 +1,35 @@
-#[allow(unused_imports)]
+#![allow(unused_imports)]
 use builtin::*;
+use builtin_macros::*;
 mod pervasive;
 use pervasive::*;
 use crate::pervasive::{atomic_ghost::*};
 use crate::pervasive::option::*;
 use crate::pervasive::result::*;
 
+struct_with_invariants!{
+    struct Lock<T> {
+        field: AtomicBool<_, Option<T>, _>,
+    }
+
+    spec fn well_formed(&self) -> bool {
+        invariant on field with () is (b: bool, t: Option<T>) {
+            b === t.is_Some()
+        }
+    }
+}
+
 #[verifier(returns(proof))]
-pub fn take<T>(atomic: &AtomicBool<Option<T>>) -> T {
-    requires(atomic.has_inv(|v, g| v == g.is_Some()));
+fn take<T>(lock: &Lock<T>) -> T {
+    requires(lock.well_formed());
 
     loop {
-        invariant(atomic.has_inv(|v, g| v == g.is_Some()));
+        invariant(lock.well_formed());
 
         #[proof] let ghost_value: Option<T>;
 
         let result = atomic_with_ghost!(
-            atomic => compare_exchange(true, false);
+            &lock.field => compare_exchange(true, false);
             update prev -> next;
             ghost g => {
                 if prev == true {
@@ -37,8 +50,15 @@ pub fn take<T>(atomic: &AtomicBool<Option<T>>) -> T {
     }
 }
 
+struct VEqualG { }
+impl AtomicInvariantPredicate<(), u64, u64> for VEqualG {
+    #[spec] fn atomic_inv(k: (), v: u64, g: u64) -> bool {
+        v == g
+    }
+}
+
 pub fn main() {
-    let ato = AtomicU64::<u64>::new(10, 10, |v, g| v == g);
+    let ato = AtomicU64::<(), u64, VEqualG>::new((), 10, 10);
 
     // one macro to rule them all, with operation specified in the token stream?
 
