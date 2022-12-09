@@ -20,9 +20,8 @@ use crate::{err_unless, unsupported_err, unsupported_err_unless};
 
 use rustc_ast::IsAuto;
 use rustc_hir::{
-    AssocItemKind, ForeignItem, ForeignItemId, ForeignItemKind, ImplItemKind, ImplicitSelfKind,
-    Item, ItemId, ItemKind, OwnerNode, QPath, TraitFn, TraitItem, TraitItemKind, TraitRef,
-    Unsafety,
+    AssocItemKind, ForeignItem, ForeignItemId, ForeignItemKind, ImplItemKind, Item, ItemId,
+    ItemKind, OwnerNode, QPath, TraitFn, TraitItem, TraitItemKind, TraitRef, Unsafety,
 };
 
 use std::collections::HashMap;
@@ -226,7 +225,7 @@ fn check_item<'tcx>(
 
             for impl_item_ref in impll.items {
                 match impl_item_ref.kind {
-                    AssocItemKind::Fn { has_self } => {
+                    AssocItemKind::Fn { has_self: true | false } => {
                         let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
                         let mut impl_item_visibility =
                             mk_visibility(&Some(module_path.clone()), &impl_item.vis, true);
@@ -281,11 +280,6 @@ fn check_item<'tcx>(
                                     let kind = if let Some((trait_path, trait_typ_args)) =
                                         trait_path_typ_args.clone()
                                     {
-                                        unsupported_err_unless!(
-                                            has_self,
-                                            sig.span,
-                                            "method without self"
-                                        );
                                         impl_item_visibility = mk_visibility(
                                             &Some(module_path.clone()),
                                             &impl_item.vis,
@@ -394,9 +388,6 @@ fn check_item<'tcx>(
                             }
                             TraitFn::Provided(body_id) => body_id,
                         };
-                        if let ImplicitSelfKind::None = sig.decl.implicit_self {
-                            unsupported_err!(*span, "trait function must have a self argument")
-                        }
                         let attrs = ctxt.tcx.hir().attrs(trait_item.hir_id());
                         let fun = check_item_fn(
                             ctxt,
