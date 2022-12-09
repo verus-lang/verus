@@ -109,7 +109,7 @@ pub trait InvariantPredicate<K, V> {
 /// The constant and namespace are specified at construction time ([`AtomicInvariant::new`]).
 /// These values are fixed for the lifetime of the `AtomicInvariant` object.
 /// To open the invariant and access the stored object `V`,
-/// use the macro [`open_local_invariant!`].
+/// use the macro [`open_atomic_invariant!`].
 ///
 /// The `AtomicInvariant` API is an instance of the ["invariant" method in Verus's general philosophy on interior mutability](https://verus-lang.github.io/verus/guide/interior_mutability.html).
 ///
@@ -263,6 +263,49 @@ pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
     unimplemented!();
 }
 
+/// Macro used to temporarily "open" an [`AtomicInvariant`] object, obtaining the stored
+/// value within.
+///
+/// ### Usage
+///
+/// The form of the macro looks like,
+///
+/// ```rust
+/// open_atomic_invariant($inv => $id => {
+///     // Inner scope
+/// });
+/// ```
+///
+/// This operation is very similar to [`open_local_invariant!`], so we refer to its
+/// documentation for the basics. There is only one difference, besides
+/// the fact that `$inv` should be an [`&AtomicInvariant`](AtomicInvariant)
+/// rather than a [`&LocalInvariant`](LocalInvariant).
+/// The difference is that `open_atomic_invariant!` has an additional _atomicity constraint_:
+///
+///  * **Atomicity constraint**: The code body of an `open_atomic_invariant!` block
+///    cannot contain any `exec`-mode code with the exception of a _single_ atomic operation.
+///
+/// (Of course, the code block can still contain an arbitrary amount of ghost code.)
+/// 
+/// The atomicity constraint is needed because an `AtomicInvariant` must be thread-safe;
+/// that is, it can be shared across threads. In order for the ghost state to be shared
+/// safely, it must be restored after each atomic operation.
+///
+/// The atomic operations may be found in the [`PAtomic`](crate::pervasive::atomic) library.
+/// The user can also mark their own functions as "atomic operations" using
+/// `#[verifier(atomic)]`; however, this is not useful for very much other than defining
+/// wrappers around the existing atomic operations from [`PAtomic`](crate::pervasive::atomic).
+/// Note that reading and writing through a [`PCell`](crate::pervasive::cell::PCell)
+/// or a [`PPtr`](crate::pervasive::ptr::PPtr) are _not_ atomic operations.
+///
+/// **Note:** Rather than using `open_atomic_invariant!` directly, we generally recommend
+/// using the [`atomic_ghost` APIs](atomic_ghost).
+///
+/// ### Example
+///
+/// TODO fill this in
+
+
 #[macro_export]
 macro_rules! open_atomic_invariant {
     ($eexpr:expr => $iident:ident => $bblock:block) => {
@@ -273,6 +316,95 @@ macro_rules! open_atomic_invariant {
         }
     }
 }
+
+/// Macro used to temporarily "open" a [`LocalInvariant`] object, obtaining the stored
+/// value within.
+///
+/// ### Usage
+///
+/// The form of the macro looks like,
+///
+/// ```rust
+/// open_local_invariant($inv => $id => {
+///     // Inner scope
+/// });
+/// ```
+/// 
+/// The operation of opening an invariant is a ghost one; however, the inner code block
+/// may contain arbitrary `exec`-mode code. The invariant remains "open" for the duration
+/// of the inner code block, and it is closed again of the end of the block.
+///
+/// The `$inv` parameter should be an expression of type `&LocalInvariant<K, V, Pred>`,
+/// the invariant object to be opened. The `$id` is an identifier which is bound within
+/// the code block as a `mut` variable of type `V`. This gives the user ownership over
+/// the `V` value, which they may manipulate freely within the code block. At the end
+/// of the code block, the variable `$id` is consumed.
+///
+/// The obtained object `v: V`, will satisfy the `LocalInvariant`'s invariant predicate
+/// [`$inv.inv(v)`](LocalInvariant::inv). Furthermore, the user must prove that this
+/// invariant still holds at the end. In other words, the macro usage is
+/// roughly equivalent to the following:
+///
+/// ```rust
+/// {
+///     let $id: V = /* an arbitrary value */;
+///     assume($inv.inv($id));
+///     /* user code block here */
+///     assert($inv.inv($id));
+///     consume($id);
+/// }
+/// ```
+///
+/// ### Avoiding Reentrancy
+///
+/// Verus adds additional checks to ensure that an invariant is never opened
+/// more than once at the same time. For example, suppose that you attempt to nest
+/// the use of `open_invariant`, supplying the same argument `inv` to each:
+///
+/// ```rust
+/// open_local_invariant(inv => id1 => {
+///     open_local_invariant(inv => id2 => {
+///     });
+/// });
+/// ```
+///
+/// In this situation, Verus would produce an error:
+///
+/// ```
+/// error: possible invariant collision
+///   |
+///   |   open_atomic_invariant!(&inv => id1 => {
+///   |                           ^ this invariant
+///   |     open_atomic_invariant!(&inv => id2 => {
+///   |                             ^ might be the same as this invariant
+/// ```
+///
+/// When generating these conditions, Verus compares invariants via their
+/// [`namespace()`](LocalInvariant::namespace) values.
+/// An invariant's namespace (represented simply as an integer)
+/// is specified upon the call to [`LocalInvariant::new`].
+/// If you have the need to open multiple invariants at once, make sure to given
+/// them different namespaces.
+///
+/// So that Verus can ensure that there are no nested invariant accesses across function
+/// boundaries, every `proof` and `exec` function has, as part of its specification,
+/// the set of invariant namespaces that it might open.
+///
+/// UNDER CONSTRUCTION: right now the forms of these specifications are somewhat limited
+/// and we expect to expand them.
+///
+/// The invariant set of a function can be specified by putting either
+/// `opens_invariants_none();` or `opens_invariants_any();` as the first line of the body.
+/// The default for an `exec`-mode function is to open any, while the default
+/// for a `proof`-mode function is to open none.
+///
+/// ### Example
+///
+/// TODO fill this in
+///
+/// ### More Examples
+///
+/// TODO fill this in 
 
 #[macro_export]
 macro_rules! open_local_invariant {

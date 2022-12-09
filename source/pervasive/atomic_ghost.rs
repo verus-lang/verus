@@ -24,7 +24,12 @@ impl<V> InvariantPredicate<FnSpec<(V,), bool>, V> for ArbitraryFnPredicate {
 
 macro_rules! declare_atomic_type {
     ($at_ident:ident, $patomic_ty:ident, $perm_ty:ty, $value_ty: ty) => {
-        /// Sequentially-consistent atomic memory location with associated ghost state.
+        #[doc = concat!(
+            "Sequentially-consistent atomic memory location storing a `",
+            stringify!($value_ty),
+            "` and associated ghost state."
+        )]
+        ///
         /// See the [`atomic_with_ghost!`] documentation for usage information.
 
         pub struct $at_ident<#[verifier(maybe_negative)] G> {
