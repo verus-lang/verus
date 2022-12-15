@@ -2,6 +2,7 @@
 use builtin::*;
 use builtin_macros::*;
 use crate::pervasive::seq::*;
+use crate::pervasive::vec::*;
 
 verus!{
 
@@ -25,6 +26,21 @@ pub exec fn slice_index_get<T>(slice: &[T], i: usize) -> (out: &T)
     ensures *out === slice@.index(i as int),
 {
     &slice[i]
+}
+
+#[verifier(external_body)]
+pub exec fn slice_to_vec<T: Copy>(slice: &[T]) -> (out: Vec<T>)
+    ensures out@ === slice@
+{
+    Vec { vec: slice.to_vec() }
+}
+
+#[verifier(external_body)]
+pub exec fn slice_subrange<T, 'a>(slice: &'a [T], i: usize, j: usize) -> (out: &'a [T])
+    requires 0 <= i <= j <= slice@.len()
+    ensures out@ === slice@.subrange(i as int, j as int)
+{
+    &slice[i .. j]
 }
 
 }
