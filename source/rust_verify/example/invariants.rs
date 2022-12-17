@@ -5,11 +5,21 @@ mod pervasive;
 use pervasive::*;
 use crate::pervasive::{invariant::*};
 
+verus!{
+struct ModPredicate { }
+impl InvariantPredicate<int, u32> for ModPredicate {
+    spec fn inv(k: int, v: u32) -> bool {
+        v as int % 2 == k
+    }
+}
+}
+
 pub fn main() {
   #[proof] let u: u32 = 5;
 
-  #[proof] let i = AtomicInvariant::new(u,
-      verus_proof_expr!(|u: u32| u % 2 == 1),
+  #[proof] let i: AtomicInvariant<int, u32, ModPredicate> = AtomicInvariant::new(
+      verus_proof_expr!(1),
+      u,
       verus_proof_expr!(0));
 
   open_atomic_invariant!(&i => inner => {
@@ -18,8 +28,9 @@ pub fn main() {
     }
   });
 
-  #[proof] let j = AtomicInvariant::new(7,
-      verus_proof_expr!(|u: u32| u % 2 == 1),
+  #[proof] let j: AtomicInvariant<int, u32, ModPredicate> = AtomicInvariant::new(
+      verus_proof_expr!(1),
+      7,
       verus_proof_expr!(1));
 
   open_atomic_invariant!(&i => inner_i => {

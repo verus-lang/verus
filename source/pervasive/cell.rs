@@ -232,10 +232,21 @@ impl<V> PCell<V> {
     }
 }
 
+struct InvCellPred { }
+impl<T> InvariantPredicate<(Set<T>, PCell<T>), PermissionOpt<T>> for InvCellPred {
+    spec fn inv(k: (Set<T>, PCell<T>), perm: PermissionOpt<T>) -> bool {
+        let (possible_values, pcell) = k; {
+          &&& perm@.value.is_Some()
+          &&& possible_values.contains(perm@.value.get_Some_0())
+          &&& pcell.id() === perm@.pcell
+        }
+    }
+}
+
 pub struct InvCell<#[verifier(maybe_negative)] T> {
     possible_values: Ghost<Set<T>>,
     pcell: PCell<T>,
-    perm_inv: Tracked<LocalInvariant<PermissionOpt<T>>>,
+    perm_inv: Tracked<LocalInvariant<(Set<T>, PCell<T>), PermissionOpt<T>, InvCellPred>>,
 }
 
 }
@@ -243,11 +254,7 @@ pub struct InvCell<#[verifier(maybe_negative)] T> {
 impl<T> InvCell<T> {
     verus!{
     pub closed spec fn wf(&self) -> bool {
-        &&& (forall |perm| self.perm_inv@.inv(perm) <==> {
-            &&& perm@.value.is_Some()
-            &&& self.possible_values@.contains(perm@.value.get_Some_0())
-            &&& self.pcell.id() === perm@.pcell
-        })
+        &&& self.perm_inv@.constant() === (self.possible_values@, self.pcell)
     }
 
     pub closed spec fn inv(&self, val: T) -> bool {
@@ -260,12 +267,9 @@ impl<T> InvCell<T> {
     {
         let (pcell, perm) = PCell::new(val);
         let possible_values = ghost(Set::new(f@));
-        let perm_inv = tracked(LocalInvariant::new(perm.get(),
-            |perm: cell::PermissionOpt<T>| {
-                &&& perm@.value.is_Some()
-                &&& possible_values@.contains(perm@.value.get_Some_0())
-                &&& pcell.id() === perm@.pcell
-            },
+        let perm_inv = tracked(LocalInvariant::new(
+            (possible_values@, pcell),
+            perm.get(),
             0));
         InvCell {
             possible_values,
