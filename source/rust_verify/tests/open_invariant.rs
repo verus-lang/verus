@@ -288,8 +288,7 @@ test_both! {
             });
           }
         }
-
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature")
+    } => Err(err) => assert_vir_error_msg(err, "invariant block might exit early")
 }
 
 test_both! {
@@ -304,9 +303,7 @@ test_both! {
             });
           }
         }
-
-    // TODO should be "invariant block might exit early" once break statements are implemented
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature")
+    } => Err(err) => assert_vir_error_msg(err, "invariant block might exit early")
 }
 
 test_both! {
@@ -336,7 +333,7 @@ test_both! {
           }
         }
 
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature")
+    } => Err(err) => assert_vir_error_msg(err, "invariant block might exit early")
 }
 
 test_both! {
@@ -353,7 +350,7 @@ test_both! {
           }
         }
 
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature")
+    } => Err(err) => assert_vir_error_msg(err, "invariant block might exit early")
 }
 
 // Check that we can't open a AtomicInvariant with open_local_invariant and vice-versa
