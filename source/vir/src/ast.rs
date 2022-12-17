@@ -8,14 +8,14 @@
 use crate::def::Spanned;
 use air::ast::Span;
 pub use air::ast::{Binder, Binders};
-use air::errors::Error;
+use air::messages::Message;
 use num_bigint::BigInt;
 use std::fmt::Display;
 use std::sync::Arc;
 use vir_macros::{to_node_impl, ToDebugSNode};
 
 /// Result<T, VirErr> is used when an error might need to be reported to the user
-pub type VirErr = Error;
+pub type VirErr = Message;
 
 pub enum VirErrAs {
     Warning(VirErr),

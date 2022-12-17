@@ -413,7 +413,11 @@ fn simplify_function(
     );
 
     // To simplify the AIR/SMT encoding, add a dummy argument to any function with 0 arguments
-    if functionx.typ_bounds.len() == 0 && functionx.params.len() == 0 && !functionx.is_const {
+    if functionx.typ_bounds.len() == 0
+        && functionx.params.len() == 0
+        && !functionx.is_const
+        && !functionx.attrs.broadcast_forall
+    {
         let paramx = crate::ast::ParamX {
             name: Arc::new(crate::def::DUMMY_PARAM.to_string()),
             typ: Arc::new(TypX::Int(IntRange::Int)),

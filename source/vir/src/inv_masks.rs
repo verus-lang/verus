@@ -1,6 +1,6 @@
 use air::ast::{Expr, Span, Stmt, StmtX};
 use air::ast_util::{mk_eq, mk_false, mk_not, mk_or};
-use air::errors::{error, error_with_label};
+use air::messages::{error, error_with_label};
 use std::sync::Arc;
 
 /// This is where we handle VCs to ensure that the same invariant is not opened

@@ -8,6 +8,7 @@ use crate::pervasive::*;
 use crate::pervasive::seq::*;
 extern crate alloc;
 use alloc::vec;
+use crate::pervasive::slice::*;
 
 verus! {
 
@@ -91,6 +92,13 @@ impl<A> Vec<A> {
             l == self.len(),
     {
         self.vec.len()
+    }
+
+    #[verifier(external_body)]
+    pub fn as_slice(&self) -> (slice: &[A])
+        ensures slice@ === self@
+    {
+        self.vec.as_slice()
     }
 }
 

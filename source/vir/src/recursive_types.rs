@@ -4,9 +4,7 @@ use crate::context::GlobalCtx;
 use crate::recursion::Node;
 use crate::scc::Graph;
 use air::ast::Span;
-use air::errors::ErrorLabel;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 // To enable decreases clauses on datatypes while treating the datatypes as inhabited in specs,
 // we need to make sure that the datatypes have base cases, not just inductive cases.
@@ -273,15 +271,17 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
 }
 
 fn scc_error(krate: &Krate, head: &Node, nodes: &Vec<Node>) -> VirErr {
-    let mut labels: Vec<ErrorLabel> = Vec::new();
-    let mut spans: Vec<Span> = Vec::new();
+    let msg =
+        "found a cyclic self-reference in a trait definition, which may result in nontermination"
+            .to_string();
+    let mut err = air::messages::error_bare(msg);
     for node in nodes {
         let mut push = |node: &Node, span: Span| {
             if node == head {
-                spans.push(span);
+                err = err.primary_span(&span);
             } else {
                 let msg = "may be part of cycle".to_string();
-                labels.push(ErrorLabel { span, msg });
+                err = err.secondary_label(&span, msg);
             }
         };
         match node {
@@ -305,10 +305,7 @@ fn scc_error(krate: &Krate, head: &Node, nodes: &Vec<Node>) -> VirErr {
             }
         }
     }
-    let msg =
-        "found a cyclic self-reference in a trait definition, which may result in nontermination"
-            .to_string();
-    Arc::new(air::errors::ErrorX { msg, spans, labels })
+    err
 }
 
 // Check for cycles in traits

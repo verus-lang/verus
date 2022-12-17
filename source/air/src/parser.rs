@@ -4,8 +4,7 @@ use crate::ast::{
     Triggers, Typ, TypX, UnaryOp,
 };
 use crate::def::mk_skolem_id;
-use crate::errors::{error_from_labels, error_from_spans};
-use crate::errors::{ErrorLabel, ErrorLabels};
+use crate::messages::{error_from_labels, error_from_spans, MessageLabel, MessageLabels};
 use crate::model::{ModelDef, ModelDefX, ModelDefs};
 use crate::printer::node_to_string;
 use sise::Node;
@@ -85,15 +84,15 @@ impl Parser {
         }
     }
 
-    fn nodes_to_labels(&self, nodes: &Vec<Node>) -> Result<ErrorLabels, String> {
-        let mut labels: Vec<ErrorLabel> = Vec::new();
+    fn nodes_to_labels(&self, nodes: &Vec<Node>) -> Result<MessageLabels, String> {
+        let mut labels: Vec<MessageLabel> = Vec::new();
         for node in nodes {
             match node {
                 Node::Atom(label) if label.starts_with("\"") && label.ends_with("\"") => {
                     let raw_span = Arc::new(());
                     let as_string = label[1..label.len() - 1].to_string();
                     let span = Span { raw_span, as_string: as_string.clone() };
-                    let label = ErrorLabel { span, msg: as_string };
+                    let label = MessageLabel { span, note: as_string };
                     labels.push(label);
                 }
                 _ => {

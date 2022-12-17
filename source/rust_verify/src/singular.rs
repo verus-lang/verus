@@ -1,6 +1,6 @@
 use air::ast::{BinaryOp, Command, CommandX, Constant, Expr, ExprX, Ident, MultiOp, Query};
 use air::context::{QueryContext, ValidityResult};
-use air::errors::Error;
+use air::messages::Message;
 use air::printer::Printer;
 use air::singular_manager::SingularManager;
 use sise::Node;
@@ -177,9 +177,9 @@ pub(crate) fn expr_to_singular(
 
 pub fn singular_printer(
     vars: &Vec<Ident>,
-    req_exprs: &Vec<(Expr, Error)>,
-    ens_expr: &(Expr, Error),
-) -> Result<String, Error> {
+    req_exprs: &Vec<(Expr, Message)>,
+    ens_expr: &(Expr, Message),
+) -> Result<String, Message> {
     let mut tmp_count: u32 = 0; // count the number of required tmp vars
     let mut vars2: Vec<String> = vec![];
     let mut node_map: HashMap<Node, Ident> = HashMap::new(); // for uninterpreted functions and mod translation
@@ -380,7 +380,7 @@ pub fn check_singular_valid(
     } else {
         ValidityResult::Invalid(
             None,
-            air::errors::error(
+            air::messages::error(
                 format!(
                     "postcondition not satisfied: Ensures polynomial failed to be reduced to zero, reduced polynomial is {}\n generated singular query: {} ",
                     res[0].as_str(),

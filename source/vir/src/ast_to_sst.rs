@@ -18,14 +18,14 @@ use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::util::{vec_map, vec_map_result};
 use crate::visitor::VisitorControlFlow;
 use air::ast::{Binder, BinderX, Binders, Span};
-use air::errors::error_with_label;
+use air::messages::{error_with_label, Diagnostics};
 use air::scope_map::ScopeMap;
 use num_bigint::BigInt;
 use num_traits::identities::Zero;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
-pub(crate) struct State {
+pub(crate) struct State<'a> {
     // View exec/proof code as spec
     // (used for is_const functions, which are viewable both as spec and exec)
     pub(crate) view_as_spec: bool,
@@ -46,6 +46,8 @@ pub(crate) struct State {
     disable_recommends: u64,
     // Mapping from a function's name to the SST version of its body.  Used by the interpreter.
     pub fun_ssts: SstMap,
+    // Diagnostic output
+    pub diagnostics: &'a (dyn Diagnostics + 'a),
 }
 
 #[derive(Clone)]
@@ -91,8 +93,8 @@ macro_rules! unwrap_or_return_never {
     };
 }
 
-impl State {
-    pub fn new() -> Self {
+impl<'a> State<'a> {
+    pub fn new(diagnostics: &'a impl Diagnostics) -> Self {
         let mut rename_map = ScopeMap::new();
         rename_map.push_scope(true);
         State {
@@ -104,6 +106,7 @@ impl State {
             dont_rename: HashSet::new(),
             disable_recommends: 0,
             fun_ssts: crate::update_cell::UpdateCell::new(HashMap::new()),
+            diagnostics,
         }
     }
 
@@ -271,6 +274,7 @@ impl State {
     pub(crate) fn finalize_stm(
         &self,
         ctx: &Ctx,
+        diagnostics: &impl Diagnostics,
         fun_ssts: &SstMap,
         stm: &Stm,
         ensures: &Exprs,
@@ -279,7 +283,15 @@ impl State {
     ) -> Result<Stm, VirErr> {
         let stm = map_stm_exp_visitor(stm, &|exp| self.finalize_exp(ctx, fun_ssts, exp))?;
         if ctx.expand_flag {
-            crate::split_expression::all_split_exp(ctx, fun_ssts, &stm, ensures, ens_pars, dest)
+            crate::split_expression::all_split_exp(
+                ctx,
+                diagnostics,
+                fun_ssts,
+                &stm,
+                ensures,
+                ens_pars,
+                dest,
+            )
         } else {
             Ok(stm)
         }
@@ -531,12 +543,13 @@ pub(crate) fn check_pure_expr_bind(
 
 pub(crate) fn expr_to_decls_exp(
     ctx: &Ctx,
+    diagnostics: &impl Diagnostics,
     fun_ssts: &SstMap,
     view_as_spec: bool,
     params: &Pars,
     expr: &Expr,
 ) -> Result<(Vec<LocalDecl>, Exp), VirErr> {
-    let mut state = State::new();
+    let mut state = State::new(diagnostics);
     state.view_as_spec = view_as_spec;
     state.declare_params(params);
     let exp = expr_to_pure_exp(ctx, &mut state, expr)?;
@@ -547,11 +560,12 @@ pub(crate) fn expr_to_decls_exp(
 
 pub(crate) fn expr_to_bind_decls_exp(
     ctx: &Ctx,
+    diagnostics: &impl Diagnostics,
     fun_ssts: &SstMap,
     params: &Pars,
     expr: &Expr,
 ) -> Result<Exp, VirErr> {
-    let mut state = State::new();
+    let mut state = State::new(diagnostics);
     for param in params.iter() {
         let id = state.declare_new_var(&param.x.name, &param.x.typ, false, false);
         state.dont_rename.insert(id);
@@ -564,20 +578,22 @@ pub(crate) fn expr_to_bind_decls_exp(
 
 pub(crate) fn expr_to_exp(
     ctx: &Ctx,
+    diagnostics: &impl Diagnostics,
     fun_ssts: &SstMap,
     params: &Pars,
     expr: &Expr,
 ) -> Result<Exp, VirErr> {
-    Ok(expr_to_decls_exp(ctx, fun_ssts, false, params, expr)?.1)
+    Ok(expr_to_decls_exp(ctx, diagnostics, fun_ssts, false, params, expr)?.1)
 }
 
 pub(crate) fn expr_to_exp_as_spec(
     ctx: &Ctx,
+    diagnostics: &impl Diagnostics,
     fun_ssts: &SstMap,
     params: &Pars,
     expr: &Expr,
 ) -> Result<Exp, VirErr> {
-    Ok(expr_to_decls_exp(ctx, fun_ssts, true, params, expr)?.1)
+    Ok(expr_to_decls_exp(ctx, diagnostics, fun_ssts, true, params, expr)?.1)
 }
 
 /// Convert an expr to (Vec<Stm>, Exp).
@@ -714,7 +730,7 @@ fn stm_call(
     let fun = get_function(ctx, span, &name)?;
     let mut stms: Vec<Stm> = Vec::new();
     if ctx.expand_flag && crate::split_expression::need_split_expression(ctx, span) {
-        let error = air::errors::error(crate::def::SPLIT_PRE_FAILURE.to_string(), span);
+        let error = air::messages::error(crate::def::SPLIT_PRE_FAILURE.to_string(), span);
         let call = StmX::Call {
             fun: name.clone(),
             mode: fun.x.mode,
@@ -1012,7 +1028,7 @@ fn expr_to_stm_opt(
                 let unary = UnaryOpr::HasType(expr.typ.clone());
                 let has_type = ExpX::UnaryOpr(unary, exp.clone());
                 let has_type = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), has_type);
-                let error = air::errors::error(
+                let error = air::messages::error(
                     "recommendation not met: value may be out of range of the target type (use `#[verifier(truncate)]` on the cast to silence this warning)",
                     &expr.span,
                 );
@@ -1106,7 +1122,7 @@ fn expr_to_stm_opt(
                                         (ne, "possible division by zero")
                                     }
                                 };
-                                let error = air::errors::error(msg, &expr.span);
+                                let error = air::messages::error(msg, &expr.span);
                                 let assert = StmX::Assert(Some(error), assert_exp);
                                 let assert = Spanned::new(expr.span.clone(), assert);
                                 stms1.push(assert);
@@ -1353,7 +1369,7 @@ fn expr_to_stm_opt(
                             let assert = Spanned::new(
                                 r.span.clone(),
                                 StmX::Assert(
-                                    Some(air::errors::error(
+                                    Some(air::messages::error(
                                         "requires not satisfied".to_string(),
                                         &r.span.clone(),
                                     )),
@@ -1425,7 +1441,7 @@ fn expr_to_stm_opt(
                         let assert = Spanned::new(
                             r.span.clone(),
                             StmX::Assert(
-                                Some(air::errors::error(
+                                Some(air::messages::error(
                                     "requires not satisfied".to_string(),
                                     &r.span.clone(),
                                 )),
@@ -1460,6 +1476,7 @@ fn expr_to_stm_opt(
             // of any ensures, triggers, etc., that it might provide
             let interp_expr = eval_expr(
                 &state.finalize_exp(ctx, &state.fun_ssts, &expr)?,
+                state.diagnostics,
                 &mut state.fun_ssts,
                 ctx.global.rlimit,
                 ctx.global.arch.min_bits(),

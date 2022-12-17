@@ -111,7 +111,7 @@ macro_rules! unsupported_unless {
 
 /// Basic error, with just a message
 pub fn error<S: Into<String>>(msg: S) -> VirErr {
-    Arc::new(air::errors::ErrorX { msg: msg.into(), spans: vec![], labels: Vec::new() })
+    air::messages::error_bare(msg)
 }
 
 #[allow(dead_code)]

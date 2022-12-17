@@ -1,5 +1,6 @@
 //! Analyzes prover performance of the SMT solver
 
+use crate::messages::{note_bare, Diagnostics};
 use std::io::BufRead;
 use z3tracer::model::QuantCost;
 use z3tracer::{Model, ModelConfig};
@@ -18,7 +19,7 @@ pub struct Profiler {
 
 impl Profiler {
     /// Instantiate a new (singleton) profiler
-    pub fn new() -> Profiler {
+    pub fn new(diagnostics: &impl Diagnostics) -> Profiler {
         let path = PROVER_LOG_FILE;
 
         // Count the number of lines
@@ -36,11 +37,11 @@ impl Profiler {
         model_config.parser_config.ignore_invalid_lines = true;
         model_config.skip_log_consistency_checks = true;
         let mut model = Model::new(model_config);
-        println!("Analyzing prover log...");
+        diagnostics.report(&note_bare("Analyzing prover log..."));
         let _ = model
             .process(Some(path.to_string()), file, line_count)
             .expect("Error processing prover trace");
-        println!("... analysis complete\n");
+        diagnostics.report(&note_bare("... analysis complete\n"));
 
         // Analyze the quantifer costs
         let quant_costs = model.quant_costs();
@@ -62,15 +63,16 @@ impl Profiler {
         self.quantifier_stats.iter().fold(0, |acc, cost| acc + cost.instantiations)
     }
 
-    pub fn print_raw_stats(&self) {
+    pub fn print_raw_stats(&self, diagnostics: &impl Diagnostics) {
         for cost in &self.quantifier_stats {
             let count = cost.instantiations;
-            println!(
-                "Instantiated {} {} times ({}% of the total)",
+            let msg = format!(
+                "Instantiated {} {} times ({}% of the total)\n",
                 cost.quant,
                 count,
                 100 * count / self.total_instantiations()
             );
+            diagnostics.report(&note_bare(msg));
         }
     }
 

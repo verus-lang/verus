@@ -1,5 +1,6 @@
 use crate::ast::CommandX;
 use crate::context::ValidityResult;
+use crate::messages::Reporter;
 #[allow(unused_imports)]
 use crate::parser::Parser;
 #[allow(unused_imports)]
@@ -9,12 +10,13 @@ use sise::Node;
 
 #[allow(dead_code)]
 fn run_nodes_as_test(should_typecheck: bool, should_be_valid: bool, nodes: &[Node]) {
+    let reporter = Reporter {};
     let mut air_context = crate::context::Context::new();
     air_context.set_z3_param("air_recommended_options", "true");
     match Parser::new().nodes_to_commands(&nodes) {
         Ok(commands) => {
             for command in commands.iter() {
-                let result = air_context.command(&command, Default::default());
+                let result = air_context.command(&reporter, &command, Default::default());
                 match (&**command, should_typecheck, should_be_valid, result) {
                     (_, false, _, ValidityResult::TypeError(_)) => {}
                     (_, true, _, ValidityResult::TypeError(s)) => {
