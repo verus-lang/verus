@@ -5,8 +5,7 @@ use builtin::*;
 use builtin_macros::*;
 mod pervasive;
 use pervasive::*;
-use crate::pervasive::{invariant::*};
-use crate::pervasive::{atomic::*};
+use crate::pervasive::{atomic_ghost::*};
 use crate::pervasive::{modes::*};
 use crate::pervasive::{thread::*};
 use crate::pervasive::{vec::*};
@@ -93,31 +92,17 @@ tokenized_state_machine!{
     }
 }
 
-#[proof]
-pub struct G {
-    #[proof] pub counter: X::counter,
-    #[proof] pub perm: PermissionU32,
-}
-
-impl G {
-    #[spec]
-    pub fn wf(self, instance: X::Instance, patomic: PAtomicU32) -> bool {
-        equal(self.perm.view().patomic, patomic.id())
-        && equal(self.perm.view().value as int, self.counter.view().value)
-        && equal(self.counter.view().instance, instance)
-    }
-}
-
 pub struct Global {
-    pub atomic: PAtomicU32, // TODO should use atomic_ghost here instead
+    pub atomic: AtomicU32<X::counter>,
     #[proof] pub instance: X::Instance,
-    #[proof] pub inv: AtomicInvariant<G>,
 }
 
 impl Global {
     #[spec]
     pub fn wf(self) -> bool {
-        forall(|g: G| self.inv.inv(g) == g.wf(self.instance, self.atomic))
+        self.atomic.has_inv(|v, g|
+            equal(g.view(), X::token![self.instance => counter => v as int])
+        )
         && self.instance.num_threads() < 0x100000000
     }
 }
@@ -150,16 +135,14 @@ impl Spawnable<Proof<X::stamped_tickets>> for ThreadData {
         let globals = &*globals;
         #[proof] let new_token;
 
-        open_atomic_invariant!(&globals.inv => g => {
-            #[proof] let G { counter: mut c, perm: mut p } = g;
-
-            #[spec] let now_c = c;
-
-            #[proof] new_token = globals.instance.tr_inc(&mut c, token);
-            globals.atomic.fetch_add(&mut p, 1);
-
-            g = G { counter: c, perm: p };
-        });
+        let _ = atomic_with_ghost!(
+            &globals.atomic => fetch_add(1);
+            update prev -> next;
+            returning ret;
+            ghost c => {
+                #[proof] new_token = globals.instance.tr_inc(&mut c, token);
+            }
+        );
 
         Proof(new_token)
     }
@@ -176,14 +159,11 @@ fn do_count(num_threads: u32) {
 
     // Initialize the counter
 
-    let (atomic, Proof(perm_token)) = PAtomicU32::new(0);
+    let atomic = AtomicU32::new(0, counter_token, |v, g| {
+        equal(g.view().instance, instance) && equal(g.view().value, v as int)
+    });
 
-    #[proof] let at_inv: AtomicInvariant<G> = AtomicInvariant::new(
-        G { counter: counter_token, perm: perm_token },
-        |g: G| g.wf(instance, atomic),
-        0);
-
-    let global = Global { atomic, instance: instance.clone(), inv: at_inv };
+    let global = Global { atomic, instance: instance.clone() };
     let global_arc = Arc::new(global);
 
     // ANCHOR: loop_spawn
@@ -249,16 +229,12 @@ fn do_count(num_threads: u32) {
     }
     // ANCHOR_END: loop_join
 
-    let x;
     let global = &*global_arc;
-    open_atomic_invariant!(&global.inv => g => {
-      #[proof] let G { counter: c3, perm: p3 } = g;
-
-      x = global.atomic.load(&p3);
-      instance.finalize(&c3, &stamped_tokens);
-
-      g = G { counter: c3, perm: p3 };
-    });
+    let x = atomic_with_ghost!(&global.atomic => load();
+        ghost c => {
+            instance.finalize(&c, &stamped_tokens);
+        }
+    );
 
     assert(equal(x, num_threads));
 }

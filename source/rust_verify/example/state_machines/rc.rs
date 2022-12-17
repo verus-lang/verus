@@ -223,6 +223,18 @@ impl<S> GhostStuff<S> {
     }
 }
 
+type P<S> = (
+    RefCounter::Instance<ptr::PermissionOpt<InnerRc<S>>>,
+    PCell<u64>,
+);
+struct Pred { }
+impl<S> InvariantPredicate<P<S>, GhostStuff<S>> for Pred {
+    spec fn inv(k: P<S>, v: GhostStuff<S>) -> bool
+    {
+        v.wf(k.0, k.1)
+    }
+}
+
 impl<S> InnerRc<S> {
     spec fn wf(self, cell: PCell<u64>) -> bool {
         self.rc_cell === cell
@@ -233,7 +245,7 @@ impl<S> InnerRc<S> {
 
 struct MyRc<S> {
     #[proof] pub inst: RefCounter::Instance<ptr::PermissionOpt<InnerRc<S>>>,
-    #[proof] pub inv: Duplicable<LocalInvariant<GhostStuff<S>>>,
+    #[proof] pub inv: Duplicable<LocalInvariant<P<S>, GhostStuff<S>, Pred>>,
     #[proof] pub reader: RefCounter::reader<ptr::PermissionOpt<InnerRc<S>>>,
     pub ptr: PPtr<InnerRc<S>>,
 }
@@ -247,8 +259,8 @@ impl<S> MyRc<S> {
         &&& self.reader@.count === 1
         &&& self.reader@.key@.value.is_Some()
         &&& self.inv.wf()
-        &&& (forall |g: GhostStuff<S>| self.inv.view().inv(g) ==
-            g.wf(self.inst, self.reader@.key.view().value.get_Some_0().rc_cell))
+        &&& self.inv.view().constant() ===
+            (self.inst, self.reader@.key.view().value.get_Some_0().rc_cell)
     }
 
     spec fn view(self) -> S {
@@ -275,9 +287,9 @@ impl<S> MyRc<S> {
 
         #[proof] let g = GhostStuff::<S> { rc_perm: rc_perm.get(), rc_token };
 
-        #[proof] let inv = LocalInvariant::new(g,
-            |g: GhostStuff<S>|
-                g.wf(reader.view().instance, reader.view().key.view().value.get_Some_0().rc_cell),
+        #[proof] let inv = LocalInvariant::new(
+            (reader.view().instance, reader.view().key.view().value.get_Some_0().rc_cell),
+            g,
             0);
         #[proof] let inv = Duplicable::new(inv);
 
@@ -377,4 +389,14 @@ impl<S> MyRc<S> {
     }
 }
 
-fn main() { }
+enum Sequence<V> {
+    Nil,
+    Cons(V, MyRc<Sequence<V>>),
+}
+
+fn main() {
+    let nil = MyRc::new(Sequence::Nil);
+    let a5 = MyRc::new(Sequence::Cons(5, nil.clone()));
+    let a7 = MyRc::new(Sequence::Cons(7, nil.clone()));
+    let a67 = MyRc::new(Sequence::Cons(6, a7.clone()));
+}

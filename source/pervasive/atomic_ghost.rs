@@ -1,3 +1,6 @@
+//! Provides sequentially-consistent atomic memory locations with associated ghost state.
+//! See the [`atomic_with_ghost!`] documentation for more information.
+
 #![allow(unused_imports)]
 
 use builtin::*;
@@ -6,11 +9,35 @@ use crate::pervasive::invariant::*;
 use crate::pervasive::atomic::*;
 use crate::pervasive::modes::*;
 
+// TODO replace this with an API based on InvariantPredicate to be consistent with
+// the APIs for AtomicInvariant and LocalInvariant
+
+#[doc(hidden)]
+pub struct ArbitraryFnPredicate { }
+
+impl<V> InvariantPredicate<FnSpec<(V,), bool>, V> for ArbitraryFnPredicate {
+    #[spec] #[verifier(publish)]
+    fn inv(f: FnSpec<(V,), bool>, v: V) -> bool {
+        f(v)
+    }
+}
+
 macro_rules! declare_atomic_type {
     ($at_ident:ident, $patomic_ty:ident, $perm_ty:ty, $value_ty: ty) => {
+        #[doc = concat!(
+            "Sequentially-consistent atomic memory location storing a `",
+            stringify!($value_ty),
+            "` and associated ghost state."
+        )]
+        ///
+        /// See the [`atomic_with_ghost!`] documentation for usage information.
+
         pub struct $at_ident<#[verifier(maybe_negative)] G> {
+            #[doc(hidden)]
             pub patomic: $patomic_ty,
-            #[proof] pub atomic_inv: AtomicInvariant<($perm_ty, G)>,
+
+            #[doc(hidden)]
+            #[proof] pub atomic_inv: AtomicInvariant<FnSpec<(($perm_ty, G),), bool>, ($perm_ty, G), ArbitraryFnPredicate>,
         }
 
         impl<G> $at_ident<G> {
@@ -34,8 +61,9 @@ macro_rules! declare_atomic_type {
 
                 let (patomic, Proof(perm)) = $patomic_ty::new(u);
                 #[proof] let pair = (perm, g);
-                #[proof] let atomic_inv = AtomicInvariant::new(pair,
-                    |p| patomic.id() == p.0.view().patomic && f(p.0.view().value, p.1),
+                #[proof] let atomic_inv = AtomicInvariant::new(
+                    closure_to_fn_spec(|p: ($perm_ty, G)| patomic.id() == p.0.view().patomic && f(p.0.view().value, p.1)),
+                    pair,
                     spec_literal_int("0"));
 
                 $at_ident {
@@ -450,4 +478,3 @@ macro_rules! atomic_with_ghost_update_fetch_sub {
         }
     }
 }
-
