@@ -40,29 +40,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_4 code! {
-        mod M1 { pub trait T1 {} }
-        mod M2 {
-            pub trait T2 {
-                fn f(&self) {
-                    builtin::no_method_body()
-                }
-            }
-        }
-        mod M3 {
-            struct S2<A> {
-                a: A,
-            }
-            impl<A: crate::M1::T1> crate::M2::T2 for S2<A> {
-                // might need to add A: T1 to termination checking before supporting this
-                fn f(&self) {
-                }
-            }
-        }
-    } => Err(err) => assert_vir_error(err)
-}
-
-test_verify_one_file! {
     #[test] test_not_yet_supported_8 code! {
         mod M1 {
             pub trait T<A> {

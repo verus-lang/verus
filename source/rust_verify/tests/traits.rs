@@ -34,23 +34,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_4 verus_code! {
-        trait T1 {}
-        trait T2 {
-            fn f(&self);
-        }
-        struct S2<A> {
-            a: A,
-        }
-        impl<A: T1> T2 for S2<A> {
-            // might need to add A: T1 to termination checking before supporting this
-            fn f(&self) {
-            }
-        }
-    } => Err(err) => assert_vir_error(err)
-}
-
-test_verify_one_file! {
     #[test] test_not_yet_supported_7 verus_code! {
         // might need to add F: Fn(...) to termination checking before supporting this
         struct S<F: Fn(bool) -> bool> {
@@ -1180,4 +1163,66 @@ test_verify_one_file! {
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_impl_trait_bound verus_code! {
+        trait T1 {}
+        trait T2 {
+            fn f(&self);
+        }
+        struct S2<A> {
+            a: A,
+        }
+        impl<A: T1> T2 for S2<A> {
+            fn f(&self) {
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_impl_trait_bound_cycle verus_code! {
+        spec fn g<A: T1>(a: &A) -> bool {
+            true
+        }
+        struct S1 {
+        }
+        trait T1 {
+            fn r(&self) -> bool
+                requires g(&S1{});
+        }
+        impl T1 for S1 {
+            fn r(&self) -> bool {
+                true
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition, which may result in nontermination")
+}
+
+test_verify_one_file! {
+    #[test] test_impl_trait_bound_cycle2 verus_code! {
+        struct S1 {
+        }
+        trait T1 {
+            fn r(&self, s: &S2<S1>) -> bool
+                requires s.f();
+        }
+        impl T1 for S1 {
+            fn r(&self, s: &S2<S1>) -> bool {
+                true
+            }
+        }
+        trait T2 {
+            spec fn f(&self) -> bool;
+        }
+        struct S2<A> {
+            a: A,
+        }
+        impl<A: T1> T2 for S2<A> {
+            spec fn f(&self) -> bool {
+                true
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition, which may result in nontermination")
 }

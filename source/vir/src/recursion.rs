@@ -474,7 +474,7 @@ pub(crate) fn expand_call_graph(
     if let FunctionKind::TraitMethodImpl { trait_path, datatype, .. } = function.x.kind.clone() {
         let t_node = Node::Trait(trait_path.clone());
         let dt_node = Node::DatatypeTraitBound { datatype, trait_path };
-        call_graph.add_edge(t_node, dt_node.clone());
+        call_graph.add_edge(dt_node.clone(), t_node);
         call_graph.add_edge(dt_node, f_node.clone());
     }
 
@@ -482,7 +482,7 @@ pub(crate) fn expand_call_graph(
     for (_, tbound) in function.x.typ_bounds.iter() {
         if let GenericBoundX::Traits(traits) = &**tbound {
             for tr in traits {
-                call_graph.add_edge(Node::Trait(tr.clone()), f_node.clone());
+                call_graph.add_edge(f_node.clone(), Node::Trait(tr.clone()));
             }
         }
     }
@@ -582,7 +582,11 @@ pub(crate) fn expand_call_graph(
 
                 if let FunctionKind::TraitMethodDecl { trait_path } = &function.x.kind {
                     // T --> f2
-                    call_graph.add_edge(Node::Trait(trait_path.clone()), Node::Fun(x.clone()))
+                    call_graph.add_edge(Node::Trait(trait_path.clone()), Node::Fun(x.clone()));
+                    if let Some(callee) = callee {
+                        call_graph
+                            .add_edge(Node::Trait(trait_path.clone()), Node::Fun(callee.clone()));
+                    }
                 }
 
                 // f1 --> f2
