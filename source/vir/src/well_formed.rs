@@ -629,7 +629,7 @@ fn check_function(
                             &expr.span,
                             format!(
                                 "in requires, use `old({})` to refer to the pre-state of an &mut variable",
-                                param.x.name
+                                crate::def::user_local_name(&param.x.name)
                             ),
                         );
                     }
