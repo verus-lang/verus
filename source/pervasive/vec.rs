@@ -8,6 +8,7 @@ use crate::pervasive::*;
 use crate::pervasive::seq::*;
 extern crate alloc;
 use alloc::vec;
+#[allow(unused_imports)]
 use crate::pervasive::slice::*;
 
 verus! {

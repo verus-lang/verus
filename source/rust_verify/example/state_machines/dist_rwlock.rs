@@ -287,33 +287,11 @@ tokenized_state_machine!{
     }
 }
 
-verus!{
-// TODO add support to the struct_with_invariants! macro so we can declare
-// this invariant via the macro
-struct RefCountsAtomicPred<T> { t: T }
-impl<T> AtomicInvariantPredicate<(DistRwLock::Instance<T>, int), u64, DistRwLock::ref_counts<T>>
-    for RefCountsAtomicPred<T>
-{
-    spec fn atomic_inv(
-        k: (DistRwLock::Instance<T>, int),
-        v: u64,
-        g: DistRwLock::ref_counts<T>
-    ) -> bool {
-        let (instance, i) = k;
-        g@ === DistRwLock::token![ instance => ref_counts => i => v as int ]
-    }
-}
-}
-
 struct_with_invariants!{
     struct RwLock<T> {
         #[proof] inst: DistRwLock::Instance<T>,
         exc_locked: AtomicBool<_, DistRwLock::exc_locked<T>, _>,
-        ref_counts: Vec<AtomicU64<
-            (DistRwLock::Instance<T>, int),
-            DistRwLock::ref_counts<T>,
-            RefCountsAtomicPred<T>
-        >>,
+        ref_counts: Vec<AtomicU64<_, DistRwLock::ref_counts<T>, _>>,
     }
 
     spec fn wf(&self) -> bool {
@@ -330,6 +308,14 @@ struct_with_invariants!{
             g@ === DistRwLock::token![ inst => exc_locked => b ]
         }
 
+        invariant on ref_counts with (inst)
+            forall |i: int|
+            where (0 <= i < self.ref_counts@.len())
+            specifically (self.ref_counts@[i])
+            is (v: u64, g: DistRwLock::ref_counts<T>)
+        {
+            g@ === DistRwLock::token![ inst => ref_counts => i => v as int ]
+        }
     }
 }
 
@@ -344,7 +330,7 @@ impl<T> RwLock<T> {
 
         let exc_locked_atomic = AtomicBool::new(inst, false, exc_locked_token);
 
-        let mut v: Vec<AtomicU64<(DistRwLock::Instance<T>, int), DistRwLock::ref_counts<T>, RefCountsAtomicPred<T>>>
+        let mut v: Vec<AtomicU64<(DistRwLock::Instance<T>, int), DistRwLock::ref_counts<T>, _>>
             = Vec::new();
         let mut i: usize = 0;
 
