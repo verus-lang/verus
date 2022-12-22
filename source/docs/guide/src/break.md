@@ -12,25 +12,22 @@ the special value `0xffff_ffff` in case overflow is detected at run-time:
 ```
 
 Another way to exit early from a loop is with a `break` inside the loop body.
-However, `break` changes the meaning of loop invariants slightly.
+However, `break` complicates the specification of a loop slightly.
 For simple `while` loops without a `break`,
-each invariant must be true before and after each loop iteration,
-and Verus also knows that the loop condition (e.g. `idx < n`)
+Verus knows that the loop condition (e.g. `idx < n`)
 must be false after exiting the loop.
 If there is a `break`, though, the loop condition is not necessarily false
 after the loop, because the `break` might cause the loop to exit even when
 the loop condition is true.
 To deal with this, `while` loops with a `break`,
 as well as Rust `loop` expressions (loops with no condition),
-work slightly differently, as shown in the following code:
+must explicitly specify what is true after the loop exit using `ensures` clauses,
+as shown in the following code:
 
 ```rust
 {{#include ../../../rust_verify/example/guide/recursion.rs:loop_break}}
 ```
 
-For `while` with `break` (or for `loop`), each `invariant` must be true before each
-loop iteration, but need not be true on exit.
-Instead, `ensures` clauses are used to indicate what must be true on exit.
 (For convenience, you can also supply `invariant_ensures` clauses,
 in between the `invariant` clauses and `ensures` clauses, that act
 as both `invariant` and `ensures`.)
