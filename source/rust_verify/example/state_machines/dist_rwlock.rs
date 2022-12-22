@@ -288,28 +288,52 @@ tokenized_state_machine!{
 }
 
 verus!{
-
-struct RwLock<T> {
-    #[proof] inst: DistRwLock::Instance<T>,
-    exc_locked: AtomicBool<DistRwLock::exc_locked<T>>,
-    ref_counts: Vec<AtomicU64<DistRwLock::ref_counts<T>>>,
+// TODO add support to the struct_with_invariants! macro so we can declare
+// this invariant via the macro
+struct RefCountsAtomicPred<T> { t: T }
+impl<T> AtomicInvariantPredicate<(DistRwLock::Instance<T>, int), u64, DistRwLock::ref_counts<T>>
+    for RefCountsAtomicPred<T>
+{
+    spec fn atomic_inv(
+        k: (DistRwLock::Instance<T>, int),
+        v: u64,
+        g: DistRwLock::ref_counts<T>
+    ) -> bool {
+        let (instance, i) = k;
+        g@ === DistRwLock::token![ instance => ref_counts => i => v as int ]
+    }
+}
 }
 
+struct_with_invariants!{
+    struct RwLock<T> {
+        #[proof] inst: DistRwLock::Instance<T>,
+        exc_locked: AtomicBool<_, DistRwLock::exc_locked<T>, _>,
+        ref_counts: Vec<AtomicU64<
+            (DistRwLock::Instance<T>, int),
+            DistRwLock::ref_counts<T>,
+            RefCountsAtomicPred<T>
+        >>,
+    }
+
+    spec fn wf(&self) -> bool {
+
+        predicate {
+            &&& self.inst.rc_width() == self.ref_counts.view().len()
+
+            &&& forall |i: int| (0 <= i && i < self.ref_counts.view().len()) ==>
+                self.ref_counts@.index(i).well_formed()
+                && self.ref_counts@.index(i).constant() === (self.inst, i)
+        }
+
+        invariant on exc_locked with (inst) is (b: bool, g: DistRwLock::exc_locked<T>) {
+            g@ === DistRwLock::token![ inst => exc_locked => b ]
+        }
+
+    }
 }
 
 impl<T> RwLock<T> {
-    verus!{
-
-    spec fn wf(&self) -> bool {
-        &&& self.inst.rc_width() == self.ref_counts.view().len()
-        &&& self.exc_locked.has_inv(|b: bool, g: DistRwLock::exc_locked<T>| g@ === DistRwLock::token![ self.inst => exc_locked => b ])
-        &&& forall |i: int| (0 <= i && i < self.ref_counts.view().len()) ==>
-            self.ref_counts@.index(i).has_inv(|r: u64, g: DistRwLock::ref_counts<T>|
-                g@ === DistRwLock::token![ self.inst => ref_counts => i => r ])
-    }
-
-    }
-
     #[verifier(spinoff_prover)] 
     fn new(rc_width: usize, t: T) -> Self {
         requires(0 < rc_width);
@@ -318,11 +342,10 @@ impl<T> RwLock<T> {
         #[proof] let (Trk(inst), Trk(exc_locked_token), Trk(mut ref_counts_tokens), _, _, _, _) =
             DistRwLock::Instance::initialize(rc_width, t, Option::Some(t));
 
-        let exc_locked_atomic = AtomicBool::new(false, exc_locked_token,
-            |b, g| equal(g.view(), DistRwLock::token![ inst => exc_locked => b ])
-        );
+        let exc_locked_atomic = AtomicBool::new(inst, false, exc_locked_token);
 
-        let mut v: Vec<AtomicU64<DistRwLock::ref_counts<T>>> = Vec::new();
+        let mut v: Vec<AtomicU64<(DistRwLock::Instance<T>, int), DistRwLock::ref_counts<T>, RefCountsAtomicPred<T>>>
+            = Vec::new();
         let mut i: usize = 0;
 
         assert_forall_by(|j: int| {
@@ -352,8 +375,8 @@ impl<T> RwLock<T> {
                 i <= rc_width,
                 v.view().len() == i as int,
                 forall(|j: int| 0 <= j && j < i >>=
-                    v.view().index(j).has_inv(|r: u64, g: DistRwLock::ref_counts<T>|
-                        equal(g.view(), DistRwLock::token![ inst => ref_counts => j => r ]))
+                    v.view().index(j).well_formed()
+                      && equal(v.view().index(j).constant(), (inst, j))
                 ),
                 forall(|j: int| with_triggers!(
                     [ref_counts_tokens.dom().contains(j)],[ref_counts_tokens.index(j)] =>
@@ -369,8 +392,7 @@ impl<T> RwLock<T> {
 
             #[proof] let ref_count_token = ref_counts_tokens.tracked_remove(i as int);
 
-            let rc_atomic = AtomicU64::new(0, ref_count_token,
-                |r: u64, g| equal(g.view(), DistRwLock::token![ inst => ref_counts => i => r ]));
+            let rc_atomic = AtomicU64::new((inst, i as int), 0, ref_count_token);
             v.push(rc_atomic);
 
             i = i + 1;
@@ -396,12 +418,12 @@ impl<T> RwLock<T> {
         };
 
         assert(s.inst.rc_width() == s.ref_counts.view().len());
-        assert(s.exc_locked.has_inv(|b: bool, g: DistRwLock::exc_locked<T>|
-            equal(g.view(), DistRwLock::token![ s.inst => exc_locked => b ])));
-        assert(forall(|i: int| { (0 <= i && i < s.ref_counts.view().len()) >>=
-            s.ref_counts.view().index(i).has_inv(|r: u64, g: DistRwLock::ref_counts<T>|
-                equal(g.view(), DistRwLock::token![ s.inst => ref_counts => i => r ]))
-        }));
+        //assert(s.exc_locked.has_inv(|b: bool, g: DistRwLock::exc_locked<T>|
+        //    equal(g.view(), DistRwLock::token![ s.inst => exc_locked => b ])));
+        //assert(forall(|i: int| { (0 <= i && i < s.ref_counts.view().len()) >>=
+        //    s.ref_counts.view().index(i).has_inv(|r: u64, g: DistRwLock::ref_counts<T>|
+        //        equal(g.view(), DistRwLock::token![ s.inst => ref_counts => i => r ]))
+        //}));
 
         s
 

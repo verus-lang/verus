@@ -244,11 +244,15 @@ impl<V> PCell<V> {
     }
 }
 
-struct InvCellPred { }
-impl<T> InvariantPredicate<(Set<T>, PCell<T>), PermData<T>> for InvCellPred {
-    #[spec]
-    fn inv(k: (Set<T>, PCell<T>), perm: PermData<T>) -> bool {
-        let (possible_values, pcell) = k; {
+struct_with_invariants!{
+    pub struct InvCell<#[verifier(maybe_negative)] T> {
+        #[spec] possible_values: Set<T>,
+        pcell: PCell<T>,
+        #[proof] perm_inv: LocalInvariant<_, PermData<T>, _>,
+    }
+
+    pub closed spec fn wf(&self) -> bool {
+        invariant on perm_inv with (possible_values, pcell) is (perm: PermData<T>) {
             perm.view().value.is_Some()
             && possible_values.contains(perm.view().value.get_Some_0())
             && equal(pcell.id(), perm.view().pcell)
@@ -256,18 +260,7 @@ impl<T> InvariantPredicate<(Set<T>, PCell<T>), PermData<T>> for InvCellPred {
     }
 }
 
-pub struct InvCell<#[verifier(maybe_negative)] T> {
-    #[spec] possible_values: Set<T>,
-    pcell: PCell<T>,
-    #[proof] perm_inv: LocalInvariant<(Set<T>, PCell<T>), PermData<T>, InvCellPred>,
-}
-
 impl<T> InvCell<T> {
-    #[spec]
-    pub fn wf(&self) -> bool {
-        equal(self.perm_inv.constant(), (self.possible_values, self.pcell))
-    }
-
     #[spec]
     pub fn inv(&self, val: T) -> bool {
         self.possible_values.contains(val)

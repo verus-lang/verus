@@ -83,25 +83,23 @@ tokenized_state_machine!(
 );
 
 // ANCHOR: global_struct
-pub struct Global {
-    // An AtomicU32 that matches with the `counter` field of the ghost protocol.
-    pub atomic: AtomicU32<X::counter>,
+struct_with_invariants!{
+    pub struct Global {
+        // An AtomicU32 that matches with the `counter` field of the ghost protocol.
+        pub atomic: AtomicU32<_, X::counter, _>,
 
-    // The instance of the protocol that the `counter` is part of.
-    #[proof] pub instance: X::Instance,
-}
+        // The instance of the protocol that the `counter` is part of.
+        #[proof] pub instance: X::Instance,
+    }
 
-impl Global {
-    // Specify the invariant that should hold on the AtomicU32<X::counter>.
-    // Specifically the ghost token (`g`) should have
-    // the same value as the atomic (`v`).
-    // Furthermore, the ghost token should have the appropriate `instance`.
-
-    #[spec]
-    pub fn wf(self) -> bool {
-        self.atomic.has_inv(|v, g|
-            equal(g.view(), X::token![self.instance => counter => v as int])
-        )
+    spec fn wf(&self) -> bool {
+        // Specify the invariant that should hold on the AtomicU32<X::counter>.
+        // Specifically the ghost token (`g`) should have
+        // the same value as the atomic (`v`).
+        // Furthermore, the ghost token should have the appropriate `instance`.
+        invariant on atomic with (instance) is (v: u32, g: X::counter) {
+            g@ === X::token![instance => counter => v as int]
+        }
     }
 }
 // ANCHOR_END: global_struct
@@ -192,9 +190,7 @@ fn main() {
 
   // Initialize the counter
 
-  let atomic = AtomicU32::new(0, counter_token, |v, g| {
-      equal(g.view().instance, instance) && equal(g.view().value, v as int)
-  });
+  let atomic = AtomicU32::new(instance, 0, counter_token);
 
   let global = Global { atomic, instance: instance.clone() };
   let global_arc = Arc::new(global);

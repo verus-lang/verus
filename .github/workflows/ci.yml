@@ -21,7 +21,6 @@ jobs:
           workflow: compile-rust.yml
           workflow_conclusion: success
           branch: verification
-          event: push
           name: rust-bin-lib-etc
           path: ./rust/install
           repo: verus-lang/rust
@@ -46,7 +45,6 @@ jobs:
           workflow: compile-rust.yml
           workflow_conclusion: success
           branch: verification
-          event: push
           name: rust-bin-lib-etc
           path: ./rust/install
           repo: verus-lang/rust
@@ -85,7 +83,6 @@ jobs:
           workflow: compile-rust.yml
           workflow_conclusion: success
           branch: verification
-          event: push
           name: rust-bin-lib-etc
           path: ./rust/install
           repo: verus-lang/rust

@@ -1065,6 +1065,7 @@ struct LoopInfo {
 
 struct State {
     local_shared: Vec<Decl>, // shared between all queries for a single function
+    may_be_used_in_old: HashSet<UniqueIdent>, // vars that might have a 'PRE' snapshot, needed for while loop generation
     local_bv_shared: Vec<Decl>, // used in bv mode, fixed width uint variables have corresponding bv types
     commands: Vec<CommandsWithContext>,
     snapshot_count: u32, // Used to ensure unique Idents for each snapshot
@@ -1713,22 +1714,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             };
 
             let mut air_body: Vec<Stmt> = Vec::new();
-            let cond_stmts = cond_stm.map(|s| stm_to_stmts(ctx, state, s)).transpose()?;
-            if let Some(cond_stmts) = &cond_stmts {
-                air_body.append(&mut cond_stmts.clone());
-            }
-            if let Some(pos_assume) = pos_assume {
-                air_body.push(pos_assume);
-            }
-            let loop_info = LoopInfo {
-                label: label.clone(),
-                some_cond: cond.is_some(),
-                invs_entry: invs_entry.clone(),
-                invs_exit: invs_exit.clone(),
-            };
-            state.loop_infos.push(loop_info);
-            air_body.append(&mut stm_to_stmts(ctx, state, body)?);
-            state.loop_infos.pop();
 
             /*
             Generate a separate SMT query for the loop body.
@@ -1754,9 +1739,46 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     local.push(Arc::new(DeclX::Axiom(expr)));
                 }
             }
-            for (_, inv) in invs_entry.iter() {
-                local.push(Arc::new(DeclX::Axiom(inv.clone())));
+
+            // For any mutable param `x` to the function, we might refer to either
+            // *x or *old(x) within the loop body or invariants.
+            // Thus, we need to create a 'pre' snapshot and havoc all these variables
+            // so that we can refer to either version of the variable within the body.
+
+            air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));
+            for (x, typ) in typ_inv_vars.iter() {
+                if state.may_be_used_in_old.contains(x) {
+                    air_body.push(Arc::new(StmtX::Havoc(suffix_local_unique_id(x))));
+                    let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
+                    if let Some(expr) = typ_inv {
+                        air_body.push(Arc::new(StmtX::Assume(expr)));
+                    }
+                }
             }
+
+            // Assume invariants for the beginning of the loop body.
+            // (These need to go after the above Havoc statements.)
+            for (_, inv) in invs_entry.iter() {
+                air_body.push(Arc::new(StmtX::Assume(inv.clone())));
+            }
+
+            let cond_stmts = cond_stm.map(|s| stm_to_stmts(ctx, state, s)).transpose()?;
+            if let Some(cond_stmts) = &cond_stmts {
+                air_body.append(&mut cond_stmts.clone());
+            }
+            if let Some(pos_assume) = pos_assume {
+                air_body.push(pos_assume);
+            }
+            let loop_info = LoopInfo {
+                label: label.clone(),
+                some_cond: cond.is_some(),
+                invs_entry: invs_entry.clone(),
+                invs_exit: invs_exit.clone(),
+            };
+            state.loop_infos.push(loop_info);
+            air_body.append(&mut stm_to_stmts(ctx, state, body)?);
+            state.loop_infos.pop();
+
             if !ctx.checking_recommends() {
                 for (span, inv) in invs_entry.iter() {
                     let error = error(crate::def::INV_FAIL_LOOP_END, span);
@@ -2076,8 +2098,16 @@ pub(crate) fn body_stm_to_air(
 
     let mask = mask_set_from_spec(mask_spec, mode);
 
+    let mut may_be_used_in_old = HashSet::<UniqueIdent>::new();
+    for param in params.iter() {
+        if param.x.is_mut {
+            may_be_used_in_old.insert(unique_local(&param.x.name));
+        }
+    }
+
     let mut state = State {
         local_shared,
+        may_be_used_in_old,
         local_bv_shared,
         commands: Vec::new(),
         snapshot_count: 0,
