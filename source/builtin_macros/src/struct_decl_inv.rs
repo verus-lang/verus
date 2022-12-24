@@ -17,7 +17,6 @@ use syn_verus::visit;
 use syn_verus::visit::Visit;
 use syn_verus::visit_mut;
 use syn_verus::visit_mut::VisitMut;
-use syn_verus::Token;
 use syn_verus::TypeInfer;
 use syn_verus::{
     braced, parenthesized, Block, Error, Field, Fields, FnArg, FnArgKind, FnMode, GenericArgument,
