@@ -602,7 +602,7 @@ fn fn_call_to_vir<'tcx>(
         is_ghost_view || is_ghost_borrow || is_ghost_borrow_mut || is_ghost_new || is_tracked_view;
 
     // These functions are all no-ops in the SMT encoding, so we don't emit any VIR
-    let is_ignored_fn = f_name == "std::box::Box::<T>::new"
+    let is_ignored_fn = f_name == "std::boxed::Box::<T>::new"
         || f_name == "std::rc::Rc::<T>::new"
         || f_name == "std::sync::Arc::<T>::new";
 
