@@ -322,7 +322,7 @@ If the proof, does not go through automatically, the developer can supply a proo
 
 ```rust,ignore
 add f += Some(v) by {
-    // proof that pre.f === Some
+    // proof that pre.f === None
 };
 ```
 

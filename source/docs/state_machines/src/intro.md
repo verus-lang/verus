@@ -11,8 +11,8 @@ We might also say that it's about verifying **code that needs unsafe features**
 (especially raw pointers and unsafe cells), though again, there are plenty of use-cases
 where this does not apply.
 
-The unifying theme for the above are programs that require some kind of nontrivial
-ownership discipline, where different objects that might be "owned independently"
+The unifying theme for the above are programs that require some kind of **nontrivial
+ownership discipline**, where different objects that might be "owned independently"
 need to coordinate somehow.
 (If that doesn't make sense, then hopefully it will by the end of the guide.)
 This kind of nontrivial ownership can be implemented through Verus's
