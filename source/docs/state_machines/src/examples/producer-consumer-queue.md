@@ -31,7 +31,7 @@ Thus the entries in the range `[head, tail)` will always be full.
 If `head == tail` then the ring buffer will be considered empty,
 and if `head > tail`, then the interval wraps around.
 
-![Graphic visualizing of ring buffer with head and tail pointers](../graphics/fifo-head-tail.png)
+![Graphic visualization of ring buffer with head and tail pointers](../graphics/fifo-head-tail.png)
 
 The crucial design choice is what data structure to use for the buffer itself.
 The key requirements of the buffer are:
@@ -352,7 +352,7 @@ in the enabing condition rather than in a post-guarantee.
 {{#include ../../../../rust_verify/example/state_machines/tutorial/fifo.rs:transition_produce_end}}
 ```
 
-Check the full source for the `consume_start` and `consume_end` transitions, which are pretty similar,
+Check the [full source](./src-producer-consumer-queue.md) for the `consume_start` and `consume_end` transitions, which are pretty similar,
 and for the invariants we use to prove that the transitions are all well-formed.
 
 ### Verified Implementation
