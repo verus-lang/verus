@@ -6684,3 +6684,70 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] tokenized_with_conditional IMPORTS.to_string() + code_str! {
+
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(variable)]
+                pub x: int,
+
+                #[sharding(variable)]
+                pub y: int,
+            }
+
+            init!{
+                initialize(x: int, y: int) {
+                    init x = x;
+                    init y = y;
+                }
+            }
+
+            transition!{
+                upd() {
+                    if pre.x == 0 {
+                        update y = 1;
+                    } else {
+                        update y = 2;
+                    }
+                }
+            }
+
+            transition!{
+                req() {
+                    if pre.x == 0 {
+                        require(pre.y == 1);
+                        update y = 20;
+                    } else {
+                        require(pre.y == 2);
+                        update y = 25;
+                    }
+                }
+            }
+        }}
+
+        #[proof] fn test1() {
+            #[proof] let (Trk(inst), Trk(x), Trk(mut y)) = Y::Instance::initialize(spec_literal_int("0"), spec_literal_int("0"));
+            inst.upd(&x, &mut y);
+            assert(y.view().value == spec_literal_int("1"));
+        }
+
+        #[proof] fn test2() {
+            #[proof] let (Trk(inst), Trk(x), Trk(mut y)) = Y::Instance::initialize(spec_literal_int("12"), spec_literal_int("0"));
+            inst.upd(&x, &mut y);
+            assert(y.view().value == spec_literal_int("2"));
+        }
+
+        #[proof] fn test3() {
+            #[proof] let (Trk(inst), Trk(x), Trk(mut y)) = Y::Instance::initialize(spec_literal_int("0"), spec_literal_int("2"));
+            inst.req(&x, &mut y); // FAILS
+        }
+
+        #[proof] fn test4() {
+            #[proof] let (Trk(inst), Trk(x), Trk(mut y)) = Y::Instance::initialize(spec_literal_int("1"), spec_literal_int("1"));
+            inst.req(&x, &mut y); // FAILS
+        }
+
+    } => Err(e) => assert_fails(e, 2)
+}

@@ -739,15 +739,15 @@ pub fn exchange_stream(
     // This fills up `ctxt.requires` and `ctxt.ensures`.
     exchange_collect(&mut ctxt, &tr.body, Vec::new())?;
 
-    // For our purposes here, a 'readonly' is just a special case of a normal transition,
+    // For our purposes here, a 'property' is just a special case of a normal transition,
     // but 'init' transitions need to be handled differently.
     // For the most part, there are two key differences between init and transition/readonly.
     //
     //   * An 'init' returns an arbitrary new Instance object, whereas a normal transition
     //     takes an Instance as input.
-    //   * An 'init' will always return tokens for every field, and take no tokens as input
-    //     (except for external 'storage' tokens).
-    //     A normal transition takes tokens as input as is necessary.
+    //   * An 'init' will always return tokens for every field that has tokens,
+    //     and take no tokens as input (except for external 'storage' tokens).
+    //     A normal transition takes tokens as input only as is necessary.
     //
     // Generally speaking, the input parameters are going to look like:
     //    (instance as the 'self' argument)?    (present if not init)
@@ -1995,15 +1995,18 @@ fn translate_split_kind(ctxt: &mut Ctxt, sk: &mut SplitKind, errors: &mut Vec<Er
             *init_e = e;
         }
         SplitKind::If(cond) => {
-            translate_expr(ctxt, cond, false, errors);
+            let e = translate_expr(ctxt, cond, false, errors);
+            *cond = e;
         }
         SplitKind::Match(match_e, arms) => {
-            translate_expr(ctxt, match_e, false, errors);
+            let e = translate_expr(ctxt, match_e, false, errors);
+            *match_e = e;
             for arm in arms.iter_mut() {
                 match &mut arm.guard {
                     None => {}
                     Some((_, g)) => {
-                        translate_expr(ctxt, g, false, errors);
+                        let e = translate_expr(ctxt, g, false, errors);
+                        *g = Box::new(e);
                     }
                 }
             }
@@ -2415,6 +2418,7 @@ fn translate_value_expr(
 ///    that this will only happen in contexts that will ultimately appears in the
 ///    post-conditions, never pre-conditions.
 
+#[must_use]
 fn translate_expr(ctxt: &Ctxt, expr: &Expr, birds_eye: bool, errors: &mut Vec<Error>) -> Expr {
     let mut expr = expr.clone();
     visit_field_accesses(
