@@ -82,3 +82,5 @@ to define the `ref` and `counter` tokens along with the relationship between the
 ```rust
 {{#include ../../../../rust_verify/example/state_machines/tutorial/rc.rs:fields}}
 ```
+
+TODO - finish the rest of this tutorial

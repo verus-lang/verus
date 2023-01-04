@@ -25,8 +25,8 @@ TransitionStmt :=
    | SingleStmt
 ```
 
-There are four fundamental operations: `init`, `update`, `require`, and `assert`.
-For convenience, there are also higher-level operations that can be expressed
+There are four fundamental statements: `init`, `update`, `require`, and `assert`.
+For convenience, there are also higher-level statements that can be expressed
 in those terms.
 
 ```rust,ignore
@@ -46,7 +46,7 @@ SingleStmt :=
 
 Each `$field_name` should be a valid field name as declared in the `fields` block of the state machine definition.
 
-Each `$expr`/`$bool_expr` is an ordinary [Verus (spec-mode) expressions](https://verus-lang.github.io/verus/guide/operators.html).
+Each `$expr`/`$bool_expr` is an ordinary [Verus (spec-mode) expression](https://verus-lang.github.io/verus/guide/operators.html).
 These expressions can reference the params or bound variables.
 They can also reference the pre-state of the transition, `pre` (except in `init!` operations).
 (Note that it is not possible to access `post` directly,

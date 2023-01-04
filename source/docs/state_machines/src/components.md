@@ -73,7 +73,7 @@ The fields are like you'd find in a struct: they must be named fields (i.e., the
 
 There are four different types of "operations": `init!`, `transition!`, `readonly!`, and `property!`. The body of the operation is a "transition DSL" which is interpretted by the macro:
 
- * A `init!` becomes a 1-state relation representing valid initial states of the system
+ * An `init!` becomes a 1-state relation representing valid initial states of the system
  * A `transition!` becomes a 2-state relation representing a transition from one state (`pre`) to the next (`post`)
  * A `readonly!` becomes a 2-state relation where the state cannot be modified.
  * A `property!` allows the user to add safety conditions on a single state (`pre`).
@@ -87,7 +87,7 @@ When exported as relations:
 Each operation (transition or otherwise) is deterministic in its input arguments, so any intended non-determinism should be done via the arguments.
 The DSL allows the user to update fields; any field not updated is implied to remain the same.
 An `init!` transition is required to initialize each field, so that the intialization is fully determined.
-The DSL provides four fundamental operations (`init`, `update`, `require`, `assert`)
+The DSL provides four fundamental statements (`init`, `update`, `require`, `assert`)
 as detailed in the [transition language reference](./transition-language.md).
 They are allowed according to the following table:
 
