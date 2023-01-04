@@ -291,7 +291,7 @@ RwLock {
     }
 
     pub open spec fn count_shared_refs(shared: Multiset<SharedState>, bucket: BucketId) -> nat {
-        7777777 // XXX TODO(jonh) add up finite-support multiset
+        shared.filter(|shared_state| shared_state.bucket === bucket).len()
     }
 
     pub open spec fn count_all_refs(self, bucket: BucketId) -> nat {
