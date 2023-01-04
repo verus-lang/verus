@@ -87,7 +87,7 @@ When exported as relations:
 Each operation (transition or otherwise) is deterministic in its input arguments, so any intended non-determinism should be done via the arguments.
 The DSL allows the user to update fields; any field not updated is implied to remain the same.
 An `init!` transition is required to initialize each field, so that the intialization is fully determined.
-The DSL provides four fundamental statements (`init`, `update`, `require`, `assert`)
+The DSL provides four fundamental operations (`init`, `update`, `require`, `assert`)
 as detailed in the [transition language reference](./transition-language.md).
 They are allowed according to the following table:
 
@@ -107,56 +107,4 @@ a `readonly!` operation is exported as an actual transition between `pre` and `p
 
 ## Invariants
 
-To make it easier to name individual invariants, the invariants are given via the `#[invariant]` attribute:
-
-```rust,ignore
-#[invariant]
-pub fn inv_1(&self) -> bool { ... }
-
-#[invariant]
-pub fn inv_2(&self) -> bool { ... }
-```
-
-The state machine macro produces a single predicate `invariant` which is the conjunct of all the given invariants.
-
-## Inductive lemmas
-
-The user needs to prove that every transition preserves the invariants. This is done by creating a lemma to contain the proof and annotating it with the `inductive` attribute:
-
-```rust,ignore
-        #[inductive(initialize)]
-        fn initialize_inductive(post: AdderMachine) { } 
-
-        #[inductive(add)]
-        fn add_inductive(pre: AdderMachine, post: AdderMachine, n: int) { } 
-```
-
-The macro requires one lemma for each `init!` and `transition!` routine. (The lemma would be trivial for a `readonly!` transition, so for these, it is not required.)
-
-The arguments to a lemma regarding an `init!` routine should always be `post: StateName, ...` where the `...` are the custom arguments to the transition.
-The arguments to a lemma regarding a `transition!` routine should always be `pre: StateName, post: StateName, ...`.
-
-Pre- and post-conditions for each lemma are automatically generated, so these should be left off. Specifically, the macro generates the following conditions:
-
-```rust,ignore
-        // For an `init!` routine:
-        #[inductive(init_name)]
-        fn initialize_inductive(post: StateName, ...) {
-            requires(init(post, ...));
-            ensures(post.invariant());
-            
-            // ... The user's proof is placed here
-        } 
-
-        // For a `transition!` routine:
-        #[inductive(init_name)]
-        fn initialize_inductive(pre: StateName, post: StateName, ...) {
-            requires(strong_transition(pre, post, ...) && pre.invariant());
-            ensures(post.invariant());
-            
-            // ... The user's proof is placed here
-        }
-```
-
-Here, `init` and `strong_transition` refer to the relations generated from the DSL. The `strong` indicates that we are assuming the conditions given by an `assert`. (Proof obligations for the `assert` statements are generated separately; currently, there is no place to provide an explicit proof.)
-
+See the documentation for [invariants](./invariants.md).

@@ -1,6 +1,19 @@
 # Exerises
 
- 1. Augment the verified `Rc` to allow weak pointers.
+ 1. Implement a thread-safe reference-counted pointer, `Arc`.
+    The `Arc<T>` typed should satisfy the `Send` and `Sync` marker traits.
+
+    Answer the following:
+
+      (a) In terms of _executable_ code, which part of `Rc` is not thread-safe?
+          How does it need to change?
+
+      (b) In terms of _ghost_ code, which component prevents `Rc` from satisfying
+         `Send` or `Sync`? What should it be changed to to support `Send` and `Sync`?
+
+      (c) In order to make change (b), it is necessary to also make change (a).  Why?
+
+ 2. Augment the verified `Rc` to allow weak pointers.
     The allocation should include 2 counts: a strong reference count (as before)
     and a weak reference count. The inner `T` is dropped when the strong reference
     count hits 0, but the memory is not freed until both counts hit 0.

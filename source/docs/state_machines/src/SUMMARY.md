@@ -39,9 +39,10 @@
     - [State Machine Basics](./components.md)
     - [State Machine Macro Syntax (TODO)](./macro-high-level-reference.md)
     - [Transition Language](./transition-language.md)
+    - [Invariants and Inductive Proofs](./invariants.md)
     - [Macro-generated code (TODO)](./macro-generated-reference.md)
     - [State Machine Refinements (TODO)](./refinements-reference.md)
 
   - [Tokenization](./tokenization-reference.md)
-    - [Strategy Reference (TODO)](strategy-reference.md)
+    - [Strategy Reference](strategy-reference.md)
     - [Formalism of Tokenization by monoids (TODO)](./monoid-formalism.md)
