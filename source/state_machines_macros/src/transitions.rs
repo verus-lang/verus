@@ -730,7 +730,11 @@ fn check_label_param(sm: &SM, tr: &Transition, errors: &mut Vec<Error>) {
 }
 
 pub fn check_transition(sm: &SM, tr: &mut Transition) -> parse::Result<()> {
-    validate_idents_transition(tr)?;
+    let mut field_names = HashSet::new();
+    for field in sm.fields.iter() {
+        field_names.insert(field.name.to_string());
+    }
+    validate_idents_transition(tr, field_names)?;
 
     let mut errors = Vec::new();
     check_updates_refer_to_valid_fields(&sm.fields, &tr.body, &mut errors);
