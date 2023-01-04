@@ -175,6 +175,14 @@ pub proof fn axiom_len_singleton<V>(v: V)
 pub proof fn axiom_len_add<V>(m1: Multiset<V>, m2: Multiset<V>)
     ensures (#[trigger] m1.add(m2).len()) == m1.len() + m2.len(),
 {}
+// TODO could probably prove this theorem.
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_len_sub<V>(m1: Multiset<V>, m2: Multiset<V>)
+    requires m2.le(m1)
+    ensures (#[trigger] m1.sub(m2).len()) == m1.len() - m2.len(),
+{}
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
