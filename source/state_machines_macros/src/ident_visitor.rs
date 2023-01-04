@@ -250,6 +250,7 @@ impl<'ast> Visit<'ast> for PatIdentVisitor {
         if !self.idents.contains(&ident) {
             self.idents.push(ident);
         }
+        visit::visit_pat_ident(self, node);
     }
 }
 
@@ -278,5 +279,6 @@ impl<'ast> Visit<'ast> for SuperVisitor {
                 format!("state machine error: `super::` path not allowed here"),
             ));
         }
+        visit::visit_path(self, node);
     }
 }
