@@ -9,6 +9,8 @@ edition = "2018"
 [dependencies]
 air = { path = "../air" }
 vir = { path = "../vir" }
+serde = "1"
+serde_json = "1"
 sise = "0.6.0"
 num-format = "0.4.0"
 getopts = { git = "https://github.com/utaal/getopts.git", branch = "parse-partial" }

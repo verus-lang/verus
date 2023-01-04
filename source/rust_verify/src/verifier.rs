@@ -73,12 +73,6 @@ impl Diagnostics for Reporter<'_> {
     }
 }
 
-pub struct VerifierCallbacks {
-    pub verifier: Arc<Mutex<Verifier>>,
-    pub vir_ready: signalling::Signaller<bool>,
-    pub now_verify: signalling::Signalled<bool>,
-}
-
 pub struct Verifier {
     pub encountered_vir_error: bool,
     pub count_verified: u64,
@@ -1430,8 +1424,8 @@ impl Verifier {
     }
 }
 
-struct DiagnosticOutputBuffer {
-    output: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+pub(crate) struct DiagnosticOutputBuffer {
+    pub(crate) output: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
 }
 
 impl std::io::Write for DiagnosticOutputBuffer {
@@ -1459,14 +1453,126 @@ impl rustc_lint::FormalVerifierRewrite for Rewrite {
     }
 }
 
-impl rustc_driver::Callbacks for VerifierCallbacks {
+impl Verifier {
     fn config(&mut self, config: &mut rustc_interface::interface::Config) {
-        if let Some(target) = &self.verifier.lock().unwrap().test_capture_output {
+        if let Some(target) = &self.test_capture_output {
             config.diagnostic_output =
                 rustc_session::DiagnosticOutput::Raw(Box::new(DiagnosticOutputBuffer {
                     output: target.clone(),
                 }));
         }
+    }
+}
+
+// TODO: move the callbacks into a different file, like driver.rs
+pub(crate) struct VerifierCallbacksEraseMacro {
+    pub(crate) verifier: Verifier,
+    pub(crate) lifetime_start_time: Option<Instant>,
+    pub(crate) rustc_args: Vec<String>,
+    pub(crate) file_loader:
+        Option<Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>>,
+}
+
+impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
+    fn config(&mut self, config: &mut rustc_interface::interface::Config) {
+        self.verifier.config(config);
+    }
+
+    fn after_expansion<'tcx>(
+        &mut self,
+        compiler: &Compiler,
+        queries: &'tcx rustc_interface::Queries<'tcx>,
+    ) -> rustc_driver::Compilation {
+        let _result = queries.global_ctxt().expect("global_ctxt").peek_mut().enter(|tcx| {
+            {
+                let reporter = Reporter::new(compiler);
+                if let Err(err) = self.verifier.construct_vir_crate(tcx, &reporter) {
+                    reporter.report_as(&err, MessageLevel::Error);
+                    self.verifier.encountered_vir_error = true;
+                    return;
+                }
+                self.lifetime_start_time = Some(Instant::now());
+                let log_lifetime = self.verifier.args.log_all || self.verifier.args.log_lifetime;
+                let lifetime_log_file = if log_lifetime {
+                    let file = self.verifier.create_log_file(
+                        None,
+                        None,
+                        crate::config::LIFETIME_FILE_SUFFIX,
+                    );
+                    match file {
+                        Err(err) => {
+                            reporter.report_as(&err, MessageLevel::Error);
+                            self.verifier.encountered_vir_error = true;
+                            return;
+                        }
+                        Ok(file) => Some(file),
+                    }
+                } else {
+                    None
+                };
+                let status = crate::lifetime::check_tracked_lifetimes(
+                    tcx,
+                    self.verifier.erasure_hints.as_ref().expect("erasure_hints"),
+                    lifetime_log_file,
+                );
+                match status {
+                    Ok(msgs) => {
+                        if msgs.len() > 0 {
+                            self.verifier.encountered_vir_error = true;
+                            // We found lifetime errors.
+                            // We could print them immediately, but instead,
+                            // let's first run rustc's standard lifetime checking
+                            // because the error messages are likely to be better.
+                            let file_loader =
+                                std::mem::take(&mut self.file_loader).expect("file_loader");
+                            let compile_status = crate::driver::run_with_erase_macro_compile(
+                                self.rustc_args.clone(),
+                                file_loader,
+                                false,
+                            );
+                            if compile_status.is_err() {
+                                return;
+                            }
+                            for msg in &msgs {
+                                reporter.report(&msg);
+                            }
+                            return;
+                        }
+                    }
+                    Err(err) => {
+                        reporter.report_as(&err, MessageLevel::Error);
+                        self.verifier.encountered_vir_error = true;
+                        return;
+                    }
+                }
+            }
+
+            if !compiler.session().compile_status().is_ok() {
+                return;
+            }
+
+            match self.verifier.verify_crate(compiler) {
+                Ok(_) => {}
+                Err(err) => {
+                    let reporter = Reporter::new(compiler);
+                    reporter.report_as(&err, MessageLevel::Error);
+                    self.verifier.encountered_vir_error = true;
+                }
+            }
+        });
+        rustc_driver::Compilation::Stop
+    }
+}
+
+pub(crate) struct VerifierCallbacksEraseAst {
+    pub(crate) verifier: Arc<Mutex<Verifier>>,
+    pub(crate) vir_ready: signalling::Signaller<bool>,
+    pub(crate) now_verify: signalling::Signalled<bool>,
+}
+
+impl rustc_driver::Callbacks for VerifierCallbacksEraseAst {
+    fn config(&mut self, config: &mut rustc_interface::interface::Config) {
+        self.verifier.lock().unwrap().config(config);
     }
 
     fn after_parsing<'tcx>(

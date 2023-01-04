@@ -38,8 +38,8 @@ pub fn mode_join(m1: Mode, m2: Mode) -> Mode {
 enum Ghost {
     /// Not in a ghost block
     Exec,
-    /// In a ghost block, and lifetime checking is enabled iff tracked == true
-    Ghost { tracked: bool },
+    /// In a ghost block
+    Ghost,
 }
 
 // Placeholder for the erasure expected mode, which is computed after first mode checking pass.
@@ -100,16 +100,15 @@ pub struct ErasureModes {
 impl Ghost {
     fn of_mode(mode: Mode) -> Ghost {
         match mode {
-            Mode::Spec | Mode::Proof => Ghost::Ghost { tracked: false },
+            Mode::Spec | Mode::Proof => Ghost::Ghost,
             Mode::Exec => Ghost::Exec,
         }
     }
 
-    fn to_mode(self) -> Mode {
+    fn join_mode(self, mode: Mode) -> Mode {
         match self {
-            Ghost::Ghost { tracked: false } => Mode::Spec,
-            Ghost::Ghost { tracked: true } => Mode::Proof,
-            Ghost::Exec => Mode::Exec,
+            Ghost::Ghost => mode_join(mode, Mode::Proof),
+            Ghost::Exec => mode,
         }
     }
 }
@@ -313,11 +312,8 @@ fn get_var_loc_mode(
         }
         ExprX::Ghost { alloc_wrapper: None, tracked: true, expr: e1 } => {
             // For now, only support the special case for Tracked::borrow_mut.
-            if typing.block_ghostness != (Ghost::Ghost { tracked: false }) {
-                return err_str(&expr.span, "unexpected `tracked`");
-            }
             let prev = typing.block_ghostness;
-            typing.block_ghostness = Ghost::Ghost { tracked: true };
+            typing.block_ghostness = Ghost::Ghost;
             let mode = get_var_loc_mode(typing, outer_mode, None, e1, init_not_mut)?;
             typing.block_ghostness = prev;
             mode
@@ -390,7 +386,7 @@ fn check_expr_handle_mut_arg(
                 );
             }
             let mode = if typing.check_ghost_blocks {
-                mode_join(mode, typing.block_ghostness.to_mode())
+                typing.block_ghostness.join_mode(mode)
             } else {
                 mode
             };
@@ -407,7 +403,7 @@ fn check_expr_handle_mut_arg(
             };
             let mode = function.x.ret.x.mode;
             let mode = if typing.check_ghost_blocks {
-                mode_join(mode, typing.block_ghostness.to_mode())
+                typing.block_ghostness.join_mode(mode)
             } else {
                 mode
             };
@@ -801,7 +797,7 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(typing, outer_mode, body, Mode::Exec)?;
             for inv in invs.iter() {
                 let prev = typing.block_ghostness;
-                typing.block_ghostness = Ghost::Ghost { tracked: false };
+                typing.block_ghostness = Ghost::Ghost;
                 check_expr_has_mode(typing, Mode::Spec, inv, Mode::Spec)?;
                 typing.block_ghostness = prev;
             }
@@ -855,7 +851,7 @@ fn check_expr_handle_mut_arg(
             let prev = typing.block_ghostness;
             let block_ghostness = match (prev, alloc_wrapper, tracked) {
                 (Ghost::Exec, None, false) => match &*e1.typ {
-                    crate::ast::TypX::Tuple(ts) if ts.len() == 0 => Ghost::Ghost { tracked: false },
+                    crate::ast::TypX::Tuple(ts) if ts.len() == 0 => Ghost::Ghost,
                     _ => {
                         return err_str(&expr.span, "proof block must have type ()");
                     }
@@ -866,9 +862,9 @@ fn check_expr_handle_mut_arg(
                 (Ghost::Exec, None, true) => {
                     return err_str(&expr.span, "cannot mark expression as tracked in exec mode");
                 }
-                (Ghost::Ghost { .. }, None, true) => Ghost::Ghost { tracked: true },
-                (Ghost::Exec, Some(_), _) => Ghost::Ghost { tracked: *tracked },
-                (Ghost::Ghost { .. }, Some(_), _) => {
+                (Ghost::Ghost, None, true) => Ghost::Ghost,
+                (Ghost::Exec, Some(_), _) => Ghost::Ghost,
+                (Ghost::Ghost, Some(_), _) => {
                     return err_str(
                         &expr.span,
                         "ghost(...) or tracked(...) can only be used in exec mode",
@@ -877,7 +873,7 @@ fn check_expr_handle_mut_arg(
             };
             typing.block_ghostness = block_ghostness;
             let outer_mode = match (outer_mode, block_ghostness) {
-                (Mode::Exec, Ghost::Ghost { .. }) => Mode::Proof,
+                (Mode::Exec, Ghost::Ghost) => Mode::Proof,
                 _ => outer_mode,
             };
             let mode = if alloc_wrapper.is_none() {
@@ -1045,7 +1041,7 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
     }
 
     for expr in function.x.require.iter() {
-        typing.block_ghostness = Ghost::Ghost { tracked: false };
+        typing.block_ghostness = Ghost::Ghost;
         check_expr_has_mode(typing, Mode::Spec, expr, Mode::Spec)?;
     }
 
@@ -1054,13 +1050,13 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
         typing.insert(&function.span, &function.x.ret.x.name, false, function.x.ret.x.mode);
     }
     for expr in function.x.ensure.iter() {
-        typing.block_ghostness = Ghost::Ghost { tracked: false };
+        typing.block_ghostness = Ghost::Ghost;
         check_expr_has_mode(typing, Mode::Spec, expr, Mode::Spec)?;
     }
     typing.vars.pop_scope();
 
     for expr in function.x.decrease.iter() {
-        typing.block_ghostness = Ghost::Ghost { tracked: false };
+        typing.block_ghostness = Ghost::Ghost;
         check_expr_has_mode(typing, Mode::Spec, expr, Mode::Spec)?;
     }
 

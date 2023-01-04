@@ -20,8 +20,8 @@ use air::ast_util::str_ident;
 use rustc_ast::{Attribute, BorrowKind, LitKind, Mutability};
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::{
-    BinOpKind, BindingAnnotation, Block, Destination, Expr, ExprKind, Guard, Local, LoopSource,
-    Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
+    BinOpKind, BindingAnnotation, Block, Destination, Expr, ExprKind, Guard, HirId, Local,
+    LoopSource, Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
 };
 
 use rustc_middle::ty::subst::GenericArgKind;
@@ -371,6 +371,7 @@ pub(crate) fn expr_to_vir<'tcx>(
 
 fn record_fun(
     ctxt: &crate::context::Context,
+    hir_id: HirId,
     span: Span,
     name: &vir::ast::Fun,
     is_spec: bool,
@@ -384,7 +385,7 @@ fn record_fun(
     } else {
         ResolvedCall::Call(name.clone())
     };
-    erasure_info.resolved_calls.push((span.data(), resolved_call));
+    erasure_info.resolved_calls.push((hir_id, span.data(), resolved_call));
 }
 
 fn get_fn_path<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<vir::ast::Fun, VirErr> {
@@ -663,6 +664,7 @@ fn fn_call_to_vir<'tcx>(
 
     record_fun(
         &bctx.ctxt,
+        expr.hir_id,
         fn_span,
         &name,
         is_spec
@@ -1522,6 +1524,7 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     expr: &Expr<'tcx>,
     res: &Res,
     args_slice: &[Expr<'tcx>],
+    hir_id: HirId,
     fun_span: Span,
     modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
@@ -1558,7 +1561,7 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     );
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
     let resolved_call = ResolvedCall::Ctor(vir_path.clone(), variant_name.clone());
-    erasure_info.resolved_calls.push((fun_span.data(), resolved_call));
+    erasure_info.resolved_calls.push((hir_id, fun_span.data(), resolved_call));
     let exprx = ExprX::Ctor(vir_path, variant_name, vir_fields, None);
     Ok(spanned_typed_new(expr.span, &expr_typ, exprx))
 }
@@ -2031,6 +2034,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     expr,
                     res,
                     *args_slice,
+                    expr.hir_id,
                     fun.span,
                     modifier,
                 )),
@@ -2078,7 +2082,11 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     let target = CallTarget::FnSpec(vir_fun);
                     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
                     // Only spec closures are currently supported:
-                    erasure_info.resolved_calls.push((fun.span.data(), ResolvedCall::Spec));
+                    erasure_info.resolved_calls.push((
+                        fun.hir_id,
+                        fun.span.data(),
+                        ResolvedCall::Spec,
+                    ));
                     Ok(spanned_typed_new(
                         expr.span,
                         &expr_typ,
@@ -2292,6 +2300,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         expr,
                         &path.res,
                         &[],
+                        expr.hir_id,
                         expr.span,
                         modifier,
                     ),
@@ -2574,7 +2583,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             );
             let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
             let resolved_call = ResolvedCall::Ctor(path.clone(), variant_name.clone());
-            erasure_info.resolved_calls.push((expr.span.data(), resolved_call));
+            erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
             Ok(mk_expr(ExprX::Ctor(path, variant_name, vir_fields, update)))
         }
         ExprKind::MethodCall(_name_and_generics, _call_span_0, all_args, fn_span) => {
@@ -2602,9 +2611,11 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         let arg_typ = bctx.types.node_type(all_args[0].hir_id);
                         if is_type_std_rc_or_arc(bctx.ctxt.tcx, &arg_typ) {
                             let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                            erasure_info
-                                .resolved_calls
-                                .push((fn_span.data(), ResolvedCall::CompilableOperator));
+                            erasure_info.resolved_calls.push((
+                                expr.hir_id,
+                                fn_span.data(),
+                                ResolvedCall::CompilableOperator,
+                            ));
 
                             let arg = expr_to_vir(bctx, &all_args[0], ExprModifier::REGULAR)?;
                             return Ok(arg);

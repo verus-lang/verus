@@ -59,6 +59,7 @@ use rustc_ast::ast::{
 };
 use rustc_ast::ptr::P;
 use rustc_data_structures::thin_vec::ThinVec;
+use rustc_hir::HirId;
 use rustc_interface::interface::Compiler;
 use rustc_span::symbol::{Ident, Symbol};
 use rustc_span::{Span, SpanData};
@@ -93,7 +94,7 @@ pub struct ErasureHints {
     /// Copy of the entire VIR crate that was created in the first run's HIR -> VIR transformation
     pub vir_crate: Krate,
     /// Details of each call in the first run's HIR
-    pub resolved_calls: Vec<(SpanData, ResolvedCall)>,
+    pub resolved_calls: Vec<(HirId, SpanData, ResolvedCall)>,
     /// Details of some expressions in first run's HIR
     pub resolved_exprs: Vec<(SpanData, vir::ast::Expr)>,
     /// Details of some patterns in first run's HIR
@@ -104,7 +105,7 @@ pub struct ErasureHints {
     /// so we need to record them separately here.)
     pub external_functions: Vec<Fun>,
     /// List of function spans ignored by the verifier. These should not be erased
-    pub ignored_functions: Vec<SpanData>,
+    pub ignored_functions: Vec<(rustc_span::def_id::DefId, SpanData)>,
 }
 
 #[derive(Clone)]
@@ -1322,14 +1323,14 @@ fn mk_ctxt(erasure_hints: &ErasureHints, known_spans: &HashSet<Span>, keep_proof
     for name in &erasure_hints.external_functions {
         functions.insert(name.clone(), None).map(|_| panic!("{:?}", name));
     }
-    for span in &erasure_hints.ignored_functions {
+    for (_id, span) in &erasure_hints.ignored_functions {
         assert!(known_spans.contains(&span.span()));
         functions_by_span.insert(span.span(), None).map(|v| v.map(|_| panic!("{:?}", span)));
     }
     for d in &erasure_hints.vir_crate.datatypes {
         datatypes.insert(d.x.path.clone(), d.clone()).map(|_| panic!("{:?}", &d.x.path));
     }
-    for (span, call) in &erasure_hints.resolved_calls {
+    for (_, span, call) in &erasure_hints.resolved_calls {
         assert!(known_spans.contains(&span.span()));
         calls.insert(span.span(), call.clone()).map(|_| panic!("{:?}", span));
     }
@@ -1369,14 +1370,14 @@ fn mk_ctxt(erasure_hints: &ErasureHints, known_spans: &HashSet<Span>, keep_proof
 }
 
 #[derive(Clone)]
-pub struct CompilerCallbacks {
+pub struct CompilerCallbacksEraseAst {
     pub erasure_hints: ErasureHints,
     pub lifetimes_only: bool,
     pub print: bool,
     pub time_erasure: Arc<Mutex<Duration>>,
 }
 
-impl CompilerCallbacks {
+impl CompilerCallbacksEraseAst {
     fn maybe_print<'tcx>(
         &self,
         compiler: &Compiler,
@@ -1397,7 +1398,7 @@ impl CompilerCallbacks {
 
 /// Implement the callback from Rust that rewrites the AST
 /// (Rust will call rewrite_crate just before transforming AST into HIR).
-impl rustc_lint::FormalVerifierRewrite for CompilerCallbacks {
+impl rustc_lint::FormalVerifierRewrite for CompilerCallbacksEraseAst {
     fn rewrite_crate(
         &mut self,
         krate: &rustc_ast::ast::Crate,
@@ -1423,7 +1424,7 @@ impl rustc_lint::FormalVerifierRewrite for CompilerCallbacks {
     }
 }
 
-impl rustc_driver::Callbacks for CompilerCallbacks {
+impl rustc_driver::Callbacks for CompilerCallbacksEraseAst {
     fn after_parsing<'tcx>(
         &mut self,
         compiler: &Compiler,

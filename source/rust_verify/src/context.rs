@@ -7,11 +7,11 @@ use std::sync::Arc;
 use vir::ast::{Expr, InferMode, Mode, Pattern, Typ};
 
 pub struct ErasureInfo {
-    pub(crate) resolved_calls: Vec<(SpanData, ResolvedCall)>,
+    pub(crate) resolved_calls: Vec<(HirId, SpanData, ResolvedCall)>,
     pub(crate) resolved_exprs: Vec<(SpanData, Expr)>,
     pub(crate) resolved_pats: Vec<(SpanData, Pattern)>,
     pub(crate) external_functions: Vec<vir::ast::Fun>,
-    pub(crate) ignored_functions: Vec<SpanData>,
+    pub(crate) ignored_functions: Vec<(rustc_span::def_id::DefId, SpanData)>,
 }
 
 type ErasureInfoRef = std::rc::Rc<std::cell::RefCell<ErasureInfo>>;

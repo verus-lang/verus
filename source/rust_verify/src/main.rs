@@ -45,13 +45,6 @@ pub fn main() {
 
     let (verifier, status) = rust_verify::driver::run(verifier, rustc_args, file_loader);
 
-    if !verifier.encountered_vir_error {
-        println!(
-            "verification results:: verified: {} errors: {}",
-            verifier.count_verified, verifier.count_errors
-        );
-    }
-
     let total_time_1 = std::time::Instant::now();
     let total_time = total_time_1 - total_time_0;
 

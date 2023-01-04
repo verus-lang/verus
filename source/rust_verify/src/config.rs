@@ -16,10 +16,22 @@ impl Default for ShowTriggers {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum Erasure {
+    Ast,
+    Macro,
+}
+impl Default for Erasure {
+    fn default() -> Self {
+        Erasure::Ast
+    }
+}
+
 pub const LOG_DIR: &str = ".verus-log";
 pub const VIR_FILE_SUFFIX: &str = ".vir";
 pub const VIR_SIMPLE_FILE_SUFFIX: &str = "-simple.vir";
 pub const VIR_POLY_FILE_SUFFIX: &str = "-poly.vir";
+pub const LIFETIME_FILE_SUFFIX: &str = "-lifetime.rs";
 pub const INTERPRETER_FILE_SUFFIX: &str = ".interp";
 pub const AIR_INITIAL_FILE_SUFFIX: &str = ".air";
 pub const AIR_FINAL_FILE_SUFFIX: &str = "-final.air";
@@ -50,6 +62,7 @@ pub struct Args {
     pub log_vir_simple: bool,
     pub log_vir_poly: bool,
     pub vir_log_option: VirLogOption,
+    pub log_lifetime: bool,
     pub log_interpreter: bool,
     pub log_air_initial: bool,
     pub log_air_final: bool,
@@ -63,6 +76,7 @@ pub struct Args {
     pub profile: bool,
     pub profile_all: bool,
     pub compile: bool,
+    pub erasure: Erasure,
     pub solver_version_check: bool,
 }
 
@@ -97,6 +111,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_LOG_VIR_SIMPLE: &str = "log-vir-simple";
     const OPT_LOG_VIR_POLY: &str = "log-vir-poly";
     const OPT_VIR_LOG_OPTION: &str = "vir-log-option";
+    const OPT_LOG_LIFETIME: &str = "log-lifetime";
     const OPT_LOG_INTERPRETER: &str = "log-interpreter";
     const OPT_LOG_AIR_INITIAL: &str = "log-air";
     const OPT_LOG_AIR_FINAL: &str = "log-air-final";
@@ -113,6 +128,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_PROFILE: &str = "profile";
     const OPT_PROFILE_ALL: &str = "profile-all";
     const OPT_COMPILE: &str = "compile";
+    const OPT_ERASURE: &str = "erasure";
     const OPT_NO_SOLVER_VERSION_CHECK: &str = "no-solver-version-check";
 
     let mut opts = Options::new();
@@ -175,6 +191,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
          "Set VIR logging option (e.g. `--vir-log-option no_span+no_type`. Available options: `compact` `no_span` `no_type` `no_encoding` `no_fn_details`) (default: verbose)",
          "VIR_LOG_OPTION",
     );
+    opts.optflag("", OPT_LOG_LIFETIME, "Log lifetime checking for --erasure macro");
     opts.optflag("", OPT_LOG_INTERPRETER, "Log assert_by_compute's interpreter progress");
     opts.optflag("", OPT_LOG_AIR_INITIAL, "Log AIR queries in initial form");
     opts.optflag("", OPT_LOG_AIR_FINAL, "Log AIR queries in final form");
@@ -195,6 +212,12 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     );
     opts.optflag("", OPT_PROFILE_ALL, "Always collect and report prover performance data");
     opts.optflag("", OPT_COMPILE, "Run Rustc compiler after verification");
+    opts.optopt(
+        "",
+        OPT_ERASURE,
+        "Mechanism to erase ghost code (options: ast, macro) default = ast",
+        "STRING",
+    );
     opts.optflag("", OPT_NO_SOLVER_VERSION_CHECK, "Skip the check that the solver has the expected version (useful to experiment with different versions of z3)");
     opts.optflag("h", "help", "print this help menu");
 
@@ -297,6 +320,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
                 }
             }
         },
+        log_lifetime: matches.opt_present(OPT_LOG_LIFETIME),
         log_interpreter: matches.opt_present(OPT_LOG_INTERPRETER),
         log_air_initial: matches.opt_present(OPT_LOG_AIR_INITIAL),
         log_air_final: matches.opt_present(OPT_LOG_AIR_FINAL),
@@ -320,6 +344,12 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         profile: matches.opt_present(OPT_PROFILE),
         profile_all: matches.opt_present(OPT_PROFILE_ALL),
         compile: matches.opt_present(OPT_COMPILE),
+        erasure: match matches.opt_str(OPT_ERASURE).as_ref().map(|x| x.as_str()) {
+            None => Erasure::default(),
+            Some("ast") => Erasure::Ast,
+            Some("macro") => Erasure::Macro,
+            Some(s) => error(format!("unexpected erasure argument {s}")),
+        },
         solver_version_check: !matches.opt_present(OPT_NO_SOLVER_VERSION_CHECK),
     };
 

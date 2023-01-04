@@ -1,6 +1,7 @@
 #![feature(box_patterns)]
 #![feature(proc_macro_span)]
 #![feature(proc_macro_tracked_env)]
+#![feature(proc_macro_quote)]
 
 use synstructure::{decl_attribute, decl_derive};
 mod fndecl;
@@ -22,23 +23,53 @@ pub fn fndecl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 }
 
 #[proc_macro]
+pub fn verus_keep_ghost(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    syntax::rewrite_items(input, false, true)
+}
+
+#[proc_macro]
+pub fn verus_erase_ghost(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    syntax::rewrite_items(input, true, true)
+}
+
+#[proc_macro]
 pub fn verus(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    syntax::rewrite_items(input, true)
+    proc_macro::quote! {
+        #[cfg(not(verus_macro_erase_ghost))]
+        verus_keep_ghost! { $input }
+        #[cfg(verus_macro_erase_ghost)]
+        verus_erase_ghost! { $input }
+    }
 }
 
 #[proc_macro]
 pub fn verus_old_todo_replace_this(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    syntax::rewrite_items(input, false)
+    syntax::rewrite_items(input, false, false)
 }
 
 #[proc_macro]
 pub fn verus_proof_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    syntax::rewrite_expr(true, input)
+    syntax::rewrite_expr(false, true, input)
+}
+
+#[proc_macro]
+pub fn verus_exec_expr_keep_ghost(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    syntax::rewrite_expr(false, false, input)
+}
+
+#[proc_macro]
+pub fn verus_exec_expr_erase_ghost(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    syntax::rewrite_expr(true, false, input)
 }
 
 #[proc_macro]
 pub fn verus_exec_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    syntax::rewrite_expr(false, input)
+    proc_macro::quote! {
+        #[cfg(not(verus_macro_erase_ghost))]
+        verus_exec_expr_keep_ghost!($input)
+        #[cfg(verus_macro_erase_ghost)]
+        verus_exec_expr_erase_ghost!($input)
+    }
 }
 
 /// verus_proof_macro_exprs!(f!(exprs)) applies verus syntax to transform exprs into exprs',
@@ -46,12 +77,12 @@ pub fn verus_exec_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
 /// where exprs is a sequence of expressions separated by ",", ";", and/or "=>".
 #[proc_macro]
 pub fn verus_proof_macro_exprs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    syntax::proof_macro_exprs(true, input)
+    syntax::proof_macro_exprs(false, true, input)
 }
 
 #[proc_macro]
 pub fn verus_exec_macro_exprs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    syntax::proof_macro_exprs(false, input)
+    syntax::proof_macro_exprs(false, false, input)
 }
 
 #[proc_macro]
