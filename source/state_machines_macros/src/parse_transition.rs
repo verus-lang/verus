@@ -742,7 +742,7 @@ impl<'ast> Visit<'ast> for IfLetVisitor {
     fn visit_expr_let(&mut self, node: &'ast ExprLet) {
         self.errors.push(Error::new(
             node.span(),
-            "transition definitions do not support if-let conditionals",
+            "transition definitions do not support if-let conditionals (try using a 'match' statement instead)",
         ));
     }
 }

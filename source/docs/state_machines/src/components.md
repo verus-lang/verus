@@ -71,44 +71,39 @@ The fields are like you'd find in a struct: they must be named fields (i.e., the
 
 ## Transitions
 
-There are three different types of transition declarations: `init!`, `transition!`, and `readonly!`. The body of the transition is a transition "DSL" which is interpretted by the macro and turned into an appropriate relation: a 1-state relation for an `init!`, and a 2-state relation for a `transition`.
+There are four different types of "operations": `init!`, `transition!`, `readonly!`, and `property!`. The body of the operation is a "transition DSL" which is interpretted by the macro:
 
-Each transition is a deterministic function of its input arguments, so any intended non-determinism should be done via the arguments. The DSL allows the user to update fields; any field not updated is implied to remain the same. An `init!` transition is required to “update” each field, so that the intialization is fully determined.
+ * A `init!` becomes a 1-state relation representing valid initial states of the system
+ * A `transition!` becomes a 2-state relation representing a transition from one state (`pre`) to the next (`post`)
+ * A `readonly!` becomes a 2-state relation where the state cannot be modified.
+ * A `property!` allows the user to add safety conditions on a single state (`pre`).
 
-2-state transitions take, as their first argument, an object `pre`, which represents the starting state of the transition. Naturally, this argument is not available for `init!` transitions.
+When exported as relations:
 
-In summary, then, the three types of transitions are:
+ * 1-state `init!` operations take 1 argument, `pre`.
+ * 2-state operations (`transition!` and `readonly!`) take 2 arguments, `pre` and `post`.
+ * `property!` operations are not exported as relations.
 
- * `init!`: A transition whose output yields the valid initial states of the state machine. Such a transition must “update” every field.
- * `transition!`: A "normal" transition, from one state (`pre`) to another (`post`). It can update any subset of fields; all other fields are implicitly not updated, or equivalently, updated to `pre.{field}`. No field can be updated more than once.
- * `readonly!`: A no-op transition where no `update` statements are allowed at all. The primary purpose of such a transition is to apply `assert` statements (see below).
+Each operation (transition or otherwise) is deterministic in its input arguments, so any intended non-determinism should be done via the arguments.
+The DSL allows the user to update fields; any field not updated is implied to remain the same.
+An `init!` transition is required to initialize each field, so that the intialization is fully determined.
+The DSL provides four fundamental operations (`init`, `update`, `require`, `assert`)
+as detailed in the [transition language reference](./transition-language.md).
+They are allowed according to the following table:
 
-The transition DSL has a simple grammar. A `Stmt` is given by the following grammar:
+|           | `init!` | `transition!` | `readonly!` | `property!` |
+|-----------|---------|---------------|-------------|-------------|
+| `init`    | yes     |               |             |             |
+| `update`  |         | yes           |             |             |
+| `require` | yes     | yes           | yes         | yes         |
+| `assert`  |         | yes           | yes         | yes         |
 
-```
-Stmt =
-   | Stmt; Stmt;
-   | update(field, E);
-   | require(E);
-   | assert(E);
-   | if E { Stmt }
-   | if E { Stmt } else { Stmt }
-   | let id = E;
-```
-
-Here, `E` is an arbitrary Verus expression, which might be in terms of `pre`, arguments to the transition, or variables declared in `let` statements.
-
-### Updates
-
-In an `update(field, e)` statement, the `field` must be a valid field name as defined in the `fields` block above. In the resulting relation that describes the transition/initialization, this becomes the predicate `post.field == e`.
-
-### Requires
-
-`require(E)` (where `E` is a `bool`) declares an enabling condition on the transition. 
-
-### Asserts
-
-`assert(E)` declares a _safety condition_ on the transition. This creates a proof obilgation for the validity of the state machine: the `assert` must follow from the invariants (see below), and from any enabling conditions (`require` statements) given prior to the `assert`. Because we require this to be proved, other proofs can assume that the predicate holds whenever this transition holds. However, the predicate doesn't count as an enabling condition, i.e., to show the the transition holds, we _don't_ need to show that the assertion holds.
+The distinction between `readonly!` and `property!` is somewhat pedantic: after all,
+both are expressed as predicates on states which are not modified, and both
+allow `require` and `assert` statements.
+The difference is that
+a `readonly!` operation is exported as an actual transition between `pre` and `post`
+(with `pre === post`) whereas a `property!` is not exported as a transition.
 
 ## Invariants
 

@@ -38,7 +38,7 @@
   - [State Machines](./state-machine-reference.md)
     - [State Machine Basics](./components.md)
     - [State Machine Macro Syntax (TODO)](./macro-high-level-reference.md)
-    - [Transition Language (TODO)](./transition-language.md)
+    - [Transition Language](./transition-language.md)
     - [Macro-generated code (TODO)](./macro-generated-reference.md)
     - [State Machine Refinements (TODO)](./refinements-reference.md)
 
