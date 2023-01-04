@@ -1,5 +1,7 @@
 # Intro
 
+_**Note:** this guide is a work-in-progress._
+
 ### What's this guide about?
 
 It's hard to say exactly what this guide is about.
@@ -14,7 +16,13 @@ where this does not apply.
 The unifying theme for the above are programs that require some kind of **nontrivial
 ownership discipline**, where different objects that might be "owned independently"
 need to coordinate somehow.
-(If that doesn't make sense, then hopefully it will by the end of the guide.)
+For example:
+
+ * Locks need to manage ownership of some underlying resource between multiple clients.
+ * Reference-counted smart pointers need to coordinate to agree on a reference-count.
+ * Concurrent data structures (queues, hash tables, and so on) require their
+    client threads to coordinate their access to the data structure.
+
 This kind of nontrivial ownership can be implemented through Verus's
 `tokenized_state_machine!` utility, and this utility will be the main
 tool we'll learn how to use in this guide.
