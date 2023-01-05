@@ -39,36 +39,35 @@ pub enum Flag {
 // another. More buckets -> less contention among threads sharing that bucket.
 pub type BucketId = nat;
 // TODO(chris): can't 4 as nat! (issue #344)
-//pub const RC_WIDTH: BucketId = 4; // nat;   // How many refcounting buckets we use.
-pub open spec fn RC_WIDTH() -> BucketId { 4 as nat }
+pub spec const RC_WIDTH: BucketId = 4;  // How many refcounting buckets we use.
 
 #[is_variant]
 pub enum SharedState {
-   SharedPending{bucket: BucketId},   // inc refcount
+   Pending{bucket: BucketId},   // inc refcount
                                          // None means the shared lock is being acquired for
                                          // writeback.
 
-   SharedPending2{bucket: BucketId},  // !free & !writelocked
+   Pending2{bucket: BucketId},  // !free & !writelocked
 
-   SharedObtained{bucket: BucketId, value: StoredType}, // !reading
+   Obtained{bucket: BucketId, value: StoredType}, // !reading
 }
 
 impl SharedState {
     pub open spec fn get_bucket(self) -> BucketId {
         match self {
-            SharedState::SharedPending{bucket} => bucket,
-            SharedState::SharedPending2{bucket} => bucket,
-            SharedState::SharedObtained{bucket, value: _} => bucket,
+            SharedState::Pending{bucket} => bucket,
+            SharedState::Pending2{bucket} => bucket,
+            SharedState::Obtained{bucket, value: _} => bucket,
         }
     }
 }
 
 #[is_variant]
 pub enum ExcState {
-    ExcClaim{bucket: Option<BucketId>, value: StoredType},
-    ExcPendingAwaitWriteback{bucket: Option<BucketId>, value: StoredType},
-    ExcPending{bucket: Option<BucketId>, visited_count: BucketId, clean: bool, value: StoredType},
-    ExcObtained{bucket: Option<BucketId>, clean: bool},
+    Claim{bucket: Option<BucketId>, value: StoredType},
+    PendingAwaitWriteback{bucket: Option<BucketId>, value: StoredType},
+    Pending{bucket: Option<BucketId>, visited_count: BucketId, clean: bool, value: StoredType},
+    Obtained{bucket: Option<BucketId>, clean: bool},
 }
 
 impl ExcState {
@@ -76,19 +75,19 @@ impl ExcState {
     // verus! or is_variant should throw us a bone here.
     pub open spec fn get_bucket(self) -> Option<BucketId> {
         match self {
-            ExcState::ExcClaim{bucket, value: _} => bucket,
-            ExcState::ExcPendingAwaitWriteback{bucket, value: _} => bucket,
-            ExcState::ExcPending{bucket, visited_count: _, clean: _, value: _} => bucket,
-            ExcState::ExcObtained{bucket, clean: _} => bucket
+            ExcState::Claim{bucket, value: _} => bucket,
+            ExcState::PendingAwaitWriteback{bucket, value: _} => bucket,
+            ExcState::Pending{bucket, visited_count: _, clean: _, value: _} => bucket,
+            ExcState::Obtained{bucket, clean: _} => bucket
         }
     }
 
 //    pub open spec fn get_clean(self) -> bool
-//        recommends self.is_ExcPending() || self.is_ExcObtained()
+//        recommends self.is_Pending() || self.is_Obtained()
 //    {
 //        match self {
-//            ExcState::ExcPending{bucket: _, visited_count: _, clean, value: _} => clean,
-//            ExcState::ExcObtained{bucket: _, clean} => clean,
+//            ExcState::Pending{bucket: _, visited_count: _, clean, value: _} => clean,
+//            ExcState::Obtained{bucket: _, clean} => clean,
 //            _ => false  // nonsense; recommends violated
 //        }
 //    }
@@ -99,9 +98,9 @@ impl ExcState {
 // outstanding get.
 #[is_variant]
 pub enum LoadingState {
-    LoadingPending,  // set status bit to ExcLock | Loading,
-    LoadingPendingCounted{bucket: Option<BucketId>},  // inc refcount
-    LoadingObtained{bucket: Option<BucketId>},         // clear ExcLock bit
+    Pending,  // set status bit to ExcLock | Loading,
+    PendingCounted{bucket: Option<BucketId>},  // inc refcount
+    Obtained{bucket: Option<BucketId>},         // clear ExcLock bit
 }
 
 pub struct WritebackState {
@@ -140,7 +139,7 @@ RwLock {
         initialize(init_value: StoredType) {
             init storage = Some(init_value);
             init flag = Flag::Unmapped;
-            init ref_counts = Map::new(|bucket: BucketId| bucket < RC_WIDTH(), |bucket| 0);
+            init ref_counts = Map::new(|bucket: BucketId| bucket < RC_WIDTH, |bucket| 0);
             init shared_state = Multiset::empty();
             init exc_state = None;
             init loading_state = None;
@@ -181,13 +180,13 @@ RwLock {
                 _ => { require false; }
             }
             birds_eye let value = pre.storage.get_Some_0();
-            add exc_state += Some(ExcState::ExcClaim{bucket: None, value});
+            add exc_state += Some(ExcState::Claim{bucket: None, value});
         }
     }
 
     transition!{
         shared_to_claim(shared_state: SharedState) {
-            require let SharedState::SharedObtained{bucket, value} = shared_state;
+            require let SharedState::Obtained{bucket, value} = shared_state;
 
             remove shared_state -= { shared_state };
 
@@ -198,14 +197,14 @@ RwLock {
                 _ => { require false; }
             }
 
-            add exc_state += Some(ExcState::ExcClaim{bucket: Some(bucket), value});
+            add exc_state += Some(ExcState::Claim{bucket: Some(bucket), value});
         }
     }
 
     transition!{
         claim_to_pending() {
-            remove exc_state -= Some(let ExcState::ExcClaim{bucket, value});
-            add exc_state += Some(ExcState::ExcPendingAwaitWriteback{bucket, value});
+            remove exc_state -= Some(let ExcState::Claim{bucket, value});
+            add exc_state += Some(ExcState::PendingAwaitWriteback{bucket, value});
 
             let f = pre.flag;
             match f {
@@ -220,8 +219,8 @@ RwLock {
         take_exc_lock_finish_writeback(clean: bool) {
             require pre.flag !== Flag::Writeback && pre.flag !== Flag::WritebackAndPendingExcLock;
 
-            remove exc_state -= Some(let ExcState::ExcPendingAwaitWriteback{bucket, value});
-            add exc_state += Some(ExcState::ExcPending{bucket, visited_count: 0, clean, value});
+            remove exc_state -= Some(let ExcState::PendingAwaitWriteback{bucket, value});
+            add exc_state += Some(ExcState::Pending{bucket, visited_count: 0, clean, value});
 
             update flag = if clean { Flag::ExcLockClean } else { Flag::ExcLockDirty };
 
@@ -231,9 +230,20 @@ RwLock {
         }
     }
 
+    transition!{
+        take_exc_lock_check_ref_count() {
+            remove exc_state -= Some(let ExcState::Pending{bucket, visited_count, clean, value});
+            require visited_count < RC_WIDTH;
+            add exc_state += Some(ExcState::Pending{bucket, visited_count: visited_count+1, clean, value});
+            // Expect a single reference--mine--at my bucket.
+            let expected_rc = if Some(visited_count) === bucket { 1 } else { 0 };
+            have ref_counts >= [visited_count => expected_rc];  // TODO: ask travis if this means what I think it means.
+        }
+    }
+
     pub open spec fn valid_bucket(bucket: Option<BucketId>) -> bool {
         match bucket {
-            Some(bucketId) => bucketId < RC_WIDTH(),
+            Some(bucketId) => bucketId < RC_WIDTH,
             None => true
         }
     } 
@@ -241,7 +251,7 @@ RwLock {
     #[invariant]
     pub spec fn storage_some_invariant(&self) -> bool {
         let withdrawn = {
-            ||| self.exc_state.is_Some() && self.exc_state.get_Some_0().is_ExcObtained()
+            ||| self.exc_state.is_Some() && self.exc_state.get_Some_0().is_Obtained()
             ||| self.loading_state.is_Some()
         };
         self.storage.is_Some() == !withdrawn
@@ -250,24 +260,24 @@ RwLock {
     #[invariant]
     pub spec fn exc_state_invariants(&self) -> bool {
         match self.exc_state {
-            Some(ExcState::ExcPendingAwaitWriteback{bucket, value}) => {
+            Some(ExcState::PendingAwaitWriteback{bucket, value}) => {
                 &&& self.loading_state.is_None()
                 &&& Self::valid_bucket(bucket)
                 &&& Some(value) === self.storage
             }
-            Some(ExcState::ExcClaim{bucket, value}) => {
+            Some(ExcState::Claim{bucket, value}) => {
                 &&& self.loading_state.is_None()
                 &&& Self::valid_bucket(bucket)
                 &&& Some(value) === self.storage
             }
-            Some(ExcState::ExcPending{bucket, visited_count, clean, value}) => {
+            Some(ExcState::Pending{bucket, visited_count, clean, value}) => {
                 &&& self.loading_state.is_None()
                 &&& self.writeback_state.is_None()
-                &&& visited_count <= RC_WIDTH()
+                &&& visited_count <= RC_WIDTH
                 &&& Self::valid_bucket(bucket)
                 &&& Some(value) === self.storage
             }
-            Some(ExcState::ExcObtained{bucket, clean}) => {
+            Some(ExcState::Obtained{bucket, clean}) => {
                 &&& self.loading_state.is_None()
                 &&& self.writeback_state.is_None()
                 &&& Self::valid_bucket(bucket)
@@ -290,20 +300,20 @@ RwLock {
     #[invariant]
     pub spec fn loading_state_invariants(&self) -> bool {
         match self.loading_state {
-            Some(LoadingState::LoadingPending) => {
+            Some(LoadingState::Pending) => {
                 &&& self.writeback_state.is_None()
             }
-            Some(LoadingState::LoadingPendingCounted{bucket}) => {
+            Some(LoadingState::PendingCounted{bucket}) => {
                 match bucket {
                     Some(bucketId) => {
                         &&& self.writeback_state.is_None()
-                        &&& bucketId <= RC_WIDTH()
+                        &&& bucketId <= RC_WIDTH
                     }
                     // TODO(travis): In Seagull RwLock Inv, ReadPendingCounted has 0 <= bucket. ?
                     None => false
                 }
             }
-            Some(LoadingState::LoadingObtained{bucket}) => {
+            Some(LoadingState::Obtained{bucket}) => {
                 &&& Self::valid_bucket(bucket)
             }
             None => true
@@ -323,8 +333,8 @@ RwLock {
 
     pub open spec fn count_loading_refs(loading_state: Option<LoadingState>, bucket: BucketId) -> nat {
         match loading_state {
-            Some(LoadingState::LoadingPendingCounted{bucket}) => 1,
-            Some(LoadingState::LoadingObtained{bucket}) => 1,
+            Some(LoadingState::PendingCounted{bucket}) => 1,
+            Some(LoadingState::Obtained{bucket}) => 1,
             _ => 0
         }
     }
@@ -342,9 +352,9 @@ RwLock {
         // is rejected with:
         //    error: an inner attribute is not permitted in this context
         //    error: cannot find attribute `auto` in this scope
-        &&& forall(|bucket: BucketId| bucket < RC_WIDTH()
+        &&& forall(|bucket: BucketId| bucket < RC_WIDTH
             ==> #[trigger] self.ref_counts.dom().contains(bucket))
-        &&& forall(|bucket: BucketId| bucket < RC_WIDTH()
+        &&& forall(|bucket: BucketId| bucket < RC_WIDTH
             ==> self.ref_counts[bucket] === self.count_all_refs(bucket))
     }
 
@@ -358,15 +368,15 @@ RwLock {
             }
             Flag::Loading => {
                 &&& match self.loading_state {
-                    Some(LoadingState::LoadingObtained{bucket: _}) => true,
+                    Some(LoadingState::Obtained{bucket: _}) => true,
                     _ => false
                 }
                 &&& self.writeback_state.is_None()
             }
             Flag::LoadingExcLock => {
                 &&& match self.loading_state {
-                    Some(LoadingState::LoadingPending) => true,
-                    Some(LoadingState::LoadingPendingCounted{bucket: _}) => true,
+                    Some(LoadingState::Pending) => true,
+                    Some(LoadingState::PendingCounted{bucket: _}) => true,
                     _ => false
                 }
                 &&& self.writeback_state.is_None()
@@ -378,7 +388,7 @@ RwLock {
             }
             Flag::Claimed => {
                 &&& self.exc_state.is_Some()
-                &&& self.exc_state.get_Some_0().is_ExcClaim()
+                &&& self.exc_state.get_Some_0().is_Claim()
                 &&& self.writeback_state.is_None()
             }
             Flag::Writeback => {
@@ -388,31 +398,31 @@ RwLock {
             }
             Flag::WritebackAndClaimed => {
                 &&& self.exc_state.is_Some()
-                &&& self.exc_state.get_Some_0().is_ExcClaim()
+                &&& self.exc_state.get_Some_0().is_Claim()
                 &&& self.writeback_state.is_Some()
             }
             Flag::WritebackAndPendingExcLock => {
                 &&& self.exc_state.is_Some()
-                &&& self.exc_state.get_Some_0().is_ExcPendingAwaitWriteback()
+                &&& self.exc_state.get_Some_0().is_PendingAwaitWriteback()
                 &&& self.writeback_state.is_Some()
             }
             Flag::PendingExcLock => {
                 &&& self.exc_state.is_Some()
-                &&& self.exc_state.get_Some_0().is_ExcPendingAwaitWriteback()
+                &&& self.exc_state.get_Some_0().is_PendingAwaitWriteback()
                 &&& self.writeback_state.is_None()
             }
             Flag::ExcLockClean => {
                 &&& match self.exc_state {
-                    Some(ExcState::ExcPending{bucket: _, visited_count: _, clean, value: _}) => clean,
-                    Some(ExcState::ExcObtained{bucket: _, clean}) => clean,
+                    Some(ExcState::Pending{bucket: _, visited_count: _, clean, value: _}) => clean,
+                    Some(ExcState::Obtained{bucket: _, clean}) => clean,
                     _ => false
                 }
                 &&& self.writeback_state.is_None()
             }
             Flag::ExcLockDirty => {
                 &&& match self.exc_state {
-                    Some(ExcState::ExcPending{bucket: _, visited_count: _, clean, value: _}) => !clean,
-                    Some(ExcState::ExcObtained{bucket: _, clean}) => !clean,
+                    Some(ExcState::Pending{bucket: _, visited_count: _, clean, value: _}) => !clean,
+                    Some(ExcState::Obtained{bucket: _, clean}) => !clean,
                     _ => false
                 }
                 &&& self.writeback_state.is_None()
@@ -421,27 +431,27 @@ RwLock {
     }
 
     pub open spec fn shared_state_valid(&self, shared_state: SharedState) -> bool {
-        &&& shared_state.get_bucket() < RC_WIDTH()
+        &&& shared_state.get_bucket() < RC_WIDTH
         &&& match shared_state {
-            SharedState::SharedPending{bucket} => true,
-            SharedState::SharedPending2{bucket} => {
+            SharedState::Pending{bucket} => true,
+            SharedState::Pending2{bucket} => {
                 &&& match self.exc_state {
-                    Some(ExcState::ExcObtained{..}) => false,
-                    Some(ExcState::ExcPending{visited_count, ..}) => visited_count <= bucket,
+                    Some(ExcState::Obtained{..}) => false,
+                    Some(ExcState::Pending{visited_count, ..}) => visited_count <= bucket,
                     _ => true
                 }
                 &&& match self.loading_state {
-                    Some(LoadingState::LoadingPending) => false,
-                    Some(LoadingState::LoadingPendingCounted{..}) => false,
+                    Some(LoadingState::Pending) => false,
+                    Some(LoadingState::PendingCounted{..}) => false,
                     _ => true
                 }
                 &&& self.flag !== Flag::Unmapped
             }
-            SharedState::SharedObtained{bucket, value} => {
+            SharedState::Obtained{bucket, value} => {
                 &&& Some(value) === self.storage
                 &&& match self.exc_state {
-                    Some(ExcState::ExcObtained{..}) => false,
-                    Some(ExcState::ExcPending{visited_count, ..}) => visited_count <= bucket,
+                    Some(ExcState::Obtained{..}) => false,
+                    Some(ExcState::Pending{visited_count, ..}) => visited_count <= bucket,
                     _ => true
                 }
                 &&& self.loading_state.is_None()
@@ -459,7 +469,7 @@ RwLock {
 
     #[inductive(initialize)]
     fn initialize_inductive(post: Self, init_value: StoredType) {
-        assert forall |bucket: BucketId| bucket < RC_WIDTH()
+        assert forall |bucket: BucketId| bucket < RC_WIDTH
             implies post.ref_counts[bucket] === post.count_all_refs(bucket) by {
 
             let filtered = post.shared_state.filter(|shared_state: SharedState| shared_state.get_bucket() === bucket);
@@ -469,7 +479,7 @@ RwLock {
    
     #[inductive(take_writeback)]
     fn take_writeback_inductive(pre: Self, post: Self) {
-        assert forall |bucket: BucketId| bucket < RC_WIDTH()
+        assert forall |bucket: BucketId| bucket < RC_WIDTH
             implies post.ref_counts[bucket] === post.count_all_refs(bucket) by {
             assert(pre.count_all_refs(bucket) === post.count_all_refs(bucket));
         }
@@ -480,7 +490,7 @@ RwLock {
    
     #[inductive(release_writeback)]
     fn release_writeback_inductive(pre: Self, post: Self) {
-        assert forall |bucket: BucketId| bucket < RC_WIDTH()
+        assert forall |bucket: BucketId| bucket < RC_WIDTH
             implies post.ref_counts[bucket] === post.count_all_refs(bucket) by {
             assert(pre.count_all_refs(bucket) === post.count_all_refs(bucket));
         }
@@ -491,7 +501,7 @@ RwLock {
    
     #[inductive(bucketless_claim)]
     fn bucketless_claim_inductive(pre: Self, post: Self) {
-        assert forall |bucket: BucketId| bucket < RC_WIDTH()
+        assert forall |bucket: BucketId| bucket < RC_WIDTH
             implies post.ref_counts[bucket] === post.count_all_refs(bucket) by {
             assert(pre.count_all_refs(bucket) === post.count_all_refs(bucket));
         }
@@ -502,7 +512,7 @@ RwLock {
    
     #[inductive(shared_to_claim)]
     fn shared_to_claim_inductive(pre: Self, post: Self, shared_state: SharedState) {
-        assert forall |bucket: BucketId| bucket < RC_WIDTH()
+        assert forall |bucket: BucketId| bucket < RC_WIDTH
             implies post.ref_counts[bucket] === post.count_all_refs(bucket) by {
 
             let pre_filtered = pre.shared_state.filter(|shared_state: SharedState| shared_state.get_bucket() === bucket);
@@ -528,7 +538,7 @@ RwLock {
     #[inductive(claim_to_pending)]
     fn claim_to_pending_inductive(pre: Self, post: Self) {
         // ref_count_invariant
-        assert forall |bucket: BucketId| bucket < RC_WIDTH()
+        assert forall |bucket: BucketId| bucket < RC_WIDTH
             implies post.ref_counts[bucket] === post.count_all_refs(bucket) by {
             assert(pre.count_all_refs(bucket) === post.count_all_refs(bucket));
         }
@@ -541,7 +551,7 @@ RwLock {
     #[inductive(take_exc_lock_finish_writeback)]
     fn take_exc_lock_finish_writeback_inductive(pre: Self, post: Self, clean: bool) {
         // ref_count_invariant
-        assert forall |bucket: BucketId| bucket < RC_WIDTH()
+        assert forall |bucket: BucketId| bucket < RC_WIDTH
             implies post.ref_counts[bucket] === post.count_all_refs(bucket) by {
             assert(pre.count_all_refs(bucket) === post.count_all_refs(bucket));
         }
@@ -551,6 +561,20 @@ RwLock {
         }
     }
 
+    #[inductive(take_exc_lock_check_ref_count)]
+    fn take_exc_lock_check_ref_count_inductive(pre: Self, post: Self) {
+        // ref_count_invariant
+        assert forall |bucket: BucketId| bucket < RC_WIDTH
+            implies post.ref_counts[bucket] === post.count_all_refs(bucket) by {
+            assert(pre.count_all_refs(bucket) === post.count_all_refs(bucket));
+        }
+        // shared_storage_invariant
+        assert forall |ss| post.shared_state.count(ss) > 0 implies post.shared_state_valid(ss) by {
+            assert(pre.shared_state_valid(ss));
+            // LEFT OFF HERE
+            assert(post.shared_state_valid(ss));
+        }
+    }
 }
 
 } //tokenized_state_machine
