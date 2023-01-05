@@ -1522,6 +1522,7 @@ fn expr_to_stm_opt(
                     cond_exp: e0,
                     body: stms_to_one_stm(&body.span, stms1),
                     invs: Arc::new(invs),
+                    // These are filled in later, in sst_vars
                     typ_inv_vars: Arc::new(vec![]),
                     modified_vars: Arc::new(vec![]),
                 },

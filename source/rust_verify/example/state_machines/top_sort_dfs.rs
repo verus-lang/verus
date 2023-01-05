@@ -489,6 +489,8 @@ fn init_node_states(
             node_states.view().len() == i as int,
             forall(|j: int| 0 <= j && j < i >>=
                 node_states.view().index(j).well_formed(j, instance)),
+            forall(|j: int| 0 <= j && j < i >>=
+                !node_states.view().index(j).in_stack),
             forall(|j: usize| i <= j && j < n >>=
                 #[trigger] unv.dom().contains(j)),
             forall(|j: usize| i <= j && j < n >>=
@@ -502,10 +504,9 @@ fn init_node_states(
         //#[spec] let old_node_states = node_states;
 
         node_states.push(NodeState {
-            visited: true,
-            in_stack: true,
-            //token: NodeToken::Unvisited(unv1),
-            token: NodeToken::InProgress,
+            visited: false,
+            in_stack: false,
+            token: NodeToken::Unvisited(unv1),
         });
 
         i = i + 1;
