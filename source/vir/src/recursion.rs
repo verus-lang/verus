@@ -564,7 +564,6 @@ pub(crate) fn expand_call_graph(
                                         FunctionKind::TraitMethodImpl { .. } => {}
                                     },
                                     _ => {
-                                        println!("tbound: {:#?}", tbound);
                                         return err_str(
                                             &expr.span,
                                             "not yet supported: type bounds on non-datatypes",
