@@ -237,7 +237,9 @@ RwLock {
             add exc_state += Some(ExcState::Pending{bucket, visited_count: visited_count+1, clean, value});
             // Expect a single reference--mine--at my bucket.
             let expected_rc = if Some(visited_count) === bucket { 1 } else { 0 };
-            have ref_counts >= [visited_count => expected_rc];  // TODO: ask travis if this means what I think it means.
+
+            // TODO(travis): change have syntax? have ref_counts[visited_count] == expected_rc;
+            have ref_counts >= [visited_count => expected_rc];
         }
     }
 
@@ -286,6 +288,17 @@ RwLock {
             update flag = Flag::Loading;
             add loading_state += Some(LoadingState::Obtained{bucket: None});
             withdraw storage -= Some(let _);    // SOME data came out from behind the lock, but who knows what
+        }
+    }
+
+    transition!{
+        loading_inc_count(bucket: BucketId) {
+            require bucket < RC_WIDTH;
+            remove loading_state -= Some(LoadingState::Pending{});
+            remove ref_counts -= [ bucket => let pre_count ];
+
+            add loading_state += Some(LoadingState::PendingCounted{bucket: Some(bucket)});
+            add ref_counts += [ bucket => pre_count + 1 ];
         }
     }
 
@@ -355,7 +368,7 @@ RwLock {
                 match bucket {
                     Some(bucketId) => {
                         &&& self.writeback_state.is_None()
-                        &&& bucketId <= RC_WIDTH
+                        &&& bucketId < RC_WIDTH
                     }
                     // TODO(travis): In Seagull RwLock Inv, ReadPendingCounted has 0 <= bucket. ?
                     None => false
@@ -712,6 +725,24 @@ RwLock {
         assert forall |bucket: BucketId| bucket < RC_WIDTH
             implies post.ref_counts[bucket] === post.count_all_refs(bucket) by {
             assert(pre.count_all_refs(bucket) === post.count_all_refs(bucket));
+        }
+        // shared_storage_invariant
+        assert forall |ss| post.shared_state.count(ss) > 0 implies post.shared_state_valid(ss) by {
+            assert(pre.shared_state_valid(ss));
+        }
+    }
+
+    #[inductive(loading_inc_count)]
+    fn loading_inc_count_inductive(pre: Self, post: Self, bucket: BucketId) {
+        // ref_count_invariant
+        let loading_bucket = bucket;
+        assert forall |bucket: BucketId| bucket < RC_WIDTH
+            implies post.ref_counts[bucket] === post.count_all_refs(bucket) by {
+            if bucket == loading_bucket {
+                assert(post.ref_counts[bucket] === pre.count_all_refs(bucket)+1);   // trigger
+            } else {
+                assert(pre.count_all_refs(bucket) === post.count_all_refs(bucket)); // trigger
+            }
         }
         // shared_storage_invariant
         assert forall |ss| post.shared_state.count(ss) > 0 implies post.shared_state_valid(ss) by {
