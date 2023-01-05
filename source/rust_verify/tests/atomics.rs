@@ -197,7 +197,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] call_closure_from_inside_atomic
     COMMON.to_string() + &verus_code! {
-        pub fn test_clos(#[proof] i: AtomicInvariant<u8>) {
+        pub fn test_clos<A, B: InvariantPredicate<A, u8>>(#[proof] i: AtomicInvariant<A, u8, B>) {
             let t = || { };
             open_atomic_invariant!(&i => inner => {
                 // this could fail for multiple reasons:
@@ -222,7 +222,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] call_closure_from_inside_local
     COMMON.to_string() + &verus_code! {
-        pub fn test_clos(#[proof] i: LocalInvariant<u8>) {
+        pub fn test_clos<A, B: InvariantPredicate<A, u8>>(#[proof] i: LocalInvariant<A, u8, B>) {
             let t = || { };
             open_local_invariant!(&i => inner => { // FAILS
                 t();
@@ -234,7 +234,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] call_closure_and_open_inv_inside
     COMMON.to_string() + &verus_code! {
-        pub fn test_clos(#[proof] i: LocalInvariant<u8>) {
+        pub fn test_clos<A, B: InvariantPredicate<A, u8>>(#[proof] i: LocalInvariant<A, u8, B>) {
             let t;
             open_local_invariant!(&i => inner => {
                 t = || {
@@ -256,7 +256,7 @@ test_verify_one_file! {
     COMMON.to_string() + &verus_code! {
         pub fn stuff() { }
 
-        pub fn test_clos(#[proof] i: AtomicInvariant<u8>) {
+        pub fn test_clos<A, B: InvariantPredicate<A, u8>>(#[proof] i: AtomicInvariant<A, u8, B>) {
             let t;
             open_atomic_invariant!(&i => inner => {
                 t = || {
@@ -278,7 +278,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] call_closure_and_open_inv_inside_atomic_fail
     COMMON.to_string() + &verus_code! {
-        pub fn test_clos(#[proof] i: AtomicInvariant<u8>) {
+        pub fn test_clos<A, B: InvariantPredicate<A, u8>>(#[proof] i: AtomicInvariant<A, u8, B>) {
             open_atomic_invariant!(&i => inner => {
                 let t = || { };
 
