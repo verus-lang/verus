@@ -620,7 +620,10 @@ pub(crate) fn check_generics_bounds<'tcx>(
                 let lhs = iter.next().expect("expect lhs of trait bound");
                 let trait_params: Vec<rustc_middle::ty::Ty> = iter.collect();
 
-                if Some(trait_def_id) == tcx.lang_items().fn_trait() {
+                if Some(trait_def_id) == tcx.lang_items().fn_trait()
+                    || Some(trait_def_id) == tcx.lang_items().fn_mut_trait()
+                    || Some(trait_def_id) == tcx.lang_items().fn_once_trait()
+                {
                     // Ignore Fn bounds
                     continue;
                 }

@@ -682,3 +682,17 @@ pub fn user_local_name<'a>(s: &'a str) -> &'a str {
 pub fn unique_local_name(user_given_name: String, uniq_id: usize) -> String {
     user_given_name + &LOCAL_UNIQUE_ID_SEPARATOR.to_string() + &uniq_id.to_string()
 }
+
+pub fn exec_nonstatic_call_fun() -> Fun {
+    Arc::new(FunX { path: exec_nonstatic_call_path(), trait_path: None })
+}
+
+pub fn exec_nonstatic_call_path() -> Path {
+    Arc::new(PathX {
+        krate: None,
+        segments: Arc::new(vec![
+            Arc::new("pervasive".to_string()),
+            Arc::new("exec_nonstatic_call".to_string()),
+        ]),
+    })
+}

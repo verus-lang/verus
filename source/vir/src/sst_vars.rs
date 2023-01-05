@@ -51,21 +51,6 @@ pub(crate) fn stm_assign(
             }
             stm.clone()
         }
-        StmX::DynCall { arg_fn, arg_param_tuple, typ_args: _, dest } => {
-            let var: UniqueIdent = get_loc_var(&dest.dest);
-            assigned.insert(var.clone());
-            if !dest.is_init {
-                modified.insert(var.clone());
-            }
-
-            for arg in vec![arg_fn, arg_param_tuple].into_iter() {
-                if let ExpX::Loc(loc) = &arg.x {
-                    let var = get_loc_var(loc);
-                    modified.insert(var);
-                }
-            }
-            stm.clone()
-        }
         StmX::Assert(..)
         | StmX::AssertBitVector { .. }
         | StmX::AssertPostConditions { .. }

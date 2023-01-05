@@ -202,7 +202,7 @@ where
                     match target {
                         CallTarget::Static(_, _) => (),
                         CallTarget::BuiltinSpecFun(_, _) => (),
-                        CallTarget::FnSpec(fun) | CallTarget::FnExec(fun) => {
+                        CallTarget::FnSpec(fun) => {
                             expr_visitor_control_flow!(expr_visitor_dfs(fun, map, mf));
                         }
                     }
@@ -536,10 +536,6 @@ where
                 CallTarget::FnSpec(fun) => {
                     let fun = map_expr_visitor_env(fun, map, env, fe, fs, ft)?;
                     CallTarget::FnSpec(fun)
-                }
-                CallTarget::FnExec(fun) => {
-                    let fun = map_expr_visitor_env(fun, map, env, fe, fs, ft)?;
-                    CallTarget::FnExec(fun)
                 }
             };
             let mut exprs: Vec<Expr> = Vec::new();

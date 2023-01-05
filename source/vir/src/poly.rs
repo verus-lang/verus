@@ -309,16 +309,6 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 let typ = coerce_typ_to_poly(ctx, &expr.typ);
                 mk_expr_typ(&typ, ExprX::Call(target, Arc::new(exprs)))
             }
-            CallTarget::FnExec(e) => {
-                let callee = coerce_expr_to_poly(ctx, &poly_expr(ctx, state, e));
-                let target = CallTarget::FnExec(callee);
-                let exprs = exprs
-                    .iter()
-                    .map(|e| coerce_expr_to_poly(ctx, &poly_expr(ctx, state, e)))
-                    .collect();
-                let typ = coerce_typ_to_poly(ctx, &expr.typ);
-                mk_expr_typ(&typ, ExprX::Call(target, Arc::new(exprs)))
-            }
         },
         ExprX::Tuple(_) => panic!("internal error: ast_simplify should remove Tuple"),
         ExprX::Ctor(path, variant, binders, update) => {

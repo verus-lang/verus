@@ -495,30 +495,6 @@ fn check_expr_handle_mut_arg(
             }
             Ok(Mode::Spec)
         }
-        ExprX::Call(CallTarget::FnExec(e0), es) => {
-            match &mut typing.atomic_insts {
-                None => {}
-                Some(ai) => {
-                    // There's no way to mark function values at atomic,
-                    // (and there probaby isn't much value to doing so)
-                    // so here we always assume they are non-atomic.
-                    ai.add_non_atomic(&expr.span);
-                }
-            }
-
-            if outer_mode != Mode::Exec {
-                return err_str(
-                    &expr.span,
-                    "to call a function in ghost code, it must be a FnSpec",
-                );
-            }
-
-            check_expr_has_mode(typing, Mode::Exec, e0, Mode::Exec)?;
-            for arg in es.iter() {
-                check_expr_has_mode(typing, Mode::Exec, arg, Mode::Exec)?;
-            }
-            Ok(Mode::Exec)
-        }
         ExprX::Call(CallTarget::BuiltinSpecFun(_f, _typs), es) => {
             if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return err_str(&expr.span, "cannot call spec function from exec mode");

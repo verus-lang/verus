@@ -2098,10 +2098,19 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     let (target, vir_args, resolved_call) = if is_spec_fn {
                         (CallTarget::FnSpec(vir_fun), vir_args, ResolvedCall::Spec)
                     } else {
-                        // FnExec requires the args to already be in tuple form
+                        // non-static calls are translated into a static call to
+                        // `exec_nonstatic_call` which is defined in the pervasive lib.
                         let span = to_air_span(expr.span.clone());
                         let tup = vir::ast_util::mk_tuple(&span, &Arc::new(vir_args));
-                        (CallTarget::FnExec(vir_fun), vec![tup], ResolvedCall::NonStaticExec)
+                        let fun = vir::def::exec_nonstatic_call_fun();
+                        let ret_typ = expr_typ.clone();
+                        let typ_args =
+                            Arc::new(vec![tup.typ.clone(), ret_typ, vir_fun.typ.clone()]);
+                        (
+                            CallTarget::Static(fun, typ_args),
+                            vec![vir_fun, tup],
+                            ResolvedCall::NonStaticExec,
+                        )
                     };
 
                     {

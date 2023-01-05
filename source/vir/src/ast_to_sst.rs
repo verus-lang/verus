@@ -393,14 +393,8 @@ pub fn can_control_flow_reach_after_loop(expr: &Expr) -> bool {
     }
 }
 
-#[derive(PartialEq)]
-enum FunOrDyn {
-    Fun(Fun),
-    Dyn,
-}
-
 enum ReturnedCall {
-    Call { fun: FunOrDyn, typs: Typs, has_return: bool, args: Exps },
+    Call { fun: Fun, typs: Typs, has_return: bool, args: Exps },
     Never,
 }
 
@@ -416,38 +410,6 @@ fn expr_get_call(
             }
             CallTarget::FnSpec(..) => {
                 panic!("internal error: CallTarget::FnSpec");
-            }
-            CallTarget::FnExec(e0) => {
-                let (mut stms, e0) = expr_to_stm_opt(ctx, state, e0)?;
-                let e0 = match e0.to_value() {
-                    Some(e) => e,
-                    None => {
-                        return Ok(Some((stms, ReturnedCall::Never)));
-                    }
-                };
-
-                assert!(args.len() == 1);
-                let (mut stms1, e1) = expr_to_stm_opt(ctx, state, &args[0])?;
-                stms.append(&mut stms1);
-                let e1 = match e1.to_value() {
-                    Some(e) => e,
-                    None => {
-                        return Ok(Some((stms, ReturnedCall::Never)));
-                    }
-                };
-
-                let clos_typ = e0.typ.clone();
-                let arg_typ = e1.typ.clone();
-
-                Ok(Some((
-                    stms,
-                    ReturnedCall::Call {
-                        fun: FunOrDyn::Dyn,
-                        typs: Arc::new(vec![clos_typ, arg_typ]),
-                        has_return: true,
-                        args: Arc::new(vec![e0, e1]),
-                    },
-                )))
             }
             CallTarget::Static(x, typs) => {
                 let mut stms: Vec<Stm> = Vec::new();
@@ -467,7 +429,7 @@ fn expr_get_call(
                 Ok(Some((
                     stms,
                     ReturnedCall::Call {
-                        fun: FunOrDyn::Fun(x.clone()),
+                        fun: x.clone(),
                         typs: typs.clone(),
                         has_return: has_ret,
                         args: Arc::new(exps),
@@ -489,7 +451,6 @@ fn expr_must_be_call_stm(
         ExprX::Call(CallTarget::Static(x, _), _) if !function_can_be_exp(ctx, state, expr, x)? => {
             expr_get_call(ctx, state, expr)
         }
-        ExprX::Call(CallTarget::FnExec(_e), _) => expr_get_call(ctx, state, expr),
         _ => Ok(None),
     }
 }
@@ -939,31 +900,7 @@ fn expr_to_stm_opt(
                             Some(assign),
                         )
                     };
-                    match fun {
-                        FunOrDyn::Fun(fun) => {
-                            stms.push(stm_call(
-                                ctx,
-                                state,
-                                &expr.span,
-                                fun,
-                                typs,
-                                args,
-                                Some(dest),
-                            )?);
-                        }
-                        FunOrDyn::Dyn => {
-                            assert!(args.len() == 2);
-                            stms.push(Spanned::new(
-                                expr.span.clone(),
-                                StmX::DynCall {
-                                    arg_fn: args[0].clone(),
-                                    arg_param_tuple: args[1].clone(),
-                                    typ_args: typs,
-                                    dest,
-                                },
-                            ));
-                        }
-                    }
+                    stms.push(stm_call(ctx, state, &expr.span, fun, typs, args, Some(dest))?);
                     stms.extend(assign.into_iter());
                     Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
                 }
@@ -1003,46 +940,10 @@ fn expr_to_stm_opt(
                 SpannedTyped::new(&expr.span, &expr.typ, ExpX::Call(f, typ_args.clone(), args));
             Ok((vec![], ReturnValue::Some(call)))
         }
-        ExprX::Call(CallTarget::FnExec(_callee), _args) => {
-            let (mut stms, call) = expr_get_call(ctx, state, expr)?.expect("Call");
-            match call {
-                ReturnedCall::Never => Ok((stms, ReturnValue::Never)),
-                ReturnedCall::Call { fun, typs, has_return, args } => {
-                    assert!(fun == FunOrDyn::Dyn);
-                    assert!(has_return);
-                    assert!(args.len() == 2);
-
-                    let (temp, temp_var) = state.next_temp(&expr.span, &expr.typ);
-                    let temp_ident = state.declare_new_var(&temp, &expr.typ, false, false);
-                    let dest = Dest {
-                        dest: var_loc_exp(&expr.span, &expr.typ, temp_ident.clone()),
-                        is_init: true,
-                    };
-
-                    let dyn_call = Spanned::new(
-                        expr.span.clone(),
-                        StmX::DynCall {
-                            arg_fn: args[0].clone(),
-                            arg_param_tuple: args[1].clone(),
-                            typ_args: typs,
-                            dest,
-                        },
-                    );
-                    stms.push(dyn_call);
-                    Ok((stms, ReturnValue::Some(temp_var)))
-                }
-            }
-        }
         ExprX::Call(CallTarget::Static(..), _) => {
             match expr_get_call(ctx, state, expr)?.expect("Call") {
                 (stms, ReturnedCall::Never) => Ok((stms, ReturnValue::Never)),
                 (mut stms, ReturnedCall::Call { fun: x, typs, has_return: ret, args }) => {
-                    let x = match x {
-                        FunOrDyn::Dyn => {
-                            panic!("static call should not be Dyn");
-                        }
-                        FunOrDyn::Fun(fun) => fun,
-                    };
                     if function_can_be_exp(ctx, state, expr, &x)? {
                         // ExpX::Call
                         let call = ExpX::Call(x.clone(), typs.clone(), args);
@@ -1875,31 +1776,7 @@ fn stmt_to_stm(
                             dest: var_loc_exp(&pattern.span, &typ, decl.ident.clone()),
                             is_init: true,
                         };
-                        match fun {
-                            FunOrDyn::Fun(fun) => {
-                                stms.push(stm_call(
-                                    ctx,
-                                    state,
-                                    &init.span,
-                                    fun,
-                                    typs,
-                                    args,
-                                    Some(dest),
-                                )?);
-                            }
-                            FunOrDyn::Dyn => {
-                                assert!(args.len() == 2);
-                                stms.push(Spanned::new(
-                                    stmt.span.clone(),
-                                    StmX::DynCall {
-                                        arg_fn: args[0].clone(),
-                                        arg_param_tuple: args[1].clone(),
-                                        typ_args: typs,
-                                        dest: dest,
-                                    },
-                                ));
-                            }
-                        }
+                        stms.push(stm_call(ctx, state, &init.span, fun, typs, args, Some(dest))?);
                         let ret = ReturnValue::ImplicitUnit(stmt.span.clone());
                         return Ok((stms, ret, Some((decl, None))));
                     }

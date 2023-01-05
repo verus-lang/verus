@@ -104,12 +104,6 @@ pub enum StmX {
         split: Option<Message>,
         dest: Option<Dest>,
     },
-    DynCall {
-        arg_fn: Exp,
-        arg_param_tuple: Exp,
-        typ_args: Typs,
-        dest: Dest,
-    },
     // note: failed assertion reports Stm's span, plus an optional additional span
     Assert(Option<Message>, Exp),
     AssertBitVector {

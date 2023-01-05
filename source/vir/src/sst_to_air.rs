@@ -7,7 +7,7 @@ use crate::ast_util::{
     allowed_bitvector_type, bitwidth_from_type, err_string, fun_as_rust_dbg, get_field, get_variant,
 };
 use crate::context::Ctx;
-use crate::def::{closure_ens, closure_req, fn_inv_name, fn_namespace_name, new_user_qid_name};
+use crate::def::{fn_inv_name, fn_namespace_name, new_user_qid_name};
 use crate::def::{
     fun_to_string, new_internal_qid, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id,
     prefix_lambda_type, prefix_pre_var, prefix_requires, prefix_unbox, snapshot_ident,
@@ -1409,51 +1409,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 let e_ens = Arc::new(ExprX::Apply(f_ens, Arc::new(ens_args)));
                 stmts.push(Arc::new(StmtX::Assume(e_ens)));
             }
-            vec![Arc::new(StmtX::Block(Arc::new(stmts)))] // wrap in block for readability
-        }
-        StmX::DynCall { arg_fn, arg_param_tuple, typ_args: typs, dest } => {
-            let typ_args: Vec<Expr> = vec_map(typs, typ_to_id);
-
-            let mut stmts: Vec<Stmt> = Vec::new();
-            if !ctx.checking_recommends_for_non_spec() {
-                let f_req = suffix_global_id(&fun_to_air_ident(&closure_req()));
-                let mut req_args = typ_args.clone();
-                req_args.push(exp_to_expr(ctx, arg_fn, expr_ctxt)?);
-                req_args.push(exp_to_expr(ctx, arg_param_tuple, expr_ctxt)?);
-                let e_req = Arc::new(ExprX::Apply(f_req, Arc::new(req_args)));
-                let description = crate::def::PRECONDITION_FAILURE.to_string();
-                let error = error(description, &stm.span);
-                stmts.push(Arc::new(StmtX::Assert(error, e_req)));
-            }
-
-            let callee_mask_set = MaskSet::full();
-            if !ctx.checking_recommends() {
-                callee_mask_set.assert_is_contained_in(&state.mask, &stm.span, &mut stmts);
-            }
-
-            let mut ens_args = typ_args;
-            ens_args.push(exp_to_expr(ctx, arg_fn, expr_ctxt)?);
-            ens_args.push(exp_to_expr(ctx, arg_param_tuple, expr_ctxt)?);
-
-            let Dest { dest, is_init } = dest;
-
-            let var = suffix_local_unique_id(&get_loc_var(dest));
-            ens_args.push(exp_to_expr(ctx, &dest, expr_ctxt)?);
-            if !*is_init {
-                let havoc = StmtX::Havoc(var.clone());
-                stmts.push(Arc::new(havoc));
-            }
-
-            let mut typ_inv_stmts = typ_invariant(ctx, &dest.typ, &string_var(&var))
-                .into_iter()
-                .map(|e| Arc::new(StmtX::Assume(e)))
-                .collect();
-            stmts.append(&mut typ_inv_stmts);
-
-            let f_ens = suffix_global_id(&fun_to_air_ident(&closure_ens()));
-            let e_ens = Arc::new(ExprX::Apply(f_ens, Arc::new(ens_args)));
-            stmts.push(Arc::new(StmtX::Assume(e_ens)));
-
             vec![Arc::new(StmtX::Block(Arc::new(stmts)))] // wrap in block for readability
         }
         StmX::Assert(error, expr) => {

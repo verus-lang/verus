@@ -56,7 +56,6 @@ fn expr_get_early_exits_rec(
             | ExprX::Loc(..)
             | ExprX::Call(CallTarget::Static(..), _)
             | ExprX::Call(CallTarget::FnSpec(..), _)
-            | ExprX::Call(CallTarget::FnExec(..), _)
             | ExprX::Call(CallTarget::BuiltinSpecFun(..), _)
             | ExprX::Tuple(..)
             | ExprX::Ctor(..)

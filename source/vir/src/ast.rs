@@ -376,10 +376,6 @@ pub enum CallTarget {
     /// Call a dynamically computed FnSpec (no type arguments allowed),
     /// where the function type is specified by the GenericBound of typ_param.
     FnSpec(Expr),
-    /// Call a dynamically computed Fn / FnMut / FnOnce using its pre- and post-conditions
-    /// Any Call that uses this call target should have *exactly 1 argument*
-    /// (a tuple representing a collection of arguments).
-    FnExec(Expr),
     BuiltinSpecFun(BuiltinSpecFun, Typs),
 }
 

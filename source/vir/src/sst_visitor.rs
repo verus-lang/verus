@@ -149,7 +149,6 @@ where
         VisitorControlFlow::Recurse => {
             match &stm.x {
                 StmX::Call { .. }
-                | StmX::DynCall { .. }
                 | StmX::Assert(_, _)
                 | StmX::AssertPostConditions(_, _)
                 | StmX::Assume(_)
@@ -208,14 +207,6 @@ where
                 for exp in args.iter() {
                     expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f));
                 }
-            }
-            StmX::DynCall { arg_fn, arg_param_tuple, typ_args: _, dest: _ } => {
-                expr_visitor_control_flow!(exp_visitor_dfs(arg_fn, &mut ScopeMap::new(), f));
-                expr_visitor_control_flow!(exp_visitor_dfs(
-                    arg_param_tuple,
-                    &mut ScopeMap::new(),
-                    f
-                ));
             }
             StmX::Assert(_span2, exp) => {
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
@@ -541,7 +532,6 @@ where
 {
     match &stm.x {
         StmX::Call { .. } => fs(stm),
-        StmX::DynCall { .. } => fs(stm),
         StmX::Assert(_, _) => fs(stm),
         StmX::AssertPostConditions(_, _) => fs(stm),
         StmX::Assume(_) => fs(stm),
@@ -615,7 +605,6 @@ where
 {
     match &stm.x {
         StmX::Call { .. } => Ok(stm.clone()),
-        StmX::DynCall { .. } => Ok(stm.clone()),
         StmX::Assert(_, _) => Ok(stm.clone()),
         StmX::AssertPostConditions(_, _) => Ok(stm.clone()),
         StmX::Assume(_) => Ok(stm.clone()),
@@ -696,15 +685,6 @@ where
                     },
                 )
             }
-            StmX::DynCall { arg_fn, arg_param_tuple, typ_args, dest } => Spanned::new(
-                span,
-                StmX::DynCall {
-                    arg_fn: fe(arg_fn)?,
-                    arg_param_tuple: fe(arg_param_tuple)?,
-                    typ_args: typ_args.clone(),
-                    dest: (*dest).clone(),
-                },
-            ),
             StmX::Assert(span2, exp) => Spanned::new(span, StmX::Assert(span2.clone(), fe(exp)?)),
             StmX::AssertPostConditions(span2, None) => {
                 Spanned::new(span, StmX::AssertPostConditions(span2.clone(), None))
