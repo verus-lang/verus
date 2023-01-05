@@ -250,6 +250,7 @@ RwLock {
         }
     }
 
+    // This step is probably useless; could downgrade to claim, then discard the claim.
     transition!{
         deposit_downgrade_exc_lock(value: StoredType) {
             remove exc_state -= Some(let ExcState::Obtained{bucket, clean});
@@ -257,6 +258,25 @@ RwLock {
             update flag = Flag::Available;
             deposit storage += Some(value);
             add shared_state += { SharedState::Obtained{bucket: bucket.get_Some_0(), value} };
+        }
+    }
+
+    transition!{
+        deposit_downgrade_exc_lock_to_claim(value: StoredType) {
+            remove exc_state -= Some(let ExcState::Obtained{bucket, clean});
+            require bucket.is_Some();    // TODO(travis): maybe unecessary? ExcState::Claim allows a None bucket
+            update flag = Flag::Claimed;
+            deposit storage += Some(value);
+            add exc_state += Some(ExcState::Claim{bucket, value});
+        }
+    }
+
+    transition!{
+        withdraw_alloc() {
+            require pre.flag === Flag::Unmapped;
+            update flag = Flag::LoadingExcLock;
+            add loading_state += Some(LoadingState::Pending);
+            withdraw storage -= Some(let _);    // SOME data came out from behind the lock, but who knows what
         }
     }
 
@@ -647,6 +667,32 @@ RwLock {
             if ss !== new_ss {
                 assert(pre.shared_state_valid(ss));
             }
+        }
+    }
+
+    #[inductive(deposit_downgrade_exc_lock_to_claim)]
+    fn deposit_downgrade_exc_lock_to_claim_inductive(pre: Self, post: Self, value: StoredType) {
+        // ref_count_invariant
+        assert forall |bucket: BucketId| bucket < RC_WIDTH
+            implies post.ref_counts[bucket] === post.count_all_refs(bucket) by {
+            assert(pre.count_all_refs(bucket) === post.count_all_refs(bucket));
+        }
+        // shared_storage_invariant
+        assert forall |ss| post.shared_state.count(ss) > 0 implies post.shared_state_valid(ss) by {
+            assert(pre.shared_state_valid(ss));
+        }
+    }
+
+    #[inductive(withdraw_alloc)]
+    fn withdraw_alloc_inductive(pre: Self, post: Self) {
+        // ref_count_invariant
+        assert forall |bucket: BucketId| bucket < RC_WIDTH
+            implies post.ref_counts[bucket] === post.count_all_refs(bucket) by {
+            assert(pre.count_all_refs(bucket) === post.count_all_refs(bucket));
+        }
+        // shared_storage_invariant
+        assert forall |ss| post.shared_state.count(ss) > 0 implies post.shared_state_valid(ss) by {
+            assert(pre.shared_state_valid(ss));
         }
     }
 }
