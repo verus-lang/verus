@@ -280,6 +280,15 @@ RwLock {
         }
     }
 
+    transition!{
+        withdraw_alloc_no_refcount() {
+            require pre.flag === Flag::Unmapped;
+            update flag = Flag::Loading;
+            add loading_state += Some(LoadingState::Obtained{bucket: None});
+            withdraw storage -= Some(let _);    // SOME data came out from behind the lock, but who knows what
+        }
+    }
+
     pub open spec fn valid_bucket(bucket: Option<BucketId>) -> bool {
         match bucket {
             Some(bucketId) => bucketId < RC_WIDTH,
@@ -370,10 +379,10 @@ RwLock {
         }
     }
 
-    pub open spec fn count_loading_refs(loading_state: Option<LoadingState>, bucket: BucketId) -> nat {
+    pub open spec fn count_loading_refs(loading_state: Option<LoadingState>, match_bucket: BucketId) -> nat {
         match loading_state {
-            Some(LoadingState::PendingCounted{bucket}) => 1,
-            Some(LoadingState::Obtained{bucket}) => 1,
+            Some(LoadingState::PendingCounted{bucket}) => if bucket===Some(match_bucket) { 1 } else { 0 },
+            Some(LoadingState::Obtained{bucket}) => if bucket===Some(match_bucket) { 1 } else { 0 },
             _ => 0
         }
     }
@@ -685,6 +694,20 @@ RwLock {
 
     #[inductive(withdraw_alloc)]
     fn withdraw_alloc_inductive(pre: Self, post: Self) {
+        // ref_count_invariant
+        assert forall |bucket: BucketId| bucket < RC_WIDTH
+            implies post.ref_counts[bucket] === post.count_all_refs(bucket) by {
+            assert(pre.count_all_refs(bucket) === post.count_all_refs(bucket));
+        }
+        // shared_storage_invariant
+        assert forall |ss| post.shared_state.count(ss) > 0 implies post.shared_state_valid(ss) by {
+            assert(pre.shared_state_valid(ss));
+        }
+    }
+
+    // TODO(jonh): getting pretty sad that we have to copy/paste the same proof fifty times
+    #[inductive(withdraw_alloc_no_refcount)]
+    fn withdraw_alloc_no_refcount_inductive(pre: Self, post: Self) {
         // ref_count_invariant
         assert forall |bucket: BucketId| bucket < RC_WIDTH
             implies post.ref_counts[bucket] === post.count_all_refs(bucket) by {
