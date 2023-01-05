@@ -590,7 +590,7 @@ fn compute_top_sort(graph: &ConcreteDirectedGraph) -> TopSortResult
 
     let DfsState { top_sort, top_sort_token, .. } = dfs_state;
 
-    #[spec] let s = Set::new(|i: usize| 0 <= i && i < graph.edges.view().len());
+    #[spec] let s = Set::new(closure_to_fn_spec(|i: usize| 0 <= i && i < graph.edges.view().len()));
     dfs_state.instance.done(
         s,
         &map_visited_deps,
