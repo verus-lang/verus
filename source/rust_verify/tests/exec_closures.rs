@@ -388,7 +388,7 @@ test_verify_one_file! {
         #[spec] fn foo<F: Fn(u64) -> u64>(f: F) -> u64 {
             f(5)
         }
-    } => Err(err) => assert_vir_error_msg(err, "to call a function in ghost code, it must be a FnSpec")
+    } => Err(err) => assert_vir_error_msg(err, "to call a non-static function in ghost code, it must be a FnSpec")
 }
 
 test_verify_one_file! {

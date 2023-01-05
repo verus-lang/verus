@@ -434,19 +434,20 @@ fn check_expr_handle_mut_arg(
                     }
                 }
             }
+            let mode_error_msg = || {
+                if x.path == crate::def::exec_nonstatic_call_path() {
+                    format!("to call a non-static function in ghost code, it must be a FnSpec")
+                } else {
+                    format!("cannot call function with mode {}", function.x.mode)
+                }
+            };
             if typing.check_ghost_blocks {
                 if (function.x.mode == Mode::Exec) != (typing.block_ghostness == Ghost::Exec) {
-                    return err_string(
-                        &expr.span,
-                        format!("cannot call function with mode {}", function.x.mode),
-                    );
+                    return err_string(&expr.span, mode_error_msg());
                 }
             }
             if !mode_le(outer_mode, function.x.mode) {
-                return err_string(
-                    &expr.span,
-                    format!("cannot call function with mode {}", function.x.mode),
-                );
+                return err_string(&expr.span, mode_error_msg());
             }
             for (param, arg) in function.x.params.iter().zip(es.iter()) {
                 let param_mode = mode_join(outer_mode, param.x.mode);
