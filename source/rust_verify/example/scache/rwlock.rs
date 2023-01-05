@@ -571,7 +571,34 @@ RwLock {
         // shared_storage_invariant
         assert forall |ss| post.shared_state.count(ss) > 0 implies post.shared_state_valid(ss) by {
             assert(pre.shared_state_valid(ss));
-            // LEFT OFF HERE
+            let pre_exc = pre.exc_state.get_Some_0();
+            let pre_visited_count = pre_exc.get_Pending_visited_count();
+            let post_exc = post.exc_state.get_Some_0();
+            let post_visited_count = post_exc.get_Pending_visited_count();
+            match ss {
+                SharedState::Pending2{bucket} => {
+                    if bucket < pre_visited_count {
+                        assert(post_visited_count <= bucket);
+                        assert(post.shared_state_valid(ss));
+                    } else if bucket == pre_visited_count {
+                        let expected_rc:nat = if Some(pre_visited_count) === pre_exc.get_Pending_bucket() { 1 } else { 0 };
+                        assert(post.count_all_refs(bucket) == expected_rc); // trigger
+                        let post_counted_refs = post.shared_state.filter(|shared_state: SharedState| shared_state.get_bucket() === bucket);
+                        assert(Multiset::singleton(ss).le(post_counted_refs));
+                        assert(false);
+                        //assert(post.shared_state_valid(ss));
+                    } else {
+                        assert(post_visited_count <= bucket);
+                        assert(post.shared_state_valid(ss));
+                    }
+                },
+                SharedState::Obtained{bucket, value: _} => {
+                    assume(false);
+                },
+                _ => {
+                    assert(post.shared_state_valid(ss));
+                }
+            }
             assert(post.shared_state_valid(ss));
         }
     }
