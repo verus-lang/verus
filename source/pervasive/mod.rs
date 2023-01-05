@@ -63,7 +63,7 @@ pub fn affirm(b: bool) {
 #[verifier(custom_req_err("Call to non-static function fails to satisfy `callee.requires(args)`"))]
 #[doc(hidden)]
 #[verifier(external_body)]
-pub fn exec_nonstatic_call<Args, Output, F>(f: F, args: Args) -> Output
+fn exec_nonstatic_call<Args, Output, F>(f: F, args: Args) -> Output
     where F: FnOnce<Args, Output=Output>
 {
     requires(f.requires(args));
