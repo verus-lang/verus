@@ -365,6 +365,59 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] pass_closure_via_typ_param_fn_once verus_code! {
+
+        fn f1<T: FnOnce(u64) -> u64>(t: T) {
+            requires([
+                forall |x: u64| 0 <= x < 5 ==> t.requires((x,)),
+                forall |x: u64, y: u64| t.ensures((x,), y) ==> y == x + 1,
+            ]);
+
+            let ret = t(3);
+            assert(ret == 4);
+        }
+
+        fn f2() {
+            let t = |a: u64| {
+                requires(0 <= a < 5);
+                ensures(|ret: u64| ret == a + 1);
+
+                a + 1
+            };
+
+            f1(t);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] pass_closure_via_typ_param_fn_mut verus_code! {
+
+        fn f1<T: FnMut(u64) -> u64>(t: T) {
+            requires([
+                forall |x: u64| 0 <= x < 5 ==> t.requires((x,)),
+                forall |x: u64, y: u64| t.ensures((x,), y) ==> y == x + 1,
+            ]);
+
+            let mut t = t;
+            let ret = t(3);
+            assert(ret == 4);
+        }
+
+        fn f2() {
+            let t = |a: u64| {
+                requires(0 <= a < 5);
+                ensures(|ret: u64| ret == a + 1);
+
+                a + 1
+            };
+
+            f1(t);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] closure_does_not_support_mut_param_fail verus_code! {
         fn testfn() {
             let t = |mut a: u64| { };
