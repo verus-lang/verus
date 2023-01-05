@@ -482,7 +482,7 @@ pub(crate) fn expand_call_graph(
     for (_, tbound) in function.x.typ_bounds.iter() {
         let GenericBoundX::Traits(traits) = &**tbound;
         for tr in traits {
-            call_graph.add_edge(Node::Trait(tr.clone()), f_node.clone());
+            call_graph.add_edge(f_node.clone(), Node::Trait(tr.clone()));
         }
     }
 
