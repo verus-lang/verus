@@ -577,19 +577,12 @@ RwLock {
             let post_visited_count = post_exc.get_Pending_visited_count();
             match ss {
                 SharedState::Pending2{bucket} => {
-                    if bucket < pre_visited_count {
-                        assert(post_visited_count <= bucket);
-                        assert(post.shared_state_valid(ss));
-                    } else if bucket == pre_visited_count {
+                    if bucket == pre_visited_count {
                         let expected_rc:nat = if Some(pre_visited_count) === pre_exc.get_Pending_bucket() { 1 } else { 0 };
                         assert(post.count_all_refs(bucket) == expected_rc); // trigger
                         let post_counted_refs = post.shared_state.filter(|shared_state: SharedState| shared_state.get_bucket() === bucket);
                         assert(Multiset::singleton(ss).le(post_counted_refs));
                         assert(false);
-                        //assert(post.shared_state_valid(ss));
-                    } else {
-                        assert(post_visited_count <= bucket);
-                        assert(post.shared_state_valid(ss));
                     }
                 },
                 SharedState::Obtained{bucket, value: _} => {
