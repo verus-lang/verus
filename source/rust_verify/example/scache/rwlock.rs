@@ -44,17 +44,17 @@ pub open spec fn RC_WIDTH() -> BucketId { 4 as nat }
 
 #[is_variant]
 pub enum SharedState {
-   SharedPending{bucket: Option<BucketId>},   // inc refcount
+   SharedPending{bucket: BucketId},   // inc refcount
                                          // None means the shared lock is being acquired for
                                          // writeback.
 
-   SharedPending2{bucket: Option<BucketId>},  // !free & !writelocked
+   SharedPending2{bucket: BucketId},  // !free & !writelocked
 
-   SharedObtained{bucket: Option<BucketId>, value: StoredType}, // !reading
+   SharedObtained{bucket: BucketId, value: StoredType}, // !reading
 }
 
 impl SharedState {
-    pub open spec fn get_bucket(self) -> Option<BucketId> {
+    pub open spec fn get_bucket(self) -> BucketId {
         match self {
             SharedState::SharedPending{bucket} => bucket,
             SharedState::SharedPending2{bucket} => bucket,
@@ -198,7 +198,7 @@ RwLock {
                 _ => { require false; }
             }
 
-            add exc_state += Some(ExcState::ExcClaim{bucket: bucket, value});
+            add exc_state += Some(ExcState::ExcClaim{bucket: Some(bucket), value});
         }
     }
 
@@ -311,7 +311,7 @@ RwLock {
     }
 
     pub open spec fn count_shared_refs(shared: Multiset<SharedState>, bucket: BucketId) -> nat {
-        shared.filter(|shared_state: SharedState| shared_state.get_bucket() === Some(bucket)).len()
+        shared.filter(|shared_state: SharedState| shared_state.get_bucket() === bucket).len()
     }
 
     pub open spec fn count_exc_refs(exc_state: Option<ExcState>, bucket: BucketId) -> nat {
@@ -420,12 +420,49 @@ RwLock {
         }
     }
 
+    pub open spec fn shared_state_valid(&self, shared_state: SharedState) -> bool {
+        &&& shared_state.get_bucket() < RC_WIDTH()
+        &&& match shared_state {
+            SharedState::SharedPending{bucket} => true,
+            SharedState::SharedPending2{bucket} => {
+                &&& match self.exc_state {
+                    Some(ExcState::ExcObtained{..}) => false,
+                    Some(ExcState::ExcPending{visited_count, ..}) => visited_count <= bucket,
+                    _ => true
+                }
+                &&& match self.loading_state {
+                    Some(LoadingState::LoadingPending) => false,
+                    Some(LoadingState::LoadingPendingCounted{..}) => false,
+                    _ => true
+                }
+                &&& self.flag !== Flag::Unmapped
+            }
+            SharedState::SharedObtained{bucket, value} => {
+                &&& Some(value) === self.storage
+                &&& match self.exc_state {
+                    Some(ExcState::ExcObtained{..}) => false,
+                    Some(ExcState::ExcPending{visited_count, ..}) => visited_count <= bucket,
+                    _ => true
+                }
+                &&& self.loading_state.is_None()
+                &&& self.flag !== Flag::Unmapped
+            }
+        }
+    }
+
+    #[invariant]
+    pub spec fn shared_storage_invariant(&self) -> bool {
+        forall(|ss| self.shared_state.count(ss) > 0 ==> {
+            self.shared_state_valid(ss)
+        })
+    }
+
     #[inductive(initialize)]
     fn initialize_inductive(post: Self, init_value: StoredType) {
         assert forall |bucket: BucketId| bucket < RC_WIDTH()
             implies post.ref_counts[bucket] === post.count_all_refs(bucket) by {
 
-            let filtered = post.shared_state.filter(|shared_state: SharedState| shared_state.get_bucket() === Some(bucket));
+            let filtered = post.shared_state.filter(|shared_state: SharedState| shared_state.get_bucket() === bucket);
             assert_multisets_equal!(filtered, Multiset::empty());
         }
     }
@@ -436,6 +473,9 @@ RwLock {
             implies post.ref_counts[bucket] === post.count_all_refs(bucket) by {
             assert(pre.count_all_refs(bucket) === post.count_all_refs(bucket));
         }
+        assert forall |ss| post.shared_state.count(ss) > 0 implies post.shared_state_valid(ss) by {
+            assert(pre.shared_state_valid(ss)); // triggertown
+        }
     }
    
     #[inductive(release_writeback)]
@@ -443,6 +483,9 @@ RwLock {
         assert forall |bucket: BucketId| bucket < RC_WIDTH()
             implies post.ref_counts[bucket] === post.count_all_refs(bucket) by {
             assert(pre.count_all_refs(bucket) === post.count_all_refs(bucket));
+        }
+        assert forall |ss| post.shared_state.count(ss) > 0 implies post.shared_state_valid(ss) by {
+            assert(pre.shared_state_valid(ss)); // triggertown
         }
     }
    
@@ -452,40 +495,61 @@ RwLock {
             implies post.ref_counts[bucket] === post.count_all_refs(bucket) by {
             assert(pre.count_all_refs(bucket) === post.count_all_refs(bucket));
         }
+        assert forall |ss| post.shared_state.count(ss) > 0 implies post.shared_state_valid(ss) by {
+            assert(pre.shared_state_valid(ss)); // triggertown
+        }
     }
    
     #[inductive(shared_to_claim)]
     fn shared_to_claim_inductive(pre: Self, post: Self, shared_state: SharedState) {
         assert forall |bucket: BucketId| bucket < RC_WIDTH()
             implies post.ref_counts[bucket] === post.count_all_refs(bucket) by {
-            if Some(bucket) === shared_state.get_bucket() {
-                let pre_filtered = pre.shared_state.filter(|shared_state: SharedState| shared_state.get_bucket() === Some(bucket));
-                let post_filtered = post.shared_state.filter(|shared_state: SharedState| shared_state.get_bucket() === Some(bucket));
 
-//                assert_multisets_equal!(post_filtered.insert(shared_state), pre_filtered);
+            let pre_filtered = pre.shared_state.filter(|shared_state: SharedState| shared_state.get_bucket() === bucket);
+            let post_filtered = post.shared_state.filter(|shared_state: SharedState| shared_state.get_bucket() === bucket);
+
+            if bucket === shared_state.get_bucket() {
 
                 assert_multisets_equal!(pre_filtered.remove(shared_state), post_filtered);
-                
-//                assert(pre_filtered === post_filtered.insert(shared_state));
-                        
-                assert(Self::count_shared_refs(post.shared_state, bucket)
-                        == Self::count_shared_refs(pre.shared_state, bucket) - 1);
-                assert(Self::count_exc_refs(post.exc_state, bucket)
-                        == Self::count_exc_refs(pre.exc_state, bucket) + 1);
                 assert(pre.count_all_refs(bucket) === post.count_all_refs(bucket));
             } else {
-                assume(false);
+                assert_multisets_equal!(pre_filtered, post_filtered);
                 assert(pre.count_all_refs(bucket) === post.count_all_refs(bucket));
             }
         }
-        assume(post.exc_state_invariants());
+        assert(pre.shared_state_valid(shared_state));
+
+        // shared_storage_invariant
+        assert forall |ss| post.shared_state.count(ss) > 0 implies post.shared_state_valid(ss) by {
+            assert(pre.shared_state_valid(ss));
+        }
     }
    
     #[inductive(claim_to_pending)]
-    fn claim_to_pending_inductive(pre: Self, post: Self) { }
+    fn claim_to_pending_inductive(pre: Self, post: Self) {
+        // ref_count_invariant
+        assert forall |bucket: BucketId| bucket < RC_WIDTH()
+            implies post.ref_counts[bucket] === post.count_all_refs(bucket) by {
+            assert(pre.count_all_refs(bucket) === post.count_all_refs(bucket));
+        }
+        // shared_storage_invariant
+        assert forall |ss| post.shared_state.count(ss) > 0 implies post.shared_state_valid(ss) by {
+            assert(pre.shared_state_valid(ss));
+        }
+    }
    
     #[inductive(take_exc_lock_finish_writeback)]
-    fn take_exc_lock_finish_writeback_inductive(pre: Self, post: Self, clean: bool) { }
+    fn take_exc_lock_finish_writeback_inductive(pre: Self, post: Self, clean: bool) {
+        // ref_count_invariant
+        assert forall |bucket: BucketId| bucket < RC_WIDTH()
+            implies post.ref_counts[bucket] === post.count_all_refs(bucket) by {
+            assert(pre.count_all_refs(bucket) === post.count_all_refs(bucket));
+        }
+        // shared_storage_invariant
+        assert forall |ss| post.shared_state.count(ss) > 0 implies post.shared_state_valid(ss) by {
+            assert(pre.shared_state_valid(ss));
+        }
+    }
 
 }
 
