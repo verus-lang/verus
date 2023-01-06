@@ -381,6 +381,15 @@ RwLock {
         }
     }
 
+    transition!{
+        shared_inc_count(bucket: BucketId) {
+            require bucket < RC_WIDTH;
+            remove ref_counts -= [ bucket => let pre_count ];
+            add ref_counts += [ bucket => pre_count + 1 ];
+            add shared_state += { SharedState::Pending{bucket} };
+        }
+    }
+
     //////////////////////////////////////////////////////////////////////////////
     // invariants
     //////////////////////////////////////////////////////////////////////////////
@@ -634,6 +643,37 @@ RwLock {
 //        }
     }
 
+// TODO(jonh): Another thing we could use in three places is "ref_counts the same except this
+// bucket which added exactly one"
+//    proof fn ref_count_increment_invariant_lemma(pre: Self, post: Self, ss: SharedState)
+//        requires
+//            pre.ref_count_invariant(),
+//            forall(|b: BucketId| b < RC_WIDTH ==> {
+//                let pre_filtered = Self::filter_shared_refs(pre.shared_state, b);
+//                #[trigger] Self::filter_shared_refs(post.shared_state, b) ===
+//                    if b==ss.get_bucket() { pre_filtered.insert(ss) } else { pre_filtered }}),
+//            forall(|b: BucketId| b < RC_WIDTH ==> {
+//                let incr:nat = if b==ss.get_bucket() { 1 } else { 0 };
+//                #[trigger] post.ref_counts[b] == pre.ref_counts[b] + incr
+//            }),
+//        ensures
+//            post.ref_count_invariant(),
+//    {
+//        assert forall |bucket: BucketId| bucket < RC_WIDTH
+//            implies post.ref_counts[bucket] === post.count_all_refs(bucket) by {
+//
+//            if bucket === ss.get_bucket() {
+//                assert(pre.count_all_refs(bucket) + 1 === post.count_all_refs(bucket));
+//            } else {
+//                assert(pre.count_all_refs(bucket) === post.count_all_refs(bucket));
+//            }
+//        }
+        
+//        assert forall |bucket: BucketId| bucket < RC_WIDTH
+//            implies post.ref_counts[bucket] === post.count_all_refs(bucket) by {
+//            assert(pre.count_all_refs(bucket) === post.count_all_refs(bucket));
+//        }
+//    }
 
 // TODO(jonh): figure out how to set up this helper
 //    proof fn shared_storage_invariant_lemma(pre: Self, post: Self)
@@ -956,6 +996,30 @@ RwLock {
         }
 
         // boilerplate shared_storage_invariant proof
+        assert forall |ss| post.shared_state.count(ss) > 0 implies post.shared_state_valid(ss) by {
+            assert(pre.shared_state_valid(ss));
+        }
+    }
+
+    #[inductive(shared_inc_count)]
+    fn shared_inc_count_inductive(pre: Self, post: Self, bucket: BucketId) {
+        //Self::ref_count_increment_invariant_lemma(pre, post, SharedState::Pending{bucket});
+        let new_bucket = bucket;
+        assert forall |bucket: BucketId| bucket < RC_WIDTH
+            implies post.ref_counts[bucket] === post.count_all_refs(bucket) by {
+            if bucket === new_bucket {
+                assert_multisets_equal!(Self::filter_shared_refs(post.shared_state, bucket),
+                    Self::filter_shared_refs(pre.shared_state, bucket).insert(SharedState::Pending{bucket}));
+                assert(pre.count_all_refs(bucket) + 1 === post.count_all_refs(bucket)); // trigger
+            } else {
+                assert_multisets_equal!(Self::filter_shared_refs(post.shared_state, bucket),
+                    Self::filter_shared_refs(pre.shared_state, bucket));
+                assert(pre.count_all_refs(bucket) === post.count_all_refs(bucket)); // trigger
+            }
+        }
+
+        // boilerplate shared_storage_invariant
+        assume(false);
         assert forall |ss| post.shared_state.count(ss) > 0 implies post.shared_state_valid(ss) by {
             assert(pre.shared_state_valid(ss));
         }
