@@ -921,6 +921,26 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
+test_verify_one_file! {
+    #[test] exec_closure_spec_param_error verus_code! {
+        fn test() {
+            let g = |#[spec] y: u64| {
+                5
+            };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "closures only accept exec-mode parameters")
+}
+
+test_verify_one_file! {
+    #[test] exec_closure_proof_param_error verus_code! {
+        fn test() {
+            let g = |#[proof] y: u64| {
+                5
+            };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "closures only accept exec-mode parameters")
+}
+
 // mut restrictions
 
 test_verify_one_file! {

@@ -2795,6 +2795,12 @@ fn closure_to_vir<'tcx>(
             .iter()
             .zip(typs.clone())
             .map(|(x, t)| {
+                let attrs = bctx.ctxt.tcx.hir().attrs(x.hir_id);
+                let mode = crate::attributes::get_mode(Mode::Exec, attrs);
+                if mode != Mode::Exec {
+                    return err_span_str(x.span, "closures only accept exec-mode parameters");
+                }
+
                 let (is_mut, name) = pat_to_mut_var(x.pat);
                 if is_mut {
                     return err_span_str(
