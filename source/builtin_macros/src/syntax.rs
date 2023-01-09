@@ -1116,10 +1116,14 @@ impl VisitMut for Visitor {
                     *expr = quote_verbatim!(span, attrs => {::builtin::assert_forall_by(|#inputs| #block);});
                 }
                 Expr::Closure(clos) => {
-                    let span = clos.span();
-                    *expr = Expr::Verbatim(quote_spanned!(span =>
-                        ::builtin::closure_to_fn_spec(#clos)
-                    ));
+                    if is_inside_ghost {
+                        let span = clos.span();
+                        *expr = Expr::Verbatim(quote_spanned!(span =>
+                            ::builtin::closure_to_fn_spec(#clos)
+                        ));
+                    } else {
+                        *expr = Expr::Closure(clos);
+                    }
                 }
                 _ => panic!("expected to replace expression"),
             }

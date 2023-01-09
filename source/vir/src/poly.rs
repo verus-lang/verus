@@ -95,6 +95,7 @@ pub enum MonoTypX {
 struct State {
     types: ScopeMap<Ident, Typ>,
     is_trait: bool,
+    in_exec_closure: bool,
 }
 
 pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
@@ -132,6 +133,9 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
 pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
     match &**typ {
         TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::StrSlice | TypX::Char => false,
+        TypX::AnonymousClosure(..) => {
+            panic!("internal error: AnonymousClosure should be removed by ast_simplify")
+        }
         TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
         TypX::Datatype(path, _) => {
             if ctx.datatype_is_transparent[path] {
@@ -149,6 +153,9 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
 fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
         TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::StrSlice | TypX::Char => typ.clone(),
+        TypX::AnonymousClosure(..) => {
+            panic!("internal error: AnonymousClosure should be removed by ast_simplify")
+        }
         TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
         TypX::Datatype(path, _) => {
             if ctx.datatype_is_transparent[path] {
@@ -167,10 +174,13 @@ fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
     }
 }
 
-fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
+pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
         TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::StrSlice | TypX::Char => {
             Arc::new(TypX::Boxed(typ.clone()))
+        }
+        TypX::AnonymousClosure(..) => {
+            panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
         TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
         TypX::Datatype(..) => Arc::new(TypX::Boxed(typ.clone())),
@@ -180,7 +190,7 @@ fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
     }
 }
 
-fn coerce_expr_to_native(ctx: &Ctx, expr: &Expr) -> Expr {
+pub(crate) fn coerce_expr_to_native(ctx: &Ctx, expr: &Expr) -> Expr {
     match &*expr.typ {
         TypX::Bool
         | TypX::Int(_)
@@ -188,6 +198,9 @@ fn coerce_expr_to_native(ctx: &Ctx, expr: &Expr) -> Expr {
         | TypX::Datatype(..)
         | TypX::StrSlice
         | TypX::Char => expr.clone(),
+        TypX::AnonymousClosure(..) => {
+            panic!("internal error: AnonymousClosure should be removed by ast_simplify")
+        }
         TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
         TypX::Boxed(typ) => {
             if typ_is_poly(ctx, typ) {
@@ -221,6 +234,9 @@ fn coerce_expr_to_poly(ctx: &Ctx, expr: &Expr) -> Expr {
             let exprx = ExprX::UnaryOpr(op, expr.clone());
             let typ = Arc::new(TypX::Boxed(expr.typ.clone()));
             SpannedTyped::new(&expr.span, &typ, exprx)
+        }
+        TypX::AnonymousClosure(..) => {
+            panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
         TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
         TypX::Boxed(_) | TypX::TypParam(_) => expr.clone(),
@@ -274,9 +290,18 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 };
                 mk_expr_typ(&typ, ExprX::Call(target.clone(), Arc::new(args)))
             }
+            CallTarget::BuiltinSpecFun(..) => {
+                let mut args: Vec<Expr> = Vec::new();
+                for arg in exprs.iter() {
+                    let arg = poly_expr(ctx, state, arg);
+                    let arg = coerce_expr_to_poly(ctx, &arg);
+                    args.push(arg);
+                }
+                mk_expr_typ(&expr.typ, ExprX::Call(target.clone(), Arc::new(args)))
+            }
             CallTarget::FnSpec(e) => {
-                let target =
-                    CallTarget::FnSpec(coerce_expr_to_native(ctx, &poly_expr(ctx, state, e)));
+                let callee = coerce_expr_to_native(ctx, &poly_expr(ctx, state, e));
+                let target = CallTarget::FnSpec(callee);
                 let exprs = exprs
                     .iter()
                     .map(|e| coerce_expr_to_poly(ctx, &poly_expr(ctx, state, e)))
@@ -411,6 +436,57 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             state.types.pop_scope();
             mk_expr(ExprX::Closure(Arc::new(bs), e1))
         }
+        ExprX::ExecClosure { params, ret, body, requires, ensures, external_spec } => {
+            let mut params1: Vec<Binder<Typ>> = Vec::new();
+            state.types.push_scope(true);
+            for binder in params.iter() {
+                let typ = coerce_typ_to_native(ctx, &binder.a);
+                let _ = state.types.insert(binder.name.clone(), typ.clone());
+                params1.push(binder.new_a(typ));
+            }
+
+            let requires1 = requires
+                .iter()
+                .map(|req| coerce_expr_to_native(ctx, &poly_expr(ctx, state, req)))
+                .collect();
+
+            state.types.push_scope(true);
+
+            let typ = coerce_typ_to_native(ctx, &ret.a);
+            let _ = state.types.insert(ret.name.clone(), typ.clone());
+            let ret1 = ret.new_a(typ);
+
+            let ensures1 = ensures
+                .iter()
+                .map(|ens| coerce_expr_to_native(ctx, &poly_expr(ctx, state, ens)))
+                .collect();
+
+            state.types.pop_scope();
+
+            let old_in_closure = state.in_exec_closure;
+            state.in_exec_closure = true;
+            let body1 = coerce_expr_to_native(ctx, &poly_expr(ctx, state, body));
+            state.in_exec_closure = old_in_closure;
+
+            state.types.pop_scope();
+
+            state.types.push_scope(true);
+            let (cid, cexpr) = external_spec
+                .as_ref()
+                .expect("external_spec should have been filled in in ast_simplify");
+            let _ = state.types.insert(cid.clone(), expr.typ.clone());
+            let cexpr1 = coerce_expr_to_native(ctx, &poly_expr(ctx, state, cexpr));
+            state.types.pop_scope();
+
+            mk_expr(ExprX::ExecClosure {
+                params: Arc::new(params1),
+                ret: ret1,
+                body: body1,
+                requires: Arc::new(requires1),
+                ensures: Arc::new(ensures1),
+                external_spec: Some((cid.clone(), cexpr1)),
+            })
+        }
         ExprX::Choose { params, cond, body } => {
             let mut bs: Vec<Binder<Typ>> = Vec::new();
             state.types.push_scope(true);
@@ -508,7 +584,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         }
         ExprX::Return(None) => expr.clone(),
         ExprX::Return(Some(e1)) => {
-            let e1 = if state.is_trait {
+            let e1 = if state.is_trait && !state.in_exec_closure {
                 coerce_expr_to_poly(ctx, &poly_expr(ctx, state, e1))
             } else {
                 coerce_expr_to_native(ctx, &poly_expr(ctx, state, e1))
@@ -627,7 +703,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
     }
     let params = Arc::new(new_params);
 
-    let mut state = State { types, is_trait };
+    let mut state = State { types, is_trait, in_exec_closure: false };
 
     let native_exprs = |state: &mut State, es: &Exprs| {
         let mut exprs: Vec<Expr> = Vec::new();

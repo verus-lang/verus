@@ -327,7 +327,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_erased_assoc_type_param code! {
+    #[ignore] #[test] test_erased_assoc_type_param code! {
         struct Foo<V> {
             v: V
         }
@@ -335,21 +335,23 @@ test_verify_one_file! {
         impl<V> Foo<V> {
             #[verifier(returns(spec))]
             fn bar<F: Fn(V) -> bool>(#[spec] f: F, #[spec] v: V) -> bool {
-                f(v)
+                f.requires((v,))
             }
 
             #[verifier(returns(spec))]
             fn bar2<F: Fn(V) -> bool>(self, #[spec] f: F) -> bool {
-                f(self.v)
+                f.requires((self.v,))
             }
         }
 
         fn test() {
             #[spec] let x: u64 = 0;
-            Foo::<u64>::bar(|y: u64| true, x);
+            let z = |y: u64| true;
+            Foo::<u64>::bar(z, x);
 
             let f = Foo::<u64> { v: 17 };
-            #[spec] let b = f.bar2(|y: u64| true);
+            let w = |y: u64| true;
+            #[spec] let b = f.bar2(w);
         }
     } => Ok(())
 }

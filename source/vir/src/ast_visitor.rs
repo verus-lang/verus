@@ -54,6 +54,12 @@ where
                     }
                     expr_visitor_control_flow!(typ_visitor_dfs(tr, ft));
                 }
+                TypX::AnonymousClosure(ts, tr, _id) => {
+                    for t in ts.iter() {
+                        expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
+                    }
+                    expr_visitor_control_flow!(typ_visitor_dfs(tr, ft));
+                }
                 TypX::Datatype(_path, ts) => {
                     for t in ts.iter() {
                         expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
@@ -88,6 +94,11 @@ where
             let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
             let tr = map_typ_visitor_env(tr, env, ft)?;
             ft(env, &Arc::new(TypX::Lambda(Arc::new(ts), tr)))
+        }
+        TypX::AnonymousClosure(ts, tr, id) => {
+            let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
+            let tr = map_typ_visitor_env(tr, env, ft)?;
+            ft(env, &Arc::new(TypX::AnonymousClosure(Arc::new(ts), tr, *id)))
         }
         TypX::Datatype(path, ts) => {
             let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
@@ -153,10 +164,10 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern) {
 
 pub(crate) fn expr_visitor_check<E, MF>(expr: &Expr, mf: &mut MF) -> Result<(), E>
 where
-    MF: FnMut(&Expr) -> Result<(), E>,
+    MF: FnMut(&VisitorScopeMap, &Expr) -> Result<(), E>,
 {
     let mut scope_map: VisitorScopeMap = ScopeMap::new();
-    match expr_visitor_dfs(expr, &mut scope_map, &mut |_scope_map, expr| match mf(expr) {
+    match expr_visitor_dfs(expr, &mut scope_map, &mut |scope_map, expr| match mf(scope_map, expr) {
         Ok(()) => VisitorControlFlow::Recurse,
         Err(e) => VisitorControlFlow::Stop(e),
     }) {
@@ -190,6 +201,7 @@ where
                 ExprX::Call(target, es) => {
                     match target {
                         CallTarget::Static(_, _) => (),
+                        CallTarget::BuiltinSpecFun(_, _) => (),
                         CallTarget::FnSpec(fun) => {
                             expr_visitor_control_flow!(expr_visitor_dfs(fun, map, mf));
                         }
@@ -244,6 +256,33 @@ where
                     }
                     expr_visitor_control_flow!(expr_visitor_dfs(body, map, mf));
                     map.pop_scope();
+                }
+                ExprX::ExecClosure { params, ret, requires, ensures, body, external_spec } => {
+                    map.push_scope(true);
+                    for binder in params.iter() {
+                        let _ = map.insert(binder.name.clone(), binder.a.clone());
+                    }
+                    for req in requires.iter() {
+                        expr_visitor_control_flow!(expr_visitor_dfs(req, map, mf));
+                    }
+                    map.push_scope(true);
+                    let _ = map.insert(ret.name.clone(), ret.a.clone());
+                    for ens in ensures.iter() {
+                        expr_visitor_control_flow!(expr_visitor_dfs(ens, map, mf));
+                    }
+                    map.pop_scope();
+                    expr_visitor_control_flow!(expr_visitor_dfs(body, map, mf));
+                    map.pop_scope();
+
+                    match external_spec {
+                        None => {}
+                        Some((cid, cexpr)) => {
+                            map.push_scope(true);
+                            let _ = map.insert(cid.clone(), expr.typ.clone());
+                            expr_visitor_control_flow!(expr_visitor_dfs(&cexpr, map, mf));
+                            map.pop_scope();
+                        }
+                    }
                 }
                 ExprX::Choose { params, cond, body } => {
                     map.push_scope(true);
@@ -490,6 +529,10 @@ where
                     let typs = vec_map_result(&**typs, |t| (map_typ_visitor_env(t, env, ft)))?;
                     CallTarget::Static(x.clone(), Arc::new(typs))
                 }
+                CallTarget::BuiltinSpecFun(x, typs) => {
+                    let typs = vec_map_result(&**typs, |t| (map_typ_visitor_env(t, env, ft)))?;
+                    CallTarget::BuiltinSpecFun(x.clone(), Arc::new(typs))
+                }
                 CallTarget::FnSpec(fun) => {
                     let fun = map_expr_visitor_env(fun, map, env, fe, fs, ft)?;
                     CallTarget::FnSpec(fun)
@@ -568,6 +611,46 @@ where
             let body = map_expr_visitor_env(body, map, env, fe, fs, ft)?;
             map.pop_scope();
             ExprX::Closure(Arc::new(params), body)
+        }
+        ExprX::ExecClosure { params, ret, requires, ensures, body, external_spec } => {
+            let params =
+                vec_map_result(&**params, |b| b.map_result(|t| map_typ_visitor_env(t, env, ft)))?;
+            let ret = ret.map_result(|t| map_typ_visitor_env(t, env, ft))?;
+
+            map.push_scope(true);
+            for binder in params.iter() {
+                let _ = map.insert(binder.name.clone(), binder.a.clone());
+            }
+            let requires =
+                vec_map_result(&**requires, |req| map_expr_visitor_env(req, map, env, fe, fs, ft))?;
+            map.push_scope(true);
+            let _ = map.insert(ret.name.clone(), ret.a.clone());
+            let ensures =
+                vec_map_result(&**ensures, |ens| map_expr_visitor_env(ens, map, env, fe, fs, ft))?;
+            map.pop_scope();
+            let body = map_expr_visitor_env(body, map, env, fe, fs, ft)?;
+            map.pop_scope();
+
+            let external_spec = match external_spec {
+                None => None,
+                Some((cid, cexpr)) => {
+                    map.push_scope(true);
+                    let _ = map.insert(cid.clone(), expr.typ.clone());
+                    let cexpr0 = map_expr_visitor_env(cexpr, map, env, fe, fs, ft)?;
+                    map.pop_scope();
+
+                    Some((cid.clone(), cexpr0))
+                }
+            };
+
+            ExprX::ExecClosure {
+                params: Arc::new(params),
+                ret,
+                requires: Arc::new(requires),
+                ensures: Arc::new(ensures),
+                body,
+                external_spec,
+            }
         }
         ExprX::Choose { params, cond, body } => {
             let params =
@@ -747,19 +830,14 @@ where
 
 pub(crate) fn map_generic_bound_visitor<E, FT>(
     bound: &GenericBound,
-    env: &mut E,
-    ft: &FT,
+    _env: &mut E,
+    _ft: &FT,
 ) -> Result<GenericBound, VirErr>
 where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
     match &**bound {
         GenericBoundX::Traits(_) => Ok(bound.clone()),
-        GenericBoundX::FnSpec(typs, typ) => {
-            let typs = Arc::new(vec_map_result(&**typs, |t| (map_typ_visitor_env(t, env, ft)))?);
-            let typ = map_typ_visitor_env(typ, env, ft)?;
-            Ok(Arc::new(GenericBoundX::FnSpec(typs, typ)))
-        }
     }
 }
 

@@ -23,14 +23,11 @@ impl<A> Set<A> {
         self.ext_equal(Set::empty())
     }
 
-    pub open spec fn map<B>(self, f: impl Fn(A) -> B) -> Set<B> {
+    pub open spec fn map<B>(self, f: FnSpec(A) -> B) -> Set<B> {
         Set::new(|a: B| exists|x: A| self.contains(x) && a === f(x))
     }
 
-    // Note: Currently using an explicit type param here instead of `impl Fn(E, A) -> E`.
-    // It's not possible to explicitly instantiate opaque params, so right now
-    // it's impossible to use opaque params along with `reveal_with_fuel` (see issue #236).
-    pub open spec fn fold<E, F: Fn(E, A) -> E>(self, init: E, f: F) -> E
+    pub open spec fn fold<E>(self, init: E, f: FnSpec(E, A) -> E) -> E
         decreases
             self.len(),
     {
@@ -129,7 +126,7 @@ pub proof fn lemma_len_difference<A>(s1: Set<A>, s2: Set<A>)
     }
 }
 
-pub proof fn lemma_len_filter<A>(s: Set<A>, f: impl Fn(A) -> bool)
+pub proof fn lemma_len_filter<A>(s: Set<A>, f: FnSpec(A) -> bool)
     requires
         s.finite(),
     ensures

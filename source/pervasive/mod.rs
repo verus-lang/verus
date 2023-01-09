@@ -54,6 +54,23 @@ pub fn affirm(b: bool) {
     requires(b);
 }
 
+// Non-statically-determined function calls are translated *internally* (at the VIR level)
+// to this function call. This should not actually be called directly by the user.
+// That is, Verus treats `f(x, y)` as `exec_nonstatic_call(f, (x, y))`.
+// (Note that this function wouldn't even satisfy the borrow-checker if you tried to
+// use it with a `&F` or `&mut F`, but this doesn't matter since it's only used at VIR.)
+
+#[verifier(custom_req_err("Call to non-static function fails to satisfy `callee.requires(args)`"))]
+#[doc(hidden)]
+#[verifier(external_body)]
+fn exec_nonstatic_call<Args, Output, F>(f: F, args: Args) -> Output
+    where F: FnOnce<Args, Output=Output>
+{
+    requires(f.requires(args));
+    ensures(|output: Output| f.ensures(args, output));
+    unimplemented!();
+}
+
 /// A tool to check one's reasoning while writing complex spec functions.
 /// Not intended to be used as a mechanism for instantiating quantifiers, `spec_affirm` should
 /// be removed from spec functions once they are complete.

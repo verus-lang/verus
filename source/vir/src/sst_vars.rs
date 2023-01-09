@@ -83,6 +83,15 @@ pub(crate) fn stm_assign(
             let s = stm_assign(assign_map, declared, assigned, modified, s);
             Spanned::new(stm.span.clone(), StmX::DeadEnd(s))
         }
+        StmX::ClosureInner(s) => {
+            let pre_modified = modified.clone();
+            let pre_assigned = assigned.clone();
+            let s = stm_assign(assign_map, declared, assigned, modified, s);
+            *assigned = pre_assigned;
+            *modified = pre_modified;
+
+            Spanned::new(stm.span.clone(), StmX::ClosureInner(s))
+        }
         StmX::If(cond, lhs, rhs) => {
             let mut pre_assigned = assigned.clone();
 

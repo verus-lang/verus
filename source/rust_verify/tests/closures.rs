@@ -11,7 +11,7 @@ test_verify_one_file! {
             assert(f(20) == 21);
         }
 
-        proof fn takefun<F: Fn(u32, u64) -> bool>(f: F) -> (b: bool)
+        proof fn takefun(f: FnSpec(u32, u64) -> bool) -> (b: bool)
             ensures
                 b == f(10, 20),
         {
@@ -25,20 +25,20 @@ test_verify_one_file! {
         }
 
         #[verifier(opaque)]
-        spec fn apply_to_1<F: Fn(u8) -> u8>(f: F) -> u8 {
+        spec fn apply_to_1(f: FnSpec(u8) -> u8) -> u8 {
             f(1)
         }
 
-        proof fn refine_takefun<F: Fn(bool, bool) -> nat>(f: F) {
+        proof fn refine_takefun(f: FnSpec(bool, bool) -> nat) {
             assert(f(true, false) >= 0);
         }
 
-        proof fn test_refine<F: Fn(bool, bool) -> nat>(f: F) {
+        proof fn test_refine(f: FnSpec(bool, bool) -> nat) {
             refine_takefun(|x: bool, y: bool| 10);
             assert(apply_to_1(|u: u8| 10) >= 0);
         }
 
-        spec fn polytestfun<A, F: Fn(A, A) -> A>(a: A, f: F) -> A{
+        spec fn polytestfun<A>(a: A, f: FnSpec(A, A) -> A) -> A{
             f(a, a)
         }
 
@@ -47,7 +47,7 @@ test_verify_one_file! {
             assert(a === aa);
         }
 
-        spec fn specf<F: Fn(u32) -> u32>(x: u32, f: F) -> u32 {
+        spec fn specf(x: u32, f: FnSpec(u32) -> u32) -> u32 {
             f(f(x))
         }
 
@@ -67,18 +67,9 @@ test_verify_one_file! {
             assert(specf(10, |z| add(add(add(z, 1), p), q)) == add(18, mul(2, p)));
         }
 
-        proof fn test_refine_inference<F: Fn(bool, bool) -> nat>(f: F) {
+        proof fn test_refine_inference(f: FnSpec(bool, bool) -> nat) {
             refine_takefun(|x, y| 10);
             assert(apply_to_1(|u| 10) >= 0);
-        }
-
-        spec fn specf_with_impl(x: u32, f: impl Fn(u32) -> u32) -> u32 {
-            f(x)
-        }
-
-        proof fn test_specf_with_impl()
-        {
-            assert(specf_with_impl(10, |z: u32| add(z, 1)) == 11);
         }
 
         struct S {
@@ -96,17 +87,15 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test1_fails1 code! {
-        #[proof]
-        fn takefun<F: Fn(u32, u64) -> bool>(f: F) -> bool {
+    #[test] test1_fails1 verus_code! {
+        proof fn takefun(f: FnSpec(u32, u64) -> bool) -> bool {
             ensures(|b: bool| b == f(10, 20));
 
             #[spec] let b: bool = f(10, 20);
             b
         }
 
-        #[proof]
-        fn testtake() {
+        proof fn testtake() {
             let b: bool = takefun(|x: u32, y: u64| (x as u64) < y);
             assert(!b); // FAILS
         }
@@ -114,14 +103,12 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test1_fails2 code! {
-        #[spec]
-        fn polytestfun<A, F: Fn(A, A) -> A>(a: A, f: F) -> A{
+    #[test] test1_fails2 verus_code! {
+        spec fn polytestfun<A>(a: A, f: FnSpec(A, A) -> A) -> A{
             f(a, a)
         }
 
-        #[proof]
-        fn testfun<A>(a: A, b: bool) {
+        proof fn testfun<A>(a: A, b: bool) {
             let aa = polytestfun(a, |x: A, y: A| (if b { x } else { y }));
             assert(!equal(a, aa)); // FAILS
         }
@@ -129,16 +116,14 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test1_fails3 code! {
-        #[spec]
-        fn specf<F: Fn(u32) -> u32>(x: u32, f: F) -> u32 {
+    #[test] test1_fails3 verus_code! {
+        spec fn specf(x: u32, f: FnSpec(u32) -> u32) -> u32 {
             f(f(x))
         }
 
-        #[proof]
-        fn test_specf(p: u32) {
+        proof fn test_specf(p: u32) {
             let q: u32 = 3;
-            assert(specf(10, |z: u32| z + 1 + p + q) == 18 + 2 * p); // FAILS
+            assert(specf(10, |z: u32| (z + 1 + p + q) as u32) == 18 + 2 * p); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -155,7 +140,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_fails5 verus_code! {
-        proof fn refine_takefun<F: Fn(nat) -> int>(f: F) {
+        proof fn refine_takefun(f: FnSpec(nat) -> int) {
             assert(f(10) >= 0); // FAILS
         }
     } => Err(err) => assert_one_fails(err)

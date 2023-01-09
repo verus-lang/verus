@@ -480,10 +480,9 @@ pub(crate) fn expand_call_graph(
 
     // Add f --> T for any function f<A: T> with type parameter A: T
     for (_, tbound) in function.x.typ_bounds.iter() {
-        if let GenericBoundX::Traits(traits) = &**tbound {
-            for tr in traits {
-                call_graph.add_edge(f_node.clone(), Node::Trait(tr.clone()));
-            }
+        let GenericBoundX::Traits(traits) = &**tbound;
+        for tr in traits {
+            call_graph.add_edge(f_node.clone(), Node::Trait(tr.clone()));
         }
     }
 
@@ -525,11 +524,8 @@ pub(crate) fn expand_call_graph(
                                 // because we (conceptually) get f2 from the dictionary passed for A: T.
                                 let bound = function.x.typ_bounds.iter().find(|(q, _)| q == p);
                                 let bound = bound.expect("missing type parameter");
-                                if let GenericBoundX::Traits(ts) = &*bound.1 {
-                                    assert!(ts.iter().any(|t| t == trait_path2));
-                                } else {
-                                    panic!("wrong type bound on type parameter");
-                                }
+                                let GenericBoundX::Traits(ts) = &*bound.1;
+                                assert!(ts.iter().any(|t| t == trait_path2));
                                 None
                             }
                             TypX::Datatype(datatype, _) => {
@@ -576,7 +572,6 @@ pub(crate) fn expand_call_graph(
                                 }
                             }
                         }
-                        GenericBoundX::FnSpec(..) => {}
                     }
                 }
 

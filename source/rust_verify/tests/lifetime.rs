@@ -75,7 +75,7 @@ test_verify_one_file! {
 
         #[verifier(returns(spec))]
         fn bar<'a, F: Fn(u32) -> bool>(#[spec] f: F, #[spec] v: u32, foo: Foo<'a, u32>) -> bool {
-            f(v)
+            f.requires((v,))
         }
     } => Ok(())
 }
