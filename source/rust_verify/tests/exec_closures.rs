@@ -656,6 +656,17 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] old_for_closure_param_error verus_code! {
+        fn foo() {
+            let g = |y: u64| {
+                requires(old(y) == 6);
+                y
+            };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "a mutable reference is expected here")
+}
+
+test_verify_one_file! {
     #[ignore] #[test] callee_is_computed_expression verus_code! {
         // Rust allows this because it can cast both closures to 'fn(u64) -> u64'
         // However Verus doesn't support this type right now
@@ -872,6 +883,42 @@ test_verify_one_file! {
             assert(f.requires((5, 5))); // FAILS
         }
     } => Err(err) => assert_fails(err, 7)
+}
+
+test_verify_one_file! {
+    #[test] return_unit verus_code! {
+        fn test() {
+            let f = |x: u64| {
+                ensures(|res: ()| res === ());
+            };
+
+            let f1 = |x: u64| {
+                ensures(|res: ()| res === ());
+                ()
+            };
+
+            let g = |x: u64| {
+                ensures(false);
+                assume(false);
+            };
+
+            assert(g.ensures((2,), ()) ==> false);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] closure_is_dead_end verus_code! {
+        fn test() {
+            let f = |x: u64| {
+                assume(false);
+            };
+
+            // things proved within the closure should be scoped to within the closure
+
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }
 
 // mut restrictions
