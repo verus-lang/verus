@@ -1,6 +1,8 @@
 use crate::ast::{Typ, UnaryOpr};
 use crate::def::Spanned;
 use crate::sst::{Dest, Exp, ExpX, Stm, StmX, Stms, UniqueIdent};
+use crate::sst_visitor::exp_visitor_check;
+use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -44,10 +46,21 @@ pub(crate) fn stm_assign(
                 }
             }
             for arg in args.iter() {
-                if let ExpX::Loc(loc) = &arg.x {
-                    let var = get_loc_var(loc);
-                    modified.insert(var);
-                }
+                // Search for any ExpX::Loc in the arg, which might be modified.
+                // Given current limitations, I think the only way this can happen
+                // is if either
+                //    arg.x = ExpX::Loc(loc)
+                // or
+                //    arg.x = UnaryOpr(Box, ExpX::Loc(loc))
+
+                exp_visitor_check::<(), _>(arg, &mut ScopeMap::new(), &mut |e, _| {
+                    if let ExpX::Loc(loc) = &e.x {
+                        let var = get_loc_var(loc);
+                        modified.insert(var);
+                    }
+                    Ok(())
+                })
+                .unwrap();
             }
             stm.clone()
         }

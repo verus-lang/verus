@@ -105,10 +105,11 @@ where
                             }
                             trigs = ts.clone();
                         }
-                        BndX::Lambda(params) => {
+                        BndX::Lambda(params, ts) => {
                             for b in params.iter() {
                                 bvars.push((b.name.clone(), false));
                             }
+                            trigs = ts.clone()
                         }
                         BndX::Choose(params, ts, _) => {
                             for b in params.iter() {
@@ -360,12 +361,20 @@ where
                     }
                     BndX::Quant(*quant, binders.clone(), Arc::new(triggers))
                 }
-                BndX::Lambda(binders) => {
+                BndX::Lambda(binders, ts) => {
                     map.push_scope(true);
                     for b in binders.iter() {
                         let _ = map.insert(b.name.clone(), false);
                     }
-                    bnd.x.clone()
+                    let mut triggers: Vec<Trig> = Vec::new();
+                    for t in ts.iter() {
+                        let mut exprs: Vec<Exp> = Vec::new();
+                        for exp in t.iter() {
+                            exprs.push(map_exp_visitor_bind(exp, map, f)?);
+                        }
+                        triggers.push(Arc::new(exprs));
+                    }
+                    BndX::Lambda(binders.clone(), Arc::new(triggers))
                 }
                 BndX::Choose(binders, ts, cond) => {
                     map.push_scope(true);
@@ -504,8 +513,8 @@ where
                     let bndx = BndX::Quant(*quant, fbndtyps(env, binders)?, ftrigs(env, ts)?);
                     Spanned::new(bnd.span.clone(), bndx)
                 }
-                BndX::Lambda(binders) => {
-                    let bndx = BndX::Lambda(fbndtyps(env, binders)?);
+                BndX::Lambda(binders, ts) => {
+                    let bndx = BndX::Lambda(fbndtyps(env, binders)?, ftrigs(env, ts)?);
                     Spanned::new(bnd.span.clone(), bndx)
                 }
                 BndX::Choose(binders, ts, cond) => {

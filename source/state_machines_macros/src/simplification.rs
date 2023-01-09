@@ -695,7 +695,10 @@ fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
 
 fn expr_matches(e: &Expr, pat: &Pat) -> Expr {
     Expr::Verbatim(quote_spanned! { pat.span() =>
-        match (#e) { #pat => true, _ => false }
+        match (#e) {
+            #pat => true,
+            #[allow(unreachable_patterns)] _ => false
+        }
     })
 }
 

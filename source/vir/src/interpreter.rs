@@ -286,7 +286,7 @@ impl SyntacticEquality for Bnd {
             (Quant(q_l, bnds_l, _trigs_l), Quant(q_r, bnds_r, _trigs_r)) => {
                 Some(q_l == q_r && bnds_l.conservative_eq(bnds_r)?)
             }
-            (Lambda(bnds_l), Lambda(bnds_r)) => bnds_l.conservative_eq(bnds_r),
+            (Lambda(bnds_l, _trigs_l), Lambda(bnds_r, _trigs_r)) => bnds_l.conservative_eq(bnds_r),
             (Choose(bnds_l, _trigs_l, e_l), Choose(bnds_r, _trigs_r, e_r)) => {
                 Some(bnds_l.conservative_eq(bnds_r)? && e_l.syntactic_eq(e_r)?)
             }
@@ -453,7 +453,7 @@ fn hash_bnd<H: Hasher>(state: &mut H, bnd: &Bnd) {
     match &bnd.x {
         Let(bnds) => dohash!(0; hash_binders_exp(bnds)),
         Quant(quant, bnds, trigs) => dohash!(1, quant; hash_binders_typ(bnds), hash_trigs(trigs)),
-        Lambda(bnds) => dohash!(2; hash_binders_typ(bnds)),
+        Lambda(bnds, trigs) => dohash!(2; hash_binders_typ(bnds), hash_trigs(trigs)),
         Choose(bnds, trigs, e) => dohash!(3;
                     hash_binders_typ(bnds), hash_trigs(trigs), hash_exp(e)),
     }
@@ -1333,7 +1333,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             match &lambda.x {
                 Interp(InterpExp::Closure(lambda, context)) => match &lambda.x {
                     Bind(bnd, body) => match &bnd.x {
-                        BndX::Lambda(bnds) => {
+                        BndX::Lambda(bnds, _trigs) => {
                             let new_args: Result<Vec<Exp>, VirErr> =
                                 args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
                             let new_args = Arc::new(new_args?);
@@ -1375,7 +1375,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 state.env.pop_scope();
                 e
             }
-            BndX::Lambda(_) => {
+            BndX::Lambda(_, _) => {
                 let mut env = HashMap::new();
                 env.extend(state.env.map().iter().map(|(k, v)| (k.clone(), v.clone())));
                 exp_new(Interp(InterpExp::Closure(exp.clone(), env)))

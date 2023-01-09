@@ -2072,7 +2072,7 @@ pub fn assign_pat_or_arbitrary(pat: &Pat, init_e: &Expr) -> Option<(Pat, Expr)> 
         }
 
         let new_e = Expr::Verbatim(quote_spanned! { init_e.span() =>
-            match (#init_e) { #pat => #tup_expr , _ => crate::pervasive::arbitrary() }
+            match (#init_e) { #pat => #tup_expr , #[allow(unreachable_patterns)] _ => crate::pervasive::arbitrary() }
         });
         Some((tup_pat, new_e))
     }
@@ -2097,6 +2097,7 @@ fn token_matches_elt(
                 Expr::Verbatim(quote! {
                     match #token_name.view().value {
                         #pat => true,
+                        #[allow(unreachable_patterns)]
                         _ => false,
                     }
                 })
@@ -2119,6 +2120,7 @@ fn token_matches_elt(
                 let e2 = Expr::Verbatim(quote! {
                     match #token_name.view().value {
                         #pat => true,
+                        #[allow(unreachable_patterns)]
                         _ => false,
                     }
                 });
@@ -2308,7 +2310,11 @@ fn translate_special_condition(
                     Some(TransitionStmt::PostCondition(
                         span,
                         Expr::Verbatim(quote! {
-                            match #ident { #pat => true, _ => false }
+                            match #ident {
+                                #pat => true,
+                                #[allow(unreachable_patterns)]
+                                _ => false
+                            }
                         }),
                     ))
                 }

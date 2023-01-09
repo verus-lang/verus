@@ -183,8 +183,16 @@ pub fn mk_exists(
     mk_quantifier(Quant::Exists, binders, triggers, qid, body)
 }
 
-pub fn mk_lambda(binders: &Vec<Binder<Typ>>, body: &Expr) -> Expr {
-    Arc::new(ExprX::Bind(Arc::new(BindX::Lambda(Arc::new(binders.clone()))), body.clone()))
+pub fn mk_lambda(
+    binders: &Vec<Binder<Typ>>,
+    triggers: &Vec<Trigger>,
+    qid: Qid,
+    body: &Expr,
+) -> Expr {
+    Arc::new(ExprX::Bind(
+        Arc::new(BindX::Lambda(Arc::new(binders.clone()), Arc::new(triggers.clone()), qid)),
+        body.clone(),
+    ))
 }
 
 pub fn mk_true() -> Expr {

@@ -478,8 +478,9 @@ fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
         ExpX::Bind(bnd, _) => match &bnd.x {
             BndX::Quant(_, _, trigs) => trigs,
             BndX::Choose(_, trigs, _) => trigs,
+            BndX::Lambda(_, trigs) => trigs,
             _ => panic!(
-                "internal error: user quantifier expressions should only be Quant or Choose; found {:?}",
+                "internal error: user quantifier expressions should only be Quant, Choose, or Lambda; found {:?}",
                 bnd.x
             ),
         },
@@ -973,13 +974,17 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 let qid = new_user_qid(ctx, &exp);
                 air::ast_util::mk_quantifier(quant.quant, &binders, &triggers, qid, &expr)
             }
-            (BndX::Lambda(binders), false) => {
+            (BndX::Lambda(binders, trigs), false) => {
                 let expr = exp_to_expr(ctx, e, expr_ctxt)?;
                 let binders = vec_map(&*binders, |b| {
                     let name = suffix_local_expr_id(&b.name);
                     Arc::new(BinderX { name, a: typ_to_air(ctx, &b.a) })
                 });
-                let lambda = air::ast_util::mk_lambda(&binders, &expr);
+                let triggers = vec_map_result(&*trigs, |trig| {
+                    vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt)).map(|v| Arc::new(v))
+                })?;
+                let qid = (triggers.len() > 0).then(|| ()).and_then(|_| new_user_qid(ctx, &exp));
+                let lambda = air::ast_util::mk_lambda(&binders, &triggers, qid, &expr);
                 str_apply(crate::def::MK_FUN, &vec![lambda])
             }
             (BndX::Choose(binders, trigs, cond), false) => {

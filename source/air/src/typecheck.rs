@@ -358,7 +358,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                     Arc::new(binders)
                 }
                 BindX::Quant(_, binders, _, _) => binders.clone(),
-                BindX::Lambda(binders) => binders.clone(),
+                BindX::Lambda(binders, _, _) => binders.clone(),
                 BindX::Choose(binders, _, _, _) => binders.clone(),
             };
             // Collect all binder names, make sure they are unique
@@ -370,8 +370,10 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             }
             // Type-check triggers
             match &**bind {
-                BindX::Let(_) | BindX::Lambda(_) => {}
-                BindX::Quant(_, _, triggers, _) | BindX::Choose(_, triggers, _, _) => {
+                BindX::Let(_) => {}
+                BindX::Quant(_, _, triggers, _)
+                | BindX::Choose(_, triggers, _, _)
+                | BindX::Lambda(_, triggers, _) => {
                     for trigger in triggers.iter() {
                         for expr in trigger.iter() {
                             check_expr(typing, expr)?;
@@ -397,7 +399,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                     expect_typ(&t1, &bt(), "forall/exists body must have type bool")?;
                     t1
                 }
-                BindX::Lambda(_) => Arc::new(TypX::Lambda),
+                BindX::Lambda(_, _, _) => Arc::new(TypX::Lambda),
                 BindX::Choose(..) => t1,
             };
             // Done
