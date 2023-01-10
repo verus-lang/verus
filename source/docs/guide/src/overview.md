@@ -53,7 +53,7 @@ which makes verification easier.
 This guide assumes that you're already somewhat familiar with the basics of Rust programming.
 (If you're not, we recommend spending a couple hours on the [Learn Rust](https://www.rust-lang.org/learn) page.)
 Familiarity with Rust is useful for Verus,
-bacause Verus builds on Rust's syntax and Rust's type system to express specifications, proofs, and executable code.
+because Verus builds on Rust's syntax and Rust's type system to express specifications, proofs, and executable code.
 In fact, there is no separate language for specifications and proofs;
 instead, specifications and proofs are written in Rust syntax and type-checked with Rust's type checker.
 So if you already know Rust, you'll have an easier time getting started with Verus.
