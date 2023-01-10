@@ -2667,7 +2667,11 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     if is_closure_req || is_closure_ens {
                         {
                             let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                            erasure_info.resolved_calls.push((expr.hir_id, fn_span.data(), ResolvedCall::Spec));
+                            erasure_info.resolved_calls.push((
+                                expr.hir_id,
+                                fn_span.data(),
+                                ResolvedCall::Spec,
+                            ));
                         }
                         let bsf = if is_closure_req {
                             assert!(all_args.len() == 2);
