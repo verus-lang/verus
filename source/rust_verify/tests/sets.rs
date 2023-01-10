@@ -48,7 +48,7 @@ test_verify_one_file! {
     #[test] test1_fails1 verus_code! {
         use crate::pervasive::set::*;
 
-        pub closed spec fn set_map<A, F: Fn(A) -> A>(s: Set<A>, f: F) -> Set<A> {
+        pub closed spec fn set_map<A>(s: Set<A>, f: FnSpec(A) -> A) -> Set<A> {
             Set::new(|a: A| exists|x: A| s.contains(x) && a === f(x))
         }
 
@@ -111,7 +111,7 @@ test_verify_one_file! {
 
         proof fn test() {
             let s: Set<nat> = set![9];
-            reveal_with_fuel(Set::fold::<nat, fn(nat, nat) -> nat>, 10);
+            reveal_with_fuel(Set::<nat>::fold::<nat>, 10);
             assert(s.finite());
             assert(s.len() > 0);
             assert(s.fold(0, |p: nat, a: nat| p + a) == 9);

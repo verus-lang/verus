@@ -1,15 +1,20 @@
 //! VIR-AST -> VIR-AST transformation to simplify away some complicated features
 
+use crate::ast::Quant;
+use crate::ast::Typs;
 use crate::ast::{
-    BinaryOp, Binder, CallTarget, Constant, Datatype, DatatypeTransparency, DatatypeX, Expr, ExprX,
-    Field, FieldOpr, Function, GenericBound, GenericBoundX, Ident, IntRange, Krate, KrateX, Mode,
-    MultiOp, Path, Pattern, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr,
-    VirErr, Visibility,
+    BinaryOp, Binder, BuiltinSpecFun, CallTarget, Constant, Datatype, DatatypeTransparency,
+    DatatypeX, Expr, ExprX, Exprs, Field, FieldOpr, Function, GenericBound, GenericBoundX, Ident,
+    IntRange, Krate, KrateX, Mode, MultiOp, Path, Pattern, PatternX, SpannedTyped, Stmt, StmtX,
+    Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
 };
-use crate::ast_util::{err_str, err_string};
+use crate::ast_util::conjoin;
+use crate::ast_util::{err_str, err_string, wrap_in_trigger};
 use crate::context::GlobalCtx;
 use crate::def::{prefix_tuple_field, prefix_tuple_param, prefix_tuple_variant, Spanned};
 use crate::util::vec_map_result;
+use air::ast::BinderX;
+use air::ast::Binders;
 use air::ast::Span;
 use air::ast_util::ident_binder;
 use air::scope_map::ScopeMap;
@@ -21,11 +26,13 @@ struct State {
     next_var: u64,
     // Name of a datatype to represent each tuple arity
     tuple_typs: HashMap<usize, Path>,
+    // Name of a datatype to represent each tuple arity
+    closure_typs: HashMap<usize, Path>,
 }
 
 impl State {
     fn new() -> Self {
-        State { next_var: 0, tuple_typs: HashMap::new() }
+        State { next_var: 0, tuple_typs: HashMap::new(), closure_typs: HashMap::new() }
     }
 
     fn reset_for_function(&mut self) {
@@ -42,6 +49,13 @@ impl State {
             self.tuple_typs.insert(arity, crate::def::prefix_tuple_type(arity));
         }
         self.tuple_typs[&arity].clone()
+    }
+
+    fn closure_type_name(&mut self, id: usize) -> Path {
+        if !self.closure_typs.contains_key(&id) {
+            self.closure_typs.insert(id, crate::def::prefix_closure_type(id));
+        }
+        self.closure_typs[&id].clone()
     }
 }
 
@@ -81,11 +95,11 @@ fn small_or_temp(state: &mut State, expr: &Expr) -> (Vec<Stmt>, Expr) {
     }
 }
 
+// TODO this can probably be simplified away now
 fn keep_bound(bound: &GenericBound) -> bool {
     // Remove FnSpec type bounds
     match &**bound {
         GenericBoundX::Traits(_) => true,
-        GenericBoundX::FnSpec(..) => false,
     }
 }
 
@@ -155,6 +169,10 @@ fn pattern_to_exprs(
         }
     }
 }
+
+// note that this gets called *bottom up*
+// that is, if node A is the parent of children B and C,
+// then simplify_one_expr is called first on B and C, and then on A
 
 fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<Expr, VirErr> {
     match &expr.x {
@@ -244,13 +262,7 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
         }
         ExprX::Unary(UnaryOp::CoerceMode { .. }, expr0) => Ok(expr0.clone()),
         ExprX::UnaryOpr(UnaryOpr::TupleField { tuple_arity, field }, expr0) => {
-            let datatype = state.tuple_type_name(*tuple_arity);
-            let variant = prefix_tuple_variant(*tuple_arity);
-            let field = prefix_tuple_field(*field);
-            let op = UnaryOpr::Field(FieldOpr { datatype, variant, field });
-            let field_exp =
-                SpannedTyped::new(&expr.span, &expr.typ, ExprX::UnaryOpr(op, expr0.clone()));
-            Ok(field_exp)
+            Ok(tuple_get_field_expr(state, &expr.span, &expr.typ, expr0, *tuple_arity, *field))
         }
         ExprX::Multi(MultiOp::Chained(ops), args) => {
             assert!(args.len() == ops.len() + 1);
@@ -336,8 +348,51 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
             let call = ExprX::Call(target, Arc::new(vec![expr1.clone()]));
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
+        ExprX::ExecClosure { params, body, requires, ensures, ret, external_spec } => {
+            assert!(external_spec.is_none());
+
+            let closure_var_ident = state.next_temp();
+            let closure_var = SpannedTyped::new(
+                &expr.span,
+                &expr.typ.clone(),
+                ExprX::Var(closure_var_ident.clone()),
+            );
+
+            let external_spec_expr =
+                exec_closure_spec(state, &expr.span, &closure_var, params, ret, requires, ensures)?;
+            let external_spec = Some((closure_var_ident, external_spec_expr));
+
+            Ok(SpannedTyped::new(
+                &expr.span,
+                &expr.typ,
+                ExprX::ExecClosure {
+                    params: params.clone(),
+                    body: body.clone(),
+                    requires: requires.clone(),
+                    ensures: ensures.clone(),
+                    ret: ret.clone(),
+                    external_spec,
+                },
+            ))
+        }
         _ => Ok(expr.clone()),
     }
+}
+
+fn tuple_get_field_expr(
+    state: &mut State,
+    span: &Span,
+    typ: &Typ,
+    tuple_expr: &Expr,
+    tuple_arity: usize,
+    field: usize,
+) -> Expr {
+    let datatype = state.tuple_type_name(tuple_arity);
+    let variant = prefix_tuple_variant(tuple_arity);
+    let field = prefix_tuple_field(field);
+    let op = UnaryOpr::Field(FieldOpr { datatype, variant, field });
+    let field_expr = SpannedTyped::new(span, typ, ExprX::UnaryOpr(op, tuple_expr.clone()));
+    field_expr
 }
 
 fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<Vec<Stmt>, VirErr> {
@@ -365,6 +420,10 @@ fn simplify_one_typ(local: &LocalCtxt, state: &mut State, typ: &Typ) -> Result<T
             let path = state.tuple_type_name(typs.len());
             Ok(Arc::new(TypX::Datatype(path, typs.clone())))
         }
+        TypX::AnonymousClosure(_typs, _typ, id) => {
+            let path = state.closure_type_name(*id);
+            Ok(Arc::new(TypX::Datatype(path, Arc::new(vec![]))))
+        }
         TypX::TypParam(x) => {
             if !local.bounds.contains_key(x) {
                 return err_string(
@@ -374,10 +433,207 @@ fn simplify_one_typ(local: &LocalCtxt, state: &mut State, typ: &Typ) -> Result<T
             }
             match &*local.bounds[x] {
                 GenericBoundX::Traits(_) => Ok(typ.clone()),
-                GenericBoundX::FnSpec(ts, tr) => Ok(Arc::new(TypX::Lambda(ts.clone(), tr.clone()))),
             }
         }
         _ => Ok(typ.clone()),
+    }
+}
+
+fn closure_trait_call_typ_args(state: &mut State, fn_val: &Expr, params: &Binders<Typ>) -> Typs {
+    let path = state.tuple_type_name(params.len());
+
+    let param_typs: Vec<Typ> = params.iter().map(|p| p.a.clone()).collect();
+    let tup_typ = Arc::new(TypX::Datatype(path, Arc::new(param_typs)));
+
+    Arc::new(vec![fn_val.typ.clone(), tup_typ])
+}
+
+fn mk_closure_req_call(
+    state: &mut State,
+    span: &Span,
+    params: &Binders<Typ>,
+    fn_val: &Expr,
+    arg_tuple: &Expr,
+) -> Expr {
+    let bool_typ = Arc::new(TypX::Bool);
+    SpannedTyped::new(
+        span,
+        &bool_typ,
+        ExprX::Call(
+            CallTarget::BuiltinSpecFun(
+                BuiltinSpecFun::ClosureReq,
+                closure_trait_call_typ_args(state, fn_val, params),
+            ),
+            Arc::new(vec![fn_val.clone(), arg_tuple.clone()]),
+        ),
+    )
+}
+
+fn mk_closure_ens_call(
+    state: &mut State,
+    span: &Span,
+    params: &Binders<Typ>,
+    fn_val: &Expr,
+    arg_tuple: &Expr,
+    ret_arg: &Expr,
+) -> Expr {
+    let bool_typ = Arc::new(TypX::Bool);
+    SpannedTyped::new(
+        span,
+        &bool_typ,
+        ExprX::Call(
+            CallTarget::BuiltinSpecFun(
+                BuiltinSpecFun::ClosureEns,
+                closure_trait_call_typ_args(state, fn_val, params),
+            ),
+            Arc::new(vec![fn_val.clone(), arg_tuple.clone(), ret_arg.clone()]),
+        ),
+    )
+}
+
+fn exec_closure_spec_requires(
+    state: &mut State,
+    span: &Span,
+    closure_var: &Expr,
+    params: &Binders<Typ>,
+    requires: &Exprs,
+) -> Result<Expr, VirErr> {
+    // For requires:
+
+    // If the closure has `|a0, a1, a2| requires f(a0, a1, a2)`
+    // then we emit a spec of the form
+    //
+    //      forall x :: f(x.0, x.1, x.2) ==> closure.requires(x)
+    //
+    // with `closure.requires(x)` as the trigger
+
+    // (Since the user doesn't have the option to specify a trigger here,
+    // we need to use the most general one, and that means we need to
+    // quantify over a tuple.)
+
+    let param_typs: Vec<Typ> = params.iter().map(|p| p.a.clone()).collect();
+    let tuple_path = state.tuple_type_name(params.len());
+    let tuple_typ = Arc::new(TypX::Datatype(tuple_path, Arc::new(param_typs)));
+    let tuple_ident = state.next_temp();
+    let tuple_var = SpannedTyped::new(span, &tuple_typ, ExprX::Var(tuple_ident.clone()));
+
+    let reqs = conjoin(span, requires);
+
+    // Supply 'let' statements of the form 'let a0 = x.0; let a1 = x.1; ...' etc.
+
+    let mut decls: Vec<Stmt> = Vec::new();
+    for (i, p) in params.iter().enumerate() {
+        let patternx = PatternX::Var { name: p.name.clone(), mutable: false };
+        let pattern = SpannedTyped::new(span, &p.a, patternx);
+        let tuple_field = tuple_get_field_expr(state, span, &p.a, &tuple_var, params.len(), i);
+        let decl = StmtX::Decl { pattern, mode: Mode::Spec, init: Some(tuple_field) };
+        decls.push(Spanned::new(span.clone(), decl));
+    }
+
+    let reqs_body =
+        SpannedTyped::new(&reqs.span, &reqs.typ, ExprX::Block(Arc::new(decls), Some(reqs.clone())));
+
+    let closure_req_call =
+        wrap_in_trigger(&mk_closure_req_call(state, span, params, closure_var, &tuple_var));
+
+    let bool_typ = Arc::new(TypX::Bool);
+    let req_quant_body = SpannedTyped::new(
+        span,
+        &bool_typ,
+        ExprX::Binary(BinaryOp::Implies, reqs_body, closure_req_call.clone()),
+    );
+
+    let forall = Quant { quant: air::ast::Quant::Forall, boxed_params: true };
+    let binders = Arc::new(vec![Arc::new(BinderX { name: tuple_ident, a: tuple_typ })]);
+    let req_forall =
+        SpannedTyped::new(span, &bool_typ, ExprX::Quant(forall, binders, req_quant_body));
+
+    Ok(req_forall)
+}
+
+fn exec_closure_spec_ensures(
+    state: &mut State,
+    span: &Span,
+    closure_var: &Expr,
+    params: &Binders<Typ>,
+    ret: &Binder<Typ>,
+    ensures: &Exprs,
+) -> Result<Expr, VirErr> {
+    // For ensures:
+
+    // If the closure has `|a0, a1, a2| ensures |b| f(a0, a1, a2, b)`
+    // then we emit a spec of the form
+    //
+    //      forall x, y :: closure.ensures(x, y) ==> f(x.0, x.1, x.2, y)
+    //
+    // with `closure.ensures(x)` as the trigger
+
+    let param_typs: Vec<Typ> = params.iter().map(|p| p.a.clone()).collect();
+    let tuple_path = state.tuple_type_name(params.len());
+    let tuple_typ = Arc::new(TypX::Datatype(tuple_path, Arc::new(param_typs)));
+    let tuple_ident = state.next_temp();
+    let tuple_var = SpannedTyped::new(span, &tuple_typ, ExprX::Var(tuple_ident.clone()));
+
+    let ret_ident = &ret.name;
+    let ret_var = SpannedTyped::new(span, &ret.a, ExprX::Var(ret_ident.clone()));
+
+    let enss = conjoin(span, ensures);
+
+    // Supply 'let' statements of the form 'let a0 = x.0; let a1 = x.1; ...' etc.
+
+    let mut decls: Vec<Stmt> = Vec::new();
+    for (i, p) in params.iter().enumerate() {
+        let patternx = PatternX::Var { name: p.name.clone(), mutable: false };
+        let pattern = SpannedTyped::new(span, &p.a, patternx);
+        let tuple_field = tuple_get_field_expr(state, span, &p.a, &tuple_var, params.len(), i);
+        let decl = StmtX::Decl { pattern, mode: Mode::Spec, init: Some(tuple_field) };
+        decls.push(Spanned::new(span.clone(), decl));
+    }
+
+    let enss_body =
+        SpannedTyped::new(&enss.span, &enss.typ, ExprX::Block(Arc::new(decls), Some(enss.clone())));
+
+    let closure_ens_call = wrap_in_trigger(&mk_closure_ens_call(
+        state,
+        span,
+        params,
+        closure_var,
+        &tuple_var,
+        &ret_var,
+    ));
+
+    let bool_typ = Arc::new(TypX::Bool);
+    let ens_quant_body = SpannedTyped::new(
+        span,
+        &bool_typ,
+        ExprX::Binary(BinaryOp::Implies, closure_ens_call.clone(), enss_body),
+    );
+
+    let forall = Quant { quant: air::ast::Quant::Forall, boxed_params: true };
+    let binders =
+        Arc::new(vec![Arc::new(BinderX { name: tuple_ident, a: tuple_typ }), ret.clone()]);
+    let ens_forall =
+        SpannedTyped::new(span, &bool_typ, ExprX::Quant(forall, binders, ens_quant_body));
+
+    Ok(ens_forall)
+}
+
+fn exec_closure_spec(
+    state: &mut State,
+    span: &Span,
+    closure_var: &Expr,
+    params: &Binders<Typ>,
+    ret: &Binder<Typ>,
+    requires: &Exprs,
+    ensures: &Exprs,
+) -> Result<Expr, VirErr> {
+    let req_forall = exec_closure_spec_requires(state, span, closure_var, params, requires)?;
+
+    if ensures.len() > 0 {
+        let ens_forall = exec_closure_spec_ensures(state, span, closure_var, params, ret, ensures)?;
+        Ok(conjoin(span, &vec![req_forall, ens_forall]))
+    } else {
+        Ok(req_forall)
     }
 }
 
@@ -393,7 +649,6 @@ fn simplify_function(
     for (x, bound) in functionx.typ_bounds.iter() {
         match &**bound {
             GenericBoundX::Traits(_) => local.typ_params.push(x.clone()),
-            GenericBoundX::FnSpec(..) => {}
         }
         // simplify types in bounds and disallow recursive bounds like F: FnSpec(F, F) -> F
         let bound = crate::ast_visitor::map_generic_bound_visitor(bound, state, &|state, typ| {
@@ -512,6 +767,45 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         }
         let variant = ident_binder(&prefix_tuple_variant(arity), &Arc::new(fields));
         let variants = Arc::new(vec![variant]);
+        let datatypex =
+            DatatypeX { path, visibility, transparency, typ_params, variants, mode: Mode::Exec };
+        datatypes.push(Spanned::new(ctx.no_span.clone(), datatypex));
+    }
+
+    for (_id, path) in state.closure_typs {
+        // Right now, we translate the closure type into an a global datatype.
+        //
+        // However, I'm pretty sure an anonymous closure can't actually be referenced
+        // from outside the item that defines it (Rust seems to represent it as an
+        // "opaque type" if it escapes through an existential type, which Verus currently
+        // doesn't support anyway.)
+        // So in principle, we could make the type private to the item and not emit any
+        // global declarations for it.
+        //
+        // Also, note that the closure type doesn't take any type params, although
+        // theoretically it depends on any type params of the enclosing item.
+        // e.g., if we have
+        //      fn foo<T>(...) {
+        //          let x = |t: T| { ... };
+        //      }
+        // Then the closure type is dependent on T.
+        // But since the closure type is only referenced from the item, we can consider
+        // T to be fixed, so we don't need to define the closure type polymorphically.
+
+        // Also, note that Rust already prohibits a closure type from depending on itself
+        // (not even via reference types, which would be allowed for other types).
+        // As such, we don't have to worry about any kind of recursion-checking:
+        // a closure type cannot possibly be involved in any type cycle.
+        // (In principle, the closure should depend negatively on its param and return types,
+        // since they are arguments to the 'requires' and 'ensures' predicates, but thanks
+        // to Rust's restrictions, we don't have to do any additional checks.)
+
+        let visibility = Visibility { owning_module: None, is_private: false };
+        let transparency = DatatypeTransparency::Never;
+
+        let typ_params = Arc::new(vec![]);
+        let variants = Arc::new(vec![]);
+
         let datatypex =
             DatatypeX { path, visibility, transparency, typ_params, variants, mode: Mode::Exec };
         datatypes.push(Spanned::new(ctx.no_span.clone(), datatypex));

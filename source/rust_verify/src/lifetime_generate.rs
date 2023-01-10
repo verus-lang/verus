@@ -235,6 +235,9 @@ fn erase_expr_ext<'tcx>(
                 ResolvedCall::Ctor(_path, _variant) => {
                     todo!()
                 }
+                ResolvedCall::NonStaticExec => {
+                    todo!()
+                }
             }
         }
         ExprKind::Block(block, None) => {

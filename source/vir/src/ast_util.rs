@@ -1,7 +1,8 @@
 use crate::ast::{
-    BinaryOp, Constant, DatatypeX, Expr, ExprX, Fun, FunX, FunctionX, GenericBound, GenericBoundX,
-    Ident, Idents, IntRange, Mode, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped, Typ,
-    TypX, Typs, Variant, Variants, VirErr, Visibility,
+    BinaryOp, Constant, DatatypeX, Expr, ExprX, Exprs, Fun, FunX, FunctionX, GenericBound,
+    GenericBoundX, Ident, Idents, IntRange, Mode, Param, ParamX, Params, Path, PathX, Quant,
+    SpannedTyped, TriggerAnnotation, Typ, TypX, Typs, UnaryOp, Variant, Variants, VirErr,
+    Visibility,
 };
 use crate::sst::{Par, Pars};
 use crate::util::vec_map;
@@ -86,10 +87,6 @@ pub fn params_equal(param1: &Param, param2: &Param) -> bool {
 pub fn generic_bounds_equal(b1: &GenericBound, b2: &GenericBound) -> bool {
     match (&**b1, &**b2) {
         (GenericBoundX::Traits(t1), GenericBoundX::Traits(t2)) => t1 == t2,
-        (GenericBoundX::FnSpec(ts1, t1), GenericBoundX::FnSpec(ts2, t2)) => {
-            n_types_equal(ts1, ts2) && types_equal(t1, t2)
-        }
-        _ => false,
     }
 }
 
@@ -314,4 +311,18 @@ pub(crate) fn referenced_vars_expr(exp: &Expr) -> HashSet<Ident> {
         },
     );
     vars
+}
+
+pub fn mk_tuple(span: &Span, exp: &Exprs) -> Expr {
+    let typs = vec_map(exp, |e| e.typ.clone());
+    let tup_type = Arc::new(TypX::Tuple(Arc::new(typs)));
+    SpannedTyped::new(span, &tup_type, ExprX::Tuple(exp.clone()))
+}
+
+pub fn wrap_in_trigger(expr: &Expr) -> Expr {
+    SpannedTyped::new(
+        &expr.span,
+        &expr.typ,
+        ExprX::Unary(UnaryOp::Trigger(TriggerAnnotation::Trigger(None)), expr.clone()),
+    )
 }

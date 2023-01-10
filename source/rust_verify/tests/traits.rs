@@ -35,11 +35,10 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_not_yet_supported_7 verus_code! {
-        // might need to add F: Fn(...) to termination checking before supporting this
         struct S<F: Fn(bool) -> bool> {
             f: F,
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Ok(())
 }
 
 test_verify_one_file! {

@@ -14,7 +14,7 @@ impl<A> Seq<A> {
     /// the resulting sequence.
     /// The `int` parameter of `f` is the index of the element being mapped.
 
-    pub open spec fn map<B, F: Fn(int, A) -> B>(self, f: F) -> Seq<B> {
+    pub open spec fn map<B>(self, f: FnSpec(int, A) -> B) -> Seq<B> {
         Seq::new(self.len(), |i: int| f(i, self[i]))
     }
 

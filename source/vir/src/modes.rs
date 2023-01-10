@@ -430,19 +430,20 @@ fn check_expr_handle_mut_arg(
                     }
                 }
             }
+            let mode_error_msg = || {
+                if x.path == crate::def::exec_nonstatic_call_path() {
+                    format!("to call a non-static function in ghost code, it must be a FnSpec")
+                } else {
+                    format!("cannot call function with mode {}", function.x.mode)
+                }
+            };
             if typing.check_ghost_blocks {
                 if (function.x.mode == Mode::Exec) != (typing.block_ghostness == Ghost::Exec) {
-                    return err_string(
-                        &expr.span,
-                        format!("cannot call function with mode {}", function.x.mode),
-                    );
+                    return err_string(&expr.span, mode_error_msg());
                 }
             }
             if !mode_le(outer_mode, function.x.mode) {
-                return err_string(
-                    &expr.span,
-                    format!("cannot call function with mode {}", function.x.mode),
-                );
+                return err_string(&expr.span, mode_error_msg());
             }
             for (param, arg) in function.x.params.iter().zip(es.iter()) {
                 let param_mode = mode_join(outer_mode, param.x.mode);
@@ -482,11 +483,19 @@ fn check_expr_handle_mut_arg(
             Ok(function.x.ret.x.mode)
         }
         ExprX::Call(CallTarget::FnSpec(e0), es) => {
-            // TODO call `add_non_atomic` if this is ever supported for exec-mode functions
             if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return err_str(&expr.span, "cannot call spec function from exec mode");
             }
             check_expr_has_mode(typing, Mode::Spec, e0, Mode::Spec)?;
+            for arg in es.iter() {
+                check_expr_has_mode(typing, Mode::Spec, arg, Mode::Spec)?;
+            }
+            Ok(Mode::Spec)
+        }
+        ExprX::Call(CallTarget::BuiltinSpecFun(_f, _typs), es) => {
+            if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
+                return err_str(&expr.span, "cannot call spec function from exec mode");
+            }
             for arg in es.iter() {
                 check_expr_has_mode(typing, Mode::Spec, arg, Mode::Spec)?;
             }
@@ -615,7 +624,7 @@ fn check_expr_handle_mut_arg(
         }
         ExprX::Closure(params, body) => {
             if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
-                return err_str(&expr.span, "not supported yet: closures in exec mode");
+                return err_str(&expr.span, "cannot use FnSpec closure in 'exec' mode");
             }
             typing.vars.push_scope(true);
             for binder in params.iter() {
@@ -631,6 +640,49 @@ fn check_expr_handle_mut_arg(
 
             typing.vars.pop_scope();
             Ok(Mode::Spec)
+        }
+        ExprX::ExecClosure { params, ret, requires, ensures, body, external_spec } => {
+            // This should not be filled in yet
+            assert!(external_spec.is_none());
+
+            if typing.block_ghostness != Ghost::Exec || outer_mode != Mode::Exec {
+                return err_str(
+                    &expr.span,
+                    "closure in ghost code must be marked as a FnSpec by wrapping it in `closure_to_fn_spec` (this should happen automatically in the Verus syntax macro)",
+                );
+            }
+            typing.vars.push_scope(true);
+            for binder in params.iter() {
+                typing.insert(&expr.span, &binder.name, false, Mode::Exec);
+            }
+
+            let mut inner_atomic_insts = None;
+            let mut ret_mode = Some(Mode::Exec);
+            let mut block_ghostness = Ghost::Ghost;
+            swap(&mut inner_atomic_insts, &mut typing.atomic_insts);
+            swap(&mut ret_mode, &mut typing.ret_mode);
+            swap(&mut block_ghostness, &mut typing.block_ghostness);
+
+            for req in requires.iter() {
+                check_expr_has_mode(typing, Mode::Spec, req, Mode::Spec)?;
+            }
+
+            typing.vars.push_scope(true);
+            typing.insert(&expr.span, &ret.name, false, Mode::Exec);
+            for ens in ensures.iter() {
+                check_expr_has_mode(typing, Mode::Spec, ens, Mode::Spec)?;
+            }
+            typing.vars.pop_scope();
+
+            swap(&mut block_ghostness, &mut typing.block_ghostness);
+
+            check_expr_has_mode(typing, Mode::Exec, body, Mode::Exec)?;
+
+            swap(&mut inner_atomic_insts, &mut typing.atomic_insts);
+            swap(&mut ret_mode, &mut typing.ret_mode);
+
+            typing.vars.pop_scope();
+            Ok(Mode::Exec)
         }
         ExprX::Choose { params, cond, body } => {
             if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {

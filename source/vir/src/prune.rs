@@ -185,15 +185,18 @@ pub fn prune_krate_for_module(krate: &Krate, module: &Path) -> (Krate, Vec<MonoT
     for f in &krate.functions {
         match (&f.x.visibility.owning_module, &f.x.body) {
             (Some(path), Some(body)) if path == module => {
-                crate::ast_visitor::expr_visitor_check::<(), _>(body, &mut |e: &Expr| {
-                    match &e.x {
-                        ExprX::Fuel(path, fuel) if *fuel > 0 => {
-                            revealed_functions.insert(path.clone());
+                crate::ast_visitor::expr_visitor_check::<(), _>(
+                    body,
+                    &mut |_scope_map, e: &Expr| {
+                        match &e.x {
+                            ExprX::Fuel(path, fuel) if *fuel > 0 => {
+                                revealed_functions.insert(path.clone());
+                            }
+                            _ => {}
                         }
-                        _ => {}
-                    }
-                    Ok(())
-                })
+                        Ok(())
+                    },
+                )
                 .expect("expr_visitor_check failed unexpectedly");
             }
             _ => {}

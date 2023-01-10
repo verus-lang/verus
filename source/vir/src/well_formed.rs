@@ -217,6 +217,9 @@ fn check_one_expr(
                 VisitorControlFlow::Stop(e) => Err(e),
             }?;
         }
+        ExprX::ExecClosure { .. } => {
+            crate::closures::check_closure_well_formed(expr)?;
+        }
         _ => {}
     }
     Ok(())
@@ -228,7 +231,7 @@ fn check_expr(
     expr: &Expr,
     disallow_private_access: Option<&str>,
 ) -> Result<(), VirErr> {
-    crate::ast_visitor::expr_visitor_check(expr, &mut |expr| {
+    crate::ast_visitor::expr_visitor_check(expr, &mut |_scope_map, expr| {
         check_one_expr(ctxt, function, expr, disallow_private_access)
     })
 }
@@ -401,7 +404,7 @@ fn check_function(
             return err_str(&function.span, "bit-vector function mode must be declared as proof");
         }
         if let Some(body) = &function.x.body {
-            crate::ast_visitor::expr_visitor_check(body, &mut |expr| {
+            crate::ast_visitor::expr_visitor_check(body, &mut |_scope_map, expr| {
                 match &expr.x {
                     ExprX::Block(_, _) => {}
                     _ => {
@@ -451,7 +454,7 @@ fn check_function(
             return err_str(&function.span, "integer_ring mode must be declared as proof");
         }
         if let Some(body) = &function.x.body {
-            crate::ast_visitor::expr_visitor_check(body, &mut |expr| {
+            crate::ast_visitor::expr_visitor_check(body, &mut |_scope_map, expr| {
                 match &expr.x {
                     ExprX::Block(_, _) => {}
                     _ => {
@@ -512,7 +515,7 @@ fn check_function(
             );
         }
         for req in function.x.require.iter() {
-            crate::ast_visitor::expr_visitor_check(req, &mut |expr| {
+            crate::ast_visitor::expr_visitor_check(req, &mut |_scope_map, expr| {
                 match *expr.typ {
                     TypX::Int(crate::ast::IntRange::Int) => {}
                     TypX::Bool => {}
@@ -528,7 +531,7 @@ fn check_function(
             })?;
         }
         for ens in function.x.ensure.iter() {
-            crate::ast_visitor::expr_visitor_check(ens, &mut |expr| {
+            crate::ast_visitor::expr_visitor_check(ens, &mut |_scope_map, expr| {
                 match *expr.typ {
                     TypX::Int(crate::ast::IntRange::Int) => {}
                     TypX::Bool => {}
@@ -621,7 +624,7 @@ fn check_function(
             Some("public function requires cannot refer to private items")
         };
         check_expr(ctxt, function, req, disallow_private_access)?;
-        crate::ast_visitor::expr_visitor_check(req, &mut |expr| {
+        crate::ast_visitor::expr_visitor_check(req, &mut |_scope_map, expr| {
             if let ExprX::Var(x) = &expr.x {
                 for param in function.x.params.iter().filter(|p| p.x.is_mut) {
                     if *x == param.x.name {

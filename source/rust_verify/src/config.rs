@@ -81,9 +81,14 @@ pub struct Args {
 }
 
 pub fn enable_default_features(rustc_args: &mut Vec<String>) {
-    for feature in
-        &["stmt_expr_attributes", "box_syntax", "box_patterns", "negative_impls", "rustc_attrs"]
-    {
+    for feature in &[
+        "stmt_expr_attributes",
+        "box_syntax",
+        "box_patterns",
+        "negative_impls",
+        "rustc_attrs",
+        "unboxed_closures",
+    ] {
         rustc_args.push("-Z".to_string());
         rustc_args.push(format!("enable_feature={}", feature));
     }

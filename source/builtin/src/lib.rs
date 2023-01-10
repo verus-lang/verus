@@ -969,3 +969,21 @@ impl<Args, Output> Fn<Args> for FnSpec<Args, Output> {
 pub fn closure_to_fn_spec<Args, F: FnOnce<Args>>(_f: F) -> FnSpec<Args, F::Output> {
     unimplemented!();
 }
+
+pub trait FnWithSpecification<Args> {
+    type Output;
+    fn requires(&self, args: Args) -> bool;
+    fn ensures(&self, args: Args, output: Self::Output) -> bool;
+}
+
+impl<Args, F: FnOnce<Args>> FnWithSpecification<Args> for F {
+    type Output = F::Output;
+
+    fn requires(&self, _args: Args) -> bool {
+        unimplemented!();
+    }
+
+    fn ensures(&self, _args: Args, _output: Self::Output) -> bool {
+        unimplemented!();
+    }
+}

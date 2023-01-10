@@ -160,6 +160,9 @@ where
                 StmX::DeadEnd(s) => {
                     expr_visitor_control_flow!(stm_visitor_dfs(s, f));
                 }
+                StmX::ClosureInner(s) => {
+                    expr_visitor_control_flow!(stm_visitor_dfs(s, f));
+                }
                 StmX::If(_cond, lhs, rhs) => {
                     expr_visitor_control_flow!(stm_visitor_dfs(lhs, f));
                     if let Some(rhs) = rhs {
@@ -230,6 +233,7 @@ where
                 expr_visitor_control_flow!(exp_visitor_dfs(rhs, &mut ScopeMap::new(), f))
             }
             StmX::Fuel(..) | StmX::DeadEnd(..) | StmX::RevealString(_) => (),
+            StmX::ClosureInner(_s) => (),
 
             StmX::If(exp, _s1, _s2) => {
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
@@ -549,6 +553,11 @@ where
             let stm = Spanned::new(stm.span.clone(), StmX::DeadEnd(s));
             fs(&stm)
         }
+        StmX::ClosureInner(s) => {
+            let s = map_stm_visitor(s, fs)?;
+            let stm = Spanned::new(stm.span.clone(), StmX::ClosureInner(s));
+            fs(&stm)
+        }
         StmX::If(cond, lhs, rhs) => {
             let lhs = map_stm_visitor(lhs, fs)?;
             let rhs = rhs.as_ref().map(|rhs| map_stm_visitor(rhs, fs)).transpose()?;
@@ -615,6 +624,10 @@ where
         StmX::DeadEnd(s) => {
             let s = fs(s)?;
             Ok(Spanned::new(stm.span.clone(), StmX::DeadEnd(s)))
+        }
+        StmX::ClosureInner(s) => {
+            let s = fs(s)?;
+            Ok(Spanned::new(stm.span.clone(), StmX::ClosureInner(s)))
         }
         StmX::If(cond, lhs, rhs) => {
             let lhs = fs(lhs)?;
@@ -703,6 +716,7 @@ where
             StmX::Fuel(..) => stm.clone(),
             StmX::RevealString(_) => stm.clone(),
             StmX::DeadEnd(..) => stm.clone(),
+            StmX::ClosureInner(_s) => stm.clone(),
             StmX::If(exp, s1, s2) => {
                 let exp = fe(exp)?;
                 Spanned::new(span, StmX::If(exp, s1.clone(), s2.clone()))

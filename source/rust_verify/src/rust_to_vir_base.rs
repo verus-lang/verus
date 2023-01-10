@@ -348,7 +348,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                 (Arc::new(def_id_to_datatype(tcx, *did, Arc::new(typ_args))), false)
             }
         }
-        TyKind::Closure(_def, substs) => {
+        TyKind::Closure(def, substs) => {
             let sig = substs.as_closure().sig();
             let args: Vec<Typ> = sig
                 .inputs()
@@ -356,8 +356,15 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                 .iter()
                 .map(|t| mid_ty_to_vir_ghost(tcx, t, allow_mut_ref).0)
                 .collect();
+            assert!(args.len() == 1);
+            let args = match &*args[0] {
+                TypX::Tuple(typs) => typs.clone(),
+                _ => panic!("expected tuple type"),
+            };
+
             let ret = mid_ty_to_vir_ghost(tcx, sig.output().skip_binder(), allow_mut_ref).0;
-            (Arc::new(TypX::Lambda(Arc::new(args), ret)), false)
+            let id = def.as_local().unwrap().local_def_index.index();
+            (Arc::new(TypX::AnonymousClosure(args, ret, id)), false)
         }
         TyKind::Char => (Arc::new(TypX::Char), false),
         _ => {
@@ -613,8 +620,11 @@ pub(crate) fn check_generics_bounds<'tcx>(
                 let lhs = iter.next().expect("expect lhs of trait bound");
                 let trait_params: Vec<rustc_middle::ty::Ty> = iter.collect();
 
-                if Some(trait_def_id) == tcx.lang_items().fn_trait() {
-                    // Fn bounds handled in the case below
+                if Some(trait_def_id) == tcx.lang_items().fn_trait()
+                    || Some(trait_def_id) == tcx.lang_items().fn_mut_trait()
+                    || Some(trait_def_id) == tcx.lang_items().fn_once_trait()
+                {
+                    // Ignore Fn bounds
                     continue;
                 }
 
@@ -666,8 +676,8 @@ pub(crate) fn check_generics_bounds<'tcx>(
                 };
             }
             PredicateKind::Projection(ProjectionPredicate {
-                projection_ty: ProjectionTy { substs, item_def_id },
-                ty,
+                projection_ty: ProjectionTy { substs: _, item_def_id },
+                ty: _,
             }) => {
                 // The trait bound `F: Fn(A) -> B`
                 // is really more like a trait bound `F: Fn<A, Output=B>`
@@ -675,54 +685,13 @@ pub(crate) fn check_generics_bounds<'tcx>(
                 // When Rust sees a trait bound like this, it actually creates *two*
                 // bounds, a Trait bound for `F: Fn<A>` and a Projection for `Output=B`.
                 //
-                // Thus when processing the Fn bounds we have to skip one of them and
-                // process the other. We process this one because it actually has the
-                // Output type information here.
+                // We don't handle projections in general right now, but we skip
+                // over them to support Fns
+                // (What Verus actually cares about is the builtin 'FnWithSpecification'
+                // trait which Fn/FnMut/FnOnce all get automatically.)
 
                 if Some(item_def_id) == tcx.lang_items().fn_once_output() {
-                    let mut iter = substs.types();
-                    let lhs = iter.next().expect("expect lhs of trait bound");
-                    let fn_input = iter.next().expect("expect input arg to Fn");
-                    let fn_output = ty;
-
-                    let t_args = mid_ty_to_vir(tcx, &fn_input, false);
-                    let t_ret = mid_ty_to_vir(tcx, &fn_output, false);
-                    let args = match &*t_args {
-                        TypX::Tuple(args) => args.clone(),
-                        _ => panic!("unexpected arg to Fn"),
-                    };
-
-                    let generic_bound = Arc::new(GenericBoundX::FnSpec(args, t_ret));
-
-                    match lhs.kind() {
-                        TyKind::Param(param) => {
-                            if param.name == kw::SelfUpper {
-                                return err_span_str(
-                                    *span,
-                                    "Verus does not yet support trait bounds on Self",
-                                );
-                            } else {
-                                let type_param_name = param_ty_to_vir_name(&param);
-                                match typ_param_bounds.get_mut(&type_param_name) {
-                                    None => {
-                                        return err_span_str(
-                                            *span,
-                                            "could not find this type parameter",
-                                        );
-                                    }
-                                    Some(r) => {
-                                        r.push(generic_bound);
-                                    }
-                                }
-                            }
-                        }
-                        _ => {
-                            return err_span_str(
-                                *span,
-                                "Verus does yet not support trait bounds on types that are not type parameters",
-                            );
-                        }
-                    };
+                    // Do nothing
                 } else {
                     return err_span_str(*span, "Verus does yet not support this type of bound");
                 }
@@ -789,26 +758,14 @@ pub(crate) fn check_generics_bounds<'tcx>(
                 let ident = Arc::new(generic_param_def_to_vir_name(mid_param));
 
                 let mut trait_bounds: Vec<Path> = Vec::new();
-                let mut fn_bounds: Vec<vir::ast::GenericBound> = Vec::new();
                 for vir_bound in typ_param_bounds.remove(&*ident).unwrap().into_iter() {
                     match &*vir_bound {
                         GenericBoundX::Traits(ts) => {
                             trait_bounds.extend(ts.clone());
                         }
-                        GenericBoundX::FnSpec(..) => fn_bounds.push(vir_bound),
                     }
                 }
-                unsupported_err_unless!(fn_bounds.len() <= 1, *span, "multiple function bounds");
-                unsupported_err_unless!(
-                    fn_bounds.len() == 0 || trait_bounds.len() == 0,
-                    *span,
-                    "combined trait/function bounds"
-                );
-                let bound = if fn_bounds.len() == 1 {
-                    fn_bounds[0].clone()
-                } else {
-                    Arc::new(GenericBoundX::Traits(trait_bounds))
-                };
+                let bound = Arc::new(GenericBoundX::Traits(trait_bounds));
                 typ_params.push((ident, bound, strictly_positive));
             }
             _ => {
