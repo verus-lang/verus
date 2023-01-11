@@ -532,7 +532,7 @@ test_verify_one_file! {
     #[test] field_name_reserved_ident2 IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
-                #[sharding(variable)] pub token_a: int,
+                #[sharding(variable)] pub param_token_a: int,
             }
         }}
     } => Err(e) => assert_error_msg(e, "reserved identifier")
@@ -550,7 +550,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] sm_name_reserved_ident2 IMPORTS.to_string() + code_str! {
-        tokenized_state_machine!{ token_a {
+        tokenized_state_machine!{ param_token_a {
             fields {
                 #[sharding(variable)] pub t: int,
             }
@@ -583,7 +583,7 @@ test_verify_one_file! {
 
             transition!{
                 tr() {
-                    let token_a = 5;
+                    let param_token_a = 5;
                 }
             }
         }}
@@ -613,7 +613,7 @@ test_verify_one_file! {
             }
 
             transition!{
-                tr(token_a: int) {
+                tr(param_token_a: int) {
                 }
             }
         }}

@@ -105,7 +105,7 @@ fn exchange_name(tr: &Transition) -> Ident {
 }
 
 fn transition_arg_name(field: &Field) -> Ident {
-    let name = "token_".to_string() + &field.name.to_string();
+    let name = "param_token_".to_string() + &field.name.to_string();
     Ident::new(&name, field.name.span())
 }
 
@@ -606,7 +606,7 @@ impl Ctxt {
     pub fn get_numbered_token_ident(&mut self, base_id: &Ident) -> Ident {
         let i = self.fresh_num_counter;
         self.fresh_num_counter += 1;
-        Ident::new(&format!("token_{}_{}", i, base_id.to_string()), base_id.span())
+        Ident::new(&format!("param_token_{}_{}", i, base_id.to_string()), base_id.span())
     }
 
     /// Determines if we need to add an explicit lifetime parameter
