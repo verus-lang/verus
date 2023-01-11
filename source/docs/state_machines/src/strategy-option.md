@@ -33,7 +33,7 @@ Having multiple such tokens at the same time is an impossible state.
     <tr><td></td><td></td><td></td></tr>
     <tr>
       <td><code>init field = v_opt;</code></td>
-      <td><code>init filed = v_opt;</code></td>
+      <td><code>init field = v_opt;</code></td>
       <td>Output <code>Option&lt;State::field&gt;</code></td>
     </tr> <tr>
       <td><code>remove field -= Some(v);</code></td>
