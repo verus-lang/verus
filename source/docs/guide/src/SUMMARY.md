@@ -41,6 +41,8 @@
     - [Example: binary search](binary_search.md)
     - [spec closures]() <!--- Chris --->
     - [broadcast_forall]() <!--- Chris --->
+- [Runtime `exec` Features]()
+    - [Exec closures]()
 - [SMT solving, automation, and where automation fails]() <!--- Chris --->
     - [What's decidable, what's undecidable, what's fast, what's slow]() <!--- Chris --->
     - [integers: nonlinear arithmetic and bit vectors]() <!--- Chris and Chanhee --->

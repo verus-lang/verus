@@ -54,6 +54,7 @@ const PREFIX_BOX: &str = "Poly%";
 const PREFIX_UNBOX: &str = "%Poly%";
 const PREFIX_TYPE_ID: &str = "TYPE%";
 const PREFIX_TUPLE_TYPE: &str = "tuple%";
+const PREFIX_CLOSURE_TYPE: &str = "anonymous_closure%";
 const PREFIX_TUPLE_PARAM: &str = "T%";
 const PREFIX_TUPLE_FIELD: &str = "field%";
 const PREFIX_LAMBDA_TYPE: &str = "fun%";
@@ -80,6 +81,8 @@ pub const SUFFIX_SNAP_MUT: &str = "_mutation";
 pub const SUFFIX_SNAP_JOIN: &str = "_join";
 pub const SUFFIX_SNAP_WHILE_BEGIN: &str = "_while_begin";
 pub const SUFFIX_SNAP_WHILE_END: &str = "_while_end";
+
+pub const CLOSURE_RETURN_VALUE_PREFIX: &str = "%closure_return";
 
 // List of constant strings that can appear in generated AIR code
 pub const FUEL_ID: &str = "FuelId";
@@ -130,6 +133,8 @@ pub const MK_FUN: &str = "mk_fun";
 pub const DUMMY_PARAM: &str = "no%param";
 const CHECK_DECREASE_INT: &str = "check_decrease_int";
 const HEIGHT: &str = "height";
+const CLOSURE_REQ: &str = "closure_req";
+const CLOSURE_ENS: &str = "closure_ens";
 
 pub const UINT_XOR: &str = "uintxor";
 pub const UINT_AND: &str = "uintand";
@@ -215,6 +220,20 @@ pub fn height() -> Fun {
     })
 }
 
+pub fn closure_req() -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX { krate: None, segments: Arc::new(vec![str_ident(CLOSURE_REQ)]) }),
+        trait_path: None,
+    })
+}
+
+pub fn closure_ens() -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX { krate: None, segments: Arc::new(vec![str_ident(CLOSURE_ENS)]) }),
+        trait_path: None,
+    })
+}
+
 pub fn suffix_global_id(ident: &Ident) -> Ident {
     Arc::new(ident.to_string() + SUFFIX_GLOBAL)
 }
@@ -287,6 +306,11 @@ pub fn prefix_type_id(path: &Path) -> Ident {
 
 pub fn prefix_tuple_type(i: usize) -> Path {
     let ident = Arc::new(format!("{}{}", PREFIX_TUPLE_TYPE, i));
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
+}
+
+pub fn prefix_closure_type(i: usize) -> Path {
+    let ident = Arc::new(format!("{}{}", PREFIX_CLOSURE_TYPE, i));
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
 }
 
@@ -657,4 +681,18 @@ pub fn user_local_name<'a>(s: &'a str) -> &'a str {
 
 pub fn unique_local_name(user_given_name: String, uniq_id: usize) -> String {
     user_given_name + &LOCAL_UNIQUE_ID_SEPARATOR.to_string() + &uniq_id.to_string()
+}
+
+pub fn exec_nonstatic_call_fun() -> Fun {
+    Arc::new(FunX { path: exec_nonstatic_call_path(), trait_path: None })
+}
+
+pub fn exec_nonstatic_call_path() -> Path {
+    Arc::new(PathX {
+        krate: None,
+        segments: Arc::new(vec![
+            Arc::new("pervasive".to_string()),
+            Arc::new("exec_nonstatic_call".to_string()),
+        ]),
+    })
 }

@@ -162,7 +162,7 @@ proof fn test_distinct1(s: Seq<int>)
         forall|i: int, j: int|
             0 <= i < j < s.len() ==> #[trigger] is_distinct(s[i], s[j]),
 {
-    assert(is_distinct(s[4], s[2]));
+    assert(is_distinct(s[2], s[4]));
 }
 // ANCHOR_END: test_distinct1
 

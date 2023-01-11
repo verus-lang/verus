@@ -104,82 +104,6 @@ struct_with_invariants!{
 }
 // ANCHOR_END: global_struct
 
-//// thread 1
-
-pub struct Thread1Data {
-    pub globals: Arc<Global>,
-
-    #[proof] pub token: X::inc_a,
-}
-
-impl Spawnable<Proof<X::inc_a>> for Thread1Data {
-    #[spec]
-    fn pre(self) -> bool {
-        (*self.globals).wf()
-        && equal(self.token.view(),
-            X::token![(*self.globals).instance => inc_a => false]
-        )
-    }
-
-    #[spec]
-    fn post(self, new_token: Proof<X::inc_a>) -> bool {
-        equal(new_token.0.view(),
-            X::token![(*self.globals).instance => inc_a => true]
-        )
-    }
-
-    fn run(self) -> Proof<X::inc_a> {
-        let Thread1Data { globals: globals, mut token } = self;
-        let globals = &*globals;
-
-        let _ = atomic_with_ghost!(&globals.atomic => fetch_add(1);
-            ghost c => {
-                globals.instance.tr_inc_a(&mut c, &mut token); // atomic increment
-            }
-        );
-
-        Proof(token)
-    }
-}
-
-//// thread 2
-
-pub struct Thread2Data {
-    pub globals: Arc<Global>,
-
-    #[proof] pub token: X::inc_b,
-}
-
-impl Spawnable<Proof<X::inc_b>> for Thread2Data {
-    #[spec]
-    fn pre(self) -> bool {
-        (*self.globals).wf()
-        && equal(self.token.view(),
-            X::token![(*self.globals).instance => inc_b => false]
-        )
-    }
-
-    #[spec]
-    fn post(self, new_token: Proof<X::inc_b>) -> bool {
-        equal(new_token.0.view(),
-            X::token![(*self.globals).instance => inc_b => true]
-        )
-    }
-
-    fn run(self) -> Proof<X::inc_b> {
-        let Thread2Data { globals: globals, mut token } = self;
-        let globals = &*globals;
-
-        let _ = atomic_with_ghost!(&globals.atomic => fetch_add(1);
-            ghost c => {
-                globals.instance.tr_inc_b(&mut c, &mut token); // atomic increment
-            }
-        );
-
-        Proof(token)
-    }
-}
-
 fn main() {
   // Initialize protocol 
 
@@ -197,11 +121,51 @@ fn main() {
 
   // Spawn threads
 
-  let thread1_data = Thread1Data { globals: global_arc.clone(), token: inc_a_token };
-  let join_handle1 = spawn(thread1_data);
+  // Thread 1
 
-  let thread2_data = Thread2Data { globals: global_arc.clone(), token: inc_b_token };
-  let join_handle2 = spawn(thread2_data);
+  let global_arc1 = global_arc.clone();
+  let join_handle1 = spawn(move || {
+      ensures(|new_token: Proof<X::inc_a>|
+          equal(new_token.0.view(),
+              X::token![instance => inc_a => true]
+          )
+      );
+
+      // `inc_a_token` is moved into the closure
+      #[proof] let mut token = inc_a_token;
+      let globals = &*global_arc1;
+
+      let _ = atomic_with_ghost!(&globals.atomic => fetch_add(1);
+          ghost c => {
+              globals.instance.tr_inc_a(&mut c, &mut token); // atomic increment
+          }
+      );
+
+      Proof(token)
+  });
+
+  // Thread 2
+
+  let global_arc2 = global_arc.clone();
+  let join_handle2 = spawn(move || {
+      ensures(|new_token: Proof<X::inc_b>|
+        equal(new_token.0.view(),
+            X::token![instance => inc_b => true]
+        )
+      );
+
+      // `inc_b_token` is moved into the closure
+      #[proof] let mut token = inc_b_token;
+      let globals = &*global_arc2;
+
+      let _ = atomic_with_ghost!(&globals.atomic => fetch_add(1);
+          ghost c => {
+              globals.instance.tr_inc_b(&mut c, &mut token); // atomic increment
+          }
+      );
+
+      Proof(token)
+  });
 
   // Join threads
 

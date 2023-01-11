@@ -605,3 +605,40 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file! {
+    #[test] closure_call_eval_order verus_code! {
+        fn test(x1: bool, x2: bool) {
+            let f = |i: u64, b: bool| {
+                if b { i } else { 0 }
+            };
+
+            ({ assume(x1); f })(
+              ({ assert(x1); assume(x2); 20 }),
+              ({ assert(x2); false })
+            );
+        }
+
+        fn test_never_return_1() {
+            let f = |i: u64, b: bool| {
+                if b { i } else { 0 }
+            };
+
+            ({ loop { } f })(
+              ({ assert(false); 20 }),
+              ({ assert(false); false })
+            );
+        }
+
+        fn test_never_return_2() {
+            let f = |i: u64, b: bool| {
+                if b { i } else { 0 }
+            };
+
+            ({ f })(
+              ({ loop { } 20 }),
+              ({ assert(false); false })
+            );
+        }
+    } => Ok(())
+}

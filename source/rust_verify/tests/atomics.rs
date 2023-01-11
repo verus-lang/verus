@@ -193,3 +193,97 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain more than 1 atomic operation")
 }
+
+test_verify_one_file! {
+    #[test] call_closure_from_inside_atomic
+    COMMON.to_string() + &verus_code! {
+        pub fn test_clos<A, B: InvariantPredicate<A, u8>>(#[proof] i: AtomicInvariant<A, u8, B>) {
+            let t = || { };
+            open_atomic_invariant!(&i => inner => {
+                // this could fail for multiple reasons:
+                // 1. t() could open i again
+                // 2. t() is not atomic
+                t();
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain non-atomic operations")
+}
+
+test_verify_one_file! {
+    #[test] call_closure_from_inside_atomic2
+    COMMON.to_string() + &verus_code! {
+        #[verifier(atomic)]
+        pub fn test_clos<F: Fn(u64) -> u64>(f: F) {
+            f(5);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "atomic function cannot contain non-atomic operations")
+}
+
+test_verify_one_file! {
+    #[test] call_closure_from_inside_local
+    COMMON.to_string() + &verus_code! {
+        pub fn test_clos<A, B: InvariantPredicate<A, u8>>(#[proof] i: LocalInvariant<A, u8, B>) {
+            let t = || { };
+            open_local_invariant!(&i => inner => { // FAILS
+                t();
+            });
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] call_closure_and_open_inv_inside
+    COMMON.to_string() + &verus_code! {
+        pub fn test_clos<A, B: InvariantPredicate<A, u8>>(#[proof] i: LocalInvariant<A, u8, B>) {
+            let t;
+            open_local_invariant!(&i => inner => {
+                t = || {
+                    // this is okay even though it's nested because it's inside the
+                    // closure. So the invariant mask gets check when we call t()
+                    // below
+                    open_local_invariant!(&i => inner => {
+                    });
+                };
+            });
+
+            t();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] call_closure_and_open_inv_inside_atomic
+    COMMON.to_string() + &verus_code! {
+        pub fn stuff() { }
+
+        pub fn test_clos<A, B: InvariantPredicate<A, u8>>(#[proof] i: AtomicInvariant<A, u8, B>) {
+            let t;
+            open_atomic_invariant!(&i => inner => {
+                t = || {
+                    stuff();
+
+                    // this is okay even though it's nested because it's inside the
+                    // closure. So the invariant mask gets check when we call t()
+                    // below
+                    open_atomic_invariant!(&i => inner => {
+                    });
+                };
+            });
+
+            t();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] call_closure_and_open_inv_inside_atomic_fail
+    COMMON.to_string() + &verus_code! {
+        pub fn test_clos<A, B: InvariantPredicate<A, u8>>(#[proof] i: AtomicInvariant<A, u8, B>) {
+            open_atomic_invariant!(&i => inner => {
+                let t = || { };
+
+                t();
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain non-atomic operations")
+}

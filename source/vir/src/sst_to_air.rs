@@ -89,6 +89,9 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::Bool => bool_typ(),
         TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
         TypX::Lambda(..) => Arc::new(air::ast::TypX::Lambda),
+        TypX::AnonymousClosure(..) => {
+            panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
+        }
         TypX::Datatype(path, _) => {
             if ctx.datatype_is_transparent[path] {
                 ident_typ(&path_to_air_ident(path))
@@ -143,6 +146,9 @@ pub fn typ_to_id(typ: &Typ) -> Expr {
         TypX::Bool => str_var(crate::def::TYPE_ID_BOOL),
         TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
         TypX::Lambda(typs, typ) => fun_id(typs, typ),
+        TypX::AnonymousClosure(..) => {
+            panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
+        }
         TypX::Datatype(path, typs) => datatype_id(path, typs),
         TypX::Boxed(typ) => typ_to_id(typ),
         TypX::TypParam(x) => ident_var(&suffix_typ_param_id(x)),
@@ -231,6 +237,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Int(_) => Some(str_ident(crate::def::BOX_INT)),
         TypX::Tuple(_) => None,
         TypX::Lambda(typs, _) => Some(prefix_box(&prefix_lambda_type(typs.len()))),
+        TypX::AnonymousClosure(..) => unimplemented!(),
         TypX::Datatype(path, _) => {
             if ctx.datatype_is_transparent[path] {
                 Some(prefix_box(&path))
@@ -271,6 +278,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         }
         TypX::Tuple(_) => None,
         TypX::Lambda(typs, _) => Some(prefix_unbox(&prefix_lambda_type(typs.len()))),
+        TypX::AnonymousClosure(..) => unimplemented!(),
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
         TypX::TypeId => None,
@@ -478,8 +486,9 @@ fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
         ExpX::Bind(bnd, _) => match &bnd.x {
             BndX::Quant(_, _, trigs) => trigs,
             BndX::Choose(_, trigs, _) => trigs,
+            BndX::Lambda(_, trigs) => trigs,
             _ => panic!(
-                "internal error: user quantifier expressions should only be Quant or Choose; found {:?}",
+                "internal error: user quantifier expressions should only be Quant, Choose, or Lambda; found {:?}",
                 bnd.x
             ),
         },
@@ -973,13 +982,17 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 let qid = new_user_qid(ctx, &exp);
                 air::ast_util::mk_quantifier(quant.quant, &binders, &triggers, qid, &expr)
             }
-            (BndX::Lambda(binders), false) => {
+            (BndX::Lambda(binders, trigs), false) => {
                 let expr = exp_to_expr(ctx, e, expr_ctxt)?;
                 let binders = vec_map(&*binders, |b| {
                     let name = suffix_local_expr_id(&b.name);
                     Arc::new(BinderX { name, a: typ_to_air(ctx, &b.a) })
                 });
-                let lambda = air::ast_util::mk_lambda(&binders, &expr);
+                let triggers = vec_map_result(&*trigs, |trig| {
+                    vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt)).map(|v| Arc::new(v))
+                })?;
+                let qid = (triggers.len() > 0).then(|| ()).and_then(|_| new_user_qid(ctx, &exp));
+                let lambda = air::ast_util::mk_lambda(&binders, &triggers, qid, &expr);
                 str_apply(crate::def::MK_FUN, &vec![lambda])
             }
             (BndX::Choose(binders, trigs, cond), false) => {
@@ -1651,6 +1664,16 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
             stmts.push(Arc::new(StmtX::Assume(air::ast_util::mk_false())));
             stmts
+        }
+        StmX::ClosureInner(s) => {
+            // Right now there is no way to specify an invariant mask on a closure function
+            // All closure funcs are assumed to have mask set 'full'
+            let mut mask = MaskSet::full();
+            std::mem::swap(&mut state.mask, &mut mask);
+            let stmts = stm_to_stmts(ctx, state, s)?;
+            std::mem::swap(&mut state.mask, &mut mask);
+
+            vec![Arc::new(StmtX::DeadEnd(one_stmt(stmts)))]
         }
         StmX::If(cond, lhs, rhs) => {
             let pos_cond = exp_to_expr(ctx, &cond, expr_ctxt)?;

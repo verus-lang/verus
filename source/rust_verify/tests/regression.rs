@@ -86,7 +86,7 @@ test_verify_one_file! {
 
         macro_rules! closure {
             ($e:expr) => {
-                |s: u8| { $e }
+                closure_to_fn_spec(|s: u8| { $e })
             };
         }
 

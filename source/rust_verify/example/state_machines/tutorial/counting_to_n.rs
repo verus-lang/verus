@@ -109,48 +109,6 @@ struct_with_invariants!{
     }
 }
 
-//// any thread
-
-pub struct ThreadData {
-    pub globals: Arc<Global>,
-
-    #[proof] pub token: X::unstamped_tickets,
-}
-
-impl Spawnable<Proof<X::stamped_tickets>> for ThreadData {
-    #[spec]
-    fn pre(self) -> bool {
-        (*self.globals).wf()
-        && equal(self.token.view().instance, (*self.globals).instance)
-        && self.token.view().count == 1
-    }
-
-    #[spec]
-    fn post(self, new_token: Proof<X::stamped_tickets>) -> bool {
-        equal(new_token.0.view().instance, (*self.globals).instance)
-        && new_token.0.view().count == 1
-    }
-
-    // ANCHOR: thread_run
-    fn run(self) -> Proof<X::stamped_tickets> {
-        let ThreadData { globals: globals, token } = self;
-        let globals = &*globals;
-        #[proof] let new_token;
-
-        let _ = atomic_with_ghost!(
-            &globals.atomic => fetch_add(1);
-            update prev -> next;
-            returning ret;
-            ghost c => {
-                #[proof] new_token = globals.instance.tr_inc(&mut c, token);
-            }
-        );
-
-        Proof(new_token)
-    }
-    // ANCHOR_END: thread_run
-}
-
 fn do_count(num_threads: u32) {
     // Initialize protocol 
 
@@ -189,8 +147,31 @@ fn do_count(num_threads: u32) {
         #[proof] let (Trk(unstamped_token), Trk(rest)) = unstamped_tokens.split(1);
         unstamped_tokens = rest;
 
-        let thread_data = ThreadData { globals: global_arc.clone(), token: unstamped_token };
-        let join_handle = spawn(thread_data);
+        let global_arc = global_arc.clone();
+
+        let join_handle = spawn(move || {
+            ensures(|new_token: Proof<X::stamped_tickets>|
+                equal(new_token.0.view().instance, instance)
+                    && new_token.0.view().count == 1
+            );
+
+            #[proof] let unstamped_token = unstamped_token;
+            let globals = &*global_arc;
+
+            #[proof] let stamped_token;
+
+            let _ = atomic_with_ghost!(
+                &global_arc.atomic => fetch_add(1);
+                update prev -> next;
+                returning ret;
+                ghost c => {
+                    #[proof] stamped_token =
+                        global_arc.instance.tr_inc(&mut c, unstamped_token);
+                }
+            );
+
+            Proof(stamped_token)
+        });
 
         join_handles.push(join_handle);
 

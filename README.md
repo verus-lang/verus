@@ -1,4 +1,8 @@
-See [Goals](../../wiki/Goals) for a brief description of the project's goals. See the (work-in-progress) [📖 tutorial and reference](https://verus-lang.github.io/verus/guide/) and the [📖 API documentation](https://verus-lang.github.io/verus/verusdoc/lib/).
+See [Goals](../../wiki/Goals) for a brief description of the project's goals. Also see our (work-in-progress) documentation:
+
+ * [📖 Tutorial and reference](https://verus-lang.github.io/verus/guide/)
+ * [📖 API documentation for Verus's standard library](https://verus-lang.github.io/verus/verusdoc/lib/)
+ * [📖 Guide for concurrent verification](https://verus-lang.github.io/verus/state_machines/)
 
 ## Building the project
 

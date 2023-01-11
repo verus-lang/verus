@@ -105,10 +105,11 @@ where
                             }
                             trigs = ts.clone();
                         }
-                        BndX::Lambda(params) => {
+                        BndX::Lambda(params, ts) => {
                             for b in params.iter() {
                                 bvars.push((b.name.clone(), false));
                             }
+                            trigs = ts.clone()
                         }
                         BndX::Choose(params, ts, _) => {
                             for b in params.iter() {
@@ -160,6 +161,9 @@ where
                     expr_visitor_control_flow!(stm_visitor_dfs(s, f));
                 }
                 StmX::BreakOrContinue { label: _, is_break: _ } => (),
+                StmX::ClosureInner(s) => {
+                    expr_visitor_control_flow!(stm_visitor_dfs(s, f));
+                }
                 StmX::If(_cond, lhs, rhs) => {
                     expr_visitor_control_flow!(stm_visitor_dfs(lhs, f));
                     if let Some(rhs) = rhs {
@@ -226,6 +230,7 @@ where
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
             }
             StmX::BreakOrContinue { label: _, is_break: _ } => (),
+            StmX::ClosureInner(_s) => (),
             StmX::If(exp, _s1, _s2) => {
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
             }
@@ -351,12 +356,20 @@ where
                     }
                     BndX::Quant(*quant, binders.clone(), Arc::new(triggers))
                 }
-                BndX::Lambda(binders) => {
+                BndX::Lambda(binders, ts) => {
                     map.push_scope(true);
                     for b in binders.iter() {
                         let _ = map.insert(b.name.clone(), false);
                     }
-                    bnd.x.clone()
+                    let mut triggers: Vec<Trig> = Vec::new();
+                    for t in ts.iter() {
+                        let mut exprs: Vec<Exp> = Vec::new();
+                        for exp in t.iter() {
+                            exprs.push(map_exp_visitor_bind(exp, map, f)?);
+                        }
+                        triggers.push(Arc::new(exprs));
+                    }
+                    BndX::Lambda(binders.clone(), Arc::new(triggers))
                 }
                 BndX::Choose(binders, ts, cond) => {
                     map.push_scope(true);
@@ -495,8 +508,8 @@ where
                     let bndx = BndX::Quant(*quant, fbndtyps(env, binders)?, ftrigs(env, ts)?);
                     Spanned::new(bnd.span.clone(), bndx)
                 }
-                BndX::Lambda(binders) => {
-                    let bndx = BndX::Lambda(fbndtyps(env, binders)?);
+                BndX::Lambda(binders, ts) => {
+                    let bndx = BndX::Lambda(fbndtyps(env, binders)?, ftrigs(env, ts)?);
                     Spanned::new(bnd.span.clone(), bndx)
                 }
                 BndX::Choose(binders, ts, cond) => {
@@ -532,6 +545,11 @@ where
         }
         StmX::Return { .. } => fs(stm),
         StmX::BreakOrContinue { label: _, is_break: _ } => fs(stm),
+        StmX::ClosureInner(s) => {
+            let s = map_stm_visitor(s, fs)?;
+            let stm = Spanned::new(stm.span.clone(), StmX::ClosureInner(s));
+            fs(&stm)
+        }
         StmX::If(cond, lhs, rhs) => {
             let lhs = map_stm_visitor(lhs, fs)?;
             let rhs = rhs.as_ref().map(|rhs| map_stm_visitor(rhs, fs)).transpose()?;
@@ -605,6 +623,10 @@ where
         }
         StmX::Return { .. } => Ok(stm.clone()),
         StmX::BreakOrContinue { label: _, is_break: _ } => Ok(stm.clone()),
+        StmX::ClosureInner(s) => {
+            let s = fs(s)?;
+            Ok(Spanned::new(stm.span.clone(), StmX::ClosureInner(s)))
+        }
         StmX::If(cond, lhs, rhs) => {
             let lhs = fs(lhs)?;
             let rhs = rhs.as_ref().map(|rhs| fs(rhs)).transpose()?;
@@ -703,6 +725,7 @@ where
                 Spanned::new(span, StmX::Return { base_error, ret_exp, inside_body })
             }
             StmX::BreakOrContinue { label: _, is_break: _ } => stm.clone(),
+            StmX::ClosureInner(_s) => stm.clone(),
             StmX::If(exp, s1, s2) => {
                 let exp = fe(exp)?;
                 Spanned::new(span, StmX::If(exp, s1.clone(), s2.clone()))

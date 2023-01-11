@@ -8,6 +8,7 @@ use crate::pervasive::*;
 use crate::pervasive::seq::*;
 extern crate alloc;
 use alloc::vec;
+#[allow(unused_imports)]
 use crate::pervasive::slice::*;
 
 verus! {
@@ -80,6 +81,17 @@ impl<A> Vec<A> {
             self@ === old(self)@.update(i as int, a),
     {
         self.vec[i] = a;
+    }
+
+    #[verifier(external_body)]
+    pub fn swap(&mut self, i: usize, a: &mut A)
+        requires
+            i < old(self).len(),
+        ensures
+            self@ === old(self)@.update(i as int, *old(a)),
+            *a === old(self)@.index(i as int)
+    {
+        core::mem::swap(&mut self.vec[i], a);
     }
 
     pub spec fn spec_len(&self) -> usize;

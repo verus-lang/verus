@@ -126,8 +126,7 @@ state_machine!{
             }
         }
 
-        #[spec] #[verifier(publish)]
-        pub fn interp_map(&self) -> Map<Key, Value> {
+        pub open spec fn interp_map(&self) -> Map<Key, Value> {
             Map::total(|key| self.abstraction_one_key(key))
         }
 

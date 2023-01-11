@@ -167,7 +167,7 @@ pub proof fn axiom_seq_empty<A>()
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub proof fn axiom_seq_new_len<A>(len: nat, f: impl Fn(int) -> A)
+pub proof fn axiom_seq_new_len<A>(len: nat, f: FnSpec(int) -> A)
     ensures
         #[trigger] Seq::new(len, f).len() == len,
 {
@@ -175,7 +175,7 @@ pub proof fn axiom_seq_new_len<A>(len: nat, f: impl Fn(int) -> A)
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub proof fn axiom_seq_new_index<A>(len: nat, f: impl Fn(int) -> A, i: int)
+pub proof fn axiom_seq_new_index<A>(len: nat, f: FnSpec(int) -> A, i: int)
     requires
         0 <= i < len,
     ensures

@@ -850,3 +850,74 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_fails(e, 2)
 }
+
+test_verify_one_file! {
+    #[test] boxed_args_are_havoced_regression_340 verus_code! {
+        use pervasive::vec::*;
+
+        mod Mod {
+            pub struct X<T> {
+                t: T, // private
+            }
+
+            impl<T> X<T> {
+                pub closed spec fn view(&self) -> T { self.t }
+
+                pub fn new(t: T) -> (s: Self)
+                  ensures s.view() === t
+                {
+                    X { t: t }
+                }
+
+                pub fn some_mutator(&mut self) {
+                }
+            }
+
+            pub fn some_mutator<T>(x: &mut X<T>) {
+            }
+        }
+
+        fn test1() {
+            let mut x = Mod::X::<u64>::new(5);
+            assert(x.view() == 5);
+
+            let mut i = 0;
+
+            while i < 5 {
+                x.some_mutator();
+                i = i + 1;
+            }
+
+            assert(x.view() == 5); // FAILS
+        }
+
+        fn test2() {
+            let mut x = Mod::X::<u64>::new(5);
+            assert(x.view() == 5);
+
+            let mut i = 0;
+
+            while i < 5 {
+                Mod::some_mutator(&mut x);
+                i = i + 1;
+            }
+
+            assert(x.view() == 5); // FAILS
+        }
+
+        fn test3() {
+            let mut v = Vec::<u64>::new();
+
+            let mut i = 0;
+            while i < 5
+                invariant
+                    v.view().len() == i as int
+            {
+                v.push(7);
+                i = i + 1;
+            }
+
+            assert(v.view().len() == 0); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 3)
+}

@@ -29,7 +29,7 @@ pub type Bnd = Arc<Spanned<BndX>>;
 pub enum BndX {
     Let(Binders<Exp>),
     Quant(Quant, Binders<Typ>, Trigs),
-    Lambda(Binders<Typ>),
+    Lambda(Binders<Typ>, Trigs),
     Choose(Binders<Typ>, Trigs, Exp),
 }
 
@@ -154,6 +154,7 @@ pub enum StmX {
     },
     OpenInvariant(Exp, UniqueIdent, Typ, Stm, InvAtomicity),
     Block(Stms),
+    ClosureInner(Stm),
     AssertQuery {
         mode: AssertQueryMode,
         typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,

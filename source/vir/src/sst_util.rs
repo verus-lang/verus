@@ -159,10 +159,10 @@ fn subst_exp_rec(
                         subst_rename_binders(&bnd.span, substs, free_vars, binders, ft, ft);
                     BndX::Quant(*quant, binders, ftrigs(substs, free_vars, ts))
                 }
-                BndX::Lambda(binders) => {
+                BndX::Lambda(binders, ts) => {
                     let binders =
                         subst_rename_binders(&bnd.span, substs, free_vars, binders, ft, ft);
-                    BndX::Lambda(binders)
+                    BndX::Lambda(binders, ftrigs(substs, free_vars, ts))
                 }
                 BndX::Choose(binders, ts, cond) => {
                     let binders =
@@ -350,7 +350,7 @@ impl ExpX {
 
                         format!("({} |{}| {})", q_str, vars, exp)
                     }
-                    BndX::Lambda(bnds) => {
+                    BndX::Lambda(bnds, _trigs) => {
                         let assigns = bnds
                             .iter()
                             .map(|b| format!("{}", b.name))

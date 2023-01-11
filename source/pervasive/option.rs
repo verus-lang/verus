@@ -45,4 +45,16 @@ impl<A> Option<A> {
             Option::None => unreached(),
         }
     }
+
+    #[proof]
+    #[verifier(returns(proof))]
+    pub fn tracked_unwrap(#[proof] self) -> A {
+        requires(self.is_Some());
+        ensures(|a: &A| equal(*a, self.get_Some_0()));
+
+        match self {
+            Option::Some(a) => a,
+            Option::None => proof_from_false(),
+        }
+    }
 }

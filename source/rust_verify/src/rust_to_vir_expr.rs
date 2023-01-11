@@ -37,6 +37,7 @@ use vir::ast::{
     ModeCoercion, MultiOp, PatternX, Quant, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp,
     UnaryOpr, VarAt, VirErr,
 };
+use vir::ast_util::types_equal;
 use vir::ast_util::{const_int_from_string, ident_binder, path_as_rust_name};
 use vir::def::positional_field_ident;
 
@@ -112,6 +113,18 @@ fn closure_param_typs<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr<'tcx>) -> Vec<Typ
                 TypX::Tuple(typs) => (**typs).clone(),
                 _ => panic!("expected tuple type"),
             }
+        }
+        _ => panic!("closure_param_types expected Closure type"),
+    }
+}
+
+fn closure_ret_typ<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr<'tcx>) -> Typ {
+    let node_type = bctx.types.node_type(expr.hir_id);
+    match node_type.kind() {
+        TyKind::Closure(_def, substs) => {
+            let sig = substs.as_closure().sig();
+            let t = sig.output().skip_binder();
+            mid_ty_to_vir(bctx.ctxt.tcx, t, false /* allow_mut_ref */)
         }
         _ => panic!("closure_param_types expected Closure type"),
     }
@@ -802,7 +815,7 @@ fn fn_call_to_vir<'tcx>(
     if is_closure_to_fn_spec {
         unsupported_err_unless!(len == 1, expr.span, "expected closure_to_spec_fn", &args);
         if let ExprKind::Closure(..) = &args[0].kind {
-            return closure_to_vir(bctx, &args[0], ExprModifier::REGULAR);
+            return closure_to_vir(bctx, &args[0], expr_typ(), true, ExprModifier::REGULAR);
         } else {
             return err_span_str(
                 args[0].span,
@@ -810,6 +823,7 @@ fn fn_call_to_vir<'tcx>(
             );
         }
     }
+
     if is_choose {
         unsupported_err_unless!(len == 1, expr.span, "expected choose", &args);
         return extract_choose(bctx, expr.span, args[0], false, expr_typ());
@@ -2080,10 +2094,36 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     let args: Vec<&'tcx Expr<'tcx>> = args_slice.iter().collect();
                     let vir_args = vec_map_result(&args, |arg| expr_to_vir(bctx, arg, modifier))?;
                     let expr_typ = typ_of_node(bctx, &expr.hir_id, false);
-                    let target = CallTarget::FnSpec(vir_fun);
-                    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                    // Only spec closures are currently supported:
-                    erasure_info.resolved_calls.push((fun.span.data(), ResolvedCall::Spec));
+
+                    let is_spec_fn = match &*vir_fun.typ {
+                        TypX::Lambda(..) => true,
+                        _ => false,
+                    };
+
+                    let (target, vir_args, resolved_call) = if is_spec_fn {
+                        (CallTarget::FnSpec(vir_fun), vir_args, ResolvedCall::Spec)
+                    } else {
+                        // non-static calls are translated into a static call to
+                        // `exec_nonstatic_call` which is defined in the pervasive lib.
+                        let span = to_air_span(expr.span.clone());
+                        let tup = vir::ast_util::mk_tuple(&span, &Arc::new(vir_args));
+                        let fun = vir::def::exec_nonstatic_call_fun();
+                        let ret_typ = expr_typ.clone();
+                        let typ_args =
+                            Arc::new(vec![tup.typ.clone(), ret_typ, vir_fun.typ.clone()]);
+                        (
+                            CallTarget::Static(fun, typ_args),
+                            vec![vir_fun, tup],
+                            ResolvedCall::NonStaticExec,
+                        )
+                    };
+
+                    {
+                        let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                        // Only spec closures are currently supported:
+                        erasure_info.resolved_calls.push((fun.span.data(), resolved_call));
+                    }
+
                     Ok(spanned_typed_new(
                         expr.span,
                         &expr_typ,
@@ -2621,6 +2661,47 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                             return Ok(arg);
                         }
                     }
+
+                    let is_closure_req = f_name == "builtin::FnWithSpecification::requires";
+                    let is_closure_ens = f_name == "builtin::FnWithSpecification::ensures";
+
+                    if is_closure_req || is_closure_ens {
+                        {
+                            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                            erasure_info.resolved_calls.push((fn_span.data(), ResolvedCall::Spec));
+                        }
+                        let bsf = if is_closure_req {
+                            assert!(all_args.len() == 2);
+                            vir::ast::BuiltinSpecFun::ClosureReq
+                        } else {
+                            assert!(all_args.len() == 3);
+                            vir::ast::BuiltinSpecFun::ClosureEns
+                        };
+                        let vir_args = all_args
+                            .iter()
+                            .map(|arg| expr_to_vir(bctx, &arg, ExprModifier::REGULAR))
+                            .collect::<Result<Vec<_>, _>>()?;
+
+                        let mut typ_args: Vec<Typ> = Vec::new();
+                        for typ_arg in bctx.types.node_substs(expr.hir_id) {
+                            match typ_arg.unpack() {
+                                GenericArgKind::Type(ty) => {
+                                    typ_args.push(mid_ty_to_vir(tcx, ty, false));
+                                }
+                                GenericArgKind::Lifetime(_) => {}
+                                _ => unsupported_err!(
+                                    expr.span,
+                                    format!("const type arguments"),
+                                    expr
+                                ),
+                            }
+                        }
+
+                        let target = CallTarget::BuiltinSpecFun(bsf, Arc::new(typ_args));
+
+                        return Ok(mk_expr(ExprX::Call(target, Arc::new(vir_args))));
+                    }
+
                     false
                 }
                 _ => panic!("unexpected hir for method impl item"),
@@ -2638,7 +2719,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 modifier,
             )
         }
-        ExprKind::Closure(..) => closure_to_vir(bctx, expr, modifier),
+        ExprKind::Closure(..) => closure_to_vir(bctx, expr, expr_typ(), false, modifier),
         ExprKind::Index(tgt_expr, idx_expr) => {
             let tgt_vir = expr_to_vir(bctx, tgt_expr, modifier)?;
             if let TypX::Datatype(path, _dt_typs) = &*tgt_vir.typ {
@@ -2711,21 +2792,80 @@ pub(crate) fn stmt_to_vir<'tcx>(
 fn closure_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     closure_expr: &Expr<'tcx>,
+    closure_vir_typ: Typ,
+    is_spec_fn: bool,
     modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
     if let ExprKind::Closure(_, _fn_decl, body_id, _, _) = &closure_expr.kind {
         let body = bctx.ctxt.tcx.hir().body(*body_id);
+
         let typs = closure_param_typs(bctx, closure_expr);
         assert!(typs.len() == body.params.len());
         let params: Vec<Binder<Typ>> = body
             .params
             .iter()
             .zip(typs.clone())
-            .map(|(x, t)| Arc::new(BinderX { name: Arc::new(pat_to_var(x.pat)), a: t }))
-            .collect();
-        let body = expr_to_vir(bctx, &body.value, modifier)?;
-        let typ = Arc::new(TypX::Lambda(Arc::new(typs), body.typ.clone()));
-        Ok(spanned_typed_new(closure_expr.span, &typ, ExprX::Closure(Arc::new(params), body)))
+            .map(|(x, t)| {
+                let attrs = bctx.ctxt.tcx.hir().attrs(x.hir_id);
+                let mode = crate::attributes::get_mode(Mode::Exec, attrs);
+                if mode != Mode::Exec {
+                    return err_span_str(x.span, "closures only accept exec-mode parameters");
+                }
+
+                let (is_mut, name) = pat_to_mut_var(x.pat);
+                if is_mut {
+                    return err_span_str(
+                        x.span,
+                        "Verus does not support 'mut' params for closures",
+                    );
+                }
+                Ok(Arc::new(BinderX { name: Arc::new(name), a: t }))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut body = expr_to_vir(bctx, &body.value, modifier)?;
+
+        let header = vir::headers::read_header(&mut body)?;
+        let vir::headers::Header { require, ensure, ensure_id_typ, .. } = header;
+
+        let exprx = if is_spec_fn {
+            if require.len() > 0 || ensure.len() > 0 {
+                return err_span_str(
+                    closure_expr.span,
+                    "SpecFn should not have `requires` clause or `ensures` clause",
+                );
+            }
+            ExprX::Closure(Arc::new(params), body)
+        } else {
+            let ret_typ = closure_ret_typ(bctx, closure_expr);
+
+            let id = match ensure_id_typ {
+                Some((id, ensures_typ)) => {
+                    if !types_equal(&ensures_typ, &ret_typ) {
+                        return err_span_str(
+                            closure_expr.span,
+                            "return type given in `ensures` clause should match the actual closure return type",
+                        );
+                    }
+                    id
+                }
+                None => Arc::new(
+                    vir::def::CLOSURE_RETURN_VALUE_PREFIX.to_string()
+                        + &body_id.hir_id.local_id.index().to_string(),
+                ),
+            };
+
+            let ret = Arc::new(BinderX { name: id, a: ret_typ });
+
+            ExprX::ExecClosure {
+                params: Arc::new(params),
+                body,
+                requires: require,
+                ensures: ensure,
+                ret: ret,
+                external_spec: None, // filled in by ast_simplify
+            }
+        };
+        Ok(spanned_typed_new(closure_expr.span, &closure_vir_typ, exprx))
     } else {
         panic!("closure_to_vir expects ExprKind::Closure");
     }

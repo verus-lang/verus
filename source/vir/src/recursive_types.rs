@@ -69,6 +69,9 @@ fn check_well_founded_typ(
             // the height of Foo<List> is unrelated to the height of List)
             check_well_founded(datatypes, datatypes_well_founded, path)
         }
+        TypX::AnonymousClosure(..) => {
+            unimplemented!();
+        }
     }
 }
 
@@ -109,6 +112,9 @@ fn check_positive_uses(
             }
             check_positive_uses(global, local, polarity, tr)?;
             Ok(())
+        }
+        TypX::AnonymousClosure(..) => {
+            unimplemented!();
         }
         TypX::Tuple(ts) => {
             for t in ts.iter() {
@@ -205,7 +211,6 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
                     );
                 }
                 GenericBoundX::Traits(..) => {}
-                GenericBoundX::FnSpec(..) => {}
             }
         }
     }

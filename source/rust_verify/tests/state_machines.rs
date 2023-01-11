@@ -532,7 +532,7 @@ test_verify_one_file! {
     #[test] field_name_reserved_ident2 IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
-                #[sharding(variable)] pub token_a: int,
+                #[sharding(variable)] pub param_token_a: int,
             }
         }}
     } => Err(e) => assert_error_msg(e, "reserved identifier")
@@ -550,7 +550,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] sm_name_reserved_ident2 IMPORTS.to_string() + code_str! {
-        tokenized_state_machine!{ token_a {
+        tokenized_state_machine!{ param_token_a {
             fields {
                 #[sharding(variable)] pub t: int,
             }
@@ -583,7 +583,7 @@ test_verify_one_file! {
 
             transition!{
                 tr() {
-                    let token_a = 5;
+                    let param_token_a = 5;
                 }
             }
         }}
@@ -613,7 +613,7 @@ test_verify_one_file! {
             }
 
             transition!{
-                tr(token_a: int) {
+                tr(param_token_a: int) {
                 }
             }
         }}
@@ -6683,4 +6683,71 @@ test_verify_one_file! {
             inst.tr_have_gen(&token_set);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] tokenized_with_conditional IMPORTS.to_string() + code_str! {
+
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(variable)]
+                pub x: int,
+
+                #[sharding(variable)]
+                pub y: int,
+            }
+
+            init!{
+                initialize(x: int, y: int) {
+                    init x = x;
+                    init y = y;
+                }
+            }
+
+            transition!{
+                upd() {
+                    if pre.x == 0 {
+                        update y = 1;
+                    } else {
+                        update y = 2;
+                    }
+                }
+            }
+
+            transition!{
+                req() {
+                    if pre.x == 0 {
+                        require(pre.y == 1);
+                        update y = 20;
+                    } else {
+                        require(pre.y == 2);
+                        update y = 25;
+                    }
+                }
+            }
+        }}
+
+        #[proof] fn test1() {
+            #[proof] let (Trk(inst), Trk(x), Trk(mut y)) = Y::Instance::initialize(spec_literal_int("0"), spec_literal_int("0"));
+            inst.upd(&x, &mut y);
+            assert(y.view().value == spec_literal_int("1"));
+        }
+
+        #[proof] fn test2() {
+            #[proof] let (Trk(inst), Trk(x), Trk(mut y)) = Y::Instance::initialize(spec_literal_int("12"), spec_literal_int("0"));
+            inst.upd(&x, &mut y);
+            assert(y.view().value == spec_literal_int("2"));
+        }
+
+        #[proof] fn test3() {
+            #[proof] let (Trk(inst), Trk(x), Trk(mut y)) = Y::Instance::initialize(spec_literal_int("0"), spec_literal_int("2"));
+            inst.req(&x, &mut y); // FAILS
+        }
+
+        #[proof] fn test4() {
+            #[proof] let (Trk(inst), Trk(x), Trk(mut y)) = Y::Instance::initialize(spec_literal_int("1"), spec_literal_int("1"));
+            inst.req(&x, &mut y); // FAILS
+        }
+
+    } => Err(e) => assert_fails(e, 2)
 }
