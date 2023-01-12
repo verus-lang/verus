@@ -66,11 +66,11 @@ pub fn main() {
     // ato.fetch_or(19)
     // ato ~ fetch_or(19)
 
-    let _ = atomic_with_ghost!(ato => fetch_or(19); ghost g => {
+    atomic_with_ghost!(ato => fetch_or(19); ghost g => {
         g = g | 19;
     });
 
-    let _ = atomic_with_ghost!(ato => fetch_or(23); update old_val -> new_val; ghost g => {
+    atomic_with_ghost!(ato => fetch_or(23); update old_val -> new_val; ghost g => {
         assert(new_val == old_val | 23);
         assert(g == old_val);
 

@@ -1752,7 +1752,6 @@ fn expr_to_stm_opt(
                         is_pure_exp = false;
                     }
                 }
-                check_unit_or_never(&e0)?;
                 stms.append(&mut stms0);
                 match e0 {
                     ReturnValue::Never => {
