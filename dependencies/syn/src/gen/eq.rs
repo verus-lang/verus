@@ -602,7 +602,8 @@ impl Eq for ExprLoop {}
 impl PartialEq for ExprLoop {
     fn eq(&self, other: &Self) -> bool {
         self.attrs == other.attrs && self.label == other.label
-            && self.requires == other.requires && self.invariant == other.invariant
+            && self.invariant == other.invariant
+            && self.invariant_ensures == other.invariant_ensures
             && self.ensures == other.ensures && self.decreases == other.decreases
             && self.body == other.body
     }
@@ -781,7 +782,9 @@ impl Eq for ExprWhile {}
 impl PartialEq for ExprWhile {
     fn eq(&self, other: &Self) -> bool {
         self.attrs == other.attrs && self.label == other.label && self.cond == other.cond
-            && self.invariant == other.invariant && self.decreases == other.decreases
+            && self.invariant == other.invariant
+            && self.invariant_ensures == other.invariant_ensures
+            && self.ensures == other.ensures && self.decreases == other.decreases
             && self.body == other.body
     }
 }
@@ -1121,6 +1124,14 @@ impl PartialEq for ImplItemType {
 impl Eq for Invariant {}
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for Invariant {
+    fn eq(&self, other: &Self) -> bool {
+        self.exprs == other.exprs
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for InvariantEnsures {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for InvariantEnsures {
     fn eq(&self, other: &Self) -> bool {
         self.exprs == other.exprs
     }

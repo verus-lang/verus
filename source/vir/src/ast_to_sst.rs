@@ -1,8 +1,8 @@
 use crate::ast::Exprs;
 use crate::ast::{
     ArithOp, AssertQueryMode, BinaryOp, BuiltinSpecFun, CallTarget, ComputeMode, Constant, Expr,
-    ExprX, Fun, Function, Ident, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs,
-    UnaryOp, UnaryOpr, VarAt, VirErr,
+    ExprX, Fun, Function, Ident, LoopInvariantKind, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ,
+    TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use crate::ast_util::{err_str, err_string, types_equal, QUANT_FORALL};
 use crate::context::Ctx;
@@ -16,6 +16,7 @@ use crate::sst::{
 use crate::sst_util::{free_vars_exp, free_vars_stm};
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::util::{vec_map, vec_map_result};
+use crate::visitor::VisitorControlFlow;
 use air::ast::{Binder, BinderX, Binders, Span};
 use air::messages::{error_with_label, Diagnostics};
 use air::scope_map::ScopeMap;
@@ -367,6 +368,40 @@ fn assume_has_typ(x: &UniqueIdent, typ: &Typ, span: &Span) -> Stm {
     Spanned::new(span.clone(), StmX::Assume(has_typ))
 }
 
+fn loop_body_find_break(
+    loop_label: &Option<String>,
+    in_subloop: bool,
+    found_break: &mut bool,
+    body: &Expr,
+) {
+    let mut f = |expr: &Expr| match &expr.x {
+        ExprX::Loop { body, .. } => {
+            loop_body_find_break(loop_label, true, found_break, body);
+            VisitorControlFlow::Return
+        }
+        ExprX::BreakOrContinue { label: break_label, is_break: true } => {
+            if break_label.is_none() {
+                if !in_subloop {
+                    *found_break = true;
+                }
+            } else {
+                if break_label == loop_label {
+                    *found_break = true;
+                }
+            }
+            VisitorControlFlow::Recurse
+        }
+        _ => VisitorControlFlow::Recurse,
+    };
+    crate::ast_visitor::expr_visitor_walk(body, &mut f);
+}
+
+fn loop_body_has_break(loop_label: &Option<String>, body: &Expr) -> bool {
+    let mut found_break = false;
+    loop_body_find_break(loop_label, false, &mut found_break, body);
+    found_break
+}
+
 /// Determine if it's possible for control flow to reach the statement after the loop exit.
 /// Naturally, we need to be conservative and answer 'yes' if we can't tell.
 /// However, this analysis is also relevant to the typing of the program: in particular,
@@ -392,10 +427,8 @@ fn assume_has_typ(x: &UniqueIdent, typ: &Typ, span: &Span) -> Stm {
 
 pub fn can_control_flow_reach_after_loop(expr: &Expr) -> bool {
     match &expr.x {
-        ExprX::While { cond, body: _, invs: _ } => match &cond.x {
-            ExprX::Const(Constant::Bool(true)) => false,
-            _ => true,
-        },
+        ExprX::Loop { label, cond: None, body, invs: _ } => loop_body_has_break(label, body),
+        ExprX::Loop { label: _, cond: Some(_), body: _, invs: _ } => true,
         _ => {
             panic!("expected while loop");
         }
@@ -666,7 +699,7 @@ pub(crate) fn expr_to_one_stm_with_post(
 
             stms.push(Spanned::new(
                 expr.span.clone(),
-                StmX::AssertPostConditions(base_error, Some(exp)),
+                StmX::Return { base_error, ret_exp: Some(exp), inside_body: false },
             ));
         }
         None => {
@@ -1543,38 +1576,68 @@ fn expr_to_stm_opt(
         ExprX::Match(..) => {
             panic!("internal error: Match should have been simplified by ast_simplify")
         }
-        ExprX::While { cond, body, invs } => {
-            let (stms0, e0) = expr_to_stm_opt(ctx, state, cond)?;
-            let e0 = match e0 {
-                ReturnValue::Some(e0) => e0,
-                ReturnValue::ImplicitUnit(_) => {
-                    panic!("while loop condition doesn't return a bool expression");
-                }
-                ReturnValue::Never => {
-                    // If the condition never returns (which would be odd, but it
-                    // could happen) then the body of the while loop never gets to go at all.
-                    return Ok((stms0, ReturnValue::Never));
-                }
+        ExprX::Loop { label, cond, body, invs } => {
+            let has_break = loop_body_has_break(label, body);
+            let simple_invs = invs.iter().all(|inv| inv.kind == LoopInvariantKind::Invariant);
+            let simple_while = !has_break && simple_invs && cond.is_some();
+            let mut cnd = if let Some(cond) = cond {
+                let (stms0, e0) = expr_to_stm_opt(ctx, state, cond)?;
+                let e0 = match e0 {
+                    ReturnValue::Some(e0) => e0,
+                    ReturnValue::ImplicitUnit(_) => {
+                        panic!("while loop condition doesn't return a bool expression");
+                    }
+                    ReturnValue::Never => {
+                        // If the condition never returns (which would be odd, but it
+                        // could happen) then the body of the while loop never gets to go at all.
+                        return Ok((stms0, ReturnValue::Never));
+                    }
+                };
+                let block0 = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(stms0)));
+                Some((block0, e0))
+            } else {
+                None
             };
 
             let (mut stms1, e1) = expr_to_stm_opt(ctx, state, body)?;
             check_unit_or_never(&e1)?;
-            let (check_recommends, invs): (Vec<Vec<Stm>>, Vec<Exp>) =
-                vec_map_result(invs, |e| expr_to_pure_exp_check(ctx, state, e))?
-                    .into_iter()
-                    .unzip();
+            let mut check_recommends: Vec<Stm> = Vec::new();
+            let mut invs1: Vec<crate::sst::LoopInv> = Vec::new();
+            for inv in invs.iter() {
+                let (rec, exp) = expr_to_pure_exp_check(ctx, state, &inv.inv)?;
+                check_recommends.extend(rec);
+                let (at_entry, at_exit) = match inv.kind {
+                    LoopInvariantKind::Invariant if simple_while => (true, true),
+                    LoopInvariantKind::Invariant => (true, false),
+                    LoopInvariantKind::InvariantEnsures => (true, true),
+                    LoopInvariantKind::Ensures => (false, true),
+                };
+                let inv1 = crate::sst::LoopInv { inv: exp, at_entry, at_exit };
+                invs1.push(inv1);
+            }
             if ctx.checking_recommends() {
-                let check_recommends: Vec<Stm> = check_recommends.into_iter().flatten().collect();
                 stms1.splice(0..0, check_recommends);
             }
-            let block0 = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(stms0)));
+            if !simple_while {
+                // must be "loop", not "while"
+                if let Some((c_stm, c_exp)) = cnd {
+                    // convert while into loop
+                    let not_c = c_exp.new_x(ExpX::Unary(UnaryOp::Not, c_exp.clone()));
+                    let break_stmx = StmX::BreakOrContinue { label: None, is_break: true };
+                    let break_stm = Spanned::new(c_exp.span.clone(), break_stmx);
+                    let if_stm = Spanned::new(c_exp.span.clone(), StmX::If(not_c, break_stm, None));
+                    stms1.insert(0, c_stm);
+                    stms1.insert(1, if_stm);
+                    cnd = None;
+                }
+            }
             let while_stm = Spanned::new(
                 expr.span.clone(),
-                StmX::While {
-                    cond_stm: block0,
-                    cond_exp: e0,
+                StmX::Loop {
+                    label: label.clone(),
+                    cond: cnd,
                     body: stms_to_one_stm(&body.span, stms1),
-                    invs: Arc::new(invs),
+                    invs: Arc::new(invs1),
                     // These are filled in later, in sst_vars
                     typ_inv_vars: Arc::new(vec![]),
                     modified_vars: Arc::new(vec![]),
@@ -1644,7 +1707,7 @@ fn expr_to_stm_opt(
 
                     stms.push(Spanned::new(
                         expr.span.clone(),
-                        StmX::AssertPostConditions(base_error, Some(ret_exp)),
+                        StmX::Return { base_error, ret_exp: Some(ret_exp), inside_body: true },
                     ));
                     stms.push(assume_false(&expr.span));
                 }
@@ -1653,6 +1716,11 @@ fn expr_to_stm_opt(
                 }
             }
             Ok((stms, ReturnValue::Never))
+        }
+        ExprX::BreakOrContinue { label, is_break } => {
+            let stmx = StmX::BreakOrContinue { label: label.clone(), is_break: *is_break };
+            let stm = Spanned::new(expr.span.clone(), stmx);
+            Ok((vec![stm], ReturnValue::ImplicitUnit(expr.span.clone())))
         }
         ExprX::Ghost { .. } => {
             panic!("internal error: ExprX::Ghost should have been simplified by ast_simplify")

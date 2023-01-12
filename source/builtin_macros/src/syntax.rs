@@ -16,10 +16,10 @@ use syn_verus::visit_mut::{
 use syn_verus::{
     braced, bracketed, parenthesized, parse_macro_input, AttrStyle, Attribute, BareFnArg, BinOp,
     Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop, ExprTuple,
-    ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Ident, ImplItemMethod, Invariant, Item,
-    ItemConst, ItemEnum, ItemFn, ItemStruct, Lit, Local, Meta, ModeSpec, ModeSpecChecked, Pat,
-    Path, PathArguments, PathSegment, Publish, Recommends, Requires, ReturnType, Signature, Stmt,
-    Token, TraitItemMethod, Type, TypeFnSpec, UnOp, Visibility,
+    ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Ident, ImplItemMethod, Invariant,
+    InvariantEnsures, Item, ItemConst, ItemEnum, ItemFn, ItemStruct, Lit, Local, Meta, ModeSpec,
+    ModeSpecChecked, Pat, Path, PathArguments, PathSegment, Publish, Recommends, Requires,
+    ReturnType, Signature, Stmt, Token, TraitItemMethod, Type, TypeFnSpec, UnOp, Visibility,
 };
 
 fn take_expr(expr: &mut Expr) -> Expr {
@@ -599,6 +599,43 @@ impl Visitor {
 
         true
     }
+
+    fn add_loop_specs(
+        &mut self,
+        stmts: &mut Vec<Stmt>,
+        invariants: Option<Invariant>,
+        invariant_ensures: Option<InvariantEnsures>,
+        ensures: Option<Ensures>,
+        decreases: Option<Decreases>,
+    ) {
+        // TODO: wrap specs inside ghost blocks
+        self.inside_ghost += 1;
+        if let Some(Invariant { token, mut exprs }) = invariants {
+            for expr in exprs.exprs.iter_mut() {
+                self.visit_expr_mut(expr);
+            }
+            stmts.push(stmt_with_semi!(token.span => ::builtin::invariant([#exprs])));
+        }
+        if let Some(InvariantEnsures { token, mut exprs }) = invariant_ensures {
+            for expr in exprs.exprs.iter_mut() {
+                self.visit_expr_mut(expr);
+            }
+            stmts.push(stmt_with_semi!(token.span => ::builtin::invariant_ensures([#exprs])));
+        }
+        if let Some(Ensures { token, mut exprs }) = ensures {
+            for expr in exprs.exprs.iter_mut() {
+                self.visit_expr_mut(expr);
+            }
+            stmts.push(stmt_with_semi!(token.span => ::builtin::ensures([#exprs])));
+        }
+        if let Some(Decreases { token, mut exprs }) = decreases {
+            for expr in exprs.exprs.iter_mut() {
+                self.visit_expr_mut(expr);
+            }
+            stmts.push(stmt_with_semi!(token.span => ::builtin::decreases((#exprs))));
+        }
+        self.inside_ghost -= 1;
+    }
 }
 
 impl VisitMut for Visitor {
@@ -1167,64 +1204,22 @@ impl VisitMut for Visitor {
 
     fn visit_expr_while_mut(&mut self, expr_while: &mut ExprWhile) {
         let invariants = std::mem::take(&mut expr_while.invariant);
+        let invariant_ensures = std::mem::take(&mut expr_while.invariant_ensures);
+        let ensures = std::mem::take(&mut expr_while.ensures);
         let decreases = std::mem::take(&mut expr_while.decreases);
         let mut stmts: Vec<Stmt> = Vec::new();
-        // TODO: wrap specs inside ghost blocks
-
-        self.inside_ghost += 1;
-        if let Some(Invariant { token, mut exprs }) = invariants {
-            for expr in exprs.exprs.iter_mut() {
-                self.visit_expr_mut(expr);
-            }
-            stmts.push(stmt_with_semi!(token.span => ::builtin::invariant([#exprs])));
-        }
-        if let Some(Decreases { token, mut exprs }) = decreases {
-            for expr in exprs.exprs.iter_mut() {
-                self.visit_expr_mut(expr);
-            }
-            stmts.push(stmt_with_semi!(token.span => ::builtin::decreases((#exprs))));
-        }
-        self.inside_ghost -= 1;
-
+        self.add_loop_specs(&mut stmts, invariants, invariant_ensures, ensures, decreases);
         expr_while.body.stmts.splice(0..0, stmts);
         visit_expr_while_mut(self, expr_while);
     }
 
     fn visit_expr_loop_mut(&mut self, expr_loop: &mut ExprLoop) {
-        let requires = std::mem::take(&mut expr_loop.requires);
         let invariants = std::mem::take(&mut expr_loop.invariant);
+        let invariant_ensures = std::mem::take(&mut expr_loop.invariant_ensures);
         let ensures = std::mem::take(&mut expr_loop.ensures);
         let decreases = std::mem::take(&mut expr_loop.decreases);
         let mut stmts: Vec<Stmt> = Vec::new();
-
-        // TODO: wrap specs inside ghost blocks
-        self.inside_ghost += 1;
-        if let Some(Requires { token, mut exprs }) = requires {
-            for expr in exprs.exprs.iter_mut() {
-                self.visit_expr_mut(expr);
-            }
-            stmts.push(stmt_with_semi!(token.span => ::builtin::requires([#exprs])));
-        }
-        if let Some(Invariant { token, mut exprs }) = invariants {
-            for expr in exprs.exprs.iter_mut() {
-                self.visit_expr_mut(expr);
-            }
-            stmts.push(stmt_with_semi!(token.span => ::builtin::invariant([#exprs])));
-        }
-        if let Some(Ensures { token, mut exprs }) = ensures {
-            for expr in exprs.exprs.iter_mut() {
-                self.visit_expr_mut(expr);
-            }
-            stmts.push(stmt_with_semi!(token.span => ::builtin::ensures([#exprs])));
-        }
-        if let Some(Decreases { token, mut exprs }) = decreases {
-            for expr in exprs.exprs.iter_mut() {
-                self.visit_expr_mut(expr);
-            }
-            stmts.push(stmt_with_semi!(token.span => ::builtin::decreases((#exprs))));
-        }
-        self.inside_ghost -= 1;
-
+        self.add_loop_specs(&mut stmts, invariants, invariant_ensures, ensures, decreases);
         expr_loop.body.stmts.splice(0..0, stmts);
         visit_expr_loop_mut(self, expr_loop);
     }

@@ -856,22 +856,24 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                 }
             }
         }
-        ExprKind::Loop(block, None) => {
+        ExprKind::Loop(block, label) => {
             // The mode checker only allows loops for Mode::Exec
             let block = erase_block(ctxt, mctxt, Mode::Exec, block);
-            ExprKind::Loop(P(block), None)
+            ExprKind::Loop(P(block), *label)
         }
-        ExprKind::While(eb, block, None) => {
+        ExprKind::While(eb, block, label) => {
             // The mode checker only allows loops for Mode::Exec
             let eb = erase_expr(ctxt, mctxt, Mode::Exec, eb);
             let block = erase_block(ctxt, mctxt, Mode::Exec, block);
-            ExprKind::While(P(eb), P(block), None)
+            ExprKind::While(P(eb), P(block), *label)
         }
         ExprKind::Ret(None) => ExprKind::Ret(None),
         ExprKind::Ret(Some(e1)) => {
             let e1 = erase_expr_opt(ctxt, mctxt, mctxt.ret_mode.expect("erase: ret_mode"), e1);
             ExprKind::Ret(e1.map(|e1| P(e1)))
         }
+        ExprKind::Break(label, None) => ExprKind::Break(label.clone(), None),
+        ExprKind::Continue(label) => ExprKind::Continue(label.clone()),
         ExprKind::Block(block, None) => {
             let is_inv_block = attrs_is_invariant_block(&expr.attrs).expect("attrs fail");
             if is_inv_block {

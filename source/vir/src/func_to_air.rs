@@ -200,12 +200,12 @@ fn func_body_to_air(
 
         // In this case, the user hasn't provided a proof body, so we just need to make
         // our own trivial proof body. A trivial proof body is just a single
-        // AssertPostConditions statement.
+        // Return statement.
         // check_termination_exp will set the "ensures clause" to be the
         // termination conditions.
         decrease_by_stms.push(Spanned::new(
             body_exp.span.clone(),
-            StmX::AssertPostConditions(base_error, None),
+            StmX::Return { base_error, ret_exp: None, inside_body: false },
         ));
     }
     state.finalize();

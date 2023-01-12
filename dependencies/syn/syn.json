@@ -1637,14 +1637,14 @@
         "loop_token": {
           "token": "Loop"
         },
-        "requires": {
-          "option": {
-            "syn": "Requires"
-          }
-        },
         "invariant": {
           "option": {
             "syn": "Invariant"
+          }
+        },
+        "invariant_ensures": {
+          "option": {
+            "syn": "InvariantEnsures"
           }
         },
         "ensures": {
@@ -2133,6 +2133,16 @@
         "invariant": {
           "option": {
             "syn": "Invariant"
+          }
+        },
+        "invariant_ensures": {
+          "option": {
+            "syn": "InvariantEnsures"
+          }
+        },
+        "ensures": {
+          "option": {
+            "syn": "Ensures"
           }
         },
         "decreases": {
@@ -2892,6 +2902,20 @@
       "fields": {
         "token": {
           "token": "Invariant"
+        },
+        "exprs": {
+          "syn": "Specification"
+        }
+      }
+    },
+    {
+      "ident": "InvariantEnsures",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "InvariantEnsures"
         },
         "exprs": {
           "syn": "Specification"
@@ -6292,6 +6316,7 @@
     "Imply": "==>",
     "In": "in",
     "Invariant": "invariant",
+    "InvariantEnsures": "invariant_ensures",
     "Is": "is",
     "LArrow": "<-",
     "Le": "<=",

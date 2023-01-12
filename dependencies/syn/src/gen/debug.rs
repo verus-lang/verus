@@ -996,8 +996,8 @@ impl Debug for ExprLoop {
         formatter.field("attrs", &self.attrs);
         formatter.field("label", &self.label);
         formatter.field("loop_token", &self.loop_token);
-        formatter.field("requires", &self.requires);
         formatter.field("invariant", &self.invariant);
+        formatter.field("invariant_ensures", &self.invariant_ensures);
         formatter.field("ensures", &self.ensures);
         formatter.field("decreases", &self.decreases);
         formatter.field("body", &self.body);
@@ -1204,6 +1204,8 @@ impl Debug for ExprWhile {
         formatter.field("while_token", &self.while_token);
         formatter.field("cond", &self.cond);
         formatter.field("invariant", &self.invariant);
+        formatter.field("invariant_ensures", &self.invariant_ensures);
+        formatter.field("ensures", &self.ensures);
         formatter.field("decreases", &self.decreases);
         formatter.field("body", &self.body);
         formatter.finish()
@@ -1648,6 +1650,15 @@ impl Debug for Index {
 impl Debug for Invariant {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("Invariant");
+        formatter.field("token", &self.token);
+        formatter.field("exprs", &self.exprs);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for InvariantEnsures {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("InvariantEnsures");
         formatter.field("token", &self.token);
         formatter.field("exprs", &self.exprs);
         formatter.finish()
