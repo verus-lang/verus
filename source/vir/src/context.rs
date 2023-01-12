@@ -84,7 +84,7 @@ pub struct Ctx {
     // proof debug purposes
     pub debug: bool,
     pub expand_flag: bool,
-    pub debug_expand_targets: Vec<air::errors::Error>,
+    pub debug_expand_targets: Vec<air::messages::Message>,
 }
 
 impl Ctx {
@@ -209,7 +209,7 @@ impl GlobalCtx {
                     if f_node != g_node {
                         let g =
                             krate.functions.iter().find(|g| Node::Fun(g.x.name.clone()) == g_node);
-                        return Err(air::errors::error(
+                        return Err(air::messages::error(
                             "found cyclic dependency in decreases_by function",
                             &f.span,
                         )

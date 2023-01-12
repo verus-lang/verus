@@ -35,8 +35,9 @@ use syn_verus::punctuated::Punctuated;
 use syn_verus::spanned::Spanned;
 use syn_verus::token;
 use syn_verus::{
-    AttrStyle, Attribute, Expr, FnMode, Ident, ImplItemMethod, ItemFn, Path, PathArguments,
-    PathSegment, Publish, ReturnType, Signature, TraitItemMethod,
+    AttrStyle, Attribute, Block, Expr, ExprBlock, FnMode, Ident, ImplItemMethod, ItemFn, Meta,
+    MetaList, NestedMeta, Path, PathArguments, PathSegment, Publish, ReturnType, Signature,
+    TraitItemMethod,
 };
 
 /// Check if VERUSDOC=1.
@@ -51,21 +52,21 @@ pub fn env_rustdoc() -> bool {
 // Main hooks for the verus! macro to manipulate ItemFn, etc.
 
 pub fn process_item_fn(item: &mut ItemFn) {
-    match attr_for_sig(&item.sig) {
+    match attr_for_sig(&mut item.attrs, &item.sig, Some(&item.block)) {
         Some(attr) => item.attrs.insert(0, attr),
         None => {}
     }
 }
 
 pub fn process_impl_item_method(item: &mut ImplItemMethod) {
-    match attr_for_sig(&item.sig) {
+    match attr_for_sig(&mut item.attrs, &item.sig, Some(&item.block)) {
         Some(attr) => item.attrs.insert(0, attr),
         None => {}
     }
 }
 
 pub fn process_trait_item_method(item: &mut TraitItemMethod) {
-    match attr_for_sig(&item.sig) {
+    match attr_for_sig(&mut item.attrs, &item.sig, item.default.as_ref()) {
         Some(attr) => item.attrs.insert(0, attr),
         None => {}
     }
@@ -75,7 +76,11 @@ pub fn process_trait_item_method(item: &mut TraitItemMethod) {
 /// formatting tricks, and then package it all up into a #[doc = "..."] attribute
 /// (as a syn_verus::Attribute object) that we can apply to the item.
 
-fn attr_for_sig(sig: &Signature) -> Option<Attribute> {
+fn attr_for_sig(
+    attrs: &mut Vec<Attribute>,
+    sig: &Signature,
+    block: Option<&Block>,
+) -> Option<Attribute> {
     let mut v = vec![];
 
     v.push(encoded_mode_info(sig));
@@ -105,7 +110,55 @@ fn attr_for_sig(sig: &Signature) -> Option<Attribute> {
         None => {}
     }
 
+    match block {
+        Some(block) => {
+            if is_spec(&sig) {
+                if show_body(attrs) {
+                    let b =
+                        Expr::Block(ExprBlock { attrs: vec![], label: None, block: block.clone() });
+                    v.push(encoded_body("body", &b));
+                }
+            }
+        }
+        None => {}
+    }
+
     if v.len() == 0 { None } else { Some(doc_attr_from_string(&v.join("\n\n"), sig.span())) }
+}
+
+fn is_spec(sig: &Signature) -> bool {
+    match &sig.mode {
+        FnMode::Spec(_) | FnMode::SpecChecked(_) => true,
+        FnMode::Proof(_) | FnMode::Exec(_) | FnMode::Default => false,
+    }
+}
+
+/// Check for:
+///  #[doc(verus_show_body)]
+
+fn show_body(attrs: &mut Vec<Attribute>) -> bool {
+    for (i, attr) in attrs.iter().enumerate() {
+        match attr.parse_meta() {
+            Ok(Meta::List(MetaList { path, nested, .. })) => {
+                if nested.len() == 1 && path.is_ident("doc") {
+                    match nested.iter().next().unwrap() {
+                        NestedMeta::Meta(Meta::Path(p)) => {
+                            if p.is_ident("verus_show_body") {
+                                // Remove the attribute; otherwise when rustdoc runs
+                                // it will give an error about the unrecognized attribute.
+                                attrs.remove(i);
+
+                                return true;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    false
 }
 
 fn fn_mode_to_string(mode: &FnMode, publish: &Publish) -> String {
@@ -176,6 +229,12 @@ fn encoded_mode_info(sig: &Signature) -> String {
 fn encoded_expr(kind: &str, code: &Expr) -> String {
     let s = prettyplease_verus::unparse_expr(&code);
     let s = format!("{s:},");
+    encoded_str(kind, &s)
+}
+
+fn encoded_body(kind: &str, code: &Expr) -> String {
+    let s = prettyplease_verus::unparse_expr(&code);
+    let s = format!("{s:}");
     encoded_str(kind, &s)
 }
 

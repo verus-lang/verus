@@ -10,7 +10,7 @@ use crate::func_to_air::{SstInfo, SstMap};
 use crate::sst::{BndX, Exp, ExpX, Exps, Pars, Stm, StmX, UniqueIdent};
 use crate::sst_visitor::map_shallow_stm;
 use air::ast::Span;
-use air::errors::Error;
+use air::messages::{Diagnostics, Message};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -207,11 +207,11 @@ pub type TracedExp = Arc<TracedExpX>;
 pub type TracedExps = Arc<Vec<TracedExp>>;
 #[derive(Debug)]
 pub struct TracedExpX {
-    pub e: Exp,                    //  Exp to be discharged to Z3
-    pub trace: air::errors::Error, //  when inlining function, record call stack into `trace`
+    pub e: Exp,                        //  Exp to be discharged to Z3
+    pub trace: air::messages::Message, //  when inlining function, record call stack into `trace`
 }
 impl TracedExpX {
-    pub fn new(e: Exp, trace: air::errors::Error) -> TracedExp {
+    pub fn new(e: Exp, trace: air::messages::Message) -> TracedExp {
         Arc::new(TracedExpX { e, trace })
     }
 }
@@ -474,9 +474,9 @@ fn register_split_assertions(traced_exprs: TracedExps) -> Vec<Stm> {
 
 pub(crate) fn need_split_expression(ctx: &Ctx, span: &Span) -> bool {
     for err in &*ctx.debug_expand_targets {
-        if err.msg == crate::def::POSTCONDITION_FAILURE.to_string() {
+        if err.note == crate::def::POSTCONDITION_FAILURE.to_string() {
             for label in &err.labels {
-                if label.msg == crate::def::THIS_POST_FAILED.to_string() {
+                if label.note == crate::def::THIS_POST_FAILED.to_string() {
                     if label.span.as_string == span.as_string {
                         return true;
                     }
@@ -495,12 +495,12 @@ pub(crate) fn need_split_expression(ctx: &Ctx, span: &Span) -> bool {
 }
 
 // check if this error is generated from splitting
-pub fn is_split_error(error: &Error) -> bool {
-    if error.msg == crate::def::SPLIT_ASSERT_FAILURE {
+pub fn is_split_error(error: &Message) -> bool {
+    if error.note == crate::def::SPLIT_ASSERT_FAILURE {
         true
-    } else if error.msg == crate::def::SPLIT_PRE_FAILURE {
+    } else if error.note == crate::def::SPLIT_PRE_FAILURE {
         true
-    } else if error.msg == crate::def::SPLIT_POST_FAILURE {
+    } else if error.note == crate::def::SPLIT_POST_FAILURE {
         true
     } else {
         false
@@ -510,11 +510,12 @@ pub fn is_split_error(error: &Error) -> bool {
 fn split_call(
     ctx: &Ctx,
     state: &State,
+    diagnostics: &impl Diagnostics,
     span: &Span,
     name: &Fun,
     typs: &Typs,
     args: &Exps,
-    error: &Error,
+    error: &Message,
 ) -> Result<Vec<Stm>, VirErr> {
     let fun = get_function(ctx, span, name)?;
     let mut stms: Vec<Stm> = Vec::new();
@@ -530,6 +531,7 @@ fn split_call(
     for e in &**fun.x.require {
         let exp = crate::ast_to_sst::expr_to_exp_as_spec(
             &ctx,
+            diagnostics,
             &state.fun_ssts,
             &crate::func_to_air::params_to_pars(params, true), // REVIEW: is `true` here desirable?
             &e,
@@ -549,11 +551,16 @@ fn split_call(
     Ok(stms)
 }
 
-fn visit_split_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Stm, VirErr> {
+fn visit_split_stm(
+    ctx: &Ctx,
+    state: &mut State,
+    diagnostics: &impl Diagnostics,
+    stm: &Stm,
+) -> Result<Stm, VirErr> {
     match &stm.x {
         StmX::Assert(_err, e1) => {
             if need_split_expression(ctx, &stm.span) {
-                let error = air::errors::error(crate::def::SPLIT_ASSERT_FAILURE, &stm.span);
+                let error = air::messages::error(crate::def::SPLIT_ASSERT_FAILURE, &stm.span);
                 let split_exprs = split_expr(
                     ctx,
                     &state, // use the state after `body` translation to get the fuel info
@@ -581,11 +588,12 @@ fn visit_split_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Stm, VirEr
                     if need_split_expression(ctx, &e.span) {
                         let ens_exp = crate::ast_to_sst::expr_to_exp(
                             ctx,
+                            diagnostics,
                             &state.fun_ssts,
                             &state.ens_pars,
                             e,
                         )?;
-                        let error = air::errors::error(crate::def::SPLIT_POST_FAILURE, &e.span);
+                        let error = air::messages::error(crate::def::SPLIT_POST_FAILURE, &e.span);
                         let split_exprs = split_expr(
                             ctx,
                             &state, // use the state after `body` translation to get the fuel info
@@ -600,7 +608,7 @@ fn visit_split_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Stm, VirEr
             Ok(crate::ast_to_sst::stms_to_one_stm(&stm.span, split_stms))
         }
         StmX::Call { fun, typ_args, args, split: Some(error), dest: None, .. } => {
-            let stms = split_call(ctx, state, &stm.span, fun, typ_args, args, error)?;
+            let stms = split_call(ctx, state, diagnostics, &stm.span, fun, typ_args, args, error)?;
             Ok(Spanned::new(stm.span.clone(), StmX::Block(Arc::new(stms))))
         }
         StmX::Fuel(x, fuel) => {
@@ -609,24 +617,27 @@ fn visit_split_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Stm, VirEr
         }
         StmX::DeadEnd(s) => {
             state.push_fuel_scope();
-            let s = visit_split_stm(ctx, state, s)?;
+            let s = visit_split_stm(ctx, state, diagnostics, s)?;
             state.pop_fuel_scope();
             Ok(Spanned::new(stm.span.clone(), StmX::DeadEnd(s)))
         }
         StmX::If(cond, lhs, rhs) => {
             state.push_fuel_scope();
-            let lhs = visit_split_stm(ctx, state, lhs)?;
+            let lhs = visit_split_stm(ctx, state, diagnostics, lhs)?;
             state.pop_fuel_scope();
             state.push_fuel_scope();
-            let rhs = rhs.as_ref().map(|rhs| visit_split_stm(ctx, state, rhs)).transpose()?;
+            let rhs = rhs
+                .as_ref()
+                .map(|rhs| visit_split_stm(ctx, state, diagnostics, rhs))
+                .transpose()?;
             state.pop_fuel_scope();
             Ok(Spanned::new(stm.span.clone(), StmX::If(cond.clone(), lhs, rhs)))
         }
         StmX::While { cond_stm, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
-            let cond_stm = visit_split_stm(ctx, state, cond_stm)?;
+            let cond_stm = visit_split_stm(ctx, state, diagnostics, cond_stm)?;
             let mut body_state =
                 State::new(&state.fun_ssts, &state.ensures, &state.ens_pars, state.dest.clone());
-            let body = visit_split_stm(ctx, &mut body_state, body)?;
+            let body = visit_split_stm(ctx, &mut body_state, diagnostics, body)?;
             Ok(Spanned::new(
                 stm.span.clone(),
                 StmX::While {
@@ -639,12 +650,13 @@ fn visit_split_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Stm, VirEr
                 },
             ))
         }
-        _ => map_shallow_stm(stm, &mut |s| visit_split_stm(ctx, state, s)),
+        _ => map_shallow_stm(stm, &mut |s| visit_split_stm(ctx, state, diagnostics, s)),
     }
 }
 
 pub(crate) fn all_split_exp(
     ctx: &Ctx,
+    diagnostics: &impl Diagnostics,
     fun_ssts: &SstMap,
     stm: &Stm,
     ensures: &Exprs,
@@ -652,5 +664,5 @@ pub(crate) fn all_split_exp(
     dest: Option<UniqueIdent>,
 ) -> Result<Stm, VirErr> {
     let mut state = State::new(fun_ssts, ensures, ens_pars, dest);
-    map_shallow_stm(stm, &mut |s| visit_split_stm(ctx, &mut state, s))
+    map_shallow_stm(stm, &mut |s| visit_split_stm(ctx, &mut state, diagnostics, s))
 }

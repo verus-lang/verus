@@ -33,7 +33,7 @@ use air::ast_util::{
     mk_bind_expr, mk_bitvector_option, mk_eq, mk_exists, mk_implies, mk_ite, mk_not,
     mk_option_command, mk_or, mk_xor, str_apply, str_ident, str_typ, str_var, string_var,
 };
-use air::errors::{error, error_with_label};
+use air::messages::{error, error_with_label};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem::swap;
 use std::sync::Arc;
@@ -281,18 +281,38 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
 }
 
-fn call_inv(ctx: &Ctx, outer: Expr, inner: Expr, typ: &Typ, atomicity: InvAtomicity) -> Expr {
+fn get_inv_typ_args(typ: &Typ) -> Typs {
+    match &**typ {
+        TypX::Datatype(_, typs) => typs.clone(),
+        TypX::Boxed(typ) => get_inv_typ_args(typ),
+        _ => {
+            panic!("get_inv_typ_args failed, expected some Invariant type");
+        }
+    }
+}
+
+fn call_inv(
+    ctx: &Ctx,
+    outer: Expr,
+    inner: Expr,
+    typ_args: &Typs,
+    typ: &Typ,
+    atomicity: InvAtomicity,
+) -> Expr {
     let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&fn_inv_name(atomicity)));
-    let typ_expr = typ_to_id(typ);
     let boxed_inner = try_box(ctx, inner.clone(), typ).unwrap_or(inner);
-    let args = vec![typ_expr, outer, boxed_inner];
+
+    let mut args: Vec<Expr> = typ_args.iter().map(|t| typ_to_id(t)).collect();
+    args.push(outer);
+    args.push(boxed_inner);
     ident_apply(&inv_fn_ident, &args)
 }
 
-fn call_namespace(arg: Expr, typ: &Typ, atomicity: InvAtomicity) -> Expr {
+fn call_namespace(arg: Expr, typ_args: &Typs, atomicity: InvAtomicity) -> Expr {
     let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&fn_namespace_name(atomicity)));
-    let typ_expr = typ_to_id(typ);
-    let args = vec![typ_expr, arg];
+
+    let mut args: Vec<Expr> = typ_args.iter().map(|t| typ_to_id(t)).collect();
+    args.push(arg);
     ident_apply(&inv_fn_ident, &args)
 }
 
@@ -1037,6 +1057,7 @@ struct PostConditionInfo {
 
 struct State {
     local_shared: Vec<Decl>, // shared between all queries for a single function
+    may_be_used_in_old: HashSet<UniqueIdent>, // vars that might have a 'PRE' snapshot, needed for while loop generation
     local_bv_shared: Vec<Decl>, // used in bv mode, fixed width uint variables have corresponding bv types
     commands: Vec<CommandsWithContext>,
     snapshot_count: u32, // Used to ensure unique Idents for each snapshot
@@ -1437,7 +1458,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                             PostConditionKind::DecreasesImplicitLemma => base_error.clone(),
                             PostConditionKind::DecreasesBy => {
                                 let mut e = (**base_error).clone();
-                                e.msg = "unable to show termination via `decreases_by` lemma"
+                                e.note = "unable to show termination via `decreases_by` lemma"
                                     .to_string();
                                 e.secondary_label(
                                     &span,
@@ -1633,9 +1654,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             let cond_stmts = stm_to_stmts(ctx, state, cond_stm)?;
             let mut air_body: Vec<Stmt> = Vec::new();
-            air_body.append(&mut cond_stmts.clone());
-            air_body.push(pos_assume);
-            air_body.append(&mut stm_to_stmts(ctx, state, body)?);
 
             /*
             Generate a separate SMT query for the loop body.
@@ -1661,9 +1679,33 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     local.push(Arc::new(DeclX::Axiom(expr)));
                 }
             }
-            for (_, inv) in invs.iter() {
-                local.push(Arc::new(DeclX::Axiom(inv.clone())));
+
+            // For any mutable param `x` to the function, we might refer to either
+            // *x or *old(x) within the loop body or invariants.
+            // Thus, we need to create a 'pre' snapshot and havoc all these variables
+            // so that we can refer to either version of the variable within the body.
+
+            air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));
+            for (x, typ) in typ_inv_vars.iter() {
+                if state.may_be_used_in_old.contains(x) {
+                    air_body.push(Arc::new(StmtX::Havoc(suffix_local_unique_id(x))));
+                    let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
+                    if let Some(expr) = typ_inv {
+                        air_body.push(Arc::new(StmtX::Assume(expr)));
+                    }
+                }
             }
+
+            // Assume invariants for the beginning of the loop body.
+            // (These need to go after the above Havoc statements.)
+            for (_, inv) in invs.iter() {
+                air_body.push(Arc::new(StmtX::Assume(inv.clone())));
+            }
+
+            air_body.append(&mut cond_stmts.clone());
+            air_body.push(pos_assume);
+            air_body.append(&mut stm_to_stmts(ctx, state, body)?);
+
             if !ctx.checking_recommends() {
                 for (span, inv) in invs.iter() {
                     let error = error(crate::def::INV_FAIL_LOOP_END, span);
@@ -1740,7 +1782,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let inv_expr = exp_to_expr(ctx, inv_exp, &ExprCtxt::new())?;
 
             // Assert that the namespace of the inv we are opening is in the mask set
-            let namespace_expr = call_namespace(inv_expr.clone(), typ, *atomicity);
+            let typ_args = get_inv_typ_args(&inv_exp.typ);
+            let namespace_expr = call_namespace(inv_expr.clone(), &typ_args, *atomicity);
             if !ctx.checking_recommends() {
                 state.mask.assert_contains(&inv_exp.span, &namespace_expr, &mut stmts);
             }
@@ -1752,7 +1795,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             if let Some(ty_inv) = ty_inv_opt {
                 stmts.push(Arc::new(StmtX::Assume(ty_inv)));
             }
-            let main_inv = call_inv(ctx, inv_expr, inner_expr, typ, *atomicity);
+            let main_inv = call_inv(ctx, inv_expr, inner_expr, &typ_args, &typ, *atomicity);
             stmts.push(Arc::new(StmtX::Assume(main_inv.clone())));
 
             // process the body
@@ -1978,8 +2021,16 @@ pub(crate) fn body_stm_to_air(
 
     let mask = mask_set_from_spec(mask_spec, mode);
 
+    let mut may_be_used_in_old = HashSet::<UniqueIdent>::new();
+    for param in params.iter() {
+        if param.x.is_mut {
+            may_be_used_in_old.insert(unique_local(&param.x.name));
+        }
+    }
+
     let mut state = State {
         local_shared,
+        may_be_used_in_old,
         local_bv_shared,
         commands: Vec::new(),
         snapshot_count: 0,

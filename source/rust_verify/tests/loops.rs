@@ -372,3 +372,94 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_vir_error(e)
 }
+
+test_verify_one_file! {
+    #[test] loop_references_old_version_of_mut_var verus_code! {
+        fn foo(a: &mut u64)
+            requires *old(a) === 17
+        {
+            *a = 19;
+            loop
+                invariant
+                    *old(a) === 17,
+                    *a === 19,
+            {
+                assert(false); // FAILS
+            }
+        }
+
+        fn foo2(a: &mut u64) {
+            loop
+                invariant *old(a) === *a,
+            {
+            }
+        }
+
+
+        fn foo3(a: &mut u64)
+            requires *old(a) === 1234,
+        {
+            loop
+                invariant *old(a) === 1234,
+            {
+            }
+        }
+
+        fn foo4(a: &mut u64)
+            requires *old(a) === 1234,
+        {
+            loop
+                invariant *old(a) === 1234,
+            {
+                *a = 8932759;
+            }
+        }
+
+        fn foo5(a: &mut u64)
+            requires *old(a) === 1234,
+        {
+            *a = 12;
+            loop
+                invariant *a === 12,
+            {
+                assert(*a === 12);
+            }
+        }
+
+        fn test_old_in_ensures(a: &mut u64)
+            requires *old(a) < 2000,
+            ensures *a as int === *old(a) + 25,
+        {
+            let mut i: u64 = 0;
+            loop
+                invariant *old(a) < 2000,
+                    0 <= i < 25,
+                    *a as int === *old(a) + i,
+            {
+                *a = *a + 1;
+                i = i + 1;
+                if i == 25 {
+                    return;
+                }
+            }
+        }
+
+        fn test_old_in_ensures_fail(a: &mut u64)
+            requires *old(a) < 2000,
+            ensures *a as int === *old(a) + 26,
+        {
+            let mut i: u64 = 0;
+            loop
+                invariant *old(a) < 2000,
+                    0 <= i < 25,
+                    *a as int === *old(a) + i,
+            {
+                *a = *a + 1;
+                i = i + 1;
+                if i == 25 {
+                    return; // FAILS
+                }
+            }
+        }
+    } => Err(e) => assert_fails(e, 2)
+}

@@ -1,4 +1,4 @@
-use crate::errors::{Error, ErrorLabels};
+use crate::messages::{Message, MessageLabels};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -127,9 +127,9 @@ pub enum ExprX {
     IfElse(Expr, Expr, Expr),
     Bind(Bind, Expr),
     // Sometimes an axiom will have additional error messages. If an assert fails
-    // and this axiom was relevant, then we append the error labels to the Error.
-    LabeledAxiom(ErrorLabels, Expr),
-    LabeledAssertion(Error, Expr),
+    // and this axiom was relevant, then we append the error labels to the Message.
+    LabeledAxiom(MessageLabels, Expr),
+    LabeledAssertion(Message, Expr),
 }
 
 pub type Stmt = Arc<StmtX>;
@@ -137,7 +137,7 @@ pub type Stmts = Arc<Vec<Stmt>>;
 #[derive(Debug)]
 pub enum StmtX {
     Assume(Expr),
-    Assert(Error, Expr),
+    Assert(Message, Expr),
     Havoc(Ident),
     Assign(Ident, Expr),
     // create a named snapshot of the state of the variables

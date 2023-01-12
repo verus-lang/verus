@@ -24,8 +24,7 @@ use air::ast_util::{
     bool_typ, ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies,
     str_apply, str_ident, str_typ, str_var, string_apply,
 };
-use air::errors::error_with_label;
-use air::errors::ErrorLabel;
+use air::messages::{error_with_label, Diagnostics, MessageLabel};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -128,6 +127,7 @@ fn func_def_quant(
 
 fn func_body_to_air(
     ctx: &Ctx,
+    diagnostics: &impl Diagnostics,
     fun_ssts: SstMap,
     decl_commands: &mut Vec<Command>,
     check_commands: &mut Vec<Command>,
@@ -140,7 +140,7 @@ fn func_body_to_air(
     let pars = params_to_pars(&function.x.params, false);
 
     // ast --> sst
-    let mut state = crate::ast_to_sst::State::new();
+    let mut state = crate::ast_to_sst::State::new(diagnostics);
     state.declare_params(&pars);
     state.view_as_spec = true;
     state.fun_ssts = fun_ssts;
@@ -159,7 +159,7 @@ fn func_body_to_air(
 
     let mut decrease_by_stms: Vec<Stm> = Vec::new();
     let decrease_by_reqs = if let Some(req) = &function.x.decrease_when {
-        let exp = crate::ast_to_sst::expr_to_exp(ctx, &state.fun_ssts, &pars, req)?;
+        let exp = crate::ast_to_sst::expr_to_exp(ctx, diagnostics, &state.fun_ssts, &pars, req)?;
         let expr = exp_to_expr(ctx, &exp, &ExprCtxt::new_mode(ExprMode::Spec))?;
         decrease_by_stms.push(Spanned::new(req.span.clone(), StmX::Assume(exp)));
         vec![expr]
@@ -174,9 +174,9 @@ fn func_body_to_air(
                 &mut state,
                 decrease_by_fun.x.body.as_ref().expect("decreases_by has body"),
             )?;
-
             let body_stm = state.finalize_stm(
                 ctx,
+                diagnostics,
                 &state.fun_ssts,
                 &body_stm,
                 // note: these arguments are just for splitting, and (unless we support
@@ -213,6 +213,7 @@ fn func_body_to_air(
     // Check termination
     let (is_recursive, termination_commands, body_exp) = crate::recursion::check_termination_exp(
         ctx,
+        diagnostics,
         &state.fun_ssts,
         function,
         state.local_decls,
@@ -311,6 +312,7 @@ fn func_body_to_air(
 
 pub fn req_ens_to_air(
     ctx: &Ctx,
+    diagnostics: &impl Diagnostics,
     fun_ssts: &SstMap,
     commands: &mut Vec<Command>,
     params: &Pars,
@@ -333,12 +335,12 @@ pub fn req_ens_to_air(
             exprs.push(e.clone());
         }
         for e in specs.iter() {
-            let exp = crate::ast_to_sst::expr_to_exp(ctx, fun_ssts, params, e)?;
+            let exp = crate::ast_to_sst::expr_to_exp(ctx, diagnostics, fun_ssts, params, e)?;
             let expr = exp_to_expr(ctx, &exp, &ExprCtxt::new_mode(ExprMode::Spec))?;
             let loc_expr = match msg {
                 None => expr,
                 Some(msg) => {
-                    let l = ErrorLabel { span: e.span.clone(), msg: msg.clone() };
+                    let l = MessageLabel { span: e.span.clone(), note: msg.clone() };
                     let ls = Arc::new(vec![l]);
                     Arc::new(ExprX::LabeledAxiom(ls, expr))
                 }
@@ -359,7 +361,11 @@ pub fn req_ens_to_air(
 /// Returns vector of commands that declare the function symbol itself,
 /// as well as any related functions symbols (e.g., recursive versions),
 /// if the function is a spec function.
-pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirErr> {
+pub fn func_name_to_air(
+    ctx: &Ctx,
+    diagnostics: &impl Diagnostics,
+    function: &Function,
+) -> Result<Commands, VirErr> {
     let mut commands: Vec<Command> = Vec::new();
     if function.x.mode == Mode::Spec {
         if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
@@ -383,6 +389,7 @@ pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
         if let Some(body) = &function.x.body {
             let body_exp = crate::ast_to_sst::expr_to_exp_as_spec(
                 &ctx,
+                diagnostics,
                 &UpdateCell::new(HashMap::new()),
                 &params_to_pars(&function.x.params, false),
                 &body,
@@ -452,6 +459,7 @@ fn params_to_pre_post_pars(params: &Params, pre: bool) -> Pars {
 
 pub fn func_decl_to_air(
     ctx: &mut Ctx,
+    diagnostics: &impl Diagnostics,
     fun_ssts: &SstMap,
     function: &Function,
 ) -> Result<Commands, VirErr> {
@@ -470,6 +478,7 @@ pub fn func_decl_to_air(
         let req_params = params_to_pre_post_pars(&function.x.params, true);
         let _ = req_ens_to_air(
             ctx,
+            diagnostics,
             fun_ssts,
             &mut decl_commands,
             &req_params,
@@ -486,6 +495,7 @@ pub fn func_decl_to_air(
 
 pub fn func_axioms_to_air(
     ctx: &mut Ctx,
+    diagnostics: &impl Diagnostics,
     fun_ssts: SstMap,
     function: &Function,
     public_body: bool,
@@ -510,6 +520,7 @@ pub fn func_axioms_to_air(
                 if let Some(body) = &function.x.body {
                     new_fun_ssts = func_body_to_air(
                         ctx,
+                        diagnostics,
                         new_fun_ssts,
                         &mut decl_commands,
                         &mut check_commands,
@@ -594,6 +605,7 @@ pub fn func_axioms_to_air(
             }
             let has_ens_pred = req_ens_to_air(
                 ctx,
+                diagnostics,
                 &new_fun_ssts,
                 &mut decl_commands,
                 &Arc::new(ens_params),
@@ -612,6 +624,7 @@ pub fn func_axioms_to_air(
                 let params = params_to_pre_post_pars(params, false);
                 let exp = crate::ast_to_sst::expr_to_bind_decls_exp(
                     ctx,
+                    diagnostics,
                     &new_fun_ssts,
                     &params,
                     req_ens,
@@ -656,6 +669,7 @@ pub enum FuncDefPhase {
 
 pub fn func_def_to_air(
     ctx: &Ctx,
+    diagnostics: &impl Diagnostics,
     fun_ssts: SstMap,
     function: &Function,
     phase: FuncDefPhase,
@@ -699,7 +713,7 @@ pub fn func_def_to_air(
                 (HashMap::new(), function)
             };
 
-            let mut state = crate::ast_to_sst::State::new();
+            let mut state = crate::ast_to_sst::State::new(diagnostics);
             state.fun_ssts = fun_ssts;
 
             let mut ens_params = (*function.x.params).clone();
@@ -729,7 +743,13 @@ pub fn func_def_to_air(
                     req_stms.extend(stms);
                     req_stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));
                 } else {
-                    reqs.push(crate::ast_to_sst::expr_to_exp(ctx, &state.fun_ssts, &req_pars, e)?);
+                    reqs.push(crate::ast_to_sst::expr_to_exp(
+                        ctx,
+                        diagnostics,
+                        &state.fun_ssts,
+                        &req_pars,
+                        e,
+                    )?);
                 }
             }
             let mut ens_recommend_stms: Vec<Stm> = Vec::new();
@@ -739,7 +759,13 @@ pub fn func_def_to_air(
                     ens_recommend_stms
                         .extend(crate::ast_to_sst::check_pure_expr(ctx, &mut state, e)?);
                 } else {
-                    enss.push(crate::ast_to_sst::expr_to_exp(ctx, &state.fun_ssts, &ens_pars, e)?);
+                    enss.push(crate::ast_to_sst::expr_to_exp(
+                        ctx,
+                        diagnostics,
+                        &state.fun_ssts,
+                        &ens_pars,
+                        e,
+                    )?);
                 }
             }
             let enss = Arc::new(enss);
@@ -762,6 +788,7 @@ pub fn func_def_to_air(
 
             let stm = state.finalize_stm(
                 &ctx,
+                diagnostics,
                 &state.fun_ssts,
                 &stm,
                 &req_ens_function.x.ensure,
@@ -773,6 +800,7 @@ pub fn func_def_to_air(
                 .map(|s| {
                     state.finalize_stm(
                         &ctx,
+                        diagnostics,
                         &state.fun_ssts,
                         &s,
                         &req_ens_function.x.ensure,
@@ -790,7 +818,13 @@ pub fn func_def_to_air(
             let (decls, stm) = if no_termination_check || ctx.checking_recommends() {
                 (vec![], stm)
             } else {
-                crate::recursion::check_termination_stm(ctx, &state.fun_ssts, function, &stm)?
+                crate::recursion::check_termination_stm(
+                    ctx,
+                    diagnostics,
+                    &state.fun_ssts,
+                    function,
+                    &stm,
+                )?
             };
 
             // SST --> AIR

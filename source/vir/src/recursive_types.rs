@@ -4,9 +4,7 @@ use crate::context::GlobalCtx;
 use crate::recursion::Node;
 use crate::scc::Graph;
 use air::ast::Span;
-use air::errors::ErrorLabel;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 // To enable decreases clauses on datatypes while treating the datatypes as inhabited in specs,
 // we need to make sure that the datatypes have base cases, not just inductive cases.
@@ -198,26 +196,16 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
             assert!(self_name == &crate::def::trait_self_type_param());
         }
         for (_name, bound) in typ_params {
-            match (&**bound, &function.x.kind) {
-                (GenericBoundX::Traits(ts), _) if ts.len() == 0 => {}
-                (GenericBoundX::Traits(_), FunctionKind::Static)
-                    if function.x.attrs.broadcast_forall =>
-                {
+            match &**bound {
+                GenericBoundX::Traits(ts) if function.x.attrs.broadcast_forall && ts.len() != 0 => {
                     // See the todo!() in func_to_air.rs
                     return err_str(
                         &function.span,
                         "not yet supported: bounds on broadcast_forall function type parameters",
                     );
                 }
-                (_, FunctionKind::Static) => {}
-                _ => {
-                    // REVIEW: when we support bounds on method type parameters,
-                    // we'll need the appropriate termination checking.
-                    return err_str(
-                        &function.span,
-                        "not yet supported: bounds on method type parameters",
-                    );
-                }
+                GenericBoundX::Traits(..) => {}
+                GenericBoundX::FnSpec(..) => {}
             }
         }
     }
@@ -273,15 +261,17 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
 }
 
 fn scc_error(krate: &Krate, head: &Node, nodes: &Vec<Node>) -> VirErr {
-    let mut labels: Vec<ErrorLabel> = Vec::new();
-    let mut spans: Vec<Span> = Vec::new();
+    let msg =
+        "found a cyclic self-reference in a trait definition, which may result in nontermination"
+            .to_string();
+    let mut err = air::messages::error_bare(msg);
     for node in nodes {
         let mut push = |node: &Node, span: Span| {
             if node == head {
-                spans.push(span);
+                err = err.primary_span(&span);
             } else {
                 let msg = "may be part of cycle".to_string();
-                labels.push(ErrorLabel { span, msg });
+                err = err.secondary_label(&span, msg);
             }
         };
         match node {
@@ -305,10 +295,7 @@ fn scc_error(krate: &Krate, head: &Node, nodes: &Vec<Node>) -> VirErr {
             }
         }
     }
-    let msg =
-        "found a cyclic self-reference in a trait definition, which may result in nontermination"
-            .to_string();
-    Arc::new(air::errors::ErrorX { msg, spans, labels })
+    err
 }
 
 // Check for cycles in traits

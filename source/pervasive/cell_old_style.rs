@@ -244,22 +244,23 @@ impl<V> PCell<V> {
     }
 }
 
-pub struct InvCell<#[verifier(maybe_negative)] T> {
-    #[spec] possible_values: Set<T>,
-    pcell: PCell<T>,
-    #[proof] perm_inv: LocalInvariant<PermData<T>>,
+struct_with_invariants!{
+    pub struct InvCell<#[verifier(maybe_negative)] T> {
+        #[spec] possible_values: Set<T>,
+        pcell: PCell<T>,
+        #[proof] perm_inv: LocalInvariant<_, PermData<T>, _>,
+    }
+
+    pub closed spec fn wf(&self) -> bool {
+        invariant on perm_inv with (possible_values, pcell) is (perm: PermData<T>) {
+            perm.view().value.is_Some()
+            && possible_values.contains(perm.view().value.get_Some_0())
+            && equal(pcell.id(), perm.view().pcell)
+        }
+    }
 }
 
 impl<T> InvCell<T> {
-    #[spec]
-    pub fn wf(&self) -> bool {
-        (forall(|perm| self.perm_inv.inv(perm) == {
-            perm.view().value.is_Some()
-            && self.possible_values.contains(perm.view().value.get_Some_0())
-            && equal(self.pcell.id(), perm.view().pcell)
-        }))
-    }
-
     #[spec]
     pub fn inv(&self, val: T) -> bool {
         self.possible_values.contains(val)
@@ -272,12 +273,9 @@ impl<T> InvCell<T> {
 
         let (pcell, Trk(perm)) = PCell::new(val);
         #[spec] let possible_values = Set::new(f);
-        #[proof] let perm_inv = LocalInvariant::new(perm,
-            |perm: PermData<T>| {
-                perm.view().value.is_Some()
-                && possible_values.contains(perm.view().value.get_Some_0())
-                && equal(pcell.id(), perm.view().pcell)
-            },
+        #[proof] let perm_inv = LocalInvariant::new(
+            (possible_values, pcell),
+            perm,
             verus_proof_expr!(0));
         InvCell {
             possible_values,

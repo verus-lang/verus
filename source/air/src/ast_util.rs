@@ -2,7 +2,7 @@ use crate::ast::{
     BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Constant, DeclX, Expr, ExprX, Exprs,
     Ident, MultiOp, Qid, Quant, Span, Trigger, Typ, TypX, Typs, UnaryOp,
 };
-use crate::errors::ErrorX;
+use crate::messages::MessageX;
 use std::fmt::Debug;
 use std::sync::Arc;
 
@@ -12,9 +12,9 @@ impl Debug for Span {
     }
 }
 
-impl Debug for ErrorX {
+impl Debug for MessageX {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(f, "{}", self.msg)
+        write!(f, "{}", self.note)
     }
 }
 

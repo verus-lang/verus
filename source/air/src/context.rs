@@ -1,7 +1,7 @@
 use crate::ast::{Command, CommandX, Decl, Ident, Query, Typ, TypeError, Typs};
 use crate::closure::ClosureTerm;
 use crate::emitter::Emitter;
-use crate::errors::{Error, ErrorLabels};
+use crate::messages::{Diagnostics, Message, MessageLabels};
 use crate::model::Model;
 use crate::node;
 use crate::printer::{macro_push_node, str_to_node};
@@ -17,7 +17,7 @@ use std::time::Duration;
 
 #[derive(Clone, Debug)]
 pub(crate) struct AssertionInfo {
-    pub(crate) error: Error,
+    pub(crate) error: Message,
     pub(crate) label: Ident,
     pub(crate) decl: Decl,
     pub(crate) disabled: bool,
@@ -25,7 +25,7 @@ pub(crate) struct AssertionInfo {
 
 #[derive(Clone, Debug)]
 pub(crate) struct AxiomInfo {
-    pub(crate) labels: ErrorLabels,
+    pub(crate) labels: MessageLabels,
     pub(crate) label: Ident,
     pub(crate) decl: Decl,
 }
@@ -33,7 +33,7 @@ pub(crate) struct AxiomInfo {
 #[derive(Debug)]
 pub enum ValidityResult {
     Valid,
-    Invalid(Option<Model>, Error),
+    Invalid(Option<Model>, Message),
     Canceled,
     TypeError(TypeError),
     UnexpectedOutput(String),
@@ -340,6 +340,7 @@ impl Context {
 
     pub fn check_valid(
         &mut self,
+        diagnostics: &impl Diagnostics,
         query: &Query,
         query_context: QueryContext<'_, '_>,
     ) -> ValidityResult {
@@ -357,6 +358,7 @@ impl Context {
         let model = Model::new(snapshots, local_vars);
         let validity = crate::smt_verify::smt_check_query(
             self,
+            diagnostics,
             &query,
             model,
             query_context.report_long_running,
@@ -371,12 +373,14 @@ impl Context {
     /// Once only_check_earlier is set, it remains set until finish_query is called.
     pub fn check_valid_again(
         &mut self,
+        diagnostics: &impl Diagnostics,
         only_check_earlier: bool,
         query_context: QueryContext<'_, '_>,
     ) -> ValidityResult {
         if let ContextState::FoundInvalid(infos, air_model) = self.state.clone() {
             crate::smt_verify::smt_check_assertion(
                 self,
+                diagnostics,
                 infos,
                 air_model,
                 only_check_earlier,
@@ -405,6 +409,7 @@ impl Context {
 
     pub fn command(
         &mut self,
+        diagnostics: &impl Diagnostics,
         command: &Command,
         query_context: QueryContext<'_, '_>,
     ) -> ValidityResult {
@@ -428,7 +433,7 @@ impl Context {
                     ValidityResult::Valid
                 }
             }
-            CommandX::CheckValid(query) => self.check_valid(&query, query_context),
+            CommandX::CheckValid(query) => self.check_valid(diagnostics, &query, query_context),
         }
     }
 }

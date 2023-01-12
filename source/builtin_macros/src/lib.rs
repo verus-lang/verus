@@ -6,8 +6,10 @@ use synstructure::{decl_attribute, decl_derive};
 mod fndecl;
 mod is_variant;
 mod rustdoc;
+mod struct_decl_inv;
 mod structural;
 mod syntax;
+mod topological_sort;
 
 decl_derive!([Structural] => structural::derive_structural);
 
@@ -50,4 +52,9 @@ pub fn verus_proof_macro_exprs(input: proc_macro::TokenStream) -> proc_macro::To
 #[proc_macro]
 pub fn verus_exec_macro_exprs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     syntax::proof_macro_exprs(false, input)
+}
+
+#[proc_macro]
+pub fn struct_with_invariants(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    struct_decl_inv::struct_decl_inv(input)
 }

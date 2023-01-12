@@ -1,3 +1,6 @@
+//! Provides sequentially-consistent atomic memory locations with associated ghost state.
+//! See the [`atomic_with_ghost!`] documentation for more information.
+
 #![allow(unused_imports)]
 
 use builtin::*;
@@ -6,36 +9,72 @@ use crate::pervasive::invariant::*;
 use crate::pervasive::atomic::*;
 use crate::pervasive::modes::*;
 
+verus!{
+pub trait AtomicInvariantPredicate<K, V, G> {
+    spec fn atomic_inv(k: K, v: V, g: G) -> bool;
+}
+}
+
 macro_rules! declare_atomic_type {
-    ($at_ident:ident, $patomic_ty:ident, $perm_ty:ty, $value_ty: ty) => {
-        pub struct $at_ident<#[verifier(maybe_negative)] G> {
-            pub patomic: $patomic_ty,
-            #[proof] pub atomic_inv: AtomicInvariant<($perm_ty, G)>,
+    ($at_ident:ident, $patomic_ty:ident, $perm_ty:ty, $value_ty: ty, $atomic_pred_ty: ident) => {
+
+        pub struct $atomic_pred_ty<Pred> { p: Pred }
+
+        impl<K, G, Pred> InvariantPredicate<(K, int), ($perm_ty, G)> for $atomic_pred_ty<Pred>
+            where Pred: AtomicInvariantPredicate<K, $value_ty, G>
+        {
+            #[verifier(publish)]
+            #[spec]
+            fn inv(k_loc: (K, int), perm_g: ($perm_ty, G)) -> bool {
+                let (k, loc) = k_loc;
+                let (perm, g) = perm_g;
+
+                perm.view().patomic == loc
+                  && Pred::atomic_inv(k, perm.view().value, g)
+            }
         }
 
-        impl<G> $at_ident<G> {
+        #[doc = concat!(
+            "Sequentially-consistent atomic memory location storing a `",
+            stringify!($value_ty),
+            "` and associated ghost state."
+        )]
+        ///
+        /// See the [`atomic_with_ghost!`] documentation for usage information.
+
+        pub struct $at_ident<K, #[verifier(maybe_negative)] G, Pred>
+            //where Pred: AtomicInvariantPredicate<K, $value_ty, G>
+        {
+            #[doc(hidden)]
+            pub patomic: $patomic_ty,
+
+            #[doc(hidden)]
+            #[proof] pub atomic_inv: AtomicInvariant<(K, int), ($perm_ty, G), $atomic_pred_ty<Pred>>,
+        }
+
+        impl<K, G, Pred> $at_ident<K, G, Pred>
+            where Pred: AtomicInvariantPredicate<K, $value_ty, G>
+        {
             #[spec] #[verifier(publish)]
-            pub fn has_inv(&self, f: impl Fn($value_ty, G) -> bool) -> bool {
-                forall(|p| #[trigger] self.atomic_inv.inv(p) == (
-                    self.patomic.id() == p.0.view().patomic
-                        && f(p.0.view().value, p.1)
-                ))
+            pub fn well_formed(&self) -> bool {
+                self.atomic_inv.constant().1 == self.patomic.id()
             }
 
             #[spec] #[verifier(publish)]
-            pub fn has_inv_fn(&self, f: impl Fn($value_ty) -> G) -> bool {
-                self.has_inv(|v: $value_ty, g: G| equal(g, f(v)))
+            pub fn constant(&self) -> K {
+                self.atomic_inv.constant().0
             }
 
             #[inline(always)]
-            pub fn new(u: $value_ty, #[proof] g: G, #[spec] f: impl Fn($value_ty, G) -> bool) -> Self {
-                requires(f(u, g));
-                ensures(|t: Self| t.has_inv(f));
+            pub fn new(#[spec] k: K, u: $value_ty, #[proof] g: G) -> Self {
+                requires(Pred::atomic_inv(k, u, g));
+                ensures(|t: Self| t.well_formed() && equal(t.constant(), k));
 
                 let (patomic, Proof(perm)) = $patomic_ty::new(u);
                 #[proof] let pair = (perm, g);
-                #[proof] let atomic_inv = AtomicInvariant::new(pair,
-                    |p| patomic.id() == p.0.view().patomic && f(p.0.view().value, p.1),
+                #[proof] let atomic_inv = AtomicInvariant::new(
+                    (k, patomic.id()),
+                    pair,
                     spec_literal_int("0"));
 
                 $at_ident {
@@ -49,7 +88,11 @@ macro_rules! declare_atomic_type {
             /*
             #[inline(always)]
             pub fn into_inner(self) -> ($value_ty, G) {
-                ensures(
+                requires(self.well_formed());
+                ensures(|res: ($value_ty, G)| {
+                    let (v, g) = res;
+                    Pred::atomic_inv(self.constant(), v, g)
+                });
 
                 let { patomic, atomic_inv } = self;
                 let (perm, g) = atomic_inv.into_inner();
@@ -61,17 +104,17 @@ macro_rules! declare_atomic_type {
     }
 }
 
-declare_atomic_type!(AtomicU64, PAtomicU64, PermissionU64, u64);
-declare_atomic_type!(AtomicU32, PAtomicU32, PermissionU32, u32);
-declare_atomic_type!(AtomicU16, PAtomicU16, PermissionU16, u16);
-declare_atomic_type!(AtomicU8, PAtomicU8, PermissionU8, u8);
+declare_atomic_type!(AtomicU64, PAtomicU64, PermissionU64, u64, AtomicPredU64);
+declare_atomic_type!(AtomicU32, PAtomicU32, PermissionU32, u32, AtomicPredU32);
+declare_atomic_type!(AtomicU16, PAtomicU16, PermissionU16, u16, AtomicPredU16);
+declare_atomic_type!(AtomicU8, PAtomicU8, PermissionU8, u8, AtomicPredU8);
 
-declare_atomic_type!(AtomicI64, PAtomicI64, PermissionI64, i64);
-declare_atomic_type!(AtomicI32, PAtomicI32, PermissionI32, i32);
-declare_atomic_type!(AtomicI16, PAtomicI16, PermissionI16, i16);
-declare_atomic_type!(AtomicI8, PAtomicI8, PermissionI8, i8);
+declare_atomic_type!(AtomicI64, PAtomicI64, PermissionI64, i64, AtomicPredI64);
+declare_atomic_type!(AtomicI32, PAtomicI32, PermissionI32, i32, AtomicPredI32);
+declare_atomic_type!(AtomicI16, PAtomicI16, PermissionI16, i16, AtomicPredI16);
+declare_atomic_type!(AtomicI8, PAtomicI8, PermissionI8, i8, AtomicPredI8);
 
-declare_atomic_type!(AtomicBool, PAtomicBool, PermissionBool, bool);
+declare_atomic_type!(AtomicBool, PAtomicBool, PermissionBool, bool, AtomicPredBool);
 
 /// Performs a given atomic operation on a given atomic
 /// while providing access to its ghost state.
@@ -409,7 +452,7 @@ macro_rules! atomic_with_ghost_update_fetch_add {
                 #[proof] let (mut perm, mut $g) = pair;
                 #[spec] let $prev = perm.view().value as int;
                 let op = $operand;
-                #[spec] let computed = perm.view().value + (op as int);
+                #[spec] let computed = (perm.view().value as int) + (op as int);
                 #[spec] let $res = computed;
                 #[spec] let $next = computed;
 
@@ -436,7 +479,7 @@ macro_rules! atomic_with_ghost_update_fetch_sub {
                 #[proof] let (mut perm, mut $g) = pair;
                 #[spec] let $prev = perm.view().value as int;
                 let op = $operand;
-                #[spec] let computed = perm.view().value - (op as int);
+                #[spec] let computed = (perm.view().value as int) - (op as int);
                 #[spec] let $res = computed;
                 #[spec] let $next = computed;
 
@@ -450,4 +493,3 @@ macro_rules! atomic_with_ghost_update_fetch_sub {
         }
     }
 }
-

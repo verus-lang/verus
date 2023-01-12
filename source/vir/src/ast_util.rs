@@ -7,7 +7,7 @@ use crate::sst::{Par, Pars};
 use crate::util::vec_map;
 use air::ast::{Binder, BinderX, Binders, Span};
 pub use air::ast_util::{ident_binder, str_ident};
-pub use air::errors::error;
+pub use air::messages::error;
 use num_bigint::{BigInt, Sign};
 use std::collections::HashSet;
 use std::fmt;
