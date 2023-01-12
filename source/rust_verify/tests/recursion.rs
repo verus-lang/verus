@@ -1217,7 +1217,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] decreases_on_non_recursive_generic_datatype verus_code! {
+    #[test] decreases_on_non_recursive_generic_datatype_regression_315 verus_code! {
         // https://github.com/verus-lang/verus/issues/315
         use pervasive::option::*;
         spec fn max(a: nat, b: nat) -> nat {
