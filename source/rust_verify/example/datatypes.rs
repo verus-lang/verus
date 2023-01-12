@@ -52,6 +52,18 @@ fn get_len<A>(list: &List<A>) -> (r: u64)
     n
 }
 
+fn mk_range(start: u32, length: u32) -> (r: List<u32>)
+    requires 
+        start + length <= 0xffff_ffff,
+    ensures len::<u32>(&r) == length,
+    decreases length,
+{
+    if length == 0 {List::Nil}
+    else {
+        List::Cons(start, Box::new(mk_range(start + 1, length - 1)))
+    }
+}
+
 fn main() {
     let x = List::Cons(100u64, box(List::Nil));
     let i = match x {

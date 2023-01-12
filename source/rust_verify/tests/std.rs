@@ -23,3 +23,12 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] box_new verus_code! {
+        fn foo() {
+            let x:Box<u32> = Box::new(5);
+            assert(*x == 5);
+        }
+    } => Ok(())
+}
