@@ -11,8 +11,8 @@ use crate::context::Context;
 use crate::def::{get_variant_fn_name, is_variant_fn_name};
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
 use crate::rust_to_vir_base::{
-    check_generics_bounds, def_id_to_vir_path, fn_item_hir_id_to_self_def_id, hack_get_def_name,
-    mid_ty_to_vir, mk_visibility, typ_path_and_ident_to_vir_path,
+    check_generic_bound, check_generics_bounds, def_id_to_vir_path, fn_item_hir_id_to_self_def_id,
+    hack_get_def_name, mid_ty_to_vir, mk_visibility, typ_path_and_ident_to_vir_path,
 };
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
 use crate::util::{err_span_str, spanned_new, unsupported_err_span};
@@ -27,7 +27,7 @@ use rustc_hir::{
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::Typ;
-use vir::ast::{Fun, FunX, FunctionKind, Krate, KrateX, Mode, Path, TypX, VirErr};
+use vir::ast::{Fun, FunX, FunctionKind, GenericBoundX, Krate, KrateX, Mode, Path, TypX, VirErr};
 use vir::ast_util::path_as_rust_name;
 
 fn check_item<'tcx>(
@@ -362,8 +362,20 @@ fn check_item<'tcx>(
             )?;
         }
         ItemKind::Macro(_macro_def) => {}
-        ItemKind::Trait(IsAuto::No, Unsafety::Normal, trait_generics, _bounds, trait_items) => {
+        ItemKind::Trait(IsAuto::No, Unsafety::Normal, trait_generics, bounds, trait_items) => {
             let trait_def_id = item.def_id.to_def_id();
+            for bound in bounds.iter() {
+                if let Some(r) = bound.trait_ref() {
+                    if let Some(id) = r.trait_def_id() {
+                        // allow marker types
+                        match &*check_generic_bound(ctxt.tcx, id, &vec![])? {
+                            GenericBoundX::Traits(bnds) if bnds.len() == 0 => continue,
+                            _ => {}
+                        }
+                    }
+                }
+                unsupported_err!(item.span, "trait generic bounds");
+            }
             let generics_bnds =
                 check_generics_bounds(ctxt.tcx, trait_generics, false, trait_def_id)?;
             let trait_path = def_id_to_vir_path(ctxt.tcx, trait_def_id);
