@@ -219,6 +219,59 @@ fn loop_triangle(n: u32) -> (sum: u32)
 }
 // ANCHOR_END: loop
 
+// ANCHOR: loop_return
+fn loop_triangle_return(n: u32) -> (sum: u32)
+    ensures
+        sum == triangle(n as nat) || (sum == 0xffff_ffff && triangle(n as nat) >= 0x1_0000_0000),
+{
+    let mut sum: u32 = 0;
+    let mut idx: u32 = 0;
+    while idx < n
+        invariant
+            idx <= n,
+            sum == triangle(idx as nat),
+    {
+        idx = idx + 1;
+        if sum as u64 + idx as u64 >= 0x1_0000_0000 {
+            proof {
+                triangle_is_monotonic(idx as nat, n as nat);
+            }
+            return 0xffff_ffff;
+        }
+        sum = sum + idx;
+    }
+    sum
+}
+// ANCHOR_END: loop_return
+
+// ANCHOR: loop_break
+fn loop_triangle_break(n: u32) -> (sum: u32)
+    ensures
+        sum == triangle(n as nat) || (sum == 0xffff_ffff && triangle(n as nat) >= 0x1_0000_0000),
+{
+    let mut sum: u32 = 0;
+    let mut idx: u32 = 0;
+    while idx < n
+        invariant
+            idx <= n,
+            sum == triangle(idx as nat),
+        ensures
+            sum == triangle(n as nat) || (sum == 0xffff_ffff && triangle(n as nat) >= 0x1_0000_0000),
+    {
+        idx = idx + 1;
+        if sum as u64 + idx as u64 >= 0x1_0000_0000 {
+            proof {
+                triangle_is_monotonic(idx as nat, n as nat);
+            }
+            sum = 0xffff_ffff;
+            break;
+        }
+        sum = sum + idx;
+    }
+    sum
+}
+// ANCHOR_END: loop_break
+
 // ANCHOR: ackermann
 spec fn ackermann(m: nat, n: nat) -> nat
     decreases m, n

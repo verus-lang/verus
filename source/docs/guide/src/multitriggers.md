@@ -17,18 +17,11 @@ and `j` be the larger one so that `i < j`.)
 
 In the example above, the trigger `is_distinct(s[i], s[j])`
 contains both the variables `i` and `j`,
-and the expression `is_distinct(s[4], s[2])` matches the trigger twice,
-once with `i = 4, j = 2`, and once with `i = 2, j = 4`:
+and the expression `is_distinct(s[2], s[4])` matches the trigger with `i = 2, j = 4`:
 
 ```
-0 <= 4 < 2 < s.len() ==> is_distinct(s[4], s[2])
 0 <= 2 < 4 < s.len() ==> is_distinct(s[2], s[4])
 ```
-
-In this case, the `i = 4, j = 2` instantiation is a dead end, since `4 < 2` fails,
-but the `i = 2, j = 4` instantiation proves `is_distinct(s[2], s[4])`,
-which then indirectly proves `is_distinct(s[4], s[2])`,
-since `is_distinct(x, y) <==> is_distinct(y, x)`.
 
 Instead of using a function call `is_distinct(s[i], s[j])`,
 we could just write `s[i] != s[j]` directly.

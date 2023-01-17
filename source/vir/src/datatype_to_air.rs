@@ -320,7 +320,18 @@ fn datatype_or_fun_to_air_commands(
                     TypX::Datatype(path, _) if ctx.datatype_is_transparent[path] => {
                         let node = crate::prelude::datatype_height_axiom(
                             &dpath,
-                            &path,
+                            Some(&path),
+                            &variant_field_ident(&dpath, &variant.name, &field.name),
+                        );
+                        let axiom = air::parser::Parser::new()
+                            .node_to_command(&node)
+                            .expect("internal error: malformed datatype axiom");
+                        axiom_commands.push(axiom);
+                    }
+                    TypX::TypParam(_) => {
+                        let node = crate::prelude::datatype_height_axiom(
+                            &dpath,
+                            None,
                             &variant_field_ident(&dpath, &variant.name, &field.name),
                         );
                         let axiom = air::parser::Parser::new()

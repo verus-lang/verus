@@ -23,6 +23,7 @@
     - [Recursive spec functions, decreases, fuel](recursion.md)
     - [Recursive exec and proof functions, proofs by induction](induction.md)
     - [Loops and invariants](while.md)
+        - [Loops with break](break.md)
     - [Lexicographic decreases clauses and mutual recursion](lex_mutual.md)
 - [Datatypes: struct and enum]() <!--- Andrea --->
     - [Defining datatypes]() <!--- Andrea --->
@@ -40,6 +41,8 @@
     - [Example: binary search](binary_search.md)
     - [spec closures]() <!--- Chris --->
     - [broadcast_forall]() <!--- Chris --->
+- [Runtime `exec` Features]()
+    - [Exec closures]()
 - [SMT solving, automation, and where automation fails]() <!--- Chris --->
     - [What's decidable, what's undecidable, what's fast, what's slow]() <!--- Chris --->
     - [integers: nonlinear arithmetic and bit vectors]() <!--- Chris and Chanhee --->
@@ -73,7 +76,7 @@
 - [Macros]()
 - [Tools and command-line options]()
     - [Proof Debugger]() <!--- Chanhee --->
-    - [IDE Support]() <!--- Chanhee --->
+    - [IDE Support](ide_support.md)
     - [Syntax Highlighting]()
 
 - [Verification and Rust]()

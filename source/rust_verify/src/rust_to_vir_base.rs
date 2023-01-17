@@ -479,7 +479,7 @@ pub(crate) fn is_smt_arith<'tcx>(bctx: &BodyCtxt<'tcx>, id1: &HirId, id2: &HirId
     }
 }
 
-fn check_generic_bound<'tcx>(
+pub(crate) fn check_generic_bound<'tcx>(
     tcx: TyCtxt<'tcx>,
     trait_def_id: DefId,
     args: &Vec<rustc_middle::ty::Ty<'tcx>>,

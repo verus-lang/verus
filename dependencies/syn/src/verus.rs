@@ -132,6 +132,13 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct InvariantEnsures {
+        pub token: Token![invariant_ensures],
+        pub exprs: Specification,
+    }
+}
+
+ast_struct! {
     pub struct Decreases {
         pub token: Token![decreases],
         pub exprs: Specification,
@@ -301,6 +308,8 @@ pub mod parsing {
             let mut exprs = Punctuated::new();
             while !(input.is_empty()
                 || input.peek(token::Brace)
+                || input.peek(Token![invariant])
+                || input.peek(Token![invariant_ensures])
                 || input.peek(Token![ensures])
                 || input.peek(Token![decreases]))
             {
@@ -357,6 +366,16 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for InvariantEnsures {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(InvariantEnsures {
+                token: input.parse()?,
+                exprs: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Decreases {
         fn parse(input: ParseStream) -> Result<Self> {
             Ok(Decreases {
@@ -403,6 +422,17 @@ pub mod parsing {
     impl Parse for Option<Invariant> {
         fn parse(input: ParseStream) -> Result<Self> {
             if input.peek(Token![invariant]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<InvariantEnsures> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![invariant_ensures]) {
                 input.parse().map(Some)
             } else {
                 Ok(None)
@@ -665,6 +695,14 @@ mod printing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for Invariant {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+            self.exprs.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for InvariantEnsures {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.token.to_tokens(tokens);
             self.exprs.to_tokens(tokens);

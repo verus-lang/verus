@@ -1,3 +1,14 @@
+//! The "standard library" for [Verus](https://github.com/verus-lang/verus).
+//! Contains various utilities and datatypes for proofs,
+//! as well as runtime functionality with specifications.
+//! For an introduction to Verus, see [the tutorial](https://verus-lang.github.io/verus/guide/).
+//!
+//! **Note about using the library:** A current limitation of Verus is that it does not
+//! support multi-crate projects. Therefore, this library needs to be embedded as a
+//! a _module_ in every user crate.
+//! See [this page](https://verus-lang.github.io/verus/guide/pervasive.html) for more details.
+//! We expect these hacks to go away once Verus has proper multi-crate support.
+
 pub mod map;
 pub mod option;
 pub mod result;

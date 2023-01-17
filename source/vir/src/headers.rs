@@ -1,4 +1,7 @@
-use crate::ast::{Expr, ExprX, Exprs, Fun, HeaderExprX, Ident, MaskSpec, Stmt, StmtX, Typ, VirErr};
+use crate::ast::{
+    Expr, ExprX, Exprs, Fun, HeaderExprX, Ident, LoopInvariant, LoopInvariantKind, LoopInvariants,
+    MaskSpec, Stmt, StmtX, Typ, VirErr,
+};
 use crate::ast_util::err_str;
 use std::sync::Arc;
 
@@ -11,6 +14,7 @@ pub struct Header {
     pub ensure_id_typ: Option<(Ident, Typ)>,
     pub ensure: Exprs,
     pub invariant: Exprs,
+    pub invariant_ensure: Exprs,
     pub decrease: Exprs,
     pub decrease_when: Option<Expr>,
     pub decrease_by: Option<Fun>,
@@ -25,6 +29,7 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let mut ensure: Option<(Option<(Ident, Typ)>, Exprs)> = None;
     let mut recommend: Option<Exprs> = None;
     let mut invariant: Option<Exprs> = None;
+    let mut invariant_ensure: Option<Exprs> = None;
     let mut decrease: Option<Exprs> = None;
     let mut decrease_when: Option<Expr> = None;
     let mut decrease_by: Option<Fun> = None;
@@ -75,6 +80,15 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                             );
                         }
                         invariant = Some(es.clone());
+                    }
+                    HeaderExprX::InvariantEnsures(es) => {
+                        if invariant_ensure.is_some() {
+                            return err_str(
+                                &stmt.span,
+                                "only one call to invariant_ensures allowed (use invariant_ensures([e1, ..., en]) for multiple expressions",
+                            );
+                        }
+                        invariant_ensure = Some(es.clone());
                     }
                     HeaderExprX::Decreases(es) => {
                         if decrease.is_some() {
@@ -142,6 +156,7 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
         Some((id_typ, es)) => (id_typ, es),
     };
     let invariant = invariant.unwrap_or(Arc::new(vec![]));
+    let invariant_ensure = invariant_ensure.unwrap_or(Arc::new(vec![]));
     let decrease = decrease.unwrap_or(Arc::new(vec![]));
     Ok(Header {
         no_method_body: false,
@@ -151,6 +166,7 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
         ensure_id_typ,
         ensure,
         invariant,
+        invariant_ensure,
         decrease,
         decrease_when,
         decrease_by,
@@ -185,5 +201,25 @@ pub fn read_header(body: &mut Expr) -> Result<Header, VirErr> {
             Ok(header)
         }
         _ => read_header_block(&mut vec![]),
+    }
+}
+
+impl Header {
+    fn add_invariants(invs: &mut Vec<LoopInvariant>, exprs: &Vec<Expr>, kind: LoopInvariantKind) {
+        for expr in exprs {
+            invs.push(LoopInvariant { kind, inv: expr.clone() });
+        }
+    }
+
+    pub fn loop_invariants(&self) -> LoopInvariants {
+        let mut invs: Vec<LoopInvariant> = Vec::new();
+        Self::add_invariants(&mut invs, &self.invariant, LoopInvariantKind::Invariant);
+        Self::add_invariants(
+            &mut invs,
+            &self.invariant_ensure,
+            LoopInvariantKind::InvariantEnsures,
+        );
+        Self::add_invariants(&mut invs, &self.ensure, LoopInvariantKind::Ensures);
+        Arc::new(invs)
     }
 }
