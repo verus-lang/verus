@@ -642,3 +642,33 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] expressions_with_no_side_effects verus_code! {
+        spec fn some_int(x: int) -> int {
+            x
+        }
+
+        proof fn proof_fn() {
+            some_int(12);
+            assert(false); // FAILS
+        }
+
+        proof fn require_false_return_int() -> int
+            requires false,
+        {
+            13
+        }
+
+        proof fn proof_fn2() {
+            7 +
+                require_false_return_int(); // FAILS
+        }
+
+
+        fn exec_fn() {
+            5;
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
