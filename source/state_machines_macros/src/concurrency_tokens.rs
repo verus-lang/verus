@@ -441,10 +441,14 @@ fn get_macro_decl(sm: &SM) -> TokenStream {
         &("_".to_string() + &mod_segments.join("_") + &sm.name.to_string() + "_token"),
         sm.name.span(),
     );
+    let macro_name_internal = Ident::new(
+        &("_".to_string() + &mod_segments.join("_") + &sm.name.to_string() + "_token_internal"),
+        sm.name.span(),
+    );
 
     quote! {
         #[macro_export]
-        macro_rules! #macro_name {
+        macro_rules! #macro_name_internal {
             #(#arms)*
             ($instance:expr => $id:ident => $($tt:tt)*) => {
                 ::std::compile_error!(::std::concat!(
@@ -452,6 +456,13 @@ fn get_macro_decl(sm: &SM) -> TokenStream {
                     ::std::stringify!($id),
                     #msg_string_lit
                 ))
+            };
+        }
+
+        #[macro_export]
+        macro_rules! #macro_name {
+            [$($tail:tt)*] => {
+                ::builtin_macros::verus_proof_macro_exprs!(#macro_name_internal!($($tail)*))
             };
         }
 

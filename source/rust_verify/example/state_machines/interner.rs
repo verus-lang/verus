@@ -22,7 +22,7 @@ tokenized_state_machine!{InternSystem<T> {
         pub auth: Seq<T>,
 
         #[sharding(persistent_map)]
-        pub frag: Map<nat, T>,
+        pub frag: Map<int, T>,
     }
 
     init!{
@@ -40,7 +40,7 @@ tokenized_state_machine!{InternSystem<T> {
     }
 
     transition!{
-        get_frag(idx: nat) {
+        get_frag(idx: int) {
             require(0 <= idx && idx < pre.auth.len());
             let val = pre.auth.index(idx);
             add frag (union)= [idx => val];
@@ -48,17 +48,17 @@ tokenized_state_machine!{InternSystem<T> {
     }
 
     property!{
-        get_value(i: nat) {
+        get_value(i: int) {
             have frag >= [i => let val];
             assert(i < pre.auth.len() && pre.auth.index(i) === val);
         }
     }
 
     property!{
-        compute_equality(idx1: nat, val1: T, idx2: nat, val2: T) {
+        compute_equality(idx1: int, val1: T, idx2: int, val2: T) {
             have frag >= [idx1 => val1];
             have frag >= [idx2 => val2];
-            assert((idx1 == idx2) == equal(val1, val2));
+            assert((idx1 == idx2) <==> (val1 === val2));
         }
     }
 
@@ -123,8 +123,10 @@ tokenized_state_machine!{InternSystem<T> {
     }
    
     #[inductive(get_frag)]
-    fn get_frag_inductive(pre: Self, post: Self, idx: nat) { }
+    fn get_frag_inductive(pre: Self, post: Self, idx: int) { }
 }}
+
+verus_old_todo_no_ghost_blocks!{
 
 // We want the following properties:
 //
@@ -135,7 +137,7 @@ tokenized_state_machine!{InternSystem<T> {
 //
 // However, WITHOUT access to the object, you should be able to:
 //
-// - use `.view()` to get the original string (in spec-code)
+// - use `@` to get the original string (in spec-code)
 //   so that you could reason about the string as if you just had the original
 // - evaluate string equality by comparing the IDs
 
@@ -151,53 +153,49 @@ struct Interned<T> {
     id: usize,
 }
 
-verus!{
-
 #[verifier(external_body)]
 fn compute_eq<T>(a: &T, b: &T) -> (res: bool)
-  ensures res == equal(a, b)
+  ensures res <==> (a === b)
 {
-  unimplemented!();
-}
-
+    unimplemented!();
 }
 
 impl<T> Interner<T> {
-    verus!{
     spec fn wf(&self, inst: InternSystem::Instance<T>) -> bool {
         &&& self.inst === inst
         &&& self.auth@.instance === inst
         &&& self.auth@.value === self.store@
     }
-    }
 
-    fn new() -> (Self, Trk<InternSystem::Instance<T>>) {
-        ensures(|x: (Self, Trk<InternSystem::Instance<T>>)| {
+    fn new() -> (x: (Self, Trk<InternSystem::Instance<T>>))
+        ensures ({
             #[spec] let s = x.0;
             #[spec] let inst = x.1.0;
             s.wf(inst)
-        });
-
+        }),
+    {
         #[proof] let (Trk(inst), Trk(auth), Trk(_f)) = InternSystem::Instance::empty();
         let store = Vec::new();
 
         (Interner { inst: inst.clone(), auth, store }, Trk(inst))
     }
 
-    fn insert(&mut self, #[spec] inst: InternSystem::Instance<T>, val: T) -> Interned<T> {
-        requires(old(self).wf(inst));
-        ensures(|st: Interned<T>| self.wf(inst) && st.wf(inst) && equal(st.view(), val));
-
+    fn insert(&mut self, #[spec] inst: InternSystem::Instance<T>, val: T) -> (st: Interned<T>)
+        requires old(self).wf(inst),
+        ensures self.wf(inst) && st.wf(inst) && st@ === val,
+    {
         let idx: usize = 0;
-        while idx < self.store.len() {
-            invariant([
-                0 <= idx && idx <= self.store.view().len(),
+        while idx < self.store.len()
+            invariant
+                0 <= idx && idx <= self.store@.len(),
                 self.wf(inst),
-            ]);
-
+        {
             let eq = compute_eq(&val, self.store.index(idx));
             if eq {
-                #[proof] let frag = self.inst.get_frag(idx, &self.auth);
+                #[proof] let frag;
+                proof {
+                    frag = self.inst.get_frag(idx as int, &self.auth);
+                };
                 return Interned {
                     inst: self.inst.clone(),
                     frag,
@@ -211,7 +209,10 @@ impl<T> Interner<T> {
 
         self.inst.insert(val, &mut self.auth);
 
-        #[proof] let frag = self.inst.get_frag(idx, &self.auth);
+        #[proof] let frag;
+        proof {
+            frag = self.inst.get_frag(idx as int, &self.auth)
+        };
         Interned {
             inst: self.inst.clone(),
             frag,
@@ -219,20 +220,22 @@ impl<T> Interner<T> {
         }
     }
 
-    fn get<'a>(&'a self, interned: &Interned<T>,
-        #[spec] inst: InternSystem::Instance<T>) -> &'a T
+    fn get<'a>(
+        &'a self,
+        interned: &Interned<T>,
+        #[spec] inst: InternSystem::Instance<T>
+    ) -> (st: &'a T)
+        requires self.wf(inst) && interned.wf(inst),
+        ensures *st === interned@,
     {
-        requires(self.wf(inst) && interned.wf(inst));
-        ensures(|st| equal(st, interned.view()));
-
-        self.inst.get_value(interned.id as nat, &self.auth, &interned.frag);
-
+        proof {
+            self.inst.get_value(interned.id as int, &self.auth, &interned.frag);
+        }
         self.store.index(interned.id)
     }
 }
 
 impl<T> Interned<T> {
-    verus!{
     spec fn wf(&self, inst: InternSystem::Instance<T>) -> bool {
         &&& self.frag@.instance === inst
         &&& inst === self.inst
@@ -242,12 +245,11 @@ impl<T> Interned<T> {
     spec fn view(&self) -> T {
         self.frag@.value
     }
-    }
 
-    fn clone(&self, #[spec] inst: InternSystem::Instance<T>) -> Self {
-        requires(self.wf(inst));
-        ensures(|s: Self| s.wf(inst) && equal(s.view(), self.view()));
-
+    fn clone(&self, #[spec] inst: InternSystem::Instance<T>) -> (s: Self)
+        requires self.wf(inst),
+        ensures s.wf(inst) && s@ === self@,
+    {
         Interned {
             inst: self.inst.clone(),
             frag: self.frag.clone(),
@@ -255,22 +257,21 @@ impl<T> Interned<T> {
         }
     }
 
-    fn cmp_eq(&self, other: &Self, #[spec] inst: InternSystem::Instance<T>) -> bool {
-        requires(self.wf(inst) && other.wf(inst));
-        ensures(|b: bool| b == equal(self.view(), other.view()));
+    fn cmp_eq(&self, other: &Self, #[spec] inst: InternSystem::Instance<T>) -> (b: bool)
+        requires self.wf(inst) && other.wf(inst),
+        ensures b == (self@ === other@),
+    {
 
         self.inst.compute_equality(
-            self.frag.view().key,
-            self.frag.view().value,
-            other.frag.view().key,
-            other.frag.view().value,
+            self.frag@.key,
+            self.frag@.value,
+            other.frag@.key,
+            other.frag@.value,
             &self.frag, &other.frag);
 
         self.id == other.id
     }
 }
-
-
 
 fn main() {
     let (mut interner, Trk(inst)) = Interner::<u64>::new();
@@ -297,4 +298,4 @@ fn main() {
 
 }
 
-
+}

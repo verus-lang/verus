@@ -450,9 +450,11 @@ macro_rules! atomic_with_ghost_update_fetch_add {
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
                 #[allow(unused_mut)]
                 #[proof] let (mut perm, mut $g) = pair;
-                #[spec] let $prev = perm.view().value as int;
+                #[spec] let $prev = ::builtin::spec_cast_integer::<_, int>(perm.view().value);
                 let op = $operand;
-                #[spec] let computed = (perm.view().value as int) + (op as int);
+                #[spec] let computed =
+                    ::builtin::spec_cast_integer::<_, int>(perm.view().value) +
+                    ::builtin::spec_cast_integer::<_, int>(op);
                 #[spec] let $res = computed;
                 #[spec] let $next = computed;
 
@@ -477,9 +479,11 @@ macro_rules! atomic_with_ghost_update_fetch_sub {
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
                 #[allow(unused_mut)]
                 #[proof] let (mut perm, mut $g) = pair;
-                #[spec] let $prev = perm.view().value as int;
+                #[spec] let $prev = ::builtin::spec_cast_integer::<_, int>(perm.view().value);
                 let op = $operand;
-                #[spec] let computed = (perm.view().value as int) - (op as int);
+                #[spec] let computed =
+                    ::builtin::spec_cast_integer::<_, int>(perm.view().value) -
+                    ::builtin::spec_cast_integer::<_, int>(op);
                 #[spec] let $res = computed;
                 #[spec] let $next = computed;
 

@@ -8,8 +8,8 @@ test_verify_one_file! {
         use pervasive::modes::*;
         use pervasive::option::*;
 
-        fn f1<T>(t: Spec<Option<T>>) {
-            #[spec] let x = t.value().get_Some_0();
+        fn f1<T>(t: Ghost<Option<T>>) {
+            #[spec] let x = t.view().get_Some_0();
         }
 
         #[spec]

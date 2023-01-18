@@ -13,6 +13,8 @@ use state_machines_macros::tokenized_state_machine;
 use crate::pervasive::result::*;
 use std::sync::Arc;
 
+verus_old_todo_no_ghost_blocks!{
+
 // ANCHOR: fields
 tokenized_state_machine!{
     X {
@@ -112,10 +114,21 @@ struct_with_invariants!{
 fn do_count(num_threads: u32) {
     // Initialize protocol 
 
-    #[proof] let (Trk(instance),
-        Trk(counter_token),
-        Trk(mut unstamped_tokens),
-        Trk(mut stamped_tokens)) = X::Instance::initialize(num_threads as nat);
+    #[proof] let instance;
+    #[proof] let counter_token;
+    #[proof] let mut unstamped_tokens;
+    #[proof] let mut stamped_tokens;
+
+    proof {
+        #[proof] let (Trk(instance0),
+            Trk(counter_token0),
+            Trk(unstamped_tokens0),
+            Trk(stamped_tokens0)) = X::Instance::initialize(num_threads as nat);
+        instance = instance0;
+        counter_token = counter_token0;
+        unstamped_tokens = unstamped_tokens0;
+        stamped_tokens = stamped_tokens0;
+    }
 
     // Initialize the counter
 
@@ -130,29 +143,32 @@ fn do_count(num_threads: u32) {
     let mut join_handles: Vec<JoinHandle<Proof<X::stamped_tickets>>> = Vec::new();
 
     let mut i = 0;
-    while i < num_threads {
-        invariant([
+    while i < num_threads
+        invariant
             0 <= i,
             i <= num_threads,
-            unstamped_tokens.view().count + i as int == num_threads as int,
-            equal(unstamped_tokens.view().instance, instance),
-            join_handles.view().len() == i as int,
-            forall(|j: int, ret| 0 <= j && j < i >>=
-                join_handles.view().index(j).predicate(ret) >>=
-                    equal(ret.0.view().instance, instance) && ret.0.view().count == 1),
+            unstamped_tokens@.count + i as int == num_threads as int,
+            unstamped_tokens@.instance === instance,
+            join_handles@.len() == i as int,
+            forall |j: int, ret| 0 <= j && j < i ==>
+                join_handles@.index(j).predicate(ret) ==>
+                    ret.0@.instance === instance && ret.0@.count == 1,
             (*global_arc).wf(),
-            equal((*global_arc).instance, instance),
-        ]);
-
-        #[proof] let (Trk(unstamped_token), Trk(rest)) = unstamped_tokens.split(1);
-        unstamped_tokens = rest;
+            (*global_arc).instance === instance,
+    {
+        #[proof] let unstamped_token;
+        proof {
+            #[proof] let (Trk(unstamped_token0), Trk(rest)) = unstamped_tokens.split(1 as nat);
+            unstamped_tokens = rest;
+            unstamped_token = unstamped_token0;
+        }
 
         let global_arc = global_arc.clone();
 
         let join_handle = spawn(move || {
             ensures(|new_token: Proof<X::stamped_tickets>|
-                equal(new_token.0.view().instance, instance)
-                    && new_token.0.view().count == 1
+                new_token.0@.instance === instance
+                    && new_token.0@.count == spec_cast_integer::<_, nat>(1)
             );
 
             #[proof] let unstamped_token = unstamped_token;
@@ -183,19 +199,19 @@ fn do_count(num_threads: u32) {
     // Join threads
 
     let mut i = 0;
-    while i < num_threads {
-        invariant([
+    while i < num_threads
+        invariant
             0 <= i,
             i <= num_threads,
-            stamped_tokens.view().count == i as int,
-            equal(stamped_tokens.view().instance, instance),
-            join_handles.view().len() as int + i as int == num_threads,
-            forall(|j: int, ret| 0 <= j && j < join_handles.view().len() >>=
-                #[trigger] join_handles.view().index(j).predicate(ret) >>=
-                    equal(ret.0.view().instance, instance) && ret.0.view().count == 1),
+            stamped_tokens@.count == i as int,
+            stamped_tokens@.instance === instance,
+            join_handles@.len() as int + i as int == num_threads,
+            forall |j: int, ret| 0 <= j && j < join_handles@.len() ==>
+                #[trigger] join_handles@.index(j).predicate(ret) ==>
+                    ret.0@.instance === instance && ret.0@.count == 1,
             (*global_arc).wf(),
-            equal((*global_arc).instance, instance),
-        ]);
+            (*global_arc).instance === instance,
+    {
 
         let join_handle = join_handles.pop();
 
@@ -217,10 +233,12 @@ fn do_count(num_threads: u32) {
         }
     );
 
-    assert(equal(x, num_threads));
+    assert(x == num_threads);
 }
 
 fn main() {
     do_count(20);
+}
+
 }
 // ANCHOR_END: full

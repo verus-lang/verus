@@ -12,6 +12,8 @@ use state_machines_macros::tokenized_state_machine;
 use crate::pervasive::result::*;
 use std::sync::Arc;
 
+verus_old_todo_no_ghost_blocks!{
+
 tokenized_state_machine!(
     X {
         fields {
@@ -82,6 +84,7 @@ tokenized_state_machine!(
     }
 );
 
+
 // ANCHOR: global_struct
 struct_with_invariants!{
     pub struct Global {
@@ -105,92 +108,92 @@ struct_with_invariants!{
 // ANCHOR_END: global_struct
 
 fn main() {
-  // Initialize protocol 
+    // Initialize protocol 
 
-  #[proof] let (Trk(instance),
-      Trk(counter_token),
-      Trk(inc_a_token),
-      Trk(inc_b_token)) = X::Instance::initialize();
+    #[proof] let (Trk(instance),
+        Trk(counter_token),
+        Trk(inc_a_token),
+        Trk(inc_b_token)) = X::Instance::initialize();
 
-  // Initialize the counter
+    // Initialize the counter
 
-  let atomic = AtomicU32::new(instance, 0, counter_token);
+    let atomic = AtomicU32::new(instance, 0, counter_token);
 
-  let global = Global { atomic, instance: instance.clone() };
-  let global_arc = Arc::new(global);
+    let global = Global { atomic, instance: instance.clone() };
+    let global_arc = Arc::new(global);
 
-  // Spawn threads
+    // Spawn threads
 
-  // Thread 1
+    // Thread 1
 
-  let global_arc1 = global_arc.clone();
-  let join_handle1 = spawn(move || {
-      ensures(|new_token: Proof<X::inc_a>|
-          equal(new_token.0.view(),
-              X::token![instance => inc_a => true]
-          )
-      );
+    let global_arc1 = global_arc.clone();
+    let join_handle1 = spawn(move || {
+        ensures(|new_token: Proof<X::inc_a>|
+            new_token.0@ ===
+                X::token![instance => inc_a => true]
+        );
 
-      // `inc_a_token` is moved into the closure
-      #[proof] let mut token = inc_a_token;
-      let globals = &*global_arc1;
+        // `inc_a_token` is moved into the closure
+        #[proof] let mut token = inc_a_token;
+        let globals = &*global_arc1;
 
-      let _ = atomic_with_ghost!(&globals.atomic => fetch_add(1);
-          ghost c => {
-              globals.instance.tr_inc_a(&mut c, &mut token); // atomic increment
-          }
-      );
+        let _ = atomic_with_ghost!(&globals.atomic => fetch_add(1);
+            ghost c => {
+                globals.instance.tr_inc_a(&mut c, &mut token); // atomic increment
+            }
+        );
 
-      Proof(token)
-  });
+        Proof(token)
+    });
 
-  // Thread 2
+    // Thread 2
 
-  let global_arc2 = global_arc.clone();
-  let join_handle2 = spawn(move || {
-      ensures(|new_token: Proof<X::inc_b>|
-        equal(new_token.0.view(),
-            X::token![instance => inc_b => true]
-        )
-      );
+    let global_arc2 = global_arc.clone();
+    let join_handle2 = spawn(move || {
+        ensures(|new_token: Proof<X::inc_b>|
+            new_token.0@ ===
+                X::token![instance => inc_b => true]
+        );
 
-      // `inc_b_token` is moved into the closure
-      #[proof] let mut token = inc_b_token;
-      let globals = &*global_arc2;
+        // `inc_b_token` is moved into the closure
+        #[proof] let mut token = inc_b_token;
+        let globals = &*global_arc2;
 
-      let _ = atomic_with_ghost!(&globals.atomic => fetch_add(1);
-          ghost c => {
-              globals.instance.tr_inc_b(&mut c, &mut token); // atomic increment
-          }
-      );
+        let _ = atomic_with_ghost!(&globals.atomic => fetch_add(1);
+            ghost c => {
+                globals.instance.tr_inc_b(&mut c, &mut token); // atomic increment
+            }
+        );
 
-      Proof(token)
-  });
+        Proof(token)
+    });
 
-  // Join threads
+    // Join threads
 
-  #[proof] let inc_a_token;
-  match join_handle1.join() {
-      Result::Ok(Proof(token)) => { inc_a_token = token; }
-      _ => { return; }
-  };
+    #[proof] let inc_a_token;
+    match join_handle1.join() {
+        Result::Ok(Proof(token)) => { inc_a_token = token; }
+        _ => { return; }
+    };
 
-  #[proof] let inc_b_token;
-  match join_handle2.join() {
-      Result::Ok(Proof(token)) => { inc_b_token = token; }
-      _ => { return; }
-  };
+    #[proof] let inc_b_token;
+    match join_handle2.join() {
+        Result::Ok(Proof(token)) => { inc_b_token = token; }
+        _ => { return; }
+    };
 
-  // Join threads, load the atomic again
+    // Join threads, load the atomic again
 
-  let global = &*global_arc;
-  
-  let x = atomic_with_ghost!(&global.atomic => load();
-      ghost c => {
-          instance.finalize(&c, &inc_a_token, &inc_b_token);
-      }
-  );
+    let global = &*global_arc;
+    
+    let x = atomic_with_ghost!(&global.atomic => load();
+        ghost c => {
+            instance.finalize(&c, &inc_a_token, &inc_b_token);
+        }
+    );
 
-  assert(equal(x, 2));
+    assert(x == 2);
+}
+
 }
 // ANCHOR_END: full

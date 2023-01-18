@@ -21,6 +21,8 @@ use pervasive::atomic_ghost::*;
 use pervasive::modes::*;
 use std::sync::Arc;
 
+verus_old_todo_no_ghost_blocks!{
+
 use state_machines_macros::tokenized_state_machine;
 
 // ANCHOR: enum_state
@@ -147,8 +149,8 @@ tokenized_state_machine!{FifoQueue<T> {
     // based on the producer/consumer state.
 
     pub open spec fn is_checked_out(&self, i: nat) -> bool {
-        equal(self.producer, ProducerState::Producing(i))
-        || equal(self.consumer, ConsumerState::Consuming(i))
+        self.producer === ProducerState::Producing(i)
+        || self.consumer === ConsumerState::Consuming(i)
     }
 
     // Predicate to determine that the state at cell index `i`
@@ -170,24 +172,21 @@ tokenized_state_machine!{FifoQueue<T> {
             self.storage.dom().contains(i)
 
             // Permission must be for the correct cell:
-            && equal(
-                self.storage.index(i).view().pcell,
-                self.backing_cells.index(i)
-            )
+            && self.storage.index(i)@.pcell === self.backing_cells.index(i as int)
 
             && if self.in_active_range(i) {
                 // The cell is full
-                self.storage.index(i).view().value.is_Some()
+                self.storage.index(i)@.value.is_Some()
             } else {
                 // The cell is empty
-                self.storage.index(i).view().value.is_None()
+                self.storage.index(i)@.value.is_None()
             }
         }
     }
 
     #[invariant]
     pub fn valid_storage_all(&self) -> bool {
-        forall(|i: nat| 0 <= i && i < self.len() >>=
+        forall(|i: nat| 0 <= i && i < self.len() ==>
             self.valid_storage_at_idx(i))
     }
 
@@ -198,13 +197,10 @@ tokenized_state_machine!{FifoQueue<T> {
             // an empty cell.
 
             require(
-                forall(|i: nat| 0 <= i && i < backing_cells.len() >>=
+                forall(|i: nat| 0 <= i && i < backing_cells.len() ==>
                     #[trigger] storage.dom().contains(i)
-                    && equal(
-                        storage.index(i).view().pcell,
-                        backing_cells.index(i)
-                    )
-                    && storage.index(i).view().value.is_None(),
+                    && storage.index(i)@.pcell === backing_cells.index(i as int)
+                    && storage.index(i)@.value.is_None(),
                 )
             );
             require(backing_cells.len() > 0);
@@ -252,8 +248,8 @@ tokenized_state_machine!{FifoQueue<T> {
             //  (i) is for the cell at index `tail` (the IDs match)
             //  (ii) the permission indicates that the cell is empty
             assert(
-                equal(perm.view().pcell, pre.backing_cells.index(tail))
-                && perm.view().value.is_None()
+                perm@.pcell === pre.backing_cells.index(tail as int)
+                && perm@.value.is_None()
             ) by {
                 assert(!pre.in_active_range(tail));
                 assert(pre.valid_storage_at_idx(tail));
@@ -289,8 +285,8 @@ tokenized_state_machine!{FifoQueue<T> {
             // checked in satisfies its requirements. It has to be associated
             // with the correct cell, and it has to be full.
 
-            require(equal(perm.view().pcell, pre.backing_cells.index(tail))
-              && perm.view().value.is_Some());
+            require(perm@.pcell === pre.backing_cells.index(tail as int)
+              && perm@.value.is_Some());
 
             // Perform our updates. Update the tail to the computed value,
             // both the shared version and the producer's local copy.
@@ -329,10 +325,10 @@ tokenized_state_machine!{FifoQueue<T> {
                 assert(pre.valid_storage_at_idx(head));
             };
 
-            assert(equal(perm.view().pcell, pre.backing_cells.index(head))) by {
+            assert(perm@.pcell === pre.backing_cells.index(head as int)) by {
                 assert(pre.valid_storage_at_idx(head));
             };
-            assert(perm.view().value.is_Some()) by {
+            assert(perm@.value.is_Some()) by {
                 assert(pre.in_active_range(head));
                 assert(pre.valid_storage_at_idx(head));
             };
@@ -350,30 +346,29 @@ tokenized_state_machine!{FifoQueue<T> {
             update consumer = ConsumerState::Idle(next_head);
             update head = next_head;
 
-            require(equal(perm.view().pcell, pre.backing_cells.index(head))
-              && perm.view().value.is_None());
+            require(perm@.pcell === pre.backing_cells.index(head as int)
+              && perm@.value.is_None());
             deposit storage += [head => perm] by { assert(pre.valid_storage_at_idx(head)); };
         }
     }
 
     #[inductive(initialize)]
     fn initialize_inductive(post: Self, backing_cells: Seq<CellId>, storage: Map<nat, cell::PermissionOpt<T>>) {
-        assert_forall_by(|i: nat| {
-            requires(0 <= i && i < post.len());
-            ensures(post.valid_storage_at_idx(i));
-
+        assert forall|i: nat|
+            0 <= i && i < post.len() implies post.valid_storage_at_idx(i)
+        by {
             assert(post.storage.dom().contains(i));
             /*
-            assert(equal(
-                post.storage.index(i).view().pcell,
+            assert(
+                post.storage.index(i)@.pcell ===
                 post.backing_cells.index(i)
-            ));
+            );
             assert(if post.in_active_range(i) {
                 post.storage.index(i).value.is_Some()
             } else {
                 post.storage.index(i).value.is_None()
             });*/
-        });
+        }
     }
 
     //// Invariant proofs
@@ -396,52 +391,51 @@ tokenized_state_machine!{FifoQueue<T> {
                 assert(head != tail);
             }
         }
-        assert(forall(|i| pre.valid_storage_at_idx(i) >>= post.valid_storage_at_idx(i)));
+        assert(forall(|i| pre.valid_storage_at_idx(i) ==> post.valid_storage_at_idx(i)));
     }
 
     #[inductive(produce_end)]
     fn produce_end_inductive(pre: Self, post: Self, perm: cell::PermissionOpt<T>) {
-        assert_forall_by(|i| {
-            requires(pre.valid_storage_at_idx(i));
-            ensures(post.valid_storage_at_idx(i));
-
+        assert forall |i|
+            pre.valid_storage_at_idx(i) implies
+            post.valid_storage_at_idx(i)
+        by {
             /*if post.is_checked_out(i) {
                 assert(!post.storage.dom().contains(i));
             } else {
                 assert(post.storage.dom().contains(i));
-                assert(equal(
-                    post.storage.index(i).view().pcell,
+                assert(
+                    post.storage.index(i)@.pcell ===
                     post.backing_cells.index(i)
-                ));
+                );
                 assert(if post.in_active_range(i) {
                     post.storage.index(i).value.is_Some()
                 } else {
                     post.storage.index(i).value.is_None()
                 });
             }*/
-        });
+        }
     }
 
     #[inductive(consume_start)]
     fn consume_start_inductive(pre: Self, post: Self) {
-        assert_forall_by(|i| {
-            requires(pre.valid_storage_at_idx(i));
-            ensures(post.valid_storage_at_idx(i));
-        });
+        assert forall |i|
+            pre.valid_storage_at_idx(i) implies post.valid_storage_at_idx(i)
+        by { }
     }
    
     #[inductive(consume_end)]
     fn consume_end_inductive(pre: Self, post: Self, perm: cell::PermissionOpt<T>) {
         let head = pre.consumer.get_Consuming_0();
         assert(post.storage.dom().contains(head));
-        assert(equal(
-                post.storage.index(head).view().pcell,
-                post.backing_cells.index(head)
-            ));
+        assert(
+                post.storage.index(head)@.pcell ===
+                post.backing_cells.index(head as int)
+            );
         assert(if post.in_active_range(head) {
-                post.storage.index(head).view().value.is_Some()
+                post.storage.index(head)@.value.is_Some()
             } else {
-                post.storage.index(head).view().value.is_None()
+                post.storage.index(head)@.value.is_None()
             });
 
         match (pre.producer, pre.consumer) {
@@ -463,15 +457,14 @@ tokenized_state_machine!{FifoQueue<T> {
         assert(!post.is_checked_out(head));
         assert(post.valid_storage_at_idx(head));
 
-        assert_forall_by(|i| {
-            requires(pre.valid_storage_at_idx(i));
-            ensures(post.valid_storage_at_idx(i));
-        });
+        assert forall |i|
+            pre.valid_storage_at_idx(i) implies post.valid_storage_at_idx(i)
+        by { }
     }
 }}
 
 // ANCHOR: impl_queue_struct
-struct_decl_with_invariants!{
+struct_with_invariants!{
     struct Queue<T> {
         buffer: Vec<PCell<T>>,
         head: AtomicU64<_, FifoQueue::head<T>, _>,
@@ -511,12 +504,11 @@ pub struct Producer<T> {
 }
 
 impl<T> Producer<T> {
-    #[spec]
-    pub fn wf(&self) -> bool {
+    pub closed spec fn wf(&self) -> bool {
            (*self.queue).wf()
-        && equal(self.producer.view().instance, (*self.queue).instance)
-        && equal(self.producer.view().value, ProducerState::Idle(self.tail as nat))
-        && ((self.tail as int) < (*self.queue).buffer.view().len())
+        && self.producer@.instance === (*self.queue).instance
+        && self.producer@.value === ProducerState::Idle(self.tail as nat)
+        && (self.tail as int) < (*self.queue).buffer@.len()
     }
 }
 // ANCHOR_END: impl_producer_struct
@@ -530,12 +522,11 @@ pub struct Consumer<T> {
 }
 
 impl<T> Consumer<T> {
-    #[spec]
-    pub fn wf(&self) -> bool {
+    pub closed spec fn wf(&self) -> bool {
            (*self.queue).wf()
-        && equal(self.consumer.view().instance, (*self.queue).instance)
-        && equal(self.consumer.view().value, ConsumerState::Idle(self.head as nat))
-        && (self.head as int) < (*self.queue).buffer.view().len()
+        && self.consumer@.instance === (*self.queue).instance
+        && self.consumer@.value === ConsumerState::Idle(self.head as nat)
+        && (self.head as int) < (*self.queue).buffer@.len()
     }
 }
 // ANCHOR_END: impl_consumer_struct
@@ -555,37 +546,40 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
     // (keyed by the indices into the vector)
     #[proof] let mut perms = Map::<nat, cell::PermissionOpt<T>>::tracked_empty();
 
-    while backing_cells_vec.len() < len {
-        invariant(
-            forall(|j: int| with_triggers!(
-                [perms.dom().contains(j as nat)],
-                [backing_cells_vec.view().index(j as nat)], 
-                [perms.index(j as nat)] =>
-                0 <= j && j < backing_cells_vec.len() as int >>=
-                #[trigger] perms.dom().contains(j as nat)
-                &&
-                equal(backing_cells_vec.index(j as nat).id(), perms.index(j as nat).view().pcell)
-                &&
-                perms.index(j as nat).view().value.is_None()
-            ))
-        );
-
+    while backing_cells_vec.len() < len
+        invariant
+            forall |j: nat|
+              #![trigger( perms.dom().contains(j) )]
+              #![trigger( backing_cells_vec@.index(j as int) )]
+              #![trigger( perms.index(j) )]
+                0 <= j && j < backing_cells_vec.len() as int ==>
+                    perms.dom().contains(j)
+                    &&
+                    backing_cells_vec@.index(j as int).id() === perms.index(j)@.pcell
+                    &&
+                    perms.index(j)@.value.is_None(),
+    {
         #[spec] let i = backing_cells_vec.len();
         
         let (cell, cell_perm) = PCell::empty();
         backing_cells_vec.push(cell);
 
-        perms.tracked_insert(i, cell_perm.get());
+        proof {
+            perms.tracked_insert(i as nat, cell_perm.get());
+        }
 
         assert(perms.dom().contains(i as nat));
-        assert(equal(backing_cells_vec.index(i as nat).id(), perms.index(i as nat).view().pcell));
-        assert(perms.index(i as nat).view().value.is_None());
+        assert(backing_cells_vec@.index(i as int).id() === perms.index(i as nat)@.pcell);
+        assert(perms.index(i as nat)@.value.is_None());
     }
 
     // Vector for ids
-    #[spec] let mut backing_cells_ids = Seq::<CellId>::new(
-        backing_cells_vec.view().len(),
-        |i| backing_cells_vec.view().index(i).id());
+    #[spec] let mut backing_cells_ids;
+    proof {
+        backing_cells_ids = Seq::<CellId>::new(
+            backing_cells_vec@.len(),
+            |i: int| backing_cells_vec@.index(i).id());
+    }
 
     // Initialize an instance of the FIFO queue
     #[proof] let (Trk(instance), Trk(head_token), Trk(tail_token), Trk(producer_token), Trk(consumer_token))
@@ -741,11 +735,14 @@ impl<T> Consumer<T> {
         }
     }
 }
-// ANCHOR_END: impl_consumer
-// ANCHOR_END: full
 
 fn main() {
     let (mut producer, mut consumer) = new_queue(20);
     producer.enqueue(5);
     let _x = consumer.dequeue();
 }
+
+}
+
+// ANCHOR_END: impl_consumer
+// ANCHOR_END: full
