@@ -50,11 +50,16 @@ fn emit_check_tracked_lifetimes<'tcx>(
 ) -> State {
     let gen_state =
         crate::lifetime_generate::gen_check_tracked_lifetimes(tcx, krate, erasure_hints);
-    emit_state.write("#![allow(non_camel_case_types)]");
-    emit_state.newline();
-    emit_state.write("fn f<A, B>(a: A) -> B { unimplemented!() }");
-    emit_state.newline();
-    emit_state.write("fn notdet() -> bool { unimplemented!() }");
+    emit_state.writeln("#![allow(non_camel_case_types)]");
+    emit_state.writeln("#![allow(unused_imports)]");
+    emit_state.writeln("#![allow(unused_variables)]");
+    emit_state.writeln("#![allow(unreachable_patterns)]");
+    emit_state.writeln("#![allow(unused_parens)]");
+    emit_state.writeln("#![allow(dead_code)]");
+    emit_state.writeln("#![allow(unused_mut)]");
+    emit_state.writeln("#[derive(Copy)] struct PhantomData<A> { a: A }");
+    emit_state.writeln("impl<A> Clone for PhantomData<A> { fn clone(&self) -> Self { panic!() } }");
+    emit_state.writeln("fn op<A, B>(a: A) -> B { unimplemented!() }");
     for d in gen_state.datatype_decls.iter() {
         emit_datatype_decl(emit_state, d);
     }
@@ -90,12 +95,17 @@ struct LifetimeFileLoader {
     rust_code: String,
 }
 
+impl LifetimeFileLoader {
+    const FILENAME: &'static str = "dummyrs.rs";
+}
+
 impl rustc_span::source_map::FileLoader for LifetimeFileLoader {
     fn file_exists(&self, _path: &std::path::Path) -> bool {
         panic!("unexpected call to file_exists")
     }
 
-    fn read_file(&self, _path: &std::path::Path) -> Result<String, std::io::Error> {
+    fn read_file(&self, path: &std::path::Path) -> Result<String, std::io::Error> {
+        assert!(path.display().to_string() == Self::FILENAME.to_string());
         Ok(self.rust_code.clone())
     }
 }
@@ -131,8 +141,11 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
     if let Some(mut file) = lifetime_log_file {
         write!(file, "{}", &rust_code).expect("error writing to lifetime log file");
     }
-    let rustc_args =
-        vec!["dummyexe".to_string(), "dummyrs.rs".to_string(), "--error-format=json".to_string()];
+    let rustc_args = vec![
+        "dummyexe".to_string(),
+        LifetimeFileLoader::FILENAME.to_string(),
+        "--error-format=json".to_string(),
+    ];
     let capture_output = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let mut callbacks = LifetimeCallbacks { capture_output };
     let mut compiler = rustc_driver::RunCompiler::new(&rustc_args, &mut callbacks);

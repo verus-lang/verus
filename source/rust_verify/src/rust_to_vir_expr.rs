@@ -1517,25 +1517,42 @@ fn fn_call_to_vir<'tcx>(
     }
 }
 
-fn datatype_of_path(mut path: vir::ast::Path, pop_constructor: bool) -> vir::ast::Path {
+fn datatype_of_path(mut path: vir::ast::Path, pop_count: u32) -> vir::ast::Path {
     // TODO is there a safer way to do this?
     let segments = Arc::get_mut(&mut Arc::get_mut(&mut path).unwrap().segments).unwrap();
-    if pop_constructor {
-        segments.pop(); // remove constructor
+    for _ in 0..pop_count {
+        segments.pop(); // remove variant or constructor
     }
-    segments.pop(); // remove variant
     path
 }
 
-fn datatype_variant_of_res<'tcx>(
+pub(crate) fn datatype_variant_of_res_pop_count<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    res: &Res,
+    pop_count: u32,
+) -> (vir::ast::Path, Ident) {
+    let variant = tcx.expect_variant_res(*res);
+    let vir_path = datatype_of_path(def_id_to_vir_path(tcx, res.def_id()), pop_count);
+    let variant_name = str_ident(&variant.ident.as_str());
+    (vir_path, variant_name)
+}
+
+pub(crate) fn datatype_constructor_variant_of_res<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    res: &Res,
+    pop_variant: bool,
+) -> (vir::ast::Path, Ident) {
+    let pop_count = if pop_variant { 1 } else { 0 };
+    datatype_variant_of_res_pop_count(tcx, res, pop_count)
+}
+
+pub(crate) fn datatype_variant_of_res<'tcx>(
     tcx: TyCtxt<'tcx>,
     res: &Res,
     pop_constructor: bool,
 ) -> (vir::ast::Path, Ident) {
-    let variant = tcx.expect_variant_res(*res);
-    let vir_path = datatype_of_path(def_id_to_vir_path(tcx, res.def_id()), pop_constructor);
-    let variant_name = str_ident(&variant.ident.as_str());
-    (vir_path, variant_name)
+    let pop_count = if pop_constructor { 2 } else { 1 };
+    datatype_variant_of_res_pop_count(tcx, res, pop_count)
 }
 
 pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
@@ -2609,16 +2626,8 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         path.res
                     );
                     unsupported_unless!(slf.is_none(), "self_in_struct_qpath");
-                    let variant = tcx.expect_variant_res(path.res);
-                    let mut vir_path = def_id_to_vir_path(tcx, path.res.def_id());
-                    if let Res::Def(DefKind::Variant, _) = path.res {
-                        Arc::get_mut(&mut Arc::get_mut(&mut vir_path).unwrap().segments)
-                            .unwrap()
-                            .pop()
-                            .expect(format!("variant name in Struct ctor for {:?}", path).as_str());
-                    }
-                    let variant_name = str_ident(&variant.ident.as_str());
-                    (vir_path, variant_name)
+                    let pop_variant = matches!(path.res, Res::Def(DefKind::Variant, _));
+                    datatype_constructor_variant_of_res(tcx, &path.res, pop_variant)
                 }
                 _ => panic!("unexpected qpath {:?}", qpath),
             };

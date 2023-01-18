@@ -1,32 +1,29 @@
+use rustc_ast::Mutability;
 use rustc_span::Span;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum IdKind {
+    Datatype,
+    Variant,
+    TypParam,
+    Lifetime,
+    Fun,
+    Local,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct Id {
+    kind: IdKind,
     rename_count: usize,
     raw_id: String,
 }
 
 impl Id {
-    pub(crate) fn new(rename_count: usize, raw_id: String) -> Id {
-        Id { rename_count, raw_id }
+    pub(crate) fn new(kind: IdKind, rename_count: usize, raw_id: String) -> Id {
+        Id { kind, rename_count, raw_id }
     }
     pub(crate) fn to_string(&self) -> String {
-        crate::lifetime_emit::encode_raw_id(self.rename_count, &self.raw_id)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct TypName {
-    rename_count: usize,
-    id: String,
-}
-
-impl TypName {
-    pub(crate) fn new(rename_count: usize, id: String) -> TypName {
-        TypName { rename_count, id }
-    }
-    pub(crate) fn to_string(&self) -> String {
-        crate::lifetime_emit::encode_typ_name(self.rename_count, &self.id)
+        crate::lifetime_emit::encode_id(self.kind, self.rename_count, &self.raw_id)
     }
 }
 
@@ -34,16 +31,21 @@ pub(crate) type Typ = Box<TypX>;
 #[derive(Debug)]
 pub(crate) enum TypX {
     Primitive(String),
-    Datatype(TypName),
+    TypParam(Id),
+    Ref(Typ, Option<Id>, Mutability),
+    Phantom(Typ),
+    Tuple(Vec<Typ>),
+    Datatype(Id, Vec<Typ>),
 }
 
 pub(crate) type Pattern = Box<(Span, PatternX)>;
 #[derive(Debug)]
 pub(crate) enum PatternX {
-    //Wild,
-    // TODO: mutability
-    Binding(Id),
-    // Path(TypName),
+    Wildcard,
+    Binding(Id, Mutability),
+    Tuple(Vec<Pattern>),
+    TupleStruct(Id, Option<Id>, Vec<Pattern>),
+    Struct(Id, Option<Id>, Vec<(Id, Pattern)>),
 }
 
 // We're only interested in expressions that produce non-spec values,
@@ -52,9 +54,24 @@ pub(crate) enum PatternX {
 pub(crate) type Exp = Box<(Span, ExpX)>;
 #[derive(Debug)]
 pub(crate) enum ExpX {
+    Panic,
     Var(Id),
-    // The call target is irrelevant; we only care about the arguments
-    Call(Vec<Exp>, Typ),
+    Op(Vec<Exp>, Typ),
+    Call(Id, Vec<Typ>, Vec<Exp>),
+    Tuple(Vec<Exp>),
+    DatatypeTuple(Id, Option<Id>, Vec<Exp>),
+    DatatypeStruct(Id, Option<Id>, Vec<(Id, Exp)>, Option<Exp>),
+    AddrOf(Mutability, Exp),
+    Deref(Exp),
+    Assign(Exp, Exp),
+    Field(Exp, Id),
+    If(Exp, Exp, Exp),
+    Match(Exp, Vec<(Pattern, Exp)>),
+    While(Exp, Exp, Option<Id>),
+    Loop(Exp, Option<Id>),
+    Break(Option<Id>),
+    Continue(Option<Id>),
+    Ret(Option<Exp>),
     Block(Vec<Stm>, Option<Exp>),
 }
 
@@ -80,22 +97,29 @@ pub(crate) enum Fields {
 #[derive(Debug)]
 pub(crate) enum Datatype {
     Struct(Fields),
+    Enum(Vec<(Id, Fields)>),
 }
 
 #[derive(Debug)]
 pub(crate) struct DatatypeDecl {
-    pub(crate) name: TypName,
+    pub(crate) name: Id,
     pub(crate) span: Span,
     // Does the type implement the Copy trait?
     // REVIEW: for generic types like Option, this will be more than just a bool
     pub(crate) implements_copy: bool,
+    pub(crate) generics: Vec<Id>,
     pub(crate) datatype: Box<Datatype>,
 }
 
 #[derive(Debug)]
 pub(crate) struct FunDecl {
+    // TODO: lifetime parameters
+    // TODO: type parameters
+    pub(crate) sig_span: Span,
+    pub(crate) name_span: Span,
     pub(crate) name: Id,
+    pub(crate) generics: Vec<Id>,
     pub(crate) params: Vec<(Span, Id, Typ)>,
-    pub(crate) ret: Option<Typ>,
+    pub(crate) ret: Option<(Span, Typ)>,
     pub(crate) body: Exp,
 }
