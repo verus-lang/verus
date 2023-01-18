@@ -122,7 +122,7 @@ pub proof fn axiom_multiset_empty<V>(v: V)
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_multiset_singleton<V>(v: V)
-    ensures Multiset::singleton(v).count(v) == 1,
+    ensures (#[trigger] Multiset::singleton(v)).count(v) == 1,
 { }
 
 #[verifier(external_body)]
