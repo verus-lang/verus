@@ -1586,7 +1586,7 @@ fn expr_to_stm_opt(
                 None
             };
 
-            let (mut stms1, e1) = expr_to_stm_opt(ctx, state, body)?;
+            let (mut stms1, _e1) = expr_to_stm_opt(ctx, state, body)?;
             let mut check_recommends: Vec<Stm> = Vec::new();
             let mut invs1: Vec<crate::sst::LoopInv> = Vec::new();
             for inv in invs.iter() {

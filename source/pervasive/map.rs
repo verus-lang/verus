@@ -207,8 +207,8 @@ impl<K, V> Map<K, V> {
         key_map: Map<J, K>
     ) -> (tracked new_map: Map<J, V>)
         requires
-            forall |j| key_map.dom().contains(j) ==> old_map.dom().contains(key_map.index(j)),
-            forall |j1, j2|
+            forall |j| #![auto] key_map.dom().contains(j) ==> old_map.dom().contains(key_map.index(j)),
+            forall |j1, j2| #![auto]
                 !equal(j1, j2) && key_map.dom().contains(j1) && key_map.dom().contains(j2)
                 ==> !equal(key_map.index(j1), key_map.index(j2))
         ensures
@@ -401,31 +401,28 @@ macro_rules! assert_maps_equal_internal {
 pub use assert_maps_equal_internal;
 pub use assert_maps_equal;
 
-} // verus!
-
-
 impl<K, V> Map<K, V> {
     #[proof]
     pub fn tracked_map_keys_in_place(
         #[proof] &mut self,
         key_map: Map<K, K>
-    ) {
-        requires([
-            forall(|j| imply(key_map.dom().contains(j), old(self).dom().contains(key_map.index(j)))),
-            forall(|j1, j2|
-                imply(!equal(j1, j2) && key_map.dom().contains(j1) && key_map.dom().contains(j2),
-                !equal(key_map.index(j1), key_map.index(j2))))
-        ]);
-        ensures([
-            forall(|j| #[trigger] self.dom().contains(j) == key_map.dom().contains(j)),
-            forall(|j| imply(key_map.dom().contains(j),
-                self.dom().contains(j) &&
-                equal(#[trigger] self.index(j), old(self).index(key_map.index(j))))),
-        ]);
-
+    )
+    requires
+        forall|j| #![auto] key_map.dom().contains(j) ==> old(self).dom().contains(key_map.index(j)),
+        forall|j1, j2| #![auto]
+            j1 !== j2 && key_map.dom().contains(j1) && key_map.dom().contains(j2) ==>
+            key_map.index(j1) !== key_map.index(j2),
+    ensures
+        forall|j| #[trigger] self.dom().contains(j) == key_map.dom().contains(j),
+        forall|j| key_map.dom().contains(j) ==>
+            self.dom().contains(j) &&
+            #[trigger] self.index(j) === old(self).index(key_map.index(j)),
+    {
         #[proof] let mut tmp = Self::tracked_empty();
         crate::pervasive::modes::tracked_swap(&mut tmp, self);
         #[proof] let mut tmp = Self::tracked_map_keys(tmp, key_map);
         crate::pervasive::modes::tracked_swap(&mut tmp, self);
     }
 }
+
+} // verus!

@@ -4,6 +4,8 @@ use builtin_macros::*;
 #[allow(unused_imports)]
 use crate::pervasive::*;
 
+verus! {
+
 #[is_variant]
 pub enum Option<A> {
     None,
@@ -26,35 +28,36 @@ impl<A: Clone> Clone for Option<A> {
 impl<A: Copy> Copy for Option<A> { }
 
 impl<A> Option<A> {
-    #[spec]
-    #[verifier(publish)]
-    pub fn or(self, optb: Option<A>) -> Option<A> {
+    pub open spec fn or(self, optb: Option<A>) -> Option<A> {
         match self {
             Option::None => optb,
             Option::Some(s) => self,
         }
     }
 
-    #[exec]
-    pub fn unwrap(&self) -> &A {
-        requires(self.is_Some());
-        ensures(|a: &A| equal(*a, self.get_Some_0()));
-
+    pub fn unwrap(&self) -> (a: &A)
+        requires
+            self.is_Some(),
+        ensures
+            *a === self.get_Some_0(),
+    {
         match self {
             Option::Some(a) => a,
             Option::None => unreached(),
         }
     }
 
-    #[proof]
-    #[verifier(returns(proof))]
-    pub fn tracked_unwrap(#[proof] self) -> A {
-        requires(self.is_Some());
-        ensures(|a: &A| equal(*a, self.get_Some_0()));
-
+    pub proof fn tracked_unwrap(tracked self) -> (tracked a: A)
+        requires
+            self.is_Some(),
+        ensures
+            a === self.get_Some_0(),
+    {
         match self {
             Option::Some(a) => a,
             Option::None => proof_from_false(),
         }
     }
 }
+
+} // verus!
