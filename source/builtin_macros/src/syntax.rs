@@ -47,6 +47,8 @@ enum InsideArith {
 struct Visitor {
     // TODO: this should always be true
     use_spec_traits: bool,
+    // TODO: this should always be true
+    verus_macro_attr: bool,
     // inside_ghost > 0 means we're currently visiting ghost code
     inside_ghost: u32,
     // Widen means we're a direct subexpression in an arithmetic expression that will widen the result.
@@ -123,7 +125,9 @@ impl Visitor {
             false
         };
 
-        attrs.push(mk_verifier_attr(sig.fn_token.span, "verus_macro"));
+        if self.verus_macro_attr {
+            attrs.push(mk_verifier_attr(sig.fn_token.span, "verus_macro"));
+        }
 
         for arg in &mut sig.inputs {
             match (arg.tracked, &mut arg.kind) {
@@ -1516,6 +1520,7 @@ impl quote::ToTokens for MacroInvoke {
 pub(crate) fn rewrite_items(
     stream: proc_macro::TokenStream,
     use_spec_traits: bool,
+    verus_macro_attr: bool,
 ) -> proc_macro::TokenStream {
     use quote::ToTokens;
     let stream = rejoin_tokens(stream);
@@ -1528,6 +1533,7 @@ pub(crate) fn rewrite_items(
         assign_to: false,
         rustdoc: env_rustdoc(),
         inside_bitvector: false,
+        verus_macro_attr,
     };
     for mut item in items.items {
         visitor.visit_item_mut(&mut item);
@@ -1548,6 +1554,7 @@ pub(crate) fn rewrite_expr(
     let mut new_stream = TokenStream::new();
     let mut visitor = Visitor {
         use_spec_traits: true,
+        verus_macro_attr: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
         inside_arith: InsideArith::None,
         assign_to: false,
@@ -1624,6 +1631,7 @@ pub(crate) fn proof_macro_exprs(
     let mut new_stream = TokenStream::new();
     let mut visitor = Visitor {
         use_spec_traits: true,
+        verus_macro_attr: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
         inside_arith: InsideArith::None,
         assign_to: false,
