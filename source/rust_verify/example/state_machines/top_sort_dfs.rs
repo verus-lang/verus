@@ -1,4 +1,4 @@
-#[allow(unused_imports)]
+#![allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
 mod pervasive;
@@ -557,13 +557,12 @@ fn compute_top_sort(graph: &ConcreteDirectedGraph) -> TopSortResult
         invariant
             graph.well_formed(),
             dfs_state.well_formed(graph),
-            forall(|w| 0 <= w && (w as int) < (v as int) ==>
-                map_visited_deps.dom().contains(w)
-                &&
+            forall |w| 0 <= w && (w as int) < (v as int) ==>
+                map_visited_deps.dom().contains(w),
+            forall |w| 0 <= w && (w as int) < (v as int) ==>
                 equal(map_visited_deps.index(w)@, TopSort::token![
                     dfs_state.instance => visited => w
-                ])
-            ),
+                ]),
             dfs_state.cur_stack@.len() == 0,
     {
 
