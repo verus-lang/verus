@@ -105,15 +105,15 @@ tokenized_state_machine!{
         pub open spec fn combiner_has(self, i: nat) -> bool {
             self.valid_idx(i)
             && match self.combiner {
-                Combiner::Collecting{elems} => i < elems.len() && elems.index(i).is_Some(),
-                Combiner::Responding{elems, idx} => i >= idx && elems.index(i).is_Some(),
+                Combiner::Collecting{elems} => i < elems.len() && elems.index(i as int).is_Some(),
+                Combiner::Responding{elems, idx} => i >= idx && elems.index(i as int).is_Some(),
             }
         }
 
         pub open spec fn combiner_rid(self, i: nat) -> int {
             match self.combiner {
-                Combiner::Collecting{elems} => elems.index(i).get_Some_0(),
-                Combiner::Responding{elems, idx} => elems.index(i).get_Some_0(),
+                Combiner::Collecting{elems} => elems.index(i as int).get_Some_0(),
+                Combiner::Responding{elems, idx} => elems.index(i as int).get_Some_0(),
             }
         }
 
@@ -127,19 +127,19 @@ tokenized_state_machine!{
 
         #[invariant]
         pub fn not_waiting_inv(self) -> bool {
-            forall |i: nat| #[trigger] self.valid_idx(i) && self.clients.index(i).is_Idle() >>=
+            forall |i: nat| #[trigger] self.valid_idx(i) && self.clients.index(i).is_Idle() ==>
                 !self.slots.index(i)
         }
 
         #[invariant]
         pub fn waiting_inv(self) -> bool {
-            forall |i: nat| #[trigger] self.client_waiting(i) >>=
+            forall |i: nat| #[trigger] self.client_waiting(i) ==>
                 self.request_stored(i) || self.response_stored(i) || self.combiner_has(i)
         }
 
         #[invariant]
         pub fn request_stored_inv(self) -> bool {
-            forall |i: nat| #[trigger] self.request_stored(i) >>=
+            forall |i: nat| #[trigger] self.request_stored(i) ==>
                 self.client_waiting(i)
                 && self.requests.index(i).rid == self.clients.index(i).get_Waiting_rid()
                 && self.slots.index(i)
@@ -147,7 +147,7 @@ tokenized_state_machine!{
 
         #[invariant]
         pub fn response_stored_inv(self) -> bool {
-            forall |i: nat| #[trigger] self.response_stored(i) >>=
+            forall |i: nat| #[trigger] self.response_stored(i) ==>
                 self.client_waiting(i)
                 && self.responses.index(i).rid == self.clients.index(i).get_Waiting_rid()
                 && !self.slots.index(i)
@@ -156,7 +156,7 @@ tokenized_state_machine!{
 
         #[invariant]
         pub fn combiner_has_inv(self) -> bool {
-            forall |i: nat| #[trigger] self.combiner_has(i) >>=
+            forall |i: nat| #[trigger] self.combiner_has(i) ==>
                 self.client_waiting(i)
                 && self.slots.index(i)
                 && self.combiner_rid(i) == self.clients.index(i).get_Waiting_rid()
@@ -206,12 +206,12 @@ tokenized_state_machine!{
         fn client_send_inductive(pre: Self,
             post: Self, j: nat, request: Request, cur_slot: bool)
         {
-            assert(forall |i| post.valid_idx(i) >>= pre.valid_idx(i));
+            assert(forall |i| post.valid_idx(i) ==> pre.valid_idx(i));
             assert(pre.valid_idx(j));
-            assert(forall |i| post.client_waiting(i) && i != j >>= pre.client_waiting(i));
-            assert(forall |i| post.combiner_has(i) >>= pre.combiner_has(i));
-            assert(forall |i| post.request_stored(i) && i != j >>= pre.request_stored(i));
-            assert(forall |i| post.response_stored(i) >>= pre.response_stored(i));
+            assert(forall |i| post.client_waiting(i) && i != j ==> pre.client_waiting(i));
+            assert(forall |i| post.combiner_has(i) ==> pre.combiner_has(i));
+            assert(forall |i| post.request_stored(i) && i != j ==> pre.request_stored(i));
+            assert(forall |i| post.response_stored(i) ==> pre.response_stored(i));
 
             assert(post.request_stored(j));
             assert(post.client_waiting(j));
@@ -256,12 +256,12 @@ tokenized_state_machine!{
 
         #[inductive(client_recv)]
         fn client_recv_inductive(pre: Self, post: Self, j: nat) {
-            assert(forall |i| post.valid_idx(i) >>= pre.valid_idx(i));
+            assert(forall |i| post.valid_idx(i) ==> pre.valid_idx(i));
             assert(pre.valid_idx(j));
-            assert(forall |i| post.client_waiting(i) >>= pre.client_waiting(i));
-            assert(forall |i| post.combiner_has(i) >>= pre.combiner_has(i));
-            assert(forall |i| post.request_stored(i) >>= pre.request_stored(i));
-            assert(forall |i| post.response_stored(i) && i != j >>= pre.response_stored(i));
+            assert(forall |i| post.client_waiting(i) ==> pre.client_waiting(i));
+            assert(forall |i| post.combiner_has(i) ==> pre.combiner_has(i));
+            assert(forall |i| post.request_stored(i) ==> pre.request_stored(i));
+            assert(forall |i| post.response_stored(i) && i != j ==> pre.response_stored(i));
 
             assert(!post.client_waiting(j));
         }
@@ -294,14 +294,14 @@ tokenized_state_machine!{
         #[inductive(combiner_recv)]
         fn combiner_recv_inductive(pre: Self, post: Self) {
             let j = pre.combiner.get_Collecting_elems().len();
-            assert(forall |i| post.valid_idx(i) >>= pre.valid_idx(i));
+            assert(forall |i| post.valid_idx(i) ==> pre.valid_idx(i));
             assert(post.valid_idx(j));
             assert(pre.client_waiting(j));
             assert(pre.request_stored(j));
-            assert(forall |i| post.client_waiting(i) >>= pre.client_waiting(i));
-            assert(forall |i| post.combiner_has(i) && i != j >>= pre.combiner_has(i));
-            assert(forall |i| post.request_stored(i) >>= pre.request_stored(i));
-            assert(forall |i| post.response_stored(i) >>= pre.response_stored(i));
+            assert(forall |i| post.client_waiting(i) ==> pre.client_waiting(i));
+            assert(forall |i| post.combiner_has(i) && i != j ==> pre.combiner_has(i));
+            assert(forall |i| post.request_stored(i) ==> pre.request_stored(i));
+            assert(forall |i| post.response_stored(i) ==> pre.response_stored(i));
 
             assert(post.combiner_has(j));
         }
@@ -327,12 +327,12 @@ tokenized_state_machine!{
         #[inductive(combiner_skip)]
         fn combiner_skip_inductive(pre: Self, post: Self) {
             let j = pre.combiner.get_Collecting_elems().len();
-            assert(forall |i| post.valid_idx(i) >>= pre.valid_idx(i));
+            assert(forall |i| post.valid_idx(i) ==> pre.valid_idx(i));
             assert(post.valid_idx(j));
-            assert(forall |i| post.client_waiting(i) >>= pre.client_waiting(i));
-            assert(forall |i| post.combiner_has(i) && i != j >>= pre.combiner_has(i));
-            assert(forall |i| post.request_stored(i) >>= pre.request_stored(i));
-            assert(forall |i| post.response_stored(i) >>= pre.response_stored(i));
+            assert(forall |i| post.client_waiting(i) ==> pre.client_waiting(i));
+            assert(forall |i| post.combiner_has(i) && i != j ==> pre.combiner_has(i));
+            assert(forall |i| post.request_stored(i) ==> pre.request_stored(i));
+            assert(forall |i| post.response_stored(i) ==> pre.response_stored(i));
 
             assert(!post.combiner_has(j));
         }
@@ -353,7 +353,7 @@ tokenized_state_machine!{
                 require(pre.combiner.is_Responding());
                 let j = pre.combiner.get_Responding_idx();
                 require(0 <= j && j < pre.num_clients);
-                let response_opt = pre.combiner.get_Responding_elems().index(j);
+                let response_opt = pre.combiner.get_Responding_elems().index(j as int);
 
                 // The response we return has to have the right request ID
                 require(response_opt === Option::Some(response.rid));
@@ -380,12 +380,12 @@ tokenized_state_machine!{
         fn combiner_send_inductive(pre: Self, post: Self, response: Response, cur_slot: bool) {
             let j = pre.combiner.get_Responding_idx();
 
-            assert(forall |i| post.valid_idx(i) >>= pre.valid_idx(i));
+            assert(forall |i| post.valid_idx(i) ==> pre.valid_idx(i));
             assert(post.valid_idx(j));
-            assert(forall |i| post.client_waiting(i) >>= pre.client_waiting(i));
-            assert(forall |i| post.combiner_has(i) >>= pre.combiner_has(i));
-            assert(forall |i| post.request_stored(i) >>= pre.request_stored(i));
-            assert(forall |i| post.response_stored(i) && i != j >>= pre.response_stored(i));
+            assert(forall |i| post.client_waiting(i) ==> pre.client_waiting(i));
+            assert(forall |i| post.combiner_has(i) ==> pre.combiner_has(i));
+            assert(forall |i| post.request_stored(i) ==> pre.request_stored(i));
+            assert(forall |i| post.response_stored(i) && i != j ==> pre.response_stored(i));
 
             assert(pre.valid_idx(j));
             assert(pre.combiner_has(j));
@@ -399,7 +399,7 @@ tokenized_state_machine!{
                 require(pre.combiner.is_Responding());
                 let j = pre.combiner.get_Responding_idx();
                 require(0 <= j && j < pre.num_clients);
-                let response_opt = pre.combiner.get_Responding_elems().index(j);
+                let response_opt = pre.combiner.get_Responding_elems().index(j as int);
 
                 // The response we return has to have the right request ID
                 require(equal(response_opt, Option::None));
@@ -416,12 +416,12 @@ tokenized_state_machine!{
         fn combiner_send_skip_inductive(pre: Self, post: Self) {
             let j = pre.combiner.get_Responding_idx();
 
-            assert(forall |i| post.valid_idx(i) >>= pre.valid_idx(i));
+            assert(forall |i| post.valid_idx(i) ==> pre.valid_idx(i));
             assert(post.valid_idx(j));
-            assert(forall |i| post.client_waiting(i) >>= pre.client_waiting(i));
-            assert(forall |i| post.combiner_has(i) >>= pre.combiner_has(i));
-            assert(forall |i| post.request_stored(i) >>= pre.request_stored(i));
-            assert(forall |i| post.response_stored(i) >>= pre.response_stored(i));
+            assert(forall |i| post.client_waiting(i) ==> pre.client_waiting(i));
+            assert(forall |i| post.combiner_has(i) ==> pre.combiner_has(i));
+            assert(forall |i| post.request_stored(i) ==> pre.request_stored(i));
+            assert(forall |i| post.response_stored(i) ==> pre.response_stored(i));
 
             assert(!post.combiner_has(j));
         }

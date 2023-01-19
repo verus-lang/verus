@@ -1,48 +1,50 @@
-#[allow(unused_imports)]
+#![allow(unused_imports)]
+
 use builtin::*;
+use builtin_macros::*;
 mod pervasive;
 use pervasive::*;
 use pervasive::seq::*;
 
 use state_machines_macros::state_machine;
 
-#[spec]
-pub fn ids_distinct(ids: Seq<nat>) -> bool {
-    forall(|i: int, j: int|
+verus!{
+
+pub open spec fn ids_distinct(ids: Seq<int>) -> bool {
+    forall |i: int, j: int|
         i != j && 0 <= i && i < ids.len() && 0 <= j && j < ids.len()
-          >>= ids.index(i) != ids.index(j)
-    )
+          ==> ids.index(i) != ids.index(j)
 }
 
-#[spec]
-pub fn between(start: int, node: int, end: int) -> bool
+pub open spec fn between(start: int, node: int, end: int) -> bool
 {
   if start < end { start < node && node < end } else { node < end || start < node }
 }
 
-#[spec]
-pub fn max(a: int, b: int) -> int {
+pub open spec fn max(a: int, b: int) -> int {
     if a > b { a } else { b }
 }
 
+}
 
 state_machine!(
     X {
         fields {
-            pub ids: Seq<nat>, // constant
+            pub ids: Seq<int>, // constant
             pub highest_heard: Seq<int>,
         }
 
         init!{
-            ini(ids: Seq<nat>) {
+            ini(ids: Seq<int>) {
                 require(ids_distinct(ids));
+                require(forall |k| 0 <= k < ids.len() ==> ids[k] >= 0);
                 init ids = ids;
                 init highest_heard = Seq::new(ids.len(), |i: int| -1);
             }
         }
 
         transition!{
-            transmission(srcidx: nat) {
+            transmission(srcidx: int) {
                 require(0 <= srcidx && srcidx < pre.ids.len());
 
                 let dstidx = if srcidx + 1 == pre.ids.len() { 0 } else { srcidx + 1 };
@@ -63,8 +65,7 @@ state_machine!(
             ids_distinct(self.ids)
         }
 
-        #[spec]
-        pub fn is_leader(self, i: int) -> bool {
+        pub open spec fn is_leader(self, i: int) -> bool {
             0 <= i && i < self.ids.len() &&
                 self.highest_heard.index(i) == self.ids.index(i)
         }
@@ -72,22 +73,19 @@ state_machine!(
         #[invariant]
         pub fn safety_condition(self) -> bool {
             forall |i: int, j: int|
-                self.is_leader(i) && self.is_leader(j) >>= i == j
+                self.is_leader(i) && self.is_leader(j) ==> i == j
         }
 
-        #[spec]
-        pub fn OnChordHeardDominatesId(self, start: int, end: int) -> bool {
+        pub open spec fn OnChordHeardDominatesId(self, start: int, end: int) -> bool {
             forall |node: int| between(start, node, end) && self.valid_idx(node)
-                >>= self.highest_heard.index(node) > self.ids.index(node)
+                ==> self.highest_heard.index(node) > self.ids.index(node)
         }
 
-        #[spec]
-        pub fn valid_idx(self, i: int) -> bool {
+        pub open spec fn valid_idx(self, i: int) -> bool {
             0 <= i && i < self.ids.len()
         }
 
-        #[spec]
-        pub fn is_chord(self, start: int, end: int) -> bool {
+        pub open spec fn is_chord(self, start: int, end: int) -> bool {
                self.valid_idx(start)
             && self.valid_idx(end)
             && self.ids.index(start) == self.highest_heard.index(end)
@@ -96,11 +94,11 @@ state_machine!(
         #[invariant]
         pub fn on_chord_heard_dominates_id_inv(self) -> bool {
             forall |start: int, end: int|
-                self.is_chord(start, end) >>= self.OnChordHeardDominatesId(start, end)
+                self.is_chord(start, end) ==> self.OnChordHeardDominatesId(start, end)
         }
 
         #[inductive(transmission)]
-        pub fn preserves_ind(pre: Self, post: Self, srcidx: nat) {
+        pub fn preserves_ind(pre: Self, post: Self, srcidx: int) {
             // XXX(travis): this sort of copy-paste is extremely common, we could have
             // a language feature to let us skip it
             let dstidx = if srcidx + 1 == pre.ids.len() { 0 } else { srcidx + 1 };
@@ -169,7 +167,7 @@ state_machine!(
         }
 
         #[inductive(ini)]
-        pub fn ind_on_ini(post: Self, ids: Seq<nat>) {
+        pub fn ind_on_ini(post: Self, ids: Seq<int>) {
             assert(post.on_chord_heard_dominates_id_inv());
         }
     }
