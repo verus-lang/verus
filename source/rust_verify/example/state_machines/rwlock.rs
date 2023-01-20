@@ -156,18 +156,18 @@ tokenized_state_machine!(RwLock {
 
     #[invariant]
     pub fn reader_agrees_storage(&self) -> bool {
-        forall |t: T| self.reader.count(t) > 0 >>=
+        forall |t: T| self.reader.count(t) > 0 ==>
             equal(self.storage, Option::Some(t))
     }
 
     #[invariant]
     pub fn writer_agrees_storage(&self) -> bool {
-        self.writer.is_Some() >>= self.storage.is_None()
+        self.writer.is_Some() ==> self.storage.is_None()
     }
 
     #[invariant]
     pub fn writer_agrees_storage_rev(&self) -> bool {
-        self.storage.is_None() >>= self.writer.is_Some()
+        self.storage.is_None() ==> self.writer.is_Some()
     }
 
     #[inductive(acquire_read_start)]

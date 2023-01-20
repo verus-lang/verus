@@ -1,4 +1,4 @@
-#[allow(unused_imports)]
+#![allow(unused_imports)]
 
 // ANCHOR: full
 use builtin::*;
@@ -11,8 +11,9 @@ use pervasive::ptr::*;
 use pervasive::cell::*;
 use pervasive::modes::*;
 use pervasive::invariant::*;
-
 use state_machines_macros::tokenized_state_machine;
+
+verus_old_todo_no_ghost_blocks!{
 
 tokenized_state_machine!(Dupe<T> {
     fields {
@@ -46,16 +47,11 @@ tokenized_state_machine!(Dupe<T> {
      fn initialize_one_inductive(post: Self, t: T) { }
 });
 
-verus!{
-
 pub tracked struct Duplicable<T> {
     pub tracked inst: Dupe::Instance<T>,
 }
 
-}
-
 impl<T> Duplicable<T> {
-    verus!{
     pub open spec fn wf(self) -> bool {
         true
     }
@@ -73,25 +69,22 @@ impl<T> Duplicable<T> {
         }
     }
 
-    }
-
     #[proof]
     #[verifier(returns(proof))]
-    pub fn clone(#[proof] &self) -> Self {
-        requires(self.wf());
-        ensures(|other: Self|
-            other.wf() && equal(self.view(), other.view())
-        );
+    pub fn clone(#[proof] &self) -> (other: Self)
+        requires self.wf(),
+        ensures other.wf() && self@ === other@,
+    {
 
         Duplicable { inst: self.inst.clone() }
     }
 
     #[proof]
     #[verifier(returns(proof))]
-    pub fn borrow(#[proof] &self) -> &T {
-        requires(self.wf());
-        ensures(|t: &T| equal(*t, self.view()));
-
+    pub fn borrow(#[proof] &self) -> (t: &T)
+        requires self.wf(),
+        ensures *t === self@,
+    {
         self.inst.borrow()
     }
 }
@@ -112,23 +105,23 @@ tokenized_state_machine!(RefCounter<Perm> {
 
     #[invariant]
     pub fn reader_agrees_storage(&self) -> bool {
-        forall |t: Perm| self.reader.count(t) > 0 >>=
-            equal(self.storage, Option::Some(t))
+        forall |t: Perm| self.reader.count(t) > 0 ==>
+            self.storage === Option::Some(t)
     }
 
     #[invariant]
     pub fn counter_agrees_storage(&self) -> bool {
-        self.counter == 0 >>= self.storage.is_None()
+        self.counter == 0 ==> self.storage.is_None()
     }
 
     #[invariant]
     pub fn counter_agrees_storage_rev(&self) -> bool {
-        self.storage.is_None() >>= self.counter == 0
+        self.storage.is_None() ==> self.counter == 0
     }
 
     #[invariant]
     pub fn counter_agrees_reader_count(&self) -> bool {
-        self.storage.is_Some() >>=
+        self.storage.is_Some() ==>
             self.reader.count(self.storage.get_Some_0()) == self.counter
     }
 
@@ -173,7 +166,7 @@ tokenized_state_machine!(RefCounter<Perm> {
     #[inductive(do_clone)]
     fn do_clone_inductive(pre: Self, post: Self, x: Perm) {
         assert(pre.reader.count(x) > 0);
-        assert(equal(pre.storage, Option::Some(x)));
+        assert(pre.storage === Option::Some(x));
         assert(pre.storage.is_Some());
         assert(pre.counter > 0);
     }
@@ -199,14 +192,12 @@ tokenized_state_machine!(RefCounter<Perm> {
     #[inductive(dec_basic)]
     fn dec_basic_inductive(pre: Self, post: Self, x: Perm) {
         assert(pre.reader.count(x) > 0);
-        assert(equal(pre.storage, Option::Some(x)));
+        assert(pre.storage === Option::Some(x));
     }
 
     #[inductive(dec_to_zero)]
     fn dec_to_zero_inductive(pre: Self, post: Self, x: Perm) { }
 });
-
-verus!{
 
 struct InnerRc<S> {
     pub rc_cell: PCell<u64>,
@@ -233,8 +224,6 @@ impl<S> InnerRc<S> {
     }
 }
 
-}
-
 struct_with_invariants!{
     struct MyRc<S> {
         #[proof] pub inst: RefCounter::Instance<ptr::PermissionOpt<InnerRc<S>>>,
@@ -247,7 +236,7 @@ struct_with_invariants!{
 
     spec fn wf(self) -> bool {
         predicate {
-            &&& self.reader@.key.view().pptr === self.ptr.id()
+            &&& self.reader@.key@.pptr === self.ptr.id()
             &&& self.reader@.instance === self.inst
             &&& self.reader@.count === 1
             &&& self.reader@.key@.value.is_Some()
@@ -265,18 +254,14 @@ struct_with_invariants!{
 }
 
 impl<S> MyRc<S> {
-    verus!{
-
     spec fn view(self) -> S {
         self.reader@.key@.value.get_Some_0().s
-    }
-
     }
 
     fn new(s: S) -> Self {
         ensures(|rc: MyRc<S>| [
             rc.wf(),
-            equal(rc.view(), s),
+            rc@ === s,
         ]);
 
         let (rc_cell, rc_perm) = PCell::new(1);
@@ -291,31 +276,37 @@ impl<S> MyRc<S> {
 
         #[proof] let g = GhostStuff::<S> { rc_perm: rc_perm.get(), rc_token };
 
-        #[proof] let inv = LocalInvariant::new(
-            (inst, rc_cell),
-            g,
-            0);
+        #[proof] let inv;
+        proof {
+            inv = LocalInvariant::new(
+                (inst, rc_cell),
+                g,
+                0);
+        }
+
         #[proof] let inv = Duplicable::new(inv);
 
         MyRc { inst, inv, reader, ptr, rc_cell }
     }
 
-    fn borrow<'b>(&'b self) -> &'b S {
-        requires(self.wf());
-        ensures(|s: &'b S| equal(*s, self.view()));
+    fn borrow<'b>(&'b self) -> (s: &'b S)
+        requires self.wf(),
+        ensures *s === self@,
+    {
 
         #[proof] let perm = self.inst.reader_guard(
-            self.reader.view().key,
+            self.reader@.key,
             &self.reader);
         &self.ptr.borrow(tracked_exec_borrow(perm)).s
     }
 
-    fn clone(&self) -> Self {
-        requires(self.wf());
-        ensures(|s: Self| s.wf() && equal(s.view(), self.view()));
+    fn clone(&self) -> (s: Self)
+        requires self.wf(),
+        ensures s.wf() && s@ === self@,
+    {
 
         #[proof] let perm = self.inst.reader_guard(
-            self.reader.view().key,
+            self.reader@.key,
             &self.reader);
         let inner_rc_ref = &self.ptr.borrow(tracked_exec_borrow(perm));
 
@@ -348,13 +339,13 @@ impl<S> MyRc<S> {
         }
     }
 
-    fn dispose(self) {
-        requires(self.wf());
-
+    fn dispose(self)
+        requires self.wf(),
+    {
         let MyRc { inst, inv, reader, ptr, rc_cell: _ } = self;
 
         #[proof] let perm = inst.reader_guard(
-            reader.view().key,
+            reader@.key,
             &reader);
         let inner_rc_ref = &ptr.borrow(tracked_exec_borrow(perm));
 
@@ -404,5 +395,7 @@ fn main() {
     let a5 = MyRc::new(Sequence::Cons(5, nil.clone()));
     let a7 = MyRc::new(Sequence::Cons(7, nil.clone()));
     let a67 = MyRc::new(Sequence::Cons(6, a7.clone()));
+}
+
 }
 // ANCHOR_END: full

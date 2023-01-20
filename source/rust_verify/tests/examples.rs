@@ -56,50 +56,31 @@ fn run_example_for_file(file_path: &str) {
     };
 
     let mut mode = Mode::ExpectSuccess;
-    let mut set_deprecated_enhanced_typecheck = false;
-    if file_path.starts_with("example/state_machines") {
-        set_deprecated_enhanced_typecheck = true;
-    }
 
     if let ["//", "rust_verify/tests/example.rs", command] = &first_line_elements[..] {
         match command.strip_suffix("\n").unwrap_or("unexpected") {
             "expect-success" => mode = Mode::ExpectSuccess,
             "expect-errors" => mode = Mode::ExpectErrors,
             "expect-failures" => mode = Mode::ExpectFailures,
-            "deprecated-enhanced-typecheck" => {
-                mode = Mode::ExpectSuccess;
-                set_deprecated_enhanced_typecheck = true;
-            }
             "ignore" => {
                 return;
             }
             _ => panic!(
-                "invalid command for example file test: use one of 'expect-success', 'expect-errors', 'expect-failures', 'deprecated-enhanced-typecheck' or 'ignore'"
+                "invalid command for example file test: use one of 'expect-success', 'expect-errors', 'expect-failures', or 'ignore'"
             ),
         }
     }
-    let deprecated_enhanced_typecheck = if set_deprecated_enhanced_typecheck {
-        // TODO: remove this once we've ported everything to no_enhanced_typecheck
-        "--deprecated-enhanced-typecheck"
-    } else {
-        ""
-    };
 
     #[cfg(target_os = "windows")]
     let script = format!(
-        "..\\rust\\install\\bin\\rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/builtin_macros.dll --extern state_machines_macros=../rust/install/bin/state_machines_macros.dll --edition=2018 {} {}",
-        deprecated_enhanced_typecheck, &path
+        "..\\rust\\install\\bin\\rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/builtin_macros.dll --extern state_machines_macros=../rust/install/bin/state_machines_macros.dll --edition=2018 {}",
+        &path
     );
 
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     let script = format!(
-        "{}=../rust/install/lib/rustlib/{}/lib:../rust/install/lib ../rust/install/bin/rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/libbuiltin_macros.{} --extern state_machines_macros=../rust/install/bin/libstate_machines_macros.{} --edition=2018 {} {}",
-        DYN_LIB_VAR,
-        RUST_LIB_TARGET,
-        DYN_LIB_EXT,
-        DYN_LIB_EXT,
-        deprecated_enhanced_typecheck,
-        &path
+        "{}=../rust/install/lib/rustlib/{}/lib:../rust/install/lib ../rust/install/bin/rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/libbuiltin_macros.{} --extern state_machines_macros=../rust/install/bin/libstate_machines_macros.{} --edition=2018 {}",
+        DYN_LIB_VAR, RUST_LIB_TARGET, DYN_LIB_EXT, DYN_LIB_EXT, &path
     );
 
     let output = if cfg!(target_os = "windows") {

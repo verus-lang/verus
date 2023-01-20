@@ -13,6 +13,8 @@ use pervasive::atomic_ghost::*;
 
 use state_machines_macros::tokenized_state_machine;
 
+verus_old_todo_no_ghost_blocks!{
+
 tokenized_state_machine!{
     DistRwLock<T> {
         fields {
@@ -297,9 +299,9 @@ struct_with_invariants!{
     spec fn wf(&self) -> bool {
 
         predicate {
-            &&& self.inst.rc_width() == self.ref_counts.view().len()
+            &&& self.inst.rc_width() == self.ref_counts@.len()
 
-            &&& forall |i: int| (0 <= i && i < self.ref_counts.view().len()) ==>
+            &&& forall |i: int| (0 <= i && i < self.ref_counts@.len()) ==>
                 self.ref_counts@.index(i).well_formed()
                 && self.ref_counts@.index(i).constant() === (self.inst, i)
         }
@@ -325,8 +327,16 @@ impl<T> RwLock<T> {
         requires(0 < rc_width);
         ensures(|s: Self| s.wf());
         
-        #[proof] let (Trk(inst), Trk(exc_locked_token), Trk(mut ref_counts_tokens), _, _, _, _) =
-            DistRwLock::Instance::initialize(rc_width, t, Option::Some(t));
+        #[proof] let inst;
+        #[proof] let exc_locked_token;
+        #[proof] let mut ref_counts_tokens;
+        proof {
+            #[proof] let (Trk(inst0), Trk(exc_locked_token0), Trk(ref_counts_tokens0), _, _, _, _) =
+                DistRwLock::Instance::initialize(rc_width as int, t, Option::Some(t));
+            inst = inst0;
+            exc_locked_token = exc_locked_token0;
+            ref_counts_tokens = ref_counts_tokens0;
+        }
 
         let exc_locked_atomic = AtomicBool::new(inst, false, exc_locked_token);
 
@@ -334,67 +344,71 @@ impl<T> RwLock<T> {
             = Vec::new();
         let mut i: usize = 0;
 
-        assert_forall_by(|j: int| {
-            requires(i <= j && j < rc_width);
-            ensures(#[trigger] ref_counts_tokens.dom().contains(j)
-                  && equal(ref_counts_tokens.index(j).view().instance, inst)
-                  && equal(ref_counts_tokens.index(j).view().key, j)
-                  && equal(ref_counts_tokens.index(j).view().value, 0));
-
+        assert forall |j: int|
+            i <= j && j < rc_width implies
+            #[trigger] ref_counts_tokens.dom().contains(j)
+                  && equal(ref_counts_tokens.index(j)@.instance, inst)
+                  && equal(ref_counts_tokens.index(j)@.key, j)
+                  && equal(ref_counts_tokens.index(j)@.value, 0)
+        by {
             assert(ref_counts_tokens.dom().contains(j));
-            assert(equal(ref_counts_tokens.index(j).view().instance, inst));
-            assert(equal(ref_counts_tokens.index(j).view().key, j));
-            assert(equal(ref_counts_tokens.index(j).view().value, 0));
-        });
+            assert(equal(ref_counts_tokens.index(j)@.instance, inst));
+            assert(equal(ref_counts_tokens.index(j)@.key, j));
+            assert(equal(ref_counts_tokens.index(j)@.value, 0));
+        }
 
-        assert(forall(|j: int| with_triggers!(
-            [ref_counts_tokens.dom().contains(j)],[ref_counts_tokens.index(j)] =>
-            i <= j && j < rc_width >>= (
+        assert(forall |j: int|
+          #![trigger( ref_counts_tokens.dom().contains(j) )]
+          #![trigger( ref_counts_tokens.index(j) )]
+            i <= j && j < rc_width ==> (
             ref_counts_tokens.dom().contains(j)
-            && equal(ref_counts_tokens.index(j).view().instance, inst)
-            && equal(ref_counts_tokens.index(j).view().key, j)
-            && equal(ref_counts_tokens.index(j).view().value, 0)
-        ))));
+            && equal(ref_counts_tokens.index(j)@.instance, inst)
+            && equal(ref_counts_tokens.index(j)@.key, j)
+            && equal(ref_counts_tokens.index(j)@.value, 0)
+        ));
 
-        while i < rc_width {
-            invariant([
+        while i < rc_width
+            invariant
                 i <= rc_width,
-                v.view().len() == i as int,
-                forall(|j: int| 0 <= j && j < i >>=
-                    v.view().index(j).well_formed()
-                      && equal(v.view().index(j).constant(), (inst, j))
+                v@.len() == i as int,
+                forall(|j: int| 0 <= j && j < i ==>
+                    v@.index(j).well_formed()
+                      && equal(v@.index(j).constant(), (inst, j))
                 ),
-                forall(|j: int| with_triggers!(
-                    [ref_counts_tokens.dom().contains(j)],[ref_counts_tokens.index(j)] =>
-                    i <= j && j < rc_width >>= (
-                    ref_counts_tokens.dom().contains(j)
-                    && equal(ref_counts_tokens.index(j).view().instance, inst)
-                    && equal(ref_counts_tokens.index(j).view().key, j)
-                    && equal(ref_counts_tokens.index(j).view().value, 0)
-                ))),
-            ]);
+                forall |j: int|
+                    #![trigger( ref_counts_tokens.dom().contains(j) )]
+                    #![trigger( ref_counts_tokens.index(j) )]
+                    i <= j && j < rc_width ==> (
+                        ref_counts_tokens.dom().contains(j)
+                        && equal(ref_counts_tokens.index(j)@.instance, inst)
+                        && equal(ref_counts_tokens.index(j)@.key, j)
+                        && equal(ref_counts_tokens.index(j)@.value, 0)
+                    ),
+        {
+            assert(ref_counts_tokens.dom().contains(i as int));
 
-            assert(ref_counts_tokens.dom().contains(i));
+            #[proof] let ref_count_token;
+            proof {
+                ref_count_token = ref_counts_tokens.tracked_remove(i as int);
+            }
 
-            #[proof] let ref_count_token = ref_counts_tokens.tracked_remove(i as int);
-
-            let rc_atomic = AtomicU64::new((inst, i as int), 0, ref_count_token);
+            let rc_atomic = AtomicU64::new((inst, spec_cast_integer::<_, int>(i)), 0, ref_count_token);
             v.push(rc_atomic);
 
             i = i + 1;
 
-            assert_forall_by(|j: int| {
-                requires(i <= j && j < rc_width);
-                ensures(#[trigger] ref_counts_tokens.dom().contains(j)
-                      && equal(ref_counts_tokens.index(j).view().instance, inst)
-                      && equal(ref_counts_tokens.index(j).view().key, j)
-                      && equal(ref_counts_tokens.index(j).view().value, 0));
-
+            assert forall |j: int|
+                i <= j && j < rc_width implies
+                #[trigger] ref_counts_tokens.dom().contains(j)
+                      && equal(ref_counts_tokens.index(j)@.instance, inst)
+                      && equal(ref_counts_tokens.index(j)@.key, j)
+                      && equal(ref_counts_tokens.index(j)@.value, 0)
+            by {
                 assert(ref_counts_tokens.dom().contains(j));
-                assert(equal(ref_counts_tokens.index(j).view().instance, inst));
-                assert(equal(ref_counts_tokens.index(j).view().key, j));
-                assert(equal(ref_counts_tokens.index(j).view().value, 0));
-            });
+                assert(equal(ref_counts_tokens.index(j)@.instance, inst));
+                assert(equal(ref_counts_tokens.index(j)@.key, j));
+                assert(equal(ref_counts_tokens.index(j)@.value, 0));
+            }
         }
 
         let s = RwLock {
@@ -403,10 +417,12 @@ impl<T> RwLock<T> {
             ref_counts: v,
         };
 
-        assert(s.inst.rc_width() == s.ref_counts.view().len());
+        assert(s.inst.rc_width() == s.ref_counts@.len());
 
         s
     }
+}
+
 }
 
 fn main() { }

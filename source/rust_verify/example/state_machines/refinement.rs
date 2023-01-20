@@ -1,5 +1,6 @@
 #[allow(unused_imports)]
 use builtin::*;
+use builtin_macros::*;
 mod pervasive;
 use pervasive::*;
 
@@ -65,15 +66,15 @@ state_machine!{
     }
 }
 
-#[spec]
-fn interp(a: A::State) -> B::State {
+verus!{
+
+spec fn interp(a: A::State) -> B::State {
     B::State {
         number: a.number * 2,
     }
 }
 
-#[proof]
-fn next_refines_next(pre: A::State, post: A::State) {
+proof fn next_refines_next(pre: A::State, post: A::State) {
     requires(pre.invariant()
         && post.invariant()
         && interp(pre).invariant()
@@ -96,8 +97,7 @@ fn next_refines_next(pre: A::State, post: A::State) {
     }
 }
 
-#[proof]
-fn next_refines_next_with_macro(pre: A::State, post: A::State) {
+proof fn next_refines_next_with_macro(pre: A::State, post: A::State) {
     requires(pre.invariant()
         && post.invariant()
         && interp(pre).invariant()
@@ -114,8 +114,7 @@ fn next_refines_next_with_macro(pre: A::State, post: A::State) {
     }}
 }
 
-#[proof]
-fn init_refines_init_with_macro(post: A::State) {
+proof fn init_refines_init_with_macro(post: A::State) {
     requires(post.invariant() && A::State::init(post));
 
     ensures(B::State::init(interp(post)));
@@ -125,6 +124,8 @@ fn init_refines_init_with_macro(post: A::State) {
             B::show::initialize(interp(post));
         }
     }}
+}
+
 }
 
 fn main() { }
