@@ -402,8 +402,7 @@ pub use assert_maps_equal_internal;
 pub use assert_maps_equal;
 
 impl<K, V> Map<K, V> {
-    #[proof]
-    pub fn tracked_map_keys_in_place(
+    pub proof fn tracked_map_keys_in_place(
         #[proof] &mut self,
         key_map: Map<K, K>
     )
