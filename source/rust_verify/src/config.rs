@@ -91,6 +91,8 @@ pub fn enable_default_features(rustc_args: &mut Vec<String>) {
     ] {
         rustc_args.push("-A".to_string());
         rustc_args.push("unused_parens".to_string()); // for syntax macro's ghost erasure
+        rustc_args.push("-A".to_string());
+        rustc_args.push("unused_braces".to_string()); // for syntax macro's ghost erasure
         rustc_args.push("-Z".to_string());
         rustc_args.push(format!("enable_feature={}", feature));
     }

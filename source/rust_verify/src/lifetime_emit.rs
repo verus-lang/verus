@@ -10,6 +10,7 @@ pub(crate) fn encode_id(kind: IdKind, rename_count: usize, raw_id: &String) -> S
         IdKind::Lifetime => format!("'a{}_{}", rename_count, raw_id),
         IdKind::Fun => format!("f{}_{}", rename_count, raw_id),
         IdKind::Local => format!("x{}_{}", rename_count, vir::def::user_local_name(raw_id)),
+        IdKind::Builtin => raw_id.clone(),
     }
 }
 
@@ -50,13 +51,15 @@ impl ToString for TypX {
         match self {
             TypX::Primitive(s) => s.clone(),
             TypX::TypParam(id) => id.to_string(),
+            TypX::Never => "!".to_string(),
             TypX::Ref(t, lifetime, Mutability::Not) => {
                 "&".to_string() + &lifetime_string(lifetime) + &t.to_string()
             }
             TypX::Ref(t, lifetime, Mutability::Mut) => {
-                "&mut ".to_string() + &lifetime_string(lifetime) + &t.to_string()
+                "&".to_string() + &lifetime_string(lifetime) + " mut " + &t.to_string()
             }
             TypX::Phantom(t) => format!("PhantomData<{}>", t.to_string()),
+            TypX::Slice(t) => format!("[{}]", t.to_string()),
             TypX::Tuple(typs) => {
                 let mut buf = "(".to_string();
                 for typ in typs {
@@ -350,7 +353,7 @@ pub(crate) fn emit_exp(state: &mut EmitState, exp: &Exp) {
         ExpX::AddrOf(m, e) => {
             match m {
                 Mutability::Not => state.write("&("),
-                Mutability::Mut => state.write("&ref("),
+                Mutability::Mut => state.write("&mut("),
             }
             emit_exp(state, e);
             state.write(")");
@@ -474,6 +477,20 @@ pub(crate) fn emit_stm(state: &mut EmitState, stm: &Stm) {
         }
     }
     state.end_span(*span);
+}
+
+pub(crate) fn emit_const_decl(state: &mut EmitState, f: &ConstDecl) {
+    state.newline();
+    state.newline();
+    state.begin_span(f.span);
+    state.write("const ");
+    state.write(f.name.to_string());
+    state.write(": ");
+    state.write(f.typ.to_string());
+    state.write(" = ");
+    emit_exp(state, &f.body);
+    state.write("; ");
+    state.end_span(f.span);
 }
 
 pub(crate) fn emit_fun_decl(state: &mut EmitState, f: &FunDecl) {

@@ -1560,7 +1560,6 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     expr: &Expr<'tcx>,
     res: &Res,
     args_slice: &[Expr<'tcx>],
-    hir_id: HirId,
     fun_span: Span,
     modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
@@ -1597,7 +1596,7 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     );
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
     let resolved_call = ResolvedCall::Ctor(vir_path.clone(), variant_name.clone());
-    erasure_info.resolved_calls.push((hir_id, fun_span.data(), resolved_call));
+    erasure_info.resolved_calls.push((expr.hir_id, fun_span.data(), resolved_call));
     let exprx = ExprX::Ctor(vir_path, variant_name, vir_fields, None);
     Ok(spanned_typed_new(expr.span, &expr_typ, exprx))
 }
@@ -2070,7 +2069,6 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     expr,
                     res,
                     *args_slice,
-                    expr.hir_id,
                     fun.span,
                     modifier,
                 )),
@@ -2142,7 +2140,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     {
                         let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
                         erasure_info.resolved_calls.push((
-                            fun.hir_id,
+                            expr.hir_id,
                             fun.span.data(),
                             resolved_call,
                         ));
@@ -2361,7 +2359,6 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         expr,
                         &path.res,
                         &[],
-                        expr.hir_id,
                         expr.span,
                         modifier,
                     ),

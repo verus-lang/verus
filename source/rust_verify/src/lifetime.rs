@@ -55,13 +55,21 @@ fn emit_check_tracked_lifetimes<'tcx>(
     emit_state.writeln("#![allow(unused_variables)]");
     emit_state.writeln("#![allow(unreachable_patterns)]");
     emit_state.writeln("#![allow(unused_parens)]");
+    emit_state.writeln("#![allow(unused_braces)]");
     emit_state.writeln("#![allow(dead_code)]");
     emit_state.writeln("#![allow(unused_mut)]");
     emit_state.writeln("#[derive(Copy)] struct PhantomData<A> { a: A }");
     emit_state.writeln("impl<A> Clone for PhantomData<A> { fn clone(&self) -> Self { panic!() } }");
+    emit_state.writeln("#[derive(Clone, Copy)] struct Ghost<A> { a: PhantomData<A> }");
+    emit_state.writeln("struct Tracked<A> { a: PhantomData<A> }");
+    emit_state.writeln("#[derive(Clone, Copy)] struct int;");
+    emit_state.writeln("#[derive(Clone, Copy)] struct nat;");
     emit_state.writeln("fn op<A, B>(a: A) -> B { unimplemented!() }");
     for d in gen_state.datatype_decls.iter() {
         emit_datatype_decl(emit_state, d);
+    }
+    for f in gen_state.const_decls.iter() {
+        emit_const_decl(emit_state, f);
     }
     for f in gen_state.fun_decls.iter() {
         emit_fun_decl(emit_state, f);

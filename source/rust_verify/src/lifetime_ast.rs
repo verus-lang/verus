@@ -9,6 +9,7 @@ pub(crate) enum IdKind {
     Lifetime,
     Fun,
     Local,
+    Builtin,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -32,8 +33,10 @@ pub(crate) type Typ = Box<TypX>;
 pub(crate) enum TypX {
     Primitive(String),
     TypParam(Id),
+    Never,
     Ref(Typ, Option<Id>, Mutability),
     Phantom(Typ),
+    Slice(Typ),
     Tuple(Vec<Typ>),
     Datatype(Id, Vec<Typ>),
 }
@@ -104,17 +107,22 @@ pub(crate) enum Datatype {
 pub(crate) struct DatatypeDecl {
     pub(crate) name: Id,
     pub(crate) span: Span,
-    // Does the type implement the Copy trait?
-    // REVIEW: for generic types like Option, this will be more than just a bool
+    // Does the type implement the Copy trait? (e.g. impl<A: Copy> Copy for S<A> {})
     pub(crate) implements_copy: bool,
     pub(crate) generics: Vec<Id>,
     pub(crate) datatype: Box<Datatype>,
 }
 
 #[derive(Debug)]
+pub(crate) struct ConstDecl {
+    pub(crate) span: Span,
+    pub(crate) name: Id,
+    pub(crate) typ: Typ,
+    pub(crate) body: Exp,
+}
+
+#[derive(Debug)]
 pub(crate) struct FunDecl {
-    // TODO: lifetime parameters
-    // TODO: type parameters
     pub(crate) sig_span: Span,
     pub(crate) name_span: Span,
     pub(crate) name: Id,

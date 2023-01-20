@@ -453,6 +453,9 @@ impl Visitor {
                 FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) => !erase_ghost,
                 FnMode::Exec(_) | FnMode::Default => true,
             },
+            // REVIEW: we could erase datatypes,
+            // but we'd also have to find and erase the impl items for those datatypes
+            /*
             Item::Struct(s) => match s.mode {
                 DataMode::Ghost(_) | DataMode::Tracked(_) => !erase_ghost,
                 DataMode::Exec(_) | DataMode::Default => true,
@@ -461,6 +464,7 @@ impl Visitor {
                 DataMode::Ghost(_) | DataMode::Tracked(_) => !erase_ghost,
                 DataMode::Exec(_) | DataMode::Default => true,
             },
+            */
             _ => true,
         });
     }
