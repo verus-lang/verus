@@ -1,8 +1,11 @@
 use rustc_span::{Span, SpanData};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use vir::ast::{SpannedTyped, Typ, VirErr};
 use vir::ast_util::err_string;
 use vir::def::Spanned;
+
+static NEXT_SPAN_ID: AtomicU64 = AtomicU64::new(1);
 
 pub(crate) fn to_raw_span(span: Span) -> air::ast::RawSpan {
     Arc::new(span.data())
@@ -11,7 +14,7 @@ pub(crate) fn to_raw_span(span: Span) -> air::ast::RawSpan {
 pub(crate) fn to_air_span(span: Span) -> air::ast::Span {
     let raw_span = to_raw_span(span);
     let as_string = format!("{:?}", span);
-    air::ast::Span { raw_span, as_string }
+    air::ast::Span { raw_span, id: NEXT_SPAN_ID.fetch_add(1, Ordering::Relaxed), as_string }
 }
 
 pub(crate) fn from_raw_span(raw_span: &air::ast::RawSpan) -> Span {

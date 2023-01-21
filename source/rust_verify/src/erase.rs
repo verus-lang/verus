@@ -50,6 +50,8 @@ use crate::rust_to_vir_expr::attrs_is_invariant_block;
 use crate::unsupported;
 use crate::util::{from_raw_span, vec_map};
 
+use air::ast::AstId;
+
 use rustc_ast::ast::{
     AngleBracketedArg, AngleBracketedArgs, Arm, AssocItem, AssocItemKind, BinOpKind, Block, Crate,
     EnumDef, Expr, ExprField, ExprKind, FieldDef, FnDecl, FnRetTy, FnSig, GenericArg, GenericArgs,
@@ -95,6 +97,8 @@ pub enum ResolvedCall {
 pub struct ErasureHints {
     /// Copy of the entire VIR crate that was created in the first run's HIR -> VIR transformation
     pub vir_crate: Krate,
+    /// Connect expression and pattern HirId to corresponding vir AstId
+    pub hir_vir_ids: Vec<(HirId, AstId)>,
     /// Details of each call in the first run's HIR
     pub resolved_calls: Vec<(HirId, SpanData, ResolvedCall)>,
     /// Details of some expressions in first run's HIR

@@ -255,7 +255,10 @@ fn extract_choose<'tcx>(
             assert!(closure_body.params.len() == typs.len());
             for (x, typ) in closure_body.params.iter().zip(typs) {
                 let name = Arc::new(pat_to_var(x.pat));
-                vars.push(spanned_typed_new(x.span, &typ, ExprX::Var(name.clone())));
+                let vir_expr = spanned_typed_new(x.span, &typ, ExprX::Var(name.clone()));
+                let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                erasure_info.hir_vir_ids.push((x.pat.hir_id, vir_expr.span.id));
+                vars.push(vir_expr);
                 params.push(Arc::new(BinderX { name, a: typ }));
             }
             let typs = vec_map(&params, |p| p.a.clone());
@@ -368,6 +371,17 @@ fn check_lit_int(
     } else {
         return err_span_str(span, "expected integer type");
     }
+}
+
+pub(crate) fn expr_to_vir_inner<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
+    modifier: ExprModifier,
+) -> Result<vir::ast::Expr, VirErr> {
+    let vir_expr = expr_to_vir_innermost(bctx, expr, modifier)?;
+    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+    erasure_info.hir_vir_ids.push((expr.hir_id, vir_expr.span.id));
+    Ok(vir_expr)
 }
 
 pub(crate) fn expr_to_vir<'tcx>(
@@ -1601,7 +1615,7 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     Ok(spanned_typed_new(expr.span, &expr_typ, exprx))
 }
 
-pub(crate) fn pattern_to_vir<'tcx>(
+pub(crate) fn pattern_to_vir_inner<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     pat: &Pat<'tcx>,
 ) -> Result<vir::ast::Pattern, VirErr> {
@@ -1704,6 +1718,16 @@ pub(crate) fn pattern_to_vir<'tcx>(
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
     erasure_info.resolved_pats.push((pat.span.data(), pattern.clone()));
     Ok(pattern)
+}
+
+pub(crate) fn pattern_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    pat: &Pat<'tcx>,
+) -> Result<vir::ast::Pattern, VirErr> {
+    let vir_pat = pattern_to_vir_inner(bctx, pat)?;
+    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+    erasure_info.hir_vir_ids.push((pat.hir_id, vir_pat.span.id));
+    Ok(vir_pat)
 }
 
 pub(crate) fn block_to_vir<'tcx>(
@@ -1967,7 +1991,7 @@ fn is_expr_typ_mut_ref<'tcx>(
     }
 }
 
-pub(crate) fn expr_to_vir_inner<'tcx>(
+pub(crate) fn expr_to_vir_innermost<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
     current_modifier: ExprModifier,
@@ -2666,14 +2690,13 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         assert!(all_args.len() == 1);
                         let arg_typ = bctx.types.node_type(all_args[0].hir_id);
                         if is_type_std_rc_or_arc(bctx.ctxt.tcx, &arg_typ) {
+                            let arg = expr_to_vir(bctx, &all_args[0], ExprModifier::REGULAR)?;
                             let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
                             erasure_info.resolved_calls.push((
                                 expr.hir_id,
                                 fn_span.data(),
                                 ResolvedCall::CompilableOperator,
                             ));
-
-                            let arg = expr_to_vir(bctx, &all_args[0], ExprModifier::REGULAR)?;
                             return Ok(arg);
                         }
                     }

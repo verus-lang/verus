@@ -1,4 +1,5 @@
 use crate::erase::ResolvedCall;
+use air::ast::AstId;
 use rustc_hir::{Crate, HirId};
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::SpanData;
@@ -7,6 +8,7 @@ use std::sync::Arc;
 use vir::ast::{Expr, InferMode, Mode, Pattern, Typ};
 
 pub struct ErasureInfo {
+    pub(crate) hir_vir_ids: Vec<(HirId, AstId)>,
     pub(crate) resolved_calls: Vec<(HirId, SpanData, ResolvedCall)>,
     pub(crate) resolved_exprs: Vec<(SpanData, Expr)>,
     pub(crate) resolved_pats: Vec<(SpanData, Pattern)>,

@@ -1337,6 +1337,7 @@ impl Verifier {
 
         let hir = tcx.hir();
         let erasure_info = ErasureInfo {
+            hir_vir_ids: vec![],
             resolved_calls: vec![],
             resolved_exprs: vec![],
             resolved_pats: vec![],
@@ -1367,6 +1368,7 @@ impl Verifier {
                 .expect("OwnerNode::Crate missing");
             Some(air::ast::Span {
                 raw_span: crate::util::to_raw_span(no_span),
+                id: 0,
                 as_string: "no location".to_string(),
             })
         };
@@ -1400,6 +1402,7 @@ impl Verifier {
         self.inferred_modes = Some(inferred_modes);
 
         let erasure_info = ctxt.erasure_info.borrow();
+        let hir_vir_ids = erasure_info.hir_vir_ids.clone();
         let resolved_calls = erasure_info.resolved_calls.clone();
         let resolved_exprs = erasure_info.resolved_exprs.clone();
         let resolved_pats = erasure_info.resolved_pats.clone();
@@ -1407,6 +1410,7 @@ impl Verifier {
         let ignored_functions = erasure_info.ignored_functions.clone();
         let erasure_hints = crate::erase::ErasureHints {
             vir_crate,
+            hir_vir_ids,
             resolved_calls,
             resolved_exprs,
             resolved_pats,

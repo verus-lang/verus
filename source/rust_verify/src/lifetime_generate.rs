@@ -3,6 +3,7 @@ use crate::erase::{ErasureHints, ResolvedCall};
 use crate::lifetime_ast::*;
 use crate::rust_to_vir_base::{def_id_to_vir_path, local_to_var};
 use crate::rust_to_vir_expr::{datatype_constructor_variant_of_res, datatype_variant_of_res};
+use air::ast::AstId;
 use rustc_ast::{BorrowKind, IsAuto, Mutability};
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::{
@@ -46,13 +47,11 @@ struct Context<'tcx> {
     /// Mode of each if/else or match condition, used to decide how to erase if/else and match
     /// condition.  For example, in "if x < 10 { x + 1 } else { x + 2 }", this will record the span
     /// and mode of the expression "x < 10"
-    /// REVIEW: replace Span with HirId (may require bundling Option<HirId> with SpanData in raw_span)
-    condition_modes: HashMap<Span, Mode>,
+    condition_modes: HashMap<HirId, Mode>,
     /// Mode of each variable declaration and use.  For example, in
     /// "if x < 10 { x + 1 } else { x + 2 }", we will have three entries, one for each
     /// occurence of "x"
-    /// REVIEW: replace Span with HirId (may require bundling Option<HirId> with SpanData in raw_span)
-    var_modes: HashMap<Span, Mode>,
+    var_modes: HashMap<HirId, Mode>,
     ret_spec: Option<bool>,
 }
 
@@ -509,11 +508,13 @@ fn erase_expr<'tcx>(
         ExprKind::Path(QPath::Resolved(None, path)) => {
             match path.res {
                 Res::Local(id) => match ctxt.tcx.hir().get(id) {
-                    Node::Binding(pat) => {
-                        if expect_spec || ctxt.var_modes[&expr.span] == Mode::Spec {
+                    Node::Binding(Pat {
+                        kind: PatKind::Binding(_ann, id, ident, _pat), ..
+                    }) => {
+                        if expect_spec || ctxt.var_modes[&expr.hir_id] == Mode::Spec {
                             None
                         } else {
-                            mk_exp(ExpX::Var(state.local(crate::rust_to_vir_expr::pat_to_var(pat))))
+                            mk_exp(ExpX::Var(state.local(local_to_var(ident, id.local_id))))
                         }
                     }
                     _ => panic!("unsupported"),
@@ -668,7 +669,7 @@ fn erase_expr<'tcx>(
             }
         }
         ExprKind::Assign(e1, e2, _span) => {
-            let mode1 = ctxt.var_modes[&e1.span];
+            let mode1 = ctxt.var_modes[&e1.hir_id];
             if mode1 == Mode::Spec {
                 let exp1 = erase_expr(ctxt, state, true, e1);
                 let exp2 = erase_expr(ctxt, state, true, e2);
@@ -680,7 +681,7 @@ fn erase_expr<'tcx>(
             }
         }
         ExprKind::AssignOp(_op, e1, e2) => {
-            let mode1 = ctxt.var_modes[&e1.span];
+            let mode1 = ctxt.var_modes[&e1.hir_id];
             if mode1 == Mode::Spec {
                 let exp1 = erase_expr(ctxt, state, true, e1);
                 let exp2 = erase_expr(ctxt, state, true, e2);
@@ -694,7 +695,7 @@ fn erase_expr<'tcx>(
         }
         ExprKind::Closure(..) => todo!(),
         ExprKind::If(cond, lhs, rhs) => {
-            let cond_spec = ctxt.condition_modes[&expr.span] == Mode::Spec;
+            let cond_spec = ctxt.condition_modes[&expr.hir_id] == Mode::Spec;
             let cond = cond.peel_drop_temps();
             match cond.kind {
                 ExprKind::Let(_pat, _expr, _let_span) => todo!(),
@@ -728,7 +729,7 @@ fn erase_expr<'tcx>(
         }
         ExprKind::Match(cond, arms, _match_source) => {
             let mut is_some_arms = false;
-            let cond_spec = ctxt.condition_modes[&expr.span] == Mode::Spec;
+            let cond_spec = ctxt.condition_modes[&expr.hir_id] == Mode::Spec;
             let ec = erase_expr(ctxt, state, cond_spec, cond);
             let mut e_arms: Vec<(Pattern, Exp)> = Vec::new();
             for arm in arms.iter() {
@@ -843,7 +844,7 @@ fn erase_stmt<'tcx>(ctxt: &Context, state: &mut State, stmt: &Stmt) -> Vec<Stm> 
             }
         }
         StmtKind::Local(local) => {
-            let mode = ctxt.var_modes[&local.pat.span];
+            let mode = ctxt.var_modes[&local.pat.hir_id];
             if mode == Mode::Spec {
                 if let Some(init) = local.init {
                     if let Some(e) = erase_expr(ctxt, state, true, init) {
@@ -1275,6 +1276,13 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
         ret_spec: None,
     };
     let mut state = State::new();
+    let mut id_to_hir: HashMap<AstId, Vec<HirId>> = HashMap::new();
+    for (hir_id, vir_id) in &erasure_hints.hir_vir_ids {
+        if !id_to_hir.contains_key(vir_id) {
+            id_to_hir.insert(*vir_id, vec![]);
+        }
+        id_to_hir.get_mut(vir_id).unwrap().push(*hir_id);
+    }
     for f in &erasure_hints.vir_crate.functions {
         ctxt.functions.insert(f.x.name.clone(), Some(f.clone())).map(|_| panic!("{:?}", &f.x.name));
     }
@@ -1288,12 +1296,22 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
         ctxt.calls.insert(*hir_id, call.clone()).map(|_| panic!("{:?}", span));
     }
     for (span, mode) in &erasure_hints.erasure_modes.condition_modes {
-        let span = crate::util::from_raw_span(&span.raw_span);
-        ctxt.condition_modes.insert(span, *mode).map(|_| panic!("{:?}", span));
+        if !id_to_hir.contains_key(&span.id) {
+            dbg!(span, span.id);
+            panic!("missing id_to_hir");
+        }
+        for hir_id in &id_to_hir[&span.id] {
+            ctxt.condition_modes.insert(*hir_id, *mode).map(|_| panic!("{:?}", span));
+        }
     }
     for (span, mode) in &erasure_hints.erasure_modes.var_modes {
-        let span = crate::util::from_raw_span(&span.raw_span);
-        ctxt.var_modes.insert(span, *mode).map(|v| panic!("{:?} {:?}", span, v));
+        if !id_to_hir.contains_key(&span.id) {
+            dbg!(span, span.id);
+            panic!("missing id_to_hir");
+        }
+        for hir_id in &id_to_hir[&span.id] {
+            ctxt.var_modes.insert(*hir_id, *mode).map(|v| panic!("{:?} {:?}", span, v));
+        }
     }
     for owner in krate.owners.iter() {
         if let Some(owner) = owner {

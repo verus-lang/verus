@@ -248,6 +248,7 @@ pub(crate) fn emit_pattern(state: &mut EmitState, pat: &Pattern) {
             state.write("(");
             for p in ps {
                 emit_pattern(state, p);
+                state.write(", ");
             }
             state.write(")");
         }
