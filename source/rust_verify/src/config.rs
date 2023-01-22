@@ -16,7 +16,7 @@ impl Default for ShowTriggers {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Erasure {
     Ast,
     Macro,
@@ -80,7 +80,24 @@ pub struct Args {
     pub solver_version_check: bool,
 }
 
-pub fn enable_default_features(rustc_args: &mut Vec<String>) {
+pub fn enable_default_features(
+    rustc_args: &mut Vec<String>,
+    syntax_macro: bool,
+    erase_ghost: bool,
+) {
+    if syntax_macro {
+        // REVIEW: syntax macro adds superfluous parentheses and braces
+        for allow in &["unused_parens", "unused_braces"] {
+            rustc_args.push("-A".to_string());
+            rustc_args.push(allow.to_string());
+        }
+    }
+    if erase_ghost {
+        for allow in &["unused_imports", "unused_mut"] {
+            rustc_args.push("-A".to_string());
+            rustc_args.push(allow.to_string());
+        }
+    }
     for feature in &[
         "stmt_expr_attributes",
         "box_syntax",
@@ -89,10 +106,6 @@ pub fn enable_default_features(rustc_args: &mut Vec<String>) {
         "rustc_attrs",
         "unboxed_closures",
     ] {
-        rustc_args.push("-A".to_string());
-        rustc_args.push("unused_parens".to_string()); // for syntax macro's ghost erasure
-        rustc_args.push("-A".to_string());
-        rustc_args.push("unused_braces".to_string()); // for syntax macro's ghost erasure
         rustc_args.push("-Z".to_string());
         rustc_args.push(format!("enable_feature={}", feature));
     }

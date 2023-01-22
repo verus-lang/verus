@@ -444,29 +444,48 @@ impl Visitor {
 
     fn visit_items_prefilter(&mut self, items: &mut Vec<Item>) {
         let erase_ghost = self.erase_ghost;
-        items.retain(|item| match item {
-            Item::Fn(fun) => match fun.sig.mode {
-                FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) => !erase_ghost,
-                FnMode::Exec(_) | FnMode::Default => true,
-            },
-            Item::Const(c) => match c.mode {
-                FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) => !erase_ghost,
-                FnMode::Exec(_) | FnMode::Default => true,
-            },
-            // REVIEW: we could erase datatypes,
-            // but we'd also have to find and erase the impl items for those datatypes
-            /*
-            Item::Struct(s) => match s.mode {
-                DataMode::Ghost(_) | DataMode::Tracked(_) => !erase_ghost,
-                DataMode::Exec(_) | DataMode::Default => true,
-            },
-            Item::Enum(e) => match e.mode {
-                DataMode::Ghost(_) | DataMode::Tracked(_) => !erase_ghost,
-                DataMode::Exec(_) | DataMode::Default => true,
-            },
-            */
-            _ => true,
-        });
+        // We'd like to erase ghost items, but there may be dangling references to the ghost items:
+        // - "use" declarations may refer to the items ("use m::f;" makes it hard to erase f)
+        // - "impl" may refer to struct and enum items ("impl<A> S<A> { ... }" impedes erasing S)
+        // Therefore, we leave arbitrary named stubs in the place of the erased ghost items:
+        // - For erased Fn and Const item x, leave "use bool as x;"
+        // - Leave Struct and Enum as-is (REVIEW: we could leave stubs with PhantomData fields)
+        for item in items.iter_mut() {
+            let erase_fn = match item {
+                Item::Fn(fun) => match fun.sig.mode {
+                    FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) if erase_ghost => {
+                        Some((fun.sig.ident.clone(), fun.vis.clone()))
+                    }
+                    _ => None,
+                },
+                Item::Const(c) => match c.mode {
+                    FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) if erase_ghost => {
+                        Some((c.ident.clone(), c.vis.clone()))
+                    }
+                    _ => None,
+                },
+                /*
+                Item::Struct(s) => match s.mode {
+                    DataMode::Ghost(_) | DataMode::Tracked(_) if erase_ghost => {
+                        ...
+                    }
+                    _ => None,
+                },
+                Item::Enum(e) => match e.mode {
+                    DataMode::Ghost(_) | DataMode::Tracked(_) if erase_ghost => {
+                        ...
+                    }
+                    _ => None,
+                },
+                */
+                _ => None,
+            };
+            if let Some((name, vis)) = erase_fn {
+                *item = Item::Verbatim(quote_spanned! {
+                    item.span() => #[allow(unused_imports)] #vis use bool as #name;
+                });
+            }
+        }
     }
 
     fn visit_impl_items_prefilter(&mut self, items: &mut Vec<ImplItem>) {

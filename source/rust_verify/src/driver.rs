@@ -14,6 +14,17 @@ fn mk_compiler<'a, 'b>(
     compiler
 }
 
+fn run_compiler<'a, 'b>(
+    mut rustc_args: Vec<String>,
+    syntax_macro: bool,
+    erase_ghost: bool,
+    verifier: &'b mut (dyn rustc_driver::Callbacks + Send),
+    file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
+) -> Result<(), rustc_errors::ErrorReported> {
+    crate::config::enable_default_features(&mut rustc_args, syntax_macro, erase_ghost);
+    mk_compiler(&rustc_args, verifier, file_loader).run()
+}
+
 fn print_verification_results(verifier: &Verifier) {
     if !verifier.encountered_vir_error {
         println!(
@@ -56,7 +67,7 @@ pub(crate) fn run_with_erase_macro_compile(
 ) -> Result<(), rustc_errors::ErrorReported> {
     let mut callbacks = CompilerCallbacksEraseMacro { lifetimes_only: !compile };
     rustc_args.extend(["--cfg", "verus_macro_erase_ghost"].map(|s| s.to_string()));
-    mk_compiler(&rustc_args, &mut callbacks, file_loader).run()
+    run_compiler(rustc_args, true, true, &mut callbacks, file_loader)
 }
 
 fn run_with_erase_macro<F>(
@@ -76,8 +87,13 @@ where
         rustc_args: rustc_args.clone(),
         file_loader: Some(Box::new(file_loader.clone())),
     };
-    let status =
-        mk_compiler(&rustc_args, &mut verifier_callbacks, Box::new(file_loader.clone())).run();
+    let status = run_compiler(
+        rustc_args.clone(),
+        true,
+        false,
+        &mut verifier_callbacks,
+        Box::new(file_loader.clone()),
+    );
     if !verifier_callbacks.verifier.encountered_vir_error {
         print_verification_results(&verifier_callbacks.verifier);
     }
@@ -141,9 +157,13 @@ where
         // Start rustc in a separate thread: run verifier callback to build VIR tree and run verifier
         std::thread::spawn(move || {
             let status = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let verifier_compiler =
-                    mk_compiler(&rustc_args, &mut verifier_callbacks, Box::new(file_loader));
-                verifier_compiler.run()
+                run_compiler(
+                    rustc_args,
+                    false,
+                    false,
+                    &mut verifier_callbacks,
+                    Box::new(file_loader),
+                )
             }));
             match status {
                 Ok(Ok(_)) => Ok(()),
@@ -173,9 +193,13 @@ where
                         print: verifier.args.print_erased_spec,
                         time_erasure: Arc::new(Mutex::new(Duration::new(0, 0))),
                     };
-                    let status =
-                        mk_compiler(&rustc_args, &mut callbacks, Box::new(file_loader.clone()))
-                            .run();
+                    let status = run_compiler(
+                        rustc_args.clone(),
+                        false,
+                        false,
+                        &mut callbacks,
+                        Box::new(file_loader.clone()),
+                    );
                     time_erasure1 = *callbacks.time_erasure.lock().unwrap();
                     status.map_err(|_| ())
                 } else {
@@ -222,8 +246,7 @@ where
             print: verifier.args.print_erased,
             time_erasure: Arc::new(Mutex::new(Duration::new(0, 0))),
         };
-        mk_compiler(&rustc_args, &mut callbacks, Box::new(file_loader))
-            .run()
+        run_compiler(rustc_args, false, false, &mut callbacks, Box::new(file_loader))
             .expect("RunCompiler.run() failed");
         time_erasure2 = *callbacks.time_erasure.lock().unwrap();
     }

@@ -5,7 +5,7 @@ extern crate rustc_span;
 pub use rust_verify::verifier::ErrorSpan;
 pub use rust_verify_test_macros::{code, code_str, verus_code, verus_code_str};
 
-use rust_verify::config::{enable_default_features, parse_args, Args, DEFAULT_RLIMIT_SECS};
+use rust_verify::config::{parse_args, Args, DEFAULT_RLIMIT_SECS};
 use rust_verify::verifier::Verifier;
 
 use rustc_span::source_map::FileLoader;
@@ -109,8 +109,6 @@ pub fn verify_files_and_pervasive(
         "--extern".to_string(),
         "state_machines_macros=../../rust/install/bin/state_machines_macros.dll".to_string(),
     ]);
-
-    enable_default_features(&mut rustc_args);
 
     rustc_args.push(entry_file);
     let our_args = {

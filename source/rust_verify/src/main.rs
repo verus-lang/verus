@@ -36,8 +36,7 @@ pub fn main() {
 
     let mut args = std::env::args();
     let program = args.next().unwrap();
-    let (our_args, mut rustc_args) = rust_verify::config::parse_args(&program, args);
-    rust_verify::config::enable_default_features(&mut rustc_args);
+    let (our_args, rustc_args) = rust_verify::config::parse_args(&program, args);
     let pervasive_path = our_args.pervasive_path.clone();
 
     let file_loader = rust_verify::file_loader::PervasiveFileLoader::new(pervasive_path);

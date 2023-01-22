@@ -57,11 +57,23 @@ fn emit_check_tracked_lifetimes<'tcx>(
     emit_state.writeln("#![allow(unused_parens)]");
     emit_state.writeln("#![allow(unused_braces)]");
     emit_state.writeln("#![allow(dead_code)]");
+    emit_state.writeln("#![allow(unreachable_code)]");
     emit_state.writeln("#![allow(unused_mut)]");
     emit_state.writeln("#[derive(Copy)] struct PhantomData<A> { a: A }");
     emit_state.writeln("impl<A> Clone for PhantomData<A> { fn clone(&self) -> Self { panic!() } }");
     emit_state.writeln("#[derive(Clone, Copy)] struct Ghost<A> { a: PhantomData<A> }");
+    emit_state.writeln("#[derive(Clone, Copy)] struct Box<A> { a: PhantomData<A> }");
+    emit_state.writeln("struct Rc<A> { a: PhantomData<A> }");
+    emit_state.writeln("struct Arc<A> { a: PhantomData<A> }");
     emit_state.writeln("struct Tracked<A> { a: PhantomData<A> }");
+    emit_state.writeln("impl<A> core::ops::Deref for Box<A> { type Target = A; fn deref(&self) -> &A { panic!() } }");
+    emit_state.writeln(
+        "impl<A> core::ops::DerefMut for Box<A> { fn deref_mut(&mut self) -> &mut A { panic!() } }",
+    );
+    emit_state.writeln("impl<A> core::ops::Deref for Rc<A> { type Target = A; fn deref(&self) -> &A { panic!() } }");
+    emit_state.writeln("impl<A> core::ops::Deref for Arc<A> { type Target = A; fn deref(&self) -> &A { panic!() } }");
+    emit_state.writeln("impl<A> Clone for Rc<A> { fn clone(&self) -> Self { panic!() } }");
+    emit_state.writeln("impl<A> Clone for Arc<A> { fn clone(&self) -> Self { panic!() } }");
     emit_state.writeln("#[derive(Clone, Copy)] struct int;");
     emit_state.writeln("#[derive(Clone, Copy)] struct nat;");
     emit_state.writeln("fn op<A, B>(a: A) -> B { unimplemented!() }");

@@ -2524,6 +2524,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     {
                         let pat_typ = typ_of_node(bctx, &pat.hir_id, false);
                         let pattern = spanned_typed_new(cond.span, &pat_typ, PatternX::Wildcard);
+                        {
+                            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                            erasure_info.hir_vir_ids.push((cond.hir_id, pattern.span.id));
+                        }
                         let guard = mk_expr(ExprX::Const(Constant::Bool(true)));
                         let body = if let Some(rhs) = rhs {
                             expr_to_vir(bctx, &rhs, modifier)?

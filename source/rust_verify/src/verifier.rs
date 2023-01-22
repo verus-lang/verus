@@ -1395,7 +1395,10 @@ impl Verifier {
             }
         }
         check_crate_result?;
-        let (erasure_modes, inferred_modes) = vir::modes::check_crate(&vir_crate)?;
+        let (erasure_modes, inferred_modes) = vir::modes::check_crate(
+            &vir_crate,
+            self.args.erasure == crate::config::Erasure::Macro,
+        )?;
         let vir_crate = vir::traits::demote_foreign_traits(&vir_crate)?;
 
         self.vir_crate = Some(vir_crate.clone());

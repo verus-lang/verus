@@ -239,7 +239,7 @@ pub(crate) fn emit_pattern(state: &mut EmitState, pat: &Pattern) {
             }
             state.write(")");
         }
-        PatternX::TupleStruct(x, v, ps) => {
+        PatternX::DatatypeTuple(x, v, ps) => {
             state.write(x.to_string());
             if let Some(v) = v {
                 state.write("::");
@@ -252,7 +252,7 @@ pub(crate) fn emit_pattern(state: &mut EmitState, pat: &Pattern) {
             }
             state.write(")");
         }
-        PatternX::Struct(x, v, ps) => {
+        PatternX::DatatypeStruct(x, v, ps) => {
             state.write(x.to_string());
             if let Some(v) = v {
                 state.write("::");
@@ -319,11 +319,19 @@ pub(crate) fn emit_exp(state: &mut EmitState, exp: &Exp) {
             }
             state.write(")");
         }
-        ExpX::DatatypeTuple(x, v, es) => {
+        ExpX::DatatypeTuple(x, v, typ_args, es) => {
             state.write(x.to_string());
             if let Some(v) = v {
                 state.write("::");
                 state.write(v.to_string());
+            }
+            if typ_args.len() > 0 {
+                state.write("::<");
+                for typ_arg in typ_args {
+                    state.write(typ_arg.to_string());
+                    state.write(", ");
+                }
+                state.write(">");
             }
             state.write("(");
             for e in es {
@@ -332,11 +340,19 @@ pub(crate) fn emit_exp(state: &mut EmitState, exp: &Exp) {
             }
             state.write(")");
         }
-        ExpX::DatatypeStruct(x, v, es, spread) => {
+        ExpX::DatatypeStruct(x, v, typ_args, es, spread) => {
             state.write(x.to_string());
             if let Some(v) = v {
                 state.write("::");
                 state.write(v.to_string());
+            }
+            if typ_args.len() > 0 {
+                state.write("::<");
+                for typ_arg in typ_args {
+                    state.write(typ_arg.to_string());
+                    state.write(", ");
+                }
+                state.write(">");
             }
             state.write(" { ");
             for (field, e) in es {
@@ -391,9 +407,13 @@ pub(crate) fn emit_exp(state: &mut EmitState, exp: &Exp) {
             emit_exp(state, cond);
             state.write(" {");
             state.push_indent();
-            for (pat, body) in arms {
+            for (pat, guard, body) in arms {
                 state.newline();
                 emit_pattern(state, pat);
+                if let Some(guard) = guard {
+                    state.write(" if ");
+                    emit_exp(state, guard);
+                }
                 state.write(" => ");
                 emit_exp(state, body);
             }
@@ -433,7 +453,7 @@ pub(crate) fn emit_exp(state: &mut EmitState, exp: &Exp) {
             }
         }
         ExpX::Ret(e) => {
-            state.write("break");
+            state.write("return");
             if let Some(e) = e {
                 state.write(" ");
                 emit_exp(state, e);
@@ -467,9 +487,11 @@ pub(crate) fn emit_stm(state: &mut EmitState, stm: &Stm) {
             emit_exp(state, exp);
             state.write(";");
         }
-        StmX::Let(pat, init) => {
+        StmX::Let(pat, typ, init) => {
             state.write("let ");
             emit_pattern(state, pat);
+            state.write(": ");
+            state.write(typ.to_string());
             if let Some(init) = init {
                 state.write(" = ");
                 emit_exp(state, init);
@@ -478,6 +500,19 @@ pub(crate) fn emit_stm(state: &mut EmitState, stm: &Stm) {
         }
     }
     state.end_span(*span);
+}
+
+fn emit_generic_param((x, bnds): &GenericParam) -> String {
+    let mut buf = x.to_string();
+    for i in 0..bnds.len() {
+        if i == 0 {
+            buf += ": ";
+        } else {
+            buf += " + ";
+        }
+        buf += &bnds[i].to_string();
+    }
+    buf
 }
 
 pub(crate) fn emit_const_decl(state: &mut EmitState, f: &ConstDecl) {
@@ -502,8 +537,8 @@ pub(crate) fn emit_fun_decl(state: &mut EmitState, f: &FunDecl) {
     state.write_spanned(f.name.to_string(), f.name_span);
     if f.generics.len() > 0 {
         state.write("<");
-        for x in f.generics.iter() {
-            state.write(x.to_string());
+        for gparam in f.generics.iter() {
+            state.write(emit_generic_param(gparam));
             state.write(", ");
         }
         state.write(">");
@@ -580,8 +615,8 @@ pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
     state.write(&d.name.to_string());
     if d.generics.len() > 0 {
         state.write("<");
-        for x in d.generics.iter() {
-            state.write(x.to_string());
+        for gparam in d.generics.iter() {
+            state.write(emit_generic_param(gparam));
             state.write(", ");
         }
         state.write(">");

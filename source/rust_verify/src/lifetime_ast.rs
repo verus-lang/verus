@@ -47,8 +47,8 @@ pub(crate) enum PatternX {
     Wildcard,
     Binding(Id, Mutability),
     Tuple(Vec<Pattern>),
-    TupleStruct(Id, Option<Id>, Vec<Pattern>),
-    Struct(Id, Option<Id>, Vec<(Id, Pattern)>),
+    DatatypeTuple(Id, Option<Id>, Vec<Pattern>),
+    DatatypeStruct(Id, Option<Id>, Vec<(Id, Pattern)>),
 }
 
 // We're only interested in expressions that produce non-spec values,
@@ -62,14 +62,14 @@ pub(crate) enum ExpX {
     Op(Vec<Exp>, Typ),
     Call(Id, Vec<Typ>, Vec<Exp>),
     Tuple(Vec<Exp>),
-    DatatypeTuple(Id, Option<Id>, Vec<Exp>),
-    DatatypeStruct(Id, Option<Id>, Vec<(Id, Exp)>, Option<Exp>),
+    DatatypeTuple(Id, Option<Id>, Vec<Typ>, Vec<Exp>),
+    DatatypeStruct(Id, Option<Id>, Vec<Typ>, Vec<(Id, Exp)>, Option<Exp>),
     AddrOf(Mutability, Exp),
     Deref(Exp),
     Assign(Exp, Exp),
     Field(Exp, Id),
     If(Exp, Exp, Exp),
-    Match(Exp, Vec<(Pattern, Exp)>),
+    Match(Exp, Vec<(Pattern, Option<Exp>, Exp)>),
     While(Exp, Exp, Option<Id>),
     Loop(Exp, Option<Id>),
     Break(Option<Id>),
@@ -82,7 +82,7 @@ pub(crate) type Stm = Box<(Span, StmX)>;
 #[derive(Debug)]
 pub(crate) enum StmX {
     Expr(Exp),
-    Let(Pattern, Option<Exp>),
+    Let(Pattern, Typ, Option<Exp>),
 }
 
 #[derive(Debug)]
@@ -103,13 +103,15 @@ pub(crate) enum Datatype {
     Enum(Vec<(Id, Fields)>),
 }
 
+pub(crate) type GenericParam = (Id, Vec<Id>);
+
 #[derive(Debug)]
 pub(crate) struct DatatypeDecl {
     pub(crate) name: Id,
     pub(crate) span: Span,
     // Does the type implement the Copy trait? (e.g. impl<A: Copy> Copy for S<A> {})
     pub(crate) implements_copy: bool,
-    pub(crate) generics: Vec<Id>,
+    pub(crate) generics: Vec<GenericParam>,
     pub(crate) datatype: Box<Datatype>,
 }
 
@@ -126,7 +128,7 @@ pub(crate) struct FunDecl {
     pub(crate) sig_span: Span,
     pub(crate) name_span: Span,
     pub(crate) name: Id,
-    pub(crate) generics: Vec<Id>,
+    pub(crate) generics: Vec<GenericParam>,
     pub(crate) params: Vec<(Span, Id, Typ)>,
     pub(crate) ret: Option<(Span, Typ)>,
     pub(crate) body: Exp,
