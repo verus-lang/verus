@@ -15,7 +15,7 @@ pub fn ghost_exec<A>(#[spec] a: A) -> (s: Ghost<A>)
 }
 
 #[verifier(external_body)]
-pub fn tracked_exec<A>(#[proof] a: A) -> (s: Tracked<A>)
+pub fn tracked_exec<A>(#[verus::proof] a: A) -> (s: Tracked<A>)
     ensures a == s@
 {
     opens_invariants_none();
@@ -23,7 +23,7 @@ pub fn tracked_exec<A>(#[proof] a: A) -> (s: Tracked<A>)
 }
 
 #[verifier(external_body)]
-pub fn tracked_exec_borrow<'a, A>(#[proof] a: &'a A) -> (s: &'a Tracked<A>)
+pub fn tracked_exec_borrow<'a, A>(#[verus::proof] a: &'a A) -> (s: &'a Tracked<A>)
     ensures *a == s@
 {
     opens_invariants_none();
@@ -80,7 +80,7 @@ pub struct Spec<#[verifier(strictly_positive)] A> {
 
 #[cfg(not(verus_macro_erase_ghost))]
 pub struct Proof<A>(
-    #[proof] pub A,
+    #[verus::proof] pub A,
 );
 #[cfg(verus_macro_erase_ghost)]
 pub struct Proof<A>(
@@ -97,7 +97,7 @@ impl<A> Spec<A> {
         Spec { phantom: PhantomData }
     }
 
-    #[proof]
+    #[verus::proof]
     #[verifier(returns(proof))]
     #[verifier(external_body)]
     pub fn proof(a: A) -> Spec<A> {

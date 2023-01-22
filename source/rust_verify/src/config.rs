@@ -80,7 +80,7 @@ pub struct Args {
     pub solver_version_check: bool,
 }
 
-pub fn enable_default_features(
+pub fn enable_default_features_and_verus_attr(
     rustc_args: &mut Vec<String>,
     syntax_macro: bool,
     erase_ghost: bool,
@@ -105,10 +105,13 @@ pub fn enable_default_features(
         "negative_impls",
         "rustc_attrs",
         "unboxed_closures",
+        "register_tool",
     ] {
         rustc_args.push("-Z".to_string());
         rustc_args.push(format!("enable_feature={}", feature));
     }
+
+    rustc_args.push("-Zcrate-attr=register_tool(verus)".to_string());
 }
 
 pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args, Vec<String>) {

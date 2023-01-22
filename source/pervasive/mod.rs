@@ -116,13 +116,13 @@ pub closed spec fn spec_affirm(b: bool) -> bool
 }
 
 /// In spec, all types are inhabited
-#[verifier(external_body)]
+#[verus::verifier(external_body)]
 #[allow(dead_code)]
 pub closed spec fn arbitrary<A>() -> A {
     unimplemented!()
 }
 
-#[verifier(external_body)]
+#[verus::verifier(external_body)]
 #[allow(dead_code)]
 pub proof fn proof_from_false<A>() -> (tracked a: A) {
     requires(false);
@@ -130,7 +130,7 @@ pub proof fn proof_from_false<A>() -> (tracked a: A) {
     unimplemented!()
 }
 
-#[verifier(external_body)]
+#[verus::verifier(external_body)]
 #[allow(dead_code)]
 pub fn unreached<A>() -> A
     requires false
@@ -138,7 +138,7 @@ pub fn unreached<A>() -> A
     panic!("unreached_external")
 }
 
-#[verifier(external_body)]
+#[verus::verifier(external_body)]
 pub fn print_u64(i: u64) {
     println!("{}", i);
 }

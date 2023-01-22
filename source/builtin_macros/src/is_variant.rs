@@ -30,9 +30,9 @@ pub fn attribute_is_variant(
                         );
 
                         quote! {
-                            #[spec]
+                            #[verus::spec]
                             #[allow(non_snake_case)]
-                            #[verifier(get_variant(#variant_ident, #field_ident))]
+                            #[verus::verifier(get_variant(#variant_ident, #field_ident))]
                             pub fn #get_ident(self) -> #field_ty {
                                 unimplemented!()
                             }
@@ -54,9 +54,9 @@ pub fn attribute_is_variant(
                         );
 
                         quote! {
-                            #[spec]
+                            #[verus::spec]
                             #[allow(non_snake_case)]
-                            #[verifier(get_variant(#variant_ident_str, #field_lit))]
+                            #[verus::verifier(get_variant(#variant_ident_str, #field_lit))]
                             pub fn #get_ident(self) -> #field_ty {
                                 unimplemented!()
                             }
@@ -67,8 +67,8 @@ pub fn attribute_is_variant(
             };
 
             quote! {
-                #[spec]
-                #[verifier(is_variant(#variant_ident_str))]
+                #[verus::spec]
+                #[verus::verifier(is_variant(#variant_ident_str))]
                 #[allow(non_snake_case)]
                 pub fn #fun_ident(&self) -> bool { unimplemented!() }
 

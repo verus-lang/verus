@@ -246,9 +246,9 @@ impl<V> PCell<V> {
 
 struct_with_invariants!{
     pub struct InvCell<#[verifier(maybe_negative)] T> {
-        #[spec] possible_values: Set<T>,
+        #[verus::spec] possible_values: Set<T>,
         pcell: PCell<T>,
-        #[proof] perm_inv: LocalInvariant<_, PermData<T>, _>,
+        #[verus::proof] perm_inv: LocalInvariant<_, PermData<T>, _>,
     }
 
     pub closed spec fn wf(&self) -> bool {
@@ -261,7 +261,7 @@ struct_with_invariants!{
 }
 
 impl<T> InvCell<T> {
-    #[spec]
+    #[verus::spec]
     pub fn inv(&self, val: T) -> bool {
         self.possible_values.contains(val)
     }
@@ -272,8 +272,8 @@ impl<T> InvCell<T> {
         ensures(|cell: Self| cell.wf() && forall(|v| f(v) == cell.inv(v)));
 
         let (pcell, Trk(perm)) = PCell::new(val);
-        #[spec] let possible_values = Set::new(f);
-        #[proof] let perm_inv = LocalInvariant::new(
+        #[verus::spec] let possible_values = Set::new(f);
+        #[verus::proof] let perm_inv = LocalInvariant::new(
             (possible_values, pcell),
             perm,
             verus_proof_expr!(0));

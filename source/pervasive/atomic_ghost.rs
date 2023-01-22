@@ -24,8 +24,8 @@ macro_rules! declare_atomic_type {
             where Pred: AtomicInvariantPredicate<K, $value_ty, G>
         {
             #[cfg(not(verus_macro_erase_ghost))]
-            #[verifier(publish)]
-            #[spec]
+            #[verus::verifier(publish)]
+            #[verus::spec]
             fn inv(k_loc: (K, int), perm_g: ($perm_ty, G)) -> bool {
                 let (k, loc) = k_loc;
                 let (perm, g) = perm_g;
@@ -43,7 +43,7 @@ macro_rules! declare_atomic_type {
         ///
         /// See the [`atomic_with_ghost!`] documentation for usage information.
 
-        pub struct $at_ident<K, #[verifier(maybe_negative)] G, Pred>
+        pub struct $at_ident<K, #[verus::verifier(maybe_negative)] G, Pred>
             //where Pred: AtomicInvariantPredicate<K, $value_ty, G>
         {
             #[doc(hidden)]
@@ -57,13 +57,13 @@ macro_rules! declare_atomic_type {
             where Pred: AtomicInvariantPredicate<K, $value_ty, G>
         {
             #[cfg(not(verus_macro_erase_ghost))]
-            #[spec] #[verifier(publish)]
+            #[verus::spec] #[verus::verifier(publish)]
             pub fn well_formed(&self) -> bool {
                 self.atomic_inv.constant().1 == self.patomic.id()
             }
 
             #[cfg(not(verus_macro_erase_ghost))]
-            #[spec] #[verifier(publish)]
+            #[verus::spec] #[verus::verifier(publish)]
             pub fn constant(&self) -> K {
                 self.atomic_inv.constant().0
             }

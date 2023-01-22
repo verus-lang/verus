@@ -251,7 +251,7 @@ impl<V> PPtr<V> {
     /// Allocates heap memory for type `V`, leaving it uninitialized.
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verus::verifier(external_body)]
     pub fn empty() -> (PPtr<V>, Trk<PermData<V>>)
     {
         ensures(|pt: (PPtr<V>, Trk<PermData<V>>)|
@@ -292,7 +292,7 @@ impl<V> PPtr<V> {
     /// from `None` to `Some(v)`.
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verus::verifier(external_body)]
     pub fn put(&self, #[proof] perm: &mut PermData<V>, v: V)
     {
         requires([
@@ -319,7 +319,7 @@ impl<V> PPtr<V> {
     /// while returning the `v` as an `exec` value.
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verus::verifier(external_body)]
     pub fn take(&self, #[proof] perm: &mut PermData<V>) -> V
     {
         requires([
@@ -374,7 +374,7 @@ impl<V> PPtr<V> {
     // the returned borrow.
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verus::verifier(external_body)]
     pub fn borrow<'a>(&self, #[proof] perm: &'a PermData<V>) -> &'a V
     {
         requires([
@@ -461,7 +461,7 @@ impl<V> PPtr<V> {
 
 impl<V: Copy> PPtr<V> {
     #[inline(always)]
-    pub fn read(&self, #[proof] perm: &PermData<V>) -> V {
+    pub fn read(&self, #[verus::proof] perm: &PermData<V>) -> V {
         requires([
             equal(self.id(), perm.view().pptr),
             perm.view().value.is_Some(),
@@ -472,7 +472,7 @@ impl<V: Copy> PPtr<V> {
     }
 
     #[inline(always)]
-    #[exec] pub fn write(&self, #[proof] perm: &mut PermData<V>, v: V) {
+    #[verus::exec] pub fn write(&self, #[verus::proof] perm: &mut PermData<V>, v: V) {
         requires(equal(self.id(), old(perm).view().pptr));
         ensures([
             equal(perm.view().pptr, self.id()),
@@ -484,10 +484,10 @@ impl<V: Copy> PPtr<V> {
     }
 
     #[inline(always)]
-    pub fn free(&self, #[proof] perm: PermData<V>) {
+    pub fn free(&self, #[verus::proof] perm: PermData<V>) {
         requires(equal(self.id(), perm.view().pptr));
 
-        #[proof] let mut perm = perm;
+        #[verus::proof] let mut perm = perm;
         perm.leak_contents();
         self.dispose(perm);
     }

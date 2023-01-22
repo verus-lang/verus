@@ -70,7 +70,7 @@ pub(crate) fn mac_args_to_tree(span: Span, name: String, args: &MacArgs) -> Resu
 pub(crate) fn attr_to_tree(attr: &Attribute) -> Result<AttrTree, ()> {
     match &attr.kind {
         AttrKind::Normal(item, _) => match &item.path.segments[..] {
-            [segment] => {
+            [prefix_segment, segment] if prefix_segment.ident.as_str() == "verus" => {
                 let name = segment.ident.to_string();
                 mac_args_to_tree(attr.span, name, &item.args)
             }

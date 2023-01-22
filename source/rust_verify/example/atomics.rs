@@ -19,7 +19,7 @@ struct_with_invariants!{
     }
 }
 
-#[verifier(returns(proof))]
+#[verus::verifier(returns(proof))]
 fn take<T>(lock: &Lock<T>) -> T {
     requires(lock.well_formed());
 

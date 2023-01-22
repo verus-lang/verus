@@ -424,9 +424,9 @@ impl<K, V> Map<K, V> {
             self.dom().contains(j) &&
             #[trigger] self.index(j) == old(self).index(key_map.index(j)),
     {
-        #[proof] let mut tmp = Self::tracked_empty();
+        #[verus::proof] let mut tmp = Self::tracked_empty();
         crate::pervasive::modes::tracked_swap(&mut tmp, self);
-        #[proof] let mut tmp = Self::tracked_map_keys(tmp, key_map);
+        #[verus::proof] let mut tmp = Self::tracked_map_keys(tmp, key_map);
         crate::pervasive::modes::tracked_swap(&mut tmp, self);
     }
 }
