@@ -348,7 +348,11 @@ fn erase_pat(ctxt: &Ctxt, mctxt: &mut MCtxt, pat: &Pat) -> Pat {
             let pats = vec_map(pats, |p| P(erase_pat(ctxt, mctxt, p)));
             PatKind::Tuple(pats)
         }
-        PatKind::Paren(pat) => PatKind::Paren(P(erase_pat(ctxt, mctxt, pat))),
+        PatKind::Paren(p) => PatKind::Paren(P(erase_pat(ctxt, mctxt, p))),
+        PatKind::Or(pats) => {
+            let pats = vec_map(pats, |p| P(erase_pat(ctxt, mctxt, p)));
+            PatKind::Or(pats)
+        }
         _ => panic!("internal error: unsupported pattern"),
     };
     let Pat { id, span, .. } = *pat; // for asymptotic efficiency, don't call pat.clone()
@@ -908,7 +912,12 @@ fn erase_stmt(
 
     let kind = match &stmt.kind {
         StmtKind::Local(local) => {
-            let mode1 = *mctxt.find_span(&ctxt.var_modes, local.pat.span);
+            let mut inner_pat = &local.pat;
+            while let PatKind::Paren(p) = &inner_pat.kind {
+                inner_pat = p;
+            }
+
+            let mode1 = *mctxt.find_span(&ctxt.var_modes, inner_pat.span);
             let Local { id, span, ref ty, ref kind, ref attrs, ref tokens, .. } = **local;
             if keep_mode(ctxt, mode1) {
                 let kind = match kind {

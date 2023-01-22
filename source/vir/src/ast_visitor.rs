@@ -139,6 +139,11 @@ where
             })?;
             PatternX::Constructor(path.clone(), variant.clone(), Arc::new(binders))
         }
+        PatternX::Or(pat1, pat2) => {
+            let p1 = map_pattern_visitor_env(pat1, env, ft)?;
+            let p2 = map_pattern_visitor_env(pat2, env, ft)?;
+            PatternX::Or(p1, p2)
+        }
     };
     Ok(SpannedTyped::new(&pattern.span, &map_typ_visitor_env(&pattern.typ, env, ft)?, patternx))
 }
@@ -158,6 +163,10 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern) {
             for binder in binders.iter() {
                 insert_pattern_vars(map, &binder.a);
             }
+        }
+        PatternX::Or(pat1, _) => {
+            insert_pattern_vars(map, pat1);
+            // pat2 should bind an identical set of variables
         }
     }
 }
