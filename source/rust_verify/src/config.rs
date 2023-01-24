@@ -105,6 +105,7 @@ pub fn enable_default_features(
         "negative_impls",
         "rustc_attrs",
         "unboxed_closures",
+        "allocator_api",
     ] {
         rustc_args.push("-Z".to_string());
         rustc_args.push(format!("enable_feature={}", feature));
