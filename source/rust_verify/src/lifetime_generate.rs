@@ -13,7 +13,10 @@ use rustc_hir::{
     TraitFn, TraitItem, TraitItemKind, TraitItemRef, TraitRef, UnOp, Unsafety, VariantData,
 };
 use rustc_middle::ty::subst::GenericArgKind;
-use rustc_middle::ty::{AdtDef, BoundRegionKind, RegionKind, Ty, TyCtxt, TyKind, TypeckResults};
+use rustc_middle::ty::{
+    AdtDef, BoundRegionKind, GenericParamDefKind, PredicateKind, RegionKind, Ty, TyCtxt, TyKind,
+    TypeckResults,
+};
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::kw;
 use rustc_span::Span;
@@ -115,7 +118,7 @@ impl State {
 
     fn typ_param<S: Into<String>>(&mut self, raw_id: S) -> Id {
         let raw_id = raw_id.into();
-        let f = || raw_id.clone();
+        let f = || if raw_id.starts_with("impl ") { "impl".to_string() } else { raw_id.clone() };
         Self::id(&mut self.rename_count, &mut self.typ_param_to_name, IdKind::TypParam, &raw_id, f)
     }
 
@@ -172,7 +175,7 @@ fn span_dummy() -> Span {
     data.span()
 }
 
-fn erase_region<'tcx>(_ctxt: &Context<'tcx>, state: &mut State, r: &RegionKind) -> Option<Id> {
+fn erase_hir_region<'tcx>(_ctxt: &Context<'tcx>, state: &mut State, r: &RegionKind) -> Option<Id> {
     match r {
         RegionKind::ReEarlyBound(bound) => Some(state.lifetime(bound.name.to_string())),
         RegionKind::ReLateBound(_, bound) => match bound.kind {
@@ -198,14 +201,11 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: Ty) -> Typ {
         }
         TyKind::Param(p) => {
             let name = p.name.as_str();
-            if name.starts_with("impl ") {
-                todo!()
-            }
             Box::new(TypX::TypParam(state.typ_param(name.to_string())))
         }
         TyKind::Never => Box::new(TypX::Never),
         TyKind::Ref(region, t, mutability) => {
-            let lifetime = erase_region(ctxt, state, region);
+            let lifetime = erase_hir_region(ctxt, state, region);
             Box::new(TypX::Ref(erase_ty(ctxt, state, t), lifetime, *mutability))
         }
         TyKind::Slice(t) => Box::new(TypX::Slice(erase_ty(ctxt, state, t))),
@@ -224,7 +224,7 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: Ty) -> Typ {
                         typ_args.push(erase_ty(ctxt, state, t));
                     }
                     rustc_middle::ty::subst::GenericArgKind::Lifetime(region) => {
-                        let lifetime = erase_region(ctxt, state, region).expect("lifetime");
+                        let lifetime = erase_hir_region(ctxt, state, region).expect("lifetime");
                         typ_args.push(Box::new(TypX::TypParam(lifetime)));
                     }
                     _ => panic!("unexpected type argument"),
@@ -242,7 +242,7 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: Ty) -> Typ {
             };
             Box::new(TypX::Datatype(datatype_name, typ_args))
         }
-        TyKind::Closure(_def, _substs) => todo!(),
+        TyKind::Closure(..) => Box::new(TypX::Closure),
         _ => {
             dbg!(ty);
             panic!("unexpected type")
@@ -409,6 +409,7 @@ fn erase_call<'tcx>(
     state: &mut State,
     expect_spec: bool,
     expr: &Expr,
+    expr_fun: Option<&Expr>,
     node_substs: &[rustc_middle::ty::subst::GenericArg<'tcx>],
     fn_span: Span,
     args_slice: &'tcx [Expr<'tcx>],
@@ -483,7 +484,9 @@ fn erase_call<'tcx>(
             if expect_spec && !is_some {
                 None
             } else {
-                mk_exp(ExpX::Call(state.fun_name(f_name), typ_args, exps))
+                let name = state.fun_name(f_name);
+                let target = Box::new((fn_span, ExpX::Var(name)));
+                mk_exp(ExpX::Call(target, typ_args, exps))
             }
         }
         ResolvedCall::Ctor(path, variant_name) => {
@@ -513,7 +516,14 @@ fn erase_call<'tcx>(
             }
         }
         ResolvedCall::NonStaticExec => {
-            todo!()
+            let expr_fun = expr_fun.expect("exec closure call function target");
+            let exp_fun = erase_expr(ctxt, state, false, expr_fun).expect("closure call target");
+            let typ_args = mk_typ_args(ctxt, state, node_substs);
+            let exps = args_slice
+                .iter()
+                .map(|a| erase_expr(ctxt, state, expect_spec, a).expect("call arg"))
+                .collect();
+            mk_exp(ExpX::Call(exp_fun, typ_args, exps))
         }
     }
 }
@@ -651,6 +661,7 @@ fn erase_expr<'tcx>(
                 state,
                 expect_spec,
                 expr,
+                Some(e0),
                 ctxt.types().node_substs(e0.hir_id),
                 e0.span,
                 es,
@@ -663,6 +674,7 @@ fn erase_expr<'tcx>(
             state,
             expect_spec,
             expr,
+            None,
             ctxt.types().node_substs(expr.hir_id),
             *fn_span,
             all_args,
@@ -790,7 +802,6 @@ fn erase_expr<'tcx>(
                 mk_exp(ExpX::Assign(exp1.expect("expr"), exp2.expect("expr")))
             }
         }
-        ExprKind::Closure(..) => todo!(),
         ExprKind::If(cond, lhs, rhs) => {
             let cond_spec = ctxt.condition_modes[&expr.hir_id] == Mode::Spec;
             let cond = cond.peel_drop_temps();
@@ -864,6 +875,19 @@ fn erase_expr<'tcx>(
         ExprKind::Ret(Some(expr)) => {
             let exp = erase_expr(ctxt, state, ctxt.ret_spec.expect("ret_spec"), expr);
             mk_exp(ExpX::Ret(exp))
+        }
+        ExprKind::Closure(capture_by, _fn_decl, body_id, _span, movability) => {
+            let mut params: Vec<(Span, Id, Typ)> = Vec::new();
+            let body = ctxt.tcx.hir().body(*body_id);
+            let ps = &body.params;
+            for p in ps.iter() {
+                let x = state.local(crate::rust_to_vir_expr::pat_to_var(p.pat));
+                let typ = erase_ty(ctxt, state, ctxt.types().node_type(p.hir_id));
+                params.push((p.pat.span, x, typ));
+            }
+            let body_exp = erase_expr(ctxt, state, expect_spec, &body.value);
+            let body_exp = force_block(body_exp, body.value.span);
+            mk_exp(ExpX::Closure(*capture_by, *movability, params, body_exp))
         }
         ExprKind::Block(block, None) => {
             let attrs = ctxt.tcx.hir().attrs(expr.hir_id);
@@ -941,14 +965,18 @@ fn erase_stmt<'tcx>(ctxt: &Context, state: &mut State, stmt: &Stmt) -> Vec<Stm> 
     }
 }
 
-fn erase_bounds<'tcx>(state: &mut State, bounds: GenericBounds<'tcx>) -> Vec<Id> {
-    let mut bnds: Vec<Id> = Vec::new();
+fn erase_hir_bounds<'tcx>(
+    _ctxt: &Context,
+    state: &mut State,
+    bounds: GenericBounds<'tcx>,
+) -> Vec<Bound> {
+    let mut bnds: Vec<Bound> = Vec::new();
     for bound in bounds {
         match bound {
             GenericBound::Trait(..) => {}
             GenericBound::LangItemTrait(..) => {}
             GenericBound::Outlives(lifetime) => {
-                bnds.push(state.lifetime(lifetime.name.ident().to_string()));
+                bnds.push(Bound::Id(state.lifetime(lifetime.name.ident().to_string())));
             }
         }
     }
@@ -1005,8 +1033,7 @@ fn erase_fn<'tcx>(
     sig: &FnSig<'tcx>,
     trait_path: Option<Path>,
     hir_generics: &Generics<'tcx>,
-    impl_generics: Option<&Generics<'tcx>>,
-    //impl_generics: Option<(&Generics<'tcx>, DefId)>,
+    impl_generics: Option<(&Generics<'tcx>, DefId)>,
     add_self: bool,
     empty_body: bool,
     external_body: bool,
@@ -1055,43 +1082,110 @@ fn erase_fn<'tcx>(
         if add_self {
             typ_params.push((state.typ_param("Self"), vec![]));
         }
+        // Example: fn f<'a, 'b: 'a, 'c, A: 'b>(a: &'a A, x: &'c u64, y: &u32) -> &'c u64 { x }
+        // In this example:
+        //   hir_generics has 'a, 'b, 'c, and A, with bounds as HIR types
+        //   mir_generics has 'a, 'b, and A, with bounds as MIR types (missing 'c)
+        //   sig.decl.inputs has HIR types &'a A, &'c u64, &u32
+        //   fn_sig.inputs has MIR types &'a A, &'c u64, &u32
+        //   the patterns in body.params have MIR types &A, &u64, &u32 (missing 'a, 'c)
+        // We generally use MIR types because TypeckResults uses them (also, THIR uses them).
+        // But hir_generics has a more complete set of lifetime parameters.
+        // So we use both hir_generics and mir_generics.
         let f_hir_generics = |state: &mut State,
                               generics: &Generics,
-                              lifetimes: &mut Vec<GenericParam>,
-                              typ_params: &mut Vec<GenericParam>| {
+                              lifetimes: &mut Vec<GenericParam>| {
             for gparam in generics.params {
-                let bnds = erase_bounds(state, gparam.bounds);
+                let bnds = erase_hir_bounds(ctxt, state, gparam.bounds);
                 match gparam.kind {
                     GenericParamKind::Lifetime { .. } => {
                         lifetimes.push((state.lifetime(&gparam.name.ident().to_string()), bnds));
                     }
-                    GenericParamKind::Type { .. } => {
-                        typ_params.push((state.typ_param(&gparam.name.ident().to_string()), bnds));
-                    }
+                    GenericParamKind::Type { .. } => {}
                     GenericParamKind::Const { .. } => panic!(),
                 }
             }
         };
-        /*
-        let f_mir_generics = |state: &mut State, id: DefId, typ_params: &mut Vec<Id>| {
+        let f_mir_generics = |state: &mut State, id: DefId, typ_params: &mut Vec<GenericParam>| {
             let mir_generics = ctxt.tcx.generics_of(id);
+            let mir_predicates = ctxt.tcx.predicates_of(id);
+            let mut fn_traits: HashMap<Id, ClosureKind> = HashMap::new();
+            let mut fn_projections: HashMap<Id, (Typ, Typ)> = HashMap::new();
             for gparam in &mir_generics.params {
                 match gparam.kind {
-                    GenericParamDefKind::Lifetime => {},
+                    GenericParamDefKind::Lifetime => {}
                     GenericParamDefKind::Type { .. } => {
-                        typ_params.push(state.typ_param(gparam.name.to_string()));
+                        let x = state.typ_param(gparam.name.to_string());
+                        typ_params.push((x, vec![]));
                     }
                     GenericParamDefKind::Const { .. } => panic!(),
                 }
             }
+            for (pred, _) in mir_predicates.predicates.iter() {
+                match pred.kind().no_bound_vars().expect("no_bound_vars") {
+                    PredicateKind::RegionOutlives(_pred) => {}
+                    PredicateKind::TypeOutlives(pred) => {
+                        let x = state.typ_param(&pred.0.to_string());
+                        let bound = erase_hir_region(ctxt, state, &pred.1).expect("bound");
+                        let x_ref = typ_params.iter_mut().find(|(y, _)| *y == x);
+                        let x_ref = x_ref.expect("generic param bound");
+                        x_ref.1.push(Bound::Id(bound));
+                    }
+                    PredicateKind::Trait(pred) => {
+                        let x = state.typ_param(pred.trait_ref.substs[0].to_string());
+                        let id = pred.trait_ref.def_id;
+                        let kind = if Some(id) == ctxt.tcx.lang_items().fn_trait() {
+                            Some(ClosureKind::Fn)
+                        } else if Some(id) == ctxt.tcx.lang_items().fn_mut_trait() {
+                            Some(ClosureKind::FnMut)
+                        } else if Some(id) == ctxt.tcx.lang_items().fn_once_trait() {
+                            Some(ClosureKind::FnOnce)
+                        } else {
+                            None
+                        };
+                        if let Some(kind) = kind {
+                            fn_traits.insert(x, kind).map(|_| panic!("{:?}", pred));
+                        }
+                    }
+                    PredicateKind::Projection(pred) => {
+                        if Some(pred.projection_ty.item_def_id)
+                            == ctxt.tcx.lang_items().fn_once_output()
+                        {
+                            assert!(pred.projection_ty.substs.len() == 2);
+                            let x = state.typ_param(pred.projection_ty.substs[0].to_string());
+                            let mut fn_params = match pred.projection_ty.substs[1].unpack() {
+                                GenericArgKind::Type(ty) => erase_ty(ctxt, state, ty),
+                                _ => panic!("unexpected fn projection"),
+                            };
+                            if !matches!(*fn_params, TypX::Tuple(_)) {
+                                fn_params = Box::new(TypX::Tuple(vec![fn_params]));
+                            }
+                            let fn_ret = erase_ty(ctxt, state, &pred.ty);
+                            fn_projections
+                                .insert(x, (fn_params, fn_ret))
+                                .map(|_| panic!("{:?}", pred));
+                        }
+                    }
+                    _ => {
+                        dbg!(pred.kind());
+                        panic!("unexpected bound")
+                    }
+                }
+            }
+            for (x, bnds) in typ_params.iter_mut() {
+                if fn_traits.contains_key(&x) {
+                    let (params, ret) = fn_projections.remove(&x).expect("fn_projections");
+                    let kind = fn_traits.remove(&x).expect("fn_traits");
+                    bnds.push(Bound::Fn(kind, params, ret))
+                }
+            }
         };
-        */
-        if let Some(impl_generics) = impl_generics {
-            f_hir_generics(state, impl_generics, &mut lifetimes, &mut typ_params);
-            //f_mir_generics(state, impl_id, &mut typ_params);
+        if let Some((impl_generics, impl_id)) = impl_generics {
+            f_hir_generics(state, impl_generics, &mut lifetimes);
+            f_mir_generics(state, impl_id, &mut typ_params);
         }
-        f_hir_generics(state, hir_generics, &mut lifetimes, &mut typ_params);
-        //f_mir_generics(state, id, &mut typ_params);
+        f_hir_generics(state, hir_generics, &mut lifetimes);
+        f_mir_generics(state, id, &mut typ_params);
         let mut params: Vec<(Span, Id, Typ)> = Vec::new();
         for ((input, param), p) in inputs.iter().zip(f_vir.x.params.iter()).zip(ps.iter()) {
             let x = state.local(param.x.name.to_string());
@@ -1132,6 +1226,7 @@ fn erase_trait<'tcx>(
     krate: &'tcx Crate<'tcx>,
     ctxt: &mut Context,
     state: &mut State,
+    trait_id: DefId,
     generics: &Generics<'tcx>,
     items: &[TraitItemRef],
 ) {
@@ -1154,7 +1249,7 @@ fn erase_trait<'tcx>(
                     sig,
                     None,
                     item_generics,
-                    Some(generics),
+                    Some((generics, trait_id)),
                     true,
                     true,
                     false,
@@ -1166,7 +1261,13 @@ fn erase_trait<'tcx>(
     }
 }
 
-fn erase_impl<'tcx>(krate: &'tcx Crate<'tcx>, ctxt: &mut Context, state: &mut State, impll: &Impl) {
+fn erase_impl<'tcx>(
+    krate: &'tcx Crate<'tcx>,
+    ctxt: &mut Context,
+    state: &mut State,
+    impl_id: DefId,
+    impll: &Impl,
+) {
     let trait_path = if let Some(TraitRef { path, hir_ref_id: _ }) = impll.of_trait {
         Some(def_id_to_vir_path(ctxt.tcx, path.res.def_id()))
     } else {
@@ -1197,7 +1298,7 @@ fn erase_impl<'tcx>(krate: &'tcx Crate<'tcx>, ctxt: &mut Context, state: &mut St
                             sig,
                             trait_path.clone(),
                             generics,
-                            Some(&impll.generics),
+                            Some((&impll.generics, impl_id)),
                             false,
                             false,
                             vattrs.external_body,
@@ -1227,7 +1328,7 @@ fn erase_datatype<'tcx>(
     let implements_copy = ctxt.copy_types.contains(&id);
     let mut generics: Vec<GenericParam> = Vec::new();
     for gparam in hir_generics.params.iter() {
-        let bnds = erase_bounds(state, gparam.bounds);
+        let bnds = erase_hir_bounds(ctxt, state, gparam.bounds);
         match gparam.kind {
             GenericParamKind::Lifetime { .. } => {
                 generics.push((state.lifetime(&gparam.name.ident().to_string()), bnds));
@@ -1508,10 +1609,17 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             _bounds,
                             trait_items,
                         ) => {
-                            erase_trait(krate, &mut ctxt, &mut state, trait_generics, trait_items);
+                            erase_trait(
+                                krate,
+                                &mut ctxt,
+                                &mut state,
+                                id,
+                                trait_generics,
+                                trait_items,
+                            );
                         }
                         ItemKind::Impl(impll) => {
-                            erase_impl(krate, &mut ctxt, &mut state, impll);
+                            erase_impl(krate, &mut ctxt, &mut state, id, impll);
                         }
                         _ => {
                             dbg!(item);

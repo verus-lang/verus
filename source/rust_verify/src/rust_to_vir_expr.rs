@@ -2843,7 +2843,12 @@ fn closure_to_vir<'tcx>(
     is_spec_fn: bool,
     modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
-    if let ExprKind::Closure(_, _fn_decl, body_id, _, _) = &closure_expr.kind {
+    if let ExprKind::Closure(_, fn_decl, body_id, _, _) = &closure_expr.kind {
+        unsupported_unless!(!fn_decl.c_variadic, "c_variadic");
+        unsupported_unless!(
+            matches!(fn_decl.implicit_self, rustc_hir::ImplicitSelfKind::None),
+            "implicit_self"
+        );
         let body = bctx.ctxt.tcx.hir().body(*body_id);
 
         let typs = closure_param_typs(bctx, closure_expr);

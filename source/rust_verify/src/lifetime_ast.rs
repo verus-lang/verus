@@ -1,4 +1,4 @@
-use rustc_ast::Mutability;
+use rustc_ast::{CaptureBy, Movability, Mutability};
 use rustc_span::Span;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -39,6 +39,7 @@ pub(crate) enum TypX {
     Slice(Typ),
     Tuple(Vec<Typ>),
     Datatype(Id, Vec<Typ>),
+    Closure,
 }
 
 pub(crate) type Pattern = Box<(Span, PatternX)>;
@@ -60,7 +61,7 @@ pub(crate) enum ExpX {
     Panic,
     Var(Id),
     Op(Vec<Exp>, Typ),
-    Call(Id, Vec<Typ>, Vec<Exp>),
+    Call(Exp, Vec<Typ>, Vec<Exp>),
     Tuple(Vec<Exp>),
     DatatypeTuple(Id, Option<Id>, Vec<Typ>, Vec<Exp>),
     DatatypeStruct(Id, Option<Id>, Vec<Typ>, Vec<(Id, Exp)>, Option<Exp>),
@@ -75,6 +76,7 @@ pub(crate) enum ExpX {
     Break(Option<Id>),
     Continue(Option<Id>),
     Ret(Option<Exp>),
+    Closure(CaptureBy, Option<Movability>, Vec<(Span, Id, Typ)>, Exp),
     Block(Vec<Stm>, Option<Exp>),
 }
 
@@ -103,7 +105,20 @@ pub(crate) enum Datatype {
     Enum(Vec<(Id, Fields)>),
 }
 
-pub(crate) type GenericParam = (Id, Vec<Id>);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ClosureKind {
+    Fn,
+    FnMut,
+    FnOnce,
+}
+
+#[derive(Debug)]
+pub(crate) enum Bound {
+    Id(Id),
+    Fn(ClosureKind, Typ, Typ),
+}
+
+pub(crate) type GenericParam = (Id, Vec<Bound>);
 
 #[derive(Debug)]
 pub(crate) struct DatatypeDecl {

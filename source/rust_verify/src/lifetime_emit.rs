@@ -81,6 +81,7 @@ impl ToString for TypX {
                 }
                 buf
             }
+            TypX::Closure => "_".to_string(),
         }
     }
 }
@@ -295,7 +296,7 @@ pub(crate) fn emit_exp(state: &mut EmitState, exp: &Exp) {
             state.write("))");
         }
         ExpX::Call(target, typ_args, exps) => {
-            state.write(target.to_string());
+            emit_exp(state, target);
             if typ_args.len() > 0 {
                 state.write("::<");
                 for typ_arg in typ_args {
@@ -459,6 +460,25 @@ pub(crate) fn emit_exp(state: &mut EmitState, exp: &Exp) {
                 emit_exp(state, e);
             }
         }
+        ExpX::Closure(capture_by, movability, params, body) => {
+            state.write("(");
+            if let Some(rustc_ast::Movability::Static) = movability {
+                state.write("static ");
+            }
+            if let rustc_ast::CaptureBy::Value = capture_by {
+                state.write("move ");
+            }
+            state.write("|");
+            for (span, x, typ) in params.iter() {
+                state.write_spanned(x.to_string(), *span);
+                state.write(": ");
+                state.write(typ.to_string());
+                state.write(",");
+            }
+            state.write("| ");
+            emit_exp(state, body);
+            state.write(")");
+        }
         ExpX::Block(stms, exp) => {
             state.ensure_newline();
             state.begin_span(*span);
@@ -510,7 +530,21 @@ fn emit_generic_param((x, bnds): &GenericParam) -> String {
         } else {
             buf += " + ";
         }
-        buf += &bnds[i].to_string();
+        match &bnds[i] {
+            Bound::Id(x) => {
+                buf += &x.to_string();
+            }
+            Bound::Fn(kind, params, ret) => {
+                buf += match kind {
+                    ClosureKind::Fn => "Fn",
+                    ClosureKind::FnMut => "FnMut",
+                    ClosureKind::FnOnce => "FnOnce",
+                };
+                buf += &params.to_string();
+                buf += " -> ";
+                buf += &ret.to_string();
+            }
+        }
     }
     buf
 }
