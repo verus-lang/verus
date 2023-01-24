@@ -563,3 +563,137 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] test_or_patterns verus_code! {
+        #[is_variant]
+        enum Foo {
+            Bar(u64),
+            Qux(u64),
+            Duck(u64),
+        }
+
+        spec fn match_spec(foo: Foo) -> int {
+            match foo {
+                Foo::Bar(x) | Foo::Qux(x) => x as int + 1,
+                Foo::Duck(x) => x as int,
+            }
+        }
+
+        proof fn test_match_spec(foo: Foo) {
+            assert(foo.is_Bar() ==>
+                match_spec(foo) === foo.get_Bar_0() as int + 1);
+            assert(foo.is_Qux() ==>
+                match_spec(foo) === foo.get_Qux_0() as int + 1);
+            assert(foo.is_Duck() ==>
+                match_spec(foo) === foo.get_Duck_0() as int);
+        }
+
+        proof fn test_match_statements(foo: Foo) {
+            match foo {
+                Foo::Bar(x) | Foo::Qux(x) => {
+                    assert(foo.is_Bar() || foo.is_Qux());
+                    if foo.is_Bar() {
+                        assert(x == foo.get_Bar_0());
+                    } else {
+                        assert(x == foo.get_Qux_0());
+                    }
+                }
+                Foo::Duck(x) => {
+                    assert(foo.is_Duck());
+                    assert(x == foo.get_Duck_0());
+                }
+            }
+        }
+
+        proof fn test_match_statements2(foo: Foo) {
+            match foo {
+                Foo::Bar(x) | Foo::Qux(x) => {
+                    assert(false); // FAILS
+                }
+                _ => { }
+            }
+        }
+
+        #[is_variant]
+        enum Dinosaur {
+            TRex(int, int),
+            Bird(int, int),
+            Brachiosaurus(int, int),
+        }
+
+        proof fn test_vars_bound_not_in_same_order(dino: Dinosaur) {
+            match dino {
+                Dinosaur::TRex(x, y) | Dinosaur::Bird(y, x) => {
+                    assert(dino.is_TRex() || dino.is_Bird());
+                    if dino.is_TRex() {
+                        assert(x == dino.get_TRex_0());
+                        assert(y == dino.get_TRex_1());
+                    } else {
+                        assert(x == dino.get_Bird_1());
+                        assert(y == dino.get_Bird_0());
+                    }
+                }
+                Dinosaur::Brachiosaurus(_, _) => {
+                    assert(dino.is_Brachiosaurus());
+                }
+            }
+        }
+
+        #[is_variant]
+        enum Path {
+            Left(Box<Path>),
+            Right(Box<Path>),
+            Middle(Box<Path>),
+            Up(Box<Path>),
+            Sideways(Box<Path>),
+            Inwards,
+        }
+
+        proof fn test_threeway_or(p: Path) {
+            match p {
+                Path::Left(box q) | q | Path::Right(box q) => {
+                    // If 'p' matches multiple, then it should be the first
+                    if p.is_Left() {
+                        assert(q === *p.get_Left_0());
+                    } else {
+                        assert(q === p);
+                    }
+                }
+                _ => {
+                    // can't get here
+                    assert(false);
+                }
+            }
+        }
+
+        proof fn test_threeway_or2(p: Path) {
+            match p {
+                Path::Left(box q) | Path::Right(box q) | q => {
+                    // If 'p' matches multiple, then it should be the first
+                    if p.is_Left() {
+                        assert(q === *p.get_Left_0());
+                    } else if p.is_Right() {
+                        assert(q === *p.get_Right_0());
+                    } else {
+                        assert(q === p);
+                    }
+                }
+                _ => {
+                    // can't get here
+                    assert(false);
+                }
+            }
+        }
+
+        proof fn test_threeway_or3(p: Path) {
+            match p {
+                Path::Left(box q) | q | Path::Right(box q) => {
+                    if p.is_Left() {
+                        assert(p === q); // FAILS
+                    }
+                }
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}

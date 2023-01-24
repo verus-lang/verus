@@ -331,13 +331,17 @@ pub enum PatternX {
     /// _
     Wildcard,
     /// x or mut x
-    Var { name: Ident, mutable: bool },
+    Var {
+        name: Ident,
+        mutable: bool,
+    },
     /// Note: ast_simplify replaces this with Constructor
     Tuple(Patterns),
     /// Match constructor of datatype Path, variant Ident
     /// For tuple-style variants, the patterns appear in order and are named "0", "1", etc.
     /// For struct-style variants, the patterns may appear in any order.
     Constructor(Path, Ident, Binders<Pattern>),
+    Or(Pattern, Pattern),
 }
 
 /// Arms of match expressions

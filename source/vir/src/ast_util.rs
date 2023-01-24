@@ -235,6 +235,14 @@ pub fn conjoin(span: &Span, exprs: &Vec<Expr>) -> Expr {
     chain_binary(span, BinaryOp::And, &mk_bool(span, true), exprs)
 }
 
+pub fn disjoin(span: &Span, exprs: &Vec<Expr>) -> Expr {
+    chain_binary(span, BinaryOp::Or, &mk_bool(span, false), exprs)
+}
+
+pub fn if_then_else(span: &Span, cond: &Expr, thn: &Expr, els: &Expr) -> Expr {
+    SpannedTyped::new(span, &thn.typ, ExprX::If(cond.clone(), thn.clone(), Some(els.clone())))
+}
+
 pub fn param_to_binder(param: &Param) -> Binder<Typ> {
     Arc::new(BinderX { name: param.x.name.clone(), a: param.x.typ.clone() })
 }
