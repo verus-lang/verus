@@ -1711,6 +1711,30 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
             }
             PatternX::Constructor(vir_path, variant_name, Arc::new(binders))
         }
+        PatKind::Box(pat) => {
+            return pattern_to_vir(bctx, pat);
+        }
+        PatKind::Or(pats) => {
+            assert!(pats.len() >= 2);
+
+            let mut patterns: Vec<vir::ast::Pattern> = Vec::new();
+            for pat in pats.iter() {
+                patterns.push(pattern_to_vir(bctx, pat)?);
+            }
+
+            // Arrange it like Or(a, Or(b, Or(c, d)))
+            // Also, make sure to preserve the order.
+
+            let mut pat_iter = patterns.into_iter().rev();
+            let plast = pat_iter.next().unwrap();
+            let plast2 = pat_iter.next().unwrap();
+            let mut pat_or = PatternX::Or(plast2, plast);
+            while let Some(p) = pat_iter.next() {
+                let pat_typ = typ_of_node(bctx, &pat.hir_id, false);
+                pat_or = PatternX::Or(p, spanned_typed_new(pat.span, &pat_typ, pat_or));
+            }
+            pat_or
+        }
         _ => return unsupported_err!(pat.span, "complex pattern", pat),
     };
     let pat_typ = typ_of_node(bctx, &pat.hir_id, false);

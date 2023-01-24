@@ -4,9 +4,10 @@ use crate::ast::{
     StmtX, UnaryOp, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string, get_field};
+use crate::def::user_local_name;
 use crate::util::vec_map_result;
 use air::ast::Span;
-use air::messages::{error, error_with_label};
+use air::messages::{error, error_bare, error_with_label};
 use air::scope_map::ScopeMap;
 use std::cmp::min;
 use std::collections::{HashMap, HashSet};
@@ -228,16 +229,49 @@ impl AtomicInstCollector {
 }
 
 fn add_pattern(typing: &mut Typing, mode: Mode, pattern: &Pattern) -> Result<(), VirErr> {
-    typing.erasure_modes.var_modes.push((pattern.span.clone(), mode));
+    let mut decls = vec![];
+    add_pattern_rec(typing, &mut decls, mode, pattern, false)?;
+    for decl in decls {
+        let PatternBoundDecl { span, name, mutable, mode } = decl;
+        typing.insert(&span, &name, mutable, mode);
+    }
+    Ok(())
+}
+
+struct PatternBoundDecl {
+    span: Span,
+    name: Ident,
+    mutable: bool,
+    mode: Mode,
+}
+
+fn add_pattern_rec(
+    typing: &mut Typing,
+    decls: &mut Vec<PatternBoundDecl>,
+    mode: Mode,
+    pattern: &Pattern,
+    // Is the parent node of this node an 'Or'
+    in_or: bool,
+) -> Result<(), VirErr> {
+    // Testing this condition prevents us from adding duplicate spans into var_modes
+    if !(in_or && matches!(&pattern.x, PatternX::Or(..))) {
+        typing.erasure_modes.var_modes.push((pattern.span.clone(), mode));
+    }
+
     match &pattern.x {
         PatternX::Wildcard => Ok(()),
         PatternX::Var { name: x, mutable } => {
-            typing.insert(&pattern.span, x, *mutable, mode);
+            decls.push(PatternBoundDecl {
+                span: pattern.span.clone(),
+                name: x.clone(),
+                mutable: *mutable,
+                mode,
+            });
             Ok(())
         }
         PatternX::Tuple(patterns) => {
             for p in patterns.iter() {
-                add_pattern(typing, mode, p)?;
+                add_pattern_rec(typing, decls, mode, p, false)?;
             }
             Ok(())
         }
@@ -247,8 +281,41 @@ fn add_pattern(typing: &mut Typing, mode: Mode, pattern: &Pattern) -> Result<(),
                 datatype.x.variants.iter().find(|v| v.name == *variant).expect("missing variant");
             for (binder, field) in patterns.iter().zip(variant.a.iter()) {
                 let (_, field_mode, _) = field.a;
-                add_pattern(typing, mode_join(field_mode, mode), &binder.a)?;
+                add_pattern_rec(typing, decls, mode_join(field_mode, mode), &binder.a, false)?;
             }
+            Ok(())
+        }
+        PatternX::Or(pat1, pat2) => {
+            let mut decls1 = vec![];
+            let mut decls2 = vec![];
+            add_pattern_rec(typing, &mut decls1, mode, pat1, true)?;
+            add_pattern_rec(typing, &mut decls2, mode, pat2, true)?;
+
+            // Rust type-checking should have made sure that both sides
+            // of the pattern bound the same variables with the same types.
+            // But we need to check that they have the same modes.
+
+            assert!(decls1.len() == decls2.len());
+            for d1 in decls1 {
+                let d2 = decls2
+                    .iter()
+                    .find(|d| d.name == d1.name)
+                    .expect("both sides of 'or' pattern should bind the same variables");
+                assert!(d1.mutable == d2.mutable);
+
+                if d1.mode != d2.mode {
+                    let e = error_bare(format!(
+                        "variable `{}` has different modes across alternatives separated by `|`",
+                        user_local_name(&d1.name.to_string())
+                    ));
+                    let e = e.primary_label(&d1.span, format!("has mode `{}`", d1.mode));
+                    let e = e.primary_label(&d2.span, format!("has mode `{}`", d2.mode));
+                    return Err(e);
+                }
+
+                decls.push(d1);
+            }
+
             Ok(())
         }
     }

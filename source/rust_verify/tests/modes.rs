@@ -923,3 +923,28 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_or_pattern_mode_inconsistent verus_code! {
+        enum Foo {
+            Bar(#[spec] u64),
+            Qux(#[proof] u64),
+        }
+
+        proof fn blah(foo: Foo) {
+            #[proof] let (Foo::Bar(x) | Foo::Qux(x)) = foo;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "variable `x` has different modes across alternatives")
+}
+
+test_verify_one_file! {
+    #[test] test_or_pattern_mode_inconsistent2 verus_code! {
+        enum Foo {
+            Bar(#[spec] u64, #[proof] u64),
+        }
+
+        proof fn blah(foo: Foo) {
+            #[proof] let (Foo::Bar(x, y) | Foo::Bar(y, x)) = foo;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "variable `x` has different modes across alternatives")
+}

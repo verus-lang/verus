@@ -8,7 +8,7 @@ use crate::ast::{
     IntRange, Krate, KrateX, Mode, MultiOp, Path, Pattern, PatternX, SpannedTyped, Stmt, StmtX,
     Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
 };
-use crate::ast_util::conjoin;
+use crate::ast_util::{conjoin, disjoin, if_then_else};
 use crate::ast_util::{err_str, err_string, wrap_in_trigger};
 use crate::context::GlobalCtx;
 use crate::def::{prefix_tuple_field, prefix_tuple_param, prefix_tuple_variant, Spanned};
@@ -118,16 +118,41 @@ fn pattern_to_exprs(
     pattern: &Pattern,
     decls: &mut Vec<Stmt>,
 ) -> Result<Expr, VirErr> {
+    let mut pattern_bound_decls = vec![];
+    let e = pattern_to_exprs_rec(ctx, state, expr, pattern, &mut pattern_bound_decls)?;
+
+    for pbd in pattern_bound_decls {
+        let PatternBoundDecl { name, mutable, expr } = pbd;
+        let patternx = PatternX::Var { name, mutable };
+        let pattern = SpannedTyped::new(&expr.span, &expr.typ, patternx);
+        // Mode doesn't matter at this stage; arbitrarily set it to 'exec'
+        let decl = StmtX::Decl { pattern, mode: Mode::Exec, init: Some(expr.clone()) };
+        decls.push(Spanned::new(expr.span.clone(), decl));
+    }
+
+    Ok(e)
+}
+
+struct PatternBoundDecl {
+    name: Ident,
+    mutable: bool,
+    expr: Expr,
+}
+
+fn pattern_to_exprs_rec(
+    ctx: &GlobalCtx,
+    state: &mut State,
+    expr: &Expr,
+    pattern: &Pattern,
+    decls: &mut Vec<PatternBoundDecl>,
+) -> Result<Expr, VirErr> {
     let t_bool = Arc::new(TypX::Bool);
     match &pattern.x {
         PatternX::Wildcard => {
             Ok(SpannedTyped::new(&pattern.span, &t_bool, ExprX::Const(Constant::Bool(true))))
         }
         PatternX::Var { name: x, mutable } => {
-            let patternx = PatternX::Var { name: x.clone(), mutable: *mutable };
-            let pattern = SpannedTyped::new(&expr.span, &expr.typ, patternx);
-            let decl = StmtX::Decl { pattern, mode: Mode::Exec, init: Some(expr.clone()) };
-            decls.push(Spanned::new(expr.span.clone(), decl));
+            decls.push(PatternBoundDecl { name: x.clone(), mutable: *mutable, expr: expr.clone() });
             Ok(SpannedTyped::new(&expr.span, &t_bool, ExprX::Const(Constant::Bool(true))))
         }
         PatternX::Tuple(patterns) => {
@@ -143,7 +168,7 @@ fn pattern_to_exprs(
                     field: prefix_tuple_field(i),
                 });
                 let field_exp = pattern_field_expr(&pattern.span, expr, &pat.typ, field_op);
-                let pattern_test = pattern_to_exprs(ctx, state, &field_exp, pat, decls)?;
+                let pattern_test = pattern_to_exprs_rec(ctx, state, &field_exp, pat, decls)?;
                 let and = ExprX::Binary(BinaryOp::And, test, pattern_test);
                 test = SpannedTyped::new(&pattern.span, &t_bool, and);
             }
@@ -161,11 +186,37 @@ fn pattern_to_exprs(
                     field: binder.name.clone(),
                 });
                 let field_exp = pattern_field_expr(&pattern.span, expr, &binder.a.typ, field_op);
-                let pattern_test = pattern_to_exprs(ctx, state, &field_exp, &binder.a, decls)?;
+                let pattern_test = pattern_to_exprs_rec(ctx, state, &field_exp, &binder.a, decls)?;
                 let and = ExprX::Binary(BinaryOp::And, test, pattern_test);
                 test = SpannedTyped::new(&pattern.span, &t_bool, and);
             }
             Ok(test)
+        }
+        PatternX::Or(pat1, pat2) => {
+            let mut decls1 = vec![];
+            let mut decls2 = vec![];
+
+            let pat1_matches = pattern_to_exprs_rec(ctx, state, expr, pat1, &mut decls1)?;
+            let pat2_matches = pattern_to_exprs_rec(ctx, state, expr, pat2, &mut decls2)?;
+
+            let matches = disjoin(&pattern.span, &vec![pat1_matches.clone(), pat2_matches]);
+
+            assert!(decls1.len() == decls2.len());
+            for d1 in decls1 {
+                let d2 = decls2
+                    .iter()
+                    .find(|d| d.name == d1.name)
+                    .expect("both sides of 'or' pattern should bind the same variables");
+                assert!(d1.mutable == d2.mutable);
+                let combined_decl = PatternBoundDecl {
+                    name: d1.name,
+                    mutable: d1.mutable,
+                    expr: if_then_else(&pattern.span, &pat1_matches, &d1.expr, &d2.expr),
+                };
+                decls.push(combined_decl);
+            }
+
+            Ok(matches)
         }
     }
 }
