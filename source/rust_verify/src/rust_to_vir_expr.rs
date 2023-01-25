@@ -1215,7 +1215,9 @@ fn fn_call_to_vir<'tcx>(
     let is_smt_binary = if is_equal {
         true
     } else if is_spec_eq {
-        if is_smt_equality(bctx, expr.span, &args[0].hir_id, &args[1].hir_id) {
+        let t1 = typ_of_node(bctx, &args[0].hir_id, true);
+        let t2 = typ_of_node(bctx, &args[1].hir_id, true);
+        if types_equal(&t1, &t2) || is_smt_arith(bctx, &args[0].hir_id, &args[1].hir_id) {
             true
         } else {
             return err_span_str(expr.span, "types must be compatible to use == or !=");

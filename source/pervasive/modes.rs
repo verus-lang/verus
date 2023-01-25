@@ -9,14 +9,14 @@ verus! {
 // but it's painful to implement the support in erase.rs at the moment.
 #[verifier(external_body)]
 pub fn ghost_exec<A>(#[spec] a: A) -> (s: Ghost<A>)
-    ensures a === s@,
+    ensures a == s@,
 {
     Ghost::assume_new()
 }
 
 #[verifier(external_body)]
 pub fn tracked_exec<A>(#[proof] a: A) -> (s: Tracked<A>)
-    ensures a === s@
+    ensures a == s@
 {
     opens_invariants_none();
     Tracked::assume_new()
@@ -24,7 +24,7 @@ pub fn tracked_exec<A>(#[proof] a: A) -> (s: Tracked<A>)
 
 #[verifier(external_body)]
 pub fn tracked_exec_borrow<'a, A>(#[proof] a: &'a A) -> (s: &'a Tracked<A>)
-    ensures *a === s@
+    ensures *a == s@
 {
     opens_invariants_none();
 
@@ -39,7 +39,7 @@ pub struct Trk<A>(pub tracked A);
 #[inline(always)]
 #[verifier(external_body)]
 pub fn ghost_unwrap_gho<A>(a: Ghost<Gho<A>>) -> (ret: Ghost<A>)
-    ensures a@.0 === ret@
+    ensures a@.0 == ret@
 {
     Ghost::assume_new()
 }
@@ -47,7 +47,7 @@ pub fn ghost_unwrap_gho<A>(a: Ghost<Gho<A>>) -> (ret: Ghost<A>)
 #[inline(always)]
 #[verifier(external_body)]
 pub fn tracked_unwrap_gho<A>(a: Tracked<Gho<A>>) -> (ret: Tracked<A>)
-    ensures a@.0 === ret@
+    ensures a@.0 == ret@
 {
     Tracked::assume_new()
 }
@@ -55,7 +55,7 @@ pub fn tracked_unwrap_gho<A>(a: Tracked<Gho<A>>) -> (ret: Tracked<A>)
 #[inline(always)]
 #[verifier(external_body)]
 pub fn tracked_unwrap_trk<A>(a: Tracked<Trk<A>>) -> (ret: Tracked<A>)
-    ensures a@.0 === ret@
+    ensures a@.0 == ret@
 {
     Tracked::assume_new()
 }
@@ -63,8 +63,8 @@ pub fn tracked_unwrap_trk<A>(a: Tracked<Trk<A>>) -> (ret: Tracked<A>)
 #[verifier(external_body)]
 pub proof fn tracked_swap<V>(tracked a: &mut V, tracked b: &mut V)
     ensures
-        a === old(b),
-        b === old(a)
+        a == old(b),
+        b == old(a)
 {
     unimplemented!();
 }

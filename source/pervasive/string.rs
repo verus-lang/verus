@@ -42,7 +42,7 @@ impl<'a> StrSlice<'a> {
     #[verifier(external_body)]
     pub fn unicode_len(&self) -> (l: usize)
         ensures
-            l as nat === self@.len()
+            l as nat == self@.len()
     {
         self.inner.chars().count()
     }
@@ -51,7 +51,7 @@ impl<'a> StrSlice<'a> {
     pub fn get_char(&self, i: usize) -> (c: char)
         requires i < self@.len()
         ensures
-            self@.index(i as int) === c,
+            self@.index(i as int) == c,
             self.is_ascii() ==> forall|i: int| i < self@.len() ==> (self@.index(i) as nat) < 256,
     {
         self.inner.chars().nth(i).unwrap()
@@ -64,8 +64,8 @@ impl<'a> StrSlice<'a> {
             from < self@.len(),
             to <= self@.len(),
         ensures
-            ret@ === self@.subrange(from as int, to as int),
-            ret.is_ascii() === self.is_ascii()
+            ret@ == self@.subrange(from as int, to as int),
+            ret.is_ascii() == self.is_ascii()
     {
         StrSlice {
             inner: &self.inner[from..to],
@@ -78,8 +78,8 @@ impl<'a> StrSlice<'a> {
             from < self@.len(),
             to <= self@.len()
         ensures
-            ret@ === self@.subrange(from as int, to as int),
-            ret.is_ascii() === self.is_ascii()
+            ret@ == self@.subrange(from as int, to as int),
+            ret.is_ascii() == self.is_ascii()
     {
         let mut char_pos = 0;
         let mut byte_start = None;
@@ -108,8 +108,8 @@ impl<'a> StrSlice<'a> {
 
     pub fn to_string(self) -> (ret: String)
         ensures
-            self@ === ret@,
-            self.is_ascii() === ret.is_ascii()
+            self@ == ret@,
+            self.is_ascii() == ret.is_ascii()
     {
         String::from_str(self)
     }
@@ -119,7 +119,7 @@ impl<'a> StrSlice<'a> {
         requires
             self.is_ascii()
         ensures
-            self.view().index(i as int) as u8 === b
+            self.view().index(i as int) as u8 == b
     {
         self.inner.as_bytes()[i]
     }
@@ -135,7 +135,7 @@ impl<'a> StrSlice<'a> {
         requires
             self.is_ascii()
         ensures
-            ret.view() === Seq::new(self.view().len(), |i| self.view().index(i) as u8)
+            ret.view() == Seq::new(self.view().len(), |i| self.view().index(i) as u8)
     {
         let mut v = Vec::new();
         for c in self.inner.as_bytes().iter() {
@@ -150,21 +150,21 @@ impl<'a> StrSlice<'a> {
 #[verifier(broadcast_forall)]
 pub proof fn axiom_str_literal_is_ascii<'a>(s: StrSlice<'a>)
     ensures
-        #[trigger] s.is_ascii() === builtin::strslice_is_ascii(s),
+        #[trigger] s.is_ascii() == builtin::strslice_is_ascii(s),
 { }
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_str_literal_len<'a>(s: StrSlice<'a>)
     ensures
-        #[trigger] s@.len() === builtin::strslice_len(s),
+        #[trigger] s@.len() == builtin::strslice_len(s),
 { }
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_str_literal_get_char<'a>(s: StrSlice<'a>, i: int)
     ensures
-        #[trigger] s@.index(i) === builtin::strslice_get_char(s, i),
+        #[trigger] s@.index(i) == builtin::strslice_get_char(s, i),
 { }
 
 impl String {
@@ -175,8 +175,8 @@ impl String {
     #[verifier(external_body)]
     pub fn from_str<'a>(s: StrSlice<'a>) -> (ret: String)
         ensures
-            s@ === ret@,
-            s.is_ascii() === ret.is_ascii(),
+            s@ == ret@,
+            s.is_ascii() == ret.is_ascii(),
 
     {
         String { inner: s.inner.to_string() }
@@ -185,8 +185,8 @@ impl String {
     #[verifier(external_body)]
     pub fn as_str<'a>(&'a self) -> (ret: StrSlice<'a>)
         ensures
-            self@ === ret@,
-            self.is_ascii() === ret.is_ascii(),
+            self@ == ret@,
+            self.is_ascii() == ret.is_ascii(),
     {
         let inner = self.inner.as_str();
         StrSlice { inner }
@@ -195,8 +195,8 @@ impl String {
     #[verifier(external_body)]
     pub fn append<'a, 'b>(&'a mut self, other: StrSlice<'b>)
         ensures
-            self@ === old(self)@ + other@,
-            self.is_ascii() === old(self).is_ascii() && other.is_ascii(),
+            self@ == old(self)@ + other@,
+            self.is_ascii() == old(self).is_ascii() && other.is_ascii(),
     {
         self.inner += other.inner;
     }
@@ -204,15 +204,15 @@ impl String {
     #[verifier(external_body)]
     pub fn concat<'b>(self, other: StrSlice<'b>) -> (ret: String)
         ensures
-            ret@ === self@ + other@,
-            ret.is_ascii() === self.is_ascii() && other.is_ascii(),
+            ret@ == self@ + other@,
+            ret.is_ascii() == self.is_ascii() && other.is_ascii(),
     {
         String { inner: self.inner + other.inner }
     }
 
     #[verifier(external_body)]
     pub fn eq(&self, other: &Self) -> (b: bool)
-        ensures b == (self.view() === other.view())
+        ensures b == (self.view() == other.view())
     {
         self.inner == other.inner
     }
