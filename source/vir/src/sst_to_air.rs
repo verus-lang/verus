@@ -1,7 +1,7 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, FieldOpr, Fun, Ident, Idents, InequalityOp,
-    IntRange, InvAtomicity, MaskSpec, Mode, Params, Path, PathX, SpannedTyped, Typ, TypX, Typs,
-    UnaryOp, UnaryOpr, VarAt, VirErr, Visibility,
+    IntRange, IntegerTypeBoundKind, InvAtomicity, MaskSpec, Mode, Params, Path, PathX,
+    SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr, Visibility,
 };
 use crate::ast_util::{
     allowed_bitvector_type, bitwidth_from_type, err_string, fun_as_rust_dbg, get_field, get_variant,
@@ -13,9 +13,9 @@ use crate::def::{
     prefix_lambda_type, prefix_pre_var, prefix_requires, prefix_unbox, snapshot_ident,
     suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id, suffix_local_unique_id,
     suffix_typ_param_id, unique_local, variant_field_ident, variant_ident, ProverChoice, SnapPos,
-    SpanKind, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE,
-    POLY, SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
-    SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END,
+    SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM,
+    FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE, SUCC,
+    SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
 };
 use crate::def::{CommandsWithContext, CommandsWithContextX};
 use crate::inv_masks::MaskSet;
@@ -30,8 +30,8 @@ use air::ast::{
 };
 use air::ast_util::{
     bool_typ, bv_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and,
-    mk_bind_expr, mk_bitvector_option, mk_eq, mk_exists, mk_implies, mk_ite, mk_not,
-    mk_option_command, mk_or, mk_xor, str_apply, str_ident, str_typ, str_var, string_var,
+    mk_bind_expr, mk_bitvector_option, mk_eq, mk_exists, mk_implies, mk_ite, mk_nat, mk_not,
+    mk_option_command, mk_or, mk_sub, mk_xor, str_apply, str_ident, str_typ, str_var, string_var,
 };
 use air::messages::{error, error_with_label};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -719,6 +719,27 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             UnaryOpr::TupleField { .. } => {
                 panic!("internal error: TupleField should have been removed before here")
+            }
+            UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::SignedMin, _) => {
+                let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
+                let name = Arc::new(I_LO.to_string());
+                Arc::new(ExprX::Apply(name, Arc::new(vec![expr])))
+            }
+            UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::SignedMax, _) => {
+                let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
+                let name = Arc::new(I_HI.to_string());
+                let x = Arc::new(ExprX::Apply(name, Arc::new(vec![expr])));
+                mk_sub(&x, &mk_nat(1))
+            }
+            UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::UnsignedMax, _) => {
+                let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
+                let name = Arc::new(U_HI.to_string());
+                let x = Arc::new(ExprX::Apply(name, Arc::new(vec![expr])));
+                mk_sub(&x, &mk_nat(1))
+            }
+            UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::ArchWordBits, _) => {
+                let name = Arc::new(ARCH_SIZE.to_string());
+                Arc::new(ExprX::Var(name))
             }
             UnaryOpr::Field(FieldOpr { datatype, variant, field }) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;

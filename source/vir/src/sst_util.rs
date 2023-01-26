@@ -276,6 +276,9 @@ impl ExpX {
                     Box(_) => (format!("box({})", exp), 99),
                     Unbox(_) => (format!("unbox({})", exp), 99),
                     HasType(t) => (format!("{}.has_type({:?})", exp, t), 99),
+                    IntegerTypeBound(kind, mode) => {
+                        (format!("{:?}.{:?}({:?})", kind, mode, exp), 99)
+                    }
                     IsVariant { datatype: _, variant } => {
                         (format!("{}.is_type({})", exp, variant), 99)
                     }

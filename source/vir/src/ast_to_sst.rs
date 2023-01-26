@@ -1529,7 +1529,7 @@ fn expr_to_stm_opt(
                 state.diagnostics,
                 &mut state.fun_ssts,
                 ctx.global.rlimit,
-                ctx.global.arch.min_bits(),
+                ctx.global.arch,
                 *mode,
                 &mut ctx.global.interpreter_log.borrow_mut(),
             )?;

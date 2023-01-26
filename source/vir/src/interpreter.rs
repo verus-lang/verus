@@ -7,10 +7,11 @@
 
 use crate::ast::{
     ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Fun, FunX, Idents, InequalityOp, IntRange,
-    PathX, SpannedTyped, Typ, TypX, UnaryOp, VirErr,
+    IntegerTypeBoundKind, PathX, SpannedTyped, Typ, TypX, UnaryOp, VirErr,
 };
 use crate::ast_util::{err_str, path_as_rust_name};
 use crate::func_to_air::{SstInfo, SstMap};
+use crate::prelude::ArchWordBits;
 use crate::sst::{Bnd, BndX, Exp, ExpX, Exps, Trigs, UniqueIdent};
 use air::ast::{Binder, BinderX, Binders, Span};
 use air::messages::{warning, Diagnostics, Message};
@@ -156,6 +157,7 @@ struct Ctx<'a> {
     max_iterations: u64,
     /// Number of bits we assume the underlying architecture supports
     arch_size_min_bits: u32,
+    arch: ArchWordBits,
 }
 
 /// Interpreter-internal expressions
@@ -1018,6 +1020,34 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     }
                     _ => ok,
                 },
+                IntegerTypeBound(kind, _) => {
+                    // We're about to take an exponent, so bound this
+                    // by something reasonable.
+                    match &e.x {
+                        Const(Constant::Int(i)) => match i.to_u32() {
+                            Some(i) if i <= 1024 => match kind {
+                                IntegerTypeBoundKind::ArchWordBits => match ctx.arch {
+                                    ArchWordBits::Exactly(b) => {
+                                        int_new(BigInt::from_u32(b).unwrap())
+                                    }
+                                    _ => ok,
+                                },
+                                _ if i == 0 => int_new(BigInt::from_usize(0).unwrap()),
+                                IntegerTypeBoundKind::UnsignedMax => {
+                                    int_new(BigInt::from_usize(2).unwrap().pow(i) - 1)
+                                }
+                                IntegerTypeBoundKind::SignedMax => {
+                                    int_new(BigInt::from_usize(2).unwrap().pow(i - 1) - 1)
+                                }
+                                IntegerTypeBoundKind::SignedMin => {
+                                    int_new(-BigInt::from_usize(2).unwrap().pow(i - 1))
+                                }
+                            },
+                            _ => ok,
+                        },
+                        _ => ok,
+                    }
+                }
             }
         }
         Binary(op, e1, e2) => {
@@ -1416,7 +1446,7 @@ fn eval_expr_launch(
     exp: Exp,
     fun_ssts: &HashMap<Fun, SstInfo>,
     rlimit: u32,
-    arch_size_min_bits: u32,
+    arch: ArchWordBits,
     mode: ComputeMode,
     log: &mut Option<File>,
 ) -> Result<(Exp, Vec<Message>), VirErr> {
@@ -1444,7 +1474,8 @@ fn eval_expr_launch(
     // Don't run for too long
     let max_iterations =
         if rlimit == 0 { std::u64::MAX } else { rlimit as u64 * RLIMIT_MULTIPLIER };
-    let ctx = Ctx { fun_ssts: &fun_ssts, max_iterations, arch_size_min_bits };
+    let ctx =
+        Ctx { fun_ssts: &fun_ssts, max_iterations, arch_size_min_bits: arch.min_bits(), arch };
     let res = eval_expr_internal(&ctx, &mut state, &exp)?;
     display_perf_stats(&state);
     if state.log.is_some() {
@@ -1496,7 +1527,7 @@ pub fn eval_expr(
     diagnostics: &(impl Diagnostics + ?Sized),
     fun_ssts: &mut SstMap,
     rlimit: u32,
-    arch_size_min_bits: u32,
+    arch: ArchWordBits,
     mode: ComputeMode,
     log: &mut Option<File>,
 ) -> Result<Exp, VirErr> {
@@ -1509,14 +1540,7 @@ pub fn eval_expr(
             let exp = exp.clone();
             builder
                 .spawn(move || {
-                    let res = eval_expr_launch(
-                        exp,
-                        &fun_ssts,
-                        rlimit,
-                        arch_size_min_bits,
-                        mode,
-                        &mut taken_log,
-                    );
+                    let res = eval_expr_launch(exp, &fun_ssts, rlimit, arch, mode, &mut taken_log);
                     (fun_ssts, (taken_log, res))
                 })
                 .unwrap()
