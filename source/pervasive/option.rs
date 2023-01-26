@@ -39,7 +39,7 @@ impl<A> Option<A> {
         requires
             self.is_Some(),
         ensures
-            *a === self.get_Some_0(),
+            *a == self.get_Some_0(),
     {
         match self {
             Option::Some(a) => a,
@@ -51,7 +51,7 @@ impl<A> Option<A> {
         requires
             self.is_Some(),
         ensures
-            a === self.get_Some_0(),
+            a == self.get_Some_0(),
     {
         match self {
             Option::Some(a) => a,

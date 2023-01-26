@@ -104,7 +104,7 @@ impl<A> Seq<A> {
 
     pub open spec fn ext_equal(self, s2: Seq<A>) -> bool {
         &&& self.len() == s2.len()
-        &&& (forall|i: int| 0 <= i < self.len() ==> self[i] === s2[i])
+        &&& (forall|i: int| 0 <= i < self.len() ==> self[i] == s2[i])
     }
 
     /// Returns a sequence for the given subrange.
@@ -179,7 +179,7 @@ pub proof fn axiom_seq_new_index<A>(len: nat, f: FnSpec(int) -> A, i: int)
     requires
         0 <= i < len,
     ensures
-        Seq::new(len, f)[i] === f(i),
+        Seq::new(len, f)[i] == f(i),
 {
 }
 
@@ -197,7 +197,7 @@ pub proof fn axiom_seq_push_index_same<A>(s: Seq<A>, a: A, i: int)
     requires
         i == s.len(),
     ensures
-        #[trigger] s.push(a)[i] === a,
+        #[trigger] s.push(a)[i] == a,
 {
 }
 
@@ -207,7 +207,7 @@ pub proof fn axiom_seq_push_index_different<A>(s: Seq<A>, a: A, i: int)
     requires
         0 <= i < s.len(),
     ensures
-        s.push(a)[i] === s[i],
+        s.push(a)[i] == s[i],
 {
 }
 
@@ -227,7 +227,7 @@ pub proof fn axiom_seq_update_same<A>(s: Seq<A>, i: int, a: A)
     requires
         0 <= i < s.len(),
     ensures
-        #[trigger] s.update(i, a)[i] === a,
+        #[trigger] s.update(i, a)[i] == a,
 {
 }
 
@@ -239,7 +239,7 @@ pub proof fn axiom_seq_update_different<A>(s: Seq<A>, i1: int, i2: int, a: A)
         0 <= i2 < s.len(),
         i1 != i2,
     ensures
-        s.update(i2, a)[i1] === s[i1],
+        s.update(i2, a)[i1] == s[i1],
 {
 }
 
@@ -247,7 +247,7 @@ pub proof fn axiom_seq_update_different<A>(s: Seq<A>, i1: int, i2: int, a: A)
 #[verifier(broadcast_forall)]
 pub proof fn axiom_seq_ext_equal<A>(s1: Seq<A>, s2: Seq<A>)
     ensures
-        s1.ext_equal(s2) == (s1 === s2),
+        s1.ext_equal(s2) == (s1 == s2),
 {
 }
 
@@ -268,7 +268,7 @@ pub proof fn axiom_seq_subrange_index<A>(s: Seq<A>, j: int, k: int, i: int)
         0 <= j <= k <= s.len(),
         0 <= i < k - j,
     ensures
-        s.subrange(j, k)[i] === s[i + j],
+        s.subrange(j, k)[i] == s[i + j],
 {
 }
 
@@ -285,7 +285,7 @@ pub proof fn axiom_seq_add_index1<A>(s1: Seq<A>, s2: Seq<A>, i: int)
     requires
         0 <= i < s1.len(),
     ensures
-        s1.add(s2)[i] === s1[i],
+        s1.add(s2)[i] == s1[i],
 {
 }
 
@@ -296,7 +296,7 @@ pub proof fn axiom_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int)
         0 <= s1.len(),
         i < s1.len() as int + s2.len(),
     ensures
-        s1.add(s2)[i] === s2[i - s1.len()],
+        s1.add(s2)[i] == s2[i - s1.len()],
 {
 }
 

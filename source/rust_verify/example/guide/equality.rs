@@ -34,16 +34,6 @@ fn equal3(x: u8, y: u8) {
 }
 // ANCHOR_END: eq3
 
-// ANCHOR: eq4
-fn equal4<A>(x: A, y: A) {
-    assert({
-        let eq1 = x === y;
-        let eq2 = y === x;
-        eq1 ==> eq2
-    });
-}
-// ANCHOR_END: eq4
-
 fn main() {
 }
 

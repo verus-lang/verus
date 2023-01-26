@@ -49,6 +49,9 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Bool, TypX::Bool) => true,
         (TypX::Int(range1), TypX::Int(range2)) => range1 == range2,
         (TypX::Tuple(typs1), TypX::Tuple(typs2)) => n_types_equal(typs1, typs2),
+        (TypX::Lambda(typs1, rtyp1), TypX::Lambda(typs2, rtyp2)) => {
+            n_types_equal(typs1, typs2) && types_equal(rtyp1, rtyp2)
+        }
         (TypX::Datatype(p1, typs1), TypX::Datatype(p2, typs2)) => {
             p1 == p2 && n_types_equal(typs1, typs2)
         }

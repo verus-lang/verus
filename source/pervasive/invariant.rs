@@ -198,8 +198,8 @@ macro_rules! declare_invariant_impl {
                 requires
                     Pred::inv(k, v),
                 ensures
-                    i.constant() === k,
-                    i.namespace() === ns,
+                    i.constant() == k,
+                    i.namespace() == ns,
             {
                 unimplemented!();
             }

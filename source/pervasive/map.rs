@@ -97,13 +97,13 @@ impl<K, V> Map<K, V> {
 
     pub open spec fn ext_equal(self, m2: Map<K, V>) -> bool {
         &&& self.dom().ext_equal(m2.dom())
-        &&& (forall|k: K| #![auto] self.dom().contains(k) ==> self[k] === m2[k])
+        &&& (forall|k: K| #![auto] self.dom().contains(k) ==> self[k] == m2[k])
     }
 
     /// Returns true if the key `k` is in the domain of `self`, and it maps to the value `v`.
 
     pub open spec fn contains_pair(self, k: K, v: V) -> bool {
-        self.dom().contains(k) && self[k] === v
+        self.dom().contains(k) && self[k] == v
     }
 
     /// Returns true if `m1` is _contained in_ `m2`, i.e., the domain of `m1` is a subset
@@ -119,7 +119,7 @@ impl<K, V> Map<K, V> {
 
     pub open spec fn le(self, m2: Self) -> bool {
         forall|k: K| #[trigger] self.dom().contains(k) ==>
-            #[trigger] m2.dom().contains(k) && self[k] === m2[k]
+            #[trigger] m2.dom().contains(k) && self[k] == m2[k]
     }
 
     /// Gives the union of two maps, defined as:
@@ -169,13 +169,13 @@ impl<K, V> Map<K, V> {
 
     pub open spec fn agrees(self, m2: Self) -> bool {
         forall|k| #![auto] self.dom().contains(k) && m2.dom().contains(k) ==>
-            self[k] === m2[k]
+            self[k] == m2[k]
     }
 
     #[verifier(external_body)]
     pub proof fn tracked_empty() -> (tracked out_v: Self)
         ensures
-            out_v === Map::empty(),
+            out_v == Map::<K, V>::empty(),
     {
         unimplemented!();
     }
@@ -183,7 +183,7 @@ impl<K, V> Map<K, V> {
     #[verifier(external_body)]
     pub proof fn tracked_insert(tracked &mut self, key: K, tracked value: V)
         ensures
-            *self === Map::insert(*old(self), key, value),
+            *self == Map::insert(*old(self), key, value),
     {
         unimplemented!();
     }
@@ -195,8 +195,8 @@ impl<K, V> Map<K, V> {
         requires
             old(self).dom().contains(key),
         ensures
-            *self === Map::remove(*old(self), key),
-            v === old(self)[key],
+            *self == Map::remove(*old(self), key),
+            v == old(self)[key],
     {
         unimplemented!();
     }
@@ -215,7 +215,7 @@ impl<K, V> Map<K, V> {
             forall |j| #[trigger] new_map.dom().contains(j) <==> key_map.dom().contains(j),
             forall |j| key_map.dom().contains(j) ==>
                 new_map.dom().contains(j) &&
-                #[trigger] new_map.index(j) === old_map.index(key_map.index(j)),
+                #[trigger] new_map.index(j) == old_map.index(key_map.index(j)),
     {
         unimplemented!();
     }
@@ -227,7 +227,7 @@ impl<K, V> Map<K, V> {
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_empty<K, V>()
     ensures
-        #[trigger] Map::<K, V>::empty().dom() === Set::empty(),
+        #[trigger] Map::<K, V>::empty().dom() == Set::<K>::empty(),
 {
 }
 
@@ -235,7 +235,7 @@ pub proof fn axiom_map_empty<K, V>()
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_insert_domain<K, V>(m: Map<K, V>, key: K, value: V)
     ensures
-        #[trigger] m.insert(key, value).dom() === m.dom().insert(key),
+        #[trigger] m.insert(key, value).dom() == m.dom().insert(key),
 {
 }
 
@@ -243,7 +243,7 @@ pub proof fn axiom_map_insert_domain<K, V>(m: Map<K, V>, key: K, value: V)
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_insert_same<K, V>(m: Map<K, V>, key: K, value: V)
     ensures
-        #[trigger] m.insert(key, value)[key] === value,
+        #[trigger] m.insert(key, value)[key] == value,
 {
 }
 
@@ -252,9 +252,9 @@ pub proof fn axiom_map_insert_same<K, V>(m: Map<K, V>, key: K, value: V)
 pub proof fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, value: V)
     requires
         m.dom().contains(key1),
-        key1 !== key2,
+        key1 != key2,
     ensures
-        m.insert(key2, value)[key1] === m[key1],
+        m.insert(key2, value)[key1] == m[key1],
 {
 }
 
@@ -262,7 +262,7 @@ pub proof fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, va
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_remove_domain<K, V>(m: Map<K, V>, key: K)
     ensures
-        #[trigger] m.remove(key).dom() === m.dom().remove(key),
+        #[trigger] m.remove(key).dom() == m.dom().remove(key),
 {
 }
 
@@ -271,9 +271,9 @@ pub proof fn axiom_map_remove_domain<K, V>(m: Map<K, V>, key: K)
 pub proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
     requires
         m.dom().contains(key1),
-        key1 !== key2,
+        key1 != key2,
     ensures
-        m.remove(key2)[key1] === m[key1],
+        m.remove(key2)[key1] == m[key1],
 {
 }
 
@@ -281,7 +281,7 @@ pub proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
     ensures
-        m1.ext_equal(m2) == (m1 === m2),
+        m1.ext_equal(m2) == (m1 == m2),
 {
 }
 
@@ -322,7 +322,7 @@ pub use map;
 ///
 /// More precisely, `assert_maps_equal!` requires that for each key `k`:
 ///  * `map1` contains `k` in its domain if and only if `map2` does (`map1.dom().contains(k) <==> map2.dom().contains(k)`)
-///  * If they contain `k` in their domains, then their values are equal (`map1.dom().contains(k) && map2.dom().contains(k) ==> map1[k] === map2[k]`)
+///  * If they contain `k` in their domains, then their values are equal (`map1.dom().contains(k) && map2.dom().contains(k) ==> map1[k] == map2[k]`)
 ///
 /// The property that equality follows from these facts is often called _extensionality_.
 ///
@@ -332,11 +332,11 @@ pub use map;
 /// ```rust
 /// proof fn insert_remove(m: Map<int, int>, k: int, v: int)
 ///     requires !m.dom().contains(k)
-///     ensures m.insert(k, v).remove(k) === m
+///     ensures m.insert(k, v).remove(k) == m
 /// {
 ///     let m2 = m.insert(k, v).remove(k);
 ///     assert_maps_equal!(m, m2);
-///     assert(m === m2);
+///     assert(m == m2);
 /// }
 /// ```
 /// 
@@ -409,13 +409,13 @@ impl<K, V> Map<K, V> {
     requires
         forall|j| #![auto] key_map.dom().contains(j) ==> old(self).dom().contains(key_map.index(j)),
         forall|j1, j2| #![auto]
-            j1 !== j2 && key_map.dom().contains(j1) && key_map.dom().contains(j2) ==>
-            key_map.index(j1) !== key_map.index(j2),
+            j1 != j2 && key_map.dom().contains(j1) && key_map.dom().contains(j2) ==>
+            key_map.index(j1) != key_map.index(j2),
     ensures
         forall|j| #[trigger] self.dom().contains(j) == key_map.dom().contains(j),
         forall|j| key_map.dom().contains(j) ==>
             self.dom().contains(j) &&
-            #[trigger] self.index(j) === old(self).index(key_map.index(j)),
+            #[trigger] self.index(j) == old(self).index(key_map.index(j)),
     {
         #[proof] let mut tmp = Self::tracked_empty();
         crate::pervasive::modes::tracked_swap(&mut tmp, self);

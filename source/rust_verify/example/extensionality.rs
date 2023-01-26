@@ -22,7 +22,7 @@ proof fn test_seqs(s1: Seq<u64>, s2: Seq<u64>)
 {
     assert_seqs_equal!(s1, s2);
 
-    assert(s1 === s2);
+    assert(s1 == s2);
 }
 
 proof fn pop_and_push(s: Seq<u64>)
@@ -33,7 +33,7 @@ proof fn pop_and_push(s: Seq<u64>)
 
     assert_seqs_equal!(s, t);
 
-    assert(s === t);
+    assert(s == t);
 }
 
 proof fn subrange_concat(s: Seq<u64>, i: int)
@@ -46,7 +46,7 @@ proof fn subrange_concat(s: Seq<u64>, i: int)
 
     assert_seqs_equal!(s, t);
 
-    assert(s === t);
+    assert(s == t);
 }
 
 spec fn are_equal(s: Seq<u64>, t: Seq<u64>, i: int) -> bool {
@@ -62,7 +62,7 @@ proof fn assert_seqs_equal_with_proof(s: Seq<u64>, t: Seq<u64>)
         assert(are_equal(s, t, i)); // trigger
     });
 
-    assert(s === t);
+    assert(s == t);
 }
 
 // Map extensionality
@@ -75,7 +75,7 @@ proof fn test_map(m: Map<int, int>)
 
     assert_maps_equal!(m, q);
 
-    assert(m === q);
+    assert(m == q);
 }
 
 spec fn maps_are_equal_on(m: Map<int, int>, q: Map<int, int>, i: int) -> bool {
@@ -92,7 +92,7 @@ proof fn assert_maps_equal_with_proof(m: Map<int, int>, q: Map<int, int>)
         assert(maps_are_equal_on(m, q, i)); // trigger
     });
 
-    assert(m === q);
+    assert(m == q);
 }
 
 proof fn assert_maps_equal_with_proof2() {
@@ -107,7 +107,7 @@ proof fn assert_maps_equal_with_proof2() {
         assert_bit_vector(t & 184 == 184 & t);
     });
 
-    assert(m === q);
+    assert(m == q);
 }
 
 // Set extensionality
@@ -119,7 +119,7 @@ proof fn test_set(s: Set<int>, t: Set<int>) {
     );
 
     assert(
-        s.union(t) ===
+        s.union(t) ==
         t.union(s)
     );
 }
@@ -132,7 +132,7 @@ proof fn assert_sets_equal_with_proof() {
         assert_bit_vector(i ^ 25 == 25 ^ i);
     });
 
-    assert(s === t);
+    assert(s == t);
 }
 
 fn main() {

@@ -640,7 +640,7 @@ pub fn spec_cast_integer<From: Integer, To: Integer>(_from: From) -> To {
 }
 
 #[spec]
-pub fn spec_eq<Lhs: Structural, Rhs: Structural>(_lhs: Lhs, _rhs: Rhs) -> bool {
+pub fn spec_eq<Lhs, Rhs>(_lhs: Lhs, _rhs: Rhs) -> bool {
     unimplemented!()
 }
 

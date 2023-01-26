@@ -21,7 +21,7 @@ verus! {
     // NOTE: this dummy trigger is needed since Verus requires some trigger
     // (even for external_body definitions), and f1(x) is not accepted. It is
     // never used by the caller.
-    requires forall |x: A| #![trigger dummy_trigger(x)] f1(x) === f2(x)
-    ensures f1 === f2
+    requires forall |x: A| #![trigger dummy_trigger(x)] f1(x) == f2(x)
+    ensures f1 == f2
   {}
 }

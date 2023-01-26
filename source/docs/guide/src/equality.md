@@ -19,28 +19,15 @@ even if the type implements the Rust [`Eq` trait](https://doc.rust-lang.org/std/
 {{#include ../../../rust_verify/example/guide/equality.rs:eq2}}
 ```
 
-In ghost code, by contrast, equality is always an equivalence relation.
-Verus defines `==` in ghost code to mean a call to the Verus `spec_eq` function
-rather than the standard Rust `eq` function,
-and `spec_eq` is required to be an equivalence relation (i.e. to be reflexive, symmetric, and transitive):
+In ghost code, by contrast, the `==` operator is always an equivalence relation
+(i.e. it is reflexive, symmetric, and transitive):
 
 ```rust
 {{#include ../../../rust_verify/example/guide/equality.rs:eq3}}
 ```
 
-Not all types implement `spec_eq`, though.
-(Technically, only types implementing the Verus `Structural` trait implement `spec_eq`.)
-Therefore, Verus supports another syntax for equality, written `===`,
-that applies to all types:
-
-```rust
-{{#include ../../../rust_verify/example/guide/equality.rs:eq4}}
-```
-
-The `===` operator is always an equivalence relation.  It is defined to be true when:
+Verus defines `==` in ghost code to be true when:
 - for two integers or booleans, the values are equal
 - for two structs or enums, the types are the same and the fields are equal
-- for two RefCells or Cells, the pointers to the interior data are equal (not the interior contents)
-
-For types that implement `spec_eq`, the `===` operator is equivalent to `spec_eq`,
-so that `==` and `===` can be used interchangeably in ghost code in this case.
+- for two Box values, two Rc values, or two Arc values, the pointed-to values are the same
+- for two RefCell values or two Cell values, the pointers to the interior data are equal (not the interior contents)

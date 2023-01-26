@@ -77,7 +77,7 @@ impl<V> DListXor<V> {
         recommends i < self.ptrs@.len()
     {
         &&& self.perms@.dom().contains(i)
-        &&& self.perms@[i].view().pptr === self.ptrs@[i as int].id()
+        &&& self.perms@[i].view().pptr == self.ptrs@[i as int].id()
         &&& 0 < self.ptrs@[i as int].id()
         &&& self.ptrs@[i as int].id() < 0x10000000000000000
         &&& self.perms@[i].view().value.is_Some()
@@ -135,7 +135,7 @@ impl<V> DListXor<V> {
             old(self).ptrs@.len() == 0,
         ensures
             self.wf(),
-            self@ === old(self)@.push(v),
+            self@ == old(self)@.push(v),
     {
         let (ptr, perm) = PPtr::new(
             Node::<V> { xored: 0, v }
@@ -160,7 +160,7 @@ impl<V> DListXor<V> {
             old(self).wf(),
         ensures
             self.wf(),
-            self@ === old(self)@.push(v),
+            self@ == old(self)@.push(v),
     {
         if self.tail == 0 {
             // Special case: list is empty
@@ -211,7 +211,7 @@ impl<V> DListXor<V> {
 
                 let i = (self.ptrs@.len() - 2) as nat;
                 //assert(self.perms@.dom().contains(i));
-                //assert(self.perms@[i]@.pptr === self.ptrs@[i]@);
+                //assert(self.perms@[i]@.pptr == self.ptrs@[i]@);
                 //assert(self.perms@[i].value.is_Some());
                 let prev_of_i = self.prev_of(i);
                 assert(prev_of_i ^ 0 == prev_of_i) by(bit_vector);
@@ -228,8 +228,8 @@ impl<V> DListXor<V> {
                 assert(self.wf_perms());
                 assert(self.wf_tail());
 
-                assert(self@[self.ptrs@.len() - 1] === v);
-                assert forall|i: int| 0 <= i < self.ptrs@.len() - 1 implies old(self)@[i] === self@[i] by {
+                assert(self@[self.ptrs@.len() - 1] == v);
+                assert forall|i: int| 0 <= i < self.ptrs@.len() - 1 implies old(self)@[i] == self@[i] by {
                     assert(old(self).wf_perm(i as nat)); // trigger
                 };
                 assert(self@.ext_equal(old(self)@.push(v)));
@@ -243,8 +243,8 @@ impl<V> DListXor<V> {
             old(self)@.len() > 0,
         ensures
             self.wf(),
-            self@ === old(self)@.drop_last(),
-            v === old(self)@[old(self)@.len() - 1],
+            self@ == old(self)@.drop_last(),
+            v == old(self)@[old(self)@.len() - 1],
     {
         assert(self.wf_perm((self.ptrs@.len() - 1) as nat));
 
@@ -320,7 +320,7 @@ impl<V> DListXor<V> {
                 /*#[spec] let i = self.ptrs@.len() - 1;
                 assert(self.ptrs@.len() == old(self).ptrs@.len() - 1);
                 assert(self.perms@.dom().contains(i));
-                assert(self.perms@[i]@.pptr === self.ptrs@[i]@);
+                assert(self.perms@[i]@.pptr == self.ptrs@[i]@);
                 assert(0 < self.ptrs@[i]@);
                 assert(self.ptrs@[i]@ < 0x10000000000000000);
                 assert(self.perms@[i].value.is_Some());
@@ -336,7 +336,7 @@ impl<V> DListXor<V> {
 
             assert forall|i: int|
                 0 <= i < self@.len() implies
-                #[trigger] self@[i] === old(self)@.drop_last()[i] by
+                #[trigger] self@[i] == old(self)@.drop_last()[i] by
             {
                 assert(old(self).wf_perm(i as nat)); // trigger
             }
@@ -353,8 +353,8 @@ impl<V> DListXor<V> {
             old(self)@.len() > 0,
         ensures
             self.wf(),
-            self@ === old(self)@.subrange(1, old(self)@.len() as int),
-            v === old(self)@[0],
+            self@ == old(self)@.subrange(1, old(self)@.len() as int),
+            v == old(self)@[0],
     {
         assert(self.wf_perm(0));
 
@@ -447,7 +447,7 @@ impl<V> DListXor<V> {
 
             assert forall|i: int|
                 0 <= i < self@.len() implies
-                #[trigger] self@[i] === old(self)@.subrange(1, old(self)@.len() as int)[i] by
+                #[trigger] self@[i] == old(self)@.subrange(1, old(self)@.len() as int)[i] by
             {
                 assert(old(self).wf_perm(i as nat + 1)); // trigger
             }
@@ -463,7 +463,7 @@ impl<V> DListXor<V> {
             old(self).wf(),
         ensures
             self.wf(),
-            self@ === seq![v].add(old(self)@)
+            self@ == seq![v].add(old(self)@)
     {
         if self.tail == 0 {
             // Special case: list is empty
@@ -527,7 +527,7 @@ impl<V> DListXor<V> {
 
                 let i = 1;
                 //assert(self.perms@.dom().contains(i));
-                //assert(self.perms@[i]@.pptr === self.ptrs@[i]@);
+                //assert(self.perms@[i]@.pptr == self.ptrs@[i]@);
                 //assert(self.perms@[i].value.is_Some());
                 let next_of_i = self.next_of(i);
                 assert(0 ^ next_of_i == next_of_i) by(bit_vector);
@@ -537,9 +537,9 @@ impl<V> DListXor<V> {
                 //    self.prev_of(i) ^ self.next_of(i)
                 //));
 
-                assert(self.perms@.index(1)@.value.get_Some_0().xored === new_ptr_u64 ^ second_ptr);
-                assert(self.perms@.index(0)@.value.get_Some_0().xored === head_ptr_u64);
-                assert(self.perms@.index(1)@.pptr === head_ptr_u64 as int);
+                assert(self.perms@.index(1)@.value.get_Some_0().xored == new_ptr_u64 ^ second_ptr);
+                assert(self.perms@.index(0)@.value.get_Some_0().xored == head_ptr_u64);
+                assert(self.perms@.index(1)@.pptr == head_ptr_u64 as int);
 
                 assert(self.wf_perm(1));
                 assert(self.wf_perm(0));
@@ -548,8 +548,8 @@ impl<V> DListXor<V> {
                 assert(self.wf_perms());
                 assert(self.wf_tail());
 
-                assert(self@[0] === v);
-                assert forall|i: int| 1 <= i <= self.ptrs@.len() - 1 implies old(self)@[i - 1] === self@[i] by {
+                assert(self@[0] == v);
+                assert forall|i: int| 1 <= i <= self.ptrs@.len() - 1 implies old(self)@[i - 1] == self@[i] by {
                     assert(old(self).wf_perm((i - 1) as nat)); // trigger
                 };
                 assert(self@.ext_equal(seq![v].add(old(self)@)));

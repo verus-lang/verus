@@ -24,7 +24,7 @@ impl<A> Set<A> {
     }
 
     pub open spec fn map<B>(self, f: FnSpec(A) -> B) -> Set<B> {
-        Set::new(|a: B| exists|x: A| self.contains(x) && a === f(x))
+        Set::new(|a: B| exists|x: A| self.contains(x) && a == f(x))
     }
 
     pub open spec fn fold<E>(self, init: E, f: FnSpec(E, A) -> E) -> E
@@ -49,7 +49,7 @@ pub proof fn lemma_len0_is_empty<A>(s: Set<A>)
         s.finite(),
         s.len() == 0,
     ensures
-        s === Set::empty(),
+        s == Set::<A>::empty(),
 {
     if exists|a: A| s.contains(a) {
         // derive contradiction:
