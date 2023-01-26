@@ -230,6 +230,10 @@ pub fn const_int_from_u128(u: u128) -> Constant {
     Constant::Int(BigInt::from(u))
 }
 
+pub fn const_int_from_i128(i: i128) -> Constant {
+    Constant::Int(BigInt::from(i))
+}
+
 pub fn const_int_from_string(s: String) -> Constant {
     Constant::Int(BigInt::from_str(&s).unwrap())
 }

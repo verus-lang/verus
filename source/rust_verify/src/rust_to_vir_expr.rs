@@ -24,6 +24,7 @@ use rustc_hir::{
     Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
 };
 
+use crate::rust_intrinsics_to_vir::int_intrinsic_constant_to_vir;
 use rustc_middle::ty::subst::GenericArgKind;
 use rustc_middle::ty::{PredicateKind, TyCtxt, TyKind};
 use rustc_span::def_id::DefId;
@@ -33,9 +34,9 @@ use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArmX, AssertQueryMode, BinaryOp, BitwiseOp, CallTarget, ComputeMode, Constant, ExprX,
-    FieldOpr, FunX, HeaderExpr, HeaderExprX, Ident, InequalityOp, IntRange, InvAtomicity, Mode,
-    ModeCoercion, MultiOp, PatternX, Quant, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp,
-    UnaryOpr, VarAt, VirErr,
+    FieldOpr, FunX, HeaderExpr, HeaderExprX, Ident, InequalityOp, IntRange, IntegerTypeBoundKind,
+    InvAtomicity, Mode, ModeCoercion, MultiOp, PatternX, Quant, SpannedTyped, StmtX, Stmts, Typ,
+    TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use vir::ast_util::types_equal;
 use vir::ast_util::{const_int_from_string, ident_binder, path_as_rust_name};
@@ -566,6 +567,11 @@ fn fn_call_to_vir<'tcx>(
     let is_tracked_split_tuple = f_name.starts_with("builtin::tracked_split_tuple");
     let is_new_strlit = tcx.is_diagnostic_item(Symbol::intern("pervasive::string::new_strlit"), f);
 
+    let is_signed_min = f_name == "builtin::signed_min";
+    let is_signed_max = f_name == "builtin::signed_max";
+    let is_unsigned_max = f_name == "builtin::unsigned_max";
+    let is_arch_word_bits = f_name == "builtin::arch_word_bits";
+
     let is_reveal_strlit = tcx.is_diagnostic_item(Symbol::intern("builtin::reveal_strlit"), f);
     let is_strslice_len = tcx.is_diagnostic_item(Symbol::intern("builtin::strslice_len"), f);
     let is_strslice_get_char =
@@ -702,7 +708,11 @@ fn fn_call_to_vir<'tcx>(
             || is_old
             || is_spec_ghost_tracked
             || is_closure_to_fn_spec
-            || is_get_variant.is_some(),
+            || is_get_variant.is_some()
+            || is_signed_max
+            || is_signed_min
+            || is_unsigned_max
+            || is_arch_word_bits,
         is_implies
             || is_ignored_fn
             || is_tracked_get
@@ -1024,6 +1034,33 @@ fn fn_call_to_vir<'tcx>(
             proof,
             mode: AssertQueryMode::BitVector,
         }));
+    }
+
+    if is_signed_min || is_signed_max || is_unsigned_max {
+        assert!(args.len() == 1);
+        let arg = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+
+        let kind = if is_signed_min {
+            IntegerTypeBoundKind::SignedMin
+        } else if is_signed_max {
+            IntegerTypeBoundKind::SignedMax
+        } else {
+            IntegerTypeBoundKind::UnsignedMax
+        };
+
+        return Ok(mk_expr(ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind, Mode::Spec), arg)));
+    }
+    if is_arch_word_bits {
+        assert!(args.len() == 0);
+        let arg = spanned_typed_new(
+            expr.span,
+            &Arc::new(TypX::Int(IntRange::Int)),
+            ExprX::Const(vir::ast_util::const_int_from_u128(0)),
+        );
+
+        let kind = IntegerTypeBoundKind::ArchWordBits;
+
+        return Ok(mk_expr(ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind, Mode::Spec), arg)));
     }
 
     if is_ignored_fn {
@@ -2373,6 +2410,25 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             }
             res => unsupported_err!(expr.span, format!("Path {:?}", res)),
         },
+        ExprKind::Path(qpath @ QPath::TypeRelative(_ty, _path_seg)) => {
+            let def = bctx.types.qpath_res(&qpath, expr.hir_id);
+            match def {
+                rustc_hir::def::Res::Def(_, def_id) => {
+                    let f_name = bctx.ctxt.tcx.def_path_str(def_id);
+                    if let Some(vir_expr) =
+                        int_intrinsic_constant_to_vir(expr.span, &expr_typ(), &f_name)
+                    {
+                        let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                        erasure_info
+                            .resolved_calls
+                            .push((expr.span.data(), ResolvedCall::CompilableOperator));
+                        return Ok(vir_expr);
+                    }
+                }
+                _ => {}
+            }
+            unsupported_err!(expr.span, format!("expression"), expr)
+        }
         ExprKind::Assign(lhs, rhs, _) => {
             fn init_not_mut<'tcx>(bctx: &BodyCtxt<'tcx>, lhs: &Expr) -> Result<bool, VirErr> {
                 Ok(match lhs.kind {

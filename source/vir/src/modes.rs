@@ -647,6 +647,11 @@ fn check_expr_handle_mut_arg(
                 Ok(mode_read)
             }
         }
+        ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(_kind, min_mode), e1) => {
+            let joined_mode = mode_join(outer_mode, *min_mode);
+            let mode = check_expr(typing, joined_mode, erasure_mode, e1)?;
+            Ok(mode_join(*min_mode, mode))
+        }
         ExprX::Loc(e) => {
             return check_expr_handle_mut_arg(typing, outer_mode, erasure_mode, e);
         }

@@ -140,6 +140,12 @@ pub fn verify_files_and_pervasive(
             our_args.expand_errors = true;
             our_args.multiple_errors = 2;
         }
+        if files.iter().any(|(_, body)| body.contains("ARCH-WORD-BITS-32")) {
+            our_args.arch_word_bits = vir::prelude::ArchWordBits::Exactly(32);
+        }
+        if files.iter().any(|(_, body)| body.contains("ARCH-WORD-BITS-64")) {
+            our_args.arch_word_bits = vir::prelude::ArchWordBits::Exactly(64);
+        }
         our_args
     };
     let files = files.into_iter().map(|(p, f)| (p.into(), f)).collect();

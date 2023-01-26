@@ -32,6 +32,7 @@ pub mod erase;
 mod erase_rewrite;
 pub mod file_loader;
 mod lifetime;
+mod rust_intrinsics_to_vir;
 pub mod rust_to_vir;
 pub mod rust_to_vir_adts;
 pub mod rust_to_vir_base;

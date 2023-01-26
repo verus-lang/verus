@@ -993,3 +993,17 @@ impl<Args, F: FnOnce<Args>> FnWithSpecification<Args> for F {
         unimplemented!();
     }
 }
+
+// Intrinsics defined in the AIR prelude related to word-sizes and bounded ints
+pub fn unsigned_max(_word_bits: nat) -> nat {
+    unimplemented!();
+}
+pub fn signed_min(_word_bits: nat) -> nat {
+    unimplemented!();
+}
+pub fn signed_max(_word_bits: nat) -> nat {
+    unimplemented!();
+}
+pub fn arch_word_bits() -> nat {
+    unimplemented!();
+}

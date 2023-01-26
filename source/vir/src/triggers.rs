@@ -1,4 +1,7 @@
-use crate::ast::{BinaryOp, Ident, TriggerAnnotation, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr};
+use crate::ast::{
+    BinaryOp, Ident, IntegerTypeBoundKind, TriggerAnnotation, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
+    VirErr,
+};
 use crate::ast_util::{err_str, err_string};
 use crate::context::Ctx;
 use crate::sst::{BndX, Exp, ExpX, Trig, Trigs, UniqueIdent};
@@ -119,7 +122,16 @@ fn check_trigger_expr(
                     | UnaryOpr::Unbox(_)
                     | UnaryOpr::IsVariant { .. }
                     | UnaryOpr::TupleField { .. }
-                    | UnaryOpr::Field { .. } => Ok(()),
+                    | UnaryOpr::Field { .. }
+                    | UnaryOpr::IntegerTypeBound(
+                        IntegerTypeBoundKind::SignedMin | IntegerTypeBoundKind::ArchWordBits,
+                        _,
+                    ) => Ok(()),
+                    UnaryOpr::IntegerTypeBound(_, _) => {
+                        // UnsignedMax and SignedMax both have arithmetic in them
+                        // so they can't be triggers
+                        err_str(&exp.span, "triggers cannot contain this operator")
+                    }
                     UnaryOpr::HasType(_) => panic!("internal error: trigger on HasType"),
                 },
                 ExpX::Binary(op, _, _) => {
