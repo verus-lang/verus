@@ -13,6 +13,6 @@ fn verify_pervasive() {
             use pervasive::*;
         },
     )];
-    let result = verify_files_and_pervasive(files, "test.rs".to_string(), true);
+    let result = verify_files_and_pervasive(files, "test.rs".to_string(), true, &[]);
     assert!(result.is_ok());
 }
