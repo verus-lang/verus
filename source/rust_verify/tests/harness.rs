@@ -9,7 +9,7 @@ fn harness_zero() {
         verify_one_file(code! {
             fn harness1() {
             }
-        })
+        }, &[])
         .is_ok()
     );
 }
@@ -21,7 +21,7 @@ fn harness_invalid_rust() {
             invalid(true);
         }
     };
-    let err = verify_one_file(code).unwrap_err();
+    let err = verify_one_file(code,  &[]).unwrap_err();
     assert_eq!(err.errors.len(), 0);
 }
 
@@ -32,7 +32,7 @@ fn harness_true() {
             fn harness1() {
                 assert(true);
             }
-        })
+        }, &[])
         .is_ok()
     );
 }
@@ -43,7 +43,7 @@ fn harness_false() {
         fn harness2() {
             assert(false); // FAILS
         }
-    })
+    }, &[])
     .unwrap_err();
     assert_eq!(err.errors.len(), 1);
     assert!(err.errors[0].first().expect("span").test_span_line.contains("FAILS"));

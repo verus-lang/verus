@@ -420,7 +420,7 @@ fn e10_pass() {
             },
         ),
     ];
-    let result = verify_files(files, "test.rs".to_string());
+    let result = verify_files(files, "test.rs".to_string(), &[]);
     assert!(result.is_ok());
 }
 
@@ -567,7 +567,7 @@ fn e13_pass() {
                 },
         ),
     ];
-    let result = verify_files(files, "test.rs".to_string());
+    let result = verify_files(files, "test.rs".to_string(), &[]);
     assert!(result.is_ok());
 }
 

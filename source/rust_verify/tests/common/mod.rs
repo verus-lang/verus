@@ -57,8 +57,9 @@ pub struct TestErr {
 pub fn verify_files(
     files: impl IntoIterator<Item = (String, String)>,
     entry_file: String,
+    options: &[&str],
 ) -> Result<(), TestErr> {
-    verify_files_and_pervasive(files, entry_file, false)
+    verify_files_and_pervasive(files, entry_file, false, options)
 }
 
 #[allow(dead_code)]
@@ -66,6 +67,7 @@ pub fn verify_files_and_pervasive(
     files: impl IntoIterator<Item = (String, String)>,
     entry_file: String,
     verify_pervasive: bool,
+    options: &[&str],
 ) -> Result<(), TestErr> {
     let files: Vec<(String, String)> = files.into_iter().collect();
     let mut rustc_args = vec![
@@ -136,15 +138,17 @@ pub fn verify_files_and_pervasive(
         }
         our_args.verify_pervasive |= verify_pervasive;
         our_args.rlimit = DEFAULT_RLIMIT_SECS;
-        if files.iter().any(|(_, body)| body.contains("EXPAND-ERRORS")) {
-            our_args.expand_errors = true;
-            our_args.multiple_errors = 2;
-        }
-        if files.iter().any(|(_, body)| body.contains("ARCH-WORD-BITS-32")) {
-            our_args.arch_word_bits = vir::prelude::ArchWordBits::Exactly(32);
-        }
-        if files.iter().any(|(_, body)| body.contains("ARCH-WORD-BITS-64")) {
-            our_args.arch_word_bits = vir::prelude::ArchWordBits::Exactly(64);
+        for option in options.iter() {
+            if *option == "--expand-errors" {
+                our_args.expand_errors = true;
+                our_args.multiple_errors = 2;
+            } else if *option == "--arch-word-bits 32" {
+                our_args.arch_word_bits = vir::prelude::ArchWordBits::Exactly(32);
+            } else if *option == "--arch-word-bits 64" {
+                our_args.arch_word_bits = vir::prelude::ArchWordBits::Exactly(64);
+            } else {
+                panic!("option '{}' not recognized by test harness", option);
+            }
         }
         our_args
     };
@@ -210,17 +214,17 @@ pub const USE_PRELUDE: &str = crate::common::code_str! {
 };
 
 #[allow(dead_code)]
-pub fn verify_one_file(code: String) -> Result<(), TestErr> {
+pub fn verify_one_file(code: String, options: &[&str]) -> Result<(), TestErr> {
     let files = vec![("test.rs".to_string(), format!("{}\n\n{}", USE_PRELUDE, code.as_str()))];
-    verify_files(files, "test.rs".to_string())
+    verify_files(files, "test.rs".to_string(), options)
 }
 
 #[macro_export]
-macro_rules! test_verify_one_file {
-    ($(#[$attrs:meta])* $name:ident $body:expr => $result:pat => $assertions:expr ) => {
+macro_rules! test_verify_one_file_with_options {
+    ($(#[$attrs:meta])* $name:ident $options:expr => $body:expr => $result:pat => $assertions:expr ) => {
         $(#[$attrs])*
         fn $name() {
-            let result = verify_one_file($body);
+            let result = verify_one_file($body, &$options);
             #[allow(irrefutable_let_patterns)]
             if let $result = result {
                 $assertions
@@ -229,16 +233,26 @@ macro_rules! test_verify_one_file {
             }
         }
     };
-    ($(#[$attrs:meta])* $name:ident $body:expr => $result:pat) => {
+    ($(#[$attrs:meta])* $name:ident $options:expr => $body:expr => $result:pat) => {
         $(#[$attrs])*
         fn $name() {
-            let result = verify_one_file($body);
+            let result = verify_one_file($body, &$options);
             #[allow(irrefutable_let_patterns)]
             if let $result = result {
             } else {
                 assert!(false, "{:?} does not match $result", result);
             }
         }
+    };
+}
+
+#[macro_export]
+macro_rules! test_verify_one_file {
+    ($(#[$attrs:meta])* $name:ident $body:expr => $result:pat => $assertions:expr ) => {
+        test_verify_one_file_with_options!($(#[$attrs])* $name [] => $body => $result => $assertions);
+    };
+    ($(#[$attrs:meta])* $name:ident $body:expr => $result:pat) => {
+        test_verify_one_file_with_options!($(#[$attrs])* $name [] => $body => $result);
     };
 }
 
