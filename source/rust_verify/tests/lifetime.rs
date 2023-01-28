@@ -27,7 +27,7 @@ test_verify_one_file! {
             consume(a);
             consume(a);
         }
-    } => Err(_) => ()
+    } => Err(err) => assert_error_msg(err, "error[E0382]: use of moved value")
 }
 
 test_verify_one_file! {

@@ -194,7 +194,7 @@ test_verify_one_file! {
             }
             assert(x * x + x == x * (x + 1));
         }
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, "assert_by_query not allowed in #[verifier(nonlinear)] functions")
 }
 
 test_verify_one_file! {
@@ -219,7 +219,7 @@ test_verify_one_file! {
                 assert(z == 0);
             }
         }
-    } => Err(e) => assert_vir_error(e)
+    } => Err(err) => assert_vir_error_msg(err, "not mentioned in requires/ensures")
 }
 
 test_verify_one_file! {

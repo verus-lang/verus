@@ -49,6 +49,7 @@ use crate::attributes::{get_mode, get_verifier_attrs};
 use crate::rust_to_vir_expr::attrs_is_invariant_block;
 use crate::unsupported;
 use crate::util::{from_raw_span, vec_map};
+use crate::verifier::DiagnosticOutputBuffer;
 
 use rustc_ast::ast::{
     AngleBracketedArg, AngleBracketedArgs, Arm, AssocItem, AssocItemKind, BinOpKind, Block, Crate,
@@ -1408,6 +1409,7 @@ pub struct CompilerCallbacks {
     pub erasure_hints: ErasureHints,
     pub lifetimes_only: bool,
     pub print: bool,
+    pub test_capture_output: Option<std::sync::Arc<std::sync::Mutex<Vec<u8>>>>,
     pub time_erasure: Arc<Mutex<Duration>>,
 }
 
@@ -1459,6 +1461,15 @@ impl rustc_lint::FormalVerifierRewrite for CompilerCallbacks {
 }
 
 impl rustc_driver::Callbacks for CompilerCallbacks {
+    fn config(&mut self, config: &mut rustc_interface::interface::Config) {
+        if let Some(target) = &self.test_capture_output {
+            config.diagnostic_output =
+                rustc_session::DiagnosticOutput::Raw(Box::new(DiagnosticOutputBuffer {
+                    output: target.clone(),
+                }));
+        }
+    }
+
     fn after_parsing<'tcx>(
         &mut self,
         compiler: &Compiler,

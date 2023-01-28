@@ -77,7 +77,7 @@ test_verify_one_file! {
             let m3: Map<int, int> = m1;
             let m4: Map<nat, int> = m1; // FAILS: see https://github.com/FStarLang/FStar/issues/1542
         }
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, "error[E0308]: mismatched types")
 }
 
 test_verify_one_file! {
@@ -92,5 +92,5 @@ test_verify_one_file! {
             // would require extensional equality:
             assert(m1 === m2); // FAILS
         }
-    } => Err(_)
+    } => Err(err) => assert_one_fails(err)
 }

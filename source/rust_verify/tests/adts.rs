@@ -186,7 +186,7 @@ test_verify_one_file! {
             let s = SpecStruct { a: 12 }; // FAILS
             assert(s.a == 12);
         }
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, "error[E0308]: mismatched types")
 }
 
 test_verify_one_file! {
@@ -234,7 +234,7 @@ test_verify_one_file! {
     #[test] test_no_empty_enums code! {
         enum Empty {
         }
-    } => Err(TestErr { has_vir_error: true, .. })
+    } => Err(err) => assert_vir_error_msg(err, "datatype must have at least one non-recursive variant")
 }
 
 test_verify_one_file! {
@@ -242,7 +242,7 @@ test_verify_one_file! {
         enum List {
             Cons(int, Box<List>)
         }
-    } => Err(TestErr { has_vir_error: true, .. })
+    } => Err(err) => assert_vir_error_msg(err, "datatype must have at least one non-recursive variant")
 }
 
 test_verify_one_file! {
@@ -251,7 +251,7 @@ test_verify_one_file! {
             Cons1(int, Box<List>),
             Cons2(int, Box<List>),
         }
-    } => Err(TestErr { has_vir_error: true, .. })
+    } => Err(err) => assert_vir_error_msg(err, "datatype must have at least one non-recursive variant")
 }
 
 test_verify_one_file! {
@@ -262,7 +262,7 @@ test_verify_one_file! {
         enum List2 {
             Cons(int, Box<List1>)
         }
-    } => Err(TestErr { has_vir_error: true, .. })
+    } => Err(err) => assert_vir_error_msg(err, "datatype must have at least one non-recursive variant")
 }
 
 test_verify_one_file! {
@@ -270,7 +270,7 @@ test_verify_one_file! {
         enum List {
             Cons(int, (Box<List>, bool))
         }
-    } => Err(TestErr { has_vir_error: true, .. })
+    } => Err(err) => assert_vir_error_msg(err, "datatype must have at least one non-recursive variant")
 }
 
 test_verify_one_file! {
@@ -315,7 +315,7 @@ test_verify_one_file! {
             #[doc(hidden)] #[spec] #[verifier(is_variant)] #[allow(non_snake_case)]
             fn is_Thing(&self) -> bool { ::core::panicking::panic("not implemented") }
         }
-    } => Err(e) => assert_vir_error(e)
+    } => Err(e) => assert_vir_error_msg(e, "unrecognized verifier attribute")
 }
 
 test_verify_one_file! {
@@ -324,7 +324,7 @@ test_verify_one_file! {
         pub struct Maybe<T> {
             t: T,
         }
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, "#[is_variant] is only allowed on enums")
 }
 
 test_verify_one_file! {
@@ -422,7 +422,7 @@ test_verify_one_file! {
         fn test1(v: Maybe<u64>) {
             assert(v.get_Some_1() == 3);
         }
-    } => Err(_) // type-checking error
+    } => Err(err) => assert_error_msg(err, "error[E0599]: no method named `get_Some_1`")
 }
 
 test_verify_one_file! {
@@ -661,7 +661,7 @@ test_verify_one_file! {
         fn test(#[spec] s: S) {
             s.a = s.a + 1;
         }
-    } => Err(e) => assert_vir_error(e)
+    } => Err(e) => assert_vir_error_msg(e, "cannot assign to non-mut parameter")
 }
 
 test_verify_one_file! {
@@ -669,7 +669,7 @@ test_verify_one_file! {
         fn test(#[spec] t: T) {
             t.s.a = t.s.a + 1;
         }
-    } => Err(e) => assert_vir_error(e)
+    } => Err(e) => assert_vir_error_msg(e, "cannot assign to non-mut parameter")
 }
 
 const FIELD_UPDATE_MODES: &str = code_str! {
@@ -691,7 +691,7 @@ test_verify_one_file! {
         fn test(t: T) {
             t.s.a = t.s.a;
         }
-    } => Err(e) => assert_vir_error(e)
+    } => Err(e) => assert_vir_error_msg(e, "cannot assign to non-mut parameter")
 }
 
 const ENUM_S: &str = code_str! {
@@ -709,7 +709,7 @@ test_verify_one_file! {
                 S::V1 => assert(true),
             };
         }
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, "error[E0004]: non-exhaustive patterns")
 }
 
 test_verify_one_file! {

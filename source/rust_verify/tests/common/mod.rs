@@ -297,11 +297,6 @@ pub fn assert_fails(err: TestErr, count: usize) {
 }
 
 #[allow(dead_code)]
-pub fn assert_vir_error(err: TestErr) {
-    assert!(err.has_vir_error);
-}
-
-#[allow(dead_code)]
 pub fn assert_vir_error_msg(err: TestErr, expected_msg: &str) {
     assert!(err.has_vir_error);
     assert!(err.output.contains(expected_msg));

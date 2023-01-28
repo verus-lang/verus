@@ -299,7 +299,7 @@ test_verify_one_file! {
                 a = a + 1;
             }
         }
-    } => Err(e) => assert_vir_error(e)
+    } => Err(e) => assert_vir_error_msg(e, "TODO: ignored test")
 }
 
 const MUT_REF_COMMON: &str = verus_code_str! {
@@ -355,7 +355,7 @@ test_verify_one_file! {
                 a = a + 1;
             }
         }
-    } => Err(e) => assert_vir_error(e)
+    } => Err(e) => assert_vir_error_msg(e, "termination checking of loops is not supported")
 }
 
 test_verify_one_file! {

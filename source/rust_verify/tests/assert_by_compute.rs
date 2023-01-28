@@ -145,7 +145,7 @@ test_verify_one_file! {
                 r1 == r2
             }) by (compute_only);     // FAILS
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "assert simplifies to false")
 }
 
 test_verify_one_file! {
@@ -266,7 +266,7 @@ test_verify_one_file! {
             }) by (compute);   // FAILS
         }
 
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "Proof by computation included a closure literal that wasn't applied")
 }
 
 test_verify_one_file! {
@@ -320,7 +320,7 @@ test_verify_one_file! {
         fn test() {
             assert(f_no_body(5) != f_no_body(6)) by (compute_only); // FAILS
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
 }
 
 test_verify_one_file! {
@@ -338,7 +338,7 @@ test_verify_one_file! {
         fn test() {
             assert(f_no_body(5) == g_no_body(5)) by (compute_only); // FAILS
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
 }
 
 test_verify_one_file! {
@@ -355,7 +355,7 @@ test_verify_one_file! {
                 assert(mostly_private::f() == 1) by (compute_only); // FAILS
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
 }
 
 test_verify_one_file! {

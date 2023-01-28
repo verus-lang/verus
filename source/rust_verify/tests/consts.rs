@@ -35,26 +35,26 @@ test_verify_one_file! {
     #[test] test1_fails2 verus_code! {
         const C: u64 = S;
         const S: u64 = C;
-    } => Err(TestErr { has_vir_error: true, .. })
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must call decreases")
 }
 
 test_verify_one_file! {
     #[test] test1_fails3 verus_code! {
         spec const C: u64 = S;
         spec const S: u64 = C;
-    } => Err(TestErr { has_vir_error: true, .. })
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must call decreases")
 }
 
 test_verify_one_file! {
     #[test] test1_fails4 verus_code! {
         spec const C: u64 = add(3, 5);
         const S: int = C + 1;
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, "error[E0308]: mismatched types")
 }
 
 test_verify_one_file! {
     #[test] test1_fails5 verus_code! {
         fn f() -> u64 { 1 }
         const S: u64 = 1 + f();
-    } => Err(TestErr { has_vir_error: true, .. })
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode exec")
 }

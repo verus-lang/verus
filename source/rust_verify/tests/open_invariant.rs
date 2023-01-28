@@ -247,7 +247,7 @@ test_both! {
             throw_away(i);
           });
         }
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, "error[E0505]: cannot move out of `i` because it is borrowed")
 }
 
 test_both! {

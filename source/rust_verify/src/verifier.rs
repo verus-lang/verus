@@ -1430,8 +1430,8 @@ impl Verifier {
     }
 }
 
-struct DiagnosticOutputBuffer {
-    output: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+pub(crate) struct DiagnosticOutputBuffer {
+    pub(crate) output: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
 }
 
 impl std::io::Write for DiagnosticOutputBuffer {

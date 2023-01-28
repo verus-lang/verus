@@ -51,7 +51,7 @@ test_verify_one_file! {
                 Bike { hard_tail: true }
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "public function ensures cannot refer to private items")
 }
 
 test_verify_one_file! {
@@ -273,7 +273,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, "error[E0308]: mismatched types")
 }
 
 test_verify_one_file! {
@@ -285,7 +285,7 @@ test_verify_one_file! {
             type Output = bool;
             fn index(&self, #[spec]idx: usize) -> &bool { &true }
         }
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, "parameter must have mode exec")
 }
 
 test_verify_one_file! {

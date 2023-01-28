@@ -135,7 +135,7 @@ test_verify_one_file! {
             let u3: u8 = 300;
             assert(u3 > 100); // FAILS
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "integer literal out of range")
 }
 
 test_verify_one_file! {
@@ -144,7 +144,7 @@ test_verify_one_file! {
         fn typing(u: u64, i: int, n: nat) {
             let i4: int = u + 1; // implicit coercion disallowed
         }
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, "error[E0308]: mismatched types")
 }
 
 test_verify_one_file! {
@@ -153,7 +153,7 @@ test_verify_one_file! {
         fn typing(u: u64, i: int, n: nat) {
             let u3: u64 = i; // implicit coercion disallowed
         }
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, "error[E0308]: mismatched types")
 }
 
 test_verify_one_file! {
@@ -162,7 +162,7 @@ test_verify_one_file! {
         fn typing(u: u64, i: int, n: nat) {
             let n2: nat = i; // implicit coercion disallowed
         }
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, "error[E0308]: mismatched types")
 }
 
 test_verify_one_file! {
@@ -171,7 +171,7 @@ test_verify_one_file! {
         fn typing(u: u64, i: int, n: nat) {
             let b1: bool = u + 1 <= i; // implicit coercion disallowed
         }
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, "error[E0308]: mismatched types")
 }
 
 test_verify_one_file! {
@@ -180,7 +180,7 @@ test_verify_one_file! {
         fn typing(u: u64, i: int, n: nat) {
             let b1: bool = i <= u + 1; // implicit coercion disallowed
         }
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, "error[E0308]: mismatched types")
 }
 
 test_verify_one_file! {
@@ -212,7 +212,7 @@ test_verify_one_file! {
         fn f() {
             assert(255u8 == 256u8 - 1); // FAILS
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "integer literal out of range")
 }
 
 test_verify_one_file! {
@@ -221,7 +221,7 @@ test_verify_one_file! {
         fn f() {
             assert(-128i8 == -129i8 + 1); // FAILS
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "integer literal out of range")
 }
 
 test_verify_one_file! {
@@ -230,7 +230,7 @@ test_verify_one_file! {
         fn f() {
             assert(127i8 == 128i8 - 1); // FAILS
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "integer literal out of range")
 }
 
 test_verify_one_file! {
@@ -239,7 +239,7 @@ test_verify_one_file! {
         fn f() {
             assert(-0x8000_0000_0000_0000_0000_0000_0000_0000i128 == -0x8000_0000_0000_0000_0000_0000_0000_0001i128 + 1); // FAILS
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "integer literal out of range")
 }
 
 test_verify_one_file! {
@@ -248,5 +248,5 @@ test_verify_one_file! {
         fn f() {
             assert(0x7fff_ffff_ffff_ffff_ffff_ffff_ffff_ffffi128 == 0x8000_0000_0000_0000_0000_0000_0000_0000i128 - 1); // FAILS
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "integer literal out of range")
 }
