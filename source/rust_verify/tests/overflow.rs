@@ -93,7 +93,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_literal_out_of_range code! {
         const C: u8 = 256 - 1;
-    } => Err(e) => assert_vir_error(e)
+    } => Err(err) => assert_vir_error_msg(err, "integer literal out of range")
 }
 
 test_verify_one_file! {
@@ -114,4 +114,13 @@ test_verify_one_file! {
             b
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] underflow code! {
+        fn underflow() {
+            let mut a: u64 = 0;
+            a = a - 1; // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
 }

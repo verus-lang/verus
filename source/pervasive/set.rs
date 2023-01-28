@@ -172,7 +172,7 @@ pub proof fn axiom_set_insert_same<A>(s: Set<A>, a: A)
 #[verifier(broadcast_forall)]
 pub proof fn axiom_set_insert_different<A>(s: Set<A>, a1: A, a2: A)
     requires
-        a1 !== a2,
+        a1 != a2,
     ensures
         s.insert(a2).contains(a1) == s.contains(a1),
 {
@@ -190,7 +190,7 @@ pub proof fn axiom_set_remove_same<A>(s: Set<A>, a: A)
 #[verifier(broadcast_forall)]
 pub proof fn axiom_set_remove_different<A>(s: Set<A>, a1: A, a2: A)
     requires
-        a1 !== a2,
+        a1 != a2,
     ensures
         s.remove(a2).contains(a1) == s.contains(a1),
 {
@@ -232,7 +232,7 @@ pub proof fn axiom_set_complement<A>(s: Set<A>, a: A)
 #[verifier(broadcast_forall)]
 pub proof fn axiom_set_ext_equal<A>(s1: Set<A>, s2: Set<A>)
     ensures
-        s1.ext_equal(s2) == (s1 === s2),
+        s1.ext_equal(s2) == (s1 == s2),
 {
 }
 
@@ -240,7 +240,7 @@ pub proof fn axiom_set_ext_equal<A>(s1: Set<A>, s2: Set<A>)
 #[verifier(broadcast_forall)]
 pub proof fn axiom_mk_map_domain<K, V>(s: Set<K>, f: FnSpec(K) -> V)
     ensures
-        #[trigger] s.mk_map(f).dom() === s,
+        #[trigger] s.mk_map(f).dom() == s,
 {
 }
 
@@ -250,7 +250,7 @@ pub proof fn axiom_mk_map_index<K, V>(s: Set<K>, f: FnSpec(K) -> V, key: K)
     requires
         s.contains(key),
     ensures
-        s.mk_map(f)[key] === f(key),
+        s.mk_map(f)[key] == f(key),
 {
 }
 

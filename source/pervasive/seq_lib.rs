@@ -20,11 +20,11 @@ impl<A> Seq<A> {
 
     // TODO is_sorted -- extract from summer_school e22
     pub open spec fn contains(self, needle: A) -> bool {
-        exists|i: int| 0 <= i < self.len() && self[i] === needle
+        exists|i: int| 0 <= i < self.len() && self[i] == needle
     }
 
     pub open spec fn index_of(self, needle: A) -> int {
-        choose|i: int| 0 <= i < self.len() && self[i] === needle
+        choose|i: int| 0 <= i < self.len() && self[i] == needle
     }
 
     /// Drops the last element of a sequence and returns a sequence whose length is
@@ -47,7 +47,7 @@ pub open spec fn check_argument_is_seq<A>(s: Seq<A>) -> Seq<A> { s }
 ///
 /// More precisely, `assert_seqs_equal!` requires:
 ///  * `s1` and `s2` have the same length (`s1.len() == s2.len()`), and
-///  * for all `i` in the range `0 <= i < s1.len()`, we have `s1[i] === s2[i]`.
+///  * for all `i` in the range `0 <= i < s1.len()`, we have `s1[i] == s2[i]`.
 ///
 /// The property that equality follows from these facts is often called _extensionality_.
 ///
@@ -66,7 +66,7 @@ pub open spec fn check_argument_is_seq<A>(s: Seq<A>) -> Seq<A> { s }
 /// 
 ///     assert_seqs_equal!(s, t);
 /// 
-///     assert(s === t);
+///     assert(s == t);
 /// }
 /// ```
 ///

@@ -25,7 +25,7 @@ test_verify_one_file! {
             }
         }
 
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "let variables in triggers not supported")
 }
 
 test_verify_one_file! {
@@ -63,7 +63,7 @@ test_verify_one_file! {
         {
             assume(false);
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "triggers cannot contain integer arithmetic")
 }
 
 test_verify_one_file! {
@@ -94,7 +94,7 @@ test_verify_one_file! {
         fn mul_distributive_auto() {
             ensures(forall(|a: nat, b: nat, c: nat| #[trigger] ((a + b) * c) == a * c + b * c));
         }
-    } => Err(e) => assert_vir_error(e)
+    } => Err(err) => assert_vir_error_msg(err, "trigger must be a function call, a field access, or a bitwise operator")
 }
 
 test_verify_one_file! {
@@ -104,7 +104,7 @@ test_verify_one_file! {
             ensures(forall_arith(|a: nat, b: nat, c: nat| #[trigger] a + b <= c));
             assume(false)
         }
-    } => Err(e) => assert_vir_error(e)
+    } => Err(err) => assert_vir_error_msg(err, "trigger in forall_arith must be an integer arithmetic operator")
 }
 
 test_verify_one_file! {

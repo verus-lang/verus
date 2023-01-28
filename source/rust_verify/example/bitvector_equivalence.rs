@@ -166,7 +166,7 @@ proof fn equivalence_proof_2(a:u32, b:u32)
 
 // proof fn equivalence_proof_3(a:u32, b:u32) 
 //     requires 
-//         u32_view(a) === u32_view(b),
+//         u32_view(a) == u32_view(b),
 //     ensures
 //         a == b,
 // {

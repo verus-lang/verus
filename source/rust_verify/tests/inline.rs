@@ -75,7 +75,7 @@ test_verify_one_file! {
         pub closed spec fn f(x: int, y: int) -> int {
             x + 2 * y
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "'inline' is only allowed for private or 'open spec' functions")
 }
 
 test_verify_one_file! {
@@ -83,7 +83,7 @@ test_verify_one_file! {
         #[verifier(inline)]
         proof fn f() {
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "'inline' is only allowed for 'spec' functions")
 }
 
 test_verify_one_file! {
@@ -94,7 +94,7 @@ test_verify_one_file! {
         {
             0
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "'inline' functions cannot be recursive")
 }
 
 test_verify_one_file! {
@@ -108,14 +108,14 @@ test_verify_one_file! {
                 f((n - 1) as nat)
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must call decreases")
 }
 
 test_verify_one_file! {
     #[test] test_no_body_fails verus_code! {
         #[verifier(inline)]
         spec fn f(n: nat) -> nat;
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "'inline' functions must have a body")
 }
 
 test_verify_one_file! {

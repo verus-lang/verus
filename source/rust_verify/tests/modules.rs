@@ -102,7 +102,7 @@ test_verify_one_file! {
         fn mod_adt_no_verify() {
             assert(!Car { four_doors: false }.four_doors);
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "field access of datatype with inaccessible fields")
 }
 
 test_verify_one_file! {
@@ -153,7 +153,7 @@ test_verify_one_file! {
                 crate::M1::g();
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "public function requires cannot refer to private items")
 }
 
 test_verify_one_file! {
@@ -163,7 +163,7 @@ test_verify_one_file! {
         fn bar() -> u64 {
             7
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "function is marked #[verifier(publish)] but not marked `pub`")
 }
 
 test_verify_one_file! {
@@ -172,7 +172,7 @@ test_verify_one_file! {
         #[verifier(publish)]
         pub fn bar() {
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "function is marked #[verifier(publish)] but not marked #[spec]")
 }
 
 test_verify_one_file! {
@@ -180,7 +180,7 @@ test_verify_one_file! {
         #[verifier(publish)]
         pub fn bar() {
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "function is marked #[verifier(publish)] but not marked #[spec]")
 }
 
 test_verify_one_file! {
@@ -188,7 +188,7 @@ test_verify_one_file! {
         #[proof]
         pub fn main() {
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "`main` function should be #[exec]")
 }
 
 test_verify_one_file! {
@@ -197,7 +197,7 @@ test_verify_one_file! {
         pub fn main() {
             ()
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "`main` function should be #[exec]")
 }
 
 test_verify_one_file! {

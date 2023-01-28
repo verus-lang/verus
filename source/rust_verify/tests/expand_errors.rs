@@ -3,8 +3,8 @@
 mod common;
 use common::*;
 
-test_verify_one_file! {
-    #[test] test1_expand_error verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test1_expand_error ["--expand-errors"] => verus_code! {
         spec fn is_good_integer(z: int) -> bool
         {
             z >= 0 && z != 5       // EXPAND-ERRORS
@@ -19,8 +19,8 @@ test_verify_one_file! {
     } => Err(e) => assert_expand_fails(e, 2)
 }
 
-test_verify_one_file! {
-    #[test] test2_expand_error verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test2_expand_error ["--expand-errors"] => verus_code! {
         #[derive(PartialEq, Eq)]
         pub enum Message {
             Quit(bool),
@@ -56,8 +56,8 @@ test_verify_one_file! {
     } => Err(e) => assert_expand_fails(e, 4)
 }
 
-test_verify_one_file! {
-    #[test] test3_expand_requires verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test3_expand_requires ["--expand-errors"] => verus_code! {
         #[derive(PartialEq, Eq)]
         pub enum Message {
             Quit(bool),
@@ -99,8 +99,8 @@ test_verify_one_file! {
     } => Err(e) => assert_expand_fails(e, 4)
 }
 
-test_verify_one_file! {
-    #[test] test4_expand_ensures verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test4_expand_ensures ["--expand-errors"] => verus_code! {
         #[derive(PartialEq, Eq)]
         pub enum Message {
             Quit(bool),
@@ -135,8 +135,8 @@ test_verify_one_file! {
     } => Err(e) => assert_expand_fails(e, 3)
 }
 
-test_verify_one_file! {
-    #[test] test5_expand_forall verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test5_expand_forall ["--expand-errors"] => verus_code! {
         use crate::pervasive::{*, seq::*};
         spec fn seq_bounded_by_length(s1: Seq<int>) -> bool {
             (forall|i:int| (0 <= i && i < s1.len())  ==>
@@ -154,9 +154,9 @@ test_verify_one_file! {
     } => Err(e) => assert_expand_fails(e, 2)
 }
 
-test_verify_one_file! {
+test_verify_one_file_with_options! {
     // credit: (this example is copied from rust_verify/example/rw2022_scripts.rs, example C)
-    #[test] test6_expand_forall verus_code! {
+    #[test] test6_expand_forall ["--expand-errors"] => verus_code! {
         spec fn divides(factor: nat, candidate: nat) -> bool {
             candidate % factor == 0             // EXPAND-ERRORS
         }
@@ -171,9 +171,9 @@ test_verify_one_file! {
     } => Err(e) => assert_expand_fails(e, 3)
 }
 
-test_verify_one_file! {
+test_verify_one_file_with_options! {
     // example: `reveal` does not flow
-    #[test] test7_local_reveal verus_code! {
+    #[test] test7_local_reveal ["--expand-errors"] => verus_code! {
         #[derive(PartialEq, Eq)]
         pub enum Message {
             Quit(bool),
@@ -208,9 +208,9 @@ test_verify_one_file! {
     } => Err(e) => assert_expand_fails(e, 2)
 }
 
-test_verify_one_file! {
+test_verify_one_file_with_options! {
     // example: `reveal` at function exit point
-    #[test] test8_ensures_reveal verus_code! {
+    #[test] test8_ensures_reveal ["--expand-errors"] => verus_code! {
         #[derive(PartialEq, Eq)]
         pub enum Message {
             Quit(bool),

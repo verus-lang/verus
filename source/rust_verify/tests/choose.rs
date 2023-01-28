@@ -256,5 +256,5 @@ test_verify_one_file! {
         fn test_choose() {
             let (i, j): (int, nat) = choose_tuple(|i: int, j: int| f(i, j));
         }
-    } => Err(TestErr { has_vir_error: true, .. })
+    } => Err(err) => assert_vir_error_msg(err, "expected choose_tuple to have type")
 }

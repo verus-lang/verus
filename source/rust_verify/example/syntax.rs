@@ -278,8 +278,8 @@ spec fn complex_conjuncts(x: int, y: int) -> bool {
 
 /// ==> associates to the right, while <== associates to the left.
 /// <==> is nonassociative.
-/// === is SMT equality (equivalent to the builtin equal function).
-/// !== is SMT disequality.
+/// == is SMT equality.
+/// != is SMT disequality.
 pub(crate) proof fn binary_ops<A>(a: A, x: int) {
     assert(false ==> true);
     assert(true && false ==> false && false);
@@ -293,7 +293,7 @@ pub(crate) proof fn binary_ops<A>(a: A, x: int) {
     assert(!(false <== (false <== false)));
     assert((false <== false) <== false);
     assert(2 + 2 !== 3);
-    assert(a === a);
+    assert(a == a);
 
     assert(false <==> true && false);
 }

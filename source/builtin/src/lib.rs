@@ -640,7 +640,7 @@ pub fn spec_cast_integer<From: Integer, To: Integer>(_from: From) -> To {
 }
 
 #[spec]
-pub fn spec_eq<Lhs: Structural, Rhs: Structural>(_lhs: Lhs, _rhs: Rhs) -> bool {
+pub fn spec_eq<Lhs, Rhs>(_lhs: Lhs, _rhs: Rhs) -> bool {
     unimplemented!()
 }
 
@@ -992,4 +992,18 @@ impl<Args, F: FnOnce<Args>> FnWithSpecification<Args> for F {
     fn ensures(&self, _args: Args, _output: Self::Output) -> bool {
         unimplemented!();
     }
+}
+
+// Intrinsics defined in the AIR prelude related to word-sizes and bounded ints
+pub fn unsigned_max(_word_bits: nat) -> nat {
+    unimplemented!();
+}
+pub fn signed_min(_word_bits: nat) -> nat {
+    unimplemented!();
+}
+pub fn signed_max(_word_bits: nat) -> nat {
+    unimplemented!();
+}
+pub fn arch_word_bits() -> nat {
+    unimplemented!();
 }

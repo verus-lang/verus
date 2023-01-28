@@ -13,7 +13,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, ": trait generics")
 }
 
 test_verify_one_file! {
@@ -24,7 +24,7 @@ test_verify_one_file! {
             trait T2<A: crate::M1::T1> {
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, ": bounds on trait type parameters")
 }
 
 test_verify_one_file! {
@@ -36,7 +36,7 @@ test_verify_one_file! {
                 a: A,
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, ": bounds on datatype parameters")
 }
 
 test_verify_one_file! {
@@ -62,7 +62,7 @@ test_verify_one_file! {
                 fn f(&self, a: &bool) {}
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, ": multiple definitions of same function")
 }
 
 test_verify_one_file! {
@@ -92,30 +92,26 @@ test_verify_one_file! {
                 s.f(10);
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, ": multiple definitions of same function")
 }
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_10 code! {
+    #[test] test_not_yet_supported_10 verus_code! {
         mod M1 {
             pub(crate) trait T {
-                #[spec]
-                fn f(&self) -> bool { builtin::no_method_body() }
+                spec fn f(&self) -> bool;
 
-                #[proof]
-                fn p(&self) {
-                    builtin::ensures(exists(|x: &Self| self.f() != x.f()));
-                    builtin::no_method_body()
-                }
+                proof fn p(&self)
+                    ensures exists|x: &Self| self.f() != x.f();
             }
         }
 
         mod M2 {
-            #[proof]
             #[verifier(external_body)]
             #[verifier(broadcast_forall)]
-            fn f_not_g<A: crate::M1::T>() {
-                builtin::ensures(exists(|x: &A, y: &A| x.f() != y.f()));
+            proof fn f_not_g<A: crate::M1::T>()
+                ensures exists|x: &A, y: &A| x.f() != y.f()
+            {
             }
         }
 
@@ -125,10 +121,10 @@ test_verify_one_file! {
 
         mod M4 {
             fn test() {
-                crate::pervasive::assert(false);
+                assert(false);
             }
         }
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, ": bounds on broadcast_forall function type parameters")
 }
 
 test_verify_one_file! {
@@ -148,7 +144,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "no_method_body can only appear in trait method declarations")
 }
 
 test_verify_one_file! {
@@ -168,7 +164,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare requires/ensures")
 }
 
 test_verify_one_file! {
@@ -188,7 +184,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare requires/ensures")
 }
 
 test_verify_one_file! {
@@ -208,7 +204,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "function must have mode spec")
 }
 
 test_verify_one_file! {
@@ -228,7 +224,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "function must have mode exec")
 }
 
 test_verify_one_file! {
@@ -247,7 +243,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "parameter must have mode spec")
 }
 
 test_verify_one_file! {
@@ -266,7 +262,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "self has mode spec, function has mode exec")
 }
 
 test_verify_one_file! {
@@ -285,7 +281,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "parameter must have mode spec")
 }
 
 test_verify_one_file! {
@@ -304,7 +300,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "parameter must have mode exec")
 }
 
 test_verify_one_file! {
@@ -325,7 +321,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "function return value must have mode spec")
 }
 
 test_verify_one_file! {
@@ -346,7 +342,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "function return value must have mode exec")
 }
 
 test_verify_one_file! {
@@ -382,7 +378,7 @@ test_verify_one_file! {
                 s.f();
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
 }
 
 test_verify_one_file! {
@@ -413,7 +409,7 @@ test_verify_one_file! {
                 s.f(&s);
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: trait generics") // note: the error message will change when this feature is supported
 }
 
 test_verify_one_file! {
@@ -431,11 +427,11 @@ test_verify_one_file! {
             impl crate::M1::T for S {
                 #[spec]
                 fn f(&self) {
-                    self.f();
+                    self.f()
                 }
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must call decreases")
 }
 
 test_verify_one_file! {

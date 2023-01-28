@@ -1,4 +1,4 @@
-// rust_verify/tests/example.rs expect-errors
+// rust_verify/tests/example.rs
 
 use builtin::*;
 use builtin_macros::*;
@@ -23,7 +23,6 @@ struct Car<T> {
 fn one() {
     let c1 = Car { passengers: Thing { }, four_doors: true };
     let c2 = Car { passengers: Thing { }, four_doors: true };
-    // UNSUPPORTED: non-smt equality
     assert(c1 == c2);
 }
 

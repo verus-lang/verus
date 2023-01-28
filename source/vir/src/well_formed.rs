@@ -749,7 +749,7 @@ fn check_functions_match(
     for (pp, fp) in f1.x.params.iter().zip(f2.x.params.iter()) {
         if !crate::ast_util::params_equal_opt(&pp, &fp, check_names, check_modes) {
             return Err(air::messages::error(
-                format!("{msg} function should have the same parameter types"),
+                format!("{msg} function should have the same parameters"),
                 &pp.span,
             )
             .secondary_span(&fp.span));
@@ -861,7 +861,7 @@ pub fn check_crate(krate: &Krate, diags: &mut Vec<VirErrAs>) -> Result<(), VirEr
         {
             return err_str(
                 &function.span,
-                "function cannot be marked #[verifier(decreases_by)] or #[verifier(recommends_by)] unless it used in some decreases_by//recommends_by",
+                "function cannot be marked #[verifier(decreases_by)] or #[verifier(recommends_by)] unless it is used in some decreases_by/recommends_by",
             );
         }
     }

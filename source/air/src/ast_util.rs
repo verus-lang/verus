@@ -296,3 +296,11 @@ pub fn mk_bitvector_option() -> Vec<Command> {
         mk_option_command("smt.case_split", "0"),
     ]
 }
+
+pub fn mk_nat(n: usize) -> Expr {
+    Arc::new(ExprX::Const(Constant::Nat(Arc::new(n.to_string()))))
+}
+
+pub fn mk_sub(e1: &Expr, e2: &Expr) -> Expr {
+    Arc::new(ExprX::Multi(MultiOp::Sub, Arc::new(vec![e1.clone(), e2.clone()])))
+}

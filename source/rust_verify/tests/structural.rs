@@ -48,7 +48,7 @@ test_verify_one_file! {
             let v2 = Thing { v: true };
             assert(v1 == v2);
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "==/!= for non smt equality types")
 }
 
 test_verify_one_file! {
@@ -70,7 +70,7 @@ test_verify_one_file! {
             let v2 = Thing { v: true };
             assert(v1 == v2);
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "structural impl for non-structural type Other")
 }
 
 test_verify_one_file! {

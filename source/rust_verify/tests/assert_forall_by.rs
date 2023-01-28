@@ -59,7 +59,7 @@ test_verify_one_file! {
         fn assertby_proof_var_disallowed(#[proof] x: bool) {
             assert_by(true, consume(x));
         }
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, "cannot use tracked variable inside 'assert ... by'")
 }
 
 test_verify_one_file! {
@@ -143,7 +143,7 @@ test_verify_one_file! {
                 consume(x);
             });
         }
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, "error[E0308]: mismatched types")
 }
 
 test_verify_one_file! {

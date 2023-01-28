@@ -24,14 +24,14 @@ impl<A> Vec<A> {
     #[verifier(external_body)]
     pub fn new() -> (v: Self)
         ensures
-            v@ === Seq::empty(),
+            v@ == Seq::<A>::empty(),
     {
         Vec { vec: vec::Vec::new() }
     }
     
     pub fn empty() -> (v: Self)
         ensures
-            v@ === Seq::empty(),
+            v@ == Seq::<A>::empty(),
     {
         Vec::new()
     }
@@ -39,7 +39,7 @@ impl<A> Vec<A> {
     #[verifier(external_body)]
     pub fn push(&mut self, value: A)
         ensures
-            self@ === old(self)@.push(value),
+            self@ == old(self)@.push(value),
     {
         self.vec.push(value);
     }
@@ -49,8 +49,8 @@ impl<A> Vec<A> {
         requires
             old(self).len() > 0,
         ensures
-            value === old(self)[old(self).len() - 1],
-            self@ === old(self)@.subrange(0, old(self).len() - 1),
+            value == old(self)[old(self).len() - 1],
+            self@ == old(self)@.subrange(0, old(self).len() - 1),
     {
         unsafe {
             self.vec.pop().unwrap_unchecked()  // Safe to unwrap given the precondition above
@@ -68,7 +68,7 @@ impl<A> Vec<A> {
         requires
             i < self.len(),
         ensures
-            *r === self[i as int],
+            *r == self[i as int],
     {
         &self.vec[i]
     }
@@ -78,7 +78,7 @@ impl<A> Vec<A> {
         requires
             i < old(self).len(),
         ensures
-            self@ === old(self)@.update(i as int, a),
+            self@ == old(self)@.update(i as int, a),
     {
         self.vec[i] = a;
     }
@@ -88,8 +88,8 @@ impl<A> Vec<A> {
         requires
             i < old(self).len(),
         ensures
-            self@ === old(self)@.update(i as int, *old(a)),
-            *a === old(self)@.index(i as int)
+            self@ == old(self)@.update(i as int, *old(a)),
+            *a == old(self)@.index(i as int)
     {
         core::mem::swap(&mut self.vec[i], a);
     }
@@ -108,7 +108,7 @@ impl<A> Vec<A> {
 
     #[verifier(external_body)]
     pub fn as_slice(&self) -> (slice: &[A])
-        ensures slice@ === self@
+        ensures slice@ == self@
     {
         self.vec.as_slice()
     }

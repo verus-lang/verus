@@ -174,7 +174,7 @@ test_verify_one_file! {
             assert(b << 2 == b * 4) by(bit_vector);
             assert(b << 2 == b * 4);  // FAILS
         }
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, "Inside bit-vector assertion, use `add` `sub` `mul` for fixed-bit operators")
 }
 
 test_verify_one_file! {
@@ -192,7 +192,7 @@ test_verify_one_file! {
         proof fn test8(b: i32) {
             assert(b <= b) by(bit_vector); // VIR Error: signed int
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "signed integer is not supported for bit-vector reasoning")
 }
 
 test_verify_one_file! {

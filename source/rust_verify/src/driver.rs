@@ -191,6 +191,7 @@ where
                         erasure_hints,
                         lifetimes_only: true,
                         print: verifier.args.print_erased_spec,
+                        test_capture_output: verifier.test_capture_output.clone(),
                         time_erasure: Arc::new(Mutex::new(Duration::new(0, 0))),
                     };
                     let status = run_compiler(
@@ -244,6 +245,7 @@ where
             erasure_hints,
             lifetimes_only: false,
             print: verifier.args.print_erased,
+            test_capture_output: verifier.test_capture_output.clone(),
             time_erasure: Arc::new(Mutex::new(Duration::new(0, 0))),
         };
         run_compiler(rustc_args, false, false, &mut callbacks, Box::new(file_loader))

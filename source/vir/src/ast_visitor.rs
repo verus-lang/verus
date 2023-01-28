@@ -594,6 +594,7 @@ where
                 UnaryOpr::IsVariant { .. } => op.clone(),
                 UnaryOpr::TupleField { .. } => op.clone(),
                 UnaryOpr::Field { .. } => op.clone(),
+                UnaryOpr::IntegerTypeBound(_kind, _) => op.clone(),
             };
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             ExprX::UnaryOpr(op.clone(), expr1)

@@ -11,7 +11,7 @@ test_verify_one_file! {
             fn f<A: T1>(a: &A) {
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, ": trait generics")
 }
 
 test_verify_one_file! {
@@ -20,7 +20,7 @@ test_verify_one_file! {
         // need to add A: T1 to termination checking before supporting this
         trait T2<A: T1> {
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, ": bounds on trait type parameters")
 }
 
 test_verify_one_file! {
@@ -30,7 +30,7 @@ test_verify_one_file! {
         struct S2<A: T1> {
             a: A,
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, ": bounds on datatype parameters")
 }
 
 test_verify_one_file! {
@@ -54,7 +54,7 @@ test_verify_one_file! {
         impl T<bool> for S<bool> {
             fn f(&self, a: &bool) {}
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, ": multiple definitions of same function")
 }
 
 test_verify_one_file! {
@@ -75,7 +75,7 @@ test_verify_one_file! {
             s.f(true);
             s.f(10);
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, ": multiple definitions of same function")
 }
 
 test_verify_one_file! {
@@ -103,7 +103,7 @@ test_verify_one_file! {
         fn test() {
             assert(false);
         }
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, ": bounds on broadcast_forall function type parameters")
 }
 
 test_verify_one_file! {
@@ -117,7 +117,7 @@ test_verify_one_file! {
             #[spec]
             fn g(&self) -> bool { no_method_body() }
         }
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, ": trait generic bounds")
 }
 
 test_verify_one_file! {
@@ -138,7 +138,7 @@ test_verify_one_file! {
                 assert(self.t.f() == self.t.f());
             }
         }
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, "could not find this type parameter")
 }
 
 test_verify_one_file! {
@@ -146,7 +146,7 @@ test_verify_one_file! {
         trait T1 {
             fn f(&self); // need to call no_method_body()
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, ": trait function must have a body that calls no_method_body()")
 }
 
 test_verify_one_file! {
@@ -156,7 +156,7 @@ test_verify_one_file! {
                 // need to call no_method_body()
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "trait method declaration body must end with call to no_method_body()")
 }
 
 test_verify_one_file! {
@@ -166,7 +166,7 @@ test_verify_one_file! {
                 no_method_body(); // no semicolon allowed
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "no_method_body() must be a method's final expression, with no semicolon")
 }
 
 test_verify_one_file! {
@@ -177,7 +177,7 @@ test_verify_one_file! {
                 no_method_body() // can't appear after header
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "no statements are allowed before no_method_body()")
 }
 
 test_verify_one_file! {
@@ -188,7 +188,7 @@ test_verify_one_file! {
                 let b = true; // no code after no_method_body
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "no_method_body() must be a method's final expression, with no semicolon")
 }
 
 test_verify_one_file! {
@@ -196,7 +196,7 @@ test_verify_one_file! {
         fn f() {
             no_method_body() // can't appear in static function
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "no_method_body can only appear in trait method declarations")
 }
 
 test_verify_one_file! {
@@ -212,7 +212,7 @@ test_verify_one_file! {
                 no_method_body() // can't appear in implementation
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "no_method_body can only appear in trait method declarations")
 }
 
 test_verify_one_file! {
@@ -228,7 +228,7 @@ test_verify_one_file! {
                 requires(true); // no requires allowed
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare requires/ensures")
 }
 
 test_verify_one_file! {
@@ -244,7 +244,7 @@ test_verify_one_file! {
                 ensures(true); // no ensures allowed
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare requires/ensures")
 }
 
 test_verify_one_file! {
@@ -257,7 +257,7 @@ test_verify_one_file! {
             fn f(&self) {
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "function must have mode spec")
 }
 
 test_verify_one_file! {
@@ -270,7 +270,7 @@ test_verify_one_file! {
             spec fn f(&self) {
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "function must have mode exec")
 }
 
 test_verify_one_file! {
@@ -285,7 +285,7 @@ test_verify_one_file! {
             fn f(&self) {
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "parameter must have mode spec")
 }
 
 test_verify_one_file! {
@@ -300,7 +300,7 @@ test_verify_one_file! {
             fn f(#[spec] &self) {
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "self has mode spec, function has mode exec")
 }
 
 test_verify_one_file! {
@@ -313,7 +313,7 @@ test_verify_one_file! {
             proof fn f(&self, b: bool) {
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "self has mode spec, function has mode proof")
 }
 
 test_verify_one_file! {
@@ -326,7 +326,7 @@ test_verify_one_file! {
             proof fn f(&self, tracked b: bool) {
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "self has mode spec, function has mode proof")
 }
 
 test_verify_one_file! {
@@ -340,7 +340,7 @@ test_verify_one_file! {
                 true
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "self has mode spec, function has mode proof")
 }
 
 test_verify_one_file! {
@@ -357,7 +357,7 @@ test_verify_one_file! {
                 true
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "function return value must have mode exec")
 }
 
 test_verify_one_file! {
@@ -382,7 +382,7 @@ test_verify_one_file! {
             let s = S {};
             s.f();
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
 }
 
 test_verify_one_file! {
@@ -403,7 +403,7 @@ test_verify_one_file! {
             let s = S {};
             s.f(&s);
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: trait generics") // note: the error message will change when this feature is supported
 }
 
 test_verify_one_file! {
@@ -416,10 +416,10 @@ test_verify_one_file! {
 
         impl T for S {
             spec fn f(&self) {
-                self.f();
+                self.f()
             }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must call decreases")
 }
 
 test_verify_one_file! {

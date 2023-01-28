@@ -245,7 +245,7 @@ proof fn test_multitriggers(a: Seq<int>, b: Seq<int>, c: Seq<int>)
 // ANCHOR: seq_update_different
 proof fn seq_update_different<A>(s: Seq<A>, i: int, j: int, a: A) {
     assert(forall|i: int, j: int|
-        0 <= i < s.len() && 0 <= j < s.len() && i != j ==> s.update(j, a)[i] === s[i]
+        0 <= i < s.len() && 0 <= j < s.len() && i != j ==> s.update(j, a)[i] == s[i]
     );
 }
 // ANCHOR_END: seq_update_different

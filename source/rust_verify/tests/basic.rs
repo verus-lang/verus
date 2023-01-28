@@ -271,7 +271,7 @@ test_verify_one_file! {
             let x: u64 = 10;
             x = 20;
         }
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, "error[E0384]: cannot assign twice to immutable variable `x`")
 }
 
 test_verify_one_file! {
@@ -281,7 +281,7 @@ test_verify_one_file! {
         {
             x > 10
         }
-    } => Err(TestErr { has_vir_error: true, .. })
+    } => Err(err) => assert_vir_error_msg(err, "parameter name cannot be the same as the return value name")
 }
 
 test_verify_one_file! {
@@ -365,7 +365,7 @@ test_verify_one_file! {
         fn test1(#[spec] x: u64) {
             x = 5;
         }
-    } => Err(e) => assert_vir_error(e)
+    } => Err(e) => assert_vir_error_msg(e, "cannot assign to non-mut parameter")
 }
 
 test_verify_one_file! {
@@ -373,7 +373,7 @@ test_verify_one_file! {
         spec fn test1(x: u64) {
             x = 5;
         }
-    } => Err(e) => assert_vir_error(e)
+    } => Err(e) => assert_vir_error_msg(e, "cannot assign to non-mut parameter")
 }
 
 test_verify_one_file! {

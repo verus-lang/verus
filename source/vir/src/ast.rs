@@ -168,6 +168,14 @@ pub struct FieldOpr {
     pub field: Ident,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
+pub enum IntegerTypeBoundKind {
+    UnsignedMax,
+    SignedMin,
+    SignedMax,
+    ArchWordBits,
+}
+
 /// More complex unary operations (requires Clone rather than Copy)
 /// (Below, "boxed" refers to boxing types in the SMT encoding, not the Rust Box type)
 #[derive(Clone, Debug, Hash, ToDebugSNode)]
@@ -185,6 +193,13 @@ pub enum UnaryOpr {
     TupleField { tuple_arity: usize, field: usize },
     /// Read field from variant of datatype
     Field(FieldOpr),
+    /// Bounded integer bounds. The argument is the arch word bits (16, 32, etc.)
+    /// So e.g., IntegerTypeBound(SignedMax) applied to 8 would give 127
+    /// The 'ArchWordBits' gives the word size in bits (ignore the argument).
+    /// This can return any integer type, but that integer type needs to be large enough
+    /// to hold the result.
+    /// Mode is the minimum allowed mode (e.g., Spec for spec-only, Exec if allowed in exec).
+    IntegerTypeBound(IntegerTypeBoundKind, Mode),
 }
 
 /// Arithmetic operation that might fail (overflow or divide by zero)

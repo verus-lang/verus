@@ -200,7 +200,7 @@ test_verify_one_file! {
     #[test] test_new_strlit_invalid verus_code! {
         use pervasive::string::*;
         const x: StrSlice<'static> = new_strlit(12);
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, "error[E0308]: mismatched types")
 }
 
 test_verify_one_file! {
@@ -209,7 +209,7 @@ test_verify_one_file! {
         fn test() {
             reveal_strlit(12);
         }
-    } => Err(e) => assert_vir_error(e)
+    } => Err(err) => assert_vir_error_msg(err, "string literal expected")
 }
 
 test_verify_one_file! {
@@ -218,7 +218,7 @@ test_verify_one_file! {
         fn test() {
             reveal_strlit("a", "a");
         }
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, "error[E0061]: this function takes 1 argument but 2 arguments were supplied")
 }
 
 test_verify_one_file! {
@@ -491,7 +491,7 @@ test_verify_one_file! {
             let v: u8 = 42;
             let z = v as char;
         }
-    } => Err(e) => assert_vir_error(e)
+    } => Err(err) => assert_vir_error_msg(err, "Verus currently only supports casts from integer types and `char` to integer types")
 }
 
 test_verify_one_file! {
@@ -550,7 +550,7 @@ test_verify_one_file! {
             a as char
         }
 
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "Verus currently only supports casts from integer types and `char` to integer types")
 }
 
 test_verify_one_file! {

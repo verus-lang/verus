@@ -20,7 +20,7 @@ test_verify_one_file! {
                 c.passengers
             }
         }
-    } => Err(TestErr { has_vir_error: true, .. })
+    } => Err(err) => assert_vir_error_msg(err, "public spec function cannot refer to private items")
 }
 
 test_verify_one_file! {
@@ -38,7 +38,7 @@ test_verify_one_file! {
                 Car { passengers: 0, four_doors: true }
             }
         }
-    } => Err(TestErr { has_vir_error: true, .. })
+    } => Err(err) => assert_vir_error_msg(err, "public spec function cannot refer to private items")
 }
 
 test_verify_one_file! {
@@ -57,7 +57,7 @@ test_verify_one_file! {
                 true
             }
         }
-    } => Err(TestErr { has_vir_error: true, .. })
+    } => Err(err) => assert_vir_error_msg(err, "public spec function cannot refer to private items")
 }
 
 const M1: &str = code_str! {

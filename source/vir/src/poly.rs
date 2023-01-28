@@ -356,7 +356,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 UnaryOpr::TupleField { .. } => {
                     panic!("internal error: ast_simplify should remove TupleField")
                 }
-                UnaryOpr::IsVariant { .. } => {
+                UnaryOpr::IsVariant { .. } | UnaryOpr::IntegerTypeBound(..) => {
                     let e1 = coerce_expr_to_native(ctx, &e1);
                     mk_expr(ExprX::UnaryOpr(op.clone(), e1))
                 }

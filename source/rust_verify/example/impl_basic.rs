@@ -33,7 +33,7 @@ struct TemplateCar<V> {
 impl<V> TemplateCar<V> {
     fn template_new(v: V) -> (result: TemplateCar<V>)
         ensures
-            result.passengers === 205 && result.the_v === v,
+            result.passengers == 205 && result.the_v == v,
     {
         TemplateCar::<V> { four_doors: false, passengers: 205, the_v: v }
     }
@@ -47,7 +47,7 @@ impl<V> TemplateCar<V> {
 
     fn template_get_v(self) -> (result: V)
         ensures
-            result === self.the_v,
+            result == self.the_v,
     {
         self.the_v
     }

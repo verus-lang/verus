@@ -51,7 +51,7 @@ test_verify_one_file! {
             #[verifier(when_used_as_spec(f))]
             fn g<B>(&self, k: &B) -> bool { true }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "when_used_as_spec function should have the same type bounds")
 }
 
 test_verify_one_file! {
@@ -64,7 +64,7 @@ test_verify_one_file! {
             #[verifier(when_used_as_spec(f))]
             fn g(&self, k: u64) -> bool { true }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "when_used_as_spec function should have the same parameters")
 }
 
 test_verify_one_file! {
@@ -77,7 +77,7 @@ test_verify_one_file! {
             #[verifier(when_used_as_spec(f))]
             fn g(&self) -> u8 { 0 }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "when_used_as_spec function should have the same return types")
 }
 
 test_verify_one_file! {
@@ -90,7 +90,7 @@ test_verify_one_file! {
             #[verifier(when_used_as_spec(f))]
             proof fn g(&self, k: u64) -> bool { true }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "when_used_as_spec must point from an exec function to a spec function")
 }
 
 test_verify_one_file! {
@@ -103,7 +103,7 @@ test_verify_one_file! {
             #[verifier(when_used_as_spec(f))]
             fn g(&self, k: u64) -> bool { true }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "when_used_as_spec must point from an exec function to a spec function")
 }
 
 test_verify_one_file! {
@@ -114,7 +114,7 @@ test_verify_one_file! {
             #[verifier(when_used_as_spec(f))]
             fn g(&self, k: u64) -> bool { true }
         }
-    } => Err(err) => assert_vir_error(err)
+    } => Err(err) => assert_vir_error_msg(err, "cannot find function referred to in when_used_as_spec")
 }
 
 /* TODO: remove this when autoview is removed
@@ -187,7 +187,7 @@ test_verify_one_file! {
                 V {}
             }
         }
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, "test will be removed")
 }
 
 test_verify_one_file! {
@@ -217,7 +217,7 @@ test_verify_one_file! {
                 V {}
             }
         }
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, "test will be removed")
 }
 
 test_verify_one_file! {
@@ -243,6 +243,6 @@ test_verify_one_file! {
 
             // ERROR: view is missing
         }
-    } => Err(_)
+    } => Err(err) => assert_error_msg(err, "test will be removed")
 }
 */
