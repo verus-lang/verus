@@ -166,7 +166,7 @@ pub fn verify_files_and_pervasive(
     let captured_output_1 = captured_output.clone();
 
     let pervasive_path = match std::env::var("TEST_PERVASIVE_PATH") {
-        Ok(path) if !verify_pervasive => path,
+        Ok(path) if !verify_pervasive && !macro_erasure => path,
         _ => "../pervasive".to_string(),
     };
 
