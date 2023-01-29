@@ -67,7 +67,7 @@ impl<'tcx> Context<'tcx> {
 pub(crate) struct State {
     rename_count: usize,
     id_to_name: HashMap<String, Id>,
-    typ_param_to_name: HashMap<String, Id>,
+    typ_param_to_name: HashMap<(String, Option<u32>), Id>,
     lifetime_to_name: HashMap<String, Id>,
     fun_to_name: HashMap<Fun, Id>,
     datatype_to_name: HashMap<Path, Id>,
@@ -116,10 +116,16 @@ impl State {
         Self::id(&mut self.rename_count, &mut self.id_to_name, IdKind::Local, &raw_id, f)
     }
 
-    fn typ_param<S: Into<String>>(&mut self, raw_id: S) -> Id {
+    fn typ_param<S: Into<String>>(&mut self, raw_id: S, maybe_impl_index: Option<u32>) -> Id {
         let raw_id = raw_id.into();
-        let f = || if raw_id.starts_with("impl ") { "impl".to_string() } else { raw_id.clone() };
-        Self::id(&mut self.rename_count, &mut self.typ_param_to_name, IdKind::TypParam, &raw_id, f)
+        let (is_impl, impl_index) = match (raw_id.starts_with("impl "), maybe_impl_index) {
+            (false, _) => (false, None),
+            (true, None) => panic!("unexpected impl type"),
+            (true, Some(i)) => (true, Some(i)),
+        };
+        let f = || if is_impl { "impl".to_string() } else { raw_id.clone() };
+        let key = (raw_id.clone(), impl_index);
+        Self::id(&mut self.rename_count, &mut self.typ_param_to_name, IdKind::TypParam, &key, f)
     }
 
     fn lifetime<S: Into<String>>(&mut self, raw_id: S) -> Id {
@@ -197,11 +203,11 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: Ty) -> Typ {
             Box::new(TypX::Primitive(ty.to_string()))
         }
         TyKind::Param(p) if p.name == kw::SelfUpper => {
-            Box::new(TypX::TypParam(state.typ_param("Self")))
+            Box::new(TypX::TypParam(state.typ_param("Self", None)))
         }
         TyKind::Param(p) => {
             let name = p.name.as_str();
-            Box::new(TypX::TypParam(state.typ_param(name.to_string())))
+            Box::new(TypX::TypParam(state.typ_param(name.to_string(), Some(p.index))))
         }
         TyKind::Never => Box::new(TypX::Never),
         TyKind::Ref(region, t, mutability) => {
@@ -1156,7 +1162,7 @@ fn erase_fn<'tcx>(
                 match gparam.kind {
                     GenericParamDefKind::Lifetime => {}
                     GenericParamDefKind::Type { .. } => {
-                        let x = state.typ_param(gparam.name.to_string());
+                        let x = state.typ_param(gparam.name.to_string(), Some(gparam.index));
                         typ_params.push((x, vec![]));
                     }
                     GenericParamDefKind::Const { .. } => panic!(),
@@ -1166,14 +1172,20 @@ fn erase_fn<'tcx>(
                 match pred.kind().no_bound_vars().expect("no_bound_vars") {
                     PredicateKind::RegionOutlives(_pred) => {}
                     PredicateKind::TypeOutlives(pred) => {
-                        let x = state.typ_param(&pred.0.to_string());
+                        let x = match *erase_ty(ctxt, state, &pred.0) {
+                            TypX::TypParam(x) => x,
+                            _ => panic!("PredicateKind::TypeOutlives"),
+                        };
                         let bound = erase_hir_region(ctxt, state, &pred.1).expect("bound");
                         let x_ref = typ_params.iter_mut().find(|(y, _)| *y == x);
                         let x_ref = x_ref.expect("generic param bound");
                         x_ref.1.push(Bound::Id(bound));
                     }
                     PredicateKind::Trait(pred) => {
-                        let x = state.typ_param(pred.trait_ref.substs[0].to_string());
+                        let x = match *erase_ty(ctxt, state, pred.trait_ref.substs[0].expect_ty()) {
+                            TypX::TypParam(x) => x,
+                            _ => panic!("PredicateKind::Trait"),
+                        };
                         let id = pred.trait_ref.def_id;
                         let bound = if Some(id) == ctxt.tcx.lang_items().copy_trait() {
                             Some(Bound::Copy)
@@ -1203,7 +1215,11 @@ fn erase_fn<'tcx>(
                             == ctxt.tcx.lang_items().fn_once_output()
                         {
                             assert!(pred.projection_ty.substs.len() == 2);
-                            let x = state.typ_param(pred.projection_ty.substs[0].to_string());
+                            let x_ty = pred.projection_ty.substs[0].expect_ty();
+                            let x = match *erase_ty(ctxt, state, x_ty) {
+                                TypX::TypParam(x) => x,
+                                _ => panic!("PredicateKind::Projection"),
+                            };
                             let mut fn_params = match pred.projection_ty.substs[1].unpack() {
                                 GenericArgKind::Type(ty) => erase_ty(ctxt, state, ty),
                                 _ => panic!("unexpected fn projection"),
@@ -1383,7 +1399,7 @@ fn erase_datatype<'tcx>(
                 generics.push((state.lifetime(&gparam.name.ident().to_string()), bnds));
             }
             GenericParamKind::Type { .. } => {
-                generics.push((state.typ_param(gparam.name.ident().to_string()), bnds));
+                generics.push((state.typ_param(gparam.name.ident().to_string(), None), bnds));
             }
             GenericParamKind::Const { .. } => panic!(),
         }
@@ -1443,7 +1459,7 @@ fn erase_abstract_datatype<'tcx>(
                 fields.push(Box::new(TypX::Ref(TypX::mk_bool(), Some(x), Mutability::Not)));
             }
             GenericParamKind::Type { .. } => {
-                let x = state.typ_param(gparam.name.ident().to_string());
+                let x = state.typ_param(gparam.name.ident().to_string(), None);
                 fields.push(Box::new(TypX::Phantom(Box::new(TypX::TypParam(x)))));
             }
             GenericParamKind::Const { .. } => panic!(),
