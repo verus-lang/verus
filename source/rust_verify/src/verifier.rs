@@ -1490,12 +1490,19 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         compiler: &Compiler,
         queries: &'tcx rustc_interface::Queries<'tcx>,
     ) -> rustc_driver::Compilation {
+        if !compiler.session().compile_status().is_ok() {
+            return rustc_driver::Compilation::Stop;
+        }
+
         let _result = queries.global_ctxt().expect("global_ctxt").peek_mut().enter(|tcx| {
             {
                 let reporter = Reporter::new(compiler);
                 if let Err(err) = self.verifier.construct_vir_crate(tcx, &reporter) {
                     reporter.report_as(&err, MessageLevel::Error);
                     self.verifier.encountered_vir_error = true;
+                    return;
+                }
+                if !compiler.session().compile_status().is_ok() {
                     return;
                 }
                 self.lifetime_start_time = Some(Instant::now());
@@ -1519,6 +1526,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 };
                 let status = crate::lifetime::check_tracked_lifetimes(
                     tcx,
+                    self.rustc_args.clone(),
                     self.verifier.erasure_hints.as_ref().expect("erasure_hints"),
                     lifetime_log_file,
                 );
@@ -1536,6 +1544,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                                 self.rustc_args.clone(),
                                 file_loader,
                                 false,
+                                self.verifier.test_capture_output.clone(),
                             );
                             if compile_status.is_err() {
                                 return;

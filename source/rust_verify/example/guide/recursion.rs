@@ -61,7 +61,9 @@ fn test_triangle_step_by_step() {
 
 // ANCHOR: fuel
 fn test_triangle_reveal() {
-    reveal_with_fuel(triangle, 11);
+    proof {
+        reveal_with_fuel(triangle, 11);
+    }
     assert(triangle(10) == 55);
 }
 // ANCHOR_END: fuel
@@ -339,12 +341,16 @@ proof fn even_odd_mod2(i: int)
 }
 
 fn test_even() {
-    reveal_with_fuel(is_even, 11);
+    proof {
+        reveal_with_fuel(is_even, 11);
+    }
     assert(is_even(10));
 }
 
 fn test_odd() {
-    reveal_with_fuel(is_odd, 11);
+    proof {
+        reveal_with_fuel(is_odd, 11);
+    }
     assert(!is_odd(10));
 }
 // ANCHOR_END: even
@@ -393,12 +399,16 @@ proof fn even_odd_mod2(i: int)
 }
 
 fn test_even() {
-    reveal_with_fuel(is_even, 21);
+    proof {
+        reveal_with_fuel(is_even, 21);
+    }
     assert(is_even(10));
 }
 
 fn test_odd() {
-    reveal_with_fuel(is_odd, 22);
+    proof {
+        reveal_with_fuel(is_odd, 22);
+    }
     assert(!is_odd(10));
 }
 // ANCHOR_END: even2

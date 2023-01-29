@@ -50,6 +50,7 @@ fn emit_check_tracked_lifetimes<'tcx>(
 ) -> State {
     let gen_state =
         crate::lifetime_generate::gen_check_tracked_lifetimes(tcx, krate, erasure_hints);
+    emit_state.writeln("#![feature(box_patterns)]");
     emit_state.writeln("#![allow(non_camel_case_types)]");
     emit_state.writeln("#![allow(unused_imports)]");
     emit_state.writeln("#![allow(unused_variables)]");
@@ -59,24 +60,22 @@ fn emit_check_tracked_lifetimes<'tcx>(
     emit_state.writeln("#![allow(dead_code)]");
     emit_state.writeln("#![allow(unreachable_code)]");
     emit_state.writeln("#![allow(unused_mut)]");
-    emit_state.writeln("#[derive(Copy)] struct PhantomData<A> { a: A }");
-    emit_state.writeln("impl<A> Clone for PhantomData<A> { fn clone(&self) -> Self { panic!() } }");
-    emit_state.writeln("#[derive(Clone, Copy)] struct Ghost<A> { a: PhantomData<A> }");
-    emit_state.writeln("#[derive(Clone, Copy)] struct Box<A> { a: PhantomData<A> }");
-    emit_state.writeln("struct Rc<A> { a: PhantomData<A> }");
-    emit_state.writeln("struct Arc<A> { a: PhantomData<A> }");
+    emit_state.writeln("#![allow(unused_labels)]");
+    emit_state.writeln("use std::marker::PhantomData;");
+    emit_state.writeln("use std::rc::Rc;");
+    emit_state.writeln("use std::sync::Arc;");
+    emit_state.writeln("fn op<A, B>(a: A) -> B { unimplemented!() }");
     emit_state.writeln("struct Tracked<A> { a: PhantomData<A> }");
-    emit_state.writeln("impl<A> core::ops::Deref for Box<A> { type Target = A; fn deref(&self) -> &A { panic!() } }");
-    emit_state.writeln(
-        "impl<A> core::ops::DerefMut for Box<A> { fn deref_mut(&mut self) -> &mut A { panic!() } }",
-    );
-    emit_state.writeln("impl<A> core::ops::Deref for Rc<A> { type Target = A; fn deref(&self) -> &A { panic!() } }");
-    emit_state.writeln("impl<A> core::ops::Deref for Arc<A> { type Target = A; fn deref(&self) -> &A { panic!() } }");
-    emit_state.writeln("impl<A> Clone for Rc<A> { fn clone(&self) -> Self { panic!() } }");
-    emit_state.writeln("impl<A> Clone for Arc<A> { fn clone(&self) -> Self { panic!() } }");
+    emit_state.writeln("#[derive(Clone, Copy)] struct Ghost<A> { a: PhantomData<A> }");
     emit_state.writeln("#[derive(Clone, Copy)] struct int;");
     emit_state.writeln("#[derive(Clone, Copy)] struct nat;");
-    emit_state.writeln("fn op<A, B>(a: A) -> B { unimplemented!() }");
+    emit_state.writeln("struct FnSpec<Args, Output> { x: PhantomData<(Args, Output)> }");
+    emit_state.writeln("struct InvariantBlockGuard;");
+    emit_state.writeln("fn open_atomic_invariant_begin<'a, X, V>(_inv: &'a X) -> (&'a InvariantBlockGuard, V) { panic!(); }");
+    emit_state.writeln("fn open_local_invariant_begin<'a, X, V>(_inv: &'a X) -> (&'a InvariantBlockGuard, V) { panic!(); }");
+    emit_state
+        .writeln("fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) { panic!() }");
+
     for d in gen_state.datatype_decls.iter() {
         emit_datatype_decl(emit_state, d);
     }
@@ -147,6 +146,7 @@ struct Diagnostic {
 
 pub(crate) fn check_tracked_lifetimes<'tcx>(
     tcx: TyCtxt<'tcx>,
+    parent_rustc_args: Vec<String>,
     erasure_hints: &ErasureHints,
     lifetime_log_file: Option<File>,
 ) -> Result<Vec<Message>, VirErr> {
@@ -161,11 +161,17 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
     if let Some(mut file) = lifetime_log_file {
         write!(file, "{}", &rust_code).expect("error writing to lifetime log file");
     }
-    let rustc_args = vec![
+    let mut rustc_args = vec![
         "dummyexe".to_string(),
         LifetimeFileLoader::FILENAME.to_string(),
         "--error-format=json".to_string(),
     ];
+    for i in 0..parent_rustc_args.len() {
+        if parent_rustc_args[i] == "--sysroot" && i + 1 < parent_rustc_args.len() {
+            rustc_args.push(parent_rustc_args[i].clone());
+            rustc_args.push(parent_rustc_args[i + 1].clone());
+        }
+    }
     let capture_output = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let mut callbacks = LifetimeCallbacks { capture_output };
     let mut compiler = rustc_driver::RunCompiler::new(&rustc_args, &mut callbacks);
@@ -174,6 +180,7 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
     let bytes: &Vec<u8> = &*callbacks.capture_output.lock().expect("lock capture_output");
     let rust_output = std::str::from_utf8(bytes).unwrap().trim();
     let mut msgs: Vec<Message> = Vec::new();
+    let debug = false;
     if rust_output.len() > 0 {
         for ss in rust_output.split("\n") {
             let diag: Diagnostic = serde_json::from_str(ss).expect("serde_json from_str");
@@ -188,7 +195,13 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
             assert!(diag.level == "error");
             let msg_text = gen_state.unmangle_names(&diag.message);
             let mut msg = message_bare(MessageLevel::Error, &msg_text);
+            if debug {
+                dbg!(&msg);
+            }
             for dspan in &diag.spans {
+                if debug {
+                    dbg!(&dspan);
+                }
                 let span = emit_state.get_span(
                     dspan.line_start - 1,
                     dspan.column_start - 1,
@@ -199,6 +212,9 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
             }
             msgs.push(msg);
         }
+    }
+    if debug {
+        dbg!(msgs.len());
     }
     if msgs.len() == 0 && run.is_err() { Err(error("lifetime checking failed")) } else { Ok(msgs) }
 }

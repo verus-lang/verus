@@ -1042,8 +1042,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] test_synthetic_type_params verus_code!{
+test_verify_one_file_with_options! {
+    #[test] test_synthetic_type_params ["--todo-no-macro-erasure"] => verus_code!{
         spec fn global_type_id<A>() -> int;
 
         pub trait SomeTrait : Sized {

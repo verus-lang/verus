@@ -17,10 +17,14 @@ pub mod seq_lib;
 pub mod set;
 pub mod set_lib;
 pub mod slice;
+#[cfg(not(erasure_macro_todo))]
 pub mod cell;
+#[cfg(not(erasure_macro_todo))]
 pub mod cell_old_style;
 pub mod invariant;
+#[cfg(not(erasure_macro_todo))]
 pub mod atomic;
+#[cfg(not(erasure_macro_todo))]
 pub mod atomic_ghost;
 pub mod modes;
 pub mod multiset;
@@ -30,6 +34,7 @@ pub mod state_machine_internal;
 pub mod thread;
 #[cfg(not(feature = "no_global_allocator"))] 
 pub mod ptr;
+#[cfg(not(erasure_macro_todo))]
 #[cfg(not(feature = "no_global_allocator"))] 
 pub mod ptr_old_style;
 #[cfg(not(feature = "no_global_allocator"))] 

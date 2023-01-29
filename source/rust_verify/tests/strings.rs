@@ -207,7 +207,9 @@ test_verify_one_file! {
     #[test] test_reveal_strlit_invalid_1 verus_code! {
         use pervasive::string::*;
         fn test() {
-            reveal_strlit(12);
+            proof {
+                reveal_strlit(12u32);
+            }
         }
     } => Err(err) => assert_vir_error_msg(err, "string literal expected")
 }
@@ -216,7 +218,9 @@ test_verify_one_file! {
     #[test] test_reveal_strlit_invalid_2 verus_code! {
         use pervasive::string::*;
         fn test() {
-            reveal_strlit("a", "a");
+            proof {
+                reveal_strlit("a", "a");
+            }
         }
     } => Err(err) => assert_error_msg(err, "error[E0061]: this function takes 1 argument but 2 arguments were supplied")
 }
@@ -226,7 +230,9 @@ test_verify_one_file! {
         use pervasive::string::*;
         fn test() {
             let a = String::from_str(new_strlit("A"));
-            reveal_strlit("A");
+            proof {
+                reveal_strlit("A");
+            }
             assert(a@ === new_strlit("A")@);
             assert(a.is_ascii());
         }
@@ -238,7 +244,9 @@ test_verify_one_file! {
         use pervasive::string::*;
         fn test() {
             let a = String::from_str(new_strlit("A"));
-            reveal_strlit("A");
+            proof {
+                reveal_strlit("A");
+            }
             assert(a@ === new_strlit("B")@); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
@@ -381,9 +389,13 @@ test_verify_one_file! {
         use pervasive::string::*;
         fn test() {
             let a = String::from_str(new_strlit("ABC"));
-            reveal_strlit("ABC");
+            proof {
+                reveal_strlit("ABC");
+            }
             let b = a.as_str().substring_ascii(1, 2);
-            reveal_strlit("B");
+            proof {
+                reveal_strlit("B");
+            }
             assert(b@.ext_equal(new_strlit("B")@));
         }
     } => Ok(())
@@ -394,10 +406,14 @@ test_verify_one_file! {
         use pervasive::string::*;
         fn test() {
             let a = String::from_str(new_strlit("ABC"));
-            reveal_strlit("ABC");
+            proof {
+                reveal_strlit("ABC");
+            }
             let b = a.as_str().substring_ascii(2, 3);
-            reveal_strlit("B");
-            reveal_strlit("C");
+            proof {
+                reveal_strlit("B");
+                reveal_strlit("C");
+            }
             assert(b@.ext_equal(new_strlit("C")@));
             assert(b@ === new_strlit("B")@); // FAILS
         }
@@ -411,7 +427,9 @@ test_verify_one_file! {
             let a = new_strlit("ABC");
             let b = a.to_string();
             let c = b.as_str();
-            reveal_strlit("ABC");
+            proof {
+                reveal_strlit("ABC");
+            }
             assert(a@.ext_equal(c@));
             assert(a.is_ascii());
             assert(b.is_ascii());
@@ -561,9 +579,11 @@ test_verify_one_file! {
         fn foo() -> (ret: String)
             ensures ret@ === new_strlit("hello world")@
         {
-            reveal_strlit("hello world");
-            reveal_strlit("hello ");
-            reveal_strlit("world");
+            proof {
+                reveal_strlit("hello world");
+                reveal_strlit("hello ");
+                reveal_strlit("world");
+            }
 
             let mut s = new_strlit("hello ").to_string();
             s.append(new_strlit("world"));
@@ -582,9 +602,11 @@ test_verify_one_file! {
         fn foo() -> (ret: String)
             ensures ret@ !== new_strlit("hello worlds")@
         {
-            reveal_strlit("hello worlds");
-            reveal_strlit("hello ");
-            reveal_strlit("world");
+            proof {
+                reveal_strlit("hello worlds");
+                reveal_strlit("hello ");
+                reveal_strlit("world");
+            }
 
             let mut s = new_strlit("hello ").to_string();
             s.append(new_strlit("world"));
@@ -603,9 +625,11 @@ test_verify_one_file! {
         fn foo() -> (ret: String)
             ensures ret@ === new_strlit("hello world")@
         {
-            reveal_strlit("hello world");
-            reveal_strlit("hello ");
-            reveal_strlit("world");
+            proof {
+                reveal_strlit("hello world");
+                reveal_strlit("hello ");
+                reveal_strlit("world");
+            }
 
             let s1 = new_strlit("hello ").to_string();
             let s = s1.concat(new_strlit("world"));
@@ -624,9 +648,11 @@ test_verify_one_file! {
         fn foo() -> (ret: String)
             ensures ret@ !== new_strlit("hello worlds")@
         {
-            reveal_strlit("hello worlds");
-            reveal_strlit("hello ");
-            reveal_strlit("world");
+            proof {
+                reveal_strlit("hello worlds");
+                reveal_strlit("hello ");
+                reveal_strlit("world");
+            }
 
             let s1 = new_strlit("hello ").to_string();
             let s = s1.concat(new_strlit("world"));

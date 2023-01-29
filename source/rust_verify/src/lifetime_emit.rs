@@ -219,6 +219,25 @@ impl EmitState {
     }
 }
 
+fn un_mut_pattern(pat: &Pattern) -> Pattern {
+    let (span, patx) = &**pat;
+    let patx = match patx {
+        PatternX::Wildcard => PatternX::Wildcard,
+        PatternX::Binding(x, _) => PatternX::Binding(x.clone(), Mutability::Not),
+        PatternX::Box(p) => PatternX::Box(un_mut_pattern(p)),
+        PatternX::Or(ps) => PatternX::Or(ps.iter().map(un_mut_pattern).collect()),
+        PatternX::Tuple(ps) => PatternX::Tuple(ps.iter().map(un_mut_pattern).collect()),
+        PatternX::DatatypeTuple(x, y, ps) => {
+            PatternX::DatatypeTuple(x.clone(), y.clone(), ps.iter().map(un_mut_pattern).collect())
+        }
+        PatternX::DatatypeStruct(x, y, ps) => {
+            let ps = ps.iter().map(|(z, p)| (z.clone(), un_mut_pattern(p))).collect();
+            PatternX::DatatypeStruct(x.clone(), y.clone(), ps)
+        }
+    };
+    Box::new((*span, patx))
+}
+
 pub(crate) fn emit_pattern(state: &mut EmitState, pat: &Pattern) {
     let (span, patx) = &**pat;
     state.begin_span(*span);
@@ -231,6 +250,20 @@ pub(crate) fn emit_pattern(state: &mut EmitState, pat: &Pattern) {
                 state.write("mut ");
             }
             state.write(x.to_string());
+        }
+        PatternX::Box(p) => {
+            state.write("box ");
+            emit_pattern(state, p);
+        }
+        PatternX::Or(ps) => {
+            state.write("(");
+            for i in 0..ps.len() {
+                emit_pattern(state, &ps[i]);
+                if i + 1 < ps.len() {
+                    state.write(" | ");
+                }
+            }
+            state.write(")");
         }
         PatternX::Tuple(ps) => {
             state.write("(");
@@ -479,6 +512,39 @@ pub(crate) fn emit_exp(state: &mut EmitState, exp: &Exp) {
             emit_exp(state, body);
             state.write(")");
         }
+        ExpX::OpenInvariant(atomicity, inner_pat, arg, pat_typ, body) => {
+            state.ensure_newline();
+            state.write("{");
+            state.push_indent();
+            state.newline();
+            state.write("let (guard, ");
+            emit_pattern(state, inner_pat);
+            state.write("): (_, ");
+            state.write(pat_typ.to_string());
+            state.write(") = ");
+            let f = match atomicity {
+                vir::ast::InvAtomicity::Atomic => "open_atomic_invariant_begin(",
+                vir::ast::InvAtomicity::NonAtomic => "open_local_invariant_begin(",
+            };
+            state.write(f);
+            emit_exp(state, arg);
+            state.writeln(");");
+            for stm in body {
+                state.newline();
+                emit_stm(state, stm);
+            }
+            state.newline();
+            state.write("open_invariant_end(guard, ");
+            emit_pattern(state, &un_mut_pattern(inner_pat));
+            state.write(");");
+            state.newline_unindent();
+            state.write("}");
+        }
+        ExpX::ExtraParens(exp) => {
+            state.write("(");
+            emit_exp(state, exp);
+            state.write(")");
+        }
         ExpX::Block(stms, exp) => {
             state.ensure_newline();
             state.begin_span(*span);
@@ -531,6 +597,9 @@ fn emit_generic_param((x, bnds): &GenericParam) -> String {
             buf += " + ";
         }
         match &bnds[i] {
+            Bound::Copy => {
+                buf += "Copy";
+            }
             Bound::Id(x) => {
                 buf += &x.to_string();
             }

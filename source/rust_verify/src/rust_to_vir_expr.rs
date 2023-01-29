@@ -379,6 +379,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
     expr: &Expr<'tcx>,
     modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
+    let expr = expr.peel_drop_temps();
     let vir_expr = expr_to_vir_innermost(bctx, expr, modifier)?;
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
     erasure_info.hir_vir_ids.push((expr.hir_id, vir_expr.span.id));
@@ -731,6 +732,7 @@ fn fn_call_to_vir<'tcx>(
             || is_arch_word_bits,
         is_implies
             || is_ignored_fn
+            || is_new_strlit
             || is_tracked_get
             || is_tracked_borrow
             || is_tracked_borrow_mut
@@ -1842,44 +1844,11 @@ fn malformed_inv_block_err<'tcx>(expr: &Expr<'tcx>) -> Result<vir::ast::Expr, Vi
     )
 }
 
-fn invariant_block_to_vir<'tcx>(
-    bctx: &BodyCtxt<'tcx>,
-    expr: &Expr<'tcx>,
-    modifier: ExprModifier,
-) -> Result<vir::ast::Expr, VirErr> {
-    // The open_atomic_invariant! macro produces code that looks like this
-    // (and similarly for open_local_invariant!)
-    //
-    // #[verifier(invariant_block)] {
-    //      let (guard, mut $inner) = open_atomic_invariant_begin($eexpr);
-    //      $bblock
-    //      open_invariant_end(guard, $inner);
-    //  }
-    //
-    // We need to check that it really does have this form, including
-    // that the identifiers `guard` and `inner` used in the last statement
-    // are the same as in the first statement. This is what the giant
-    // `match` statements below are for.
-    //
-    // We also need to "recover" the $inner, $eexpr, and $bblock for conversion to VIR.
-    //
-    // If the AST doesn't look exactly like we expect, print an error asking the user
-    // to use the open_atomic_invariant! macro.
-
-    let body = match &expr.kind {
-        ExprKind::Block(body, _) => body,
-        _ => panic!("invariant_block_to_vir called with non-Body expression"),
-    };
-
-    if body.stmts.len() != 3 || body.expr.is_some() {
-        return malformed_inv_block_err(expr);
-    }
-
-    let open_stmt = &body.stmts[0];
-    let mid_stmt = &body.stmts[1];
-    let close_stmt = &body.stmts[body.stmts.len() - 1];
-
-    let (guard_hir, inner_hir, inner_pat, inv_arg, atomicity) = match open_stmt.kind {
+pub(crate) fn invariant_block_open<'a>(
+    tcx: TyCtxt,
+    open_stmt: &'a Stmt,
+) -> Option<(HirId, HirId, &'a rustc_hir::Pat<'a>, &'a rustc_hir::Expr<'a>, InvAtomicity)> {
+    match open_stmt.kind {
         StmtKind::Local(Local {
             pat:
                 Pat {
@@ -1928,22 +1897,22 @@ fn invariant_block_to_vir<'tcx>(
                 }),
             ..
         }) => {
-            let f_name = path_as_rust_name(&def_id_to_vir_path(bctx.ctxt.tcx, *fun_id));
+            let f_name = path_as_rust_name(&def_id_to_vir_path(tcx, *fun_id));
             if f_name != BUILTIN_INV_ATOMIC_BEGIN && f_name != BUILTIN_INV_LOCAL_BEGIN {
-                return malformed_inv_block_err(expr);
+                return None;
             }
             let atomicity = if f_name == BUILTIN_INV_ATOMIC_BEGIN {
                 InvAtomicity::Atomic
             } else {
                 InvAtomicity::NonAtomic
             };
-            (guard_hir, inner_hir, inner_pat, arg, atomicity)
+            Some((*guard_hir, *inner_hir, inner_pat, arg, atomicity))
         }
-        _ => {
-            return malformed_inv_block_err(expr);
-        }
-    };
+        _ => None,
+    }
+}
 
+pub(crate) fn invariant_block_close(close_stmt: &Stmt) -> Option<(HirId, HirId, DefId)> {
     match close_stmt.kind {
         StmtKind::Semi(Expr {
             kind:
@@ -1976,19 +1945,67 @@ fn invariant_block_to_vir<'tcx>(
                     ],
                 ),
             ..
-        }) => {
-            let f_name = path_as_rust_name(&def_id_to_vir_path(bctx.ctxt.tcx, *fun_id));
-            if f_name != BUILTIN_INV_END {
-                return malformed_inv_block_err(expr);
-            }
+        }) => Some((*hir_id1, *hir_id2, *fun_id)),
+        _ => None,
+    }
+}
 
-            if hir_id1 != guard_hir || hir_id2 != inner_hir {
-                return malformed_inv_block_err(expr);
-            }
-        }
-        _ => {
+fn invariant_block_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
+    modifier: ExprModifier,
+) -> Result<vir::ast::Expr, VirErr> {
+    // The open_atomic_invariant! macro produces code that looks like this
+    // (and similarly for open_local_invariant!)
+    //
+    // #[verifier(invariant_block)] {
+    //      let (guard, mut $inner) = open_atomic_invariant_begin($eexpr);
+    //      $bblock
+    //      open_invariant_end(guard, $inner);
+    //  }
+    //
+    // We need to check that it really does have this form, including
+    // that the identifiers `guard` and `inner` used in the last statement
+    // are the same as in the first statement. This is what the giant
+    // `match` statements below are for.
+    //
+    // We also need to "recover" the $inner, $eexpr, and $bblock for conversion to VIR.
+    //
+    // If the AST doesn't look exactly like we expect, print an error asking the user
+    // to use the open_atomic_invariant! macro.
+
+    let body = match &expr.kind {
+        ExprKind::Block(body, _) => body,
+        _ => panic!("invariant_block_to_vir called with non-Body expression"),
+    };
+
+    if body.stmts.len() != 3 || body.expr.is_some() {
+        return malformed_inv_block_err(expr);
+    }
+
+    let open_stmt = &body.stmts[0];
+    let mid_stmt = &body.stmts[1];
+    let close_stmt = &body.stmts[body.stmts.len() - 1];
+
+    let (guard_hir, inner_hir, inner_pat, inv_arg, atomicity) = {
+        if let Some(block_open) = invariant_block_open(bctx.ctxt.tcx, open_stmt) {
+            block_open
+        } else {
             return malformed_inv_block_err(expr);
         }
+    };
+
+    if let Some((hir_id1, hir_id2, fun_id)) = invariant_block_close(close_stmt) {
+        let f_name = path_as_rust_name(&def_id_to_vir_path(bctx.ctxt.tcx, fun_id));
+        if f_name != BUILTIN_INV_END {
+            return malformed_inv_block_err(expr);
+        }
+
+        if hir_id1 != guard_hir || hir_id2 != inner_hir {
+            return malformed_inv_block_err(expr);
+        }
+    } else {
+        return malformed_inv_block_err(expr);
     }
 
     let vir_body = match mid_stmt.kind {
@@ -2059,8 +2076,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
     expr: &Expr<'tcx>,
     current_modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
-    let expr = expr.peel_drop_temps();
-
     if bctx.external_body {
         // we want just requires/ensures, not the whole body
         match &expr.kind {

@@ -903,7 +903,7 @@ test_verify_one_file! {
         }
 
         fn foo_exec() -> Ghost<Tok> {
-            let g = ghost(Tok { v: 12nat });
+            let g: Ghost<Tok> = ghost(Tok { v: 12nat });
             // The exec->tracked coercion may be removed
             let b: Tracked<B<Ghost<Tok>>> = tracked(B { t: (tracked g) });
             let t = ghost({

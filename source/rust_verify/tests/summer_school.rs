@@ -413,9 +413,10 @@ fn e10_pass() {
                 use pervasive::*;
                 use directions::{Direction, turn_left, turn_right};
 
-                #[proof]
-                fn two_wrongs_dont_make_a_right(dir: Direction) {
+                builtin_macros::verus! {
+                proof fn two_wrongs_dont_make_a_right(dir: Direction) {
                     assert(turn_left(turn_left(dir)) == turn_right(turn_right(dir)));
+                }
                 }
             },
         ),

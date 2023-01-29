@@ -47,6 +47,8 @@ pub(crate) type Pattern = Box<(Span, PatternX)>;
 pub(crate) enum PatternX {
     Wildcard,
     Binding(Id, Mutability),
+    Box(Pattern),
+    Or(Vec<Pattern>),
     Tuple(Vec<Pattern>),
     DatatypeTuple(Id, Option<Id>, Vec<Pattern>),
     DatatypeStruct(Id, Option<Id>, Vec<(Id, Pattern)>),
@@ -77,6 +79,8 @@ pub(crate) enum ExpX {
     Continue(Option<Id>),
     Ret(Option<Exp>),
     Closure(CaptureBy, Option<Movability>, Vec<(Span, Id, Typ)>, Exp),
+    OpenInvariant(vir::ast::InvAtomicity, Pattern, Exp, Typ, Vec<Stm>),
+    ExtraParens(Exp),
     Block(Vec<Stm>, Option<Exp>),
 }
 
@@ -114,6 +118,7 @@ pub(crate) enum ClosureKind {
 
 #[derive(Debug)]
 pub(crate) enum Bound {
+    Copy,
     Id(Id),
     Fn(ClosureKind, Typ, Typ),
 }

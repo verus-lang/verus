@@ -36,9 +36,18 @@ fn print_verification_results(verifier: &Verifier) {
 
 pub struct CompilerCallbacksEraseMacro {
     pub lifetimes_only: bool,
+    pub test_capture_output: Option<std::sync::Arc<std::sync::Mutex<Vec<u8>>>>,
 }
 
 impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
+    fn config(&mut self, config: &mut rustc_interface::interface::Config) {
+        if let Some(target) = &self.test_capture_output {
+            config.diagnostic_output = rustc_session::DiagnosticOutput::Raw(Box::new(
+                crate::verifier::DiagnosticOutputBuffer { output: target.clone() },
+            ));
+        }
+    }
+
     fn after_parsing<'tcx>(
         &mut self,
         _compiler: &rustc_interface::interface::Compiler,
@@ -64,8 +73,10 @@ pub(crate) fn run_with_erase_macro_compile(
     mut rustc_args: Vec<String>,
     file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
     compile: bool,
+    test_capture_output: Option<std::sync::Arc<std::sync::Mutex<Vec<u8>>>>,
 ) -> Result<(), rustc_errors::ErrorReported> {
-    let mut callbacks = CompilerCallbacksEraseMacro { lifetimes_only: !compile };
+    let mut callbacks =
+        CompilerCallbacksEraseMacro { lifetimes_only: !compile, test_capture_output };
     rustc_args.extend(["--cfg", "verus_macro_erase_ghost"].map(|s| s.to_string()));
     run_compiler(rustc_args, true, true, &mut callbacks, file_loader)
 }
@@ -105,9 +116,12 @@ where
     let time2 = Instant::now();
 
     // Run borrow checker and compiler with #[exec] (not #[proof])
-    if let Err(_) =
-        run_with_erase_macro_compile(rustc_args, Box::new(file_loader), verifier.args.compile)
-    {
+    if let Err(_) = run_with_erase_macro_compile(
+        rustc_args,
+        Box::new(file_loader),
+        verifier.args.compile,
+        verifier.test_capture_output.clone(),
+    ) {
         return (verifier, Err(()));
     }
 

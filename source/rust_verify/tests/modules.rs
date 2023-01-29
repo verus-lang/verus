@@ -17,7 +17,7 @@ const M1: &str = verus_code_str! {
 };
 
 test_verify_one_file! {
-    #[test] test_mod_adt_0 M1.to_string() + code_str! {
+    #[test] test_mod_adt_0 M1.to_string() + verus_code_str! {
         mod M2 {
             use crate::M1::Car;
             use builtin::*;
@@ -31,7 +31,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mod_adt_1 M1.to_string() + code_str! {
+    #[test] test_mod_adt_1 M1.to_string() + verus_code_str! {
         mod M2 {
             use crate::M1::{is_four_doors, Car};
             use builtin::*;
