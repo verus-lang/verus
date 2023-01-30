@@ -3,6 +3,8 @@ use crate::ast::{
     IntRange, IntegerTypeBoundKind, InvAtomicity, MaskSpec, Mode, Params, Path, PathX,
     SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr, Visibility,
 };
+use crate::ast_util::bitwidth_from_int_range;
+use crate::ast_util::IntegerTypeBitwidth;
 use crate::ast_util::{
     allowed_bitvector_type, bitwidth_from_type, err_string, fun_as_rust_dbg, get_field, get_variant,
 };
@@ -474,6 +476,45 @@ fn check_unsigned(exp: &Exp) -> Result<(), VirErr> {
     Ok(())
 }
 
+fn bitwidth_to_exp(bitwidth: &IntegerTypeBitwidth) -> Expr {
+    match bitwidth {
+        IntegerTypeBitwidth::Width(w) => {
+            Arc::new(ExprX::Const(Constant::Nat(Arc::new(w.to_string()))))
+        }
+        IntegerTypeBitwidth::ArchWordSize => {
+            let name = Arc::new(ARCH_SIZE.to_string());
+            Arc::new(ExprX::Var(name))
+        }
+    }
+}
+
+fn bitvector_expect_exact(
+    ctx: &Ctx,
+    span: &Span,
+    typ: &Typ,
+    bitwidth: &Option<IntegerTypeBitwidth>,
+) -> Result<u32, VirErr> {
+    match bitwidth {
+        Some(w) => {
+            let w = w.to_exact(&ctx.global.arch);
+            match w {
+                Some(w) => Ok(w),
+                None => err_string(
+                    span,
+                    format!(
+                        "IntRange error: the bit-width of type {:?} is architecture-dependent, which `by(bit_vector)` does not currently support",
+                        typ
+                    ),
+                ),
+            }
+        }
+        None => err_string(
+            span,
+            format!("IntRange error: expected finite-width integer for bit-vector, got {:?}", typ),
+        ),
+    }
+}
+
 // Generate a unique quantifier ID and map it to the quantifier's span
 fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
     let fun_name = fun_as_rust_dbg(
@@ -515,22 +556,22 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 }
                 _ => &exp.typ,
             };
-            if let Some(width) = bitwidth_from_type(typ) {
-                return Ok(Arc::new(ExprX::Const(Constant::BitVec(
-                    Arc::new(i.to_string()),
-                    width,
-                ))));
-            }
-            return err_string(
-                &exp.span,
-                format!("error: unable to get bit-width from constant of type {:?}", exp.typ),
-            );
+            let width = bitwidth_from_type(typ);
+            let width = bitvector_expect_exact(ctx, &exp.span, typ, &width)?;
+            Arc::new(ExprX::Const(Constant::BitVec(Arc::new(i.to_string()), width)))
         }
         (ExpX::Const(c), _) => {
             let expr = constant_to_expr(ctx, c);
             expr
         }
-        (ExpX::Var(x), _) => string_var(&suffix_local_unique_id(x)),
+        (ExpX::Var(x), _) => {
+            if expr_ctxt.is_bit_vector {
+                let width = bitwidth_from_type(&exp.typ);
+                bitvector_expect_exact(ctx, &exp.span, &exp.typ, &width)?;
+            }
+
+            string_var(&suffix_local_unique_id(x))
+        }
         (ExpX::VarLoc(x), false) => string_var(&suffix_local_unique_id(x)),
         (ExpX::VarAt(x, VarAt::Pre), false) => match expr_ctxt.mode {
             ExprMode::Spec => string_var(&prefix_pre_var(&suffix_local_unique_id(x))),
@@ -563,11 +604,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 .collect::<Result<Vec<_>, VirErr>>()?;
             Arc::new(ExprX::Apply(variant, Arc::new(args)))
         }
-        (ExpX::Unary(op, exp), true) => {
-            if !allowed_bitvector_type(&exp.typ) {
+        (ExpX::Unary(op, arg), true) => {
+            if !allowed_bitvector_type(&arg.typ) {
                 return err_string(
-                    &exp.span,
-                    format!("error: cannot use bit-vector arithmetic on type {:?}", exp.typ),
+                    &arg.span,
+                    format!("error: cannot use bit-vector arithmetic on type {:?}", arg.typ),
                 );
             }
             let hint = match op {
@@ -579,7 +620,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 _ => None,
             };
             let expr_ctxt = &expr_ctxt.set_bit_vector_typ_hint(hint);
-            let bv_e = exp_to_expr(ctx, exp, expr_ctxt)?;
+            let bv_e = exp_to_expr(ctx, arg, expr_ctxt)?;
             match op {
                 UnaryOp::Not => {
                     let bop = air::ast::UnaryOp::Not;
@@ -591,52 +632,35 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 }
                 // bitvector type casting by 'as' keyword
                 // via converting Clip into concat/extract
-                UnaryOp::Clip { range: IntRange::U(new_n) | IntRange::I(new_n), .. } => {
-                    match &*exp.typ {
-                        TypX::Int(IntRange::U(old_n) | IntRange::I(old_n)) => {
-                            // expand with zero using concat
-                            if new_n > old_n {
-                                let bop = air::ast::BinaryOp::BitConcat;
-                                let zero_pad = Arc::new(ExprX::Const(Constant::BitVec(
-                                    Arc::new("0".to_string()),
-                                    new_n - old_n,
-                                )));
-                                return Ok(Arc::new(ExprX::Binary(bop, zero_pad, bv_e)));
-                            }
-                            // extract lower new_n bits
-                            else if new_n < old_n {
-                                let op = air::ast::UnaryOp::BitExtract(new_n - 1, 0);
-                                return Ok(Arc::new(ExprX::Unary(op, bv_e)));
-                            } else {
-                                return Ok(bv_e);
-                            }
-                        }
-                        _ => {
-                            return err_string(
-                                &exp.span,
-                                format!(
-                                    "IntRange error: should be I(_) or U(_) for bit-vector, got {:?}",
-                                    exp.typ
-                                ),
-                            );
-                        }
+                UnaryOp::Clip { range: int_range, .. } => {
+                    let new_n = bitwidth_from_int_range(int_range);
+                    let old_n = bitwidth_from_type(&arg.typ);
+
+                    let new_n = bitvector_expect_exact(ctx, &arg.span, &exp.typ, &new_n)?;
+                    let old_n = bitvector_expect_exact(ctx, &arg.span, &arg.typ, &old_n)?;
+
+                    if new_n > old_n {
+                        let bop = air::ast::BinaryOp::BitConcat;
+                        let zero_pad = Arc::new(ExprX::Const(Constant::BitVec(
+                            Arc::new("0".to_string()),
+                            new_n - old_n,
+                        )));
+                        return Ok(Arc::new(ExprX::Binary(bop, zero_pad, bv_e)));
+                    }
+                    // extract lower new_n bits
+                    else if new_n < old_n {
+                        let op = air::ast::UnaryOp::BitExtract(new_n - 1, 0);
+                        return Ok(Arc::new(ExprX::Unary(op, bv_e)));
+                    } else {
+                        return Ok(bv_e);
                     }
                 }
-                UnaryOp::Clip { .. } => {
-                    return err_string(
-                        &exp.span,
-                        format!(
-                            "IntRange error: should be I(_) or U(_) for bit-vector, got {:?}",
-                            exp.typ
-                        ),
-                    );
-                }
-                UnaryOp::Trigger(_) => exp_to_expr(ctx, exp, expr_ctxt)?,
+                UnaryOp::Trigger(_) => exp_to_expr(ctx, arg, expr_ctxt)?,
                 UnaryOp::CoerceMode { .. } => {
                     panic!("internal error: TupleField should have been removed before here")
                 }
                 UnaryOp::MustBeFinalized => {
-                    panic!("internal error: Exp not finalized: {:?}", exp)
+                    panic!("internal error: Exp not finalized: {:?}", arg)
                 }
                 UnaryOp::StrLen | UnaryOp::StrIsAscii | UnaryOp::CharToInt => panic!(
                     "internal error: matching for bit vector ops on this match should be impossible"
@@ -654,16 +678,8 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             )),
             UnaryOp::Not => mk_not(&exp_to_expr(ctx, exp, expr_ctxt)?),
             UnaryOp::BitNot => {
-                let width = match bitwidth_from_type(&exp.typ) {
-                    Some(w) => w,
-                    None => {
-                        return err_string(
-                            &exp.span,
-                            format!("error: unable to get bit-width from type {:?}", exp.typ),
-                        );
-                    }
-                };
-                let width_exp = Arc::new(ExprX::Const(Constant::Nat(Arc::new(width.to_string()))));
+                let width = bitwidth_from_type(&exp.typ).expect("expected bounded integer type");
+                let width_exp = bitwidth_to_exp(&width);
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 let expr = try_box(ctx, expr, &exp.typ).expect("Box");
                 let bit_expr = ExprX::Apply(
@@ -868,24 +884,12 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 BinaryOp::Bitwise(bo) => {
                     let box_lh = try_box(ctx, lh, &lhs.typ).expect("Box");
                     let box_rh = try_box(ctx, rh, &rhs.typ).expect("Box");
-                    let width_left = match bitwidth_from_type(&lhs.typ) {
-                        Some(w) => w,
-                        None => {
-                            return err_string(
-                                &lhs.span,
-                                format!("error: unable to get bit-width from type {:?}", lhs.typ),
-                            );
-                        }
-                    };
-                    let width_right = match bitwidth_from_type(&rhs.typ) {
-                        Some(w) => w,
-                        None => {
-                            return err_string(
-                                &rhs.span,
-                                format!("error: unable to get bit-width from type {:?}", rhs.typ),
-                            );
-                        }
-                    };
+
+                    // These expects should succeed because we don't define any bitwise ops
+                    // for int or nat in the builtin lib.
+                    let width_left = bitwidth_from_type(&lhs.typ).expect("bounded integer type");
+                    let width_right = bitwidth_from_type(&rhs.typ).expect("bounded integer type");
+
                     if width_left != width_right {
                         return err_string(
                             &exp.span,
@@ -895,8 +899,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                             ),
                         );
                     }
-                    let width_exp =
-                        Arc::new(ExprX::Const(Constant::Nat(Arc::new(width_left.to_string()))));
+                    let width_exp = bitwidth_to_exp(&width_left);
                     let fname = match bo {
                         BitwiseOp::BitXor => crate::def::UINT_XOR,
                         BitwiseOp::BitAnd => crate::def::UINT_AND,
@@ -2106,8 +2109,12 @@ pub(crate) fn body_stm_to_air(
         });
         // for assert_bit_vector/bit_vector function, only allow integer and boolean types
         if let Some(width) = bitwidth_from_type(&decl.typ) {
-            let typ = bv_typ(width);
-            local_bv_shared.push(Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ)));
+            let width = width.to_exact(&ctx.global.arch);
+            if let Some(width) = width {
+                let typ = bv_typ(width);
+                local_bv_shared
+                    .push(Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ)));
+            }
         } else if let TypX::Bool = *decl.typ {
             local_bv_shared
                 .push(Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), bool_typ())));
