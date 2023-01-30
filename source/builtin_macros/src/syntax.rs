@@ -981,51 +981,65 @@ impl VisitMut for Visitor {
                                 quote_verbatim!(span, attrs => ! ::builtin::spec_eq(#left, #right));
                         }
                         BinOp::Le(..) => {
-                            *expr = quote_verbatim!(span, attrs => (#left).spec_le(#right));
+                            let left = quote_spanned! { left.span() => (#left) };
+                            *expr = quote_verbatim!(span, attrs => #left.spec_le(#right));
                         }
                         BinOp::Lt(..) => {
-                            *expr = quote_verbatim!(span, attrs => (#left).spec_lt(#right));
+                            let left = quote_spanned! { left.span() => (#left) };
+                            *expr = quote_verbatim!(span, attrs => #left.spec_lt(#right));
                         }
                         BinOp::Ge(..) => {
-                            *expr = quote_verbatim!(span, attrs => (#left).spec_ge(#right));
+                            let left = quote_spanned! { left.span() => (#left) };
+                            *expr = quote_verbatim!(span, attrs => #left.spec_ge(#right));
                         }
                         BinOp::Gt(..) => {
-                            *expr = quote_verbatim!(span, attrs => (#left).spec_gt(#right));
+                            let left = quote_spanned! { left.span() => (#left) };
+                            *expr = quote_verbatim!(span, attrs => #left.spec_gt(#right));
                         }
                         BinOp::Add(..) if !self.inside_bitvector => {
-                            *expr = quote_verbatim!(span, attrs => (#left).spec_add(#right));
+                            let left = quote_spanned! { left.span() => (#left) };
+                            *expr = quote_verbatim!(span, attrs => #left.spec_add(#right));
                         }
                         BinOp::Sub(..) if !self.inside_bitvector => {
-                            *expr = quote_verbatim!(span, attrs => (#left).spec_sub(#right));
+                            let left = quote_spanned! { left.span() => (#left) };
+                            *expr = quote_verbatim!(span, attrs => #left.spec_sub(#right));
                         }
                         BinOp::Mul(..) if !self.inside_bitvector => {
-                            *expr = quote_verbatim!(span, attrs => (#left).spec_mul(#right));
+                            let left = quote_spanned! { left.span() => (#left) };
+                            *expr = quote_verbatim!(span, attrs => #left.spec_mul(#right));
                         }
                         BinOp::Add(..) | BinOp::Sub(..) | BinOp::Mul(..) => {
                             *expr = quote_verbatim!(span, attrs => compile_error!("Inside bit-vector assertion, use `add` `sub` `mul` for fixed-bit operators, instead of `+` `-` `*`. (see the functions builtin::add(left, right), builtin::sub(left, right), and builtin::mul(left, right))"));
                         }
                         BinOp::Div(..) => {
+                            let left = quote_spanned! { left.span() => (#left) };
                             *expr =
-                                quote_verbatim!(span, attrs => (#left).spec_euclidean_div(#right));
+                                quote_verbatim!(span, attrs => #left.spec_euclidean_div(#right));
                         }
                         BinOp::Rem(..) => {
+                            let left = quote_spanned! { left.span() => (#left) };
                             *expr =
-                                quote_verbatim!(span, attrs => (#left).spec_euclidean_mod(#right));
+                                quote_verbatim!(span, attrs => #left.spec_euclidean_mod(#right));
                         }
                         BinOp::BitAnd(..) => {
-                            *expr = quote_verbatim!(span, attrs => (#left).spec_bitand(#right));
+                            let left = quote_spanned! { left.span() => (#left) };
+                            *expr = quote_verbatim!(span, attrs => #left.spec_bitand(#right));
                         }
                         BinOp::BitOr(..) => {
-                            *expr = quote_verbatim!(span, attrs => (#left).spec_bitor(#right));
+                            let left = quote_spanned! { left.span() => (#left) };
+                            *expr = quote_verbatim!(span, attrs => #left.spec_bitor(#right));
                         }
                         BinOp::BitXor(..) => {
-                            *expr = quote_verbatim!(span, attrs => (#left).spec_bitxor(#right));
+                            let left = quote_spanned! { left.span() => (#left) };
+                            *expr = quote_verbatim!(span, attrs => #left.spec_bitxor(#right));
                         }
                         BinOp::Shl(..) => {
-                            *expr = quote_verbatim!(span, attrs => (#left).spec_shl(#right));
+                            let left = quote_spanned! { left.span() => (#left) };
+                            *expr = quote_verbatim!(span, attrs => #left.spec_shl(#right));
                         }
                         BinOp::Shr(..) => {
-                            *expr = quote_verbatim!(span, attrs => (#left).spec_shr(#right));
+                            let left = quote_spanned! { left.span() => (#left) };
+                            *expr = quote_verbatim!(span, attrs => #left.spec_shr(#right));
                         }
                         _ => panic!("binary"),
                     }
