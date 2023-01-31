@@ -84,6 +84,8 @@ use vir::modes::{mode_join, ErasureModes};
 pub enum ResolvedCall {
     /// The call is to a spec or proof function, and should be erased
     Spec,
+    /// The call is to a spec or proof function, but may have proof-mode arguments
+    SpecAllowProofArgs,
     /// The call is to an operator like == or + that should be compiled.
     CompilableOperator,
     /// The call is to a function, and we record the resolved name of the function here.
@@ -451,7 +453,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
         match &expr.kind {
             ExprKind::Block(..) => {}
             ExprKind::Call(f_expr, _) => match mctxt.find_span_opt(&ctxt.calls, f_expr.span) {
-                Some(ResolvedCall::Spec) => return None,
+                Some(ResolvedCall::Spec | ResolvedCall::SpecAllowProofArgs) => return None,
                 _ => return Some(expr.clone()),
             },
             _ => return Some(expr.clone()),
@@ -572,7 +574,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
             let call = mctxt.find_span(&ctxt.calls, f_expr.span).clone();
 
             match &call {
-                ResolvedCall::Spec => return None,
+                ResolvedCall::Spec | ResolvedCall::SpecAllowProofArgs => return None,
                 ResolvedCall::CompilableOperator => {
                     if keep_mode(ctxt, expect) {
                         ExprKind::Call(
@@ -654,7 +656,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                         }
                     }
                 },
-                ResolvedCall::Spec => return None,
+                ResolvedCall::Spec | ResolvedCall::SpecAllowProofArgs => return None,
                 ResolvedCall::CompilableOperator => {
                     if keep_mode(ctxt, expect) {
                         ExprKind::MethodCall(

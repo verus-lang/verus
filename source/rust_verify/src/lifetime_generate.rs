@@ -445,6 +445,10 @@ fn erase_call<'tcx>(
         .unwrap_or_else(|| panic!("internal error: missing function: {:?}", fn_span));
     match call {
         ResolvedCall::Spec => None,
+        ResolvedCall::SpecAllowProofArgs => {
+            let exps = args_slice.iter().map(|a| erase_expr(ctxt, state, expect_spec, a)).collect();
+            erase_spec_exps_typ(ctxt, state, expr.span, |_| TypX::mk_unit(), exps, false)
+        }
         ResolvedCall::CompilableOperator => {
             let exps = args_slice.iter().map(|a| erase_expr(ctxt, state, expect_spec, a)).collect();
             erase_spec_exps(ctxt, state, expr, exps)
@@ -669,9 +673,15 @@ fn erase_expr<'tcx>(
                             vec![],
                         ));
                     }
-                    _ => panic!("unsupported"),
+                    _ => {
+                        dbg!(expr);
+                        panic!("unsupported")
+                    }
                 },
-                _ => panic!("unsupported"),
+                _ => {
+                    dbg!(expr);
+                    panic!("unsupported")
+                }
             }
         }
         ExprKind::Path(_qpath @ QPath::TypeRelative(_ty, _path_seg)) => {

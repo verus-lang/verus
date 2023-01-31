@@ -404,11 +404,14 @@ fn record_fun(
     span: Span,
     name: &vir::ast::Fun,
     is_spec: bool,
+    is_spec_allow_proof_args: bool,
     is_compilable_operator: bool,
 ) {
     let mut erasure_info = ctxt.erasure_info.borrow_mut();
     let resolved_call = if is_spec {
         ResolvedCall::Spec
+    } else if is_spec_allow_proof_args {
+        ResolvedCall::SpecAllowProofArgs
     } else if is_compilable_operator {
         ResolvedCall::CompilableOperator
     } else {
@@ -704,10 +707,6 @@ fn fn_call_to_vir<'tcx>(
         fn_span,
         &name,
         is_spec
-            || is_spec_op
-            || is_builtin_add
-            || is_builtin_sub
-            || is_builtin_mul
             || is_quant
             || is_directive
             || is_choose
@@ -725,11 +724,15 @@ fn fn_call_to_vir<'tcx>(
             || is_old
             || is_spec_ghost_tracked
             || is_closure_to_fn_spec
+            || is_arch_word_bits,
+        is_spec_op
             || is_get_variant.is_some()
+            || is_builtin_add
+            || is_builtin_sub
+            || is_builtin_mul
             || is_signed_max
             || is_signed_min
-            || is_unsigned_max
-            || is_arch_word_bits,
+            || is_unsigned_max,
         is_implies
             || is_ignored_fn
             || is_new_strlit
