@@ -80,7 +80,7 @@ pub type Typ = Arc<TypX>;
 
 pub type Typs = Arc<Vec<Typ>>;
 // Deliberately not marked Eq -- use explicit match instead, so we know where types are compared
-#[derive(Debug, Hash, ToDebugSNode)]
+#[derive(Debug, Hash, ToDebugSNode, PartialEq, Eq)]
 pub enum TypX {
     /// Bool, Int, Datatype are translated directly into corresponding SMT types (they are not SMT-boxed)
     Bool,
@@ -621,8 +621,7 @@ pub enum FunctionKind {
         method: Fun,
         trait_path: Path,
         trait_typ_args: Typs,
-        datatype: Path,
-        datatype_typ_args: Typs,
+        datatype: Typ,
     },
 }
 

@@ -275,7 +275,10 @@ pub fn prune_krate_for_module(krate: &Krate, module: &Path) -> (Krate, Vec<MonoT
     for f in &functions {
         function_map.insert(f.x.name.clone(), f.clone());
         if let FunctionKind::TraitMethodImpl { method, datatype, .. } = &f.x.kind {
-            method_map.insert((datatype.clone(), method.clone()), f.x.name.clone());
+            // TODO we need a test for this branch
+            if let TypX::Datatype(path, _) = &**datatype {
+                method_map.insert((path.clone(), method.clone()), f.x.name.clone());
+            }
         }
         let module = f.x.name.path.pop_segment();
         if !all_functions_in_each_module.contains_key(&module) {

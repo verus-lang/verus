@@ -1,6 +1,6 @@
 use crate::ast::{
     Datatype, Fun, Function, FunctionKind, GenericBound, InferMode, IntRange, Krate, Mode, Path,
-    Trait, TypX, Variants, VirErr,
+    Trait, Typ, TypX, Variants, VirErr,
 };
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
@@ -30,18 +30,20 @@ pub struct ChosenTriggers {
     pub low_confidence: bool,
 }
 
-// Context for across all modules
+/// Context for across all modules
 pub struct GlobalCtx {
     pub(crate) chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>>, // diagnostics
     pub(crate) datatypes: HashMap<Path, Variants>,
     pub(crate) fun_bounds: HashMap<Fun, Vec<GenericBound>>,
-    // Used for synthesized AST nodes that have no relation to any location in the original code:
+    /// Used for synthesized AST nodes that have no relation to any location in the original code:
     pub(crate) no_span: Span,
     pub func_call_graph: Graph<Node>,
     pub func_call_sccs: Vec<Node>,
-    // Connects quantifier identifiers to the original expression
+    /// Connects quantifier identifiers to the original expression
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
-    pub method_map: HashMap<(Fun, Path), Fun>,
+    /// Collects mappings from (trait function def, implementing type) to function impl.
+    /// The type makes it unique.
+    pub method_map: HashMap<(Fun, Typ), Fun>,
     pub(crate) inferred_modes: HashMap<InferMode, Mode>,
     pub(crate) rlimit: u32,
     pub(crate) interpreter_log: Rc<RefCell<Option<File>>>,
@@ -183,9 +185,10 @@ impl GlobalCtx {
             assert!(!func_map.contains_key(&function.x.name));
             func_map.insert(function.x.name.clone(), function.clone());
         }
-        let mut method_map: HashMap<(Fun, Path), Fun> = HashMap::new();
+        let mut method_map: HashMap<(Fun, Typ), Fun> = HashMap::new();
         for function in krate.functions.iter() {
             if let FunctionKind::TraitMethodImpl { method, datatype, .. } = &function.x.kind {
+                // TODO(tchajed): how to add trait methods to this method_map?
                 let key = (method.clone(), datatype.clone());
                 assert!(!method_map.contains_key(&key));
                 method_map.insert(key, function.x.name.clone());

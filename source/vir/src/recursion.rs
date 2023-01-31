@@ -1,6 +1,6 @@
 use crate::ast::{
     BinaryOp, CallTarget, Constant, ExprX, Fun, Function, FunctionKind, GenericBoundX, IntRange,
-    MaskSpec, Path, SpannedTyped, TypX, Typs, UnaryOp, UnaryOpr, VirErr,
+    MaskSpec, Path, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VirErr,
 };
 use crate::ast_to_sst::expr_to_exp;
 use crate::ast_util::{err_str, QUANT_FORALL};
@@ -43,12 +43,10 @@ struct Ctxt<'a> {
 fn get_callee(ctx: &Ctx, target: &Fun, targs: &Typs) -> Option<Fun> {
     let fun = &ctx.func_map[target];
     if let FunctionKind::TraitMethodDecl { .. } = &fun.x.kind {
-        match &*targs[0] {
+        let targ = &targs[0];
+        match &**targ {
             TypX::TypParam(_) => None,
-            TypX::Datatype(datatype, _) => {
-                Some(ctx.global.method_map[&(target.clone(), datatype.clone())].clone())
-            }
-            _ => panic!("unexpected Self type instantiation"),
+            _ => Some(ctx.global.method_map[&(target.clone(), targ.clone())].clone()),
         }
     } else {
         Some(target.clone())
@@ -463,7 +461,7 @@ pub(crate) fn check_termination_stm(
 
 pub(crate) fn expand_call_graph(
     func_map: &HashMap<Fun, Function>,
-    method_map: &HashMap<(Fun, Path), Fun>,
+    method_map: &HashMap<(Fun, Typ), Fun>,
     call_graph: &mut Graph<Node>,
     function: &Function,
 ) -> Result<(), VirErr> {
@@ -473,9 +471,14 @@ pub(crate) fn expand_call_graph(
     // Add D: T --> f and D: T --> T where f is one of D's methods that implements T
     if let FunctionKind::TraitMethodImpl { trait_path, datatype, .. } = function.x.kind.clone() {
         let t_node = Node::Trait(trait_path.clone());
-        let dt_node = Node::DatatypeTraitBound { datatype, trait_path };
-        call_graph.add_edge(dt_node.clone(), t_node);
-        call_graph.add_edge(dt_node, f_node.clone());
+        // HEAD let dt_node = Node::DatatypeTraitBound { datatype, trait_path };
+        // HEAD call_graph.add_edge(dt_node.clone(), t_node);
+        // HEAD call_graph.add_edge(dt_node, f_node.clone());
+        if let TypX::Datatype(path, _) = &*datatype.clone() {
+            let dt_node = Node::DatatypeTraitBound { datatype: path.clone(), trait_path };
+            call_graph.add_edge(t_node, dt_node.clone());
+            call_graph.add_edge(dt_node, f_node.clone());
+        }
     }
 
     // Add f --> T for any function f<A: T> with type parameter A: T
@@ -528,11 +531,13 @@ pub(crate) fn expand_call_graph(
                                 assert!(ts.iter().any(|t| t == trait_path2));
                                 None
                             }
-                            TypX::Datatype(datatype, _) => {
+                            _ => {
+                                if !method_map.contains_key(&(x.clone(), targ.clone())) {
+                                    dbg!(&targ);
+                                }
                                 // f1 --> D.f2
-                                Some(&method_map[&(x.clone(), datatype.clone())])
+                                Some(&method_map[&(x.clone(), targ.clone())])
                             }
-                            _ => panic!("unexpected Self type instantiation"),
                         }
                     } else {
                         Some(x)

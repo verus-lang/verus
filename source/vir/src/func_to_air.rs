@@ -232,22 +232,19 @@ fn func_body_to_air(
     }
 
     // For trait method implementations, use trait method function name and add Self type argument
-    let (name, typ_args) = if let FunctionKind::TraitMethodImpl {
-        method,
-        trait_typ_args,
-        datatype,
-        datatype_typ_args,
-        ..
-    } = &function.x.kind
-    {
-        let self_typ = Arc::new(TypX::Datatype(datatype.clone(), datatype_typ_args.clone()));
-        let mut typ_args = vec![self_typ];
-        typ_args.append(&mut (**trait_typ_args).clone());
-        (method.clone(), typ_args)
-    } else {
-        let typ_args = vec_map(&function.x.typ_params(), |x| Arc::new(TypX::TypParam(x.clone())));
-        (function.x.name.clone(), typ_args)
-    };
+    let (name, typ_args) =
+        if let FunctionKind::TraitMethodImpl { method, trait_typ_args, datatype, .. } =
+            &function.x.kind
+        {
+            let self_typ = datatype.clone();
+            let mut typ_args = vec![self_typ];
+            typ_args.append(&mut (**trait_typ_args).clone());
+            (method.clone(), typ_args)
+        } else {
+            let typ_args =
+                vec_map(&function.x.typ_params(), |x| Arc::new(TypX::TypParam(x.clone())));
+            (function.x.name.clone(), typ_args)
+        };
 
     // non-recursive:
     //   (axiom (=> (fuel_bool fuel%f) (forall (...) (= (f ...) body))))
@@ -695,12 +692,10 @@ pub fn func_def_to_air(
                 trait_path,
                 trait_typ_args,
                 datatype,
-                datatype_typ_args,
             } = &function.x.kind
             {
                 // Inherit requires/ensures from trait method declaration
-                let self_typ =
-                    Arc::new(TypX::Datatype(datatype.clone(), datatype_typ_args.clone()));
+                let self_typ = datatype.clone();
                 let mut trait_typ_substs: HashMap<Ident, Typ> = HashMap::new();
                 trait_typ_substs.insert(crate::def::trait_self_type_param(), self_typ);
                 let tr = &ctx.trait_map[trait_path];

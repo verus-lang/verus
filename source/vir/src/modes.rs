@@ -1,7 +1,8 @@
+use crate::ast::TypX;
 use crate::ast::{
     BinaryOp, CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, Ident,
     InferMode, InvAtomicity, Krate, Mode, ModeCoercion, MultiOp, Path, Pattern, PatternX, Stmt,
-    StmtX, UnaryOp, UnaryOpr, VirErr,
+    StmtX, Typ, UnaryOp, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string, get_field};
 use crate::def::user_local_name;
@@ -142,6 +143,17 @@ impl Typing {
 
     fn insert(&mut self, _span: &Span, x: &Ident, mutable: bool, mode: Mode) {
         self.vars.insert(x.clone(), (mutable, mode)).expect("internal error: Typing insert");
+    }
+
+    // TODO(tchajed): replace with `typ_min_mode` from #323, once that's merged
+    fn typ_mode(&self, typ: Typ) -> Mode {
+        use TypX::*;
+        match &*typ {
+            Bool | Int(_) => Mode::Exec,
+            Lambda(_, _) => Mode::Spec,
+            Datatype(datatype, _typ_args) => self.datatypes[datatype].x.mode,
+            _ => panic!("unknown mode for type"),
+        }
     }
 }
 
@@ -1107,7 +1119,7 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
     typing.vars.push_scope(true);
 
     if let FunctionKind::TraitMethodImpl { method, trait_path, datatype, .. } = &function.x.kind {
-        let datatype_mode = typing.datatypes[datatype].x.mode;
+        let datatype_mode = typing.typ_mode(datatype.clone());
         let self_mode = function.x.params[0].x.mode;
         let our_trait = typing.traits.contains(trait_path);
         if self_mode != function.x.mode {
