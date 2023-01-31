@@ -1147,10 +1147,10 @@ impl VisitMut for Visitor {
                         }
                         (Some(_), Some((_, id)), _, _) => {
                             let span = id.span();
-                            *expr = quote_verbatim!(span, attrs => compile_error!("unsupported kind of assert-by"));
+                            *expr = quote_verbatim!(span, attrs => compile_error!("unknown prover name for assert-by (supported provers: 'compute_only', 'compute', 'bit_vector', and 'nonlinear_arith')"));
                         }
-                        _ => {
-                            *expr = quote_verbatim!(span, attrs => compile_error!("unsupported kind of assert-by"));
+                        (Some(_), None, Some(_), _) => {
+                            *expr = quote_verbatim!(span, attrs => compile_error!("assert-by has 'requires' clause but no prover specified (supported provers: 'compute_only', 'compute', 'bit_vector', and 'nonlinear_arith')"));
                         }
                     }
                 }
