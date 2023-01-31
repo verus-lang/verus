@@ -4,6 +4,7 @@ use crate::ast::{
     SpannedTyped, TriggerAnnotation, Typ, TypX, Typs, UnaryOp, Variant, Variants, VirErr,
     Visibility,
 };
+use crate::prelude::ArchWordBits;
 use crate::sst::{Par, Pars};
 use crate::util::vec_map;
 use air::ast::{Binder, BinderX, Binders, Span};
@@ -96,15 +97,48 @@ pub fn generic_bounds_equal(b1: &GenericBound, b2: &GenericBound) -> bool {
 pub fn allowed_bitvector_type(typ: &Typ) -> bool {
     match &**typ {
         TypX::Bool => true,
-        TypX::Int(IntRange::U(_)) | TypX::Int(IntRange::I(_)) => true,
+        TypX::Int(IntRange::U(_) | IntRange::I(_) | IntRange::USize | IntRange::ISize) => true,
         TypX::Boxed(typ) => allowed_bitvector_type(typ),
         _ => false,
     }
 }
 
-pub fn bitwidth_from_type(et: &Typ) -> Option<u32> {
+#[derive(PartialEq, Eq, Debug)]
+pub enum IntegerTypeBitwidth {
+    Width(u32),
+    ArchWordSize,
+}
+
+impl fmt::Display for IntegerTypeBitwidth {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            IntegerTypeBitwidth::Width(w) => write!(f, "{}-bit", w),
+            IntegerTypeBitwidth::ArchWordSize => write!(f, "architecture-dependent"),
+        }
+    }
+}
+
+impl IntegerTypeBitwidth {
+    pub fn to_exact(&self, arch: &ArchWordBits) -> Option<u32> {
+        match (self, arch) {
+            (IntegerTypeBitwidth::Width(w), _) => Some(*w),
+            (IntegerTypeBitwidth::ArchWordSize, ArchWordBits::Exactly(w)) => Some(*w),
+            (IntegerTypeBitwidth::ArchWordSize, _) => None,
+        }
+    }
+}
+
+pub fn bitwidth_from_int_range(int_range: &IntRange) -> Option<IntegerTypeBitwidth> {
+    match int_range {
+        IntRange::U(size) | IntRange::I(size) => Some(IntegerTypeBitwidth::Width(*size)),
+        IntRange::USize | IntRange::ISize => Some(IntegerTypeBitwidth::ArchWordSize),
+        IntRange::Int | IntRange::Nat => None,
+    }
+}
+
+pub fn bitwidth_from_type(et: &Typ) -> Option<IntegerTypeBitwidth> {
     match &**et {
-        TypX::Int(IntRange::U(size)) | TypX::Int(IntRange::I(size)) => Some(*size),
+        TypX::Int(int_range) => bitwidth_from_int_range(int_range),
         TypX::Boxed(in_et) => bitwidth_from_type(&*in_et),
         _ => None,
     }

@@ -204,3 +204,148 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] not_supported_usize_in_by_bit_vector verus_code! {
+        proof fn test_usize(x: usize) {
+            // Ideally this would work, but by(bit_vector) currently doesn't
+            // support arch-dependent sizes.
+            assert(x & x == x) by (bit_vector);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "architecture-dependent")
+}
+
+test_verify_one_file! {
+    #[test] not_supported_const_usize_in_by_bit_vector verus_code! {
+        proof fn test_usize() {
+            // Ideally this would work, but by(bit_vector) currently doesn't
+            // support arch-dependent sizes.
+            assert(1usize == 1usize) by (bit_vector);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "architecture-dependent")
+}
+
+test_verify_one_file! {
+    #[test] not_supported_int_in_by_bit_vector verus_code! {
+        proof fn test_int(x: int) {
+            assert(x == x) by (bit_vector);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expected finite-width integer")
+}
+
+test_verify_one_file! {
+    #[test] not_supported_const_int_in_by_bit_vector verus_code! {
+        proof fn test_int() {
+            assert(0int == 0int) by (bit_vector);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expected finite-width integer")
+}
+
+test_verify_one_file! {
+    #[test] not_supported_usize_cast_in_by_bit_vector verus_code! {
+        proof fn test_usize(x: u64) {
+            // Ideally this would work, but by(bit_vector) currently doesn't
+            // support arch-dependent sizes.
+            assert((x as usize) == (x as usize)) by (bit_vector);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "architecture-dependent")
+}
+
+test_verify_one_file! {
+    #[test] bit_vector_with_usize_valid_expr verus_code! {
+        spec fn stuff(x: usize, y: usize, z: usize) -> usize {
+            (x | y) & !z
+        }
+
+        proof fn test_usize(x: usize, y: usize, z: usize) {
+            // We can only prove trivial things without by(bit_vector)
+            // but these should at least be well-formed expressions.
+            assert(((x & y) | !z) == ((x & y) | !z));
+        }
+
+        proof fn test_usize2(x: usize, y: usize, z: usize) {
+            // This should fail (it is wrong)
+            assert(stuff(x, y, z) == stuff(y, z, x)); // FAILS
+        }
+
+        proof fn test_usize3(x: usize) {
+            // This should fail (if usize is 32-bit, then these expressions are different)
+            assert((!x) as u64 == (!(x as u64))); // FAILS
+        }
+
+        proof fn test_usize4(x: usize) {
+            // This should fail (if usize is 64-bit, this is wrong)
+            assert((x >> 32) == 0usize); // FAILS
+        }
+
+        proof fn test_usize5(x: usize) {
+            // This should fail (if usize is 32-bit, this is wrong)
+            assert(((1usize << 35) >> 34) == 2usize); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file_with_options! {
+    #[test] bit_vector_usize_as_32bit ["--arch-word-bits 32"] => verus_code! {
+        proof fn test1(x: usize) {
+            assert(x & x == x) by(bit_vector);
+        }
+
+        proof fn test2(y: usize) {
+            // This should only work for 32-bit usize
+            assert((y >> 32) == 0usize) by(bit_vector);
+        }
+
+        proof fn test3(x: usize) {
+            assert((!x) as u64 == (!(x as u64))); // FAILS
+        }
+
+        proof fn test4(x: usize) {
+            assert((!x) as u64 == (!(x as u64))) by(bit_vector); // FAILS
+        }
+
+        proof fn test5(x: usize) {
+            assert((x >> 32) == 0usize) by(bit_vector);
+        }
+
+        proof fn test6(x: usize) {
+            assert(((1usize << 35) >> 34) == 2usize); // FAILS
+        }
+
+        proof fn test7(x: usize) {
+            assert(((1usize << 35) >> 34) == 2usize) by(bit_vector); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file_with_options! {
+    #[test] bit_vector_usize_as_64bit ["--arch-word-bits 64"] => verus_code! {
+        proof fn test1(x: usize) {
+            assert(x & x == x) by(bit_vector);
+        }
+
+        proof fn test2(y: usize) {
+            assert((y >> 32) == 0usize); // FAILS
+        }
+
+        proof fn test3(y: usize) {
+            assert((y >> 32) == 0usize) by(bit_vector); // FAILS
+        }
+
+        proof fn test4(x: usize) {
+            assert((!x) as u64 == (!(x as u64))) by(bit_vector);
+        }
+
+        proof fn test5(x: usize) {
+            assert((x >> 32) == 0usize); // FAILS
+        }
+
+        proof fn test6(x: usize) {
+            assert((x >> 32) == 0usize) by(bit_vector); // FAILS
+        }
+
+        proof fn test7(x: usize) {
+            assert(((1usize << 35) >> 34) == 2usize) by(bit_vector);
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
