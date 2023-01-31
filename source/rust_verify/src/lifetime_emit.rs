@@ -704,7 +704,6 @@ fn emit_fields(state: &mut EmitState, fields: &Fields, suffix: &str) {
 
 pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
     state.newline();
-    // TODO: generics
     if d.implements_copy {
         state.newline();
         state.write("#[derive(Clone, Copy)]");
