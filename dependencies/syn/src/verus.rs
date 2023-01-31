@@ -321,6 +321,26 @@ pub mod parsing {
                 let punct = input.parse()?;
                 exprs.push_punct(punct);
             }
+            if input.peek(token::Brace) {
+                if input.peek2(token::Brace) {
+                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by another block (if you meant this block to be part of the specification, try parenthesizing it)"));
+                }
+                if input.peek2(token::Comma) {
+                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by a comma (if you meant this block to be part of the specification, try parenthesizing it)"));
+                }
+                if input.peek2(Token![ensures]) {
+                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'ensures' (if you meant this block to be part of the specification, try parenthesizing it)"));
+                }
+                if input.peek2(Token![invariant_ensures]) {
+                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'invariant_ensures' (if you meant this block to be part of the specification, try parenthesizing it)"));
+                }
+                if input.peek2(Token![invariant_ensures]) {
+                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'ensures' (if you meant this block to be part of the specification, try parenthesizing it)"));
+                }
+                if input.peek2(Token![invariant_ensures]) {
+                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by a 'decreases' (if you meant this block to be part of the specification, try parenthesizing it)"));
+                }
+            }
             Ok(Specification { exprs })
         }
     }

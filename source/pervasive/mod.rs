@@ -42,6 +42,10 @@ pub mod string;
 #[cfg(not(feature = "no_global_allocator"))] 
 pub mod vec;
 
+// Re-exports all pervasive types, traits, and functions that are commonly used or replace
+// regular `core` or `std` definitions.
+pub mod prelude;
+
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
