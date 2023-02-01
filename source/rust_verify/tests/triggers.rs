@@ -14,7 +14,7 @@ test_verify_one_file! {
         }
 
         impl Node {
-            #[spec] fn inv(&self) -> bool {
+            #[verus::spec] fn inv(&self) -> bool {
                 forall(|i: nat, j: nat|
                     imply(i < self.nodes.len() && j < self.nodes.index(spec_cast_integer::<nat, int>(i)).values.len(),
                     {
@@ -39,7 +39,7 @@ test_verify_one_file! {
         }
 
         impl Node {
-            #[spec] fn inv(&self) -> bool {
+            #[verus::spec] fn inv(&self) -> bool {
                 forall(|i: nat, j: nat|
                     with_triggers!([self.nodes.index(spec_cast_integer::<nat, int>(i)).values.index(spec_cast_integer::<nat, int>(j))] =>
                         imply(i < self.nodes.len() && j < self.nodes.index(spec_cast_integer::<nat, int>(i)).values.len(),
@@ -90,7 +90,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_mul_distrib_forall_fail code! {
-        #[proof] #[verifier(nonlinear)]
+        #[verus::proof] #[verifier(nonlinear)]
         fn mul_distributive_auto() {
             ensures(forall(|a: nat, b: nat, c: nat| #[trigger] ((a + b) * c) == a * c + b * c));
         }
@@ -99,7 +99,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_arith_and_ord_fail code! {
-        #[proof]
+        #[verus::proof]
         fn quant() {
             ensures(forall_arith(|a: nat, b: nat, c: nat| #[trigger] a + b <= c));
             assume(false)
@@ -111,7 +111,7 @@ test_verify_one_file! {
     #[test] test_recommends_regression_163 code! {
         fndecl!(fn some_fn(a: int) -> bool);
 
-        #[proof]
+        #[verus::proof]
         fn p() {
             ensures([
                 forall_arith(|a: int, b: int| #[trigger] (a * b) == b * a),

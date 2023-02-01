@@ -66,7 +66,7 @@ unsafe impl<T> Send for PCell<T> {}
 
 // PermData<V>, on the other hand, needs to inherit both Send and Sync from the V,
 // which it does by default in the given definition.
-// (Note: this depends on the current behavior that #[spec] fields are still counted for marker traits)
+// (Note: this depends on the current behavior that #[verus::spec] fields are still counted for marker traits)
 
 #[verifier(external_body)]
 pub tracked struct PermData<#[verifier(strictly_positive)] V> {
@@ -134,7 +134,7 @@ impl<V> PCell<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn put(&self, #[proof] perm: &mut PermData<V>, v: V)
+    pub fn put(&self, #[verus::proof] perm: &mut PermData<V>, v: V)
         requires
             old(perm)@ ===
               pcell_opt![ self.id() => option::Option::None ],
@@ -151,7 +151,7 @@ impl<V> PCell<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn take(&self, #[proof] perm: &mut PermData<V>) -> (v: V)
+    pub fn take(&self, #[verus::proof] perm: &mut PermData<V>) -> (v: V)
         requires
             self.id() === old(perm)@.pcell,
             old(perm)@.value.is_Some(),
@@ -171,7 +171,7 @@ impl<V> PCell<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn replace(&self, #[proof] perm: &mut PermData<V>, in_v: V) -> (out_v: V)
+    pub fn replace(&self, #[verus::proof] perm: &mut PermData<V>, in_v: V) -> (out_v: V)
         requires
             self.id() === old(perm)@.pcell,
             old(perm)@.value.is_Some(),
@@ -195,7 +195,7 @@ impl<V> PCell<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn borrow<'a>(&'a self, #[proof] perm: &'a PermData<V>) -> (v: &'a V)
+    pub fn borrow<'a>(&'a self, #[verus::proof] perm: &'a PermData<V>) -> (v: &'a V)
         requires
             self.id() === perm@.pcell,
             perm@.value.is_Some(),
@@ -215,7 +215,7 @@ impl<V> PCell<V> {
     // Untrusted functions below here
 
     #[inline(always)]
-    pub fn into_inner(self, #[proof] perm: PermData<V>) -> V
+    pub fn into_inner(self, #[verus::proof] perm: PermData<V>) -> V
     {
         requires([
             equal(self.id(), perm.view().pcell),
@@ -226,7 +226,7 @@ impl<V> PCell<V> {
         ]);
         opens_invariants_none();
 
-        #[proof] let mut perm = perm;
+        #[verus::proof] let mut perm = perm;
         self.take(&mut perm)
     }
 
@@ -266,7 +266,7 @@ impl<T> InvCell<T> {
         self.possible_values.contains(val)
     }
 
-    pub fn new(val: T, #[spec] f: FnSpec<(T,), bool>) -> Self
+    pub fn new(val: T, #[verus::spec] f: FnSpec<(T,), bool>) -> Self
     {
         requires(f(val));
         ensures(|cell: Self| cell.wf() && forall(|v| f(v) == cell.inv(v)));

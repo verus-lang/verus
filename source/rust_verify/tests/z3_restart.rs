@@ -32,7 +32,7 @@ test_verify_one_file! {
             a: A,
         }
 
-        #[proof]
+        #[verus::proof]
         #[verifier(spinoff_prover)]
         fn one(v: int) {
             let t1 = Thing { a: v };
@@ -67,7 +67,7 @@ test_verify_one_file! {
     #[test] test_with_bv code! {
         #[verifier(bit_vector)]
         #[verifier(spinoff_prover)]
-        #[proof]
+        #[verus::proof]
         fn bit_or32_auto(){
             ensures([
                 forall(|a: u32, b: u32| #[trigger] (a|b) == b|a),

@@ -119,12 +119,12 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_choose_must_be_tuple code! {
-        #[spec]
+        #[verus::spec]
         fn f(i: int, j: int) -> bool {
             i <= j
         }
 
-        #[proof]
+        #[verus::proof]
         fn test_choose() {
             let (i, j): (int, int) = choose(|i: int, j: int| f(i, j));
             assert(f(7, 8));
@@ -158,12 +158,12 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_fails1_tuple code! {
-        #[spec]
+        #[verus::spec]
         fn f(i: int, j: int) -> bool {
             i <= j
         }
 
-        #[proof]
+        #[verus::proof]
         fn test_choose() {
             let (i, j): (int, int) = choose_tuple(|i: int, j: int| f(i, j));
             assert(i <= j); // FAILS
@@ -187,12 +187,12 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_fails3_tuple code! {
-        #[spec]
+        #[verus::spec]
         fn f(i: int, j: int) -> bool {
             i <= j
         }
 
-        #[proof]
+        #[verus::proof]
         fn test_choose_eq() {
             let (i1, j1): (int, int) = choose_tuple(|i: int, j: int| f(i, j) && (2 + 2 == 4));
             let (i2, j2): (int, int) = choose_tuple(|i: int, j: int| (2 + 2 == 4) && f(i, j));
@@ -247,12 +247,12 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_choose_tuple_wrong_type code! {
-        #[spec]
+        #[verus::spec]
         fn f(i: int, j: int) -> bool {
             i <= j
         }
 
-        #[proof]
+        #[verus::proof]
         fn test_choose() {
             let (i, j): (int, nat) = choose_tuple(|i: int, j: int| f(i, j));
         }

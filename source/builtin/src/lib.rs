@@ -248,12 +248,12 @@ pub struct Tracked<#[verifier(strictly_positive)] A> {
 }
 
 impl<A> Ghost<A> {
-    #[spec]
+    #[verus::spec]
     pub fn view(self) -> A {
         unimplemented!()
     }
 
-    #[spec]
+    #[verus::spec]
     #[verifier(external_body)]
     pub fn new(_a: A) -> Ghost<A> {
         Ghost { phantom: PhantomData }
@@ -266,23 +266,23 @@ impl<A> Ghost<A> {
         Ghost { phantom: PhantomData }
     }
 
-    // note that because we return #[spec], not #[exec], we do not implement the Borrow trait
-    #[spec]
+    // note that because we return #[verus::spec], not #[verus::exec], we do not implement the Borrow trait
+    #[verus::spec]
     #[verifier(external_body)]
     pub fn borrow(&self) -> &A {
         unimplemented!()
     }
 
-    // note that because we return #[spec], not #[exec], we do not implement the BorrowMut trait
-    #[proof]
+    // note that because we return #[verus::spec], not #[verus::exec], we do not implement the BorrowMut trait
+    #[verus::proof]
     #[verifier(external)]
-    pub fn borrow_mut(#[proof] &mut self) -> &mut A {
+    pub fn borrow_mut(#[verus::proof] &mut self) -> &mut A {
         unimplemented!()
     }
 }
 
 impl<A> Tracked<A> {
-    #[spec]
+    #[verus::spec]
     pub fn view(self) -> A {
         unimplemented!()
     }
@@ -294,26 +294,26 @@ impl<A> Tracked<A> {
         Tracked { phantom: PhantomData }
     }
 
-    #[proof]
+    #[verus::proof]
     #[verifier(external_body)]
     #[verifier(returns(proof))]
-    pub fn get(#[proof] self) -> A {
+    pub fn get(#[verus::proof] self) -> A {
         unimplemented!()
     }
 
-    // note that because we return #[proof], not #[exec], we do not implement the Borrow trait
-    #[proof]
+    // note that because we return #[verus::proof], not #[verus::exec], we do not implement the Borrow trait
+    #[verus::proof]
     #[verifier(external_body)]
     #[verifier(returns(proof))]
-    pub fn borrow(#[proof] &self) -> &A {
+    pub fn borrow(#[verus::proof] &self) -> &A {
         unimplemented!()
     }
 
-    // note that because we return #[proof], not #[exec], we do not implement the BorrowMut trait
-    #[proof]
+    // note that because we return #[verus::proof], not #[verus::exec], we do not implement the BorrowMut trait
+    #[verus::proof]
     #[verifier(external_body)]
     #[verifier(returns(proof))]
-    pub fn borrow_mut(#[proof] &mut self) -> &mut A {
+    pub fn borrow_mut(#[verus::proof] &mut self) -> &mut A {
         unimplemented!()
     }
 }
@@ -648,7 +648,7 @@ pub fn spec_cast_integer<From: Integer, To: Integer>(_from: From) -> To {
     unimplemented!()
 }
 
-#[spec]
+#[verus::spec]
 pub fn spec_eq<Lhs, Rhs>(_lhs: Lhs, _rhs: Rhs) -> bool {
     unimplemented!()
 }
@@ -934,25 +934,25 @@ impl_binary_op_rhs!(SpecShr, spec_shr, Self, Self, [
 ]);
 
 #[rustc_diagnostic_item = "builtin::strslice_is_ascii"]
-#[spec]
+#[verus::spec]
 pub fn strslice_is_ascii<A>(_a: A) -> bool {
     unimplemented!()
 }
 
 #[rustc_diagnostic_item = "builtin::strslice_len"]
-#[spec]
+#[verus::spec]
 pub fn strslice_len<A>(_a: A) -> nat {
     unimplemented!()
 }
 
 #[rustc_diagnostic_item = "builtin::strslice_get_char"]
-#[spec]
+#[verus::spec]
 pub fn strslice_get_char<A>(_a: A, _i: int) -> char {
     unimplemented!()
 }
 
 #[rustc_diagnostic_item = "builtin::reveal_strlit"]
-#[proof]
+#[verus::proof]
 pub fn reveal_strlit<A>(_a: A) {
     unimplemented!()
 }

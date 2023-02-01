@@ -159,7 +159,7 @@ proof fn equivalence_proof_2(a:u32, b:u32)
 }
 
 
-// #[spec]
+// #[verus::spec]
 // fn u32_view(u: u32) -> Seq<bool> {
 //     Seq::new(32, |i: int| get_bit!(u, i as u32))
 // }

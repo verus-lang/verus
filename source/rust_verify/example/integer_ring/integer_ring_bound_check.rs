@@ -15,7 +15,7 @@ use pervasive::*;
 use builtin_macros::*;
 
 #[verifier(integer_ring)]
-#[proof]
+#[verus::proof]
 fn ModAfterMul(x: int, y: int, z:int, m:int){
     requires( (x-y) % m == 0);
     ensures( (x*z - y*z) % m == 0);
@@ -24,7 +24,7 @@ fn ModAfterMul(x: int, y: int, z:int, m:int){
 // bound check lemmas
 #[verifier(nonlinear)]  
 #[verifier(external_body)]
-#[proof]
+#[verus::proof]
 fn LemmaMulUpperBound(x: int, XBound: int, y: int, YBound: int) {
     requires([
         x <= XBound,
@@ -36,7 +36,7 @@ fn LemmaMulUpperBound(x: int, XBound: int, y: int, YBound: int) {
 }
 
 #[verifier(nonlinear)] 
-#[proof]
+#[verus::proof]
 fn LemmaMulStayPositive(x: int, y: int) {
     requires([
         0 <= x,
@@ -46,7 +46,7 @@ fn LemmaMulStayPositive(x: int, y: int) {
 }
 
 #[verifier(nonlinear)] 
-#[proof]
+#[verus::proof]
 fn LemmaInequalityAfterMul(x: int, y: int, z: int) {
     requires([
         x <= y,
@@ -55,7 +55,7 @@ fn LemmaInequalityAfterMul(x: int, y: int, z: int) {
     ensures (x*z <= y*z);
 }
 
-#[proof]
+#[verus::proof]
 fn ModAfterMul_u32(x: u32, y:u32 , z:u32, m:u32){
     requires([
         m > 0,
@@ -84,7 +84,7 @@ fn ModAfterMul_u32(x: u32, y:u32 , z:u32, m:u32){
     // assert( (((x*z - y*z) as int) % (m as int)) ==  (((x*z) as int) - ((y*z) as int)) % (m as int));
 }
 
-#[proof]
+#[verus::proof]
 fn ModAfterMul_u32_with_assert_by_nonlinear(x: u32, y:u32 , z:u32, m:u32){
     requires([
         m > 0,

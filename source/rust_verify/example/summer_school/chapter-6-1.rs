@@ -11,14 +11,14 @@ use state_machines_macros::state_machine;
 use state_machines_macros::case_on_next;
 use state_machines_macros::case_on_init;
 
-#[verifier(external_body)]
+#[verus::verifier(external_body)]
 pub struct Key { }
 
-#[verifier(external_body)]
+#[verus::verifier(external_body)]
 pub struct Value { }
 
-#[verifier(external_body)]
-#[spec]
+#[verus::verifier(external_body)]
+#[verus::spec]
 pub fn default() -> Value { unimplemented!() }
 
 state_machine!{
@@ -75,7 +75,7 @@ state_machine!{
             }
         }
 
-        #[spec] #[verifier(publish)]
+        #[verus::spec] #[verus::verifier(publish)]
         pub fn valid_host(&self, i: int) -> bool {
             0 <= i < self.map_count
         }
@@ -106,18 +106,18 @@ state_machine!{
             }
         }
 
-        #[spec] #[verifier(publish)]
+        #[verus::spec] #[verifier(publish)]
         pub fn host_has_key(&self, hostidx: int, key: Key) -> bool {
             self.valid_host(hostidx)
             && self.maps.index(hostidx).dom().contains(key)
         }
 
-        #[spec] #[verifier(publish)]
+        #[verus::spec] #[verifier(publish)]
         pub fn key_holder(&self, key: Key) -> int {
             choose(|idx| self.host_has_key(idx, key))
         }
 
-        #[spec] #[verifier(publish)]
+        #[verus::spec] #[verifier(publish)]
         pub fn abstraction_one_key(&self, key: Key) -> Value {
             if exists |idx| self.host_has_key(idx, key) {
                 self.maps.index(self.key_holder(key)).index(key)

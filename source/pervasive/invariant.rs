@@ -219,7 +219,7 @@ macro_rules! declare_invariant_impl {
             ///`, returning the tracked value contained within.
 
             #[verifier(external_body)]
-            pub proof fn into_inner(#[proof] self) -> (tracked v: V)
+            pub proof fn into_inner(#[verus::proof] self) -> (tracked v: V)
                 ensures self.inv(v),
             {
                 unimplemented!();
@@ -319,7 +319,7 @@ pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
 #[macro_export]
 macro_rules! open_atomic_invariant {
     ($eexpr:expr => $iident:ident => $bblock:block) => {
-        #[verifier(invariant_block)] {
+        #[verus::verifier(invariant_block)] {
             #[allow(unused_mut)] let (guard, mut $iident) = $crate::pervasive::invariant::open_atomic_invariant_begin($eexpr);
             $bblock
             $crate::pervasive::invariant::open_invariant_end(guard, $iident);

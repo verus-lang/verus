@@ -26,7 +26,7 @@ fn take<T>(lock: &Lock<T>) -> T {
     loop {
         invariant(lock.well_formed());
 
-        #[proof] let ghost_value: Option<T>;
+        #[verus::proof] let ghost_value: Option<T>;
 
         let result = atomic_with_ghost!(
             &lock.field => compare_exchange(true, false);
@@ -52,7 +52,7 @@ fn take<T>(lock: &Lock<T>) -> T {
 
 struct VEqualG { }
 impl AtomicInvariantPredicate<(), u64, u64> for VEqualG {
-    #[spec] fn atomic_inv(k: (), v: u64, g: u64) -> bool {
+    #[verus::spec] fn atomic_inv(k: (), v: u64, g: u64) -> bool {
         v == g
     }
 }

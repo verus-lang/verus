@@ -430,7 +430,7 @@ test_verify_one_file! {
     #[test] construct_exec_closure_in_spec_code_fail (code_str! {
         // This test needs to be outside the verus macro so that it doesn't
         // automatically add the closure_to_fn_spec wrapper
-        #[spec] fn foo() -> bool {
+        #[verus::spec] fn foo() -> bool {
             let f = || true;
             f()
         }
@@ -439,7 +439,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] call_exec_closure_in_spec_code_fail verus_code! {
-        #[spec] fn foo<F: Fn(u64) -> u64>(f: F) -> u64 {
+        #[verus::spec] fn foo<F: Fn(u64) -> u64>(f: F) -> u64 {
             f(5)
         }
     } => Err(err) => assert_vir_error_msg(err, "to call a non-static function in ghost code, it must be a FnSpec")
@@ -518,7 +518,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] mode_check_return_value verus_code! {
-        #[spec] fn some_spec_fn() -> bool { true }
+        #[verus::spec] fn some_spec_fn() -> bool { true }
 
         fn foo() {
             let f = |x: u64| {
@@ -530,7 +530,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] mode_check_return_stmt verus_code! {
-        #[spec] fn some_spec_fn() -> bool { true }
+        #[verus::spec] fn some_spec_fn() -> bool { true }
 
         fn foo() {
             let f = |x: u64| {
@@ -925,7 +925,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] exec_closure_spec_param_error verus_code! {
         fn test() {
-            let g = |#[spec] y: u64| {
+            let g = |#[verus::spec] y: u64| {
                 5
             };
         }
@@ -935,7 +935,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] exec_closure_proof_param_error verus_code! {
         fn test() {
-            let g = |#[proof] y: u64| {
+            let g = |#[verus::proof] y: u64| {
                 5
             };
         }

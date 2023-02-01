@@ -15,7 +15,7 @@ const IMPORTS: &str = code_str! {
     #[allow(unused_imports)] use builtin_macros::*;
     #[allow(unused_imports)] use state_machines_macros::*;
 
-    #[spec]
+    #[verus::spec]
     #[is_variant]
     pub enum Foo {
         Bar(int),
@@ -953,7 +953,7 @@ test_verify_one_file! {
             }
 
             #[invariant]
-            #[spec]
+            #[verus::spec]
             pub fn the_inv(self) -> bool {
                 true
             }
@@ -1011,7 +1011,7 @@ test_verify_one_file! {
     #[test] explicit_mode_field IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
-                #[sharding(variable)] #[spec] pub t: int,
+                #[sharding(variable)] #[verus::spec] pub t: int,
             }
         }}
     } => Err(e) => assert_error_msg(e, "should not be explicitly labelled")
@@ -1036,7 +1036,7 @@ test_verify_one_file! {
             }
 
             #[inductive(tr)]
-            #[proof]
+            #[verus::proof]
             pub fn lemma_tr1(post: Self, x: int) {
             }
         }}
@@ -1062,7 +1062,7 @@ test_verify_one_file! {
             }
 
             #[inductive(tr)]
-            #[proof]
+            #[verus::proof]
             pub fn lemma_tr1(post: Self, x: int) {
             } // FAILS
         }}
@@ -1088,7 +1088,7 @@ test_verify_one_file! {
             }
 
             #[inductive(tr)]
-            #[proof]
+            #[verus::proof]
             pub fn lemma_tr1(post: Self, x: int) {
             } // FAILS
         }}
@@ -1114,7 +1114,7 @@ test_verify_one_file! {
             }
 
             #[inductive(tr)]
-            #[proof]
+            #[verus::proof]
             pub fn lemma_tr1(post: Self, x: int) {
             } // FAILS
         }}
@@ -2889,7 +2889,7 @@ test_verify_one_file! {
 
             #[inductive(initialize)]
             fn inductive_init(post: Self) {
-                #[proof] let tracked (Trk(inst), Trk(token)) = X::Instance::initialize();
+                #[verus::proof] let tracked (Trk(inst), Trk(token)) = X::Instance::initialize();
                 tracked inst.ro(&token);
                 // this should derive a contradiction if not for the recursion checking
             }
@@ -2920,9 +2920,9 @@ test_verify_one_file! {
             }
         }}
 
-        #[proof]
+        #[verus::proof]
         fn foo_lemma() {
-            #[proof] let (Trk(inst), Trk(token)) = X::Instance::initialize();
+            #[verus::proof] let (Trk(inst), Trk(token)) = X::Instance::initialize();
             inst.ro(&token);
         }
     } => Err(e) => assert_vir_error_msg(e, "recursive function must call decreases")
@@ -3957,27 +3957,27 @@ test_verify_one_file! {
             }
         }}
 
-        #[proof]
+        #[verus::proof]
         fn go() {
-            #[proof] let (Trk(instance), Trk(mut v1), Trk(v2)) = Z::Instance::initialize();
+            #[verus::proof] let (Trk(instance), Trk(mut v1), Trk(v2)) = Z::Instance::initialize();
             assert(equal(v1.view().instance, instance));
             assert(equal(v2.view().instance, instance));
             assert(equal(v1.view().value, spec_literal_int("0")));
             assert(equal(v2.view().value, spec_literal_int("1")));
             assert(equal(instance.c(), spec_literal_int("3")));
 
-            #[proof] instance.tr1(&mut v1);
+            #[verus::proof] instance.tr1(&mut v1);
             assert(equal(v1.view().instance, instance));
             assert(equal(v1.view().value, spec_literal_int("2")));
 
-            #[spec] let old_v1_value = v1.view().value;
-            #[proof] let (Gho(birds_eye_v2), Gho(birds_eye_nt)) = instance.tr2(&mut v1);
+            #[verus::spec] let old_v1_value = v1.view().value;
+            #[verus::proof] let (Gho(birds_eye_v2), Gho(birds_eye_nt)) = instance.tr2(&mut v1);
             assert(equal(v1.view().instance, instance));
             assert(equal(v1.view().value,
                 birds_eye_nt + instance.c() + old_v1_value - birds_eye_v2));
 
-            #[spec] let old_v1_value = v1.view().value;
-            #[spec] let birds_eye_nt = instance.tr3(&mut v1, &v2);
+            #[verus::spec] let old_v1_value = v1.view().value;
+            #[verus::spec] let birds_eye_nt = instance.tr3(&mut v1, &v2);
             assert(equal(v1.view().instance, instance));
             assert(equal(v1.view().value, birds_eye_nt + instance.c() + old_v1_value + spec_literal_int("3") * v2.view().value));
         }
@@ -4185,7 +4185,7 @@ test_verify_one_file! {
         }}
 
         pub fn foo() {
-            #[proof] let (Trk(inst), Trk(mut x_tok), Trk(mut r_tok)) = Y::Instance::ini(
+            #[verus::proof] let (Trk(inst), Trk(mut x_tok), Trk(mut r_tok)) = Y::Instance::ini(
                 Y::State { x: spec_literal_int("5"), recursing: Option::None }
             );
             inst.tr(spec_literal_int("19"), &mut x_tok);
@@ -4350,82 +4350,82 @@ test_verify_one_file! {
         }
         } // verus!
 
-        #[proof]
+        #[verus::proof]
         fn correct_tr1(pre: Y::State, post: Y::State) {
             requires(Y::State::tr1(pre, post));
             ensures(rel_tr1(pre, post));
         }
 
-        #[proof]
+        #[verus::proof]
         fn rev_tr1(pre: Y::State, post: Y::State) {
             requires(rel_tr1(pre, post));
             ensures(Y::State::tr1(pre, post));
         }
 
-        #[proof]
+        #[verus::proof]
         fn correct_tr1_strong(pre: Y::State, post: Y::State) {
             requires(Y::State::tr1_strong(pre, post));
             ensures(rel_tr1_strong(pre, post));
         }
 
-        #[proof]
+        #[verus::proof]
         fn rev_tr1_strong(pre: Y::State, post: Y::State) {
             requires(rel_tr1_strong(pre, post));
             ensures(Y::State::tr1_strong(pre, post));
         }
 
-        #[proof]
+        #[verus::proof]
         fn correct_tr2(pre: Y::State, post: Y::State, key: int) {
             requires(Y::State::tr2(pre, post, key));
             ensures(rel_tr2(pre, post, key));
         }
 
-        #[proof]
+        #[verus::proof]
         fn rev_tr2(pre: Y::State, post: Y::State, key: int) {
             requires(rel_tr2(pre, post, key));
             ensures(Y::State::tr2(pre, post, key));
         }
 
-        #[proof]
+        #[verus::proof]
         fn correct_tr2_strong(pre: Y::State, post: Y::State, key: int) {
             requires(Y::State::tr2_strong(pre, post, key));
             ensures(rel_tr2_strong(pre, post, key));
         }
 
-        #[proof]
+        #[verus::proof]
         fn rev_tr2_strong(pre: Y::State, post: Y::State, key: int) {
             requires(rel_tr2_strong(pre, post, key));
             ensures(Y::State::tr2_strong(pre, post, key));
         }
 
-        #[proof]
+        #[verus::proof]
         fn correct_tr3(pre: Y::State, post: Y::State, key: int) {
             requires(Y::State::tr3(pre, post, key));
             ensures(rel_tr3(pre, post, key));
         }
 
-        #[proof]
+        #[verus::proof]
         fn rev_tr3(pre: Y::State, post: Y::State, key: int) {
             requires(rel_tr3(pre, post, key));
             ensures(Y::State::tr3(pre, post, key));
         }
 
-        #[proof]
+        #[verus::proof]
         fn correct_tr3_strong(pre: Y::State, post: Y::State, key: int) {
             requires(Y::State::tr3_strong(pre, post, key));
             ensures(rel_tr3_strong(pre, post, key));
         }
 
-        #[proof]
+        #[verus::proof]
         fn rev_tr3_strong(pre: Y::State, post: Y::State, key: int) {
             requires(rel_tr3_strong(pre, post, key));
             ensures(Y::State::tr3_strong(pre, post, key));
         }
 
         fn do_tokens() {
-            #[proof] let mut m: Map<int, u64> = Map::tracked_empty();
+            #[verus::proof] let mut m: Map<int, u64> = Map::tracked_empty();
             m.tracked_insert(spec_literal_int("1"), 6);
-            #[proof] let (Trk(inst), Trk(opt_token), Trk(mut map_tokens)) = Y::Instance::initialize(m);
+            #[verus::proof] let (Trk(inst), Trk(opt_token), Trk(mut map_tokens)) = Y::Instance::initialize(m);
 
             match opt_token {
                 Option::None => { assert(false); }
@@ -4433,12 +4433,12 @@ test_verify_one_file! {
                     inst.tr1(opt_token);
 
                     assert(map_tokens.dom().contains(spec_literal_int("1")));
-                    #[proof] let map_token = map_tokens.tracked_remove(spec_literal_int("1"));
+                    #[verus::proof] let map_token = map_tokens.tracked_remove(spec_literal_int("1"));
 
-                    #[proof] let the_guard = inst.tr4(spec_literal_int("1"), &map_token);
+                    #[verus::proof] let the_guard = inst.tr4(spec_literal_int("1"), &map_token);
                     assert(*the_guard == 6);
 
-                    #[proof] let t = inst.tr2(spec_literal_int("1"), map_token);
+                    #[verus::proof] let t = inst.tr2(spec_literal_int("1"), map_token);
                     assert(t == 6);
                 }
             };
@@ -4655,11 +4655,11 @@ test_verify_one_file! {
         }
 
         proof fn test_transition(
-            #[proof] inst: Y::Instance,
-            #[proof] t1: Y::opt1,
-            #[proof] t2: Y::opt2,
-            #[proof] t3: Y::opt3,
-            #[proof] t4: Y::opt4
+            #[verus::proof] inst: Y::Instance,
+            #[verus::proof] t1: Y::opt1,
+            #[verus::proof] t2: Y::opt2,
+            #[verus::proof] t3: Y::opt3,
+            #[verus::proof] t4: Y::opt4
         ) {
             requires([
                 equal(inst, t1@.instance),
@@ -4670,11 +4670,11 @@ test_verify_one_file! {
                 equal(t2@.value, Option::Some(5)),
             ]);
 
-            #[spec] let old_t1 = t1;
-            #[spec] let old_t3 = t3;
+            #[verus::spec] let old_t1 = t1;
+            #[verus::spec] let old_t3 = t3;
 
-            #[proof] let mut t1 = tracked t1;
-            #[proof] let mut t3 = tracked t3;
+            #[verus::proof] let mut t1 = tracked t1;
+            #[verus::proof] let mut t3 = tracked t3;
 
             tracked inst.tr1(&mut t1, &t2, &mut t3, &t4);
 
@@ -4685,7 +4685,7 @@ test_verify_one_file! {
         }
 
         proof fn test_start() {
-            #[proof] let (Trk(inst), Trk(t1), Trk(t2), Trk(t3), Trk(t4)) = Y::Instance::initialize();
+            #[verus::proof] let (Trk(inst), Trk(t1), Trk(t2), Trk(t3), Trk(t4)) = Y::Instance::initialize();
             test_transition(tracked inst, tracked t1, tracked t2, tracked t3, tracked t4);
         }
 
@@ -4727,37 +4727,37 @@ test_verify_one_file! {
             }
         }}
 
-        #[spec]
+        #[verus::spec]
         fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
             post.c == pre.c + spec_literal_nat("2")
         }
 
-        #[spec]
+        #[verus::spec]
         fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
             post.c == pre.c + spec_literal_nat("2")
         }
 
-        #[spec]
+        #[verus::spec]
         fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
             pre.c >= spec_literal_nat("2") && post.c == pre.c
         }
 
-        #[spec]
+        #[verus::spec]
         fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
             pre.c >= spec_literal_nat("2") && post.c == pre.c
         }
 
-        #[spec]
+        #[verus::spec]
         fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
             pre.c >= spec_literal_nat("2") && post.c == pre.c - spec_literal_nat("2")
         }
 
-        #[spec]
+        #[verus::spec]
         fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
             pre.c >= spec_literal_nat("2") && post.c == pre.c - spec_literal_nat("2")
         }
 
-        #[proof]
+        #[verus::proof]
         fn correct_tr(pre: Y::State, post: Y::State) {
             ensures([
                 rel_tr1(pre, post) == Y::State::tr_add(pre, post),
@@ -4770,10 +4770,10 @@ test_verify_one_file! {
         }
 
         fn test_inst() {
-            #[proof] let (Trk(inst), Trk(t1)) = Y::Instance::initialize();
+            #[verus::proof] let (Trk(inst), Trk(t1)) = Y::Instance::initialize();
             assert(t1.view().count == spec_literal_nat("9"));
 
-            #[proof] let (Trk(t2), Trk(t3)) = t1.split(spec_literal_nat("2"));
+            #[verus::proof] let (Trk(t2), Trk(t3)) = t1.split(spec_literal_nat("2"));
 
             assert(t2.view().count == spec_literal_nat("2"));
             assert(t3.view().count == spec_literal_nat("7"));
@@ -4781,23 +4781,23 @@ test_verify_one_file! {
             inst.tr_have(&t2);
             inst.tr_remove(t2);
 
-            #[proof] let t4 = inst.tr_add();
+            #[verus::proof] let t4 = inst.tr_add();
             assert(t4.view().count == spec_literal_nat("2"));
 
-            #[proof] let q = t4.join(t3);
+            #[verus::proof] let q = t4.join(t3);
             assert(q.view().count == spec_literal_nat("9"));
         }
 
         fn test_join_fail() {
-            #[proof] let (Trk(inst1), Trk(t1)) = Y::Instance::initialize();
-            #[proof] let (Trk(inst2), Trk(t2)) = Y::Instance::initialize();
-            #[proof] let t = t1.join(t2); // FAILS
+            #[verus::proof] let (Trk(inst1), Trk(t1)) = Y::Instance::initialize();
+            #[verus::proof] let (Trk(inst2), Trk(t2)) = Y::Instance::initialize();
+            #[verus::proof] let t = t1.join(t2); // FAILS
         }
 
         fn test_split_fail() {
-            #[proof] let (Trk(inst), Trk(t1)) = Y::Instance::initialize();
+            #[verus::proof] let (Trk(inst), Trk(t1)) = Y::Instance::initialize();
 
-            #[proof] let (Trk(t2), Trk(t3)) = t1.split(spec_literal_nat("10")); // FAILS
+            #[verus::proof] let (Trk(t2), Trk(t3)) = t1.split(spec_literal_nat("10")); // FAILS
         }
     } => Err(e) => assert_fails(e, 2)
 }
@@ -5049,7 +5049,7 @@ test_verify_one_file! {
 
         } // verus!
 
-        #[proof]
+        #[verus::proof]
         fn correct_tr(pre: Y::State, post: Y::State) {
             ensures([
                 rel_tr1(pre, post) == Y::State::tr1(pre, post),
@@ -5062,30 +5062,30 @@ test_verify_one_file! {
         }
 
         fn test_inst() {
-            #[proof] let (Trk(inst), Trk(_c), Trk(d_opt)) = Y::Instance::initialize();
+            #[verus::proof] let (Trk(inst), Trk(_c), Trk(d_opt)) = Y::Instance::initialize();
 
-            #[proof] let d = match d_opt {
+            #[verus::proof] let d = match d_opt {
                 Option::Some(d) => d,
                 Option::None => proof_from_false(),
             };
 
-            #[proof] let cloned = d.clone();
+            #[verus::proof] let cloned = d.clone();
             assert(equal(cloned.view().instance, inst));
             assert(d.view().value == spec_literal_int("7"));
 
-            #[proof] let c = inst.tr1(&d);
+            #[verus::proof] let c = inst.tr1(&d);
             assert(c.view().value == spec_literal_int("3"));
             assert(equal(c.view().instance, inst));
 
-            #[proof] let c2_opt = inst.tr2();
-            #[proof] let c2 = match c2_opt {
+            #[verus::proof] let c2_opt = inst.tr2();
+            #[verus::proof] let c2 = match c2_opt {
                 Option::Some(c2) => c2,
                 Option::None => proof_from_false(),
             };
             assert(c2.view().value == spec_literal_int("3"));
             assert(equal(c2.view().instance, inst));
 
-            #[proof] let c_opt = Option::Some(c);
+            #[verus::proof] let c_opt = Option::Some(c);
             inst.tr3(&c_opt);
         }
     } => Ok(())
@@ -5236,20 +5236,20 @@ test_verify_one_file! {
         } // verus!
 
         fn test_inst() {
-            #[proof] let (Trk(inst), Trk(mut init_m)) = Y::Instance::initialize();
+            #[verus::proof] let (Trk(inst), Trk(mut init_m)) = Y::Instance::initialize();
             assert(init_m.dom().contains(spec_literal_int("1")));
-            #[proof] let m_1 = init_m.tracked_remove(spec_literal_int("1"));
+            #[verus::proof] let m_1 = init_m.tracked_remove(spec_literal_int("1"));
             assert(m_1.view().value == spec_literal_int("2"));
 
-            #[proof] let cloned = m_1.clone();
+            #[verus::proof] let cloned = m_1.clone();
             assert(equal(cloned.view().instance, inst));
             assert(cloned.view().key == spec_literal_int("1"));
             assert(cloned.view().value == spec_literal_int("2"));
 
-            #[proof] let m_3 = inst.tr1(&m_1);
+            #[verus::proof] let m_3 = inst.tr1(&m_1);
             assert(m_3.view().value == spec_literal_int("4"));
 
-            #[proof] let m_5_12 = inst.tr2();
+            #[verus::proof] let m_5_12 = inst.tr2();
             assert(m_5_12.dom().contains(spec_literal_int("5")));
             assert(m_5_12.index(spec_literal_int("5")).view().value == spec_literal_int("9"));
             assert(m_5_12.dom().contains(spec_literal_int("12")));
@@ -5470,7 +5470,7 @@ test_verify_one_file! {
         }}
 
         verus! {
-        #[spec]
+        #[verus::spec]
         fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
             match pre.opt {
                 Option::Some(Goo::Bar) => {
@@ -5488,7 +5488,7 @@ test_verify_one_file! {
             }
         }
 
-        #[spec]
+        #[verus::spec]
         fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
             match pre.opt {
                 Option::Some(Goo::Bar) => {
@@ -5680,7 +5680,7 @@ test_verify_one_file! {
             }
         }
 
-        #[spec]
+        #[verus::spec]
         fn rel_tr6_strong(pre: Y::State, post: Y::State, key: int) -> bool {
             pre.m.dom().contains(key)
             && match pre.m.index(key) {
@@ -5701,7 +5701,7 @@ test_verify_one_file! {
             }
         }
 
-        #[spec]
+        #[verus::spec]
         fn rel_tr7(pre: Y::State, post: Y::State, key: int) -> bool {
             match pre.opt {
                 Option::Some(Goo::Bar) => {
@@ -5715,12 +5715,12 @@ test_verify_one_file! {
             }
         }
 
-        #[spec]
+        #[verus::spec]
         fn rel_tr7_strong(pre: Y::State, post: Y::State, key: int) -> bool {
             rel_tr7(pre, post, key)
         }
 
-        #[spec]
+        #[verus::spec]
         fn rel_tr8(pre: Y::State, post: Y::State, key: int) -> bool {
             match pre.opt {
                 Option::Some(Goo::Qux(i1)) => {
@@ -5734,12 +5734,12 @@ test_verify_one_file! {
             }
         }
 
-        #[spec]
+        #[verus::spec]
         fn rel_tr8_strong(pre: Y::State, post: Y::State, key: int) -> bool {
             rel_tr8(pre, post, key)
         }
 
-        #[spec]
+        #[verus::spec]
         fn rel_tr9(pre: Y::State, post: Y::State, key: int) -> bool {
             match pre.opt {
                 Option::Some(Goo::Tal(i1, i2)) => {
@@ -5753,12 +5753,12 @@ test_verify_one_file! {
             }
         }
 
-        #[spec]
+        #[verus::spec]
         fn rel_tr9_strong(pre: Y::State, post: Y::State, key: int) -> bool {
             rel_tr9(pre, post, key)
         }
 
-        #[proof]
+        #[verus::proof]
         fn correct_tr(pre: Y::State, post: Y::State, key: int) {
           ensures([
               rel_tr1(pre, post) == Y::State::tr1(pre, post),
@@ -5785,10 +5785,10 @@ test_verify_one_file! {
         } // verus!
 
         fn test_inst1() {
-            #[proof] let mut p_m = Map::tracked_empty();
+            #[verus::proof] let mut p_m = Map::tracked_empty();
             p_m.tracked_insert(spec_literal_int("1"), Goo::Bar);
 
-            #[proof] let (Trk(inst), Trk(mut m_token), Trk(opt_token)) = Y::Instance::initialize(
+            #[verus::proof] let (Trk(inst), Trk(mut m_token), Trk(opt_token)) = Y::Instance::initialize(
                 map![spec_literal_int("1") => Goo::Bar],
                 Option::Some(Goo::Bar),
                 p_m,
@@ -5796,26 +5796,26 @@ test_verify_one_file! {
             );
 
             assert(m_token.dom().contains(spec_literal_int("1")));
-            #[proof] let kv = m_token.tracked_remove(spec_literal_int("1"));
-            #[proof] let o = match opt_token {
+            #[verus::proof] let kv = m_token.tracked_remove(spec_literal_int("1"));
+            #[verus::proof] let o = match opt_token {
                 Option::None => proof_from_false(),
                 Option::Some(t) => t,
             };
 
             inst.tr7(spec_literal_int("1"), &kv, &o);
 
-            #[proof] let wi = inst.tr1(o);
+            #[verus::proof] let wi = inst.tr1(o);
             assert(equal(wi, Goo::Bar));
 
-            #[proof] let wi2 = inst.tr4(spec_literal_int("1"), kv);
+            #[verus::proof] let wi2 = inst.tr4(spec_literal_int("1"), kv);
             assert(equal(wi2, Goo::Bar));
         }
 
         fn test_inst2() {
-            #[proof] let mut p_m = Map::tracked_empty();
+            #[verus::proof] let mut p_m = Map::tracked_empty();
             p_m.tracked_insert(spec_literal_int("1"), Goo::Qux(8));
 
-            #[proof] let (Trk(inst), Trk(mut m_token), Trk(opt_token)) = Y::Instance::initialize(
+            #[verus::proof] let (Trk(inst), Trk(mut m_token), Trk(opt_token)) = Y::Instance::initialize(
                 map![spec_literal_int("1") => Goo::Qux(8)],
                 Option::Some(Goo::Qux(8)),
                 p_m,
@@ -5823,26 +5823,26 @@ test_verify_one_file! {
             );
 
             assert(m_token.dom().contains(spec_literal_int("1")));
-            #[proof] let kv = m_token.tracked_remove(spec_literal_int("1"));
-            #[proof] let o = match opt_token {
+            #[verus::proof] let kv = m_token.tracked_remove(spec_literal_int("1"));
+            #[verus::proof] let o = match opt_token {
                 Option::None => proof_from_false(),
                 Option::Some(t) => t,
             };
 
             inst.tr8(spec_literal_int("1"), &kv, &o);
 
-            #[proof] let wi = inst.tr2(o);
+            #[verus::proof] let wi = inst.tr2(o);
             assert(equal(wi, Goo::Qux(8)));
 
-            #[proof] let wi2 = inst.tr5(spec_literal_int("1"), kv);
+            #[verus::proof] let wi2 = inst.tr5(spec_literal_int("1"), kv);
             assert(equal(wi2, Goo::Qux(8)));
         }
 
         fn test_inst3() {
-            #[proof] let mut p_m = Map::tracked_empty();
+            #[verus::proof] let mut p_m = Map::tracked_empty();
             p_m.tracked_insert(spec_literal_int("1"), Goo::Tal(8, 9));
 
-            #[proof] let (Trk(inst), Trk(mut m_token), Trk(opt_token)) = Y::Instance::initialize(
+            #[verus::proof] let (Trk(inst), Trk(mut m_token), Trk(opt_token)) = Y::Instance::initialize(
                 map![spec_literal_int("1") => Goo::Tal(8, 9)],
                 Option::Some(Goo::Tal(8, 9)),
                 p_m,
@@ -5850,55 +5850,55 @@ test_verify_one_file! {
             );
 
             assert(m_token.dom().contains(spec_literal_int("1")));
-            #[proof] let kv = m_token.tracked_remove(spec_literal_int("1"));
-            #[proof] let o = match opt_token {
+            #[verus::proof] let kv = m_token.tracked_remove(spec_literal_int("1"));
+            #[verus::proof] let o = match opt_token {
                 Option::None => proof_from_false(),
                 Option::Some(t) => t,
             };
 
             inst.tr9(spec_literal_int("1"), &kv, &o);
 
-            #[proof] let wi = inst.tr3(o);
+            #[verus::proof] let wi = inst.tr3(o);
             assert(equal(wi, Goo::Tal(8, 9)));
 
-            #[proof] let wi2 = inst.tr6(spec_literal_int("1"), kv);
+            #[verus::proof] let wi2 = inst.tr6(spec_literal_int("1"), kv);
             assert(equal(wi2, Goo::Tal(8, 9)));
         }
 
         fn test_precondition_remove1(inst: Y::Instance, t: Y::opt)
         {
           requires(equal(t.view().instance, inst));
-          #[proof] let k = inst.tr1(t); // FAILS
+          #[verus::proof] let k = inst.tr1(t); // FAILS
         }
 
         fn test_precondition_remove2(inst: Y::Instance, t: Y::opt)
         {
           requires(equal(t.view().instance, inst));
-          #[proof] let k = inst.tr2(t); // FAILS
+          #[verus::proof] let k = inst.tr2(t); // FAILS
         }
 
         fn test_precondition_remove3(inst: Y::Instance, t: Y::opt)
         {
           requires(equal(t.view().instance, inst));
-          #[proof] let k = inst.tr3(t); // FAILS
+          #[verus::proof] let k = inst.tr3(t); // FAILS
         }
 
         fn test_precondition_map_remove1(inst: Y::Instance, t: Y::m)
         {
           requires(equal(t.view().instance, inst) && t.view().key == spec_literal_int("1"));
-          #[proof] let k = inst.tr4(spec_literal_int("1"), t); // FAILS
+          #[verus::proof] let k = inst.tr4(spec_literal_int("1"), t); // FAILS
         }
 
         fn test_precondition_map_remove2(inst: Y::Instance, t: Y::m)
         {
           requires(equal(t.view().instance, inst) && t.view().key == spec_literal_int("1"));
-          #[proof] let k = inst.tr5(spec_literal_int("1"), t); // FAILS
+          #[verus::proof] let k = inst.tr5(spec_literal_int("1"), t); // FAILS
         }
 
         fn test_precondition_map_remove3(inst: Y::Instance, t: Y::m)
         {
           requires(equal(t.view().instance, inst) && t.view().key == spec_literal_int("1"));
-          #[proof] let k = inst.tr6(spec_literal_int("1"), t); // FAILS
+          #[verus::proof] let k = inst.tr6(spec_literal_int("1"), t); // FAILS
         }
 
         fn test_precondition_have1(inst: Y::Instance, t: Y::opt, u: Y::m)
@@ -5906,7 +5906,7 @@ test_verify_one_file! {
           requires(equal(t.view().instance, inst) && equal(u.view().instance, inst) && u.view().key == spec_literal_int("1")
               && equal(t.view().value, Goo::Bar)
           );
-          #[proof] let k = inst.tr7(spec_literal_int("1"), &u, &t); // FAILS
+          #[verus::proof] let k = inst.tr7(spec_literal_int("1"), &u, &t); // FAILS
         }
 
         fn test_precondition_have2(inst: Y::Instance, t: Y::opt, u: Y::m)
@@ -5914,14 +5914,14 @@ test_verify_one_file! {
           requires(equal(t.view().instance, inst) && equal(u.view().instance, inst) && u.view().key == spec_literal_int("1")
               && equal(u.view().value, Goo::Bar)
           );
-          #[proof] let k = inst.tr7(spec_literal_int("1"), &u, &t); // FAILS
+          #[verus::proof] let k = inst.tr7(spec_literal_int("1"), &u, &t); // FAILS
         }
 
         fn test_precondition_have3(inst: Y::Instance, t: Y::opt, u: Y::m)
         {
           requires(equal(t.view().instance, inst) && equal(u.view().instance, inst) && u.view().key == spec_literal_int("1")
               && equal(u.view().value, t.view().value));
-          #[proof] let k = inst.tr8(spec_literal_int("1"), &u, &t); // FAILS
+          #[verus::proof] let k = inst.tr8(spec_literal_int("1"), &u, &t); // FAILS
         }
 
         verus!{
@@ -6153,37 +6153,37 @@ test_verify_one_file! {
         }
 
         fn test_inst1() {
-            #[proof] let (Trk(inst), Trk(token_f)) = Y::Instance::init_false();
+            #[verus::proof] let (Trk(inst), Trk(token_f)) = Y::Instance::init_false();
             assert(token_f.is_None());
 
-            #[proof] let tok = inst.tr_add();
+            #[verus::proof] let tok = inst.tr_add();
             assert(equal(tok.view().instance, inst));
             inst.tr_have(&tok);
             inst.tr_remove(tok);
 
-            #[proof] let opt_tok = inst.tr_add_gen(true);
+            #[verus::proof] let opt_tok = inst.tr_add_gen(true);
             assert(opt_tok.is_Some());
             assert(equal(opt_tok.get_Some_0().view().instance, inst));
             inst.tr_have_gen(true, &opt_tok);
             inst.tr_remove_gen(true, opt_tok);
 
-            #[proof] let opt_tok = inst.tr_add_gen(false);
+            #[verus::proof] let opt_tok = inst.tr_add_gen(false);
             assert(opt_tok.is_None());
             inst.tr_have_gen(false, &opt_tok);
             inst.tr_remove_gen(false, opt_tok);
         }
 
         fn test_inst1_fail() {
-            #[proof] let (Trk(inst), Trk(token_f)) = Y::Instance::init_false();
+            #[verus::proof] let (Trk(inst), Trk(token_f)) = Y::Instance::init_false();
             assert(token_f.is_None());
 
-            #[proof] let opt_tok = inst.tr_add_gen(false);
+            #[verus::proof] let opt_tok = inst.tr_add_gen(false);
             assert(opt_tok.is_None());
             inst.tr_have_gen(true, &opt_tok);   // FAILS
         }
 
         fn test_inst2() {
-            #[proof] let (Trk(inst), Trk(token_t)) = Y::Instance::init_true();
+            #[verus::proof] let (Trk(inst), Trk(token_t)) = Y::Instance::init_true();
             assert(token_t.is_Some());
             assert(equal(token_t.get_Some_0().view().instance, inst));
         }
@@ -6271,7 +6271,7 @@ test_verify_one_file! {
 
         }
 
-        #[proof]
+        #[verus::proof]
         fn correct_tr(pre: Y::State, post: Y::State, x: bool) {
             ensures([
                 rel_tr1(pre, post) == Y::State::tr_add(pre, post),
@@ -6287,37 +6287,37 @@ test_verify_one_file! {
         }
 
         fn test_inst1() {
-            #[proof] let (Trk(inst), Trk(token_f)) = Y::Instance::init_false();
+            #[verus::proof] let (Trk(inst), Trk(token_f)) = Y::Instance::init_false();
             assert(token_f.is_None());
 
-            #[proof] let tok = inst.tr_add();
+            #[verus::proof] let tok = inst.tr_add();
             assert(equal(tok.view().instance, inst));
             inst.tr_have(&tok);
 
-            #[proof] let tok1 = tok.clone();
+            #[verus::proof] let tok1 = tok.clone();
             assert(equal(tok, tok1));
 
-            #[proof] let opt_tok = inst.tr_add_gen(true);
+            #[verus::proof] let opt_tok = inst.tr_add_gen(true);
             assert(opt_tok.is_Some());
             assert(equal(opt_tok.get_Some_0().view().instance, inst));
             inst.tr_have_gen(true, &opt_tok);
 
-            #[proof] let opt_tok = inst.tr_add_gen(false);
+            #[verus::proof] let opt_tok = inst.tr_add_gen(false);
             assert(opt_tok.is_None());
             inst.tr_have_gen(false, &opt_tok);
         }
 
         fn test_inst1_fail() {
-            #[proof] let (Trk(inst), Trk(token_f)) = Y::Instance::init_false();
+            #[verus::proof] let (Trk(inst), Trk(token_f)) = Y::Instance::init_false();
             assert(token_f.is_None());
 
-            #[proof] let opt_tok = inst.tr_add_gen(false);
+            #[verus::proof] let opt_tok = inst.tr_add_gen(false);
             assert(opt_tok.is_None());
             inst.tr_have_gen(true, &opt_tok);   // FAILS
         }
 
         fn test_inst2() {
-            #[proof] let (Trk(inst), Trk(token_t)) = Y::Instance::init_true();
+            #[verus::proof] let (Trk(inst), Trk(token_t)) = Y::Instance::init_true();
             assert(token_t.is_Some());
             assert(equal(token_t.get_Some_0().view().instance, inst));
         }
@@ -6381,23 +6381,23 @@ test_verify_one_file! {
         }
 
         fn test_inst() {
-            #[proof] let (Trk(inst), Trk(t1)) = Y::Instance::initialize();
+            #[verus::proof] let (Trk(inst), Trk(t1)) = Y::Instance::initialize();
             assert(t1.view().count == spec_literal_nat("9"));
 
-            #[proof] let t2 = t1.weaken(spec_literal_nat("2"));
+            #[verus::proof] let t2 = t1.weaken(spec_literal_nat("2"));
 
             inst.tr_have(&t2);
 
-            #[proof] let t4 = inst.tr_add();
+            #[verus::proof] let t4 = inst.tr_add();
             assert(t4.view().count == spec_literal_nat("2"));
 
-            #[proof] let t2_clone = t2.clone();
+            #[verus::proof] let t2_clone = t2.clone();
             assert(equal(t2, t2_clone));
         }
 
         fn test_weaken_fail() {
-            #[proof] let (Trk(inst), Trk(t1)) = Y::Instance::initialize();
-            #[proof] let t2 = t1.weaken(spec_literal_nat("800")); // FAILS
+            #[verus::proof] let (Trk(inst), Trk(t1)) = Y::Instance::initialize();
+            #[verus::proof] let t2 = t1.weaken(spec_literal_nat("800")); // FAILS
         }
     } => Err(e) => assert_fails(e, 1)
 }
@@ -6517,7 +6517,7 @@ test_verify_one_file! {
 
         }
 
-        #[proof]
+        #[verus::proof]
         fn correct_tr(pre: Y::State, post: Y::State) {
             ensures([
                 rel_tr1(pre, post) == Y::State::tr_add(pre, post),
@@ -6536,22 +6536,22 @@ test_verify_one_file! {
             ]);
         }
 
-        #[proof]
+        #[verus::proof]
         fn test_inst1() {
-            #[proof] let (Trk(inst), Trk(token_f)) = Y::Instance::initialize();
+            #[verus::proof] let (Trk(inst), Trk(token_f)) = Y::Instance::initialize();
             assert(Set::empty().insert(spec_literal_int("19")).contains(spec_literal_int("19")));
             assert(token_f.dom().contains(spec_literal_int("19")));
             assert(equal(token_f.index(spec_literal_int("19")).view(), Y::token![
                 inst => b => spec_literal_int("19")
             ]));
 
-            #[proof] let token1 = inst.tr_add();
+            #[verus::proof] let token1 = inst.tr_add();
             assert(equal(token1.view().instance, inst));
             assert(token1.view().key == spec_literal_int("5"));
             inst.tr_have(&token1);
             inst.tr_remove(token1);
 
-            #[proof] let token_set = inst.tr_add_gen();
+            #[verus::proof] let token_set = inst.tr_add_gen();
             assert(Set::empty().insert(spec_literal_int("6")).contains(spec_literal_int("6")));
             assert(token_set.dom().contains(spec_literal_int("6")));
             assert(equal(token_set.index(spec_literal_int("6")).view(), Y::token![
@@ -6642,7 +6642,7 @@ test_verify_one_file! {
 
         }
 
-        #[proof]
+        #[verus::proof]
         fn correct_tr(pre: Y::State, post: Y::State) {
             ensures([
                 rel_tr1(pre, post) == Y::State::tr_add(pre, post),
@@ -6657,16 +6657,16 @@ test_verify_one_file! {
             ]);
         }
 
-        #[proof]
+        #[verus::proof]
         fn test_inst1() {
-            #[proof] let (Trk(inst), Trk(token_f)) = Y::Instance::initialize();
+            #[verus::proof] let (Trk(inst), Trk(token_f)) = Y::Instance::initialize();
             assert(Set::empty().insert(spec_literal_int("19")).contains(spec_literal_int("19")));
             assert(token_f.dom().contains(spec_literal_int("19")));
             assert(equal(token_f.index(spec_literal_int("19")).view(), Y::token![
                 inst => b => spec_literal_int("19")
             ]));
 
-            #[proof] let token1 = inst.tr_add();
+            #[verus::proof] let token1 = inst.tr_add();
             assert(equal(token1.view().instance, inst));
             assert(token1.view().key == spec_literal_int("5"));
             inst.tr_have(&token1);
@@ -6674,7 +6674,7 @@ test_verify_one_file! {
             let token1_clone = token1.clone();
             assert(equal(token1_clone, token1));
 
-            #[proof] let token_set = inst.tr_add_gen();
+            #[verus::proof] let token_set = inst.tr_add_gen();
             assert(Set::empty().insert(spec_literal_int("6")).contains(spec_literal_int("6")));
             assert(token_set.dom().contains(spec_literal_int("6")));
             assert(equal(token_set.index(spec_literal_int("6")).view(), Y::token![
@@ -6727,25 +6727,25 @@ test_verify_one_file! {
             }
         }}
 
-        #[proof] fn test1() {
-            #[proof] let (Trk(inst), Trk(x), Trk(mut y)) = Y::Instance::initialize(spec_literal_int("0"), spec_literal_int("0"));
+        #[verus::proof] fn test1() {
+            #[verus::proof] let (Trk(inst), Trk(x), Trk(mut y)) = Y::Instance::initialize(spec_literal_int("0"), spec_literal_int("0"));
             inst.upd(&x, &mut y);
             assert(y.view().value == spec_literal_int("1"));
         }
 
-        #[proof] fn test2() {
-            #[proof] let (Trk(inst), Trk(x), Trk(mut y)) = Y::Instance::initialize(spec_literal_int("12"), spec_literal_int("0"));
+        #[verus::proof] fn test2() {
+            #[verus::proof] let (Trk(inst), Trk(x), Trk(mut y)) = Y::Instance::initialize(spec_literal_int("12"), spec_literal_int("0"));
             inst.upd(&x, &mut y);
             assert(y.view().value == spec_literal_int("2"));
         }
 
-        #[proof] fn test3() {
-            #[proof] let (Trk(inst), Trk(x), Trk(mut y)) = Y::Instance::initialize(spec_literal_int("0"), spec_literal_int("2"));
+        #[verus::proof] fn test3() {
+            #[verus::proof] let (Trk(inst), Trk(x), Trk(mut y)) = Y::Instance::initialize(spec_literal_int("0"), spec_literal_int("2"));
             inst.req(&x, &mut y); // FAILS
         }
 
-        #[proof] fn test4() {
-            #[proof] let (Trk(inst), Trk(x), Trk(mut y)) = Y::Instance::initialize(spec_literal_int("1"), spec_literal_int("1"));
+        #[verus::proof] fn test4() {
+            #[verus::proof] let (Trk(inst), Trk(x), Trk(mut y)) = Y::Instance::initialize(spec_literal_int("1"), spec_literal_int("1"));
             inst.req(&x, &mut y); // FAILS
         }
 

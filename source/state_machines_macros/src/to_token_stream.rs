@@ -274,7 +274,7 @@ pub fn output_primary_stuff(
             if trans.kind == TransitionKind::Init {
                 let args = post_params(&trans.params);
                 rel_fn = quote! {
-                    #[spec]
+                    #[verus::spec]
                     #[verifier(publish)]
                     pub fn #name (#args) -> ::core::primitive::bool {
                         ::builtin_macros::verus_proof_expr!({ #f })
@@ -283,7 +283,7 @@ pub fn output_primary_stuff(
             } else {
                 let args = pre_post_params(&trans.params);
                 rel_fn = quote! {
-                    #[spec]
+                    #[verus::spec]
                     #[verifier(publish)]
                     pub fn #name (#args) -> ::core::primitive::bool {
                         ::builtin_macros::verus_proof_expr!({ #f })
@@ -304,7 +304,7 @@ pub fn output_primary_stuff(
             let f = to_relation(&simplified_body, false /* weak */);
 
             let rel_fn = quote! {
-                #[spec]
+                #[verus::spec]
                 #[verifier(publish)]
                 pub fn #name (#params) -> ::core::primitive::bool {
                     ::builtin_macros::verus_proof_expr!({ #f })
@@ -328,7 +328,7 @@ pub fn output_primary_stuff(
                 None => TokenStream::new(),
             };
             impl_stream.extend(quote! {
-                #[proof]
+                #[verus::proof]
                 pub fn #name(#params) {
                     crate::pervasive::assume(pre.invariant());
                     ::builtin_macros::verus_proof_expr!({
@@ -439,7 +439,7 @@ fn output_step_datatype(
         impl_stream.extend(quote! {
             #[verifier(opaque)]
             #[verifier(publish)]
-            #[spec]
+            #[verus::spec]
             pub fn init_by(post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
                 match step {
                     #(#arms)*
@@ -450,7 +450,7 @@ fn output_step_datatype(
 
             #[verifier(opaque)]
             #[verifier(publish)]
-            #[spec]
+            #[verus::spec]
             pub fn init(post: #self_ty, #label_param) -> ::core::primitive::bool {
                 ::builtin::exists(|step: #step_ty| Self::init_by(post, #label_arg step))
             }
@@ -479,7 +479,7 @@ fn output_step_datatype(
         impl_stream.extend(quote!{
             #[verifier(opaque)]
             #[verifier(publish)]
-            #[spec]
+            #[verus::spec]
             pub fn next_by(pre: #self_ty, post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
                 match step {
                     #(#arms)*
@@ -489,14 +489,14 @@ fn output_step_datatype(
 
             #[verifier(opaque)]
             #[verifier(publish)]
-            #[spec]
+            #[verus::spec]
             pub fn next(pre: #self_ty, post: #self_ty, #label_param) -> ::core::primitive::bool {
                 ::builtin::exists(|step: #step_ty| Self::next_by(pre, post, #label_arg step))
             }
 
             #[verifier(opaque)]
             #[verifier(publish)]
-            #[spec]
+            #[verus::spec]
             pub fn next_strong_by(pre: #self_ty, post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
                 match step {
                     #(#arms_strong)*
@@ -506,7 +506,7 @@ fn output_step_datatype(
 
             #[verifier(opaque)]
             #[verifier(publish)]
-            #[spec]
+            #[verus::spec]
             pub fn next_strong(pre: #self_ty, post: #self_ty, #label_param) -> ::core::primitive::bool {
                 ::builtin::exists(|step: #step_ty| Self::next_strong_by(pre, post, #label_arg step))
             }
@@ -534,7 +534,7 @@ fn output_step_datatype(
                 //let step_args = just_args(&trans.params);
                 show_stream.extend(quote! {
                     #[verifier(external_body)]
-                    #[proof]
+                    #[verus::proof]
                     pub fn #tr_name#gen1(#params) #gen2 {
                         ::builtin::requires(super::State::#tr_name(#args));
                         ::builtin::ensures(super::State::init(post #label_arg));
@@ -551,7 +551,7 @@ fn output_step_datatype(
                 //let step_args = just_args(&trans.params);
                 show_stream.extend(quote! {
                     #[verifier(external_body)]
-                    #[proof]
+                    #[verus::proof]
                     pub fn #tr_name#gen1(#params) #gen2 {
                         ::builtin::requires(super::State::#tr_name(#args));
                         ::builtin::ensures(super::State::next(pre, post #label_arg));
@@ -800,7 +800,7 @@ fn output_other_fns(
         quote! { #(self.#inv_names())&&* }
     };
     impl_stream.extend(quote! {
-        #[spec]
+        #[verus::spec]
         #[verifier(publish)]
         pub fn invariant(&self) -> ::core::primitive::bool {
             #conj
@@ -825,7 +825,7 @@ fn output_other_fns(
         impl_stream.extend(quote! {
             #[verifier(custom_req_err(#error_msg))]
             #[verifier(external_body)]
-            #[proof]
+            #[verus::proof]
             fn #lemma_msg_ident(s: #self_ty) {
                 requires(s.#inv_ident());
                 ensures(s.#inv_ident());

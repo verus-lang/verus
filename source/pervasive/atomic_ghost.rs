@@ -50,7 +50,7 @@ macro_rules! declare_atomic_type {
             pub patomic: $patomic_ty,
 
             #[doc(hidden)]
-            #[proof] pub atomic_inv: AtomicInvariant<(K, int), ($perm_ty, G), $atomic_pred_ty<Pred>>,
+            #[verus::proof] pub atomic_inv: AtomicInvariant<(K, int), ($perm_ty, G), $atomic_pred_ty<Pred>>,
         }
 
         impl<K, G, Pred> $at_ident<K, G, Pred>
@@ -69,7 +69,7 @@ macro_rules! declare_atomic_type {
             }
 
             #[inline(always)]
-            pub fn new(#[spec] k: K, u: $value_ty, #[proof] g: G) -> Self {
+            pub fn new(#[verus::spec] k: K, u: $value_ty, #[verus::proof] g: G) -> Self {
                 #[cfg(not(verus_macro_erase_ghost))]
                 requires(Pred::atomic_inv(k, u, g));
                 #[cfg(not(verus_macro_erase_ghost))]
@@ -78,8 +78,8 @@ macro_rules! declare_atomic_type {
                 let (patomic, Proof(perm)) = $patomic_ty::new(u);
                 #[cfg(not(verus_macro_erase_ghost))]
                 {
-                    #[proof] let pair = (perm, g);
-                    #[proof] let atomic_inv = AtomicInvariant::new(
+                    #[verus::proof] let pair = (perm, g);
+                    #[verus::proof] let atomic_inv = AtomicInvariant::new(
                         (k, patomic.id()),
                         pair,
                         spec_literal_int("0"));
@@ -349,11 +349,11 @@ macro_rules! atomic_with_ghost_store {
             let atomic = &$e;
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
                 #[allow(unused_mut)]
-                #[proof] let (mut perm, mut $g) = pair;
-                #[spec] let $prev = perm.view().value;
+                #[verus::proof] let (mut perm, mut $g) = pair;
+                #[verus::spec] let $prev = perm.view().value;
                 atomic.patomic.store(&mut perm, $operand);
-                #[spec] let $next = perm.view().value;
-                #[spec] let $res = ();
+                #[verus::spec] let $next = perm.view().value;
+                #[verus::spec] let $res = ();
 
                 { $b }
 
@@ -372,11 +372,11 @@ macro_rules! atomic_with_ghost_load {
             let atomic = &$e;
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
                 #[allow(unused_mut)]
-                #[proof] let (perm, mut $g) = pair;
+                #[verus::proof] let (perm, mut $g) = pair;
                 result = atomic.patomic.load(&perm);
-                #[spec] let $res = result;
-                #[spec] let $prev = result;
-                #[spec] let $next = result;
+                #[verus::spec] let $res = result;
+                #[verus::spec] let $prev = result;
+                #[verus::spec] let $next = result;
 
                 { $b }
 
@@ -395,10 +395,10 @@ macro_rules! atomic_with_ghost_no_op {
             let atomic = &$e;
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
                 #[allow(unused_mut)]
-                #[proof] let (perm, mut $g) = pair;
-                #[spec] let $res = result;
-                #[spec] let $prev = result;
-                #[spec] let $next = result;
+                #[verus::proof] let (perm, mut $g) = pair;
+                #[verus::spec] let $res = result;
+                #[verus::spec] let $prev = result;
+                #[verus::spec] let $next = result;
 
                 { $b }
 
@@ -417,11 +417,11 @@ macro_rules! atomic_with_ghost_update_with_1_operand {
             let atomic = &$e;
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
                 #[allow(unused_mut)]
-                #[proof] let (mut perm, mut $g) = pair;
-                #[spec] let $prev = perm.view().value;
+                #[verus::proof] let (mut perm, mut $g) = pair;
+                #[verus::spec] let $prev = perm.view().value;
                 result = atomic.patomic.$name(&mut perm, $operand);
-                #[spec] let $res = result;
-                #[spec] let $next = perm.view().value;
+                #[verus::spec] let $res = result;
+                #[verus::spec] let $next = perm.view().value;
 
                 { $b }
 
@@ -441,11 +441,11 @@ macro_rules! atomic_with_ghost_update_with_2_operand {
             let atomic = &$e;
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
                 #[allow(unused_mut)]
-                #[proof] let (mut perm, mut $g) = pair;
-                #[spec] let $prev = perm.view().value;
+                #[verus::proof] let (mut perm, mut $g) = pair;
+                #[verus::spec] let $prev = perm.view().value;
                 result = atomic.patomic.$name(&mut perm, $operand1, $operand2);
-                #[spec] let $res = result;
-                #[spec] let $next = perm.view().value;
+                #[verus::spec] let $res = result;
+                #[verus::spec] let $next = perm.view().value;
 
                 { $b }
 
@@ -465,14 +465,14 @@ macro_rules! atomic_with_ghost_update_fetch_add {
             let atomic = &$e;
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
                 #[allow(unused_mut)]
-                #[proof] let (mut perm, mut $g) = pair;
-                #[spec] let $prev = ::builtin::spec_cast_integer::<_, int>(perm.view().value);
+                #[verus::proof] let (mut perm, mut $g) = pair;
+                #[verus::spec] let $prev = ::builtin::spec_cast_integer::<_, int>(perm.view().value);
                 let op = $operand;
-                #[spec] let computed =
+                #[verus::spec] let computed =
                     ::builtin::spec_cast_integer::<_, int>(perm.view().value) +
                     ::builtin::spec_cast_integer::<_, int>(op);
-                #[spec] let $res = computed;
-                #[spec] let $next = computed;
+                #[verus::spec] let $res = computed;
+                #[verus::spec] let $next = computed;
 
                 { $b }
 
@@ -494,14 +494,14 @@ macro_rules! atomic_with_ghost_update_fetch_sub {
             let atomic = &$e;
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
                 #[allow(unused_mut)]
-                #[proof] let (mut perm, mut $g) = pair;
-                #[spec] let $prev = ::builtin::spec_cast_integer::<_, int>(perm.view().value);
+                #[verus::proof] let (mut perm, mut $g) = pair;
+                #[verus::spec] let $prev = ::builtin::spec_cast_integer::<_, int>(perm.view().value);
                 let op = $operand;
-                #[spec] let computed =
+                #[verus::spec] let computed =
                     ::builtin::spec_cast_integer::<_, int>(perm.view().value) -
                     ::builtin::spec_cast_integer::<_, int>(op);
-                #[spec] let $res = computed;
-                #[spec] let $next = computed;
+                #[verus::spec] let $res = computed;
+                #[verus::spec] let $next = computed;
 
                 { $b }
 

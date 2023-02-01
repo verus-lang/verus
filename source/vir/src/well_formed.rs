@@ -610,12 +610,12 @@ fn check_function(
     if function.x.publish.is_some() && function.x.mode != Mode::Spec {
         return err_str(
             &function.span,
-            "function is marked #[verifier(publish)] but not marked #[spec]",
+            "function is marked #[verifier(publish)] but not marked #[verus::spec]",
         );
     }
 
     if function.x.is_main() && function.x.mode != Mode::Exec {
-        return err_str(&function.span, "`main` function should be #[exec]");
+        return err_str(&function.span, "`main` function should be #[verus::exec]");
     }
 
     if function.x.publish.is_some() && function.x.visibility.is_private {

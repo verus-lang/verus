@@ -69,7 +69,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_enum_1 STRUCTS.to_string() + code_str! {
-        #[proof]
+        #[verus::proof]
         fn test_enum_1(passengers: int) {
             let t = Vehicle::Train(true);
             let c1 = Vehicle::Car(Car { passengers, four_doors: true });
@@ -100,7 +100,7 @@ test_verify_one_file! {
             B(nat),
         }
 
-        #[spec]
+        #[verus::spec]
         fn is_a(l: AB) -> bool {
             l == AB::A
         }
@@ -179,7 +179,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_spec_adt_ctor code! {
-        #[spec]
+        #[verus::spec]
         struct SpecStruct { a: nat }
 
         fn test() {
@@ -312,7 +312,7 @@ test_verify_one_file! {
         }
 
         impl <T> Maybe<T> {
-            #[doc(hidden)] #[spec] #[verifier(is_variant)] #[allow(non_snake_case)]
+            #[doc(hidden)] #[verus::spec] #[verus::verifier(is_variant)] #[allow(non_snake_case)]
             fn is_Thing(&self) -> bool { ::core::panicking::panic("not implemented") }
         }
     } => Err(e) => assert_vir_error_msg(e, "unrecognized verifier attribute")
@@ -444,7 +444,7 @@ test_verify_one_file! {
         }
 
         impl E {
-            #[spec]
+            #[verus::spec]
             pub fn is_One_le(self, v: u64) -> bool {
                 self.is_One() && self.get_One_0() <= v
             }
@@ -658,7 +658,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_field_update_mode_fail_1 FIELD_UPDATE.to_string() + code_str! {
-        fn test(#[spec] s: S) {
+        fn test(#[verus::spec] s: S) {
             s.a = s.a + 1;
         }
     } => Err(e) => assert_vir_error_msg(e, "cannot assign to non-mut parameter")
@@ -666,7 +666,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_field_update_mode_fail_2 FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + code_str! {
-        fn test(#[spec] t: T) {
+        fn test(#[verus::spec] t: T) {
             t.s.a = t.s.a + 1;
         }
     } => Err(e) => assert_vir_error_msg(e, "cannot assign to non-mut parameter")
@@ -675,13 +675,13 @@ test_verify_one_file! {
 const FIELD_UPDATE_MODES: &str = code_str! {
     #[derive(PartialEq, Eq, Structural)]
     struct S {
-        #[spec] a: nat,
+        #[verus::spec] a: nat,
         b: i32,
     }
 
     #[derive(PartialEq, Eq, Structural)]
     struct T {
-        #[proof] s: S,
+        #[verus::proof] s: S,
         c: bool,
     }
 };
@@ -714,7 +714,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_match_empty_branch ENUM_S.to_string() + code_str! {
-        fn f(#[spec] s: S) {
+        fn f(#[verus::spec] s: S) {
             match s {
                 S::V1 => assert(s.is_V1()),
                 S::V2 => (),
@@ -727,7 +727,7 @@ test_verify_one_file! {
     #[test] test_if_is_variant_regression_125 code! {
         use crate::pervasive::option::*;
 
-        #[proof]
+        #[verus::proof]
         fn foo() {
             let x = (if (Option::Some(5)).is_Some() { 0 } else { 1 });
         }

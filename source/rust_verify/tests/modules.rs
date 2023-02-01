@@ -52,8 +52,8 @@ const M1_OPAQUE: &str = code_str! {
             pub four_doors: bool,
         }
 
-        #[spec]
-        #[verifier(publish)] #[verifier(opaque_outside_module)]
+        #[verus::spec]
+        #[verus::verifier(publish)] #[verus::verifier(opaque_outside_module)]
         pub fn is_four_doors(c: Car) -> bool {
             c.four_doors
         }
@@ -93,7 +93,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_mod_adt_no_verify code! {
-        #[verifier(external_body)]
+        #[verus::verifier(external_body)]
         #[derive(PartialEq, Eq)]
         pub struct Car {
             pub four_doors: bool,
@@ -107,7 +107,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_mod_child_ok code! {
-        #[spec]
+        #[verus::spec]
         fn f() -> bool {
             true
         }
@@ -123,7 +123,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_mod_sibling_fail code! {
         mod M0 {
-            #[spec]
+            #[verus::spec]
             pub fn f() -> bool {
                 true
             }
@@ -140,7 +140,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_requires_private code! {
         mod M1 {
-            #[spec]
+            #[verus::spec]
             fn f() -> bool { true }
 
             pub fn g() {
@@ -158,7 +158,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_publish_but_not_marked_pub verus_code! {
-        #[spec]
+        #[verus::spec]
         #[verifier(publish)]
         fn bar() -> u64 {
             7
@@ -168,36 +168,36 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] publish_proof_fail code! {
-        #[proof]
-        #[verifier(publish)]
+        #[verus::proof]
+        #[verus::verifier(publish)]
         pub fn bar() {
         }
-    } => Err(err) => assert_vir_error_msg(err, "function is marked #[verifier(publish)] but not marked #[spec]")
+    } => Err(err) => assert_vir_error_msg(err, "function is marked #[verifier(publish)] but not marked #[verus::spec]")
 }
 
 test_verify_one_file! {
     #[test] publish_exec_fail code! {
-        #[verifier(publish)]
+        #[verus::verifier(publish)]
         pub fn bar() {
         }
-    } => Err(err) => assert_vir_error_msg(err, "function is marked #[verifier(publish)] but not marked #[spec]")
+    } => Err(err) => assert_vir_error_msg(err, "function is marked #[verifier(publish)] but not marked #[verus::spec]")
 }
 
 test_verify_one_file! {
     #[test] main_proof_fail code! {
-        #[proof]
+        #[verus::proof]
         pub fn main() {
         }
-    } => Err(err) => assert_vir_error_msg(err, "`main` function should be #[exec]")
+    } => Err(err) => assert_vir_error_msg(err, "`main` function should be #[verus::exec]")
 }
 
 test_verify_one_file! {
     #[test] main_spec_fail code! {
-        #[spec]
+        #[verus::spec]
         pub fn main() {
             ()
         }
-    } => Err(err) => assert_vir_error_msg(err, "`main` function should be #[exec]")
+    } => Err(err) => assert_vir_error_msg(err, "`main` function should be #[verus::exec]")
 }
 
 test_verify_one_file! {

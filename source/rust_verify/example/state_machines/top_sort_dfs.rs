@@ -171,7 +171,7 @@ struct NodeState {
     visited: bool,
     in_stack: bool,
 
-    #[proof] token: NodeToken,
+    #[verus::proof] token: NodeToken,
 }
 
 impl NodeState {
@@ -204,8 +204,8 @@ struct DfsState {
 
     node_states: Vec<NodeState>,
 
-    #[proof] top_sort_token: TopSort::top_sort<usize>,
-    #[proof] instance: TopSort::Instance<usize>,
+    #[verus::proof] top_sort_token: TopSort::top_sort<usize>,
+    #[verus::proof] instance: TopSort::Instance<usize>,
 }
 
 spec fn valid_stack_i(cur_stack: Seq<usize>, graph: DirectedGraph<usize>, i: int) -> bool {
@@ -318,7 +318,7 @@ fn visit(
     }
 
     if dfs_state.node_states.index(v as usize).visited {
-        #[proof] let tok = match &dfs_state.node_states.index(v as usize).token {
+        #[verus::proof] let tok = match &dfs_state.node_states.index(v as usize).token {
             NodeToken::Visited(tok) => tok.clone(),
             _ => proof_from_false(),
         };
@@ -331,21 +331,21 @@ fn visit(
         token: NodeToken::InProgress,
     };
     dfs_state.node_states.swap(v as usize, &mut node_state_tmp);
-    #[proof] let unvisited = match node_state_tmp.token {
+    #[verus::proof] let unvisited = match node_state_tmp.token {
         NodeToken::Unvisited(unvisited) => unvisited,
         _ => proof_from_false(),
     };
 
     dfs_state.cur_stack.push(v);
 
-    #[spec] let v_spec = v;
+    #[verus::spec] let v_spec = v;
     assert(dfs_state.well_formed(graph)) by {
         assert(forall(|i: int| 0 <= i && i < dfs_state.cur_stack@.len() as int - 2 ==>
             valid_stack_i(old(dfs_state).cur_stack@, graph@, i) ==>
             #[trigger] valid_stack_i(dfs_state.cur_stack@, graph@, i)));
         assert(valid_stack(dfs_state.cur_stack@, graph@));
 
-        #[spec] let v = v_spec;
+        #[verus::spec] let v = v_spec;
         assert forall |i: usize|
             0 <= i && i < dfs_state.node_states@.len() implies
                 dfs_state.node_states@.index(i as int).in_stack == dfs_state.cur_stack@.contains(i)
@@ -355,11 +355,11 @@ fn visit(
                 assert(dfs_state.cur_stack@.contains(i));
             } else {
                 if old(dfs_state).cur_stack@.contains(i) {
-                    #[spec] let j = old(dfs_state).cur_stack@.index_of(i);
+                    #[verus::spec] let j = old(dfs_state).cur_stack@.index_of(i);
                     assert(dfs_state.cur_stack@.index(j) == i);
                 }
                 if dfs_state.cur_stack@.contains(i) {
-                    #[spec] let j = old(dfs_state).cur_stack@.index_of(i);
+                    #[verus::spec] let j = old(dfs_state).cur_stack@.index_of(i);
                     assert(old(dfs_state).cur_stack@.index(j) == i);
                 }
                 assert(dfs_state.cur_stack@.contains(i)
@@ -368,8 +368,8 @@ fn visit(
         }
     }
 
-    #[spec] let extended_cur_stack = dfs_state.cur_stack;
-    #[proof] let mut map_visited_deps: Map<usize, TopSort::visited<usize>> = Map::tracked_empty();
+    #[verus::spec] let extended_cur_stack = dfs_state.cur_stack;
+    #[verus::proof] let mut map_visited_deps: Map<usize, TopSort::visited<usize>> = Map::tracked_empty();
 
     let mut idx: usize = 0;
     while idx < graph.edges.index(v as usize).len()
@@ -382,7 +382,7 @@ fn visit(
             dfs_state.well_formed(graph),
             equal(dfs_state.cur_stack@, extended_cur_stack@),
             forall |idx0: int| 0 <= idx0 && idx0 < idx ==> {
-                #[spec] let w = #[trigger] graph.edges@.index(v as int)@.index(idx0);
+                #[verus::spec] let w = #[trigger] graph.edges@.index(v as int)@.index(idx0);
                 map_visited_deps.dom().contains(w)
                     && equal(map_visited_deps.index(w)@, TopSort::token![ dfs_state.instance => visited => w ])
             },
@@ -400,10 +400,10 @@ fn visit(
             return (false, Trk(None));
         }
 
-        #[spec] let old_map_visited_deps = map_visited_deps;
-        #[spec] let old_idx = idx;
+        #[verus::spec] let old_map_visited_deps = map_visited_deps;
+        #[verus::spec] let old_idx = idx;
 
-        #[proof] let visited = opt_visited.tracked_unwrap();
+        #[verus::proof] let visited = opt_visited.tracked_unwrap();
         map_visited_deps.tracked_insert(w, visited);
 
         idx = idx + 1;
@@ -411,7 +411,7 @@ fn visit(
         assert forall |idx0: int|
             0 <= idx0 && idx0 < idx implies
             ({
-                #[spec] let w = #[trigger] graph.edges@.index(v as int)@.index(idx0);
+                #[verus::spec] let w = #[trigger] graph.edges@.index(v as int)@.index(idx0);
                 map_visited_deps.dom().contains(w)
                     && equal(map_visited_deps.index(w)@, TopSort::token![ dfs_state.instance => visited => w ])
             })
@@ -423,7 +423,7 @@ fn visit(
     dfs_state.cur_stack.pop();
 
     assert(equal(unvisited@.instance, dfs_state.instance));
-    #[proof] let visited = dfs_state.instance.push_into_top_sort(v,
+    #[verus::proof] let visited = dfs_state.instance.push_into_top_sort(v,
         unvisited,
         &map_visited_deps,
         &mut dfs_state.top_sort_token,
@@ -453,8 +453,8 @@ fn visit(
 
 fn init_node_states(
     n: usize,
-    #[proof] instance: TopSort::Instance<usize>,
-    #[proof] unv: Map<usize, TopSort::unvisited<usize>>,
+    #[verus::proof] instance: TopSort::Instance<usize>,
+    #[verus::proof] unv: Map<usize, TopSort::unvisited<usize>>,
 ) -> (node_states: Vec<NodeState>)
     requires
         forall |j: usize| 0 <= j && j < n ==>
@@ -471,7 +471,7 @@ fn init_node_states(
     let mut node_states = Vec::<NodeState>::new();
     let mut i: usize = 0;
 
-    #[proof] let mut unv = unv;
+    #[verus::proof] let mut unv = unv;
 
     while i < n
         invariant
@@ -490,8 +490,8 @@ fn init_node_states(
     {
 
         assert(unv.dom().contains(i));
-        #[proof] let unv1 = unv.tracked_remove(i);
-        //#[spec] let old_node_states = node_states;
+        #[verus::proof] let unv1 = unv.tracked_remove(i);
+        //#[verus::spec] let old_node_states = node_states;
 
         node_states.push(NodeState {
             visited: false,
@@ -501,7 +501,7 @@ fn init_node_states(
 
         i = i + 1;
 
-        /*#[spec] let i_spec = i;
+        /*#[verus::spec] let i_spec = i;
         assert_forall_by(|j: int| {
             requires(0 <= j && j < i);
             ensures(node_states@.index(j).well_formed(j, instance));
@@ -533,7 +533,7 @@ fn compute_top_sort(graph: &ConcreteDirectedGraph) -> TopSortResult
         }
     });
 
-    #[proof] let (Trk(instance), Trk(unv), Trk(_), Trk(top_sort_token))
+    #[verus::proof] let (Trk(instance), Trk(unv), Trk(_), Trk(top_sort_token))
         = TopSort::Instance::<usize>::initialize(graph@);
 
     let mut dfs_state = DfsState {
@@ -545,7 +545,7 @@ fn compute_top_sort(graph: &ConcreteDirectedGraph) -> TopSortResult
         instance,
     };
 
-    #[proof] let mut map_visited_deps: Map<usize, TopSort::visited<usize>> = Map::tracked_empty();
+    #[verus::proof] let mut map_visited_deps: Map<usize, TopSort::visited<usize>> = Map::tracked_empty();
 
     assert_by(dfs_state.well_formed(graph), {
         assert(forall(|i: usize| 0 <= i && i < dfs_state.node_states@.len() ==>
@@ -579,7 +579,7 @@ fn compute_top_sort(graph: &ConcreteDirectedGraph) -> TopSortResult
 
     let DfsState { top_sort, top_sort_token, .. } = dfs_state;
 
-    #[spec] let mut s;
+    #[verus::spec] let mut s;
     proof {
         s = Set::new(|i: usize| 0 <= i && i < graph.edges@.len());
     }

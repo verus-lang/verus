@@ -255,7 +255,7 @@ where
         } else {
             verifier.lock().map_err(|_| ()).and_then(|verifier| {
                 if !verifier.args.no_lifetime {
-                    // Run borrow checker with both #[exec] and #[proof]
+                    // Run borrow checker with both #[verus::exec] and #[verus::proof]
                     let erasure_hints = verifier.erasure_hints.clone().expect("erasure_hints");
                     let mut callbacks = CompilerCallbacksEraseAst {
                         erasure_hints,
@@ -307,7 +307,7 @@ where
         return (verifier, Err(()));
     }
 
-    // Run borrow checker and compiler on #[exec] (if enabled)
+    // Run borrow checker and compiler on #[verus::exec] (if enabled)
     if verifier.args.compile {
         let erasure_hints =
             verifier.erasure_hints.clone().expect("erasure_hints should be initialized").clone();

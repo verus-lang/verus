@@ -470,7 +470,7 @@ struct_with_invariants!{
         head: AtomicU64<_, FifoQueue::head<T>, _>,
         tail: AtomicU64<_, FifoQueue::tail<T>, _>,
 
-        #[proof] instance: FifoQueue::Instance<T>,
+        #[verus::proof] instance: FifoQueue::Instance<T>,
     }
 
     pub closed spec fn wf(&self) -> bool {
@@ -500,7 +500,7 @@ pub struct Producer<T> {
     queue: Arc<Queue<T>>,
     tail: usize,
 
-    #[proof] producer: FifoQueue::producer<T>
+    #[verus::proof] producer: FifoQueue::producer<T>
 }
 
 impl<T> Producer<T> {
@@ -518,7 +518,7 @@ pub struct Consumer<T> {
     queue: Arc<Queue<T>>,
     head: usize,
 
-    #[proof] consumer: FifoQueue::consumer<T>
+    #[verus::proof] consumer: FifoQueue::consumer<T>
 }
 
 impl<T> Consumer<T> {
@@ -544,7 +544,7 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
 
     // Initialize map for the permissions to the cells
     // (keyed by the indices into the vector)
-    #[proof] let mut perms = Map::<nat, cell::PermissionOpt<T>>::tracked_empty();
+    #[verus::proof] let mut perms = Map::<nat, cell::PermissionOpt<T>>::tracked_empty();
 
     while backing_cells_vec.len() < len
         invariant
@@ -559,7 +559,7 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
                     &&
                     perms.index(j)@.value.is_None(),
     {
-        #[spec] let i = backing_cells_vec.len();
+        #[verus::spec] let i = backing_cells_vec.len();
         
         let (cell, cell_perm) = PCell::empty();
         backing_cells_vec.push(cell);
@@ -574,7 +574,7 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
     }
 
     // Vector for ids
-    #[spec] let mut backing_cells_ids;
+    #[verus::spec] let mut backing_cells_ids;
     proof {
         backing_cells_ids = Seq::<CellId>::new(
             backing_cells_vec@.len(),
@@ -582,7 +582,7 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
     }
 
     // Initialize an instance of the FIFO queue
-    #[proof] let (Trk(instance), Trk(head_token), Trk(tail_token), Trk(producer_token), Trk(consumer_token))
+    #[verus::proof] let (Trk(instance), Trk(head_token), Trk(tail_token), Trk(producer_token), Trk(consumer_token))
         = FifoQueue::Instance::initialize(backing_cells_ids, perms, perms);
 
     // Initialize atomics
@@ -636,7 +636,7 @@ impl<T> Producer<T> {
             // the `tail` to this value.
             let next_tail = if self.tail + 1 == len { 0 } else { self.tail + 1 };
 
-            #[proof] let cell_perm: Option<cell::PermissionOpt<T>>;
+            #[verus::proof] let cell_perm: Option<cell::PermissionOpt<T>>;
 
             // Get the current `head` value from the shared atomic.
             let head = atomic_with_ghost!(&queue.head => load();
@@ -647,7 +647,7 @@ impl<T> Producer<T> {
                     // If so, we proceed with the `produce_start` transition
                     // and obtain the cell permission.
                     cell_perm = if head != next_tail as u64 {
-                        #[proof] let cp = queue.instance.produce_start(&head_token, &mut self.producer);
+                        #[verus::proof] let cp = queue.instance.produce_start(&head_token, &mut self.producer);
                         Option::Some(cp)
                     } else {
                         Option::None
@@ -658,7 +658,7 @@ impl<T> Producer<T> {
             // Here's where we "actually" do the `head != next_tail` check:
             if head != next_tail as u64 {
                 // Unwrap the cell_perm from the option.
-                #[proof] let cell_perm = match cell_perm {
+                #[verus::proof] let cell_perm = match cell_perm {
                     Option::Some(cp) => cp,
                     Option::None => { assert(false); proof_from_false() }
                 };
@@ -667,7 +667,7 @@ impl<T> Producer<T> {
                 // from uninitialized to initialized (to the value t).
                 let mut cell_perm = tracked_exec(cell_perm);
                 queue.buffer.index(self.tail).put(&mut cell_perm, t);
-                #[proof] let cell_perm = cell_perm.get();
+                #[verus::proof] let cell_perm = cell_perm.get();
 
                 // Store the updated tail to the shared `tail` atomic,
                 // while performing the `produce_end` transition.
@@ -701,12 +701,12 @@ impl<T> Consumer<T> {
 
             let next_head = if self.head + 1 == len { 0 } else { self.head + 1 };
 
-            #[proof] let cell_perm: Option<cell::PermissionOpt<T>>;
+            #[verus::proof] let cell_perm: Option<cell::PermissionOpt<T>>;
             let tail = atomic_with_ghost!(&queue.tail => load();
                 returning tail;
                 ghost tail_token => {
                     cell_perm = if self.head as u64 != tail {
-                        #[proof] let (_, Trk(cp)) = queue.instance.consume_start(&tail_token, &mut self.consumer);
+                        #[verus::proof] let (_, Trk(cp)) = queue.instance.consume_start(&tail_token, &mut self.consumer);
                         Option::Some(cp)
                     } else {
                         Option::None
@@ -715,13 +715,13 @@ impl<T> Consumer<T> {
             );
 
             if self.head as u64 != tail {
-                #[proof] let cell_perm = match cell_perm {
+                #[verus::proof] let cell_perm = match cell_perm {
                     Option::Some(cp) => cp,
                     Option::None => { assert(false); proof_from_false() }
                 };
                 let mut cell_perm = tracked_exec(cell_perm);
                 let t = queue.buffer.index(self.head).take(&mut cell_perm);
-                #[proof] let cell_perm = cell_perm.get();
+                #[verus::proof] let cell_perm = cell_perm.get();
 
                 atomic_with_ghost!(&queue.head => store(next_head as u64); ghost head_token => {
                     queue.instance.consume_end(cell_perm,

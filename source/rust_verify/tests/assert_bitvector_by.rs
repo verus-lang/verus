@@ -5,7 +5,7 @@ use common::*;
 
 test_verify_one_file! {
     #[test] test1 code! {
-        #[proof]
+        #[verus::proof]
         fn test1(b1: u32) {
             let b2 = !b1;
             assert_bitvector_by({
@@ -51,7 +51,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_fails code! {
-        #[proof]
+        #[verus::proof]
         fn test1_fails(b: u32) {
             assert_bitvector_by({
                 ensures((b << 2) == b*4);
@@ -67,7 +67,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test2_fails code! {
-        #[proof]
+        #[verus::proof]
         fn test2_fails(b1: u32) {
             assert_bitvector_by({
                 requires(b1 == 0x100);  // FAILS
@@ -80,7 +80,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test3_fails code! {
-        #[proof]
+        #[verus::proof]
         fn test3_fails(b1: u32, b2: u32) {
             requires(b1 != b2);
 

@@ -460,7 +460,7 @@ macro_rules! atomic_integer_methods {
         #[inline(always)]
         #[verus::verifier(external_body)]
         #[verus::verifier(atomic)]
-        pub fn fetch_min(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty
+        pub fn fetch_min(&self, #[verus::proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty
         {
             #[cfg(not(verus_macro_erase_ghost))]
             requires(equal(self.id(), old(perm).view().patomic));

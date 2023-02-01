@@ -8,7 +8,7 @@ verus! {
 // TODO: the *_exec* functions would be better in builtin,
 // but it's painful to implement the support in erase.rs at the moment.
 #[verifier(external_body)]
-pub fn ghost_exec<A>(#[spec] a: A) -> (s: Ghost<A>)
+pub fn ghost_exec<A>(#[verus::spec] a: A) -> (s: Ghost<A>)
     ensures a == s@,
 {
     Ghost::assume_new()
@@ -92,7 +92,7 @@ impl<A> Spec<A> {
     fndecl!(pub fn value(self) -> A);
 
     #[verifier(external_body)]
-    pub fn exec(#[spec] a: A) -> Spec<A> {
+    pub fn exec(#[verus::spec] a: A) -> Spec<A> {
         ensures(|s: Spec<A>| equal(a, s.value()));
         Spec { phantom: PhantomData }
     }

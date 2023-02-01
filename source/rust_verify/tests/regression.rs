@@ -179,7 +179,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] forall_in_ensures_with_return_keyword_regression_216 verus_code! {
-        #[spec]
+        #[verus::spec]
         fn f(a: nat) -> bool {
             true
         }

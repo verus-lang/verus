@@ -293,7 +293,7 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verus::verifier(external_body)]
-    pub fn put(&self, #[proof] perm: &mut PermData<V>, v: V)
+    pub fn put(&self, #[verus::proof] perm: &mut PermData<V>, v: V)
     {
         requires([
             self.id() == old(perm).view().pptr,
@@ -320,7 +320,7 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verus::verifier(external_body)]
-    pub fn take(&self, #[proof] perm: &mut PermData<V>) -> V
+    pub fn take(&self, #[verus::proof] perm: &mut PermData<V>) -> V
     {
         requires([
             self.id() == old(perm).view().pptr,
@@ -348,7 +348,7 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn replace(&self, #[proof] perm: &mut PermData<V>, in_v: V) -> (out_v: V)
+    pub fn replace(&self, #[verus::proof] perm: &mut PermData<V>, in_v: V) -> (out_v: V)
         requires
             self.id() === old(perm).view().pptr,
             old(perm).view().value.is_Some(),
@@ -375,7 +375,7 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verus::verifier(external_body)]
-    pub fn borrow<'a>(&self, #[proof] perm: &'a PermData<V>) -> &'a V
+    pub fn borrow<'a>(&self, #[verus::proof] perm: &'a PermData<V>) -> &'a V
     {
         requires([
             equal(self.id(), perm.view().pptr),
@@ -400,7 +400,7 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn dispose(&self, #[proof] perm: PermData<V>)
+    pub fn dispose(&self, #[verus::proof] perm: PermData<V>)
         requires
             self.id() === perm.view().pptr,
             perm.view().value === option::Option::None,
@@ -424,7 +424,7 @@ impl<V> PPtr<V> {
     /// access to the memory by freeing it.
 
     #[inline(always)]
-    pub fn into_inner(self, #[proof] perm: PermData<V>) -> V
+    pub fn into_inner(self, #[verus::proof] perm: PermData<V>) -> V
     {
         requires([
             equal(self.id(), perm.view().pptr),
@@ -435,7 +435,7 @@ impl<V> PPtr<V> {
         ]);
         opens_invariants_none();
 
-        #[proof] let mut perm = perm;
+        #[verus::proof] let mut perm = perm;
         let v = self.take(&mut perm);
         self.dispose(perm);
         v

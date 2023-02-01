@@ -291,7 +291,7 @@ tokenized_state_machine!{
 
 struct_with_invariants!{
     struct RwLock<T> {
-        #[proof] inst: DistRwLock::Instance<T>,
+        #[verus::proof] inst: DistRwLock::Instance<T>,
         exc_locked: AtomicBool<_, DistRwLock::exc_locked<T>, _>,
         ref_counts: Vec<AtomicU64<_, DistRwLock::ref_counts<T>, _>>,
     }
@@ -327,11 +327,11 @@ impl<T> RwLock<T> {
         requires(0 < rc_width);
         ensures(|s: Self| s.wf());
         
-        #[proof] let inst;
-        #[proof] let exc_locked_token;
-        #[proof] let mut ref_counts_tokens;
+        #[verus::proof] let inst;
+        #[verus::proof] let exc_locked_token;
+        #[verus::proof] let mut ref_counts_tokens;
         proof {
-            #[proof] let (Trk(inst0), Trk(exc_locked_token0), Trk(ref_counts_tokens0), _, _, _, _) =
+            #[verus::proof] let (Trk(inst0), Trk(exc_locked_token0), Trk(ref_counts_tokens0), _, _, _, _) =
                 DistRwLock::Instance::initialize(rc_width as int, t, Option::Some(t));
             inst = inst0;
             exc_locked_token = exc_locked_token0;
@@ -387,7 +387,7 @@ impl<T> RwLock<T> {
         {
             assert(ref_counts_tokens.dom().contains(i as int));
 
-            #[proof] let ref_count_token;
+            #[verus::proof] let ref_count_token;
             proof {
                 ref_count_token = ref_counts_tokens.tracked_remove(i as int);
             }

@@ -41,7 +41,7 @@ impl Tree {
         }
     }
 
-    // #[proof] fn sorted_tree_means_sorted_sequence(&self) // TODO(utaal): is self being Spec too restrictive?
+    // #[verus::proof] fn sorted_tree_means_sorted_sequence(&self) // TODO(utaal): is self being Spec too restrictive?
 }
 
 spec fn sequences_ordered_at_interface(seq1: Seq<int>, seq2: Seq<int>) -> bool {
@@ -153,7 +153,7 @@ fn check_is_sorted_tree(tree: &Tree) -> (ret: TreeSortedness)
             // assert(tree.is_sorted());
 
             // TODO cannot use proof variable inside forall/assert_by statements (left)
-            // #[spec] let left = left;
+            // #[verus::spec] let left = left;
             // assert_by(left_bound == tree@[0], {
             //     if left.is_Nil() {
             //         assert(left_sortedness.is_Empty());
@@ -204,7 +204,7 @@ fn find_in_binary_tree(tree: &Tree, needle: i64) -> (ret: bool)
 //                          assert(tree@.index(idx) != needle);
 //                        } else {
 //                          assert(tree@.index(idx) == right@.index(idx + left@.len() + 1));    // TODO(utaal): surprising complaint "expected struct `builtin::int`, found struct `builtin::nat`"
-//                          #[spec] let right_idx: int = idx - (left@.len() as int + 1);
+//                          #[verus::spec] let right_idx: int = idx - (left@.len() as int + 1);
 //                          assert(tree@.index(idx) == right@.index(right_idx));
                           // assert(sequences_ordered_at_interface(seq![*value as int], right@)); // TODO(utal): How about *value as int is just value@? And then maybe even auto_view that? How cool would that be?
 //                          assert(sequences_ordered_at_interface(seq![*value as int], right@));
