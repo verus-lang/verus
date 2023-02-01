@@ -372,6 +372,8 @@ fn erase_spec_exps_typ<'tcx>(
     if is_some || force_some { mk_exp(ExpX::Op(args, mk_typ(state))) } else { None }
 }
 
+// Return an Exp instead of an Option<Exp>
+// (in particulary, instead of returning None, return a dummy expression with the intended type)
 fn erase_spec_exps_force<'tcx>(
     ctxt: &Context,
     state: &mut State,
@@ -399,6 +401,8 @@ fn phantom_data_expr<'tcx>(ctxt: &Context, state: &mut State, expr: &Expr) -> Ex
     erase_spec_exps_force(ctxt, state, expr.span, typ, vec![e])
 }
 
+// Convert an Option<Exp> into an Exp by converting None into an empty block
+// (useful for Rust expressions that require blocks, like if or while)
 fn force_block(exp: Option<Exp>, span: Span) -> Exp {
     match exp {
         None => Box::new((span, ExpX::Block(vec![], None))),
@@ -1454,6 +1458,7 @@ fn erase_variant_data<'tcx>(
     }
 }
 
+// Treat external_body datatypes as abstract (erase the original fields)
 fn erase_abstract_datatype<'tcx>(
     ctxt: &Context,
     state: &mut State,
@@ -1463,6 +1468,8 @@ fn erase_abstract_datatype<'tcx>(
 ) {
     let mut fields: Vec<Typ> = Vec::new();
     for gparam in hir_generics.params.iter() {
+        // Rust requires all lifetime/type variables to be mentioned in the fields,
+        // so introduce a dummy field for each lifetime/type variable
         match gparam.kind {
             GenericParamKind::Lifetime { .. } => {
                 let x = state.lifetime(&gparam.name.ident().to_string());

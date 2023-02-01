@@ -535,6 +535,8 @@ pub(crate) fn emit_exp(state: &mut EmitState, exp: &Exp) {
             }
             state.newline();
             state.write("open_invariant_end(guard, ");
+            // macro_rules! open_local_invariant introduces "let (guard, mut $iident)"
+            // call un_mut_pattern to remove the "mut" so we have a valid expression
             emit_pattern(state, &un_mut_pattern(inner_pat));
             state.write(");");
             state.newline_unindent();
