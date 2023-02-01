@@ -1,7 +1,7 @@
 use core::sync::atomic::{
     AtomicBool,
-    AtomicU8, AtomicU16, AtomicU32, AtomicU64,
-    AtomicI8, AtomicI16, AtomicI32, AtomicI64,
+    AtomicU8, AtomicU16, AtomicU32, AtomicU64, AtomicUsize,
+    AtomicI8, AtomicI16, AtomicI32, AtomicI64, AtomicIsize,
     Ordering};
 
 #[allow(unused_imports)] use builtin::*;
@@ -11,23 +11,23 @@ use core::sync::atomic::{
 #[allow(unused_imports)] use crate::pervasive::result::*;
 
 macro_rules! make_unsigned_integer_atomic {
-    ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident, $int_min:expr, $int_max: expr) => {
+    ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident) => {
         // TODO we could support `std::intrinsics::wrapping_add`
         // and use that instead.
 
         verus!{
 
         pub open spec fn $wrap_add(a: int, b: int) -> int {
-            if a + b > $int_max {
-                a + b - ($int_max - $int_min + 1)
+            if a + b > (<$value_ty>::MAX as int) {
+                a + b - ((<$value_ty>::MAX as int) - (<$value_ty>::MIN as int) + 1)
             } else {
                 a + b
             }
         }
 
         pub open spec fn $wrap_sub(a: int, b: int) -> int {
-            if a - b < $int_min {
-                a - b + ($int_max - $int_min + 1)
+            if a - b < (<$value_ty>::MIN as int) {
+                a - b + ((<$value_ty>::MAX as int) - (<$value_ty>::MIN as int) + 1)
             } else {
                 a - b
             }
@@ -38,30 +38,30 @@ macro_rules! make_unsigned_integer_atomic {
         atomic_types!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
         impl $at_ident {
             atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
-            atomic_integer_methods!($at_ident, $p_ident, $rust_ty, $value_ty, $wrap_add, $wrap_sub, $int_min, $int_max);
+            atomic_integer_methods!($at_ident, $p_ident, $rust_ty, $value_ty, $wrap_add, $wrap_sub);
         }
     }
 }
 
 macro_rules! make_signed_integer_atomic {
-    ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident, $int_min:expr, $int_max: expr) => {
+    ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident) => {
         verus! {
 
         pub open spec fn $wrap_add(a: int, b: int) -> int {
-            if a + b > $int_max {
-                a + b - ($int_max - $int_min + 1)
-            } else if a + b < $int_min {
-                a + b + ($int_max - $int_min + 1)
+            if a + b > (<$value_ty>::MAX as int) {
+                a + b - ((<$value_ty>::MAX as int) - (<$value_ty>::MIN as int) + 1)
+            } else if a + b < (<$value_ty>::MIN as int) {
+                a + b + ((<$value_ty>::MAX as int) - (<$value_ty>::MIN as int) + 1)
             } else {
                 a + b
             }
         }
 
         pub open spec fn $wrap_sub(a: int, b: int) -> int {
-            if a - b > $int_max {
-                a - b - ($int_max - $int_min + 1)
-            } else if a - b < $int_min {
-                a - b + ($int_max - $int_min + 1)
+            if a - b > (<$value_ty>::MAX as int) {
+                a - b - ((<$value_ty>::MAX as int) - (<$value_ty>::MIN as int) + 1)
+            } else if a - b < (<$value_ty>::MIN as int) {
+                a - b + ((<$value_ty>::MAX as int) - (<$value_ty>::MIN as int) + 1)
             } else {
                 a - b
             }
@@ -72,7 +72,7 @@ macro_rules! make_signed_integer_atomic {
         atomic_types!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
         impl $at_ident {
             atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
-            atomic_integer_methods!($at_ident, $p_ident, $rust_ty, $value_ty, $wrap_add, $wrap_sub, $int_min, $int_max);
+            atomic_integer_methods!($at_ident, $p_ident, $rust_ty, $value_ty, $wrap_add, $wrap_sub);
         }
     }
 }
@@ -254,7 +254,7 @@ macro_rules! atomic_common_methods {
 }
 
 macro_rules! atomic_integer_methods {
-    ($at_ident:ident, $p_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident, $int_min:expr, $int_max:expr) => {
+    ($at_ident:ident, $p_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident) => {
         // Note that wrapping-on-overflow is the defined behavior for fetch_add and fetch_sub
         // for Rust's atomics (in contrast to ordinary arithmetic)
 
@@ -297,8 +297,8 @@ macro_rules! atomic_integer_methods {
         {
             requires([
                 equal(self.id(), old(perm).view().patomic),
-                $int_min <= old(perm).view().value.spec_add(n),
-                old(perm).view().value.spec_add(n) <= $int_max
+                spec_cast_integer::<$value_ty, int>(<$value_ty>::MIN) <= old(perm).view().value.spec_add(n),
+                old(perm).view().value.spec_add(n) <= spec_cast_integer::<$value_ty, int>(<$value_ty>::MAX),
             ]);
             ensures(|ret: $value_ty| [
                 equal(old(perm).view().value, ret),
@@ -316,8 +316,8 @@ macro_rules! atomic_integer_methods {
         {
             requires([
                 equal(self.id(), old(perm).view().patomic),
-                $int_min <= old(perm).view().value.spec_sub(n),
-                old(perm).view().value.spec_sub(n) <= $int_max,
+                spec_cast_integer::<$value_ty, int>(<$value_ty>::MIN) <= old(perm).view().value.spec_sub(n),
+                old(perm).view().value.spec_sub(n) <= spec_cast_integer::<$value_ty, int>(<$value_ty>::MAX),
             ]);
             ensures(|ret: $value_ty| [
                 equal(old(perm).view().value, ret),
@@ -497,14 +497,16 @@ macro_rules! atomic_bool_methods {
 
 make_bool_atomic!(PAtomicBool, PermissionBool, PermissionDataBool, AtomicBool, bool);
 
-make_unsigned_integer_atomic!(PAtomicU8, PermissionU8, PermissionDataU8, AtomicU8, u8, wrapping_add_u8, wrapping_sub_u8, spec_literal_int("0"), spec_literal_int("255"));
-make_unsigned_integer_atomic!(PAtomicU16, PermissionU16, PermissionDataU16, AtomicU16, u16, wrapping_add_u16, wrapping_sub_u16, spec_literal_int("0"), spec_literal_int("65535"));
-make_unsigned_integer_atomic!(PAtomicU32, PermissionU32, PermissionDataU32, AtomicU32, u32, wrapping_add_u32, wrapping_sub_u32, spec_literal_int("0"), spec_literal_int("4294967295"));
-make_unsigned_integer_atomic!(PAtomicU64, PermissionU64, PermissionDataU64, AtomicU64, u64, wrapping_add_u64, wrapping_sub_u64, spec_literal_int("0"), spec_literal_int("18446744073709551615"));
+make_unsigned_integer_atomic!(PAtomicU8, PermissionU8, PermissionDataU8, AtomicU8, u8, wrapping_add_u8, wrapping_sub_u8);
+make_unsigned_integer_atomic!(PAtomicU16, PermissionU16, PermissionDataU16, AtomicU16, u16, wrapping_add_u16, wrapping_sub_u16);
+make_unsigned_integer_atomic!(PAtomicU32, PermissionU32, PermissionDataU32, AtomicU32, u32, wrapping_add_u32, wrapping_sub_u32);
+make_unsigned_integer_atomic!(PAtomicU64, PermissionU64, PermissionDataU64, AtomicU64, u64, wrapping_add_u64, wrapping_sub_u64);
+make_unsigned_integer_atomic!(PAtomicUsize, PermissionUsize, PermissionDataUsize, AtomicUsize, usize, wrapping_add_usize, wrapping_sub_usize);
 
-make_signed_integer_atomic!(PAtomicI8, PermissionI8, PermissionDataI8, AtomicI8, i8, wrapping_add_i8, wrapping_sub_i8, -spec_literal_int("128"), spec_literal_int("127"));
-make_signed_integer_atomic!(PAtomicI16, PermissionI16, PermissionDataI16, AtomicI16, i16, wrapping_add_i16, wrapping_sub_i16, -spec_literal_int("32768"), spec_literal_int("32767"));
-make_signed_integer_atomic!(PAtomicI32, PermissionI32, PermissionDataI32, AtomicI32, i32, wrapping_add_i32, wrapping_sub_i32, -spec_literal_int("2147483648"), spec_literal_int("2147483647"));
-make_signed_integer_atomic!(PAtomicI64, PermissionI64, PermissionDataI64, AtomicI64, i64, wrapping_add_i64, wrapping_sub_i64, -spec_literal_int("9223372036854775808"), spec_literal_int("9223372036854775807"));
+make_signed_integer_atomic!(PAtomicI8, PermissionI8, PermissionDataI8, AtomicI8, i8, wrapping_add_i8, wrapping_sub_i8);
+make_signed_integer_atomic!(PAtomicI16, PermissionI16, PermissionDataI16, AtomicI16, i16, wrapping_add_i16, wrapping_sub_i16);
+make_signed_integer_atomic!(PAtomicI32, PermissionI32, PermissionDataI32, AtomicI32, i32, wrapping_add_i32, wrapping_sub_i32);
+make_signed_integer_atomic!(PAtomicI64, PermissionI64, PermissionDataI64, AtomicI64, i64, wrapping_add_i64, wrapping_sub_i64);
+make_signed_integer_atomic!(PAtomicIsize, PermissionIsize, PermissionDataIsize, AtomicIsize, isize, wrapping_add_isize, wrapping_sub_isize);
 
-// TODO usize and isize (for this, we need to be able to use constants like usize::MAX)
+// TODO Support AtomicPtr

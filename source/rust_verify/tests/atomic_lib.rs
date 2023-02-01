@@ -982,3 +982,51 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+// 32-bit
+
+test_verify_one_file_with_options! {
+    #[test] test_atomic_usize_32_pass ["--arch-word-bits 32"] => test_body(
+      &ATOMIC_U32.replace("u32", "usize").replace("PAtomicU32", "PAtomicUsize"),
+      false) => Ok(())
+}
+test_verify_one_file_with_options! {
+    #[test] test_atomic_usize_32_fail ["--arch-word-bits 32"] => test_body(
+      &ATOMIC_U32.replace("u32", "usize").replace("PAtomicU32", "PAtomicUsize"),
+      true) => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_atomic_isize_32_pass ["--arch-word-bits 32"] => test_body(
+      &ATOMIC_I32.replace("i32", "isize").replace("PAtomicI32", "PAtomicIsize"),
+      false) => Ok(())
+}
+test_verify_one_file_with_options! {
+    #[test] test_atomic_isize_32_fail ["--arch-word-bits 32"] => test_body(
+      &ATOMIC_I32.replace("i32", "isize").replace("PAtomicI32", "PAtomicIsize"),
+      true) => Err(e) => assert_one_fails(e)
+}
+
+// 64-bit
+
+test_verify_one_file_with_options! {
+    #[test] test_atomic_usize_64_pass ["--arch-word-bits 64"] => test_body(
+      &ATOMIC_U64.replace("u64", "usize").replace("PAtomicU64", "PAtomicUsize"),
+      false) => Ok(())
+}
+test_verify_one_file_with_options! {
+    #[test] test_atomic_usize_64_fail ["--arch-word-bits 64"] => test_body(
+      &ATOMIC_U64.replace("u64", "usize").replace("PAtomicU64", "PAtomicUsize"),
+      true) => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_atomic_isize_64_pass ["--arch-word-bits 64"] => test_body(
+      &ATOMIC_I64.replace("i64", "isize").replace("PAtomicI64", "PAtomicIsize"),
+      false) => Ok(())
+}
+test_verify_one_file_with_options! {
+    #[test] test_atomic_isize_64_fail ["--arch-word-bits 64"] => test_body(
+      &ATOMIC_I64.replace("i64", "isize").replace("PAtomicI64", "PAtomicIsize"),
+      true) => Err(e) => assert_one_fails(e)
+}
