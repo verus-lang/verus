@@ -9,6 +9,16 @@
 /*
 The generated abstracted code discards much of the detail of the original code,
 but keeps enough for ownership/lifetime/borrow checking.
+Specifically it keeps:
+- struct and enum declarations, and fields of the declarations
+- lifetime ('a) and type (A) parameters, but not trait bounds (except for Copy, which is kept)
+- functions, with impl methods turned into to top-level functions
+- function bodies, but with external_body function bodies replaced with panic
+  (external functions are erased completely)
+- overall structure of blocks, statements, and expressions, but with specific operators
+  transformed into calls to a generic function named "op"
+- variable declarations and pattern matching
+(The exact program elements that are kept can be seen in the abstract syntax defined in lifetime_ast.rs.)
 For example, if the original code is the following:
 
     struct S {
