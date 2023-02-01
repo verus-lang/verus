@@ -529,7 +529,7 @@ fn check_expr_handle_mut_arg(
                     let arg_mode_write = arg_mode_write.expect("internal error: no arg_mode_write");
                     if arg_mode_read != param_mode {
                         return err_string(
-                            &param.span,
+                            &arg.span,
                             format!(
                                 "expected mode {}, &mut argument has mode {}",
                                 param_mode, arg_mode_read
@@ -538,7 +538,7 @@ fn check_expr_handle_mut_arg(
                     }
                     if arg_mode_write != param_mode {
                         return err_string(
-                            &param.span,
+                            &arg.span,
                             format!(
                                 "expected mode {}, &mut argument has mode {}",
                                 param_mode, arg_mode_write
