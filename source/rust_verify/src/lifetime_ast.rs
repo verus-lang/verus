@@ -64,6 +64,7 @@ pub(crate) enum ExpX {
     Var(Id),
     Op(Vec<Exp>, Typ),
     Call(Exp, Vec<Typ>, Vec<Exp>),
+    BuiltinMethod(Exp, String),
     Tuple(Vec<Exp>),
     DatatypeTuple(Id, Option<Id>, Vec<Typ>, Vec<Exp>),
     DatatypeStruct(Id, Option<Id>, Vec<Typ>, Vec<(Id, Exp)>, Option<Exp>),

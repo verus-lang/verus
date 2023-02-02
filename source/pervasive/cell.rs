@@ -251,8 +251,8 @@ pub struct InvCell<#[verifier(maybe_negative)] T> {
 
 }
 
+verus!{
 impl<T> InvCell<T> {
-    verus!{
     pub closed spec fn wf(&self) -> bool {
         &&& self.perm_inv@.constant() === (self.possible_values@, self.pcell)
     }
@@ -277,14 +277,18 @@ impl<T> InvCell<T> {
             perm_inv,
         }
     }
-    }
+}
+}
 
+impl<T> InvCell<T> {
     // note: can't use verus! for these right now because the invariants blocks
     // do not yet support Tracked/Ghost
 
     pub fn replace(&self, val: T) -> T
     {
+        #[cfg(not(verus_macro_erase_ghost))]
         requires(self.wf() && self.inv(val));
+        #[cfg(not(verus_macro_erase_ghost))]
         ensures(|old_val| self.inv(old_val));
 
         let r;
@@ -300,7 +304,9 @@ impl<T> InvCell<T> {
 impl<T: Copy> InvCell<T> {
     pub fn get(&self) -> T
     {
+        #[cfg(not(verus_macro_erase_ghost))]
         requires(self.wf());
+        #[cfg(not(verus_macro_erase_ghost))]
         ensures(|val| self.inv(val));
 
         let r;

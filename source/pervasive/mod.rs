@@ -17,14 +17,11 @@ pub mod seq_lib;
 pub mod set;
 pub mod set_lib;
 pub mod slice;
-#[cfg(not(erasure_macro_todo))]
 pub mod cell;
 #[cfg(not(erasure_macro_todo))]
 pub mod cell_old_style;
 pub mod invariant;
-#[cfg(not(erasure_macro_todo))]
 pub mod atomic;
-#[cfg(not(erasure_macro_todo))]
 pub mod atomic_ghost;
 pub mod modes;
 pub mod multiset;

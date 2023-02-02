@@ -453,9 +453,27 @@ fn erase_call<'tcx>(
             let exps = args_slice.iter().map(|a| erase_expr(ctxt, state, expect_spec, a)).collect();
             erase_spec_exps_typ(ctxt, state, expr.span, |_| TypX::mk_unit(), exps, false)
         }
-        ResolvedCall::CompilableOperator => {
-            let exps = args_slice.iter().map(|a| erase_expr(ctxt, state, expect_spec, a)).collect();
-            erase_spec_exps(ctxt, state, expr, exps)
+        ResolvedCall::CompilableOperator(op) => {
+            use crate::erase::CompilableOperator::*;
+            let builtin_method = match op {
+                SmartPtrClone => Some("clone"),
+                TrackedGet => Some("get"),
+                TrackedBorrow => Some("borrow"),
+                TrackedBorrowMut => Some("borrow_mut"),
+                IntIntrinsic | Implies | SmartPtrNew | NewStrLit => None,
+                GhostSplitTuple | TrackedSplitTuple => None,
+            };
+            assert!(builtin_method.is_some() == is_method);
+            if let Some(method) = builtin_method {
+                assert!(args_slice.len() == 1);
+                let exp =
+                    erase_expr(ctxt, state, expect_spec, &args_slice[0]).expect("builtin method");
+                mk_exp(ExpX::BuiltinMethod(exp, method.to_string()))
+            } else {
+                let exps =
+                    args_slice.iter().map(|a| erase_expr(ctxt, state, expect_spec, a)).collect();
+                erase_spec_exps(ctxt, state, expr, exps)
+            }
         }
         ResolvedCall::Call(f_name) => {
             if !ctxt.functions.contains_key(f_name) {

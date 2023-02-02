@@ -168,8 +168,13 @@ const PRELUDE: &str = "\
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
-fn op<A, B>(a: A) -> B { unimplemented!() }
+fn op<A, B>(a: A) -> B { panic!() }
 struct Tracked<A> { a: PhantomData<A> }
+impl<A> Tracked<A> {
+    pub fn get(self) -> A { panic!() }
+    pub fn borrow(&self) -> &A { panic!() }
+    pub fn borrow_mut(&mut self) -> &mut A { panic!() }
+}
 #[derive(Clone, Copy)] struct Ghost<A> { a: PhantomData<A> }
 #[derive(Clone, Copy)] struct int;
 #[derive(Clone, Copy)] struct nat;
@@ -189,7 +194,7 @@ fn emit_check_tracked_lifetimes<'tcx>(
     let gen_state =
         crate::lifetime_generate::gen_check_tracked_lifetimes(tcx, krate, erasure_hints);
     for line in PRELUDE.split('\n') {
-        emit_state.writeln(line.trim());
+        emit_state.writeln(line.replace("\r", ""));
     }
 
     for d in gen_state.datatype_decls.iter() {

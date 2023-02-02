@@ -79,6 +79,20 @@ use vir::ast::{
 use vir::ast_util::get_field;
 use vir::modes::{mode_join, ErasureModes};
 
+#[derive(Clone, Copy, Debug)]
+pub enum CompilableOperator {
+    IntIntrinsic,
+    Implies,
+    SmartPtrNew,
+    SmartPtrClone,
+    NewStrLit,
+    TrackedGet,
+    TrackedBorrow,
+    TrackedBorrowMut,
+    GhostSplitTuple,
+    TrackedSplitTuple,
+}
+
 /// Information about each call in the AST (each ExprKind::Call).
 #[derive(Clone, Debug)]
 pub enum ResolvedCall {
@@ -87,7 +101,7 @@ pub enum ResolvedCall {
     /// The call is to a spec or proof function, but may have proof-mode arguments
     SpecAllowProofArgs,
     /// The call is to an operator like == or + that should be compiled.
-    CompilableOperator,
+    CompilableOperator(CompilableOperator),
     /// The call is to a function, and we record the resolved name of the function here.
     Call(Fun),
     /// Path and variant of datatype constructor
@@ -575,7 +589,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
 
             match &call {
                 ResolvedCall::Spec | ResolvedCall::SpecAllowProofArgs => return None,
-                ResolvedCall::CompilableOperator => {
+                ResolvedCall::CompilableOperator(_) => {
                     if keep_mode(ctxt, expect) {
                         ExprKind::Call(
                             f_expr.clone(),
@@ -657,7 +671,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                     }
                 },
                 ResolvedCall::Spec | ResolvedCall::SpecAllowProofArgs => return None,
-                ResolvedCall::CompilableOperator => {
+                ResolvedCall::CompilableOperator(_) => {
                     if keep_mode(ctxt, expect) {
                         ExprKind::MethodCall(
                             m_path.clone(),

@@ -38,6 +38,13 @@ fn print_verification_results(verifier: &Verifier) {
 When using the --erasure macro option (Erasure::Macro),
 we have to run rustc twice on the original source code,
 once erasing ghost code and once keeping ghost code.
+
+exec code --> type-check, mode-check --> lifetime (borrow) check exec code --> compile
+
+all code --> type-check, mode-check --+
+                                      |
+                                      +--> lifetime (borrow) check proof code
+
 This causes some tension in the order of operations:
 it would be cleanest to run one rustc invocation entirely,
 and then the other entirely, but this would be slow.

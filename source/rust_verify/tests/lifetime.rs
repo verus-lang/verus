@@ -218,11 +218,25 @@ test_verify_one_file! {
     #[test] borrow_tracked_twice verus_code! {
         proof fn f(tracked x: &mut u8, tracked y: &mut u8) {}
         fn g(x: Tracked<u8>, y: Tracked<u8>) {
+            let mut x = x;
             proof {
                 f(x.borrow_mut(), x.borrow_mut());
             }
         }
-    } => Err(err) => assert_error_msg(err, "use of moved value")
+    } => Err(err) => assert_error_msg(err, "cannot borrow `x` as mutable more than once at a time")
+}
+
+test_verify_one_file! {
+    #[test] borrow_tracked_twice_ok verus_code! {
+        proof fn f(tracked x: &mut u8) {}
+        fn g(x: Tracked<u8>) {
+            let mut x = x;
+            proof {
+                f(x.borrow_mut());
+                f(x.borrow_mut());
+            }
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {

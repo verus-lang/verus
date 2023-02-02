@@ -124,6 +124,16 @@ pub struct AtomicInvariant<#[verifier(strictly_positive)] K, #[verifier(strictly
     dummy1: core::marker::PhantomData<(K, Pred)>,
 }
 
+impl<K, V, Pred> AtomicInvariant<K, V, Pred> {
+    #[cfg(verus_macro_erase_ghost)]
+    pub(crate) fn assume_new() -> AtomicInvariant<K, V, Pred> {
+        AtomicInvariant {
+            dummy: SyncSendIfSend::assume_new(),
+            dummy1: core::marker::PhantomData,
+        }
+    }
+}
+
 /// A `LocalInvariant` is a ghost object that provides "interior mutability"
 /// for ghost objects, specifically, for `tracked` ghost objects.
 /// A reference `&LocalInvariant` may be shared between clients.

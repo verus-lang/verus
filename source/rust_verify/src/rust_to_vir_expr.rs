@@ -3,7 +3,7 @@ use crate::attributes::{
     GetVariantField, GhostBlockAttr,
 };
 use crate::context::{BodyCtxt, Context};
-use crate::erase::ResolvedCall;
+use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, def_to_path_ident, get_function_def, get_range, hack_get_def_name,
     is_smt_arith, is_smt_equality, is_type_std_rc_or_arc, local_to_var, mid_ty_simplify,
@@ -405,15 +405,15 @@ fn record_fun(
     name: &vir::ast::Fun,
     is_spec: bool,
     is_spec_allow_proof_args: bool,
-    is_compilable_operator: bool,
+    is_compilable_operator: Option<CompilableOperator>,
 ) {
     let mut erasure_info = ctxt.erasure_info.borrow_mut();
     let resolved_call = if is_spec {
         ResolvedCall::Spec
     } else if is_spec_allow_proof_args {
         ResolvedCall::SpecAllowProofArgs
-    } else if is_compilable_operator {
-        ResolvedCall::CompilableOperator
+    } else if let Some(op) = is_compilable_operator {
+        ResolvedCall::CompilableOperator(op)
     } else {
         ResolvedCall::Call(name.clone())
     };
@@ -642,7 +642,7 @@ fn fn_call_to_vir<'tcx>(
         is_ghost_view || is_ghost_borrow || is_ghost_borrow_mut || is_ghost_new || is_tracked_view;
 
     // These functions are all no-ops in the SMT encoding, so we don't emit any VIR
-    let is_ignored_fn = f_name == "std::boxed::Box::<T>::new"
+    let is_smartptr_new = f_name == "std::boxed::Box::<T>::new"
         || f_name == "std::rc::Rc::<T>::new"
         || f_name == "std::sync::Arc::<T>::new";
 
@@ -733,14 +733,17 @@ fn fn_call_to_vir<'tcx>(
             || is_signed_max
             || is_signed_min
             || is_unsigned_max,
-        is_implies
-            || is_ignored_fn
-            || is_new_strlit
-            || is_tracked_get
-            || is_tracked_borrow
-            || is_tracked_borrow_mut
-            || is_ghost_split_tuple
-            || is_tracked_split_tuple,
+        match () {
+            _ if is_implies => Some(CompilableOperator::Implies),
+            _ if is_smartptr_new => Some(CompilableOperator::SmartPtrNew),
+            _ if is_new_strlit => Some(CompilableOperator::NewStrLit),
+            _ if is_tracked_get => Some(CompilableOperator::TrackedGet),
+            _ if is_tracked_borrow => Some(CompilableOperator::TrackedBorrow),
+            _ if is_tracked_borrow_mut => Some(CompilableOperator::TrackedBorrowMut),
+            _ if is_ghost_split_tuple => Some(CompilableOperator::GhostSplitTuple),
+            _ if is_tracked_split_tuple => Some(CompilableOperator::TrackedSplitTuple),
+            _ => None,
+        },
     );
 
     let len = args.len();
@@ -1084,7 +1087,7 @@ fn fn_call_to_vir<'tcx>(
         return Ok(mk_expr(ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind, Mode::Spec), arg)));
     }
 
-    if is_ignored_fn {
+    if is_smartptr_new {
         unsupported_err_unless!(len == 1, expr.span, "expected 1 argument", &args);
         let arg = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
 
@@ -2486,7 +2489,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         erasure_info.resolved_calls.push((
                             expr.hir_id,
                             expr.span.data(),
-                            ResolvedCall::CompilableOperator,
+                            ResolvedCall::CompilableOperator(CompilableOperator::IntIntrinsic),
                         ));
                         return Ok(vir_expr);
                     }
@@ -2801,7 +2804,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             erasure_info.resolved_calls.push((
                                 expr.hir_id,
                                 fn_span.data(),
-                                ResolvedCall::CompilableOperator,
+                                ResolvedCall::CompilableOperator(CompilableOperator::SmartPtrClone),
                             ));
                             return Ok(arg);
                         }

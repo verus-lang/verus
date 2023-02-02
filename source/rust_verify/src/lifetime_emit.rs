@@ -345,6 +345,10 @@ pub(crate) fn emit_exp(state: &mut EmitState, exp: &Exp) {
             }
             state.write(")");
         }
+        ExpX::BuiltinMethod(self_arg, method) => {
+            emit_exp(state, self_arg);
+            state.write(format!(".{method}()"));
+        }
         ExpX::Tuple(es) => {
             state.write("(");
             for e in es.iter() {
