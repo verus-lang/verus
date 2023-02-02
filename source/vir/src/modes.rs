@@ -279,7 +279,8 @@ fn add_pattern_rec(
             let datatype = typing.datatypes[datatype].clone();
             let variant =
                 datatype.x.variants.iter().find(|v| v.name == *variant).expect("missing variant");
-            for (binder, field) in patterns.iter().zip(variant.a.iter()) {
+            for binder in patterns.iter() {
+                let field = get_field(&variant.a, &binder.name);
                 let (_, field_mode, _) = field.a;
                 add_pattern_rec(typing, decls, mode_join(field_mode, mode), &binder.a, false)?;
             }

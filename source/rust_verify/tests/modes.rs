@@ -948,3 +948,45 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "variable `x` has different modes across alternatives")
 }
+
+test_verify_one_file! {
+    #[test] test_struct_pattern_fields_out_of_order_fail_issue_348 verus_code! {
+        struct Foo {
+            #[spec] a: u64,
+            #[proof] b: u64,
+        }
+
+        proof fn some_call(#[proof] y: u64) { }
+
+        proof fn t() {
+            #[proof] let foo = Foo { a: 5, b: 6 };
+            #[proof] let Foo { b, a } = foo;
+
+            // Variable 'a' has the mode of field 'a' (that is, spec)
+            // some_call requires 'proof'
+            // So this should fail
+            some_call(a);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
+
+test_verify_one_file! {
+    #[test] test_struct_pattern_fields_out_of_order_success_issue_348 verus_code! {
+        struct X { }
+
+        struct Foo {
+            #[spec] a: u64,
+            #[proof] b: X,
+        }
+
+        proof fn some_call(#[proof] y: X) { }
+
+        proof fn t(#[proof] x: X) {
+            #[proof] let foo = Foo { a: 5, b: x };
+            #[proof] let Foo { b, a } = foo;
+
+            // This should succeed, 'b' has mode 'proof'
+            some_call(b);
+        }
+    } => Ok(())
+}
