@@ -971,7 +971,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // note: currently this fails in erasure
     #[test] test_struct_pattern_fields_out_of_order_success_issue_348 verus_code! {
         struct X { }
 
