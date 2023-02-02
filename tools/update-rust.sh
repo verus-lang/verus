@@ -1,6 +1,7 @@
 #! /bin/bash
 
 toplevel=`git rev-parse --show-toplevel`
+curdir=`readlink -f "$PWD"`
 python_command=''
 
 command -v python > /dev/null
@@ -10,7 +11,7 @@ if [ ! $has_python -eq 0 ]; then
     python_command='python3'
 fi
 
-if [ "$toplevel" != "$PWD" ]; then
+if [ "$toplevel" != "$curdir" ]; then
     echo "ERROR: You should run this script at the root of the verus repository"
     exit 1
 fi
