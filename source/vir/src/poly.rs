@@ -360,6 +360,10 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                     let e1 = coerce_expr_to_native(ctx, &e1);
                     mk_expr(ExprX::UnaryOpr(op.clone(), e1))
                 }
+                UnaryOpr::Height => {
+                    let e1 = coerce_expr_to_poly(ctx, &e1);
+                    mk_expr(ExprX::UnaryOpr(op.clone(), e1))
+                }
                 UnaryOpr::Field(FieldOpr { datatype, variant, field }) => {
                     let fields = &ctx.datatype_map[datatype].x.get_variant(variant).a;
                     let field = crate::ast_util::get_field(fields, field);

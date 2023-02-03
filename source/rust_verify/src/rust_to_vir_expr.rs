@@ -571,6 +571,7 @@ fn fn_call_to_vir<'tcx>(
     let is_signed_max = f_name == "builtin::signed_max";
     let is_unsigned_max = f_name == "builtin::unsigned_max";
     let is_arch_word_bits = f_name == "builtin::arch_word_bits";
+    let is_height = f_name == "builtin::height";
 
     let is_reveal_strlit = tcx.is_diagnostic_item(Symbol::intern("builtin::reveal_strlit"), f);
     let is_strslice_len = tcx.is_diagnostic_item(Symbol::intern("builtin::strslice_len"), f);
@@ -712,7 +713,8 @@ fn fn_call_to_vir<'tcx>(
             || is_signed_max
             || is_signed_min
             || is_unsigned_max
-            || is_arch_word_bits,
+            || is_arch_word_bits
+            || is_height,
         is_implies
             || is_ignored_fn
             || is_tracked_get
@@ -1061,6 +1063,12 @@ fn fn_call_to_vir<'tcx>(
         let kind = IntegerTypeBoundKind::ArchWordBits;
 
         return Ok(mk_expr(ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind, Mode::Spec), arg)));
+    }
+
+    if is_height {
+        assert!(args.len() == 1);
+        let arg = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+        return Ok(mk_expr(ExprX::UnaryOpr(UnaryOpr::Height, arg)));
     }
 
     if is_ignored_fn {

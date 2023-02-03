@@ -487,6 +487,7 @@ where
                 UnaryOpr::TupleField { .. } => op.clone(),
                 UnaryOpr::Field { .. } => op.clone(),
                 UnaryOpr::IntegerTypeBound(_, _) => op.clone(),
+                UnaryOpr::Height => op.clone(),
             };
             ok_exp(ExpX::UnaryOpr(op.clone(), fe(env, e1)?))
         }

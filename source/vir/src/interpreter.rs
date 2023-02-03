@@ -1048,6 +1048,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         _ => ok,
                     }
                 }
+                Height => ok,
             }
         }
         Binary(op, e1, e2) => {

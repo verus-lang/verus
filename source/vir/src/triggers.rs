@@ -123,6 +123,7 @@ fn check_trigger_expr(
                     | UnaryOpr::IsVariant { .. }
                     | UnaryOpr::TupleField { .. }
                     | UnaryOpr::Field { .. }
+                    | UnaryOpr::Height
                     | UnaryOpr::IntegerTypeBound(
                         IntegerTypeBoundKind::SignedMin | IntegerTypeBoundKind::ArchWordBits,
                         _,
