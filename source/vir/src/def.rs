@@ -406,6 +406,10 @@ pub fn variant_ident(datatype: &Path, variant: &str) -> Ident {
     Arc::new(format!("{}{}{}", path_to_string(datatype), VARIANT_SEPARATOR, variant))
 }
 
+pub fn is_variant_ident(datatype: &Path, variant: &str) -> Ident {
+    Arc::new(format!("is-{}", variant_ident(datatype, variant)))
+}
+
 pub fn variant_field_ident_internal(
     datatype: &Path,
     variant: &Ident,

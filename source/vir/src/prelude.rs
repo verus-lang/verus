@@ -526,10 +526,12 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
 pub(crate) fn datatype_height_axiom(
     typ_name1: &Path,
     typ_name2: Option<&Path>,
+    is_variant_ident: &Ident,
     field: &Ident,
 ) -> Node {
     let height = str_to_node(&suffix_global_id(&fun_to_air_ident(&height())));
     let field = str_to_node(field.as_str());
+    let is_variant = str_to_node(is_variant_ident.as_str());
     let typ1 = str_to_node(path_to_air_ident(typ_name1).as_str());
     let box_t1 = str_to_node(prefix_box(typ_name1).as_str());
     let field_of_x = match typ_name2 {
@@ -542,9 +544,12 @@ pub(crate) fn datatype_height_axiom(
     };
     node!(
         (axiom (forall ((x [typ1])) (!
-            (<
-                ([height] [field_of_x])
-                ([height] ([box_t1] x))
+            (=>
+                ([is_variant] x)
+                (<
+                    ([height] [field_of_x])
+                    ([height] ([box_t1] x))
+                )
             )
             :pattern (([height] [field_of_x]))
             :qid prelude_datatype_height
