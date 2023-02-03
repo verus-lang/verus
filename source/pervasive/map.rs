@@ -102,6 +102,7 @@ impl<K, V> Map<K, V> {
 
     /// Returns true if the key `k` is in the domain of `self`.
 
+    #[verifier(inline)]
     pub open spec fn contains_key(self, k: K) -> bool {
         self.dom().contains(k)
     }
