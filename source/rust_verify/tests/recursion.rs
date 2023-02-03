@@ -1267,11 +1267,16 @@ test_verify_one_file! {
             assert(height(l) > height(r)); // FAILS
         }
 
-        // TODO
-        //proof fn testing_fail2(x: Tree) {
-            //assert(height(x.get_Node_0()) < height(x)); // FAILS
-        //}
-    } => Err(e) => assert_fails(e, 1)
+        proof fn testing_fail2(x: Tree) {
+            assert(height(x.get_Node_0()) < height(x)); // FAILS
+        }
+
+        proof fn testing3(x: Tree)
+            requires x.is_Node(),
+        {
+            assert(height(x.get_Node_0()) < height(x));
+        }
+    } => Err(e) => assert_fails(e, 2)
 }
 
 test_verify_one_file! {
@@ -1286,4 +1291,20 @@ test_verify_one_file! {
             let x = height(tree);
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot test 'height' in exec mode")
+}
+
+test_verify_one_file! {
+    #[test] datatype_height_axiom_checks_the_variant verus_code! {
+        #[is_variant]
+        enum List {
+            Cons(Box<List>),
+            Nil,
+        }
+
+        spec fn list_length(l: List) -> int
+            decreases l,
+        {
+            list_length(*l.get_Cons_0()) + 1 // FAILS
+        }
+    } => Err(e) => assert_fails(e, 1)
 }

@@ -4,10 +4,10 @@ use crate::ast::{
 use crate::ast_util::{is_visible_to_of_owner, path_as_rust_name};
 use crate::context::Ctx;
 use crate::def::{
-    prefix_box, prefix_lambda_type, prefix_tuple_param, prefix_type_id, prefix_unbox,
-    suffix_local_stmt_id, variant_field_ident, variant_field_ident_internal, variant_ident,
-    Spanned, QID_ACCESSOR, QID_APPLY, QID_BOX_AXIOM, QID_CONSTRUCTOR, QID_CONSTRUCTOR_INNER,
-    QID_HAS_TYPE_ALWAYS, QID_INVARIANT, QID_UNBOX_AXIOM,
+    is_variant_ident, prefix_box, prefix_lambda_type, prefix_tuple_param, prefix_type_id,
+    prefix_unbox, suffix_local_stmt_id, variant_field_ident, variant_field_ident_internal,
+    variant_ident, Spanned, QID_ACCESSOR, QID_APPLY, QID_BOX_AXIOM, QID_CONSTRUCTOR,
+    QID_CONSTRUCTOR_INNER, QID_HAS_TYPE_ALWAYS, QID_INVARIANT, QID_UNBOX_AXIOM,
 };
 use crate::func_to_air::{func_bind, func_bind_trig, func_def_args};
 use crate::sst::{Par, ParPurpose, ParX};
@@ -321,6 +321,7 @@ fn datatype_or_fun_to_air_commands(
                         let node = crate::prelude::datatype_height_axiom(
                             &dpath,
                             Some(&path),
+                            &is_variant_ident(dpath, &*variant.name),
                             &variant_field_ident(&dpath, &variant.name, &field.name),
                         );
                         let axiom = air::parser::Parser::new()
@@ -332,6 +333,7 @@ fn datatype_or_fun_to_air_commands(
                         let node = crate::prelude::datatype_height_axiom(
                             &dpath,
                             None,
+                            &is_variant_ident(dpath, &*variant.name),
                             &variant_field_ident(&dpath, &variant.name, &field.name),
                         );
                         let axiom = air::parser::Parser::new()

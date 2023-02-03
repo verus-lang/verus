@@ -11,9 +11,9 @@ use crate::ast_util::{
 use crate::context::Ctx;
 use crate::def::{fn_inv_name, fn_namespace_name, new_user_qid_name};
 use crate::def::{
-    fun_to_string, height, new_internal_qid, path_to_string, prefix_box, prefix_ensures,
-    prefix_fuel_id, prefix_lambda_type, prefix_pre_var, prefix_requires, prefix_unbox,
-    snapshot_ident, suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id,
+    fun_to_string, height, is_variant_ident, new_internal_qid, path_to_string, prefix_box,
+    prefix_ensures, prefix_fuel_id, prefix_lambda_type, prefix_pre_var, prefix_requires,
+    prefix_unbox, snapshot_ident, suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id,
     suffix_local_unique_id, suffix_typ_param_id, unique_local, variant_field_ident, variant_ident,
     ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT,
     FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_ASSIGN,
@@ -731,7 +731,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             UnaryOpr::IsVariant { datatype, variant } => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
-                let name = Arc::new(format!("is-{}", variant_ident(datatype, variant)));
+                let name = is_variant_ident(datatype, variant);
                 Arc::new(ExprX::Apply(name, Arc::new(vec![expr])))
             }
             UnaryOpr::TupleField { .. } => {
