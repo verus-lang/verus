@@ -60,6 +60,7 @@ fn expr_get_early_exits_rec(
             | ExprX::Call(CallTarget::BuiltinSpecFun(..), _)
             | ExprX::Tuple(..)
             | ExprX::Ctor(..)
+            | ExprX::NullaryOpr(..)
             | ExprX::Unary(..)
             | ExprX::UnaryOpr(..)
             | ExprX::Binary(..)

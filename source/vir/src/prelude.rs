@@ -77,13 +77,15 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let typ = str_to_node(TYPE);
     let type_id_bool = str_to_node(TYPE_ID_BOOL);
     let type_id_int = str_to_node(TYPE_ID_INT);
+    let type_id_char = str_to_node(TYPE_ID_CHAR);
     let type_id_nat = str_to_node(TYPE_ID_NAT);
     let type_id_uint = str_to_node(TYPE_ID_UINT);
     let type_id_sint = str_to_node(TYPE_ID_SINT);
-    let type_id_char = str_to_node(TYPE_ID_CHAR);
+    let type_id_const_int = str_to_node(TYPE_ID_CONST_INT);
     let has_type = str_to_node(HAS_TYPE);
     let as_type = str_to_node(AS_TYPE);
     let mk_fun = str_to_node(MK_FUN);
+    let const_int = str_to_node(CONST_INT);
 
     let uint_xor = str_to_node(UINT_XOR);
     let uint_and = str_to_node(UINT_AND);
@@ -155,9 +157,12 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-const [type_id_char] [typ])
         (declare-fun [type_id_uint] (Int) [typ])
         (declare-fun [type_id_sint] (Int) [typ])
+        (declare-fun [type_id_const_int] (Int) [typ])
         (declare-fun [has_type] ([Poly] [typ]) Bool)
         (declare-fun [as_type] ([Poly] [typ]) Poly)
         (declare-fun [mk_fun] (Fun) Fun)
+        (declare-fun [const_int] ([typ]) Int)
+        (axiom (forall ((i Int)) (= i ([const_int] ([type_id_const_int] i)))))
         (axiom ([has_type] ([box_bool] true) BOOL))
         (axiom ([has_type] ([box_bool] false) BOOL))
         (axiom (forall ((x [Poly]) (t [typ])) (!

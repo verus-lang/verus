@@ -106,6 +106,7 @@ fn check_trigger_expr(
                 ExpX::Var(UniqueIdent { name: _, local: Some(_) }) => Ok(()),
                 ExpX::VarAt(_, VarAt::Pre) => Ok(()),
                 ExpX::Old(_, _) => panic!("internal error: Old"),
+                ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => Ok(()),
                 ExpX::Unary(op, _) => match op {
                     UnaryOp::Trigger(_)
                     | UnaryOp::Clip { .. }

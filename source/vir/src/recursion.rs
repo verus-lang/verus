@@ -169,9 +169,12 @@ fn terminates(
     let bool_exp = |expx: ExpX| SpannedTyped::new(&exp.span, &Arc::new(TypX::Bool), expx);
     let r = |e: &Exp| terminates(ctxt, diagnostics, fun_ssts, e);
     match &exp.x {
-        ExpX::Const(_) | ExpX::Var(..) | ExpX::VarAt(..) | ExpX::VarLoc(..) | ExpX::Old(..) => {
-            Ok(bool_exp(ExpX::Const(Constant::Bool(true))))
-        }
+        ExpX::Const(_)
+        | ExpX::Var(..)
+        | ExpX::VarAt(..)
+        | ExpX::VarLoc(..)
+        | ExpX::Old(..)
+        | ExpX::NullaryOpr(..) => Ok(bool_exp(ExpX::Const(Constant::Bool(true)))),
         ExpX::Loc(e) => r(e),
         ExpX::Call(x, targs, args) => {
             let mut e = if is_recursive_call(ctxt, x, targs) {

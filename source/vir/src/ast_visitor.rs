@@ -42,6 +42,7 @@ where
                 | TypX::Int(_)
                 | TypX::TypParam(_)
                 | TypX::TypeId
+                | TypX::ConstInt(_)
                 | TypX::Air(_) => (),
                 TypX::Tuple(ts) => {
                     for t in ts.iter() {
@@ -85,6 +86,7 @@ where
         | TypX::Int(_)
         | TypX::TypParam(_)
         | TypX::TypeId
+        | TypX::ConstInt(_)
         | TypX::Air(_) => ft(env, typ),
         TypX::Tuple(ts) => {
             let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
@@ -235,6 +237,7 @@ where
                         expr_visitor_control_flow!(expr_visitor_dfs(&binder.a, map, mf));
                     }
                 }
+                ExprX::NullaryOpr(_op) => (),
                 ExprX::Unary(_op, e1) => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
                 }
@@ -581,6 +584,10 @@ where
                 .map(|b| b.map_result(|a| map_expr_visitor_env(a, map, env, fe, fs, ft)))
                 .collect::<Result<Vec<_>, _>>()?;
             ExprX::Ctor(path.clone(), ident.clone(), Arc::new(mapped_binders), update)
+        }
+        ExprX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(t)) => {
+            let t = map_typ_visitor_env(t, env, ft)?;
+            ExprX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(t))
         }
         ExprX::Unary(op, e1) => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
