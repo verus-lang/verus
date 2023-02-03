@@ -360,7 +360,7 @@ pub(crate) fn check_termination_exp(
     }
     let num_decreases = function.x.decrease.len();
     if num_decreases == 0 {
-        return err_str(&function.span, "recursive function must call decreases(...)");
+        return err_str(&function.span, "recursive function must have a decreases clause");
     }
 
     let decreases_exps = vec_map_result(&function.x.decrease, |e| {
@@ -437,7 +437,7 @@ pub(crate) fn check_termination_stm(
     }
     let num_decreases = function.x.decrease.len();
     if num_decreases == 0 {
-        return err_str(&function.span, "recursive function must call decreases(...)");
+        return err_str(&function.span, "recursive function must have a decreases clause");
     }
 
     let decreases_exps = vec_map_result(&function.x.decrease, |e| {
