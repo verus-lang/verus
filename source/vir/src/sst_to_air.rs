@@ -11,13 +11,14 @@ use crate::ast_util::{
 use crate::context::Ctx;
 use crate::def::{fn_inv_name, fn_namespace_name, new_user_qid_name};
 use crate::def::{
-    fun_to_string, new_internal_qid, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id,
-    prefix_lambda_type, prefix_pre_var, prefix_requires, prefix_unbox, snapshot_ident,
-    suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id, suffix_local_unique_id,
-    suffix_typ_param_id, unique_local, variant_field_ident, variant_ident, ProverChoice, SnapPos,
-    SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM,
-    FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE, SUCC,
-    SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
+    fun_to_string, height, new_internal_qid, path_to_string, prefix_box, prefix_ensures,
+    prefix_fuel_id, prefix_lambda_type, prefix_pre_var, prefix_requires, prefix_unbox,
+    snapshot_ident, suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id,
+    suffix_local_unique_id, suffix_typ_param_id, unique_local, variant_field_ident, variant_ident,
+    ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT,
+    FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_ASSIGN,
+    SNAPSHOT_CALL, SNAPSHOT_PRE, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN,
+    SUFFIX_SNAP_WHILE_END, U_HI,
 };
 use crate::def::{CommandsWithContext, CommandsWithContextX};
 use crate::inv_masks::MaskSet;
@@ -756,6 +757,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::ArchWordBits, _) => {
                 let name = Arc::new(ARCH_SIZE.to_string());
                 Arc::new(ExprX::Var(name))
+            }
+            UnaryOpr::Height => {
+                let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
+                let name = suffix_global_id(&fun_to_air_ident(&height()));
+                Arc::new(ExprX::Apply(name, Arc::new(vec![expr])))
             }
             UnaryOpr::Field(FieldOpr { datatype, variant, field }) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;

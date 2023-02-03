@@ -200,6 +200,9 @@ pub enum UnaryOpr {
     /// to hold the result.
     /// Mode is the minimum allowed mode (e.g., Spec for spec-only, Exec if allowed in exec).
     IntegerTypeBound(IntegerTypeBoundKind, Mode),
+    /// Height of a data structure for the purpose of decreases-checking.
+    /// Maps to the built-in intrinsic.
+    Height,
 }
 
 /// Arithmetic operation that might fail (overflow or divide by zero)

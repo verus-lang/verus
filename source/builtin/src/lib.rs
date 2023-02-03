@@ -1007,3 +1007,7 @@ pub fn signed_max(_word_bits: nat) -> nat {
 pub fn arch_word_bits() -> nat {
     unimplemented!();
 }
+
+pub fn height<A>(_a: A) -> nat {
+    unimplemented!();
+}

@@ -1241,3 +1241,49 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] height_intrinsic verus_code! {
+        #[is_variant]
+        enum Tree {
+            Node(Box<Tree>, Box<Tree>),
+            Leaf,
+        }
+
+        proof fn testing(l: Tree, r: Tree) {
+            let x = Tree::Node(box l, box r);
+
+            assert(l == *x.get_Node_0());
+            assert(r == *x.get_Node_1());
+
+            assert(height(x) > height(l));
+            assert(height(x) > height(r));
+            assert(height(x) > height(x.get_Node_0()));
+
+            assert(height(l) >= 0);
+        }
+
+        proof fn testing_fail(l: Tree, r: Tree) {
+            assert(height(l) > height(r)); // FAILS
+        }
+
+        // TODO
+        //proof fn testing_fail2(x: Tree) {
+            //assert(height(x.get_Node_0()) < height(x)); // FAILS
+        //}
+    } => Err(e) => assert_fails(e, 1)
+}
+
+test_verify_one_file! {
+    #[test] height_intrinsic_mode verus_code! {
+        #[is_variant]
+        enum Tree {
+            Node(Box<Tree>, Box<Tree>),
+            Leaf,
+        }
+
+        fn test(tree: Tree) {
+            let x = height(tree);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot test 'height' in exec mode")
+}
