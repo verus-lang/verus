@@ -402,6 +402,7 @@ fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> Trace
                 crate::ast::UnaryOpr::Box(_) | crate::ast::UnaryOpr::Unbox(_) => (),
                 crate::ast::UnaryOpr::HasType(_)
                 | crate::ast::UnaryOpr::IntegerTypeBound(..)
+                | crate::ast::UnaryOpr::Height
                 | crate::ast::UnaryOpr::IsVariant { .. }
                 | crate::ast::UnaryOpr::TupleField { .. }
                 | crate::ast::UnaryOpr::Field(_) => return mk_atom(exp.clone(), negated),

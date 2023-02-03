@@ -654,6 +654,13 @@ fn check_expr_handle_mut_arg(
             let mode = check_expr(typing, joined_mode, erasure_mode, e1)?;
             Ok(mode_join(*min_mode, mode))
         }
+        ExprX::UnaryOpr(UnaryOpr::Height, e1) => {
+            if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
+                return err_str(&expr.span, "cannot test 'height' in exec mode");
+            }
+            check_expr_has_mode(typing, Mode::Spec, e1, Mode::Spec)?;
+            Ok(Mode::Spec)
+        }
         ExprX::Loc(e) => {
             return check_expr_handle_mut_arg(typing, outer_mode, erasure_mode, e);
         }

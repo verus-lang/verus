@@ -275,6 +275,7 @@ impl ExpX {
                 match op {
                     Box(_) => (format!("box({})", exp), 99),
                     Unbox(_) => (format!("unbox({})", exp), 99),
+                    Height => (format!("height({})", exp), 99),
                     HasType(t) => (format!("{}.has_type({:?})", exp, t), 99),
                     IntegerTypeBound(kind, mode) => {
                         (format!("{:?}.{:?}({:?})", kind, mode, exp), 99)

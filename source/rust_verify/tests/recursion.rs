@@ -1241,3 +1241,70 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] height_intrinsic verus_code! {
+        #[is_variant]
+        enum Tree {
+            Node(Box<Tree>, Box<Tree>),
+            Leaf,
+        }
+
+        proof fn testing(l: Tree, r: Tree) {
+            let x = Tree::Node(box l, box r);
+
+            assert(l == *x.get_Node_0());
+            assert(r == *x.get_Node_1());
+
+            assert(height(x) > height(l));
+            assert(height(x) > height(r));
+            assert(height(x) > height(x.get_Node_0()));
+
+            assert(height(l) >= 0);
+        }
+
+        proof fn testing_fail(l: Tree, r: Tree) {
+            assert(height(l) > height(r)); // FAILS
+        }
+
+        proof fn testing_fail2(x: Tree) {
+            assert(height(x.get_Node_0()) < height(x)); // FAILS
+        }
+
+        proof fn testing3(x: Tree)
+            requires x.is_Node(),
+        {
+            assert(height(x.get_Node_0()) < height(x));
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file! {
+    #[test] height_intrinsic_mode verus_code! {
+        #[is_variant]
+        enum Tree {
+            Node(Box<Tree>, Box<Tree>),
+            Leaf,
+        }
+
+        fn test(tree: Tree) {
+            let x = height(tree);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot test 'height' in exec mode")
+}
+
+test_verify_one_file! {
+    #[test] datatype_height_axiom_checks_the_variant verus_code! {
+        #[is_variant]
+        enum List {
+            Cons(Box<List>),
+            Nil,
+        }
+
+        spec fn list_length(l: List) -> int
+            decreases l,
+        {
+            list_length(*l.get_Cons_0()) + 1 // FAILS
+        }
+    } => Err(e) => assert_fails(e, 1)
+}
