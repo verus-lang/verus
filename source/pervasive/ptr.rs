@@ -32,14 +32,10 @@ pub open spec fn is_power_2(n: int) -> bool
     }
 }
 
-pub open spec fn isize_max() -> int {
-    0x7fffffff // TODO
-}
-
 /// Matches the conditions here: https://doc.rust-lang.org/stable/std/alloc/struct.Layout.html
 pub open spec fn valid_layout(size: usize, align: usize) -> bool {
     is_power_2(align as int)
-      && size <= isize_max() - (isize_max() % align as int)
+      && size <= isize::MAX as int - (isize::MAX as int % align as int)
 }
 
 #[verifier(inline)]
