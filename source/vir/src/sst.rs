@@ -7,8 +7,8 @@
 //! SST is designed to make the translation to AIR as straightforward as possible.
 
 use crate::ast::{
-    AssertQueryMode, BinaryOp, Constant, Fun, InvAtomicity, Mode, Path, Quant, SpannedTyped, Typ,
-    Typs, UnaryOp, UnaryOpr, VarAt,
+    AssertQueryMode, BinaryOp, Constant, Fun, InvAtomicity, Mode, NullaryOpr, Path, Quant,
+    SpannedTyped, Typ, Typs, UnaryOp, UnaryOpr, VarAt,
 };
 use crate::def::Spanned;
 use crate::interpreter::InterpExp;
@@ -55,6 +55,7 @@ pub enum ExpX {
     Call(Fun, Typs, Exps),
     CallLambda(Typ, Exp, Exps),
     Ctor(Path, Ident, Binders<Exp>),
+    NullaryOpr(NullaryOpr),
     Unary(UnaryOp, Exp),
     UnaryOpr(UnaryOpr, Exp),
     Binary(BinaryOp, Exp, Exp),

@@ -37,6 +37,7 @@ use air::ast_util::{
     mk_option_command, mk_or, mk_sub, mk_xor, str_apply, str_ident, str_typ, str_var, string_var,
 };
 use air::messages::{error, error_with_label};
+use num_bigint::BigInt;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem::swap;
 use std::sync::Arc;
@@ -108,6 +109,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
         TypX::TypeId => str_typ(crate::def::TYPE),
+        TypX::ConstInt(_) => panic!("const integer cannot be used as an expression type"),
         TypX::Air(t) => t.clone(),
         TypX::StrSlice => str_typ(crate::def::STRSLICE),
         TypX::Char => str_typ(crate::def::CHAR),
@@ -139,6 +141,11 @@ pub fn monotyp_to_id(typ: &MonoTyp) -> Expr {
     }
 }
 
+fn big_int_to_expr(i: &BigInt) -> Expr {
+    use num_traits::Zero;
+    if i >= &BigInt::zero() { mk_nat(i) } else { air::ast_util::mk_neg(&mk_nat(-i)) }
+}
+
 // SMT-level type identifiers.
 // We currently rely on these type identifiers for:
 // 1) Axioms about unboxing integer refinement types (nat, u8, etc.)
@@ -156,6 +163,7 @@ pub fn typ_to_id(typ: &Typ) -> Expr {
         TypX::Boxed(typ) => typ_to_id(typ),
         TypX::TypParam(x) => ident_var(&suffix_typ_param_id(x)),
         TypX::TypeId => panic!("internal error: typ_to_id of TypeId"),
+        TypX::ConstInt(c) => str_apply(crate::def::TYPE_ID_CONST_INT, &vec![big_int_to_expr(c)]),
         TypX::Air(_) => panic!("internal error: typ_to_id of Air"),
         TypX::StrSlice => str_var(crate::def::TYPE_ID_STRSLICE),
         TypX::Char => str_var(crate::def::TYPE_ID_CHAR),
@@ -230,6 +238,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
             crate::def::HAS_TYPE,
             &vec![expr.clone(), ident_var(&suffix_typ_param_id(&x))],
         )),
+        // REVIEW: we could also try to add an IntRange type invariant for TypX::ConstInt
         _ => None,
     }
 }
@@ -256,6 +265,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
         TypX::TypeId => None,
+        TypX::ConstInt(_) => None,
         TypX::Air(_) => None,
         TypX::StrSlice => Some(str_ident(crate::def::BOX_STRSLICE)),
         TypX::Char => Some(str_ident(crate::def::BOX_CHAR)),
@@ -285,6 +295,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
         TypX::TypeId => None,
+        TypX::ConstInt(_) => None,
         TypX::Air(_) => None,
         TypX::StrSlice => Some(str_ident(crate::def::UNBOX_STRSLICE)),
         TypX::Char => Some(str_ident(crate::def::UNBOX_CHAR)),
@@ -392,9 +403,7 @@ fn char_to_unicode_repr(c: char) -> u32 {
 pub(crate) fn constant_to_expr(ctx: &Ctx, constant: &crate::ast::Constant) -> Expr {
     match constant {
         crate::ast::Constant::Bool(b) => Arc::new(ExprX::Const(Constant::Bool(*b))),
-        crate::ast::Constant::Int(i) => {
-            Arc::new(ExprX::Const(Constant::Nat(Arc::new(i.to_string()))))
-        }
+        crate::ast::Constant::Int(i) => big_int_to_expr(i),
         crate::ast::Constant::StrSlice(s) => str_to_const_str(ctx, s.clone()),
         crate::ast::Constant::Char(c) => Arc::new(ExprX::Apply(
             crate::def::char_from_unicode_ident(),
@@ -604,6 +613,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 .map(|b| exp_to_expr(ctx, &b.a, expr_ctxt))
                 .collect::<Result<Vec<_>, VirErr>>()?;
             Arc::new(ExprX::Apply(variant, Arc::new(args)))
+        }
+        (ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(c)), false) => {
+            str_apply(crate::def::CONST_INT, &vec![typ_to_id(c)])
         }
         (ExpX::Unary(op, arg), true) => {
             if !allowed_bitvector_type(&arg.typ) {

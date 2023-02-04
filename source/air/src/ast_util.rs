@@ -297,8 +297,12 @@ pub fn mk_bitvector_option() -> Vec<Command> {
     ]
 }
 
-pub fn mk_nat(n: usize) -> Expr {
+pub fn mk_nat<S: ToString>(n: S) -> Expr {
     Arc::new(ExprX::Const(Constant::Nat(Arc::new(n.to_string()))))
+}
+
+pub fn mk_neg(e: &Expr) -> Expr {
+    Arc::new(ExprX::Multi(MultiOp::Sub, Arc::new(vec![e.clone()])))
 }
 
 pub fn mk_sub(e1: &Expr, e2: &Expr) -> Expr {
