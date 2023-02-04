@@ -146,6 +146,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
         }
         TypX::Boxed(_) | TypX::TypParam(_) => true,
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
+        TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
     }
 }
@@ -170,6 +171,7 @@ fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
         }
         TypX::Boxed(_) | TypX::TypParam(_) => typ.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
+        TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
     }
 }
@@ -186,6 +188,7 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
         TypX::Datatype(..) => Arc::new(TypX::Boxed(typ.clone())),
         TypX::Boxed(_) | TypX::TypParam(_) => typ.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
+        TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
     }
 }
@@ -213,6 +216,7 @@ pub(crate) fn coerce_expr_to_native(ctx: &Ctx, expr: &Expr) -> Expr {
         }
         TypX::TypParam(_) => expr.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
+        TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
     }
 }
@@ -241,6 +245,7 @@ fn coerce_expr_to_poly(ctx: &Ctx, expr: &Expr) -> Expr {
         TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
         TypX::Boxed(_) | TypX::TypParam(_) => expr.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
+        TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
     }
 }
@@ -329,6 +334,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             }
             mk_expr(ExprX::Ctor(path.clone(), variant.clone(), Arc::new(bs), None))
         }
+        ExprX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => expr.clone(),
         ExprX::Unary(op, e1) => {
             let e1 = poly_expr(ctx, state, e1);
             match op {

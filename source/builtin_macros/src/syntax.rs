@@ -62,6 +62,8 @@ struct Visitor {
     verus_macro_attr: bool,
     // inside_ghost > 0 means we're currently visiting ghost code
     inside_ghost: u32,
+    // inside_type > 0 means we're currently visiting a type
+    inside_type: u32,
     // Widen means we're a direct subexpression in an arithmetic expression that will widen the result.
     // (e.g. "x" or "3" in x + 3 or in x < (3), but not in f(x) + g(3)).
     // When we see a constant in inside_arith, we preemptively give it type "int" rather than
@@ -1008,7 +1010,7 @@ impl VisitMut for Visitor {
             Expr::Closure(..) if self.inside_ghost > 0 => true,
             _ => false,
         };
-        if do_replace {
+        if do_replace && self.inside_type == 0 {
             match take_expr(expr) {
                 Expr::Lit(ExprLit { lit: Lit::Int(lit), attrs }) => {
                     let span = lit.span();
@@ -1452,7 +1454,9 @@ impl VisitMut for Visitor {
     }
 
     fn visit_type_mut(&mut self, ty: &mut Type) {
+        self.inside_type += 1;
         syn_verus::visit_mut::visit_type_mut(self, ty);
+        self.inside_type -= 1;
 
         let span = ty.span();
         let tmp_ty = take_type(ty);
@@ -1506,6 +1510,19 @@ impl VisitMut for Visitor {
                 *ty = tmp_ty;
             }
         }
+    }
+
+    fn visit_path_mut(&mut self, path: &mut Path) {
+        // generic type arguments can appear inside paths
+        self.inside_type += 1;
+        syn_verus::visit_mut::visit_path_mut(self, path);
+        self.inside_type -= 1;
+    }
+
+    fn visit_generic_method_argument_mut(&mut self, arg: &mut syn_verus::GenericMethodArgument) {
+        self.inside_type += 1;
+        syn_verus::visit_mut::visit_generic_method_argument_mut(self, arg);
+        self.inside_type -= 1;
     }
 
     fn visit_item_mod_mut(&mut self, item: &mut ItemMod) {
@@ -1670,6 +1687,7 @@ pub(crate) fn rewrite_items(
         erase_ghost,
         use_spec_traits,
         inside_ghost: 0,
+        inside_type: 0,
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
@@ -1700,6 +1718,7 @@ pub(crate) fn rewrite_expr(
         use_spec_traits: true,
         verus_macro_attr: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
+        inside_type: 0,
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
@@ -1779,6 +1798,7 @@ pub(crate) fn proof_macro_exprs(
         use_spec_traits: true,
         verus_macro_attr: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
+        inside_type: 0,
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),

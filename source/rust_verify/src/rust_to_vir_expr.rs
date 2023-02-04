@@ -1578,7 +1578,9 @@ fn fn_call_to_vir<'tcx>(
                     typ_args.push(mid_ty_to_vir(tcx, ty, false));
                 }
                 GenericArgKind::Lifetime(_) => {}
-                _ => unsupported_err!(expr.span, format!("const type arguments"), expr),
+                GenericArgKind::Const(cnst) => {
+                    typ_args.push(crate::rust_to_vir_base::mid_ty_const_to_vir(tcx, cnst));
+                }
             }
         }
         let target = CallTarget::Static(name, Arc::new(typ_args));
@@ -2478,6 +2480,34 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         expr.span,
                         modifier,
                     ),
+                    DefKind::ConstParam => {
+                        let gparam = if let Some(local_id) = id.as_local() {
+                            let hir_id = tcx.hir().local_def_id_to_hir_id(local_id);
+                            match tcx.hir().get(hir_id) {
+                                Node::GenericParam(rustc_hir::GenericParam {
+                                    name,
+                                    kind: rustc_hir::GenericParamKind::Const { .. },
+                                    ..
+                                }) => Some(name),
+                                _ => None,
+                            }
+                        } else {
+                            None
+                        };
+                        match *expr_typ() {
+                            TypX::Int(_) => {}
+                            _ => {
+                                unsupported_err!(expr.span, format!("non-int ConstParam {:?}", id))
+                            }
+                        }
+                        if let Some(name) = gparam {
+                            let typ = Arc::new(TypX::TypParam(Arc::new(name.ident().to_string())));
+                            let opr = vir::ast::NullaryOpr::ConstGeneric(typ);
+                            Ok(mk_expr(ExprX::NullaryOpr(opr)))
+                        } else {
+                            unsupported_err!(expr.span, format!("ConstParam {:?}", id))
+                        }
+                    }
                     _ => {
                         unsupported_err!(expr.span, format!("Path {:?} kind {:?}", id, def_kind))
                     }

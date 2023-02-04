@@ -124,7 +124,12 @@ pub(crate) enum Bound {
     Fn(ClosureKind, Typ, Typ),
 }
 
-pub(crate) type GenericParam = (Id, Vec<Bound>);
+#[derive(Debug)]
+pub(crate) struct GenericParam {
+    pub(crate) name: Id,
+    pub(crate) const_typ: Option<Typ>,
+    pub(crate) bounds: Vec<Bound>,
+}
 
 #[derive(Debug)]
 pub(crate) struct DatatypeDecl {

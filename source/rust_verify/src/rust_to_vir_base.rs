@@ -314,7 +314,9 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                             Some(mid_ty_to_vir_ghost(tcx, t, allow_mut_ref))
                         }
                         rustc_middle::ty::subst::GenericArgKind::Lifetime(_) => None,
-                        _ => panic!("unexpected type argument"),
+                        rustc_middle::ty::subst::GenericArgKind::Const(cnst) => {
+                            Some((mid_ty_const_to_vir(tcx, cnst), false))
+                        }
                     })
                     .collect();
                 if Some(*did) == tcx.lang_items().owned_box() && typ_args.len() == 2 {
@@ -379,6 +381,24 @@ pub(crate) fn mid_ty_to_vir<'tcx>(
     allow_mut_ref: bool,
 ) -> Typ {
     mid_ty_to_vir_ghost(tcx, ty, allow_mut_ref).0
+}
+
+pub(crate) fn mid_ty_const_to_vir<'tcx>(
+    _tcx: TyCtxt<'tcx>,
+    cnst: &rustc_middle::ty::Const<'tcx>,
+) -> Typ {
+    use rustc_middle::mir::interpret::{ConstValue, Scalar};
+    use rustc_middle::ty::ConstKind;
+    match cnst.val {
+        ConstKind::Param(param) => Arc::new(TypX::TypParam(Arc::new(param.name.to_string()))),
+        ConstKind::Value(ConstValue::Scalar(Scalar::Int(i))) => {
+            let c = num_bigint::BigInt::from(i.assert_bits(i.size()));
+            Arc::new(TypX::ConstInt(c))
+        }
+        _ => {
+            unsupported!(format!("const type argument {:?}", cnst))
+        }
+    }
 }
 
 pub(crate) fn is_type_std_rc_or_arc<'tcx>(
@@ -520,6 +540,7 @@ pub(crate) fn check_generic_bound<'tcx>(
 fn generic_param_def_to_vir_name(gen: &rustc_middle::ty::GenericParamDef) -> String {
     let is_synthetic = match gen.kind {
         GenericParamDefKind::Type { synthetic, .. } => synthetic,
+        GenericParamDefKind::Const { .. } => false,
         _ => panic!("expected GenericParamDefKind::Type"),
     };
 
@@ -550,18 +571,15 @@ pub(crate) fn check_generics_bounds<'tcx>(
     // so then we can handle the case where a method adds extra bounds to an impl
     // type parameter
 
-    let Generics { params: hir_params, where_clause: _, span } = hir_generics;
+    let Generics { params: hir_params, where_clause: _, span: _ } = hir_generics;
     let generics = tcx.generics_of(def_id);
 
     let mut mid_params: Vec<&rustc_middle::ty::GenericParamDef> = vec![];
     for param in generics.params.iter() {
         match &param.kind {
             GenericParamDefKind::Lifetime { .. } => {} // ignore
-            GenericParamDefKind::Type { .. } => {
+            GenericParamDefKind::Type { .. } | GenericParamDefKind::Const { .. } => {
                 mid_params.push(param);
-            }
-            GenericParamDefKind::Const { .. } => {
-                return err_span_str(*span, "Verus does not yet support const generics");
             }
         }
     }
@@ -572,7 +590,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
             match &p.kind {
                 GenericParamKind::Lifetime { kind: _ } => false, // ignore
                 GenericParamKind::Type { default: _, synthetic: _ } => true,
-                GenericParamKind::Const { ty: _, default: _ } => false, // error above
+                GenericParamKind::Const { ty: _, default: _ } => true,
             }
         })
         .collect();
@@ -714,7 +732,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
 
     for (idx, mid_param) in mid_params.iter().skip(skip_n).enumerate() {
         match mid_param.kind {
-            GenericParamDefKind::Type { .. } => {}
+            GenericParamDefKind::Type { .. } | GenericParamDefKind::Const { .. } => {}
             _ => {
                 continue;
             }
@@ -744,12 +762,14 @@ pub(crate) fn check_generics_bounds<'tcx>(
                     "in external_body datatype, each type parameter must be either #[verifier(maybe_negative)] or #[verifier(strictly_positive)] (maybe_negative is always safe to use)",
                 );
             }
+        } else if let GenericParamKind::Const { .. } = kind {
         } else {
             panic!("mid_param is a Type, so we expected the HIR param to be a Type");
         }
 
         match &mid_param.kind {
-            GenericParamDefKind::Type {
+            GenericParamDefKind::Const { .. }
+            | GenericParamDefKind::Type {
                 has_default: false,
                 synthetic: true | false,
                 object_lifetime_default: _,

@@ -594,15 +594,24 @@ pub(crate) fn emit_stm(state: &mut EmitState, stm: &Stm) {
     state.end_span(*span);
 }
 
-fn emit_generic_param((x, bnds): &GenericParam) -> String {
-    let mut buf = x.to_string();
-    for i in 0..bnds.len() {
+fn emit_generic_param(param: &GenericParam) -> String {
+    let mut buf = String::new();
+    if param.const_typ.is_some() {
+        buf += "const ";
+    }
+    buf += &param.name.to_string();
+    if let Some(typ) = &param.const_typ {
+        buf += ": ";
+        buf += &typ.to_string();
+        assert!(param.bounds.len() == 0);
+    }
+    for i in 0..param.bounds.len() {
         if i == 0 {
             buf += ": ";
         } else {
             buf += " + ";
         }
-        match &bnds[i] {
+        match &param.bounds[i] {
             Bound::Copy => {
                 buf += "Copy";
             }

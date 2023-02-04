@@ -1039,6 +1039,9 @@ fn expr_to_stm_opt(
             let ctor = ExpX::Ctor(p.clone(), i.clone(), Arc::new(args));
             Ok((stms, ReturnValue::Some(mk_exp(ctor))))
         }
+        ExprX::NullaryOpr(op) => {
+            Ok((vec![], ReturnValue::Some(mk_exp(ExpX::NullaryOpr(op.clone())))))
+        }
         ExprX::Unary(op, exprr) => {
             let (mut stms, exp) = expr_to_stm_opt(ctx, state, exprr)?;
             let exp = unwrap_or_return_never!(exp, stms);

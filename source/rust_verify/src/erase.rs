@@ -1128,7 +1128,7 @@ fn erase_fn(
 
     for param in params.iter() {
         match param.kind {
-            GenericParamKind::Lifetime => {
+            GenericParamKind::Lifetime | GenericParamKind::Const { .. } => {
                 new_params.push(param.clone());
             }
             GenericParamKind::Type { .. } => {
@@ -1140,7 +1140,6 @@ fn erase_fn(
                     GenericBoundX::Traits(_) => new_params.push(param.clone()),
                 }
             }
-            _ => {}
         }
     }
     let generics =

@@ -104,6 +104,7 @@ fn subst_exp_rec(
         | ExpX::Call(..)
         | ExpX::CallLambda(..)
         | ExpX::Ctor(..)
+        | ExpX::NullaryOpr(..)
         | ExpX::Unary(..)
         | ExpX::UnaryOpr(..)
         | ExpX::Binary(..)
@@ -259,6 +260,9 @@ impl ExpX {
             Call(fun, _, exps) => {
                 let args = exps.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
                 (format!("{}({})", fun.path.segments.last().unwrap(), args), 90)
+            }
+            NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => {
+                ("const_generic".to_string(), 99)
             }
             Unary(op, exp) => match op {
                 UnaryOp::Not | UnaryOp::BitNot => (format!("!{}", exp.x.to_string_prec(99)), 90),

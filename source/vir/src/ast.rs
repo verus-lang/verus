@@ -100,13 +100,13 @@ pub enum TypX {
     TypParam(Ident),
     /// Type of type identifiers
     TypeId,
+    /// Const integer type argument (e.g. for array sizes)
+    ConstInt(BigInt),
     /// AIR type, used internally during translation
     Air(air::ast::Typ),
-
     /// StrSlice type. Currently the pervasive StrSlice struct is "seen" as this type
     /// despite the fact that it is in fact a datatype
     StrSlice,
-
     /// UTF-8 character type
     Char,
 }
@@ -133,6 +133,13 @@ pub enum ModeCoercion {
     /// All other cases are treated uniformly by the mode checker based on their op/from/to-mode.
     /// (This includes Ghost::borrow, Tracked::get, etc.)
     Other,
+}
+
+/// Primitive 0-argument operations
+#[derive(Clone, Debug, Hash, ToDebugSNode)]
+pub enum NullaryOpr {
+    /// convert a const generic into an expression, as in fn f<const N: usize>() -> usize { N }
+    ConstGeneric(Typ),
 }
 
 /// Primitive unary operations
@@ -477,6 +484,8 @@ pub enum ExprX {
     /// For tuple-style variants, the field initializers appear in order and are named "_0", "_1", etc.
     /// For struct-style variants, the field initializers may appear in any order.
     Ctor(Path, Ident, Binders<Expr>, Option<Expr>),
+    /// Primitive 0-argument operation
+    NullaryOpr(NullaryOpr),
     /// Primitive unary operation
     Unary(UnaryOp, Expr),
     /// Special unary operator

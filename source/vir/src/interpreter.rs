@@ -490,6 +490,7 @@ fn hash_exp<H: Hasher>(state: &mut H, exp: &Exp) {
             hash_iter(state, args.iter().enumerate(), hash_exp);
         }
         Ctor(path, id, bnds) => dohash!(8, path, id; hash_binders_exp(bnds)),
+        NullaryOpr(op) => dohash!(-1, op),
         Unary(op, e) => dohash!(9, op; hash_exp(e)),
         UnaryOpr(op, e) => dohash!(10, op; hash_exp(e)),
         Binary(op, e1, e2) => dohash!(11, op; hash_exp(e1), hash_exp(e2)),
@@ -887,6 +888,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             }
             Some(e) => Ok(e.clone()),
         },
+        NullaryOpr(_) => ok,
         Unary(op, e) => {
             use Constant::*;
             use UnaryOp::*;
