@@ -384,11 +384,18 @@ pub(crate) fn mid_ty_to_vir<'tcx>(
 }
 
 pub(crate) fn mid_ty_const_to_vir<'tcx>(
-    _tcx: TyCtxt<'tcx>,
+    tcx: TyCtxt<'tcx>,
     cnst: &rustc_middle::ty::Const<'tcx>,
 ) -> Typ {
     use rustc_middle::mir::interpret::{ConstValue, Scalar};
     use rustc_middle::ty::ConstKind;
+
+    let cnst = match cnst.val {
+        ConstKind::Unevaluated(unevaluated) => {
+            cnst.eval(tcx, tcx.param_env(unevaluated.def.did))
+        }
+        _ => cnst,
+    };
     match cnst.val {
         ConstKind::Param(param) => Arc::new(TypX::TypParam(Arc::new(param.name.to_string()))),
         ConstKind::Value(ConstValue::Scalar(Scalar::Int(i))) => {
