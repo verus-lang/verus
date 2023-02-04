@@ -391,9 +391,7 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
     use rustc_middle::ty::ConstKind;
 
     let cnst = match cnst.val {
-        ConstKind::Unevaluated(unevaluated) => {
-            cnst.eval(tcx, tcx.param_env(unevaluated.def.did))
-        }
+        ConstKind::Unevaluated(unevaluated) => cnst.eval(tcx, tcx.param_env(unevaluated.def.did)),
         _ => cnst,
     };
     match cnst.val {
