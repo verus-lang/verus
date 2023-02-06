@@ -271,10 +271,20 @@ fn trusted_clone() -> TokenStream {
 /// The `count` field, when present, always has type `nat`;
 /// for the other two, when present, the types are provided as arguments.
 ///
-/// For map types, include the key type to create both a 'key' and 'value' field;
-/// otherwise, just include the value type.
+/// In general the 'key' field is used when something is unique
+/// And the 'count' is for nats that are additive.
 ///
-/// `count` field is used for `count` and `multiset` strategies
+/// For example:
+///   'option' only has a value
+///   'map' strategy has a key and a value
+///   'set' only has a key,
+///   'count' only has a count field
+///   'multiset' has key and count
+///
+/// The 'multiset' is kind of tricky but the idea is that a Multiset<V>
+/// is basically a Map<V, nat>. So the V is treated as a 'key' here
+/// and if you have multiple elements of the same value, that's represented
+/// by having a higher counter.
 
 fn token_struct_stream(
     sm: &SM,
@@ -752,7 +762,7 @@ pub fn exchange_stream(
 
     // For our purposes here, a 'property' is just a special case of a normal transition,
     // but 'init' transitions need to be handled differently.
-    // For the most part, there are two key differences between init and transition/readonly.
+    // For the most part, there are two key differences between init and transition/readonly/property.
     //
     //   * An 'init' returns an arbitrary new Instance object, whereas a normal transition
     //     takes an Instance as input.
