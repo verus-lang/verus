@@ -508,7 +508,7 @@ fn output_step_datatype(
             #[verifier(publish)]
             #[spec]
             pub fn next_strong(pre: #self_ty, post: #self_ty, #label_param) -> ::core::primitive::bool {
-                ::builtin::exists(|step: #step_ty| Self::next_by(pre, post, #label_arg step))
+                ::builtin::exists(|step: #step_ty| Self::next_strong_by(pre, post, #label_arg step))
             }
         });
     }
