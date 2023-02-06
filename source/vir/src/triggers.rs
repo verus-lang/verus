@@ -45,6 +45,7 @@ fn check_trigger_expr(
             ExpX::Call(..)
             | ExpX::CallLambda(..)
             | ExpX::UnaryOpr(UnaryOpr::Field { .. }, _)
+            | ExpX::UnaryOpr(UnaryOpr::Height, _)
             | ExpX::Unary(UnaryOp::Trigger(_), _) => {}
             // allow triggers for bitvector operators
             ExpX::Binary(BinaryOp::Bitwise(_), _, _) | ExpX::Unary(UnaryOp::BitNot, _) => {}

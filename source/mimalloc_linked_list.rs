@@ -15,13 +15,16 @@ use pervasive::ptr::*;
 verus_old_todo_no_ghost_blocks!{
 
 // I'd prefer to have some kind of Wide<T> that adds padding to T
-// to make it block-sized, and then do OptBox<Wide<T>>.
+// to make it block-sized, and then define something like:
+//
+//    struct LL { ll: OptBox<Wide<LL>> }
+//
 // This would make the whole thing a bit more modular.
 // But since the size of a block is dynamic, it would
 // need to be a dynamically-sized type (DST). Unfortunately,
 // DSTs are already a little hard to use in Rust, and then on
-// top of that, we would need to add support in Verus
-
+// top of that, we would need to add support in Verus for DSTs.
+//
 // So what we do instead is just include the padding in the OptBox type.
 // We have a block sized allocation at ptr, with
 // the first `size_of::<V>()` bytes allocated for V,
@@ -64,6 +67,8 @@ struct LL {
 }
 
 impl SizeOf for LL {
+    spec fn size_of() -> nat { 8 }
+    spec fn align_of() -> nat { 8 }
 }
 
 impl LL {

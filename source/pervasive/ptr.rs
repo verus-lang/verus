@@ -229,6 +229,16 @@ pub ghost struct PointsToData<V> {
     pub value: option::Option<V>,
 }
 
+// TODO add similiar height axioms for other ghost objects
+
+#[verifier(broadcast_forall)]
+#[verifier(external_body)]
+pub proof fn points_to_height_axiom<V>(points_to: PointsTo<V>)
+    ensures (#[trigger] height(points_to@)) < height(points_to)
+{
+    unimplemented!()
+}
+
 /// Points to uninitialized memory.
 
 #[verifier(external_body)]
