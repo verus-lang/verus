@@ -1133,19 +1133,7 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
 
     if let FunctionKind::TraitMethodImpl { method, trait_path, datatype, .. } = &function.x.kind {
         let datatype_mode = typing.datatypes[datatype].x.mode;
-        let self_mode = function.x.params[0].x.mode;
         let our_trait = typing.traits.contains(trait_path);
-        if self_mode != function.x.mode {
-            // It's hard for erase.rs to support mode != param_mode (we'd have to erase self),
-            // so we currently disallow it:
-            return err_string(
-                &function.x.params[0].span,
-                format!(
-                    "self has mode {}, function has mode {} -- these cannot be different",
-                    self_mode, function.x.mode
-                ),
-            );
-        }
         let (expected_params, expected_ret_mode): (Vec<Mode>, Mode) = if our_trait {
             let trait_method = &typing.funs[method];
             let expect_mode = mode_join(trait_method.x.mode, datatype_mode);

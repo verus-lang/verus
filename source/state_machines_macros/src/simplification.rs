@@ -221,7 +221,7 @@ fn postcondition_stmt(span: Span, f: Ident) -> SimplStmt {
     let cur = get_cur(&f);
     SimplStmt::PostCondition(
         span,
-        Expr::Verbatim(quote! {
+        Expr::Verbatim(quote_spanned! { span =>
             ::builtin::equal(post.#f, #cur)
         }),
     )
@@ -265,6 +265,15 @@ fn simplify_ops_with_pre(ts: &TransitionStmt, sm: &SM, kind: TransitionKind) -> 
     if kind == TransitionKind::Init {
         ops
     } else {
+        // For each field, add `assign tmp_update_a = pre.a`
+        // to the beginning for each field. (We don't do this step
+        // for 'init' transitions because there is no 'pre' object.)
+        //
+        // Note that in either case, we are guaranteed to have at least
+        // one 'assign' statement for each field. In the Init case, it's because
+        // the user must initialize each field.
+        // In the Transition case, it's because we do this step here.
+
         let mut ops1: Vec<SimplStmt> = sm
             .fields
             .iter()

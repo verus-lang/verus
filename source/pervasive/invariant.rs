@@ -385,8 +385,11 @@ macro_rules! open_atomic_invariant {
 ///   |
 ///   |   open_atomic_invariant!(&inv => id1 => {
 ///   |                           ^ this invariant
-///   |     open_atomic_invariant!(&inv => id2 => {
-///   |                             ^ might be the same as this invariant
+///   |       open_atomic_invariant!(&inv => id2 => {
+///   |                               ^ might be the same as this invariant
+///   ...
+///   |       }
+///   |   }
 /// ```
 ///
 /// When generating these conditions, Verus compares invariants via their
