@@ -10,8 +10,8 @@ use crate::util::{err_span_str, err_span_string, spanned_new, unsupported_err_sp
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{
-    def::Res, Body, BodyId, FnDecl, FnHeader, FnRetTy, FnSig, Generics, Param, PrimTy, QPath, Ty,
-    TyKind, Unsafety,
+    def::Res, Body, BodyId, FnDecl, FnHeader, FnRetTy, FnSig, Generics, ImplicitSelfKind, Param,
+    PrimTy, QPath, Ty, TyKind, Unsafety,
 };
 use rustc_middle::ty::TyCtxt;
 use rustc_span::symbol::{Ident, Symbol};
@@ -71,6 +71,16 @@ fn check_fn_decl<'tcx>(
             let typ = mid_ty_to_vir(tcx, output_ty, false);
             Ok(Some((typ, get_ret_mode(mode, attrs))))
         }
+    }
+}
+
+fn sig_uses_self_param<'tcx>(sig: &'tcx FnSig<'tcx>) -> bool {
+    match &sig.decl.implicit_self {
+        ImplicitSelfKind::None => false,
+        ImplicitSelfKind::Imm
+        | ImplicitSelfKind::Mut
+        | ImplicitSelfKind::ImmRef
+        | ImplicitSelfKind::MutRef => true,
     }
 }
 
@@ -362,6 +372,21 @@ pub(crate) fn check_item_fn<'tcx>(
     let mut visibility = visibility;
     if path == vir::def::exec_nonstatic_call_path() {
         visibility.is_private = false;
+    }
+
+    if trait_path.is_some() && sig_uses_self_param(sig) {
+        let self_mode = params[0].x.mode;
+        if mode != self_mode {
+            // It's hard for erase.rs to support mode != param_mode (we'd have to erase self),
+            // so we currently disallow it:
+            return err_span_str(
+                sig.span,
+                &format!(
+                    "self has mode {}, function has mode {} -- these cannot be different",
+                    self_mode, mode
+                ),
+            );
+        }
     }
 
     let func = FunctionX {

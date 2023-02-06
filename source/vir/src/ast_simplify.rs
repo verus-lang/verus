@@ -4,9 +4,9 @@ use crate::ast::Quant;
 use crate::ast::Typs;
 use crate::ast::{
     BinaryOp, Binder, BuiltinSpecFun, CallTarget, Constant, Datatype, DatatypeTransparency,
-    DatatypeX, Expr, ExprX, Exprs, Field, FieldOpr, Function, GenericBound, GenericBoundX, Ident,
-    IntRange, Krate, KrateX, Mode, MultiOp, Path, Pattern, PatternX, SpannedTyped, Stmt, StmtX,
-    Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
+    DatatypeX, Expr, ExprX, Exprs, Field, FieldOpr, Function, FunctionKind, GenericBound,
+    GenericBoundX, Ident, IntRange, Krate, KrateX, Mode, MultiOp, Path, Pattern, PatternX,
+    SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
 };
 use crate::ast_util::{conjoin, disjoin, if_then_else};
 use crate::ast_util::{err_str, err_string, wrap_in_trigger};
@@ -718,11 +718,14 @@ fn simplify_function(
             .collect(),
     );
 
+    let is_trait_impl = matches!(functionx.kind, FunctionKind::TraitMethodImpl { .. });
+
     // To simplify the AIR/SMT encoding, add a dummy argument to any function with 0 arguments
     if functionx.typ_bounds.len() == 0
         && functionx.params.len() == 0
         && !functionx.is_const
         && !functionx.attrs.broadcast_forall
+        && !is_trait_impl
     {
         let paramx = crate::ast::ParamX {
             name: Arc::new(crate::def::DUMMY_PARAM.to_string()),

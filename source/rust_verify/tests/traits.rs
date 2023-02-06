@@ -1225,3 +1225,64 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition, which may result in nontermination")
 }
+
+test_verify_one_file! {
+    #[test] trait_fn_with_0_params verus_code! {
+        trait Tr {
+            spec fn f() -> int;
+
+            fn exec_f() -> (i: u64)
+                ensures i as int == Self::f();
+        }
+
+        struct X {}
+        struct Y {}
+
+        impl Tr for X {
+            spec fn f() -> int { 5 }
+
+            fn exec_f() -> u64 {
+                5
+            }
+        }
+
+        impl Tr for Y {
+            spec fn f() -> int { 6 }
+
+            fn exec_f() -> u64 {
+                6
+            }
+        }
+
+        proof fn test() {
+            assert(X::f() == 5);
+            assert(Y::f() == 6);
+        }
+
+        proof fn test2() {
+            assert(X::f() == Y::f()); // FAILS
+        }
+
+        proof fn test3<A: Tr, B: Tr>() {
+            assert(A::f() == B::f()); // FAILS
+        }
+
+        fn test4() {
+            let x1 = X::exec_f();
+            let x2 = X::exec_f();
+            assert(x1 == x2);
+        }
+
+        fn test5() {
+            let x1 = X::exec_f();
+            let x2 = Y::exec_f();
+            assert(x1 == x2); // FAILS
+        }
+
+        fn test6<A: Tr, B: Tr>() {
+            let x1 = A::exec_f();
+            let x2 = B::exec_f();
+            assert(x1 == x2); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
