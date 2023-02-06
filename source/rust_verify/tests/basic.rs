@@ -101,10 +101,14 @@ test_verify_one_file! {
             hide(f2);
 
             assume(f2(a, b));
-            reveal(f2);
+            proof {
+                reveal(f2);
+            }
             assert(f1(a, b));
 
-            reveal(f3);
+            proof {
+                reveal(f3);
+            }
             assert(f3(b, a));
             assert(f3(a, b)); // FAILS
         }

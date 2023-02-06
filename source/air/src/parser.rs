@@ -92,7 +92,7 @@ impl Parser {
                 Node::Atom(label) if label.starts_with("\"") && label.ends_with("\"") => {
                     let raw_span = Arc::new(());
                     let as_string = label[1..label.len() - 1].to_string();
-                    let span = Span { raw_span, as_string: as_string.clone() };
+                    let span = Span { raw_span, id: 0, as_string: as_string.clone() };
                     let label = MessageLabel { span, note: as_string };
                     labels.push(label);
                 }

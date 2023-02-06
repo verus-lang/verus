@@ -236,8 +236,9 @@ test_verify_one_file! {
 
 // 0 arg closures
 
-test_verify_one_file! {
-    #[test] basic_test_0_args verus_code! {
+test_verify_one_file_with_options! {
+    #[test] basic_test_0_args ["--todo-no-macro-erasure"] => verus_code! {
+        // TODO requires/ensures need to be spec-erased
         spec fn goo() -> bool;
 
         fn testfn() {
@@ -1049,8 +1050,9 @@ test_verify_one_file! {
 
 // closures that depend on type params
 
-test_verify_one_file! {
-    #[test] closure_depends_on_type_param verus_code! {
+test_verify_one_file_with_options! {
+    #[test] closure_depends_on_type_param ["--todo-no-macro-erasure"] => verus_code! {
+        // TODO requires/ensures need to be spec-erased
         fn test1<T>(some_t: T) {
             let f = |t: T| {
                 ensures(|s: T| equal(s, t));

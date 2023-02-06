@@ -36,21 +36,13 @@ pub fn main() {
 
     let mut args = std::env::args();
     let program = args.next().unwrap();
-    let (our_args, mut rustc_args) = rust_verify::config::parse_args(&program, args);
-    rust_verify::config::enable_default_features(&mut rustc_args);
+    let (our_args, rustc_args) = rust_verify::config::parse_args(&program, args);
     let pervasive_path = our_args.pervasive_path.clone();
 
     let file_loader = rust_verify::file_loader::PervasiveFileLoader::new(pervasive_path);
     let verifier = rust_verify::verifier::Verifier::new(our_args);
 
     let (verifier, status) = rust_verify::driver::run(verifier, rustc_args, file_loader);
-
-    if !verifier.encountered_vir_error {
-        println!(
-            "verification results:: verified: {} errors: {}",
-            verifier.count_verified, verifier.count_errors
-        );
-    }
 
     let total_time_1 = std::time::Instant::now();
     let total_time = total_time_1 - total_time_0;

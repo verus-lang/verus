@@ -5,7 +5,7 @@ extern crate rustc_span;
 pub use rust_verify::verifier::ErrorSpan;
 pub use rust_verify_test_macros::{code, code_str, verus_code, verus_code_str};
 
-use rust_verify::config::{enable_default_features, parse_args, Args, DEFAULT_RLIMIT_SECS};
+use rust_verify::config::{parse_args, Args, DEFAULT_RLIMIT_SECS};
 use rust_verify::verifier::Verifier;
 
 use rustc_span::source_map::FileLoader;
@@ -112,9 +112,9 @@ pub fn verify_files_and_pervasive(
         "state_machines_macros=../../rust/install/bin/state_machines_macros.dll".to_string(),
     ]);
 
-    enable_default_features(&mut rustc_args);
-
     rustc_args.push(entry_file);
+
+    let mut macro_erasure = files.iter().any(|(_, body)| body.contains("::builtin_macros::verus!"));
     let our_args = {
         let mut our_args: Args = if let Ok(extra_args) = std::env::var("VERIFY_EXTRA_ARGS") {
             let (args, rest) = parse_args(
@@ -146,18 +146,27 @@ pub fn verify_files_and_pervasive(
                 our_args.arch_word_bits = vir::prelude::ArchWordBits::Exactly(32);
             } else if *option == "--arch-word-bits 64" {
                 our_args.arch_word_bits = vir::prelude::ArchWordBits::Exactly(64);
+            } else if *option == "--todo-no-macro-erasure" {
+                macro_erasure = false;
             } else {
                 panic!("option '{}' not recognized by test harness", option);
             }
         }
+        if macro_erasure {
+            our_args.erasure = rust_verify::config::Erasure::Macro;
+        }
         our_args
     };
+    if macro_erasure {
+        rustc_args.append(&mut vec!["--cfg".to_string(), "erasure_macro_todo".to_string()]);
+    }
+
     let files = files.into_iter().map(|(p, f)| (p.into(), f)).collect();
     let captured_output = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let captured_output_1 = captured_output.clone();
 
     let pervasive_path = match std::env::var("TEST_PERVASIVE_PATH") {
-        Ok(path) if !verify_pervasive => path,
+        Ok(path) if !verify_pervasive && !macro_erasure => path,
         _ => "../pervasive".to_string(),
     };
 

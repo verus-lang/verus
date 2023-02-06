@@ -78,8 +78,13 @@ pub struct Spec<#[verifier(strictly_positive)] A> {
 }
 */
 
+#[cfg(not(verus_macro_erase_ghost))]
 pub struct Proof<A>(
     #[proof] pub A,
+);
+#[cfg(verus_macro_erase_ghost)]
+pub struct Proof<A>(
+    #[proof] pub std::marker::PhantomData<A>,
 );
 
 /*
@@ -132,6 +137,7 @@ impl<A> PartialEq for Proof<A> {
 impl<A> Eq for Proof<A> {
 }
 
+#[cfg(not(verus_macro_erase_ghost))]
 #[allow(dead_code)]
 #[inline(always)]
 #[verifier(external_body)]
@@ -139,6 +145,16 @@ pub fn exec_proof_from_false<A>() -> Proof<A>
     requires false
 {
     Proof(proof_from_false())
+}
+
+#[cfg(verus_macro_erase_ghost)]
+#[allow(dead_code)]
+#[inline(always)]
+#[verifier(external_body)]
+pub fn exec_proof_from_false<A>() -> Proof<A>
+    requires false
+{
+    Proof(std::marker::PhantomData::default())
 }
 
 } // verus

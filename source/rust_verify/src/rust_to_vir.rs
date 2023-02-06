@@ -172,13 +172,12 @@ fn check_item<'tcx>(
                     for impl_item_ref in impll.items {
                         match impl_item_ref.kind {
                             AssocItemKind::Fn { has_self } if has_self => {
-                                if let ImplItemKind::Fn(sig, _) =
-                                    &ctxt.tcx.hir().impl_item(impl_item_ref.id).kind
-                                {
+                                let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
+                                if let ImplItemKind::Fn(sig, _) = &impl_item.kind {
                                     ctxt.erasure_info
                                         .borrow_mut()
                                         .ignored_functions
-                                        .push(sig.span.data());
+                                        .push((impl_item.def_id.to_def_id(), sig.span.data()));
                                 } else {
                                     panic!("Fn impl item expected");
                                 }
@@ -343,7 +342,10 @@ fn check_item<'tcx>(
             if hack_get_def_name(ctxt.tcx, body_id.hir_id.owner.to_def_id())
                 .starts_with("_DERIVE_builtin_Structural_FOR_")
             {
-                ctxt.erasure_info.borrow_mut().ignored_functions.push(item.span.data());
+                ctxt.erasure_info
+                    .borrow_mut()
+                    .ignored_functions
+                    .push((item.def_id.to_def_id(), item.span.data()));
                 return Ok(());
             }
 

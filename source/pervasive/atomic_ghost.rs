@@ -23,6 +23,7 @@ macro_rules! declare_atomic_type {
         impl<K, G, Pred> InvariantPredicate<(K, int), ($perm_ty, G)> for $atomic_pred_ty<Pred>
             where Pred: AtomicInvariantPredicate<K, $value_ty, G>
         {
+            #[cfg(not(verus_macro_erase_ghost))]
             #[verifier(publish)]
             #[spec]
             fn inv(k_loc: (K, int), perm_g: ($perm_ty, G)) -> bool {
@@ -55,11 +56,13 @@ macro_rules! declare_atomic_type {
         impl<K, G, Pred> $at_ident<K, G, Pred>
             where Pred: AtomicInvariantPredicate<K, $value_ty, G>
         {
+            #[cfg(not(verus_macro_erase_ghost))]
             #[spec] #[verifier(publish)]
             pub fn well_formed(&self) -> bool {
                 self.atomic_inv.constant().1 == self.patomic.id()
             }
 
+            #[cfg(not(verus_macro_erase_ghost))]
             #[spec] #[verifier(publish)]
             pub fn constant(&self) -> K {
                 self.atomic_inv.constant().0
@@ -67,19 +70,32 @@ macro_rules! declare_atomic_type {
 
             #[inline(always)]
             pub fn new(#[spec] k: K, u: $value_ty, #[proof] g: G) -> Self {
+                #[cfg(not(verus_macro_erase_ghost))]
                 requires(Pred::atomic_inv(k, u, g));
+                #[cfg(not(verus_macro_erase_ghost))]
                 ensures(|t: Self| t.well_formed() && equal(t.constant(), k));
 
                 let (patomic, Proof(perm)) = $patomic_ty::new(u);
-                #[proof] let pair = (perm, g);
-                #[proof] let atomic_inv = AtomicInvariant::new(
-                    (k, patomic.id()),
-                    pair,
-                    spec_literal_int("0"));
+                #[cfg(not(verus_macro_erase_ghost))]
+                {
+                    #[proof] let pair = (perm, g);
+                    #[proof] let atomic_inv = AtomicInvariant::new(
+                        (k, patomic.id()),
+                        pair,
+                        spec_literal_int("0"));
 
-                $at_ident {
-                    patomic,
-                    atomic_inv,
+                    $at_ident {
+                        patomic,
+                        atomic_inv,
+                    }
+                }
+                #[cfg(verus_macro_erase_ghost)]
+                {
+                    let atomic_inv = AtomicInvariant::assume_new();
+                    $at_ident {
+                        patomic,
+                        atomic_inv,
+                    }
                 }
             }
 

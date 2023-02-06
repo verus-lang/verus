@@ -567,6 +567,12 @@ pub struct SyncSendIfSend<T> {
 unsafe impl<T: Send> Sync for SyncSendIfSend<T> {}
 unsafe impl<T: Send> Send for SyncSendIfSend<T> {}
 
+impl<T> SyncSendIfSend<T> {
+    pub fn assume_new() -> Self {
+        SyncSendIfSend { no_sync_send: NoSyncSend {}, t: PhantomData }
+    }
+}
+
 //
 // Integers
 //

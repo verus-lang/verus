@@ -10,8 +10,8 @@ use crate::util::{err_span_str, err_span_string, spanned_new, unsupported_err_sp
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{
-    def::Res, Body, BodyId, FnDecl, FnHeader, FnRetTy, FnSig, Generics, ImplicitSelfKind, Param,
-    PrimTy, QPath, Ty, TyKind, Unsafety,
+    def::Res, Body, BodyId, Crate, FnDecl, FnHeader, FnRetTy, FnSig, Generics, ImplicitSelfKind,
+    Param, PrimTy, QPath, Ty, TyKind, Unsafety,
 };
 use rustc_middle::ty::TyCtxt;
 use rustc_span::symbol::{Ident, Symbol};
@@ -84,14 +84,21 @@ fn sig_uses_self_param<'tcx>(sig: &'tcx FnSig<'tcx>) -> bool {
     }
 }
 
-fn find_body<'tcx>(ctxt: &Context<'tcx>, body_id: &BodyId) -> &'tcx Body<'tcx> {
-    let owner = ctxt.krate.owners[body_id.hir_id.owner].as_ref();
+pub(crate) fn find_body_krate<'tcx>(
+    krate: &'tcx Crate<'tcx>,
+    body_id: &BodyId,
+) -> &'tcx Body<'tcx> {
+    let owner = krate.owners[body_id.hir_id.owner].as_ref();
     if let Some(owner) = owner {
         if let Some(body) = owner.nodes.bodies.get(&body_id.hir_id.local_id) {
             return body;
         }
     }
     panic!("Body not found");
+}
+
+fn find_body<'tcx>(ctxt: &Context<'tcx>, body_id: &BodyId) -> &'tcx Body<'tcx> {
+    find_body_krate(ctxt.krate, body_id)
 }
 
 fn check_new_strlit<'tcx>(ctx: &Context<'tcx>, sig: &'tcx FnSig<'tcx>) -> Result<(), VirErr> {
@@ -197,7 +204,7 @@ pub(crate) fn check_item_fn<'tcx>(
             "StrSlice::new must be external_body"
         );
 
-        erasure_info.ignored_functions.push(sig.span.data());
+        erasure_info.ignored_functions.push((id, sig.span.data()));
         erasure_info.external_functions.push(name);
         return Ok(None);
     }

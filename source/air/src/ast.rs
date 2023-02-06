@@ -3,9 +3,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 pub type RawSpan = Arc<dyn std::any::Any + std::marker::Sync + std::marker::Send>;
+pub type AstId = u64;
 #[derive(Clone)] // for Debug, see ast_util
 pub struct Span {
     pub raw_span: RawSpan,
+    pub id: AstId, // arbitrary integer identifier that may be set and used in any way (e.g. as unique id, or just left as 0)
     pub as_string: String, // if we can't print (description, raw_span), print as_string instead
 }
 

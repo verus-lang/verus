@@ -112,11 +112,13 @@ macro_rules! atomic_types {
             #[verifier(external_body)]
             pub fn view(self) -> $p_data_ident { unimplemented!(); }
 
+            #[cfg(not(verus_macro_erase_ghost))]
             #[spec] #[verifier(publish)]
             pub fn is_for(&self, patomic: $at_ident) -> bool {
                 self.view().patomic == patomic.id()
             }
 
+            #[cfg(not(verus_macro_erase_ghost))]
             #[spec] #[verifier(publish)]
             pub fn points_to(&self, v: $value_ty) -> bool {
                 self.view().value == v
@@ -132,6 +134,7 @@ macro_rules! atomic_common_methods {
         #[inline(always)]
         #[verifier(external_body)]
         pub fn new(i: $value_ty) -> ($at_ident, Proof<$p_ident>) {
+            #[cfg(not(verus_macro_erase_ghost))]
             ensures(|res : ($at_ident, Proof<$p_ident>)|
                 equal(res.1.0.view(), $p_data_ident{ patomic: res.0.id(), value: i })
             );
@@ -145,10 +148,13 @@ macro_rules! atomic_common_methods {
         #[verifier(external_body)]
         #[verifier(atomic)]
         pub fn load(&self, #[proof] perm: &$p_ident) -> $value_ty {
+            #[cfg(not(verus_macro_erase_ghost))]
             requires([
                 equal(self.id(), perm.view().patomic),
             ]);
+            #[cfg(not(verus_macro_erase_ghost))]
             ensures(|ret: $value_ty| equal(perm.view().value, ret));
+            #[cfg(not(verus_macro_erase_ghost))]
             opens_invariants_none();
 
             return self.ato.load(Ordering::SeqCst);
@@ -158,10 +164,13 @@ macro_rules! atomic_common_methods {
         #[verifier(external_body)]
         #[verifier(atomic)]
         pub fn store(&self, #[proof] perm: &mut $p_ident, v: $value_ty) {
+            #[cfg(not(verus_macro_erase_ghost))]
             requires([
                 equal(self.id(), old(perm).view().patomic),
             ]);
+            #[cfg(not(verus_macro_erase_ghost))]
             ensures(equal(perm.view().value, v) && equal(self.id(), perm.view().patomic));
+            #[cfg(not(verus_macro_erase_ghost))]
             opens_invariants_none();
 
             self.ato.store(v, Ordering::SeqCst);
@@ -171,9 +180,11 @@ macro_rules! atomic_common_methods {
         #[verifier(external_body)]
         #[verifier(atomic)]
         pub fn compare_exchange(&self, #[proof] perm: &mut $p_ident, current: $value_ty, new: $value_ty) -> Result<$value_ty, $value_ty> {
+            #[cfg(not(verus_macro_erase_ghost))]
             requires([
                 equal(self.id(), old(perm).view().patomic),
             ]);
+            #[cfg(not(verus_macro_erase_ghost))]
             ensures(|ret: Result<$value_ty, $value_ty>|
                 equal(self.id(), perm.view().patomic)
                 && match ret {
@@ -187,6 +198,7 @@ macro_rules! atomic_common_methods {
                         && equal(r, old(perm).view().value),
                 }
             );
+            #[cfg(not(verus_macro_erase_ghost))]
             opens_invariants_none();
 
             match self.ato.compare_exchange(current, new, Ordering::SeqCst, Ordering::SeqCst) {
@@ -199,9 +211,11 @@ macro_rules! atomic_common_methods {
         #[verifier(external_body)]
         #[verifier(atomic)]
         pub fn compare_exchange_weak(&self, #[proof] perm: &mut $p_ident, current: $value_ty, new: $value_ty) -> Result<$value_ty, $value_ty> {
+            #[cfg(not(verus_macro_erase_ghost))]
             requires([
                 equal(self.id(), old(perm).view().patomic),
             ]);
+            #[cfg(not(verus_macro_erase_ghost))]
             ensures(|ret: Result<$value_ty, $value_ty>|
                 equal(self.id(), perm.view().patomic)
                 && match ret {
@@ -214,6 +228,7 @@ macro_rules! atomic_common_methods {
                         && equal(r, old(perm).view().value),
                 }
             );
+            #[cfg(not(verus_macro_erase_ghost))]
             opens_invariants_none();
 
             match self.ato.compare_exchange_weak(current, new, Ordering::SeqCst, Ordering::SeqCst) {
@@ -226,14 +241,17 @@ macro_rules! atomic_common_methods {
         #[verifier(external_body)]
         #[verifier(atomic)]
         pub fn swap(&self, #[proof] perm: &mut $p_ident, v: $value_ty) -> $value_ty {
+            #[cfg(not(verus_macro_erase_ghost))]
             requires([
                 equal(self.id(), old(perm).view().patomic),
             ]);
+            #[cfg(not(verus_macro_erase_ghost))]
             ensures(|ret: $value_ty|
                    equal(perm.view().value, v)
                 && equal(old(perm).view().value, ret)
                 && equal(self.id(), perm.view().patomic)
             );
+            #[cfg(not(verus_macro_erase_ghost))]
             opens_invariants_none();
 
             return self.ato.swap(v, Ordering::SeqCst);
@@ -242,10 +260,13 @@ macro_rules! atomic_common_methods {
         #[inline(always)]
         #[verifier(external_body)]
         pub fn into_inner(self, #[proof] perm: $p_ident) -> $value_ty {
+            #[cfg(not(verus_macro_erase_ghost))]
             requires([
                 equal(self.id(), perm.view().patomic),
             ]);
+            #[cfg(not(verus_macro_erase_ghost))]
             ensures(|ret: $value_ty| equal(perm.view().value, ret));
+            #[cfg(not(verus_macro_erase_ghost))]
             opens_invariants_none();
 
             return self.ato.into_inner();
@@ -262,12 +283,15 @@ macro_rules! atomic_integer_methods {
         #[verifier(external_body)]
         #[verifier(atomic)]
         pub fn fetch_add_wrapping(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
+            #[cfg(not(verus_macro_erase_ghost))]
             requires(equal(self.id(), old(perm).view().patomic));
+            #[cfg(not(verus_macro_erase_ghost))]
             ensures(|ret: $value_ty| [
                 equal(old(perm).view().value, ret),
                 perm.view().patomic == old(perm).view().patomic,
                 spec_cast_integer::<$value_ty, int>(perm.view().value) == $wrap_add(spec_cast_integer(old(perm).view().value), spec_cast_integer(n)),
             ]);
+            #[cfg(not(verus_macro_erase_ghost))]
             opens_invariants_none();
 
             return self.ato.fetch_add(n, Ordering::SeqCst);
@@ -277,12 +301,15 @@ macro_rules! atomic_integer_methods {
         #[verifier(external_body)]
         #[verifier(atomic)]
         pub fn fetch_sub_wrapping(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
+            #[cfg(not(verus_macro_erase_ghost))]
             requires(equal(self.id(), old(perm).view().patomic));
+            #[cfg(not(verus_macro_erase_ghost))]
             ensures(|ret: $value_ty| [
                 equal(old(perm).view().value, ret),
                 perm.view().patomic == old(perm).view().patomic,
                 spec_cast_integer::<$value_ty, int>(perm.view().value) == $wrap_sub(spec_cast_integer::<$value_ty, int>(old(perm).view().value), spec_cast_integer(n)),
             ]);
+            #[cfg(not(verus_macro_erase_ghost))]
             opens_invariants_none();
 
             return self.ato.fetch_sub(n, Ordering::SeqCst);
@@ -295,16 +322,19 @@ macro_rules! atomic_integer_methods {
         #[verifier(atomic)]
         pub fn fetch_add(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty
         {
+            #[cfg(not(verus_macro_erase_ghost))]
             requires([
                 equal(self.id(), old(perm).view().patomic),
                 spec_cast_integer::<$value_ty, int>(<$value_ty>::MIN) <= old(perm).view().value.spec_add(n),
                 old(perm).view().value.spec_add(n) <= spec_cast_integer::<$value_ty, int>(<$value_ty>::MAX),
             ]);
+            #[cfg(not(verus_macro_erase_ghost))]
             ensures(|ret: $value_ty| [
                 equal(old(perm).view().value, ret),
                 perm.view().patomic == old(perm).view().patomic,
                 perm.view().value == old(perm).view().value + n,
             ]);
+            #[cfg(not(verus_macro_erase_ghost))]
             opens_invariants_none();
 
             self.fetch_add_wrapping(&mut *perm, n)
@@ -314,16 +344,19 @@ macro_rules! atomic_integer_methods {
         #[verifier(atomic)]
         pub fn fetch_sub(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty
         {
+            #[cfg(not(verus_macro_erase_ghost))]
             requires([
                 equal(self.id(), old(perm).view().patomic),
                 spec_cast_integer::<$value_ty, int>(<$value_ty>::MIN) <= old(perm).view().value.spec_sub(n),
                 old(perm).view().value.spec_sub(n) <= spec_cast_integer::<$value_ty, int>(<$value_ty>::MAX),
             ]);
+            #[cfg(not(verus_macro_erase_ghost))]
             ensures(|ret: $value_ty| [
                 equal(old(perm).view().value, ret),
                 perm.view().patomic == old(perm).view().patomic,
                 perm.view().value == old(perm).view().value - n,
             ]);
+            #[cfg(not(verus_macro_erase_ghost))]
             opens_invariants_none();
 
             self.fetch_sub_wrapping(&mut *perm, n)
@@ -334,12 +367,15 @@ macro_rules! atomic_integer_methods {
         #[verifier(atomic)]
         pub fn fetch_and(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty
         {
+            #[cfg(not(verus_macro_erase_ghost))]
             requires(equal(self.id(), old(perm).view().patomic));
+            #[cfg(not(verus_macro_erase_ghost))]
             ensures(|ret: $value_ty| [
                 equal(old(perm).view().value, ret),
                 perm.view().patomic == old(perm).view().patomic,
                 perm.view().value == (old(perm).view().value & n),
             ]);
+            #[cfg(not(verus_macro_erase_ghost))]
             opens_invariants_none();
 
             return self.ato.fetch_and(n, Ordering::SeqCst);
@@ -350,12 +386,15 @@ macro_rules! atomic_integer_methods {
         #[verifier(atomic)]
         pub fn fetch_or(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty
         {
+            #[cfg(not(verus_macro_erase_ghost))]
             requires(equal(self.id(), old(perm).view().patomic));
+            #[cfg(not(verus_macro_erase_ghost))]
             ensures(|ret: $value_ty| [
                 equal(old(perm).view().value, ret),
                 perm.view().patomic == old(perm).view().patomic,
                 perm.view().value == (old(perm).view().value | n),
             ]);
+            #[cfg(not(verus_macro_erase_ghost))]
             opens_invariants_none();
 
             return self.ato.fetch_or(n, Ordering::SeqCst);
@@ -366,12 +405,15 @@ macro_rules! atomic_integer_methods {
         #[verifier(atomic)]
         pub fn fetch_xor(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty
         {
+            #[cfg(not(verus_macro_erase_ghost))]
             requires(equal(self.id(), old(perm).view().patomic));
+            #[cfg(not(verus_macro_erase_ghost))]
             ensures(|ret: $value_ty| [
                 equal(old(perm).view().value, ret),
                 perm.view().patomic == old(perm).view().patomic,
                 perm.view().value == (old(perm).view().value ^ n),
             ]);
+            #[cfg(not(verus_macro_erase_ghost))]
             opens_invariants_none();
 
             return self.ato.fetch_or(n, Ordering::SeqCst);
@@ -382,12 +424,15 @@ macro_rules! atomic_integer_methods {
         #[verifier(atomic)]
         pub fn fetch_nand(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty
         {
+            #[cfg(not(verus_macro_erase_ghost))]
             requires(equal(self.id(), old(perm).view().patomic));
+            #[cfg(not(verus_macro_erase_ghost))]
             ensures(|ret: $value_ty| [
                 equal(old(perm).view().value, ret),
                 perm.view().patomic == old(perm).view().patomic,
                 perm.view().value == !(old(perm).view().value & n),
             ]);
+            #[cfg(not(verus_macro_erase_ghost))]
             opens_invariants_none();
 
             return self.ato.fetch_nand(n, Ordering::SeqCst);
@@ -398,12 +443,15 @@ macro_rules! atomic_integer_methods {
         #[verifier(atomic)]
         pub fn fetch_max(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty
         {
+            #[cfg(not(verus_macro_erase_ghost))]
             requires(equal(self.id(), old(perm).view().patomic));
+            #[cfg(not(verus_macro_erase_ghost))]
             ensures(|ret: $value_ty| [
                 equal(old(perm).view().value, ret),
                 perm.view().patomic == old(perm).view().patomic,
                 perm.view().value == (if old(perm).view().value > n { old(perm).view().value } else { n }),
             ]);
+            #[cfg(not(verus_macro_erase_ghost))]
             opens_invariants_none();
 
             return self.ato.fetch_max(n, Ordering::SeqCst);
@@ -414,12 +462,15 @@ macro_rules! atomic_integer_methods {
         #[verifier(atomic)]
         pub fn fetch_min(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty
         {
+            #[cfg(not(verus_macro_erase_ghost))]
             requires(equal(self.id(), old(perm).view().patomic));
+            #[cfg(not(verus_macro_erase_ghost))]
             ensures(|ret: $value_ty| [
                 equal(old(perm).view().value, ret),
                 perm.view().patomic == old(perm).view().patomic,
                 perm.view().value == (if old(perm).view().value < n { old(perm).view().value } else { n }),
             ]);
+            #[cfg(not(verus_macro_erase_ghost))]
             opens_invariants_none();
 
             return self.ato.fetch_min(n, Ordering::SeqCst);
@@ -433,13 +484,16 @@ macro_rules! atomic_bool_methods {
         #[verifier(external_body)]
         #[verifier(atomic)]
         pub fn fetch_and(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
+            #[cfg(not(verus_macro_erase_ghost))]
             requires([
                 equal(self.id(), old(perm).view().patomic),
             ]);
+            #[cfg(not(verus_macro_erase_ghost))]
             ensures(|ret: $value_ty| equal(old(perm).view().value, ret)
                 && perm.view().patomic == old(perm).view().patomic
                 && perm.view().value == (old(perm).view().value && n)
             );
+            #[cfg(not(verus_macro_erase_ghost))]
             opens_invariants_none();
 
             return self.ato.fetch_and(n, Ordering::SeqCst);
@@ -449,13 +503,16 @@ macro_rules! atomic_bool_methods {
         #[verifier(external_body)]
         #[verifier(atomic)]
         pub fn fetch_or(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
+            #[cfg(not(verus_macro_erase_ghost))]
             requires([
                 equal(self.id(), old(perm).view().patomic),
             ]);
+            #[cfg(not(verus_macro_erase_ghost))]
             ensures(|ret: $value_ty| equal(old(perm).view().value, ret)
                 && perm.view().patomic == old(perm).view().patomic
                 && perm.view().value == (old(perm).view().value || n)
             );
+            #[cfg(not(verus_macro_erase_ghost))]
             opens_invariants_none();
 
             return self.ato.fetch_or(n, Ordering::SeqCst);
@@ -465,13 +522,16 @@ macro_rules! atomic_bool_methods {
         #[verifier(external_body)]
         #[verifier(atomic)]
         pub fn fetch_xor(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
+            #[cfg(not(verus_macro_erase_ghost))]
             requires([
                 equal(self.id(), old(perm).view().patomic),
             ]);
+            #[cfg(not(verus_macro_erase_ghost))]
             ensures(|ret: $value_ty| equal(old(perm).view().value, ret)
                 && perm.view().patomic == old(perm).view().patomic
                 && perm.view().value == ((old(perm).view().value && !n) || (!old(perm).view().value && n))
             );
+            #[cfg(not(verus_macro_erase_ghost))]
             opens_invariants_none();
 
             return self.ato.fetch_or(n, Ordering::SeqCst);
@@ -481,13 +541,16 @@ macro_rules! atomic_bool_methods {
         #[verifier(external_body)]
         #[verifier(atomic)]
         pub fn fetch_nand(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
+            #[cfg(not(verus_macro_erase_ghost))]
             requires([
                 equal(self.id(), old(perm).view().patomic),
             ]);
+            #[cfg(not(verus_macro_erase_ghost))]
             ensures(|ret: $value_ty| equal(old(perm).view().value, ret)
                 && perm.view().patomic == old(perm).view().patomic
                 && perm.view().value == !(old(perm).view().value && n)
             );
+            #[cfg(not(verus_macro_erase_ghost))]
             opens_invariants_none();
 
             return self.ato.fetch_nand(n, Ordering::SeqCst);

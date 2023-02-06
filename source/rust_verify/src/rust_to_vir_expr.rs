@@ -3,7 +3,7 @@ use crate::attributes::{
     GetVariantField, GhostBlockAttr,
 };
 use crate::context::{BodyCtxt, Context};
-use crate::erase::ResolvedCall;
+use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, def_to_path_ident, get_function_def, get_range, hack_get_def_name,
     is_smt_arith, is_smt_equality, is_type_std_rc_or_arc, local_to_var, mid_ty_simplify,
@@ -20,8 +20,8 @@ use air::ast_util::str_ident;
 use rustc_ast::{Attribute, BorrowKind, LitKind, Mutability};
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::{
-    BinOpKind, BindingAnnotation, Block, Destination, Expr, ExprKind, Guard, Local, LoopSource,
-    Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
+    BinOpKind, BindingAnnotation, Block, Destination, Expr, ExprKind, Guard, HirId, Local,
+    LoopSource, Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
 };
 
 use crate::rust_intrinsics_to_vir::int_intrinsic_constant_to_vir;
@@ -256,7 +256,10 @@ fn extract_choose<'tcx>(
             assert!(closure_body.params.len() == typs.len());
             for (x, typ) in closure_body.params.iter().zip(typs) {
                 let name = Arc::new(pat_to_var(x.pat));
-                vars.push(spanned_typed_new(x.span, &typ, ExprX::Var(name.clone())));
+                let vir_expr = spanned_typed_new(x.span, &typ, ExprX::Var(name.clone()));
+                let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                erasure_info.hir_vir_ids.push((x.pat.hir_id, vir_expr.span.id));
+                vars.push(vir_expr);
                 params.push(Arc::new(BinderX { name, a: typ }));
             }
             let typs = vec_map(&params, |p| p.a.clone());
@@ -371,6 +374,18 @@ fn check_lit_int(
     }
 }
 
+pub(crate) fn expr_to_vir_inner<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
+    modifier: ExprModifier,
+) -> Result<vir::ast::Expr, VirErr> {
+    let expr = expr.peel_drop_temps();
+    let vir_expr = expr_to_vir_innermost(bctx, expr, modifier)?;
+    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+    erasure_info.hir_vir_ids.push((expr.hir_id, vir_expr.span.id));
+    Ok(vir_expr)
+}
+
 pub(crate) fn expr_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
@@ -385,20 +400,24 @@ pub(crate) fn expr_to_vir<'tcx>(
 
 fn record_fun(
     ctxt: &crate::context::Context,
+    hir_id: HirId,
     span: Span,
     name: &vir::ast::Fun,
     is_spec: bool,
-    is_compilable_operator: bool,
+    is_spec_allow_proof_args: bool,
+    is_compilable_operator: Option<CompilableOperator>,
 ) {
     let mut erasure_info = ctxt.erasure_info.borrow_mut();
     let resolved_call = if is_spec {
         ResolvedCall::Spec
-    } else if is_compilable_operator {
-        ResolvedCall::CompilableOperator
+    } else if is_spec_allow_proof_args {
+        ResolvedCall::SpecAllowProofArgs
+    } else if let Some(op) = is_compilable_operator {
+        ResolvedCall::CompilableOperator(op)
     } else {
         ResolvedCall::Call(name.clone())
     };
-    erasure_info.resolved_calls.push((span.data(), resolved_call));
+    erasure_info.resolved_calls.push((hir_id, span.data(), resolved_call));
 }
 
 fn get_fn_path<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<vir::ast::Fun, VirErr> {
@@ -624,7 +643,7 @@ fn fn_call_to_vir<'tcx>(
         is_ghost_view || is_ghost_borrow || is_ghost_borrow_mut || is_ghost_new || is_tracked_view;
 
     // These functions are all no-ops in the SMT encoding, so we don't emit any VIR
-    let is_ignored_fn = f_name == "std::boxed::Box::<T>::new"
+    let is_smartptr_new = f_name == "std::boxed::Box::<T>::new"
         || f_name == "std::rc::Rc::<T>::new"
         || f_name == "std::sync::Arc::<T>::new";
 
@@ -685,13 +704,10 @@ fn fn_call_to_vir<'tcx>(
 
     record_fun(
         &bctx.ctxt,
+        expr.hir_id,
         fn_span,
         &name,
         is_spec
-            || is_spec_op
-            || is_builtin_add
-            || is_builtin_sub
-            || is_builtin_mul
             || is_quant
             || is_directive
             || is_choose
@@ -709,19 +725,27 @@ fn fn_call_to_vir<'tcx>(
             || is_old
             || is_spec_ghost_tracked
             || is_closure_to_fn_spec
-            || is_get_variant.is_some()
-            || is_signed_max
-            || is_signed_min
-            || is_unsigned_max
             || is_arch_word_bits
             || is_height,
-        is_implies
-            || is_ignored_fn
-            || is_tracked_get
-            || is_tracked_borrow
-            || is_tracked_borrow_mut
-            || is_ghost_split_tuple
-            || is_tracked_split_tuple,
+        is_spec_op
+            || is_get_variant.is_some()
+            || is_builtin_add
+            || is_builtin_sub
+            || is_builtin_mul
+            || is_signed_max
+            || is_signed_min
+            || is_unsigned_max,
+        match () {
+            _ if is_implies => Some(CompilableOperator::Implies),
+            _ if is_smartptr_new => Some(CompilableOperator::SmartPtrNew),
+            _ if is_new_strlit => Some(CompilableOperator::NewStrLit),
+            _ if is_tracked_get => Some(CompilableOperator::TrackedGet),
+            _ if is_tracked_borrow => Some(CompilableOperator::TrackedBorrow),
+            _ if is_tracked_borrow_mut => Some(CompilableOperator::TrackedBorrowMut),
+            _ if is_ghost_split_tuple => Some(CompilableOperator::GhostSplitTuple),
+            _ if is_tracked_split_tuple => Some(CompilableOperator::TrackedSplitTuple),
+            _ => None,
+        },
     );
 
     let len = args.len();
@@ -1071,7 +1095,7 @@ fn fn_call_to_vir<'tcx>(
         return Ok(mk_expr(ExprX::UnaryOpr(UnaryOpr::Height, arg)));
     }
 
-    if is_ignored_fn {
+    if is_smartptr_new {
         unsupported_err_unless!(len == 1, expr.span, "expected 1 argument", &args);
         let arg = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
 
@@ -1564,25 +1588,42 @@ fn fn_call_to_vir<'tcx>(
     }
 }
 
-fn datatype_of_path(mut path: vir::ast::Path, pop_constructor: bool) -> vir::ast::Path {
+fn datatype_of_path(mut path: vir::ast::Path, pop_count: u32) -> vir::ast::Path {
     // TODO is there a safer way to do this?
     let segments = Arc::get_mut(&mut Arc::get_mut(&mut path).unwrap().segments).unwrap();
-    if pop_constructor {
-        segments.pop(); // remove constructor
+    for _ in 0..pop_count {
+        segments.pop(); // remove variant or constructor
     }
-    segments.pop(); // remove variant
     path
 }
 
-fn datatype_variant_of_res<'tcx>(
+pub(crate) fn datatype_variant_of_res_pop_count<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    res: &Res,
+    pop_count: u32,
+) -> (vir::ast::Path, Ident) {
+    let variant = tcx.expect_variant_res(*res);
+    let vir_path = datatype_of_path(def_id_to_vir_path(tcx, res.def_id()), pop_count);
+    let variant_name = str_ident(&variant.ident.as_str());
+    (vir_path, variant_name)
+}
+
+pub(crate) fn datatype_constructor_variant_of_res<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    res: &Res,
+    pop_variant: bool,
+) -> (vir::ast::Path, Ident) {
+    let pop_count = if pop_variant { 1 } else { 0 };
+    datatype_variant_of_res_pop_count(tcx, res, pop_count)
+}
+
+pub(crate) fn datatype_variant_of_res<'tcx>(
     tcx: TyCtxt<'tcx>,
     res: &Res,
     pop_constructor: bool,
 ) -> (vir::ast::Path, Ident) {
-    let variant = tcx.expect_variant_res(*res);
-    let vir_path = datatype_of_path(def_id_to_vir_path(tcx, res.def_id()), pop_constructor);
-    let variant_name = str_ident(&variant.ident.as_str());
-    (vir_path, variant_name)
+    let pop_count = if pop_constructor { 2 } else { 1 };
+    datatype_variant_of_res_pop_count(tcx, res, pop_count)
 }
 
 pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
@@ -1626,12 +1667,12 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     );
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
     let resolved_call = ResolvedCall::Ctor(vir_path.clone(), variant_name.clone());
-    erasure_info.resolved_calls.push((fun_span.data(), resolved_call));
+    erasure_info.resolved_calls.push((expr.hir_id, fun_span.data(), resolved_call));
     let exprx = ExprX::Ctor(vir_path, variant_name, vir_fields, None);
     Ok(spanned_typed_new(expr.span, &expr_typ, exprx))
 }
 
-pub(crate) fn pattern_to_vir<'tcx>(
+pub(crate) fn pattern_to_vir_inner<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     pat: &Pat<'tcx>,
 ) -> Result<vir::ast::Pattern, VirErr> {
@@ -1760,6 +1801,16 @@ pub(crate) fn pattern_to_vir<'tcx>(
     Ok(pattern)
 }
 
+pub(crate) fn pattern_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    pat: &Pat<'tcx>,
+) -> Result<vir::ast::Pattern, VirErr> {
+    let vir_pat = pattern_to_vir_inner(bctx, pat)?;
+    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+    erasure_info.hir_vir_ids.push((pat.hir_id, vir_pat.span.id));
+    Ok(vir_pat)
+}
+
 pub(crate) fn block_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     block: &Block<'tcx>,
@@ -1809,44 +1860,11 @@ fn malformed_inv_block_err<'tcx>(expr: &Expr<'tcx>) -> Result<vir::ast::Expr, Vi
     )
 }
 
-fn invariant_block_to_vir<'tcx>(
-    bctx: &BodyCtxt<'tcx>,
-    expr: &Expr<'tcx>,
-    modifier: ExprModifier,
-) -> Result<vir::ast::Expr, VirErr> {
-    // The open_atomic_invariant! macro produces code that looks like this
-    // (and similarly for open_local_invariant!)
-    //
-    // #[verifier(invariant_block)] {
-    //      let (guard, mut $inner) = open_atomic_invariant_begin($eexpr);
-    //      $bblock
-    //      open_invariant_end(guard, $inner);
-    //  }
-    //
-    // We need to check that it really does have this form, including
-    // that the identifiers `guard` and `inner` used in the last statement
-    // are the same as in the first statement. This is what the giant
-    // `match` statements below are for.
-    //
-    // We also need to "recover" the $inner, $eexpr, and $bblock for conversion to VIR.
-    //
-    // If the AST doesn't look exactly like we expect, print an error asking the user
-    // to use the open_atomic_invariant! macro.
-
-    let body = match &expr.kind {
-        ExprKind::Block(body, _) => body,
-        _ => panic!("invariant_block_to_vir called with non-Body expression"),
-    };
-
-    if body.stmts.len() != 3 || body.expr.is_some() {
-        return malformed_inv_block_err(expr);
-    }
-
-    let open_stmt = &body.stmts[0];
-    let mid_stmt = &body.stmts[1];
-    let close_stmt = &body.stmts[body.stmts.len() - 1];
-
-    let (guard_hir, inner_hir, inner_pat, inv_arg, atomicity) = match open_stmt.kind {
+pub(crate) fn invariant_block_open<'a>(
+    tcx: TyCtxt,
+    open_stmt: &'a Stmt,
+) -> Option<(HirId, HirId, &'a rustc_hir::Pat<'a>, &'a rustc_hir::Expr<'a>, InvAtomicity)> {
+    match open_stmt.kind {
         StmtKind::Local(Local {
             pat:
                 Pat {
@@ -1895,22 +1913,22 @@ fn invariant_block_to_vir<'tcx>(
                 }),
             ..
         }) => {
-            let f_name = path_as_rust_name(&def_id_to_vir_path(bctx.ctxt.tcx, *fun_id));
+            let f_name = path_as_rust_name(&def_id_to_vir_path(tcx, *fun_id));
             if f_name != BUILTIN_INV_ATOMIC_BEGIN && f_name != BUILTIN_INV_LOCAL_BEGIN {
-                return malformed_inv_block_err(expr);
+                return None;
             }
             let atomicity = if f_name == BUILTIN_INV_ATOMIC_BEGIN {
                 InvAtomicity::Atomic
             } else {
                 InvAtomicity::NonAtomic
             };
-            (guard_hir, inner_hir, inner_pat, arg, atomicity)
+            Some((*guard_hir, *inner_hir, inner_pat, arg, atomicity))
         }
-        _ => {
-            return malformed_inv_block_err(expr);
-        }
-    };
+        _ => None,
+    }
+}
 
+pub(crate) fn invariant_block_close(close_stmt: &Stmt) -> Option<(HirId, HirId, DefId)> {
     match close_stmt.kind {
         StmtKind::Semi(Expr {
             kind:
@@ -1943,19 +1961,67 @@ fn invariant_block_to_vir<'tcx>(
                     ],
                 ),
             ..
-        }) => {
-            let f_name = path_as_rust_name(&def_id_to_vir_path(bctx.ctxt.tcx, *fun_id));
-            if f_name != BUILTIN_INV_END {
-                return malformed_inv_block_err(expr);
-            }
+        }) => Some((*hir_id1, *hir_id2, *fun_id)),
+        _ => None,
+    }
+}
 
-            if hir_id1 != guard_hir || hir_id2 != inner_hir {
-                return malformed_inv_block_err(expr);
-            }
-        }
-        _ => {
+fn invariant_block_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
+    modifier: ExprModifier,
+) -> Result<vir::ast::Expr, VirErr> {
+    // The open_atomic_invariant! macro produces code that looks like this
+    // (and similarly for open_local_invariant!)
+    //
+    // #[verifier(invariant_block)] {
+    //      let (guard, mut $inner) = open_atomic_invariant_begin($eexpr);
+    //      $bblock
+    //      open_invariant_end(guard, $inner);
+    //  }
+    //
+    // We need to check that it really does have this form, including
+    // that the identifiers `guard` and `inner` used in the last statement
+    // are the same as in the first statement. This is what the giant
+    // `match` statements below are for.
+    //
+    // We also need to "recover" the $inner, $eexpr, and $bblock for conversion to VIR.
+    //
+    // If the AST doesn't look exactly like we expect, print an error asking the user
+    // to use the open_atomic_invariant! macro.
+
+    let body = match &expr.kind {
+        ExprKind::Block(body, _) => body,
+        _ => panic!("invariant_block_to_vir called with non-Body expression"),
+    };
+
+    if body.stmts.len() != 3 || body.expr.is_some() {
+        return malformed_inv_block_err(expr);
+    }
+
+    let open_stmt = &body.stmts[0];
+    let mid_stmt = &body.stmts[1];
+    let close_stmt = &body.stmts[body.stmts.len() - 1];
+
+    let (guard_hir, inner_hir, inner_pat, inv_arg, atomicity) = {
+        if let Some(block_open) = invariant_block_open(bctx.ctxt.tcx, open_stmt) {
+            block_open
+        } else {
             return malformed_inv_block_err(expr);
         }
+    };
+
+    if let Some((hir_id1, hir_id2, fun_id)) = invariant_block_close(close_stmt) {
+        let f_name = path_as_rust_name(&def_id_to_vir_path(bctx.ctxt.tcx, fun_id));
+        if f_name != BUILTIN_INV_END {
+            return malformed_inv_block_err(expr);
+        }
+
+        if hir_id1 != guard_hir || hir_id2 != inner_hir {
+            return malformed_inv_block_err(expr);
+        }
+    } else {
+        return malformed_inv_block_err(expr);
     }
 
     let vir_body = match mid_stmt.kind {
@@ -2021,13 +2087,11 @@ fn is_expr_typ_mut_ref<'tcx>(
     }
 }
 
-pub(crate) fn expr_to_vir_inner<'tcx>(
+pub(crate) fn expr_to_vir_innermost<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
     current_modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
-    let expr = expr.peel_drop_temps();
-
     if bctx.external_body {
         // we want just requires/ensures, not the whole body
         match &expr.kind {
@@ -2193,8 +2257,11 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
 
                     {
                         let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                        // Only spec closures are currently supported:
-                        erasure_info.resolved_calls.push((fun.span.data(), resolved_call));
+                        erasure_info.resolved_calls.push((
+                            expr.hir_id,
+                            fun.span.data(),
+                            resolved_call,
+                        ));
                     }
 
                     Ok(spanned_typed_new(
@@ -2457,9 +2524,11 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         int_intrinsic_constant_to_vir(expr.span, &expr_typ(), &f_name)
                     {
                         let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                        erasure_info
-                            .resolved_calls
-                            .push((expr.span.data(), ResolvedCall::CompilableOperator));
+                        erasure_info.resolved_calls.push((
+                            expr.hir_id,
+                            expr.span.data(),
+                            ResolvedCall::CompilableOperator(CompilableOperator::IntIntrinsic),
+                        ));
                         return Ok(vir_expr);
                     }
                 }
@@ -2598,6 +2667,10 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     {
                         let pat_typ = typ_of_node(bctx, &pat.hir_id, false);
                         let pattern = spanned_typed_new(cond.span, &pat_typ, PatternX::Wildcard);
+                        {
+                            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                            erasure_info.hir_vir_ids.push((cond.hir_id, pattern.span.id));
+                        }
                         let guard = mk_expr(ExprX::Const(Constant::Bool(true)));
                         let body = if let Some(rhs) = rhs {
                             expr_to_vir(bctx, &rhs, modifier)?
@@ -2721,16 +2794,8 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         path.res
                     );
                     unsupported_unless!(slf.is_none(), "self_in_struct_qpath");
-                    let variant = tcx.expect_variant_res(path.res);
-                    let mut vir_path = def_id_to_vir_path(tcx, path.res.def_id());
-                    if let Res::Def(DefKind::Variant, _) = path.res {
-                        Arc::get_mut(&mut Arc::get_mut(&mut vir_path).unwrap().segments)
-                            .unwrap()
-                            .pop()
-                            .expect(format!("variant name in Struct ctor for {:?}", path).as_str());
-                    }
-                    let variant_name = str_ident(&variant.ident.as_str());
-                    (vir_path, variant_name)
+                    let pop_variant = matches!(path.res, Res::Def(DefKind::Variant, _));
+                    datatype_constructor_variant_of_res(tcx, &path.res, pop_variant)
                 }
                 _ => panic!("unexpected qpath {:?}", qpath),
             };
@@ -2745,7 +2810,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             );
             let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
             let resolved_call = ResolvedCall::Ctor(path.clone(), variant_name.clone());
-            erasure_info.resolved_calls.push((expr.span.data(), resolved_call));
+            erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
             Ok(mk_expr(ExprX::Ctor(path, variant_name, vir_fields, update)))
         }
         ExprKind::MethodCall(_name_and_generics, _call_span_0, all_args, fn_span) => {
@@ -2772,12 +2837,13 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         assert!(all_args.len() == 1);
                         let arg_typ = bctx.types.node_type(all_args[0].hir_id);
                         if is_type_std_rc_or_arc(bctx.ctxt.tcx, &arg_typ) {
-                            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                            erasure_info
-                                .resolved_calls
-                                .push((fn_span.data(), ResolvedCall::CompilableOperator));
-
                             let arg = expr_to_vir(bctx, &all_args[0], ExprModifier::REGULAR)?;
+                            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                            erasure_info.resolved_calls.push((
+                                expr.hir_id,
+                                fn_span.data(),
+                                ResolvedCall::CompilableOperator(CompilableOperator::SmartPtrClone),
+                            ));
                             return Ok(arg);
                         }
                     }
@@ -2788,7 +2854,11 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     if is_closure_req || is_closure_ens {
                         {
                             let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                            erasure_info.resolved_calls.push((fn_span.data(), ResolvedCall::Spec));
+                            erasure_info.resolved_calls.push((
+                                expr.hir_id,
+                                fn_span.data(),
+                                ResolvedCall::Spec,
+                            ));
                         }
                         let bsf = if is_closure_req {
                             assert!(all_args.len() == 2);
@@ -2916,7 +2986,12 @@ fn closure_to_vir<'tcx>(
     is_spec_fn: bool,
     modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
-    if let ExprKind::Closure(_, _fn_decl, body_id, _, _) = &closure_expr.kind {
+    if let ExprKind::Closure(_, fn_decl, body_id, _, _) = &closure_expr.kind {
+        unsupported_unless!(!fn_decl.c_variadic, "c_variadic");
+        unsupported_unless!(
+            matches!(fn_decl.implicit_self, rustc_hir::ImplicitSelfKind::None),
+            "implicit_self"
+        );
         let body = bctx.ctxt.tcx.hir().body(*body_id);
 
         let typs = closure_param_typs(bctx, closure_expr);

@@ -73,12 +73,6 @@ impl Diagnostics for Reporter<'_> {
     }
 }
 
-pub struct VerifierCallbacks {
-    pub verifier: Arc<Mutex<Verifier>>,
-    pub vir_ready: signalling::Signaller<bool>,
-    pub now_verify: signalling::Signalled<bool>,
-}
-
 pub struct Verifier {
     pub encountered_vir_error: bool,
     pub count_verified: u64,
@@ -1343,6 +1337,7 @@ impl Verifier {
 
         let hir = tcx.hir();
         let erasure_info = ErasureInfo {
+            hir_vir_ids: vec![],
             resolved_calls: vec![],
             resolved_exprs: vec![],
             resolved_pats: vec![],
@@ -1373,6 +1368,7 @@ impl Verifier {
                 .expect("OwnerNode::Crate missing");
             Some(air::ast::Span {
                 raw_span: crate::util::to_raw_span(no_span),
+                id: 0,
                 as_string: "no location".to_string(),
             })
         };
@@ -1399,13 +1395,17 @@ impl Verifier {
             }
         }
         check_crate_result?;
-        let (erasure_modes, inferred_modes) = vir::modes::check_crate(&vir_crate)?;
+        let (erasure_modes, inferred_modes) = vir::modes::check_crate(
+            &vir_crate,
+            self.args.erasure == crate::config::Erasure::Macro,
+        )?;
         let vir_crate = vir::traits::demote_foreign_traits(&vir_crate)?;
 
         self.vir_crate = Some(vir_crate.clone());
         self.inferred_modes = Some(inferred_modes);
 
         let erasure_info = ctxt.erasure_info.borrow();
+        let hir_vir_ids = erasure_info.hir_vir_ids.clone();
         let resolved_calls = erasure_info.resolved_calls.clone();
         let resolved_exprs = erasure_info.resolved_exprs.clone();
         let resolved_pats = erasure_info.resolved_pats.clone();
@@ -1413,6 +1413,7 @@ impl Verifier {
         let ignored_functions = erasure_info.ignored_functions.clone();
         let erasure_hints = crate::erase::ErasureHints {
             vir_crate,
+            hir_vir_ids,
             resolved_calls,
             resolved_exprs,
             resolved_pats,
@@ -1459,14 +1460,135 @@ impl rustc_lint::FormalVerifierRewrite for Rewrite {
     }
 }
 
-impl rustc_driver::Callbacks for VerifierCallbacks {
+impl Verifier {
     fn config(&mut self, config: &mut rustc_interface::interface::Config) {
-        if let Some(target) = &self.verifier.lock().unwrap().test_capture_output {
+        if let Some(target) = &self.test_capture_output {
             config.diagnostic_output =
                 rustc_session::DiagnosticOutput::Raw(Box::new(DiagnosticOutputBuffer {
                     output: target.clone(),
                 }));
         }
+    }
+}
+
+// TODO: move the callbacks into a different file, like driver.rs
+pub(crate) struct VerifierCallbacksEraseMacro {
+    pub(crate) verifier: Verifier,
+    pub(crate) lifetime_start_time: Option<Instant>,
+    pub(crate) rustc_args: Vec<String>,
+    pub(crate) file_loader:
+        Option<Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>>,
+}
+
+impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
+    fn config(&mut self, config: &mut rustc_interface::interface::Config) {
+        self.verifier.config(config);
+    }
+
+    fn after_expansion<'tcx>(
+        &mut self,
+        compiler: &Compiler,
+        queries: &'tcx rustc_interface::Queries<'tcx>,
+    ) -> rustc_driver::Compilation {
+        if !compiler.session().compile_status().is_ok() {
+            return rustc_driver::Compilation::Stop;
+        }
+
+        let _result = queries.global_ctxt().expect("global_ctxt").peek_mut().enter(|tcx| {
+            {
+                let reporter = Reporter::new(compiler);
+                if let Err(err) = self.verifier.construct_vir_crate(tcx, &reporter) {
+                    reporter.report_as(&err, MessageLevel::Error);
+                    self.verifier.encountered_vir_error = true;
+                    return;
+                }
+                if !compiler.session().compile_status().is_ok() {
+                    return;
+                }
+                self.lifetime_start_time = Some(Instant::now());
+                let log_lifetime = self.verifier.args.log_all || self.verifier.args.log_lifetime;
+                let lifetime_log_file = if log_lifetime {
+                    let file = self.verifier.create_log_file(
+                        None,
+                        None,
+                        crate::config::LIFETIME_FILE_SUFFIX,
+                    );
+                    match file {
+                        Err(err) => {
+                            reporter.report_as(&err, MessageLevel::Error);
+                            self.verifier.encountered_vir_error = true;
+                            return;
+                        }
+                        Ok(file) => Some(file),
+                    }
+                } else {
+                    None
+                };
+                let status = crate::lifetime::check_tracked_lifetimes(
+                    tcx,
+                    self.rustc_args.clone(),
+                    self.verifier.erasure_hints.as_ref().expect("erasure_hints"),
+                    lifetime_log_file,
+                );
+                match status {
+                    Ok(msgs) => {
+                        if msgs.len() > 0 {
+                            self.verifier.encountered_vir_error = true;
+                            // We found lifetime errors.
+                            // We could print them immediately, but instead,
+                            // let's first run rustc's standard lifetime checking
+                            // because the error messages are likely to be better.
+                            let file_loader =
+                                std::mem::take(&mut self.file_loader).expect("file_loader");
+                            let compile_status = crate::driver::run_with_erase_macro_compile(
+                                self.rustc_args.clone(),
+                                file_loader,
+                                false,
+                                self.verifier.test_capture_output.clone(),
+                            );
+                            if compile_status.is_err() {
+                                return;
+                            }
+                            for msg in &msgs {
+                                reporter.report(&msg);
+                            }
+                            return;
+                        }
+                    }
+                    Err(err) => {
+                        reporter.report_as(&err, MessageLevel::Error);
+                        self.verifier.encountered_vir_error = true;
+                        return;
+                    }
+                }
+            }
+
+            if !compiler.session().compile_status().is_ok() {
+                return;
+            }
+
+            match self.verifier.verify_crate(compiler) {
+                Ok(_) => {}
+                Err(err) => {
+                    let reporter = Reporter::new(compiler);
+                    reporter.report_as(&err, MessageLevel::Error);
+                    self.verifier.encountered_vir_error = true;
+                }
+            }
+        });
+        rustc_driver::Compilation::Stop
+    }
+}
+
+pub(crate) struct VerifierCallbacksEraseAst {
+    pub(crate) verifier: Arc<Mutex<Verifier>>,
+    pub(crate) vir_ready: signalling::Signaller<bool>,
+    pub(crate) now_verify: signalling::Signalled<bool>,
+}
+
+impl rustc_driver::Callbacks for VerifierCallbacksEraseAst {
+    fn config(&mut self, config: &mut rustc_interface::interface::Config) {
+        self.verifier.lock().unwrap().config(config);
     }
 
     fn after_parsing<'tcx>(

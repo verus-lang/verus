@@ -124,6 +124,7 @@ struct Typing {
     inferred_modes: HashMap<InferMode, ErasureMode>,
     pub(crate) in_forall_stmt: bool,
     pub(crate) check_ghost_blocks: bool,
+    pub(crate) macro_erasure: bool,
     // Are we in a syntactic ghost block?
     // If not, Ghost::Exec (corresponds to exec mode).
     // If yes (corresponding to proof/spec mode), say whether variables are tracked or not.
@@ -804,8 +805,18 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(typing, outer_mode, rhs, x_mode)?;
             Ok(x_mode)
         }
-        ExprX::Fuel(_, _) => Ok(outer_mode),
-        ExprX::RevealString(_) => Ok(outer_mode),
+        ExprX::Fuel(_, _) => {
+            if typing.macro_erasure && typing.block_ghostness == Ghost::Exec {
+                return err_str(&expr.span, "cannot use reveal/hide in exec mode");
+            }
+            Ok(outer_mode)
+        }
+        ExprX::RevealString(_) => {
+            if typing.macro_erasure && typing.block_ghostness == Ghost::Exec {
+                return err_str(&expr.span, "cannot use reveal_strlit in exec mode");
+            }
+            Ok(outer_mode)
+        }
         ExprX::Header(_) => panic!("internal error: Header shouldn't exist here"),
         ExprX::AssertAssume { is_assume: _, expr: e } => {
             if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
@@ -1221,7 +1232,10 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
     Ok(())
 }
 
-pub fn check_crate(krate: &Krate) -> Result<(ErasureModes, HashMap<InferMode, Mode>), VirErr> {
+pub fn check_crate(
+    krate: &Krate,
+    macro_erasure: bool,
+) -> Result<(ErasureModes, HashMap<InferMode, Mode>), VirErr> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     let mut datatypes: HashMap<Path, Datatype> = HashMap::new();
     for function in krate.functions.iter() {
@@ -1240,6 +1254,7 @@ pub fn check_crate(krate: &Krate) -> Result<(ErasureModes, HashMap<InferMode, Mo
         inferred_modes: HashMap::new(),
         in_forall_stmt: false,
         check_ghost_blocks: false,
+        macro_erasure,
         block_ghostness: Ghost::Exec,
         fun_mode: Mode::Exec,
         ret_mode: None,
