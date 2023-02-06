@@ -289,6 +289,7 @@ impl ExpX {
                     }
                     TupleField { tuple_arity: _, field } => (format!("{}.{}", exp, field), 99),
                     Field(field) => (format!("{}.{}", exp, field.field), 99),
+                    CustomErr(_msg) => (format!("with_diagnostic({})", exp), 99),
                 }
             }
             Binary(op, e1, e2) => {

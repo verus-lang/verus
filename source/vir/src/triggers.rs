@@ -125,6 +125,7 @@ fn check_trigger_expr(
                     | UnaryOpr::TupleField { .. }
                     | UnaryOpr::Field { .. }
                     | UnaryOpr::Height
+                    | UnaryOpr::CustomErr(_)
                     | UnaryOpr::IntegerTypeBound(
                         IntegerTypeBoundKind::SignedMin | IntegerTypeBoundKind::ArchWordBits,
                         _,

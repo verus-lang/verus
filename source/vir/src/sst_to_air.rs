@@ -782,6 +782,12 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     Arc::new(vec![expr]),
                 ))
             }
+            UnaryOpr::CustomErr(_) => {
+                // CustomErr is handled by split_expression. Maybe it could
+                // be useful in the 'normal' case too, but right now, we just
+                // ignore it here.
+                return exp_to_expr(ctx, exp, expr_ctxt);
+            }
         },
         (ExpX::Binary(op, lhs, rhs), true) => {
             if !allowed_bitvector_type(&exp.typ) {

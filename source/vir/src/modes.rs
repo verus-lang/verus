@@ -661,6 +661,10 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(typing, Mode::Spec, e1, Mode::Spec)?;
             Ok(Mode::Spec)
         }
+        ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e1) => {
+            check_expr_has_mode(typing, Mode::Spec, e1, Mode::Spec)?;
+            Ok(Mode::Spec)
+        }
         ExprX::Loc(e) => {
             return check_expr_handle_mut_arg(typing, outer_mode, erasure_mode, e);
         }

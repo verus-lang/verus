@@ -210,6 +210,8 @@ pub enum UnaryOpr {
     /// Height of a data structure for the purpose of decreases-checking.
     /// Maps to the built-in intrinsic.
     Height,
+    /// Custom diagnostic message
+    CustomErr(Arc<String>),
 }
 
 /// Arithmetic operation that might fail (overflow or divide by zero)

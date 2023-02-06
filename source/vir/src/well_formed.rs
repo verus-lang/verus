@@ -144,6 +144,14 @@ fn check_one_expr(
                 panic!("constructor of undefined datatype");
             }
         }
+        ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e) => {
+            if !crate::ast_util::type_is_bool(&e.typ) {
+                return Err(error(
+                    "`custom_err` attribute only makes sense for bool expressions",
+                    &expr.span,
+                ));
+            }
+        }
         ExprX::UnaryOpr(UnaryOpr::Field(FieldOpr { datatype: path, variant, field }), _) => {
             if let Some(dt) = ctxt.dts.get(path) {
                 if let Some(module) = &function.x.visibility.owning_module {
