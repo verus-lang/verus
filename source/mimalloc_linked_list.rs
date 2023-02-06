@@ -73,7 +73,7 @@ impl SizeOf for LL {
 
 impl LL {
     spec fn len(&self) -> nat
-        decreases(self)
+        decreases self,
     {
         match self.l@ {
             None => 0,
@@ -85,7 +85,9 @@ impl LL {
         self.l.block_size
     }
 
-    spec fn wf(&self) -> bool {
+    spec fn wf(&self) -> bool
+        decreases self,
+    {
         &&& self.block_size() >= size_of::<LL>()
         &&& match self.l@ {
             None => true,
@@ -93,10 +95,16 @@ impl LL {
         }
     }
 
+    spec fn is_valid_page_address(&self, ptr: int) -> bool {
+        // TODO this probably needs more conditions
+        ptr as int % size_of::<LL>() as int == 0
+    }
+
     fn insert_block(&mut self, ptr: PPtr<u8>, points_to_raw: PointsToRaw)
         requires old(self).wf(),
             ptr.id() == points_to_raw@.pptr,
             points_to_raw@.size == old(self).block_size(),
+            old(self).is_valid_page_address(points_to_raw@.pptr),
         ensures
             self.wf(),
             self.block_size() == old(self).block_size(),
