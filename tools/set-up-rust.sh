@@ -1,8 +1,9 @@
 #! /bin/bash
 
 toplevel=`git rev-parse --show-toplevel`
+curdir=`readlink -f "$PWD"`
 
-if [ "$toplevel" != "$PWD" ]; then
+if [ "$toplevel" != "$curdir" ]; then
     echo "ERROR: You should run this script at the root of the verus repository"
     exit 1
 fi
