@@ -312,5 +312,17 @@ proof fn test_rec() {
 //^^^^^^ ^^^^^^^^^^
 }
 
+spec fn are_equal(x: int, y: int, z: int, w: int) -> bool {
+    #[verifier(custom_err("integers fail to be equal"))]
+    (x == y)
+    &&
+    #[verifier(custom_err("this ain't right. probably."))]
+    (z <= w)
+}
+
+proof fn proof_test_are_equal(x: int, y: int, z: int, w: int) {
+    assert(are_equal(x, y, z, w));
+}
+
 
 } // verus!

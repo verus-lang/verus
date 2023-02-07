@@ -45,6 +45,10 @@ impl fmt::Display for Mode {
     }
 }
 
+pub fn type_is_bool(typ: &Typ) -> bool {
+    matches!(&**typ, TypX::Bool)
+}
+
 pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
     match (&**typ1, &**typ2) {
         (TypX::Bool, TypX::Bool) => true,

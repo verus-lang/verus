@@ -1,6 +1,6 @@
 use crate::attributes::{
-    get_ghost_block_opt, get_trigger, get_var_mode, get_verifier_attrs, parse_attrs, Attr,
-    GetVariantField, GhostBlockAttr,
+    get_custom_err_annotations, get_ghost_block_opt, get_trigger, get_var_mode, get_verifier_attrs,
+    parse_attrs, Attr, GetVariantField, GhostBlockAttr,
 };
 use crate::context::{BodyCtxt, Context};
 use crate::erase::{CompilableOperator, ResolvedCall};
@@ -392,8 +392,13 @@ pub(crate) fn expr_to_vir<'tcx>(
     modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
     let mut vir_expr = expr_to_vir_inner(bctx, expr, modifier)?;
-    for group in get_trigger(bctx.ctxt.tcx.hir().attrs(expr.hir_id))? {
+    let attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
+    for group in get_trigger(attrs)? {
         vir_expr = vir_expr.new_x(ExprX::Unary(UnaryOp::Trigger(group), vir_expr.clone()));
+    }
+    for err_msg in get_custom_err_annotations(attrs)? {
+        vir_expr = vir_expr
+            .new_x(ExprX::UnaryOpr(UnaryOpr::CustomErr(Arc::new(err_msg)), vir_expr.clone()));
     }
     Ok(vir_expr)
 }

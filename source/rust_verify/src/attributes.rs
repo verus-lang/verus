@@ -144,6 +144,8 @@ pub(crate) enum Attr {
     Trigger(Option<Vec<u64>>),
     // custom error string to report for precondition failures
     CustomReqErr(String),
+    // Add custom error message for expanded diagnostics (split expressions)
+    CustomErr(String),
     // verify using bitvector theory
     BitVector,
     // for 'atomic' operations (e.g., CAS)
@@ -299,6 +301,11 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 {
                     v.push(Attr::CustomReqErr(msg.clone()))
                 }
+                Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, msg, None)]))])
+                    if arg == "custom_err" =>
+                {
+                    v.push(Attr::CustomErr(msg.clone()))
+                }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "bit_vector" => {
                     v.push(Attr::BitVector)
                 }
@@ -405,6 +412,17 @@ pub(crate) fn get_trigger(attrs: &[Attribute]) -> Result<Vec<TriggerAnnotation>,
         }
     }
     Ok(groups)
+}
+
+pub(crate) fn get_custom_err_annotations(attrs: &[Attribute]) -> Result<Vec<String>, VirErr> {
+    let mut v = Vec::new();
+    for attr in parse_attrs(attrs)? {
+        match attr {
+            Attr::CustomErr(s) => v.push(s),
+            _ => {}
+        }
+    }
+    Ok(v)
 }
 
 pub(crate) fn get_fuel(vattrs: &VerifierAttrs) -> u32 {

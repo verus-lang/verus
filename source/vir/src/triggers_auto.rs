@@ -325,6 +325,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::UnaryOpr(UnaryOpr::Box(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::UnaryOpr(UnaryOpr::Unbox(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::UnaryOpr(UnaryOpr::Height, e1) => gather_terms(ctxt, ctx, e1, depth),
+        ExpX::UnaryOpr(UnaryOpr::CustomErr(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::UnaryOpr(UnaryOpr::HasType(_), _) => {
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![]))))
         }
