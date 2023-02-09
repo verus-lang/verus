@@ -293,9 +293,11 @@ fn scc_error(krate: &Krate, head: &Node, nodes: &Vec<Node>) -> VirErr {
                 }
             }
             Node::DatatypeTraitBound { datatype, .. } => {
-                if let Some(d) = krate.datatypes.iter().find(|d| d.x.path == *datatype) {
-                    let span = d.span.clone();
-                    push(node, span);
+                if let TypX::Datatype(dt_path, _) = &**datatype {
+                    if let Some(d) = krate.datatypes.iter().find(|d| d.x.path == *dt_path) {
+                        let span = d.span.clone();
+                        push(node, span);
+                    }
                 }
             }
         }

@@ -29,7 +29,7 @@ use std::sync::Arc;
 pub enum Node {
     Fun(Fun),
     Trait(Path),
-    DatatypeTraitBound { datatype: Path, trait_path: Path },
+    DatatypeTraitBound { datatype: Typ, trait_path: Path },
 }
 
 #[derive(Clone)]
@@ -471,14 +471,9 @@ pub(crate) fn expand_call_graph(
     // Add D: T --> f and D: T --> T where f is one of D's methods that implements T
     if let FunctionKind::TraitMethodImpl { trait_path, datatype, .. } = function.x.kind.clone() {
         let t_node = Node::Trait(trait_path.clone());
-        // HEAD let dt_node = Node::DatatypeTraitBound { datatype, trait_path };
-        // HEAD call_graph.add_edge(dt_node.clone(), t_node);
-        // HEAD call_graph.add_edge(dt_node, f_node.clone());
-        if let TypX::Datatype(path, _) = &*datatype.clone() {
-            let dt_node = Node::DatatypeTraitBound { datatype: path.clone(), trait_path };
-            call_graph.add_edge(t_node, dt_node.clone());
-            call_graph.add_edge(dt_node, f_node.clone());
-        }
+        let dt_node = Node::DatatypeTraitBound { datatype, trait_path };
+        call_graph.add_edge(dt_node.clone(), t_node);
+        call_graph.add_edge(dt_node, f_node.clone());
     }
 
     // Add f --> T for any function f<A: T> with type parameter A: T
@@ -533,7 +528,7 @@ pub(crate) fn expand_call_graph(
                             }
                             _ => {
                                 if !method_map.contains_key(&(x.clone(), targ.clone())) {
-                                    dbg!(&targ);
+                                    dbg!(&(x, targ));
                                 }
                                 // f1 --> D.f2
                                 Some(&method_map[&(x.clone(), targ.clone())])
@@ -548,12 +543,12 @@ pub(crate) fn expand_call_graph(
                         GenericBoundX::Traits(traits) => {
                             for tr in traits {
                                 match &**targ {
-                                    TypX::Datatype(datatype, _) => {
+                                    TypX::Datatype(_, _) => {
                                         // f1 --> D: T
                                         call_graph.add_edge(
                                             f_node.clone(),
                                             Node::DatatypeTraitBound {
-                                                datatype: datatype.clone(),
+                                                datatype: targ.clone(),
                                                 trait_path: tr.clone(),
                                             },
                                         );
