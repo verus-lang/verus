@@ -3,7 +3,7 @@ use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
 use syn_verus::spanned::Spanned;
-use syn_verus::Expr;
+use syn_verus::{Expr, Lit, LitStr};
 
 /// Converts a transition description into a relation between `pre` and `post`.
 /// Overall, this process has two steps:
@@ -136,10 +136,8 @@ fn to_relation_stmt(
         SimplStmt::Split(..) => {
             panic!("this SplitKind should have been translated out");
         }
-        SimplStmt::PostCondition(_span, e) | SimplStmt::Require(_span, e) => match p {
-            None => Some(quote_spanned! { e.span() => (#e) }),
-            Some(r) => Some(quote_spanned! { e.span() => ((#e) && #r) }),
-        },
+        SimplStmt::PostCondition(_span, e, reason) => prepend_conjunct(e, p, &reason.to_err_msg()),
+        SimplStmt::Require(_span, e) => prepend_conjunct(e, p, "cannot prove this condition holds"),
         SimplStmt::Assert(_span, e, _) => {
             if weak {
                 match p {
@@ -156,6 +154,17 @@ fn to_relation_stmt(
         SimplStmt::Assign(..) => {
             panic!("Assign should have been removed in pre-processing step");
         }
+    }
+}
+
+fn prepend_conjunct(e: &Expr, p: Option<TokenStream>, msg: &str) -> Option<TokenStream> {
+    let msg_lit = Lit::Str(LitStr::new(msg, e.span()));
+    let err_attr = quote_spanned! { e.span() =>
+        #[verifier(custom_err(#msg_lit))]
+    };
+    match p {
+        None => Some(quote_spanned! { e.span() => #err_attr (#e) }),
+        Some(r) => Some(quote_spanned! { e.span() => (#err_attr (#e) && #r) }),
     }
 }
 

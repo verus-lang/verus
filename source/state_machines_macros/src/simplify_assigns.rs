@@ -55,7 +55,7 @@ fn simplify_assigns_vec(
         }
 
         match sop {
-            SimplStmt::Assign(span, ident, ty, e) => {
+            SimplStmt::Assign(span, ident, ty, e, _prequel) => {
                 // Remove the variable name from the 'use' set.
                 // In doing so, we check if it was already there;
                 // if the variable isn't used, then we can skip this step entirely.
@@ -105,9 +105,9 @@ fn simplify_assigns_stmt(sm: &SM, sop: &SimplStmt, used_ids: &mut HashSet<String
             add_used_ids_from_expr(used_ids, e);
             SimplStmt::Require(*span, e.clone())
         }
-        SimplStmt::PostCondition(span, e) => {
+        SimplStmt::PostCondition(span, e, reason) => {
             add_used_ids_from_expr(used_ids, e);
-            SimplStmt::PostCondition(*span, e.clone())
+            SimplStmt::PostCondition(*span, e.clone(), reason.clone())
         }
         SimplStmt::Assert(span, e, pf) => {
             add_used_ids_from_expr(used_ids, e);
@@ -137,7 +137,7 @@ fn get_all_assigns(sop: &SimplStmt, assigned: &mut HashSet<String>) {
         SimplStmt::Require(..) => {}
         SimplStmt::PostCondition(..) => {}
         SimplStmt::Assert(..) => {}
-        SimplStmt::Assign(_span, id, _ty, _e) => {
+        SimplStmt::Assign(_span, id, _ty, _e, _prequel) => {
             assigned.insert(id.to_string());
         }
     }

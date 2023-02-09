@@ -108,7 +108,7 @@ pub fn safety_condition_body_simpl(sop: &SimplStmt, let_skip_brace: bool) -> Opt
         SimplStmt::Require(span, e) => Some(Expr::Verbatim(quote_spanned! {*span =>
             crate::pervasive::assume(#e);
         })),
-        SimplStmt::PostCondition(_span, _e) => None,
+        SimplStmt::PostCondition(_span, _e, _reason) => None,
         SimplStmt::Assert(span, e, AssertProof { proof: None, error_msg }) => {
             let assert_fn = Ident::new(error_msg, *span);
             Some(Expr::Verbatim(quote_spanned! {*span =>

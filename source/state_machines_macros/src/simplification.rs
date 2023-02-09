@@ -1,7 +1,7 @@
 use crate::ast::Field;
 use crate::ast::{
-    AssertProof, MonoidElt, MonoidStmtType, ShardableType, SimplStmt, SpecialOp, SplitKind, SubIdx,
-    TransitionKind, TransitionStmt, SM,
+    AssertProof, MonoidElt, MonoidStmtType, PostConditionReason, PostConditionReasonField,
+    ShardableType, SimplStmt, SpecialOp, SplitKind, SubIdx, TransitionKind, TransitionStmt, SM,
 };
 use crate::check_bind_stmts::uses_bind;
 use crate::concurrency_tokens::assign_pat_or_arbitrary;
@@ -92,7 +92,7 @@ pub fn simplify_ops(sm: &SM, ts: &TransitionStmt, kind: TransitionKind) -> Vec<S
     let sops = simplify_ops_with_pre(&ts, &sm, kind);
 
     // Phase 2: Add PostCondition statements
-    let sops = add_postconditions(sm, *ts.get_span(), sops);
+    let sops = add_postconditions(sm, sops);
 
     // Phase 3: Simplify out all 'assign' statements
     crate::simplify_assigns::simplify_assigns(&sm, &sops)
@@ -112,17 +112,15 @@ pub fn simplify_ops(sm: &SM, ts: &TransitionStmt, kind: TransitionKind) -> Vec<S
 //
 // For each conditional, we have to check if we added a statement on one branch but not
 // the other, and if so, resolve.
-// Finally at the very end, we add postconditions for any fields that were never updated.
 
-fn add_postconditions(sm: &SM, span: Span, sops: Vec<SimplStmt>) -> Vec<SimplStmt> {
+fn add_postconditions(sm: &SM, sops: Vec<SimplStmt>) -> Vec<SimplStmt> {
     let mut found = Vec::new();
     let mut sops = sops;
     add_postconditions_vec(&mut sops, &mut found);
 
     for field in &sm.fields {
         if !contains_ident(&found, &field.name) {
-            let fs = postcondition_stmt(span, field.name.clone());
-            sops.push(fs);
+            panic!("add_postconditions_vec failed to properly add all postconditions");
         }
     }
 
@@ -137,7 +135,7 @@ fn add_postconditions_vec(sops: &mut Vec<SimplStmt>, found: &mut Vec<Ident>) {
         // Add a postcondition statement if necessary.
 
         match &sop {
-            SimplStmt::Assign(span, tmp_ident, _, _) => {
+            SimplStmt::Assign(span, tmp_ident, _, _, is_prequel) => {
                 let f_ident_opt = field_name_from_tmp(tmp_ident);
                 if let Some(f_ident) = f_ident_opt {
                     if !contains_ident(found, &f_ident) {
@@ -146,8 +144,14 @@ fn add_postconditions_vec(sops: &mut Vec<SimplStmt>, found: &mut Vec<Ident>) {
                         // at the end of this block of statements.
                         // (And leave the current statement unchanged).
 
+                        let reason = if *is_prequel {
+                            PostConditionReasonField::NoUpdateTopLevel
+                        } else {
+                            PostConditionReasonField::Update
+                        };
+
                         found.push(f_ident.clone());
-                        new_sops.push(postcondition_stmt(*span, f_ident));
+                        new_sops.push(postcondition_stmt(*span, f_ident, reason));
                     }
                 }
             }
@@ -196,7 +200,11 @@ fn add_postconditions_vec(sops: &mut Vec<SimplStmt>, found: &mut Vec<Ident>) {
                     for j in 0..es.len() {
                         if !contains_ident(&found_inner[j], f) {
                             found_inner[j].push(f.clone());
-                            es[j].push(postcondition_stmt(*span, f.clone()));
+                            es[j].push(postcondition_stmt(
+                                *span,
+                                f.clone(),
+                                PostConditionReasonField::NoUpdateConditional,
+                            ));
                         }
                     }
                 }
@@ -217,13 +225,14 @@ fn add_postconditions_vec(sops: &mut Vec<SimplStmt>, found: &mut Vec<Ident>) {
     sops.append(&mut new_sops);
 }
 
-fn postcondition_stmt(span: Span, f: Ident) -> SimplStmt {
+fn postcondition_stmt(span: Span, f: Ident, pcrf: PostConditionReasonField) -> SimplStmt {
     let cur = get_cur(&f);
     SimplStmt::PostCondition(
         span,
         Expr::Verbatim(quote_spanned! { span =>
             ::builtin::equal(post.#f, #cur)
         }),
+        PostConditionReason::FieldValue(pcrf, f.to_string()),
     )
 }
 
@@ -280,10 +289,11 @@ fn simplify_ops_with_pre(ts: &TransitionStmt, sm: &SM, kind: TransitionKind) -> 
             .map(|f| {
                 let f_ident = &f.name;
                 SimplStmt::Assign(
-                    f_ident.span(),
+                    *ts.get_span(),
                     get_cur_ident(f_ident),
                     f.get_type(),
                     Expr::Verbatim(quote! {pre.#f_ident}),
+                    true,
                 )
             })
             .collect();
@@ -356,8 +366,8 @@ fn simplify_ops_rec(ts: &TransitionStmt, sm: &SM) -> Vec<SimplStmt> {
             }
         },
 
-        TransitionStmt::PostCondition(span, e) => {
-            vec![SimplStmt::PostCondition(*span, e.clone())]
+        TransitionStmt::PostCondition(_span, _e) => {
+            panic!("unexpected TransitionStmt::PostCondition");
         }
         TransitionStmt::Require(span, e) => {
             vec![SimplStmt::Require(*span, e.clone())]
@@ -368,7 +378,7 @@ fn simplify_ops_rec(ts: &TransitionStmt, sm: &SM) -> Vec<SimplStmt> {
 
         TransitionStmt::Initialize(span, f, e) | TransitionStmt::Update(span, f, e) => {
             let field = get_field(&sm.fields, f);
-            vec![SimplStmt::Assign(*span, get_cur_ident(f), field.get_type(), e.clone())]
+            vec![SimplStmt::Assign(*span, get_cur_ident(f), field.get_type(), e.clone(), false)]
         }
         TransitionStmt::SubUpdate(span, f, subs, e) => {
             let field = get_field(&sm.fields, f);
@@ -377,6 +387,7 @@ fn simplify_ops_rec(ts: &TransitionStmt, sm: &SM) -> Vec<SimplStmt> {
                 get_cur_ident(f),
                 field.get_type(),
                 update_sub_expr(&get_cur(f), subs, 0, e),
+                false,
             )]
         }
     }
@@ -410,6 +421,7 @@ fn simplify_special_op(
                     get_cur_ident(&field.name),
                     field.get_type(),
                     new_val,
+                    false,
                 )],
             )
         }
@@ -425,6 +437,7 @@ fn simplify_special_op(
                     get_cur_ident(&field.name),
                     field.get_type(),
                     new_val,
+                    false,
                 )],
             )
         }
@@ -449,6 +462,7 @@ fn simplify_special_op(
                     get_cur_ident(&field.name),
                     field.get_type(),
                     new_val,
+                    false,
                 )],
             )
         }
@@ -464,6 +478,7 @@ fn simplify_special_op(
                     get_cur_ident(&field.name),
                     field.get_type(),
                     new_val,
+                    false,
                 )],
             )
         }

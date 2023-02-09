@@ -260,14 +260,26 @@ pub enum TransitionStmt {
 }
 
 #[derive(Clone, Debug)]
+pub enum PostConditionReasonField {
+    Update,
+    NoUpdateConditional,
+    NoUpdateTopLevel,
+}
+
+#[derive(Clone, Debug)]
+pub enum PostConditionReason {
+    FieldValue(PostConditionReasonField, String),
+}
+
+#[derive(Clone, Debug)]
 pub enum SimplStmt {
     Let(Span, Pat, Option<Type>, Expr, Vec<SimplStmt>),
     Split(Span, SplitKind, Vec<Vec<SimplStmt>>), // only for If, Match
 
     Require(Span, Expr),
-    PostCondition(Span, Expr),
+    PostCondition(Span, Expr, PostConditionReason),
     Assert(Span, Expr, AssertProof),
-    Assign(Span, Ident, Type, Expr),
+    Assign(Span, Ident, Type, Expr, bool),
 }
 
 impl SpecialOp {
@@ -543,6 +555,27 @@ impl TransitionKind {
             TransitionKind::Transition => true,
             TransitionKind::ReadonlyTransition => false,
             TransitionKind::Property => false,
+        }
+    }
+}
+
+impl PostConditionReason {
+    pub fn to_err_msg(&self) -> String {
+        let PostConditionReason::FieldValue(rf, field_name) = self;
+        match rf {
+            PostConditionReasonField::Update => {
+                format!(
+                    "cannot prove that final value of field `{field_name}` has this updated value"
+                )
+            }
+            PostConditionReasonField::NoUpdateConditional => {
+                format!(
+                    "cannot prove that the field `{field_name}` is preserved across this conditional arm"
+                )
+            }
+            PostConditionReasonField::NoUpdateTopLevel => {
+                format!("cannot prove that the field `{field_name}` is preserved")
+            }
         }
     }
 }
