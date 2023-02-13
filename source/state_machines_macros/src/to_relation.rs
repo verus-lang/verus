@@ -95,8 +95,8 @@ fn to_relation_stmt(
         }
         SimplStmt::Split(_span, SplitKind::If(cond), es) => {
             assert!(es.len() == 2);
-            let x1 = to_relation_vec(&es[0], None, weak);
-            let x2 = to_relation_vec(&es[1], None, weak);
+            let x1 = to_relation_vec(&es[0].1, None, weak);
+            let x2 = to_relation_vec(&es[1].1, None, weak);
             let t = match (x1, x2) {
                 (None, None) => None,
                 (Some(e1), None) => Some(quote! { ::builtin::imply(#cond, #e1) }),
@@ -112,7 +112,7 @@ fn to_relation_stmt(
         }
         SimplStmt::Split(span, SplitKind::Match(match_e, arms), es) => {
             let opts: Vec<Option<TokenStream>> =
-                es.iter().map(|e| to_relation_vec(e, None, weak)).collect();
+                es.iter().map(|e| to_relation_vec(&e.1, None, weak)).collect();
             let t = if opts.iter().any(|o| o.is_some()) {
                 let cases: Vec<Expr> = opts
                     .into_iter()
@@ -210,8 +210,8 @@ pub fn asserts_to_single_predicate_simpl(sop: &SimplStmt) -> Option<TokenStream>
         }
         SimplStmt::Split(_span, SplitKind::If(cond), es) => {
             assert!(es.len() == 2);
-            let x1 = asserts_to_single_predicate_simpl_vec(&es[0]);
-            let x2 = asserts_to_single_predicate_simpl_vec(&es[1]);
+            let x1 = asserts_to_single_predicate_simpl_vec(&es[0].1);
+            let x2 = asserts_to_single_predicate_simpl_vec(&es[1].1);
             match (x1, x2) {
                 (None, None) => None,
                 (Some(e1), None) => Some(quote! { ::builtin::imply(#cond, #e1) }),
@@ -221,7 +221,7 @@ pub fn asserts_to_single_predicate_simpl(sop: &SimplStmt) -> Option<TokenStream>
         }
         SimplStmt::Split(span, SplitKind::Match(match_e, arms), es) => {
             let opts: Vec<Option<TokenStream>> =
-                es.iter().map(|e| asserts_to_single_predicate_simpl_vec(e)).collect();
+                es.iter().map(|e| asserts_to_single_predicate_simpl_vec(&e.1)).collect();
             if opts.iter().any(|o| o.is_some()) {
                 let cases = opts
                     .into_iter()

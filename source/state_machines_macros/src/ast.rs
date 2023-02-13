@@ -274,7 +274,7 @@ pub enum PostConditionReason {
 #[derive(Clone, Debug)]
 pub enum SimplStmt {
     Let(Span, Pat, Option<Type>, Expr, Vec<SimplStmt>),
-    Split(Span, SplitKind, Vec<Vec<SimplStmt>>), // only for If, Match
+    Split(Span, SplitKind, Vec<(Span, Vec<SimplStmt>)>), // only for If, Match
 
     Require(Span, Expr),
     PostCondition(Span, Expr, PostConditionReason),

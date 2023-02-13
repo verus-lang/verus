@@ -164,12 +164,12 @@ fn add_postconditions_vec(sops: &mut Vec<SimplStmt>, found: &mut Vec<Ident>) {
             SimplStmt::Let(_, _, _, _, v) => {
                 add_postconditions_vec(v, found);
             }
-            SimplStmt::Split(span, _, es) => {
+            SimplStmt::Split(_span, _, es) => {
                 let idx = found.len();
                 let mut found_inner = vec![found.clone(); es.len()];
 
                 for i in 0..es.len() {
-                    add_postconditions_vec(&mut es[i], &mut found_inner[i]);
+                    add_postconditions_vec(&mut es[i].1, &mut found_inner[i]);
                 }
 
                 // For each side of the conditional (or arm of the match),
@@ -200,8 +200,9 @@ fn add_postconditions_vec(sops: &mut Vec<SimplStmt>, found: &mut Vec<Ident>) {
                     for j in 0..es.len() {
                         if !contains_ident(&found_inner[j], f) {
                             found_inner[j].push(f.clone());
-                            es[j].push(postcondition_stmt(
-                                *span,
+                            let span = es[j].0;
+                            es[j].1.push(postcondition_stmt(
+                                span,
                                 f.clone(),
                                 PostConditionReasonField::NoUpdateConditional,
                             ));
@@ -314,10 +315,10 @@ fn simplify_ops_rec(ts: &TransitionStmt, sm: &SM) -> Vec<SimplStmt> {
         }
         TransitionStmt::Split(span, split_kind, es) => match split_kind {
             SplitKind::If(..) | SplitKind::Match(..) => {
-                let mut new_es: Vec<Vec<SimplStmt>> = Vec::new();
+                let mut new_es: Vec<(Span, Vec<SimplStmt>)> = Vec::new();
                 for e in es {
                     let new_e1 = simplify_ops_rec(&e, sm);
-                    new_es.push(new_e1);
+                    new_es.push((*e.get_span(), new_e1));
                 }
 
                 vec![SimplStmt::Split(*span, split_kind.clone(), new_es)]

@@ -95,9 +95,9 @@ fn simplify_assigns_stmt(sm: &SM, sop: &SimplStmt, used_ids: &mut HashSet<String
             let mut simpl_inners = Vec::new();
             for inner in inners.iter() {
                 let mut inner_used_ids: HashSet<String> = HashSet::new();
-                let simpl_inner = simplify_assigns_vec(sm, inner, &mut inner_used_ids);
+                let simpl_inner = simplify_assigns_vec(sm, &inner.1, &mut inner_used_ids);
                 set_union(used_ids, inner_used_ids);
-                simpl_inners.push(simpl_inner);
+                simpl_inners.push((inner.0, simpl_inner));
             }
             SimplStmt::Split(*span, split_kind.clone(), simpl_inners)
         }
@@ -129,7 +129,7 @@ fn get_all_assigns(sop: &SimplStmt, assigned: &mut HashSet<String>) {
         }
         SimplStmt::Split(_span, _split_kind, inners) => {
             for inner in inners.iter() {
-                for op in inner {
+                for op in inner.1.iter() {
                     get_all_assigns(op, assigned);
                 }
             }
