@@ -15,7 +15,7 @@ use crate::rust_to_vir_base::{
     hack_get_def_name, mid_ty_to_vir, mk_visibility, typ_path_and_ident_to_vir_path,
 };
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
-use crate::util::{err_span_str, spanned_new, unsupported_err_span};
+use crate::util::{err_span_str, unsupported_err_span};
 use crate::{err_unless, unsupported_err, unsupported_err_unless};
 
 use rustc_ast::IsAuto;
@@ -33,11 +33,22 @@ use vir::ast_util::path_as_rust_name;
 fn check_item<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut KrateX,
-    module_path: &Path,
+    mpath: Option<&Option<Path>>,
     id: &ItemId,
     item: &'tcx Item<'tcx>,
 ) -> Result<(), VirErr> {
-    let visibility = mk_visibility(&Some(module_path.clone()), &item.vis, true);
+    // delay computation of module_path because some external or builtin items don't have a valid Path
+    let module_path = || {
+        if let Some(Some(path)) = mpath {
+            path.clone()
+        } else {
+            let owned_by =
+                ctxt.krate.owners[item.hir_id().owner].as_ref().expect("owner of item").node();
+            def_id_to_vir_path(ctxt.tcx, owned_by.def_id().to_def_id())
+        }
+    };
+
+    let visibility = || mk_visibility(&Some(module_path()), &item.vis, true);
     match &item.kind {
         ItemKind::Fn(sig, generics, body_id) => {
             check_item_fn(
@@ -45,7 +56,7 @@ fn check_item<'tcx>(
                 vir,
                 item.def_id.to_def_id(),
                 FunctionKind::Static,
-                visibility,
+                visibility(),
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 sig,
                 None,
@@ -74,10 +85,10 @@ fn check_item<'tcx>(
             check_item_struct(
                 ctxt,
                 vir,
-                module_path,
+                &module_path(),
                 item.span,
                 id,
-                visibility,
+                visibility(),
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 variant_data,
                 generics,
@@ -92,10 +103,10 @@ fn check_item<'tcx>(
             check_item_enum(
                 ctxt,
                 vir,
-                module_path,
+                &module_path(),
                 item.span,
                 id,
-                visibility,
+                visibility(),
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 enum_def,
                 generics,
@@ -195,7 +206,7 @@ fn check_item<'tcx>(
             let (self_path, datatype_typ_args) = match &*self_typ {
                 TypX::Datatype(p, typ_args) => (p.clone(), typ_args.clone()),
                 TypX::StrSlice => {
-                    let path = vir::def::strslice_defn_path();
+                    let path = vir::def::strslice_defn_path(&ctxt.veruslib_crate_name);
                     let typ_args = Arc::new(vec![Arc::new(TypX::StrSlice)]);
                     (path, typ_args)
                 }
@@ -227,7 +238,7 @@ fn check_item<'tcx>(
                     AssocItemKind::Fn { has_self: true | false } => {
                         let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
                         let mut impl_item_visibility =
-                            mk_visibility(&Some(module_path.clone()), &impl_item.vis, true);
+                            mk_visibility(&Some(module_path()), &impl_item.vis, true);
                         match &impl_item.kind {
                             ImplItemKind::Fn(sig, body_id) => {
                                 let fn_attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
@@ -280,7 +291,7 @@ fn check_item<'tcx>(
                                         trait_path_typ_args.clone()
                                     {
                                         impl_item_visibility = mk_visibility(
-                                            &Some(module_path.clone()),
+                                            &Some(module_path()),
                                             &impl_item.vis,
                                             false,
                                         );
@@ -357,7 +368,7 @@ fn check_item<'tcx>(
                 vir,
                 item.span,
                 item.def_id.to_def_id(),
-                visibility,
+                visibility(),
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 &vir_ty,
                 body_id,
@@ -408,7 +419,7 @@ fn check_item<'tcx>(
                             vir,
                             def_id.to_def_id(),
                             FunctionKind::TraitMethodDecl { trait_path: trait_path.clone() },
-                            visibility.clone(),
+                            visibility(),
                             attrs,
                             sig,
                             None,
@@ -430,7 +441,7 @@ fn check_item<'tcx>(
                 methods: Arc::new(methods),
                 typ_params: Arc::new(generics_bnds),
             };
-            vir.traits.push(spanned_new(item.span, traitx));
+            vir.traits.push(ctxt.spanned_new(item.span, traitx));
         }
         ItemKind::TyAlias(_ty, _generics) => {
             // type alias (like lines of the form `type X = ...;`
@@ -498,9 +509,8 @@ impl<'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'tcx> {
     }
 }
 
-pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>, no_span: &air::ast::Span) -> Result<Krate, VirErr> {
+pub(crate) fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
     let mut vir: KrateX = Default::default();
-    vir::builtins::krate_add_builtins(no_span, &mut vir);
 
     // Map each item to the module that contains it, or None if the module is external
     let mut item_to_module: HashMap<ItemId, Option<Path>> = HashMap::new();
@@ -540,7 +550,6 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>, no_span: &air::ast::Span) -> Res
         if let Some(owner) = owner {
             match owner.node() {
                 OwnerNode::Item(item) => {
-                    let item_path;
                     // If the item does not belong to a module, use the def_id of its owner as the
                     // module path
                     let mpath = item_to_module.get(&item.item_id());
@@ -548,17 +557,7 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>, no_span: &air::ast::Span) -> Res
                         // whole module is external, so skip the item
                         continue;
                     }
-                    let module_path = if let Some(Some(path)) = mpath {
-                        path
-                    } else {
-                        let owned_by = ctxt.krate.owners[item.hir_id().owner]
-                            .as_ref()
-                            .expect("owner of item")
-                            .node();
-                        item_path = def_id_to_vir_path(ctxt.tcx, owned_by.def_id().to_def_id());
-                        &item_path
-                    };
-                    check_item(ctxt, &mut vir, module_path, &item.item_id(), item)?
+                    check_item(ctxt, &mut vir, mpath, &item.item_id(), item)?
                 }
                 OwnerNode::ForeignItem(foreign_item) => check_foreign_item(
                     ctxt,

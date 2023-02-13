@@ -11,6 +11,7 @@ air = { path = "../air" }
 vir = { path = "../vir" }
 serde = "1"
 serde_json = "1"
+bincode = "1.0.1"
 sise = "0.6.0"
 num-bigint = "0.4.3"
 num-format = "0.4.0"

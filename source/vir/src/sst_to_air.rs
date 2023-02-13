@@ -321,7 +321,10 @@ fn call_inv(
     typ: &Typ,
     atomicity: InvAtomicity,
 ) -> Expr {
-    let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&fn_inv_name(atomicity)));
+    let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&fn_inv_name(
+        &ctx.global.veruslib_crate_name,
+        atomicity,
+    )));
     let boxed_inner = try_box(ctx, inner.clone(), typ).unwrap_or(inner);
 
     let mut args: Vec<Expr> = typ_args.iter().map(|t| typ_to_id(t)).collect();
@@ -330,8 +333,11 @@ fn call_inv(
     ident_apply(&inv_fn_ident, &args)
 }
 
-fn call_namespace(arg: Expr, typ_args: &Typs, atomicity: InvAtomicity) -> Expr {
-    let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&fn_namespace_name(atomicity)));
+fn call_namespace(ctx: &Ctx, arg: Expr, typ_args: &Typs, atomicity: InvAtomicity) -> Expr {
+    let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&fn_namespace_name(
+        &ctx.global.veruslib_crate_name,
+        atomicity,
+    )));
 
     let mut args: Vec<Expr> = typ_args.iter().map(|t| typ_to_id(t)).collect();
     args.push(arg);
@@ -1931,7 +1937,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             // Assert that the namespace of the inv we are opening is in the mask set
             let typ_args = get_inv_typ_args(&inv_exp.typ);
-            let namespace_expr = call_namespace(inv_expr.clone(), &typ_args, *atomicity);
+            let namespace_expr = call_namespace(ctx, inv_expr.clone(), &typ_args, *atomicity);
             if !ctx.checking_recommends() {
                 state.mask.assert_contains(&inv_exp.span, &namespace_expr, &mut stmts);
             }

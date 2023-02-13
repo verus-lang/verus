@@ -6,7 +6,7 @@ use crate::rust_to_vir_base::{
     check_generics_bounds_fun, def_id_to_vir_path, foreign_param_to_var, mid_ty_to_vir,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_mut_var, ExprModifier};
-use crate::util::{err_span_str, err_span_string, spanned_new, unsupported_err_span};
+use crate::util::{err_span_str, err_span_string, unsupported_err_span};
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{
@@ -253,7 +253,7 @@ pub(crate) fn check_item_fn<'tcx>(
 
         let is_mut = is_mut.is_some();
 
-        let vir_param = spanned_new(*span, ParamX { name, typ, mode: param_mode, is_mut });
+        let vir_param = ctxt.spanned_new(*span, ParamX { name, typ, mode: param_mode, is_mut });
         vir_params.push(vir_param);
     }
 
@@ -320,7 +320,7 @@ pub(crate) fn check_item_fn<'tcx>(
         (Some((x, _)), Some((typ, mode))) => (x, typ, mode),
         _ => panic!("internal error: ret_typ"),
     };
-    let ret = spanned_new(
+    let ret = ctxt.spanned_new(
         sig.span,
         ParamX { name: ret_name, typ: ret_typ, mode: ret_mode, is_mut: false },
     );
@@ -377,7 +377,7 @@ pub(crate) fn check_item_fn<'tcx>(
     // calling it. But we translate things to point to it internally, so we need to
     // mark it non-private in order to avoid errors down the line.
     let mut visibility = visibility;
-    if path == vir::def::exec_nonstatic_call_path() {
+    if path == vir::def::exec_nonstatic_call_path(&ctxt.veruslib_crate_name) {
         visibility.is_private = false;
     }
 
@@ -419,7 +419,7 @@ pub(crate) fn check_item_fn<'tcx>(
         extra_dependencies: header.extra_dependencies,
     };
 
-    let function = spanned_new(sig.span, func);
+    let function = ctxt.spanned_new(sig.span, func);
     vir.functions.push(function);
     Ok(Some(name))
 }
@@ -455,7 +455,8 @@ pub(crate) fn check_item_const<'tcx>(
     let vir_body = body_to_vir(ctxt, body_id, body, mode, vattrs.external_body)?;
 
     let ret_name = Arc::new(RETURN_VALUE.to_string());
-    let ret = spanned_new(span, ParamX { name: ret_name, typ: typ.clone(), mode, is_mut: false });
+    let ret =
+        ctxt.spanned_new(span, ParamX { name: ret_name, typ: typ.clone(), mode, is_mut: false });
     let func = FunctionX {
         name,
         kind: FunctionKind::Static,
@@ -478,7 +479,7 @@ pub(crate) fn check_item_const<'tcx>(
         body: if vattrs.external_body { None } else { Some(vir_body) },
         extra_dependencies: vec![],
     };
-    let function = spanned_new(span, func);
+    let function = ctxt.spanned_new(span, func);
     vir.functions.push(function);
     Ok(())
 }
@@ -514,7 +515,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         let typ = mid_ty_to_vir(ctxt.tcx, is_mut.unwrap_or(input), false);
         // REVIEW: the parameters don't have attributes, so we use the overall mode
         let vir_param =
-            spanned_new(param.span, ParamX { name, typ, mode, is_mut: is_mut.is_some() });
+            ctxt.spanned_new(param.span, ParamX { name, typ, mode, is_mut: is_mut.is_some() });
         vir_params.push(vir_param);
     }
     let path = def_id_to_vir_path(ctxt.tcx, id);
@@ -530,7 +531,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         mode: ret_mode,
         is_mut: false,
     };
-    let ret = spanned_new(span, ret_param);
+    let ret = ctxt.spanned_new(span, ret_param);
     let func = FunctionX {
         name,
         kind: FunctionKind::Static,
@@ -553,7 +554,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         body: None,
         extra_dependencies: vec![],
     };
-    let function = spanned_new(span, func);
+    let function = ctxt.spanned_new(span, func);
     vir.functions.push(function);
     Ok(())
 }

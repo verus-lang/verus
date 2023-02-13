@@ -1,9 +1,16 @@
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
+
+#[cfg(not(veruslib_todo))]
 mod pervasive;
+#[cfg(not(veruslib_todo))]
 #[allow(unused_imports)]
-use crate::pervasive::*;
+use pervasive::{*, vec::*, seq::*, modes::*};
+
+#[cfg(veruslib_todo)]
+#[allow(unused_imports)]
+use veruslib::pervasive::{*, vec::*, seq::*, modes::*};
 
 verus! {
 

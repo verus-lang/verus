@@ -112,7 +112,8 @@ and then sending the error messages and spans to the rustc diagnostics for the o
 use crate::erase::ErasureHints;
 use crate::lifetime_emit::*;
 use crate::lifetime_generate::*;
-use crate::util::{error, to_air_span};
+use crate::spans::SpanContext;
+use crate::util::error;
 use crate::verifier::DiagnosticOutputBuffer;
 use air::messages::{message_bare, Message, MessageLevel};
 use rustc_hir::{AssocItemKind, Crate, ItemKind, OwnerNode};
@@ -189,10 +190,15 @@ fn emit_check_tracked_lifetimes<'tcx>(
     tcx: TyCtxt<'tcx>,
     krate: &'tcx Crate<'tcx>,
     emit_state: &mut EmitState,
+    crate_names: Vec<String>,
     erasure_hints: &ErasureHints,
 ) -> State {
-    let gen_state =
-        crate::lifetime_generate::gen_check_tracked_lifetimes(tcx, krate, erasure_hints);
+    let gen_state = crate::lifetime_generate::gen_check_tracked_lifetimes(
+        tcx,
+        krate,
+        crate_names,
+        erasure_hints,
+    );
     for line in PRELUDE.split('\n') {
         emit_state.writeln(line.replace("\r", ""));
     }
@@ -267,13 +273,16 @@ struct Diagnostic {
 
 pub(crate) fn check_tracked_lifetimes<'tcx>(
     tcx: TyCtxt<'tcx>,
+    spans: &SpanContext,
     parent_rustc_args: Vec<String>,
+    crate_names: Vec<String>,
     erasure_hints: &ErasureHints,
     lifetime_log_file: Option<File>,
 ) -> Result<Vec<Message>, VirErr> {
     let krate = tcx.hir().krate();
     let mut emit_state = EmitState::new();
-    let gen_state = emit_check_tracked_lifetimes(tcx, krate, &mut emit_state, erasure_hints);
+    let gen_state =
+        emit_check_tracked_lifetimes(tcx, krate, &mut emit_state, crate_names, erasure_hints);
     let mut rust_code: String = String::new();
     for line in &emit_state.lines {
         rust_code.push_str(&line.text);
@@ -329,7 +338,7 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
                     dspan.line_end - 1,
                     dspan.column_end - 1,
                 );
-                msg = msg.primary_span(&to_air_span(span));
+                msg = msg.primary_span(&spans.to_air_span(span));
             }
             msgs.push(msg);
         }

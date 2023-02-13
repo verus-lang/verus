@@ -32,6 +32,7 @@ pub mod driver;
 pub mod erase;
 mod erase_rewrite;
 pub mod file_loader;
+mod import_export;
 mod lifetime;
 mod lifetime_ast;
 mod lifetime_emit;
@@ -44,6 +45,7 @@ pub mod rust_to_vir_expr;
 pub mod rust_to_vir_func;
 #[cfg(feature = "singular")]
 pub mod singular;
+mod spans;
 pub mod typecheck;
 pub mod util;
 pub mod verifier;

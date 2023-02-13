@@ -1,13 +1,17 @@
 use crate::messages::{Message, MessageLabels};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
 pub type RawSpan = Arc<dyn std::any::Any + std::marker::Sync + std::marker::Send>;
 pub type AstId = u64;
-#[derive(Clone)] // for Debug, see ast_util
+#[derive(Clone, Serialize, Deserialize)] // for Debug, see ast_util
 pub struct Span {
+    #[serde(skip)]
+    #[serde(default = "crate::ast_util::empty_raw_span")]
     pub raw_span: RawSpan,
     pub id: AstId, // arbitrary integer identifier that may be set and used in any way (e.g. as unique id, or just left as 0)
+    pub data: Vec<u64>, // arbitrary integers (e.g. for serialization/deserialization)
     pub as_string: String, // if we can't print (description, raw_span), print as_string instead
 }
 
@@ -20,7 +24,7 @@ pub(crate) type Snapshots = HashMap<Ident, Snapshot>;
 
 pub type Typ = Arc<TypX>;
 pub type Typs = Arc<Vec<Typ>>;
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum TypX {
     Bool,
     Int,
@@ -30,21 +34,21 @@ pub enum TypX {
     BitVec(u32),
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)] // for Debug, see ast_util
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Hash)] // for Debug, see ast_util
 pub enum Constant {
     Bool(bool),
     Nat(Arc<String>),
     BitVec(Arc<String>, u32),
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum UnaryOp {
     Not,
     BitNot,
     BitExtract(u32, u32),
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum BinaryOp {
     Implies,
     Eq,
@@ -72,7 +76,7 @@ pub enum BinaryOp {
     BitConcat,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum MultiOp {
     And,
     Or,
@@ -85,13 +89,13 @@ pub enum MultiOp {
 
 pub type Binder<A> = Arc<BinderX<A>>;
 pub type Binders<A> = Arc<Vec<Binder<A>>>;
-#[derive(Clone)] // for Debug, see ast_util
+#[derive(Clone, Serialize, Deserialize)] // for Debug, see ast_util
 pub struct BinderX<A: Clone> {
     pub name: Ident,
     pub a: A,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum Quant {
     Forall,
     Exists,
@@ -103,7 +107,7 @@ pub type Triggers = Arc<Vec<Trigger>>;
 pub type Qid = Option<Ident>;
 
 pub type Bind = Arc<BindX>;
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BindX {
     Let(Binders<Expr>),
     Quant(Quant, Binders<Typ>, Triggers, Qid),
@@ -114,7 +118,7 @@ pub enum BindX {
 
 pub type Expr = Arc<ExprX>;
 pub type Exprs = Arc<Vec<Expr>>;
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum ExprX {
     Const(Constant),
     Var(Ident),
@@ -136,7 +140,7 @@ pub enum ExprX {
 
 pub type Stmt = Arc<StmtX>;
 pub type Stmts = Arc<Vec<Stmt>>;
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum StmtX {
     Assume(Expr),
     Assert(Message, Expr),
@@ -159,7 +163,7 @@ pub type Datatypes = Binders<Variants>;
 
 pub type Decl = Arc<DeclX>;
 pub type Decls = Arc<Vec<Decl>>;
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum DeclX {
     Sort(Ident),
     Datatypes(Datatypes),
@@ -170,7 +174,7 @@ pub enum DeclX {
 }
 
 pub type Query = Arc<QueryX>;
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct QueryX {
     pub local: Decls,    // local declarations
     pub assertion: Stmt, // checked by SMT with global and local declarations
@@ -178,7 +182,7 @@ pub struct QueryX {
 
 pub type Command = Arc<CommandX>;
 pub type Commands = Arc<Vec<Command>>;
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum CommandX {
     Push,                    // push space for temporary global declarations
     Pop,                     // pop temporary global declarations

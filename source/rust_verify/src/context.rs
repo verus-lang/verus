@@ -5,7 +5,7 @@ use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::SpanData;
 use std::collections::HashMap;
 use std::sync::Arc;
-use vir::ast::{Expr, InferMode, Mode, Pattern, Typ};
+use vir::ast::{Expr, Ident, InferMode, Mode, Pattern, Typ};
 
 pub struct ErasureInfo {
     pub(crate) hir_vir_ids: Vec<(HirId, AstId)>,
@@ -27,9 +27,12 @@ pub type Context<'tcx> = Arc<ContextX<'tcx>>;
 pub struct ContextX<'tcx> {
     pub(crate) tcx: TyCtxt<'tcx>,
     pub(crate) krate: &'tcx Crate<'tcx>,
+    pub(crate) crate_names: Vec<String>,
     pub(crate) erasure_info: ErasureInfoRef,
     pub(crate) autoviewed_call_typs: HashMap<HirId, Typ>,
     pub(crate) unique_id: std::cell::Cell<u64>,
+    pub(crate) spans: crate::spans::SpanContext,
+    pub(crate) veruslib_crate_name: Option<Ident>,
     pub(crate) arch: ArchContext,
 }
 

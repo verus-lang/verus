@@ -4,6 +4,7 @@ use crate::util::vec_map;
 use air::ast::{Commands, Ident, Span};
 use air::ast_util::str_ident;
 use air::printer::str_to_node;
+use serde::{Deserialize, Serialize};
 use sise::Node;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -167,7 +168,11 @@ pub const CHAR: &str = "Char";
 pub const CHAR_FROM_UNICODE: &str = "from_unicode";
 pub const CHAR_TO_UNICODE: &str = "to_unicode";
 
-pub const SUPPORTED_CRATES: [&str; 2] = ["builtin", "pervasive"];
+pub const VERUSLIB: &str = "veruslib";
+pub const VERUSLIB_PREFIX: &str = "veruslib::";
+pub const PERVASIVE_PREFIX: &str = "pervasive::";
+
+pub const RUST_DEF_CTOR: &str = "ctor%";
 
 // List of pre-defined error messages
 pub const ASSERTION_FAILURE: &str = "assertion failure";
@@ -454,6 +459,21 @@ pub fn monotyp_apply(datatype: &Path, args: &Vec<Path>) -> Path {
     }
 }
 
+pub fn name_as_veruslib_name(name: &String) -> Option<String> {
+    let name = if let Some(x) = name.strip_prefix(crate::def::VERUSLIB_PREFIX) {
+        x.to_string()
+    } else if let Some(x) = name.strip_prefix("crate::") {
+        x.to_string()
+    } else {
+        return None;
+    };
+    if let Some(x) = name.strip_prefix(crate::def::PERVASIVE_PREFIX) {
+        Some(x.to_string())
+    } else {
+        None
+    }
+}
+
 // Generate a unique quantifier name
 pub fn new_user_qid_name(fun_name: &str, q_count: u64) -> String {
     // In SMTLIB, unquoted attribute values cannot contain colons,
@@ -492,6 +512,7 @@ pub struct SnapPos {
     pub kind: SpanKind,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Spanned<X> {
     pub span: Span,
     pub x: X,
@@ -555,9 +576,12 @@ fn atomicity_type_name(atomicity: InvAtomicity) -> Ident {
     }
 }
 
-pub fn datatype_invariant_path(atomicity: InvAtomicity) -> Path {
+pub fn datatype_invariant_path(
+    veruslib_crate_name: &Option<Ident>,
+    atomicity: InvAtomicity,
+) -> Path {
     Arc::new(PathX {
-        krate: None,
+        krate: veruslib_crate_name.clone(),
         segments: Arc::new(vec![
             Arc::new("pervasive".to_string()),
             Arc::new("invariant".to_string()),
@@ -566,10 +590,10 @@ pub fn datatype_invariant_path(atomicity: InvAtomicity) -> Path {
     })
 }
 
-pub fn fn_inv_name(atomicity: InvAtomicity) -> Fun {
+pub fn fn_inv_name(veruslib_crate_name: &Option<Ident>, atomicity: InvAtomicity) -> Fun {
     Arc::new(FunX {
         path: Arc::new(PathX {
-            krate: None,
+            krate: veruslib_crate_name.clone(),
             segments: Arc::new(vec![
                 Arc::new("pervasive".to_string()),
                 Arc::new("invariant".to_string()),
@@ -581,10 +605,10 @@ pub fn fn_inv_name(atomicity: InvAtomicity) -> Fun {
     })
 }
 
-pub fn fn_namespace_name(atomicity: InvAtomicity) -> Fun {
+pub fn fn_namespace_name(veruslib_crate_name: &Option<Ident>, atomicity: InvAtomicity) -> Fun {
     Arc::new(FunX {
         path: Arc::new(PathX {
-            krate: None,
+            krate: veruslib_crate_name.clone(),
             segments: Arc::new(vec![
                 Arc::new("pervasive".to_string()),
                 Arc::new("invariant".to_string()),
@@ -637,9 +661,9 @@ pub fn strslice_from_strlit() -> Node {
     str_to_node(&prefix_str(&std::sync::Arc::new(STRSLICE_FROM_STRLIT.to_string())))
 }
 
-pub fn strslice_defn_path() -> Path {
+pub fn strslice_defn_path(veruslib_crate_name: &Option<Ident>) -> Path {
     Arc::new(PathX {
-        krate: None,
+        krate: veruslib_crate_name.clone(),
         segments: Arc::new(vec![
             Arc::new("pervasive".to_string()),
             Arc::new("string".to_string()),
@@ -689,13 +713,13 @@ pub fn unique_local_name(user_given_name: String, uniq_id: usize) -> String {
     user_given_name + &LOCAL_UNIQUE_ID_SEPARATOR.to_string() + &uniq_id.to_string()
 }
 
-pub fn exec_nonstatic_call_fun() -> Fun {
-    Arc::new(FunX { path: exec_nonstatic_call_path(), trait_path: None })
+pub fn exec_nonstatic_call_fun(veruslib_crate_name: &Option<Ident>) -> Fun {
+    Arc::new(FunX { path: exec_nonstatic_call_path(veruslib_crate_name), trait_path: None })
 }
 
-pub fn exec_nonstatic_call_path() -> Path {
+pub fn exec_nonstatic_call_path(veruslib_crate_name: &Option<Ident>) -> Path {
     Arc::new(PathX {
-        krate: None,
+        krate: veruslib_crate_name.clone(),
         segments: Arc::new(vec![
             Arc::new("pervasive".to_string()),
             Arc::new("exec_nonstatic_call".to_string()),

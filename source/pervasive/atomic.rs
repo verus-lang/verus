@@ -332,7 +332,7 @@ macro_rules! atomic_integer_methods {
             ensures(|ret: $value_ty| [
                 equal(old(perm).view().value, ret),
                 perm.view().patomic == old(perm).view().patomic,
-                perm.view().value == old(perm).view().value + n,
+                spec_eq(perm.view().value, old(perm).view().value.spec_add(n)),
             ]);
             #[cfg(not(verus_macro_erase_ghost))]
             opens_invariants_none();
@@ -354,7 +354,7 @@ macro_rules! atomic_integer_methods {
             ensures(|ret: $value_ty| [
                 equal(old(perm).view().value, ret),
                 perm.view().patomic == old(perm).view().patomic,
-                perm.view().value == old(perm).view().value - n,
+                spec_eq(perm.view().value, old(perm).view().value.spec_sub(n)),
             ]);
             #[cfg(not(verus_macro_erase_ghost))]
             opens_invariants_none();

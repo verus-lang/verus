@@ -23,6 +23,7 @@ struct Ctxt {
     // Map (D, T.f) -> D.f if D implements T.f:
     method_map: HashMap<(Path, Fun), Fun>,
     all_functions_in_each_module: HashMap<Path, Vec<Fun>>,
+    veruslib_crate_name: Option<Ident>,
 }
 
 #[derive(Default)]
@@ -105,7 +106,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             match &**t {
                 // This is temporary until we support adding specification for std.
                 TypX::StrSlice => {
-                    let path = crate::def::strslice_defn_path();
+                    let path = crate::def::strslice_defn_path(&ctxt.veruslib_crate_name);
                     reach(
                         &mut state.reached_modules,
                         &mut state.worklist_modules,
@@ -137,8 +138,16 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     ExprX::OpenInvariant(_, _, _, atomicity) => {
                         // SST -> AIR conversion for OpenInvariant may introduce
                         // references to these particular names.
-                        reach_function(ctxt, state, &fn_inv_name(*atomicity));
-                        reach_function(ctxt, state, &fn_namespace_name(*atomicity));
+                        reach_function(
+                            ctxt,
+                            state,
+                            &fn_inv_name(&ctxt.veruslib_crate_name, *atomicity),
+                        );
+                        reach_function(
+                            ctxt,
+                            state,
+                            &fn_namespace_name(&ctxt.veruslib_crate_name, *atomicity),
+                        );
                     }
                     _ => {}
                 }
@@ -175,7 +184,11 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
     }
 }
 
-pub fn prune_krate_for_module(krate: &Krate, module: &Path) -> (Krate, Vec<MonoTyp>, Vec<usize>) {
+pub fn prune_krate_for_module(
+    krate: &Krate,
+    module: &Path,
+    veruslib_crate_name: &Option<Ident>,
+) -> (Krate, Vec<MonoTyp>, Vec<usize>) {
     let mut state: State = Default::default();
     state.reached_modules.insert(module.clone());
     state.worklist_modules.push(module.clone());
@@ -292,6 +305,7 @@ pub fn prune_krate_for_module(krate: &Krate, module: &Path) -> (Krate, Vec<MonoT
         datatype_map,
         method_map,
         all_functions_in_each_module,
+        veruslib_crate_name: veruslib_crate_name.clone(),
     };
     traverse_reachable(&ctxt, &mut state);
 

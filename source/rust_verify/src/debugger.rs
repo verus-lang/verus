@@ -1,4 +1,4 @@
-use crate::util::from_raw_span;
+use crate::spans::from_raw_span;
 use air::ast::Ident;
 use air::ast::Span as ASpan;
 use air::model::Model as AModel;
@@ -43,7 +43,7 @@ impl Debugger {
 
         if snap_map.len() > 0 {
             let (air_span, snap_pos) = &snap_map[0];
-            let span: &Span = &from_raw_span(&air_span.raw_span);
+            let span: &Span = &from_raw_span(&air_span.raw_span).expect("local span");
             let (start, end) =
                 source_map.is_valid_span(*span).expect("internal error: invalid Span");
 
@@ -53,7 +53,7 @@ impl Debugger {
             let mut max_line = end.line;
 
             for (air_span, snap_pos) in snap_map {
-                let span: &Span = &from_raw_span(&air_span.raw_span);
+                let span: &Span = &from_raw_span(&air_span.raw_span).expect("local span");
                 let (span_start, span_end) =
                     source_map.is_valid_span(*span).expect("internal error: invalid Span");
 
@@ -98,7 +98,7 @@ impl Debugger {
 
         // Debugging sanity checks
         for (air_span, snap_pos) in snap_map {
-            let span: &Span = &from_raw_span(&air_span.raw_span);
+            let span: &Span = &from_raw_span(&air_span.raw_span).expect("local span");
             let (start, end) =
                 source_map.is_valid_span(*span).expect("internal error: invalid Span");
             println!("Span from {} to {} => {:?}", start.line, end.line, snap_pos);

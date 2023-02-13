@@ -9,7 +9,7 @@ use crate::ast::{
     ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Fun, FunX, Idents, InequalityOp, IntRange,
     IntegerTypeBoundKind, PathX, SpannedTyped, Typ, TypX, UnaryOp, VirErr,
 };
-use crate::ast_util::{err_str, path_as_rust_name};
+use crate::ast_util::{err_str, path_as_veruslib_name};
 use crate::func_to_air::{SstInfo, SstMap};
 use crate::prelude::ArchWordBits;
 use crate::sst::{Bnd, BndX, Exp, ExpX, Exps, Trigs, UniqueIdent};
@@ -631,17 +631,17 @@ enum SeqFn {
 /// Identify sequence functions for which we provide custom interpretation
 fn is_sequence_fn(fun: &Fun) -> Option<SeqFn> {
     use SeqFn::*;
-    match path_as_rust_name(&fun.path).as_str() {
-        "crate::pervasive::seq::Seq::empty" => Some(Empty),
-        "crate::pervasive::seq::Seq::new" => Some(New),
-        "crate::pervasive::seq::Seq::push" => Some(Push),
-        "crate::pervasive::seq::Seq::update" => Some(Update),
-        "crate::pervasive::seq::Seq::subrange" => Some(Subrange),
-        "crate::pervasive::seq::Seq::add" => Some(Add),
-        "crate::pervasive::seq::Seq::len" => Some(Len),
-        "crate::pervasive::seq::Seq::index" => Some(Index),
-        "crate::pervasive::seq::Seq::ext_equal" => Some(ExtEqual),
-        "crate::pervasive::seq::Seq::last" => Some(Last),
+    match path_as_veruslib_name(&fun.path).as_ref().map(|x| x.as_str()) {
+        Some("seq::Seq::empty") => Some(Empty),
+        Some("seq::Seq::new") => Some(New),
+        Some("seq::Seq::push") => Some(Push),
+        Some("seq::Seq::update") => Some(Update),
+        Some("seq::Seq::subrange") => Some(Subrange),
+        Some("seq::Seq::add") => Some(Add),
+        Some("seq::Seq::len") => Some(Len),
+        Some("seq::Seq::index") => Some(Index),
+        Some("seq::Seq::ext_equal") => Some(ExtEqual),
+        Some("seq::Seq::last") => Some(Last),
         _ => None,
     }
 }

@@ -1,9 +1,14 @@
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
+
+#[cfg(not(veruslib_todo))]
 mod pervasive;
-use pervasive::*;
-use crate::pervasive::{invariant::*};
+#[cfg(not(veruslib_todo))]
+use pervasive::{*, invariant::*};
+
+#[cfg(veruslib_todo)]
+use veruslib::{*, pervasive::{*, invariant::*}};
 
 verus!{
 struct ModPredicate { }

@@ -665,7 +665,11 @@ pub(crate) fn emit_fun_decl(state: &mut EmitState, f: &FunDecl) {
     state.push_indent();
     for (span, x, typ) in f.params.iter() {
         state.newline();
-        state.write_spanned(x.to_string(), *span);
+        if let Some(span) = span {
+            state.write_spanned(x.to_string(), *span);
+        } else {
+            state.write(x.to_string());
+        }
         state.write(": ");
         state.write(typ.to_string());
         state.write(",");
@@ -674,7 +678,11 @@ pub(crate) fn emit_fun_decl(state: &mut EmitState, f: &FunDecl) {
     state.write(")");
     if let Some((span, ret)) = &f.ret {
         state.write(" -> ");
-        state.write_spanned(ret.to_string(), *span);
+        if let Some(span) = span {
+            state.write_spanned(ret.to_string(), *span);
+        } else {
+            state.write(ret.to_string());
+        }
     }
     state.end_span(f.sig_span);
     match &*f.body {
