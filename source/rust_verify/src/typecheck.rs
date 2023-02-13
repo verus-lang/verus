@@ -1,5 +1,5 @@
 use crate::attributes::{get_mode, get_var_mode, get_verifier_attrs};
-use crate::rust_to_vir_base::{def_id_to_vir_path, mid_ty_to_vir};
+use crate::rust_to_vir_base::{def_id_self_to_vir_path, mid_ty_to_vir};
 use rustc_hir::intravisit::Visitor;
 use rustc_hir::{BinOp, BinOpKind, Expr, ExprKind, HirId, PathSegment};
 use rustc_middle::ty::{FormalVerifierTyping, Ty, TyCtxt, TyKind};
@@ -279,8 +279,11 @@ impl FormalVerifierTyping for Typecheck {
                 if self.exprs_in_spec.lock().expect("interpose_call").contains(&expr.hir_id) {
                     return None;
                 }
-                let path = def_id_to_vir_path(tcx, def_id);
-                if let Some(krate) = &path.krate {
+                let path = def_id_self_to_vir_path(tcx, &None, def_id);
+                if path.is_none() {
+                    return None;
+                }
+                if let Some(krate) = &path.unwrap().krate {
                     if **krate == "builtin" {
                         let mode = get_mode(Mode::Exec, tcx.item_attrs(def_id));
                         if mode != Mode::Exec {
