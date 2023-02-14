@@ -94,3 +94,16 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] map_contains verus_code! {
+        use crate::pervasive::set::*;
+        use crate::pervasive::map::*;
+
+        proof fn test() {
+            let m = map![10int => 100int, 20int => 200int];
+            assert(m.contains_key(10));
+            assert(m.contains_value(100));
+        }
+    } => Ok(())
+}
