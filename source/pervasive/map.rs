@@ -107,6 +107,13 @@ impl<K, V> Map<K, V> {
         self.dom().contains(k)
     }
 
+    /// Returns true if the value `v` is in the map of `self`.
+
+    #[verifier(inline)]
+    pub open spec fn contains_value(self, v: V) -> bool {
+        exists|i: K| #[trigger] self.dom().contains(i) && self.index(i) == v
+    }
+
     /// Returns true if the key `k` is in the domain of `self`, and it maps to the value `v`.
 
     pub open spec fn contains_pair(self, k: K, v: V) -> bool {
