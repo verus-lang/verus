@@ -219,4 +219,6 @@ macro_rules! assert_multisets_equal {
     }
 }
 
+pub use assert_multisets_equal;
+
 } // verus!
