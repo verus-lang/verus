@@ -18,8 +18,8 @@ test_verify_one_file! {
                 forall(|i: nat, j: nat|
                     imply(i < self.nodes.len() && j < self.nodes.index(spec_cast_integer::<nat, int>(i)).values.len(),
                     {
-                        let values = #[trigger] self.nodes.index(spec_cast_integer::<nat, int>(i)).values;
-                        self.base_v <= #[trigger] values.index(spec_cast_integer::<nat, int>(j))
+                        let values = #[verus::trigger] self.nodes.index(spec_cast_integer::<nat, int>(i)).values;
+                        self.base_v <= #[verus::trigger] values.index(spec_cast_integer::<nat, int>(j))
                     }
                 ))
             }
@@ -92,7 +92,7 @@ test_verify_one_file! {
     #[test] test_mul_distrib_forall_fail code! {
         #[verus::proof] #[verifier(nonlinear)]
         fn mul_distributive_auto() {
-            ensures(forall(|a: nat, b: nat, c: nat| #[trigger] ((a + b) * c) == a * c + b * c));
+            ensures(forall(|a: nat, b: nat, c: nat| #[verus::trigger] ((a + b) * c) == a * c + b * c));
         }
     } => Err(err) => assert_vir_error_msg(err, "trigger must be a function call, a field access, or a bitwise operator")
 }
@@ -101,7 +101,7 @@ test_verify_one_file! {
     #[test] test_arith_and_ord_fail code! {
         #[verus::proof]
         fn quant() {
-            ensures(forall_arith(|a: nat, b: nat, c: nat| #[trigger] a + b <= c));
+            ensures(forall_arith(|a: nat, b: nat, c: nat| #[verus::trigger] a + b <= c));
             assume(false)
         }
     } => Err(err) => assert_vir_error_msg(err, "trigger in forall_arith must be an integer arithmetic operator")
@@ -114,7 +114,7 @@ test_verify_one_file! {
         #[verus::proof]
         fn p() {
             ensures([
-                forall_arith(|a: int, b: int| #[trigger] (a * b) == b * a),
+                forall_arith(|a: int, b: int| #[verus::trigger] (a * b) == b * a),
                 forall(|a: int| some_fn(a)), // FAILS
             ]);
         }

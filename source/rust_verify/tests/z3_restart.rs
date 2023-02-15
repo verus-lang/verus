@@ -5,7 +5,7 @@ use common::*;
 
 test_verify_one_file! {
     #[test] test_with_bitvec_nlarith verus_code! {
-        #[verifier(spinoff_prover)]
+        #[verus::verifier(spinoff_prover)]
         proof fn test6(x: u32, y: u32, z: u32)
             requires
                 x < 0xfff,
@@ -33,7 +33,7 @@ test_verify_one_file! {
         }
 
         #[verus::proof]
-        #[verifier(spinoff_prover)]
+        #[verus::verifier(spinoff_prover)]
         fn one(v: int) {
             let t1 = Thing { a: v };
             let t2 = Thing { a: v };
@@ -49,8 +49,8 @@ test_verify_one_file! {
 // From https://github.com/verus-lang/verus/blob/826e59f3774927f1cc61dd87e39e015b1ec51abf/source/rust_verify/tests/nonlinear.rs#L46
 test_verify_one_file! {
     #[test] test_with_nlarith verus_code! {
-        #[verifier(nonlinear)]
-        // #[verifier(spinoff_prover)] is implied for nonlinear queries
+        #[verus::verifier(nonlinear)]
+        // #[verus::verifier(spinoff_prover)] is implied for nonlinear queries
         proof fn lemma_div_pos_is_pos(x: int, d: int)
             requires
                 0 <= x,
@@ -65,8 +65,8 @@ test_verify_one_file! {
 // From https://github.com/verus-lang/verus/blob/main/source/rust_verify/example/bitvector_basic.rs
 test_verify_one_file! {
     #[test] test_with_bv code! {
-        #[verifier(bit_vector)]
-        #[verifier(spinoff_prover)]
+        #[verus::verifier(bit_vector)]
+        #[verus::verifier(spinoff_prover)]
         #[verus::proof]
         fn bit_or32_auto(){
             ensures([
@@ -82,7 +82,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_fails verus_code! {
-        #[verifier(spinoff_prover)]
+        #[verus::verifier(spinoff_prover)]
         proof fn test6(b: u32, b2: u32) {
             assert(b * b2 == b2 * b) by(nonlinear_arith);
             assert(b << 2 == mul(b, 4)) by(bit_vector);
@@ -94,8 +94,8 @@ test_verify_one_file! {
 // From https://github.com/verus-lang/verus/blob/826e59f3774927f1cc61dd87e39e015b1ec51abf/source/rust_verify/tests/nonlinear.rs#L46
 test_verify_one_file! {
     #[test] test2_fails verus_code! {
-        #[verifier(nonlinear)]
-        // #[verifier(spinoff_prover)] is implied for nonlinear queries
+        #[verus::verifier(nonlinear)]
+        // #[verus::verifier(spinoff_prover)] is implied for nonlinear queries
         proof fn wrong_lemma_2(x: int, y: int, z: int)
             requires
                 x > y,
@@ -112,7 +112,7 @@ test_verify_one_file! {
     #[test] multiset_basics verus_code! {
         use crate::pervasive::multiset::*;
 
-        #[verifier(spinoff_prover)]
+        #[verus::verifier(spinoff_prover)]
         pub proof fn commutative<V>(a: Multiset<V>, b: Multiset<V>)
             ensures
                 a.add(b) === b.add(a),
@@ -120,7 +120,7 @@ test_verify_one_file! {
             assert(a.add(b).ext_equal(b.add(a)));
         }
 
-        #[verifier(spinoff_prover)]
+        #[verus::verifier(spinoff_prover)]
         pub proof fn associative<V>(a: Multiset<V>, b: Multiset<V>, c: Multiset<V>)
             ensures
                 a.add(b.add(c)) ===
@@ -130,7 +130,7 @@ test_verify_one_file! {
                 a.add(b).add(c)));
         }
 
-        #[verifier(spinoff_prover)]
+        #[verus::verifier(spinoff_prover)]
         pub proof fn insert2<V>(a: V, b: V)
             ensures
                 Multiset::empty().insert(a).insert(b) ===
@@ -141,7 +141,7 @@ test_verify_one_file! {
                 Multiset::empty().insert(b).insert(a)));
         }
 
-        #[verifier(spinoff_prover)]
+        #[verus::verifier(spinoff_prover)]
         pub proof fn insert2_count<V>(a: V, b: V, c: V)
             requires
                 a !== b && b !== c && c !== a,
@@ -151,7 +151,7 @@ test_verify_one_file! {
             assert(Multiset::empty().insert(a).insert(b).count(c) == 0);
         }
 
-        #[verifier(spinoff_prover)]
+        #[verus::verifier(spinoff_prover)]
         pub proof fn add_sub_cancel<V>(a: Multiset<V>, b: Multiset<V>)
             ensures
                 a.add(b).sub(b) === a,
@@ -159,7 +159,7 @@ test_verify_one_file! {
             assert(a.add(b).sub(b).ext_equal(a));
         }
 
-        #[verifier(spinoff_prover)]
+        #[verus::verifier(spinoff_prover)]
         pub proof fn sub_add_cancel<V>(a: Multiset<V>, b: Multiset<V>)
             requires
                 b.le(a),

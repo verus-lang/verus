@@ -107,8 +107,8 @@ test_verify_one_file! {
         }
 
         mod M2 {
-            #[verifier(external_body)]
-            #[verifier(broadcast_forall)]
+            #[verus::verifier(external_body)]
+            #[verus::verifier(broadcast_forall)]
             proof fn f_not_g<A: crate::M1::T>()
                 ensures exists|x: &A, y: &A| x.f() != y.f()
             {
@@ -307,7 +307,7 @@ test_verify_one_file! {
     #[test] test_mode_matches_7 code! {
         mod M1 {
             pub(crate) trait T1 {
-                #[verifier(returns(spec))]
+                #[verus::verifier(returns(spec))]
                 fn f(&self) -> bool {
                     builtin::no_method_body()
                 }
@@ -336,7 +336,7 @@ test_verify_one_file! {
         mod M2 {
             struct S {}
             impl crate::M1::T1 for S {
-                #[verifier(returns(spec))]
+                #[verus::verifier(returns(spec))]
                 fn f(&self) -> bool {
                     true
                 }
@@ -715,7 +715,7 @@ test_verify_one_file! {
             pub(crate) struct S {}
             impl crate::M1::T for S {
                 #[verus::spec]
-                #[verifier(publish)]
+                #[verus::verifier(publish)]
                 fn req(&self) -> bool { true }
                 fn f(&self) {}
             }
@@ -916,7 +916,7 @@ test_verify_one_file! {
         mod M3 {
             impl<C> crate::M1::T<(C, u16)> for crate::M2::S<bool, C> {
                 #[verus::spec]
-                #[verifier(publish)]
+                #[verus::verifier(publish)]
                 fn apple(&self, #[verus::spec] b: (C, u16)) -> bool {
                     b.1 > 10
                 }
@@ -954,7 +954,7 @@ test_verify_one_file! {
 
             impl<C: Sized> crate::M1::T<(C, u16)> for S<bool, C> {
                 #[verus::spec]
-                #[verifier(publish)]
+                #[verus::verifier(publish)]
                 fn apple(&self, #[verus::spec] b: (C, u16)) -> bool {
                     b.1 > 10
                 }
@@ -1038,7 +1038,7 @@ test_verify_one_file! {
 
             impl crate::M1::T<u8> for S<u16, u32> {
                 #[verus::spec]
-                #[verifier(publish)]
+                #[verus::verifier(publish)]
                 fn apple(&self, #[verus::spec] b: u8) -> bool {
                     b > 10
                 }
@@ -1093,7 +1093,7 @@ test_verify_one_file! {
         mod M4 {
             impl crate::M1::T for crate::M2::S<bool, bool> {
                 #[verus::spec]
-                #[verifier(publish)]
+                #[verus::verifier(publish)]
                 fn apple(&self, #[verus::spec] b: bool) -> bool {
                     self.0 && self.1 && b
                 }
