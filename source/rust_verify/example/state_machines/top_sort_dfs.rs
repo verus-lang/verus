@@ -43,7 +43,7 @@ impl<V> DirectedGraph<V> {
 }
 
 tokenized_state_machine!{
-    TopSort<#[verifier(maybe_negative)] V> {
+    TopSort<#[verus::verifier(maybe_negative)] V> {
         fields {
             #[sharding(constant)]
             pub graph: DirectedGraph<V>,

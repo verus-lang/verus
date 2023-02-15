@@ -215,10 +215,15 @@ fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> parse::Result<FnAttrInfo> {
 
 fn attr_is_any_mode(attr: &Attribute) -> bool {
     match attr.parse_meta() {
-        Ok(Meta::Path(path))
-            if path.is_ident("spec") || path.is_ident("proof") || path.is_ident("exec") =>
-        {
-            true
+        Ok(Meta::Path(path)) => {
+            let segments = path.segments.iter().collect::<Vec<_>>();
+            match &segments[..] {
+                [prefix_segment, segment] if prefix_segment.ident.to_string() == "verus" => {
+                    let name = segment.ident.to_string();
+                    name == "spec" || name == "proof" || name == "exec"
+                }
+                _ => false,
+            }
         }
         _ => false,
     }

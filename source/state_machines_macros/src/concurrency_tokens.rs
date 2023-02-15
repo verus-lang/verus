@@ -257,8 +257,8 @@ fn get_storage_type_tuple(sm: &SM) -> Type {
 fn trusted_clone() -> TokenStream {
     return quote! {
         #[verus::proof]
-        #[verifier(external_body)]
-        #[verifier(returns(proof))]
+        #[verus::verifier(external_body)]
+        #[verus::verifier(returns(proof))]
         pub fn clone(#[verus::proof] &self) -> Self {
             ensures(|s: Self| ::builtin::equal(*self, s));
             ::std::unimplemented!();
@@ -345,8 +345,8 @@ fn token_struct_stream(
         }
 
         #impldecl {
-            #[verifier(publish)]
-            #[verifier(external_body)]
+            #[verus::verifier(publish)]
+            #[verus::verifier(external_body)]
             #[verus::spec]
             pub fn view(self) -> #token_data_ty { ::std::unimplemented!() }
 
@@ -1125,7 +1125,7 @@ pub fn exchange_stream(
         };
 
         let ret_value_mode = match param_mode {
-            Mode::Tracked => quote! { #[verifier(returns(proof))] },
+            Mode::Tracked => quote! { #[verus::verifier(returns(proof))] },
             Mode::Ghost => TokenStream::new(),
         };
 
@@ -1179,7 +1179,7 @@ pub fn exchange_stream(
             TokenStream::new()
         };
 
-        let ret_value_mode = quote! { #[verifier(returns(proof))] };
+        let ret_value_mode = quote! { #[verus::verifier(returns(proof))] };
 
         (quote! { -> #tup_typ }, ens_stream, ret_value_mode)
     };
@@ -1196,7 +1196,7 @@ pub fn exchange_stream(
 
     return Ok(quote! {
         #ret_value_mode
-        #[verifier(external_body)]
+        #[verus::verifier(external_body)]
         #[verus::proof]
         pub fn #exch_name#gen(#(#in_params),*) #out_params_ret {
             #req_stream
@@ -1393,15 +1393,15 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             // Some(x)        Some(Token { instance: instance, value: x })
 
             quote! {
-                #[verifier(inline)]
-                #[verifier(publish)]
+                #[verus::verifier(inline)]
+                #[verus::verifier(publish)]
                 #[verus::spec]
                 pub fn #fn_name_strict(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
                     Self::#fn_name(token_opt, opt, instance)
                     && ::builtin::imply(opt.is_None(), token_opt.is_None())
                 }
 
-                #[verifier(publish)]
+                #[verus::verifier(publish)]
                 #[verus::spec]
                 pub fn #fn_name(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::imply(
@@ -1432,7 +1432,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             // {x, y}         { x => { instance, x }, y => { instance, y } }
 
             quote! {
-                #[verifier(publish)]
+                #[verus::verifier(publish)]
                 #[verus::spec]
                 pub fn #fn_name(token_map: #set_token_ty, set: #set_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|elem: #ty| {
@@ -1443,7 +1443,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                             ),
                             ::builtin::imply(
                                 set.contains(elem),
-                                (#[trigger] token_map.dom().contains(elem))
+                                (#[verus::trigger] token_map.dom().contains(elem))
                                 && ::builtin::equal(token_map.index(elem).view(),
                                     #constructor_name {
                                         instance: instance,
@@ -1455,8 +1455,8 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                     })
                 }
 
-                #[verifier(inline)]
-                #[verifier(publish)]
+                #[verus::verifier(inline)]
+                #[verus::verifier(publish)]
                 #[verus::spec]
                 pub fn #fn_name_strict(token_map: #set_token_ty, set: #set_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::equal(token_map.dom(), set)
@@ -1480,7 +1480,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             // true           Some(Token { instance: instance })
 
             quote! {
-                #[verifier(publish)]
+                #[verus::verifier(publish)]
                 #[verus::spec]
                 pub fn #fn_name(token_opt: #option_token_ty, b: ::std::primitive::bool, instance: #inst_ty) -> bool {
                     ::builtin::imply(b,
@@ -1489,8 +1489,8 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                     )
                 }
 
-                #[verifier(inline)]
-                #[verifier(publish)]
+                #[verus::verifier(inline)]
+                #[verus::verifier(publish)]
                 #[verus::spec]
                 pub fn #fn_name_strict(token_opt: #option_token_ty, b: ::std::primitive::bool, instance: #inst_ty) -> bool {
                     Self::#fn_name(token_opt, b, instance)
@@ -1521,7 +1521,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             //    [k1 := Token { instance: instance, value: v2 }]...
 
             quote! {
-                #[verifier(publish)]
+                #[verus::verifier(publish)]
                 #[verus::spec]
                 pub fn #fn_name(token_map: #map_token_ty, m: #map_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|key: #key|
@@ -1540,7 +1540,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                     )
                 }
 
-                #[verifier(publish)]
+                #[verus::verifier(publish)]
                 #[verus::spec]
                 pub fn #fn_name_strict(token_map: #map_token_ty, m: #map_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::equal(token_map.dom(), m.dom())
@@ -1572,13 +1572,13 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             // }
 
             quote! {
-                #[verifier(publish)]
+                #[verus::verifier(publish)]
                 #[verus::spec]
                 pub fn #fn_name(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|x: #ty|
                         ::builtin::imply(
                             m.count(x) > ::builtin::spec_literal_nat("0"),
-                            (#[trigger] tokens.dom().contains(x))
+                            (#[verus::trigger] tokens.dom().contains(x))
                             && ::builtin::equal(tokens.index(x).view().instance, instance)
                             && tokens.index(x).view().count >= m.count(x)
                             && ::builtin::equal(tokens.index(x).view().key, x)
@@ -1586,7 +1586,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                     )
                 }
 
-                #[verifier(publish)]
+                #[verus::verifier(publish)]
                 #[verus::spec]
                 pub fn #fn_name_strict(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|x: #ty| {
@@ -1604,8 +1604,8 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 }
 
                 #[verus::proof]
-                #[verifier(returns(proof))]
-                #[verifier(external_body)]
+                #[verus::verifier(returns(proof))]
+                #[verus::verifier(external_body)]
                 pub fn join(#[verus::proof] self, #[verus::proof] other: Self) -> Self {
                     ::builtin::requires(::builtin::equal(self.view().instance, other.view().instance) && ::builtin::equal(self.view().key, other.view().key));
                     ::builtin::ensures(|s: Self|
@@ -1616,8 +1616,8 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                     ::std::unimplemented!();
                 }
 
-                #[verifier(external_body)]
-                #[verifier(returns(proof))]
+                #[verus::verifier(external_body)]
+                #[verus::verifier(returns(proof))]
                 #[verus::proof]
                 pub fn split(#[verus::proof] self, i: nat) -> (crate::pervasive::modes::Trk<Self>, crate::pervasive::modes::Trk<Self>) {
                     ::builtin::requires(i <= self.view().count);
@@ -1640,8 +1640,8 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
         ShardableType::Count => {
             quote! {
                 #[verus::proof]
-                #[verifier(returns(proof))]
-                #[verifier(external_body)]
+                #[verus::verifier(returns(proof))]
+                #[verus::verifier(external_body)]
                 pub fn join(#[verus::proof] self, #[verus::proof] other: Self) -> Self {
                     ::builtin::requires(::builtin::equal(self.view().instance, other.view().instance));
                     ::builtin::ensures(|s: Self|
@@ -1651,8 +1651,8 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                     ::std::unimplemented!();
                 }
 
-                #[verifier(external_body)]
-                #[verifier(returns(proof))]
+                #[verus::verifier(external_body)]
+                #[verus::verifier(returns(proof))]
                 #[verus::proof]
                 pub fn split(#[verus::proof] self, i: nat) -> (crate::pervasive::modes::Trk<Self>, crate::pervasive::modes::Trk<Self>) {
                     ::builtin::requires(i <= self.view().count);
@@ -1672,8 +1672,8 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
         }
         ShardableType::PersistentCount => {
             quote! {
-                #[verifier(external_body)]
-                #[verifier(returns(proof))]
+                #[verus::verifier(external_body)]
+                #[verus::verifier(returns(proof))]
                 #[verus::proof]
                 pub fn weaken(#[verus::proof] self, i: nat) -> Self {
                     ::builtin::requires(i <= self.view().count);
