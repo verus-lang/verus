@@ -474,6 +474,18 @@ impl DeallocRaw {
     }
 }
 
+// TODO this currently doesn't work without `external`,
+// because of some temporary Verus trait limitations,
+// but we need to implement Copy.
+#[verifier(external)]
+impl<A> Clone for PPtr<A> {
+    fn clone(&self) -> Self {
+        PPtr { uptr: self.uptr }
+    }
+}
+
+impl<A> Copy for PPtr<A> { }
+
 impl<V> PPtr<V> {
     /// Cast a pointer to an integer.
 
@@ -554,19 +566,6 @@ impl<V> PPtr<V> {
         let _exposed_addr = p.uptr as usize;
 
         (p, Tracked::assume_new(), Tracked::assume_new())
-    }
-
-    /// Clones the pointer.
-    /// TODO implement the `Clone` and `Copy` traits
-
-    #[inline(always)]
-    #[verifier(external_body)]
-    pub fn clone(&self) -> (pt: PPtr<V>)
-        ensures pt.id() === self.id(),
-    {
-        opens_invariants_none();
-
-        PPtr { uptr: self.uptr }
     }
 
     /// Moves `v` into the location pointed to by the pointer `self`.
