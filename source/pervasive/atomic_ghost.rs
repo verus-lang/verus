@@ -43,7 +43,7 @@ macro_rules! declare_atomic_type {
         ///
         /// See the [`atomic_with_ghost!`] documentation for usage information.
 
-        pub struct $at_ident<K, #[verifier(maybe_negative)] G, Pred>
+        pub struct $at_ident<K, G, Pred>
             //where Pred: AtomicInvariantPredicate<K, $value_ty, G>
         {
             #[doc(hidden)]
