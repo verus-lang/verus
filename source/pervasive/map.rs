@@ -209,6 +209,16 @@ impl<K, V> Map<K, V> {
     }
 
     #[verifier(external_body)]
+    pub proof fn tracked_borrow(tracked &self, key: K) -> (tracked v: &V)
+        requires
+            self.dom().contains(key),
+        ensures
+            *v === self.index(key),
+    {
+        unimplemented!();
+    }
+
+    #[verifier(external_body)]
     pub proof fn tracked_map_keys<J>(
         tracked old_map: Map<K, V>,
         key_map: Map<J, K>

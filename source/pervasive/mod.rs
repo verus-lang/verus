@@ -143,6 +143,15 @@ pub fn print_u64(i: u64) {
     println!("{}", i);
 }
 
+#[verifier(external_body)]
+pub fn swap<A>(x: &mut A, y: &mut A)
+    ensures
+        *x == *old(y),
+        *y == *old(x),
+{
+    core::mem::swap(x, y)
+}
+
 } // verus!
 
 /// Allows you to prove a boolean predicate by assuming its negation and proving
@@ -301,3 +310,4 @@ macro_rules! assert_by_contradiction_internal {
 /// # Macro Expansion (TODO)
 
 pub use builtin_macros::struct_with_invariants;
+
