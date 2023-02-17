@@ -155,8 +155,6 @@ struct Ctx<'a> {
     fun_ssts: &'a HashMap<Fun, SstInfo>,
     /// We avoid infinite loops by running for a fixed number of intervals
     max_iterations: u64,
-    /// Number of bits we assume the underlying architecture supports
-    arch_size_min_bits: u32,
     arch: ArchWordBits,
 }
 
@@ -569,6 +567,30 @@ fn i128_to_fixed_width(i: i128, width: u32) -> BigInt {
     .unwrap()
 }
 
+/// Truncate a u128 to an arch-specific BigInt, if possible
+fn u128_to_arch_width(u: u128, arch: ArchWordBits) -> Option<BigInt> {
+    match arch {
+        ArchWordBits::Either32Or64 => {
+            let v32 = u128_to_fixed_width(u, 32);
+            let v64 = u128_to_fixed_width(u, 64);
+            if v32 == v64 { Some(v32) } else { None }
+        }
+        ArchWordBits::Exactly(v) => Some(u128_to_fixed_width(u, v)),
+    }
+}
+
+/// Truncate an i128 to an arch-specific BigInt, if possible
+fn i128_to_arch_width(i: i128, arch: ArchWordBits) -> Option<BigInt> {
+    match arch {
+        ArchWordBits::Either32Or64 => {
+            let v32 = i128_to_fixed_width(i, 32);
+            let v64 = i128_to_fixed_width(i, 64);
+            if v32 == v64 { Some(v32) } else { None }
+        }
+        ArchWordBits::Exactly(v) => Some(i128_to_fixed_width(i, v)),
+    }
+}
+
 /// Displays data for profiling/debugging the interpreter
 fn display_perf_stats(state: &State) {
     if state.perf {
@@ -919,30 +941,32 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             let r = match *e.typ {
                                 TypX::Int(U(n)) => {
                                     let i = i.to_u128().unwrap();
-                                    u128_to_fixed_width(!i, n)
+                                    Some(u128_to_fixed_width(!i, n))
                                 }
                                 TypX::Int(I(n)) => {
                                     let i = i.to_i128().unwrap();
-                                    i128_to_fixed_width(!i, n)
+                                    Some(i128_to_fixed_width(!i, n))
                                 }
                                 TypX::Int(USize) => {
                                     let i = i.to_u128().unwrap();
-                                    u128_to_fixed_width(!i, ctx.arch_size_min_bits)
+                                    u128_to_arch_width(!i, ctx.arch)
                                 }
                                 TypX::Int(ISize) => {
                                     let i = i.to_i128().unwrap();
-                                    i128_to_fixed_width(!i, ctx.arch_size_min_bits)
+                                    i128_to_arch_width(!i, ctx.arch)
                                 }
 
                                 _ => panic!(
                                     "Type checker should not allow bitwise ops on non-fixed-width types"
                                 ),
                             };
-                            int_new(r)
+                            r.map(int_new).unwrap_or(ok)
                         }
                         Clip { range, truncate: _ } => {
+                            let in_range =
+                                |lower: BigInt, upper: BigInt| !(i < &lower || i > &upper);
                             let mut apply_range = |lower: BigInt, upper: BigInt| {
-                                if i < &lower || i > &upper {
+                                if !in_range(lower, upper) {
                                     let msg =
                                         "Computation clipped an integer that was out of range";
                                     state.msgs.push(warning(msg, &exp.span));
@@ -966,16 +990,39 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     (BigInt::one() << (n - 1)) - BigInt::one(),
                                 ),
                                 IntRange::USize => {
-                                    let u = apply_range(
-                                        BigInt::zero(),
-                                        (BigInt::one() << ctx.arch_size_min_bits) - BigInt::one(),
-                                    );
-                                    u
+                                    let lower = BigInt::zero();
+                                    let upper = |n| (BigInt::one() << n) - BigInt::one();
+                                    match ctx.arch {
+                                        ArchWordBits::Either32Or64 => {
+                                            if in_range(lower.clone(), upper(32)) {
+                                                // then must be in range of 64 too
+                                                apply_range(lower, upper(32))
+                                            } else {
+                                                // may or may not be in range of 64, we must conservatively give up.
+                                                state.msgs.push(warning("Computation clipped an arch-dependent integer that was out of range", &exp.span));
+                                                ok.clone()
+                                            }
+                                        }
+                                        ArchWordBits::Exactly(n) => apply_range(lower, upper(n)),
+                                    }
                                 }
-                                IntRange::ISize => apply_range(
-                                    -1 * (BigInt::one() << (ctx.arch_size_min_bits - 1)),
-                                    (BigInt::one() << (ctx.arch_size_min_bits - 1)) - BigInt::one(),
-                                ),
+                                IntRange::ISize => {
+                                    let lower = |n| -1 * (BigInt::one() << (n - 1));
+                                    let upper = |n| (BigInt::one() << (n - 1)) - BigInt::one();
+                                    match ctx.arch {
+                                        ArchWordBits::Either32Or64 => {
+                                            if in_range(lower(32), upper(32)) {
+                                                // then must be in range of 64 too
+                                                apply_range(lower(32), upper(32))
+                                            } else {
+                                                // may or may not be in range of 64, we must conservatively give up.
+                                                state.msgs.push(warning("Computation clipped an arch-dependent integer that was out of range", &exp.span));
+                                                ok.clone()
+                                            }
+                                        }
+                                        ArchWordBits::Exactly(n) => apply_range(lower(n), upper(n)),
+                                    }
+                                }
                             }
                         }
                         MustBeFinalized => {
@@ -1233,7 +1280,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                             } else {
                                                 i1 << shift
                                             };
-                                            u128_to_fixed_width(res, n)
+                                            Some(u128_to_fixed_width(res, n))
                                         }
                                         TypX::Int(I(n)) => {
                                             let i1 = i1.to_i128().unwrap();
@@ -1242,7 +1289,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                             } else {
                                                 i1 << shift
                                             };
-                                            i128_to_fixed_width(res, n)
+                                            Some(i128_to_fixed_width(res, n))
                                         }
                                         TypX::Int(USize) => {
                                             let i1 = i1.to_u128().unwrap();
@@ -1251,7 +1298,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                             } else {
                                                 i1 << shift
                                             };
-                                            u128_to_fixed_width(res, ctx.arch_size_min_bits)
+                                            u128_to_arch_width(res, ctx.arch)
                                         }
                                         TypX::Int(ISize) => {
                                             let i1 = i1.to_i128().unwrap();
@@ -1260,13 +1307,13 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                             } else {
                                                 i1 << shift
                                             };
-                                            i128_to_fixed_width(res, ctx.arch_size_min_bits)
+                                            i128_to_arch_width(res, ctx.arch)
                                         }
                                         _ => panic!(
                                             "Type checker should not allow bitwise ops on non-fixed-width types"
                                         ),
                                     };
-                                    int_new(r)
+                                    r.map(int_new).unwrap_or(ok)
                                 }
                             },
                         },
@@ -1478,8 +1525,7 @@ fn eval_expr_launch(
     // Don't run for too long
     let max_iterations =
         if rlimit == 0 { std::u64::MAX } else { rlimit as u64 * RLIMIT_MULTIPLIER };
-    let ctx =
-        Ctx { fun_ssts: &fun_ssts, max_iterations, arch_size_min_bits: arch.min_bits(), arch };
+    let ctx = Ctx { fun_ssts: &fun_ssts, max_iterations, arch };
     let res = eval_expr_internal(&ctx, &mut state, &exp)?;
     display_perf_stats(&state);
     if state.log.is_some() {
