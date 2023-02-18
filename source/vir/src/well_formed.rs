@@ -141,7 +141,13 @@ fn check_one_expr(
                     }
                 }
             } else {
-                panic!("constructor of undefined datatype");
+                return err_str(
+                    &expr.span,
+                    &format!(
+                        "`{:}` is not supported (note: currently Verus does not support definitions external to the crate, including most features in std)",
+                        path_as_rust_name(path)
+                    ),
+                );
             }
         }
         ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e) => {
