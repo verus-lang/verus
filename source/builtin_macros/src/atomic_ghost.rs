@@ -83,6 +83,7 @@ fn atomic_ghost_main(ag: AG) -> parse::Result<TokenStream> {
         ("store", 1),
         ("swap", 1),
         ("compare_exchange", 2),
+        ("compare_exchange_weak", 2),
         ("fetch_add", 1),
         ("fetch_add_wrapping", 1),
         ("fetch_sub", 1),
