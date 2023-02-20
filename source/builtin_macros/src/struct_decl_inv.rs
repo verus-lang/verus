@@ -135,11 +135,11 @@ impl Parse for SDI {
     }
 }
 
-fn peek_keyword(cursor: Cursor, token: &str) -> bool {
+pub(crate) fn peek_keyword(cursor: Cursor, token: &str) -> bool {
     if let Some((ident, _rest)) = cursor.ident() { ident == token } else { false }
 }
 
-fn keyword(input: ParseStream, token: &str) -> parse::Result<Span> {
+pub(crate) fn keyword(input: ParseStream, token: &str) -> parse::Result<Span> {
     input.step(|cursor| {
         if let Some((ident, rest)) = cursor.ident() {
             if ident == token {

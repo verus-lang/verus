@@ -248,100 +248,85 @@ declare_atomic_type!(AtomicBool, PAtomicBool, PermissionBool, bool, AtomicPredBo
 
 #[macro_export]
 macro_rules! atomic_with_ghost {
-    ($atomic:expr => $operation_name:ident ($($operands:tt)*);
-        update $prev:ident -> $next:ident;
-        returning $ret:ident;
-        ghost $g:ident => $b:block
-    ) => {
-        atomic_with_ghost_inner!($operation_name, $atomic, ($($operands)*), $prev, $next, $ret, $g, $b)
-    };
-    ($atomic:expr => $operation_name:ident ($($operands:tt)*);
-        update $prev:ident -> $next:ident;
-        ghost $g:ident => $b:block
-    ) => {
-        atomic_with_ghost_inner!($operation_name, $atomic, ($($operands)*), $prev, $next, _, $g, $b)
-    };
-    ($atomic:expr => $operation_name:ident ($($operands:tt)*);
-        returning $ret:ident;
-        ghost $g:ident => $b:block
-    ) => {
-        atomic_with_ghost_inner!($operation_name, $atomic, ($($operands)*), _, _, $ret, $g, $b)
-    };
-    ($atomic:expr => $operation_name:ident ($($operands:tt)*);
-        ghost $g:ident => $b:block
-    ) => {
-        atomic_with_ghost_inner!($operation_name, $atomic, ($($operands)*), _, _, _, $g, $b)
-    };
+    ($($tokens:tt)*) => {
+        // The helper is used to parse things using Verus syntax
+        // The helper then calls atomic_with_ghost_inner, below:
+        ::builtin_macros::atomic_with_ghost_helper!($($tokens)*)
+    }
 }
+
+pub use atomic_with_ghost;
 
 #[doc(hidden)]
 #[macro_export]
 macro_rules! atomic_with_ghost_inner {
     (load, $e:expr, (), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        atomic_with_ghost_load!($e, $prev, $next, $ret, $g, $b)
+        crate::pervasive::atomic_ghost::atomic_with_ghost_load!($e, $prev, $next, $ret, $g, $b)
     };
     (store, $e:expr, ($operand:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        atomic_with_ghost_store!($e, $operand, $prev, $next, $ret, $g, $b)
+        crate::pervasive::atomic_ghost::atomic_with_ghost_store!($e, $operand, $prev, $next, $ret, $g, $b)
     };
     (swap, $e:expr, ($operand:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        atomic_with_ghost_update_with_1_operand!(
+        crate::pervasive::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
             swap, $e, $operand, $prev, $next, $ret, $g, $b)
     };
 
     (fetch_or, $e:expr, ($operand:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        atomic_with_ghost_update_with_1_operand!(
+        crate::pervasive::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
             fetch_or, $e, $operand, $prev, $next, $ret, $g, $b)
     };
     (fetch_and, $e:expr, ($operand:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        atomic_with_ghost_update_with_1_operand!(
+        crate::pervasive::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
             fetch_and, $e, $operand, $prev, $next, $ret, $g, $b)
     };
     (fetch_xor, $e:expr, ($operand:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        atomic_with_ghost_update_with_1_operand!(
+        crate::pervasive::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
             fetch_xor, $e, $operand, $prev, $next, $ret, $g, $b)
     };
     (fetch_nand, $e:expr, ($operand:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        atomic_with_ghost_update_with_1_operand!(
+        crate::pervasive::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
             fetch_nand, $e, $operand, $prev, $next, $ret, $g, $b)
     };
     (fetch_max, $e:expr, ($operand:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        atomic_with_ghost_update_with_1_operand!(
+        crate::pervasive::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
             fetch_max, $e, $operand, $prev, $next, $ret, $g, $b)
     };
     (fetch_min, $e:expr, ($operand:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        atomic_with_ghost_update_with_1_operand!(
+        crate::pervasive::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
             fetch_min, $e, $operand, $prev, $next, $ret, $g, $b)
     };
     (fetch_add_wrapping, $e:expr, ($operand:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        atomic_with_ghost_update_with_1_operand!(
+        crate::pervasive::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
             fetch_add_wrapping, $e, $operand, $prev, $next, $ret, $g, $b)
     };
     (fetch_sub_wrapping, $e:expr, ($operand:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        atomic_with_ghost_update_with_1_operand!(
+        crate::pervasive::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
             fetch_sub_wrapping, $e, $operand, $prev, $next, $ret, $g, $b)
     };
 
     (fetch_add, $e:expr, ($operand:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        atomic_with_ghost_update_fetch_add!(
+        crate::pervasive::atomic_ghost::atomic_with_ghost_update_fetch_add!(
             $e, $operand, $prev, $next, $ret, $g, $b)
     };
     (fetch_sub, $e:expr, ($operand:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        atomic_with_ghost_update_fetch_sub!(
+        crate::pervasive::atomic_ghost::atomic_with_ghost_update_fetch_sub!(
             $e, $operand, $prev, $next, $ret, $g, $b)
     };
 
     (compare_exchange, $e:expr, ($operand1:expr, $operand2:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        atomic_with_ghost_update_with_2_operand!(
+        crate::pervasive::atomic_ghost::atomic_with_ghost_update_with_2_operand!(
             compare_exchange, $e, $operand1, $operand2, $prev, $next, $ret, $g, $b)
     };
     (compare_exchange_weak, $e:expr, ($operand1:expr, $operand2:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        atomic_with_ghost_update_with_2_operand!(
+        crate::pervasive::atomic_ghost::atomic_with_ghost_update_with_2_operand!(
             compare_exchange_weak, $e, $operand1, $operand2, $prev, $next, $ret, $g, $b)
     };
     (no_op, $e:expr, (), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        atomic_with_ghost_no_op!($e, $prev, $next, $ret, $g, $b)
+        crate::pervasive::atomic_ghost::atomic_with_ghost_no_op!($e, $prev, $next, $ret, $g, $b)
     };
 }
+
+pub use atomic_with_ghost_inner;
 
 #[doc(hidden)]
 #[macro_export]
@@ -364,6 +349,7 @@ macro_rules! atomic_with_ghost_store {
         }
     }
 }
+pub use atomic_with_ghost_store;
 
 #[doc(hidden)]
 #[macro_export]
@@ -389,6 +375,8 @@ macro_rules! atomic_with_ghost_load {
     }
 }
 
+pub use atomic_with_ghost_load;
+
 #[doc(hidden)]
 #[macro_export]
 macro_rules! atomic_with_ghost_no_op {
@@ -409,6 +397,8 @@ macro_rules! atomic_with_ghost_no_op {
         }
     }
 }
+
+pub use atomic_with_ghost_no_op;
 
 #[doc(hidden)]
 #[macro_export]
@@ -434,6 +424,8 @@ macro_rules! atomic_with_ghost_update_with_1_operand {
     }
 }
 
+pub use atomic_with_ghost_update_with_1_operand;
+
 #[doc(hidden)]
 #[macro_export]
 macro_rules! atomic_with_ghost_update_with_2_operand {
@@ -457,6 +449,8 @@ macro_rules! atomic_with_ghost_update_with_2_operand {
         }
     }
 }
+
+pub use atomic_with_ghost_update_with_2_operand;
 
 #[doc(hidden)]
 #[macro_export]
@@ -487,6 +481,8 @@ macro_rules! atomic_with_ghost_update_fetch_add {
     }
 }
 
+pub use atomic_with_ghost_update_fetch_add;
+
 #[doc(hidden)]
 #[macro_export]
 macro_rules! atomic_with_ghost_update_fetch_sub {
@@ -515,3 +511,5 @@ macro_rules! atomic_with_ghost_update_fetch_sub {
         }
     }
 }
+
+pub use atomic_with_ghost_update_fetch_sub;

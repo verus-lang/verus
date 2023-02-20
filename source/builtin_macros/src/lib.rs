@@ -4,6 +4,7 @@
 #![feature(proc_macro_quote)]
 
 use synstructure::{decl_attribute, decl_derive};
+mod atomic_ghost;
 mod fndecl;
 mod is_variant;
 mod rustdoc;
@@ -93,4 +94,9 @@ pub fn verus_exec_macro_exprs(input: proc_macro::TokenStream) -> proc_macro::Tok
 #[proc_macro]
 pub fn struct_with_invariants(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     struct_decl_inv::struct_decl_inv(input)
+}
+
+#[proc_macro]
+pub fn atomic_with_ghost_helper(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    atomic_ghost::atomic_ghost(input)
 }
