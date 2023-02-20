@@ -35,14 +35,14 @@ test_verify_one_file! {
     #[test] test1_fails2 verus_code! {
         const C: u64 = S;
         const S: u64 = C;
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must call decreases")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
 test_verify_one_file! {
     #[test] test1_fails3 verus_code! {
         spec const C: u64 = S;
         spec const S: u64 = C;
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must call decreases")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
 test_verify_one_file! {
