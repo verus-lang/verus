@@ -431,7 +431,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must call decreases")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
 test_verify_one_file! {

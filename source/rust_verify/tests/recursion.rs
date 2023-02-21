@@ -18,7 +18,7 @@ test_verify_one_file! {
         spec fn arith_sum_nat(i: nat) -> nat {
             if i == 0 { 0 } else { i + arith_sum_nat((i - 1) as nat) }
         }
-    } => Err(err) => assert_error_msg(err, "recursive function must call decreases")
+    } => Err(err) => assert_error_msg(err, "recursive function must have a decreases clause")
 }
 
 test_verify_one_file! {
@@ -40,7 +40,7 @@ test_verify_one_file! {
                 count_down_stmt((i - 1) as nat);
             }
         }
-    } => Err(err) => assert_error_msg(err, "recursive function must call decreases")
+    } => Err(err) => assert_error_msg(err, "recursive function must have a decreases clause")
 }
 
 test_verify_one_file! {
@@ -458,7 +458,7 @@ test_verify_one_file! {
                 dec1((j - 1) as nat);
             }
         }
-    } => Err(err) => assert_error_msg(err, "recursive function must call decreases")
+    } => Err(err) => assert_error_msg(err, "recursive function must have a decreases clause")
 }
 
 test_verify_one_file! {
@@ -493,7 +493,7 @@ test_verify_one_file! {
             extra_dependency(dec1);
             unimplemented!();
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must call decreases")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
 test_verify_one_file! {
@@ -569,7 +569,7 @@ test_verify_one_file! {
             use builtin::*;
             pub(crate) closed spec fn f2(i: int) -> int { crate::M1::f1(i - 1) }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must call decreases")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
 test_verify_one_file! {

@@ -2894,7 +2894,7 @@ test_verify_one_file! {
                 // this should derive a contradiction if not for the recursion checking
             }
         }}
-    } => Err(e) => assert_vir_error_msg(e, "recursive function must call decreases")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
 test_verify_one_file! {
@@ -2925,7 +2925,7 @@ test_verify_one_file! {
             #[proof] let (Trk(inst), Trk(token)) = X::Instance::initialize();
             inst.ro(&token);
         }
-    } => Err(e) => assert_vir_error_msg(e, "recursive function must call decreases")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
 test_verify_one_file! {
