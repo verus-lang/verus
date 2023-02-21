@@ -332,8 +332,8 @@ pub use atomic_with_ghost_inner;
 #[macro_export]
 macro_rules! atomic_with_ghost_store {
     ($e:expr, $operand:expr, $prev:pat, $next:pat, $res:pat, $g:ident, $b:block) => {
-        {
-            let atomic = &$e;
+        ::builtin_macros::verus_exec_expr!{ {
+            let atomic = &($e);
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
                 #[allow(unused_mut)]
                 #[proof] let (mut perm, mut $g) = pair;
@@ -342,11 +342,11 @@ macro_rules! atomic_with_ghost_store {
                 #[spec] let $next = perm.view().value;
                 #[spec] let $res = ();
 
-                { $b }
+                proof { $b }
 
                 pair = (perm, $g);
             });
-        }
+        } }
     }
 }
 pub use atomic_with_ghost_store;
@@ -355,9 +355,9 @@ pub use atomic_with_ghost_store;
 #[macro_export]
 macro_rules! atomic_with_ghost_load {
     ($e:expr, $prev:pat, $next: pat, $res: pat, $g:ident, $b:block) => {
-        {
+        ::builtin_macros::verus_exec_expr!{ {
             let result;
-            let atomic = &$e;
+            let atomic = &($e);
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
                 #[allow(unused_mut)]
                 #[proof] let (perm, mut $g) = pair;
@@ -366,12 +366,12 @@ macro_rules! atomic_with_ghost_load {
                 #[spec] let $prev = result;
                 #[spec] let $next = result;
 
-                { $b }
+                proof { $b }
 
                 pair = (perm, $g);
             });
             result
-        }
+        } }
     }
 }
 
@@ -381,8 +381,8 @@ pub use atomic_with_ghost_load;
 #[macro_export]
 macro_rules! atomic_with_ghost_no_op {
     ($e:expr, $prev:pat, $next: pat, $res: pat, $g:ident, $b:block) => {
-        {
-            let atomic = &$e;
+        ::builtin_macros::verus_exec_expr!{ {
+            let atomic = &($e);
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
                 #[allow(unused_mut)]
                 #[proof] let (perm, mut $g) = pair;
@@ -390,11 +390,11 @@ macro_rules! atomic_with_ghost_no_op {
                 #[spec] let $prev = result;
                 #[spec] let $next = result;
 
-                { $b }
+                proof { $b }
 
                 pair = (perm, $g);
             });
-        }
+        } }
     }
 }
 
@@ -404,9 +404,9 @@ pub use atomic_with_ghost_no_op;
 #[macro_export]
 macro_rules! atomic_with_ghost_update_with_1_operand {
     ($name:ident, $e:expr, $operand:expr, $prev:pat, $next:pat, $res: pat, $g:ident, $b:block) => {
-        {
+        ::builtin_macros::verus_exec_expr!{ {
             let result;
-            let atomic = &$e;
+            let atomic = &($e);
             let operand = $operand;
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
                 #[allow(unused_mut)]
@@ -416,12 +416,12 @@ macro_rules! atomic_with_ghost_update_with_1_operand {
                 #[spec] let $res = result;
                 #[spec] let $next = perm.view().value;
 
-                { $b }
+                proof { $b }
 
                 pair = (perm, $g);
             });
             result
-        }
+        } }
     }
 }
 
@@ -431,9 +431,9 @@ pub use atomic_with_ghost_update_with_1_operand;
 #[macro_export]
 macro_rules! atomic_with_ghost_update_with_2_operand {
     ($name:ident, $e:expr, $operand1:expr, $operand2:expr, $prev:pat, $next:pat, $res: pat, $g:ident, $b:block) => {
-        {
+        ::builtin_macros::verus_exec_expr!{ {
             let result;
-            let atomic = &$e;
+            let atomic = &($e);
             let operand1 = $operand1;
             let operand2 = $operand2;
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
@@ -444,12 +444,12 @@ macro_rules! atomic_with_ghost_update_with_2_operand {
                 #[spec] let $res = result;
                 #[spec] let $next = perm.view().value;
 
-                { $b }
+                proof { $b }
 
                 pair = (perm, $g);
             });
             result
-        }
+        } }
     }
 }
 
@@ -459,28 +459,28 @@ pub use atomic_with_ghost_update_with_2_operand;
 #[macro_export]
 macro_rules! atomic_with_ghost_update_fetch_add {
     ($e:expr, $operand:expr, $prev:pat, $next:pat, $res: pat, $g:ident, $b:block) => {
-        {
+        (::builtin_macros::verus_exec_expr!( {
             let result;
-            let atomic = &$e;
+            let atomic = &($e);
             let operand = $operand;
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
                 #[allow(unused_mut)]
                 #[proof] let (mut perm, mut $g) = pair;
-                #[spec] let $prev = ::builtin::spec_cast_integer::<_, int>(perm.view().value);
-                #[spec] let computed =
-                    ::builtin::spec_cast_integer::<_, int>(perm.view().value) +
-                    ::builtin::spec_cast_integer::<_, int>(operand);
-                #[spec] let $res = computed;
-                #[spec] let $next = computed;
 
-                { $b }
+                proof {
+                    #[spec] let $prev = perm.view().value as int;
+                    #[spec] let $res = perm.view().value as int;
+                    #[spec] let $next = perm.view().value as int + (operand as int);
+
+                    { $b }
+                }
 
                 result = atomic.patomic.fetch_add(&mut perm, operand);
 
                 pair = (perm, $g);
             });
             result
-        }
+        } ))
     }
 }
 
@@ -490,28 +490,28 @@ pub use atomic_with_ghost_update_fetch_add;
 #[macro_export]
 macro_rules! atomic_with_ghost_update_fetch_sub {
     ($e:expr, $operand:expr, $prev:pat, $next:pat, $res: pat, $g:ident, $b:block) => {
-        {
+        ::builtin_macros::verus_exec_expr!{ {
             let result;
-            let atomic = &$e;
+            let atomic = &($e);
             let operand = $operand;
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
                 #[allow(unused_mut)]
                 #[proof] let (mut perm, mut $g) = pair;
-                #[spec] let $prev = ::builtin::spec_cast_integer::<_, int>(perm.view().value);
-                #[spec] let computed =
-                    ::builtin::spec_cast_integer::<_, int>(perm.view().value) -
-                    ::builtin::spec_cast_integer::<_, int>(operand);
-                #[spec] let $res = computed;
-                #[spec] let $next = computed;
 
-                { $b }
+                proof {
+                    #[spec] let $prev = perm.view().value as int;
+                    #[spec] let $res = perm.view().value as int;
+                    #[spec] let $next = perm.view().value as int - (operand as int);
+
+                    { $b }
+                }
 
                 result = atomic.patomic.fetch_sub(&mut perm, operand);
 
                 pair = (perm, $g);
             });
             result
-        }
+        } }
     }
 }
 

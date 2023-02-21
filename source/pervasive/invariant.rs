@@ -315,9 +315,17 @@ pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
 ///
 /// TODO fill this in
 
+// TODO the first argument here should be macro'ed in ghost context, not exec
 
 #[macro_export]
 macro_rules! open_atomic_invariant {
+    [$($tail:tt)*] => {
+        ::builtin_macros::verus_exec_macro_exprs!($crate::pervasive::invariant::open_atomic_invariant_internal!($($tail)*))
+    };
+}
+
+#[macro_export]
+macro_rules! open_atomic_invariant_internal {
     ($eexpr:expr => $iident:ident => $bblock:block) => {
         #[verifier(invariant_block)] {
             #[allow(unused_mut)] let (guard, mut $iident) = $crate::pervasive::invariant::open_atomic_invariant_begin($eexpr);
@@ -326,6 +334,10 @@ macro_rules! open_atomic_invariant {
         }
     }
 }
+
+#[doc(hidden)]
+pub use open_atomic_invariant_internal;
+pub use open_atomic_invariant;
 
 /// Macro used to temporarily "open" a [`LocalInvariant`] object, obtaining the stored
 /// value within.
@@ -421,6 +433,14 @@ macro_rules! open_atomic_invariant {
 
 #[macro_export]
 macro_rules! open_local_invariant {
+    [$($tail:tt)*] => {
+        ::builtin_macros::verus_exec_macro_exprs!(
+            $crate::pervasive::invariant::open_local_invariant_internal!($($tail)*))
+    };
+}
+
+#[macro_export]
+macro_rules! open_local_invariant_internal {
     ($eexpr:expr => $iident:ident => $bblock:block) => {
         #[verifier(invariant_block)] {
             #[allow(unused_mut)] let (guard, mut $iident) = $crate::pervasive::invariant::open_local_invariant_begin($eexpr);
@@ -429,3 +449,7 @@ macro_rules! open_local_invariant {
         }
     }
 }
+
+#[doc(hidden)]
+pub use open_local_invariant_internal;
+pub use open_local_invariant;

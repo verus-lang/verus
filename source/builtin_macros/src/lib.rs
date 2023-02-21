@@ -70,11 +70,22 @@ pub fn verus_exec_expr_erase_ghost(input: proc_macro::TokenStream) -> proc_macro
 
 #[proc_macro]
 pub fn verus_exec_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    // To implement this, we use let-expressions because Rust doesn't allow us
+    // to erase expressions using cfg-attributes.
+
+    // hygeine: We bind the variable _tmp, immediately use it, then it goes out of scope.
+    // Therefore the name can't interfere with anything else.
+
     proc_macro::quote! {
+      {
         #[cfg(not(verus_macro_erase_ghost))]
-        verus_exec_expr_keep_ghost!($input)
+        let _tmp = verus_exec_expr_keep_ghost!($input);
+
         #[cfg(verus_macro_erase_ghost)]
-        verus_exec_expr_erase_ghost!($input)
+        let _tmp = verus_exec_expr_erase_ghost!($input);
+
+        _tmp
+      }
     }
 }
 
