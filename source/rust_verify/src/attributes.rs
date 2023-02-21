@@ -127,6 +127,16 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
                     _ => return err_span_str(attr.span, "invalid verus attribute"),
                 }
             }
+            [segment]
+                if segment.ident.as_str() == "spec"
+                    || segment.ident.as_str() == "proof"
+                    || segment.ident.as_str() == "exec" =>
+            {
+                return err_span_str(
+                    attr.span,
+                    "attributes spec, proof, exec are not supported anymore; use the verus! macro instead",
+                );
+            }
             _ => Ok(None),
         },
         _ => Ok(None),
