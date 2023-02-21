@@ -9,8 +9,8 @@ fn test_calling_thread_id_twice_same_value() {
     let (tid2, is2) = thread_id();
 
     proof {
-        #[verus::proof] let is1 = is1.get();
-        #[verus::proof] let is2 = is2.get();
+        #[verifier::proof] let is1 = is1.get();
+        #[verifier::proof] let is2 = is2.get();
 
         is1.agrees(is2);
     }

@@ -205,8 +205,8 @@ macro_rules! assert_multisets_equal {
         assert_multisets_equal!($m1, $m2, key => { })
     };
     ($m1:expr, $m2:expr, $k:ident $( : $t:ty )? => $bblock:block) => {
-        #[verus::spec] let m1 = $m1;
-        #[verus::spec] let m2 = $m2;
+        #[verifier::spec] let m1 = $m1;
+        #[verifier::spec] let m2 = $m2;
         ::builtin::assert_by(::builtin::equal(m1, m2), {
             ::builtin::assert_forall_by(|$k $( : $t )?| {
                 ::builtin::ensures([

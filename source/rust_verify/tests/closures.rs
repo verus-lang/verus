@@ -91,7 +91,7 @@ test_verify_one_file! {
         proof fn takefun(f: FnSpec(u32, u64) -> bool) -> bool {
             ensures(|b: bool| b == f(10, 20));
 
-            #[verus::spec] let b: bool = f(10, 20);
+            #[verifier::spec] let b: bool = f(10, 20);
             b
         }
 

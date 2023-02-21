@@ -1,5 +1,5 @@
 //! This module erases the non-compiled code ("ghost code") so that Rust can compile the
-//! remaining code.  Ghost code includes #[verus::spec] and #[verus::proof] code.
+//! remaining code.  Ghost code includes #[verifier::spec] and #[verifier::proof] code.
 //! This "erasure" step happens after verification, since the ghost code is needed
 //! for verification.
 //!
@@ -32,13 +32,13 @@
 //! HIR/VIR with the corresponding expressions and statements in the AST.
 //!
 //! In fact, we actually make three runs, because we want to run Rust's lifetime checking
-//! on #[verus::proof] variables.  In this run, we erase #[verus::spec] but not #[verus::proof] and #[verus::exec],
+//! on #[verifier::proof] variables.  In this run, we erase #[verifier::spec] but not #[verifier::proof] and #[verifier::exec],
 //! then we run mir_borrowck, then we stop and throw away the results.
 //!
 //! Summary of three runs:
-//! 1) AST -> HIR -> VIR for verification on #[verus::exec], #[verus::proof], #[verus::spec]
-//! 2) AST -> HIR -> VIR -> MIR for mir_borrowck on #[verus::exec], #[verus::proof]
-//! 3) AST -> HIR -> VIR -> MIR -> ... for compilation of #[verus::exec]
+//! 1) AST -> HIR -> VIR for verification on #[verifier::exec], #[verifier::proof], #[verifier::spec]
+//! 2) AST -> HIR -> VIR -> MIR for mir_borrowck on #[verifier::exec], #[verifier::proof]
+//! 3) AST -> HIR -> VIR -> MIR -> ... for compilation of #[verifier::exec]
 //!
 //! Notes:
 //!
@@ -157,7 +157,7 @@ pub struct Ctxt {
     /// "if x < 10 { x + 1 } else { x + 2 }", we will have three entries, one for each
     /// occurence of "x"
     var_modes: HashMap<Span, Mode>,
-    /// Keep #[verus::proof] variables, code if true, erase #[verus::proof] if false
+    /// Keep #[verifier::proof] variables, code if true, erase #[verifier::proof] if false
     keep_proofs: bool,
     /// counter to generate arbitrary unique integers
     arbitrary_counter: Cell<u64>,

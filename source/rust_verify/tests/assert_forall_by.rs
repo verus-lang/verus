@@ -52,11 +52,11 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_assertby1_fail3 code! {
-        #[verus::proof]
-        fn consume(#[verus::proof] x: bool) {
+        #[verifier::proof]
+        fn consume(#[verifier::proof] x: bool) {
         }
 
-        fn assertby_proof_var_disallowed(#[verus::proof] x: bool) {
+        fn assertby_proof_var_disallowed(#[verifier::proof] x: bool) {
             assert_by(true, consume(x));
         }
     } => Err(err) => assert_error_msg(err, "cannot use tracked variable inside 'assert ... by'")
@@ -86,7 +86,7 @@ test_verify_one_file! {
         proof fn no_consume(x: bool) {
         }
 
-        fn forallstmt_proof_var_allowed_as_spec(#[verus::proof] x: bool) {
+        fn forallstmt_proof_var_allowed_as_spec(#[verifier::proof] x: bool) {
             assert forall|i: int| f1(i) == f1(i) by {
                 no_consume(x);
             }
@@ -127,17 +127,17 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_forallstmt1_fail3 code! {
-        #[verus::spec]
+        #[verifier::spec]
         #[verifier(opaque)]
         fn f1(i: int) -> int {
             i + 1
         }
 
-        #[verus::proof]
-        fn consume(#[verus::proof] x: bool) {
+        #[verifier::proof]
+        fn consume(#[verifier::proof] x: bool) {
         }
 
-        fn forallstmt_proof_var_disallowed(#[verus::proof] x: bool) {
+        fn forallstmt_proof_var_disallowed(#[verifier::proof] x: bool) {
             assert_forall_by(|i: int| {
                 ensures(f1(i) == f1(i));
                 consume(x);

@@ -14,8 +14,8 @@ test_verify_one_file! {
                 pub four_doors: bool,
             }
 
-            #[verus::spec]
-            #[verus::verifier(publish)] // illegal
+            #[verifier::spec]
+            #[verifier(publish)] /* vattr */ // illegal
             pub fn get_passengers(c: Car) -> nat {
                 c.passengers
             }
@@ -50,8 +50,8 @@ test_verify_one_file! {
                 C()
             }
 
-            #[verus::spec]
-            #[verus::verifier(publish)] // illegal
+            #[verifier::spec]
+            #[verifier(publish)] /* vattr */ // illegal
             pub fn get_passengers() -> bool {
                 let _ = E::C();
                 true
@@ -70,7 +70,7 @@ const M1: &str = code_str! {
             pub four_doors: bool,
         }
 
-        #[verus::spec]
+        #[verifier::spec]
         pub fn get_passengers(c: Car) -> nat {
             c.passengers
         }
@@ -118,7 +118,7 @@ test_verify_one_file! {
         struct A {}
 
         impl A {
-            #[verus::spec] #[verus::verifier(opaque)]
+            #[verifier::spec] #[verifier(opaque)] /* vattr */
             pub fn always(&self) -> bool {
                 true
             }
@@ -142,7 +142,7 @@ const M1_OPAQUE: &str = code_str! {
         }
 
         impl A {
-            #[verus::spec] #[verus::verifier(publish)] #[verus::verifier(opaque_outside_module)]
+            #[verifier::spec] #[verifier(publish)] /* vattr */ #[verifier(opaque_outside_module)] /* vattr */
             pub fn always(&self) -> bool {
                 true
             }

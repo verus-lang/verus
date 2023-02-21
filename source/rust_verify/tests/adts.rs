@@ -99,7 +99,7 @@ test_verify_one_file! {
             B(nat),
         }
 
-        #[verus::spec]
+        #[verifier::spec]
         fn is_a(l: AB) -> bool {
             l == AB::A
         }
@@ -178,7 +178,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_spec_adt_ctor code! {
-        #[verus::spec]
+        #[verifier::spec]
         struct SpecStruct { a: nat }
 
         fn test() {
@@ -311,7 +311,7 @@ test_verify_one_file! {
         }
 
         impl <T> Maybe<T> {
-            #[doc(hidden)] #[verus::spec] #[verus::verifier(is_variant)] #[allow(non_snake_case)]
+            #[doc(hidden)] #[verifier::spec] #[verifier(is_variant)] /* vattr */ #[allow(non_snake_case)]
             fn is_Thing(&self) -> bool { ::core::panicking::panic("not implemented") }
         }
     } => Err(e) => assert_vir_error_msg(e, "unrecognized verifier attribute")
@@ -443,7 +443,7 @@ test_verify_one_file! {
         }
 
         impl E {
-            #[verus::spec]
+            #[verifier::spec]
             pub fn is_One_le(self, v: u64) -> bool {
                 self.is_One() && self.get_One_0() <= v
             }

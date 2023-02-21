@@ -10,122 +10,122 @@ use crate::pervasive::seq::*;
 use crate::pervasive::map::*;
 use crate::pervasive::option::*;
 
-#[verus::verifier(external_body)]
-pub struct SyncSendIfSyncSend<#[verus::verifier(strictly_positive)] T> {
+#[verifier(external_body)] /* vattr */
+pub struct SyncSendIfSyncSend<#[verifier(strictly_positive)] /* vattr */ T> {
     _sync_send: builtin::SyncSendIfSyncSend<T>,
 }
 
-#[verus::verifier(external_body)]
+#[verifier(external_body)] /* vattr */
 pub struct NoCopy {
     _no_copy: builtin::NoCopy,
 }
 
-#[verus::proof]
-#[verus::verifier(custom_req_err("unable to prove assertion safety condition"))]
+#[verifier::proof]
+#[verifier(custom_req_err("unable to prove assertion safety condition"))] /* vattr */
 pub fn assert_safety(b: bool) { requires(b); ensures(b); }
 
-#[verus::proof]
-#[verus::verifier(custom_req_err("unable to prove safety condition that the pattern matches"))]
+#[verifier::proof]
+#[verifier(custom_req_err("unable to prove safety condition that the pattern matches"))] /* vattr */
 pub fn assert_let_pattern(b: bool) { requires(b); ensures(b); }
 
 // SpecialOps
 
-#[verus::proof]
-#[verus::verifier(custom_req_err("unable to prove inherent safety condition: to add a value Some(_), field must be None before the update"))]
+#[verifier::proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: to add a value Some(_), field must be None before the update"))] /* vattr */
 pub fn assert_add_option(b: bool) { requires(b); ensures(b); }
 
-#[verus::proof]
-#[verus::verifier(custom_req_err("unable to prove inherent safety condition: to add a singleton set, the value must not be in the set before the update"))]
+#[verifier::proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: to add a singleton set, the value must not be in the set before the update"))] /* vattr */
 pub fn assert_add_set(b: bool) { requires(b); ensures(b); }
 
-#[verus::proof]
-#[verus::verifier(custom_req_err("unable to prove inherent safety condition: to add a value `true`, field must be `false` before the update"))]
+#[verifier::proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: to add a value `true`, field must be `false` before the update"))] /* vattr */
 pub fn assert_add_bool(b: bool) { requires(b); ensures(b); }
 
-#[verus::proof]
-#[verus::verifier(custom_req_err("unable to prove inherent safety condition: the given key must be absent from the map before the update"))]
+#[verifier::proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: the given key must be absent from the map before the update"))] /* vattr */
 pub fn assert_add_map(b: bool) { requires(b); ensures(b); }
 
-#[verus::proof]
-#[verus::verifier(custom_req_err("unable to prove inherent safety condition: if the key is already in the map, its existing value must agree with the provided value"))]
+#[verifier::proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: if the key is already in the map, its existing value must agree with the provided value"))] /* vattr */
 pub fn assert_add_persistent_map(b: bool) { requires(b); ensures(b); }
 
-#[verus::proof]
-#[verus::verifier(custom_req_err("unable to prove inherent safety condition: if the previous value is Some(_), then this existing value must agree with the newly provided value"))]
+#[verifier::proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: if the previous value is Some(_), then this existing value must agree with the newly provided value"))] /* vattr */
 pub fn assert_add_persistent_option(b: bool) { requires(b); ensures(b); }
 
-#[verus::proof]
-#[verus::verifier(custom_req_err("unable to prove inherent safety condition: the given value to be withdrawn must be stored before the withdraw"))]
+#[verifier::proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: the given value to be withdrawn must be stored before the withdraw"))] /* vattr */
 pub fn assert_withdraw_option(b: bool) { requires(b); ensures(b); }
 
-#[verus::proof]
-#[verus::verifier(custom_req_err("unable to prove inherent safety condition: to deposit a value into Some(_), the field must be None before the deposit"))]
+#[verifier::proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: to deposit a value into Some(_), the field must be None before the deposit"))] /* vattr */
 pub fn assert_deposit_option(b: bool) { requires(b); ensures(b); }
 
-#[verus::proof]
-#[verus::verifier(custom_req_err("unable to prove inherent safety condition: the value being guarded must be stored"))]
+#[verifier::proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: the value being guarded must be stored"))] /* vattr */
 pub fn assert_guard_option(b: bool) { requires(b); ensures(b); }
 
-#[verus::proof]
-#[verus::verifier(custom_req_err("unable to prove inherent safety condition: the value to be withdrawn must be stored at the given key before the withdraw"))]
+#[verifier::proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: the value to be withdrawn must be stored at the given key before the withdraw"))] /* vattr */
 pub fn assert_withdraw_map(b: bool) { requires(b); ensures(b); }
 
-#[verus::proof]
-#[verus::verifier(custom_req_err("unable to prove inherent safety condition: the given key must be absent from the map before the deposit"))]
+#[verifier::proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: the given key must be absent from the map before the deposit"))] /* vattr */
 pub fn assert_deposit_map(b: bool) { requires(b); ensures(b); }
 
-#[verus::proof]
-#[verus::verifier(custom_req_err("unable to prove inherent safety condition: the value being guarded must be stored at the given key"))]
+#[verifier::proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: the value being guarded must be stored at the given key"))] /* vattr */
 pub fn assert_guard_map(b: bool) { requires(b); ensures(b); }
 
 // SpecialOps (with general element)
 
-#[verus::proof]
-#[verus::verifier(custom_req_err("unable to prove inherent safety condition: the optional values being composed cannot both be Some(_)"))]
+#[verifier::proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: the optional values being composed cannot both be Some(_)"))] /* vattr */
 pub fn assert_general_add_option(b: bool) { requires(b); ensures(b); }
 
-#[verus::proof]
-#[verus::verifier(custom_req_err("unable to prove inherent safety condition: the sets being composed must be disjoint"))]
+#[verifier::proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: the sets being composed must be disjoint"))] /* vattr */
 pub fn assert_general_add_set(b: bool) { requires(b); ensures(b); }
 
-#[verus::proof]
-#[verus::verifier(custom_req_err("unable to prove inherent safety condition: the boolean values being composed cannot both be `true`"))]
+#[verifier::proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: the boolean values being composed cannot both be `true`"))] /* vattr */
 pub fn assert_general_add_bool(b: bool) { requires(b); ensures(b); }
 
-#[verus::proof]
-#[verus::verifier(custom_req_err("unable to prove inherent safety condition: the key domains of the maps being composed must be disjoint"))]
+#[verifier::proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: the key domains of the maps being composed must be disjoint"))] /* vattr */
 pub fn assert_general_add_map(b: bool) { requires(b); ensures(b); }
 
-#[verus::proof]
-#[verus::verifier(custom_req_err("unable to prove inherent safety condition: the maps being composed must agree on their values for any key in both domains"))]
+#[verifier::proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: the maps being composed must agree on their values for any key in both domains"))] /* vattr */
 pub fn assert_general_add_persistent_map(b: bool) { requires(b); ensures(b); }
 
-#[verus::proof]
-#[verus::verifier(custom_req_err("unable to prove inherent safety condition: if the previous value and the newly added values are both Some(_), then their values must agree"))]
+#[verifier::proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: if the previous value and the newly added values are both Some(_), then their values must agree"))] /* vattr */
 pub fn assert_general_add_persistent_option(b: bool) { requires(b); ensures(b); }
 
-#[verus::proof]
-#[verus::verifier(custom_req_err("unable to prove inherent safety condition: the optional value to be withdrawn must be stored before the withdraw"))]
+#[verifier::proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: the optional value to be withdrawn must be stored before the withdraw"))] /* vattr */
 pub fn assert_general_withdraw_option(b: bool) { requires(b); ensures(b); }
 
-#[verus::proof]
-#[verus::verifier(custom_req_err("unable to prove inherent safety condition: the optional values being composed cannot both be Some(_)"))]
+#[verifier::proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: the optional values being composed cannot both be Some(_)"))] /* vattr */
 pub fn assert_general_deposit_option(b: bool) { requires(b); ensures(b); }
 
-#[verus::proof]
-#[verus::verifier(custom_req_err("unable to prove inherent safety condition: the value being guarded must be stored"))]
+#[verifier::proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: the value being guarded must be stored"))] /* vattr */
 pub fn assert_general_guard_option(b: bool) { requires(b); ensures(b); }
 
-#[verus::proof]
-#[verus::verifier(custom_req_err("unable to prove inherent safety condition: the map being withdrawn must be a submap of the stored map"))]
+#[verifier::proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: the map being withdrawn must be a submap of the stored map"))] /* vattr */
 pub fn assert_general_withdraw_map(b: bool) { requires(b); ensures(b); }
 
-#[verus::proof]
-#[verus::verifier(custom_req_err("unable to prove inherent safety condition: the key domains of the maps being composed must be disjoint"))]
+#[verifier::proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: the key domains of the maps being composed must be disjoint"))] /* vattr */
 pub fn assert_general_deposit_map(b: bool) { requires(b); ensures(b); }
 
-#[verus::proof]
-#[verus::verifier(custom_req_err("unable to prove inherent safety condition: the map being guarded must be a submap of the stored map"))]
+#[verifier::proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: the map being guarded must be a submap of the stored map"))] /* vattr */
 pub fn assert_general_guard_map(b: bool) { requires(b); ensures(b); }
 
 // used by the `update field[idx] = ...;` syntax

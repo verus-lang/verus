@@ -1,4 +1,4 @@
-use crate::util::{err_span_str, err_span_string};
+use crate::util::{err_span_str, err_span_string, vir_err_span_str};
 use rustc_ast::token::{Token, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
 use rustc_ast::{AttrKind, Attribute, MacArgs};
@@ -54,7 +54,7 @@ pub(crate) fn token_stream_to_trees(
     Ok(trees.into_boxed_slice())
 }
 
-pub(crate) fn mac_args_to_tree(span: Span, name: String, args: &MacArgs) -> Result<AttrTree, ()> {
+fn mac_args_to_tree(span: Span, name: String, args: &MacArgs) -> Result<AttrTree, ()> {
     match args {
         MacArgs::Empty => Ok(AttrTree::Fun(span, name, None)),
         MacArgs::Delimited(_, _, token_stream) => {
@@ -67,27 +67,80 @@ pub(crate) fn mac_args_to_tree(span: Span, name: String, args: &MacArgs) -> Resu
     }
 }
 
-pub(crate) fn attr_to_tree(attr: &Attribute) -> Result<AttrTree, ()> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VerusPrefix {
+    Internal,
+    // Unsafe,
+    // Type,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AttrPrefix {
+    Verus(VerusPrefix),
+    Verifier,
+}
+
+fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>, VirErr> {
     match &attr.kind {
         AttrKind::Normal(item, _) => match &item.path.segments[..] {
+            [segment] if segment.ident.as_str() == "verifier" => match &item.args {
+                MacArgs::Delimited(_, _, token_stream) => {
+                    let trees: Box<[AttrTree]> = token_stream_to_trees(attr.span, token_stream)
+                        .map_err(|_| vir_err_span_str(attr.span, "invalid verifier attribute"))?;
+                    if trees.len() != 1 {
+                        return err_span_str(attr.span, "invalid verifier attribute");
+                    }
+                    let mut trees = trees.into_vec().into_iter();
+                    let tree: AttrTree = trees
+                        .next()
+                        .ok_or(vir_err_span_str(attr.span, "invalid verifier attribute"))?;
+                    Ok(Some((AttrPrefix::Verifier, attr.span, tree)))
+                }
+                _ => return err_span_str(attr.span, "invalid verifier attribute"),
+            },
+            [prefix_segment, segment] if prefix_segment.ident.as_str() == "verifier" => {
+                mac_args_to_tree(attr.span, segment.ident.to_string(), &item.args)
+                    .map(|tree| Some((AttrPrefix::Verifier, attr.span, tree)))
+                    .map_err(|_| vir_err_span_str(attr.span, "invalid verifier attribute"))
+            }
             [prefix_segment, segment] if prefix_segment.ident.as_str() == "verus" => {
                 let name = segment.ident.to_string();
-                mac_args_to_tree(attr.span, name, &item.args)
+                let verus_prefix = match &*name {
+                    "internal" => VerusPrefix::Internal,
+                    _ => {
+                        return err_span_str(attr.span, "invalid verus attribute");
+                    }
+                };
+                match &item.args {
+                    MacArgs::Delimited(_, _, token_stream) => {
+                        let trees: Box<[AttrTree]> = token_stream_to_trees(attr.span, token_stream)
+                            .map_err(|_| vir_err_span_str(attr.span, "invalid verus attribute"))?;
+                        if trees.len() != 1 {
+                            return err_span_str(attr.span, "invalid verus attribute");
+                        }
+                        let mut trees = trees.into_vec().into_iter();
+                        let tree: AttrTree = trees
+                            .next()
+                            .ok_or(vir_err_span_str(attr.span, "invalid verus attribute"))?;
+                        Ok(Some((AttrPrefix::Verus(verus_prefix), attr.span, tree)))
+                    }
+                    _ => return err_span_str(attr.span, "invalid verus attribute"),
+                }
             }
-            _ => Err(()),
+            _ => Ok(None),
         },
-        _ => Err(()),
+        _ => Ok(None),
     }
 }
 
-pub(crate) fn attrs_to_trees(attrs: &[Attribute]) -> Vec<AttrTree> {
-    let mut attr_trees: Vec<AttrTree> = Vec::new();
+fn attrs_to_trees(attrs: &[Attribute]) -> Result<Vec<(AttrPrefix, Span, AttrTree)>, VirErr> {
+    let mut attr_trees = Vec::new();
     for attr in attrs {
-        if let Ok(tree) = attr_to_tree(attr) {
+        if let Some(tree) = attr_to_tree(attr)? {
             attr_trees.push(tree);
         }
     }
-    attr_trees
+    Ok(attr_trees)
 }
 
 #[derive(Debug)]
@@ -105,6 +158,7 @@ pub(crate) enum GhostBlockAttr {
     Wrapper,
 }
 
+#[derive(Debug)]
 pub(crate) enum Attr {
     // specify mode (spec, proof, exec)
     Mode(Mode),
@@ -188,107 +242,93 @@ fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
 
 pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
     let mut v: Vec<Attr> = Vec::new();
-    for attr in attrs_to_trees(attrs) {
-        match &attr {
-            AttrTree::Fun(_, name, None) if name == "spec" => v.push(Attr::Mode(Mode::Spec)),
-            AttrTree::Fun(_, name, Some(box [AttrTree::Fun(_, arg, None)]))
-                if name == "spec" && arg == "checked" =>
-            {
-                v.push(Attr::Mode(Mode::Spec));
-                v.push(Attr::CheckRecommends);
-            }
-            AttrTree::Fun(_, name, None) if name == "proof" => v.push(Attr::Mode(Mode::Proof)),
-            AttrTree::Fun(_, name, None) if name == "exec" => v.push(Attr::Mode(Mode::Exec)),
-            AttrTree::Fun(_, name, None) if name == "trigger" => v.push(Attr::Trigger(None)),
-            AttrTree::Fun(span, name, Some(args)) if name == "trigger" => {
-                let mut groups: Vec<u64> = Vec::new();
-                for arg in args.iter() {
-                    groups.push(get_trigger_arg(*span, arg)?);
+    for (prefix, span, attr) in attrs_to_trees(attrs)? {
+        match prefix {
+            AttrPrefix::Verifier => match &attr {
+                AttrTree::Fun(_, name, None) if name == "spec" => v.push(Attr::Mode(Mode::Spec)),
+                AttrTree::Fun(_, name, Some(box [AttrTree::Fun(_, arg, None)]))
+                    if name == "spec" && arg == "checked" =>
+                {
+                    v.push(Attr::Mode(Mode::Spec));
+                    v.push(Attr::CheckRecommends);
                 }
-                if groups.len() == 0 {
-                    return err_span_str(
-                        *span,
-                        "expected either #[trigger] or non-empty #[trigger(...)]",
-                    );
+                AttrTree::Fun(_, name, None) if name == "proof" => v.push(Attr::Mode(Mode::Proof)),
+                AttrTree::Fun(_, name, None) if name == "exec" => v.push(Attr::Mode(Mode::Exec)),
+                AttrTree::Fun(_, name, None) if name == "trigger" => v.push(Attr::Trigger(None)),
+                AttrTree::Fun(span, name, Some(args)) if name == "trigger" => {
+                    let mut groups: Vec<u64> = Vec::new();
+                    for arg in args.iter() {
+                        groups.push(get_trigger_arg(*span, arg)?);
+                    }
+                    if groups.len() == 0 {
+                        return err_span_str(
+                            *span,
+                            "expected either #[trigger] or non-empty #[trigger(...)]",
+                        );
+                    }
+                    v.push(Attr::Trigger(Some(groups)));
                 }
-                v.push(Attr::Trigger(Some(groups)));
-            }
-            AttrTree::Fun(_, name, None) if name == "auto_trigger" => v.push(Attr::AutoTrigger),
-            AttrTree::Fun(span, name, args) if name == "verifier" => match &args {
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "verus_macro" => {
-                    v.push(Attr::VerusMacro)
-                }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "external_body" => {
-                    v.push(Attr::ExternalBody)
-                }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "external" => {
-                    v.push(Attr::External)
-                }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "opaque" => v.push(Attr::Opaque),
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "publish" => {
-                    v.push(Attr::Publish)
-                }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "opaque_outside_module" => {
+                AttrTree::Fun(_, name, None) if name == "auto_trigger" => v.push(Attr::AutoTrigger),
+                AttrTree::Fun(_, arg, None) if arg == "verus_macro" => v.push(Attr::VerusMacro),
+                AttrTree::Fun(_, arg, None) if arg == "external_body" => v.push(Attr::ExternalBody),
+                AttrTree::Fun(_, arg, None) if arg == "external" => v.push(Attr::External),
+                AttrTree::Fun(_, arg, None) if arg == "opaque" => v.push(Attr::Opaque),
+                AttrTree::Fun(_, arg, None) if arg == "publish" => v.push(Attr::Publish),
+                AttrTree::Fun(_, arg, None) if arg == "opaque_outside_module" => {
                     v.push(Attr::OpaqueOutsideModule)
                 }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "inline" => v.push(Attr::Inline),
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "proof_block" => {
+                AttrTree::Fun(_, arg, None) if arg == "inline" => v.push(Attr::Inline),
+                AttrTree::Fun(_, arg, None) if arg == "proof_block" => {
                     v.push(Attr::GhostBlock(GhostBlockAttr::Proof))
                 }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "ghost_block_wrapped" => {
+                AttrTree::Fun(_, arg, None) if arg == "ghost_block_wrapped" => {
                     v.push(Attr::GhostBlock(GhostBlockAttr::GhostWrapped))
                 }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "tracked_block_wrapped" => {
+                AttrTree::Fun(_, arg, None) if arg == "tracked_block_wrapped" => {
                     v.push(Attr::GhostBlock(GhostBlockAttr::TrackedWrapped))
                 }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "tracked_block" => {
+                AttrTree::Fun(_, arg, None) if arg == "tracked_block" => {
                     v.push(Attr::GhostBlock(GhostBlockAttr::Tracked))
                 }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "ghost_wrapper" => {
+                AttrTree::Fun(_, arg, None) if arg == "ghost_wrapper" => {
                     v.push(Attr::GhostBlock(GhostBlockAttr::Wrapper))
                 }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "maybe_negative" => {
+                AttrTree::Fun(_, arg, None) if arg == "maybe_negative" => {
                     v.push(Attr::MaybeNegative)
                 }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "strictly_positive" => {
+                AttrTree::Fun(_, arg, None) if arg == "strictly_positive" => {
                     v.push(Attr::StrictlyPositive)
                 }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "broadcast_forall" => {
+                AttrTree::Fun(_, arg, None) if arg == "broadcast_forall" => {
                     v.push(Attr::BroadcastForall)
                 }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "no_auto_trigger" => {
+                AttrTree::Fun(_, arg, None) if arg == "no_auto_trigger" => {
                     v.push(Attr::NoAutoTrigger)
                 }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "autoview" => {
-                    v.push(Attr::Autoview)
-                }
-                Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))])
+                AttrTree::Fun(_, arg, None) if arg == "autoview" => v.push(Attr::Autoview),
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
                     if arg == "when_used_as_spec" =>
                 {
                     v.push(Attr::Autospec(ident.clone()))
                 }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "atomic" => v.push(Attr::Atomic),
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "invariant_block" => {
+                AttrTree::Fun(_, arg, None) if arg == "atomic" => v.push(Attr::Atomic),
+                AttrTree::Fun(_, arg, None) if arg == "invariant_block" => {
                     v.push(Attr::InvariantBlock)
                 }
-                Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))])
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
                     if arg == "is_variant" =>
                 {
                     v.push(Attr::IsVariant(ident.clone()))
                 }
-                Some(
-                    box [
-                        AttrTree::Fun(
-                            _,
-                            arg,
-                            Some(
-                                box [
-                                    AttrTree::Fun(_, variant_ident, None),
-                                    AttrTree::Fun(_, field_ident, None),
-                                ],
-                            ),
-                        ),
-                    ],
+                AttrTree::Fun(
+                    _,
+                    arg,
+                    Some(
+                        box [
+                            AttrTree::Fun(_, variant_ident, None),
+                            AttrTree::Fun(_, field_ident, None),
+                        ],
+                    ),
                 ) if arg == "get_variant" => {
                     let field_ident = match field_ident.parse::<usize>().ok() {
                         Some(i) => GetVariantField::Unnamed(i),
@@ -296,57 +336,105 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                     };
                     v.push(Attr::GetVariant(variant_ident.clone(), field_ident))
                 }
-                Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, msg, None)]))])
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, msg, None)]))
                     if arg == "custom_req_err" =>
                 {
                     v.push(Attr::CustomReqErr(msg.clone()))
                 }
-                Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, msg, None)]))])
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, msg, None)]))
                     if arg == "custom_err" =>
                 {
                     v.push(Attr::CustomErr(msg.clone()))
                 }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "bit_vector" => {
-                    v.push(Attr::BitVector)
-                }
-                Some(box [AttrTree::Fun(_, arg, None)])
-                    if arg == "decreases_by" || arg == "recommends_by" =>
-                {
+                AttrTree::Fun(_, arg, None) if arg == "bit_vector" => v.push(Attr::BitVector),
+                AttrTree::Fun(_, arg, None) if arg == "decreases_by" || arg == "recommends_by" => {
                     v.push(Attr::DecreasesBy)
                 }
-                Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))])
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))
                     if arg == "returns" && name == "spec" =>
                 {
                     v.push(Attr::ReturnMode(Mode::Spec))
                 }
-                Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))])
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))
                     if arg == "returns" && name == "proof" =>
                 {
                     v.push(Attr::ReturnMode(Mode::Proof))
                 }
-                Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))])
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))
                     if arg == "returns" && name == "exec" =>
                 {
                     v.push(Attr::ReturnMode(Mode::Exec))
                 }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "integer_ring" => {
-                    v.push(Attr::IntegerRing)
-                }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "nonlinear" => {
-                    v.push(Attr::NonLinear)
-                }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "spinoff_prover" => {
+                AttrTree::Fun(_, arg, None) if arg == "integer_ring" => v.push(Attr::IntegerRing),
+                AttrTree::Fun(_, arg, None) if arg == "nonlinear" => v.push(Attr::NonLinear),
+                AttrTree::Fun(_, arg, None) if arg == "spinoff_prover" => {
                     v.push(Attr::SpinoffProver)
                 }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "memoize" => {
-                    v.push(Attr::Memoize)
-                }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "truncate" => {
-                    v.push(Attr::Truncate)
-                }
-                _ => return err_span_str(*span, "unrecognized verifier attribute"),
+                AttrTree::Fun(_, arg, None) if arg == "memoize" => v.push(Attr::Memoize),
+                AttrTree::Fun(_, arg, None) if arg == "truncate" => v.push(Attr::Truncate),
+                _ => return err_span_str(span, "unrecognized verifier attribute"),
             },
-            _ => {}
+            AttrPrefix::Verus(verus_prefix) => match verus_prefix {
+                VerusPrefix::Internal => match &attr {
+                    AttrTree::Fun(_, name, None) if name == "spec" => {
+                        v.push(Attr::Mode(Mode::Spec))
+                    }
+                    AttrTree::Fun(_, name, Some(box [AttrTree::Fun(_, arg, None)]))
+                        if name == "spec" && arg == "checked" =>
+                    {
+                        v.push(Attr::Mode(Mode::Spec));
+                        v.push(Attr::CheckRecommends);
+                    }
+                    AttrTree::Fun(_, name, None) if name == "proof" => {
+                        v.push(Attr::Mode(Mode::Proof))
+                    }
+                    AttrTree::Fun(_, name, None) if name == "exec" => {
+                        v.push(Attr::Mode(Mode::Exec))
+                    }
+                    AttrTree::Fun(_, name, None) if name == "trigger" => {
+                        v.push(Attr::Trigger(None))
+                    }
+                    AttrTree::Fun(span, name, Some(args)) if name == "trigger" => {
+                        let mut groups: Vec<u64> = Vec::new();
+                        for arg in args.iter() {
+                            groups.push(get_trigger_arg(*span, arg)?);
+                        }
+                        if groups.len() == 0 {
+                            return err_span_str(
+                                *span,
+                                "expected either #[trigger] or non-empty #[trigger(...)]",
+                            );
+                        }
+                        v.push(Attr::Trigger(Some(groups)));
+                    }
+                    AttrTree::Fun(_, name, None) if name == "auto_trigger" => {
+                        v.push(Attr::AutoTrigger)
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "verus_macro" => v.push(Attr::VerusMacro),
+                    AttrTree::Fun(_, arg, None) if arg == "external_body" => {
+                        v.push(Attr::ExternalBody)
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "publish" => v.push(Attr::Publish),
+                    AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))
+                        if arg == "returns" && name == "spec" =>
+                    {
+                        v.push(Attr::ReturnMode(Mode::Spec))
+                    }
+                    AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))
+                        if arg == "returns" && name == "proof" =>
+                    {
+                        v.push(Attr::ReturnMode(Mode::Proof))
+                    }
+                    AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))
+                        if arg == "returns" && name == "exec" =>
+                    {
+                        v.push(Attr::ReturnMode(Mode::Exec))
+                    }
+                    _ => {
+                        return err_span_str(span, "unrecognized internal attribute");
+                    }
+                },
+            },
         }
     }
     Ok(v)

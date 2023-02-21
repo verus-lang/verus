@@ -6,26 +6,26 @@ use common::*;
 const COMMON: &str = code_str! {
     use crate::pervasive::invariant::*;
 
-    #[verus::verifier(atomic)]
-    #[verus::verifier(external_body)]
+    #[verifier(atomic)] /* vattr */
+    #[verifier(external_body)] /* vattr */
     fn atomic_op() {
         opens_invariants_none();
     }
 
-    #[verus::verifier(external_body)]
+    #[verifier(external_body)] /* vattr */
     fn non_atomic_op() {
         opens_invariants_none();
     }
 
-    #[verus::verifier(external_body)]
-    #[verus::proof]
+    #[verifier(external_body)] /* vattr */
+    #[verifier::proof]
     fn proof_op() { }
 };
 
 test_verify_one_file! {
     #[test] one_atomic_ok
     COMMON.to_string() + code_str! {
-        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verus::proof] i: AtomicInvariant<A, u8, B>) {
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
             open_atomic_invariant!(&i => inner => {
                 atomic_op();
             });
@@ -36,7 +36,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] two_atomic_fail
     COMMON.to_string() + code_str! {
-        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verus::proof] i: AtomicInvariant<A, u8, B>) {
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
             open_atomic_invariant!(&i => inner => {
                 atomic_op();
                 atomic_op();
@@ -48,7 +48,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] non_atomic_fail
     COMMON.to_string() + code_str! {
-        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verus::proof] i: AtomicInvariant<A, u8, B>) {
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
             open_atomic_invariant!(&i => inner => {
                 non_atomic_op();
             });
@@ -59,7 +59,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] if_ok
     COMMON.to_string() + code_str! {
-        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verus::proof] i: AtomicInvariant<A, u8, B>, j: u64) {
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>, j: u64) {
             open_atomic_invariant!(&i => inner => {
                 if j == 1 {
                     atomic_op();
@@ -72,7 +72,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] proof_call_ok
     COMMON.to_string() + code_str! {
-        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verus::proof] i: AtomicInvariant<A, u8, B>, j: u64) {
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>, j: u64) {
             open_atomic_invariant!(&i => inner => {
                 proof_op();
                 atomic_op();
@@ -84,7 +84,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] assign_ok
     COMMON.to_string() + code_str! {
-        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verus::proof] i: AtomicInvariant<A, u8, B>) -> u32 {
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) -> u32 {
             let mut x: u32 = 5;
             open_atomic_invariant!(&i => inner => {
                 atomic_op();
@@ -98,7 +98,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] loop_fail
     COMMON.to_string() + code_str! {
-        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verus::proof] i: AtomicInvariant<A, u8, B>) -> u32 {
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) -> u32 {
             let mut x: u32 = 5;
             open_atomic_invariant!(&i => inner => {
                 while x < 10 {
@@ -113,10 +113,10 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] untrusted_atomic_success
     COMMON.to_string() + code_str! {
-        #[verus::verifier(atomic)]
+        #[verifier(atomic)] /* vattr */
         fn untrusted_atomic_op_1() { }
 
-        #[verus::verifier(atomic)]
+        #[verifier(atomic)] /* vattr */
         fn untrusted_atomic_op_2() {
             atomic_op();
         }
@@ -126,7 +126,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] untrusted_atomic_fail
     COMMON.to_string() + code_str! {
-        #[verus::verifier(atomic)]
+        #[verifier(atomic)] /* vattr */
         fn untrusted_atomic_op() {
             non_atomic_op();
         }
@@ -137,7 +137,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] untrusted_atomic_fail2
     COMMON.to_string() + code_str! {
-        #[verus::verifier(atomic)]
+        #[verifier(atomic)] /* vattr */
         fn untrusted_atomic_op() {
             atomic_op();
             atomic_op();
@@ -149,7 +149,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] nonatomic_everything_ok
     COMMON.to_string() + code_str! {
-        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verus::proof] i: LocalInvariant<A, u8, B>) -> u32 {
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: LocalInvariant<A, u8, B>) -> u32 {
             let mut x: u32 = 5;
             open_local_invariant!(&i => inner => {
                 atomic_op();
@@ -169,7 +169,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] two_atomic_fail_nest1
     COMMON.to_string() + code_str! {
-        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verus::proof] i: AtomicInvariant<A, u8, B>, #[verus::proof] j: LocalInvariant<A, u8, B>) {
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>, #[verifier::proof] j: LocalInvariant<A, u8, B>) {
             open_local_invariant!(&j => inner => {
                 open_atomic_invariant!(&i => inner => {
                     atomic_op();
@@ -183,7 +183,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] two_atomic_fail_nest2
     COMMON.to_string() + code_str! {
-        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verus::proof] i: AtomicInvariant<A, u8, B>, #[verus::proof] j: LocalInvariant<A, u8, B>) {
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>, #[verifier::proof] j: LocalInvariant<A, u8, B>) {
             open_atomic_invariant!(&i => inner => {
                 open_local_invariant!(&j => inner => {
                     atomic_op();
@@ -197,7 +197,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] call_closure_from_inside_atomic
     COMMON.to_string() + &verus_code! {
-        pub fn test_clos<A, B: InvariantPredicate<A, u8>>(#[verus::proof] i: AtomicInvariant<A, u8, B>) {
+        pub fn test_clos<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
             let t = || { };
             open_atomic_invariant!(&i => inner => {
                 // this could fail for multiple reasons:
@@ -212,7 +212,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] call_closure_from_inside_atomic2
     COMMON.to_string() + &verus_code! {
-        #[verus::verifier(atomic)]
+        #[verifier(atomic)] /* vattr */
         pub fn test_clos<F: Fn(u64) -> u64>(f: F) {
             f(5);
         }
@@ -222,7 +222,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] call_closure_from_inside_local
     COMMON.to_string() + &verus_code! {
-        pub fn test_clos<A, B: InvariantPredicate<A, u8>>(#[verus::proof] i: LocalInvariant<A, u8, B>) {
+        pub fn test_clos<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: LocalInvariant<A, u8, B>) {
             let t = || { };
             open_local_invariant!(&i => inner => { // FAILS
                 t();
@@ -234,7 +234,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] call_closure_and_open_inv_inside
     COMMON.to_string() + &verus_code! {
-        pub fn test_clos<A, B: InvariantPredicate<A, u8>>(#[verus::proof] i: LocalInvariant<A, u8, B>) {
+        pub fn test_clos<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: LocalInvariant<A, u8, B>) {
             let t;
             open_local_invariant!(&i => inner => {
                 t = || {
@@ -256,7 +256,7 @@ test_verify_one_file! {
     COMMON.to_string() + &verus_code! {
         pub fn stuff() { }
 
-        pub fn test_clos<A, B: InvariantPredicate<A, u8>>(#[verus::proof] i: AtomicInvariant<A, u8, B>) {
+        pub fn test_clos<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
             let t;
             open_atomic_invariant!(&i => inner => {
                 t = || {
@@ -278,7 +278,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] call_closure_and_open_inv_inside_atomic_fail
     COMMON.to_string() + &verus_code! {
-        pub fn test_clos<A, B: InvariantPredicate<A, u8>>(#[verus::proof] i: AtomicInvariant<A, u8, B>) {
+        pub fn test_clos<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
             open_atomic_invariant!(&i => inner => {
                 let t = || { };
 

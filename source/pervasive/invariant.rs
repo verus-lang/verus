@@ -117,9 +117,9 @@ pub trait InvariantPredicate<K, V> {
 /// using the [`atomic_ghost` APIs](atomic_ghost).
 
 
-#[verus::proof]
-#[verus::verifier(external_body)]
-pub struct AtomicInvariant<#[verus::verifier(strictly_positive)] K, #[verus::verifier(strictly_positive)] V, #[verus::verifier(strictly_positive)] Pred> {
+#[verifier::proof]
+#[verifier(external_body)] /* vattr */
+pub struct AtomicInvariant<#[verifier(strictly_positive)] /* vattr */ K, #[verifier(strictly_positive)] /* vattr */ V, #[verifier(strictly_positive)] /* vattr */ Pred> {
     dummy: builtin::SyncSendIfSend<V>,
     dummy1: core::marker::PhantomData<(K, Pred)>,
 }
@@ -166,9 +166,9 @@ impl<K, V, Pred> AtomicInvariant<K, V, Pred> {
 /// The `LocalInvariant` API is an instance of the ["invariant" method in Verus's general philosophy on interior mutability](https://verus-lang.github.io/verus/guide/interior_mutability.html).
 
 
-#[verus::proof]
-#[verus::verifier(external_body)]
-pub struct LocalInvariant<#[verus::verifier(strictly_positive)] K, #[verus::verifier(strictly_positive)] V, #[verus::verifier(strictly_positive)] Pred> {
+#[verifier::proof]
+#[verifier(external_body)] /* vattr */
+pub struct LocalInvariant<#[verifier(strictly_positive)] /* vattr */ K, #[verifier(strictly_positive)] /* vattr */ V, #[verifier(strictly_positive)] /* vattr */ Pred> {
     dummy: builtin::SendIfSend<V>,
     dummy1: core::marker::PhantomData<(K, Pred)>, // TODO ignore Send/Sync here
 }
@@ -219,7 +219,7 @@ macro_rules! declare_invariant_impl {
             ///`, returning the tracked value contained within.
 
             #[verifier(external_body)]
-            pub proof fn into_inner(#[verus::proof] self) -> (tracked v: V)
+            pub proof fn into_inner(#[verifier::proof] self) -> (tracked v: V)
                 ensures self.inv(v),
             {
                 unimplemented!();
@@ -234,7 +234,7 @@ declare_invariant_impl!(AtomicInvariant);
 declare_invariant_impl!(LocalInvariant);
 
 #[doc(hidden)]
-#[verus::proof]
+#[verifier::proof]
 pub struct InvariantBlockGuard;
 
 // NOTE: These 3 methods are removed in the conversion to VIR; they are only used
@@ -256,19 +256,19 @@ pub struct InvariantBlockGuard;
 //  last the entire block.
 
 #[doc(hidden)]
-#[verus::verifier(external)]
+#[verifier(external)] /* vattr */
 pub fn open_atomic_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(_inv: &'a AtomicInvariant<K, V, Pred>) -> (&'a InvariantBlockGuard, V) {
     unimplemented!();
 }
 
 #[doc(hidden)]
-#[verus::verifier(external)]
+#[verifier(external)] /* vattr */
 pub fn open_local_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(_inv: &'a LocalInvariant<K, V, Pred>) -> (&'a InvariantBlockGuard, V) {
     unimplemented!();
 }
 
 #[doc(hidden)]
-#[verus::verifier(external)]
+#[verifier(external)] /* vattr */
 pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
     unimplemented!();
 }
@@ -319,7 +319,7 @@ pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
 #[macro_export]
 macro_rules! open_atomic_invariant {
     ($eexpr:expr => $iident:ident => $bblock:block) => {
-        #[verus::verifier(invariant_block)] {
+        #[verifier(invariant_block)] /* vattr */ {
             #[allow(unused_mut)] let (guard, mut $iident) = $crate::pervasive::invariant::open_atomic_invariant_begin($eexpr);
             $bblock
             $crate::pervasive::invariant::open_invariant_end(guard, $iident);
@@ -422,7 +422,7 @@ macro_rules! open_atomic_invariant {
 #[macro_export]
 macro_rules! open_local_invariant {
     ($eexpr:expr => $iident:ident => $bblock:block) => {
-        #[verus::verifier(invariant_block)] {
+        #[verifier(invariant_block)] /* vattr */ {
             #[allow(unused_mut)] let (guard, mut $iident) = $crate::pervasive::invariant::open_local_invariant_begin($eexpr);
             $bblock
             $crate::pervasive::invariant::open_invariant_end(guard, $iident);

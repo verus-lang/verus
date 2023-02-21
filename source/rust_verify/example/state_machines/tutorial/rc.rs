@@ -69,9 +69,9 @@ impl<T> Duplicable<T> {
         }
     }
 
-    #[verus::proof]
+    #[verifier::proof]
     #[verifier(returns(proof))]
-    pub fn clone(#[verus::proof] &self) -> (other: Self)
+    pub fn clone(#[verifier::proof] &self) -> (other: Self)
         requires self.wf(),
         ensures other.wf() && self@ === other@,
     {
@@ -79,9 +79,9 @@ impl<T> Duplicable<T> {
         Duplicable { inst: self.inst.clone() }
     }
 
-    #[verus::proof]
+    #[verifier::proof]
     #[verifier(returns(proof))]
-    pub fn borrow(#[verus::proof] &self) -> (t: &T)
+    pub fn borrow(#[verifier::proof] &self) -> (t: &T)
         requires self.wf(),
         ensures *t === self@,
     {
@@ -226,12 +226,12 @@ impl<S> InnerRc<S> {
 
 struct_with_invariants!{
     struct MyRc<S> {
-        #[verus::proof] pub inst: RefCounter::Instance<ptr::PermissionOpt<InnerRc<S>>>,
-        #[verus::proof] pub inv: Duplicable<LocalInvariant<_, GhostStuff<S>, _>>,
-        #[verus::proof] pub reader: RefCounter::reader<ptr::PermissionOpt<InnerRc<S>>>,
+        #[verifier::proof] pub inst: RefCounter::Instance<ptr::PermissionOpt<InnerRc<S>>>,
+        #[verifier::proof] pub inv: Duplicable<LocalInvariant<_, GhostStuff<S>, _>>,
+        #[verifier::proof] pub reader: RefCounter::reader<ptr::PermissionOpt<InnerRc<S>>>,
         pub ptr: PPtr<InnerRc<S>>,
 
-        #[verus::spec] pub rc_cell: PCell<u64>,
+        #[verifier::spec] pub rc_cell: PCell<u64>,
     }
 
     spec fn wf(self) -> bool {
@@ -269,14 +269,14 @@ impl<S> MyRc<S> {
 
         let (ptr, ptr_perm) = PPtr::new(inner_rc);
 
-        #[verus::proof] let (Trk(inst), Trk(mut rc_token), _) = RefCounter::Instance::initialize_empty(Option::None);
+        #[verifier::proof] let (Trk(inst), Trk(mut rc_token), _) = RefCounter::Instance::initialize_empty(Option::None);
         
-        #[verus::proof] let ptr_perm = ptr_perm.get();
-        #[verus::proof] let reader = inst.do_deposit(ptr_perm, &mut rc_token, ptr_perm);
+        #[verifier::proof] let ptr_perm = ptr_perm.get();
+        #[verifier::proof] let reader = inst.do_deposit(ptr_perm, &mut rc_token, ptr_perm);
 
-        #[verus::proof] let g = GhostStuff::<S> { rc_perm: rc_perm.get(), rc_token };
+        #[verifier::proof] let g = GhostStuff::<S> { rc_perm: rc_perm.get(), rc_token };
 
-        #[verus::proof] let inv;
+        #[verifier::proof] let inv;
         proof {
             inv = LocalInvariant::new(
                 (inst, rc_cell),
@@ -284,7 +284,7 @@ impl<S> MyRc<S> {
                 0);
         }
 
-        #[verus::proof] let inv = Duplicable::new(inv);
+        #[verifier::proof] let inv = Duplicable::new(inv);
 
         MyRc { inst, inv, reader, ptr, rc_cell }
     }
@@ -294,7 +294,7 @@ impl<S> MyRc<S> {
         ensures *s === self@,
     {
 
-        #[verus::proof] let perm = self.inst.reader_guard(
+        #[verifier::proof] let perm = self.inst.reader_guard(
             self.reader@.key,
             &self.reader);
         &self.ptr.borrow(tracked_exec_borrow(perm)).s
@@ -305,14 +305,14 @@ impl<S> MyRc<S> {
         ensures s.wf() && s@ === self@,
     {
 
-        #[verus::proof] let perm = self.inst.reader_guard(
+        #[verifier::proof] let perm = self.inst.reader_guard(
             self.reader@.key,
             &self.reader);
         let inner_rc_ref = &self.ptr.borrow(tracked_exec_borrow(perm));
 
-        #[verus::proof] let new_reader;
+        #[verifier::proof] let new_reader;
         open_local_invariant!(self.inv.borrow() => g => {
-            #[verus::proof] let GhostStuff { rc_perm: rc_perm, rc_token: mut rc_token } = g;
+            #[verifier::proof] let GhostStuff { rc_perm: rc_perm, rc_token: mut rc_token } = g;
             let mut rc_perm = tracked_exec(rc_perm);
 
             let count = inner_rc_ref.rc_cell.take(&mut rc_perm);
@@ -344,13 +344,13 @@ impl<S> MyRc<S> {
     {
         let MyRc { inst, inv, reader, ptr, rc_cell: _ } = self;
 
-        #[verus::proof] let perm = inst.reader_guard(
+        #[verifier::proof] let perm = inst.reader_guard(
             reader@.key,
             &reader);
         let inner_rc_ref = &ptr.borrow(tracked_exec_borrow(perm));
 
         open_local_invariant!(inv.borrow() => g => {
-            #[verus::proof] let GhostStuff { rc_perm: rc_perm, rc_token: mut rc_token } = g;
+            #[verifier::proof] let GhostStuff { rc_perm: rc_perm, rc_token: mut rc_token } = g;
             let mut rc_perm = tracked_exec(rc_perm);
 
             let count = inner_rc_ref.rc_cell.take(&mut rc_perm);
@@ -363,7 +363,7 @@ impl<S> MyRc<S> {
                     &mut rc_token,
                     reader);
             } else {
-                #[verus::proof] let inner_rc_perm = inst.dec_to_zero(
+                #[verifier::proof] let inner_rc_perm = inst.dec_to_zero(
                     reader.view().key,
                     &mut rc_token,
                     reader);

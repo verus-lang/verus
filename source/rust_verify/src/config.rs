@@ -112,6 +112,7 @@ pub fn enable_default_features_and_verus_attr(
     }
 
     rustc_args.push("-Zcrate-attr=register_tool(verus)".to_string());
+    rustc_args.push("-Zcrate-attr=register_tool(verifier)".to_string());
 }
 
 pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args, Vec<String>) {

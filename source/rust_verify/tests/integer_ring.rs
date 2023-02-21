@@ -8,7 +8,7 @@ test_verify_one_file! {
     #[test]
     #[cfg_attr(not(feature = "singular"), ignore)]
     test1 code! {
-        #[verus::proof]
+        #[verifier::proof]
         #[verifier(integer_ring)]
         fn test1(x: int, y: int, z:int, m:int){
             requires( (x-y) % m == 0);
@@ -22,7 +22,7 @@ test_verify_one_file! {
     #[cfg_attr(not(feature = "singular"), ignore)]
     test2 code! {
         #[verifier(integer_ring)]
-        #[verus::proof]
+        #[verifier::proof]
         fn test2(a:int, s:int, R:int, M:int, RR:int, R_INV:int) {
             requires([
                 (a * R - RR * s) % M == 0,
@@ -39,7 +39,7 @@ test_verify_one_file! {
     #[cfg_attr(not(feature = "singular"), ignore)]
     test3 code! {
         #[verifier(integer_ring)]
-        #[verus::proof]
+        #[verifier::proof]
         fn test3(p2_full: int, BASE: int, ui: int, m0: int, m0d: int, p1_lh: int, p1_full: int){
             requires([
                 p2_full == ui * m0 + p1_lh,
@@ -57,7 +57,7 @@ test_verify_one_file! {
     #[cfg_attr(not(feature = "singular"), ignore)]
     test4 code! {
         #[verifier(integer_ring)]
-        #[verus::proof]
+        #[verifier::proof]
         fn test4(
             B: int,
             p0: int, p1: int, p2: int, p3: int,
@@ -96,16 +96,16 @@ test_verify_one_file! {
     #[test]
     #[cfg_attr(not(feature = "singular"), ignore)]
     test5 code! {
-        #[verus::spec]
+        #[verifier::spec]
         fn square(a:int) -> int{
             a*a
         }
-        #[verus::spec]
+        #[verifier::spec]
         fn quad(a:int) -> int{
             a*a*a*a
         }
         #[verifier(integer_ring)]
-        #[verus::proof]
+        #[verifier::proof]
         fn with_uninterpreted_functioins(x:int, y:int, m:int){
             requires([
                 (square(x) - square(y)) % m == 0,
@@ -123,7 +123,7 @@ test_verify_one_file! {
     #[test]
     #[cfg_attr(not(feature = "singular"), ignore)]
     test6 code! {
-        #[verus::proof]
+        #[verifier::proof]
         #[verifier(integer_ring)]
         fn test6(x: int, y: int, z:int){
             ensures( (x+y+z)*(x+y+z) == x*x + y*y + z*z + 2*(x*y + y*z + z*x) );
@@ -136,7 +136,7 @@ test_verify_one_file! {
     #[test]
     #[cfg_attr(not(feature = "singular"), ignore)]
     test1_fails code! {
-        #[verus::proof]
+        #[verifier::proof]
         #[verifier(integer_ring)]
         fn test1_fails_smoke_test(x: int, y: int, z:int, m:int){
             requires( (x-y) % m == 0);
@@ -151,7 +151,7 @@ test_verify_one_file! {
     #[cfg_attr(not(feature = "singular"), ignore)]
     test2_fails code! {
         #[verifier(integer_ring)]
-        #[verus::proof]
+        #[verifier::proof]
         fn test2_fails_smoke_test(
             B: int,
             p0: int, p1: int, p2: int, p3: int,
@@ -190,7 +190,7 @@ test_verify_one_file! {
     #[test]
     #[cfg_attr(not(feature = "singular"), ignore)]
     test3_fails code! {
-        #[verus::proof]
+        #[verifier::proof]
         #[verifier(integer_ring)]
         fn test3_fails_param_type(x: u32, y: u32, z:u32, m:u32){ // should be type int
             requires((x-y) % m == 0);
@@ -203,7 +203,7 @@ test_verify_one_file! {
     #[test]
     #[cfg_attr(not(feature = "singular"), ignore)]
     test4_fails code! {
-        #[verus::proof]
+        #[verifier::proof]
         #[verifier(integer_ring)]
         fn test4_fails_modulo_rhs_nonzero(x: int, y: int, z:int, m:int){
             requires( (x*y) % m == 0);
@@ -216,7 +216,7 @@ test_verify_one_file! {
     #[test]
     #[cfg_attr(not(feature = "singular"), ignore)]
     test5_fails_inequality code! {
-        #[verus::proof]
+        #[verifier::proof]
         #[verifier(integer_ring)]
         fn test1_fails(x: int, y: int, z:int, m:int){
             requires( (x-y) % m > 0);  //FAILS
@@ -229,7 +229,7 @@ test_verify_one_file! {
     #[test]
     #[cfg_attr(not(feature = "singular"), ignore)]
     test6_reserved_keyword_is_hygenic code! {
-        #[verus::proof]
+        #[verifier::proof]
         #[verifier(integer_ring)]
         fn test1(singular_tmp_1 : int, y: int, z:int, m:int){
             requires( (singular_tmp_1 - y) % m == 0);

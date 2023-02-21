@@ -6,18 +6,18 @@ use common::*;
 test_verify_one_file! {
     #[test] struct1 code! {
         struct S {
-            #[verus::spec] i: bool,
+            #[verifier::spec] i: bool,
             j: bool,
         }
         fn test1(i: bool, j: bool) {
             let s = S { i, j };
         }
-        fn test2(#[verus::spec] i: bool, j: bool) {
+        fn test2(#[verifier::spec] i: bool, j: bool) {
             let s = S { i, j };
         }
-        fn test3(i: bool, #[verus::spec] j: bool) {
-            #[verus::spec] let s = S { i, j };
-            #[verus::spec] let jj = s.j;
+        fn test3(i: bool, #[verifier::spec] j: bool) {
+            #[verifier::spec] let s = S { i, j };
+            #[verifier::spec] let jj = s.j;
         }
     } => Ok(())
 }
@@ -45,10 +45,10 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] struct_fails1 code! {
         struct S {
-            #[verus::spec] i: bool,
+            #[verifier::spec] i: bool,
             j: bool,
         }
-        fn test(i: bool, #[verus::spec] j: bool) {
+        fn test(i: bool, #[verifier::spec] j: bool) {
             let s = S { i, j };
         }
     } => Err(err) => assert_error_msg(err, "expression has mode spec, expected mode exec")
@@ -70,10 +70,10 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] struct_fails1b code! {
         struct S {
-            #[verus::spec] i: bool,
+            #[verifier::spec] i: bool,
             j: bool,
         }
-        fn test(i: bool, #[verus::spec] j: bool) {
+        fn test(i: bool, #[verifier::spec] j: bool) {
             let s = S { j, i };
         }
     } => Err(err) => assert_error_msg(err, "expression has mode spec, expected mode exec")
@@ -82,7 +82,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] struct_fails2 code! {
         struct S {
-            #[verus::spec] i: bool,
+            #[verifier::spec] i: bool,
             j: bool,
         }
         fn test(i: bool, j: bool) {
@@ -95,11 +95,11 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] struct_fails3 code! {
         struct S {
-            #[verus::spec] i: bool,
+            #[verifier::spec] i: bool,
             j: bool,
         }
-        fn test(i: bool, #[verus::spec] j: bool) {
-            #[verus::spec] let s = S { i, j };
+        fn test(i: bool, #[verifier::spec] j: bool) {
+            #[verifier::spec] let s = S { i, j };
             let jj = s.j;
         }
     } => Err(err) => assert_error_msg(err, "expression has mode spec, expected mode exec")
@@ -197,17 +197,17 @@ test_verify_one_file! {
         fn test1(i: bool, j: bool) {
             let s = (i, j);
         }
-        fn test3(i: bool, #[verus::spec] j: bool) {
-            #[verus::spec] let s = (i, j);
-            #[verus::spec] let ii = s.0;
-            #[verus::spec] let jj = s.1;
+        fn test3(i: bool, #[verifier::spec] j: bool) {
+            #[verifier::spec] let s = (i, j);
+            #[verifier::spec] let ii = s.0;
+            #[verifier::spec] let jj = s.1;
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
     #[test] tuple_fails1 code! {
-        fn test(i: bool, #[verus::spec] j: bool) {
+        fn test(i: bool, #[verifier::spec] j: bool) {
             let s = (i, j);
         }
     } => Err(err) => assert_error_msg(err, "expression has mode spec, expected mode exec")
@@ -216,7 +216,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] tuple_fails2 code! {
         fn test(i: bool, j: bool) {
-            #[verus::spec] let s = (i, j);
+            #[verifier::spec] let s = (i, j);
             let ii = s.0;
         }
     } => Err(err) => assert_error_msg(err, "expression has mode spec, expected mode exec")
@@ -224,8 +224,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] tuple_fails3 code! {
-        fn test(i: bool, #[verus::spec] j: bool) {
-            #[verus::spec] let s = (i, j);
+        fn test(i: bool, #[verifier::spec] j: bool) {
+            #[verifier::spec] let s = (i, j);
             let jj = s.0;
         }
     } => Err(err) => assert_error_msg(err, "expression has mode spec, expected mode exec")
@@ -258,15 +258,15 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] eq_mode code! {
-        fn eq_mode(#[verus::spec] i: u128) {
-            #[verus::spec] let b: bool = i == 13;
+        fn eq_mode(#[verifier::spec] i: u128) {
+            #[verifier::spec] let b: bool = i == 13;
         }
     } => Ok(_)
 }
 
 test_verify_one_file! {
     #[test] if_spec_cond code! {
-        fn if_spec_cond(#[verus::spec] i: u128) -> u64 {
+        fn if_spec_cond(#[verifier::spec] i: u128) -> u64 {
             let mut a: u64 = 2;
             if i == 3 {
                 a = a + 1; // ERROR
@@ -278,7 +278,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] if_spec_cond_proof code! {
-        #[verus::proof]
+        #[verifier::proof]
         fn if_spec_cond_proof(i: u128) -> u64 {
             let mut a: u64 = 2;
             if i == 3 {
@@ -292,13 +292,13 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] regression_int_if code! {
         fn int_if() {
-            #[verus::spec] let a: u128 = 3;
+            #[verifier::spec] let a: u128 = 3;
             if a == 4 {
                 assert(false);
             }; // TODO not require the semicolon here?
         }
 
-        #[verus::spec]
+        #[verifier::spec]
         fn int_if_2(a: u128) -> u128 {
             if a == 2 {
                 3
@@ -313,15 +313,15 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] ret_mode code! {
-        #[verus::verifier(returns(spec))]
+        #[verifier(returns(spec))] /* vattr */
         fn ret_spec() -> u128 {
             ensures(|i: u128| i == 3);
-            #[verus::spec] let a: u128 = 3;
+            #[verifier::spec] let a: u128 = 3;
             a
         }
 
         fn test_ret() {
-            #[verus::spec] let x = ret_spec();
+            #[verifier::spec] let x = ret_spec();
             assert(x == 3);
         }
     } => Ok(())
@@ -329,10 +329,10 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] ret_mode_fail2 code! {
-        #[verus::verifier(returns(spec))]
+        #[verifier(returns(spec))] /* vattr */
         fn ret_spec() -> u128 {
             ensures(|i: u128| i == 3);
-            #[verus::spec] let a: u128 = 3;
+            #[verifier::spec] let a: u128 = 3;
             a
         }
 
@@ -353,7 +353,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] spec_let_decl_init_fail code! {
-        #[verus::spec]
+        #[verifier::spec]
         fn test1() -> u64 {
             let x: u64;
             x = 23;
@@ -365,7 +365,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] let_spec_pass code! {
         fn test1() {
-            #[verus::spec] let x: u64 = 2;
+            #[verifier::spec] let x: u64 = 2;
             assert(x == 2);
         }
     } => Ok(())
@@ -374,7 +374,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] decl_init_let_spec_fail code! {
         fn test1() {
-            #[verus::spec] let x: u64;
+            #[verifier::spec] let x: u64;
             x = 2;
             x = 3;
             assert(false); // FAILS
@@ -385,7 +385,7 @@ test_verify_one_file! {
 const FIELD_UPDATE: &str = code_str! {
     #[derive(PartialEq, Eq, Structural)]
     struct S {
-        #[verus::spec] a: u64,
+        #[verifier::spec] a: u64,
         b: bool,
     }
 };
@@ -394,7 +394,7 @@ test_verify_one_file! {
     #[test] test_field_update_fail FIELD_UPDATE.to_string() + code_str! {
         fn test() {
             let mut s = S { a: 5, b: false };
-            #[verus::spec] let b = true;
+            #[verifier::spec] let b = true;
             s.b = b;
         }
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
@@ -416,7 +416,7 @@ test_verify_one_file! {
 }
 
 const PROOF_FN_COMMON: &str = code_str! {
-    #[verus::proof]
+    #[verifier::proof]
     struct Node {
         v: u32,
     }
@@ -424,18 +424,18 @@ const PROOF_FN_COMMON: &str = code_str! {
 
 test_verify_one_file! {
     #[test] test_mut_arg_fail1 code! {
-        #[verus::proof]
-        fn f(#[verus::proof] x: &mut bool, #[verus::proof] b: bool) {
+        #[verifier::proof]
+        fn f(#[verifier::proof] x: &mut bool, #[verifier::proof] b: bool) {
             requires(b);
             ensures(*x);
 
             *x = b;
         }
 
-        fn g(#[verus::proof] b: bool) {
+        fn g(#[verifier::proof] b: bool) {
             requires(b);
 
-            #[verus::spec] let tr = true;
+            #[verifier::spec] let tr = true;
             let mut e = false;
             if tr {
                 f(&mut e, b); // should fail: exec <- proof out assign
@@ -529,14 +529,14 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_proof_fn_call_fail PROOF_FN_COMMON.to_string() + code_str! {
-        #[verus::proof]
-        fn lemma(#[verus::proof] node: Node) {
+        #[verifier::proof]
+        fn lemma(#[verifier::proof] node: Node) {
             requires(node.v < 10);
             ensures(node.v * 2 < 20);
         }
 
-        #[verus::proof]
-        fn other(#[verus::proof] node: Node) {
+        #[verifier::proof]
+        fn other(#[verifier::proof] node: Node) {
             assume(node.v < 10);
             lemma(node);
             lemma(node);
@@ -547,13 +547,13 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_associated_proof_fn_call_pass PROOF_FN_COMMON.to_string() + code_str! {
         impl Node {
-            #[verus::proof]
+            #[verifier::proof]
             fn lemma(&self) {
                 requires(self.v < 10);
                 ensures(self.v * 2 < 20);
             }
 
-            #[verus::proof]
+            #[verifier::proof]
             fn other(&self, other_node: Node) {
                 assume(other_node.v < 10);
                 other_node.lemma();
@@ -565,14 +565,14 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_associated_proof_fn_call_fail_1 PROOF_FN_COMMON.to_string() + code_str! {
         impl Node {
-            #[verus::proof]
-            fn lemma(#[verus::proof] self) {
+            #[verifier::proof]
+            fn lemma(#[verifier::proof] self) {
                 requires(self.v < 10);
                 ensures(self.v * 2 < 20);
             }
 
-            #[verus::proof]
-            fn other(#[verus::proof] self) {
+            #[verifier::proof]
+            fn other(#[verifier::proof] self) {
                 assume(other_node.v < 10);
                 self.lemma();
                 self.lemma();
@@ -587,11 +587,11 @@ test_verify_one_file! {
         struct Token {}
 
         impl Node {
-            #[verus::proof]
-            fn lemma(self, #[verus::proof] t: Token) {}
+            #[verifier::proof]
+            fn lemma(self, #[verifier::proof] t: Token) {}
 
-            #[verus::proof]
-            fn other(self, #[verus::proof] t: Token) {
+            #[verifier::proof]
+            fn other(self, #[verifier::proof] t: Token) {
                 self.lemma(t);
                 self.lemma(t);
             }
@@ -601,7 +601,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] assign_from_proof code! {
-        fn myfun(#[verus::spec] a: bool) -> bool {
+        fn myfun(#[verifier::spec] a: bool) -> bool {
             let mut b = false;
             if a {
                 b = true;
@@ -927,12 +927,12 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_or_pattern_mode_inconsistent verus_code! {
         enum Foo {
-            Bar(#[verus::spec] u64),
-            Qux(#[verus::proof] u64),
+            Bar(#[verifier::spec] u64),
+            Qux(#[verifier::proof] u64),
         }
 
         proof fn blah(foo: Foo) {
-            #[verus::proof] let (Foo::Bar(x) | Foo::Qux(x)) = foo;
+            #[verifier::proof] let (Foo::Bar(x) | Foo::Qux(x)) = foo;
         }
     } => Err(err) => assert_vir_error_msg(err, "variable `x` has different modes across alternatives")
 }
@@ -940,11 +940,11 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_or_pattern_mode_inconsistent2 verus_code! {
         enum Foo {
-            Bar(#[verus::spec] u64, #[verus::proof] u64),
+            Bar(#[verifier::spec] u64, #[verifier::proof] u64),
         }
 
         proof fn blah(foo: Foo) {
-            #[verus::proof] let (Foo::Bar(x, y) | Foo::Bar(y, x)) = foo;
+            #[verifier::proof] let (Foo::Bar(x, y) | Foo::Bar(y, x)) = foo;
         }
     } => Err(err) => assert_vir_error_msg(err, "variable `x` has different modes across alternatives")
 }

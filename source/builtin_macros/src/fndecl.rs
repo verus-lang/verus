@@ -4,6 +4,6 @@ use quote::quote;
 #[inline(always)]
 pub fn fndecl(input: TokenStream) -> TokenStream {
     quote! {
-        #[verus::spec] #[verus::verifier(external_body)] #input { unimplemented!() }
+        #[verifier::spec] #[verifier(external_body)] /* vattr */ #input { unimplemented!() }
     }
 }

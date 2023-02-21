@@ -251,7 +251,7 @@ impl<V> PPtr<V> {
     /// Allocates heap memory for type `V`, leaving it uninitialized.
 
     #[inline(always)]
-    #[verus::verifier(external_body)]
+    #[verifier(external_body)] /* vattr */
     pub fn empty() -> (PPtr<V>, Trk<PermData<V>>)
     {
         ensures(|pt: (PPtr<V>, Trk<PermData<V>>)|
@@ -292,8 +292,8 @@ impl<V> PPtr<V> {
     /// from `None` to `Some(v)`.
 
     #[inline(always)]
-    #[verus::verifier(external_body)]
-    pub fn put(&self, #[verus::proof] perm: &mut PermData<V>, v: V)
+    #[verifier(external_body)] /* vattr */
+    pub fn put(&self, #[verifier::proof] perm: &mut PermData<V>, v: V)
     {
         requires([
             self.id() == old(perm).view().pptr,
@@ -319,8 +319,8 @@ impl<V> PPtr<V> {
     /// while returning the `v` as an `exec` value.
 
     #[inline(always)]
-    #[verus::verifier(external_body)]
-    pub fn take(&self, #[verus::proof] perm: &mut PermData<V>) -> V
+    #[verifier(external_body)] /* vattr */
+    pub fn take(&self, #[verifier::proof] perm: &mut PermData<V>) -> V
     {
         requires([
             self.id() == old(perm).view().pptr,
@@ -348,7 +348,7 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn replace(&self, #[verus::proof] perm: &mut PermData<V>, in_v: V) -> (out_v: V)
+    pub fn replace(&self, #[verifier::proof] perm: &mut PermData<V>, in_v: V) -> (out_v: V)
         requires
             self.id() === old(perm).view().pptr,
             old(perm).view().value.is_Some(),
@@ -374,8 +374,8 @@ impl<V> PPtr<V> {
     // the returned borrow.
 
     #[inline(always)]
-    #[verus::verifier(external_body)]
-    pub fn borrow<'a>(&self, #[verus::proof] perm: &'a PermData<V>) -> &'a V
+    #[verifier(external_body)] /* vattr */
+    pub fn borrow<'a>(&self, #[verifier::proof] perm: &'a PermData<V>) -> &'a V
     {
         requires([
             equal(self.id(), perm.view().pptr),
@@ -400,7 +400,7 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn dispose(&self, #[verus::proof] perm: PermData<V>)
+    pub fn dispose(&self, #[verifier::proof] perm: PermData<V>)
         requires
             self.id() === perm.view().pptr,
             perm.view().value === option::Option::None,
@@ -424,7 +424,7 @@ impl<V> PPtr<V> {
     /// access to the memory by freeing it.
 
     #[inline(always)]
-    pub fn into_inner(self, #[verus::proof] perm: PermData<V>) -> V
+    pub fn into_inner(self, #[verifier::proof] perm: PermData<V>) -> V
     {
         requires([
             equal(self.id(), perm.view().pptr),
@@ -435,7 +435,7 @@ impl<V> PPtr<V> {
         ]);
         opens_invariants_none();
 
-        #[verus::proof] let mut perm = perm;
+        #[verifier::proof] let mut perm = perm;
         let v = self.take(&mut perm);
         self.dispose(perm);
         v
@@ -461,7 +461,7 @@ impl<V> PPtr<V> {
 
 impl<V: Copy> PPtr<V> {
     #[inline(always)]
-    pub fn read(&self, #[verus::proof] perm: &PermData<V>) -> V {
+    pub fn read(&self, #[verifier::proof] perm: &PermData<V>) -> V {
         requires([
             equal(self.id(), perm.view().pptr),
             perm.view().value.is_Some(),
@@ -472,7 +472,7 @@ impl<V: Copy> PPtr<V> {
     }
 
     #[inline(always)]
-    #[verus::exec] pub fn write(&self, #[verus::proof] perm: &mut PermData<V>, v: V) {
+    #[verifier::exec] pub fn write(&self, #[verifier::proof] perm: &mut PermData<V>, v: V) {
         requires(equal(self.id(), old(perm).view().pptr));
         ensures([
             equal(perm.view().pptr, self.id()),
@@ -484,10 +484,10 @@ impl<V: Copy> PPtr<V> {
     }
 
     #[inline(always)]
-    pub fn free(&self, #[verus::proof] perm: PermData<V>) {
+    pub fn free(&self, #[verifier::proof] perm: PermData<V>) {
         requires(equal(self.id(), perm.view().pptr));
 
-        #[verus::proof] let mut perm = perm;
+        #[verifier::proof] let mut perm = perm;
         perm.leak_contents();
         self.dispose(perm);
     }

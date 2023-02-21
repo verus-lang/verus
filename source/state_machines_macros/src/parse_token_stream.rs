@@ -218,7 +218,7 @@ fn attr_is_any_mode(attr: &Attribute) -> bool {
         Ok(Meta::Path(path)) => {
             let segments = path.segments.iter().collect::<Vec<_>>();
             match &segments[..] {
-                [prefix_segment, segment] if prefix_segment.ident.to_string() == "verus" => {
+                [prefix_segment, segment] if prefix_segment.ident.to_string() == "verifier" => {
                     let name = segment.ident.to_string();
                     name == "spec" || name == "proof" || name == "exec"
                 }

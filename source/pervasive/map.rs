@@ -385,14 +385,14 @@ macro_rules! assert_maps_equal_internal {
         assert_maps_equal_internal!($m1, $m2, key => { })
     };
     ($m1:expr, $m2:expr, $k:ident $( : $t:ty )? => $bblock:block) => {
-        #[verus::spec] let m1 = $crate::pervasive::map::check_argument_is_map($m1);
-        #[verus::spec] let m2 = $crate::pervasive::map::check_argument_is_map($m2);
+        #[verifier::spec] let m1 = $crate::pervasive::map::check_argument_is_map($m1);
+        #[verifier::spec] let m2 = $crate::pervasive::map::check_argument_is_map($m2);
         ::builtin::assert_by(::builtin::equal(m1, m2), {
             ::builtin::assert_forall_by(|$k $( : $t )?| {
                 // TODO better error message here: show the individual conjunct that fails,
                 // and maybe give an error message in english as well
                 ::builtin::ensures([
-                    ::builtin::imply(#[verus::trigger] m1.dom().contains($k), m2.dom().contains($k))
+                    ::builtin::imply(#[verifier(trigger)] m1.dom().contains($k), m2.dom().contains($k))
                     && ::builtin::imply(m2.dom().contains($k), m1.dom().contains($k))
                     && ::builtin::imply(m1.dom().contains($k) && m2.dom().contains($k),
                         ::builtin::equal(m1.index($k), m2.index($k)))
@@ -410,7 +410,7 @@ pub use assert_maps_equal;
 
 impl<K, V> Map<K, V> {
     pub proof fn tracked_map_keys_in_place(
-        #[verus::proof] &mut self,
+        #[verifier::proof] &mut self,
         key_map: Map<K, K>
     )
     requires
@@ -424,9 +424,9 @@ impl<K, V> Map<K, V> {
             self.dom().contains(j) &&
             #[trigger] self.index(j) == old(self).index(key_map.index(j)),
     {
-        #[verus::proof] let mut tmp = Self::tracked_empty();
+        #[verifier::proof] let mut tmp = Self::tracked_empty();
         crate::pervasive::modes::tracked_swap(&mut tmp, self);
-        #[verus::proof] let mut tmp = Self::tracked_map_keys(tmp, key_map);
+        #[verifier::proof] let mut tmp = Self::tracked_map_keys(tmp, key_map);
         crate::pervasive::modes::tracked_swap(&mut tmp, self);
     }
 }

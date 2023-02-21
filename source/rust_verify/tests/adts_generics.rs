@@ -10,7 +10,7 @@ test_verify_one_file! {
             a: A,
         }
 
-        #[verus::proof]
+        #[verifier::proof]
         fn one(v: int) {
             let t1 = Thing { a: v };
             let t2 = Thing { a: v };
@@ -77,7 +77,7 @@ test_verify_one_file! {
             a
         }
 
-        #[verus::spec]
+        #[verifier::spec]
         #[verifier(opaque)]
         fn id<A>(a: A) -> A {
             a
@@ -103,7 +103,7 @@ test_verify_one_file! {
             a
         }
 
-        #[verus::spec]
+        #[verifier::spec]
         #[verifier(opaque)]
         fn id<A>(a: A) -> A {
             a
@@ -125,7 +125,7 @@ test_verify_one_file! {
             a: A,
         }
 
-        #[verus::spec]
+        #[verifier::spec]
         #[verifier(opaque)]
         fn id<A>(a: A) -> A {
             a
@@ -146,8 +146,8 @@ test_verify_one_file! {
             a: A,
         }
 
-        #[verus::spec]
-        #[verus::verifier(opaque)]
+        #[verifier::spec]
+        #[verifier(opaque)] /* vattr */
         fn id<A>(a: A) -> A {
             a
         }
@@ -207,8 +207,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_erase1 code! {
         struct S1<A, B>(
-            #[verus::spec] A,
-            #[verus::exec] B,
+            #[verifier::spec] A,
+            #[verifier::exec] B,
         );
 
         fn test() {
@@ -225,8 +225,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_erase1_fail code! {
         struct S1<A, B>(
-            #[verus::spec] A,
-            #[verus::exec] B,
+            #[verifier::spec] A,
+            #[verifier::exec] B,
         );
 
         fn test() {
@@ -243,8 +243,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_erase2 code! {
         struct S1<A, B> {
-            #[verus::spec] a: A,
-            #[verus::exec] b: B,
+            #[verifier::spec] a: A,
+            #[verifier::exec] b: B,
         }
 
         fn test() {

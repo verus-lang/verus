@@ -245,7 +245,7 @@ pub(crate) fn check_item_fn<'tcx>(
         if is_mut.is_some() && mode == Mode::Spec {
             return err_span_string(
                 *span,
-                format!("&mut argument not allowed for #[verus::spec] functions"),
+                format!("&mut argument not allowed for #[verifier::spec] functions"),
             );
         }
 

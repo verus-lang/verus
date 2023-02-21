@@ -313,5 +313,7 @@ pub fn assert_vir_error_msg(err: TestErr, expected_msg: &str) {
 
 #[allow(dead_code)]
 pub fn assert_error_msg(err: TestErr, expected_msg: &str) {
-    assert!(err.output.contains(expected_msg));
+    if !err.output.contains(expected_msg) {
+        panic!("expected error message not found in output: {}", err.output);
+    }
 }

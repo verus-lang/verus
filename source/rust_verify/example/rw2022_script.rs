@@ -157,7 +157,7 @@ fn reverse(v: &mut Vec<u64>) {
     ]);
 
     let length = v.len();
-    #[verus::spec] let v1 = *v;
+    #[verifier::spec] let v1 = *v;
     let mut n: usize = 0;
     while n < length / 2 {
         invariant([

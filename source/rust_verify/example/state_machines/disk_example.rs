@@ -199,15 +199,15 @@ spec fn tree_relation(inst: AuthFrag::Instance<nat, Block>, lt: LinearTree, tree
 // refinement proof
 
 // TODO this should return proof, but having trouble with mode-checking
-#[verus::proof]
+#[verifier::proof]
 fn take_step(
     state1: DiskSM::State,
     state2: DiskSM::State,
     is_left: bool,
     new_val: u64,
-    #[verus::proof] inst: AuthFrag::Instance<nat, Block>,
-    #[verus::proof] interp1: AuthFrag::auth<nat, Block>,
-    #[verus::proof] lt1: LinearTree,
+    #[verifier::proof] inst: AuthFrag::Instance<nat, Block>,
+    #[verifier::proof] interp1: AuthFrag::auth<nat, Block>,
+    #[verifier::proof] lt1: LinearTree,
     tree1_state: TreeSM::State,
 ) -> (Trk<AuthFrag::auth<nat, Block>>, Trk<LinearTree>, Gho<TreeSM::State>)
 {
@@ -222,7 +222,7 @@ fn take_step(
       && TreeSM::State::update_child(tree1_state, tree2, is_left, new_val)
       && tree_relation(inst, lt2, tree2)
   });
-    #[verus::proof] let mut interp = interp1;
+    #[verifier::proof] let mut interp = interp1;
 
     let tree1 = tree1_state.tree;
 

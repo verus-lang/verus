@@ -107,8 +107,8 @@ test_verify_one_file! {
         }
 
         mod M2 {
-            #[verus::verifier(external_body)]
-            #[verus::verifier(broadcast_forall)]
+            #[verifier(external_body)] /* vattr */
+            #[verifier(broadcast_forall)] /* vattr */
             proof fn f_not_g<A: crate::M1::T>()
                 ensures exists|x: &A, y: &A| x.f() != y.f()
             {
@@ -191,7 +191,7 @@ test_verify_one_file! {
     #[test] test_mode_matches_1 code! {
         mod M1 {
             pub(crate) trait T1 {
-                #[verus::spec]
+                #[verifier::spec]
                 fn f(&self) {
                     builtin::no_method_body()
                 }
@@ -219,7 +219,7 @@ test_verify_one_file! {
         mod M2 {
             struct S {}
             impl crate::M1::T1 for S {
-                #[verus::spec]
+                #[verifier::spec]
                 fn f(&self) {
                 }
             }
@@ -231,7 +231,7 @@ test_verify_one_file! {
     #[test] test_mode_matches_3 code! {
         mod M1 {
             pub(crate) trait T1 {
-                fn f(#[verus::spec] &self) {
+                fn f(#[verifier::spec] &self) {
                     builtin::no_method_body()
                 }
             }
@@ -258,7 +258,7 @@ test_verify_one_file! {
         mod M2 {
             struct S {}
             impl crate::M1::T1 for S {
-                fn f(#[verus::spec] &self) {
+                fn f(#[verifier::spec] &self) {
                 }
             }
         }
@@ -269,7 +269,7 @@ test_verify_one_file! {
     #[test] test_mode_matches_5 code! {
         mod M1 {
             pub(crate) trait T1 {
-                fn f(&self, #[verus::spec] b: bool) {
+                fn f(&self, #[verifier::spec] b: bool) {
                     builtin::no_method_body()
                 }
             }
@@ -296,7 +296,7 @@ test_verify_one_file! {
         mod M2 {
             struct S {}
             impl crate::M1::T1 for S {
-                fn f(&self, #[verus::spec] b: bool) {
+                fn f(&self, #[verifier::spec] b: bool) {
                 }
             }
         }
@@ -307,7 +307,7 @@ test_verify_one_file! {
     #[test] test_mode_matches_7 code! {
         mod M1 {
             pub(crate) trait T1 {
-                #[verus::verifier(returns(spec))]
+                #[verifier(returns(spec))] /* vattr */
                 fn f(&self) -> bool {
                     builtin::no_method_body()
                 }
@@ -336,7 +336,7 @@ test_verify_one_file! {
         mod M2 {
             struct S {}
             impl crate::M1::T1 for S {
-                #[verus::verifier(returns(spec))]
+                #[verifier(returns(spec))] /* vattr */
                 fn f(&self) -> bool {
                     true
                 }
@@ -349,11 +349,11 @@ test_verify_one_file! {
     #[test] test_termination_1 code! {
         mod M1 {
             pub(crate) trait T {
-                #[verus::spec]
+                #[verifier::spec]
                 fn f(&self) { builtin::no_method_body() }
             }
 
-            #[verus::spec]
+            #[verifier::spec]
             pub(crate) fn rec<A: T>(x: &A) {
                 x.f();
             }
@@ -363,7 +363,7 @@ test_verify_one_file! {
             pub(crate) struct S {}
 
             impl crate::M1::T for S {
-                #[verus::spec]
+                #[verifier::spec]
                 fn f(&self) {
                     crate::M1::rec(self);
                 }
@@ -372,7 +372,7 @@ test_verify_one_file! {
 
         mod M3 {
             #[allow(unused_imports)] use crate::M1::T;
-            #[verus::proof]
+            #[verifier::proof]
             fn test() {
                 let s = crate::M2::S {};
                 s.f();
@@ -385,7 +385,7 @@ test_verify_one_file! {
     #[test] test_termination_2 code! {
         mod M1 {
             pub(crate) trait T {
-                #[verus::spec]
+                #[verifier::spec]
                 fn f<A: T>(&self, x: &A);
             }
         }
@@ -394,7 +394,7 @@ test_verify_one_file! {
             pub(crate) struct S {}
 
             impl crate::M1::T for S {
-                #[verus::spec]
+                #[verifier::spec]
                 fn f<A: crate::M1::T>(&self, x: &A) {
                     x.f(x)
                 }
@@ -403,7 +403,7 @@ test_verify_one_file! {
 
         mod M3 {
             #[allow(unused_imports)] use crate::M1::T;
-            #[verus::proof]
+            #[verifier::proof]
             fn test() {
                 let s = crate::M2::S {};
                 s.f(&s);
@@ -416,7 +416,7 @@ test_verify_one_file! {
     #[test] test_termination_3 code! {
         mod M1 {
             pub(crate) trait T {
-                #[verus::spec]
+                #[verifier::spec]
                 fn f(&self) { builtin::no_method_body() }
             }
         }
@@ -425,7 +425,7 @@ test_verify_one_file! {
             struct S {}
 
             impl crate::M1::T for S {
-                #[verus::spec]
+                #[verifier::spec]
                 fn f(&self) {
                     self.f()
                 }
@@ -616,7 +616,7 @@ test_verify_one_file! {
     #[test] test_verify_3 code! {
         mod M1 {
             pub(crate) trait T {
-                #[verus::spec]
+                #[verifier::spec]
                 fn req(&self) -> bool { builtin::no_method_body() }
                 fn f(&self) {
                     builtin::requires(self.req());
@@ -627,7 +627,7 @@ test_verify_one_file! {
         mod M2 {
             pub(crate) struct S {}
             impl crate::M1::T for S {
-                #[verus::spec]
+                #[verifier::spec]
                 fn req(&self) -> bool { false }
                 fn f(&self) {}
             }
@@ -646,7 +646,7 @@ test_verify_one_file! {
     #[test] test_verify_4 code! {
         mod M1 {
             pub(crate) trait T {
-                #[verus::spec]
+                #[verifier::spec]
                 fn ens(&self) -> bool { builtin::no_method_body() }
                 fn f(&self) {
                     builtin::ensures(self.ens()); // TRAIT
@@ -657,7 +657,7 @@ test_verify_one_file! {
         mod M2 {
             struct S {}
             impl crate::M1::T for S {
-                #[verus::spec]
+                #[verifier::spec]
                 fn ens(&self) -> bool { false }
                 fn f(&self) {} // FAILS
             }
@@ -669,7 +669,7 @@ test_verify_one_file! {
     #[test] test_verify_5_private code! {
         mod M1 {
             pub(crate) trait T {
-                #[verus::spec]
+                #[verifier::spec]
                 fn req(&self) -> bool { builtin::no_method_body() }
                 fn f(&self) {
                     builtin::requires(self.req());
@@ -680,7 +680,7 @@ test_verify_one_file! {
         mod M2 {
             pub(crate) struct S {}
             impl crate::M1::T for S {
-                #[verus::spec]
+                #[verifier::spec]
                 fn req(&self) -> bool { true }
                 fn f(&self) {}
             }
@@ -703,7 +703,7 @@ test_verify_one_file! {
     #[test] test_verify_5_publish code! {
         mod M1 {
             pub(crate) trait T {
-                #[verus::spec]
+                #[verifier::spec]
                 fn req(&self) -> bool { builtin::no_method_body() }
                 fn f(&self) {
                     builtin::requires(self.req());
@@ -714,8 +714,8 @@ test_verify_one_file! {
         mod M2 {
             pub(crate) struct S {}
             impl crate::M1::T for S {
-                #[verus::spec]
-                #[verus::verifier(publish)]
+                #[verifier::spec]
+                #[verifier(publish)] /* vattr */
                 fn req(&self) -> bool { true }
                 fn f(&self) {}
             }
@@ -738,10 +738,10 @@ test_verify_one_file! {
     #[test] test_verify_6 code! {
         mod M1 {
             pub(crate) trait T<A> {
-                #[verus::spec]
+                #[verifier::spec]
                 fn req(&self, a: A) -> bool { builtin::no_method_body() }
 
-                #[verus::spec]
+                #[verifier::spec]
                 fn ens(&self, a: A, r: A) -> bool { builtin::no_method_body() }
 
                 fn f(&self, a: &A) -> A {
@@ -766,12 +766,12 @@ test_verify_one_file! {
 
         mod M4 {
             impl crate::M1::T<bool> for crate::M2::B {
-                #[verus::spec]
+                #[verifier::spec]
                 fn req(&self, a: bool) -> bool {
                     a
                 }
 
-                #[verus::spec]
+                #[verifier::spec]
                 fn ens(&self, a: bool, r: bool) -> bool {
                     r == (a && self.x)
                 }
@@ -784,12 +784,12 @@ test_verify_one_file! {
 
         mod M5 {
             impl crate::M1::T<u64> for crate::M3::I {
-                #[verus::spec]
+                #[verifier::spec]
                 fn req(&self, a: u64) -> bool {
                     self.x < a && a < 100
                 }
 
-                #[verus::spec]
+                #[verifier::spec]
                 fn ens(&self, a: u64, r: u64) -> bool {
                     self.x <= r && r < 100
                 }
@@ -863,8 +863,8 @@ test_verify_one_file! {
     #[test] test_generic_1_private code! {
         mod M1 {
             pub(crate) trait T<A> {
-                #[verus::spec]
-                fn apple(&self, #[verus::spec] b: A) -> bool {
+                #[verifier::spec]
+                fn apple(&self, #[verifier::spec] b: A) -> bool {
                     builtin::no_method_body()
                 }
             }
@@ -876,8 +876,8 @@ test_verify_one_file! {
 
         mod M3 {
             impl<C> crate::M1::T<(C, u16)> for crate::M2::S<bool, C> {
-                #[verus::spec]
-                fn apple(&self, #[verus::spec] b: (C, u16)) -> bool {
+                #[verifier::spec]
+                fn apple(&self, #[verifier::spec] b: (C, u16)) -> bool {
                     b.1 > 10
                 }
             }
@@ -885,7 +885,7 @@ test_verify_one_file! {
 
         mod M4 {
             #[allow(unused_imports)] use crate::M1::T;
-            #[verus::proof]
+            #[verifier::proof]
             fn test() -> bool {
                 builtin::ensures(|b: bool| b); // FAILS
 
@@ -902,8 +902,8 @@ test_verify_one_file! {
     #[test] test_generic_1_public_ok code! {
         mod M1 {
             pub(crate) trait T<A> {
-                #[verus::spec]
-                fn apple(&self, #[verus::spec] b: A) -> bool {
+                #[verifier::spec]
+                fn apple(&self, #[verifier::spec] b: A) -> bool {
                     builtin::no_method_body()
                 }
             }
@@ -915,9 +915,9 @@ test_verify_one_file! {
 
         mod M3 {
             impl<C> crate::M1::T<(C, u16)> for crate::M2::S<bool, C> {
-                #[verus::spec]
-                #[verus::verifier(publish)]
-                fn apple(&self, #[verus::spec] b: (C, u16)) -> bool {
+                #[verifier::spec]
+                #[verifier(publish)] /* vattr */
+                fn apple(&self, #[verifier::spec] b: (C, u16)) -> bool {
                     b.1 > 10
                 }
             }
@@ -925,7 +925,7 @@ test_verify_one_file! {
 
         mod M4 {
             #[allow(unused_imports)] use crate::M1::T;
-            #[verus::proof]
+            #[verifier::proof]
             fn test() -> bool {
                 builtin::ensures(|b: bool| b);
 
@@ -942,8 +942,8 @@ test_verify_one_file! {
     #[test] test_generic_1_ok_markers code! {
         mod M1 {
             pub(crate) trait T<A: Sized> : Sized {
-                #[verus::spec]
-                fn apple(&self, #[verus::spec] b: A) -> bool {
+                #[verifier::spec]
+                fn apple(&self, #[verifier::spec] b: A) -> bool {
                     builtin::no_method_body()
                 }
             }
@@ -953,9 +953,9 @@ test_verify_one_file! {
             pub(crate) struct S<A: Sized, B: Sized>(pub(crate) A, pub(crate) B);
 
             impl<C: Sized> crate::M1::T<(C, u16)> for S<bool, C> {
-                #[verus::spec]
-                #[verus::verifier(publish)]
-                fn apple(&self, #[verus::spec] b: (C, u16)) -> bool {
+                #[verifier::spec]
+                #[verifier(publish)] /* vattr */
+                fn apple(&self, #[verifier::spec] b: (C, u16)) -> bool {
                     b.1 > 10
                 }
             }
@@ -963,7 +963,7 @@ test_verify_one_file! {
 
         mod M3 {
             #[allow(unused_imports)] use crate::M1::T;
-            #[verus::proof]
+            #[verifier::proof]
             fn test() -> bool {
                 builtin::ensures(|b: bool| b);
 
@@ -980,8 +980,8 @@ test_verify_one_file! {
     #[test] test_generic_1_fail code! {
         mod M1 {
             pub(crate) trait T<A> {
-                #[verus::spec]
-                fn apple(&self, #[verus::spec] b: A) -> bool {
+                #[verifier::spec]
+                fn apple(&self, #[verifier::spec] b: A) -> bool {
                     builtin::no_method_body()
                 }
                 fn banana(&self, b: A) -> A {
@@ -994,8 +994,8 @@ test_verify_one_file! {
             pub(crate) struct S<A, B>(pub(crate) A, pub(crate) B);
 
             impl<C> crate::M1::T<(C, u16)> for S<bool, C> {
-                #[verus::spec]
-                fn apple(&self, #[verus::spec] b: (C, u16)) -> bool {
+                #[verifier::spec]
+                fn apple(&self, #[verifier::spec] b: (C, u16)) -> bool {
                     b.1 > 10
                 }
                 fn banana(&self, b: (C, u16)) -> (C, u16) {
@@ -1006,7 +1006,7 @@ test_verify_one_file! {
 
         mod M3 {
             #[allow(unused_imports)] use crate::M1::T;
-            #[verus::proof]
+            #[verifier::proof]
             fn test() -> bool {
                 builtin::ensures(|b: bool| b); // FAILS
 
@@ -1023,8 +1023,8 @@ test_verify_one_file! {
     #[test] test_generic_2 code! {
         mod M1 {
             pub(crate) trait T<A> {
-                #[verus::spec]
-                fn apple(&self, #[verus::spec] b: A) -> bool {
+                #[verifier::spec]
+                fn apple(&self, #[verifier::spec] b: A) -> bool {
                     builtin::no_method_body()
                 }
                 fn banana(&self, b: A) -> A {
@@ -1037,9 +1037,9 @@ test_verify_one_file! {
             pub(crate) struct S<A, B>(pub(crate) A, pub(crate) B);
 
             impl crate::M1::T<u8> for S<u16, u32> {
-                #[verus::spec]
-                #[verus::verifier(publish)]
-                fn apple(&self, #[verus::spec] b: u8) -> bool {
+                #[verifier::spec]
+                #[verifier(publish)] /* vattr */
+                fn apple(&self, #[verifier::spec] b: u8) -> bool {
                     b > 10
                 }
                 fn banana(&self, b: u8) -> u8 {
@@ -1050,7 +1050,7 @@ test_verify_one_file! {
 
         mod M3 {
             #[allow(unused_imports)] use crate::M1::T;
-            #[verus::proof]
+            #[verifier::proof]
             fn test() -> bool {
                 builtin::ensures(|b: bool| b); // FAILS
 
@@ -1066,8 +1066,8 @@ test_verify_one_file! {
     #[test] test_generic_3 code! {
         mod M1 {
             pub(crate) trait T {
-                #[verus::spec]
-                fn apple(&self, #[verus::spec] b: bool) -> bool {
+                #[verifier::spec]
+                fn apple(&self, #[verifier::spec] b: bool) -> bool {
                     builtin::no_method_body()
                 }
 
@@ -1092,9 +1092,9 @@ test_verify_one_file! {
 
         mod M4 {
             impl crate::M1::T for crate::M2::S<bool, bool> {
-                #[verus::spec]
-                #[verus::verifier(publish)]
-                fn apple(&self, #[verus::spec] b: bool) -> bool {
+                #[verifier::spec]
+                #[verifier(publish)] /* vattr */
+                fn apple(&self, #[verifier::spec] b: bool) -> bool {
                     self.0 && self.1 && b
                 }
 

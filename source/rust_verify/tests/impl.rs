@@ -13,7 +13,7 @@ const STRUCT: &str = code_str! {
 test_verify_one_file! {
     #[test] test_impl_1 STRUCT.to_string() + code_str! {
         impl Bike {
-            #[verus::spec]
+            #[verifier::spec]
             pub fn is_hard_tail(&self) -> bool {
                 self.hard_tail
             }
@@ -65,7 +65,7 @@ test_verify_one_file! {
             }
 
             impl Bike {
-                #[verus::spec] #[verus::verifier(publish)]
+                #[verifier::spec] #[verifier(publish)] /* vattr */
                 pub fn is_hard_tail(&self) -> bool {
                     self.hard_tail
                 }
@@ -104,7 +104,7 @@ test_verify_one_file! {
             }
 
             impl Bike {
-                #[verus::spec]
+                #[verifier::spec]
                 pub fn is_hard_tail(&self) -> bool {
                     self.hard_tail
                 }
@@ -131,7 +131,7 @@ const IMPL_GENERIC_SHARED: &str = code_str! {
     }
 
     impl<A> Wrapper<A> {
-        #[verus::spec]
+        #[verifier::spec]
         pub fn take(self) -> A {
             self.v
         }
@@ -140,7 +140,7 @@ const IMPL_GENERIC_SHARED: &str = code_str! {
 
 test_verify_one_file! {
     #[test] test_impl_generic_pass IMPL_GENERIC_SHARED.to_string() + code_str! {
-        #[verus::proof]
+        #[verifier::proof]
         fn test_impl_1(a: int) {
             let w = Wrapper { v: a };
             assert(w.take() == a);
@@ -150,7 +150,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_impl_generic_fail IMPL_GENERIC_SHARED.to_string() + code_str! {
-        #[verus::proof]
+        #[verifier::proof]
         fn test_impl_1(a: int) {
             let w = Wrapper { v: a };
             assert(w.take() != a); // FAILS
@@ -172,13 +172,13 @@ test_verify_one_file! {
         }
 
         impl<A> Wrapper<A> {
-            #[verus::spec]
+            #[verifier::spec]
             pub fn take<B>(self, b: B) -> Two<A, B> {
                 Two { a: self.v, b: b }
             }
         }
 
-        #[verus::proof]
+        #[verifier::proof]
         fn test_impl_1(a: int) {
             let w = Wrapper { v: a };
             assert(w.take(12) == Two { a: a, b: 12 });
@@ -194,7 +194,7 @@ test_verify_one_file! {
         }
 
         impl Bike {
-            #[verus::spec]
+            #[verifier::spec]
             fn id(self) -> Self {
                 self
             }
@@ -264,7 +264,7 @@ test_verify_one_file! {
         impl std::ops::Index<int> for V {
             type Output = nat;
 
-            #[verus::spec]
+            #[verifier::spec]
             fn index(&self, idx: int) -> &nat {
                 if idx == 0 {
                     &self.one
@@ -283,7 +283,7 @@ test_verify_one_file! {
 
         impl std::ops::Index<usize> for V {
             type Output = bool;
-            fn index(&self, #[verus::spec]idx: usize) -> &bool { &true }
+            fn index(&self, #[verifier::spec]idx: usize) -> &bool { &true }
         }
     } => Err(err) => assert_error_msg(err, "parameter must have mode exec")
 }
@@ -333,25 +333,25 @@ test_verify_one_file! {
         }
 
         impl<V> Foo<V> {
-            #[verus::verifier(returns(spec))]
-            fn bar<F: Fn(V) -> bool>(#[verus::spec] f: F, #[verus::spec] v: V) -> bool {
+            #[verifier(returns(spec))] /* vattr */
+            fn bar<F: Fn(V) -> bool>(#[verifier::spec] f: F, #[verifier::spec] v: V) -> bool {
                 f.requires((v,))
             }
 
-            #[verus::verifier(returns(spec))]
-            fn bar2<F: Fn(V) -> bool>(self, #[verus::spec] f: F) -> bool {
+            #[verifier(returns(spec))] /* vattr */
+            fn bar2<F: Fn(V) -> bool>(self, #[verifier::spec] f: F) -> bool {
                 f.requires((self.v,))
             }
         }
 
         fn test() {
-            #[verus::spec] let x: u64 = 0;
+            #[verifier::spec] let x: u64 = 0;
             let z = |y: u64| true;
             Foo::<u64>::bar(z, x);
 
             let f = Foo::<u64> { v: 17 };
             let w = |y: u64| true;
-            #[verus::spec] let b = f.bar2(w);
+            #[verifier::spec] let b = f.bar2(w);
         }
     } => Ok(())
 }
