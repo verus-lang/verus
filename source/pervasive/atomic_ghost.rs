@@ -407,11 +407,12 @@ macro_rules! atomic_with_ghost_update_with_1_operand {
         {
             let result;
             let atomic = &$e;
+            let operand = $operand;
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
                 #[allow(unused_mut)]
                 #[proof] let (mut perm, mut $g) = pair;
                 #[spec] let $prev = perm.view().value;
-                result = atomic.patomic.$name(&mut perm, $operand);
+                result = atomic.patomic.$name(&mut perm, operand);
                 #[spec] let $res = result;
                 #[spec] let $next = perm.view().value;
 
@@ -433,11 +434,13 @@ macro_rules! atomic_with_ghost_update_with_2_operand {
         {
             let result;
             let atomic = &$e;
+            let operand1 = $operand1;
+            let operand2 = $operand2;
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
                 #[allow(unused_mut)]
                 #[proof] let (mut perm, mut $g) = pair;
                 #[spec] let $prev = perm.view().value;
-                result = atomic.patomic.$name(&mut perm, $operand1, $operand2);
+                result = atomic.patomic.$name(&mut perm, operand1, operand2);
                 #[spec] let $res = result;
                 #[spec] let $next = perm.view().value;
 
@@ -459,20 +462,20 @@ macro_rules! atomic_with_ghost_update_fetch_add {
         {
             let result;
             let atomic = &$e;
+            let operand = $operand;
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
                 #[allow(unused_mut)]
                 #[proof] let (mut perm, mut $g) = pair;
                 #[spec] let $prev = ::builtin::spec_cast_integer::<_, int>(perm.view().value);
-                let op = $operand;
                 #[spec] let computed =
                     ::builtin::spec_cast_integer::<_, int>(perm.view().value) +
-                    ::builtin::spec_cast_integer::<_, int>(op);
+                    ::builtin::spec_cast_integer::<_, int>(operand);
                 #[spec] let $res = computed;
                 #[spec] let $next = computed;
 
                 { $b }
 
-                result = atomic.patomic.fetch_add(&mut perm, op);
+                result = atomic.patomic.fetch_add(&mut perm, operand);
 
                 pair = (perm, $g);
             });
@@ -490,20 +493,20 @@ macro_rules! atomic_with_ghost_update_fetch_sub {
         {
             let result;
             let atomic = &$e;
+            let operand = $operand;
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
                 #[allow(unused_mut)]
                 #[proof] let (mut perm, mut $g) = pair;
                 #[spec] let $prev = ::builtin::spec_cast_integer::<_, int>(perm.view().value);
-                let op = $operand;
                 #[spec] let computed =
                     ::builtin::spec_cast_integer::<_, int>(perm.view().value) -
-                    ::builtin::spec_cast_integer::<_, int>(op);
+                    ::builtin::spec_cast_integer::<_, int>(operand);
                 #[spec] let $res = computed;
                 #[spec] let $next = computed;
 
                 { $b }
 
-                result = atomic.patomic.fetch_sub(&mut perm, op);
+                result = atomic.patomic.fetch_sub(&mut perm, operand);
 
                 pair = (perm, $g);
             });
