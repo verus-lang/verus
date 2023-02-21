@@ -251,7 +251,9 @@ macro_rules! atomic_with_ghost {
     ($($tokens:tt)*) => {
         // The helper is used to parse things using Verus syntax
         // The helper then calls atomic_with_ghost_inner, below:
-        ::builtin_macros::atomic_with_ghost_helper!($($tokens)*)
+        ::builtin_macros::atomic_with_ghost_helper!(
+            crate::pervasive::atomic_ghost::atomic_with_ghost_inner,
+            $($tokens)*)
     }
 }
 

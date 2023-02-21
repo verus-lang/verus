@@ -1,6 +1,6 @@
+///! Helper proc-macro for the atomic_ghost lib
 use crate::struct_decl_inv::keyword;
 use crate::struct_decl_inv::peek_keyword;
-///! Helper proc-macro for the atomic_ghost lib
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn_verus::parse;
@@ -10,7 +10,7 @@ use syn_verus::punctuated::Punctuated;
 use syn_verus::spanned::Spanned;
 use syn_verus::token;
 use syn_verus::Token;
-use syn_verus::{parenthesized, Block, Error, Expr, Ident};
+use syn_verus::{parenthesized, Block, Error, Expr, Ident, Path};
 
 pub fn atomic_ghost(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let ag: AG = parse_macro_input!(input as AG);
@@ -21,6 +21,7 @@ pub fn atomic_ghost(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 }
 
 struct AG {
+    pub inner_macro_path: Path,
     pub atomic: Expr,
     pub op_name: Ident,
     pub operands: Vec<Expr>,
@@ -32,6 +33,9 @@ struct AG {
 
 impl Parse for AG {
     fn parse(input: ParseStream) -> parse::Result<AG> {
+        let inner_macro_path: Path = input.parse()?;
+        let _: Token![,] = input.parse()?;
+
         let atomic: Expr = input.parse()?;
         let _: Token![=>] = input.parse()?;
         let op_name: Ident = input.parse()?;
@@ -71,7 +75,7 @@ impl Parse for AG {
         let _: Token![=>] = input.parse()?;
         let block: Block = input.parse()?;
 
-        Ok(AG { atomic, op_name, operands, prev_next, ret, ghost_name, block })
+        Ok(AG { inner_macro_path, atomic, op_name, operands, prev_next, ret, ghost_name, block })
     }
 }
 
@@ -122,7 +126,16 @@ fn atomic_ghost_main(ag: AG) -> parse::Result<TokenStream> {
             ),
         )),
         Some((_, _)) => {
-            let AG { atomic, op_name, operands, prev_next, ret, ghost_name, block } = ag;
+            let AG {
+                inner_macro_path,
+                atomic,
+                op_name,
+                operands,
+                prev_next,
+                ret,
+                ghost_name,
+                block,
+            } = ag;
 
             let (prev, next) = match prev_next {
                 Some((p, n)) => (quote! { #p }, quote! { #n }),
@@ -135,7 +148,7 @@ fn atomic_ghost_main(ag: AG) -> parse::Result<TokenStream> {
             };
 
             Ok(quote! {
-                crate::pervasive::atomic_ghost::atomic_with_ghost_inner!(
+                #inner_macro_path!(
                     #op_name,
                     #atomic,
                     (#(#operands),*),
