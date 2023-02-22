@@ -69,3 +69,33 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] auto_extensionality_syntax1 verus_code! {
+        use crate::pervasive::seq::*;
+        use crate::pervasive::seq_lib::*;
+        proof fn test() {
+            let s1 = Seq::new(5, |i: int| 10 * i);
+            assert(s1.len() == 5);
+            assert(s1.index(3) == 30);
+            let s2 = Seq::<int>::empty().push(0).push(10).push(20).push(30).push(40);
+            assert_seqs_equal!(s1, s2); // old syntax
+            assert(s1 == s2);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] auto_extensionality_syntax2 verus_code! {
+        use crate::pervasive::seq::*;
+        use crate::pervasive::seq_lib::*;
+        proof fn test() {
+            let s1 = Seq::new(5, |i: int| 10 * i);
+            assert(s1.len() == 5);
+            assert(s1.index(3) == 30);
+            let s2 = Seq::<int>::empty().push(0).push(10).push(20).push(30).push(40);
+            assert_seqs_equal!(s1 == s2); // new syntax
+            assert(s1 == s2);
+        }
+    } => Ok(())
+}

@@ -352,7 +352,7 @@ pub use map;
 ///     ensures m.insert(k, v).remove(k) == m
 /// {
 ///     let m2 = m.insert(k, v).remove(k);
-///     assert_maps_equal!(m, m2);
+///     assert_maps_equal!(m == m2);
 ///     assert(m == m2);
 /// }
 /// ```
@@ -369,7 +369,7 @@ pub use map;
 ///         |key: u64| key < 32,
 ///         |key: u64| 5 | key);
 /// 
-///     assert_maps_equal!(m1, m2, key => {
+///     assert_maps_equal!(m1 == m2, key => {
 ///         // Show that the domains of m1 and m2 are the same by showing their predicates
 ///         // are equivalent.
 ///         assert_bit_vector((key & 31 == key) <==> (key < 32));
@@ -391,6 +391,12 @@ macro_rules! assert_maps_equal {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! assert_maps_equal_internal {
+    (::builtin::spec_eq($m1:expr, $m2:expr)) => {
+        assert_maps_equal_internal!($m1, $m2)
+    };
+    (::builtin::spec_eq($m1:expr, $m2:expr), $k:ident $( : $t:ty )? => $bblock:block) => {
+        assert_maps_equal_internal!($m1, $m2, $k $( : $t )? => $bblock)
+    };
     ($m1:expr, $m2:expr $(,)?) => {
         assert_maps_equal_internal!($m1, $m2, key => { })
     };
