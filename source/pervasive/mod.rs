@@ -17,6 +17,7 @@ pub mod seq_lib;
 pub mod set;
 pub mod set_lib;
 pub mod slice;
+pub mod array;
 pub mod cell;
 #[cfg(not(erasure_macro_todo))]
 pub mod cell_old_style;

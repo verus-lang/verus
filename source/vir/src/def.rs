@@ -60,6 +60,9 @@ const PREFIX_TUPLE_FIELD: &str = "field%";
 const PREFIX_LAMBDA_TYPE: &str = "fun%";
 const SLICE_TYPE: &str = "slice%";
 const SLICE_PARAM: &str = "sliceT%";
+const ARRAY_TYPE: &str = "array%";
+const ARRAY_PARAM_TY: &str = "arrayT%";
+const ARRAY_PARAM_LEN: &str = "arrayL%";
 const PREFIX_SNAPSHOT: &str = "snap%";
 const LOCAL_UNIQUE_ID_SEPARATOR: char = '~';
 const SUBST_RENAME_SEPARATOR: &str = "$$";
@@ -298,8 +301,21 @@ pub fn slice_type() -> Path {
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
 }
 
+pub fn array_type() -> Path {
+    let ident = Arc::new(ARRAY_TYPE.to_string());
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
+}
+
 pub fn slice_param() -> Ident {
     Arc::new(SLICE_PARAM.to_string())
+}
+
+pub fn array_param_ty() -> Ident {
+    Arc::new(ARRAY_PARAM_TY.to_string())
+}
+
+pub fn array_param_len() -> Ident {
+    Arc::new(ARRAY_PARAM_LEN.to_string())
 }
 
 pub fn prefix_type_id(path: &Path) -> Ident {

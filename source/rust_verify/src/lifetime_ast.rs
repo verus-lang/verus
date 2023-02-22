@@ -37,6 +37,7 @@ pub(crate) enum TypX {
     Ref(Typ, Option<Id>, Mutability),
     Phantom(Typ),
     Slice(Typ),
+    Array(Typ, Typ),
     Tuple(Vec<Typ>),
     Datatype(Id, Vec<Typ>),
     Closure,

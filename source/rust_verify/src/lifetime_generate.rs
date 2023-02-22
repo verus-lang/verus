@@ -14,8 +14,8 @@ use rustc_hir::{
 };
 use rustc_middle::ty::subst::GenericArgKind;
 use rustc_middle::ty::{
-    AdtDef, BoundRegionKind, BoundVariableKind, GenericParamDefKind, PredicateKind, RegionKind, Ty,
-    TyCtxt, TyKind, TypeckResults,
+    AdtDef, BoundRegionKind, BoundVariableKind, Const, GenericParamDefKind, PredicateKind,
+    RegionKind, Ty, TyCtxt, TyKind, TypeckResults,
 };
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::kw;
@@ -197,6 +197,16 @@ fn erase_hir_region<'tcx>(_ctxt: &Context<'tcx>, state: &mut State, r: &RegionKi
     }
 }
 
+fn erase_generic_const<'tcx>(ctxt: &Context<'tcx>, state: &mut State, cnst: &Const<'tcx>) -> Typ {
+    match &*mid_ty_const_to_vir(ctxt.tcx, cnst) {
+        vir::ast::TypX::TypParam(x) => {
+            Box::new(TypX::TypParam(state.typ_param(x.to_string(), None)))
+        }
+        vir::ast::TypX::ConstInt(i) => Box::new(TypX::Primitive(i.to_string())),
+        _ => panic!("GenericArgKind::Const"),
+    }
+}
+
 fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: Ty<'tcx>) -> Typ {
     match ty.kind() {
         TyKind::Bool | TyKind::Uint(_) | TyKind::Int(_) | TyKind::Char | TyKind::Str => {
@@ -215,6 +225,11 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: Ty<'tcx>) -> Typ 
             Box::new(TypX::Ref(erase_ty(ctxt, state, t), lifetime, *mutability))
         }
         TyKind::Slice(t) => Box::new(TypX::Slice(erase_ty(ctxt, state, t))),
+        TyKind::Array(t, len_const) => {
+            let t = erase_ty(ctxt, state, t);
+            let t_len = erase_generic_const(ctxt, state, len_const);
+            Box::new(TypX::Array(t, t_len))
+        }
         TyKind::Tuple(_) => {
             Box::new(TypX::Tuple(ty.tuple_fields().map(|t| erase_ty(ctxt, state, t)).collect()))
         }
@@ -238,13 +253,7 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: Ty<'tcx>) -> Typ 
                         }
                     }
                     rustc_middle::ty::subst::GenericArgKind::Const(cnst) => {
-                        let t = match &*mid_ty_const_to_vir(ctxt.tcx, cnst) {
-                            vir::ast::TypX::TypParam(x) => {
-                                Box::new(TypX::TypParam(state.typ_param(x.to_string(), None)))
-                            }
-                            vir::ast::TypX::ConstInt(i) => Box::new(TypX::Primitive(i.to_string())),
-                            _ => panic!("GenericArgKind::Const"),
-                        };
+                        let t = erase_generic_const(ctxt, state, cnst);
                         typ_args.push(t);
                     }
                 }
@@ -432,7 +441,9 @@ fn mk_typ_args<'tcx>(
                 typ_args.push(erase_ty(ctxt, state, ty));
             }
             GenericArgKind::Lifetime(_) => {}
-            _ => panic!("typ_arg"),
+            GenericArgKind::Const(c) => {
+                typ_args.push(erase_generic_const(ctxt, state, c));
+            }
         }
     }
     typ_args

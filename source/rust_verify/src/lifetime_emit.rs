@@ -60,6 +60,7 @@ impl ToString for TypX {
             }
             TypX::Phantom(t) => format!("PhantomData<{}>", t.to_string()),
             TypX::Slice(t) => format!("[{}]", t.to_string()),
+            TypX::Array(t, len) => format!("[{}; {}]", t.to_string(), len.to_string()),
             TypX::Tuple(typs) => {
                 let mut buf = "(".to_string();
                 for typ in typs {

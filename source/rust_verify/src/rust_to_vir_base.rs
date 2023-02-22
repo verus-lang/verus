@@ -294,6 +294,12 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let typs = Arc::new(vec![typ]);
             (Arc::new(TypX::Datatype(vir::def::slice_type(), typs)), false)
         }
+        TyKind::Array(ty, const_len) => {
+            let typ = mid_ty_to_vir_ghost(tcx, ty, allow_mut_ref).0;
+            let len = mid_ty_const_to_vir(tcx, const_len);
+            let typs = Arc::new(vec![typ, len]);
+            (Arc::new(TypX::Datatype(vir::def::array_type(), typs)), false)
+        }
         TyKind::Adt(AdtDef { did, .. }, args) => {
             let s = ty.to_string();
             let is_strslice =
