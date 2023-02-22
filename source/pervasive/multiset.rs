@@ -201,6 +201,12 @@ pub proof fn axiom_filter_count<V>(m: Multiset<V>, f: FnSpec(V) -> bool, v: V)
 
 #[macro_export]
 macro_rules! assert_multisets_equal {
+    (::builtin::spec_eq($m1:expr, $m2:expr)) => {
+        assert_multisets_equal_internal!($m1, $m2)
+    };
+    (::builtin::spec_eq($m1:expr, $m2:expr), $k:ident $( : $t:ty )? => $bblock:block) => {
+        assert_multisets_equal_internal!($m1, $m2, $k $( : $t )? => $bblock)
+    };
     ($m1:expr, $m2:expr $(,)?) => {
         assert_multisets_equal!($m1, $m2, key => { })
     };
