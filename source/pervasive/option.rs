@@ -35,11 +35,11 @@ impl<A> Option<A> {
         }
     }
 
-    pub fn unwrap(&self) -> (a: &A)
+    pub fn unwrap(self) -> (a: A)
         requires
             self.is_Some(),
         ensures
-            *a == self.get_Some_0(),
+            a == self.get_Some_0(),
     {
         match self {
             Option::Some(a) => a,
