@@ -3598,6 +3598,11 @@ where
         v.visit_variadic(it);
     }
     v.visit_return_type(&node.output);
+    if let Some(it) = &node.prover {
+        tokens_helper(v, &(it).0.span);
+        tokens_helper(v, &(it).1.span);
+        v.visit_ident(&(it).2);
+    }
     if let Some(it) = &node.requires {
         v.visit_requires(it);
     }

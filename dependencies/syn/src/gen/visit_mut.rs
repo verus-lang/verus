@@ -3598,6 +3598,11 @@ where
         v.visit_variadic_mut(it);
     }
     v.visit_return_type_mut(&mut node.output);
+    if let Some(it) = &mut node.prover {
+        tokens_helper(v, &mut (it).0.span);
+        tokens_helper(v, &mut (it).1.span);
+        v.visit_ident_mut(&mut (it).2);
+    }
     if let Some(it) = &mut node.requires {
         v.visit_requires_mut(it);
     }

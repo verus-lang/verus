@@ -5056,6 +5056,21 @@
         "output": {
           "syn": "ReturnType"
         },
+        "prover": {
+          "option": {
+            "tuple": [
+              {
+                "token": "By"
+              },
+              {
+                "group": "Paren"
+              },
+              {
+                "proc_macro2": "Ident"
+              }
+            ]
+          }
+        },
         "requires": {
           "option": {
             "syn": "Requires"

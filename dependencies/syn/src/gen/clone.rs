@@ -2038,6 +2038,7 @@ impl Clone for Signature {
             inputs: self.inputs.clone(),
             variadic: self.variadic.clone(),
             output: self.output.clone(),
+            prover: self.prover.clone(),
             requires: self.requires.clone(),
             recommends: self.recommends.clone(),
             ensures: self.ensures.clone(),

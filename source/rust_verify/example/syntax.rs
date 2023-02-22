@@ -160,6 +160,16 @@ fn assert_by_provers(x: u32) {
     assert(2 <= x && x < 10 ==> x * x > x) by(nonlinear_arith);
 }
 
+/// "assert by" provers can also appear on function signatures to select a specific prover
+/// for the function body.
+proof fn lemma_mul_upper_bound(x: int, x_bound: int, y: int, y_bound: int)
+    by (nonlinear_arith)
+    requires x <= x_bound, y <= y_bound, 0 <= x, 0 <= y,
+    ensures x * y <= x_bound * y_bound,
+{
+}
+
+
 /// "assert by" can use nonlinear_arith with proof code,
 /// where "requires" clauses selectively make facts available to the proof code.
 proof fn test5_bound_checking(x: u32, y: u32, z: u32)

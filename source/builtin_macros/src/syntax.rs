@@ -227,6 +227,10 @@ impl Visitor {
         };
         self.inside_ghost = inside_ghost;
 
+        let prover_attr = sig.prover.as_ref().map(|(_, _, prover_ident)| {
+            mk_verus_attr(prover_ident.span(), quote! { prover(#prover_ident) })
+        });
+
         self.inside_ghost += 1; // for requires, ensures, etc.
         self.inside_bitvector = inside_bitvector;
 
@@ -288,6 +292,7 @@ impl Visitor {
         sig.mode = FnMode::Default;
         attrs.extend(publish_attrs);
         attrs.extend(mode_attrs);
+        attrs.extend(prover_attr.into_iter());
         attrs.extend(ext_attrs);
         stmts.extend(unimpl);
         stmts

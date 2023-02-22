@@ -2776,6 +2776,7 @@ impl Debug for Signature {
         formatter.field("inputs", &self.inputs);
         formatter.field("variadic", &self.variadic);
         formatter.field("output", &self.output);
+        formatter.field("prover", &self.prover);
         formatter.field("requires", &self.requires);
         formatter.field("recommends", &self.recommends);
         formatter.field("ensures", &self.ensures);

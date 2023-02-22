@@ -2596,6 +2596,7 @@ impl Hash for Signature {
         self.inputs.hash(state);
         self.variadic.hash(state);
         self.output.hash(state);
+        self.prover.hash(state);
         self.requires.hash(state);
         self.recommends.hash(state);
         self.ensures.hash(state);

@@ -3204,6 +3204,12 @@ where
         inputs: FoldHelper::lift(node.inputs, |it| f.fold_fn_arg(it)),
         variadic: (node.variadic).map(|it| f.fold_variadic(it)),
         output: f.fold_return_type(node.output),
+        prover: (node.prover)
+            .map(|it| (
+                Token![by](tokens_helper(f, &(it).0.span)),
+                Paren(tokens_helper(f, &(it).1.span)),
+                f.fold_ident((it).2),
+            )),
         requires: (node.requires).map(|it| f.fold_requires(it)),
         recommends: (node.recommends).map(|it| f.fold_recommends(it)),
         ensures: (node.ensures).map(|it| f.fold_ensures(it)),

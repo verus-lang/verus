@@ -5282,6 +5282,22 @@ impl Debug for Lite<syn::Signature> {
             formatter.field("variadic", Print::ref_cast(val));
         }
         formatter.field("output", Lite(&_val.output));
+        if let Some(val) = &_val.prover {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print((syn::token::By, syn::token::Paren, proc_macro2::Ident));
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(&_val.2), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("prover", Print::ref_cast(val));
+        }
         if let Some(val) = &_val.requires {
             #[derive(RefCast)]
             #[repr(transparent)]

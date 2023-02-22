@@ -440,6 +440,16 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                     {
                         v.push(Attr::ReturnMode(Mode::Exec))
                     }
+                    AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
+                        if arg == "prover" =>
+                    {
+                        match &**ident {
+                            "nonlinear_arith" => v.push(Attr::NonLinear),
+                            "bit_vector" => v.push(Attr::BitVector),
+                            "integer_ring" => v.push(Attr::IntegerRing),
+                            _ => return err_span_str(span, "invalid prover"),
+                        }
+                    }
                     _ => {
                         return err_span_str(span, "unrecognized internal attribute");
                     }
