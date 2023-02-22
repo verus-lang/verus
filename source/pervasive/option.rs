@@ -35,6 +35,17 @@ impl<A> Option<A> {
         }
     }
 
+    pub fn as_ref(&self) -> (a: Option<&A>)
+        ensures
+          a.is_Some() <==> self.is_Some(),
+          a.is_Some() ==> self.get_Some_0() == a.get_Some_0(),
+    {
+        match self {
+            Option::Some(x) => Option::Some(x),
+            Option::None => Option::None,
+        }
+    }
+
     pub fn unwrap(self) -> (a: A)
         requires
             self.is_Some(),
