@@ -34,6 +34,9 @@ eval ""VERUSDOC=1 VERUS_Z3_PATH="$(pwd)/z3" $LIB_PATH ../rust/install/bin/rustdo
   -Zenable_feature=box_patterns \
   -Zenable_feature=negative_impls \
   -Zenable_feature=unboxed_closures \
+  -Zenable_feature=register_tool \
+  -Zcrate-attr=register_tool\\\(verus\\\) \
+  -Zcrate-attr=register_tool\\\(verifier\\\) \
   -Zproc-macro-backtrace \
   $TEMPD/lib.rs""
 
