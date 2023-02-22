@@ -920,7 +920,7 @@ ast_struct! {
         pub requires: Option<Requires>,
         pub recommends: Option<Recommends>,
         pub ensures: Option<Ensures>,
-        pub decreases: Option<Decreases>,
+        pub decreases: Option<SignatureDecreases>,
     }
 }
 
@@ -1571,7 +1571,7 @@ pub mod parsing {
             let requires: Option<Requires> = input.parse()?;
             let recommends: Option<Recommends> = input.parse()?;
             let ensures: Option<Ensures> = input.parse()?;
-            let decreases: Option<Decreases> = input.parse()?;
+            let decreases: Option<SignatureDecreases> = input.parse()?;
 
             Ok(Signature {
                 publish,

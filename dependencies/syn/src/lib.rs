@@ -460,7 +460,8 @@ mod verus;
 pub use crate::verus::{
     Assert, AssertForall, Assume, Closed, DataMode, Decreases, Ensures, FnMode, Invariant,
     InvariantEnsures, Mode, ModeExec, ModeGhost, ModeProof, ModeSpec, ModeSpecChecked, ModeTracked,
-    Open, OpenRestricted, Publish, Recommends, Requires, Specification, TypeFnSpec, View,
+    Open, OpenRestricted, Publish, Recommends, Requires, SignatureDecreases, Specification,
+    TypeFnSpec, View,
 };
 
 mod gen {

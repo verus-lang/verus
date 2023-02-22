@@ -2547,6 +2547,7 @@ impl Hash for Recommends {
         H: Hasher,
     {
         self.exprs.hash(state);
+        self.via.hash(state);
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
@@ -2601,6 +2602,17 @@ impl Hash for Signature {
         self.recommends.hash(state);
         self.ensures.hash(state);
         self.decreases.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for SignatureDecreases {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.decreases.hash(state);
+        self.when.hash(state);
+        self.via.hash(state);
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]

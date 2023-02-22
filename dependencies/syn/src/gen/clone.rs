@@ -1996,6 +1996,7 @@ impl Clone for Recommends {
         Recommends {
             token: self.token.clone(),
             exprs: self.exprs.clone(),
+            via: self.via.clone(),
         }
     }
 }
@@ -2043,6 +2044,16 @@ impl Clone for Signature {
             recommends: self.recommends.clone(),
             ensures: self.ensures.clone(),
             decreases: self.decreases.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for SignatureDecreases {
+    fn clone(&self) -> Self {
+        SignatureDecreases {
+            decreases: self.decreases.clone(),
+            when: self.when.clone(),
+            via: self.via.clone(),
         }
     }
 }

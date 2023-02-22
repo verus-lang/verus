@@ -19,8 +19,8 @@ use syn_verus::{
     ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Ident, ImplItem, ImplItemMethod, Invariant,
     InvariantEnsures, Item, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod, ItemStruct, ItemTrait,
     Lit, Local, Meta, ModeSpec, ModeSpecChecked, Pat, Path, PathArguments, PathSegment, Publish,
-    Recommends, Requires, ReturnType, Signature, Stmt, Token, TraitItem, TraitItemMethod, Type,
-    TypeFnSpec, UnOp, Visibility,
+    Recommends, Requires, ReturnType, Signature, SignatureDecreases, Stmt, Token, TraitItem,
+    TraitItemMethod, Type, TypeFnSpec, UnOp, Visibility,
 };
 
 fn take_expr(expr: &mut Expr) -> Expr {
@@ -248,7 +248,7 @@ impl Visitor {
                 Semi { spans: [token.span] },
             ));
         }
-        if let Some(Recommends { token, mut exprs }) = recommends {
+        if let Some(Recommends { token, mut exprs, via }) = recommends {
             for expr in exprs.exprs.iter_mut() {
                 self.visit_expr_mut(expr);
             }
@@ -256,6 +256,14 @@ impl Visitor {
                 Expr::Verbatim(quote_spanned!(token.span => ::builtin::recommends([#exprs]))),
                 Semi { spans: [token.span] },
             ));
+            if let Some((via_token, via_expr)) = via {
+                stmts.push(Stmt::Semi(
+                    Expr::Verbatim(
+                        quote_spanned!(via_expr.span() => ::builtin::recommends_by(#via_expr)),
+                    ),
+                    Semi { spans: [via_token.span] },
+                ));
+            }
         }
         if let Some(Ensures { token, mut exprs }) = ensures {
             for expr in exprs.exprs.iter_mut() {
@@ -275,7 +283,9 @@ impl Visitor {
                 ));
             }
         }
-        if let Some(Decreases { token, mut exprs }) = decreases {
+        if let Some(SignatureDecreases { decreases: Decreases { token, mut exprs }, when, via }) =
+            decreases
+        {
             for expr in exprs.exprs.iter_mut() {
                 self.visit_expr_mut(expr);
             }
@@ -283,6 +293,23 @@ impl Visitor {
                 Expr::Verbatim(quote_spanned!(token.span => ::builtin::decreases((#exprs)))),
                 Semi { spans: [token.span] },
             ));
+            if let Some((when_token, mut when_expr)) = when {
+                self.visit_expr_mut(&mut when_expr);
+                stmts.push(Stmt::Semi(
+                    Expr::Verbatim(
+                        quote_spanned!(when_expr.span() => ::builtin::decreases_when(#when_expr)),
+                    ),
+                    Semi { spans: [when_token.span] },
+                ));
+            }
+            if let Some((via_token, via_expr)) = via {
+                stmts.push(Stmt::Semi(
+                    Expr::Verbatim(
+                        quote_spanned!(via_expr.span() => ::builtin::decreases_by(#via_expr)),
+                    ),
+                    Semi { spans: [via_token.span] },
+                ));
+            }
         }
 
         self.inside_ghost -= 1;
@@ -1316,27 +1343,13 @@ impl VisitMut for Visitor {
     }
 
     fn visit_attribute_mut(&mut self, attr: &mut Attribute) {
-        // let first_segment = &attr.path.segments[0].ident;
-        // if first_segment.to_string() == "trigger" {
-        //     attr.path.segments.insert(
-        //         0,
-        //         PathSegment {
-        //             ident: Ident::new("verus", attr.path.segments[0].span()),
-        //             arguments: PathArguments::None,
-        //         },
-        //     );
-        //     attr.path.segments.insert(
-        //         0,
-        //         PathSegment {
-        //             ident: Ident::new("internal", attr.path.segments[0].span()),
-        //             arguments: PathArguments::None,
-        //         },
-        //     );
-        // }
         if let syn_verus::AttrStyle::Outer = attr.style {
             match &attr.path.segments.iter().map(|x| &x.ident).collect::<Vec<_>>()[..] {
                 [attr_name] if attr_name.to_string() == "trigger" => {
                     *attr = mk_verus_attr(attr.span(), quote! { trigger });
+                }
+                [attr_name] if attr_name.to_string() == "via_fn" => {
+                    *attr = mk_verus_attr(attr.span(), quote! { via });
                 }
                 _ => (),
             }

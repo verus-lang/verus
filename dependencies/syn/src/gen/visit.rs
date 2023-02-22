@@ -681,6 +681,9 @@ pub trait Visit<'ast> {
     fn visit_signature(&mut self, i: &'ast Signature) {
         visit_signature(self, i);
     }
+    fn visit_signature_decreases(&mut self, i: &'ast SignatureDecreases) {
+        visit_signature_decreases(self, i);
+    }
     fn visit_span(&mut self, i: &Span) {
         visit_span(self, i);
     }
@@ -3535,6 +3538,10 @@ where
 {
     tokens_helper(v, &node.token.span);
     v.visit_specification(&node.exprs);
+    if let Some(it) = &node.via {
+        tokens_helper(v, &(it).0.span);
+        v.visit_expr(&(it).1);
+    }
 }
 pub fn visit_requires<'ast, V>(v: &mut V, node: &'ast Requires)
 where
@@ -3613,7 +3620,21 @@ where
         v.visit_ensures(it);
     }
     if let Some(it) = &node.decreases {
-        v.visit_decreases(it);
+        v.visit_signature_decreases(it);
+    }
+}
+pub fn visit_signature_decreases<'ast, V>(v: &mut V, node: &'ast SignatureDecreases)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    v.visit_decreases(&node.decreases);
+    if let Some(it) = &node.when {
+        tokens_helper(v, &(it).0.span);
+        v.visit_expr(&(it).1);
+    }
+    if let Some(it) = &node.via {
+        tokens_helper(v, &(it).0.span);
+        v.visit_expr(&(it).1);
     }
 }
 pub fn visit_span<'ast, V>(v: &mut V, node: &Span)

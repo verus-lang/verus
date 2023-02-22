@@ -4933,6 +4933,18 @@
         },
         "exprs": {
           "syn": "Specification"
+        },
+        "via": {
+          "option": {
+            "tuple": [
+              {
+                "token": "Via"
+              },
+              {
+                "syn": "Expr"
+              }
+            ]
+          }
         }
       }
     },
@@ -5088,7 +5100,42 @@
         },
         "decreases": {
           "option": {
-            "syn": "Decreases"
+            "syn": "SignatureDecreases"
+          }
+        }
+      }
+    },
+    {
+      "ident": "SignatureDecreases",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "decreases": {
+          "syn": "Decreases"
+        },
+        "when": {
+          "option": {
+            "tuple": [
+              {
+                "token": "When"
+              },
+              {
+                "syn": "Expr"
+              }
+            ]
+          }
+        },
+        "via": {
+          "option": {
+            "tuple": [
+              {
+                "token": "Via"
+              },
+              {
+                "syn": "Expr"
+              }
+            ]
           }
         }
       }
@@ -6388,7 +6435,9 @@
     "Unsafe": "unsafe",
     "Unsized": "unsized",
     "Use": "use",
+    "Via": "via",
     "Virtual": "virtual",
+    "When": "when",
     "Where": "where",
     "While": "while",
     "Yield": "yield"

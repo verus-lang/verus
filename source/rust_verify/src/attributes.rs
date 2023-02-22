@@ -450,6 +450,7 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                             _ => return err_span_str(span, "invalid prover"),
                         }
                     }
+                    AttrTree::Fun(_, arg, None) if arg == "via" => v.push(Attr::DecreasesBy),
                     _ => {
                         return err_span_str(span, "unrecognized internal attribute");
                     }

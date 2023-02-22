@@ -1912,7 +1912,7 @@ impl Eq for Recommends {}
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for Recommends {
     fn eq(&self, other: &Self) -> bool {
-        self.exprs == other.exprs
+        self.exprs == other.exprs && self.via == other.via
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
@@ -1955,6 +1955,15 @@ impl PartialEq for Signature {
             && self.output == other.output && self.prover == other.prover
             && self.requires == other.requires && self.recommends == other.recommends
             && self.ensures == other.ensures && self.decreases == other.decreases
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for SignatureDecreases {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for SignatureDecreases {
+    fn eq(&self, other: &Self) -> bool {
+        self.decreases == other.decreases && self.when == other.when
+            && self.via == other.via
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
