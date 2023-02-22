@@ -290,7 +290,7 @@ test_verify_one_file! {
         // TODO type aliases
         type SeqOfSets = Seq<Set<int>>;
 
-        #[proof]
+        #[verifier::proof]
         fn try_a_type_synonym()
         {
             let seq_of_sets: SeqOfSets = seq![set![0], set![0, 1], set![0, 1, 2]];
@@ -305,7 +305,7 @@ test_verify_one_file! {
         // TODO type aliases
         type SeqOfSets = &[Set::<int>];
 
-        #[proof]
+        #[verifier::proof]
         fn try_a_type_synonym()
         {
             let seq_of_sets: SeqOfSets = &[set![0], set![0, 1], set![0, 1, 2]];

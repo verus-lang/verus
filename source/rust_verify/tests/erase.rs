@@ -9,10 +9,10 @@ test_verify_one_file! {
         use pervasive::option::*;
 
         fn f1<T>(t: Ghost<Option<T>>) {
-            #[spec] let x = t.view().get_Some_0();
+            #[verifier::spec] let x = t.view().get_Some_0();
         }
 
-        #[spec]
+        #[verifier::spec]
         fn f2() -> bool {
             let x: Option<usize> = Option::None;
             x.is_None()

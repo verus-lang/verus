@@ -97,7 +97,7 @@ tokenized_state_machine!{
 struct_with_invariants!{
     pub struct Global {
         pub atomic: AtomicU32<_, X::counter, _>,
-        #[proof] pub instance: X::Instance,
+        #[verifier::proof] pub instance: X::Instance,
     }
 
     spec fn wf(&self) -> bool {
@@ -114,13 +114,13 @@ struct_with_invariants!{
 fn do_count(num_threads: u32) {
     // Initialize protocol 
 
-    #[proof] let instance;
-    #[proof] let counter_token;
-    #[proof] let mut unstamped_tokens;
-    #[proof] let mut stamped_tokens;
+    #[verifier::proof] let instance;
+    #[verifier::proof] let counter_token;
+    #[verifier::proof] let mut unstamped_tokens;
+    #[verifier::proof] let mut stamped_tokens;
 
     proof {
-        #[proof] let (Trk(instance0),
+        #[verifier::proof] let (Trk(instance0),
             Trk(counter_token0),
             Trk(unstamped_tokens0),
             Trk(stamped_tokens0)) = X::Instance::initialize(num_threads as nat);
@@ -156,9 +156,9 @@ fn do_count(num_threads: u32) {
             (*global_arc).wf(),
             (*global_arc).instance === instance,
     {
-        #[proof] let unstamped_token;
+        #[verifier::proof] let unstamped_token;
         proof {
-            #[proof] let (Trk(unstamped_token0), Trk(rest)) = unstamped_tokens.split(1 as nat);
+            #[verifier::proof] let (Trk(unstamped_token0), Trk(rest)) = unstamped_tokens.split(1 as nat);
             unstamped_tokens = rest;
             unstamped_token = unstamped_token0;
         }
@@ -171,17 +171,17 @@ fn do_count(num_threads: u32) {
                     && new_token.0@.count == spec_cast_integer::<_, nat>(1)
             );
 
-            #[proof] let unstamped_token = unstamped_token;
+            #[verifier::proof] let unstamped_token = unstamped_token;
             let globals = &*global_arc;
 
-            #[proof] let stamped_token;
+            #[verifier::proof] let stamped_token;
 
             let _ = atomic_with_ghost!(
                 &global_arc.atomic => fetch_add(1);
                 update prev -> next;
                 returning ret;
                 ghost c => {
-                    #[proof] stamped_token =
+                    #[verifier::proof] stamped_token =
                         global_arc.instance.tr_inc(&mut c, unstamped_token);
                 }
             );

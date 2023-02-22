@@ -76,7 +76,7 @@ test_verify_one_file! {
     #[test] multiset_fail2 code! {
         use crate::pervasive::multiset::*;
 
-        #[proof]
+        #[verifier::proof]
         pub fn add_fail<V>(a: Multiset<V>, b: Multiset<V>) {
             ensures(equal(a.add(b), a.add(a)));
 
@@ -89,7 +89,7 @@ test_verify_one_file! {
     #[test] multiset_fail3 code! {
         use crate::pervasive::multiset::*;
 
-        #[proof]
+        #[verifier::proof]
         pub fn sub_add_cancel<V>(a: Multiset<V>, b: Multiset<V>) {
             // Missing the condition `b.le(a)`
             ensures(equal(a.sub(b).add(b), a));

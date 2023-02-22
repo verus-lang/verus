@@ -916,10 +916,11 @@ ast_struct! {
         pub inputs: Punctuated<FnArg, Token![,]>,
         pub variadic: Option<Variadic>,
         pub output: ReturnType,
+        pub prover: Option<(Token![by], token::Paren, Ident)>,
         pub requires: Option<Requires>,
         pub recommends: Option<Recommends>,
         pub ensures: Option<Ensures>,
-        pub decreases: Option<Decreases>,
+        pub decreases: Option<SignatureDecreases>,
     }
 }
 
@@ -1558,10 +1559,19 @@ pub mod parsing {
 
             let output: ReturnType = input.parse()?;
             generics.where_clause = input.parse()?;
+            let prover = if input.peek(Token![by]) {
+                let by_token: Token![by] = input.parse()?;
+                let content;
+                let paren_token = parenthesized!(content in input);
+                let id = content.parse()?;
+                Some((by_token, paren_token, id))
+            } else {
+                None
+            };
             let requires: Option<Requires> = input.parse()?;
             let recommends: Option<Recommends> = input.parse()?;
             let ensures: Option<Ensures> = input.parse()?;
-            let decreases: Option<Decreases> = input.parse()?;
+            let decreases: Option<SignatureDecreases> = input.parse()?;
 
             Ok(Signature {
                 publish,
@@ -1577,6 +1587,7 @@ pub mod parsing {
                 inputs,
                 variadic,
                 output,
+                prover,
                 requires,
                 recommends,
                 ensures,

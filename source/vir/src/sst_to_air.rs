@@ -341,8 +341,8 @@ fn call_namespace(arg: Expr, typ_args: &Typs, atomicity: InvAtomicity) -> Expr {
 pub fn mask_set_from_spec(spec: &MaskSpec, mode: Mode) -> MaskSet {
     match spec {
         MaskSpec::NoSpec => {
-            // By default, we assume an #[exec] fn can open any invariant, and that
-            // a #[proof] fn can open no invariants.
+            // By default, we assume an #[verifier::exec] fn can open any invariant, and that
+            // a #[verifier::proof] fn can open no invariants.
             if mode == Mode::Exec { MaskSet::full() } else { MaskSet::empty() }
         }
         MaskSpec::InvariantOpens(exprs) if exprs.len() == 0 => MaskSet::empty(),

@@ -116,6 +116,41 @@ spec fn test_rec2(x: int, y: int) -> int
     }
 }
 
+/// Decreases and recommends may specify additional clauses:
+///   - decreases .. "when" restricts the function definition to a condition
+///     that makes the function terminate
+///   - decreases .. "via" specifies a proof function that proves the termination
+///   - recommends .. "when" specifies a proof function that proves the
+///     recommendations of the functions invoked in the body
+spec fn add0(a: nat, b: nat) -> nat
+    recommends a > 0
+    via add0_recommends
+{
+    a + b
+}
+
+spec fn dec0(a: int) -> int
+    decreases a
+    when a > 0
+    via dec0_decreases
+{
+    if a > 0 {
+        dec0(a - 1)
+    } else {
+        0
+    }
+}
+
+#[via_fn]
+proof fn add0_recommends(a: nat, b: nat) {
+    // proof
+}
+
+#[via_fn]
+proof fn dec0_decreases(a: int) {
+    // proof
+}
+
 /// variables may be exec, tracked, or ghost
 ///   - exec: compiled
 ///   - tracked: erased before compilation, checked for lifetimes (advanced feature, discussed later)
@@ -159,6 +194,16 @@ fn assert_by_provers(x: u32) {
     assert(x ^ x == 0u32) by(bit_vector);
     assert(2 <= x && x < 10 ==> x * x > x) by(nonlinear_arith);
 }
+
+/// "assert by" provers can also appear on function signatures to select a specific prover
+/// for the function body.
+proof fn lemma_mul_upper_bound(x: int, x_bound: int, y: int, y_bound: int)
+    by (nonlinear_arith)
+    requires x <= x_bound, y <= y_bound, 0 <= x, 0 <= y,
+    ensures x * y <= x_bound * y_bound,
+{
+}
+
 
 /// "assert by" can use nonlinear_arith with proof code,
 /// where "requires" clauses selectively make facts available to the proof code.

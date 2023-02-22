@@ -227,9 +227,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_short_circuit1 code! {
         fn f3(a: bool, b: bool) {
-            #[spec] let mut x: u64 = 0;
-            #[spec] let y: bool = imply(a, b);
-            #[spec] let z: bool = imply(a, { x = x + 1; b });
+            #[verifier::spec] let mut x: u64 = 0;
+            #[verifier::spec] let y: bool = imply(a, b);
+            #[verifier::spec] let z: bool = imply(a, { x = x + 1; b });
             assert(y == z);
             assert((x == 1) == a);
         }
@@ -366,7 +366,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_init_spec_param_fail_1 code! {
-        fn test1(#[spec] x: u64) {
+        fn test1(#[verifier::spec] x: u64) {
             x = 5;
         }
     } => Err(e) => assert_vir_error_msg(e, "cannot assign to non-mut parameter")
@@ -383,7 +383,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     // TODO restore this test when erasure is overhauled
     #[ignore] #[test] equal_regression_148 code! {
-        #[proof]
+        #[verifier::proof]
         fn f() {
             equal(1 as nat, 1);
         }

@@ -20,6 +20,9 @@ fn check_well_founded(
         return Ok(*well_founded);
     }
     datatypes_well_founded.insert(path.clone(), false);
+    if !datatypes.contains_key(path) {
+        panic!("{:?}", path);
+    }
     let datatype = &datatypes[path];
     'variants: for variant in datatype.x.variants.iter() {
         for field in variant.a.iter() {

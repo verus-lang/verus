@@ -52,8 +52,8 @@ const M1_OPAQUE: &str = code_str! {
             pub four_doors: bool,
         }
 
-        #[spec]
-        #[verifier(publish)] #[verifier(opaque_outside_module)]
+        #[verifier::spec]
+        #[verifier(publish)] /* vattr */ #[verifier(opaque_outside_module)] /* vattr */
         pub fn is_four_doors(c: Car) -> bool {
             c.four_doors
         }
@@ -93,7 +93,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_mod_adt_no_verify code! {
-        #[verifier(external_body)]
+        #[verifier(external_body)] /* vattr */
         #[derive(PartialEq, Eq)]
         pub struct Car {
             pub four_doors: bool,
@@ -107,7 +107,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_mod_child_ok code! {
-        #[spec]
+        #[verifier::spec]
         fn f() -> bool {
             true
         }
@@ -123,7 +123,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_mod_sibling_fail code! {
         mod M0 {
-            #[spec]
+            #[verifier::spec]
             pub fn f() -> bool {
                 true
             }
@@ -140,7 +140,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_requires_private code! {
         mod M1 {
-            #[spec]
+            #[verifier::spec]
             fn f() -> bool { true }
 
             pub fn g() {
@@ -158,7 +158,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_publish_but_not_marked_pub verus_code! {
-        #[spec]
+        #[verifier::spec]
         #[verifier(publish)]
         fn bar() -> u64 {
             7
@@ -168,36 +168,36 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] publish_proof_fail code! {
-        #[proof]
-        #[verifier(publish)]
+        #[verifier::proof]
+        #[verifier(publish)] /* vattr */
         pub fn bar() {
         }
-    } => Err(err) => assert_vir_error_msg(err, "function is marked #[verifier(publish)] but not marked #[spec]")
+    } => Err(err) => assert_vir_error_msg(err, "function is marked #[verifier(publish)] but not marked #[verifier::spec]")
 }
 
 test_verify_one_file! {
     #[test] publish_exec_fail code! {
-        #[verifier(publish)]
+        #[verifier(publish)] /* vattr */
         pub fn bar() {
         }
-    } => Err(err) => assert_vir_error_msg(err, "function is marked #[verifier(publish)] but not marked #[spec]")
+    } => Err(err) => assert_vir_error_msg(err, "function is marked #[verifier(publish)] but not marked #[verifier::spec]")
 }
 
 test_verify_one_file! {
     #[test] main_proof_fail code! {
-        #[proof]
+        #[verifier::proof]
         pub fn main() {
         }
-    } => Err(err) => assert_vir_error_msg(err, "`main` function should be #[exec]")
+    } => Err(err) => assert_vir_error_msg(err, "`main` function should be #[verifier::exec]")
 }
 
 test_verify_one_file! {
     #[test] main_spec_fail code! {
-        #[spec]
+        #[verifier::spec]
         pub fn main() {
             ()
         }
-    } => Err(err) => assert_vir_error_msg(err, "`main` function should be #[exec]")
+    } => Err(err) => assert_vir_error_msg(err, "`main` function should be #[verifier::exec]")
 }
 
 test_verify_one_file! {

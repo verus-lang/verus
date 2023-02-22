@@ -37,6 +37,14 @@ pub(crate) fn err_span_string<A>(span: Span, msg: String) -> Result<A, VirErr> {
     err_string(&to_air_span(span), msg)
 }
 
+pub(crate) fn vir_err_span_str(span: Span, msg: &str) -> VirErr {
+    vir_err_span_string(span, msg.to_string())
+}
+
+pub(crate) fn vir_err_span_string(span: Span, msg: String) -> VirErr {
+    air::messages::error(msg, &to_air_span(span))
+}
+
 pub(crate) fn unsupported_err_span<A>(span: Span, msg: String) -> Result<A, VirErr> {
     err_span_string(
         span,

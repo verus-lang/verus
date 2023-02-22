@@ -127,15 +127,15 @@ test_verify_one_file! {
         }
 
         impl V {
-            #[spec]
+            #[verifier::spec]
             fn mkint(self, _i: int) -> int {
                 8
             }
         }
 
         impl S {
-            #[proof]
-            fn f(#[proof]&self, #[spec] x: int) {
+            #[verifier::proof]
+            fn f(#[verifier::proof]&self, #[verifier::spec] x: int) {
 
             }
 
@@ -144,7 +144,7 @@ test_verify_one_file! {
                 7
             }
 
-            #[spec]
+            #[verifier::spec]
             fn view(self) -> V {
                 V {}
             }
@@ -152,10 +152,10 @@ test_verify_one_file! {
 
         fn test() {
             let s = S {};
-            #[spec] let i: int = 10;
+            #[verifier::spec] let i: int = 10;
             s.f(s.mkint(i));
             assert(s.mkint(i) == s.mkint(i));
-            #[spec] let x: u64 = s.mkint(10);
+            #[verifier::spec] let x: u64 = s.mkint(10);
         }
     } => Ok(())
 }
@@ -169,7 +169,7 @@ test_verify_one_file! {
         }
 
         impl V {
-            #[spec]
+            #[verifier::spec]
             fn mkint(self, _i: int) -> int {
                 8
             }
@@ -177,12 +177,12 @@ test_verify_one_file! {
 
         impl S {
             #[verifier(autoview)]
-            #[spec] // ERROR: autoview cannot be spec
+            #[verifier::spec] // ERROR: autoview cannot be spec
             fn mkint(&self, _u: u64) -> u64 {
                 7
             }
 
-            #[spec]
+            #[verifier::spec]
             fn view(self) -> V {
                 V {}
             }
@@ -199,7 +199,7 @@ test_verify_one_file! {
         }
 
         impl V {
-            #[spec]
+            #[verifier::spec]
             fn mkint(self, _i: int) -> int {
                 8
             }
@@ -211,7 +211,7 @@ test_verify_one_file! {
                 7
             }
 
-            #[spec]
+            #[verifier::spec]
             // ERROR: wrong signature for view
             fn view(self, foo: int) -> V {
                 V {}
@@ -229,7 +229,7 @@ test_verify_one_file! {
         }
 
         impl V {
-            #[spec]
+            #[verifier::spec]
             fn mkint(self, _i: int) -> int {
                 8
             }

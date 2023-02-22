@@ -81,19 +81,19 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_not_yet_supported_10 code! {
         trait T {
-            #[spec]
+            #[verifier::spec]
             fn f(&self) -> bool { no_method_body() }
 
-            #[proof]
+            #[verifier::proof]
             fn p(&self) {
                 ensures(exists(|x: &Self| self.f() != x.f()));
                 no_method_body()
             }
         }
 
-        #[proof]
-        #[verifier(external_body)]
-        #[verifier(broadcast_forall)]
+        #[verifier::proof]
+        #[verifier(external_body)] /* vattr */
+        #[verifier(broadcast_forall)] /* vattr */
         fn f_not_g<A: T>() {
             ensures(exists(|x: &A, y: &A| x.f() != y.f()));
         }
@@ -109,12 +109,12 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_not_yet_supported_11 code! {
         trait T {
-            #[spec]
+            #[verifier::spec]
             fn f(&self) -> bool { no_method_body() }
         }
 
         trait S : T {
-            #[spec]
+            #[verifier::spec]
             fn g(&self) -> bool { no_method_body() }
         }
     } => Err(err) => assert_error_msg(err, ": trait generic bounds")
@@ -127,7 +127,7 @@ test_verify_one_file! {
         }
 
         trait SomeTrait {
-            #[spec]
+            #[verifier::spec]
             fn f(&self) -> bool { no_method_body() }
         }
 
@@ -276,7 +276,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_mode_matches_3 code! {
         trait T1 {
-            fn f(#[spec] &self) {
+            fn f(#[verifier::spec] &self) {
                 no_method_body()
             }
         }
@@ -297,7 +297,7 @@ test_verify_one_file! {
         }
         struct S {}
         impl T1 for S {
-            fn f(#[spec] &self) {
+            fn f(#[verifier::spec] &self) {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "self has mode spec, function has mode exec")
@@ -352,7 +352,7 @@ test_verify_one_file! {
         }
         struct S {}
         impl T1 for S {
-            #[verifier(returns(spec))]
+            #[verifier(returns(spec))] /* vattr */
             fn f(&self) -> bool {
                 true
             }

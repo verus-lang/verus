@@ -30,9 +30,9 @@ pub fn attribute_is_variant(
                         );
 
                         quote! {
-                            #[spec]
+                            #[verifier::spec]
                             #[allow(non_snake_case)]
-                            #[verifier(get_variant(#variant_ident, #field_ident))]
+                            #[verifier(get_variant(#variant_ident, #field_ident))] /* vattr */
                             pub fn #get_ident(self) -> #field_ty {
                                 unimplemented!()
                             }
@@ -54,9 +54,9 @@ pub fn attribute_is_variant(
                         );
 
                         quote! {
-                            #[spec]
+                            #[verifier::spec]
                             #[allow(non_snake_case)]
-                            #[verifier(get_variant(#variant_ident_str, #field_lit))]
+                            #[verifier(get_variant(#variant_ident_str, #field_lit))] /* vattr */
                             pub fn #get_ident(self) -> #field_ty {
                                 unimplemented!()
                             }
@@ -67,8 +67,8 @@ pub fn attribute_is_variant(
             };
 
             quote! {
-                #[spec]
-                #[verifier(is_variant(#variant_ident_str))]
+                #[verifier::spec]
+                #[verifier(is_variant(#variant_ident_str))] /* vattr */
                 #[allow(non_snake_case)]
                 pub fn #fun_ident(&self) -> bool { unimplemented!() }
 

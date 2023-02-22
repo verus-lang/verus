@@ -682,6 +682,9 @@ pub trait VisitMut {
     fn visit_signature_mut(&mut self, i: &mut Signature) {
         visit_signature_mut(self, i);
     }
+    fn visit_signature_decreases_mut(&mut self, i: &mut SignatureDecreases) {
+        visit_signature_decreases_mut(self, i);
+    }
     fn visit_span_mut(&mut self, i: &mut Span) {
         visit_span_mut(self, i);
     }
@@ -3535,6 +3538,10 @@ where
 {
     tokens_helper(v, &mut node.token.span);
     v.visit_specification_mut(&mut node.exprs);
+    if let Some(it) = &mut node.via {
+        tokens_helper(v, &mut (it).0.span);
+        v.visit_expr_mut(&mut (it).1);
+    }
 }
 pub fn visit_requires_mut<V>(v: &mut V, node: &mut Requires)
 where
@@ -3598,6 +3605,11 @@ where
         v.visit_variadic_mut(it);
     }
     v.visit_return_type_mut(&mut node.output);
+    if let Some(it) = &mut node.prover {
+        tokens_helper(v, &mut (it).0.span);
+        tokens_helper(v, &mut (it).1.span);
+        v.visit_ident_mut(&mut (it).2);
+    }
     if let Some(it) = &mut node.requires {
         v.visit_requires_mut(it);
     }
@@ -3608,7 +3620,21 @@ where
         v.visit_ensures_mut(it);
     }
     if let Some(it) = &mut node.decreases {
-        v.visit_decreases_mut(it);
+        v.visit_signature_decreases_mut(it);
+    }
+}
+pub fn visit_signature_decreases_mut<V>(v: &mut V, node: &mut SignatureDecreases)
+where
+    V: VisitMut + ?Sized,
+{
+    v.visit_decreases_mut(&mut node.decreases);
+    if let Some(it) = &mut node.when {
+        tokens_helper(v, &mut (it).0.span);
+        v.visit_expr_mut(&mut (it).1);
+    }
+    if let Some(it) = &mut node.via {
+        tokens_helper(v, &mut (it).0.span);
+        v.visit_expr_mut(&mut (it).1);
     }
 }
 pub fn visit_span_mut<V>(v: &mut V, node: &mut Span)

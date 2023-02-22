@@ -49,7 +49,7 @@ enum Ghost {
 // For example, if there are arithmetic operations that are exec (and therefore not erased),
 // then the AIR/SMT code will insert overflow checks for those arithmetic operations.
 // Example:
-//   fn test(#[exec] e: u64, #[spec] s: u64) {
+//   fn test(#[verifier::exec] e: u64, #[verifier::spec] s: u64) {
 //     if e + 1 < s { ... }
 //   }
 // Here, e + 1 < y is erased because the "<" comparison with s is spec, not exec.
@@ -529,7 +529,7 @@ fn check_expr_handle_mut_arg(
                     let arg_mode_write = arg_mode_write.expect("internal error: no arg_mode_write");
                     if arg_mode_read != param_mode {
                         return err_string(
-                            &param.span,
+                            &arg.span,
                             format!(
                                 "expected mode {}, &mut argument has mode {}",
                                 param_mode, arg_mode_read
@@ -538,7 +538,7 @@ fn check_expr_handle_mut_arg(
                     }
                     if arg_mode_write != param_mode {
                         return err_string(
-                            &param.span,
+                            &arg.span,
                             format!(
                                 "expected mode {}, &mut argument has mode {}",
                                 param_mode, arg_mode_write

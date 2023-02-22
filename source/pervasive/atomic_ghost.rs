@@ -24,8 +24,8 @@ macro_rules! declare_atomic_type {
             where Pred: AtomicInvariantPredicate<K, $value_ty, G>
         {
             #[cfg(not(verus_macro_erase_ghost))]
-            #[verifier(publish)]
-            #[spec]
+            #[verifier(publish)] /* vattr */
+            #[verifier::spec]
             fn inv(k_loc: (K, int), perm_g: ($perm_ty, G)) -> bool {
                 let (k, loc) = k_loc;
                 let (perm, g) = perm_g;
@@ -50,26 +50,26 @@ macro_rules! declare_atomic_type {
             pub patomic: $patomic_ty,
 
             #[doc(hidden)]
-            #[proof] pub atomic_inv: AtomicInvariant<(K, int), ($perm_ty, G), $atomic_pred_ty<Pred>>,
+            #[verifier::proof] pub atomic_inv: AtomicInvariant<(K, int), ($perm_ty, G), $atomic_pred_ty<Pred>>,
         }
 
         impl<K, G, Pred> $at_ident<K, G, Pred>
             where Pred: AtomicInvariantPredicate<K, $value_ty, G>
         {
             #[cfg(not(verus_macro_erase_ghost))]
-            #[spec] #[verifier(publish)]
+            #[verifier::spec] #[verifier(publish)] /* vattr */
             pub fn well_formed(&self) -> bool {
                 self.atomic_inv.constant().1 == self.patomic.id()
             }
 
             #[cfg(not(verus_macro_erase_ghost))]
-            #[spec] #[verifier(publish)]
+            #[verifier::spec] #[verifier(publish)] /* vattr */
             pub fn constant(&self) -> K {
                 self.atomic_inv.constant().0
             }
 
             #[inline(always)]
-            pub fn new(#[spec] k: K, u: $value_ty, #[proof] g: G) -> Self {
+            pub fn new(#[verifier::spec] k: K, u: $value_ty, #[verifier::proof] g: G) -> Self {
                 #[cfg(not(verus_macro_erase_ghost))]
                 requires(Pred::atomic_inv(k, u, g));
                 #[cfg(not(verus_macro_erase_ghost))]
@@ -78,8 +78,8 @@ macro_rules! declare_atomic_type {
                 let (patomic, Proof(perm)) = $patomic_ty::new(u);
                 #[cfg(not(verus_macro_erase_ghost))]
                 {
-                    #[proof] let pair = (perm, g);
-                    #[proof] let atomic_inv = AtomicInvariant::new(
+                    #[verifier::proof] let pair = (perm, g);
+                    #[verifier::proof] let atomic_inv = AtomicInvariant::new(
                         (k, patomic.id()),
                         pair,
                         spec_literal_int("0"));
@@ -338,11 +338,11 @@ macro_rules! atomic_with_ghost_store {
             let atomic = &($e);
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
                 #[allow(unused_mut)]
-                #[proof] let (mut perm, mut $g) = pair;
-                #[spec] let $prev = perm.view().value;
+                #[verifier::proof] let (mut perm, mut $g) = pair;
+                #[verifier::spec] let $prev = perm.view().value;
                 atomic.patomic.store(&mut perm, $operand);
-                #[spec] let $next = perm.view().value;
-                #[spec] let $res = ();
+                #[verifier::spec] let $next = perm.view().value;
+                #[verifier::spec] let $res = ();
 
                 proof { $b }
 
@@ -362,11 +362,11 @@ macro_rules! atomic_with_ghost_load {
             let atomic = &($e);
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
                 #[allow(unused_mut)]
-                #[proof] let (perm, mut $g) = pair;
+                #[verifier::proof] let (perm, mut $g) = pair;
                 result = atomic.patomic.load(&perm);
-                #[spec] let $res = result;
-                #[spec] let $prev = result;
-                #[spec] let $next = result;
+                #[verifier::spec] let $res = result;
+                #[verifier::spec] let $prev = result;
+                #[verifier::spec] let $next = result;
 
                 proof { $b }
 
@@ -387,10 +387,10 @@ macro_rules! atomic_with_ghost_no_op {
             let atomic = &($e);
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
                 #[allow(unused_mut)]
-                #[proof] let (perm, mut $g) = pair;
-                #[spec] let $res = result;
-                #[spec] let $prev = result;
-                #[spec] let $next = result;
+                #[verifier::proof] let (perm, mut $g) = pair;
+                #[verifier::spec] let $res = result;
+                #[verifier::spec] let $prev = result;
+                #[verifier::spec] let $next = result;
 
                 proof { $b }
 
@@ -412,11 +412,11 @@ macro_rules! atomic_with_ghost_update_with_1_operand {
             let operand = $operand;
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
                 #[allow(unused_mut)]
-                #[proof] let (mut perm, mut $g) = pair;
-                #[spec] let $prev = perm.view().value;
+                #[verifier::proof] let (mut perm, mut $g) = pair;
+                #[verifier::spec] let $prev = perm.view().value;
                 result = atomic.patomic.$name(&mut perm, operand);
-                #[spec] let $res = result;
-                #[spec] let $next = perm.view().value;
+                #[verifier::spec] let $res = result;
+                #[verifier::spec] let $next = perm.view().value;
 
                 proof { $b }
 
@@ -440,11 +440,11 @@ macro_rules! atomic_with_ghost_update_with_2_operand {
             let operand2 = $operand2;
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
                 #[allow(unused_mut)]
-                #[proof] let (mut perm, mut $g) = pair;
-                #[spec] let $prev = perm.view().value;
+                #[verifier::proof] let (mut perm, mut $g) = pair;
+                #[verifier::spec] let $prev = perm.view().value;
                 result = atomic.patomic.$name(&mut perm, operand1, operand2);
-                #[spec] let $res = result;
-                #[spec] let $next = perm.view().value;
+                #[verifier::spec] let $res = result;
+                #[verifier::spec] let $next = perm.view().value;
 
                 proof { $b }
 
@@ -467,12 +467,12 @@ macro_rules! atomic_with_ghost_update_fetch_add {
             let operand = $operand;
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
                 #[allow(unused_mut)]
-                #[proof] let (mut perm, mut $g) = pair;
+                #[verifier::proof] let (mut perm, mut $g) = pair;
 
                 proof {
-                    #[spec] let $prev = perm.view().value as int;
-                    #[spec] let $res = perm.view().value as int;
-                    #[spec] let $next = perm.view().value as int + (operand as int);
+                    #[verifier::spec] let $prev = perm.view().value as int;
+                    #[verifier::spec] let $res = perm.view().value as int;
+                    #[verifier::spec] let $next = perm.view().value as int + (operand as int);
 
                     { $b }
                 }
@@ -498,12 +498,12 @@ macro_rules! atomic_with_ghost_update_fetch_sub {
             let operand = $operand;
             crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
                 #[allow(unused_mut)]
-                #[proof] let (mut perm, mut $g) = pair;
+                #[verifier::proof] let (mut perm, mut $g) = pair;
 
                 proof {
-                    #[spec] let $prev = perm.view().value as int;
-                    #[spec] let $res = perm.view().value as int;
-                    #[spec] let $next = perm.view().value as int - (operand as int);
+                    #[verifier::spec] let $prev = perm.view().value as int;
+                    #[verifier::spec] let $res = perm.view().value as int;
+                    #[verifier::spec] let $next = perm.view().value as int - (operand as int);
 
                     { $b }
                 }

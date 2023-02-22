@@ -78,7 +78,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_fails code! {
-        struct List<#[verifier(maybe_negative)] A> {
+        struct List<#[verifier(maybe_negative)] /* vattr */ A> {
             a: A,
         }
 
@@ -111,7 +111,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test2_fails code! {
-        struct List<#[verifier(maybe_negative)] A> {
+        struct List<#[verifier(maybe_negative)] /* vattr */ A> {
             a: A,
         }
 
@@ -149,7 +149,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test3_fails code! {
-        struct List<#[verifier(maybe_negative)] A> {
+        struct List<#[verifier(maybe_negative)] /* vattr */ A> {
             a: A,
         }
 
@@ -168,12 +168,12 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test5_ok code! {
-        #[verifier(external_body)]
-        struct Map<#[verifier(maybe_negative)] K, #[verifier(strictly_positive)] V> {
+        #[verifier(external_body)] /* vattr */
+        struct Map<#[verifier(maybe_negative)] /* vattr */ K, #[verifier(strictly_positive)] /* vattr */ V> {
             dummy: std::marker::PhantomData<(K, V)>,
         }
 
-        struct D<#[verifier(maybe_negative)] A, B> {
+        struct D<#[verifier(maybe_negative)] /* vattr */ A, B> {
             d: Map<int, D<A, B>>,
             a: Map<A, int>,
             b: Map<int, B>,
@@ -183,8 +183,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test5_fails1 code! {
-        #[verifier(external_body)]
-        struct Map<#[verifier(maybe_negative)] K, V> {
+        #[verifier(external_body)] /* vattr */
+        struct Map<#[verifier(maybe_negative)] /* vattr */ K, V> {
             dummy: std::marker::PhantomData<(K, V)>,
         }
     } => Err(err) => assert_error_msg(err, "in external_body datatype, each type parameter must be either #[verifier(maybe_negative)] or #[verifier(strictly_positive)]")
@@ -192,8 +192,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test5_fails2 code! {
-        #[verifier(external_body)]
-        struct Map<#[verifier(maybe_negative)] K, #[verifier(strictly_positive)] V> {
+        #[verifier(external_body)] /* vattr */
+        struct Map<#[verifier(maybe_negative)] /* vattr */ K, #[verifier(strictly_positive)] /* vattr */ V> {
             dummy: std::marker::PhantomData<(K, V)>,
         }
 
@@ -207,12 +207,12 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test5_fails3 code! {
-        #[verifier(external_body)]
-        struct Map<#[verifier(maybe_negative)] K, #[verifier(strictly_positive)] V> {
+        #[verifier(external_body)] /* vattr */
+        struct Map<#[verifier(maybe_negative)] /* vattr */ K, #[verifier(strictly_positive)] /* vattr */ V> {
             dummy: std::marker::PhantomData<(K, V)>,
         }
 
-        struct D<#[verifier(maybe_negative)] A, B> {
+        struct D<#[verifier(maybe_negative)] /* vattr */ A, B> {
             d: Map<D<A, B>, int>,
             a: Map<A, int>,
             b: Map<int, B>,
@@ -222,7 +222,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] lifetimes_no_positivity code! {
-        #[verifier(external_body)]
+        #[verifier(external_body)] /* vattr */
         struct Str<'a> {
             inner: &'a str,
         }

@@ -114,6 +114,7 @@ ast_struct! {
     pub struct Recommends {
         pub token: Token![recommends],
         pub exprs: Specification,
+        pub via: Option<(Token![via], Expr)>,
     }
 }
 
@@ -142,6 +143,14 @@ ast_struct! {
     pub struct Decreases {
         pub token: Token![decreases],
         pub exprs: Specification,
+    }
+}
+
+ast_struct! {
+    pub struct SignatureDecreases {
+        pub decreases: Decreases,
+        pub when: Option<(Token![when], Expr)>,
+        pub via: Option<(Token![via], Expr)>,
     }
 }
 
@@ -358,10 +367,17 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Recommends {
         fn parse(input: ParseStream) -> Result<Self> {
-            Ok(Recommends {
-                token: input.parse()?,
-                exprs: input.parse()?,
-            })
+            let token = input.parse()?;
+            let exprs = input.parse()?;
+            let via = if input.peek(Token![via]) {
+                let via_token: Token![via] = input.parse()?;
+                // let expr = input.parse()?;
+                let expr = Expr::parse_without_eager_brace(input)?;
+                Some((via_token, expr))
+            } else {
+                None
+            };
+            Ok(Recommends { token, exprs, via })
         }
     }
 
@@ -401,6 +417,32 @@ pub mod parsing {
             Ok(Decreases {
                 token: input.parse()?,
                 exprs: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for SignatureDecreases {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let decreases = input.parse()?;
+            let when = if input.peek(Token![when]) {
+                let when_token = input.parse()?;
+                let expr = Expr::parse_without_eager_brace(input)?;
+                Some((when_token, expr))
+            } else {
+                None
+            };
+            let via = if input.peek(Token![via]) {
+                let via_token = input.parse()?;
+                let expr = Expr::parse_without_eager_brace(input)?;
+                Some((via_token, expr))
+            } else {
+                None
+            };
+            Ok(SignatureDecreases {
+                decreases,
+                when,
+                via,
             })
         }
     }
@@ -462,6 +504,17 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Option<Decreases> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![decreases]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<SignatureDecreases> {
         fn parse(input: ParseStream) -> Result<Self> {
             if input.peek(Token![decreases]) {
                 input.parse().map(Some)
@@ -734,6 +787,21 @@ mod printing {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.token.to_tokens(tokens);
             self.exprs.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for SignatureDecreases {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.decreases.to_tokens(tokens);
+            if let Some((when_token, when)) = &self.via {
+                when_token.to_tokens(tokens);
+                when.to_tokens(tokens);
+            }
+            if let Some((via_token, via)) = &self.via {
+                via_token.to_tokens(tokens);
+                via.to_tokens(tokens);
+            }
         }
     }
 

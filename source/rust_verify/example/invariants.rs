@@ -15,9 +15,9 @@ impl InvariantPredicate<int, u32> for ModPredicate {
 }
 
 pub fn main() {
-  #[proof] let u: u32 = 5;
+  #[verifier::proof] let u: u32 = 5;
 
-  #[proof] let i: AtomicInvariant<int, u32, ModPredicate> = AtomicInvariant::new(
+  #[verifier::proof] let i: AtomicInvariant<int, u32, ModPredicate> = AtomicInvariant::new(
       verus_proof_expr!(1),
       u,
       verus_proof_expr!(0));
@@ -28,20 +28,20 @@ pub fn main() {
     }
   });
 
-  #[proof] let j: AtomicInvariant<int, u32, ModPredicate> = AtomicInvariant::new(
+  #[verifier::proof] let j: AtomicInvariant<int, u32, ModPredicate> = AtomicInvariant::new(
       verus_proof_expr!(1),
       7,
       verus_proof_expr!(1));
 
   open_atomic_invariant!(&i => inner_i => {
     open_atomic_invariant!(&j => inner_j => {
-      #[proof] let tmp = inner_i;
+      #[verifier::proof] let tmp = inner_i;
       inner_i = inner_j;
       inner_j = tmp;
     });
   });
 
-  #[proof] let j = i.into_inner();
+  #[verifier::proof] let j = i.into_inner();
 
   assert(verus_proof_expr!(j % 2 == 1));
 }

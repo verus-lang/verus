@@ -35,13 +35,13 @@ test_both! {
     basic_usage basic_usage_local code! {
         use crate::pervasive::invariant::*;
 
-        pub fn X<A, B: InvariantPredicate<A, u8>>(#[proof] i: AtomicInvariant<A, u8, B>) {
+        pub fn X<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
             requires([
                 i.inv(0)
             ]);
             open_atomic_invariant!(&i => inner => {
-                #[proof] let x = 5;
-                #[proof] let x = 6;
+                #[verifier::proof] let x = 5;
+                #[verifier::proof] let x = 6;
                 inner = 0;
             });
         }
@@ -52,7 +52,7 @@ test_both! {
     basic_usage2 basic_usage2_local code! {
         use crate::pervasive::invariant::*;
 
-        pub fn X<A, B: InvariantPredicate<A, u8>>(#[proof] i: AtomicInvariant<A, u8, B>) {
+        pub fn X<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
             open_atomic_invariant!(&i => inner => {
             });
         }
@@ -62,10 +62,10 @@ test_both! {
 test_both! {
     inv_fail inv_fail_local code! {
         use crate::pervasive::invariant::*;
-        pub fn X<A, B: InvariantPredicate<A, u8>>(#[proof] i: AtomicInvariant<A, u8, B>) {
+        pub fn X<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
             open_atomic_invariant!(&i => inner => {
-                #[proof] let x = 5;
-                #[proof] let x = 6;
+                #[verifier::proof] let x = 5;
+                #[verifier::proof] let x = 6;
                 inner = 0;
             }); // FAILS
         }
@@ -75,7 +75,7 @@ test_both! {
 test_both! {
     nested_failure nested_failure_local code! {
         use crate::pervasive::invariant::*;
-        pub fn nested<A, B: InvariantPredicate<A, u8>>(#[proof] i: AtomicInvariant<A, u8, B>) {
+        pub fn nested<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
             requires([
                 i.inv(0)
             ]);
@@ -92,7 +92,7 @@ test_both! {
 test_both! {
     nested_good nested_good_local verus_code! {
         use crate::pervasive::invariant::*;
-        pub fn nested_good<A, B: InvariantPredicate<A, u8>>(#[proof] i: AtomicInvariant<A, u8, B>, #[proof] j: AtomicInvariant<A, u8, B>)
+        pub fn nested_good<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>, #[verifier::proof] j: AtomicInvariant<A, u8, B>)
             requires
                 i.inv(0),
                 j.inv(1),
@@ -112,11 +112,11 @@ test_both! {
 test_both! {
     full_call_empty full_call_empty_local code! {
         use crate::pervasive::invariant::*;
-        #[proof]
+        #[verifier::proof]
         pub fn callee_mask_empty() {
           opens_invariants_none(); // will not open any invariant
         }
-        pub fn t1<A, B: InvariantPredicate<A, u8>>(#[proof] i: AtomicInvariant<A, u8, B>) {
+        pub fn t1<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
           open_atomic_invariant!(&i => inner => {
             callee_mask_empty();
           });
@@ -127,11 +127,11 @@ test_both! {
 test_both! {
     open_call_full open_call_full_local code! {
         use crate::pervasive::invariant::*;
-        #[proof]
+        #[verifier::proof]
         pub fn callee_mask_full() {
           opens_invariants_any(); // can open any invariant
         }
-        pub fn t2<A, B: InvariantPredicate<A, u8>>(#[proof] i: AtomicInvariant<A, u8, B>) {
+        pub fn t2<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
           open_atomic_invariant!(&i => inner => { // FAILS
             callee_mask_full();
           });
@@ -142,11 +142,11 @@ test_both! {
 test_both! {
     empty_open empty_open_local code! {
         use crate::pervasive::invariant::*;
-        #[proof]
+        #[verifier::proof]
         pub fn callee_mask_empty() {
           opens_invariants_none(); // will not open any invariant
         }
-        pub fn t3<A, B: InvariantPredicate<A, u8>>(#[proof] i: AtomicInvariant<A, u8, B>) {
+        pub fn t3<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
           opens_invariants_none();
           open_atomic_invariant!(&i => inner => { // FAILS
           });
@@ -160,7 +160,7 @@ test_both! {
     open_inv_in_spec open_inv_in_spec_local code! {
         use crate::pervasive::invariant::*;
 
-        #[spec]
+        #[verifier::spec]
         pub fn open_inv_in_spec<A, B: InvariantPredicate<A, u8>>(i: AtomicInvariant<A, u8, B>) {
           open_atomic_invariant!(&i => inner => {
           });
@@ -172,7 +172,7 @@ test_both! {
     inv_header_in_spec inv_header_in_spec_local code! {
         use crate::pervasive::invariant::*;
 
-        #[spec]
+        #[verifier::spec]
         pub fn inv_header_in_spec<A, B: InvariantPredicate<A, u8>>(i: AtomicInvariant<A, u8, B>) {
           opens_invariants_any();
         }
@@ -183,8 +183,8 @@ test_both! {
     open_inv_in_proof open_inv_in_proof_local code! {
         use crate::pervasive::invariant::*;
 
-        #[proof]
-        pub fn open_inv_in_proof<A, B: InvariantPredicate<A, u8>>(#[proof] i: AtomicInvariant<A, u8, B>) {
+        #[verifier::proof]
+        pub fn open_inv_in_proof<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
           opens_invariants_any();
           open_atomic_invariant!(&i => inner => {
           });
@@ -196,7 +196,7 @@ test_both! {
     inv_cannot_be_exec inv_cannot_be_exec_local code! {
         use crate::pervasive::invariant::*;
 
-        pub fn X<A, B: InvariantPredicate<A, u8>>(#[exec] i: AtomicInvariant<A, u8, B>) {
+        pub fn X<A, B: InvariantPredicate<A, u8>>(#[verifier::exec] i: AtomicInvariant<A, u8, B>) {
             open_atomic_invariant!(&i => inner => {
             });
         }
@@ -208,7 +208,7 @@ test_both! {
     inv_cannot_be_spec inv_cannot_be_spec_local code! {
         use crate::pervasive::invariant::*;
 
-        pub fn X<A, B: InvariantPredicate<A, u8>>(#[spec] i: AtomicInvariant<A, u8, B>) {
+        pub fn X<A, B: InvariantPredicate<A, u8>>(#[verifier::spec] i: AtomicInvariant<A, u8, B>) {
             open_atomic_invariant!(&i => inner => {
             });
         }
@@ -223,7 +223,7 @@ test_verify_one_file! {
 
         pub fn exec_fn() { }
 
-        pub fn X<A, B: InvariantPredicate<A, u8>>(#[proof] i: AtomicInvariant<A, u8, B>) {
+        pub fn X<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
             open_atomic_invariant!(&i => inner => {
                 exec_fn();
             });
@@ -235,11 +235,11 @@ test_both! {
     inv_lifetime inv_lifetime_local code! {
         use crate::pervasive::invariant::*;
 
-        #[proof]
-        fn throw_away<A, B: InvariantPredicate<A, u8>>(#[proof] i: AtomicInvariant<A, u8, B>) {
+        #[verifier::proof]
+        fn throw_away<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
         }
 
-        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[proof] i: AtomicInvariant<A, u8, B>) {
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
           requires([
             i.inv(0)
           ]);
@@ -254,7 +254,7 @@ test_both! {
     return_early return_early_local code! {
         use crate::pervasive::invariant::*;
 
-        pub fn blah<A, B: InvariantPredicate<A, u8>>(#[proof] i: AtomicInvariant<A, u8, B>) {
+        pub fn blah<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
           open_atomic_invariant!(&i => inner => {
             return;
           });
@@ -266,7 +266,7 @@ test_both! {
     return_early_nested return_early_nested_local code! {
         use crate::pervasive::invariant::*;
 
-        pub fn blah<A, B: InvariantPredicate<A, u8>>(#[proof] i: AtomicInvariant<A, u8, B>, #[proof] j: AtomicInvariant<A, u8, B>) {
+        pub fn blah<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>, #[verifier::proof] j: AtomicInvariant<A, u8, B>) {
           open_atomic_invariant!(&i => inner => {
             open_atomic_invariant!(&j => inner => {
               return;
@@ -280,7 +280,7 @@ test_both! {
     break_early break_early_local code! {
         use crate::pervasive::invariant::*;
 
-        pub fn blah<A, B: InvariantPredicate<A, u8>>(#[proof] i: AtomicInvariant<A, u8, B>) {
+        pub fn blah<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
           let mut idx = 0;
           while idx < 5 {
             open_atomic_invariant!(&i => inner => {
@@ -295,7 +295,7 @@ test_both! {
     continue_early continue_early_local code! {
         use crate::pervasive::invariant::*;
 
-        pub fn blah<A, B: InvariantPredicate<A, u8>>(#[proof] i: AtomicInvariant<A, u8, B>) {
+        pub fn blah<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
           let mut idx = 0;
           while idx < 5 {
             open_atomic_invariant!(&i => inner => {
@@ -310,8 +310,8 @@ test_both! {
     return_early_proof return_early_proof_local code! {
         use crate::pervasive::invariant::*;
 
-        #[proof]
-        pub fn blah<A, B: InvariantPredicate<A, u8>>(#[proof] i: AtomicInvariant<A, u8, B>) {
+        #[verifier::proof]
+        pub fn blah<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
           open_atomic_invariant!(&i => inner => {
             return;
           });
@@ -323,8 +323,8 @@ test_both! {
     break_early_proof break_early_proof_local code! {
         use crate::pervasive::invariant::*;
 
-        #[proof]
-        pub fn blah<A, B: InvariantPredicate<A, u8>>(#[proof] i: AtomicInvariant<A, u8, B>) {
+        #[verifier::proof]
+        pub fn blah<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
           let mut idx = 0;
           while idx < 5 {
             open_atomic_invariant!(&i => inner => {
@@ -340,8 +340,8 @@ test_both! {
     continue_early_proof continue_early_proof_local code! {
         use crate::pervasive::invariant::*;
 
-        #[proof]
-        pub fn blah<A, B: InvariantPredicate<A, u8>>(#[proof] i: AtomicInvariant<A, u8, B>) {
+        #[verifier::proof]
+        pub fn blah<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
           let mut idx = 0;
           while idx < 5 {
             open_atomic_invariant!(&i => inner => {
@@ -359,7 +359,7 @@ test_verify_one_file! {
     #[test] mixup1 code! {
         use crate::pervasive::invariant::*;
 
-        pub fn X<A, B: InvariantPredicate<A, u8>>(#[proof] i: LocalInvariant<A, u8, B>) {
+        pub fn X<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: LocalInvariant<A, u8, B>) {
             open_atomic_invariant!(&i => inner => {
             });
         }
@@ -370,7 +370,7 @@ test_verify_one_file! {
     #[test] mixup2 code! {
         use crate::pervasive::invariant::*;
 
-        pub fn X<A, B: InvariantPredicate<A, u8>>(#[proof] i: AtomicInvariant<A, u8, B>) {
+        pub fn X<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
             open_local_invariant!(&i => inner => {
             });
         }
@@ -381,7 +381,7 @@ test_verify_one_file! {
     #[test] nest_local_loop_local code! {
         use crate::pervasive::invariant::*;
 
-        pub fn X<A, B: InvariantPredicate<A, u8>>(#[proof] i: LocalInvariant<A, u8, B>, #[proof] j: LocalInvariant<A, u8, B>) {
+        pub fn X<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: LocalInvariant<A, u8, B>, #[verifier::proof] j: LocalInvariant<A, u8, B>) {
             open_local_invariant!(&i => inner => { // FAILS
                 let mut idx: u64 = 0;
                 while idx < 5 {
@@ -398,7 +398,7 @@ test_verify_one_file! {
     #[test] never_terminate_in_invariant code! {
         use crate::pervasive::invariant::*;
 
-        pub fn X<A, B: InvariantPredicate<A, u8>>(#[proof] i: LocalInvariant<A, u8, B>) {
+        pub fn X<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: LocalInvariant<A, u8, B>) {
             open_local_invariant!(&i => inner => {
                 inner = 7;
                 loop { }

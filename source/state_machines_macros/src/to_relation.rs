@@ -160,7 +160,7 @@ fn to_relation_stmt(
 fn prepend_conjunct(e: &Expr, p: Option<TokenStream>, msg: &str) -> Option<TokenStream> {
     let msg_lit = Lit::Str(LitStr::new(msg, e.span()));
     let err_attr = quote_spanned! { e.span() =>
-        #[verifier(custom_err(#msg_lit))]
+        #[verifier(custom_err(#msg_lit))] /* vattr */
     };
     match p {
         None => Some(quote_spanned! { e.span() => #err_attr (#e) }),

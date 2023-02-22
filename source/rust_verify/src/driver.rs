@@ -21,7 +21,11 @@ fn run_compiler<'a, 'b>(
     verifier: &'b mut (dyn rustc_driver::Callbacks + Send),
     file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
 ) -> Result<(), rustc_errors::ErrorReported> {
-    crate::config::enable_default_features(&mut rustc_args, syntax_macro, erase_ghost);
+    crate::config::enable_default_features_and_verus_attr(
+        &mut rustc_args,
+        syntax_macro,
+        erase_ghost,
+    );
     mk_compiler(&rustc_args, verifier, file_loader).run()
 }
 
@@ -251,7 +255,7 @@ where
         } else {
             verifier.lock().map_err(|_| ()).and_then(|verifier| {
                 if !verifier.args.no_lifetime {
-                    // Run borrow checker with both #[exec] and #[proof]
+                    // Run borrow checker with both #[verifier::exec] and #[verifier::proof]
                     let erasure_hints = verifier.erasure_hints.clone().expect("erasure_hints");
                     let mut callbacks = CompilerCallbacksEraseAst {
                         erasure_hints,
@@ -303,7 +307,7 @@ where
         return (verifier, Err(()));
     }
 
-    // Run borrow checker and compiler on #[exec] (if enabled)
+    // Run borrow checker and compiler on #[verifier::exec] (if enabled)
     if verifier.args.compile {
         let erasure_hints =
             verifier.erasure_hints.clone().expect("erasure_hints should be initialized").clone();

@@ -726,6 +726,8 @@ define_keywords! {
     "choose"      pub struct Choose       /// `choose`
     "is"          pub struct Is           /// `is`
     "FnSpec"      pub struct FnSpec       /// `FnSpec`
+    "via"         pub struct Via          /// `via`
+    "when"        pub struct When         /// `when`
 }
 
 define_punctuation! {
@@ -923,6 +925,8 @@ macro_rules! export_token_macro {
             [assume]      => { $crate::token::Assume };
             [implies]     => { $crate::token::Implies };
             [by]          => { $crate::token::By };
+            [via]         => { $crate::token::Via };
+            [when]        => { $crate::token::When };
             [forall]      => { $crate::token::Forall };
             [exists]      => { $crate::token::Exists };
             [choose]      => { $crate::token::Choose };

@@ -6,7 +6,7 @@ use common::*;
 test_verify_one_file! {
     #[test] test_overflow_spec_pass code! {
         fn test(a: u64) {
-            #[spec] let mut j = a;
+            #[verifier::spec] let mut j = a;
             j = j + 2;
             assert(j == a + 2);
         }
@@ -45,7 +45,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_overflow_spec_fails_2 code! {
         fn test(a: u64) {
-            #[spec] let mut j = a;
+            #[verifier::spec] let mut j = a;
             j = j + 2;
             j = j + 2;
             assert(j == a + 4); // FAILS

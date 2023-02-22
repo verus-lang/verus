@@ -3,149 +3,152 @@
 #![no_std]
 #![feature(unboxed_closures)]
 #![feature(fn_traits)]
+#![feature(register_tool)]
+#![register_tool(verus)]
+#![register_tool(verifier)]
 
 use core::marker::PhantomData;
 
-#[proof]
+#[verifier::proof]
 pub fn admit() {
     unimplemented!();
 }
 
 // Can only appear at beginning of function body
-#[proof]
+#[verifier::proof]
 pub fn no_method_body() -> ! {
     unimplemented!()
 }
 
 // Can only appear at beginning of function body
-#[proof]
+#[verifier::proof]
 pub fn requires<A>(_a: A) {
     unimplemented!();
 }
 
 // Can only appear at beginning of function body
-#[proof]
+#[verifier::proof]
 pub fn ensures<A>(_a: A) {
     unimplemented!();
 }
 
 // Can only appear at beginning of spec function body
-#[proof]
+#[verifier::proof]
 pub fn recommends<A>(_a: A) {
     unimplemented!();
 }
 
 // Can only appear at beginning of loop body
-#[proof]
+#[verifier::proof]
 pub fn invariant<A>(_a: A) {
     unimplemented!();
 }
 
 // Can only appear at beginning of loop body
-#[proof]
+#[verifier::proof]
 pub fn invariant_ensures<A>(_a: A) {
     unimplemented!();
 }
 
 // Can only appear at beginning of function body
-#[proof]
+#[verifier::proof]
 pub fn decreases<A>(_a: A) {
     unimplemented!();
 }
 
 // Can only appear at beginning of function body
 // decrease_when is automatically added to list of recommends
-#[proof]
+#[verifier::proof]
 pub fn decreases_when(_b: bool) {
     unimplemented!();
 }
 
 // Can only appear at beginning of function body
-#[proof]
+#[verifier::proof]
 pub fn decreases_by<F>(_f: F) {
     unimplemented!();
 }
 
 // Can only appear at beginning of function body
-#[proof]
+#[verifier::proof]
 pub fn recommends_by<F>(_f: F) {
     unimplemented!();
 }
 
 // Can only appear at beginning of function body
-#[proof]
+#[verifier::proof]
 pub fn hide<F>(_f: F) {
     unimplemented!();
 }
 
 // Can only appear at beginning of function body
-#[proof]
+#[verifier::proof]
 pub fn extra_dependency<F>(_f: F) {
     unimplemented!();
 }
 
 // Can only appear at beginning of function body
-#[proof]
+#[verifier::proof]
 pub fn opens_invariants_none() {
     unimplemented!();
 }
 
 // Can only appear at beginning of function body
-#[proof]
+#[verifier::proof]
 pub fn opens_invariants_any() {
     unimplemented!();
 }
 
 // Can only appear at beginning of function body
-#[proof]
+#[verifier::proof]
 pub fn opens_invariants<A>(_a: A) {
     unimplemented!();
 }
 
 // Can only appear at beginning of function body
-#[proof]
+#[verifier::proof]
 pub fn opens_invariants_except<A>(_a: A) {
     unimplemented!();
 }
 
-#[proof]
+#[verifier::proof]
 pub fn reveal<F>(_f: F) {
     unimplemented!();
 }
 
-#[proof]
+#[verifier::proof]
 pub fn reveal_with_fuel<F>(_f: F, _n: u32) {
     unimplemented!();
 }
 
-#[spec]
+#[verifier::spec]
 pub fn imply(_b1: bool, _b2: bool) -> bool {
     unimplemented!();
 }
 
-#[spec]
+#[verifier::spec]
 pub fn forall<A>(_a: A) -> bool {
     unimplemented!();
 }
 
-#[spec]
+#[verifier::spec]
 pub fn exists<A>(_a: A) -> bool {
     unimplemented!();
 }
 
-#[spec]
+#[verifier::spec]
 pub fn forall_arith<A>(_a: A) -> bool {
     unimplemented!();
 }
 
 // choose(|x: t| P(x))
-#[spec]
+#[verifier::spec]
 pub fn choose<A, F: Fn(A) -> bool>(_f: F) -> A {
     unimplemented!()
 }
 
 // let (x1, ..., xn): (t1, ..., tn) = choose_tuple(|x1: t1, ..., xn: tn| P(x1, ..., xn));
-#[spec]
+#[verifier::spec]
 pub fn choose_tuple<A, F>(_f: F) -> A {
     unimplemented!()
 }
@@ -153,7 +156,7 @@ pub fn choose_tuple<A, F>(_f: F) -> A {
 // used by with_triggers! macro
 // example: forall with three triggers [f(x), g(y)], [h(x, y)], [m(y, x)]:
 //   forall( |x: int, y: int| with_triggers(  ( (f(x), g(y)), (h(x, y),), (m(y, x),) )  ,  body  ) )
-#[spec]
+#[verifier::spec]
 pub fn with_triggers<A, B>(_triggers_tuples: A, body: B) -> B {
     body
 }
@@ -169,63 +172,63 @@ macro_rules! with_triggers {
     }
 }
 
-#[spec]
+#[verifier::spec]
 pub fn equal<A>(_: A, _: A) -> bool {
     unimplemented!();
 }
 
-#[spec]
+#[verifier::spec]
 pub fn old<A>(_: A) -> A {
     unimplemented!();
 }
 
-#[proof]
+#[verifier::proof]
 pub fn assume_(_: bool) {
     unimplemented!();
 }
 
-#[proof]
+#[verifier::proof]
 pub fn assert_(_: bool) {
     unimplemented!();
 }
 
-#[proof]
+#[verifier::proof]
 pub fn assert_by(_: bool, _: ()) {
     unimplemented!();
 }
 
-#[proof]
+#[verifier::proof]
 pub fn assert_by_compute(_: bool) {
     unimplemented!();
 }
 
-#[proof]
+#[verifier::proof]
 pub fn assert_by_compute_only(_: bool) {
     unimplemented!();
 }
 
-#[proof]
+#[verifier::proof]
 pub fn assert_nonlinear_by(_: ()) {
     unimplemented!();
 }
 
-#[proof]
+#[verifier::proof]
 pub fn assert_bitvector_by(_: ()) {
     unimplemented!();
 }
 
-#[proof]
+#[verifier::proof]
 pub fn assert_forall_by<A>(_a: A) {
     unimplemented!();
 }
 
-#[proof]
+#[verifier::proof]
 pub fn assert_bit_vector(_: bool) {
     unimplemented!();
 }
 
 // Used internally by erase.rs
-#[spec]
+#[verifier::spec]
 pub fn internal_arbitrary<A>(_: u64) -> A {
     unimplemented!()
 }
@@ -245,12 +248,12 @@ pub struct Tracked<#[verifier(strictly_positive)] A> {
 }
 
 impl<A> Ghost<A> {
-    #[spec]
+    #[verifier::spec]
     pub fn view(self) -> A {
         unimplemented!()
     }
 
-    #[spec]
+    #[verifier::spec]
     #[verifier(external_body)]
     pub fn new(_a: A) -> Ghost<A> {
         Ghost { phantom: PhantomData }
@@ -263,23 +266,23 @@ impl<A> Ghost<A> {
         Ghost { phantom: PhantomData }
     }
 
-    // note that because we return #[spec], not #[exec], we do not implement the Borrow trait
-    #[spec]
+    // note that because we return #[verifier::spec], not #[verifier::exec], we do not implement the Borrow trait
+    #[verifier::spec]
     #[verifier(external_body)]
     pub fn borrow(&self) -> &A {
         unimplemented!()
     }
 
-    // note that because we return #[spec], not #[exec], we do not implement the BorrowMut trait
-    #[proof]
+    // note that because we return #[verifier::spec], not #[verifier::exec], we do not implement the BorrowMut trait
+    #[verifier::proof]
     #[verifier(external)]
-    pub fn borrow_mut(#[proof] &mut self) -> &mut A {
+    pub fn borrow_mut(#[verifier::proof] &mut self) -> &mut A {
         unimplemented!()
     }
 }
 
 impl<A> Tracked<A> {
-    #[spec]
+    #[verifier::spec]
     pub fn view(self) -> A {
         unimplemented!()
     }
@@ -291,26 +294,26 @@ impl<A> Tracked<A> {
         Tracked { phantom: PhantomData }
     }
 
-    #[proof]
+    #[verifier::proof]
     #[verifier(external_body)]
     #[verifier(returns(proof))]
-    pub fn get(#[proof] self) -> A {
+    pub fn get(#[verifier::proof] self) -> A {
         unimplemented!()
     }
 
-    // note that because we return #[proof], not #[exec], we do not implement the Borrow trait
-    #[proof]
+    // note that because we return #[verifier::proof], not #[verifier::exec], we do not implement the Borrow trait
+    #[verifier::proof]
     #[verifier(external_body)]
     #[verifier(returns(proof))]
-    pub fn borrow(#[proof] &self) -> &A {
+    pub fn borrow(#[verifier::proof] &self) -> &A {
         unimplemented!()
     }
 
-    // note that because we return #[proof], not #[exec], we do not implement the BorrowMut trait
-    #[proof]
+    // note that because we return #[verifier::proof], not #[verifier::exec], we do not implement the BorrowMut trait
+    #[verifier::proof]
     #[verifier(external_body)]
     #[verifier(returns(proof))]
-    pub fn borrow_mut(#[proof] &mut self) -> &mut A {
+    pub fn borrow_mut(#[verifier::proof] &mut self) -> &mut A {
         unimplemented!()
     }
 }
@@ -599,7 +602,7 @@ impl Integer for char {}
 
 // spec literals of the form "33", which could have any Integer type
 #[allow(non_camel_case_types)]
-#[spec]
+#[verifier::spec]
 pub fn spec_literal_integer<
     hint_please_add_suffix_on_literal_like_100u32_or_100int_or_100nat: Integer,
 >(
@@ -610,120 +613,120 @@ pub fn spec_literal_integer<
 
 // spec literals of the form "33int",
 // or spec literals in positions syntactically expected to be int (e.g. in "x + 33")
-#[spec]
+#[verifier::spec]
 pub fn spec_literal_int(_s: &str) -> int {
     unimplemented!()
 }
 
 // spec literals of the form "33nat"
-#[spec]
+#[verifier::spec]
 pub fn spec_literal_nat(_s: &str) -> nat {
     unimplemented!()
 }
 
 // Fixed-width add
-#[spec]
+#[verifier::spec]
 pub fn add<IntegerType: Integer>(_left: IntegerType, _right: IntegerType) -> IntegerType {
     unimplemented!()
 }
 
 // Fixed-width sub
-#[spec]
+#[verifier::spec]
 pub fn sub<IntegerType: Integer>(_left: IntegerType, _right: IntegerType) -> IntegerType {
     unimplemented!()
 }
 
 // Fixed-width mul
-#[spec]
+#[verifier::spec]
 pub fn mul<IntegerType: Integer>(_left: IntegerType, _right: IntegerType) -> IntegerType {
     unimplemented!()
 }
 
 // represent "expr as typ", including converting to and from int and nat
-#[spec]
+#[verifier::spec]
 pub fn spec_cast_integer<From: Integer, To: Integer>(_from: From) -> To {
     unimplemented!()
 }
 
-#[spec]
+#[verifier::spec]
 pub fn spec_eq<Lhs, Rhs>(_lhs: Lhs, _rhs: Rhs) -> bool {
     unimplemented!()
 }
 
 pub trait SpecOrd<Rhs = Self> {
-    #[spec]
+    #[verifier::spec]
     fn spec_lt(self, rhs: Rhs) -> bool;
-    #[spec]
+    #[verifier::spec]
     fn spec_le(self, rhs: Rhs) -> bool;
-    #[spec]
+    #[verifier::spec]
     fn spec_gt(self, rhs: Rhs) -> bool;
-    #[spec]
+    #[verifier::spec]
     fn spec_ge(self, rhs: Rhs) -> bool;
 }
 
 pub trait SpecNeg {
     type Output;
-    #[spec]
+    #[verifier::spec]
     fn spec_neg(self) -> Self::Output;
 }
 
 pub trait SpecAdd<Rhs = Self> {
     type Output;
-    #[spec]
+    #[verifier::spec]
     fn spec_add(self, rhs: Rhs) -> Self::Output;
 }
 
 pub trait SpecSub<Rhs = Self> {
     type Output;
-    #[spec]
+    #[verifier::spec]
     fn spec_sub(self, rhs: Rhs) -> Self::Output;
 }
 
 pub trait SpecMul<Rhs = Self> {
     type Output;
-    #[spec]
+    #[verifier::spec]
     fn spec_mul(self, rhs: Rhs) -> Self::Output;
 }
 
 pub trait SpecEuclideanDiv<Rhs = Self> {
     type Output;
-    #[spec]
+    #[verifier::spec]
     fn spec_euclidean_div(self, rhs: Rhs) -> Self::Output;
 }
 
 pub trait SpecEuclideanMod<Rhs = Self> {
     type Output;
-    #[spec]
+    #[verifier::spec]
     fn spec_euclidean_mod(self, rhs: Rhs) -> Self::Output;
 }
 
 pub trait SpecBitAnd<Rhs = Self> {
     type Output;
-    #[spec]
+    #[verifier::spec]
     fn spec_bitand(self, rhs: Rhs) -> Self::Output;
 }
 
 pub trait SpecBitOr<Rhs = Self> {
     type Output;
-    #[spec]
+    #[verifier::spec]
     fn spec_bitor(self, rhs: Rhs) -> Self::Output;
 }
 
 pub trait SpecBitXor<Rhs = Self> {
     type Output;
-    #[spec]
+    #[verifier::spec]
     fn spec_bitxor(self, rhs: Rhs) -> Self::Output;
 }
 
 pub trait SpecShl<Rhs = Self> {
     type Output;
-    #[spec]
+    #[verifier::spec]
     fn spec_shl(self, rhs: Rhs) -> Self::Output;
 }
 
 pub trait SpecShr<Rhs = Self> {
     type Output;
-    #[spec]
+    #[verifier::spec]
     fn spec_shr(self, rhs: Rhs) -> Self::Output;
 }
 
@@ -732,32 +735,32 @@ pub struct SpecChain {
     data: PhantomData<int>,
 }
 
-#[spec]
+#[verifier::spec]
 pub fn spec_chained_value<IntegerType: Integer>(_a: IntegerType) -> SpecChain {
     unimplemented!()
 }
 
-#[spec]
+#[verifier::spec]
 pub fn spec_chained_le<IntegerType: Integer>(_left: SpecChain, _right: IntegerType) -> SpecChain {
     unimplemented!()
 }
 
-#[spec]
+#[verifier::spec]
 pub fn spec_chained_lt<IntegerType: Integer>(_left: SpecChain, _right: IntegerType) -> SpecChain {
     unimplemented!()
 }
 
-#[spec]
+#[verifier::spec]
 pub fn spec_chained_ge<IntegerType: Integer>(_left: SpecChain, _right: IntegerType) -> SpecChain {
     unimplemented!()
 }
 
-#[spec]
+#[verifier::spec]
 pub fn spec_chained_gt<IntegerType: Integer>(_left: SpecChain, _right: IntegerType) -> SpecChain {
     unimplemented!()
 }
 
-#[spec]
+#[verifier::spec]
 pub fn spec_chained_cmp(_chain: SpecChain) -> bool {
     unimplemented!()
 }
@@ -766,19 +769,19 @@ macro_rules! impl_ord {
     ([$($t:ty)*]) => {
         $(
             impl<Rhs: Integer> SpecOrd<Rhs> for $t {
-                #[spec]
+                #[verifier::spec]
                 fn spec_lt(self, _rhs: Rhs) -> bool {
                     unimplemented!()
                 }
-                #[spec]
+                #[verifier::spec]
                 fn spec_le(self, _rhs: Rhs) -> bool {
                     unimplemented!()
                 }
-                #[spec]
+                #[verifier::spec]
                 fn spec_gt(self, _rhs: Rhs) -> bool {
                     unimplemented!()
                 }
-                #[spec]
+                #[verifier::spec]
                 fn spec_ge(self, _rhs: Rhs) -> bool {
                     unimplemented!()
                 }
@@ -792,7 +795,7 @@ macro_rules! impl_unary_op {
         $(
             impl $trt for $t {
                 type Output = $ret;
-                #[spec]
+                #[verifier::spec]
                 fn $fun(self) -> Self::Output {
                     unimplemented!()
                 }
@@ -806,7 +809,7 @@ macro_rules! impl_binary_op {
         $(
             impl<Rhs: Integer> $trt<Rhs> for $t {
                 type Output = $ret;
-                #[spec]
+                #[verifier::spec]
                 fn $fun(self, _rhs: Rhs) -> Self::Output {
                     unimplemented!()
                 }
@@ -820,7 +823,7 @@ macro_rules! impl_binary_op_nat {
         $(
             impl $trt<$t> for nat {
                 type Output = $ret;
-                #[spec]
+                #[verifier::spec]
                 fn $fun(self, _rhs: $t) -> Self::Output {
                     unimplemented!()
                 }
@@ -834,7 +837,7 @@ macro_rules! impl_binary_op_rhs {
         $(
             impl $trt<$rhs> for $t {
                 type Output = $ret;
-                #[spec]
+                #[verifier::spec]
                 fn $fun(self, _rhs: $rhs) -> Self::Output {
                     unimplemented!()
                 }
@@ -931,25 +934,25 @@ impl_binary_op_rhs!(SpecShr, spec_shr, Self, Self, [
 ]);
 
 #[rustc_diagnostic_item = "builtin::strslice_is_ascii"]
-#[spec]
+#[verifier::spec]
 pub fn strslice_is_ascii<A>(_a: A) -> bool {
     unimplemented!()
 }
 
 #[rustc_diagnostic_item = "builtin::strslice_len"]
-#[spec]
+#[verifier::spec]
 pub fn strslice_len<A>(_a: A) -> nat {
     unimplemented!()
 }
 
 #[rustc_diagnostic_item = "builtin::strslice_get_char"]
-#[spec]
+#[verifier::spec]
 pub fn strslice_get_char<A>(_a: A, _i: int) -> char {
     unimplemented!()
 }
 
 #[rustc_diagnostic_item = "builtin::reveal_strlit"]
-#[proof]
+#[verifier::proof]
 pub fn reveal_strlit<A>(_a: A) {
     unimplemented!()
 }

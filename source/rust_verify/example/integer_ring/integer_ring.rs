@@ -10,12 +10,12 @@ use pervasive::*;
 use builtin_macros::*;
 
 
-#[proof] 
+#[verifier::proof] 
 #[verifier(integer_ring)]
 pub fn mod_of_mul_int(a: int, b: int) {
     ensures((a * b) % b == 0);
 }
-#[proof] #[verifier(nonlinear)]
+#[verifier::proof] #[verifier(nonlinear)]
 pub fn mod_of_mul(a: nat, b: nat) {
     requires(b > 0);
     ensures((a * b) % b == 0);
@@ -31,7 +31,7 @@ pub fn mod_of_mul(a: nat, b: nat) {
 }
 
 
-#[proof] #[verifier(integer_ring)]
+#[verifier::proof] #[verifier(integer_ring)]
 pub fn mod_add_zero_int(a: int, b: int, c: int) {
     requires([
         a % c == 0,
@@ -39,7 +39,7 @@ pub fn mod_add_zero_int(a: int, b: int, c: int) {
     ]);
     ensures((a + b) % c == 0);
 }
-#[proof] #[verifier(nonlinear)]
+#[verifier::proof] #[verifier(nonlinear)]
 pub fn mod_add_zero(a: nat, b: nat, c: nat) {
     requires([
         a % c == 0,
@@ -51,11 +51,11 @@ pub fn mod_add_zero(a: nat, b: nat, c: nat) {
 }
 
 
-#[proof] #[verifier(integer_ring)]
+#[verifier::proof] #[verifier(integer_ring)]
 pub fn subtract_mod_aligned_int(a: int, b: int) {
     ensures((a - (a % b)) % b == 0);
 }
-#[proof] #[verifier(nonlinear)]
+#[verifier::proof] #[verifier(nonlinear)]
 pub fn subtract_mod_aligned(a: nat, b: nat) {
     requires(0 < b);
     ensures((a - (a % b)) % b == 0);
@@ -64,12 +64,12 @@ pub fn subtract_mod_aligned(a: nat, b: nat) {
 }
 
 
-#[proof] #[verifier(integer_ring)]
+#[verifier::proof] #[verifier(integer_ring)]
 pub fn mod_mult_zero_implies_mod_zero_int(a: int, b: int, c: int) {
     requires(a % (b * c) == 0);
     ensures(a % b == 0);
 }
-#[proof] #[verifier(nonlinear)]
+#[verifier::proof] #[verifier(nonlinear)]
 pub fn mod_mult_zero_implies_mod_zero(a: nat, b: nat, c: nat) {
     requires([
         a % (b * c) == 0,
@@ -81,7 +81,7 @@ pub fn mod_mult_zero_implies_mod_zero(a: nat, b: nat, c: nat) {
 }
 
 
-#[proof] #[verifier(integer_ring)]
+#[verifier::proof] #[verifier(integer_ring)]
 pub fn subtract_mod_eq_zero_int(a: int, b: int, c: int) {
     requires([
              a % c == 0,
@@ -89,7 +89,7 @@ pub fn subtract_mod_eq_zero_int(a: int, b: int, c: int) {
     ]);
     ensures((b - a) % c == 0);
 }
-#[proof] #[verifier(nonlinear)]
+#[verifier::proof] #[verifier(nonlinear)]
 pub fn subtract_mod_eq_zero(a: nat, b: nat, c: nat) {
     requires([
              a % c == 0,
@@ -102,7 +102,7 @@ pub fn subtract_mod_eq_zero(a: nat, b: nat, c: nat) {
 }
 
 
-#[proof] #[verifier(integer_ring)]
+#[verifier::proof] #[verifier(integer_ring)]
 pub fn multiple_offsed_mod_gt_0_int(a: int, b: int, c: int, ac:int, bc:int,  abc:int) {
     requires([
         ac == a%c,
@@ -111,7 +111,7 @@ pub fn multiple_offsed_mod_gt_0_int(a: int, b: int, c: int, ac:int, bc:int,  abc
     ]);
     ensures( (ac - bc - abc) % c == 0);
 }
-#[proof] #[verifier(nonlinear)]
+#[verifier::proof] #[verifier(nonlinear)]
 pub fn multiple_offsed_mod_gt_0(a: nat, b: nat, c: nat) {
     requires([
         a > b,

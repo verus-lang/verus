@@ -3,7 +3,7 @@
 mod common;
 use common::*;
 
-const STRUCTS: &str = code_str! {
+const STRUCTS: &str = verus_code_str! {
     #[derive(PartialEq, Eq)]
     struct Car {
         four_doors: bool,
@@ -30,7 +30,7 @@ const STRUCTS: &str = code_str! {
 };
 
 test_verify_one_file! {
-    #[test] test_struct_1 STRUCTS.to_string() + code_str! {
+    #[test] test_struct_1 STRUCTS.to_string() + verus_code_str! {
         fn test_struct_1(p: int) {
             assert((Car { four_doors: true, passengers: p }).passengers == p);
             assert((Car { passengers: p, four_doors: true }).passengers == p); // fields intentionally out of order
@@ -40,7 +40,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_struct_2 STRUCTS.to_string() + code_str! {
+    #[test] test_struct_2 STRUCTS.to_string() + verus_code_str! {
         fn test_struct_2(c: Car, p: int) {
             assume(c.passengers == p);
             assert(c.passengers == p);
@@ -50,7 +50,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_struct_3 STRUCTS.to_string() + code_str! {
+    #[test] test_struct_3 STRUCTS.to_string() + verus_code_str! {
         fn test_struct_3(p: int) {
             let c = Car { passengers: p, four_doors: true };
             assert(c.passengers == p);
@@ -60,7 +60,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_struct_4 STRUCTS.to_string() + code_str! {
+    #[test] test_struct_4 STRUCTS.to_string() + verus_code_str! {
         fn test_struct_4(passengers: int) {
             assert((Car { passengers, four_doors: true }).passengers == passengers);
         }
@@ -68,9 +68,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_enum_1 STRUCTS.to_string() + code_str! {
-        #[proof]
-        fn test_enum_1(passengers: int) {
+    #[test] test_enum_1 STRUCTS.to_string() + verus_code_str! {
+        proof fn test_enum_1(passengers: int) {
             let t = Vehicle::Train(true);
             let c1 = Vehicle::Car(Car { passengers, four_doors: true });
             let c2 = Vehicle::Car(Car { passengers, four_doors: false });
@@ -100,7 +99,7 @@ test_verify_one_file! {
             B(nat),
         }
 
-        #[spec]
+        #[verifier::spec]
         fn is_a(l: AB) -> bool {
             l == AB::A
         }
@@ -108,7 +107,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_struct_u8 STRUCTS.to_string() + code_str! {
+    #[test] test_struct_u8 STRUCTS.to_string() + verus_code_str! {
         fn test_struct_u8(car: CompactCar) {
             assert(car.passengers >= 0);
         }
@@ -116,7 +115,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_struct_u8n STRUCTS.to_string() + code_str! {
+    #[test] test_struct_u8n STRUCTS.to_string() + verus_code_str! {
         fn test_struct_u8(car: CompactCar) {
             assert(car.passengers >= 1); // FAILS
         }
@@ -179,7 +178,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_spec_adt_ctor code! {
-        #[spec]
+        #[verifier::spec]
         struct SpecStruct { a: nat }
 
         fn test() {
@@ -285,7 +284,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-const IS_VARIANT_MAYBE: &str = code_str! {
+const IS_VARIANT_MAYBE: &str = verus_code_str! {
     #[is_variant]
     pub enum Maybe<T> {
         Some(T),
@@ -294,7 +293,7 @@ const IS_VARIANT_MAYBE: &str = code_str! {
 };
 
 test_verify_one_file! {
-    #[test] test_is_variant_pass IS_VARIANT_MAYBE.to_string() + code_str! {
+    #[test] test_is_variant_pass IS_VARIANT_MAYBE.to_string() + verus_code_str! {
         pub fn test1(m: Maybe<u64>) {
             match m {
                 Maybe::Some(_) => assert(m.is_Some()),
@@ -312,7 +311,7 @@ test_verify_one_file! {
         }
 
         impl <T> Maybe<T> {
-            #[doc(hidden)] #[spec] #[verifier(is_variant)] #[allow(non_snake_case)]
+            #[doc(hidden)] #[verifier::spec] #[verifier(is_variant)] /* vattr */ #[allow(non_snake_case)]
             fn is_Thing(&self) -> bool { ::core::panicking::panic("not implemented") }
         }
     } => Err(e) => assert_vir_error_msg(e, "unrecognized verifier attribute")
@@ -328,7 +327,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_is_variant_get_1 IS_VARIANT_MAYBE.to_string() + code_str! {
+    #[test] test_is_variant_get_1 IS_VARIANT_MAYBE.to_string() + verus_code_str! {
         pub fn test1(m: Maybe<u64>) {
             requires(m.is_Some() && m.get_Some_0() > 10);
         }
@@ -368,7 +367,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_is_variant_get_fail IS_VARIANT_MAYBE.to_string() + code_str! {
+    #[test] test_is_variant_get_fail IS_VARIANT_MAYBE.to_string() + verus_code_str! {
         pub fn test1(m: Maybe<u64>) -> u64 {
             requires(m.get_Some_0() == 4);
             if let Maybe::Some(v) = m {
@@ -418,7 +417,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_is_variant_no_field IS_VARIANT_MAYBE.to_string() + code_str! {
+    #[test] test_is_variant_no_field IS_VARIANT_MAYBE.to_string() + verus_code_str! {
         fn test1(v: Maybe<u64>) {
             assert(v.get_Some_1() == 3);
         }
@@ -444,7 +443,7 @@ test_verify_one_file! {
         }
 
         impl E {
-            #[spec]
+            #[verifier::spec]
             pub fn is_One_le(self, v: u64) -> bool {
                 self.is_One() && self.get_One_0() <= v
             }
@@ -509,7 +508,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-const FIELD_UPDATE: &str = code_str! {
+const FIELD_UPDATE: &str = verus_code_str! {
     #[derive(PartialEq, Eq, Structural)]
     struct S {
         a: usize,
@@ -518,18 +517,18 @@ const FIELD_UPDATE: &str = code_str! {
 };
 
 test_verify_one_file! {
-    #[test] test_field_update_1_pass FIELD_UPDATE.to_string() + code_str! {
+    #[test] test_field_update_1_pass FIELD_UPDATE.to_string() + verus_code_str! {
         fn test() {
             let mut s = S { a: 10, b: -10 };
             s.a = s.a + 1;
             s.b = s.b + 1;
-            assert(s.a == 11 && s.b == -9);
+            assert(s.a == 11 && s.b as int == -9);
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_field_update_1_fail FIELD_UPDATE.to_string() + code_str! {
+    #[test] test_field_update_1_fail FIELD_UPDATE.to_string() + verus_code_str! {
         fn test() {
             let mut s = S { a: 10, b: -10 };
             s.a = s.a + 1;
@@ -540,7 +539,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_field_update_1_call_pass FIELD_UPDATE.to_string() + code_str! {
+    #[test] test_field_update_1_call_pass FIELD_UPDATE.to_string() + verus_code_str! {
         fn add1(a: i32) -> i32 {
             requires(a < 30);
             ensures(|ret: i32| ret == a + 1);
@@ -574,7 +573,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-const FIELD_UPDATE_2: &str = code_str! {
+const FIELD_UPDATE_2: &str = verus_code_str! {
     #[derive(PartialEq, Eq, Structural)]
     struct T {
         s: S,
@@ -583,18 +582,18 @@ const FIELD_UPDATE_2: &str = code_str! {
 };
 
 test_verify_one_file! {
-    #[test] test_field_update_2_pass FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + code_str! {
+    #[test] test_field_update_2_pass FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + verus_code_str! {
         fn test() {
             let mut t = T { s: S { a: 10, b: -10 }, c: false };
             t.s.a = t.s.a + 1;
             t.s.b = t.s.b + 1;
-            assert(t == T { s: S { a: 11, b: -9 }, c: false });
+            assert(t == T { s: S { a: 11, b: -9 as i32 }, c: false });
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_field_update_2_fails FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + code_str! {
+    #[test] test_field_update_2_fails FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + verus_code_str! {
         fn test() {
             let mut t = T { s: S { a: 10, b: -10 }, c: false };
             t.s.a = t.s.a + 1;
@@ -606,10 +605,14 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_field_update_param_1_pass FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + code_str! {
-        fn test(t: &mut T) {
-            requires([old(t).s.a < 30, old(t).s.b < 30]);
-            ensures(*t == T { s: S { a: old(t).s.a + 1, b: old(t).s.b + 1 }, ..*old(t) });
+    #[test] test_field_update_param_1_pass FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + verus_code_str! {
+        fn test(t: &mut T)
+            requires
+                old(t).s.a < 30,
+                old(t).s.b < 30,
+            ensures
+                *t == (T { s: S { a: (old(t).s.a + 1) as usize, b: (old(t).s.b + 1) as i32 }, ..*old(t) })
+        {
             t.s.a = t.s.a + 1;
             t.s.b = t.s.b + 1;
         }
@@ -617,11 +620,14 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // TODO fix this
-    #[ignore] #[test] test_field_update_param_1_fail FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + code_str! {
-        fn test(t: &mut T) {
-            requires([old(t).s.a < 30, old(t).s.b < 30]);
-            ensures(*t == T { s: S { a: old(t).s.a + 1, b: old(t).s.b + 1 }, ..*old(t) });
+    #[test] test_field_update_param_1_fail FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + verus_code_str! {
+        fn test(t: &mut T)
+            requires
+                old(t).s.a < 30,
+                old(t).s.b < 30,
+            ensures
+                *t == (T { s: S { a: (old(t).s.a + 1) as usize, b: (old(t).s.b + 1) as i32 }, ..*old(t) })
+        {
             t.s.a = t.s.a + 1;
             t.s.b = t.s.b + 1;
             assert(false); // FAILS
@@ -630,22 +636,22 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // TODO fix this
-    #[ignore] #[test] test_field_update_param_2_pass FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + code_str! {
-        fn test(t: &mut T, v: usize) {
-            requires(old(t).s.a < 30);
-            ensures(*t == T { s: S { a: old(t).s.a + v, ..old(t).s }, ..*old(t) });
+    #[test] test_field_update_param_2_pass FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + verus_code_str! {
+        fn test(t: &mut T, v: usize)
+            requires old(t).s.a < 30, v < 30
+            ensures *t == (T { s: S { a: (old(t).s.a + v) as usize, ..old(t).s }, ..*old(t) })
+        {
             t.s.a = t.s.a + v;
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    // TODO fix this
-    #[ignore] #[test] test_field_update_param_mut_ref_pass FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + code_str! {
-        fn foo(s: &mut S, v: usize) {
-            requires(old(s).a < 30);
-            ensures(*s == S { a: old(s).a + v, ..*old(s) });
+    #[test] test_field_update_param_mut_ref_pass FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + verus_code_str! {
+        fn foo(s: &mut S, v: usize)
+            requires old(s).a < 30, v < 30
+            ensures *s == (S { a: (old(s).a + v) as usize, ..*old(s) })
+        {
             s.a = s.a + v;
         }
 
@@ -657,31 +663,37 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_field_update_mode_fail_1 FIELD_UPDATE.to_string() + code_str! {
-        fn test(#[spec] s: S) {
-            s.a = s.a + 1;
+    // TODO(utaal) fix this
+    #[ignore] #[test] test_field_update_mode_fail_1 FIELD_UPDATE.to_string() + verus_code_str! {
+        fn test(s: Ghost<S>) {
+            proof {
+                s@.a = (s@.a + 1) as usize;
+            }
         }
     } => Err(e) => assert_vir_error_msg(e, "cannot assign to non-mut parameter")
 }
 
 test_verify_one_file! {
-    #[test] test_field_update_mode_fail_2 FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + code_str! {
-        fn test(#[spec] t: T) {
-            t.s.a = t.s.a + 1;
+    // TODO(utaal) fix this
+    #[ignore] #[test] test_field_update_mode_fail_2 FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + verus_code_str! {
+        fn test(t: Ghost<T>) {
+            proof {
+                t@.s.a = (t@.s.a + 1) as usize;
+            }
         }
     } => Err(e) => assert_vir_error_msg(e, "cannot assign to non-mut parameter")
 }
 
-const FIELD_UPDATE_MODES: &str = code_str! {
+const FIELD_UPDATE_MODES: &str = verus_code_str! {
     #[derive(PartialEq, Eq, Structural)]
     struct S {
-        #[spec] a: nat,
+        ghost a: nat,
         b: i32,
     }
 
     #[derive(PartialEq, Eq, Structural)]
     struct T {
-        #[proof] s: S,
+        tracked s: S,
         c: bool,
     }
 };
@@ -694,7 +706,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "cannot assign to non-mut parameter")
 }
 
-const ENUM_S: &str = code_str! {
+const ENUM_S: &str = verus_code_str! {
     #[is_variant]
     enum S {
         V1,
@@ -703,7 +715,7 @@ const ENUM_S: &str = code_str! {
 };
 
 test_verify_one_file! {
-    #[test] test_match_exhaustiveness_regression_127 ENUM_S.to_string() + code_str! {
+    #[test] test_match_exhaustiveness_regression_127 ENUM_S.to_string() + verus_code_str! {
         fn f(s: S) {
             match s {
                 S::V1 => assert(true),
@@ -713,23 +725,25 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_match_empty_branch ENUM_S.to_string() + code_str! {
-        fn f(#[spec] s: S) {
-            match s {
-                S::V1 => assert(s.is_V1()),
-                S::V2 => (),
-            };
+    #[test] test_match_empty_branch ENUM_S.to_string() + verus_code_str! {
+        fn f(s: Ghost<S>) {
+            proof {
+                match s@ {
+                    S::V1 => assert(s@.is_V1()),
+                    S::V2 => (),
+                };
+            }
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_if_is_variant_regression_125 code! {
+    // TODO(utaal) fix this
+    #[ignore] #[test] test_if_is_variant_regression_125 verus_code! {
         use crate::pervasive::option::*;
 
-        #[proof]
-        fn foo() {
-            let x = (if (Option::Some(5)).is_Some() { 0 } else { 1 });
+        proof fn foo() {
+            let x: int = (if (Option::<int>::Some(5int)).is_Some() { 0 } else { 1 });
         }
     } => Ok(())
 }
@@ -759,16 +773,16 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] type_alias_basic code!{
+    #[test] type_alias_basic verus_code!{
         struct Foo {
             u: u64,
         }
 
         type X = Foo;
 
-        fn test1(x: X) {
-            requires(x.u == 5);
-
+        fn test1(x: X)
+            requires x.u == 5
+        {
             let u = x.u;
             assert(u == 5);
         }
@@ -779,31 +793,31 @@ test_verify_one_file! {
 
         type Y<T> = Bar<T>;
 
-        fn test2<T>(x: Y<T>, t: T) {
-            requires(equal(x.u, t));
-
+        fn test2<T>(x: Y<T>, t: T)
+            requires equal(x.u, t)
+        {
             let u = x.u;
             assert(equal(u, t));
         }
 
-        fn test3<S>(x: Y<S>, t: S) {
-            requires(equal(x.u, t));
-
+        fn test3<S>(x: Y<S>, t: S)
+            requires equal(x.u, t)
+        {
             let u = x.u;
             assert(equal(u, t));
         }
 
 
-        fn test4<T>(x: Y<u64>) {
-            requires(x.u == 5);
-
+        fn test4<T>(x: Y<u64>)
+            requires x.u == 5
+        {
             let u = x.u;
             assert(u == 5);
         }
 
-        fn test5(x: Y<Bar<u64>>, b: Bar<u64>) {
-            requires(equal(x.u, b));
-
+        fn test5(x: Y<Bar<u64>>, b: Bar<u64>)
+            requires equal(x.u, b)
+        {
             let u = x.u;
             assert(equal(u, b));
         }

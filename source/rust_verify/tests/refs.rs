@@ -65,7 +65,7 @@ test_verify_one_file! {
 }
 
 const MUT_REF_PROOF_COMMON: &str = code_str! {
-    fn add1(#[proof] a: &mut u64) {
+    fn add1(#[verifier::proof] a: &mut u64) {
         requires(*old(a) < 10);
         ensures(*a == *old(a) + 1);
         *a = *a + 1;
@@ -85,7 +85,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_mut_ref_arg_proof_pass MUT_REF_PROOF_COMMON.to_string() + code_str! {
         fn caller() {
-            #[proof] let mut a = 2;
+            #[verifier::proof] let mut a = 2;
             add1(&mut a);
             assert(a == 3);
         }
@@ -103,11 +103,11 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_mut_ref_arg_spec code! {
-        #[spec]
+        #[verifier::spec]
         fn add1(a: &mut u64) {
             *a = *a + 1;
         }
-    } => Err(err) => assert_vir_error_msg(err, "&mut argument not allowed for #[spec] functions")
+    } => Err(err) => assert_vir_error_msg(err, "&mut argument not allowed for #[verifier::spec] functions")
 }
 
 test_verify_one_file! {
@@ -200,19 +200,19 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_mut_ref_arg_self_spec code! {
-        #[spec]
+        #[verifier::spec]
         pub struct Value {
             pub v: u64,
         }
 
         impl Value {
-            #[spec]
+            #[verifier::spec]
             pub fn add1(&mut self) {
                 let Value { v } = *self;
                 *self = Value { v: v + 1 };
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "&mut argument not allowed for #[spec] functions")
+    } => Err(err) => assert_vir_error_msg(err, "&mut argument not allowed for #[verifier::spec] functions")
 }
 
 test_verify_one_file! {
@@ -321,10 +321,10 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_regression_115_mut_ref_pattern_case_1 code! {
-        #[proof]
-        #[verifier(external_body)]
-        #[verifier(returns(proof))]
-        fn foo(#[proof] x: &mut int) -> (int, int)
+        #[verifier::proof]
+        #[verifier(external_body)] /* vattr */
+        #[verifier(returns(proof))] /* vattr */
+        fn foo(#[verifier::proof] x: &mut int) -> (int, int)
         {
             ensures(|ret: (int, int)|
                 { let (a, b) = ret;
@@ -334,9 +334,9 @@ test_verify_one_file! {
             unimplemented!();
         }
 
-        fn bar(#[proof] x: int) {
-            #[proof] let mut x = x;
-            #[proof] let (a, b) = foo(&mut x);
+        fn bar(#[verifier::proof] x: int) {
+            #[verifier::proof] let mut x = x;
+            #[verifier::proof] let (a, b) = foo(&mut x);
             assert(a + b == x); // THIS LINE FAILS
         }
     } => Ok(())
@@ -351,7 +351,7 @@ test_verify_one_file! {
             (0, 0)
         }
 
-        fn bar(#[proof] x: int) {
+        fn bar(#[verifier::proof] x: int) {
             let mut x = true;
             let (a, b) = foo(&mut x);
             assert(x == true); // FAILS

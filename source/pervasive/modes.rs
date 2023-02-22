@@ -8,14 +8,14 @@ verus! {
 // TODO: the *_exec* functions would be better in builtin,
 // but it's painful to implement the support in erase.rs at the moment.
 #[verifier(external_body)]
-pub fn ghost_exec<A>(#[spec] a: A) -> (s: Ghost<A>)
+pub fn ghost_exec<A>(#[verifier::spec] a: A) -> (s: Ghost<A>)
     ensures a == s@,
 {
     Ghost::assume_new()
 }
 
 #[verifier(external_body)]
-pub fn tracked_exec<A>(#[proof] a: A) -> (s: Tracked<A>)
+pub fn tracked_exec<A>(#[verifier::proof] a: A) -> (s: Tracked<A>)
     ensures a == s@
 {
     opens_invariants_none();
@@ -23,7 +23,7 @@ pub fn tracked_exec<A>(#[proof] a: A) -> (s: Tracked<A>)
 }
 
 #[verifier(external_body)]
-pub fn tracked_exec_borrow<'a, A>(#[proof] a: &'a A) -> (s: &'a Tracked<A>)
+pub fn tracked_exec_borrow<'a, A>(#[verifier::proof] a: &'a A) -> (s: &'a Tracked<A>)
     ensures *a == s@
 {
     opens_invariants_none();
@@ -80,11 +80,11 @@ pub struct Spec<#[verifier(strictly_positive)] A> {
 
 #[cfg(not(verus_macro_erase_ghost))]
 pub struct Proof<A>(
-    #[proof] pub A,
+    #[verifier::proof] pub A,
 );
 #[cfg(verus_macro_erase_ghost)]
 pub struct Proof<A>(
-    #[proof] pub std::marker::PhantomData<A>,
+    #[verifier::proof] pub std::marker::PhantomData<A>,
 );
 
 /*
@@ -92,12 +92,12 @@ impl<A> Spec<A> {
     fndecl!(pub fn value(self) -> A);
 
     #[verifier(external_body)]
-    pub fn exec(#[spec] a: A) -> Spec<A> {
+    pub fn exec(#[verifier::spec] a: A) -> Spec<A> {
         ensures(|s: Spec<A>| equal(a, s.value()));
         Spec { phantom: PhantomData }
     }
 
-    #[proof]
+    #[verifier::proof]
     #[verifier(returns(proof))]
     #[verifier(external_body)]
     pub fn proof(a: A) -> Spec<A> {

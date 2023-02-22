@@ -12,12 +12,12 @@ use pervasive::map::*;
 use state_machines_macros::*;
 
 // for a finite set, returns a new int not in the 
-#[spec]
+#[verifier::spec]
 pub fn get_new_nat(s: Set<nat>) -> nat {
     arbitrary() // TODO
 }
 
-#[proof]
+#[verifier::proof]
 pub fn get_new_nat_not_in(s: Set<nat>) {
     requires(s.finite());
     ensures(!s.contains(get_new_nat(s)));
@@ -42,19 +42,19 @@ pub struct NRState {
     u: u8,
 }
 
-#[spec]
+#[verifier::spec]
 #[verifier(opaque)]
 pub fn read(state: NRState, op: ReadonlyOp) -> ReturnType {
     ReturnType { u: 0 }
 }
 
-#[spec]
+#[verifier::spec]
 #[verifier(opaque)]
 pub fn update_state(state: NRState, op: UpdateOp) -> (NRState, ReturnType) {
     (state, ReturnType { u: 0 })
 }
 
-#[spec]
+#[verifier::spec]
 #[verifier(opaque)]
 pub fn init_state() -> NRState {
     NRState { u: 0 }
@@ -614,7 +614,7 @@ tokenized_state_machine!{
                 self.wf_read(self.local_reads.index(rid))
         }
 
-        #[spec]
+        #[verifier::spec]
         pub fn wf_read(&self, rs: ReadonlyState) -> bool {
             match rs {
                 ReadonlyState::Init{op} => {
@@ -640,7 +640,7 @@ tokenized_state_machine!{
             }
         }
 
-        #[spec]
+        #[verifier::spec]
         fn exec_local_head(&self, node_id: nat) -> nat {
             match self.combiner.index(node_id) {
                 CombinerState::Ready => {
@@ -667,7 +667,7 @@ tokenized_state_machine!{
                 self.wf_combiner_for_node_id(node_id)
         }
 
-        #[spec]
+        #[verifier::spec]
         pub fn wf_combiner_for_node_id(&self, node_id: nat) -> bool {
           match self.combiner.index(node_id) {
             CombinerState::Ready => {
@@ -998,7 +998,7 @@ tokenized_state_machine!{
 
 verus!{
 
-#[spec]
+#[verifier::spec]
 fn LogRangeMatchesQueue(queue: Seq<nat>, log: Map<nat, LogEntry>,
       queueIndex: nat, logIndexLower: nat, logIndexUpper: nat, nodeId: nat, updates: Map<nat, UpdateState>) -> bool
   {
@@ -1024,7 +1024,7 @@ fn LogRangeMatchesQueue(queue: Seq<nat>, log: Map<nat, LogEntry>,
     })
   }
 
-#[spec]
+#[verifier::spec]
 fn LogRangeNoNodeId(log: Map<nat, LogEntry>,
       logIndexLower: nat, logIndexUpper: nat, nodeId: nat) -> bool
 {
@@ -1547,7 +1547,7 @@ spec fn interp(s: UnboundedLog::State) -> SimpleLog::State {
 }
 
 
-#[proof]
+#[verifier::proof]
 fn refinement(pre: UnboundedLog::State, post: UnboundedLog::State)
     requires
         pre.invariant(),

@@ -2729,6 +2729,7 @@ impl Debug for Recommends {
         let mut formatter = formatter.debug_struct("Recommends");
         formatter.field("token", &self.token);
         formatter.field("exprs", &self.exprs);
+        formatter.field("via", &self.via);
         formatter.finish()
     }
 }
@@ -2776,10 +2777,21 @@ impl Debug for Signature {
         formatter.field("inputs", &self.inputs);
         formatter.field("variadic", &self.variadic);
         formatter.field("output", &self.output);
+        formatter.field("prover", &self.prover);
         formatter.field("requires", &self.requires);
         formatter.field("recommends", &self.recommends);
         formatter.field("ensures", &self.ensures);
         formatter.field("decreases", &self.decreases);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for SignatureDecreases {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("SignatureDecreases");
+        formatter.field("decreases", &self.decreases);
+        formatter.field("when", &self.when);
+        formatter.field("via", &self.via);
         formatter.finish()
     }
 }

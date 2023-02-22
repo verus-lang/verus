@@ -92,7 +92,7 @@ struct_with_invariants!{
         pub atomic: AtomicU32<_, X::counter, _>,
 
         // The instance of the protocol that the `counter` is part of.
-        #[proof] pub instance: X::Instance,
+        #[verifier::proof] pub instance: X::Instance,
     }
 
     spec fn wf(&self) -> bool {
@@ -110,7 +110,7 @@ struct_with_invariants!{
 fn main() {
     // Initialize protocol 
 
-    #[proof] let (Trk(instance),
+    #[verifier::proof] let (Trk(instance),
         Trk(counter_token),
         Trk(inc_a_token),
         Trk(inc_b_token)) = X::Instance::initialize();
@@ -134,7 +134,7 @@ fn main() {
         );
 
         // `inc_a_token` is moved into the closure
-        #[proof] let mut token = inc_a_token;
+        #[verifier::proof] let mut token = inc_a_token;
         let globals = &*global_arc1;
 
         let _ = atomic_with_ghost!(&globals.atomic => fetch_add(1);
@@ -156,7 +156,7 @@ fn main() {
         );
 
         // `inc_b_token` is moved into the closure
-        #[proof] let mut token = inc_b_token;
+        #[verifier::proof] let mut token = inc_b_token;
         let globals = &*global_arc2;
 
         let _ = atomic_with_ghost!(&globals.atomic => fetch_add(1);
@@ -170,13 +170,13 @@ fn main() {
 
     // Join threads
 
-    #[proof] let inc_a_token;
+    #[verifier::proof] let inc_a_token;
     match join_handle1.join() {
         Result::Ok(Proof(token)) => { inc_a_token = token; }
         _ => { return; }
     };
 
-    #[proof] let inc_b_token;
+    #[verifier::proof] let inc_b_token;
     match join_handle2.join() {
         Result::Ok(Proof(token)) => { inc_b_token = token; }
         _ => { return; }

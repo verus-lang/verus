@@ -142,14 +142,14 @@ verus_old_todo_no_ghost_blocks!{
 // - evaluate string equality by comparing the IDs
 
 struct Interner<T> {
-    #[proof] inst: InternSystem::Instance<T>,
-    #[proof] auth: InternSystem::auth<T>,
+    #[verifier::proof] inst: InternSystem::Instance<T>,
+    #[verifier::proof] auth: InternSystem::auth<T>,
     store: Vec<T>
 }
 
 struct Interned<T> {
-    #[proof] inst: InternSystem::Instance<T>,
-    #[proof] frag: InternSystem::frag<T>,
+    #[verifier::proof] inst: InternSystem::Instance<T>,
+    #[verifier::proof] frag: InternSystem::frag<T>,
     id: usize,
 }
 
@@ -169,18 +169,18 @@ impl<T> Interner<T> {
 
     fn new() -> (x: (Self, Trk<InternSystem::Instance<T>>))
         ensures ({
-            #[spec] let s = x.0;
-            #[spec] let inst = x.1.0;
+            #[verifier::spec] let s = x.0;
+            #[verifier::spec] let inst = x.1.0;
             s.wf(inst)
         }),
     {
-        #[proof] let (Trk(inst), Trk(auth), Trk(_f)) = InternSystem::Instance::empty();
+        #[verifier::proof] let (Trk(inst), Trk(auth), Trk(_f)) = InternSystem::Instance::empty();
         let store = Vec::new();
 
         (Interner { inst: inst.clone(), auth, store }, Trk(inst))
     }
 
-    fn insert(&mut self, #[spec] inst: InternSystem::Instance<T>, val: T) -> (st: Interned<T>)
+    fn insert(&mut self, #[verifier::spec] inst: InternSystem::Instance<T>, val: T) -> (st: Interned<T>)
         requires old(self).wf(inst),
         ensures self.wf(inst) && st.wf(inst) && st@ === val,
     {
@@ -192,7 +192,7 @@ impl<T> Interner<T> {
         {
             let eq = compute_eq(&val, self.store.index(idx));
             if eq {
-                #[proof] let frag;
+                #[verifier::proof] let frag;
                 proof {
                     frag = self.inst.get_frag(idx as int, &self.auth);
                 };
@@ -209,7 +209,7 @@ impl<T> Interner<T> {
 
         self.inst.insert(val, &mut self.auth);
 
-        #[proof] let frag;
+        #[verifier::proof] let frag;
         proof {
             frag = self.inst.get_frag(idx as int, &self.auth)
         };
@@ -223,7 +223,7 @@ impl<T> Interner<T> {
     fn get<'a>(
         &'a self,
         interned: &Interned<T>,
-        #[spec] inst: InternSystem::Instance<T>
+        #[verifier::spec] inst: InternSystem::Instance<T>
     ) -> (st: &'a T)
         requires self.wf(inst) && interned.wf(inst),
         ensures *st === interned@,
@@ -246,7 +246,7 @@ impl<T> Interned<T> {
         self.frag@.value
     }
 
-    fn clone(&self, #[spec] inst: InternSystem::Instance<T>) -> (s: Self)
+    fn clone(&self, #[verifier::spec] inst: InternSystem::Instance<T>) -> (s: Self)
         requires self.wf(inst),
         ensures s.wf(inst) && s@ === self@,
     {
@@ -257,7 +257,7 @@ impl<T> Interned<T> {
         }
     }
 
-    fn cmp_eq(&self, other: &Self, #[spec] inst: InternSystem::Instance<T>) -> (b: bool)
+    fn cmp_eq(&self, other: &Self, #[verifier::spec] inst: InternSystem::Instance<T>) -> (b: bool)
         requires self.wf(inst) && other.wf(inst),
         ensures b == (self@ === other@),
     {

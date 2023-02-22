@@ -73,10 +73,10 @@ tokenized_state_machine!{ State {
 }}
 
 proof fn option_example() {
-    #[proof] let (Trk(instance), Trk(mut token_exists), Trk(token_opt)) =
+    #[verifier::proof] let (Trk(instance), Trk(mut token_exists), Trk(token_opt)) =
         State::Instance::initialize(5);
 
-    #[proof] let token = token_opt.tracked_unwrap();
+    #[verifier::proof] let token = token_opt.tracked_unwrap();
     assert(token@.value == 5);
 
     instance.have_token(&token_exists, &token);
@@ -85,7 +85,7 @@ proof fn option_example() {
     instance.remove_token(&mut token_exists, token); // consumes token
     assert(token_exists@.value == false); // updates token_exists to `false`
 
-    #[proof] let token = instance.add_token(19, &mut token_exists);
+    #[verifier::proof] let token = instance.add_token(19, &mut token_exists);
     assert(token_exists@.value == true); // updates token_exists to `true`
     assert(token@.value == 19); // new token has value 19
 }

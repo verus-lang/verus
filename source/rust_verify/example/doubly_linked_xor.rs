@@ -272,7 +272,7 @@ impl<V> DListXor<V> {
             proof {
                 assert_by_contradiction!(self.ptrs@.len() == 1, {
                     assert(old(self).wf_perm((self.ptrs@.len() - 2) as nat));
-                    #[spec] let actual_penult_u64 = self.prev_of((self.ptrs@.len() - 1) as nat);
+                    #[verifier::spec] let actual_penult_u64 = self.prev_of((self.ptrs@.len() - 1) as nat);
                     assert(actual_penult_u64 ^ 0 == actual_penult_u64) by(bit_vector);
                 });
             }
@@ -317,7 +317,7 @@ impl<V> DListXor<V> {
             assert(self.wf_tail());
 
             if self.ptrs@.len() > 0 {
-                /*#[spec] let i = self.ptrs@.len() - 1;
+                /*#[verifier::spec] let i = self.ptrs@.len() - 1;
                 assert(self.ptrs@.len() == old(self).ptrs@.len() - 1);
                 assert(self.perms@.dom().contains(i));
                 assert(self.perms@[i]@.pptr == self.ptrs@[i]@);
@@ -382,7 +382,7 @@ impl<V> DListXor<V> {
             proof {
                 assert_by_contradiction!(self.ptrs@.len() == 1, {
                     assert(old(self).wf_perm(1));
-                    #[spec] let actual_second_u64 = self.next_of(0);
+                    #[verifier::spec] let actual_second_u64 = self.next_of(0);
                     assert(0 ^ actual_second_u64 == actual_second_u64) by(bit_vector);
                 });
             }

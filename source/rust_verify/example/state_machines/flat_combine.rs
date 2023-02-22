@@ -85,7 +85,7 @@ tokenized_state_machine!{
         }
 
         /*
-        #[spec]
+        #[verifier::spec]
         fn should_have_req_stored(self, i: nat) -> bool {
             0 <= i
             && i < self.slots

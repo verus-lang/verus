@@ -682,6 +682,9 @@ pub trait Fold {
     fn fold_signature(&mut self, i: Signature) -> Signature {
         fold_signature(self, i)
     }
+    fn fold_signature_decreases(&mut self, i: SignatureDecreases) -> SignatureDecreases {
+        fold_signature_decreases(self, i)
+    }
     fn fold_span(&mut self, i: Span) -> Span {
         fold_span(self, i)
     }
@@ -3152,6 +3155,8 @@ where
     Recommends {
         token: Token![recommends](tokens_helper(f, &node.token.span)),
         exprs: f.fold_specification(node.exprs),
+        via: (node.via)
+            .map(|it| (Token![via](tokens_helper(f, &(it).0.span)), f.fold_expr((it).1))),
     }
 }
 pub fn fold_requires<F>(f: &mut F, node: Requires) -> Requires
@@ -3204,10 +3209,34 @@ where
         inputs: FoldHelper::lift(node.inputs, |it| f.fold_fn_arg(it)),
         variadic: (node.variadic).map(|it| f.fold_variadic(it)),
         output: f.fold_return_type(node.output),
+        prover: (node.prover)
+            .map(|it| (
+                Token![by](tokens_helper(f, &(it).0.span)),
+                Paren(tokens_helper(f, &(it).1.span)),
+                f.fold_ident((it).2),
+            )),
         requires: (node.requires).map(|it| f.fold_requires(it)),
         recommends: (node.recommends).map(|it| f.fold_recommends(it)),
         ensures: (node.ensures).map(|it| f.fold_ensures(it)),
-        decreases: (node.decreases).map(|it| f.fold_decreases(it)),
+        decreases: (node.decreases).map(|it| f.fold_signature_decreases(it)),
+    }
+}
+pub fn fold_signature_decreases<F>(
+    f: &mut F,
+    node: SignatureDecreases,
+) -> SignatureDecreases
+where
+    F: Fold + ?Sized,
+{
+    SignatureDecreases {
+        decreases: f.fold_decreases(node.decreases),
+        when: (node.when)
+            .map(|it| (
+                Token![when](tokens_helper(f, &(it).0.span)),
+                f.fold_expr((it).1),
+            )),
+        via: (node.via)
+            .map(|it| (Token![via](tokens_helper(f, &(it).0.span)), f.fold_expr((it).1))),
     }
 }
 pub fn fold_span<F>(f: &mut F, node: Span) -> Span

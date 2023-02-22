@@ -66,7 +66,7 @@ unsafe impl<T> Send for PCell<T> {}
 
 // PermissionOpt<V>, on the other hand, needs to inherit both Send and Sync from the V,
 // which it does by default in the given definition.
-// (Note: this depends on the current behavior that #[spec] fields are still counted for marker traits)
+// (Note: this depends on the current behavior that #[verifier::spec] fields are still counted for marker traits)
 
 #[verifier(external_body)]
 pub tracked struct PermissionOpt<#[verifier(strictly_positive)] V> {
@@ -261,7 +261,7 @@ impl<T> InvCell<T> {
         &&& self.possible_values@.contains(val)
     }
 
-    pub fn new(val: T, #[spec] f: Ghost<FnSpec(T) -> bool>) -> (cell: Self)
+    pub fn new(val: T, #[verifier::spec] f: Ghost<FnSpec(T) -> bool>) -> (cell: Self)
         requires f@(val),
         ensures cell.wf() && forall |v| f@(v) <==> cell.inv(v),
     {

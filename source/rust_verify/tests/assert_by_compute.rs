@@ -201,17 +201,17 @@ test_verify_one_file! {
             assert(e.b == e.b) by (compute_only);
 
             assert({
-                #[spec]
+                #[verifier::spec]
                 let e1 = Example { u1: 42, u2: 0x1_0000_0000, b: false };
                 e1.u1 > 5
             }) by (compute_only);
             assert({
-                #[spec]
+                #[verifier::spec]
                 let e1 = Example { u1: 42, u2: 0x1_0000_0000, b: false };
                 e1.u2 == 0x1_0000_0000
             }) by (compute_only);
             assert({
-                #[spec]
+                #[verifier::spec]
                 let e1 = Example { u1: 42, u2: 0x1_0000_0000, b: false };
                 !e1.b
             }) by (compute_only);
