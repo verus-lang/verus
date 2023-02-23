@@ -7,7 +7,7 @@ The steps below walk you through compiling a Verus-specific version of rust-anal
 
 #### 1. Compile custom rust-analyzer
 
-1. Clone the repository: `git clone https://github.com/verus-lang/rust-analyzer/tree/november-08-2022`  
+1. Clone the repository: `git clone https://github.com/verus-lang/rust-analyzer.git`  
 2. `cd rust-analyzer`
 3. Compile the rust-analyzer binary: `cargo xtask dist`
 4. Unzip the generated file (e.g. `gunzip ./dist/rust-analyzer-x86_64-apple-darwin.gz`)
