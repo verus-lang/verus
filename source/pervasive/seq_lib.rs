@@ -6,6 +6,8 @@ use builtin_macros::*;
 use crate::pervasive::*;
 #[allow(unused_imports)]
 use crate::pervasive::seq::*;
+#[allow(unused_imports)]
+use crate::pervasive::set::Set;
 
 verus! {
 
@@ -31,13 +33,100 @@ impl<A> Seq<A> {
     /// thereby 1 smaller.
     ///
     /// If the input sequence is empty, the result is meaningless and arbitrary.
-
     pub open spec fn drop_last(self) -> Seq<A>
         recommends self.len() >= 1
     {
         self.subrange(0, self.len() as int - 1)
-    } 
+    }
+
+    /// returns `true` if the sequequence has no duplicate elements
+    pub open spec fn no_duplicates(self) -> bool {
+        forall(|i, j| (0 <= i < self.len() && 0 <= j < self.len() && i != j)
+            ==> self[i] != self[j])
+    }
+
+    /// Returns `true` if two sequences are disjoint
+    pub open spec fn disjoint(self, other: Self) -> bool {
+        forall |a: A| self.contains(a) ==> !other.contains(a)
+    }
+
+    /// Converts a sequence into a set
+    pub open spec fn to_set(self) -> Set<A> {
+        Set::new(|a: A| self.contains(a))
+    }
 }
+
+
+/// recursive definition of seq to set conversion
+spec fn seq_to_set_rec<A>(seq: Seq<A>) -> Set<A>
+    decreases seq.len() when seq.len() >= 0
+{
+    if seq.len() == 0 {
+        Set::empty()
+    } else {
+        seq_to_set_rec(seq.drop_last()).insert(seq.last())
+    }
+}
+
+/// helper function showing that the recursive definition of set_to_seq produces a finite set
+proof fn seq_to_set_rec_is_finite<A>(seq: Seq<A>)
+    ensures seq_to_set_rec(seq).finite()
+    decreases seq.len()
+{
+    if seq.len() > 0{
+        let sub_seq = seq.drop_last();
+        assert(seq_to_set_rec(sub_seq).finite()) by {
+            seq_to_set_rec_is_finite(sub_seq);
+        }
+    }
+}
+
+/// helper function showing that the resulting set contains all elements of the sequence
+proof fn seq_to_set_rec_contains<A>(seq: Seq<A>)
+    ensures forall |a| #[trigger] seq.contains(a) <==> seq_to_set_rec(seq).contains(a)
+    decreases seq.len()
+{
+    if seq.len() > 0 {
+        assert(forall |a| #[trigger] seq.drop_last().contains(a) <==> seq_to_set_rec(seq.drop_last()).contains(a)) by {
+            seq_to_set_rec_contains(seq.drop_last());
+        }
+
+        assert(seq.ext_equal(seq.drop_last().push(seq.last())));
+        assert forall |a| #[trigger] seq.contains(a) <==> seq_to_set_rec(seq).contains(a) by {
+            if !seq.drop_last().contains(a) {
+                if a == seq.last() {
+                    assert(seq.contains(a));
+                    assert(seq_to_set_rec(seq).contains(a));
+                } else {
+                    assert(!seq_to_set_rec(seq).contains(a));
+                }
+            }
+        }
+    }
+}
+
+/// helper function showing that the recursive definition matches the set comprehension one
+proof fn seq_to_set_equal_rec<A>(seq: Seq<A>)
+    ensures seq.to_set() == seq_to_set_rec(seq)
+{
+    assert(forall |n| #[trigger] seq.contains(n) <==> seq_to_set_rec(seq).contains(n)) by {
+        seq_to_set_rec_contains(seq);
+    }
+    assert(forall |n| #[trigger] seq.contains(n) <==> seq.to_set().contains(n));
+    assert(seq.to_set().ext_equal(seq_to_set_rec(seq)));
+}
+
+
+/// proof function showing that the set obtained from the sequence is finite
+pub proof fn seq_to_set_is_finite<A>(seq: Seq<A>)
+    ensures seq.to_set().finite()
+{
+    assert(seq.to_set().finite()) by {
+        seq_to_set_equal_rec(seq);
+        seq_to_set_rec_is_finite(seq);
+    }
+}
+
 
 #[doc(hidden)]
 #[verifier(inline)]
