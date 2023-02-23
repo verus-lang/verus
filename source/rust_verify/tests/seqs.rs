@@ -29,6 +29,16 @@ test_verify_one_file! {
             let s7 = seq![true ==> false, false ==> true];
             assert(!s7.index(0));
             assert(s7.index(1));
+
+            assert(s1.to_set().finite()) by {
+                seq_to_set_is_finite(s1);
+            }
+            assert(s6.to_set().finite()) by {
+                seq_to_set_is_finite(s6);
+            }
+            assert(s7.to_set().finite()) by {
+                seq_to_set_is_finite(s7);
+            }
         }
     } => Ok(())
 }
@@ -99,3 +109,4 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
