@@ -9,7 +9,7 @@ use crate::ast::{
     ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Fun, FunX, Idents, InequalityOp, IntRange,
     IntegerTypeBoundKind, PathX, SpannedTyped, Typ, TypX, UnaryOp, VirErr,
 };
-use crate::ast_util::{err_str, path_as_veruslib_name};
+use crate::ast_util::{err_str, path_as_vstd_name};
 use crate::func_to_air::{SstInfo, SstMap};
 use crate::prelude::ArchWordBits;
 use crate::sst::{Bnd, BndX, Exp, ExpX, Exps, Trigs, UniqueIdent};
@@ -631,7 +631,7 @@ enum SeqFn {
 /// Identify sequence functions for which we provide custom interpretation
 fn is_sequence_fn(fun: &Fun) -> Option<SeqFn> {
     use SeqFn::*;
-    match path_as_veruslib_name(&fun.path).as_ref().map(|x| x.as_str()) {
+    match path_as_vstd_name(&fun.path).as_ref().map(|x| x.as_str()) {
         Some("seq::Seq::empty") => Some(Empty),
         Some("seq::Seq::new") => Some(New),
         Some("seq::Seq::push") => Some(Push),

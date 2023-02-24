@@ -46,13 +46,13 @@ pub fn verus_erase_ghost_old(input: proc_macro::TokenStream) -> proc_macro::Toke
 #[proc_macro]
 pub fn verus(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     proc_macro::quote! {
-        #[cfg(all(not(verus_macro_erase_ghost), veruslib_todo))]
+        #[cfg(all(not(verus_macro_erase_ghost), vstd_todo))]
         verus_keep_ghost! { $input }
-        #[cfg(all(verus_macro_erase_ghost, veruslib_todo))]
+        #[cfg(all(verus_macro_erase_ghost, vstd_todo))]
         verus_erase_ghost! { $input }
-        #[cfg(all(not(verus_macro_erase_ghost), not(veruslib_todo)))]
+        #[cfg(all(not(verus_macro_erase_ghost), not(vstd_todo)))]
         verus_keep_ghost_old! { $input }
-        #[cfg(all(verus_macro_erase_ghost, not(veruslib_todo)))]
+        #[cfg(all(verus_macro_erase_ghost, not(vstd_todo)))]
         verus_erase_ghost_old! { $input }
     }
 }

@@ -3,15 +3,15 @@ use builtin_macros::*;
 #[allow(unused_imports)]
 use builtin::*;
 
-#[cfg(not(veruslib_todo))]
+#[cfg(not(vstd_todo))]
 mod pervasive;
-#[cfg(not(veruslib_todo))]
+#[cfg(not(vstd_todo))]
 #[allow(unused_imports)]
 use pervasive::{*, vec::*, seq::*, modes::*};
 
-#[cfg(veruslib_todo)]
+#[cfg(vstd_todo)]
 #[allow(unused_imports)]
-use veruslib::pervasive::{*, vec::*, seq::*, modes::*};
+use vstd::pervasive::{*, vec::*, seq::*, modes::*};
 
 #[verifier(external)]
 fn main() {

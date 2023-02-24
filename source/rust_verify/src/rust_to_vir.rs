@@ -206,7 +206,7 @@ fn check_item<'tcx>(
             let (self_path, datatype_typ_args) = match &*self_typ {
                 TypX::Datatype(p, typ_args) => (p.clone(), typ_args.clone()),
                 TypX::StrSlice => {
-                    let path = vir::def::strslice_defn_path(&ctxt.veruslib_crate_name);
+                    let path = vir::def::strslice_defn_path(&ctxt.vstd_crate_name);
                     let typ_args = Arc::new(vec![Arc::new(TypX::StrSlice)]);
                     (path, typ_args)
                 }

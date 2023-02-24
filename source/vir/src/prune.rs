@@ -23,7 +23,7 @@ struct Ctxt {
     // Map (D, T.f) -> D.f if D implements T.f:
     method_map: HashMap<(Path, Fun), Fun>,
     all_functions_in_each_module: HashMap<Path, Vec<Fun>>,
-    veruslib_crate_name: Option<Ident>,
+    vstd_crate_name: Option<Ident>,
 }
 
 #[derive(Default)]
@@ -106,7 +106,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             match &**t {
                 // This is temporary until we support adding specification for std.
                 TypX::StrSlice => {
-                    let path = crate::def::strslice_defn_path(&ctxt.veruslib_crate_name);
+                    let path = crate::def::strslice_defn_path(&ctxt.vstd_crate_name);
                     reach(
                         &mut state.reached_modules,
                         &mut state.worklist_modules,
@@ -141,12 +141,12 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                         reach_function(
                             ctxt,
                             state,
-                            &fn_inv_name(&ctxt.veruslib_crate_name, *atomicity),
+                            &fn_inv_name(&ctxt.vstd_crate_name, *atomicity),
                         );
                         reach_function(
                             ctxt,
                             state,
-                            &fn_namespace_name(&ctxt.veruslib_crate_name, *atomicity),
+                            &fn_namespace_name(&ctxt.vstd_crate_name, *atomicity),
                         );
                     }
                     _ => {}
@@ -187,7 +187,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
 pub fn prune_krate_for_module(
     krate: &Krate,
     module: &Path,
-    veruslib_crate_name: &Option<Ident>,
+    vstd_crate_name: &Option<Ident>,
 ) -> (Krate, Vec<MonoTyp>, Vec<usize>) {
     let mut state: State = Default::default();
     state.reached_modules.insert(module.clone());
@@ -305,7 +305,7 @@ pub fn prune_krate_for_module(
         datatype_map,
         method_map,
         all_functions_in_each_module,
-        veruslib_crate_name: veruslib_crate_name.clone(),
+        vstd_crate_name: vstd_crate_name.clone(),
     };
     traverse_reachable(&ctxt, &mut state);
 

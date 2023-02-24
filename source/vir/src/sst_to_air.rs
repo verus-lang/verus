@@ -321,10 +321,8 @@ fn call_inv(
     typ: &Typ,
     atomicity: InvAtomicity,
 ) -> Expr {
-    let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&fn_inv_name(
-        &ctx.global.veruslib_crate_name,
-        atomicity,
-    )));
+    let inv_fn_ident =
+        suffix_global_id(&fun_to_air_ident(&fn_inv_name(&ctx.global.vstd_crate_name, atomicity)));
     let boxed_inner = try_box(ctx, inner.clone(), typ).unwrap_or(inner);
 
     let mut args: Vec<Expr> = typ_args.iter().map(|t| typ_to_id(t)).collect();
@@ -335,7 +333,7 @@ fn call_inv(
 
 fn call_namespace(ctx: &Ctx, arg: Expr, typ_args: &Typs, atomicity: InvAtomicity) -> Expr {
     let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&fn_namespace_name(
-        &ctx.global.veruslib_crate_name,
+        &ctx.global.vstd_crate_name,
         atomicity,
     )));
 

@@ -45,7 +45,7 @@ pub struct GlobalCtx {
     pub(crate) inferred_modes: HashMap<InferMode, Mode>,
     pub(crate) rlimit: u32,
     pub(crate) interpreter_log: Rc<RefCell<Option<File>>>,
-    pub(crate) veruslib_crate_name: Option<Ident>,
+    pub(crate) vstd_crate_name: Option<Ident>,
     pub arch: ArchWordBits,
 }
 
@@ -173,7 +173,7 @@ impl GlobalCtx {
         inferred_modes: HashMap<InferMode, Mode>,
         rlimit: u32,
         interpreter_log: Rc<RefCell<Option<File>>>,
-        veruslib_crate_name: Option<Ident>,
+        vstd_crate_name: Option<Ident>,
         arch: ArchWordBits,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
@@ -234,7 +234,7 @@ impl GlobalCtx {
             inferred_modes,
             rlimit,
             interpreter_log,
-            veruslib_crate_name,
+            vstd_crate_name,
             arch,
         })
     }

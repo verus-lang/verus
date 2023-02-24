@@ -3,7 +3,7 @@ use crate::ast::{
     InferMode, InvAtomicity, Krate, Mode, ModeCoercion, MultiOp, Path, Pattern, PatternX, Stmt,
     StmtX, UnaryOp, UnaryOpr, VirErr,
 };
-use crate::ast_util::{err_str, err_string, get_field, path_as_veruslib_name};
+use crate::ast_util::{err_str, err_string, get_field, path_as_vstd_name};
 use crate::def::user_local_name;
 use crate::util::vec_map_result;
 use air::ast::Span;
@@ -500,8 +500,8 @@ fn check_expr_handle_mut_arg(
                 }
             }
             let mode_error_msg = || {
-                if path_as_veruslib_name(&x.path)
-                    == path_as_veruslib_name(&crate::def::exec_nonstatic_call_path(&None))
+                if path_as_vstd_name(&x.path)
+                    == path_as_vstd_name(&crate::def::exec_nonstatic_call_path(&None))
                 {
                     format!("to call a non-static function in ghost code, it must be a FnSpec")
                 } else {

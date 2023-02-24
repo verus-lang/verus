@@ -1,15 +1,15 @@
 use builtin_macros::*;
 use builtin::*;
 
-#[cfg(not(veruslib_todo))]
+#[cfg(not(vstd_todo))]
 mod pervasive;
-#[cfg(not(veruslib_todo))]
+#[cfg(not(vstd_todo))]
 #[allow(unused_imports)]
 use pervasive::{*, option::Option, result::Result};
 
-#[cfg(veruslib_todo)]
+#[cfg(vstd_todo)]
 #[allow(unused_imports)]
-use veruslib::pervasive::{*, option::Option, result::Result};
+use vstd::pervasive::{*, option::Option, result::Result};
 
 verus! {
 

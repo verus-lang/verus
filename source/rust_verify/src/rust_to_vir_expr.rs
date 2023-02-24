@@ -555,16 +555,16 @@ fn fn_call_to_vir<'tcx>(
     let is_ghost_borrow_mut = f_name == "builtin::Ghost::<A>::borrow_mut";
     let is_ghost_new = f_name == "builtin::Ghost::<A>::new";
     // TODO: move ghost_exec, tracked_exec, tracked_split_tuple to builtin
-    let is_ghost_exec = f_name == "pervasive::modes::ghost_exec"
-        || f_name == "veruslib::pervasive::modes::ghost_exec";
+    let is_ghost_exec =
+        f_name == "pervasive::modes::ghost_exec" || f_name == "vstd::pervasive::modes::ghost_exec";
     let is_ghost_split_tuple = f_name.starts_with("builtin::ghost_split_tuple");
     let is_tracked_view = f_name == "builtin::Tracked::<A>::view";
     let is_tracked_borrow = f_name == "builtin::Tracked::<A>::borrow";
     let is_tracked_borrow_mut = f_name == "builtin::Tracked::<A>::borrow_mut";
     let is_tracked_exec = f_name == "pervasive::modes::tracked_exec"
-        || f_name == "veruslib::pervasive::modes::tracked_exec";
+        || f_name == "vstd::pervasive::modes::tracked_exec";
     let is_tracked_exec_borrow = f_name == "pervasive::modes::tracked_exec_borrow"
-        || f_name == "veruslib::pervasive::modes::tracked_exec_borrow";
+        || f_name == "vstd::pervasive::modes::tracked_exec_borrow";
     let is_tracked_get = f_name == "builtin::Tracked::<A>::get";
     let is_tracked_split_tuple = f_name.starts_with("builtin::tracked_split_tuple");
     let is_new_strlit = tcx.is_diagnostic_item(Symbol::intern("pervasive::string::new_strlit"), f);
@@ -630,10 +630,10 @@ fn fn_call_to_vir<'tcx>(
         || f_name == "std::rc::Rc::<T>::new"
         || f_name == "std::sync::Arc::<T>::new";
 
-    let veruslib_name = vir::def::name_as_veruslib_name(&f_name);
-    if veruslib_name == Some(BUILTIN_INV_ATOMIC_BEGIN.to_string())
-        || veruslib_name == Some(BUILTIN_INV_LOCAL_BEGIN.to_string())
-        || veruslib_name == Some(BUILTIN_INV_END.to_string())
+    let vstd_name = vir::def::name_as_vstd_name(&f_name);
+    if vstd_name == Some(BUILTIN_INV_ATOMIC_BEGIN.to_string())
+        || vstd_name == Some(BUILTIN_INV_LOCAL_BEGIN.to_string())
+        || vstd_name == Some(BUILTIN_INV_END.to_string())
     {
         // `open_invariant_begin` and `open_invariant_end` calls should only appear
         // through use of the `open_invariant!` macro, which creates an invariant block.
@@ -1968,7 +1968,7 @@ pub(crate) fn invariant_block_open<'a>(
                 }),
             ..
         }) => {
-            let f_name = vir::ast_util::path_as_veruslib_name(&def_id_to_vir_path(tcx, *fun_id));
+            let f_name = vir::ast_util::path_as_vstd_name(&def_id_to_vir_path(tcx, *fun_id));
             let atomicity = if f_name == Some(BUILTIN_INV_ATOMIC_BEGIN.to_string()) {
                 InvAtomicity::Atomic
             } else if f_name == Some(BUILTIN_INV_LOCAL_BEGIN.to_string()) {
@@ -2066,9 +2066,9 @@ fn invariant_block_to_vir<'tcx>(
     };
 
     if let Some((hir_id1, hir_id2, fun_id)) = invariant_block_close(close_stmt) {
-        let veruslib_name =
-            vir::ast_util::path_as_veruslib_name(&def_id_to_vir_path(bctx.ctxt.tcx, fun_id));
-        if veruslib_name != Some(BUILTIN_INV_END.to_string()) {
+        let vstd_name =
+            vir::ast_util::path_as_vstd_name(&def_id_to_vir_path(bctx.ctxt.tcx, fun_id));
+        if vstd_name != Some(BUILTIN_INV_END.to_string()) {
             return malformed_inv_block_err(expr);
         }
 
@@ -2321,7 +2321,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         // `exec_nonstatic_call` which is defined in the pervasive lib.
                         let span = bctx.ctxt.spans.to_air_span(expr.span.clone());
                         let tup = vir::ast_util::mk_tuple(&span, &Arc::new(vir_args));
-                        let fun = vir::def::exec_nonstatic_call_fun(&bctx.ctxt.veruslib_crate_name);
+                        let fun = vir::def::exec_nonstatic_call_fun(&bctx.ctxt.vstd_crate_name);
                         let ret_typ = expr_typ.clone();
                         let typ_args =
                             Arc::new(vec![tup.typ.clone(), ret_typ, vir_fun.typ.clone()]);

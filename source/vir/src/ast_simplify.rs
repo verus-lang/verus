@@ -874,7 +874,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         ctx.inferred_modes.clone(),
         ctx.rlimit,
         ctx.interpreter_log.clone(),
-        ctx.veruslib_crate_name.clone(),
+        ctx.vstd_crate_name.clone(),
         ctx.arch,
     )?;
     Ok(krate)

@@ -32,7 +32,7 @@ pub struct ContextX<'tcx> {
     pub(crate) autoviewed_call_typs: HashMap<HirId, Typ>,
     pub(crate) unique_id: std::cell::Cell<u64>,
     pub(crate) spans: crate::spans::SpanContext,
-    pub(crate) veruslib_crate_name: Option<Ident>,
+    pub(crate) vstd_crate_name: Option<Ident>,
     pub(crate) arch: ArchContext,
 }
 

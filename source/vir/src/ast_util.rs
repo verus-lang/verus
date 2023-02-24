@@ -185,8 +185,8 @@ pub fn path_as_rust_name(path: &Path) -> String {
     strings.join("::")
 }
 
-pub fn path_as_veruslib_name(path: &Path) -> Option<String> {
-    crate::def::name_as_veruslib_name(&path_as_rust_name(path))
+pub fn path_as_vstd_name(path: &Path) -> Option<String> {
+    crate::def::name_as_vstd_name(&path_as_rust_name(path))
 }
 
 pub fn fun_as_rust_dbg(fun: &Fun) -> String {

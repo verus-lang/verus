@@ -98,7 +98,7 @@ pub struct Verifier {
     created_log_dir: Option<String>,
     vir_crate: Option<Krate>,
     crate_names: Option<Vec<String>>,
-    veruslib_crate_name: Option<Ident>,
+    vstd_crate_name: Option<Ident>,
     air_no_span: Option<air::ast::Span>,
     inferred_modes: Option<HashMap<InferMode, Mode>>,
 
@@ -197,7 +197,7 @@ impl Verifier {
             created_log_dir: None,
             vir_crate: None,
             crate_names: None,
-            veruslib_crate_name: None,
+            vstd_crate_name: None,
             air_no_span: None,
             inferred_modes: None,
 
@@ -1142,7 +1142,7 @@ impl Verifier {
         }
 
         let (pruned_krate, mono_abstract_datatypes, lambda_types) =
-            vir::prune::prune_krate_for_module(&krate, &module, &self.veruslib_crate_name);
+            vir::prune::prune_krate_for_module(&krate, &module, &self.vstd_crate_name);
         let mut ctx = vir::context::Ctx::new(
             &pruned_krate,
             global_ctx,
@@ -1196,7 +1196,7 @@ impl Verifier {
             inferred_modes,
             self.args.rlimit,
             interpreter_log_file,
-            self.veruslib_crate_name.clone(),
+            self.vstd_crate_name.clone(),
             self.args.arch_word_bits,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
@@ -1418,7 +1418,7 @@ impl Verifier {
             ignored_functions: vec![],
         };
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
-        let veruslib_crate_name = if self.args.import.len() > 0 || self.args.export.is_some() {
+        let vstd_crate_name = if self.args.import.len() > 0 || self.args.export.is_some() {
             Some(Arc::new(vir::def::VERUSLIB.to_string()))
         } else {
             None
@@ -1431,7 +1431,7 @@ impl Verifier {
             autoviewed_call_typs,
             unique_id: std::cell::Cell::new(0),
             spans: spans.clone(),
-            veruslib_crate_name: veruslib_crate_name.clone(),
+            vstd_crate_name: vstd_crate_name.clone(),
             arch: Arc::new(ArchContextX { word_bits: self.args.arch_word_bits }),
         });
         let multi_crate = self.args.export.is_some() || self.args.import.len() > 0;
@@ -1488,7 +1488,7 @@ impl Verifier {
 
         self.vir_crate = Some(vir_crate.clone());
         self.crate_names = Some(crate_names);
-        self.veruslib_crate_name = veruslib_crate_name;
+        self.vstd_crate_name = vstd_crate_name;
         self.inferred_modes = Some(inferred_modes);
 
         let erasure_info = ctxt.erasure_info.borrow();
