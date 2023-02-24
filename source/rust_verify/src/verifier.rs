@@ -1372,11 +1372,10 @@ impl Verifier {
                 as_string: "no location".to_string(),
             })
         };
-        let air_no_span = self.air_no_span.clone().unwrap();
 
         // Convert HIR -> VIR
         let time1 = Instant::now();
-        let vir_crate = crate::rust_to_vir::crate_to_vir(&ctxt, &air_no_span)?;
+        let vir_crate = crate::rust_to_vir::crate_to_vir(&ctxt)?;
         let time2 = Instant::now();
         let vir_crate = vir::ast_sort::sort_krate(&vir_crate);
 

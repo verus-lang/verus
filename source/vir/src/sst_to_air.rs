@@ -12,12 +12,12 @@ use crate::context::Ctx;
 use crate::def::{
     array_type, fun_to_string, height, is_variant_ident, new_internal_qid, path_to_string,
     prefix_box, prefix_ensures, prefix_fuel_id, prefix_lambda_type, prefix_pre_var,
-    prefix_requires, prefix_unbox, snapshot_ident, suffix_global_id, suffix_local_expr_id,
-    suffix_local_stmt_id, suffix_local_unique_id, suffix_typ_param_id, unique_local,
-    variant_field_ident, variant_ident, ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE,
-    FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY,
-    SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
-    SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
+    prefix_requires, prefix_unbox, slice_type, snapshot_ident, suffix_global_id,
+    suffix_local_expr_id, suffix_local_stmt_id, suffix_local_unique_id, suffix_typ_param_id,
+    unique_local, variant_field_ident, variant_ident, ProverChoice, SnapPos, SpanKind, Spanned,
+    ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI,
+    I_LO, POLY, SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE, SUCC, SUFFIX_SNAP_JOIN,
+    SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
 };
 use crate::def::{fn_inv_name, fn_namespace_name, new_user_qid_name};
 use crate::def::{CommandsWithContext, CommandsWithContextX};
@@ -70,12 +70,14 @@ pub(crate) fn apply_range_fun(name: &str, range: &IntRange, exprs: Vec<Expr>) ->
 pub(crate) fn primitive_path(name: &Primitive) -> Path {
     match name {
         Primitive::Array => array_type(),
+        Primitive::Slice => slice_type(),
     }
 }
 
 pub(crate) fn primitive_type_id(name: &Primitive) -> Ident {
     str_ident(match name {
         Primitive::Array => crate::def::TYPE_ID_ARRAY,
+        Primitive::Slice => crate::def::TYPE_ID_SLICE,
     })
 }
 
@@ -126,8 +128,8 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         }
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
-        TypX::Primitive(Primitive::Array, _) => match typ_as_mono(typ) {
-            None => panic!("array should be boxed"),
+        TypX::Primitive(Primitive::Array | Primitive::Slice, _) => match typ_as_mono(typ) {
+            None => panic!("should be boxed"),
             Some(monotyp) => ident_typ(&path_to_air_ident(&monotyp_to_path(&monotyp))),
         },
         TypX::TypeId => str_typ(crate::def::TYPE),

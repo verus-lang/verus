@@ -294,7 +294,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Slice(ty) => {
             let typ = mid_ty_to_vir_ghost(tcx, ty, allow_mut_ref).0;
             let typs = Arc::new(vec![typ]);
-            (Arc::new(TypX::Datatype(vir::def::slice_type(), typs)), false)
+            (Arc::new(TypX::Primitive(Primitive::Slice, typs)), false)
         }
         TyKind::Array(ty, const_len) => {
             let typ = mid_ty_to_vir_ghost(tcx, ty, allow_mut_ref).0;

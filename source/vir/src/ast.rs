@@ -78,6 +78,7 @@ pub enum IntRange {
 #[derive(Copy, Clone, Debug, ToDebugSNode, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Primitive {
     Array,
+    Slice,
 }
 
 /// Rust type, but without Box, Rc, Arc, etc.
