@@ -9,7 +9,7 @@ pub(crate) fn import_crates(
 ) -> Result<(), VirErr> {
     for (crate_name, file_path) in &args.import {
         crate_names.push(crate_name.clone());
-        let buf = match std::fs::read(file_path) {
+        let file = std::io::BufReader::new(match std::fs::File::open(file_path) {
             Ok(file) => file,
             Err(err) => {
                 return Err(io_vir_err(
@@ -17,11 +17,8 @@ pub(crate) fn import_crates(
                     err,
                 ));
             }
-        };
-        let libcrate: Krate = bincode::deserialize(&buf).expect("read crate from file");
-        // Note: there are also deserializers directly from files, but for some reason,
-        // they are much slower:
-        //   let libcrate: Krate = bincode::deserialize_from(file).expect("read crate from file");
+        });
+        let libcrate: Krate = bincode::deserialize_from(file).expect("read crate from file");
         //   let libcrate: Krate = serde_json::from_reader(file).expect("read crate from file");
         // We can also look at other packages: https://github.com/djkoloski/rust_serialization_benchmark
         vir_crates.push(libcrate);
@@ -33,7 +30,7 @@ pub(crate) fn export_crate(args: &Args, vir_crate: &Krate) -> Result<(), VirErr>
     if let Some(file_path) = &args.export {
         // TODO: we should prune out all non-public data before serializing the crate
         // (it probably doesn't matter much yet, but it will matter as the libraries grow.)
-        let file = match std::fs::File::create(file_path) {
+        let file = std::io::BufWriter::new(match std::fs::File::create(file_path) {
             Ok(file) => file,
             Err(err) => {
                 return Err(io_vir_err(
@@ -41,7 +38,7 @@ pub(crate) fn export_crate(args: &Args, vir_crate: &Krate) -> Result<(), VirErr>
                     err,
                 ));
             }
-        };
+        });
         bincode::serialize_into(file, &vir_crate).expect("write crate to file");
         //serde_json::to_writer(file, &vir_crate).expect("write crate to file");
         //serde_json::to_writer_pretty(file, &vir_crate).expect("write crate to file");
