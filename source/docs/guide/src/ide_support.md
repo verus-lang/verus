@@ -39,6 +39,18 @@ For example:
 ],
 ```
 
+For VS Code running in WSL, the `rust-analyzer-server.path` and
+`rust-analyzer.checkOnSave.overrideCommand` settings described above
+have to be set in two different files. The `rust-analyzer-server.path`
+setting needs to be in `~/.vscode-server/data/Machine/settings.json`,
+which you can open in VS Code by pressing F1 and running the command
+`Preferences: Open Remote Settings (JSON)`.  The
+`rust-analyzer.checkOnSave.overrideCommand` setting needs to be in
+your local settings file, named something like
+`/C:/Users/lorch/AppData/Roaming/Code/User/settings.json`. You can
+open this file in VS Code by pressing F1 and running the command
+`Preferences: Open User Settings (JSON)`.
+
 
 #### 3. Other IDEs
 
