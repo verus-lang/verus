@@ -11,7 +11,7 @@ pub trait SliceAdditionalSpecFns<T> {
    spec fn spec_index(&self, i: int) -> T;
 }
 
-impl<T> SliceAdditionalSpecFns<T> for [T] {
+impl<T> SliceAdditionalSpecFns<T> for &[T] {
     spec fn view(&self) -> Seq<T>;
 
     #[verifier(inline)]
