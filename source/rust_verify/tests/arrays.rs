@@ -21,7 +21,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_recursion_checks verus_code! {
+    #[test] test_recursion_checks_1 verus_code! {
         use pervasive::array::*;
         use pervasive::map::*;
 
@@ -30,4 +30,15 @@ test_verify_one_file! {
         }
 
     } => Err(err) => assert_vir_error_msg(err, "non-positive polarity")
+}
+
+test_verify_one_file! {
+    #[test] test_recursion_checks_2 verus_code! {
+        use pervasive::array::*;
+
+        struct Foo {
+            field: Box<[ Foo ; 1 ]>,
+        }
+
+    } => Ok(())
 }

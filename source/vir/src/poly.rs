@@ -72,7 +72,8 @@ Therefore, the expression Unbox(Box(1)) explicitly introduces a superfluous Unbo
 use crate::ast::{
     BinaryOp, CallTarget, Datatype, DatatypeX, Expr, ExprX, Exprs, FieldOpr, Function,
     FunctionKind, FunctionX, Ident, IntRange, Krate, KrateX, MaskSpec, Mode, MultiOp, Param,
-    ParamX, Path, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr,
+    ParamX, Path, PatternX, Primitive, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
+    UnaryOpr,
 };
 use crate::context::Ctx;
 use crate::def::Spanned;
@@ -90,6 +91,7 @@ pub enum MonoTypX {
     Int(IntRange),
     Datatype(Path, MonoTyps),
     StrSlice,
+    Primitive(Primitive, MonoTyps),
 }
 
 struct State {
@@ -98,21 +100,30 @@ struct State {
     in_exec_closure: bool,
 }
 
+fn monotyps_as_mono(typs: &Typs) -> Option<Vec<MonoTyp>> {
+    let mut monotyps: Vec<MonoTyp> = Vec::new();
+    for typ in typs.iter() {
+        if let Some(monotyp) = typ_as_mono(typ) {
+            monotyps.push(monotyp);
+        } else {
+            return None;
+        }
+    }
+    Some(monotyps)
+}
+
 pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
     match &**typ {
         TypX::Bool => Some(Arc::new(MonoTypX::Bool)),
         TypX::Int(range) => Some(Arc::new(MonoTypX::Int(*range))),
         TypX::StrSlice => Some(Arc::new(MonoTypX::StrSlice)),
         TypX::Datatype(path, typs) => {
-            let mut monotyps: Vec<MonoTyp> = Vec::new();
-            for typ in typs.iter() {
-                if let Some(monotyp) = typ_as_mono(typ) {
-                    monotyps.push(monotyp);
-                } else {
-                    return None;
-                }
-            }
+            let monotyps = monotyps_as_mono(typs)?;
             Some(Arc::new(MonoTypX::Datatype(path.clone(), Arc::new(monotyps))))
+        }
+        TypX::Primitive(name, typs) => {
+            let monotyps = monotyps_as_mono(typs)?;
+            Some(Arc::new(MonoTypX::Primitive(*name, Arc::new(monotyps))))
         }
         _ => None,
     }
@@ -125,6 +136,10 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
         MonoTypX::Datatype(path, typs) => {
             let typs = vec_map(&**typs, monotyp_to_typ);
             Arc::new(TypX::Datatype(path.clone(), Arc::new(typs)))
+        }
+        MonoTypX::Primitive(name, typs) => {
+            let typs = vec_map(&**typs, monotyp_to_typ);
+            Arc::new(TypX::Primitive(*name, Arc::new(typs)))
         }
         MonoTypX::StrSlice => Arc::new(TypX::StrSlice),
     }
@@ -145,6 +160,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
             }
         }
         TypX::Boxed(_) | TypX::TypParam(_) => true,
+        TypX::Primitive(_, _) => typ_as_mono(typ).is_none(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
@@ -170,6 +186,13 @@ fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
             }
         }
         TypX::Boxed(_) | TypX::TypParam(_) => typ.clone(),
+        TypX::Primitive(_, _) => {
+            if typ_as_mono(typ).is_none() {
+                Arc::new(TypX::Boxed(typ.clone()))
+            } else {
+                typ.clone()
+            }
+        }
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
@@ -185,7 +208,7 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
         TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
-        TypX::Datatype(..) => Arc::new(TypX::Boxed(typ.clone())),
+        TypX::Datatype(..) | TypX::Primitive(_, _) => Arc::new(TypX::Boxed(typ.clone())),
         TypX::Boxed(_) | TypX::TypParam(_) => typ.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
@@ -199,6 +222,7 @@ pub(crate) fn coerce_expr_to_native(ctx: &Ctx, expr: &Expr) -> Expr {
         | TypX::Int(_)
         | TypX::Lambda(..)
         | TypX::Datatype(..)
+        | TypX::Primitive(_, _)
         | TypX::StrSlice
         | TypX::Char => expr.clone(),
         TypX::AnonymousClosure(..) => {
@@ -228,10 +252,12 @@ fn coerce_expr_to_poly(ctx: &Ctx, expr: &Expr) -> Expr {
         {
             expr.clone()
         }
+        TypX::Primitive(_, _) if typ_as_mono(&expr.typ).is_none() => expr.clone(),
         TypX::Bool
         | TypX::Int(_)
         | TypX::Lambda(..)
         | TypX::Datatype(..)
+        | TypX::Primitive(_, _)
         | TypX::StrSlice
         | TypX::Char => {
             let op = UnaryOpr::Box(expr.typ.clone());

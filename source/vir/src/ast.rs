@@ -75,6 +75,11 @@ pub enum IntRange {
     ISize,
 }
 
+#[derive(Copy, Clone, Debug, ToDebugSNode, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Primitive {
+    Array,
+}
+
 /// Rust type, but without Box, Rc, Arc, etc.
 pub type Typ = Arc<TypX>;
 
@@ -109,6 +114,8 @@ pub enum TypX {
     StrSlice,
     /// UTF-8 character type
     Char,
+    /// Other primitive type (applied to type arguments)
+    Primitive(Primitive, Typs),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, ToDebugSNode)]

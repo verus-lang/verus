@@ -49,7 +49,8 @@ fn check_well_founded_typ(
         | TypX::Lambda(..)
         | TypX::ConstInt(_)
         | TypX::StrSlice
-        | TypX::Char => Ok(true),
+        | TypX::Char
+        | TypX::Primitive(_, _) => Ok(true),
         TypX::Boxed(_) | TypX::TypeId | TypX::Air(_) => {
             panic!("internal error: unexpected type in check_well_founded_typ")
         }
@@ -147,6 +148,12 @@ fn check_positive_uses(
             for ((_, _, strictly_positive), t) in typ_params.iter().zip(ts.iter()) {
                 let t_polarity = if *strictly_positive { Some(true) } else { None };
                 check_positive_uses(global, local, t_polarity, t)?;
+            }
+            Ok(())
+        }
+        TypX::Primitive(_, ts) => {
+            for t in ts.iter() {
+                check_positive_uses(global, local, polarity, t)?;
             }
             Ok(())
         }

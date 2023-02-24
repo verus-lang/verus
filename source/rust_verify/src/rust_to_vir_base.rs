@@ -20,7 +20,9 @@ use rustc_span::{Span, Symbol};
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::HashMap;
 use std::sync::Arc;
-use vir::ast::{GenericBoundX, IntRange, Path, PathX, Typ, TypBounds, TypX, Typs, VirErr};
+use vir::ast::{
+    GenericBoundX, IntRange, Path, PathX, Primitive, Typ, TypBounds, TypX, Typs, VirErr,
+};
 use vir::ast_util::types_equal;
 use vir::def::unique_local_name;
 
@@ -298,7 +300,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let typ = mid_ty_to_vir_ghost(tcx, ty, allow_mut_ref).0;
             let len = mid_ty_const_to_vir(tcx, const_len);
             let typs = Arc::new(vec![typ, len]);
-            (Arc::new(TypX::Datatype(vir::def::array_type(), typs)), false)
+            (Arc::new(TypX::Primitive(Primitive::Array, typs)), false)
         }
         TyKind::Adt(AdtDef { did, .. }, args) => {
             let s = ty.to_string();

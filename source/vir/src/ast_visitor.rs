@@ -69,6 +69,11 @@ where
                 TypX::Boxed(t) => {
                     expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
                 }
+                TypX::Primitive(_, ts) => {
+                    for t in ts.iter() {
+                        expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
+                    }
+                }
             }
             VisitorControlFlow::Recurse
         }
@@ -109,6 +114,10 @@ where
         TypX::Boxed(t) => {
             let t = map_typ_visitor_env(t, env, ft)?;
             ft(env, &Arc::new(TypX::Boxed(t)))
+        }
+        TypX::Primitive(name, ts) => {
+            let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
+            ft(env, &Arc::new(TypX::Primitive(name.clone(), Arc::new(ts))))
         }
     }
 }

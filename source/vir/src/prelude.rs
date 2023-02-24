@@ -104,6 +104,8 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let new_strlit = strslice_new_strlit();
     let from_strlit = strslice_from_strlit();
 
+    let type_id_array = str_to_node(TYPE_ID_ARRAY);
+
     let from_unicode = char_from_unicode();
     let to_unicode = char_to_unicode();
 
@@ -155,6 +157,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-const [type_id_nat] [typ])
         (declare-const [type_id_strslice] [typ])
         (declare-const [type_id_char] [typ])
+        (declare-fun [type_id_array] ([typ] [typ]) [typ])
         (declare-fun [type_id_uint] (Int) [typ])
         (declare-fun [type_id_sint] (Int) [typ])
         (declare-fun [type_id_const_int] (Int) [typ])
