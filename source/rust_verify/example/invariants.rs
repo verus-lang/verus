@@ -1,9 +1,14 @@
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
+
+#[cfg(not(vstd_todo))]
 mod pervasive;
-use pervasive::*;
-use crate::pervasive::{invariant::*};
+#[cfg(not(vstd_todo))]
+use pervasive::{*, invariant::*};
+
+#[cfg(vstd_todo)]
+use vstd::{*, pervasive::{*, invariant::*}};
 
 verus!{
 struct ModPredicate { }

@@ -185,6 +185,10 @@ pub fn path_as_rust_name(path: &Path) -> String {
     strings.join("::")
 }
 
+pub fn path_as_vstd_name(path: &Path) -> Option<String> {
+    crate::def::name_as_vstd_name(&path_as_rust_name(path))
+}
+
 pub fn fun_as_rust_dbg(fun: &Fun) -> String {
     let FunX { path, trait_path } = &**fun;
     let path_str = path_as_rust_name(path);

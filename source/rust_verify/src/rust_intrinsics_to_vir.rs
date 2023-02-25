@@ -1,17 +1,22 @@
-use crate::util::spanned_typed_new;
+use crate::context::Context;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{Expr, ExprX, IntRange, IntegerTypeBoundKind, Mode, Typ, TypX, UnaryOpr};
 
-pub(crate) fn int_intrinsic_constant_to_vir(span: Span, typ: &Typ, f_name: &str) -> Option<Expr> {
-    let mk_expr = |x: ExprX| spanned_typed_new(span, &typ, x);
+pub(crate) fn int_intrinsic_constant_to_vir(
+    ctxt: &Context,
+    span: Span,
+    typ: &Typ,
+    f_name: &str,
+) -> Option<Expr> {
+    let mk_expr = |x: ExprX| ctxt.spanned_typed_new(span, &typ, x);
 
     let lit_expr = |u: u128| Some(mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(u))));
 
     let lit_expr_i = |i: i128| Some(mk_expr(ExprX::Const(vir::ast_util::const_int_from_i128(i))));
 
     let arch_bits = || {
-        let arg = spanned_typed_new(
+        let arg = ctxt.spanned_typed_new(
             span,
             &Arc::new(TypX::Int(IntRange::Int)),
             ExprX::Const(vir::ast_util::const_int_from_u128(0)),

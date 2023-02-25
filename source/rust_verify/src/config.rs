@@ -42,6 +42,8 @@ pub const TRIGGERS_FILE_SUFFIX: &str = ".triggers";
 #[derive(Debug, Default)]
 pub struct Args {
     pub pervasive_path: Option<String>,
+    pub export: Option<String>,
+    pub import: Vec<(String, String)>,
     pub verify_root: bool,
     pub verify_module: Vec<String>,
     pub verify_function: Option<String>,
@@ -117,6 +119,8 @@ pub fn enable_default_features_and_verus_attr(
 
 pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args, Vec<String>) {
     const OPT_PERVASIVE_PATH: &str = "pervasive-path";
+    const OPT_EXPORT: &str = "export";
+    const OPT_IMPORT: &str = "import";
     const OPT_VERIFY_ROOT: &str = "verify-root";
     const OPT_VERIFY_MODULE: &str = "verify-module";
     const OPT_VERIFY_FUNCTION: &str = "verify-function";
@@ -159,6 +163,8 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
 
     let mut opts = Options::new();
     opts.optopt("", OPT_PERVASIVE_PATH, "Path of the pervasive module", "PATH");
+    opts.optopt("", OPT_EXPORT, "Export Verus metadata for library crate", "CRATENAME=PATH");
+    opts.optmulti("", OPT_IMPORT, "Import Verus metadata from library crate", "CRATENAME=PATH");
     opts.optflag("", OPT_VERIFY_ROOT, "Verify just the root module of crate");
     opts.optmulti(
         "",
@@ -274,9 +280,20 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         Err(f) => error(f.to_string()),
     };
 
+    let split_pair_eq = |pair: &String| {
+        let v = pair.split('=').map(|s| s.trim()).collect::<Vec<_>>();
+        if v.len() == 2 {
+            (v[0].to_string(), v[1].to_string())
+        } else {
+            error("expected SMT option of form option_name=option_value".to_string())
+        }
+    };
+
     let args = Args {
         pervasive_path: matches.opt_str(OPT_PERVASIVE_PATH),
         verify_root: matches.opt_present(OPT_VERIFY_ROOT),
+        export: matches.opt_str(OPT_EXPORT),
+        import: matches.opt_strs(OPT_IMPORT).iter().map(split_pair_eq).collect(),
         verify_module: matches.opt_strs(OPT_VERIFY_MODULE),
         verify_function: matches.opt_str(OPT_VERIFY_FUNCTION),
         verify_pervasive: matches.opt_present(OPT_VERIFY_PERVASIVE),
@@ -304,18 +321,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
             .opt_get::<u32>(OPT_RLIMIT)
             .unwrap_or_else(|_| error("expected integer after rlimit".to_string()))
             .unwrap_or(DEFAULT_RLIMIT_SECS),
-        smt_options: matches
-            .opt_strs(OPT_SMT_OPTION)
-            .iter()
-            .map(|line| {
-                let v = line.split('=').map(|s| s.trim()).collect::<Vec<_>>();
-                if v.len() == 2 {
-                    (v[0].to_string(), v[1].to_string())
-                } else {
-                    error("expected SMT option of form option_name=option_value".to_string())
-                }
-            })
-            .collect(),
+        smt_options: matches.opt_strs(OPT_SMT_OPTION).iter().map(split_pair_eq).collect(),
         multiple_errors: matches
             .opt_get::<u32>(OPT_MULTIPLE_ERRORS)
             .unwrap_or_else(|_| error("expected integer after multiple-errors".to_string()))

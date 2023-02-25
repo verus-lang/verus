@@ -1,40 +1,13 @@
-use rustc_span::{Span, SpanData};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
-use vir::ast::{SpannedTyped, Typ, VirErr};
+use rustc_span::Span;
+use vir::ast::VirErr;
 use vir::ast_util::err_string;
-use vir::def::Spanned;
-
-static NEXT_SPAN_ID: AtomicU64 = AtomicU64::new(1);
-
-pub(crate) fn to_raw_span(span: Span) -> air::ast::RawSpan {
-    Arc::new(span.data())
-}
-
-pub(crate) fn to_air_span(span: Span) -> air::ast::Span {
-    let raw_span = to_raw_span(span);
-    let as_string = format!("{:?}", span);
-    air::ast::Span { raw_span, id: NEXT_SPAN_ID.fetch_add(1, Ordering::Relaxed), as_string }
-}
-
-pub(crate) fn from_raw_span(raw_span: &air::ast::RawSpan) -> Span {
-    (**raw_span).downcast_ref::<SpanData>().expect("internal error: failed to cast to Span").span()
-}
-
-pub(crate) fn spanned_new<X>(span: Span, x: X) -> Arc<Spanned<X>> {
-    Spanned::new(to_air_span(span), x)
-}
-
-pub(crate) fn spanned_typed_new<X>(span: Span, typ: &Typ, x: X) -> Arc<SpannedTyped<X>> {
-    SpannedTyped::new(&to_air_span(span), typ, x)
-}
 
 pub(crate) fn err_span_str<A>(span: Span, msg: &str) -> Result<A, VirErr> {
     err_span_string(span, msg.to_string())
 }
 
 pub(crate) fn err_span_string<A>(span: Span, msg: String) -> Result<A, VirErr> {
-    err_string(&to_air_span(span), msg)
+    err_string(&crate::spans::err_air_span(span), msg)
 }
 
 pub(crate) fn vir_err_span_str(span: Span, msg: &str) -> VirErr {
@@ -42,7 +15,7 @@ pub(crate) fn vir_err_span_str(span: Span, msg: &str) -> VirErr {
 }
 
 pub(crate) fn vir_err_span_string(span: Span, msg: String) -> VirErr {
-    air::messages::error(msg, &to_air_span(span))
+    air::messages::error(msg, &crate::spans::err_air_span(span))
 }
 
 pub(crate) fn unsupported_err_span<A>(span: Span, msg: String) -> Result<A, VirErr> {

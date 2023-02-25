@@ -82,6 +82,10 @@ struct Visitor {
     // if we are inside bit-vector assertion, warn users to use add/sub/mul for fixed-width operators,
     // rather than +/-/*, which will be promoted to integer operators
     inside_bitvector: bool,
+
+    // Temporary hack (see https://github.com/rust-lang/rust/issues/54363 ) for backward compatability
+    // When we fully commit to having pervasive in a separate crate, we can eliminate this:
+    pervasive_in_same_crate: bool,
 }
 
 fn data_mode_attrs(mode: &DataMode) -> Vec<Attribute> {
@@ -176,14 +180,15 @@ impl Visitor {
             }
         };
 
-        match (vis, &sig.publish, &sig.mode, &semi_token) {
-            (Some(Visibility::Inherited), _, _, _) => {}
+        match (vis, &sig.publish, &sig.mode, &semi_token, self.erase_ghost) {
+            (Some(Visibility::Inherited), _, _, _, _) => {}
             (
                 Some(_),
                 Publish::Default,
                 FnMode::Spec(ModeSpec { spec_token })
                 | FnMode::SpecChecked(ModeSpecChecked { spec_token, .. }),
                 None,
+                false,
             ) => {
                 stmts.push(stmt_with_semi!(
                     spec_token.span =>
@@ -401,9 +406,17 @@ impl Visitor {
                                     let x = x.ident.clone();
                                     let span = x.span();
                                     let f: TokenStream = if path_is_ident(&trk.path, "Gho") {
-                                        quote_spanned!(span => crate::pervasive::modes::tracked_unwrap_gho)
+                                        if self.pervasive_in_same_crate {
+                                            quote_spanned!(span => crate::pervasive::modes::tracked_unwrap_gho)
+                                        } else {
+                                            quote_spanned!(span => vstd::pervasive::modes::tracked_unwrap_gho)
+                                        }
                                     } else {
-                                        quote_spanned!(span => crate::pervasive::modes::tracked_unwrap_trk)
+                                        if self.pervasive_in_same_crate {
+                                            quote_spanned!(span => crate::pervasive::modes::tracked_unwrap_trk)
+                                        } else {
+                                            quote_spanned!(span => vstd::pervasive::modes::tracked_unwrap_trk)
+                                        }
                                     };
                                     stmts.push(Stmt::Semi(
                                         Expr::Verbatim(quote_spanned!(span => let #x = #f(#x))),
@@ -478,9 +491,31 @@ impl Visitor {
         // - "use" declarations may refer to the items ("use m::f;" makes it hard to erase f)
         // - "impl" may refer to struct and enum items ("impl<A> S<A> { ... }" impedes erasing S)
         // Therefore, we leave arbitrary named stubs in the place of the erased ghost items:
-        // - For erased Fn and Const item x, leave "use bool as x;"
+        // - For erased pub spec or proof Fn item x, keep decl, replace body with panic!()
+        // - For erased pub Const item x, keep as-is (REVIEW: it's not clear what expressions we can support)
+        // - For erased non-pub Fn and Const item x, leave "use bool as x;"
         // - Leave Struct and Enum as-is (REVIEW: we could leave stubs with PhantomData fields)
         for item in items.iter_mut() {
+            let span = item.span();
+            match item {
+                Item::Fn(fun) => match (&fun.vis, &fun.sig.mode) {
+                    (
+                        Visibility::Public(_),
+                        FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_),
+                    ) if erase_ghost => {
+                        // replace body with panic!()
+                        let expr: Expr = Expr::Verbatim(quote_spanned! {
+                            span => { panic!() }
+                        });
+                        let stmt = Stmt::Expr(expr);
+                        fun.block.stmts = vec![stmt];
+                        fun.semi_token = None;
+                        continue;
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
             let erase_fn = match item {
                 Item::Fn(fun) => match fun.sig.mode {
                     FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) if erase_ghost => {
@@ -488,8 +523,11 @@ impl Visitor {
                     }
                     _ => None,
                 },
-                Item::Const(c) => match c.mode {
-                    FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) if erase_ghost => {
+                Item::Const(c) => match (&c.vis, &c.mode) {
+                    (Visibility::Public(_), _) => None,
+                    (_, FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_))
+                        if erase_ghost =>
+                    {
                         Some((c.ident.clone(), c.vis.clone()))
                     }
                     _ => None,
@@ -512,40 +550,70 @@ impl Visitor {
             };
             if let Some((name, vis)) = erase_fn {
                 *item = Item::Verbatim(quote_spanned! {
-                    item.span() => #[allow(unused_imports)] #vis use bool as #name;
+                    span => #[allow(unused_imports)] #vis use bool as #name;
                 });
             }
         }
     }
 
-    fn visit_impl_items_prefilter(&mut self, items: &mut Vec<ImplItem>) {
+    fn visit_impl_items_prefilter(&mut self, items: &mut Vec<ImplItem>, for_trait: bool) {
         let erase_ghost = self.erase_ghost;
+        // Unfortunately, we just have to assume that if for_trait == true,
+        // the methods might be public
         items.retain(|item| match item {
-            ImplItem::Method(fun) => match fun.sig.mode {
-                FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) => !erase_ghost,
-                FnMode::Exec(_) | FnMode::Default => true,
+            ImplItem::Method(fun) => match ((&fun.vis, for_trait), &fun.sig.mode) {
+                (
+                    (Visibility::Public(_), _) | (_, true),
+                    FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_),
+                ) => true,
+                (_, FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_)) => !erase_ghost,
+                (_, FnMode::Exec(_) | FnMode::Default) => true,
             },
-            ImplItem::Const(c) => match c.mode {
-                FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) => !erase_ghost,
-                FnMode::Exec(_) | FnMode::Default => true,
+            ImplItem::Const(c) => match (&c.vis, &c.mode) {
+                (Visibility::Public(_), _) => true,
+                (_, FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_)) => !erase_ghost,
+                (_, FnMode::Exec(_) | FnMode::Default) => true,
             },
             _ => true,
         });
+        for item in items.iter_mut() {
+            let span = item.span();
+            match item {
+                ImplItem::Method(fun) => match ((&fun.vis, for_trait), &fun.sig.mode) {
+                    (
+                        (Visibility::Public(_), _) | (_, true),
+                        FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_),
+                    ) if erase_ghost => {
+                        // replace body with panic!()
+                        let expr: Expr = Expr::Verbatim(quote_spanned! {
+                            span => { panic!() }
+                        });
+                        let stmt = Stmt::Expr(expr);
+                        fun.block.stmts = vec![stmt];
+                        fun.semi_token = None;
+                        continue;
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
+        }
     }
 
     fn visit_trait_items_prefilter(&mut self, items: &mut Vec<TraitItem>) {
         let erase_ghost = self.erase_ghost;
-        items.retain(|item| match item {
-            TraitItem::Method(fun) => match fun.sig.mode {
-                FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) => !erase_ghost,
-                FnMode::Exec(_) | FnMode::Default => true,
-            },
-            TraitItem::Const(c) => match c.mode {
-                FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) => !erase_ghost,
-                FnMode::Exec(_) | FnMode::Default => true,
-            },
-            _ => true,
-        });
+        for item in items.iter_mut() {
+            match item {
+                TraitItem::Method(fun) => match fun.sig.mode {
+                    FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) if erase_ghost => {
+                        fun.default = None;
+                        continue;
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
+        }
     }
 }
 
@@ -912,8 +980,10 @@ impl VisitMut for Visitor {
                         let inner = take_expr(&mut *unary.expr);
                         *expr = Expr::Verbatim(if self.erase_ghost {
                             quote_spanned!(span => Ghost::assume_new())
-                        } else {
+                        } else if self.pervasive_in_same_crate {
                             quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ crate::pervasive::modes::ghost_exec(#[verifier(ghost_block_wrapped)] /* vattr */ #inner))
+                        } else {
+                            quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ vstd::pervasive::modes::ghost_exec(#[verifier(ghost_block_wrapped)] /* vattr */ #inner))
                         });
                     }
                     (false, (true, false), _) => {
@@ -927,8 +997,10 @@ impl VisitMut for Visitor {
                         let inner = take_expr(&mut *unary.expr);
                         *expr = Expr::Verbatim(if self.erase_ghost {
                             quote_spanned!(span => Tracked::assume_new())
-                        } else {
+                        } else if self.pervasive_in_same_crate {
                             quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ crate::pervasive::modes::tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ #inner))
+                        } else {
+                            quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ vstd::pervasive::modes::tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ #inner))
                         });
                     }
                     (true, (true, true), _) => {
@@ -1587,13 +1659,13 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_impl_mut(&mut self, imp: &mut ItemImpl) {
-        self.visit_impl_items_prefilter(&mut imp.items);
+        self.visit_impl_items_prefilter(&mut imp.items, imp.trait_.is_some());
         syn_verus::visit_mut::visit_item_impl_mut(self, imp);
     }
 
-    fn visit_item_trait_mut(&mut self, imp: &mut ItemTrait) {
-        self.visit_trait_items_prefilter(&mut imp.items);
-        syn_verus::visit_mut::visit_item_trait_mut(self, imp);
+    fn visit_item_trait_mut(&mut self, tr: &mut ItemTrait) {
+        self.visit_trait_items_prefilter(&mut tr.items);
+        syn_verus::visit_mut::visit_item_trait_mut(self, tr);
     }
 }
 
@@ -1732,6 +1804,7 @@ pub(crate) fn rewrite_items(
     erase_ghost: bool,
     use_spec_traits: bool,
     verus_macro_attr: bool,
+    pervasive_in_same_crate: bool,
 ) -> proc_macro::TokenStream {
     use quote::ToTokens;
     let stream = rejoin_tokens(stream);
@@ -1747,6 +1820,7 @@ pub(crate) fn rewrite_items(
         rustdoc: env_rustdoc(),
         inside_bitvector: false,
         verus_macro_attr,
+        pervasive_in_same_crate,
     };
     visitor.visit_items_prefilter(&mut items.items);
     for mut item in items.items {
@@ -1777,6 +1851,7 @@ pub(crate) fn rewrite_expr(
         assign_to: false,
         rustdoc: env_rustdoc(),
         inside_bitvector: false,
+        pervasive_in_same_crate: true,
     };
     visitor.visit_expr_mut(&mut expr);
     expr.to_tokens(&mut new_stream);
@@ -1857,6 +1932,7 @@ pub(crate) fn proof_macro_exprs(
         assign_to: false,
         rustdoc: env_rustdoc(),
         inside_bitvector: false,
+        pervasive_in_same_crate: true,
     };
     for element in &mut invoke.elements.elements {
         match element {

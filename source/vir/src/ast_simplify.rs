@@ -874,7 +874,24 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         ctx.inferred_modes.clone(),
         ctx.rlimit,
         ctx.interpreter_log.clone(),
+        ctx.vstd_crate_name.clone(),
         ctx.arch,
     )?;
     Ok(krate)
+}
+
+pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
+    let mut kratex = KrateX {
+        functions: Vec::new(),
+        datatypes: Vec::new(),
+        traits: Vec::new(),
+        module_ids: Vec::new(),
+    };
+    for k in krates.into_iter() {
+        kratex.functions.extend(k.functions.clone());
+        kratex.datatypes.extend(k.datatypes.clone());
+        kratex.traits.extend(k.traits.clone());
+        kratex.module_ids.extend(k.module_ids.clone());
+    }
+    Ok(Arc::new(kratex))
 }

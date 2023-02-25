@@ -1,4 +1,4 @@
-use crate::ast::{DatatypeTransparency, DatatypeX, GenericBoundX, KrateX, Mode, Visibility};
+use crate::ast::{DatatypeTransparency, DatatypeX, GenericBoundX, Krate, KrateX, Mode, Visibility};
 use crate::def::Spanned;
 use air::ast::Span;
 use air::ast_util::ident_binder;
@@ -22,4 +22,15 @@ pub fn krate_add_builtins(no_span: &Span, krate: &mut KrateX) {
     let datatypex =
         DatatypeX { path, visibility, transparency, typ_params, variants, mode: Mode::Exec };
     krate.datatypes.push(Spanned::new(no_span.clone(), datatypex));
+}
+
+pub fn builtin_krate(no_span: &Span) -> Krate {
+    let mut kratex = KrateX {
+        functions: Vec::new(),
+        datatypes: Vec::new(),
+        traits: Vec::new(),
+        module_ids: Vec::new(),
+    };
+    krate_add_builtins(no_span, &mut kratex);
+    Arc::new(kratex)
 }

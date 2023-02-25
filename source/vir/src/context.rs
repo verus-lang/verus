@@ -1,6 +1,6 @@
 use crate::ast::{
-    Datatype, Fun, Function, FunctionKind, GenericBound, InferMode, IntRange, Krate, Mode, Path,
-    Trait, TypX, Variants, VirErr,
+    Datatype, Fun, Function, FunctionKind, GenericBound, Ident, InferMode, IntRange, Krate, Mode,
+    Path, Trait, TypX, Variants, VirErr,
 };
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
@@ -45,6 +45,7 @@ pub struct GlobalCtx {
     pub(crate) inferred_modes: HashMap<InferMode, Mode>,
     pub(crate) rlimit: u32,
     pub(crate) interpreter_log: Rc<RefCell<Option<File>>>,
+    pub(crate) vstd_crate_name: Option<Ident>,
     pub arch: ArchWordBits,
 }
 
@@ -172,6 +173,7 @@ impl GlobalCtx {
         inferred_modes: HashMap<InferMode, Mode>,
         rlimit: u32,
         interpreter_log: Rc<RefCell<Option<File>>>,
+        vstd_crate_name: Option<Ident>,
         arch: ArchWordBits,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
@@ -232,6 +234,7 @@ impl GlobalCtx {
             inferred_modes,
             rlimit,
             interpreter_log,
+            vstd_crate_name,
             arch,
         })
     }

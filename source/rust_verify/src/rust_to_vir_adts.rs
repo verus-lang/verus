@@ -5,7 +5,6 @@ use crate::rust_to_vir_base::{
     mid_ty_to_vir, mk_visibility,
 };
 use crate::unsupported_unless;
-use crate::util::spanned_new;
 use air::ast_util::str_ident;
 use rustc_ast::Attribute;
 use rustc_hir::{EnumDef, Generics, ItemId, VariantData};
@@ -126,7 +125,7 @@ pub fn check_item_struct<'tcx>(
     let variants = Arc::new(vec![variant]);
     let mode = get_mode(Mode::Exec, attrs);
     let datatype = DatatypeX { path, visibility, transparency, typ_params, variants, mode };
-    vir.datatypes.push(spanned_new(span, datatype));
+    vir.datatypes.push(ctxt.spanned_new(span, datatype));
     Ok(())
 }
 
@@ -181,7 +180,7 @@ pub fn check_item_enum<'tcx>(
         DatatypeTransparency::Always
     };
     let mode = get_mode(Mode::Exec, attrs);
-    vir.datatypes.push(spanned_new(
+    vir.datatypes.push(ctxt.spanned_new(
         span,
         DatatypeX {
             path,

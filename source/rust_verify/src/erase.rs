@@ -47,8 +47,9 @@
 
 use crate::attributes::{get_mode, get_verifier_attrs};
 use crate::rust_to_vir_expr::attrs_is_invariant_block;
+use crate::spans::from_raw_span;
 use crate::unsupported;
-use crate::util::{from_raw_span, vec_map};
+use crate::util::vec_map;
 use crate::verifier::DiagnosticOutputBuffer;
 
 use air::ast::AstId;
@@ -1371,7 +1372,7 @@ fn mk_ctxt(erasure_hints: &ErasureHints, known_spans: &HashSet<Span>, keep_proof
     let mut resolved_pats: HashMap<Span, Pattern> = HashMap::new();
     for f in &erasure_hints.vir_crate.functions {
         functions.insert(f.x.name.clone(), Some(f.clone())).map(|_| panic!("{:?}", &f.x.name));
-        let span = from_raw_span(&f.span.raw_span);
+        let span = from_raw_span(&f.span.raw_span).expect("local span");
         assert!(known_spans.contains(&span));
         functions_by_span.insert(span, Some(f.clone())).map(|_| panic!("{:?}", &f.span));
     }
@@ -1400,12 +1401,12 @@ fn mk_ctxt(erasure_hints: &ErasureHints, known_spans: &HashSet<Span>, keep_proof
     let mut condition_modes: HashMap<Span, Mode> = HashMap::new();
     let mut var_modes: HashMap<Span, Mode> = HashMap::new();
     for (span, mode) in &erasure_hints.erasure_modes.condition_modes {
-        let span = from_raw_span(&span.raw_span);
+        let span = from_raw_span(&span.raw_span).expect("local span");
         assert!(known_spans.contains(&span));
         condition_modes.insert(span, *mode).map(|_| panic!("{:?}", span));
     }
     for (span, mode) in &erasure_hints.erasure_modes.var_modes {
-        let span = from_raw_span(&span.raw_span);
+        let span = from_raw_span(&span.raw_span).expect("local span");
         assert!(known_spans.contains(&span));
         var_modes.insert(span, *mode).map(|v| panic!("{:?} {:?}", span, v));
     }

@@ -3,9 +3,15 @@ use builtin_macros::*;
 #[allow(unused_imports)]
 use builtin::*;
 
+#[cfg(not(vstd_todo))]
 mod pervasive;
+#[cfg(not(vstd_todo))]
 #[allow(unused_imports)]
-use crate::pervasive::{modes::*, seq::*, vec::*};
+use pervasive::{*, vec::*, seq::*, modes::*};
+
+#[cfg(vstd_todo)]
+#[allow(unused_imports)]
+use vstd::pervasive::{*, vec::*, seq::*, modes::*};
 
 #[verifier(external)]
 fn main() {

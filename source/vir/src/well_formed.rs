@@ -11,26 +11,23 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 struct Ctxt {
+    pub(crate) crate_names: Vec<String>,
     pub(crate) funs: HashMap<Fun, Function>,
     pub(crate) dts: HashMap<Path, Datatype>,
 }
 
 #[warn(unused_must_use)]
-fn check_typ(typ: &Arc<TypX>, span: &air::ast::Span) -> Result<(), VirErr> {
+fn check_typ(ctxt: &Ctxt, typ: &Arc<TypX>, span: &air::ast::Span) -> Result<(), VirErr> {
     crate::ast_visitor::typ_visitor_check(typ, &mut |t| {
         if let crate::ast::TypX::Datatype(path, _) = &**t {
             let PathX { krate, segments: _ } = &**path;
             match krate {
                 None => Ok(()),
-                Some(krate_name)
-                    if crate::def::SUPPORTED_CRATES.contains(&&krate_name.as_str()) =>
-                {
-                    Ok(())
-                }
+                Some(krate_name) if ctxt.crate_names.contains(&krate_name) => Ok(()),
                 Some(_) => err_str(
                     span,
                     &format!(
-                        "`{:}` is not supported (note: currently Verus does not support definitions external to the crate, including most features in std)",
+                        "type `{:}` is not supported (note: currently Verus does not support definitions external to the crate, including most features in std)",
                         path_as_rust_name(path)
                     ),
                 ),
@@ -340,7 +337,7 @@ fn check_function(
 
     let ret_name = user_local_name(&*function.x.ret.x.name);
     for p in function.x.params.iter() {
-        check_typ(&p.x.typ, &p.span)?;
+        check_typ(ctxt, &p.x.typ, &p.span)?;
         if user_local_name(&*p.x.name) == ret_name {
             return err_str(&p.span, "parameter name cannot be the same as the return value name");
         }
@@ -718,11 +715,11 @@ fn check_function(
     Ok(())
 }
 
-fn check_datatype(dt: &Datatype) -> Result<(), VirErr> {
+fn check_datatype(ctxt: &Ctxt, dt: &Datatype) -> Result<(), VirErr> {
     for variant in dt.x.variants.iter() {
         for field in variant.a.iter() {
             let typ = &field.a.0;
-            check_typ(typ, &dt.span)?;
+            check_typ(ctxt, typ, &dt.span)?;
         }
     }
 
@@ -781,7 +778,12 @@ fn check_functions_match(
     Ok(())
 }
 
-pub fn check_crate(krate: &Krate, diags: &mut Vec<VirErrAs>) -> Result<(), VirErr> {
+pub fn check_crate(
+    krate: &Krate,
+    mut crate_names: Vec<String>,
+    diags: &mut Vec<VirErrAs>,
+) -> Result<(), VirErr> {
+    crate_names.push("builtin".to_string());
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     for function in krate.functions.iter() {
         if funs.contains_key(&function.x.name) {
@@ -880,12 +882,12 @@ pub fn check_crate(krate: &Krate, diags: &mut Vec<VirErrAs>) -> Result<(), VirEr
         }
     }
 
-    let ctxt = Ctxt { funs, dts };
+    let ctxt = Ctxt { crate_names, funs, dts };
     for function in krate.functions.iter() {
         check_function(&ctxt, function, diags)?;
     }
     for dt in krate.datatypes.iter() {
-        check_datatype(dt)?;
+        check_datatype(&ctxt, dt)?;
     }
     crate::recursive_types::check_recursive_types(krate)?;
     Ok(())

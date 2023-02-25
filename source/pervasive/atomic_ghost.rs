@@ -23,6 +23,13 @@ macro_rules! declare_atomic_type {
         impl<K, G, Pred> InvariantPredicate<(K, int), ($perm_ty, G)> for $atomic_pred_ty<Pred>
             where Pred: AtomicInvariantPredicate<K, $value_ty, G>
         {
+            #[cfg(verus_macro_erase_ghost)]
+            #[verifier(publish)]
+            #[spec]
+            fn inv(k_loc: (K, int), perm_g: ($perm_ty, G)) -> bool {
+                panic!()
+            }
+
             #[cfg(not(verus_macro_erase_ghost))]
             #[verifier(publish)] /* vattr */
             #[verifier::spec]
