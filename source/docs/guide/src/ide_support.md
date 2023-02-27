@@ -30,7 +30,8 @@ For example:
 
 "rust-analyzer.checkOnSave.overrideCommand": [
     "/Users/chanhee/Works/secure-foundations/verus/source/tools/rust-verify.sh", 
-    "${file}",   
+    "${file}",
+    "--crate-type=lib",
     // add additional flags of choice here, e.g. "--expand-errors",
     "--rlimit",        // low rlimit is recommended to avoid long wait
     "3",
