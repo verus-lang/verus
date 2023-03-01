@@ -22,7 +22,7 @@ fn check_variant_data<'tcx>(
     variant_data: &'tcx VariantData<'tcx>,
     in_enum: bool,
     field_defs: impl Iterator<Item = &'tcx rustc_middle::ty::FieldDef>,
-) -> (Variant, bool) {
+) -> Result<(Variant, bool), VirErr> {
     // TODO handle field visibility; does rustc_middle::ty::Visibility have better visibility
     // information than hir?
     let (vir_fields, one_field_private) = match variant_data {
@@ -35,18 +35,20 @@ fn check_variant_data<'tcx>(
                     assert!(field.ident.name == field_def.ident.name);
                     let field_ty = ctxt.tcx.type_of(field_def.did);
 
-                    (
+                    Ok((
                         ident_binder(
                             &str_ident(&field.ident.as_str()),
                             &(
-                                mid_ty_to_vir(ctxt.tcx, field_ty, false),
+                                mid_ty_to_vir(ctxt.tcx, field_ty, false)?,
                                 get_mode(Mode::Exec, ctxt.tcx.hir().attrs(field.hir_id)),
                                 mk_visibility(&Some(module_path.clone()), &field.vis, !in_enum),
                             ),
                         ),
                         is_visibility_private(&field.vis.node, !in_enum),
-                    )
+                    ))
                 })
+                .collect::<Result<Vec<_>, VirErr>>()?
+                .into_iter()
                 .unzip();
             (Arc::new(vir_fields), field_private.into_iter().any(|x| x))
         }
@@ -59,24 +61,26 @@ fn check_variant_data<'tcx>(
                     assert!(field.ident.name == field_def.ident.name);
                     let field_ty = ctxt.tcx.type_of(field_def.did);
 
-                    (
+                    Ok((
                         ident_binder(
                             &positional_field_ident(i),
                             &(
-                                mid_ty_to_vir(ctxt.tcx, field_ty, false),
+                                mid_ty_to_vir(ctxt.tcx, field_ty, false)?,
                                 get_mode(Mode::Exec, ctxt.tcx.hir().attrs(field.hir_id)),
                                 mk_visibility(&Some(module_path.clone()), &field.vis, !in_enum),
                             ),
                         ),
                         is_visibility_private(&field.vis.node, !in_enum),
-                    )
+                    ))
                 })
+                .collect::<Result<Vec<_>, VirErr>>()?
+                .into_iter()
                 .unzip();
             (Arc::new(vir_fields), field_private.into_iter().any(|x| x))
         }
         VariantData::Unit(_vairant_id) => (Arc::new(vec![]), false),
     };
-    (ident_binder(name, &vir_fields), one_field_private)
+    Ok((ident_binder(name, &vir_fields), one_field_private))
 }
 
 pub fn check_item_struct<'tcx>(
@@ -113,7 +117,7 @@ pub fn check_item_struct<'tcx>(
         (ident_binder(&variant_name, &Arc::new(vec![])), false)
     } else {
         let field_defs = adt_def.all_fields();
-        check_variant_data(ctxt, module_path, &variant_name, variant_data, false, field_defs)
+        check_variant_data(ctxt, module_path, &variant_name, variant_data, false, field_defs)?
     };
     let transparency = if vattrs.external_body {
         DatatypeTransparency::Never
@@ -170,6 +174,8 @@ pub fn check_item_enum<'tcx>(
             let field_defs = variant_def.fields.iter();
             check_variant_data(ctxt, module_path, &variant_name, &variant.data, true, field_defs)
         })
+        .collect::<Result<Vec<_>, VirErr>>()?
+        .into_iter()
         .unzip();
     let one_field_private = one_field_private.into_iter().any(|x| x);
     let transparency = if vattrs.external_body {

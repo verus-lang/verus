@@ -68,7 +68,7 @@ fn check_fn_decl<'tcx>(
         // so we always return the default mode.
         // The current workaround is to return a struct if the default doesn't work.
         rustc_hir::FnRetTy::Return(_ty) => {
-            let typ = mid_ty_to_vir(tcx, output_ty, false);
+            let typ = mid_ty_to_vir(tcx, output_ty, false)?;
             Ok(Some((typ, get_ret_mode(mode, attrs))))
         }
     }
@@ -251,7 +251,7 @@ pub(crate) fn check_item_fn<'tcx>(
             );
         }
 
-        let typ = mid_ty_to_vir(ctxt.tcx, is_mut.unwrap_or(input), false);
+        let typ = mid_ty_to_vir(ctxt.tcx, is_mut.unwrap_or(input), false)?;
 
         let is_mut = is_mut.is_some();
 
@@ -514,7 +514,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     for (param, input) in idents.iter().zip(inputs.iter()) {
         let name = Arc::new(foreign_param_to_var(param));
         let is_mut = is_mut_ty(input);
-        let typ = mid_ty_to_vir(ctxt.tcx, is_mut.unwrap_or(input), false);
+        let typ = mid_ty_to_vir(ctxt.tcx, is_mut.unwrap_or(input), false)?;
         // REVIEW: the parameters don't have attributes, so we use the overall mode
         let vir_param =
             ctxt.spanned_new(param.span, ParamX { name, typ, mode, is_mut: is_mut.is_some() });

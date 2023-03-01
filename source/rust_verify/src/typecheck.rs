@@ -304,7 +304,7 @@ impl FormalVerifierTyping for Typecheck {
     }
 
     fn interposed_ty<'tcx>(&mut self, tcx: TyCtxt<'tcx>, expr: &'tcx Expr<'tcx>, ty: Ty<'tcx>) {
-        let typ = mid_ty_to_vir(tcx, ty, false);
+        let typ = mid_ty_to_vir(tcx, ty, false).expect("interposed_ty expects valid type");
         self.autoviewed_call_typs
             .lock()
             .expect("lock autoviewed_call_typs")
