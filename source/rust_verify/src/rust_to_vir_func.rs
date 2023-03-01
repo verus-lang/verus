@@ -164,6 +164,15 @@ pub(crate) fn check_item_fn<'tcx>(
 ) -> Result<Option<Fun>, VirErr> {
     let path = def_id_to_vir_path(ctxt.tcx, id);
     let name = Arc::new(FunX { path: path.clone(), trait_path: trait_path.clone() });
+
+    let vattrs = get_verifier_attrs(attrs)?;
+
+    if vattrs.external {
+        let mut erasure_info = ctxt.erasure_info.borrow_mut();
+        erasure_info.external_functions.push(name);
+        return Ok(None);
+    }
+
     let is_new_strlit =
         ctxt.tcx.is_diagnostic_item(Symbol::intern("pervasive::string::new_strlit"), id);
 
@@ -190,7 +199,6 @@ pub(crate) fn check_item_fn<'tcx>(
             check_fn_decl(ctxt.tcx, decl, attrs, mode, fn_sig.output())?
         }
     };
-    let vattrs = get_verifier_attrs(attrs)?;
 
     if is_new_strlit {
         check_new_strlit(&ctxt, sig)?;
@@ -205,12 +213,6 @@ pub(crate) fn check_item_fn<'tcx>(
         );
 
         erasure_info.ignored_functions.push((id, sig.span.data()));
-        erasure_info.external_functions.push(name);
-        return Ok(None);
-    }
-
-    if vattrs.external {
-        let mut erasure_info = ctxt.erasure_info.borrow_mut();
         erasure_info.external_functions.push(name);
         return Ok(None);
     }
