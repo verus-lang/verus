@@ -201,7 +201,7 @@ fn check_item<'tcx>(
             }
 
             let self_ty = ctxt.tcx.type_of(item.def_id.to_def_id());
-            let self_typ = mid_ty_to_vir(ctxt.tcx, self_ty, false)?;
+            let self_typ = mid_ty_to_vir(ctxt.tcx, self_ty, false);
 
             let (self_path, datatype_typ_args) = match &*self_typ {
                 TypX::Datatype(p, typ_args) => (p.clone(), typ_args.clone()),
@@ -218,23 +218,20 @@ fn check_item<'tcx>(
                 }
             };
 
-            let trait_path_typ_args = match impll.of_trait {
-                Some(TraitRef { path, .. }) => {
-                    let trait_ref =
-                        ctxt.tcx.impl_trait_ref(item.def_id.to_def_id()).expect("impl_trait_ref");
-                    // If we have `impl X for Z<A, B, C>` then the list of types is [X, A, B, C].
-                    // So to get the type args, we strip off the first element.
-                    let types: Vec<Typ> = trait_ref
-                        .substs
-                        .types()
-                        .skip(1)
-                        .map(|ty| mid_ty_to_vir(ctxt.tcx, ty, false))
-                        .collect::<Result<Vec<Typ>, VirErr>>()?;
-                    let path = def_id_to_vir_path(ctxt.tcx, path.res.def_id());
-                    Some((path, Arc::new(types)))
-                }
-                None => None,
-            };
+            let trait_path_typ_args = impll.of_trait.as_ref().map(|TraitRef { path, .. }| {
+                let trait_ref =
+                    ctxt.tcx.impl_trait_ref(item.def_id.to_def_id()).expect("impl_trait_ref");
+                // If we have `impl X for Z<A, B, C>` then the list of types is [X, A, B, C].
+                // So to get the type args, we strip off the first element.
+                let types: Vec<Typ> = trait_ref
+                    .substs
+                    .types()
+                    .skip(1)
+                    .map(|ty| mid_ty_to_vir(ctxt.tcx, ty, false))
+                    .collect();
+                let path = def_id_to_vir_path(ctxt.tcx, path.res.def_id());
+                (path, Arc::new(types))
+            });
 
             for impl_item_ref in impll.items {
                 match impl_item_ref.kind {
@@ -364,7 +361,7 @@ fn check_item<'tcx>(
             }
 
             let mid_ty = ctxt.tcx.type_of(def_id);
-            let vir_ty = mid_ty_to_vir(ctxt.tcx, mid_ty, false)?;
+            let vir_ty = mid_ty_to_vir(ctxt.tcx, mid_ty, false);
 
             crate::rust_to_vir_func::check_item_const(
                 ctxt,

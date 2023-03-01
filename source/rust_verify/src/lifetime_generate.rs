@@ -866,8 +866,7 @@ fn erase_expr<'tcx>(
         ExprKind::MethodCall(_name_and_generics, fn_span, all_args, _call_span) => {
             let fn_def_id = ctxt.types().type_dependent_def_id(expr.hir_id).expect("method id");
             let rcvr = all_args.first().expect("receiver in method call");
-            let rcvr_typ = mid_ty_to_vir(ctxt.tcx, ctxt.types().node_type(rcvr.hir_id), true)
-                .expect("lifetime_generate expects supported type");
+            let rcvr_typ = mid_ty_to_vir(ctxt.tcx, ctxt.types().node_type(rcvr.hir_id), true);
             let self_path = match &*rcvr_typ {
                 vir::ast::TypX::Datatype(path, _) => Some(path.clone()),
                 _ => None,
