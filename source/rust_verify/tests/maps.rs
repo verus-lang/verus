@@ -107,3 +107,15 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[ignore] #[test] set_choose_incomplete_regression_408 verus_code! {
+        use crate::pervasive::set::Set;
+        proof fn choose_contains_set(m: Set<nat>)
+            requires m.finite()
+        {
+            let c = m.choose();
+            assert(m.contains(c));
+        }
+    } => Ok(())
+}
