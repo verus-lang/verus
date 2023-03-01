@@ -109,10 +109,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] set_choose_incomplete_regression_408 verus_code! {
+    #[test] set_choose_regression_408 verus_code! {
         use crate::pervasive::set::Set;
         proof fn choose_contains_set(m: Set<nat>)
-            requires m.finite()
+            requires m.finite(), m.len() > 0
         {
             let c = m.choose();
             assert(m.contains(c));
