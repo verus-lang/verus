@@ -174,8 +174,9 @@ pub fn verify_files_and_pervasive(
         let mut verifier = Verifier::new(our_args);
         verifier.test_capture_output = Some(captured_output_1);
         let file_loader: TestFileLoader = TestFileLoader { files, pervasive_path };
-        let (verifier, status) = rust_verify::driver::run(verifier, rustc_args, file_loader);
-        status.map(|_| ()).map_err(|_| TestErr {
+        let (verifier, _stats, status) =
+            rust_verify::driver::run(verifier, rustc_args, file_loader);
+        status.map_err(|_| TestErr {
             errors: verifier.errors,
             has_vir_error: verifier.encountered_vir_error,
             output: "".to_string(),

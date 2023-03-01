@@ -141,7 +141,7 @@ fn run_with_erase_macro<F>(
     verifier: Verifier,
     rustc_args: Vec<String>,
     file_loader: F,
-) -> (Verifier, Result<Stats, ()>)
+) -> (Verifier, Stats, Result<(), ()>)
 where
     F: 'static + rustc_span::source_map::FileLoader + Send + Sync + Clone,
 {
@@ -164,40 +164,52 @@ where
     if !verifier_callbacks.verifier.encountered_vir_error {
         print_verification_results(&verifier_callbacks.verifier);
     }
-    if status.is_err() || verifier_callbacks.verifier.encountered_vir_error {
-        return (verifier_callbacks.verifier, Err(()));
-    }
     let VerifierCallbacksEraseMacro { verifier, lifetime_start_time, .. } = verifier_callbacks;
-    let time1 = lifetime_start_time.expect("lifetime_start_time");
     let time2 = Instant::now();
+    let time1 = lifetime_start_time.unwrap_or(time2);
 
-    // Run borrow checker and compiler with #[exec] (not #[proof])
-    if let Err(_) = run_with_erase_macro_compile(
+    if status.is_err() || verifier.encountered_vir_error {
+        return (
+            verifier,
+            Stats {
+                time_verify: time1 - time0,
+                time_lifetime: time2 - time1,
+                time_compile: Duration::new(0, 0),
+                time_erasure: Duration::new(0, 0),
+            },
+            Err(()),
+        );
+    }
+
+    let compile_status = run_with_erase_macro_compile(
         rustc_args,
         Box::new(file_loader),
         verifier.args.compile,
         verifier.test_capture_output.clone(),
-    ) {
-        return (verifier, Err(()));
-    }
+    );
 
     let time3 = Instant::now();
-    (
-        verifier,
-        Ok(Stats {
-            time_verify: time1 - time0,
-            time_lifetime: time2 - time1,
-            time_compile: time3 - time2,
-            time_erasure: Duration::new(0, 0),
-        }),
-    )
+
+    let stats = Stats {
+        time_verify: time1 - time0,
+        time_lifetime: time2 - time1,
+        time_compile: time3 - time2,
+        time_erasure: Duration::new(0, 0),
+    };
+
+    // Run borrow checker and compiler with #[exec] (not #[proof])
+    if let Err(_) = compile_status {
+        return (verifier, stats, Err(()));
+    }
+
+    (verifier, stats, Ok(()))
 }
 
 fn run_with_erase_ast<F>(
     verifier: Verifier,
     rustc_args: Vec<String>,
     file_loader: F,
-) -> (Verifier, Result<Stats, ()>)
+) -> (Verifier, Stats, Result<(), ()>)
 where
     F: 'static + rustc_span::source_map::FileLoader + Send + Sync + Clone,
 {
@@ -249,7 +261,7 @@ where
 
     let time1 = Instant::now();
 
-    if let Err(()) = {
+    let borrowck_status = {
         if compiler_err {
             Err(())
         } else {
@@ -278,7 +290,11 @@ where
                 }
             })
         }
-    } {
+    };
+
+    let time2 = Instant::now();
+
+    if let Err(()) = borrowck_status {
         now_verify_s.signal(true);
         let _status = compiler_thread.join().expect("join compiler thread");
         let verifier = Arc::try_unwrap(verifier)
@@ -286,10 +302,14 @@ where
             .expect("only one Arc reference to the verifier")
             .into_inner()
             .unwrap_or_else(|e| e.into_inner());
-        return (verifier, Err(()));
+        let stats = Stats {
+            time_verify: (time1 - time0),
+            time_lifetime: time2 - time1 - time_erasure1,
+            time_compile: Duration::new(0, 0),
+            time_erasure: time_erasure1,
+        };
+        return (verifier, stats, Err(()));
     }
-
-    let time2 = Instant::now();
 
     now_verify_s.signal(false);
     let status = compiler_thread.join().expect("join compiler thread");
@@ -304,7 +324,13 @@ where
     print_verification_results(&verifier);
 
     if let Err(()) = status {
-        return (verifier, Err(()));
+        let stats = Stats {
+            time_verify: (time1 - time0) + (time3 - time2),
+            time_lifetime: time2 - time1 - time_erasure1,
+            time_compile: Duration::new(0, 0),
+            time_erasure: time_erasure1 + time_erasure2,
+        };
+        return (verifier, stats, Err(()));
     }
 
     // Run borrow checker and compiler on #[verifier::exec] (if enabled)
@@ -326,12 +352,13 @@ where
     let time4 = Instant::now();
     (
         verifier,
-        Ok(Stats {
+        Stats {
             time_verify: (time1 - time0) + (time3 - time2),
             time_lifetime: time2 - time1 - time_erasure1,
             time_compile: time4 - time3 - time_erasure2,
             time_erasure: time_erasure1 + time_erasure2,
-        }),
+        },
+        Ok(()),
     )
 }
 
@@ -339,7 +366,7 @@ pub fn run<F>(
     verifier: Verifier,
     rustc_args: Vec<String>,
     file_loader: F,
-) -> (Verifier, Result<Stats, ()>)
+) -> (Verifier, Stats, Result<(), ()>)
 where
     F: 'static + rustc_span::source_map::FileLoader + Send + Sync + Clone,
 {
