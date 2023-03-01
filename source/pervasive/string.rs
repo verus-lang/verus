@@ -143,6 +143,18 @@ impl<'a> StrSlice<'a> {
         }
         v
     }
+
+    #[verifier(external)]
+    pub fn from_rust_str(inner: &'a str) -> StrSlice<'a>
+    {
+        StrSlice { inner }
+    }
+
+    #[verifier(external)]
+    pub fn into_rust_str(&'a self) -> &'a str
+    {
+        self.inner
+    }
 }
 
 
@@ -217,6 +229,17 @@ impl String {
         self.inner == other.inner
     }
 
+    #[verifier(external)]
+    pub fn from_rust_string(inner: std::string::String) -> String
+    {
+        String { inner }
+    }
+
+    #[verifier(external)]
+    pub fn into_rust_string(self) -> std::string::String
+    {
+        self.inner
+    }
 }
 
 }
