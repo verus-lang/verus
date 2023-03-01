@@ -1105,10 +1105,7 @@ fn check_stmt(
             Ok(())
         }
         StmtX::Decl { pattern, mode, init } => {
-            let mode = if typing.check_ghost_blocks
-                && typing.block_ghostness != Ghost::Exec
-                && *mode == Mode::Exec
-            {
+            let mode = if typing.block_ghostness != Ghost::Exec && *mode == Mode::Exec {
                 Mode::Spec
             } else {
                 *mode
