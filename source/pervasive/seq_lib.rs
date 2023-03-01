@@ -41,13 +41,13 @@ impl<A> Seq<A> {
 
     /// returns `true` if the sequequence has no duplicate elements
     pub open spec fn no_duplicates(self) -> bool {
-        forall(|i, j| (0 <= i < self.len() && 0 <= j < self.len() && i != j)
+        forall(|i, j| 0 <= i < self.len() && 0 <= j < self.len() && i != j
             ==> self[i] != self[j])
     }
 
     /// Returns `true` if two sequences are disjoint
     pub open spec fn disjoint(self, other: Self) -> bool {
-        forall |a: A| self.contains(a) ==> !other.contains(a)
+        forall|i: int, j: int| 0 <= i < self.len() && 0 <= j < other.len() ==> self[i] != other[j]
     }
 
     /// Converts a sequence into a set
@@ -59,7 +59,7 @@ impl<A> Seq<A> {
 
 /// recursive definition of seq to set conversion
 spec fn seq_to_set_rec<A>(seq: Seq<A>) -> Set<A>
-    decreases seq.len() when seq.len() >= 0
+    decreases seq.len()
 {
     if seq.len() == 0 {
         Set::empty()
@@ -127,6 +127,13 @@ pub proof fn seq_to_set_is_finite<A>(seq: Seq<A>)
     }
 }
 
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn seq_to_set_is_finite_broadcast<A>(seq: Seq<A>)
+    ensures #[trigger] seq.to_set().finite()
+{
+    // TODO: merge this with seq_to_set_is_finite when broadcast_forall is better supported
+}
 
 #[doc(hidden)]
 #[verifier(inline)]
