@@ -197,8 +197,8 @@ macro_rules! assert_sets_equal_internal {
         assert_sets_equal_internal!($s1, $s2, elem => { })
     };
     ($s1:expr, $s2:expr, $elem:ident $( : $t:ty )? => $bblock:block) => {
-        let s1 = $crate::pervasive::set_lib::check_argument_is_set($s1);
-        let s2 = $crate::pervasive::set_lib::check_argument_is_set($s2);
+        #[verifier::spec] let s1 = $crate::pervasive::set_lib::check_argument_is_set($s1);
+        #[verifier::spec] let s2 = $crate::pervasive::set_lib::check_argument_is_set($s2);
         ::builtin::assert_by(::builtin::equal(s1, s2), {
             ::builtin::assert_forall_by(|$elem $( : $t )?| {
                 ::builtin::ensures(
