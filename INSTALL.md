@@ -1,4 +1,9 @@
-## Building the Project
+Below, you can find instructions for:
+  * [Building Verus](./INSTALL.md#building-the-project)
+  * [Running Verus on the command line](./INSTALL.md#running-the-verifier)
+  * [Using Verus in an IDE](./INSTALL.md#ide-support)
+
+# Building the Project
 
 The main project source is in `source`.
 
@@ -11,9 +16,9 @@ See [`source/CODE.md`](source/CODE.md) for more details about files in `source`.
 [official docs](https://rustc-dev-guide.rust-lang.org/) for more about the
 normal Rust compiler.
 
-### Step 1: Build Rust
+## Step 1: Build Rust
 
-#### Quick Install (Linux, macOS):
+### Quick Install (Linux, macOS):
 
 Start in the project root directory and run,
 
@@ -25,7 +30,7 @@ tools/update-rust.sh
 The first command will download Verus' compiler fork; the second will make sure it is up-to-date and re-compile `rustc`.
 You can use the [`tools/update-rust.sh`](./tools/update-rust.sh) script to update the compiler when necessary (when new changes are pushed to the [compiler repository](https://github.com/verus-lang/rust)).
 
-#### Manual Install (Linux, macOS, Windows)
+### Manual Install (Linux, macOS, Windows)
 
 Build the rust compiler from [https://github.com/verus-lang/rust](https://github.com/verus-lang/rust) with `python x.py install` in the `rust` directory:
 
@@ -60,7 +65,7 @@ cd ..
 
 You can pull in future updates to our fork of rust via [`tools/update-rust.sh`](./tools/update-rust.sh).
 
-### Step 2: Setup z3
+## Step 2: Setup Z3
 
 Change directory to `source`:
 
@@ -68,20 +73,20 @@ Change directory to `source`:
 cd source
 ```
 
-#### On Windows: Make sure the Z3 executable is in your path
+### On Windows: Make sure the Z3 executable is in your path
 
 Download the [Z3 binaries](https://github.com/Z3Prover/z3/releases).
 Make sure you get Z3 4.10.1.
 The Z3 `bin` folder contain the executable `z3.exe`.
 Either add the Z3 `bin` folder to your path or copy the Z3 executable file to one of the folders in your path.
 
-#### On Unix/macOS: Get a local Z3
+### On Unix/macOS: Get a local Z3
 
 From `source`, use the script `./tools/get-z3.sh` to download Z3.
 The `./tools/cargo.sh` script will correctly set the `VERUS_Z3_PATH` environment variable for the verifier to find Z3.
 If you run the verifier manually, set `VERUS_Z3_PATH` to `path_to/verify/z3`.
 
-### Step 3: Build the verifier
+## Step 3: Build the Verifier
 
 You should be in the `source` subdirectory.
 
@@ -105,8 +110,7 @@ This will build four crates:
 - one crate that contains built-in definitions used by code being verified:
     - builtin
 
-## Running the verifier 
-
+# Running the Verifier 
 
 After running the build steps above, you can verify an example file.
 From the `source` directory, run:
@@ -128,7 +132,7 @@ and reports the errors that Z3 finds.
 
 The `-L ../rust/install/bin/` is used to link to the `builtin` crate.
 
-## IDE Support
+# IDE Support
 
 Once you have built Verus, you can use it in IDE clients (such as Visual Studio
 Code, Emacs, or Vim) that support the LSP protocol.  Follow [these instructions](https://verus-lang.github.io/verus/guide/ide_support.html).
