@@ -1,3 +1,5 @@
+![Build and Test](https://github.com/verus-lang/verus/actions/workflows/ci.yml/badge.svg)
+
 Verus is a tool for verifying the correctness of code written in Rust.
 Developers write specifications of what their code should do,
 and Verus statically checks that the executable Rust code will always 
