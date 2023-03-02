@@ -4,7 +4,7 @@ See [Goals](../../wiki/Goals) for a brief description of the project's goals. Al
  * [📖 API documentation for Verus's standard library](https://verus-lang.github.io/verus/verusdoc/lib/)
  * [📖 Guide for concurrent verification](https://verus-lang.github.io/verus/state_machines/)
 
-## Building the project
+## Building the Project
 
 The main project source is in `source`.
 
@@ -74,14 +74,14 @@ Change directory to `source`:
 cd source
 ```
 
-#### On Windows: make sure the Z3 executable is in your path
+#### On Windows: Make sure the Z3 executable is in your path
 
 Download the [Z3 binaries](https://github.com/Z3Prover/z3/releases).
 Make sure you get Z3 4.10.1.
 The Z3 `bin` folder contain the executable `z3.exe`.
 Either add the Z3 `bin` folder to your path or copy the Z3 executable file to one of the folders in your path.
 
-#### On Unix/macOS: get a local Z3
+#### On Unix/macOS: Get a local Z3
 
 From `source`, use the script `./tools/get-z3.sh` to download Z3.
 The `./tools/cargo.sh` script will correctly set the `VERUS_Z3_PATH` environment variable for the verifier to find Z3.
@@ -134,7 +134,12 @@ and reports the errors that Z3 finds.
 
 The `-L ../rust/install/bin/` is used to link to the `builtin` crate.
 
-## Editing the source code
+## IDE Support
+
+Once you have built Verus, you can use it in IDE clients (such as Visual Studio
+Code, Emacs, or Vim) that support the LSP protocol.  Follow [these instructions](https://verus-lang.github.io/verus/guide/ide_support.html).
+
+## Editing the source code of Verus
 
 You should make sure that your check-out of `rust` is up to date.
 Use the `./tools/update-rust.sh` script from the project root.
@@ -170,7 +175,7 @@ To automatically apply these suggestions to the source code, type:
 ../rust/install/bin/cargo-fmt
 ```
 
-## Documentation
+## Code Documentation
 
 Commenting the code is strongly encouraged.  Use `///` to create comments
 that [`rustdoc`](https://doc.rust-lang.org/rustdoc/what-is-rustdoc.html) can
@@ -185,13 +190,13 @@ RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc ../rust/inst
 ```
 which will produce documentation files, e.g., `./target/doc/rust_verify/index.html`
 
-## Guide
+## Contributing to the Guide
 
 A work-in-progress tutorial and reference document is automatically published
 [📖 here](https://verus-lang.github.io/verus/guide/) from the sources in
 [`source/docs/guide`](./source/docs/guide).
 
-## Running tests for the rust to vir translation, and inspecting the resulting vir/air/smt
+## Running tests for the Rust to VIR translation, and inspecting the resulting vir/air/smt
 
 `cargo test` will run the tests for `rust_verify`,
 
