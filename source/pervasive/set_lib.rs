@@ -7,6 +7,8 @@ use crate::pervasive::*;
 #[allow(unused_imports)]
 use crate::pervasive::set::*;
 
+use crate::pervasive::seq::*;
+
 verus! {
 
 impl<A> Set<A> {
@@ -42,6 +44,13 @@ impl<A> Set<A> {
             arbitrary()
         }
     }
+
+    /// Creates a [`Set`](set::Set)
+    pub open spec fn from_seq(seq: Seq<A>) -> Self
+    {
+        Set::new(|a| seq.contains(a))
+    }
+
 }
 
 pub proof fn lemma_len0_is_empty<A>(s: Set<A>)
