@@ -19,6 +19,12 @@ impl ArchWordBits {
             ArchWordBits::Exactly(v) => *v,
         }
     }
+    pub fn num_bits(&self) -> Option<u32> {
+        match self {
+            ArchWordBits::Either32Or64 => None,
+            ArchWordBits::Exactly(v) => Some(*v),
+        }
+    }
 }
 
 impl Default for ArchWordBits {
