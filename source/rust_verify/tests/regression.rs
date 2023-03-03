@@ -190,3 +190,36 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] reveal_func_unused_from_other_module_issue_411 verus_code! {
+        mod X {
+            #[verifier(opaque)]
+            pub open spec fn foo() -> bool { true }
+        }
+
+        proof fn test() {
+            reveal(X::foo);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] reveal_exec_fn_issue_411 verus_code! {
+        pub fn foo() -> bool { true }
+
+        proof fn test() {
+            reveal(foo);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "reveal/fuel statements require a spec-mode function")
+}
+
+test_verify_one_file! {
+    #[test] reveal_proof_fn_issue_411 verus_code! {
+        pub proof fn foo() -> bool { true }
+
+        proof fn test() {
+            reveal(foo);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "reveal/fuel statements require a spec-mode function")
+}
