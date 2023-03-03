@@ -103,28 +103,20 @@ impl Printer {
         Node::List(vec_map(typs, |t| self.typ_to_node(t)))
     }
 
-    pub(crate) fn bv_const_expr_to_node(&self, n: &Arc<String>, width: &u32) -> Node {
+    pub(crate) fn bv_const_expr_to_node(&self, n: &Arc<String>, width: u32) -> Node {
         let value = n.parse::<u128>().expect(&format!("could not parse option value {}", n));
-        if *width == 8 {
-            Node::Atom(format!("#x{:02x}", value))
-        } else if *width == 16 {
-            Node::Atom(format!("#x{:04x}", value))
-        } else if *width == 32 {
-            Node::Atom(format!("#x{:08x}", value))
-        } else if *width == 64 {
-            Node::Atom(format!("#x{:016x}", value))
-        } else if *width == 128 {
-            Node::Atom(format!("#x{:032x}", value))
-        } else {
-            panic!("unhandled bit-width in printing bitvector constant")
+        if width <= 128 && value >> (width as u128) != 0 {
+            panic!("bitvector constant does not fit in width");
         }
+        let hexwidth = ((width + 3) / 4) as usize;
+        Node::Atom(format!("#x{:0hexwidth$x}", value))
     }
 
     pub fn expr_to_node(&self, expr: &Expr) -> Node {
         match &**expr {
             ExprX::Const(Constant::Bool(b)) => Node::Atom(b.to_string()),
             ExprX::Const(Constant::Nat(n)) => Node::Atom((**n).clone()),
-            ExprX::Const(Constant::BitVec(n, width)) => self.bv_const_expr_to_node(n, width),
+            ExprX::Const(Constant::BitVec(n, width)) => self.bv_const_expr_to_node(n, *width),
             ExprX::Var(x) => Node::Atom(x.to_string()),
             ExprX::Old(snap, x) => {
                 nodes!(old {str_to_node(&snap.to_string())} {str_to_node(&x.to_string())})

@@ -349,3 +349,27 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 4)
 }
+
+test_verify_one_file! {
+    #[test] test_casting_to_higher_width_issue386 verus_code! {
+        proof fn test() {
+            let b: u8 = 20;
+            let w: u64 = 20;
+
+            // In order to augment b to a u64, it has to add 64 - 8 = 56 bits.
+            // 56 isn't a power of 2
+            // Thus, this test makes sure that bitwidths of non-powers-of-2 work.
+
+            assert((b as u64) == w) by (bit_vector)
+                requires b == 20 && w == 20 { }
+        }
+
+        proof fn test2() {
+            let b: u8 = 20;
+            let w: u64 = 276;
+
+            assert((b as u64) == w) by (bit_vector) // FAILS
+                requires b == 20 && w == 276 { }
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
