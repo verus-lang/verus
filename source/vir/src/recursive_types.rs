@@ -1,4 +1,6 @@
-use crate::ast::{Datatype, FunctionKind, GenericBoundX, Ident, Krate, Path, Typ, TypX, VirErr};
+use crate::ast::{
+    Datatype, FunctionKind, GenericBoundX, Ident, Krate, Path, Trait, Typ, TypX, VirErr,
+};
 use crate::ast_util::{err_str, err_string, path_as_rust_name};
 use crate::context::GlobalCtx;
 use crate::recursion::Node;
@@ -223,14 +225,7 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
     for tr in &krate.traits {
         for (_name, bound, _positive) in tr.x.typ_params.iter() {
             match &**bound {
-                GenericBoundX::Traits(ts) if ts.len() == 0 => {}
-                _ => {
-                    // REVIEW: when we support bounds on trait type parameters,
-                    // we'll need the appropriate termination checking.
-                    // (e.g. by including traits in the datatype graph
-                    // and checking bounded type variables occur in positive positions)
-                    return err_str(&tr.span, "not yet supported: bounds on trait type parameters");
-                }
+                GenericBoundX::Traits(_) => {}
             }
         }
     }
@@ -239,15 +234,7 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
         let mut tparams: HashMap<Ident, bool> = HashMap::new();
         for (name, bound, positive) in datatype.x.typ_params.iter() {
             match &**bound {
-                GenericBoundX::Traits(ts) if ts.len() == 0 => {}
-                _ => {
-                    // REVIEW: when we support bounds on datatype parameters,
-                    // we'll need the appropriate termination checking.
-                    return err_str(
-                        &datatype.span,
-                        "not yet supported: bounds on datatype parameters",
-                    );
-                }
+                GenericBoundX::Traits(_) => {}
             }
             tparams.insert(name.clone(), *positive);
         }
@@ -297,7 +284,7 @@ fn scc_error(krate: &Krate, head: &Node, nodes: &Vec<Node>) -> VirErr {
                     push(node, span);
                 }
             }
-            Node::DatatypeTraitBound { datatype, .. } => {
+            Node::Datatype(datatype) | Node::DatatypeTraitBound { datatype, .. } => {
                 if let Some(d) = krate.datatypes.iter().find(|d| d.x.path == *datatype) {
                     let span = d.span.clone();
                     push(node, span);
@@ -306,6 +293,20 @@ fn scc_error(krate: &Krate, head: &Node, nodes: &Vec<Node>) -> VirErr {
         }
     }
     err
+}
+
+pub(crate) fn add_trait_to_graph(call_graph: &mut Graph<Node>, trt: &Trait) {
+    // For
+    //   trait T<A1: U1, ..., An: Un>
+    // Add T --> U1, ..., T --> Un edges (see comments below for more details.)
+    let t_node = Node::Trait(trt.x.name.clone());
+    for (_, bound, _) in trt.x.typ_params.iter() {
+        let GenericBoundX::Traits(bounds) = &**bound;
+        for u_path in bounds {
+            let u_node = Node::Trait(u_path.clone());
+            call_graph.add_edge(t_node.clone(), u_node);
+        }
+    }
 }
 
 // Check for cycles in traits
@@ -325,8 +326,8 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     //   }
     // Coq/F* would encode this using a "dictionary" datatype:
     //   struct Dictionary_T<Self> {
-    //     f: Fn(Self, Self) -> bool,
-    //     g: Fn(Self, Self) -> Self { requires(f(x, y)); },
+    //     f: Fn(x: Self, y: Self) -> bool,
+    //     g: Fn(x: Self, y: Self) -> Self { requires(f(x, y)); },
     //   }
     // (Note that this is a dependent record in Coq/F*, where g's type depends on f,
     // because g's requires clause mentions f.  Because of this, the order of the fields matters --
@@ -363,6 +364,33 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     //   - D: T --> f where f is one of D's methods that implements T
     // It is an error for Node::Trait(T) or Node::DatatypeTraitBound(D, T) to appear in a cycle in
     // the call graph.
+    // Note that we don't have nodes for datatypes D, because the datatype itself
+    // does not carry its trait implementations -- the trait implementations D: T
+    // are separate from D, and are needed only when we instantiate A: T with D: T,
+    // not when we construct a value of type D.
+
+    // To handle bounds on trait parameters like this:
+    //   trait T<A: U> {
+    //     fn f(x: Self, y: Self) -> bool;
+    //     fn g(x: Self, y: Self) -> Self { requires(f(x, y)); };
+    //   }
+    // We can store a Dictionary_U inside Dictionary_T:
+    //   struct Dictionary_T<Self, A> {
+    //     a: Dictionary_U<A>,
+    //     f: Fn(x: Self, y: Self) -> bool,
+    //     g: Fn(x: Self, y: Self) -> Self { requires(f(x, y)); },
+    //   }
+    // This adds an edge:
+    //   - T --> U
+    // This also ensures that whenever A is used in f and g,
+    // the dictionary a: Dictionary_U<A> is available.
+
+    // For bounds on datatype parameters like this:
+    //   struct D<A: U> {
+    //     x: A,
+    //   }
+    // we don't do anything extra.  As stated above, D carries just its fields,
+    // and nothing related to traits and dictionaries.
 
     for scc in &ctx.func_call_sccs {
         let scc_nodes = ctx.func_call_graph.get_scc_nodes(scc);

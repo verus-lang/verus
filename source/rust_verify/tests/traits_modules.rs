@@ -17,29 +17,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_2 code! {
-        mod M1 { pub trait T1 {} }
-        // need to add A: T1 to termination checking before supporting this
-        mod M2 {
-            trait T2<A: crate::M1::T1> {
-            }
-        }
-    } => Err(err) => assert_vir_error_msg(err, ": bounds on trait type parameters")
-}
-
-test_verify_one_file! {
-    #[test] test_not_yet_supported_3 code! {
-        mod M1 { pub trait T1 {} }
-        mod M2 {
-            // might need to add A: T1 to termination checking before supporting this
-            struct S2<A: crate::M1::T1> {
-                a: A,
-            }
-        }
-    } => Err(err) => assert_vir_error_msg(err, ": bounds on datatype parameters")
-}
-
-test_verify_one_file! {
     #[test] test_not_yet_supported_8 code! {
         mod M1 {
             pub trait T<A> {
