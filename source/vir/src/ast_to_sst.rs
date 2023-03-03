@@ -18,7 +18,7 @@ use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::util::{vec_map, vec_map_result};
 use crate::visitor::VisitorControlFlow;
 use air::ast::{Binder, BinderX, Binders, Span};
-use air::messages::{error_with_label, Diagnostics};
+use air::messages::{error_with_label, warning, Diagnostics};
 use air::scope_map::ScopeMap;
 use num_bigint::BigInt;
 use num_traits::identities::Zero;
@@ -1282,6 +1282,11 @@ fn expr_to_stm_opt(
             // If so, just skip the fuel/reveal statement entirely
             // (it can't possibly have any effect)
             let skip = !ctx.func_map.contains_key(x);
+
+            if skip {
+                state.diagnostics.report(&warning(
+                    "this reveal/fuel statement has no effect because no verification condition in this module depends on this function", &expr.span));
+            }
 
             let stms = if skip {
                 vec![]
