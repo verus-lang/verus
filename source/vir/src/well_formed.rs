@@ -231,6 +231,18 @@ fn check_one_expr(
         ExprX::ExecClosure { .. } => {
             crate::closures::check_closure_well_formed(expr)?;
         }
+        ExprX::Fuel(f, _) => {
+            let f = check_path_and_get_function(ctxt, f, None, &expr.span)?;
+            if f.x.mode != Mode::Spec {
+                return err_str(
+                    &expr.span,
+                    &format!(
+                        "reveal/fuel statements require a spec-mode function, got {:}-mode function",
+                        f.x.mode
+                    ),
+                );
+            }
+        }
         _ => {}
     }
     Ok(())

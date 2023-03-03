@@ -1277,8 +1277,19 @@ fn expr_to_stm_opt(
             ))
         }
         ExprX::Fuel(x, fuel) => {
-            let stm = Spanned::new(expr.span.clone(), StmX::Fuel(x.clone(), *fuel));
-            Ok((vec![stm], ReturnValue::ImplicitUnit(expr.span.clone())))
+            // It's possible that the function may have pruned out of the crate
+            // because there are no transitive dependencies.
+            // If so, just skip the fuel/reveal statement entirely
+            // (it can't possibly have any effect)
+            let skip = !ctx.func_map.contains_key(x);
+
+            let stms = if skip {
+                vec![]
+            } else {
+                let stm = Spanned::new(expr.span.clone(), StmX::Fuel(x.clone(), *fuel));
+                vec![stm]
+            };
+            Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
         }
         ExprX::RevealString(path) => {
             let stm = Spanned::new(expr.span.clone(), StmX::RevealString(path.clone()));
