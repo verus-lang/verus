@@ -695,10 +695,13 @@ fn output_invariant(
                 let g_type = &partial_type.concrete_args[1];
                 let v_pat = &v_pats[0];
                 let g_pat = &v_pats[1];
+
+                // TODO make it possible to configure open-ness?
+
                 stream.extend(quote_spanned! { predicate.span() =>
                     #vis struct #predname { }
                     impl<#type_params> crate::pervasive::atomic_ghost::AtomicInvariantPredicate<#k_type, #v_type, #g_type> for #predname #where_clause {
-                        spec fn atomic_inv(#tmp_k: #k_type, #tmp_v: #v_type, #tmp_g: #g_type) -> bool {
+                        open spec fn atomic_inv(#tmp_k: #k_type, #tmp_v: #v_type, #tmp_g: #g_type) -> bool {
                             let #k_pat = #tmp_k;
                             let #v_pat = #tmp_v;
                             let #g_pat = #tmp_g;
@@ -716,7 +719,7 @@ fn output_invariant(
                 stream.extend(quote_spanned! { predicate.span() =>
                     #vis struct #predname { }
                     impl<#type_params> crate::pervasive::invariant::InvariantPredicate<#k_type, #v_type> for #predname #where_clause {
-                        spec fn inv(#tmp_k: #k_type, #tmp_v: #v_type) -> bool {
+                        open spec fn inv(#tmp_k: #k_type, #tmp_v: #v_type) -> bool {
                             let #k_pat = #tmp_k;
                             let #v_pat = #tmp_v;
                             #predicate
