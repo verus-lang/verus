@@ -8,7 +8,8 @@ pub fn examples_in_dir(input: TokenStream) -> TokenStream {
     // relative to rust_verify
     let relative_path_string = arg.value();
     let relative_path = Path::new(&relative_path_string);
-    let dir_underscores = relative_path_string.replace("/", "_").replace("-", "_");
+    let dir_underscores =
+        relative_path_string.replace("../rust_verify/", "").replace("/", "_").replace("-", "_");
 
     // relative to current working directory
     let dir_path = Path::new("rust_verify").join(Path::new(&relative_path));
