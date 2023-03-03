@@ -45,7 +45,8 @@ impl<A> Set<A> {
         }
     }
 
-    /// Creates a [`Set`](set::Set)
+    /// Creates a [`Set`] from a `Seq`.
+    /// Repeated elements are condensed into one element of the `Set`.
     pub open spec fn from_seq(seq: Seq<A>) -> Self
     {
         Set::new(|a| seq.contains(a))
