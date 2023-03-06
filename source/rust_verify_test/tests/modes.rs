@@ -992,3 +992,23 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_use_exec_var_in_forall verus_code! {
+        spec fn some_fn(j: int) -> bool {
+            true
+        }
+
+        fn test() {
+            let i = 5;
+
+            assert forall |j| some_fn(j) by {
+                if j < i {
+                    assert(some_fn(j));
+                } else {
+                    assert(some_fn(j));
+                }
+            }
+        }
+    } => Ok(())
+}

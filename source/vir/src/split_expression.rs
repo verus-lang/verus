@@ -244,21 +244,6 @@ fn mk_imply_traced(e1: &Exp, e2: &TracedExp) -> TracedExp {
     TracedExpX::new(imply_exp, e2.trace.clone())
 }
 
-fn mk_chained_implies(es: TracedExps) -> TracedExps {
-    let mut chained_vec = vec![];
-    let mut chained_e = es.first().unwrap().clone();
-    // REVIEW: change encoding order ---- (A => B) => C to A => (B => C)
-    for (idx, e) in es.iter().enumerate() {
-        if idx == 0 {
-            chained_vec.push(chained_e.clone());
-        } else {
-            chained_e = mk_imply_traced(&chained_e.e, e);
-            chained_vec.push(chained_e.clone());
-        }
-    }
-    Arc::new(chained_vec)
-}
-
 // Note: this splitting referenced Dafny - https://github.com/dafny-lang/dafny/blob/cf285b9282499c46eb24f05c7ecc7c72423cd878/Source/Dafny/Verifier/Translator.cs#L11100
 fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> TracedExps {
     if !is_bool_type(&exp.e.typ) {
@@ -286,8 +271,6 @@ fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> Trace
                         false,
                     );
                     // instead of `A && B` to [A,B], use [A, A=>B]
-                    let es1 = mk_chained_implies(es1);
-                    let es2 = mk_chained_implies(es2);
                     let es2 = Arc::new(es2.iter().map(|e| mk_imply_traced(e1, e)).collect());
                     return merge_two_es(es1, es2);
                 }
@@ -307,8 +290,6 @@ fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> Trace
                     );
                     // now `Or` is changed to `And`
                     // instead of `A && B` to [A,B], use [A, A=>B]
-                    let es1 = mk_chained_implies(es1);
-                    let es2 = mk_chained_implies(es2);
                     let e1 = SpannedTyped::new(
                         &e1.span,
                         &Arc::new(TypX::Bool),
