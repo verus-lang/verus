@@ -20,7 +20,7 @@ impl<A> Seq<A> {
         Seq::new(self.len(), |i: int| f(i, self[i]))
     }
 
-    pub open spec fn filter(self, pred: FnSpec(A) -> bool) -> Self
+    pub closed spec fn filter(self, pred: FnSpec(A) -> bool) -> Self
         decreases self.len()
     {
         if self.len() == 0 {
@@ -41,8 +41,8 @@ impl<A> Seq<A> {
             // we keep everything we should
             forall |i: int| 0 <= i < self.len() && pred(self[i])
                 ==> #[trigger] self.filter(pred).contains(self[i]),
-            // we also keep them in order, but I can't think of how to write
-            // that just now.
+            // the filtered list can't grow
+            self.filter(pred).len() <= self.len(),
         decreases self.len()
     {
         let out = self.filter(pred);
@@ -68,6 +68,75 @@ impl<A> Seq<A> {
         }
     }
 
+    proof fn filter_distributes_over_add(a:Self, b:Self, pred:FnSpec(A)->bool)
+    ensures
+        (a+b).filter(pred) == a.filter(pred) + b.filter(pred),
+    decreases b.len()
+    {
+        if 0 < b.len()
+        {
+            Self::drop_last_distributes_over_add(a, b);
+            Self::filter_distributes_over_add(a, b.drop_last(), pred);
+            if pred(b.last()) {
+                Self::push_distributes_over_add(a.filter(pred), b.drop_last().filter(pred), b.last());
+            }
+        } else {
+            Self::add_empty(a, b);
+            Self::add_empty(a.filter(pred), b.filter(pred));
+        }
+    }
+
+    pub proof fn add_empty(a: Self, b: Self)
+    requires
+        b.len() == 0,
+    ensures
+        a+b == a,
+    {
+        assert_seqs_equal!(a+b, a);
+    }
+
+    pub proof fn push_distributes_over_add(a: Self, b: Self, elt: A)
+    ensures
+        (a+b).push(elt) == a+b.push(elt),
+    {
+        assert_seqs_equal!((a+b).push(elt), a+b.push(elt));
+    }
+
+    #[verifier(external_body)]
+    #[verifier(broadcast_forall)]
+    pub proof fn filter_distributes_over_add_broacast(a:Self, b:Self, pred:FnSpec(A)->bool)
+    ensures
+        #[trigger] (a+b).filter(pred) == a.filter(pred) + b.filter(pred),
+    {
+    // TODO(chris): We have perfectly good proofs sitting around for these broadcasts; they don't
+    // need to be axioms!
+//        assert forall |a:Self, b:Self, pred:FnSpec(A)->bool| (a+b).filter(pred) == a.filter(pred) + b.filter(pred) by {
+//            Self::filter_distributes_over_add(a, b, pred);
+//        }
+    }
+
+    #[verifier(external_body)]
+    #[verifier(broadcast_forall)]
+    pub proof fn add_empty_broacast(a:Self, b:Self)
+    ensures
+        b.len()==0 ==> a+b == a
+    {
+//        assert forall |a:Self, b:Self| b.len()==0 implies a+b == a {
+//            add_empty(a, b);
+//        }
+    }
+
+    #[verifier(external_body)]
+    #[verifier(broadcast_forall)]
+    pub proof fn push_distributes_over_add_broacast(a:Self, b:Self, elt: A)
+    ensures
+        (a+b).push(elt) == a+b.push(elt),
+    {
+//        assert forall |a:Self, b:Self, elt: A| (a+b).push(elt) == a+b.push(elt) {
+//            push_distributes_over_add(a, b, elt);
+//        }
+    }
+
     // TODO is_sorted -- extract from summer_school e22
     pub open spec fn contains(self, needle: A) -> bool {
         exists|i: int| 0 <= i < self.len() && self[i] == needle
@@ -85,6 +154,15 @@ impl<A> Seq<A> {
         recommends self.len() >= 1
     {
         self.subrange(0, self.len() as int - 1)
+    }
+
+    pub proof fn drop_last_distributes_over_add(a: Self, b: Self)
+    requires
+        0 < b.len(),
+    ensures
+        (a+b).drop_last() == a+b.drop_last(),
+    {
+        assert_seqs_equal!((a+b).drop_last(), a+b.drop_last());
     }
 
     /// returns `true` if the sequequence has no duplicate elements
