@@ -51,7 +51,7 @@ pub(crate) enum PatternX {
     Or(Vec<Pattern>),
     Tuple(Vec<Pattern>),
     DatatypeTuple(Id, Option<Id>, Vec<Pattern>),
-    DatatypeStruct(Id, Option<Id>, Vec<(Id, Pattern)>),
+    DatatypeStruct(Id, Option<Id>, Vec<(Id, Pattern)>, bool),
 }
 
 // We're only interested in expressions that produce non-spec values,

@@ -230,9 +230,9 @@ fn un_mut_pattern(pat: &Pattern) -> Pattern {
         PatternX::DatatypeTuple(x, y, ps) => {
             PatternX::DatatypeTuple(x.clone(), y.clone(), ps.iter().map(un_mut_pattern).collect())
         }
-        PatternX::DatatypeStruct(x, y, ps) => {
+        PatternX::DatatypeStruct(x, y, ps, omit) => {
             let ps = ps.iter().map(|(z, p)| (z.clone(), un_mut_pattern(p))).collect();
-            PatternX::DatatypeStruct(x.clone(), y.clone(), ps)
+            PatternX::DatatypeStruct(x.clone(), y.clone(), ps, *omit)
         }
     };
     Box::new((*span, patx))
@@ -286,7 +286,7 @@ pub(crate) fn emit_pattern(state: &mut EmitState, pat: &Pattern) {
             }
             state.write(")");
         }
-        PatternX::DatatypeStruct(x, v, ps) => {
+        PatternX::DatatypeStruct(x, v, ps, has_omitted) => {
             state.write(x.to_string());
             if let Some(v) = v {
                 state.write("::");
@@ -299,7 +299,10 @@ pub(crate) fn emit_pattern(state: &mut EmitState, pat: &Pattern) {
                 emit_pattern(state, p);
                 state.write(", ");
             }
-            state.write(" } ");
+            if *has_omitted {
+                state.write(".. ");
+            }
+            state.write("} ");
         }
     }
     state.end_span(*span);

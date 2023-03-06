@@ -398,7 +398,7 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Patter
         PatKind::Struct(
             QPath::Resolved(None, rustc_hir::Path { res: res @ Res::Def(DefKind::Variant, _), .. }),
             pats,
-            _,
+            has_omitted,
         ) => {
             let (vir_path, variant_name) = datatype_variant_of_res(ctxt.tcx, res, false);
             let name = state.datatype_name(&vir_path);
@@ -409,12 +409,12 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Patter
                 let pattern = erase_pat(ctxt, state, &pat.pat);
                 binders.push((field, pattern));
             }
-            mk_pat(PatternX::DatatypeStruct(name, Some(variant), binders))
+            mk_pat(PatternX::DatatypeStruct(name, Some(variant), binders, *has_omitted))
         }
         PatKind::Struct(
             QPath::Resolved(None, rustc_hir::Path { res: res @ Res::Def(DefKind::Struct, _), .. }),
             pats,
-            _,
+            has_omitted,
         ) => {
             let vir_path = def_id_to_vir_path(ctxt.tcx, res.def_id());
             let name = state.datatype_name(&vir_path);
@@ -424,7 +424,7 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Patter
                 let pattern = erase_pat(ctxt, state, &pat.pat);
                 binders.push((field, pattern));
             }
-            mk_pat(PatternX::DatatypeStruct(name, None, binders))
+            mk_pat(PatternX::DatatypeStruct(name, None, binders, *has_omitted))
         }
         _ => {
             dbg!(pat);
@@ -490,6 +490,14 @@ fn force_block(exp: Option<Exp>, span: Span) -> Exp {
         None => Box::new((span, ExpX::Block(vec![], None))),
         Some(exp @ box (_, ExpX::Block(..))) => exp,
         Some(exp @ box (span, _)) => Box::new((span, ExpX::Block(vec![], Some(exp)))),
+    }
+}
+
+// Convert an Option<Exp> into an Exp by converting None into a unit value
+fn force_exp(exp: Option<Exp>, span: Span) -> Exp {
+    match exp {
+        None => Box::new((span, ExpX::Tuple(vec![]))),
+        Some(e) => e,
     }
 }
 
@@ -998,7 +1006,7 @@ fn erase_expr<'tcx>(
             } else {
                 let exp1 = erase_expr(ctxt, state, false, e1);
                 let exp2 = erase_expr(ctxt, state, false, e2);
-                mk_exp(ExpX::Assign(exp1.expect("expr"), exp2.expect("expr")))
+                mk_exp(ExpX::Assign(exp1.expect("expr"), force_exp(exp2, e2.span)))
             }
         }
         ExprKind::AssignOp(_op, e1, e2) => {
