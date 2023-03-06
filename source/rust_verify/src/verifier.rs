@@ -1240,7 +1240,9 @@ impl Verifier {
                 .iter()
                 .filter(|m| {
                     let name = module_name(m);
-                    let is_pervasive = name.starts_with("pervasive::") || name == "pervasive";
+                    let is_pervasive = name.starts_with("pervasive::")
+                        || name == "pervasive"
+                        || m.krate == Some(Arc::new("vstd".to_string()));
                     (!self.args.verify_root
                         && self.args.verify_module.is_empty()
                         && (!is_pervasive ^ self.args.verify_pervasive))
@@ -1436,7 +1438,7 @@ impl Verifier {
         });
         let multi_crate = self.args.export.is_some() || self.args.import.len() > 0;
         crate::rust_to_vir_base::MULTI_CRATE
-            .store(multi_crate, std::sync::atomic::Ordering::Relaxed);
+            .with(|m| m.store(multi_crate, std::sync::atomic::Ordering::Relaxed));
 
         // Convert HIR -> VIR
         let time1 = Instant::now();

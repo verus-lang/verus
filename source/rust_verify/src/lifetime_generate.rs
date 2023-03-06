@@ -2,7 +2,8 @@ use crate::attributes::{get_ghost_block_opt, get_mode, get_verifier_attrs, Ghost
 use crate::erase::{ErasureHints, ResolvedCall};
 use crate::lifetime_ast::*;
 use crate::rust_to_vir_base::{
-    def_id_self_to_vir_path, def_id_to_vir_path, local_to_var, mid_ty_const_to_vir, mid_ty_to_vir,
+    def_id_self_to_vir_path, def_id_to_vir_path, local_to_var, mid_ty_const_to_vir,
+    mid_ty_to_vir_datatype,
 };
 use crate::rust_to_vir_expr::{datatype_constructor_variant_of_res, datatype_variant_of_res};
 use air::ast::AstId;
@@ -866,7 +867,8 @@ fn erase_expr<'tcx>(
         ExprKind::MethodCall(_name_and_generics, fn_span, all_args, _call_span) => {
             let fn_def_id = ctxt.types().type_dependent_def_id(expr.hir_id).expect("method id");
             let rcvr = all_args.first().expect("receiver in method call");
-            let rcvr_typ = mid_ty_to_vir(ctxt.tcx, ctxt.types().node_type(rcvr.hir_id), true);
+            let rcvr_typ =
+                mid_ty_to_vir_datatype(ctxt.tcx, ctxt.types().node_type(rcvr.hir_id), true);
             let self_path = match &*rcvr_typ {
                 vir::ast::TypX::Datatype(path, _) => Some(path.clone()),
                 _ => None,
