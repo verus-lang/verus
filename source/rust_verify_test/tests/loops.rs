@@ -246,7 +246,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] basic_loop verus_code! {
-        use pervasive::modes::*;
+        use vstd::modes::*;
         fn test() {
             let mut a: Ghost<int> = ghost(5);
             loop
@@ -853,7 +853,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] boxed_args_are_havoced_regression_340 verus_code! {
-        use pervasive::vec::*;
+        use vstd::vec::*;
 
         mod Mod {
             pub struct X<T> {

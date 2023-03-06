@@ -3,13 +3,16 @@
 use builtin::*;
 #[allow(unused_imports)]
 use builtin_macros::*;
+
+#[cfg(not(vstd_todo))]
 mod pervasive;
+#[cfg(not(vstd_todo))]
 #[allow(unused_imports)]
-use pervasive::option::Option;
+use pervasive::{*, option::Option, seq::*};
+
+#[cfg(vstd_todo)]
 #[allow(unused_imports)]
-use pervasive::*;
-#[allow(unused_imports)]
-use seq::*;
+use vstd::{option::Option, seq::*};
 
 verus! {
 

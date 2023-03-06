@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] distinguish_returns_and_implict_units code! {
+    #[test] distinguish_returns_and_implict_units verus_code! {
         fn test_return_from_else(b: bool) {
             let x = if b {
                 1
@@ -137,19 +137,22 @@ test_verify_one_file! {
             }
         }
 
-        fn never_in_return() -> u8 {
-            ensures(|i: u8| i == 3);
+        fn never_in_return() -> (i: u8)
+            ensures i == 3
+        {
             return { return 3; 5 };
         }
 
-        fn return_return() -> u8 {
-            ensures(|i: u8| i == 3);
+        fn return_return() -> (i: u8)
+            ensures i == 3
+        {
             return 3;
             return 5;
         }
 
-        fn return_return2() -> u8 {
-            ensures(|i: u8| i == 3);
+        fn return_return2() -> (i: u8)
+            ensures i == 3
+        {
             return 3;
             5
         }
@@ -167,10 +170,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] postconditions_fail_in_returns_in_conditional code! {
-        fn postcondition_fail_if(b: bool) {
-            ensures(false);
-
+    #[test] postconditions_fail_in_returns_in_conditional verus_code! {
+        fn postcondition_fail_if(b: bool)
+            ensures false
+        {
             let x = if b {
                 5
             } else {
@@ -179,9 +182,9 @@ test_verify_one_file! {
             assume(false);
         }
 
-        fn postcondition_fail_else(b: bool) {
-            ensures(false);
-
+        fn postcondition_fail_else(b: bool)
+            ensures false
+        {
             let x = if b {
                 return; // FAILS
             } else {
@@ -190,9 +193,9 @@ test_verify_one_file! {
             assume(false);
         }
 
-        fn postcondition_fail_if_value(b: bool) -> u8 {
-            ensures(|i: u8| i == 4);
-
+        fn postcondition_fail_if_value(b: bool) -> (i: u8)
+            ensures i == 4
+        {
             let x = if b {
                 return 7; // FAILS
             } else {
@@ -201,9 +204,9 @@ test_verify_one_file! {
             4
         }
 
-        fn postcondition_fail_else_value(b: bool) -> u8 {
-            ensures(|i: u8| i == 4);
-
+        fn postcondition_fail_else_value(b: bool) -> (i: u8)
+            ensures i == 4
+        {
             let x = if b {
                 5
             } else {
@@ -215,7 +218,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] return_from_if_else_fail code! {
+    #[test] return_from_if_else_fail verus_code! {
         fn test_return_from_else(b: bool) {
             let x = if b {
                 1
@@ -241,7 +244,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] return_from_match_fail code! {
+    #[test] return_from_match_fail verus_code! {
         pub enum Foo { A, B }
 
         fn test_return_from_match(foo: Foo) {
@@ -257,7 +260,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] implicit_unit_block_fail code! {
+    #[test] implicit_unit_block_fail verus_code! {
         fn test_implicit_unit_block(b: bool) {
             let x = { };
             assert(equal(x, ()));
@@ -287,7 +290,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] implicit_unit_conditional_fail code! {
+    #[test] implicit_unit_conditional_fail verus_code! {
         fn test_implicit_unit_from_left(b: bool) {
             let x = if b { () } else { };
             assert(equal(x, ()));
@@ -317,9 +320,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] return_in_let_fail code! {
-        fn test_add_u32_and_never() -> u32 {
-            ensures(|r: u32| r > 3);
+    #[test] return_in_let_fail verus_code! {
+        fn test_add_u32_and_never() -> (r: u32)
+            ensures r > 3
+        {
             let x: u32 = {
               return 1; // FAILS
               3
@@ -331,16 +335,17 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] final_stmt_return_fail code! {
-        fn test_final_stmt_return() -> u8 {
-            ensures(|y: u8| y == 6);
+    #[test] final_stmt_return_fail verus_code! {
+        fn test_final_stmt_return() -> (y: u8)
+            ensures y == 6
+        {
             return 5; // FAILS
         }
     } => Err(err) => assert_fails(err, 1)
 }
 
 test_verify_one_file! {
-    #[test] short_circuit_returns_fail code! {
+    #[test] short_circuit_returns_fail verus_code! {
         fn never_short_circuit_left() {
             let x = {
                 assert(false); // FAILS
@@ -379,15 +384,15 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] misc_never_returns_fail code! {
-        fn never_in_conditional(b: bool) -> u8 {
-            ensures(|y: u8| y == 7);
-
+    #[test] misc_never_returns_fail verus_code! {
+        fn never_in_conditional(b: bool) -> (y: u8)
+            ensures y == 7
+        {
             let mut x = 7;
             if {
-              x = 5;
-              return x; // FAILS
-              true
+                x = 5;
+                return x; // FAILS
+                true
             } {
                 assert(false);
             } else {
@@ -397,22 +402,25 @@ test_verify_one_file! {
             return 9;
         }
 
-        fn never_in_return() -> u8 {
-            ensures(|i: u8| i == 5);
+        fn never_in_return() -> (i: u8)
+            ensures i == 5
+        {
             return {
-              return 3; // FAILS
-              5
+                return 3; // FAILS
+                5
             };
         }
 
-        fn return_return() -> u8 {
-            ensures(|i: u8| i == 5);
+        fn return_return() -> (i: u8)
+            ensures i == 5
+        {
             return 3; // FAILS
             return 5;
         }
 
-        fn return_return2() -> u8 {
-            ensures(|i: u8| i == 5);
+        fn return_return2() -> (i: u8)
+            ensures i == 5
+        {
             return 3; // FAILS
             5
         }
@@ -420,7 +428,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] conditionals_units_return_fail code! {
+    #[test] conditionals_units_return_fail verus_code! {
         fn if_unit_no_else() {
             let x = if true { () };
             assert(false); // FAILS
@@ -434,7 +442,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] block_with_no_return_as_arg code! {
+    #[test] block_with_no_return_as_arg verus_code! {
         fn foo(x: u8) {
 
         }
@@ -447,7 +455,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] block_with_no_return_as_arg2 code! {
+    #[test] block_with_no_return_as_arg2 verus_code! {
         fn foo(x: ()) {
 
         }
@@ -460,7 +468,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] block_with_no_return_as_arg3 code! {
+    #[test] block_with_no_return_as_arg3 verus_code! {
         fn foo(x: u8) {
         }
 
@@ -474,7 +482,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] conditional_with_infinite_loop code! {
+    #[test] conditional_with_infinite_loop verus_code! {
         fn main(b: bool) {
             let x = if b {
                 1
@@ -487,7 +495,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] conditional_with_infinite_while_loop code! {
+    #[test] conditional_with_infinite_while_loop verus_code! {
         fn foo(b: bool) {
             let x = if b {
                 1
@@ -501,11 +509,12 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] return_inside_while code! {
+    #[test] return_inside_while verus_code! {
         fn foo(b: bool) {
             let mut x = 5;
-            while b {
-                invariant(x == 5);
+            while b
+                invariant x == 5
+            {
 
                 x = 6;
                 return;
@@ -515,7 +524,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] return_value_in_one_match_arm code! {
+    #[test] return_value_in_one_match_arm verus_code! {
         enum TreeSortedness {
             Unsorted,
             Empty,
@@ -534,9 +543,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] requires_in_conditional_pure code! {
-        fn f(b: bool) -> bool {
-            requires(b);
+    #[test] requires_in_conditional_pure verus_code! {
+        fn f(b: bool) -> bool
+            requires b
+        {
             true
         }
 
@@ -551,9 +561,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] requires_in_conditional_impure code! {
-        fn f(b: bool) -> bool {
-            requires(b);
+    #[test] requires_in_conditional_impure verus_code! {
+        fn f(b: bool) -> bool
+            requires b
+        {
             true
         }
 
@@ -570,9 +581,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] requires_in_conditional_implicit_unit code! {
-        fn f(b: bool) -> bool {
-            requires(b);
+    #[test] requires_in_conditional_implicit_unit verus_code! {
+        fn f(b: bool) -> bool
+            requires b
+        {
             true
         }
 
@@ -589,9 +601,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] requires_in_conditional_never code! {
-        fn f(b: bool) -> bool {
-            requires(b);
+    #[test] requires_in_conditional_never verus_code! {
+        fn f(b: bool) -> bool
+            requires b
+        {
             true
         }
 
@@ -606,8 +619,9 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 1)
 }
 
-test_verify_one_file! {
-    #[test] closure_call_eval_order verus_code! {
+test_verify_one_file_with_options! {
+    #[test] closure_call_eval_order ["vstd"] => verus_code! {
+        // REVIEW: exec closures implicitly rely on vstd
         fn test(x1: bool, x2: bool) {
             let f = |i: u64, b: bool| {
                 if b { i } else { 0 }

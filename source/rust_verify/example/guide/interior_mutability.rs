@@ -1,9 +1,14 @@
+#[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
+
+#[cfg(not(vstd_todo))]
 mod pervasive;
-use pervasive::*;
-use pervasive::cell::*;
-use pervasive::option::*;
+#[cfg(not(vstd_todo))]
+use pervasive::{*, cell::*, option::*};
+
+#[cfg(vstd_todo)]
+use vstd::{cell::*, option::*};
 
 //// InvCell
 

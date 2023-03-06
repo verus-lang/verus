@@ -4,8 +4,12 @@ use builtin::*;
 use builtin_macros::*;
 #[allow(unused_imports)]
 use crate::pervasive::*;
+#[cfg(not(vstd_build_todo))]
 #[allow(unused_imports)]
 use crate::pervasive::seq::*;
+#[cfg(vstd_build_todo)]
+#[allow(unused_imports)]
+use crate::seq::*;
 extern crate alloc;
 use alloc::vec;
 #[allow(unused_imports)]
@@ -98,7 +102,6 @@ impl<A> Vec<A> {
 
     #[verifier(external_body)]
     #[verifier(when_used_as_spec(spec_len))]
-    #[verifier(autoview)]
     pub fn len(&self) -> (l: usize)
         ensures
             l == self.len(),

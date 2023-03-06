@@ -4,9 +4,10 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] test_stmts_expr_1 code! {
-        fn id(v: u64) -> u64 {
-            ensures(|ret: u64| v == ret);
+    #[test] test_stmts_expr_1 verus_code! {
+        fn id(v: u64) -> (ret: u64)
+            ensures v == ret
+        {
             v
         }
 
@@ -22,9 +23,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_stmts_expr_2 code! {
-        fn id(v: &u64) -> u64 {
-            ensures(|ret: u64| *v == ret);
+    #[test] test_stmts_expr_2 verus_code! {
+        fn id(v: &u64) -> (ret: u64)
+            ensures *v == ret
+        {
             *v
         }
 
@@ -40,9 +42,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_stmts_expr_3 code! {
-        fn id(v: &mut u64) {
-            ensures(*v == *old(v));
+    #[ignore] #[test] test_stmts_expr_3 verus_code! {
+        fn id(v: &mut u64)
+            ensures *v == *old(v)
+        {
         }
 
         fn test1() {
@@ -58,7 +61,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_stmts_expr_ref_mut code! {
+    #[ignore] #[test] test_stmts_expr_ref_mut verus_code! {
         #[derive(Debug)]
         struct A {
             v: u64,

@@ -1,6 +1,9 @@
 #[allow(unused_imports)] use builtin::*;
 #[allow(unused_imports)] use builtin_macros::*;
+#[cfg(not(vstd_todo))]
 mod pervasive; #[allow(unused_imports)] use pervasive::*;
+#[cfg(vstd_todo)]
+#[allow(unused_imports)] use vstd::*;
 
 verus! {
 

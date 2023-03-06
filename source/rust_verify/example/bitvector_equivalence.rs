@@ -1,10 +1,5 @@
 #[allow(unused_imports)]
 use builtin::*;
-mod pervasive;
-#[allow(unused_imports)]
-use pervasive::*;
-#[allow(unused_imports)]
-use crate::pervasive::seq::*;
 use builtin_macros::*;
 
 macro_rules! get_bit_macro {

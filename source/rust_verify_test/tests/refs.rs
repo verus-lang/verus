@@ -15,9 +15,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_ref_1 code! {
-        fn test_ref_1(p: &u64) {
-            requires(*p == 12);
+    #[test] test_ref_1 verus_code! {
+        fn test_ref_1(p: &u64)
+            requires *p == 12
+        {
             let b: &u64 = p;
             assert(*b == 12);
         }
@@ -25,9 +26,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_return_ref_0 code! {
-        fn return_ref(p: &u64) -> &u64 {
-            ensures(|r: &u64| r == p);
+    #[test] test_return_ref_0 verus_code! {
+        fn return_ref(p: &u64) -> (r: &u64)
+            ensures r == p
+        {
             p
         }
 
@@ -40,19 +42,21 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_return_ref_named_lifetime code! {
-        fn return_ref<'a>(p: &'a u64) -> &'a u64 {
-            ensures(|r: &u64| r == p);
+    #[test] test_return_ref_named_lifetime verus_code! {
+        fn return_ref<'a>(p: &'a u64) -> (r: &'a u64)
+            ensures r == p
+        {
             p
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_arg_exec code! {
-        fn add1(a: &mut u64) {
-            requires(*old(a) < 10);
-            ensures(*a == *old(a) + 1);
+    #[test] test_mut_ref_arg_exec verus_code! {
+        fn add1(a: &mut u64)
+            requires *old(a) < 10
+            ensures *a == *old(a) + 1
+        {
             *a = *a + 1;
         }
 
@@ -93,26 +97,26 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_arg_invalid_spec code! {
-        fn add1(a: &mut u64) {
-            requires(*a < 10);
+    #[test] test_mut_ref_arg_invalid_spec verus_code! {
+        fn add1(a: &mut u64)
+            requires *a < 10
+        {
             *a = *a + 1;
         }
     } => Err(err) => assert_vir_error_msg(err, "in requires, use `old(a)` to refer to the pre-state of an &mut variable") // error: in requires, use `old(a)` to refer to the pre-state of an &mut variable
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_arg_spec code! {
-        #[verifier::spec]
-        fn add1(a: &mut u64) {
-            *a = *a + 1;
+    #[test] test_mut_ref_arg_spec verus_code! {
+        spec fn add1(a: &mut u64) {
+            *a = add(*a, 1);
         }
     } => Err(err) => assert_vir_error_msg(err, "&mut argument not allowed for #[verifier::spec] functions")
 }
 
 test_verify_one_file! {
     // TODO(utaal) better/safer error check for this
-    #[ignore] #[test] test_mut_ref_unsupported_1 code! {
+    #[ignore] #[test] test_mut_ref_unsupported_1 verus_code! {
         fn test0() {
             let a = 3;
             let b = &mut a;
@@ -120,15 +124,16 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "ignored test")
 }
 
-const MUT_REF_ARG_SELF_COMMON: &str = code_str! {
+const MUT_REF_ARG_SELF_COMMON: &str = verus_code_str! {
     pub struct Value {
         pub v: u64,
     }
 
     impl Value {
-        pub fn add1(&mut self) {
-            requires(old(self).v < 10);
-            ensures(self.v == old(self).v + 1);
+        pub fn add1(&mut self)
+            requires old(self).v < 10
+            ensures self.v == old(self).v + 1
+        {
             let Value { v } = *self;
             *self = Value { v: v + 1 };
         }
@@ -136,7 +141,7 @@ const MUT_REF_ARG_SELF_COMMON: &str = code_str! {
 };
 
 test_verify_one_file! {
-    #[test] test_mut_ref_arg_self_pass_1 MUT_REF_ARG_SELF_COMMON.to_string() + code_str! {
+    #[test] test_mut_ref_arg_self_pass_1 MUT_REF_ARG_SELF_COMMON.to_string() + verus_code_str! {
         fn caller() {
             let mut v = Value { v: 2 };
             v.add1();
@@ -146,7 +151,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_arg_self_pass_2 MUT_REF_ARG_SELF_COMMON.to_string() + code_str! {
+    #[test] test_mut_ref_arg_self_pass_2 MUT_REF_ARG_SELF_COMMON.to_string() + verus_code_str! {
         fn caller() {
             let mut v = Value { v: 2 };
             v.add1();
@@ -157,7 +162,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_arg_self_fail_1 MUT_REF_ARG_SELF_COMMON.to_string() + code_str! {
+    #[test] test_mut_ref_arg_self_fail_1 MUT_REF_ARG_SELF_COMMON.to_string() + verus_code_str! {
         fn caller_fail() {
             let mut v = Value { v: 2 };
             v.add1();
@@ -168,7 +173,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_arg_self_fail_2 MUT_REF_ARG_SELF_COMMON.to_string() + code_str! {
+    #[test] test_mut_ref_arg_self_fail_2 MUT_REF_ARG_SELF_COMMON.to_string() + verus_code_str! {
         fn caller1() {
             let mut v = Value { v: 2 };
             v.add1();
@@ -183,14 +188,15 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_arg_self_complex_pass MUT_REF_ARG_SELF_COMMON.to_string() + code_str! {
+    #[test] test_mut_ref_arg_self_complex_pass MUT_REF_ARG_SELF_COMMON.to_string() + verus_code_str! {
         pub struct Wrap {
             pub w: Value,
         }
 
         impl Wrap {
-            fn outer(&mut self) {
-                requires(old(self).w.v == 2);
+            fn outer(&mut self)
+                requires old(self).w.v == 2
+            {
                 self.w.add1();
                 assert(self.w.v == 3);
             }
@@ -199,26 +205,26 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_arg_self_spec code! {
+    #[test] test_mut_ref_arg_self_spec verus_code! {
         #[verifier::spec]
         pub struct Value {
             pub v: u64,
         }
 
         impl Value {
-            #[verifier::spec]
-            pub fn add1(&mut self) {
+            pub closed spec fn add1(&mut self) {
                 let Value { v } = *self;
-                *self = Value { v: v + 1 };
+                *self = Value { v: add(v, 1) };
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "&mut argument not allowed for #[verifier::spec] functions")
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_generic_1 code! {
-        fn add1<A>(a: &mut A) {
-            ensures(equal(*old(a), *a));
+    #[test] test_mut_ref_generic_1 verus_code! {
+        fn add1<A>(a: &mut A)
+            ensures equal(*old(a), *a)
+        {
         }
 
         fn caller() {
@@ -230,9 +236,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_old_shadow code! {
-        fn add1(a: &mut u64) {
-            ensures(equal(*old(a), *a));
+    #[test] test_mut_ref_old_shadow verus_code! {
+        fn add1(a: &mut u64)
+            ensures equal(*old(a), *a)
+        {
             let a = true;
             assert(old(a) == true);
         }
@@ -240,7 +247,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_typing_invariant code! {
+    #[test] test_mut_ref_typing_invariant verus_code! {
         fn add1(a: &mut u64) {
             assert(*a >= 0);
         }
@@ -248,14 +255,16 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_forward code! {
-        fn div2(a: &mut u64) {
-            ensures(*a == *old(a) / 2);
+    #[test] test_mut_ref_forward verus_code! {
+        fn div2(a: &mut u64)
+            ensures *a == *old(a) / 2
+        {
             *a = *a / 2;
         }
 
-        fn test(b: &mut u64) {
-            ensures(*b == *old(b) / 2);
+        fn test(b: &mut u64)
+            ensures *b == *old(b) / 2
+        {
             div2(b);
         }
     } => Ok(())
@@ -284,7 +293,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_mut_ref_old_trigger verus_code! {
-        use crate::pervasive::vec::*;
+        use vstd::vec::*;
 
         fn add1(v: &mut Vec<u64>)
             requires
@@ -303,9 +312,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_shadow code! {
-        fn foo(x: &mut u32) {
-            ensures(equal(*x, *old(x)));
+    #[test] test_mut_ref_shadow verus_code! {
+        fn foo(x: &mut u32)
+            ensures equal(*x, *old(x))
+        {
         }
 
         fn main() {
@@ -360,21 +370,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_regression_115_mut_ref_eval_order code! {
+    #[test] test_regression_115_mut_ref_eval_order verus_code! {
         struct Foo {
             pub a: u64,
             pub b: bool,
             pub c: bool,
         }
 
-        fn do_mut(x: &mut u64) -> u64 {
-            ensures(|b: u64| *x == 1 && b == 1);
+        fn do_mut(x: &mut u64) -> (b: u64)
+            ensures *x == 1 && b == 1
+        {
             *x = 1;
             1
         }
 
-        fn same_foo(foo: Foo) -> Foo {
-            ensures(|res: Foo| equal(res, foo));
+        fn same_foo(foo: Foo) -> (res: Foo)
+            ensures equal(res, foo)
+        {
             foo
         }
 
@@ -392,7 +404,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_field_pass_1 code! {
+    #[test] test_mut_ref_field_pass_1 verus_code! {
         #[derive(PartialEq, Eq, Structural)]
         struct S {
             a: u32,
@@ -400,15 +412,14 @@ test_verify_one_file! {
             c: bool,
         }
 
-        fn add1(a: &mut u32, b: &mut i32) {
-            requires([
+        fn add1(a: &mut u32, b: &mut i32)
+            requires
                 *old(a) < 10,
                 *old(b) < 10,
-            ]);
-            ensures([
+            ensures
                 *a == *old(a) + 1,
                 *b == *old(b) + 1,
-            ]);
+        {
             *a = *a + 1;
             *b = *b + 1;
         }
@@ -416,47 +427,49 @@ test_verify_one_file! {
         fn main() {
             let mut s = S { a: 5, b: -5, c: false };
             add1(&mut s.a, &mut s.b);
-            assert(s == S { a: 6, b: -4, c: false });
+            assert(s == S { a: 6, b: -4i32, c: false });
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_field_pass_2 code! {
+    #[test] test_mut_ref_field_pass_2 verus_code! {
         #[derive(PartialEq, Eq, Structural)]
         struct S<A> {
             a: A,
             b: bool,
         }
 
-        fn add1(a: &mut u32) {
-            requires(*old(a) < 10);
-            ensures(*a == *old(a) + 1);
+        fn add1(a: &mut u32)
+            requires *old(a) < 10
+            ensures *a == *old(a) + 1
+        {
             *a = *a + 1;
         }
 
         fn main() {
             let mut s = S { a: 5, b: false };
             add1(&mut s.a);
-            assert(s == S { a: 6, b: false });
+            assert(s == S { a: 6u32, b: false });
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_field_and_update_pass code! {
+    #[test] test_mut_ref_field_and_update_pass verus_code! {
         #[derive(PartialEq, Eq, Structural)]
         struct S<A> {
             a: A,
             b: bool,
         }
 
-        fn add1(a: &mut u32) -> u32 {
-            requires(*old(a) < 10);
-            ensures(|ret: u32| [
+        fn add1(a: &mut u32) -> (ret: u32)
+            requires
+                *old(a) < 10
+            ensures
                 *a == *old(a) + 1,
                 ret == *old(a)
-            ]);
+        {
             *a = *a + 1;
             *a - 1
         }
@@ -464,7 +477,7 @@ test_verify_one_file! {
         fn main() {
             let mut s = S { a: 5, b: false };
             s.a = add1(&mut s.a);
-            assert(s == S { a: 5, b: false });
+            assert(s == S { a: 5u32, b: false });
         }
     } => Ok(())
 }

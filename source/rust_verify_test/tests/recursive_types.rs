@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] test1 code! {
+    #[test] test1 verus_code! {
         enum E1 {
             N(),
             E(Box<E1>),
@@ -13,7 +13,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test2 code! {
+    #[test] test2 verus_code! {
         enum E1 {
             N(),
             E(Box<E2>),
@@ -27,7 +27,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test3 code! {
+    #[test] test3 verus_code! {
         struct List<A> {
             a: A,
         }
@@ -45,7 +45,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test4 code! {
+    #[test] test4 verus_code! {
         struct List<A> {
             a: A,
         }
@@ -63,7 +63,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test1_ok code! {
+    #[test] test1_ok verus_code! {
         struct List<A> {
             a: A,
         }
@@ -77,7 +77,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test1_fails code! {
+    #[test] test1_fails verus_code! {
         struct List<#[verifier(maybe_negative)] /* vattr */ A> {
             a: A,
         }
@@ -91,7 +91,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test2_ok code! {
+    #[test] test2_ok verus_code! {
         struct List<A> {
             a: A,
         }
@@ -110,7 +110,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test2_fails code! {
+    #[test] test2_fails verus_code! {
         struct List<#[verifier(maybe_negative)] /* vattr */ A> {
             a: A,
         }
@@ -129,7 +129,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test3_ok code! {
+    #[test] test3_ok verus_code! {
         struct List<A> {
             a: A,
         }
@@ -148,7 +148,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test3_fails code! {
+    #[test] test3_fails verus_code! {
         struct List<#[verifier(maybe_negative)] /* vattr */ A> {
             a: A,
         }
@@ -167,7 +167,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test5_ok code! {
+    #[test] test5_ok verus_code! {
         #[verifier(external_body)] /* vattr */
         struct Map<#[verifier(maybe_negative)] /* vattr */ K, #[verifier(strictly_positive)] /* vattr */ V> {
             dummy: std::marker::PhantomData<(K, V)>,
@@ -182,7 +182,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test5_fails1 code! {
+    #[test] test5_fails1 verus_code! {
         #[verifier(external_body)] /* vattr */
         struct Map<#[verifier(maybe_negative)] /* vattr */ K, V> {
             dummy: std::marker::PhantomData<(K, V)>,
@@ -191,7 +191,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test5_fails2 code! {
+    #[test] test5_fails2 verus_code! {
         #[verifier(external_body)] /* vattr */
         struct Map<#[verifier(maybe_negative)] /* vattr */ K, #[verifier(strictly_positive)] /* vattr */ V> {
             dummy: std::marker::PhantomData<(K, V)>,
@@ -206,7 +206,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test5_fails3 code! {
+    #[test] test5_fails3 verus_code! {
         #[verifier(external_body)] /* vattr */
         struct Map<#[verifier(maybe_negative)] /* vattr */ K, #[verifier(strictly_positive)] /* vattr */ V> {
             dummy: std::marker::PhantomData<(K, V)>,
@@ -221,7 +221,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] lifetimes_no_positivity code! {
+    #[test] lifetimes_no_positivity verus_code! {
         #[verifier(external_body)] /* vattr */
         struct Str<'a> {
             inner: &'a str,

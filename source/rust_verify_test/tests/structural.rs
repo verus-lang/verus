@@ -3,7 +3,7 @@
 mod common;
 use common::*;
 
-const STRUCTS: &str = code_str! {
+const STRUCTS: &str = verus_code_str! {
     #[derive(PartialEq, Eq, Structural)]
     struct Car {
         four_doors: bool,
@@ -18,7 +18,7 @@ const STRUCTS: &str = code_str! {
 };
 
 test_verify_one_file! {
-    #[test] test_structural_eq STRUCTS.to_string() + code_str! {
+    #[test] test_structural_eq STRUCTS.to_string() + verus_code_str! {
         fn test_structural_eq(passengers: u64) {
             let c1 = Car { passengers, four_doors: true };
             let c2 = Car { passengers, four_doors: false };
@@ -52,7 +52,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_not_structural_generic code! {
+    #[test] test_not_structural_generic verus_code! {
         #[derive(PartialEq, Eq, Structural)]
         struct Thing<V> {
             v: V,
@@ -74,7 +74,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_not_structural_fields code! {
+    #[test] test_not_structural_fields verus_code! {
         #[derive(PartialEq, Eq)]
         struct Other { }
 
@@ -82,5 +82,5 @@ test_verify_one_file! {
         struct Thing {
             o: Other,
         }
-    } => Err(err) => assert_eq!(err.errors.len(), 0)
+    } => Err(err) => assert_error_msg(err, "error[E0277]: the trait bound `Other: builtin::Structural` is not satisfied")
 }

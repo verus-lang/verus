@@ -1,7 +1,5 @@
 use builtin_macros::*;
 use builtin::*;
-mod pervasive;
-use pervasive::*;
 
 verus! {
 

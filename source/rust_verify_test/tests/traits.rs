@@ -77,23 +77,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_10 code! {
+    #[test] test_not_yet_supported_10 verus_code! {
         trait T {
-            #[verifier::spec]
-            fn f(&self) -> bool { no_method_body() }
+            spec fn f(&self) -> bool;
 
-            #[verifier::proof]
-            fn p(&self) {
-                ensures(exists(|x: &Self| self.f() != x.f()));
-                no_method_body()
-            }
+            proof fn p(&self)
+                ensures exists|x: &Self| self.f() != x.f();
         }
 
-        #[verifier::proof]
         #[verifier(external_body)] /* vattr */
         #[verifier(broadcast_forall)] /* vattr */
-        fn f_not_g<A: T>() {
-            ensures(exists(|x: &A, y: &A| x.f() != y.f()));
+        proof fn f_not_g<A: T>()
+            ensures exists|x: &A, y: &A| x.f() != y.f()
+        {
         }
 
         struct S {}
@@ -105,28 +101,25 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_11 code! {
+    #[test] test_not_yet_supported_11 verus_code! {
         trait T {
-            #[verifier::spec]
-            fn f(&self) -> bool { no_method_body() }
+            spec fn f(&self) -> bool;
         }
 
         trait S : T {
-            #[verifier::spec]
-            fn g(&self) -> bool { no_method_body() }
+            spec fn g(&self) -> bool;
         }
     } => Err(err) => assert_error_msg(err, ": trait generic bounds")
 }
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_12 code!{
+    #[test] test_not_yet_supported_12 verus_code!{
         struct Abc<T> {
             t: T,
         }
 
         trait SomeTrait {
-            #[verifier::spec]
-            fn f(&self) -> bool { no_method_body() }
+            spec fn f(&self) -> bool;
         }
 
         impl<S> Abc<S> {
@@ -214,32 +207,30 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_ill_formed_8 code! {
+    #[test] test_ill_formed_8 verus_code! {
         trait T1 {
-            fn f(&self) {
-                no_method_body()
-            }
+            fn f(&self);
         }
         struct S {}
         impl T1 for S {
-            fn f(&self) {
-                requires(true); // no requires allowed
+            fn f(&self)
+                requires true // no requires allowed
+            {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare requires/ensures")
 }
 
 test_verify_one_file! {
-    #[test] test_ill_formed_9 code! {
+    #[test] test_ill_formed_9 verus_code! {
         trait T1 {
-            fn f(&self) {
-                no_method_body()
-            }
+            fn f(&self);
         }
         struct S {}
         impl T1 for S {
-            fn f(&self) {
-                ensures(true); // no ensures allowed
+            fn f(&self)
+                ensures true // no ensures allowed
+            {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare requires/ensures")
@@ -684,7 +675,7 @@ test_verify_one_file! {
 
         fn test() {
             let i = I { x: 30 };
-            print_u64(p(&10, &i)); // FAILS
+            vstd::pervasive::print_u64(p(&10, &i)); // FAILS
         }
     } => Err(err) => assert_fails(err, 2)
 }
@@ -744,7 +735,7 @@ test_verify_one_file! {
         }
 
         fn test() {
-            print_u64(p::<u64, I>(&105)); // FAILS
+            vstd::pervasive::print_u64(p::<u64, I>(&105)); // FAILS
         }
     } => Err(err) => assert_fails(err, 2)
 }
