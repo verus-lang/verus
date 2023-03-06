@@ -109,3 +109,20 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] filter_lemmas verus_code! {
+        use crate::pervasive::seq::*;
+        use crate::pervasive::seq_lib::*;
+
+        proof fn test() {
+            let s1 = seq![10, 20, 30, 45, 55, 70];
+            let s2 = s1.filter(|x: int| x < 40);
+            let s3 = seq![90, 100];
+            let s4 = s3.filter(|x: int| x < 40);
+            assert(forall|i: nat| i < s2.len() ==> s2[i as int] < 40);
+            assert((s1 + s3).filter(|x: int| x < 40) == (s2 + s4));
+            assert((s2 + s4).push(120) == s2 + s4.push(120));
+        }
+    } => Ok(())
+}

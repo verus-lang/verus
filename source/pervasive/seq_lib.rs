@@ -68,6 +68,15 @@ impl<A> Seq<A> {
         }
     }
 
+    #[verifier(external_body)]
+    #[verifier(broadcast_forall)]
+    pub proof fn filter_lemma_broadcast(self, pred: FnSpec(A) -> bool)
+        ensures
+            forall |i: int| 0 <= i < self.filter(pred).len() ==> pred(#[trigger] self.filter(pred)[i]),
+            forall |i: int| 0 <= i < self.len() && pred(self[i])
+                ==> #[trigger] self.filter(pred).contains(self[i]),
+            self.filter(pred).len() <= self.len();
+
     proof fn filter_distributes_over_add(a:Self, b:Self, pred:FnSpec(A)->bool)
     ensures
         (a+b).filter(pred) == a.filter(pred) + b.filter(pred),
