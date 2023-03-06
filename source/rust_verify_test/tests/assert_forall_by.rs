@@ -141,7 +141,7 @@ test_verify_one_file! {
                 consume(x);
             }
         }
-    } => Err(err) => assert_error_msg(err, "cannot use tracked variable inside 'assert ... by' statements")
+    } => Err(err) => assert_error_msg(err, "expression has mode spec, expected mode proof")
 }
 
 test_verify_one_file! {
