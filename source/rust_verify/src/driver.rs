@@ -134,6 +134,21 @@ pub(crate) fn run_with_erase_macro_compile(
     let mut callbacks =
         CompilerCallbacksEraseMacro { lifetimes_only: !compile, test_capture_output };
     rustc_args.extend(["--cfg", "verus_macro_erase_ghost"].map(|s| s.to_string()));
+    let allow = &[
+        "unused_imports",
+        "unused_variables",
+        "unreachable_patterns",
+        "unused_parens",
+        "unused_braces",
+        "dead_code",
+        "unreachable_code",
+        "unused_mut",
+        "unused_labels",
+        "unused_attributes",
+    ];
+    for a in allow {
+        rustc_args.extend(["-A", a].map(|s| s.to_string()));
+    }
     run_compiler(rustc_args, true, true, &mut callbacks, file_loader)
 }
 
