@@ -1173,9 +1173,15 @@ impl VisitMut for Visitor {
                     let span = unary.span();
                     let attrs = unary.attrs;
                     match unary.op {
-                        UnOp::Neg(..) => {
+                        UnOp::Neg(neg) => {
                             let arg = unary.expr;
-                            *expr = quote_verbatim!(span, attrs => (#arg).spec_neg());
+                            if let Expr::Lit(..) = &*arg {
+                                // leave native Rust literal with native Rust negation
+                                *expr =
+                                    Expr::Unary(ExprUnary { op: UnOp::Neg(neg), expr: arg, attrs });
+                            } else {
+                                *expr = quote_verbatim!(span, attrs => (#arg).spec_neg());
+                            }
                         }
                         _ => panic!("unary"),
                     }
