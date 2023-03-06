@@ -7,7 +7,10 @@ use core::marker;
 #[allow(unused_imports)] use crate::pervasive::*;
 #[allow(unused_imports)] use crate::pervasive::modes::*;
 #[allow(unused_imports)] use crate::pervasive::invariant::*;
+#[cfg(not(vstd_build_todo))]
 #[allow(unused_imports)] use crate::pervasive::set::*;
+#[cfg(vstd_build_todo)]
+#[allow(unused_imports)] use crate::set::*;
 
 verus!{
 

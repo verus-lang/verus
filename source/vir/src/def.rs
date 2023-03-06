@@ -461,7 +461,10 @@ pub fn monotyp_apply(datatype: &Path, args: &Vec<Path>) -> Path {
 
 pub fn name_as_vstd_name(name: &String) -> Option<String> {
     let name = if let Some(x) = name.strip_prefix(crate::def::VERUSLIB_PREFIX) {
-        x.to_string()
+        if let Some(x) = x.strip_prefix(crate::def::PERVASIVE_PREFIX) {
+            return Some(x.to_string());
+        }
+        return Some(x.to_string());
     } else if let Some(x) = name.strip_prefix("crate::") {
         x.to_string()
     } else {
@@ -579,11 +582,15 @@ fn atomicity_type_name(atomicity: InvAtomicity) -> Ident {
 pub fn datatype_invariant_path(vstd_crate_name: &Option<Ident>, atomicity: InvAtomicity) -> Path {
     Arc::new(PathX {
         krate: vstd_crate_name.clone(),
-        segments: Arc::new(vec![
-            Arc::new("pervasive".to_string()),
-            Arc::new("invariant".to_string()),
-            atomicity_type_name(atomicity),
-        ]),
+        segments: Arc::new(if vstd_crate_name.is_some() {
+            vec![Arc::new("invariant".to_string()), atomicity_type_name(atomicity)]
+        } else {
+            vec![
+                Arc::new("pervasive".to_string()),
+                Arc::new("invariant".to_string()),
+                atomicity_type_name(atomicity),
+            ]
+        }),
     })
 }
 
@@ -591,12 +598,20 @@ pub fn fn_inv_name(vstd_crate_name: &Option<Ident>, atomicity: InvAtomicity) -> 
     Arc::new(FunX {
         path: Arc::new(PathX {
             krate: vstd_crate_name.clone(),
-            segments: Arc::new(vec![
-                Arc::new("pervasive".to_string()),
-                Arc::new("invariant".to_string()),
-                atomicity_type_name(atomicity),
-                Arc::new("inv".to_string()),
-            ]),
+            segments: Arc::new(if vstd_crate_name.is_some() {
+                vec![
+                    Arc::new("invariant".to_string()),
+                    atomicity_type_name(atomicity),
+                    Arc::new("inv".to_string()),
+                ]
+            } else {
+                vec![
+                    Arc::new("pervasive".to_string()),
+                    Arc::new("invariant".to_string()),
+                    atomicity_type_name(atomicity),
+                    Arc::new("inv".to_string()),
+                ]
+            }),
         }),
         trait_path: None,
     })
@@ -606,12 +621,20 @@ pub fn fn_namespace_name(vstd_crate_name: &Option<Ident>, atomicity: InvAtomicit
     Arc::new(FunX {
         path: Arc::new(PathX {
             krate: vstd_crate_name.clone(),
-            segments: Arc::new(vec![
-                Arc::new("pervasive".to_string()),
-                Arc::new("invariant".to_string()),
-                atomicity_type_name(atomicity),
-                Arc::new("namespace".to_string()),
-            ]),
+            segments: Arc::new(if vstd_crate_name.is_some() {
+                vec![
+                    Arc::new("invariant".to_string()),
+                    atomicity_type_name(atomicity),
+                    Arc::new("namespace".to_string()),
+                ]
+            } else {
+                vec![
+                    Arc::new("pervasive".to_string()),
+                    Arc::new("invariant".to_string()),
+                    atomicity_type_name(atomicity),
+                    Arc::new("namespace".to_string()),
+                ]
+            }),
         }),
         trait_path: None,
     })
@@ -661,11 +684,15 @@ pub fn strslice_from_strlit() -> Node {
 pub fn strslice_defn_path(vstd_crate_name: &Option<Ident>) -> Path {
     Arc::new(PathX {
         krate: vstd_crate_name.clone(),
-        segments: Arc::new(vec![
-            Arc::new("pervasive".to_string()),
-            Arc::new("string".to_string()),
-            Arc::new(STRSLICE.to_string()),
-        ]),
+        segments: Arc::new(if vstd_crate_name.is_some() {
+            vec![Arc::new("string".to_string()), Arc::new(STRSLICE.to_string())]
+        } else {
+            vec![
+                Arc::new("pervasive".to_string()),
+                Arc::new("string".to_string()),
+                Arc::new(STRSLICE.to_string()),
+            ]
+        }),
     })
 }
 

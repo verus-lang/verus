@@ -6,8 +6,14 @@
 use builtin::*;
 use builtin_macros::*;
 use crate::pervasive::*;
+#[cfg(not(vstd_build_todo))]
 use crate::pervasive::seq::*;
+#[cfg(vstd_build_todo)]
+use crate::seq::*;
+#[cfg(not(vstd_build_todo))]
 use crate::pervasive::map::*;
+#[cfg(vstd_build_todo)]
+use crate::map::*;
 use crate::pervasive::option::*;
 
 #[verifier(external_body)] /* vattr */

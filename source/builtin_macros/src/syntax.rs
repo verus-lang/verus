@@ -409,13 +409,13 @@ impl Visitor {
                                         if self.pervasive_in_same_crate {
                                             quote_spanned!(span => crate::pervasive::modes::tracked_unwrap_gho)
                                         } else {
-                                            quote_spanned!(span => vstd::pervasive::modes::tracked_unwrap_gho)
+                                            quote_spanned!(span => vstd::modes::tracked_unwrap_gho)
                                         }
                                     } else {
                                         if self.pervasive_in_same_crate {
                                             quote_spanned!(span => crate::pervasive::modes::tracked_unwrap_trk)
                                         } else {
-                                            quote_spanned!(span => vstd::pervasive::modes::tracked_unwrap_trk)
+                                            quote_spanned!(span => vstd::modes::tracked_unwrap_trk)
                                         }
                                     };
                                     stmts.push(Stmt::Semi(
@@ -983,7 +983,7 @@ impl VisitMut for Visitor {
                         } else if self.pervasive_in_same_crate {
                             quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ crate::pervasive::modes::ghost_exec(#[verifier(ghost_block_wrapped)] /* vattr */ #inner))
                         } else {
-                            quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ vstd::pervasive::modes::ghost_exec(#[verifier(ghost_block_wrapped)] /* vattr */ #inner))
+                            quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ vstd::modes::ghost_exec(#[verifier(ghost_block_wrapped)] /* vattr */ #inner))
                         });
                     }
                     (false, (true, false), _) => {
@@ -1000,7 +1000,7 @@ impl VisitMut for Visitor {
                         } else if self.pervasive_in_same_crate {
                             quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ crate::pervasive::modes::tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ #inner))
                         } else {
-                            quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ vstd::pervasive::modes::tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ #inner))
+                            quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ vstd::modes::tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ #inner))
                         });
                     }
                     (true, (true, true), _) => {
