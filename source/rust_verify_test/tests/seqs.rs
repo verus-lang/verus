@@ -5,8 +5,8 @@ use common::*;
 
 test_verify_one_file! {
     #[test] test1 verus_code! {
-        use crate::pervasive::seq::*;
-        use crate::pervasive::seq_lib::*;
+        use vstd::seq::*;
+        use vstd::seq_lib::*;
 
         proof fn test_seq() {
             let s1 = Seq::new(5, |i: int| 10 * i);
@@ -45,7 +45,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_fails1 verus_code! {
-        use crate::pervasive::seq::*;
+        use vstd::seq::*;
 
         proof fn test_seq() {
             let s1 = Seq::new(5, |i: int| 10 * i);
@@ -58,7 +58,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_fails2 verus_code! {
-        use crate::pervasive::seq::*;
+        use vstd::seq::*;
 
         proof fn test_seq() {
             let s1 = Seq::new(5, |i: int| 10 * i);
@@ -82,8 +82,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] auto_extensionality_syntax1 verus_code! {
-        use crate::pervasive::seq::*;
-        use crate::pervasive::seq_lib::*;
+        use vstd::seq::*;
+        use vstd::seq_lib::*;
         proof fn test() {
             let s1 = Seq::new(5, |i: int| 10 * i);
             assert(s1.len() == 5);
@@ -97,8 +97,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] auto_extensionality_syntax2 verus_code! {
-        use crate::pervasive::seq::*;
-        use crate::pervasive::seq_lib::*;
+        use vstd::seq::*;
+        use vstd::seq_lib::*;
         proof fn test() {
             let s1 = Seq::new(5, |i: int| 10 * i);
             assert(s1.len() == 5);

@@ -3,7 +3,7 @@
 mod common;
 use common::*;
 
-const STRUCT: &str = code_str! {
+const STRUCT: &str = verus_code_str! {
     #[derive(PartialEq, Eq)]
     struct Bike {
         hard_tail: bool,
@@ -11,21 +11,22 @@ const STRUCT: &str = code_str! {
 };
 
 test_verify_one_file! {
-    #[test] test_impl_1 STRUCT.to_string() + code_str! {
+    #[test] test_impl_1 STRUCT.to_string() + verus_code_str! {
         impl Bike {
-            #[verifier::spec]
-            pub fn is_hard_tail(&self) -> bool {
+            pub closed spec fn is_hard_tail(&self) -> bool {
                 self.hard_tail
             }
         }
 
-        fn test_impl_1(b: Bike) {
-            requires(b.is_hard_tail());
+        fn test_impl_1(b: Bike)
+            requires b.is_hard_tail()
+        {
             assert(b.hard_tail);
         }
 
-        fn test_impl_2(b: &Bike) {
-            requires(b.is_hard_tail());
+        fn test_impl_2(b: &Bike)
+            requires b.is_hard_tail()
+        {
             assert(b.hard_tail);
         }
 
@@ -33,7 +34,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_impl_no_self STRUCT.to_string() + code_str! {
+    #[test] test_impl_no_self STRUCT.to_string() + verus_code_str! {
         impl Bike {
             fn new() -> Bike {
                 ensures(|result: Bike| result.hard_tail);
@@ -44,7 +45,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_impl_no_self_fail_pub_private STRUCT.to_string() + code_str! {
+    #[test] test_impl_no_self_fail_pub_private STRUCT.to_string() + verus_code_str! {
         impl Bike {
             pub fn new() -> Bike {
                 ensures(|result: Bike| result.hard_tail);
@@ -55,7 +56,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_impl_mod_1 code! {
+    #[test] test_impl_mod_1 verus_code! {
         mod M1 {
             use builtin::*;
 
@@ -65,8 +66,7 @@ test_verify_one_file! {
             }
 
             impl Bike {
-                #[verifier::spec] #[verifier(publish)] /* vattr */
-                pub fn is_hard_tail(&self) -> bool {
+                pub open spec fn is_hard_tail(&self) -> bool {
                     self.hard_tail
                 }
 
@@ -80,10 +80,10 @@ test_verify_one_file! {
         mod M2 {
             use super::M1::Bike;
             use builtin::*;
-            use crate::pervasive::*;
 
-            fn test_impl_1(b: Bike) {
-                requires(b.is_hard_tail());
+            fn test_impl_1(b: Bike)
+                requires b.is_hard_tail()
+            {
                 assert(b.is_hard_tail());
             }
 
@@ -96,7 +96,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_impl_mod_priv_field code! {
+    #[test] test_impl_mod_priv_field verus_code! {
         mod M1 {
             #[derive(PartialEq, Eq)]
             pub struct Bike {
@@ -104,8 +104,7 @@ test_verify_one_file! {
             }
 
             impl Bike {
-                #[verifier::spec]
-                pub fn is_hard_tail(&self) -> bool {
+                pub closed spec fn is_hard_tail(&self) -> bool {
                     self.hard_tail
                 }
             }
@@ -114,34 +113,32 @@ test_verify_one_file! {
         mod M2 {
             use super::M1::Bike;
             use builtin::*;
-            use crate::pervasive::*;
 
-            fn test_impl_1(b: Bike) {
-                requires(b.is_hard_tail());
+            fn test_impl_1(b: Bike)
+                requires b.is_hard_tail()
+            {
                 assert(b.is_hard_tail());
             }
         }
     } => Ok(())
 }
 
-const IMPL_GENERIC_SHARED: &str = code_str! {
+const IMPL_GENERIC_SHARED: &str = verus_code_str! {
     #[derive(PartialEq, Eq)]
     struct Wrapper<A> {
         v: A,
     }
 
     impl<A> Wrapper<A> {
-        #[verifier::spec]
-        pub fn take(self) -> A {
+        pub closed spec fn take(self) -> A {
             self.v
         }
     }
 };
 
 test_verify_one_file! {
-    #[test] test_impl_generic_pass IMPL_GENERIC_SHARED.to_string() + code_str! {
-        #[verifier::proof]
-        fn test_impl_1(a: int) {
+    #[test] test_impl_generic_pass IMPL_GENERIC_SHARED.to_string() + verus_code_str! {
+        proof fn test_impl_1(a: int) {
             let w = Wrapper { v: a };
             assert(w.take() == a);
         }
@@ -149,9 +146,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_impl_generic_fail IMPL_GENERIC_SHARED.to_string() + code_str! {
-        #[verifier::proof]
-        fn test_impl_1(a: int) {
+    #[test] test_impl_generic_fail IMPL_GENERIC_SHARED.to_string() + verus_code_str! {
+        proof fn test_impl_1(a: int) {
             let w = Wrapper { v: a };
             assert(w.take() != a); // FAILS
         }
@@ -159,7 +155,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_impl_generic_param code! {
+    #[test] test_impl_generic_param verus_code! {
         #[derive(PartialEq, Eq, Structural)]
         struct Two<A, B> {
             a: A,
@@ -172,30 +168,27 @@ test_verify_one_file! {
         }
 
         impl<A> Wrapper<A> {
-            #[verifier::spec]
-            pub fn take<B>(self, b: B) -> Two<A, B> {
+            pub closed spec fn take<B>(self, b: B) -> Two<A, B> {
                 Two { a: self.v, b: b }
             }
         }
 
-        #[verifier::proof]
-        fn test_impl_1(a: int) {
+        proof fn test_impl_1(a: int) {
             let w = Wrapper { v: a };
-            assert(w.take(12) == Two { a: a, b: 12 });
+            assert(w.take(12i32) == Two { a: a, b: 12i32 });
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_impl_with_self code! {
+    #[test] test_impl_with_self verus_code! {
         #[derive(PartialEq, Eq, Structural)]
         struct Bike {
             hard_tail: bool,
         }
 
         impl Bike {
-            #[verifier::spec]
-            fn id(self) -> Self {
+            spec fn id(self) -> Self {
                 self
             }
         }
@@ -223,7 +216,7 @@ test_verify_one_file! {
                 } else if idx == 1 {
                     self.two
                 } else {
-                    arbitrary()
+                    vstd::pervasive::arbitrary()
                 }
             }
         }
@@ -239,7 +232,7 @@ test_verify_one_file! {
                 } else if idx == 1 {
                     &self.two
                 } else {
-                    arbitrary()
+                    vstd::pervasive::arbitrary()
                 }
             }
         }
@@ -255,7 +248,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_illegal_trait_impl code! {
+    #[test] test_illegal_trait_impl verus_code! {
         #[derive(PartialEq, Eq)]
         struct V {
             one: nat,
@@ -264,20 +257,19 @@ test_verify_one_file! {
         impl std::ops::Index<int> for V {
             type Output = nat;
 
-            #[verifier::spec]
-            fn index(&self, idx: int) -> &nat {
+            spec fn index(&self, idx: int) -> &nat {
                 if idx == 0 {
                     &self.one
                 } else {
-                    arbitrary()
+                    vstd::pervasive::arbitrary()
                 }
             }
         }
-    } => Err(err) => assert_error_msg(err, "error[E0308]: mismatched types")
+    } => Err(err) => assert_error_msg(err, "parameter must have mode exec")
 }
 
 test_verify_one_file! {
-    #[test] test_illegal_trait_impl_2 code! {
+    #[test] test_illegal_trait_impl_2 verus_code! {
         struct V {
         }
 
@@ -289,7 +281,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_generic_struct code! {
+    #[test] test_generic_struct verus_code! {
         #[derive(PartialEq, Eq)]
         struct TemplateCar<V> {
             four_doors: bool,
@@ -298,20 +290,23 @@ test_verify_one_file! {
         }
 
         impl<V> TemplateCar<V> {
-            fn template_new(v: V) -> TemplateCar<V> {
-                ensures(|result: TemplateCar<V>|
-                  equal(result.passengers, 205) && equal(result.the_v, v)
-                );
+            fn template_new(v: V) -> (result: TemplateCar<V>)
+                ensures
+                    equal(result.passengers, 205),
+                    equal(result.the_v, v),
+            {
                 TemplateCar::<V> { four_doors: false, passengers: 205, the_v: v }
             }
 
-            fn template_get_passengers(&self) -> u64 {
-                ensures(|result: u64| result == self.passengers);
+            fn template_get_passengers(&self) -> (result: u64)
+                ensures result == self.passengers
+            {
                 self.passengers
             }
 
-            fn template_get_v(self) -> V {
-                ensures(|result: V| equal(result, self.the_v));
+            fn template_get_v(self) -> (result: V)
+                ensures equal(result, self.the_v)
+            {
                 self.the_v
             }
         }
@@ -327,51 +322,49 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_erased_assoc_type_param code! {
+    #[ignore] #[test] test_erased_assoc_type_param verus_code! {
         struct Foo<V> {
             v: V
         }
 
         impl<V> Foo<V> {
-            #[verifier(returns(spec))] /* vattr */
-            fn bar<F: Fn(V) -> bool>(#[verifier::spec] f: F, #[verifier::spec] v: V) -> bool {
-                f.requires((v,))
+            fn bar<F: Fn(V) -> bool>(f: Ghost<F>, v: Ghost<V>) -> Ghost<bool> {
+                ghost(f.requires((v,)))
             }
 
-            #[verifier(returns(spec))] /* vattr */
-            fn bar2<F: Fn(V) -> bool>(self, #[verifier::spec] f: F) -> bool {
-                f.requires((self.v,))
+            fn bar2<F: Fn(V) -> bool>(self, f: Ghost<F>) -> Ghost<bool> {
+                ghost(f.requires((self.v,)))
             }
         }
 
         fn test() {
-            #[verifier::spec] let x: u64 = 0;
+            let x: Ghost<u64> = ghost(0u64);
             let z = |y: u64| true;
-            Foo::<u64>::bar(z, x);
+            Foo::<u64>::bar(ghost(z), x);
 
             let f = Foo::<u64> { v: 17 };
             let w = |y: u64| true;
-            #[verifier::spec] let b = f.bar2(w);
+            let b: Ghost<bool> = f.bar2(ghost(w));
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_resolve_self_ty code! {
+    #[test] test_resolve_self_ty verus_code! {
         struct Foo<V> {
           x: V,
         }
 
         impl<V> Foo<V> {
-            fn bar(self) -> Self {
-                ensures(|s: Self| equal(self, s));
-
+            fn bar(self) -> (s: Self)
+                ensures equal(self, s)
+            {
                 self
             }
 
-            fn bar2(self) -> Self {
-                ensures(|s: Self| equal(self, s));
-
+            fn bar2(self) -> (s: Self)
+                ensures equal(self, s)
+            {
                 Self::bar(self)
             }
         }
@@ -379,7 +372,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] unsafe_impl_fail code! {
+    #[test] unsafe_impl_fail verus_code! {
         struct Foo {
             x: u32,
         }

@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] test1 code! {
+    #[test] test1 verus_code! {
         enum Maybe<A> {
             None,
             Some(A),
@@ -37,7 +37,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test1_fails code! {
+    #[test] test1_fails verus_code! {
         enum Maybe<A> {
             None,
             Some(A),
@@ -216,36 +216,36 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test2_unreached code! {
+    #[test] test2_unreached verus_code! {
         enum Hand {
             Left,
             Right,
         }
 
-        fn test() -> u64 {
-            ensures(|ret: u64| ret == 10);
-
+        fn test() -> (ret: u64)
+            ensures ret == 10
+        {
             match Hand::Left {
                 Hand::Left => 10,
-                Hand::Right => unreached(),
+                Hand::Right => vstd::pervasive::unreached(),
             }
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test2_unreached_fail code! {
+    #[test] test2_unreached_fail verus_code! {
         enum Hand {
             Left,
             Right,
         }
 
-        fn test() -> u64 {
-            ensures(|ret: u64| ret == 10);
-
+        fn test() -> (ret: u64)
+            ensures ret == 10
+        {
             match Hand::Right {
                 Hand::Left => 10,
-                Hand::Right => unreached(), // FAILS
+                Hand::Right => vstd::pervasive::unreached(), // FAILS
             }
         }
     } => Err(err) => assert_one_fails(err)
@@ -254,7 +254,7 @@ test_verify_one_file! {
 /////////
 
 test_verify_one_file! {
-    #[test] test3 code! {
+    #[test] test3 verus_code! {
         enum Pair<A, B> {
             Pair(A, B),
         }
@@ -270,7 +270,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test3_enum_struct code! {
+    #[test] test3_enum_struct verus_code! {
         enum Pair<A, B> {
             Pair { a: A, b: B },
         }
@@ -286,7 +286,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test3_struct code! {
+    #[test] test3_struct verus_code! {
         struct Pair<A, B> { a: A, b: B }
 
         fn test() {
@@ -300,7 +300,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test3_tuple_struct code! {
+    #[test] test3_tuple_struct verus_code! {
         struct Pair<A, B>(A, B);
 
         fn test() {
@@ -314,7 +314,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test3_struct_dots code! {
+    #[test] test3_struct_dots verus_code! {
         struct Pair<A, B> { a: A, b: B }
 
         fn test() {
@@ -325,7 +325,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test3_struct_dots_fail code! {
+    #[test] test3_struct_dots_fail verus_code! {
         struct Pair<A, B> { a: A, b: B }
 
         fn test() {
@@ -336,7 +336,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test3b code! {
+    #[test] test3b verus_code! {
         enum Pair<A, B> {
             Pair(A, B),
         }
@@ -353,7 +353,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test3_fails code! {
+    #[test] test3_fails verus_code! {
         enum Pair<A, B> {
             Pair(A, B),
         }
@@ -369,7 +369,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test3_fails2 code! {
+    #[test] test3_fails2 verus_code! {
         enum Pair<A, B> {
             Pair(A, B),
         }
@@ -385,7 +385,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test3_fails3 code! {
+    #[test] test3_fails3 verus_code! {
         enum Pair<A, B> {
             Pair(A, B),
         }
@@ -404,7 +404,7 @@ test_verify_one_file! {
 /////////
 
 test_verify_one_file! {
-    #[test] test4 code! {
+    #[test] test4 verus_code! {
         fn test() {
             let (mut y, z) = (true, false);
             assert(y);
@@ -416,7 +416,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test4b code! {
+    #[test] test4b verus_code! {
         fn test() {
             let x = (true, false);
             let (mut y, z) = x;
@@ -429,7 +429,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test4_fails code! {
+    #[test] test4_fails verus_code! {
         fn test() {
             let (mut y, z) = (true, false);
             assert(!y); // FAILS
@@ -441,7 +441,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test4_fails2 code! {
+    #[test] test4_fails2 verus_code! {
         fn test() {
             let (mut y, z) = (true, false);
             assert(y);
@@ -453,7 +453,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test4_fails3 code! {
+    #[test] test4_fails3 verus_code! {
         fn test() {
             let x = (true, false);
             let (mut y, z) = x;
@@ -466,7 +466,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test5 code! {
+    #[test] test5 verus_code! {
         fn test<A>(t: (bool, u8, A)) {
             let (x, y, z) = t;
             assert(equal((x, y, z), t));
@@ -478,7 +478,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test5_fails code! {
+    #[test] test5_fails verus_code! {
         fn test<A>(t: (bool, u8, A)) {
             let (x, y, z) = t;
             assert(equal((x, y, z), t));

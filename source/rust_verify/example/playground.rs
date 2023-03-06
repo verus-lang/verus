@@ -1,10 +1,5 @@
 use builtin_macros::*;
 use builtin::*;
-mod pervasive;
-use pervasive::{*, option::Option, result::Result};
-
-use pervasive::seq::*;
-use crate::pervasive::vec::*;
 
 verus! {
 

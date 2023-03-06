@@ -205,7 +205,6 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_short_circuit verus_code! {
-        use crate::pervasive::modes::*;
         fn f1(a: bool, b: bool) {
             let mut x: u64 = 0;
             let y = a && b;
@@ -225,11 +224,11 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_short_circuit1 code! {
-        fn f3(a: bool, b: bool) {
-            #[verifier::spec] let mut x: u64 = 0;
-            #[verifier::spec] let y: bool = imply(a, b);
-            #[verifier::spec] let z: bool = imply(a, { x = x + 1; b });
+    #[test] test_short_circuit1 verus_code! {
+        proof fn f3(a: bool, b: bool) {
+            let mut x: u64 = 0;
+            let y: bool = imply(a, b);
+            let z: bool = imply(a, { x = add(x, 1); b });
             assert(y == z);
             assert((x == 1) == a);
         }
@@ -365,8 +364,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_init_spec_param_fail_1 code! {
-        fn test1(#[verifier::spec] x: u64) {
+    #[test] test_init_spec_param_fail_1 verus_code! {
+        proof fn test1(x: u64) {
             x = 5;
         }
     } => Err(e) => assert_vir_error_msg(e, "cannot assign to non-mut parameter")

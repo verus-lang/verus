@@ -118,14 +118,12 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test1_choose_must_be_tuple code! {
-        #[verifier::spec]
-        fn f(i: int, j: int) -> bool {
+    #[test] test1_choose_must_be_tuple verus_code! {
+        spec fn f(i: int, j: int) -> bool {
             i <= j
         }
 
-        #[verifier::proof]
-        fn test_choose() {
+        proof fn test_choose() {
             let (i, j): (int, int) = choose(|i: int, j: int| f(i, j));
             assert(f(7, 8));
             assert(i <= j);
@@ -157,15 +155,13 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test1_fails1_tuple code! {
-        #[verifier::spec]
-        fn f(i: int, j: int) -> bool {
+    #[test] test1_fails1_tuple verus_code! {
+        spec fn f(i: int, j: int) -> bool {
             i <= j
         }
 
-        #[verifier::proof]
-        fn test_choose() {
-            let (i, j): (int, int) = choose_tuple(|i: int, j: int| f(i, j));
+        proof fn test_choose() {
+            let (i, j): (int, int) = choose|i: int, j: int| f(i, j);
             assert(i <= j); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
@@ -186,16 +182,14 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test1_fails3_tuple code! {
-        #[verifier::spec]
-        fn f(i: int, j: int) -> bool {
+    #[test] test1_fails3_tuple verus_code! {
+        spec fn f(i: int, j: int) -> bool {
             i <= j
         }
 
-        #[verifier::proof]
-        fn test_choose_eq() {
-            let (i1, j1): (int, int) = choose_tuple(|i: int, j: int| f(i, j) && (2 + 2 == 4));
-            let (i2, j2): (int, int) = choose_tuple(|i: int, j: int| (2 + 2 == 4) && f(i, j));
+        proof fn test_choose_eq() {
+            let (i1, j1): (int, int) = choose|i: int, j: int| f(i, j) && (2 + 2 == 4);
+            let (i2, j2): (int, int) = choose|i: int, j: int| (2 + 2 == 4) && f(i, j);
             // requires extensional equality
             assert(i1 == i2); // FAILS
         }
@@ -246,14 +240,12 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test1_choose_tuple_wrong_type code! {
-        #[verifier::spec]
-        fn f(i: int, j: int) -> bool {
+    #[test] test1_choose_tuple_wrong_type verus_code! {
+        spec fn f(i: int, j: int) -> bool {
             i <= j
         }
 
-        #[verifier::proof]
-        fn test_choose() {
+        proof fn test_choose() {
             let (i, j): (int, nat) = choose_tuple(|i: int, j: int| f(i, j));
         }
     } => Err(err) => assert_vir_error_msg(err, "expected choose_tuple to have type")

@@ -359,8 +359,9 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] lifetime_bounds_exec verus_code! {
+test_verify_one_file_with_options! {
+    // TODO: remove vstd when ghost is moved to builtin
+    #[test] lifetime_bounds_exec ["vstd"] => verus_code! {
         #[verifier(external_body)]
         pub fn exec_to_ref<'a, T: 'a>(t: T) -> (t2: &'a T)
             ensures t == *t2

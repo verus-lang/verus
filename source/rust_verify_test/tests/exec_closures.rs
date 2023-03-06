@@ -5,8 +5,9 @@ use common::*;
 
 // 1 arg closures
 
-test_verify_one_file! {
-    #[test] basic_test verus_code! {
+// REVIEW: exec closures implicitly rely on vstd
+test_verify_one_file_with_options! {
+    #[test] basic_test ["vstd"] => verus_code! {
         fn testfn() {
             let f = |y: u64| {
                 requires(y == 2);
@@ -23,8 +24,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] test_ensures_fail verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_ensures_fail ["vstd"] => verus_code! {
         fn testfn() {
             let f = |y: u64| {
                 requires(y == 2);
@@ -36,8 +37,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] test_ensures_fail_return_stmt verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_ensures_fail_return_stmt ["vstd"] => verus_code! {
         fn testfn() {
             let f = |y: u64| {
                 requires(y == 2);
@@ -49,8 +50,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] test_assert_requires_fail verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_assert_requires_fail ["vstd"] => verus_code! {
         fn testfn() {
             let f = |y: u64| {
                 requires(y == 2);
@@ -61,8 +62,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] test_assert_not_ensures_fail verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_assert_not_ensures_fail ["vstd"] => verus_code! {
         fn testfn() {
             let f = |y: u64| {
                 requires(y == 2);
@@ -76,8 +77,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] test_call_requires_fail verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_call_requires_fail ["vstd"] => verus_code! {
         fn testfn() {
             let f = |y: u64| {
                 requires(y == 2);
@@ -88,8 +89,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] test_call_ensures_fail verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_call_ensures_fail ["vstd"] => verus_code! {
         fn testfn() {
             let f = |y: u64| {
                 requires(y == 2);
@@ -103,8 +104,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] test_loop_forever verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_loop_forever ["vstd"] => verus_code! {
         fn testfn() {
             let f = |y: u64| {
                 requires(y == 2);
@@ -118,8 +119,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] test_requires_is_about_external_var verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_requires_is_about_external_var ["vstd"] => verus_code! {
         fn testfn(b: bool) {
             let f = |y: u64| {
                 requires(y == 2);
@@ -136,8 +137,8 @@ test_verify_one_file! {
 
 // 2 arg closures
 
-test_verify_one_file! {
-    #[test] basic_test_2_args verus_code! {
+test_verify_one_file_with_options! {
+    #[test] basic_test_2_args ["vstd"] => verus_code! {
         fn testfn() {
             let f = |x: u64, y: u64| {
                 requires(x == y);
@@ -154,8 +155,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] test_ensures_fail_2_args verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_ensures_fail_2_args ["vstd"] => verus_code! {
         fn testfn() {
             let f = |x: u64, y: u64| {
                 requires(x == y);
@@ -167,8 +168,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] test_ensures_fail_return_stmt_2_args verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_ensures_fail_return_stmt_2_args ["vstd"] => verus_code! {
         fn testfn() {
             let f = |x: u64, y: u64| {
                 requires(y == 2);
@@ -180,8 +181,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] test_assert_requires_fail_2_args verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_assert_requires_fail_2_args ["vstd"] => verus_code! {
         fn testfn() {
             let f = |x: u64, y: u64| {
                 requires(y == x);
@@ -192,8 +193,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] test_assert_not_ensures_fail_2_args verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_assert_not_ensures_fail_2_args ["vstd"] => verus_code! {
         fn testfn() {
             let f = |x: u64, y: u64| {
                 requires(x == y);
@@ -207,8 +208,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] test_call_requires_fail_2_args verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_call_requires_fail_2_args ["vstd"] => verus_code! {
         fn testfn() {
             let f = |x: u64, y: u64| {
                 requires(x == y);
@@ -219,8 +220,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] test_call_ensures_fail_2_args verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_call_ensures_fail_2_args ["vstd"] => verus_code! {
         fn testfn() {
             let f = |x: u64, y: u64| {
                 requires(x == y);
@@ -237,7 +238,7 @@ test_verify_one_file! {
 // 0 arg closures
 
 test_verify_one_file_with_options! {
-    #[test] basic_test_0_args ["--todo-no-macro-erasure"] => verus_code! {
+    #[test] basic_test_0_args ["--todo-no-macro-erasure", "todo-no-vstd"] => verus_code! {
         // TODO requires/ensures need to be spec-erased
         spec fn goo() -> bool;
 
@@ -253,8 +254,8 @@ test_verify_one_file_with_options! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] test_ensures_fail_0_args verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_ensures_fail_0_args ["vstd"] => verus_code! {
         spec fn goo() -> bool;
 
         fn testfn() {
@@ -265,8 +266,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] test_ensures_fail_return_stmt_0_args verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_ensures_fail_return_stmt_0_args ["vstd"] => verus_code! {
         spec fn goo() -> bool;
 
         fn testfn() {
@@ -278,8 +279,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] test_assert_requires_fail_0_args verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_assert_requires_fail_0_args ["vstd"] => verus_code! {
         spec fn goo() -> bool;
 
         fn testfn() {
@@ -292,8 +293,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] test_assert_not_ensures_fail_0_args verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_assert_not_ensures_fail_0_args ["vstd"] => verus_code! {
         spec fn goo() -> bool;
 
         fn testfn() {
@@ -307,8 +308,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] test_call_requires_fail_0_args verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_call_requires_fail_0_args ["vstd"] => verus_code! {
         spec fn goo() -> bool;
 
         fn testfn() {
@@ -321,8 +322,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] test_call_ensures_fail_0_args verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_call_ensures_fail_0_args ["vstd"] => verus_code! {
         spec fn goo() -> bool;
 
         fn testfn() {
@@ -339,8 +340,8 @@ test_verify_one_file! {
 
 // misc tests
 
-test_verify_one_file! {
-    #[test] pass_closure_via_typ_param verus_code! {
+test_verify_one_file_with_options! {
+    #[test] pass_closure_via_typ_param ["vstd"] => verus_code! {
 
         fn f1<T: Fn(u64) -> u64>(t: T) {
             requires([
@@ -365,8 +366,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] pass_closure_via_typ_param_fn_once verus_code! {
+test_verify_one_file_with_options! {
+    #[test] pass_closure_via_typ_param_fn_once ["vstd"] => verus_code! {
 
         fn f1<T: FnOnce(u64) -> u64>(t: T) {
             requires([
@@ -391,8 +392,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] pass_closure_via_typ_param_fn_mut verus_code! {
+test_verify_one_file_with_options! {
+    #[test] pass_closure_via_typ_param_fn_mut ["vstd"] => verus_code! {
 
         fn f1<T: FnMut(u64) -> u64>(t: T) {
             requires([
@@ -418,8 +419,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] closure_does_not_support_mut_param_fail verus_code! {
+test_verify_one_file_with_options! {
+    #[test] closure_does_not_support_mut_param_fail ["vstd"] => verus_code! {
         fn testfn() {
             let t = |mut a: u64| { };
         }
@@ -437,32 +438,32 @@ test_verify_one_file! {
     }).to_string() => Err(err) => assert_vir_error_msg(err, "closure in ghost code must be marked as a FnSpec")
 }
 
-test_verify_one_file! {
-    #[test] call_exec_closure_in_spec_code_fail verus_code! {
+test_verify_one_file_with_options! {
+    #[test] call_exec_closure_in_spec_code_fail ["vstd"] => verus_code! {
         #[verifier::spec] fn foo<F: Fn(u64) -> u64>(f: F) -> u64 {
             f(5)
         }
     } => Err(err) => assert_vir_error_msg(err, "to call a non-static function in ghost code, it must be a FnSpec")
 }
 
-test_verify_one_file! {
-    #[test] construct_fn_spec_in_exec_code_fail verus_code! {
+test_verify_one_file_with_options! {
+    #[test] construct_fn_spec_in_exec_code_fail ["vstd"] => verus_code! {
         fn foo() {
             let t = closure_to_fn_spec(|x: u64| x);
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot use FnSpec closure in 'exec' mode")
 }
 
-test_verify_one_file! {
-    #[test] call_fn_spec_in_exec_code_fail verus_code! {
+test_verify_one_file_with_options! {
+    #[test] call_fn_spec_in_exec_code_fail ["vstd"] => verus_code! {
         fn foo(t: FnSpec(u64) -> u64) {
             let x = t(5);
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot call spec function from exec mode")
 }
 
-test_verify_one_file! {
-    #[test] call_closure_requires_in_exec_code_fail verus_code! {
+test_verify_one_file_with_options! {
+    #[test] call_closure_requires_in_exec_code_fail ["vstd"] => verus_code! {
         fn foo() {
             let f = |x: u64| { x };
 
@@ -471,8 +472,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "cannot call spec function from exec mode")
 }
 
-test_verify_one_file! {
-    #[test] call_closure_ensures_in_exec_code_fail verus_code! {
+test_verify_one_file_with_options! {
+    #[test] call_closure_ensures_in_exec_code_fail ["vstd"] => verus_code! {
         fn foo() {
             let f = |x: u64| { x };
 
@@ -481,8 +482,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "cannot call spec function from exec mode")
 }
 
-test_verify_one_file! {
-    #[test] ens_type_doesnt_match verus_code! {
+test_verify_one_file_with_options! {
+    #[test] ens_type_doesnt_match ["vstd"] => verus_code! {
         fn foo() {
             let f = |x: u64| {
                 ensures(|b: bool| b);
@@ -492,8 +493,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "return type given in `ensures` clause should match")
 }
 
-test_verify_one_file! {
-    #[test] mode_check_requires verus_code! {
+test_verify_one_file_with_options! {
+    #[test] mode_check_requires ["vstd"] => verus_code! {
         fn some_exec_fn() -> bool { true }
 
         fn foo() {
@@ -504,8 +505,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode exec")
 }
 
-test_verify_one_file! {
-    #[test] mode_check_ensures verus_code! {
+test_verify_one_file_with_options! {
+    #[test] mode_check_ensures ["vstd"] => verus_code! {
         fn some_exec_fn() -> bool { true }
 
         fn foo() {
@@ -516,8 +517,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode exec")
 }
 
-test_verify_one_file! {
-    #[test] mode_check_return_value verus_code! {
+test_verify_one_file_with_options! {
+    #[test] mode_check_return_value ["vstd"] => verus_code! {
         #[verifier::spec] fn some_spec_fn() -> bool { true }
 
         fn foo() {
@@ -528,8 +529,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode spec")
 }
 
-test_verify_one_file! {
-    #[test] mode_check_return_stmt verus_code! {
+test_verify_one_file_with_options! {
+    #[test] mode_check_return_stmt ["vstd"] => verus_code! {
         #[verifier::spec] fn some_spec_fn() -> bool { true }
 
         fn foo() {
@@ -540,8 +541,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode spec")
 }
 
-test_verify_one_file! {
-    #[test] while_loop_inside_closure verus_code! {
+test_verify_one_file_with_options! {
+    #[test] while_loop_inside_closure ["vstd"] => verus_code! {
         fn foo() -> (i: u64)
             ensures i == 0
         {
@@ -560,8 +561,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] test_calls_in_assignments_to_mut_var verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_calls_in_assignments_to_mut_var ["vstd"] => verus_code! {
         fn foo(b: bool) {
             let f = |i: u64| {
                 ensures(|j: u64| j == i);
@@ -583,8 +584,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] test_calls_in_assignments_to_mut_var_fail verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_calls_in_assignments_to_mut_var_fail ["vstd"] => verus_code! {
         fn foo(b: bool) {
             let f = |i: u64| {
                 ensures(|j: u64| j == i);
@@ -607,8 +608,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] test_calls_as_sub_expression verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_calls_as_sub_expression ["vstd"] => verus_code! {
         fn some_call(i: u64)
             requires i == 20
         { }
@@ -624,8 +625,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] test_calls_as_sub_expression_fail verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_calls_as_sub_expression_fail ["vstd"] => verus_code! {
         fn some_call(i: u64)
             requires i == 21
         { }
@@ -641,8 +642,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] old_works_for_params_from_outside_the_closure verus_code! {
+test_verify_one_file_with_options! {
+    #[test] old_works_for_params_from_outside_the_closure ["vstd"] => verus_code! {
         fn foo(b: &mut bool)
             requires *old(b) == true,
         {
@@ -656,8 +657,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] old_for_closure_param_error verus_code! {
+test_verify_one_file_with_options! {
+    #[test] old_for_closure_param_error ["vstd"] => verus_code! {
         fn foo() {
             let g = |y: u64| {
                 requires(old(y) == 6);
@@ -667,8 +668,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "a mutable reference is expected here")
 }
 
-test_verify_one_file! {
-    #[ignore] #[test] callee_is_computed_expression verus_code! {
+test_verify_one_file_with_options! {
+    #[ignore] #[test] callee_is_computed_expression ["vstd"] => verus_code! {
         // Rust allows this because it can cast both closures to 'fn(u64) -> u64'
         // However Verus doesn't support this type right now
 
@@ -692,9 +693,9 @@ test_verify_one_file! {
     } => Err(e) => assert_fails(e, 2)
 }
 
-test_verify_one_file! {
-    #[test] callee_is_computed_expression_with_loop verus_code! {
-        use pervasive::option::*;
+test_verify_one_file_with_options! {
+    #[test] callee_is_computed_expression_with_loop ["vstd"] => verus_code! {
+        use vstd::{pervasive::*, option::*};
 
         fn foo(b: bool) {
             let mut i: u64 = 0;
@@ -773,8 +774,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] name_collisions verus_code! {
+test_verify_one_file_with_options! {
+    #[test] name_collisions ["vstd"] => verus_code! {
         fn test1(b: bool) {
             let x: u64 = 5;
             let f = |x: u64| {
@@ -886,8 +887,8 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 7)
 }
 
-test_verify_one_file! {
-    #[test] return_unit verus_code! {
+test_verify_one_file_with_options! {
+    #[test] return_unit ["vstd"] => verus_code! {
         fn test() {
             let f = |x: u64| {
                 ensures(|res: ()| res === ());
@@ -908,8 +909,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] closure_is_dead_end verus_code! {
+test_verify_one_file_with_options! {
+    #[test] closure_is_dead_end ["vstd"] => verus_code! {
         fn test() {
             let f = |x: u64| {
                 assume(false);
@@ -922,8 +923,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] exec_closure_spec_param_error verus_code! {
+test_verify_one_file_with_options! {
+    #[test] exec_closure_spec_param_error ["vstd"] => verus_code! {
         fn test() {
             let g = |#[verifier::spec] y: u64| {
                 5
@@ -932,8 +933,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "closures only accept exec-mode parameters")
 }
 
-test_verify_one_file! {
-    #[test] exec_closure_proof_param_error verus_code! {
+test_verify_one_file_with_options! {
+    #[test] exec_closure_proof_param_error ["vstd"] => verus_code! {
         fn test() {
             let g = |#[verifier::proof] y: u64| {
                 5
@@ -944,8 +945,8 @@ test_verify_one_file! {
 
 // mut restrictions
 
-test_verify_one_file! {
-    #[test] disallowed_mut_capture1 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] disallowed_mut_capture1 ["vstd"] => verus_code! {
         fn test1() {
             let mut a = 5;
 
@@ -958,8 +959,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support closures capturing a mutable reference")
 }
 
-test_verify_one_file! {
-    #[test] disallowed_mut_capture2 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] disallowed_mut_capture2 ["vstd"] => verus_code! {
         fn takes_mut(u: &mut u64) { }
 
         fn test1() {
@@ -974,8 +975,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support closures capturing a mutable reference")
 }
 
-test_verify_one_file! {
-    #[test] disallowed_mut_capture3 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] disallowed_mut_capture3 ["vstd"] => verus_code! {
         fn takes_mut(u: &mut u64) { }
 
         fn test1(a: &mut u64) {
@@ -988,8 +989,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support closures capturing a mutable reference")
 }
 
-test_verify_one_file! {
-    #[test] disallowed_mut_capture4 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] disallowed_mut_capture4 ["vstd"] => verus_code! {
         fn takes_mut(u: &mut u64) { }
 
         fn test1(a: &mut u64) {
@@ -1002,8 +1003,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support closures capturing a mutable reference")
 }
 
-test_verify_one_file! {
-    #[test] mut_internal_to_closure_is_okay verus_code! {
+test_verify_one_file_with_options! {
+    #[test] mut_internal_to_closure_is_okay ["vstd"] => verus_code! {
         fn test1() {
             let mut a = 5;
 
@@ -1017,8 +1018,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] disallowed_mut_capture_nested verus_code! {
+test_verify_one_file_with_options! {
+    #[test] disallowed_mut_capture_nested ["vstd"] => verus_code! {
         fn test1() {
             let mut a = 5;
 
@@ -1033,8 +1034,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support closures capturing a mutable reference")
 }
 
-test_verify_one_file! {
-    #[test] disallowed_mut_capture_nested2 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] disallowed_mut_capture_nested2 ["vstd"] => verus_code! {
         fn test1() {
             let f = |t: u8| {
                 let mut a = 5;
@@ -1051,7 +1052,7 @@ test_verify_one_file! {
 // closures that depend on type params
 
 test_verify_one_file_with_options! {
-    #[test] closure_depends_on_type_param ["--todo-no-macro-erasure"] => verus_code! {
+    #[test] closure_depends_on_type_param ["--todo-no-macro-erasure", "todo-no-vstd"] => verus_code! {
         // TODO requires/ensures need to be spec-erased
         fn test1<T>(some_t: T) {
             let f = |t: T| {

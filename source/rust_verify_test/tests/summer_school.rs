@@ -9,7 +9,7 @@ use common::*;
 // -- e01 --
 
 test_verify_one_file! {
-    #[test] e01_pass code! {
+    #[test] e01_pass verus_code! {
         fn e01() {
             assert(5 > 3);
         }
@@ -17,7 +17,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] e01_fail code! {
+    #[test] e01_fail verus_code! {
         fn e01() {
             assert(5 < 3); // FAILS
         }
@@ -119,7 +119,7 @@ test_verify_one_file! {
 // -- e05 --
 
 const E05_SHARED: &str = verus_code_str! {
-    use set::*;
+    use vstd::set::*;
 
     spec fn has_seven_and_not_nine(intset: Set::<int>) -> bool {
         intset.contains(7) && !intset.contains(9)
@@ -162,7 +162,7 @@ test_verify_one_file! {
 // -- e06 --
 
 const E06_SHARED: &str = verus_code_str! {
-    use set::*;
+    use vstd::set::*;
 
     spec fn has_four_five_six(intset: Set<int>) -> bool {
         let s = set![4, 5, 6];
@@ -209,9 +209,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] e07_pass verus_code! {
         #[allow(unused_imports)]
-        use seq::*;
+        use vstd::seq::*;
         #[allow(unused_imports)]
-        use set::*;
+        use vstd::set::*;
 
         proof fn experiments_with_sequences() {
             let fibo: Seq<int> = seq![1, 1, 2, 3, 5, 8, 13, 21, 34];
@@ -251,9 +251,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] e07_fail verus_code! {
         #[allow(unused_imports)]
-        use seq::*;
+        use vstd::seq::*;
         #[allow(unused_imports)]
-        use set::*;
+        use vstd::set::*;
 
         proof fn experiments_with_sequences_1() {
             let fibo: Seq<int> = seq![1, 1, 2, 3, 5, 8, 13, 21, 34];
@@ -281,17 +281,16 @@ test_verify_one_file! {
 // TODO factor out type alias
 
 test_verify_one_file! {
-    #[test] #[ignore] e08_pass code! {
+    #[test] #[ignore] e08_pass verus_code! {
         #[allow(unused_imports)]
-        use seq::*;
+        use vstd::seq::*;
         #[allow(unused_imports)]
-        use set::*;
+        use vstd::set::*;
 
         // TODO type aliases
         type SeqOfSets = Seq<Set<int>>;
 
-        #[verifier::proof]
-        fn try_a_type_synonym()
+        proof fn try_a_type_synonym()
         {
             let seq_of_sets: SeqOfSets = seq![set![0], set![0, 1], set![0, 1, 2]];
 
@@ -301,12 +300,11 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] #[ignore] e08_fail code! {
+    #[test] #[ignore] e08_fail verus_code! {
         // TODO type aliases
         type SeqOfSets = &[Set::<int>];
 
-        #[verifier::proof]
-        fn try_a_type_synonym()
+        proof fn try_a_type_synonym()
         {
             let seq_of_sets: SeqOfSets = &[set![0], set![0, 1], set![0, 1, 2]];
 
@@ -360,7 +358,6 @@ test_verify_one_file! {
 const DIRECTIONS_SHARED_CODE: &str = verus_code_str! {
     #[allow(unused_imports)] use builtin::*;
     #[allow(unused_imports)] use builtin_macros::*;
-    use crate::pervasive::*;
 
     #[derive(PartialEq, Eq, Structural)]
     pub enum Direction {
@@ -404,19 +401,13 @@ fn e10_pass() {
         ("directions.rs".to_string(), DIRECTIONS_SHARED_CODE.to_string()),
         (
             "test.rs".to_string(),
-            code! {
-                #![feature(fmt_internals)]
-
-                mod pervasive;
+            verus_code! {
                 mod directions;
 
-                use pervasive::*;
                 use directions::{Direction, turn_left, turn_right};
 
-                builtin_macros::verus! {
                 proof fn two_wrongs_dont_make_a_right(dir: Direction) {
                     assert(turn_left(turn_left(dir)) == turn_right(turn_right(dir)));
-                }
                 }
             },
         ),
@@ -431,7 +422,7 @@ fn e10_pass() {
 
 test_verify_one_file! {
     #[test] e11_pass verus_code! {
-        use set::*;
+        use vstd::set::*;
 
         #[derive(PartialEq, Eq, Structural)]
         pub enum HAlign { Left, Center, Right }
@@ -469,7 +460,7 @@ test_verify_one_file! {
                     if let HAlign::Left = elt { }  // hint at a case analysis
                 }
 
-                crate::pervasive::set_lib::lemma_len_subset(eltSet, maxSet);
+                vstd::set_lib::lemma_len_subset(eltSet, maxSet);
             }
         }
     } => Ok(())
@@ -509,7 +500,6 @@ fn e13_pass() {
                 + &verus_code! {
                     #[allow(unused_imports)] use builtin::*;
                     #[allow(unused_imports)] use builtin_macros::*;
-                    mod pervasive; use pervasive::*;
                     mod directions; use directions::{Direction, turn_left, turn_right};
                     mod lunch; use lunch::*;
 
@@ -549,7 +539,7 @@ fn e13_pass() {
                             match self {
                                 Order::Sandwich { cheese: cheese, .. } => cheese,
                                 Order::Appetizer { cheese: cheese, .. } => cheese,
-                                Order::Pizza { .. }  => arbitrary(),
+                                Order::Pizza { .. }  => vstd::pervasive::arbitrary(),
                             }
                         }
                     }
@@ -568,7 +558,7 @@ fn e13_pass() {
                 },
         ),
     ];
-    let result = verify_files(files, "test.rs".to_string(), &[]);
+    let result = verify_files_vstd(files, "test.rs".to_string(), true, &[]);
     assert!(result.is_ok());
 }
 
@@ -577,10 +567,10 @@ fn e13_pass() {
 
 test_verify_one_file! {
     #[test] e14_pass verus_code! {
-        use set::*;
-        use set_lib::*;
-        use map::*;
-        use seq::*;
+        use vstd::set::*;
+        use vstd::set_lib::*;
+        use vstd::map::*;
+        use vstd::seq::*;
 
         spec fn is_even(x: int) -> bool {
             x / 2 * 2 == x
@@ -626,10 +616,10 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] e14_fail verus_code! {
-        use set::*;
-        use set_lib::*;
-        use seq::*;
-        use map::*;
+        use vstd::set::*;
+        use vstd::set_lib::*;
+        use vstd::seq::*;
+        use vstd::map::*;
 
         spec fn is_even(x: int) -> bool {
             x / 2 * 2 == x
@@ -667,8 +657,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] e15_pass verus_code! {
-        use set::*;
-        use set_lib::*;
+        use vstd::set::*;
+        use vstd::set_lib::*;
 
         spec fn is_modest(x: int) -> bool {
             0 <= x < 10
@@ -696,7 +686,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] e15_fail verus_code! {
-        use set::*;
+        use vstd::set::*;
 
         spec fn is_modest(x: int) -> bool {
             0 <= x < 10
@@ -855,7 +845,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] e19_pass verus_code! {
-        use vec::*; // TODO(chris): Want pervasive::Vec & std::vec::Vec to not be different types to make interop with ordinary rust code not clunky.
+        use vstd::vec::*;
 
         // The summer school uses executable methods that work with nats & ints (here and above in
         // ex17). We dislike that feature of Dafny, because nobody actually wants it.
@@ -896,9 +886,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] e20_pass verus_code! {
         #[allow(unused_imports)]
-        use seq::*;
+        use vstd::seq::*;
         #[allow(unused_imports)]
-        use vec::*;
+        use vstd::vec::*;
 
         spec fn is_sorted(seq: Seq<u64>) -> bool {
             forall|i: int, j: int| 0 <= i < j < seq.len() ==> seq[i] <= seq[j]
@@ -936,9 +926,9 @@ test_verify_one_file! {
         // This version of e20 uses `Seq<int>` in `is_sorted`, which requires a manual conversion
 
         #[allow(unused_imports)]
-        use seq::*;
+        use vstd::seq::*;
         #[allow(unused_imports)]
-        use vec::*;
+        use vstd::vec::*;
 
         spec fn is_sorted(intseq: Seq<int>) -> bool {
             forall|i: int, j: int| 0 <= i < j < intseq.len() ==> intseq[i] <= intseq[j]
@@ -981,11 +971,11 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] e21_pass verus_code! {
         #[allow(unused_imports)]
-        use seq::*;
+        use vstd::seq::*;
         #[allow(unused_imports)]
-        use vec::*;
+        use vstd::vec::*;
         #[allow(unused_imports)]
-        use modes::*;
+        use vstd::modes::*;
 
         spec fn is_sorted(intseq: Seq<int>) -> bool {
             forall|i: int, j: int| 0 <= i < j < intseq.len() ==> intseq[i] <= intseq[j]

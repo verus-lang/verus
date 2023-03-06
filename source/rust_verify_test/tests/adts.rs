@@ -78,7 +78,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_enum_struct code! {
+    #[test] test_enum_struct verus_code! {
         #[derive(PartialEq, Eq)]
         enum Thing {
             One { a: int },
@@ -92,15 +92,14 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_enum_unit code! {
+    #[test] test_enum_unit verus_code! {
         #[derive(PartialEq, Eq, Structural)]
         enum AB {
             A,
             B(nat),
         }
 
-        #[verifier::spec]
-        fn is_a(l: AB) -> bool {
+        spec fn is_a(l: AB) -> bool {
             l == AB::A
         }
     } => Ok(())
@@ -131,7 +130,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_update1 code! {
+    #[test] test_update1 verus_code! {
         struct S2 { u: u64, v: u64 }
 
         fn test_update() {
@@ -144,7 +143,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_update2 code! {
+    #[test] test_update2 verus_code! {
         struct S2 { u: u64, v: u64 }
 
         fn g() -> S2 {
@@ -161,7 +160,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_update2_fails code! {
+    #[test] test_update2_fails verus_code! {
         struct S2 { u: u64, v: u64 }
 
         fn g() -> S2 {
@@ -177,7 +176,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_spec_adt_ctor code! {
+    #[test] test_spec_adt_ctor verus_code! {
         #[verifier::spec]
         struct SpecStruct { a: nat }
 
@@ -189,7 +188,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_enum_adt_mod code! {
+    #[test] test_enum_adt_mod verus_code! {
         mod A {
             use builtin::*;
             pub enum E {
@@ -199,7 +198,6 @@ test_verify_one_file! {
         }
 
         mod B {
-            use crate::pervasive::*;
             use crate::A::*;
             fn test() {
                 let e = E::A { a: 12 };
@@ -210,7 +208,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mut_complex_arg code! {
+    #[test] test_mut_complex_arg verus_code! {
         pub struct Value {
             pub v: u64,
         }
@@ -230,14 +228,14 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_no_empty_enums code! {
+    #[test] test_no_empty_enums verus_code! {
         enum Empty {
         }
     } => Err(err) => assert_vir_error_msg(err, "datatype must have at least one non-recursive variant")
 }
 
 test_verify_one_file! {
-    #[test] test_well_founded1 code! {
+    #[test] test_well_founded1 verus_code! {
         enum List {
             Cons(int, Box<List>)
         }
@@ -245,7 +243,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_well_founded2 code! {
+    #[test] test_well_founded2 verus_code! {
         enum List {
             Cons1(int, Box<List>),
             Cons2(int, Box<List>),
@@ -254,7 +252,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_well_founded3 code! {
+    #[test] test_well_founded3 verus_code! {
         enum List1 {
             Cons(int, Box<List2>)
         }
@@ -265,7 +263,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_well_founded4 code! {
+    #[test] test_well_founded4 verus_code! {
         enum List {
             Cons(int, (Box<List>, bool))
         }
@@ -273,7 +271,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_well_field_unbox code! {
+    #[test] test_well_field_unbox verus_code! {
         struct B { b: bool }
         fn foo(s1: Box<B>, s2: &Box<B>, s3: Box<&B>, s4: Box<(bool, bool)>) {
             let z1 = s1.b;
@@ -304,21 +302,21 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_is_variant_illegal code! {
+    #[test] test_is_variant_illegal verus_code! {
         pub enum Maybe<T> {
             Some(T),
             None,
         }
 
         impl <T> Maybe<T> {
-            #[doc(hidden)] #[verifier::spec] #[verifier(is_variant)] /* vattr */ #[allow(non_snake_case)]
-            fn is_Thing(&self) -> bool { ::core::panicking::panic("not implemented") }
+            #[doc(hidden)] #[verifier(is_variant)] /* vattr */ #[allow(non_snake_case)]
+            spec fn is_Thing(&self) -> bool { ::core::panicking::panic("not implemented") }
         }
     } => Err(e) => assert_vir_error_msg(e, "unrecognized verifier attribute")
 }
 
 test_verify_one_file! {
-    #[test] test_is_variant_not_enum code! {
+    #[test] test_is_variant_not_enum verus_code! {
         #[is_variant]
         pub struct Maybe<T> {
             t: T,
@@ -360,7 +358,7 @@ test_verify_one_file! {
             if let Maybe::Some(a) = v {
                 assert(a == 5);
             } else {
-                unreached::<()>();
+                vstd::pervasive::unreached::<()>();
             }
         }
     } => Ok(())
@@ -373,7 +371,7 @@ test_verify_one_file! {
             if let Maybe::Some(v) = m {
                 v
             } else {
-                unreached() // FAILS
+                vstd::pervasive::unreached() // FAILS
             }
         }
 
@@ -386,23 +384,27 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_is_variant_get_named_field code! {
+    #[test] test_is_variant_get_named_field verus_code! {
         #[is_variant]
         pub enum Res<T> {
             Ok { t: T },
             Err { v: u64 },
         }
 
-        fn test1(m: Res<bool>) {
-            requires(m.is_Err() && m.get_Err_v() == 42);
+        fn test1(m: Res<bool>)
+            requires
+                m.is_Err(),
+                m.get_Err_v() == 42,
+        {
             match m {
                 Res::Ok { .. } => assert(false),
                 Res::Err { v } => assert(v == 42),
             };
         }
 
-        fn test2(m: &Res<bool>) -> bool {
-            ensures(|res: bool| equal(res, m.is_Ok() && m.get_Ok_t()));
+        fn test2(m: &Res<bool>) -> (res: bool)
+            ensures res <==> m.is_Ok() && m.get_Ok_t()
+        {
             match m {
                 Res::Ok { t } if *t => true,
                 _ => false,
@@ -425,7 +427,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_regression_tuple_1 code! {
+    #[test] test_regression_tuple_1 verus_code! {
         struct B(bool);
 
         fn test1(b: B) {
@@ -435,7 +437,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_enum_field_visibility code! {
+    #[test] test_enum_field_visibility verus_code! {
         #[is_variant]
         enum E {
             One(u64),
@@ -443,8 +445,7 @@ test_verify_one_file! {
         }
 
         impl E {
-            #[verifier::spec]
-            pub fn is_One_le(self, v: u64) -> bool {
+            pub closed spec fn is_One_le(self, v: u64) -> bool {
                 self.is_One() && self.get_One_0() <= v
             }
         }
@@ -453,7 +454,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_spec verus_code! {
-        use crate::pervasive::modes::*;
+        use vstd::modes::*;
 
         struct S {
             a: u8,
@@ -493,7 +494,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_spec_fails verus_code! {
-        use crate::pervasive::modes::*;
+        use vstd::modes::*;
 
         struct S {
             a: u8,
@@ -557,7 +558,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_field_update_poly_pass code! {
+    #[test] test_field_update_poly_pass verus_code! {
         #[derive(PartialEq, Eq, Structural)]
         struct S<A> {
             a: A,
@@ -740,7 +741,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     // TODO(utaal) fix this
     #[ignore] #[test] test_if_is_variant_regression_125 verus_code! {
-        use crate::pervasive::option::*;
+        use vstd::option::*;
 
         proof fn foo() {
             let x: int = (if (Option::<int>::Some(5int)).is_Some() { 0 } else { 1 });

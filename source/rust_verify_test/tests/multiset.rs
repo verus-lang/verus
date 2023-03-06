@@ -5,7 +5,7 @@ use common::*;
 
 test_verify_one_file! {
     #[test] multiset_basics verus_code! {
-        use crate::pervasive::multiset::*;
+        use vstd::multiset::*;
 
         pub proof fn commutative<V>(a: Multiset<V>, b: Multiset<V>)
             ensures
@@ -63,7 +63,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] multiset_fail verus_code! {
-        use crate::pervasive::multiset::*;
+        use vstd::multiset::*;
 
         pub proof fn insert2_fail<V>(a: V, b: V, c: V) {
             // should fail because we do not have precondition `a != b`
@@ -73,27 +73,25 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] multiset_fail2 code! {
-        use crate::pervasive::multiset::*;
+    #[test] multiset_fail2 verus_code! {
+        use vstd::multiset::*;
 
-        #[verifier::proof]
-        pub fn add_fail<V>(a: Multiset<V>, b: Multiset<V>) {
-            ensures(equal(a.add(b), a.add(a)));
-
+        pub proof fn add_fail<V>(a: Multiset<V>, b: Multiset<V>)
+            ensures equal(a.add(b), a.add(a))
+        {
             assert(a.add(b).ext_equal(a.add(a))); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
-    #[test] multiset_fail3 code! {
-        use crate::pervasive::multiset::*;
+    #[test] multiset_fail3 verus_code! {
+        use vstd::multiset::*;
 
-        #[verifier::proof]
-        pub fn sub_add_cancel<V>(a: Multiset<V>, b: Multiset<V>) {
+        pub proof fn sub_add_cancel<V>(a: Multiset<V>, b: Multiset<V>)
+            ensures equal(a.sub(b).add(b), a)
+        {
             // Missing the condition `b.le(a)`
-            ensures(equal(a.sub(b).add(b), a));
-
             assert(a.sub(b).add(b).ext_equal(a)); // FAILS
         }
     } => Err(err) => assert_one_fails(err)

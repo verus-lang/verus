@@ -56,12 +56,14 @@ fn run_example_for_file(file_path: &str) {
     };
 
     let mut mode = Mode::ExpectSuccess;
+    let mut use_vstd = !file_path.contains("state_machines");
 
     if let ["//", "rust_verify/tests/example.rs", command] = &first_line_elements[..] {
         match command.strip_suffix("\n").unwrap_or("unexpected") {
             "expect-success" => mode = Mode::ExpectSuccess,
             "expect-errors" => mode = Mode::ExpectErrors,
             "expect-failures" => mode = Mode::ExpectFailures,
+            "vstd-todo" => use_vstd = false,
             "ignore" => {
                 return;
             }
@@ -72,16 +74,30 @@ fn run_example_for_file(file_path: &str) {
     }
 
     #[cfg(target_os = "windows")]
-    let script = format!(
+    let script_no_vstd = format!(
         "..\\rust\\install\\bin\\rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/builtin_macros.dll --extern state_machines_macros=../rust/install/bin/state_machines_macros.dll --edition=2018 {}",
         &path
     );
 
     #[cfg(any(target_os = "macos", target_os = "linux"))]
-    let script = format!(
+    let script_no_vstd = format!(
         "{}=../rust/install/lib/rustlib/{}/lib:../rust/install/lib ../rust/install/bin/rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/libbuiltin_macros.{} --extern state_machines_macros=../rust/install/bin/libstate_machines_macros.{} --edition=2018 {}",
         DYN_LIB_VAR, RUST_LIB_TARGET, DYN_LIB_EXT, DYN_LIB_EXT, &path
     );
+
+    #[cfg(target_os = "windows")]
+    let script_vstd = format!(
+        "..\\rust\\install\\bin\\rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/builtin_macros.dll --extern state_machines_macros=../rust/install/bin/state_machines_macros.dll --edition=2018 --cfg erasure_macro_todo --cfg vstd_todo --erasure macro --extern vstd=../rust/install/bin/libvstd.rlib  --import vstd=../rust/install/bin/vstd.vir {}",
+        &path
+    );
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    let script_vstd = format!(
+        "{DYN_LIB_VAR}=../rust/install/lib/rustlib/{RUST_LIB_TARGET}/lib:../rust/install/lib ../rust/install/bin/rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/libbuiltin_macros.{DYN_LIB_EXT} --extern state_machines_macros=../rust/install/bin/libstate_machines_macros.{DYN_LIB_EXT} --edition=2018 --cfg erasure_macro_todo --cfg vstd_todo --erasure macro --extern vstd=../rust/install/bin/libvstd.rlib  --import vstd=../rust/install/bin/vstd.vir {}",
+        &path
+    );
+
+    let script = if use_vstd { script_vstd } else { script_no_vstd };
 
     let output = if cfg!(target_os = "windows") {
         Command::new("cmd")

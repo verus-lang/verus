@@ -4,23 +4,14 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] test_overflow_spec_pass code! {
+    #[test] test_overflow_spec_pass verus_code! {
+        use vstd::*;
         fn test(a: u64) {
-            #[verifier::spec] let mut j = a;
-            j = j + 2;
-            assert(j == a + 2);
+            let mut j: Ghost<u64> = ghost(a);
+            proof { j@ = add(j@, 2); }
+            assert(j == add(a, 2));
         }
     } => Ok(())
-}
-
-test_verify_one_file! {
-    #[test] test_overflow_fails_0 code! {
-        fn test(a: u64) {
-            let mut j = a;
-            j = j + 2; // FAILS
-            assert(j == a + 2);
-        }
-    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
@@ -43,18 +34,21 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_overflow_spec_fails_2 code! {
+    #[test] test_overflow_spec_fails_2 verus_code! {
+        use vstd::*;
         fn test(a: u64) {
-            #[verifier::spec] let mut j = a;
-            j = j + 2;
-            j = j + 2;
+            let mut j: Ghost<u64> = ghost(a);
+            proof {
+                j@ = add(j@, 2);
+                j@ = add(j@, 2);
+            }
             assert(j == a + 4); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
-    #[test] test_overflow_fails_2 code! {
+    #[test] test_overflow_fails_2 verus_code! {
         fn test(a: u64) {
             let mut j = a;
             j = j + 2; // FAILS
@@ -63,9 +57,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_divide_by_zero code! {
-        fn ok(a: u8, b: u8) {
-            requires(b != 0);
+    #[test] test_divide_by_zero verus_code! {
+        fn ok(a: u8, b: u8)
+            requires b != 0
+        {
             let x = a / b;
             let y = a % b;
         }
@@ -79,25 +74,25 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_const_ok code! {
+    #[test] test_const_ok verus_code! {
         const C: u8 = 254 + 1;
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_const_fail code! {
+    #[test] test_const_fail verus_code! {
         const C: u8 = 255 + 1 /* FAILS */;
     } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
-    #[test] test_literal_out_of_range code! {
+    #[test] test_literal_out_of_range verus_code! {
         const C: u8 = 256 - 1;
     } => Err(err) => assert_vir_error_msg(err, "integer literal out of range")
 }
 
 test_verify_one_file! {
-    #[test] test_overflow_fails_usize code! {
+    #[test] test_overflow_fails_usize verus_code! {
         fn test(a: usize) -> usize {
             let b = a + 1; // FAILS
             b
@@ -106,10 +101,11 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_overflow_ensures_pass code! {
-        fn test(a: usize) -> usize {
-            requires(a < 30);
-            ensures(|r: usize| r == a + 1);
+    #[test] test_overflow_ensures_pass verus_code! {
+        fn test(a: usize) -> (r: usize)
+            requires a < 30
+            ensures r == a + 1
+        {
             let b = a + 1;
             b
         }
@@ -117,7 +113,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] underflow code! {
+    #[test] underflow verus_code! {
         fn underflow() {
             let mut a: u64 = 0;
             a = a - 1; // FAILS

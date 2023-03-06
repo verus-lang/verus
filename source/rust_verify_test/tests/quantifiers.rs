@@ -201,7 +201,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] manual_trigger verus_code! {
-        use crate::pervasive::seq::*;
+        use vstd::seq::*;
         proof fn test_distinct3(s: Seq<int>)
             requires
                 5 <= s.len(),

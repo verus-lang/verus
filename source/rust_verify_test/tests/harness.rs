@@ -7,7 +7,7 @@ use common::*;
 fn harness_zero() {
     assert!(
         verify_one_file(
-            code! {
+            verus_code! {
                 fn harness1() {
                 }
             },
@@ -19,7 +19,7 @@ fn harness_zero() {
 
 #[test]
 fn harness_invalid_rust() {
-    let code = code! {
+    let code = verus_code! {
         fn harness1() {
             invalid(true);
         }
@@ -32,7 +32,7 @@ fn harness_invalid_rust() {
 fn harness_true() {
     assert!(
         verify_one_file(
-            code! {
+            verus_code! {
                 fn harness1() {
                     assert(true);
                 }
@@ -46,7 +46,7 @@ fn harness_true() {
 #[test]
 fn harness_false() {
     let err = verify_one_file(
-        code! {
+        verus_code! {
             fn harness2() {
                 assert(false); // FAILS
             }
@@ -59,7 +59,7 @@ fn harness_false() {
 }
 
 test_verify_one_file! {
-    #[test] harness_macro_true code! {
+    #[test] harness_macro_true verus_code! {
         fn empty() { }
 
         fn harness1_macro() {
@@ -69,7 +69,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] harness_macro_false code! {
+    #[test] harness_macro_false verus_code! {
         fn empty() { }
 
         fn harness2_macro() {
