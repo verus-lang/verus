@@ -4,16 +4,14 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] test_regression_78 code! {
-        use pervasive::modes::*;
-        use pervasive::option::*;
+    #[test] test_regression_78 verus_code! {
+        use vstd::option::*;
 
-        fn f1<T>(t: Ghost<Option<T>>) {
-            #[verifier::spec] let x = t.view().get_Some_0();
+        proof fn f1<T>(t: Ghost<Option<T>>) {
+            let x = t.view().get_Some_0();
         }
 
-        #[verifier::spec]
-        fn f2() -> bool {
+        spec fn f2() -> bool {
             let x: Option<usize> = Option::None;
             x.is_None()
         }
@@ -21,12 +19,12 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_regression_70 code! {
+    #[test] test_regression_70 verus_code! {
         fn m(v: &mut u64) { }
 
         fn main() {
             let v = 6;
             m(&mut v);
         }
-    } => Err(e) => assert_eq!(e.errors.len(), 0)
+    } => Err(err) => assert_error_msg(err, "error[E0596]: cannot borrow `v` as mutable")
 }

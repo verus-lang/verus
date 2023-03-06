@@ -1,8 +1,13 @@
 use builtin_macros::*;
 use builtin::*;
+
+#[cfg(not(vstd_todo))]
 mod pervasive;
-use pervasive::*;
-use vec::*;
+#[cfg(not(vstd_todo))]
+use pervasive::{*, vec::*};
+
+#[cfg(not(vstd_todo))]
+use vstd::{*, vec::*};
 
 verus! {
 

@@ -4,14 +4,16 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[ignore] #[test] regression_114_unrelated_precondition code! {
-        fn get_bool() -> bool {
-            ensures(|b: bool| b == true);
+    #[ignore] #[test] regression_114_unrelated_precondition verus_code! {
+        fn get_bool() -> (b: bool)
+            ensures b == true
+        {
             true
         }
 
-        fn require_false() -> bool {
-            requires(false); // INCORRECT CONTEXT
+        fn require_false() -> bool
+            requires false // INCORRECT CONTEXT
+        {
             false
         }
 

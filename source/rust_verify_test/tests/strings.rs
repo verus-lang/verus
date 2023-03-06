@@ -6,7 +6,7 @@ use common::*;
 test_verify_one_file! {
     #[test] test_pass_is_ascii verus_code! {
     #[allow(unused_imports)]
-    use pervasive::string::*;
+    use vstd::string::*;
 
     fn str_is_ascii_passes() {
         let x = new_strlit("Hello World");
@@ -20,7 +20,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_fails_is_ascii verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
         fn str_is_ascii_fails() {
             let x = new_strlit("à");
             proof {
@@ -33,7 +33,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_pass_get_char verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
         fn get_char() {
             let x = new_strlit("hello world");
             proof {
@@ -48,7 +48,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_fail_get_char verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
         fn get_char_fails() {
             let x = new_strlit("hello world");
             let val = x.get_char(0);
@@ -59,7 +59,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_passes_len verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
 
         pub fn len_passes() {
             let x = new_strlit("abcdef");
@@ -73,7 +73,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_fails_len verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
 
         pub fn len_fails() {
             let x = new_strlit("abcdef");
@@ -87,7 +87,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_passes_substring verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
         fn test_substring_passes<'a>() -> (ret: StrSlice<'a>)
             ensures
                 ret@.subrange(0,5).ext_equal(new_strlit("Hello")@)
@@ -119,7 +119,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_fails_substring verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
         fn test_substring_fails<'a>() -> (ret: StrSlice<'a>)
             ensures
                 ret@.subrange(0,5).ext_equal(new_strlit("Hello")@) // FAILS
@@ -135,7 +135,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_passes_multi verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
 
         fn test_multi_passes() {
             let a = new_strlit("a");
@@ -177,7 +177,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_fails_multi verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
         const x: StrSlice<'static> = new_strlit("Hello World");
         const y: StrSlice<'static> = new_strlit("Gello World");
         const z: StrSlice<'static> = new_strlit("Insert string here");
@@ -198,14 +198,14 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_new_strlit_invalid verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
         const x: StrSlice<'static> = new_strlit(12);
     } => Err(err) => assert_error_msg(err, "error[E0308]: mismatched types")
 }
 
 test_verify_one_file! {
     #[test] test_reveal_strlit_invalid_1 verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
         fn test() {
             proof {
                 reveal_strlit(12u32);
@@ -216,7 +216,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_reveal_strlit_invalid_2 verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
         fn test() {
             proof {
                 reveal_strlit("a", "a");
@@ -227,7 +227,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_string_1_pass verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
         fn test() {
             let a = String::from_str(new_strlit("A"));
             proof {
@@ -241,7 +241,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_string_1_fail verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
         fn test() {
             let a = String::from_str(new_strlit("A"));
             proof {
@@ -254,7 +254,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_strlit_neq verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
         const x: StrSlice<'static> = new_strlit("Hello World");
         const y: StrSlice<'static> = new_strlit("Gello World");
         fn test() {
@@ -265,7 +265,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_strlit_neq_soundness verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
         const x: StrSlice<'static> = new_strlit("Hello World");
         const y: StrSlice<'static> = new_strlit("Gello World");
         fn test() {
@@ -308,7 +308,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_len_return_passes verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
         fn test_len_return_passes<'a>() -> (ret: usize)
             ensures
                 ret == 4
@@ -323,7 +323,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_get_unicode_passes verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
         fn test_get_unicode_passes() {
             let x = new_strlit("Hello");
             proof {
@@ -353,7 +353,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_unicode_substring_passes verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
         fn test_substring_passes() {
             proof {
                 reveal_strlit("01234💩");
@@ -375,7 +375,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_unicode_mixed_chars verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
         proof fn test() {
             let a = new_strlit("è ❤️");
             reveal_strlit("è ❤️");
@@ -386,7 +386,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_string_2_pass verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
         fn test() {
             let a = String::from_str(new_strlit("ABC"));
             proof {
@@ -403,7 +403,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_string_2_fail verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
         fn test() {
             let a = String::from_str(new_strlit("ABC"));
             proof {
@@ -422,7 +422,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_string_is_ascii_roundtrip verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
         fn test() {
             let a = new_strlit("ABC");
             let b = a.to_string();
@@ -440,7 +440,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_ascii_handling_passes verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
         fn test_get_ascii_passes() {
             proof {
                 reveal_strlit("Hello World");
@@ -455,7 +455,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_ascii_ascii_handling_fails verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
         fn test_get_ascii_fails() {
             proof {
                 reveal_strlit("Hèllo World");
@@ -469,7 +469,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_char_conversion_passes verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
 
         fn test_char_conversion_passes() {
             let c = 'c';
@@ -482,7 +482,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_char_conversion_fails verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
         fn test_char_conversion_fails() {
             let z = 'ž';
             let d = z as u8;
@@ -493,7 +493,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_char_conversion_u32 verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
         fn test() {
             let z = 'ž';
             let d = z as u32;
@@ -504,7 +504,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_invalid_cast_to_char verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
         fn test() {
             let v: u8 = 42;
             let z = v as char;
@@ -514,7 +514,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_strslice_get verus_code! {
-        use pervasive::string::*;
+        use vstd::string::*;
         fn test_strslice_get_passes<'a>(x: StrSlice<'a>) -> (ret: u8)
             requires
                 x.is_ascii(),
@@ -528,8 +528,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_strslice_as_bytes_passes verus_code! {
-        use pervasive::string::*;
-        use pervasive::vec::*;
+        use vstd::string::*;
+        use vstd::vec::*;
         fn test_strslice_as_bytes<'a>(x: StrSlice<'a>) -> (ret: Vec<u8>)
             requires
                 x.is_ascii(),
@@ -544,8 +544,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_strslice_as_bytes_fails verus_code! {
-        use pervasive::string::*;
-        use pervasive::vec::*;
+        use vstd::string::*;
+        use vstd::vec::*;
 
         fn test_strslice_as_bytes_fails<'a>(x: StrSlice<'a>) -> (ret: Vec<u8>)
             requires
@@ -561,8 +561,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_int_as_char_spec verus_code! {
-        use pervasive::string::*;
-        use pervasive::vec::*;
+        use vstd::string::*;
+        use vstd::vec::*;
 
         spec fn test(a: int) -> char {
             a as char
@@ -573,8 +573,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_append_1 verus_code! {
-        use pervasive::string::*;
-        use pervasive::vec::*;
+        use vstd::string::*;
+        use vstd::vec::*;
 
         fn foo() -> (ret: String)
             ensures ret@ === new_strlit("hello world")@
@@ -596,8 +596,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_append_2 verus_code! {
-        use pervasive::string::*;
-        use pervasive::vec::*;
+        use vstd::string::*;
+        use vstd::vec::*;
 
         fn foo() -> (ret: String)
             ensures ret@ !== new_strlit("hello worlds")@
@@ -619,8 +619,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_concat_1 verus_code! {
-        use pervasive::string::*;
-        use pervasive::vec::*;
+        use vstd::string::*;
+        use vstd::vec::*;
 
         fn foo() -> (ret: String)
             ensures ret@ === new_strlit("hello world")@
@@ -642,8 +642,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_concat_2 verus_code! {
-        use pervasive::string::*;
-        use pervasive::vec::*;
+        use vstd::string::*;
+        use vstd::vec::*;
 
         fn foo() -> (ret: String)
             ensures ret@ !== new_strlit("hello worlds")@

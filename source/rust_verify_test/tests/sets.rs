@@ -5,7 +5,7 @@ use common::*;
 
 test_verify_one_file! {
     #[test] test_len verus_code! {
-        use crate::pervasive::set::*;
+        use vstd::set::*;
 
         proof fn test_len<A>(s: Set<A>) {
             assert(s.len() as int >= 0);
@@ -15,7 +15,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_len_fails verus_code! {
-        use crate::pervasive::set::*;
+        use vstd::set::*;
 
         proof fn test_len<A>(s1: Set<A>, s2: Set<A>) {
             assert(s1.len() == s2.len()); // FAILS
@@ -25,8 +25,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1 verus_code! {
-        use crate::pervasive::set::*;
-        use crate::pervasive::set_lib::*;
+        use vstd::set::*;
+        use vstd::set_lib::*;
 
         proof fn test_set() {
             let nonneg = Set::new(|i: int| i >= 0);
@@ -46,7 +46,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_fails1 verus_code! {
-        use crate::pervasive::set::*;
+        use vstd::set::*;
 
         pub closed spec fn set_map<A>(s: Set<A>, f: FnSpec(A) -> A) -> Set<A> {
             Set::new(|a: A| exists|x: A| s.contains(x) && a === f(x))
@@ -68,7 +68,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_choose_assert_witness verus_code! {
-        use crate::pervasive::set::*;
+        use vstd::set::*;
 
         #[verifier(opaque)]
         spec fn f(x: int) -> bool {
@@ -88,7 +88,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_choose_fails_witness verus_code! {
-        use crate::pervasive::set::*;
+        use vstd::set::*;
 
         #[verifier(opaque)]
         spec fn f(x: int) -> bool {
@@ -107,7 +107,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_set_fold verus_code! {
-        use set::*;
+        use vstd::set::*;
 
         proof fn test() {
             let s: Set<nat> = set![9];

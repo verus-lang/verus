@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] test_needs_pub_abstract code! {
+    #[test] test_needs_pub_abstract verus_code! {
         mod M1 {
             use builtin::*;
 
@@ -14,9 +14,7 @@ test_verify_one_file! {
                 pub four_doors: bool,
             }
 
-            #[verifier::spec]
-            #[verifier(publish)] /* vattr */ // illegal
-            pub fn get_passengers(c: Car) -> nat {
+            pub open spec fn get_passengers(c: Car) -> nat {
                 c.passengers
             }
         }
@@ -42,7 +40,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_needs_pub_abstract3 code! {
+    #[test] test_needs_pub_abstract3 verus_code! {
         mod M1 {
             use builtin::*;
 
@@ -50,9 +48,7 @@ test_verify_one_file! {
                 C()
             }
 
-            #[verifier::spec]
-            #[verifier(publish)] /* vattr */ // illegal
-            pub fn get_passengers() -> bool {
+            pub open spec fn get_passengers() -> bool {
                 let _ = E::C();
                 true
             }
@@ -60,7 +56,7 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "public spec function cannot refer to private items")
 }
 
-const M1: &str = code_str! {
+const M1: &str = verus_code_str! {
     mod M1 {
         use builtin::*;
 
@@ -70,8 +66,7 @@ const M1: &str = code_str! {
             pub four_doors: bool,
         }
 
-        #[verifier::spec]
-        pub fn get_passengers(c: Car) -> nat {
+        pub closed spec fn get_passengers(c: Car) -> nat {
             c.passengers
         }
 
@@ -83,11 +78,10 @@ const M1: &str = code_str! {
 };
 
 test_verify_one_file! {
-    #[test] test_transparent_struct_1 M1.to_string() + code_str! {
+    #[test] test_transparent_struct_1 M1.to_string() + verus_code_str! {
         mod M2 {
             use crate::M1::{Car, Bike};
             use builtin::*;
-            use crate::pervasive::*;
 
             fn test_transparent_struct_1() {
                 assert((Bike { hard_tail: true }).hard_tail);
@@ -101,7 +95,6 @@ test_verify_one_file! {
         mod M2 {
             use crate::M1::{Car, get_passengers, Bike};
             use builtin::*;
-            use crate::pervasive::*;
 
             fn test_opaque_struct_1(c: Car)
                 requires
@@ -114,36 +107,37 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_opaque_fn code! {
+    #[test] test_opaque_fn verus_code! {
         struct A {}
 
         impl A {
-            #[verifier::spec] #[verifier(opaque)] /* vattr */
-            pub fn always(&self) -> bool {
+            #[verifier(opaque)] /* vattr */
+            pub closed spec fn always(&self) -> bool {
                 true
             }
         }
 
         fn main() {
             let a = A {};
-            reveal(A::always);
+            proof {
+                reveal(A::always);
+            }
             assert(a.always());
         }
     } => Ok(())
 }
 
-const M1_OPAQUE: &str = code_str! {
+const M1_OPAQUE: &str = verus_code_str! {
     mod M1 {
         use builtin::*;
-        use crate::pervasive::*;
 
         pub struct A {
             field: u64,
         }
 
         impl A {
-            #[verifier::spec] #[verifier(publish)] /* vattr */ #[verifier(opaque_outside_module)] /* vattr */
-            pub fn always(&self) -> bool {
+            #[verifier(publish)] /* vattr */ #[verifier(opaque_outside_module)] /* vattr */
+            pub closed spec fn always(&self) -> bool {
                 true
             }
         }
@@ -160,13 +154,14 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_opaque_fn_modules_pass M1_OPAQUE.to_string() + code_str! {
+    #[test] test_opaque_fn_modules_pass M1_OPAQUE.to_string() + verus_code_str! {
         mod M2 {
             use builtin::*;
-            use crate::pervasive::*;
 
             fn test(a: crate::M1::A) {
-                reveal(crate::M1::A::always);
+                proof {
+                    reveal(crate::M1::A::always);
+                }
                 assert(a.always());
             }
         }
@@ -174,10 +169,9 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_opaque_fn_modules_fail M1_OPAQUE.to_string() + code_str! {
+    #[test] test_opaque_fn_modules_fail M1_OPAQUE.to_string() + verus_code_str! {
         mod M2 {
             use builtin::*;
-            use crate::pervasive::*;
 
             fn test(a: crate::M1::A) {
                 assert(a.always()); // FAILS

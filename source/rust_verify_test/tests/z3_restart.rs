@@ -26,15 +26,14 @@ test_verify_one_file! {
 
 // From https://github.com/verus-lang/verus/blob/ad92b2a8908a219ec84c277d2bb701934e9a8d9c/source/rust_verify/tests/adts_generics.rs#L1
 test_verify_one_file! {
-    #[test] test_box_unbox_struct code! {
+    #[test] test_box_unbox_struct verus_code! {
         #[derive(Eq, PartialEq)]
         struct Thing<A> {
             a: A,
         }
 
-        #[verifier::proof]
         #[verifier(spinoff_prover)] /* vattr */
-        fn one(v: int) {
+        proof fn one(v: int) {
             let t1 = Thing { a: v };
             let t2 = Thing { a: v };
             let a: int = t2.a;
@@ -64,18 +63,17 @@ test_verify_one_file! {
 
 // From https://github.com/verus-lang/verus/blob/main/source/rust_verify/example/bitvector_basic.rs
 test_verify_one_file! {
-    #[test] test_with_bv code! {
+    #[test] test_with_bv verus_code! {
         #[verifier(bit_vector)] /* vattr */
         #[verifier(spinoff_prover)] /* vattr */
-        #[verifier::proof]
-        fn bit_or32_auto(){
-            ensures([
-                forall(|a: u32, b: u32| #[trigger] (a|b) == b|a),
-                forall(|a: u32, b: u32, c:u32| #[trigger] ((a|b)|c) == a|(b|c)),
-                forall(|a: u32| #[trigger] (a|a) == a),
-                forall(|a: u32| #[trigger] (a|0) == a),
-                forall(|a: u32| #[trigger] (a| 0xffff_ffffu32) == 0xffff_ffffu32),
-            ]);
+        proof fn bit_or32_auto()
+            ensures
+                forall|a: u32, b: u32| #[trigger] (a | b) == b | a,
+                forall|a: u32, b: u32, c:u32| #[trigger] ((a | b) | c) == a | (b | c),
+                forall|a: u32| #[trigger] (a | a) == a,
+                forall|a: u32| #[trigger] (a | 0) == a,
+                forall|a: u32| #[trigger] (a | 0xffff_ffffu32) == 0xffff_ffffu32,
+        {
         }
     } => Ok(())
 }
@@ -110,7 +108,7 @@ test_verify_one_file! {
 // From https://github.com/verus-lang/verus/blob/21a4774a6fb18295fe5bbcd6abb3e19c6df1e851/source/rust_verify/tests/multiset.rs#L63
 test_verify_one_file! {
     #[test] multiset_basics verus_code! {
-        use crate::pervasive::multiset::*;
+        use vstd::multiset::*;
 
         #[verifier(spinoff_prover)] /* vattr */
         pub proof fn commutative<V>(a: Multiset<V>, b: Multiset<V>)

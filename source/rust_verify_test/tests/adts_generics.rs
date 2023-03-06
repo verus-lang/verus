@@ -4,14 +4,13 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] test_box_unbox_struct code! {
+    #[test] test_box_unbox_struct verus_code! {
         #[derive(Eq, PartialEq)]
         struct Thing<A> {
             a: A,
         }
 
-        #[verifier::proof]
-        fn one(v: int) {
+        proof fn one(v: int) {
             let t1 = Thing { a: v };
             let t2 = Thing { a: v };
             let a: int = t2.a;
@@ -24,7 +23,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_box_enum code! {
+    #[test] test_box_enum verus_code! {
         #[derive(Eq, PartialEq)]
         enum Thing<A> {
             First(A),
@@ -37,7 +36,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_generic_adt_eq code! {
+    #[test] test_generic_adt_eq verus_code! {
         #[derive(Eq, PartialEq)]
         struct Thing<A> {
             a: A,
@@ -55,7 +54,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_generic_adt_u8 code! {
+    #[test] test_generic_adt_u8 verus_code! {
         #[derive(Eq, PartialEq)]
         struct Thing<A> {
             a: A,
@@ -68,7 +67,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_refinements1 code! {
+    #[test] test_refinements1 verus_code! {
         struct X {
             u: u64,
         }
@@ -77,9 +76,8 @@ test_verify_one_file! {
             a
         }
 
-        #[verifier::spec]
         #[verifier(opaque)]
-        fn id<A>(a: A) -> A {
+        spec fn id<A>(a: A) -> A {
             a
         }
 
@@ -94,7 +92,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_refinements1_fail code! {
+    #[test] test_refinements1_fail verus_code! {
         struct X {
             u: u64,
         }
@@ -103,9 +101,8 @@ test_verify_one_file! {
             a
         }
 
-        #[verifier::spec]
         #[verifier(opaque)]
-        fn id<A>(a: A) -> A {
+        spec fn id<A>(a: A) -> A {
             a
         }
 
@@ -120,14 +117,13 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_refinements2 code! {
+    #[test] test_refinements2 verus_code! {
         struct P<A> {
             a: A,
         }
 
-        #[verifier::spec]
         #[verifier(opaque)]
-        fn id<A>(a: A) -> A {
+        spec fn id<A>(a: A) -> A {
             a
         }
 
@@ -141,14 +137,13 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_refinements2_fails code! {
+    #[test] test_refinements2_fails verus_code! {
         struct P<A> {
             a: A,
         }
 
-        #[verifier::spec]
         #[verifier(opaque)] /* vattr */
-        fn id<A>(a: A) -> A {
+        spec fn id<A>(a: A) -> A {
             a
         }
 
@@ -162,7 +157,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_out_of_order code! {
+    #[test] test_out_of_order verus_code! {
         struct XY {
             tz: TZ,
         }
@@ -205,7 +200,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_erase1 code! {
+    #[test] test_erase1 verus_code! {
         struct S1<A, B>(
             #[verifier::spec] A,
             #[verifier::exec] B,
@@ -223,7 +218,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_erase1_fail code! {
+    #[test] test_erase1_fail verus_code! {
         struct S1<A, B>(
             #[verifier::spec] A,
             #[verifier::exec] B,
@@ -241,7 +236,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_erase2 code! {
+    #[test] test_erase2 verus_code! {
         struct S1<A, B> {
             #[verifier::spec] a: A,
             #[verifier::exec] b: B,

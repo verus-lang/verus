@@ -253,3 +253,13 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[ignore] // Z3 is too slow with this test
+    #[test] nlarith1 verus_code! {
+        fn test(x: int, y: int, z: int) {
+            assume(x * y == z && x != 0);
+            assert(z % x == 0) by(nonlinear_arith) requires x * y == z && x != 0 {}
+        }
+    } => Ok(())
+}

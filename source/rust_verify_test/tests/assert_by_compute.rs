@@ -151,7 +151,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] datatype verus_code! {
         #[allow(unused_imports)]
-        use pervasive::option::Option;
+        use vstd::option::Option;
 
         fn test(x: u64) {
             assert(match Option::Some(true) {
@@ -358,10 +358,10 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
 }
 
-test_verify_one_file! {
-    #[test] sequences verus_code! {
+test_verify_one_file_with_options! {
+    #[test] sequences ["todo-no-vstd"] => verus_code! {
         #[allow(unused_imports)]
-        use crate::pervasive::seq::*;
+        use pervasive::seq::*;
 
         proof fn test() {
             assert(Seq::<u32>::empty().len() == 0) by (compute_only);
@@ -433,7 +433,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] mut_ref_and_ghost verus_code! {
         #[allow(unused_imports)]
-        use crate::pervasive::seq::*;
+        use vstd::seq::*;
 
         fn test(a: &mut u64)
             requires *old(a) < 1000,

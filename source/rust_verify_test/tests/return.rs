@@ -4,13 +4,12 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] test1 code! {
-        fn test_ret(b: bool) -> u64 {
-            ensures(|i: u64| [
+    #[test] test1 verus_code! {
+        fn test_ret(b: bool) -> (i: u64)
+            ensures
                 10 <= i,
                 20 <= i,
-            ]);
-
+        {
             if b {
                 return 20;
             }
@@ -20,13 +19,12 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test1_fails1 code! {
-        fn test_ret(b: bool) -> u64 {
-            ensures(|i: u64| [
+    #[test] test1_fails1 verus_code! {
+        fn test_ret(b: bool) -> (i: u64)
+            ensures
                 10 <= i,
                 20 <= i,
-            ]);
-
+        {
             if b {
                 return 10; // FAILS
             }
@@ -36,13 +34,12 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test1_fails2 code! {
-        fn test_ret(b: bool) -> u64 {
-            ensures(|i: u64| [
+    #[test] test1_fails2 verus_code! {
+        fn test_ret(b: bool) -> (i: u64)
+            ensures
                 10 <= i,
                 20 <= i, // FAILS
-            ]);
-
+        {
             if b {
                 return 20;
             }
@@ -52,10 +49,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test2 code! {
-        fn test_ret(b: bool) {
-            ensures(true);
-
+    #[test] test2 verus_code! {
+        fn test_ret(b: bool)
+            ensures true
+        {
             if b {
                 return;
             }
@@ -64,11 +61,11 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test2_fails code! {
-        fn test_ret(b: bool) {
-            ensures(false);
-            requires(b);
-
+    #[test] test2_fails verus_code! {
+        fn test_ret(b: bool)
+            requires b
+            ensures false
+        {
             if b {
                 return; // FAILS
             }
@@ -77,13 +74,14 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test3 code! {
-        fn test_ret(b: bool) {
-            requires(b);
-            ensures(b);
-
-            while b || !b {
-                invariant(b);
+    #[test] test3 verus_code! {
+        fn test_ret(b: bool)
+            requires b
+            ensures b
+        {
+            while b || !b
+                invariant b
+            {
                 return;
             }
         }
@@ -91,11 +89,11 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test3_fails code! {
-        fn test_ret(b: bool) {
-            requires(b);
-            ensures(b);
-
+    #[test] test3_fails verus_code! {
+        fn test_ret(b: bool)
+            requires b
+            ensures b
+        {
             while b || !b {
                 return; // FAILS
             }

@@ -5,7 +5,7 @@ use common::*;
 
 test_verify_one_file! {
     #[test] test_189a verus_code! {
-        use set::*;
+        use vstd::set::*;
 
         proof fn test_sets_1() {
             let s1: Set<i32> = Set::empty().insert(1);
@@ -19,7 +19,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_189b verus_code! {
-        use set::*;
+        use vstd::set::*;
 
         spec fn different_set<V>(s: Set<V>) -> Set<V> { s }
 
@@ -46,7 +46,7 @@ test_verify_one_file! {
         macro_rules! assert_with_binding {
             ($s1:expr) => {
                 let s1 = $s1;
-                assert(s1);
+                vstd::pervasive::assert(s1);
             }
         }
 
@@ -131,7 +131,7 @@ test_verify_one_file! {
 
         macro_rules! some_macro {
             ($foo:ident) => {
-                assert($foo.0 == 20);
+                vstd::pervasive::assert($foo.0 == 20);
             }
         }
 
@@ -146,7 +146,7 @@ test_verify_one_file! {
 
         macro_rules! some_macro2 {
             ($bar:ident) => {
-                assert($bar.val == 30);
+                vstd::pervasive::assert($bar.val == 30);
             }
         }
 
@@ -162,7 +162,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] parse_named_return_type_with_comma_in_type_args verus_code! {
-        use map::*;
+        use vstd::map::*;
 
         proof fn some_proof() -> (m: Map<int, int>)
             ensures m === Map::empty()

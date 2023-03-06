@@ -5,8 +5,8 @@ use common::*;
 
 test_verify_one_file! {
     #[test] test1 verus_code! {
-        use crate::pervasive::set::*;
-        use crate::pervasive::map::*;
+        use vstd::set::*;
+        use vstd::map::*;
 
         proof fn test_map() {
             let s1 = Set::<int>::empty().insert(1).insert(2).insert(3);
@@ -35,8 +35,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_fails1 verus_code! {
-        use crate::pervasive::set::*;
-        use crate::pervasive::map::*;
+        use vstd::set::*;
+        use vstd::map::*;
 
         proof fn test_map() {
             let s1 = Set::<int>::empty().insert(1).insert(2).insert(3);
@@ -52,8 +52,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_fails2 verus_code! {
-        use crate::pervasive::set::*;
-        use crate::pervasive::map::*;
+        use vstd::set::*;
+        use vstd::map::*;
 
         proof fn test_map() {
             let s1 = Set::<int>::empty().insert(1).insert(2).insert(3);
@@ -68,8 +68,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_fails_subtype verus_code! {
-        use crate::pervasive::set::*;
-        use crate::pervasive::map::*;
+        use vstd::set::*;
+        use vstd::map::*;
 
         proof fn test_map() {
             let s1 = Set::<int>::empty().insert(1).insert(2).insert(3);
@@ -82,8 +82,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_fails_eq verus_code! {
-        use crate::pervasive::set::*;
-        use crate::pervasive::map::*;
+        use vstd::set::*;
+        use vstd::map::*;
 
         proof fn testfun_eq() {
             let s = Set::<int>::empty().insert(1).insert(2).insert(3);
@@ -97,8 +97,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] map_contains verus_code! {
-        use crate::pervasive::set::*;
-        use crate::pervasive::map::*;
+        use vstd::set::*;
+        use vstd::map::*;
 
         proof fn test() {
             let m = map![10int => 100int, 20int => 200int];
@@ -110,7 +110,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] set_choose_regression_408 verus_code! {
-        use crate::pervasive::set::Set;
+        use vstd::set::Set;
         proof fn choose_contains_set(m: Set<nat>)
             requires m.finite(), m.len() > 0
         {
