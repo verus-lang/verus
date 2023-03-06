@@ -59,7 +59,7 @@ test_verify_one_file! {
         fn assertby_proof_var_disallowed(#[verifier::proof] x: bool) {
             assert_by(true, consume(x));
         }
-    } => Err(err) => assert_error_msg(err, "cannot use tracked variable inside 'assert ... by'")
+    } => Err(err) => assert_error_msg(err, "expression has mode spec, expected mode proof")
 }
 
 test_verify_one_file! {

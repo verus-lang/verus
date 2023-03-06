@@ -443,17 +443,16 @@ fn check_expr_handle_mut_arg(
     let mode = match &expr.x {
         ExprX::Const(_) => Ok(Mode::Exec),
         ExprX::Var(x) | ExprX::VarLoc(x) | ExprX::VarAt(x, _) => {
-            let x_mode = typing.get(x).1;
-            let mode = mode_join(outer_mode, x_mode);
-            if typing.in_forall_stmt && mode == Mode::Proof {
+            if typing.in_forall_stmt {
                 // Proof variables may be used as spec, but not as proof inside forall statements.
                 // This protects against effectively consuming a linear proof variable
                 // multiple times for different instantiations of the forall variables.
-                return err_str(
-                    &expr.span,
-                    "cannot use tracked variable inside 'assert ... by' statements",
-                );
+                return Ok((Mode::Spec, None));
             }
+
+            let x_mode = typing.get(x).1;
+            let mode = mode_join(outer_mode, x_mode);
+
             let mode = if typing.check_ghost_blocks {
                 typing.block_ghostness.join_mode(mode)
             } else {
