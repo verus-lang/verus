@@ -10,7 +10,7 @@ are working to expand), and in some cases, it allows developers to go beyond
 the standard Rust type system and statically check the correctness of code
 that, for example, manipulates raw pointers.  
 
-![VS Code Demo](source/docs/verus-demo.gif)
+![VS Code Demo](source/docs/verus-demo.png)
 
 # Status
 
