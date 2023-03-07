@@ -46,6 +46,13 @@ impl<A> Option<A> {
         }
     }
 
+    // A more-readable synonym for get_Some_0().
+    pub open spec fn value(self) -> A
+    recommends self.is_Some()
+    {
+        self.get_Some_0()
+    }
+
     pub fn unwrap(self) -> (a: A)
         requires
             self.is_Some(),
