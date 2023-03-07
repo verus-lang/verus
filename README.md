@@ -5,13 +5,13 @@ Developers write specifications of what their code should do,
 and Verus statically checks that the executable Rust code will always 
 satisfy the specifications for all possible executions of the code.
 Rather than adding run-time checks, Verus instead relies on powerful solvers to
-prove the code is correct.  Furthermore, Verus allows developers to go beyond
-the standard Rust type system and statically check the correctness of code that,
-for example, manipulates [raw pointers](https://verus-lang.github.io/verus/state_machines/examples/rc.html).
+prove the code is correct.  Verus currently supports a subset of Rust (which we
+are working to expand), and in some cases, it allows developers to go beyond
+the standard Rust type system and statically check the correctness of code
+that, for example, manipulates raw pointers.  
 
 ![VS Code Demo](source/docs/verus-demo.gif)
 
-Verus supports a large and growing [set of Rust features](https://verus-lang.github.io/verus/guide/features.html).  It also includes support for [user-defined specifications](https://verus-lang.github.io/verus/guide/spec_functions.html), which can be written in terms of pre-eixsting [specification libraries](https://verus-lang.github.io/verus/guide/spec_lib.html).
 
 # Try Verus
 
