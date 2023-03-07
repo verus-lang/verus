@@ -451,6 +451,14 @@ fn check_expr_handle_mut_arg(
             }
 
             let x_mode = typing.get(x).1;
+
+            if typing.check_ghost_blocks
+                && typing.block_ghostness == Ghost::Exec
+                && x_mode != Mode::Exec
+            {
+                return err_str(&expr.span, &format!("cannot use {x_mode} variable in exec-code"));
+            }
+
             let mode = mode_join(outer_mode, x_mode);
 
             let mode = if typing.check_ghost_blocks {
@@ -1112,8 +1120,9 @@ fn check_stmt(
             if typing.check_ghost_blocks
                 && typing.block_ghostness == Ghost::Exec
                 && mode != Mode::Exec
+                && init.is_some()
             {
-                return err_str(&stmt.span, "exec code cannot declare non-exec variables");
+                return err_str(&stmt.span, "exec code cannot initialize non-exec variables");
             }
             if !mode_le(outer_mode, mode) {
                 return err_string(&stmt.span, format!("pattern cannot have mode {}", mode));

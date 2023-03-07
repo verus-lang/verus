@@ -1012,3 +1012,43 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] initialize_proof_var_in_exec verus_code! {
+        fn myfun() {
+            let tracked b = false;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "exec code cannot initialize non-exec variables")
+}
+
+test_verify_one_file! {
+    #[test] initialize_spec_var_in_exec verus_code! {
+        fn myfun() {
+            #[verifier::spec] let b = false;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "exec code cannot initialize non-exec variables")
+}
+
+test_verify_one_file! {
+    #[test] declare_proof_var_in_exec verus_code! {
+        fn myfun() {
+            let tracked b;
+            proof {
+                b = false;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] declare_spec_var_in_exec verus_code! {
+        fn myfun() {
+            // note: has to be 'mut' because we currently don't support
+            // late-initialized non-mut spec variables
+            let ghost mut b;
+            proof {
+                b = false;
+            }
+        }
+    } => Ok(())
+}

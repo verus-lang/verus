@@ -41,6 +41,7 @@ ast_struct! {
         pub attrs: Vec<Attribute>,
         pub let_token: Token![let],
         pub tracked: Option<Token![tracked]>,
+        pub ghost: Option<Token![ghost]>,
         pub pat: Pat,
         pub init: Option<(Token![=], Box<Expr>)>,
         pub semi_token: Token![;],
@@ -227,6 +228,11 @@ pub mod parsing {
     fn stmt_local(input: ParseStream, attrs: Vec<Attribute>, begin: ParseBuffer) -> Result<Stmt> {
         let let_token: Token![let] = input.parse()?;
         let tracked: Option<Token![tracked]> = input.parse()?;
+        let ghost: Option<Token![ghost]> = input.parse()?;
+        
+        if tracked.is_some() && ghost.is_some() {
+            return Err(input.error("declaration cannot be both 'tracked' and 'ghost'"));
+        }
 
         let mut pat: Pat = pat::parsing::multi_pat_with_leading_vert(input)?;
         if input.peek(Token![:]) {
@@ -265,6 +271,7 @@ pub mod parsing {
             attrs,
             let_token,
             tracked,
+            ghost,
             pat,
             init,
             semi_token,

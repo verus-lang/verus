@@ -444,7 +444,11 @@ impl Visitor {
         }
     }
 
-    fn visit_local_extend(&mut self, local: &mut Local) -> Vec<Stmt> {
+    fn visit_local_extend(&mut self, local: &mut Local) -> (bool, Vec<Stmt>) {
+        if self.erase_ghost && (local.tracked.is_some() || local.ghost.is_some()) {
+            return (true, vec![]);
+        }
+
         let mut splitter: Option<&str> = None;
         let mut stmts: Vec<Stmt> = Vec::new();
         let mut n: u64 = 0;
@@ -466,13 +470,13 @@ impl Visitor {
                 local.init = Some((eq, Box::new(init)));
             }
         }
-        stmts
+        (false, stmts)
     }
 
-    fn visit_stmt_extend(&mut self, stmt: &mut Stmt) -> Vec<Stmt> {
+    fn visit_stmt_extend(&mut self, stmt: &mut Stmt) -> (bool, Vec<Stmt>) {
         match stmt {
             Stmt::Local(local) => self.visit_local_extend(local),
-            _ => vec![],
+            _ => (false, vec![]),
         }
     }
 
@@ -1487,6 +1491,8 @@ impl VisitMut for Visitor {
         visit_local_mut(self, local);
         if let Some(tracked) = std::mem::take(&mut local.tracked) {
             local.attrs.push(mk_verus_attr(tracked.span, quote! { proof }));
+        } else if let Some(tracked) = std::mem::take(&mut local.ghost) {
+            local.attrs.push(mk_verus_attr(tracked.span, quote! { spec }));
         }
     }
 
@@ -1494,8 +1500,10 @@ impl VisitMut for Visitor {
         let mut stmts: Vec<Stmt> = Vec::new();
         let block_stmts = std::mem::replace(&mut block.stmts, vec![]);
         for mut stmt in block_stmts {
-            let extra_stmts = self.visit_stmt_extend(&mut stmt);
-            stmts.push(stmt);
+            let (skip, extra_stmts) = self.visit_stmt_extend(&mut stmt);
+            if !skip {
+                stmts.push(stmt);
+            }
             stmts.extend(extra_stmts);
         }
         block.stmts = stmts;
