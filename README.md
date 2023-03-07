@@ -1,4 +1,4 @@
-![Quick Start](https://img.shields.io/badge/tutorial-quick%20start-informational?link=https://verus-lang.github.io/verus/guide/getting_started.html) ![Library Documentation](https://img.shields.io/badge/docs-vstd-informational?link=https://verus-lang.github.io/verus/verusdoc/lib/)
+[![Quick Start](https://img.shields.io/badge/tutorial-quick%20start-informational)](https://verus-lang.github.io/verus/guide/getting_started.html) [![Library Documentation](https://img.shields.io/badge/docs-vstd-informational)](https://verus-lang.github.io/verus/verusdoc/lib/)
 
 Verus is a tool for verifying the correctness of code written in Rust.
 Developers write specifications of what their code should do,
