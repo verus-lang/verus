@@ -1067,7 +1067,12 @@ fn check_expr_handle_mut_arg(
             if outer_mode == Mode::Spec {
                 return err_string(&expr.span, format!("Cannot open invariant in Spec mode."));
             }
+
+            let prev = typing.block_ghostness;
+            typing.block_ghostness = Ghost::Ghost;
             let mode1 = check_expr(typing, outer_mode, erasure_mode, inv)?;
+            typing.block_ghostness = prev;
+
             if mode1 != Mode::Proof {
                 return err_string(&inv.span, format!("Invariant must be Proof mode."));
             }
