@@ -12,6 +12,12 @@ that, for example, manipulates raw pointers.
 
 ![VS Code Demo](source/docs/verus-demo.gif)
 
+# Status
+
+Verus is under *active development*. Features may be broken and/or missing, and
+the documentation is still incomplete. If you want to try Verus, please be
+prepared to ask for help by filing GitHub issues or starting GitHub
+discussions.
 
 # Try Verus
 
