@@ -16,12 +16,14 @@ that, for example, manipulates raw pointers.
 # Try Verus
 
 Please follow our [installation instructions](INSTALL.md).
+Then you can dive into the documentation below, starting
+with the [📖 Tutorial and reference](https://verus-lang.github.io/verus/guide/).
 
 # Documentation
 Our (work-in-progress) documentation resources include:
- * [Project Goals](../../wiki/Goals)
  * [📖 Tutorial and reference](https://verus-lang.github.io/verus/guide/)
  * [📖 API documentation for Verus's standard library](https://verus-lang.github.io/verus/verusdoc/lib/)
  * [📖 Guide for verifying concurrent code](https://verus-lang.github.io/verus/state_machines/)
- * [📖 Contributing to Verus](CONTRIBUTING.md)
+ * [Project Goals](../../wiki/Goals)
+ * [Contributing to Verus](CONTRIBUTING.md)
  * [License](LICENSE)
