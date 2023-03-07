@@ -9,7 +9,7 @@ prove the code is correct.  Furthermore, Verus allows developers to go beyond
 the standard Rust type system and statically check the correctness of code that,
 for example, manipulates [raw pointers](https://verus-lang.github.io/verus/state_machines/examples/rc.html).
 
-![VS Code Demo](source/docs/vscode-demo.gif)
+![VS Code Demo](source/docs/verus-demo.gif)
 
 Verus supports a large and growing [set of Rust features](https://verus-lang.github.io/verus/guide/features.html).  It also includes support for [user-defined specifications](https://verus-lang.github.io/verus/guide/spec_functions.html), which can be written in terms of pre-eixsting [specification libraries](https://verus-lang.github.io/verus/guide/spec_lib.html).
 
