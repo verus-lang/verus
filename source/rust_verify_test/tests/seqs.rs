@@ -112,8 +112,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] filter_lemmas verus_code! {
-        use crate::pervasive::seq::*;
-        use crate::pervasive::seq_lib::*;
+        use vstd::seq::*;
+        use vstd::seq_lib::*;
 
         proof fn test() {
             let s1 = seq![10, 20, 30, 45, 55, 70];
