@@ -98,6 +98,27 @@ impl<A> Vec<A> {
         core::mem::swap(&mut self.vec[i], a);
     }
 
+    #[verifier(external_body)]
+    pub fn insert(&mut self, i: usize, a: A)
+        requires
+            i <= old(self).len(),
+        ensures
+            self@ == old(self)@.insert(i as int, a),
+    {
+        self.vec.insert(i, a);
+    }
+
+    #[verifier(external_body)]
+    pub fn remove(&mut self, i: usize) -> (r: A)
+        requires
+            i < old(self).len(),
+        ensures
+            r == old(self)[i as int],
+            self@ == old(self)@.remove(i as int),
+    {
+        self.vec.remove(i)
+    }
+
     pub spec fn spec_len(&self) -> usize;
 
     #[verifier(external_body)]

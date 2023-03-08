@@ -197,6 +197,20 @@ impl<A> Seq<A> {
     pub open spec fn to_set(self) -> Set<A> {
         Set::new(|a: A| self.contains(a))
     }
+
+    /// Insert item a at index i, shifting remaining elements (if any) to the right
+    pub open spec fn insert(self, i: int, a:A) -> Seq<A>
+        recommends 0 <= i <= self.len()
+    {
+        self.subrange(0, i).push(a) + self.subrange(i, self.len() as int)
+    }
+   
+    /// Remove item at index i, shifting remaining elements to the left
+    pub open spec fn remove(self, i: int) -> Seq<A>
+        recommends 0 <= i < self.len()
+    {
+        self.subrange(0, i) + self.subrange(i + 1, self.len() as int)
+    }
 }
 
 
@@ -277,6 +291,25 @@ pub proof fn seq_to_set_is_finite_broadcast<A>(seq: Seq<A>)
 {
     // TODO: merge this with seq_to_set_is_finite when broadcast_forall is better supported
 }
+
+/// A sequence of unique items, when converted to a set, produces a set with matching length
+pub proof fn unique_seq_to_set<A>(seq:Seq<A>)
+    requires seq.no_duplicates(),
+    ensures seq.len() == seq.to_set().len()
+    decreases seq.len(),
+{
+    seq_to_set_equal_rec::<A>(seq);
+    if seq.len() == 0 {
+    } else {
+        let rest = seq.drop_last();
+        unique_seq_to_set::<A>(rest);
+        seq_to_set_equal_rec::<A>(rest);
+        seq_to_set_rec_is_finite::<A>(rest);
+        assert(!seq_to_set_rec(rest).contains(seq.last()));
+        assert(seq_to_set_rec(rest).insert(seq.last()).len() == seq_to_set_rec(rest).len() + 1);
+    }
+}
+
 
 #[doc(hidden)]
 #[verifier(inline)]
