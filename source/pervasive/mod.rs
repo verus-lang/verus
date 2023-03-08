@@ -28,9 +28,6 @@ pub mod slice;
 #[cfg(not(vstd_build_todo))]
 pub mod cell;
 #[cfg(not(vstd_build_todo))]
-#[cfg(not(erasure_macro_todo))]
-pub mod cell_old_style;
-#[cfg(not(vstd_build_todo))]
 pub mod invariant;
 #[cfg(not(vstd_build_todo))]
 pub mod atomic;
@@ -50,10 +47,6 @@ pub mod thread;
 #[cfg(not(vstd_build_todo))]
 #[cfg(not(feature = "no_global_allocator"))] 
 pub mod ptr;
-#[cfg(not(vstd_build_todo))]
-#[cfg(not(erasure_macro_todo))]
-#[cfg(not(feature = "no_global_allocator"))] 
-pub mod ptr_old_style;
 #[cfg(not(vstd_build_todo))]
 #[cfg(not(feature = "no_global_allocator"))] 
 pub mod string;
@@ -81,9 +74,6 @@ pub use crate::slice;
 #[cfg(vstd_build_todo)]
 pub use crate::cell;
 #[cfg(vstd_build_todo)]
-#[cfg(not(erasure_macro_todo))]
-pub use crate::cell_old_style;
-#[cfg(vstd_build_todo)]
 pub use crate::invariant;
 #[cfg(vstd_build_todo)]
 pub use crate::atomic;
@@ -103,10 +93,6 @@ pub use crate::thread;
 #[cfg(vstd_build_todo)]
 #[cfg(not(feature = "no_global_allocator"))] 
 pub use crate::ptr;
-#[cfg(vstd_build_todo)]
-#[cfg(not(erasure_macro_todo))]
-#[cfg(not(feature = "no_global_allocator"))] 
-pub use crate::ptr_old_style;
 #[cfg(vstd_build_todo)]
 #[cfg(not(feature = "no_global_allocator"))] 
 pub use crate::string;
