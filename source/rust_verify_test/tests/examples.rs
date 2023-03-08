@@ -52,14 +52,14 @@ fn run_example_for_file(file_path: &str) {
     let first_line_elements: Vec<_> = {
         use std::io::BufRead;
         reader.read_line(&mut first_line).expect("unable to read first line");
-        first_line.split(" ").collect()
+        first_line.trim().split(" ").collect()
     };
 
     let mut mode = Mode::ExpectSuccess;
     let mut use_vstd = !file_path.contains("state_machines");
 
-    if let ["//", "rust_verify/tests/example.rs", command] = &first_line_elements[..] {
-        match command.strip_suffix("\n").unwrap_or("unexpected") {
+    if let ["//", "rust_verify/tests/example.rs", command, ..] = &first_line_elements[..] {
+        match *command {
             "expect-success" => mode = Mode::ExpectSuccess,
             "expect-errors" => mode = Mode::ExpectErrors,
             "expect-failures" => mode = Mode::ExpectFailures,
@@ -68,7 +68,8 @@ fn run_example_for_file(file_path: &str) {
                 return;
             }
             _ => panic!(
-                "invalid command for example file test: use one of 'expect-success', 'expect-errors', 'expect-failures', or 'ignore'"
+                "invalid command {:?} for example file test: use one of 'expect-success', 'expect-errors', 'expect-failures', or 'ignore'",
+                command
             ),
         }
     }
