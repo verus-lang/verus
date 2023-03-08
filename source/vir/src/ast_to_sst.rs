@@ -1,8 +1,8 @@
 use crate::ast::Exprs;
 use crate::ast::{
-    ArithOp, AssertQueryMode, BinaryOp, BuiltinSpecFun, CallTarget, ComputeMode, Constant, Expr,
-    ExprX, Fun, Function, Ident, LoopInvariantKind, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ,
-    TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
+    ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, BuiltinSpecFun, CallTarget, ComputeMode,
+    Constant, Expr, ExprX, Fun, Function, Ident, LoopInvariantKind, Mode, PatternX, SpannedTyped,
+    Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use crate::ast_util::{err_str, err_string, types_equal, QUANT_FORALL};
 use crate::context::Ctx;
@@ -13,7 +13,10 @@ use crate::sst::{
     Bnd, BndX, Dest, Exp, ExpX, Exps, LocalDecl, LocalDeclX, ParPurpose, Pars, Stm, StmX,
     UniqueIdent,
 };
-use crate::sst_util::{free_vars_exp, free_vars_stm};
+use crate::sst_util::{
+    bitwidth_sst_from_typ, free_vars_exp, free_vars_stm, sst_conjoin, sst_int_literal, sst_le,
+    sst_lt,
+};
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::util::{vec_map, vec_map_result};
 use crate::visitor::VisitorControlFlow;
@@ -1105,7 +1108,7 @@ fn expr_to_stm_opt(
                     let e1 = unwrap_or_return_never!(e1, stms1);
                     stms1.append(&mut stms2);
                     let e2 = unwrap_or_return_never!(e2, stms1);
-                    let bin = mk_exp(ExpX::Binary(*op, e1, e2.clone()));
+                    let bin = mk_exp(ExpX::Binary(*op, e1.clone(), e2.clone()));
 
                     if let BinaryOp::Arith(arith, inferred_mode) = op {
                         let arith_mode = if let Some(inferred_mode) = inferred_mode {
@@ -1153,6 +1156,36 @@ fn expr_to_stm_opt(
                                 stms1.push(assert);
                             }
                             _ => {}
+                        }
+                    }
+
+                    // Add overflow checks for bit shifts
+                    // For a shift `a << b` or `a >> b`, Rust requires that
+                    //    0 <= b < (bitsize of a)
+
+                    if let BinaryOp::Bitwise(bitwise) = op {
+                        match bitwise {
+                            BitwiseOp::Shr | BitwiseOp::Shl => {
+                                let zero = sst_int_literal(&expr.span, 0);
+                                let bitwidth =
+                                    bitwidth_sst_from_typ(&expr.span, &e1.typ, &ctx.global.arch);
+                                let assert_exp = sst_conjoin(
+                                    &expr.span,
+                                    &vec![
+                                        sst_le(&expr.span, &zero, &e2),
+                                        sst_lt(&expr.span, &e2, &bitwidth),
+                                    ],
+                                );
+
+                                let msg = "possible bit shift underflow/overflow";
+                                let error = air::messages::error(msg, &expr.span);
+                                let assert = StmX::Assert(Some(error), assert_exp);
+                                let assert = Spanned::new(expr.span.clone(), assert);
+                                stms1.push(assert);
+                            }
+                            BitwiseOp::BitXor | BitwiseOp::BitAnd | BitwiseOp::BitOr => {
+                                // no overflow check needed
+                            }
                         }
                     }
 
