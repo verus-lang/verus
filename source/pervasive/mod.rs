@@ -9,6 +9,7 @@
 //! See [this page](https://verus-lang.github.io/verus/guide/pervasive.html) for more details.
 //! We expect these hacks to go away once Verus has proper multi-crate support.
 
+pub mod calc;
 pub mod map;
 pub mod option;
 pub mod result;
