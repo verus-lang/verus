@@ -332,6 +332,14 @@ fn get_var_loc_mode(
     let x_mode = match &expr.x {
         ExprX::VarLoc(x) => {
             let (_, x_mode) = typing.get(x);
+
+            if typing.check_ghost_blocks
+                && typing.block_ghostness == Ghost::Exec
+                && x_mode != Mode::Exec
+            {
+                return err_str(&expr.span, &format!("exec code cannot mutate non-exec variable"));
+            }
+
             x_mode
         }
         ExprX::Unary(

@@ -1024,9 +1024,27 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] initialize_spec_var_in_exec verus_code! {
         fn myfun() {
-            #[verifier::spec] let b = false;
+            let ghost b = false;
         }
-    } => Err(err) => assert_vir_error_msg(err, "exec code cannot initialize non-exec variables")
+    } => Err(err) => assert_vir_error_msg(err, "exec code cannot initialize non-exec variable")
+}
+
+test_verify_one_file! {
+    #[test] assign_proof_var_in_exec verus_code! {
+        fn myfun() {
+            let tracked b;
+            b = false;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "exec code cannot mutate non-exec variable")
+}
+
+test_verify_one_file! {
+    #[test] assign_spec_var_in_exec verus_code! {
+        fn myfun() {
+            let ghost b;
+            b = false;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "exec code cannot mutate non-exec variable")
 }
 
 test_verify_one_file! {
