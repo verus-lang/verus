@@ -4127,6 +4127,18 @@ impl Debug for Lite<syn::Local> {
             }
             formatter.field("tracked", Print::ref_cast(val));
         }
+        if let Some(val) = &_val.ghost {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::token::Ghost);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    Ok(())
+                }
+            }
+            formatter.field("ghost", Print::ref_cast(val));
+        }
         formatter.field("pat", Lite(&_val.pat));
         if let Some(val) = &_val.init {
             #[derive(RefCast)]

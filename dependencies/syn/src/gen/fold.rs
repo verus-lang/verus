@@ -2615,6 +2615,7 @@ where
         attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
         let_token: Token![let](tokens_helper(f, &node.let_token.span)),
         tracked: (node.tracked).map(|it| Token![tracked](tokens_helper(f, &it.span))),
+        ghost: (node.ghost).map(|it| Token![ghost](tokens_helper(f, &it.span))),
         pat: f.fold_pat(node.pat),
         init: (node.init)
             .map(|it| (

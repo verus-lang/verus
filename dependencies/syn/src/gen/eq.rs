@@ -1421,7 +1421,8 @@ impl Eq for Local {}
 impl PartialEq for Local {
     fn eq(&self, other: &Self) -> bool {
         self.attrs == other.attrs && self.tracked == other.tracked
-            && self.pat == other.pat && self.init == other.init
+            && self.ghost == other.ghost && self.pat == other.pat
+            && self.init == other.init
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]

@@ -1937,6 +1937,7 @@ impl Hash for Local {
     {
         self.attrs.hash(state);
         self.tracked.hash(state);
+        self.ghost.hash(state);
         self.pat.hash(state);
         self.init.hash(state);
     }

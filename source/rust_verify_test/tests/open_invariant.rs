@@ -100,9 +100,9 @@ test_both! {
                 j.namespace() == 1,
         {
             open_atomic_invariant!(&i => inner => {
-                inner = 0;
+                proof { inner = 0u8; }
                 open_atomic_invariant!(&j => inner => {
-                    inner = 1;
+                    proof { inner = 1u8; }
                 });
             });
         }
