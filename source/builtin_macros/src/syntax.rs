@@ -19,7 +19,7 @@ use syn_verus::{
     Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop, ExprTuple,
     ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Ident, ImplItem, ImplItemMethod, Invariant,
     InvariantEnsures, InvariantNameSet, Item, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod,
-    ItemStruct, ItemTrait, Lit, Local, Meta, ModeSpec, ModeSpecChecked, Pat, Path, PathArguments,
+    ItemStruct, ItemTrait, Lit, Local, ModeSpec, ModeSpecChecked, Pat, Path, PathArguments,
     PathSegment, Publish, Recommends, Requires, ReturnType, Signature, SignatureDecreases,
     SignatureInvariants, Stmt, Token, TraitItem, TraitItemMethod, Type, TypeFnSpec, UnOp,
     Visibility,
@@ -148,14 +148,6 @@ impl Visitor {
         let mut stmts: Vec<Stmt> = Vec::new();
         let mut unwrap_ghost_tracked: Vec<Stmt> = Vec::new();
 
-        let inside_bitvector = if attrs.len() == 1 {
-            let attr = attrs.first().unwrap();
-            let arg = get_arg_from_verifier_attr(&attr);
-            if arg.is_some() { arg.unwrap() == "bit_vector".to_string() } else { false }
-        } else {
-            false
-        };
-
         attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
 
         for arg in &mut sig.inputs {
@@ -282,7 +274,8 @@ impl Visitor {
         });
 
         self.inside_ghost += 1; // for requires, ensures, etc.
-        self.inside_bitvector = inside_bitvector;
+        self.inside_bitvector =
+            sig.prover.as_ref().map_or(false, |(_, _, attr)| attr == "bit_vector");
 
         let requires = self.take_ghost(&mut sig.requires);
         let recommends = self.take_ghost(&mut sig.recommends);
@@ -2487,49 +2480,4 @@ fn mk_verus_attr(span: Span, tokens: TokenStream) -> Attribute {
         path: Path { leading_colon: None, segments: path_segments },
         tokens: quote! { (#tokens) },
     }
-}
-
-/// Get `arg` from `#[verifier::arg]`, and if `attr` is not a verifier attribute, return `None`
-fn get_arg_from_verifier_attr(attr: &Attribute) -> Option<String> {
-    let parsed = attr.parse_meta();
-    if parsed.is_err() {
-        return None;
-    }
-    let parsed = parsed.unwrap();
-    let ids = get_idents_from_meta(&parsed);
-    if ids.len() == 2 && ids.contains(&"verifier".to_string()) {
-        let mut id: Vec<String> =
-            ids.into_iter().filter(|x| x != &"verifier".to_string()).collect();
-        if id.len() == 1 { id.pop() } else { None }
-    } else {
-        None
-    }
-}
-
-/// Get idents from all "Path" in attributes(e.g. collect "verifier"` and `arg` from  `#[verifier::arg]`)
-fn get_idents_from_meta(parsed: &Meta) -> Vec<String> {
-    match parsed {
-        syn_verus::Meta::List(meta_list) => {
-            let mut ids = get_ident_from_path(&meta_list.path);
-            for meta in &meta_list.nested {
-                match meta {
-                    syn_verus::NestedMeta::Meta(meta) => {
-                        ids.append(&mut get_idents_from_meta(&meta));
-                    }
-                    syn_verus::NestedMeta::Lit(_) => (),
-                }
-            }
-            ids
-        }
-        syn_verus::Meta::Path(path) => get_ident_from_path(&path),
-        syn_verus::Meta::NameValue(meta_name_value) => get_ident_from_path(&meta_name_value.path),
-    }
-}
-
-fn get_ident_from_path(path: &Path) -> Vec<String> {
-    let mut ids = vec![];
-    for seg in &path.segments {
-        ids.push(seg.ident.to_string().clone());
-    }
-    ids
 }
