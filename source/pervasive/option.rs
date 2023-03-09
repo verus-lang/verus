@@ -47,12 +47,14 @@ impl<A> Option<A> {
     }
 
     // A more-readable synonym for get_Some_0().
-    pub open spec fn value(self) -> A
+    #[verifier(inline)]
+    pub open spec fn spec_unwrap(self) -> A
     recommends self.is_Some()
     {
         self.get_Some_0()
     }
 
+    #[verifier(when_used_as_spec(spec_unwrap))]
     pub fn unwrap(self) -> (a: A)
         requires
             self.is_Some(),
