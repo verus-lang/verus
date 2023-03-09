@@ -360,7 +360,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
             let (_, term2) = gather_terms(ctxt, ctx, e2, depth);
             match op {
-                Bitwise(bp) => {
+                Bitwise(bp, _) => {
                     let bop = match bp {
                         BitwiseOp::BitXor => BitOpName::BitXor,
                         BitwiseOp::BitAnd => BitOpName::BitAnd,

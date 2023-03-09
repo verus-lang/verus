@@ -1428,19 +1428,19 @@ fn fn_call_to_vir<'tcx>(
         } else if is_spec_euclidean_mod {
             BinaryOp::Arith(ArithOp::EuclideanMod, None)
         } else if is_spec_bitand {
-            BinaryOp::Bitwise(BitwiseOp::BitAnd)
+            BinaryOp::Bitwise(BitwiseOp::BitAnd, Mode::Spec)
         } else if is_spec_bitor {
-            BinaryOp::Bitwise(BitwiseOp::BitOr)
+            BinaryOp::Bitwise(BitwiseOp::BitOr, Mode::Spec)
         } else if is_spec_bitxor {
             if matches!(*vir_args[0].typ, TypX::Bool) {
                 BinaryOp::Xor
             } else {
-                BinaryOp::Bitwise(BitwiseOp::BitXor)
+                BinaryOp::Bitwise(BitwiseOp::BitXor, Mode::Spec)
             }
         } else if is_spec_shl {
-            BinaryOp::Bitwise(BitwiseOp::Shl)
+            BinaryOp::Bitwise(BitwiseOp::Shl, Mode::Spec)
         } else if is_spec_shr {
-            BinaryOp::Bitwise(BitwiseOp::Shr)
+            BinaryOp::Bitwise(BitwiseOp::Shr, Mode::Spec)
         } else if is_implies {
             BinaryOp::Implies
         } else {
@@ -2467,8 +2467,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 BinOpKind::BitXor => {
                     match ((tc.node_type(lhs.hir_id)).kind(), (tc.node_type(rhs.hir_id)).kind()) {
                         (TyKind::Bool, TyKind::Bool) => BinaryOp::Xor,
-                        (TyKind::Int(_), TyKind::Int(_)) => BinaryOp::Bitwise(BitwiseOp::BitXor),
-                        (TyKind::Uint(_), TyKind::Uint(_)) => BinaryOp::Bitwise(BitwiseOp::BitXor),
+                        (TyKind::Int(_), TyKind::Int(_)) => {
+                            BinaryOp::Bitwise(BitwiseOp::BitXor, Mode::Exec)
+                        }
+                        (TyKind::Uint(_), TyKind::Uint(_)) => {
+                            BinaryOp::Bitwise(BitwiseOp::BitXor, Mode::Exec)
+                        }
                         _ => panic!("bitwise XOR for this type not supported"),
                     }
                 }
@@ -2479,8 +2483,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 "bitwise AND for bools (i.e., the not-short-circuited version) not supported"
                             );
                         }
-                        (TyKind::Int(_), TyKind::Int(_)) => BinaryOp::Bitwise(BitwiseOp::BitAnd),
-                        (TyKind::Uint(_), TyKind::Uint(_)) => BinaryOp::Bitwise(BitwiseOp::BitAnd),
+                        (TyKind::Int(_), TyKind::Int(_)) => {
+                            BinaryOp::Bitwise(BitwiseOp::BitAnd, Mode::Exec)
+                        }
+                        (TyKind::Uint(_), TyKind::Uint(_)) => {
+                            BinaryOp::Bitwise(BitwiseOp::BitAnd, Mode::Exec)
+                        }
                         t => panic!("bitwise AND for this type not supported {:#?}", t),
                     }
                 }
@@ -2491,13 +2499,17 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 "bitwise OR for bools (i.e., the not-short-circuited version) not supported"
                             );
                         }
-                        (TyKind::Int(_), TyKind::Int(_)) => BinaryOp::Bitwise(BitwiseOp::BitOr),
-                        (TyKind::Uint(_), TyKind::Uint(_)) => BinaryOp::Bitwise(BitwiseOp::BitOr),
+                        (TyKind::Int(_), TyKind::Int(_)) => {
+                            BinaryOp::Bitwise(BitwiseOp::BitOr, Mode::Exec)
+                        }
+                        (TyKind::Uint(_), TyKind::Uint(_)) => {
+                            BinaryOp::Bitwise(BitwiseOp::BitOr, Mode::Exec)
+                        }
                         _ => panic!("bitwise OR for this type not supported"),
                     }
                 }
-                BinOpKind::Shr => BinaryOp::Bitwise(BitwiseOp::Shr),
-                BinOpKind::Shl => BinaryOp::Bitwise(BitwiseOp::Shl),
+                BinOpKind::Shr => BinaryOp::Bitwise(BitwiseOp::Shr, Mode::Exec),
+                BinOpKind::Shl => BinaryOp::Bitwise(BitwiseOp::Shl, Mode::Exec),
             };
             let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs))?;
             match op.node {

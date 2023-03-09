@@ -48,7 +48,7 @@ fn check_trigger_expr(
             | ExpX::UnaryOpr(UnaryOpr::IsVariant { .. }, _)
             | ExpX::Unary(UnaryOp::Trigger(_), _) => {}
             // allow triggers for bitvector operators
-            ExpX::Binary(BinaryOp::Bitwise(_), _, _) | ExpX::Unary(UnaryOp::BitNot, _) => {}
+            ExpX::Binary(BinaryOp::Bitwise(_, _), _, _) | ExpX::Unary(UnaryOp::BitNot, _) => {}
             _ => {
                 return err_str(
                     &exp.span,

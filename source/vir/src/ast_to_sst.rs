@@ -859,6 +859,17 @@ fn if_to_stm(
     }
 }
 
+fn should_do_bounds_checks(ctx: &Ctx, state: &State, mode: Mode) -> bool {
+    if state.view_as_spec {
+        return false;
+    }
+
+    match mode {
+        Mode::Spec => state.checking_recommends(ctx),
+        Mode::Proof | Mode::Exec => !state.checking_recommends(ctx),
+    }
+}
+
 /// Convert a VIR Expr to a SST (Vec<Stm>, ReturnValue), i.e., instructions of the form,
 /// "run these statements, then return this side-effect-free expression".
 ///
@@ -1111,22 +1122,17 @@ fn expr_to_stm_opt(
                     let bin = mk_exp(ExpX::Binary(*op, e1.clone(), e2.clone()));
 
                     if let BinaryOp::Arith(arith, inferred_mode) = op {
+                        // Insert bounds check
+
                         let arith_mode = if let Some(inferred_mode) = inferred_mode {
                             ctx.global.inferred_modes[inferred_mode]
                         } else {
                             Mode::Spec
                         };
-                        // Insert bounds check
-                        match (
-                            state.view_as_spec,
-                            arith_mode,
-                            &*expr.typ,
-                            state.checking_recommends(ctx),
-                        ) {
-                            (true, _, _, false) => {}
-                            (_, Mode::Spec, _, false) => {}
-                            (_, Mode::Proof | Mode::Exec, _, true) => {}
-                            (_, _, TypX::Int(ir), _) if ir.is_bounded() => {
+
+                        match (should_do_bounds_checks(ctx, state, arith_mode), &*expr.typ) {
+                            (false, _) => {}
+                            (true, TypX::Int(ir)) if ir.is_bounded() => {
                                 let (assert_exp, msg) = match arith {
                                     ArithOp::Add | ArithOp::Sub | ArithOp::Mul => {
                                         let unary = UnaryOpr::HasType(expr.typ.clone());
@@ -1163,9 +1169,10 @@ fn expr_to_stm_opt(
                     // For a shift `a << b` or `a >> b`, Rust requires that
                     //    0 <= b < (bitsize of a)
 
-                    if let BinaryOp::Bitwise(bitwise) = op {
-                        match bitwise {
-                            BitwiseOp::Shr | BitwiseOp::Shl => {
+                    if let BinaryOp::Bitwise(bitwise, mode) = op {
+                        match (should_do_bounds_checks(ctx, state, *mode), bitwise) {
+                            (false, _) => {}
+                            (true, BitwiseOp::Shr | BitwiseOp::Shl) => {
                                 let zero = sst_int_literal(&expr.span, 0);
                                 let bitwidth =
                                     bitwidth_sst_from_typ(&expr.span, &e1.typ, &ctx.global.arch);
@@ -1183,7 +1190,7 @@ fn expr_to_stm_opt(
                                 let assert = Spanned::new(expr.span.clone(), assert);
                                 stms1.push(assert);
                             }
-                            BitwiseOp::BitXor | BitwiseOp::BitAnd | BitwiseOp::BitOr => {
+                            (true, BitwiseOp::BitXor | BitwiseOp::BitAnd | BitwiseOp::BitOr) => {
                                 // no overflow check needed
                             }
                         }

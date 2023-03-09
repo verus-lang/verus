@@ -1259,7 +1259,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         }
                     }
                 }
-                Bitwise(op) => {
+                Bitwise(op, _) => {
                     use BitwiseOp::*;
                     let e2 = eval_expr_internal(ctx, state, e2)?;
                     match (&e1.x, &e2.x) {

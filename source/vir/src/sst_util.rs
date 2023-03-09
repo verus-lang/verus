@@ -235,7 +235,7 @@ impl BinaryOp {
                 Add | Sub => (30, 30, 31),
                 Mul | EuclideanDiv | EuclideanMod => (40, 40, 41),
             },
-            Bitwise(o) => match o {
+            Bitwise(o, _) => match o {
                 BitXor => (22, 22, 23),
                 BitAnd => (24, 24, 25),
                 BitOr => (20, 20, 21),
@@ -322,7 +322,7 @@ impl ExpX {
                         EuclideanDiv => "/",
                         EuclideanMod => "%",
                     },
-                    Bitwise(o) => match o {
+                    Bitwise(o, _) => match o {
                         BitXor => "^",
                         BitAnd => "&",
                         BitOr => "|",
