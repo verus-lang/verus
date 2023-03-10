@@ -65,6 +65,23 @@ fn run_example_for_file(file_path: &str) {
             "expect-failures" => mode = Mode::ExpectFailures,
             "vstd-todo" => use_vstd = false,
             "ignore" => {
+                if first_line_elements.len() > 3 {
+                    // There is an extra comment; this might be made required in the future, but
+                    // currently is optional.
+                    //
+                    // We require that any comment is separated by a `---` which acts as a good
+                    // visual separator.
+                    if first_line_elements[3] != "---" {
+                        panic!(
+                            "Expected '---' to separate the extra comment from the 'ignore' declaration. Found {:?}",
+                            first_line_elements[3],
+                        );
+                    } else if first_line_elements.len() == 4 {
+                        panic!(
+                            "Expected comment after visual separator '---' but no comment found."
+                        );
+                    }
+                }
                 return;
             }
             _ => panic!(

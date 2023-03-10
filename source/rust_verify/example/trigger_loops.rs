@@ -1,4 +1,4 @@
-// rust_verify/tests/example.rs ignore Examples are expected to timeout to test the quantifier profiler (i.e., exceed their rlimit)
+// rust_verify/tests/example.rs ignore --- these examples are expected to timeout to test the quantifier profiler (i.e., exceed their rlimit)
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
