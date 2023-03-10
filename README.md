@@ -12,20 +12,19 @@ that, for example, manipulates raw pointers.
 
 ![VS Code Demo](source/docs/verus-demo.png)
 
-# Status
+## Status
 
 Verus is under *active development*. Features may be broken and/or missing, and
 the documentation is still incomplete. If you want to try Verus, please be
-prepared to ask for help by filing GitHub issues or starting GitHub
-discussions.
+prepared to ask for help by filing GitHub issues.
 
-# Try Verus
+## Try Verus
 
 Please follow our [installation instructions](INSTALL.md).
 Then you can dive into the documentation below, starting
 with the [📖 Tutorial and reference](https://verus-lang.github.io/verus/guide/).
 
-# Documentation
+## Documentation
 Our (work-in-progress) documentation resources include:
  * [📖 Tutorial and reference](https://verus-lang.github.io/verus/guide/)
  * [📖 API documentation for Verus's standard library](https://verus-lang.github.io/verus/verusdoc/lib/)
