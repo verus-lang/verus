@@ -31,9 +31,6 @@ fn run_compiler<'a, 'b>(
 
 fn print_verification_results(verifier: &Verifier) {
     if !verifier.encountered_vir_error {
-        if cfg!(debug_assertions) {
-            println!("warning: verus was compiled in debug mode");
-        }
         println!(
             "verification results:: verified: {} errors: {}",
             verifier.count_verified, verifier.count_errors
