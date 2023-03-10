@@ -36,6 +36,12 @@ jobs:
           cd rust/install
           tar -xf rust_install.tar.gz
 
+      - name: get z3
+        working-directory: ./source
+        run: |
+          ../.github/workflows/get-z3.sh
+          echo z3 version `./z3 --version`
+
       - name: build docs
         working-directory: ./source
         run: |

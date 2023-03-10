@@ -195,6 +195,9 @@ impl GlobalCtx {
         }
         let mut fun_bounds: HashMap<Fun, Vec<GenericBound>> = HashMap::new();
         let mut func_call_graph: Graph<Node> = Graph::new();
+        for t in &krate.traits {
+            crate::recursive_types::add_trait_to_graph(&mut func_call_graph, t);
+        }
         for f in &krate.functions {
             let bounds = vec_map(&f.x.typ_bounds, |(_, bound)| bound.clone());
             fun_bounds.insert(f.x.name.clone(), bounds);

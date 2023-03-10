@@ -3,13 +3,16 @@
 use builtin::*;
 #[allow(unused_imports)]
 use builtin_macros::*;
+
+#[cfg(not(vstd_todo))]
 mod pervasive;
+#[cfg(not(vstd_todo))]
 #[allow(unused_imports)]
-use pervasive::option::Option;
+use pervasive::{*, option::Option, seq::*};
+
+#[cfg(vstd_todo)]
 #[allow(unused_imports)]
-use pervasive::*;
-#[allow(unused_imports)]
-use seq::*;
+use vstd::{option::Option, seq::*};
 
 verus! {
 
@@ -389,5 +392,23 @@ mod veribetrkv_example_list_comprehension {
         ) by(compute_only);
     }
 }
+
+//#[cfg(any())]
+mod arch_specific {
+
+    use builtin::SpecShl;
+
+    proof fn test_shift() {
+        assert((1usize << 20usize) != 0usize) by (compute_only);
+        assert((1usize << 100usize) == 0usize) by (compute_only);
+
+        // But this next assert should not work (at least without --arch-word-bits), because usize
+        // could be either 32-bit or 64-bit.
+        //
+        // assert((1usize << 40usize) == 0usize) by (compute_only);
+    }
+
+}
+
 
 } // verus!

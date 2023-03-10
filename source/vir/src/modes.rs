@@ -332,6 +332,14 @@ fn get_var_loc_mode(
     let x_mode = match &expr.x {
         ExprX::VarLoc(x) => {
             let (_, x_mode) = typing.get(x);
+
+            if typing.check_ghost_blocks
+                && typing.block_ghostness == Ghost::Exec
+                && x_mode != Mode::Exec
+            {
+                return err_str(&expr.span, &format!("exec code cannot mutate non-exec variable"));
+            }
+
             x_mode
         }
         ExprX::Unary(
@@ -443,17 +451,24 @@ fn check_expr_handle_mut_arg(
     let mode = match &expr.x {
         ExprX::Const(_) => Ok(Mode::Exec),
         ExprX::Var(x) | ExprX::VarLoc(x) | ExprX::VarAt(x, _) => {
-            let x_mode = typing.get(x).1;
-            let mode = mode_join(outer_mode, x_mode);
-            if typing.in_forall_stmt && mode == Mode::Proof {
+            if typing.in_forall_stmt {
                 // Proof variables may be used as spec, but not as proof inside forall statements.
                 // This protects against effectively consuming a linear proof variable
                 // multiple times for different instantiations of the forall variables.
-                return err_str(
-                    &expr.span,
-                    "cannot use tracked variable inside 'assert ... by' statements",
-                );
+                return Ok((Mode::Spec, None));
             }
+
+            let x_mode = typing.get(x).1;
+
+            if typing.check_ghost_blocks
+                && typing.block_ghostness == Ghost::Exec
+                && x_mode != Mode::Exec
+            {
+                return err_str(&expr.span, &format!("cannot use {x_mode} variable in exec-code"));
+            }
+
+            let mode = mode_join(outer_mode, x_mode);
+
             let mode = if typing.check_ghost_blocks {
                 typing.block_ghostness.join_mode(mode)
             } else {
@@ -1060,7 +1075,12 @@ fn check_expr_handle_mut_arg(
             if outer_mode == Mode::Spec {
                 return err_string(&expr.span, format!("Cannot open invariant in Spec mode."));
             }
+
+            let prev = typing.block_ghostness;
+            typing.block_ghostness = Ghost::Ghost;
             let mode1 = check_expr(typing, outer_mode, erasure_mode, inv)?;
+            typing.block_ghostness = prev;
+
             if mode1 != Mode::Proof {
                 return err_string(&inv.span, format!("Invariant must be Proof mode."));
             }
@@ -1113,8 +1133,9 @@ fn check_stmt(
             if typing.check_ghost_blocks
                 && typing.block_ghostness == Ghost::Exec
                 && mode != Mode::Exec
+                && init.is_some()
             {
-                return err_str(&stmt.span, "exec code cannot declare non-exec variables");
+                return err_str(&stmt.span, "exec code cannot initialize non-exec variables");
             }
             if !mode_le(outer_mode, mode) {
                 return err_string(&stmt.span, format!("pattern cannot have mode {}", mode));

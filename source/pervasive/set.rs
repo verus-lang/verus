@@ -6,8 +6,12 @@ use builtin::*;
 use builtin_macros::*;
 #[allow(unused_imports)]
 use crate::pervasive::*;
+#[cfg(not(vstd_build_todo))]
 #[allow(unused_imports)]
 use crate::pervasive::map::*;
+#[cfg(vstd_build_todo)]
+#[allow(unused_imports)]
+use crate::map::*;
 
 verus! {
 
@@ -371,6 +375,7 @@ pub proof fn axiom_set_choose_len<A>(s: Set<A>)
 
 // Macros
 
+#[cfg(not(vstd_build_todo))]
 #[doc(hidden)]
 #[macro_export]
 macro_rules! set_internal {
@@ -380,10 +385,29 @@ macro_rules! set_internal {
     };
 }
 
+#[cfg(vstd_build_todo)]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! set_internal {
+    [$($elem:expr),* $(,)?] => {
+        $crate::set::Set::empty()
+            $(.insert($elem))*
+    };
+}
+
+#[cfg(not(vstd_build_todo))]
 #[macro_export]
 macro_rules! set {
     [$($tail:tt)*] => {
         ::builtin_macros::verus_proof_macro_exprs!($crate::pervasive::set::set_internal!($($tail)*))
+    };
+}
+
+#[cfg(vstd_build_todo)]
+#[macro_export]
+macro_rules! set {
+    [$($tail:tt)*] => {
+        ::builtin_macros::verus_proof_macro_exprs!($crate::set::set_internal!($($tail)*))
     };
 }
 

@@ -210,7 +210,7 @@ tracked struct GhostStuff<S> {
 }
 
 impl<S> GhostStuff<S> {
-    spec fn wf(self, inst: RefCounter::Instance<ptr::PermissionOpt<InnerRc<S>>>, cell: PCell<u64>) -> bool {
+    pub open spec fn wf(self, inst: RefCounter::Instance<ptr::PermissionOpt<InnerRc<S>>>, cell: PCell<u64>) -> bool {
         &&& self.rc_perm@.pcell === cell.id()
         &&& self.rc_token@.instance === inst
         &&& self.rc_perm@.value.is_Some()

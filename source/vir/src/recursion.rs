@@ -29,6 +29,7 @@ use std::sync::Arc;
 pub enum Node {
     Fun(Fun),
     Trait(Path),
+    Datatype(Path),
     DatatypeTraitBound { datatype: Path, trait_path: Path },
 }
 
@@ -494,8 +495,8 @@ pub(crate) fn expand_call_graph(
         call_graph.add_edge(f_node.clone(), Node::Fun(decrease_by.clone()))
     }
 
-    // Add f1 --> f2 edges where f1 calls f2
-    // Add f1 --> D: T where one of f1's expressions instantiates A: T with D: T
+    // Add f --> f2 edges where f calls f2
+    // Add f --> D: T where one of f's expressions instantiates A: T with D: T
     // Add T --> f2 if the requires/ensures of T's method declarations call f2
     crate::ast_visitor::function_visitor_check::<VirErr, _>(function, &mut |expr| {
         match &expr.x {
@@ -506,15 +507,30 @@ pub(crate) fn expand_call_graph(
 
                 let callee =
                     if let FunctionKind::TraitMethodDecl { trait_path: trait_path2 } = &f2.x.kind {
-                        let (tparam, targ) = t_param_args.next().expect("method Self type");
+                        let (tparam, t_self_arg) = t_param_args.next().expect("method Self type");
                         assert!(tparam.0 == crate::def::trait_self_type_param());
-                        match &**targ {
+                        match &**t_self_arg {
+                            // If the Self type argument is a concrete type,
+                            // then we should know concretely which function we're calling.
+                            // By contrast, if the Self type argument is a type parameter,
+                            // then we don't know concretely which function we're calling;
+                            // conceptually, we're looking up the function dynamically in
+                            // a dictionary.
+                            // (Note that the dictionary is passed in with the type parameter;
+                            // if there's no type parameter, there's no dictionary,
+                            // so we can only use the dictionary in the type parameter case.)
+
+                            // REVIEW: in the non-type-parameter case,
+                            // maybe we can get the concrete function directly from rustc,
+                            // rather than computing it here.
                             TypX::TypParam(p) if p == &crate::def::trait_self_type_param() => {
                                 match &function.x.kind {
                                     FunctionKind::TraitMethodDecl { trait_path: trait_path1 }
                                         if trait_path1 == trait_path2 =>
                                     {
-                                        // Call to self within trait, T.f1 --> T.f2
+                                        // Call to self within trait, T.f --> T.f2
+                                        // (We can't use the dictionary in case, because the
+                                        // dictionary is still under construction.)
                                         Some(x)
                                     }
                                     _ => {
@@ -523,7 +539,7 @@ pub(crate) fn expand_call_graph(
                                 }
                             }
                             TypX::TypParam(p) => {
-                                // no f1 --> f2 edge for calls via a type parameter A: T,
+                                // no f --> f2 edge for calls via a type parameter A: T,
                                 // because we (conceptually) get f2 from the dictionary passed for A: T.
                                 let bound = function.x.typ_bounds.iter().find(|(q, _)| q == p);
                                 let bound = bound.expect("missing type parameter");
@@ -532,7 +548,7 @@ pub(crate) fn expand_call_graph(
                                 None
                             }
                             TypX::Datatype(datatype, _) => {
-                                // f1 --> D.f2
+                                // f --> D.f2
                                 Some(&method_map[&(x.clone(), datatype.clone())])
                             }
                             _ => panic!("unexpected Self type instantiation"),
@@ -542,12 +558,24 @@ pub(crate) fn expand_call_graph(
                     };
 
                 for ((_, tbound), targ) in t_param_args {
+                    // For each instantiation of a callee type parameter,
+                    // if the type parameter has a bound,
+                    // we need to pass in the right dictionary.
+                    // (Note: we don't need to consider the Self instantiation here,
+                    // because if the Self argument is a type parameter X,
+                    // there's nothing to do (see TypParam case below),
+                    // and if Self is concrete, we conceptually make a direct call with no
+                    // need for a Self argument (see the callee selection code above).)
                     match &**tbound {
                         GenericBoundX::Traits(traits) => {
                             for tr in traits {
                                 match &**targ {
+                                    TypX::TypParam(..) => {
+                                        // We already have the dictionaries for type parameters,
+                                        // so nothing else needs to happen here.
+                                    }
                                     TypX::Datatype(datatype, _) => {
-                                        // f1 --> D: T
+                                        // f --> D: T
                                         call_graph.add_edge(
                                             f_node.clone(),
                                             Node::DatatypeTraitBound {
@@ -556,16 +584,6 @@ pub(crate) fn expand_call_graph(
                                             },
                                         );
                                     }
-                                    TypX::TypParam(..) => match &function.x.kind {
-                                        FunctionKind::Static => {}
-                                        FunctionKind::TraitMethodDecl { .. } => {
-                                            return err_str(
-                                                &expr.span,
-                                                "not yet supported: trait type bounds",
-                                            );
-                                        }
-                                        FunctionKind::TraitMethodImpl { .. } => {}
-                                    },
                                     _ => {
                                         return err_str(
                                             &expr.span,
@@ -587,7 +605,7 @@ pub(crate) fn expand_call_graph(
                     }
                 }
 
-                // f1 --> f2
+                // f --> f2
                 if let Some(callee) = callee {
                     call_graph.add_edge(f_node.clone(), Node::Fun(callee.clone()))
                 }

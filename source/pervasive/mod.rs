@@ -9,38 +9,100 @@
 //! See [this page](https://verus-lang.github.io/verus/guide/pervasive.html) for more details.
 //! We expect these hacks to go away once Verus has proper multi-crate support.
 
+#[cfg(not(vstd_build_todo))]
 pub mod map;
+#[cfg(not(vstd_build_todo))]
 pub mod option;
+#[cfg(not(vstd_build_todo))]
 pub mod result;
+#[cfg(not(vstd_build_todo))]
 pub mod seq;
+#[cfg(not(vstd_build_todo))]
 pub mod seq_lib;
+#[cfg(not(vstd_build_todo))]
 pub mod set;
+#[cfg(not(vstd_build_todo))]
 pub mod set_lib;
+#[cfg(not(vstd_build_todo))]
 pub mod slice;
+#[cfg(not(vstd_build_todo))]
 pub mod cell;
-#[cfg(not(erasure_macro_todo))]
-pub mod cell_old_style;
+#[cfg(not(vstd_build_todo))]
 pub mod invariant;
+#[cfg(not(vstd_build_todo))]
 pub mod atomic;
+#[cfg(not(vstd_build_todo))]
 pub mod atomic_ghost;
+#[cfg(not(vstd_build_todo))]
 pub mod modes;
+#[cfg(not(vstd_build_todo))]
 pub mod multiset;
+#[cfg(not(vstd_build_todo))]
 pub mod function;
+#[cfg(not(vstd_build_todo))]
 pub mod state_machine_internal;
+#[cfg(not(vstd_build_todo))]
 #[cfg(not(feature = "non_std"))]
 pub mod thread;
+#[cfg(not(vstd_build_todo))]
 #[cfg(not(feature = "no_global_allocator"))] 
 pub mod ptr;
-#[cfg(not(erasure_macro_todo))]
-#[cfg(not(feature = "no_global_allocator"))] 
-pub mod ptr_old_style;
+#[cfg(not(vstd_build_todo))]
 #[cfg(not(feature = "no_global_allocator"))] 
 pub mod string;
+#[cfg(not(vstd_build_todo))]
 #[cfg(not(feature = "no_global_allocator"))] 
 pub mod vec;
 
+// TODO: remove this compatibility shim when everything is ported to vstd:
+//#[cfg(vstd_build_todo)]
+//pub use crate::map;
+#[cfg(vstd_build_todo)]
+pub use crate::option;
+#[cfg(vstd_build_todo)]
+pub use crate::result;
+//#[cfg(vstd_build_todo)]
+//pub use crate::seq;
+#[cfg(vstd_build_todo)]
+pub use crate::seq_lib;
+//#[cfg(vstd_build_todo)]
+//pub use crate::set;
+#[cfg(vstd_build_todo)]
+pub use crate::set_lib;
+#[cfg(vstd_build_todo)]
+pub use crate::slice;
+#[cfg(vstd_build_todo)]
+pub use crate::cell;
+#[cfg(vstd_build_todo)]
+pub use crate::invariant;
+#[cfg(vstd_build_todo)]
+pub use crate::atomic;
+#[cfg(vstd_build_todo)]
+pub use crate::atomic_ghost;
+#[cfg(vstd_build_todo)]
+pub use crate::modes;
+#[cfg(vstd_build_todo)]
+pub use crate::multiset;
+#[cfg(vstd_build_todo)]
+pub use crate::function;
+#[cfg(vstd_build_todo)]
+pub use crate::state_machine_internal;
+#[cfg(vstd_build_todo)]
+#[cfg(not(feature = "non_std"))]
+pub use crate::thread;
+#[cfg(vstd_build_todo)]
+#[cfg(not(feature = "no_global_allocator"))] 
+pub use crate::ptr;
+#[cfg(vstd_build_todo)]
+#[cfg(not(feature = "no_global_allocator"))] 
+pub use crate::string;
+#[cfg(vstd_build_todo)]
+#[cfg(not(feature = "no_global_allocator"))] 
+pub use crate::vec;
+
 // Re-exports all pervasive types, traits, and functions that are commonly used or replace
 // regular `core` or `std` definitions.
+#[cfg(not(vstd_build_todo))]
 pub mod prelude;
 
 #[allow(unused_imports)]

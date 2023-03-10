@@ -6,8 +6,12 @@ use builtin::*;
 use builtin_macros::*;
 #[allow(unused_imports)]
 use crate::pervasive::*;
+#[cfg(not(vstd_build_todo))]
 #[allow(unused_imports)]
 use crate::pervasive::set::*;
+#[cfg(vstd_build_todo)]
+#[allow(unused_imports)]
+use crate::set::*;
 
 verus!{
 

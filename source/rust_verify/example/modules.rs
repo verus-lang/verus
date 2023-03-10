@@ -1,7 +1,5 @@
 #[allow(unused_imports)] use builtin::*;
 #[allow(unused_imports)] use builtin_macros::*;
-mod pervasive;
-#[allow(unused_imports)] use pervasive::*;
 
 verus! {
 
@@ -22,7 +20,6 @@ mod M1 {
 mod M2 {
     use crate::M1::f2;
     #[allow(unused_imports)] use builtin::*;
-    #[allow(unused_imports)] use crate::pervasive::*;
 
     proof fn P() {
         // assert(f2(10) == 12); // FAILS, since f2 is closed (abstract)

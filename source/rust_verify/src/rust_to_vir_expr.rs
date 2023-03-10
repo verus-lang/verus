@@ -5,10 +5,10 @@ use crate::attributes::{
 use crate::context::{BodyCtxt, Context};
 use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::rust_to_vir_base::{
-    def_id_self_to_vir_path, def_id_to_vir_path, def_to_path_ident, get_range, hack_get_def_name,
-    is_smt_arith, is_smt_equality, is_type_std_rc_or_arc, local_to_var, mid_ty_simplify,
-    mid_ty_to_vir, mid_ty_to_vir_ghost, mk_range, typ_of_node, typ_of_node_expect_mut_ref,
-    typ_path_and_ident_to_vir_path,
+    def_id_self_to_vir_path, def_id_self_to_vir_path_expect, def_id_to_vir_path, def_to_path_ident,
+    get_range, hack_get_def_name, is_smt_arith, is_smt_equality, is_type_std_rc_or_arc,
+    local_to_var, mid_ty_simplify, mid_ty_to_vir, mid_ty_to_vir_datatype, mid_ty_to_vir_ghost,
+    mk_range, typ_of_node, typ_of_node_expect_mut_ref, typ_path_and_ident_to_vir_path,
 };
 use crate::rust_to_vir_func::autospec_fun;
 use crate::util::{
@@ -441,12 +441,14 @@ fn get_fn_path<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<vir::as
     match &expr.kind {
         ExprKind::Path(qpath) => {
             let id = bctx.types.qpath_res(qpath, expr.hir_id).def_id();
+            let self_path = call_self_path(bctx.ctxt.tcx, &bctx.types, qpath);
             if let Some(_) =
                 bctx.ctxt.tcx.impl_of_method(id).and_then(|ii| bctx.ctxt.tcx.trait_id_of_impl(ii))
             {
                 unsupported_err!(expr.span, format!("Fn {:?}", id))
             } else {
-                Ok(Arc::new(FunX { path: def_id_to_vir_path(bctx.ctxt.tcx, id), trait_path: None }))
+                let path = def_id_self_to_vir_path_expect(bctx.ctxt.tcx, &self_path, id);
+                Ok(Arc::new(FunX { path, trait_path: None }))
             }
         }
         _ => unsupported_err!(expr.span, format!("{:?}", expr)),
@@ -555,16 +557,19 @@ fn fn_call_to_vir<'tcx>(
     let is_ghost_borrow_mut = f_name == "builtin::Ghost::<A>::borrow_mut";
     let is_ghost_new = f_name == "builtin::Ghost::<A>::new";
     // TODO: move ghost_exec, tracked_exec, tracked_split_tuple to builtin
-    let is_ghost_exec =
-        f_name == "pervasive::modes::ghost_exec" || f_name == "vstd::pervasive::modes::ghost_exec";
+    let is_ghost_exec = f_name == "pervasive::modes::ghost_exec"
+        || f_name == "vstd::modes::ghost_exec"
+        || f_name == "modes::ghost_exec";
     let is_ghost_split_tuple = f_name.starts_with("builtin::ghost_split_tuple");
     let is_tracked_view = f_name == "builtin::Tracked::<A>::view";
     let is_tracked_borrow = f_name == "builtin::Tracked::<A>::borrow";
     let is_tracked_borrow_mut = f_name == "builtin::Tracked::<A>::borrow_mut";
     let is_tracked_exec = f_name == "pervasive::modes::tracked_exec"
-        || f_name == "vstd::pervasive::modes::tracked_exec";
+        || f_name == "vstd::modes::tracked_exec"
+        || f_name == "modes::tracked_exec";
     let is_tracked_exec_borrow = f_name == "pervasive::modes::tracked_exec_borrow"
-        || f_name == "vstd::pervasive::modes::tracked_exec_borrow";
+        || f_name == "vstd::modes::tracked_exec_borrow"
+        || f_name == "modes::tracked_exec_borrow";
     let is_tracked_get = f_name == "builtin::Tracked::<A>::get";
     let is_tracked_split_tuple = f_name.starts_with("builtin::tracked_split_tuple");
     let is_new_strlit = tcx.is_diagnostic_item(Symbol::intern("pervasive::string::new_strlit"), f);
@@ -2643,6 +2648,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         let deref_ghost = mid_ty_to_vir_ghost(
                             bctx.ctxt.tcx,
                             bctx.types.node_type(lhs.hir_id),
+                            false,
                             true,
                         )
                         .1;
@@ -2893,7 +2899,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         }
         ExprKind::MethodCall(_name_and_generics, _call_span_0, all_args, fn_span) => {
             let receiver = all_args.first().expect("receiver in method call");
-            let self_path = match &(*typ_of_node(bctx, &receiver.hir_id, true)) {
+            let receiver_typ =
+                mid_ty_to_vir_datatype(bctx.ctxt.tcx, bctx.types.node_type(receiver.hir_id), true);
+            let self_path = match &*receiver_typ {
                 TypX::Datatype(path, _) => Some(path.clone()),
                 _ => None,
             };

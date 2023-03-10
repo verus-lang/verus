@@ -2,12 +2,6 @@
 
 use builtin_macros::*;
 use builtin::*;
-mod pervasive;
-use pervasive::*;
-use pervasive::option::*;
-use pervasive::modes::*;
-use pervasive::map::*;
-use pervasive::seq::*;
 
 // IMO 1988, #6.
 // Let a and b be positive integers such that (a^2 + b^2) / (ab + 1) is an integer.

@@ -18,7 +18,7 @@ use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::util::{vec_map, vec_map_result};
 use crate::visitor::VisitorControlFlow;
 use air::ast::{Binder, BinderX, Binders, Span};
-use air::messages::{error_with_label, Diagnostics};
+use air::messages::{error_with_label, warning, Diagnostics};
 use air::scope_map::ScopeMap;
 use num_bigint::BigInt;
 use num_traits::identities::Zero;
@@ -1277,8 +1277,24 @@ fn expr_to_stm_opt(
             ))
         }
         ExprX::Fuel(x, fuel) => {
-            let stm = Spanned::new(expr.span.clone(), StmX::Fuel(x.clone(), *fuel));
-            Ok((vec![stm], ReturnValue::ImplicitUnit(expr.span.clone())))
+            // It's possible that the function may have pruned out of the crate
+            // because there are no transitive dependencies.
+            // If so, just skip the fuel/reveal statement entirely
+            // (it can't possibly have any effect)
+            let skip = !ctx.func_map.contains_key(x);
+
+            if skip {
+                state.diagnostics.report(&warning(
+                    "this reveal/fuel statement has no effect because no verification condition in this module depends on this function", &expr.span));
+            }
+
+            let stms = if skip {
+                vec![]
+            } else {
+                let stm = Spanned::new(expr.span.clone(), StmX::Fuel(x.clone(), *fuel));
+                vec![stm]
+            };
+            Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
         }
         ExprX::RevealString(path) => {
             let stm = Spanned::new(expr.span.clone(), StmX::RevealString(path.clone()));

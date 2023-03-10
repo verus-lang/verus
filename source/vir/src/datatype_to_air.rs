@@ -1,6 +1,4 @@
-use crate::ast::{
-    DatatypeTransparency, Field, GenericBoundX, Ident, Idents, Mode, Path, Typ, TypX, Variants,
-};
+use crate::ast::{DatatypeTransparency, Field, Ident, Idents, Mode, Path, Typ, TypX, Variants};
 use crate::ast_util::{is_visible_to_of_owner, path_as_rust_name};
 use crate::context::Ctx;
 use crate::def::{
@@ -414,11 +412,7 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
         }
 
         let mut tparams: Vec<Ident> = Vec::new();
-        for (name, bound, _strict_pos) in datatype.x.typ_params.iter() {
-            match &**bound {
-                GenericBoundX::Traits(ts) if ts.len() == 0 => {}
-                _ => panic!("datatype type parameter bounds"),
-            }
+        for (name, _bound, _strict_pos) in datatype.x.typ_params.iter() {
             tparams.push(name.clone());
         }
 

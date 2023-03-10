@@ -2,7 +2,8 @@ use crate::attributes::{get_ghost_block_opt, get_mode, get_verifier_attrs, Ghost
 use crate::erase::{ErasureHints, ResolvedCall};
 use crate::lifetime_ast::*;
 use crate::rust_to_vir_base::{
-    def_id_self_to_vir_path, def_id_to_vir_path, local_to_var, mid_ty_const_to_vir, mid_ty_to_vir,
+    def_id_self_to_vir_path, def_id_to_vir_path, local_to_var, mid_ty_const_to_vir,
+    mid_ty_to_vir_datatype,
 };
 use crate::rust_to_vir_expr::{datatype_constructor_variant_of_res, datatype_variant_of_res};
 use air::ast::AstId;
@@ -397,7 +398,7 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Patter
         PatKind::Struct(
             QPath::Resolved(None, rustc_hir::Path { res: res @ Res::Def(DefKind::Variant, _), .. }),
             pats,
-            _,
+            has_omitted,
         ) => {
             let (vir_path, variant_name) = datatype_variant_of_res(ctxt.tcx, res, false);
             let name = state.datatype_name(&vir_path);
@@ -408,12 +409,12 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Patter
                 let pattern = erase_pat(ctxt, state, &pat.pat);
                 binders.push((field, pattern));
             }
-            mk_pat(PatternX::DatatypeStruct(name, Some(variant), binders))
+            mk_pat(PatternX::DatatypeStruct(name, Some(variant), binders, *has_omitted))
         }
         PatKind::Struct(
             QPath::Resolved(None, rustc_hir::Path { res: res @ Res::Def(DefKind::Struct, _), .. }),
             pats,
-            _,
+            has_omitted,
         ) => {
             let vir_path = def_id_to_vir_path(ctxt.tcx, res.def_id());
             let name = state.datatype_name(&vir_path);
@@ -423,7 +424,7 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Patter
                 let pattern = erase_pat(ctxt, state, &pat.pat);
                 binders.push((field, pattern));
             }
-            mk_pat(PatternX::DatatypeStruct(name, None, binders))
+            mk_pat(PatternX::DatatypeStruct(name, None, binders, *has_omitted))
         }
         _ => {
             dbg!(pat);
@@ -489,6 +490,14 @@ fn force_block(exp: Option<Exp>, span: Span) -> Exp {
         None => Box::new((span, ExpX::Block(vec![], None))),
         Some(exp @ box (_, ExpX::Block(..))) => exp,
         Some(exp @ box (span, _)) => Box::new((span, ExpX::Block(vec![], Some(exp)))),
+    }
+}
+
+// Convert an Option<Exp> into an Exp by converting None into a unit value
+fn force_exp(exp: Option<Exp>, span: Span) -> Exp {
+    match exp {
+        None => Box::new((span, ExpX::Tuple(vec![]))),
+        Some(e) => e,
     }
 }
 
@@ -866,7 +875,8 @@ fn erase_expr<'tcx>(
         ExprKind::MethodCall(_name_and_generics, fn_span, all_args, _call_span) => {
             let fn_def_id = ctxt.types().type_dependent_def_id(expr.hir_id).expect("method id");
             let rcvr = all_args.first().expect("receiver in method call");
-            let rcvr_typ = mid_ty_to_vir(ctxt.tcx, ctxt.types().node_type(rcvr.hir_id), true);
+            let rcvr_typ =
+                mid_ty_to_vir_datatype(ctxt.tcx, ctxt.types().node_type(rcvr.hir_id), true);
             let self_path = match &*rcvr_typ {
                 vir::ast::TypX::Datatype(path, _) => Some(path.clone()),
                 _ => None,
@@ -996,7 +1006,7 @@ fn erase_expr<'tcx>(
             } else {
                 let exp1 = erase_expr(ctxt, state, false, e1);
                 let exp2 = erase_expr(ctxt, state, false, e2);
-                mk_exp(ExpX::Assign(exp1.expect("expr"), exp2.expect("expr")))
+                mk_exp(ExpX::Assign(exp1.expect("expr"), force_exp(exp2, e2.span)))
             }
         }
         ExprKind::AssignOp(_op, e1, e2) => {
