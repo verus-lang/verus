@@ -439,9 +439,9 @@ test_verify_one_file! {
             requires *old(a) < 1000,
             ensures *a == *old(a) + 30,
         {
-            let old_a: Ghost<u64> = ghost(*a);
+            let ghost old_a = *a;
             *a = *a + 5 * 6;
-            assert(*a == old_a@ + 5 * 6) by (compute);
+            assert(*a == old_a + 5 * 6) by (compute);
         }
     } => Ok(())
 }

@@ -6413,14 +6413,6 @@ impl Debug for Lite<syn::UnOp> {
                 formatter.write_str("Proof")?;
                 Ok(())
             }
-            syn::UnOp::Ghost(_val) => {
-                formatter.write_str("Ghost")?;
-                Ok(())
-            }
-            syn::UnOp::Tracked(_val) => {
-                formatter.write_str("Tracked")?;
-                Ok(())
-            }
             syn::UnOp::Forall(_val) => {
                 formatter.write_str("Forall")?;
                 Ok(())

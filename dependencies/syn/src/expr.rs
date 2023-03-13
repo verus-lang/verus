@@ -1620,10 +1620,6 @@ pub(crate) mod parsing {
             expr_unary(input, attrs, allow_struct).map(Expr::Unary)
         } else if input.peek(Token![proof]) && input.peek2(token::Brace) {
             expr_unary(input, attrs, allow_struct).map(Expr::Unary)
-        } else if input.peek(Token![ghost]) && input.peek2(token::Paren) {
-            expr_unary(input, attrs, allow_struct).map(Expr::Unary)
-        } else if input.peek(Token![tracked]) {
-            expr_unary(input, attrs, allow_struct).map(Expr::Unary)
         } else if input.peek2(Token![|])
             && (input.peek(Token![forall])
                 || input.peek(Token![exists])

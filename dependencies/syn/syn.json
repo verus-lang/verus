@@ -5961,16 +5961,6 @@
             "token": "Proof"
           }
         ],
-        "Ghost": [
-          {
-            "token": "Ghost"
-          }
-        ],
-        "Tracked": [
-          {
-            "token": "Tracked"
-          }
-        ],
         "Forall": [
           {
             "token": "Forall"

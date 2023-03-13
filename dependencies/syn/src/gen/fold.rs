@@ -3622,12 +3622,6 @@ where
         UnOp::Proof(_binding_0) => {
             UnOp::Proof(Token![proof](tokens_helper(f, &_binding_0.span)))
         }
-        UnOp::Ghost(_binding_0) => {
-            UnOp::Ghost(Token![ghost](tokens_helper(f, &_binding_0.span)))
-        }
-        UnOp::Tracked(_binding_0) => {
-            UnOp::Tracked(Token![tracked](tokens_helper(f, &_binding_0.span)))
-        }
         UnOp::Forall(_binding_0) => {
             UnOp::Forall(Token![forall](tokens_helper(f, &_binding_0.span)))
         }

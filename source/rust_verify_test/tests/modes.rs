@@ -30,14 +30,14 @@ test_verify_one_file! {
             j: bool,
         }
         fn test1(i: bool, j: bool) {
-            let s = S { i: ghost(i), j };
+            let s = S { i: Ghost(i), j };
         }
         fn test2(i: Ghost<bool>, j: bool) {
             let s = S { i, j };
         }
         fn test3(i: bool, j: Ghost<bool>) {
-            let s: Ghost<S> = ghost(S { i: Ghost::new(i), j: j@ });
-            let jj: Ghost<bool> = ghost(s@.j);
+            let s: Ghost<S> = Ghost(S { i: Ghost::new(i), j: j@ });
+            let jj: Ghost<bool> = Ghost(s@.j);
         }
     } => Ok(())
 }
@@ -62,7 +62,7 @@ test_verify_one_file! {
             j: bool,
         }
         fn test(i: bool, j: Ghost<bool>) {
-            let s = S { i: ghost(i), j: j@ };
+            let s = S { i: Ghost(i), j: j@ };
         }
     } => Err(err) => assert_error_msg(err, "cannot perform operation with mode spec")
 }
@@ -628,7 +628,7 @@ test_verify_one_file! {
         use vstd::modes::*;
 
         fn f() {
-            let g: Ghost<bool> = ghost(true);
+            let g: Ghost<bool> = Ghost(true);
             proof {
                 let tracked t: bool = g@; // fails: tracked <- ghost assign
             }
@@ -641,7 +641,7 @@ test_verify_one_file! {
         use vstd::modes::*;
 
         fn f() {
-            let g: Ghost<bool> = ghost(true);
+            let g: Ghost<bool> = Ghost(true);
             let e: bool = g@; // fails: exec <- ghost assign
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot perform operation with mode spec")
@@ -665,7 +665,7 @@ test_verify_one_file! {
         use vstd::modes::*;
 
         fn f(t: Tracked<bool>) {
-            let g: Ghost<bool> = ghost(true);
+            let g: Ghost<bool> = Ghost(true);
             let mut t = t;
             proof {
                 t@ = g@; // fails: tracked <- ghost assign
@@ -808,7 +808,7 @@ test_verify_one_file! {
             e: bool,
         }
         fn f(t: Tracked<S>) {
-            let g: Ghost<bool> = ghost(true);
+            let g: Ghost<bool> = Ghost(true);
             let mut t = t;
             proof {
                 t@.e = g@; // fails: tracked <- ghost assign
@@ -841,11 +841,11 @@ test_verify_one_file! {
         }
 
         proof fn make_tracked_proof() {
-            let tracked t2: B<Tok> = tracked(B { t: Tok { v: 12 } });
+            let tracked t2: B<Tok> = B { t: Tok { v: 12 } };
         }
 
         fn make_tracked_exec() {
-            let t: Tracked<Tok> = tracked({
+            let t: Tracked<Tok> = Tracked({
                 let v = 12nat;
                 Tok { v: v }
             });
@@ -854,11 +854,11 @@ test_verify_one_file! {
 
         // This isn't currently possible
         // proof fn make_ghost_proof() {
-        //     let tracked t2: B<Ghost<Tok>> = tracked(B { t: Ghost::new(Tok { v: 12 }) });
+        //     let tracked t2: B<Ghost<Tok>> = Tracked(B { t: Ghost::new(Tok { v: 12 }) });
         // }
 
         fn make_ghost_exec() {
-            let g: Ghost<Tok> = ghost(Tok { v: 12nat });
+            let g: Ghost<Tok> = Ghost(Tok { v: 12nat });
             let b: B<Ghost<Tok>> = B { t: g };
         }
     } => Ok(())
@@ -867,28 +867,28 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] tracked_tracked_typ_params_misc TRACKED_TYP_PARAMS_COMMON.to_owned() + verus_code_str! {
         proof fn identity(tracked b: B<Tracked<Tok>>) -> (tracked out: B<Tracked<Tok>>) {
-            tracked b
+            b
         }
 
         fn foo_exec(tok: Tracked<Tok>) -> Tracked<Tok> {
-            let b: Tracked<B<Tracked<Tok>>> = tracked(B { t: tok });
-            let t = tracked({
-                let tracked B { t } = (tracked b).get();
+            let b: Tracked<B<Tracked<Tok>>> = Tracked(B { t: tok });
+            let t = Tracked({
+                let tracked B { t } = b.get();
                 t.get()
             });
             t
         }
 
         proof fn foo_proof(tracked tok: Tracked<Tok>) -> (tracked out: B<Tracked<Tok>>) {
-            let tracked b1: B<Tracked<Tok>> = tracked(B { t: tracked tok });
-            let tracked b2 = identity(tracked b1);
-            tracked b2
+            let tracked b1: B<Tracked<Tok>> = B { t: tok };
+            let tracked b2 = identity(b1);
+            b2
         }
 
         fn caller(tok: Tracked<Tok>) -> Tracked<B<Tracked<Tok>>> {
-            let b: Tracked<B<Tracked<Tok>>> = tracked(B { t: tok });
-            let b1 = tracked({
-                identity(tracked b.get())
+            let b: Tracked<B<Tracked<Tok>>> = Tracked(B { t: tok });
+            let b1 = Tracked({
+                identity(b.get())
             });
             b1
         }
@@ -900,27 +900,27 @@ test_verify_one_file! {
         use vstd::modes::*;
 
         proof fn identity(tracked b: B<Ghost<Tok>>) -> (tracked out: B<Ghost<Tok>>) {
-            tracked b
+            b
         }
 
         fn foo_exec() -> Ghost<Tok> {
-            let g: Ghost<Tok> = ghost(Tok { v: 12nat });
+            let g: Ghost<Tok> = Ghost(Tok { v: 12nat });
             // The exec->tracked coercion may be removed
-            let b: Tracked<B<Ghost<Tok>>> = tracked(B { t: (tracked g) });
-            let t = ghost({
-                let tracked B { t } = (tracked b).get();
+            let b: Tracked<B<Ghost<Tok>>> = Tracked(B { t: g });
+            let t = Ghost({
+                let tracked B { t } = b.get();
                 t@
             });
             t
         }
 
         proof fn foo_proof(tracked tok: Ghost<Tok>) -> tracked Ghost<Tok> {
-            let tracked b: B<Ghost<Tok>> = tracked(B { t: tok });
-            let tracked t = tracked({
-                let tracked B { t } = tracked b;
+            let tracked b: B<Ghost<Tok>> = B { t: tok };
+            let tracked t = {
+                let tracked B { t } = b;
                 t
-            });
-            tracked t
+            };
+            t
         }
     } => Ok(())
 }
@@ -1018,7 +1018,7 @@ test_verify_one_file! {
         fn myfun() {
             let tracked b = false;
         }
-    } => Err(err) => assert_vir_error_msg(err, "exec code cannot initialize non-exec variables")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -1026,7 +1026,7 @@ test_verify_one_file! {
         fn myfun() {
             let ghost b = false;
         }
-    } => Err(err) => assert_vir_error_msg(err, "exec code cannot initialize non-exec variable")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -1069,4 +1069,32 @@ test_verify_one_file! {
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] ghost_decl_enters_ghost_code verus_code! {
+        fn test(g: Ghost<int>) {
+            let Ghost(i) = g;
+            let ghost mut j = i + 1000000000000000000000000000000000000000000000000000000000000000;
+            assert(j > g@);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] temp_vars_are_hygienic1 verus_code! {
+        fn test(g: Ghost<int>) {
+            let ghost j = g@ + 1;
+            let ghost k = verus_tmp; // error
+        }
+    } => Err(err) => assert_error_msg(err, "cannot find value `verus_tmp`")
+}
+
+test_verify_one_file! {
+    #[test] temp_vars_are_hygienic2 verus_code! {
+        fn test(g: Ghost<int>) {
+            let Ghost(j) = g;
+            let ghost k = verus_tmp_j; // error
+        }
+    } => Err(err) => assert_error_msg(err, "cannot find value `verus_tmp_j`")
 }

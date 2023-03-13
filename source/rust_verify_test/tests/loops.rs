@@ -248,12 +248,12 @@ test_verify_one_file! {
     #[test] basic_loop verus_code! {
         use vstd::modes::*;
         fn test() {
-            let mut a: Ghost<int> = ghost(5);
+            let ghost mut a: int = 5;
             loop
-                invariant a@ > 0
+                invariant a > 0
             {
                 proof {
-                    a@ = a@ + 1;
+                    a = a + 1;
                 }
             }
         }

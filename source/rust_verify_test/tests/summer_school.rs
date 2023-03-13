@@ -1004,22 +1004,22 @@ test_verify_one_file! {
                     forall|i:int| 0 <= i < low ==> haystack[i] < needle,
                     forall|i:int| high <= i < haystack.len() ==> needle <= haystack[i],
             {
-                let decreases: Ghost<int> = ghost(high - low);
+                let ghost decreases = high - low;
                 let mid = low + (high - low) / 2;
                 if *haystack.index(mid) < needle {
-                    let old_low: Ghost<usize> = ghost(low);
+                    let ghost old_low = low;
                     low = mid + 1;
                     assert forall|i: int| 0 <= i < low implies haystack[i] < needle by {
                         assert(view_u64(haystack.view())[i] <= view_u64(haystack.view())[mid as int]);
                     }
                 } else {
-                    let old_high: Ghost<usize> = ghost(high);
+                    let ghost old_high = high;
                     high = mid;
                     assert forall|i: int| high < i < haystack.len() implies needle <= haystack[i] by {
                         assert(view_u64(haystack.view())[mid as int] <= view_u64(haystack.view())[i]);
                     }
                 }
-                assert(high - low < decreases@); // Termination check
+                assert(high - low < decreases); // Termination check
             }
             low
         }

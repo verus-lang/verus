@@ -129,8 +129,8 @@ exec fn fibo_impl(n: u64) -> (result: u64)
 //-  }
 
 /*+*/ exec fn f(v: Vec<u64>) {
-/*+*/     let v1: Ghost<Vec<u64>> = ghost(v);
-/*+*/     let v2: Ghost<Vec<u64>> = ghost(v);
+/*+*/     let v1: Ghost<Vec<u64>> = Ghost(v);
+/*+*/     let v2: Ghost<Vec<u64>> = Ghost(v);
 /*+*/     assert(v1@.len() == v2@.len());
 /*+*/ }
 

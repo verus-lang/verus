@@ -483,7 +483,7 @@ test_verify_one_file! {
                 s.0 === s.1,
         {
 
-            let s1 = S { a: 10, b: ghost(20) };
+            let s1 = S { a: 10, b: Ghost(20) };
             let s2 = s1;
             assert(s1.b@ == s2.b@);
             let b = s1.equals(&s2); assert(b);
@@ -502,8 +502,8 @@ test_verify_one_file! {
         }
 
         fn test() {
-            let s1 = S { a: 10, b: ghost(20) };
-            let s2 = S { a: 10, b: ghost(30) };
+            let s1 = S { a: 10, b: Ghost(20) };
+            let s2 = S { a: 10, b: Ghost(30) };
             assert(s1 === s2); // FAILS
         }
     } => Err(e) => assert_one_fails(e)

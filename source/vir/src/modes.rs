@@ -1035,7 +1035,7 @@ fn check_expr_handle_mut_arg(
                 (Ghost::Ghost, Some(_), _) => {
                     return err_str(
                         &expr.span,
-                        "ghost(...) or tracked(...) can only be used in exec mode",
+                        "Ghost(...) or Tracked(...) can only be used in exec mode",
                     );
                 }
             };

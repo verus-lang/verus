@@ -88,6 +88,15 @@ struct Visitor {
     pervasive_in_same_crate: bool,
 }
 
+// For exec "let pat = init" declarations, recursively find Tracked(x), Ghost(x), x in pat
+struct ExecGhostPatVisitor {
+    inside_ghost: u32,
+    tracked: Option<Token![tracked]>,
+    ghost: Option<Token![ghost]>,
+    x_decls: Vec<Stmt>,
+    x_assigns: Vec<Stmt>,
+}
+
 fn data_mode_attrs(mode: &DataMode) -> Vec<Attribute> {
     match mode {
         DataMode::Default => vec![],
@@ -371,106 +380,198 @@ impl Visitor {
         attrs.extend(publish_attrs);
         attrs.extend(mode_attrs);
     }
+}
 
-    fn exec_ghost_match(
-        &mut self,
-        pat: &mut Pat,
-        splitter: &mut Option<&str>,
-        stmts: &mut Vec<Stmt>,
-        n: &mut u64,
-    ) {
-        let mut replace: Option<Pat> = None;
+impl VisitMut for ExecGhostPatVisitor {
+    // Recursive traverse pat, finding all Tracked(x), Ghost(x), and, for ghost/tracked, x.
+    fn visit_pat_mut(&mut self, pat: &mut Pat) {
+        // Replace
+        //   pat[Tracked(x), Ghost(y), z]
+        // with (for mode != exec and inside_ghost != 0):
+        //   pat[tmp_x, tmp_y, z]
+        //   x_decls: let tracked x = tmp_x.get(); let ghost y = tmp_y.view();
+        //   x_assigns: []
+        // with (for mode = exec):
+        //   pat[tmp_x, tmp_y, z]
+        //   x_decls: let tracked x; let ghost mut y;
+        //   x_assigns: x = tmp_x.get(); y = tmp_y.view();
+        // with (for mode != exec and inside_ghost == 0):
+        //   pat[tmp_x, tmp_y, tmp_z]
+        //   x_decls: let tracked x; let ghost mut y; let [mode] mut z;
+        //   x_assigns: x = tmp_x.get(); y = tmp_y.view(); z = tmp_z;
+        use syn_verus::parse_quote_spanned;
+        let mk_ident_tmp = |x: &Ident| {
+            Ident::new(&("verus_tmp_".to_string() + &x.to_string()), Span::mixed_site())
+        };
         match pat {
             Pat::TupleStruct(pts)
-                if self.inside_ghost == 0
-                    && pts.pat.elems.len() == 1
-                    && (path_is_ident(&pts.path, "Ghost")
-                        || path_is_ident(&pts.path, "Tracked")) =>
+                if pts.pat.elems.len() == 1
+                    && (path_is_ident(&pts.path, "Tracked")
+                        || path_is_ident(&pts.path, "Ghost")) =>
             {
-                // change
-                //   let Tracked((Trk(x), Gho(y))) = e;
-                // to
-                //   let (x, y) = tracked_split_tuple2(e);
-                //   let x = tracked_unwrap_trk(x);
-                //   let y = tracked_unwrap_gho(y);
-                let mut tuple_pat = take_pat(&mut pts.pat.elems[0]);
-                if let Pat::Tuple(pt) = &mut tuple_pat {
-                    for elem in &mut pt.elems {
-                        match elem {
-                            Pat::TupleStruct(trk)
-                                if trk.pat.elems.len() == 1
-                                    && (path_is_ident(&trk.path, "Gho")
-                                        || path_is_ident(&trk.path, "Trk")) =>
-                            {
-                                if let Pat::Ident(x) = &trk.pat.elems[0] {
-                                    let x = x.ident.clone();
-                                    let span = x.span();
-                                    let f: TokenStream = if path_is_ident(&trk.path, "Gho") {
-                                        if self.pervasive_in_same_crate {
-                                            quote_spanned!(span => crate::pervasive::modes::tracked_unwrap_gho)
-                                        } else {
-                                            quote_spanned!(span => vstd::modes::tracked_unwrap_gho)
-                                        }
-                                    } else {
-                                        if self.pervasive_in_same_crate {
-                                            quote_spanned!(span => crate::pervasive::modes::tracked_unwrap_trk)
-                                        } else {
-                                            quote_spanned!(span => vstd::modes::tracked_unwrap_trk)
-                                        }
-                                    };
-                                    stmts.push(Stmt::Semi(
-                                        Expr::Verbatim(quote_spanned!(span => let #x = #f(#x))),
-                                        Semi { spans: [span] },
-                                    ));
-                                    *elem = trk.pat.elems[0].clone();
-                                }
-                            }
-                            _ => {}
-                        }
-                        *n += 1;
+                if let Pat::Ident(id) = &mut pts.pat.elems[0] {
+                    if id.by_ref.is_some() || id.subpat.is_some() {
+                        return;
                     }
+                    let tmp_x = mk_ident_tmp(&id.ident);
+                    let mut x = id.clone();
+                    x.mutability = None;
+                    let span = id.span();
+                    let decl = if path_is_ident(&pts.path, "Tracked") {
+                        if self.inside_ghost == 0 {
+                            parse_quote_spanned!(span => #[verus::internal(proof)] let mut #x;)
+                        } else if id.mutability.is_some() {
+                            parse_quote_spanned!(span => #[verus::internal(proof)] let mut #x = #tmp_x.get();)
+                        } else {
+                            parse_quote_spanned!(span => #[verus::internal(proof)] let #x = #tmp_x.get();)
+                        }
+                    } else {
+                        if self.inside_ghost == 0 {
+                            parse_quote_spanned!(span => #[verus::internal(spec)] let mut #x;)
+                        } else if id.mutability.is_some() {
+                            parse_quote_spanned!(span => #[verus::internal(spec)] let mut #x = #tmp_x.view();)
+                        } else {
+                            parse_quote_spanned!(span => #[verus::internal(spec)] let #x = #tmp_x.view();)
+                        }
+                    };
+                    self.x_decls.push(decl);
+                    if self.inside_ghost == 0 {
+                        let assign = if path_is_ident(&pts.path, "Tracked") {
+                            quote_spanned!(span => #x = #tmp_x.get())
+                        } else {
+                            quote_spanned!(span => #x = #tmp_x.view())
+                        };
+                        let assign = Stmt::Semi(Expr::Verbatim(assign), Semi { spans: [span] });
+                        self.x_assigns.push(assign);
+                    }
+                    *pat = parse_quote_spanned!(span => #tmp_x);
+                    return;
                 }
-                if path_is_ident(&pts.path, "Ghost") {
-                    *splitter = Some("ghost_split_tuple");
+            }
+            Pat::Ident(id)
+                if (self.tracked.is_some() || self.ghost.is_some()) && self.inside_ghost == 0 =>
+            {
+                if id.by_ref.is_some() || id.subpat.is_some() {
+                    return;
+                }
+                let tmp_x = mk_ident_tmp(&id.ident);
+                let mut x = id.clone();
+                x.mutability = None;
+                let span = id.span();
+                let decl = if self.ghost.is_some() {
+                    parse_quote_spanned!(span => #[verus::internal(spec)] let mut #x;)
+                } else if id.mutability.is_some() {
+                    parse_quote_spanned!(span => #[verus::internal(proof)] let mut #x;)
                 } else {
-                    *splitter = Some("tracked_split_tuple");
+                    parse_quote_spanned!(span => #[verus::internal(proof)] let #x;)
                 };
-                replace = Some(tuple_pat);
+                let assign = quote_spanned!(span => #x = #tmp_x);
+                id.ident = tmp_x;
+                self.x_decls.push(decl);
+                self.x_assigns.push(Stmt::Semi(Expr::Verbatim(assign), Semi { spans: [span] }));
+                return;
             }
             _ => {}
         }
-        if let Some(replace) = replace {
-            *pat = replace;
-        }
+        syn_verus::visit_mut::visit_pat_mut(self, pat);
     }
+}
 
+impl Visitor {
     fn visit_local_extend(&mut self, local: &mut Local) -> (bool, Vec<Stmt>) {
         if self.erase_ghost && (local.tracked.is_some() || local.ghost.is_some()) {
             return (true, vec![]);
         }
+        if local.init.is_none() {
+            return (false, vec![]);
+        }
 
-        let mut splitter: Option<&str> = None;
+        // Replace
+        //   let [mode] pat[Tracked(x), Ghost(y), z] = init;
+        // with (for mode != exec and inside_ghost != 0):
+        //   let pat[tmp_x, tmp_y, z] = init;
+        //   let x = tmp_x.get();
+        //   let y = tmp_y.view();
+        // with (for mode = exec):
+        //   let pat[tmp_x, tmp_y, z] = init;
+        //   let tracked x;
+        //   let ghost mut y;
+        //   proof {
+        //       x = tmp_x.get();
+        //       y = tmp_y.view();
+        //   }
+        // with (for mode != exec and inside_ghost == 0):
+        //   let [mode] mut tmp;
+        //   proof { tmp = init; } // save init in tmp to guard against name conflicts with x, y, z
+        //   let tracked x;
+        //   let ghost mut y;
+        //   let [mode] mut z;
+        //   proof {
+        //       let pat[tmp_x, tmp_y, tmp_z] = tmp;
+        //       x = tmp_x.get();
+        //       y = tmp_y.view();
+        //       z = tmp_z;
+        //   }
+
         let mut stmts: Vec<Stmt> = Vec::new();
-        let mut n: u64 = 0;
-        match &mut local.pat {
-            Pat::Type(pt) => {
-                self.exec_ghost_match(&mut pt.pat, &mut splitter, &mut stmts, &mut n);
-            }
-            pat => {
-                self.exec_ghost_match(pat, &mut splitter, &mut stmts, &mut n);
-            }
+        let mut visit_pat = ExecGhostPatVisitor {
+            inside_ghost: self.inside_ghost,
+            tracked: local.tracked.clone(),
+            ghost: local.ghost.clone(),
+            x_decls: Vec::new(),
+            x_assigns: Vec::new(),
+        };
+        visit_pat.visit_pat_mut(&mut local.pat);
+        if visit_pat.x_decls.len() == 0 {
+            assert!(visit_pat.x_assigns.len() == 0);
+            return (false, vec![]);
         }
-        if let Some(splitter) = splitter {
-            if let Some((eq, mut box_init)) = std::mem::replace(&mut local.init, None) {
-                let span = eq.span;
-                let name = format!("{splitter}{n}");
-                let ident = Ident::new(&name, span);
-                self.visit_expr_mut(&mut box_init);
-                let init = Expr::Verbatim(quote_spanned!(span => ::builtin::#ident(#box_init)));
-                local.init = Some((eq, Box::new(init)));
-            }
+        if self.erase_ghost {
+            return (true, vec![]);
         }
-        (false, stmts)
+
+        let span = local.span();
+        // Make proof block that will be subsequently visited with inside_ghost > 0
+        let mk_proof_block = |block: Block| {
+            let expr_block = syn_verus::ExprBlock { attrs: vec![], label: None, block };
+            let op = UnOp::Proof(token::Proof { span });
+            Expr::Unary(ExprUnary { attrs: vec![], expr: Box::new(Expr::Block(expr_block)), op })
+        };
+
+        if self.inside_ghost != 0 {
+            assert!(visit_pat.x_assigns.len() == 0);
+            stmts.extend(visit_pat.x_decls);
+            (false, stmts)
+        } else if local.tracked.is_none() && local.ghost.is_none() {
+            stmts.extend(visit_pat.x_decls);
+            let block = Block { brace_token: Brace(span), stmts: visit_pat.x_assigns };
+            stmts.push(Stmt::Semi(mk_proof_block(block), Semi { spans: [span] }));
+            (false, stmts)
+        } else {
+            use syn_verus::parse_quote_spanned;
+            let tmp = Ident::new("verus_tmp", Span::mixed_site());
+            let tmp_decl = if local.tracked.is_some() {
+                parse_quote_spanned!(span => #[verus::internal(proof)] let #tmp;)
+            } else {
+                parse_quote_spanned!(span => #[verus::internal(spec)] let mut #tmp;)
+            };
+            stmts.push(tmp_decl);
+            let pat = take_pat(&mut local.pat);
+            let init = take_expr(&mut local.init.as_mut().expect("init").1);
+            let block1 = parse_quote_spanned!(span => { #tmp = #init });
+            stmts.push(Stmt::Semi(mk_proof_block(block1), Semi { spans: [span] }));
+            stmts.extend(visit_pat.x_decls);
+            let let_pat = if local.tracked.is_some() {
+                parse_quote_spanned!(span => #[verus::internal(proof)] let #pat = #tmp;)
+            } else {
+                parse_quote_spanned!(span => #[verus::internal(spec)] let #pat = #tmp;)
+            };
+            let mut block_stmts = vec![let_pat];
+            block_stmts.extend(visit_pat.x_assigns);
+            let block2 = Block { brace_token: Brace(span), stmts: block_stmts };
+            stmts.push(Stmt::Semi(mk_proof_block(block2), Semi { spans: [span] }));
+            (true, stmts)
+        }
     }
 
     fn visit_stmt_extend(&mut self, stmt: &mut Stmt) -> (bool, Vec<Stmt>) {
@@ -882,15 +983,20 @@ impl VisitMut for Visitor {
             self.inside_ghost += 1;
         }
 
-        let mode_block = if let Expr::Unary(unary) = expr {
-            match unary.op {
-                UnOp::Proof(..) => Some((false, false)),
-                UnOp::Ghost(..) => Some((true, false)),
-                UnOp::Tracked(..) => Some((true, true)),
-                _ => None,
+        let mode_block = match expr {
+            Expr::Unary(ExprUnary { op: UnOp::Proof(..), .. }) => Some((false, false)),
+            Expr::Call(ExprCall { func: box Expr::Path(path), args, .. })
+                if path.qself.is_none() && args.len() == 1 =>
+            {
+                if path_is_ident(&path.path, "Ghost") {
+                    Some((true, false))
+                } else if path_is_ident(&path.path, "Tracked") {
+                    Some((true, true))
+                } else {
+                    None
+                }
             }
-        } else {
-            None
+            _ => None,
         };
 
         let sub_inside_arith = match expr {
@@ -957,7 +1063,32 @@ impl VisitMut for Visitor {
         self.inside_arith = is_inside_arith;
         self.assign_to = is_assign_to;
 
-        if let Expr::Unary(unary) = expr {
+        if let Expr::Call(call) = expr {
+            if let Some((_, is_tracked)) = mode_block {
+                let span = call.span();
+                if is_tracked {
+                    // Tracked(...)
+                    let inner = take_expr(&mut call.args[0]);
+                    *expr = Expr::Verbatim(if self.erase_ghost {
+                        quote_spanned!(span => Tracked::assume_new())
+                    } else if self.pervasive_in_same_crate {
+                        quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ crate::pervasive::modes::tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ #inner))
+                    } else {
+                        quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ vstd::modes::tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ #inner))
+                    });
+                } else {
+                    // Ghost(...)
+                    let inner = take_expr(&mut call.args[0]);
+                    *expr = Expr::Verbatim(if self.erase_ghost {
+                        quote_spanned!(span => Ghost::assume_new())
+                    } else if self.pervasive_in_same_crate {
+                        quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ crate::pervasive::modes::ghost_exec(#[verifier(ghost_block_wrapped)] /* vattr */ #inner))
+                    } else {
+                        quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ vstd::modes::ghost_exec(#[verifier(ghost_block_wrapped)] /* vattr */ #inner))
+                    });
+                }
+            }
+        } else if let Expr::Unary(unary) = expr {
             let span = unary.span();
             let low_prec_op = match unary.op {
                 UnOp::BigAnd(..) => true,
@@ -979,45 +1110,9 @@ impl VisitMut for Visitor {
                             ),
                         );
                     }
-                    (false, (true, false), Expr::Paren(..)) => {
-                        // ghost(...)
-                        let inner = take_expr(&mut *unary.expr);
-                        *expr = Expr::Verbatim(if self.erase_ghost {
-                            quote_spanned!(span => Ghost::assume_new())
-                        } else if self.pervasive_in_same_crate {
-                            quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ crate::pervasive::modes::ghost_exec(#[verifier(ghost_block_wrapped)] /* vattr */ #inner))
-                        } else {
-                            quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ vstd::modes::ghost_exec(#[verifier(ghost_block_wrapped)] /* vattr */ #inner))
-                        });
-                    }
-                    (false, (true, false), _) => {
-                        *expr = Expr::Verbatim(
-                            quote_spanned!(span => compile_error!("Expected parentheses")),
-                        );
-                        return;
-                    }
-                    (false, (true, true), Expr::Paren(..)) => {
-                        // tracked(...)
-                        let inner = take_expr(&mut *unary.expr);
-                        *expr = Expr::Verbatim(if self.erase_ghost {
-                            quote_spanned!(span => Tracked::assume_new())
-                        } else if self.pervasive_in_same_crate {
-                            quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ crate::pervasive::modes::tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ #inner))
-                        } else {
-                            quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ vstd::modes::tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ #inner))
-                        });
-                    }
-                    (true, (true, true), _) => {
-                        // TODO: once we migrate all the code, this case can be eliminated
-                        // tracked ...
-                        let inner = take_expr(&mut *unary.expr);
-                        *expr = Expr::Verbatim(
-                            quote_spanned!(span => #[verifier(tracked_block)] /* vattr */ { #inner }),
-                        );
-                    }
                     _ => {
                         *expr = Expr::Verbatim(
-                            quote_spanned!(span => compile_error!("unexpected proof/ghost/tracked")),
+                            quote_spanned!(span => compile_error!("unexpected proof block")),
                         );
                         return;
                     }
@@ -1488,12 +1583,14 @@ impl VisitMut for Visitor {
     }
 
     fn visit_local_mut(&mut self, local: &mut Local) {
-        visit_local_mut(self, local);
+        // Note: exec-mode "let ghost" and "let tracked" have already been transformed
+        // into proof blocks by point, so we don't need to change inside_ghost here.
         if let Some(tracked) = std::mem::take(&mut local.tracked) {
             local.attrs.push(mk_verus_attr(tracked.span, quote! { proof }));
-        } else if let Some(tracked) = std::mem::take(&mut local.ghost) {
-            local.attrs.push(mk_verus_attr(tracked.span, quote! { spec }));
+        } else if let Some(ghost) = std::mem::take(&mut local.ghost) {
+            local.attrs.push(mk_verus_attr(ghost.span, quote! { spec }));
         }
+        visit_local_mut(self, local);
     }
 
     fn visit_block_mut(&mut self, block: &mut Block) {

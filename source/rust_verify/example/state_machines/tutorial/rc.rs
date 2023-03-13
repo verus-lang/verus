@@ -63,9 +63,9 @@ impl<T> Duplicable<T> {
     pub proof fn new(tracked t: T) -> (tracked s: Self)
         ensures s.wf() && s@ === t,
     {
-        let tracked inst = Dupe::Instance::initialize_one(/* spec */ t, Option::Some(tracked t));
+        let tracked inst = Dupe::Instance::initialize_one(/* spec */ t, Option::Some(t));
         Duplicable {
-            inst: tracked inst,
+            inst,
         }
     }
 

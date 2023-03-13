@@ -461,8 +461,8 @@ test_verify_one_file! {
         proof fn foo(tracked m: Map<int, int>) {
             requires(equal(m, Map::empty()));
 
-            let tracked inst = X::Instance::initialize(tracked m);
-            let tracked t = (tracked inst).tr();
+            let tracked inst = X::Instance::initialize(m);
+            let tracked t = (inst).tr();
             assert(t === 5);
         }
 
@@ -2890,7 +2890,7 @@ test_verify_one_file! {
             #[inductive(initialize)]
             fn inductive_init(post: Self) {
                 #[verifier::proof] let tracked (Trk(inst), Trk(token)) = X::Instance::initialize();
-                tracked inst.ro(&token);
+                inst.ro(&token);
                 // this should derive a contradiction if not for the recursion checking
             }
         }}
@@ -4673,10 +4673,10 @@ test_verify_one_file! {
             #[verifier::spec] let old_t1 = t1;
             #[verifier::spec] let old_t3 = t3;
 
-            #[verifier::proof] let mut t1 = tracked t1;
-            #[verifier::proof] let mut t3 = tracked t3;
+            #[verifier::proof] let mut t1 = t1;
+            #[verifier::proof] let mut t3 = t3;
 
-            tracked inst.tr1(&mut t1, &t2, &mut t3, &t4);
+            inst.tr1(&mut t1, &t2, &mut t3, &t4);
 
             assert(equal(old_t3@.value, Option::None));
             assert(equal(t4@.value, Option::Some(5)));
@@ -4686,7 +4686,7 @@ test_verify_one_file! {
 
         proof fn test_start() {
             #[verifier::proof] let (Trk(inst), Trk(t1), Trk(t2), Trk(t3), Trk(t4)) = Y::Instance::initialize();
-            test_transition(tracked inst, tracked t1, tracked t2, tracked t3, tracked t4);
+            test_transition(inst, t1, t2, t3, t4);
         }
 
         } // verus!
@@ -5930,7 +5930,7 @@ test_verify_one_file! {
         {
           requires(equal(t.view().instance, inst) && equal(u.view().instance, inst) && u.view().key == spec_literal_int("1")
               && equal(u.view().value, t.view().value));
-          let k = tracked inst.tr9(1, tracked &u, tracked &t); // FAILS
+          let k = inst.tr9(1, &u, &t); // FAILS
         }
 
         }
