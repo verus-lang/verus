@@ -580,7 +580,7 @@ impl Visitor {
             return (false, vec![]);
         }
         if self.erase_ghost {
-            return (true, vec![]);
+            return (false, vec![]);
         }
 
         let span = local.span();
