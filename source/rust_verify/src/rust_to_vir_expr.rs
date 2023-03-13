@@ -2874,7 +2874,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 QPath::Resolved(slf, path) => {
                     unsupported_err_unless!(
                         matches!(path.res, Res::Def(DefKind::Struct | DefKind::Variant, _)),
-			expr.span,
+                        expr.span,
                         "non_struct_ctor",
                         path.res
                     );
