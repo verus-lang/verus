@@ -1098,3 +1098,36 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_error_msg(err, "cannot find value `verus_tmp_j`")
 }
+
+test_verify_one_file! {
+    #[test] fn_param_wrappers verus_code! {
+        use vstd::modes::*;
+        struct S(int);
+
+        fn test1(Ghost(g): Ghost<int>, Tracked(t): Tracked<S>)
+            requires
+                g > 100,
+                t.0 > 200,
+        {
+            assert(g >= 100);
+            assert(t.0 >= 200);
+        }
+
+        fn test2(Ghost(g): Ghost<int>, Tracked(t): Tracked<S>)
+            requires
+                g > 100,
+                t.0 > 200,
+        {
+            test1(Ghost(g), Tracked(t));
+        }
+
+        fn test3(g: Ghost<int>, t: Tracked<S>)
+            requires
+                g@ > 100,
+                t@.0 > 200,
+        {
+            test1(g, t);
+        }
+    } => Ok(())
+}
+
