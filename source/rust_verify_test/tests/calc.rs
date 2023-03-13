@@ -5,8 +5,9 @@ use common::*;
 
 test_verify_one_file! {
     #[test] calc_basics verus_code! {
-        use crate::pervasive::seq::*;
-        use crate::pervasive::seq_lib::*;
+        use vstd::seq::*;
+        use vstd::seq_lib::*;
+        use vstd::calc_macro::*;
 
         proof fn foo() {
             let a: Seq<u8> = seq![1u8, 2u8];
@@ -28,6 +29,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] calc_intermediate_relations verus_code! {
+        use vstd::calc_macro::*;
+
         proof fn foo() {
             let x: int = 2;
 
@@ -46,23 +49,25 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] calc_hides_intermediates verus_code! {
         // Calc should not be revealing any of the intermediate steps to the outside context.
-        use crate::pervasive::seq::*;
-        use crate::pervasive::seq_lib::*;
+        use vstd::seq::*;
+        use vstd::seq_lib::*;
+        use vstd::calc_macro::*;
 
         proof fn foo() {
             let a: Seq<u8> = seq![1u8, 2u8];
-            let b: Seq<u8> = seq![1u8];
-            let c: Seq<u8> = seq![2u8];
+            let b: Seq<u8> = seq![123u8, 45u8];
+            let c: Seq<u8> = seq![67u8, 89u8];
             let d: Seq<u8> = seq![1u8, 2u8];
 
             calc! {
                 (==)
-                a; { assert_seqs_equal!(a == b + c); }
-                b + c; { assert_seqs_equal!(b + c == d); }
+                a; { assume(false); } // ridiculous but we are only
+                b; { assume(false); } // using these to confirm that
+                c; { assume(false); } // context is not leaking outside
                 d;
             };
 
-            assert(b + c == d); // FAILS
+            assert(b == d); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -70,8 +75,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] calc_keeps_intermediates_distinct verus_code! {
         // Calc should not allow info to flow from one intermediate context to another.
-        use crate::pervasive::seq::*;
-        use crate::pervasive::seq_lib::*;
+        use vstd::seq::*;
+        use vstd::seq_lib::*;
+        use vstd::calc_macro::*;
 
         proof fn foo() {
             let a: Seq<u8> = seq![1u8, 2u8];
@@ -92,6 +98,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] calc_checks_consistency_of_intermediate_relations verus_code! {
         // Calc should produce useful errors when we use inconsistent intermediates.
+        use vstd::calc_macro::*;
+
         proof fn foo() {
             let x: int = 2;
 

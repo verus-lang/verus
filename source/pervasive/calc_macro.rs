@@ -13,12 +13,12 @@ macro_rules! calc_internal {
     // Getting the last of a series of expressions
     (__internal get_last $end:expr ;) => { $end };
     (__internal get_last $init:expr ; $($tail:expr);* ;) => {
-        $crate::pervasive::calc::calc_internal!(__internal get_last $($tail ;)*)
+        $crate::pervasive::calc_macro::calc_internal!(__internal get_last $($tail ;)*)
     };
 
     // Getting the first non-empty tt
     (__internal first ($tt:tt)) => { $tt };
-    (__internal first () $(($rest:tt))*) => { $crate::pervasive::calc::calc_internal!(__internal first $(($rest))*) };
+    (__internal first () $(($rest:tt))*) => { $crate::pervasive::calc_macro::calc_internal!(__internal first $(($rest))*) };
     (__internal first ($tt:tt) $(($rest:tt))*) => { $tt };
 
     // Translation from a relation to the relevant expression
@@ -32,26 +32,26 @@ macro_rules! calc_internal {
 
     // Any of the relation steps occuring in the middle of the chain
     (__internal mid [$topreln:tt] $start:expr ; () $b:block $end:expr ; ) => {{
-        ::builtin::assert_by(calc_internal!(__internal expr ($topreln) ($start) ($end)), { $b });
+        ::builtin::assert_by($crate::pervasive::calc_macro::calc_internal!(__internal expr ($topreln) ($start) ($end)), { $b });
     }};
     (__internal mid [$topreln:tt] $start:expr ; ($reln:tt) $b:block $end:expr ; ) => {{
-        ::builtin::assert_by(calc_internal!(__internal expr ($reln) ($start) ($end)), { $b });
+        ::builtin::assert_by($crate::pervasive::calc_macro::calc_internal!(__internal expr ($reln) ($start) ($end)), { $b });
     }};
     (__internal mid [$topreln:tt] $start:expr ; () $b:block $mid:expr ; $(($($tailreln:tt)?) $tailb:block $taile:expr);* ;) => {{
-        ::builtin::assert_by(calc_internal!(__internal expr ($topreln) ($start) ($mid)), { $b });
-        $crate::pervasive::calc::calc_internal!(__internal mid [$topreln] $mid ; $(($($tailreln)?) $tailb $taile);* ;);
+        ::builtin::assert_by($crate::pervasive::calc_macro::calc_internal!(__internal expr ($topreln) ($start) ($mid)), { $b });
+        $crate::pervasive::calc_macro::calc_internal!(__internal mid [$topreln] $mid ; $(($($tailreln)?) $tailb $taile);* ;);
     }};
     (__internal mid [$topreln:tt] $start:expr ; ($reln:tt) $b:block $mid:expr ; $(($($tailreln:tt)?) $tailb:block $taile:expr);* ;) => {{
-        ::builtin::assert_by(calc_internal!(__internal expr ($reln) ($start) ($mid)), { $b });
-        $crate::pervasive::calc::calc_internal!(__internal mid [$topreln] $mid ; $(($($tailreln)?) $tailb $taile);* ;);
+        ::builtin::assert_by($crate::pervasive::calc_macro::calc_internal!(__internal expr ($reln) ($start) ($mid)), { $b });
+        $crate::pervasive::calc_macro::calc_internal!(__internal mid [$topreln] $mid ; $(($($tailreln)?) $tailb $taile);* ;);
     }};
 
     // Main entry point to this macro; this is still an internal macro, but this is where the main
     // `calc!` macro will invoke this.
     (($reln:tt) $start:expr ; $(($($midreln:tt)?) $b:block ; $mid:expr);* $(;)?) => {{
         ::builtin::assert_by(
-            calc_internal!(__internal expr ($reln) ($start) ($crate::pervasive::calc::calc_internal!(__internal get_last $($mid ;)*))),
-            { $crate::pervasive::calc::calc_internal!(__internal mid [$reln] $start ; $(($($midreln)?) $b $mid);* ;); }
+            calc_internal!(__internal expr ($reln) ($start) ($crate::pervasive::calc_macro::calc_internal!(__internal get_last $($mid ;)*))),
+            { $crate::pervasive::calc_macro::calc_internal!(__internal mid [$reln] $start ; $(($($midreln)?) $b $mid);* ;); }
         );
     }};
 
@@ -147,13 +147,13 @@ macro_rules! calc_aux {
 macro_rules! calc {
     // The main entry point to this macro.
     (($reln:tt) $start:expr ; $($(($middlereln:tt))? $b:block $mid:expr);* $(;)?) => {
-        $crate::pervasive::calc::calc_aux!(confirm_allowed_relation ($reln));
+        $crate::pervasive::calc_macro::calc_aux!(confirm_allowed_relation ($reln));
         $($(
-            $crate::pervasive::calc::calc_aux!(confirm_allowed_relation ($middlereln));
-            $crate::pervasive::calc::calc_aux!(confirm_middle_relation ($reln) ($middlereln));
+            $crate::pervasive::calc_macro::calc_aux!(confirm_allowed_relation ($middlereln));
+            $crate::pervasive::calc_macro::calc_aux!(confirm_middle_relation ($reln) ($middlereln));
         )?)*
         ::builtin_macros::verus_proof_macro_explicit_exprs!(
-            $crate::pervasive::calc::calc_internal!(
+            $crate::pervasive::calc_macro::calc_internal!(
                 ($reln) @@$start ; $(($($middlereln)?) @@$b ; @@$mid);* ;
             )
         )
