@@ -15,20 +15,46 @@ macro_rules! calc_internal {
     (__internal get_last $init:expr ; $($tail:expr);* ;) => {
         $crate::pervasive::calc::calc_internal!(__internal get_last $($tail ;)*)
     };
-    // Any of the internal relation steps
-    (__internal mid $start:expr ; (==) $b:block $end:expr ; ) => {{
-        ::builtin::assert_by(::builtin::equal($start, $end), { $b });
+
+    // Getting the first non-empty tt
+    (__internal first ($tt:tt)) => { $tt };
+    (__internal first () $(($rest:tt))*) => { $crate::pervasive::calc::calc_internal!(__internal first $(($rest))*) };
+    (__internal first ($tt:tt) $(($rest:tt))*) => { $tt };
+
+    // Translation from a relation to the relevant expression
+    (__internal expr (==) ($a:expr) ($b:expr)) => { ::builtin::equal($a, $b) };
+    (__internal expr (<) ($a:expr) ($b:expr)) => { ($a < $b) };
+    (__internal expr (<=) ($a:expr) ($b:expr)) => { ($a <= $b) };
+    (__internal expr (>) ($a:expr) ($b:expr)) => { ($a > $b) };
+    (__internal expr (>=) ($a:expr) ($b:expr)) => { ($a >= $b) };
+    (__internal expr ($reln:tt) ($a:expr) ($b:expr)) => {
+        compile_error!(concat!("INTERNAL ERROR\nUnexpected ", stringify!(($reln, $a, $b)))); }; // Fallthrough
+
+    // Any of the relation steps occuring in the middle of the chain
+    (__internal mid [$topreln:tt] $start:expr ; () $b:block $end:expr ; ) => {{
+        ::builtin::assert_by(calc_internal!(__internal expr ($topreln) ($start) ($end)), { $b });
     }};
-    (__internal mid $start:expr ; (==) $b:block $mid:expr ; $((==) $tailb:block $taile:expr);* ;) => {{
-        ::builtin::assert_by(::builtin::equal($start, $mid), { $b });
-        $crate::pervasive::calc::calc_internal!(__internal mid $mid ; $((==) $tailb $taile);* ;);
+    (__internal mid [$topreln:tt] $start:expr ; ($reln:tt) $b:block $end:expr ; ) => {{
+        ::builtin::assert_by(calc_internal!(__internal expr ($reln) ($start) ($end)), { $b });
     }};
-    // Main entry point to this macro
-    ((==) $start:expr ; $((==) $b:block ; $mid:expr);* $(;)?) => {{
-        ::builtin::assert_by(::builtin::equal($start, $crate::pervasive::calc::calc_internal!(__internal get_last $($mid ;)*)), {
-            $crate::pervasive::calc::calc_internal!(__internal mid $start ; $((==) $b $mid);* ;);
-        });
+    (__internal mid [$topreln:tt] $start:expr ; () $b:block $mid:expr ; $(($($tailreln:tt)?) $tailb:block $taile:expr);* ;) => {{
+        ::builtin::assert_by(calc_internal!(__internal expr ($topreln) ($start) ($mid)), { $b });
+        $crate::pervasive::calc::calc_internal!(__internal mid [$topreln] $mid ; $(($($tailreln)?) $tailb $taile);* ;);
     }};
+    (__internal mid [$topreln:tt] $start:expr ; ($reln:tt) $b:block $mid:expr ; $(($($tailreln:tt)?) $tailb:block $taile:expr);* ;) => {{
+        ::builtin::assert_by(calc_internal!(__internal expr ($reln) ($start) ($mid)), { $b });
+        $crate::pervasive::calc::calc_internal!(__internal mid [$topreln] $mid ; $(($($tailreln)?) $tailb $taile);* ;);
+    }};
+
+    // Main entry point to this macro; this is still an internal macro, but this is where the main
+    // `calc!` macro will invoke this.
+    (($reln:tt) $start:expr ; $(($($midreln:tt)?) $b:block ; $mid:expr);* $(;)?) => {{
+        ::builtin::assert_by(
+            calc_internal!(__internal expr ($reln) ($start) ($crate::pervasive::calc::calc_internal!(__internal get_last $($mid ;)*))),
+            { $crate::pervasive::calc::calc_internal!(__internal mid [$reln] $start ; $(($($midreln)?) $b $mid);* ;); }
+        );
+    }};
+
     // Fallback, if something _truly_ unexpected happens, explode and provide an error report.
     ($($tt:tt)*) => {
         compile_error!(concat!(
@@ -39,6 +65,40 @@ macro_rules! calc_internal {
             $("\n  `", stringify!($tt), "`",)*
         ));
     }
+}
+
+#[doc(hidden)]
+#[macro_export]
+// Auxiliary methods, that we do not want to invoke via the verus macro transformation (and thus
+// should not go into `calc_internal`) but we don't want to clutter up the main `calc` macro either
+// (mostly for documentation readability purposes).
+//
+// All these are internal and are not expected to be invoked directly from outside of this file.
+macro_rules! calc_aux {
+    // Confirming that only relations from an allow-set are allowed to be used in `calc!`.
+    (confirm_allowed_relation (==)) => { }; // Allowed
+    (confirm_allowed_relation (<)) => { }; // Allowed
+    (confirm_allowed_relation (<=)) => { }; // Allowed
+    (confirm_allowed_relation (>)) => { }; // Allowed
+    (confirm_allowed_relation (>=)) => { }; // Allowed
+    (confirm_allowed_relation ($t:tt)) => { compile_error!(concat!("Currently unsupported relation `", stringify!($t), "` in calc")); }; // Fallthrough
+
+    // Confirm that an middle relation is consistent with the main relation
+    (confirm_middle_relation (==) (==)) => { }; // Equality is only consistent with itself
+    (confirm_middle_relation (<=) (<=)) => { }; // Less-than-or-equal can be proven via any combination of <, ==, and <=
+    (confirm_middle_relation (<=) (==)) => { }; //
+    (confirm_middle_relation (<=) (<)) => { }; //
+    (confirm_middle_relation (<) (<)) => { }; // Strictly-less-than is allowed to use <= and == as intermediates, as long as at least one < shows up at some point
+    (confirm_middle_relation (<) (<=)) => { }; //
+    (confirm_middle_relation (<) (==)) => { }; //
+    (confirm_middle_relation (>=) (>=)) => { }; // Greater-than-or-equal, similar to less-than-or-equal
+    (confirm_middle_relation (>=) (==)) => { }; //
+    (confirm_middle_relation (>=) (>)) => { }; //
+    (confirm_middle_relation (>) (>)) => { }; // Strictly-greater-than, similar to less-than-or-equal
+    (confirm_middle_relation (>) (>=)) => { }; //
+    (confirm_middle_relation (>) (==)) => { }; //
+    (confirm_middle_relation ($main:tt) ($middle:tt)) => {
+        compile_error!(concat!("Potentially inconsistent relation `", stringify!($middle), "` with `", stringify!($main), "`")); }; // Fallthrough
 }
 
 /// The `calc!` macro supports structured proofs through calculations.
@@ -60,30 +120,46 @@ macro_rules! calc_internal {
 /// }
 /// ```
 ///
-/// Currently, the `calc!` macro only supports equality (i.e., currently `R` can only be `==`), but
-/// support for other transitive relations is planned. Thus, the full accepted grammar supports
-/// mentioning `R` again just before the block proving an internal relation. This will be extended
-/// in the future to support internal transition steps with compatible relations (e.g., to prove `a
-/// <= z`, an internal step might look like `x == y`, which is compatible with the overall
-/// relation).
+/// Currently, the `calc!` macro supports common transitive relations for `R`, and this set of
+/// relations may be extended in the future.
+///
+/// Note that `calc!` also supports stating intermediate relations, as long as they are consistent
+/// with the main relation `R`. If consistency cannot be immediately shown, Verus will give a
+/// helpful message about this. Intermediate relations can be specified by placing them right before
+/// the proof block of that step.
+///
+/// A simple example of using intermediate relations looks like:
+///
+/// ```
+/// let x: int = 2;
+/// let y: int = 5;
+/// calc! {
+///   (<=)
+///   x; (==) {}
+///   5 - 3; (<) {}
+///   5; {} // Notice that no intermediate relation is specified here, so `calc!` will consider the top-level relation `R`; here `<=`.
+///   y;
+/// }
+/// ```
 
 #[allow(unused_macros)]
 #[macro_export]
 macro_rules! calc {
-    ((==) $start:expr ; $((==) $b:block $mid:expr);* $(;)?) => {
+    // The main entry point to this macro.
+    (($reln:tt) $start:expr ; $($(($middlereln:tt))? $b:block $mid:expr);* $(;)?) => {
+        $crate::pervasive::calc::calc_aux!(confirm_allowed_relation ($reln));
+        $($(
+            $crate::pervasive::calc::calc_aux!(confirm_allowed_relation ($middlereln));
+            $crate::pervasive::calc::calc_aux!(confirm_middle_relation ($reln) ($middlereln));
+        )?)*
         ::builtin_macros::verus_proof_macro_explicit_exprs!(
             $crate::pervasive::calc::calc_internal!(
-                (==) @@$start ; $((==) @@$b ; @@$mid);* ;
+                ($reln) @@$start ; $(($($middlereln)?) @@$b ; @@$mid);* ;
             )
         )
     };
-    ((==) $start:expr ; $($((==))? $b:block $mid:expr);* $(;)?) => {
-        ::builtin_macros::verus_proof_macro_explicit_exprs!(
-            $crate::pervasive::calc::calc_internal!(
-                (==) @@$start ; $((==) @@$b ; @@$mid);* ;
-            )
-        )
-    };
+
+    // Fallback, if we see something that is entirely unexpected, we tell the user what the usage should look like.
     ($($tt:tt)*) => {
         compile_error!(concat!(
             "Unexpected invocation of `calc!`. Expected usage looks like \n",
@@ -104,6 +180,8 @@ macro_rules! calc {
 
 #[doc(hidden)]
 pub use calc_internal;
+#[doc(hidden)]
+pub use calc_aux;
 pub use calc;
 
 } // verus!
