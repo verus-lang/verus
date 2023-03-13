@@ -6,7 +6,7 @@ use common::*;
 test_verify_one_file! {
     #[test] set_literal_0 verus_code! {
         #[allow(unused)]
-        use set::*;
+        use vstd::set::*;
 
         proof fn sl() {
             let s1: Set<int> = set![];
@@ -19,7 +19,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] set_literal_1 verus_code! {
         #[allow(unused)]
-        use set::*;
+        use vstd::set::*;
 
         proof fn sl() {
             let s1 = set![2int];
@@ -32,7 +32,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] set_literal_2 verus_code! {
         #[allow(unused)]
-        use set::*;
+        use vstd::set::*;
 
         proof fn sl() {
             let s1: Set<int> = set![2, 4];
@@ -51,7 +51,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] seq_literals verus_code! {
         #[allow(unused)]
-        use seq::*;
+        use vstd::seq::*;
 
         proof fn sl() {
             let s1: Seq<int> = seq![2, 4, 6, 8, 10];

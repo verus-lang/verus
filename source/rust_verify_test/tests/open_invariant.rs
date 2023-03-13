@@ -91,7 +91,7 @@ test_both! {
 
 test_both! {
     nested_good nested_good_local verus_code! {
-        use crate::pervasive::invariant::*;
+        use vstd::invariant::*;
         pub fn nested_good<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>, #[verifier::proof] j: AtomicInvariant<A, u8, B>)
             requires
                 i.inv(0),
@@ -100,9 +100,9 @@ test_both! {
                 j.namespace() == 1,
         {
             open_atomic_invariant!(&i => inner => {
-                inner = 0;
+                proof { inner = 0u8; }
                 open_atomic_invariant!(&j => inner => {
-                    inner = 1;
+                    proof { inner = 1u8; }
                 });
             });
         }

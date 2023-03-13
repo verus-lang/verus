@@ -1,10 +1,6 @@
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
-mod pervasive;
-#[allow(unused_imports)]
-use pervasive::*;
-#[allow(unused_imports)]
 use builtin_macros::*;
 
 // TODO: change this to a macro so that it can support u8, u16, u64, etc.

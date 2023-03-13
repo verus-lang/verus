@@ -4,8 +4,8 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] test_trigger_block_regression_121_1 code! {
-        use seq::*;
+    #[test] test_trigger_block_regression_121_1 verus_code! {
+        use vstd::seq::*;
 
         struct Node {
             base_v: nat,
@@ -14,23 +14,21 @@ test_verify_one_file! {
         }
 
         impl Node {
-            #[verifier::spec] fn inv(&self) -> bool {
-                forall(|i: nat, j: nat|
-                    imply(i < self.nodes.len() && j < self.nodes.index(spec_cast_integer::<nat, int>(i)).values.len(),
+            spec fn inv(&self) -> bool {
+                forall|i: nat, j: nat|
+                    i < self.nodes.len() && j < self.nodes.index(spec_cast_integer::<nat, int>(i)).values.len() ==>
                     {
                         let values = #[verifier(trigger)] self.nodes.index(spec_cast_integer::<nat, int>(i)).values;
                         self.base_v <= #[verifier(trigger)] values.index(spec_cast_integer::<nat, int>(j))
                     }
-                ))
             }
         }
-
     } => Err(err) => assert_vir_error_msg(err, "let variables in triggers not supported")
 }
 
 test_verify_one_file! {
-    #[test] test_trigger_block_regression_121_2 code! {
-        use seq::*;
+    #[test] test_trigger_block_regression_121_2 verus_code! {
+        use vstd::seq::*;
 
         struct Node {
             base_v: nat,
@@ -39,16 +37,14 @@ test_verify_one_file! {
         }
 
         impl Node {
-            #[verifier::spec] fn inv(&self) -> bool {
-                forall(|i: nat, j: nat|
-                    with_triggers!([self.nodes.index(spec_cast_integer::<nat, int>(i)).values.index(spec_cast_integer::<nat, int>(j))] =>
-                        imply(i < self.nodes.len() && j < self.nodes.index(spec_cast_integer::<nat, int>(i)).values.len(),
+            spec fn inv(&self) -> bool {
+                forall|i: nat, j: nat|
+                    #![trigger self.nodes.index(spec_cast_integer::<nat, int>(i)).values.index(spec_cast_integer::<nat, int>(j))]
+                        i < self.nodes.len() && j < self.nodes.index(spec_cast_integer::<nat, int>(i)).values.len() ==>
                         {
                             let values = self.nodes.index(spec_cast_integer::<nat, int>(i)).values;
                             self.base_v <= values.index(spec_cast_integer::<nat, int>(j))
-                        })
-                    )
-                )
+                        }
             }
         }
     } => Ok(())
@@ -89,41 +85,42 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mul_distrib_forall_fail code! {
-        #[verifier::proof] #[verifier(nonlinear)]
-        fn mul_distributive_auto() {
-            ensures(forall(|a: nat, b: nat, c: nat| #[verifier(trigger)] ((a + b) * c) == a * c + b * c));
+    #[test] test_mul_distrib_forall_fail verus_code! {
+        #[verifier(nonlinear)]
+        proof fn mul_distributive_auto()
+            ensures
+                forall|a: nat, b: nat, c: nat| #[trigger] ((a + b) * c) == a * c + b * c
+        {
         }
     } => Err(err) => assert_vir_error_msg(err, "trigger must be a function call, a field access, or a bitwise operator")
 }
 
 test_verify_one_file! {
-    #[test] test_arith_and_ord_fail code! {
-        #[verifier::proof]
-        fn quant() {
-            ensures(forall_arith(|a: nat, b: nat, c: nat| #[verifier(trigger)] a + b <= c));
+    #[test] test_arith_and_ord_fail verus_code! {
+        proof fn quant()
+            ensures forall_arith(|a: nat, b: nat, c: nat| #[trigger] a + b <= c)
+        {
             assume(false)
         }
     } => Err(err) => assert_vir_error_msg(err, "trigger in forall_arith must be an integer arithmetic operator")
 }
 
 test_verify_one_file! {
-    #[test] test_recommends_regression_163 code! {
-        fndecl!(fn some_fn(a: int) -> bool);
+    #[test] test_recommends_regression_163 verus_code! {
+        spec fn some_fn(a: int) -> bool;
 
-        #[verifier::proof]
-        fn p() {
-            ensures([
-                forall_arith(|a: int, b: int| #[verifier(trigger)] (a * b) == b * a),
-                forall(|a: int| some_fn(a)), // FAILS
-            ]);
+        proof fn p()
+            ensures
+                forall_arith(|a: int, b: int| #[trigger] (a * b) == b * a),
+                forall|a: int| some_fn(a), // FAILS
+        {
         }
     } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
     #[test] test_spec_index_trigger_regression_262 verus_code! {
-        use pervasive::seq::*;
+        use vstd::seq::*;
 
         spec fn foo(a: nat) -> bool;
 

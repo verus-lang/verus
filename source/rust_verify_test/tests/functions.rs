@@ -5,7 +5,7 @@ use common::*;
 
 test_verify_one_file! {
     #[test] test_use_fun_ext verus_code! {
-        use crate::pervasive::function::*;
+        use vstd::function::*;
 
         proof fn test_use_fun_ext(f: FnSpec(int) -> int) {
           fun_ext::<int, int>(|i: int| i + 1, |i: int| 1 + i);
@@ -15,7 +15,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_use_fun_ext2 verus_code! {
-        use crate::pervasive::function::*;
+        use vstd::function::*;
 
         spec fn drop<A>(f: FnSpec(int) -> A, k: nat) -> FnSpec(int) -> A {
           |n: int| f(n + k)

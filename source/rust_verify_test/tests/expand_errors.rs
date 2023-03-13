@@ -137,7 +137,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] test5_expand_forall ["--expand-errors"] => verus_code! {
-        use crate::pervasive::{*, seq::*};
+        use vstd::seq::*;
         spec fn seq_bounded_by_length(s1: Seq<int>) -> bool {
             (forall|i:int| (0 <= i && i < s1.len())  ==>
                                                          (0 <= s1.index(i)

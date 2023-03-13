@@ -5,8 +5,7 @@ use common::*;
 
 test_verify_one_file! {
     #[test] test1 verus_code! {
-        use pervasive::slice::*;
-        use pervasive::vec::*;
+        use vstd::{slice::*, vec::*};
 
         fn foo(x: &[u64])
             requires x@.len() == 2, x[0] == 19,
@@ -56,9 +55,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_recursion_checks verus_code! {
-        use pervasive::slice::*;
-        use pervasive::vec::*;
-        use pervasive::map::*;
+        use vstd::map::*;
 
         struct Foo {
             field: Box<[ Map<Foo, int> ]>,

@@ -2,8 +2,14 @@
 
 use builtin::*;
 use builtin_macros::*;
+
+#[cfg(not(vstd_todo))]
 mod pervasive;
+#[cfg(not(vstd_todo))]
 use crate::pervasive::{*, map::*, seq::*, set::*, seq_lib::*, set_lib::*};
+
+#[cfg(vstd_todo)]
+use vstd::{map::*, seq::*, set::*, seq_lib::*, set_lib::*};
 
 verus! {
 

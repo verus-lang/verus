@@ -3,11 +3,13 @@ use builtin_macros::*;
 #[allow(unused_imports)]
 use builtin::*;
 
+#[cfg(not(vstd_todo))]
 mod pervasive;
-use pervasive::seq::*;
-use pervasive::set::*;
-use pervasive::map::*;
-use pervasive::vec::*;
+#[cfg(not(vstd_todo))]
+use pervasive::{seq::*, set::*, map::*, vec::*};
+
+#[cfg(vstd_todo)]
+use vstd::{seq::*, set::*, map::*, vec::*};
 
 verus! {
 

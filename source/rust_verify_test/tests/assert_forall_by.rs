@@ -51,13 +51,14 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_assertby1_fail3 code! {
-        #[verifier::proof]
-        fn consume(#[verifier::proof] x: bool) {
+    #[test] test_assertby1_fail3 verus_code! {
+        proof fn consume(tracked x: bool) {
         }
 
-        fn assertby_proof_var_disallowed(#[verifier::proof] x: bool) {
-            assert_by(true, consume(x));
+        proof fn assertby_proof_var_disallowed(tracked x: bool) {
+            assert(true) by {
+                consume(x)
+            }
         }
     } => Err(err) => assert_error_msg(err, "expression has mode spec, expected mode proof")
 }
@@ -126,24 +127,21 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_forallstmt1_fail3 code! {
-        #[verifier::spec]
+    #[test] test_forallstmt1_fail3 verus_code! {
         #[verifier(opaque)]
-        fn f1(i: int) -> int {
+        spec fn f1(i: int) -> int {
             i + 1
         }
 
-        #[verifier::proof]
-        fn consume(#[verifier::proof] x: bool) {
+        proof fn consume(#[verifier::proof] x: bool) {
         }
 
-        fn forallstmt_proof_var_disallowed(#[verifier::proof] x: bool) {
-            assert_forall_by(|i: int| {
-                ensures(f1(i) == f1(i));
+        proof fn forallstmt_proof_var_disallowed(tracked x: bool) {
+            assert forall|i: int| f1(i) == f1(i) by {
                 consume(x);
-            });
+            }
         }
-    } => Err(err) => assert_error_msg(err, "error[E0308]: mismatched types")
+    } => Err(err) => assert_error_msg(err, "expression has mode spec, expected mode proof")
 }
 
 test_verify_one_file! {

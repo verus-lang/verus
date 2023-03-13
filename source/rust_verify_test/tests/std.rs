@@ -4,22 +4,22 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] rc_arc code! {
+    #[test] rc_arc verus_code! {
         use std::rc::Rc;
         use std::sync::Arc;
 
         fn foo() {
             let x = Rc::new(5);
-            assert_by(*x == 5, {});
+            assert(*x == 5) by {}
 
             let x1 = x.clone();
-            assert_by(*x1 == 5, {});
+            assert(*x1 == 5) by {}
 
             let y = Arc::new(5);
-            assert_by(*y == 5, {});
+            assert(*y == 5) by {}
 
             let y1 = y.clone();
-            assert_by(*y1 == 5, {});
+            assert(*y1 == 5) by {}
         }
     } => Ok(())
 }

@@ -129,9 +129,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test4_fails code! {
-        #[verifier::proof]
-        fn typing(u: u64, i: int, n: nat) {
+    #[test] test4_fails verus_code! {
+        proof fn typing(u: u64, i: int, n: nat) {
             let u3: u8 = 300;
             assert(u3 > 100); // FAILS
         }
@@ -139,54 +138,48 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test5_fails code! {
-        #[verifier::proof]
-        fn typing(u: u64, i: int, n: nat) {
-            let i4: int = u + 1; // implicit coercion disallowed
+    #[test] test5_fails verus_code! {
+        proof fn typing(u: u64, i: int, n: nat) {
+            let i4: int = add(u, 1); // implicit coercion disallowed
         }
     } => Err(err) => assert_error_msg(err, "error[E0308]: mismatched types")
 }
 
 test_verify_one_file! {
-    #[test] test6_fails code! {
-        #[verifier::proof]
-        fn typing(u: u64, i: int, n: nat) {
+    #[test] test6_fails verus_code! {
+        proof fn typing(u: u64, i: int, n: nat) {
             let u3: u64 = i; // implicit coercion disallowed
         }
     } => Err(err) => assert_error_msg(err, "error[E0308]: mismatched types")
 }
 
 test_verify_one_file! {
-    #[test] test7_fails code! {
-        #[verifier::proof]
-        fn typing(u: u64, i: int, n: nat) {
+    #[test] test7_fails verus_code! {
+        proof fn typing(u: u64, i: int, n: nat) {
             let n2: nat = i; // implicit coercion disallowed
         }
     } => Err(err) => assert_error_msg(err, "error[E0308]: mismatched types")
 }
 
 test_verify_one_file! {
-    #[test] test8_fails code! {
-        #[verifier::proof]
-        fn typing(u: u64, i: int, n: nat) {
-            let b1: bool = u + 1 <= i; // implicit coercion disallowed
+    #[test] test8_fails verus_code! {
+        proof fn typing(u: u64, i: int, n: nat) {
+            let b1: bool = add(u, 1) <= i; // comparison allowed between differing integer types
         }
-    } => Err(err) => assert_error_msg(err, "error[E0308]: mismatched types")
+    } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test9_fails code! {
-        #[verifier::proof]
-        fn typing(u: u64, i: int, n: nat) {
-            let b1: bool = i <= u + 1; // implicit coercion disallowed
+    #[test] test9_fails verus_code! {
+        proof fn typing(u: u64, i: int, n: nat) {
+            let b1: bool = i <= add(u, 1); // comparison allowed between differing integer types
         }
-    } => Err(err) => assert_error_msg(err, "error[E0308]: mismatched types")
+    } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_literals code! {
-        #[verifier::proof]
-        fn f() {
+    #[test] test_literals verus_code! {
+        proof fn f() {
             assert(255u8 == 254u8 + 1);
             assert(-128i8 == -127i8 - 1);
             assert(127i8 == 126i8 + 1);
@@ -198,54 +191,48 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_literals_fails1 code! {
-        #[verifier::proof]
-        fn f() {
-            assert(0u8 == 0u8 - 1 + 1); // FAILS
+    #[test] test_literals_fails1 verus_code! {
+        proof fn f() {
+            assert(0u8 == add(sub(0u8, 1), 1)); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
-    #[test] test_literals_fails2 code! {
-        #[verifier::proof]
-        fn f() {
+    #[test] test_literals_fails2 verus_code! {
+        proof fn f() {
             assert(255u8 == 256u8 - 1); // FAILS
         }
     } => Err(err) => assert_vir_error_msg(err, "integer literal out of range")
 }
 
 test_verify_one_file! {
-    #[test] test_literals_fails3 code! {
-        #[verifier::proof]
-        fn f() {
+    #[test] test_literals_fails3 verus_code! {
+        proof fn f() {
             assert(-128i8 == -129i8 + 1); // FAILS
         }
     } => Err(err) => assert_vir_error_msg(err, "integer literal out of range")
 }
 
 test_verify_one_file! {
-    #[test] test_literals_fails4 code! {
-        #[verifier::proof]
-        fn f() {
+    #[test] test_literals_fails4 verus_code! {
+        proof fn f() {
             assert(127i8 == 128i8 - 1); // FAILS
         }
     } => Err(err) => assert_vir_error_msg(err, "integer literal out of range")
 }
 
 test_verify_one_file! {
-    #[test] test_literals_fails5 code! {
-        #[verifier::proof]
-        fn f() {
+    #[test] test_literals_fails5 verus_code! {
+        proof fn f() {
             assert(-0x8000_0000_0000_0000_0000_0000_0000_0000i128 == -0x8000_0000_0000_0000_0000_0000_0000_0001i128 + 1); // FAILS
         }
     } => Err(err) => assert_vir_error_msg(err, "integer literal out of range")
 }
 
 test_verify_one_file! {
-    #[test] test_literals_fails6 code! {
-        #[verifier::proof]
-        fn f() {
+    #[test] test_literals_fails6 verus_code! {
+        proof fn f() {
             assert(0x7fff_ffff_ffff_ffff_ffff_ffff_ffff_ffffi128 == 0x8000_0000_0000_0000_0000_0000_0000_0000i128 - 1); // FAILS
         }
     } => Err(err) => assert_vir_error_msg(err, "integer literal out of range")

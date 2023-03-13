@@ -9,7 +9,7 @@ use pervasive::{*, option::Option, result::Result};
 
 #[cfg(vstd_todo)]
 #[allow(unused_imports)]
-use vstd::pervasive::{*, option::Option, result::Result};
+use vstd::{*, option::Option, result::Result};
 
 verus! {
 

@@ -5,7 +5,11 @@ use builtin_macros::*;
 #[allow(unused_imports)]
 use crate::pervasive::*;
 #[allow(unused_imports)]
+#[cfg(not(vstd_build_todo))]
 use crate::pervasive::set::*;
+#[allow(unused_imports)]
+#[cfg(vstd_build_todo)]
+use crate::set::*;
 use core::marker;
 
 verus! {
@@ -310,11 +314,22 @@ pub proof fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
 
 // Macros
 
+#[cfg(not(vstd_build_todo))]
 #[doc(hidden)]
 #[macro_export]
 macro_rules! map_internal {
     [$($key:expr => $value:expr),* $(,)?] => {
         $crate::pervasive::map::Map::empty()
+            $(.insert($key, $value))*
+    }
+}
+
+#[cfg(vstd_build_todo)]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! map_internal {
+    [$($key:expr => $value:expr),* $(,)?] => {
+        $crate::map::Map::empty()
             $(.insert($key, $value))*
     }
 }
@@ -326,10 +341,19 @@ macro_rules! map_internal {
 /// Note that this does _not_ require all keys to be distinct. In the case that two
 /// or more keys are equal, the resulting map uses the value of the rightmost entry.
 
+#[cfg(not(vstd_build_todo))]
 #[macro_export]
 macro_rules! map {
     [$($tail:tt)*] => {
         ::builtin_macros::verus_proof_macro_exprs!($crate::pervasive::map::map_internal!($($tail)*))
+    };
+}
+
+#[cfg(vstd_build_todo)]
+#[macro_export]
+macro_rules! map {
+    [$($tail:tt)*] => {
+        ::builtin_macros::verus_proof_macro_exprs!($crate::map::map_internal!($($tail)*))
     };
 }
 
@@ -387,6 +411,7 @@ pub use map;
 /// }
 /// ```
 
+#[cfg(not(vstd_build_todo))]
 #[macro_export]
 macro_rules! assert_maps_equal {
     [$($tail:tt)*] => {
@@ -394,6 +419,15 @@ macro_rules! assert_maps_equal {
     };
 }
 
+#[cfg(vstd_build_todo)]
+#[macro_export]
+macro_rules! assert_maps_equal {
+    [$($tail:tt)*] => {
+        ::builtin_macros::verus_proof_macro_exprs!($crate::map::assert_maps_equal_internal!($($tail)*))
+    };
+}
+
+#[cfg(not(vstd_build_todo))]
 #[macro_export]
 #[doc(hidden)]
 macro_rules! assert_maps_equal_internal {
@@ -409,6 +443,39 @@ macro_rules! assert_maps_equal_internal {
     ($m1:expr, $m2:expr, $k:ident $( : $t:ty )? => $bblock:block) => {
         #[verifier::spec] let m1 = $crate::pervasive::map::check_argument_is_map($m1);
         #[verifier::spec] let m2 = $crate::pervasive::map::check_argument_is_map($m2);
+        ::builtin::assert_by(::builtin::equal(m1, m2), {
+            ::builtin::assert_forall_by(|$k $( : $t )?| {
+                // TODO better error message here: show the individual conjunct that fails,
+                // and maybe give an error message in english as well
+                ::builtin::ensures([
+                    ::builtin::imply(#[verifier(trigger)] m1.dom().contains($k), m2.dom().contains($k))
+                    && ::builtin::imply(m2.dom().contains($k), m1.dom().contains($k))
+                    && ::builtin::imply(m1.dom().contains($k) && m2.dom().contains($k),
+                        ::builtin::equal(m1.index($k), m2.index($k)))
+                ]);
+                { $bblock }
+            });
+            $crate::pervasive::assert(m1.ext_equal(m2));
+        });
+    }
+}
+
+#[cfg(vstd_build_todo)]
+#[macro_export]
+#[doc(hidden)]
+macro_rules! assert_maps_equal_internal {
+    (::builtin::spec_eq($m1:expr, $m2:expr)) => {
+        assert_maps_equal_internal!($m1, $m2)
+    };
+    (::builtin::spec_eq($m1:expr, $m2:expr), $k:ident $( : $t:ty )? => $bblock:block) => {
+        assert_maps_equal_internal!($m1, $m2, $k $( : $t )? => $bblock)
+    };
+    ($m1:expr, $m2:expr $(,)?) => {
+        assert_maps_equal_internal!($m1, $m2, key => { })
+    };
+    ($m1:expr, $m2:expr, $k:ident $( : $t:ty )? => $bblock:block) => {
+        #[verifier::spec] let m1 = $crate::map::check_argument_is_map($m1);
+        #[verifier::spec] let m2 = $crate::map::check_argument_is_map($m2);
         ::builtin::assert_by(::builtin::equal(m1, m2), {
             ::builtin::assert_forall_by(|$k $( : $t )?| {
                 // TODO better error message here: show the individual conjunct that fails,

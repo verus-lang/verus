@@ -410,13 +410,13 @@ impl Visitor {
                                         if self.pervasive_in_same_crate {
                                             quote_spanned!(span => crate::pervasive::modes::tracked_unwrap_gho)
                                         } else {
-                                            quote_spanned!(span => vstd::pervasive::modes::tracked_unwrap_gho)
+                                            quote_spanned!(span => vstd::modes::tracked_unwrap_gho)
                                         }
                                     } else {
                                         if self.pervasive_in_same_crate {
                                             quote_spanned!(span => crate::pervasive::modes::tracked_unwrap_trk)
                                         } else {
-                                            quote_spanned!(span => vstd::pervasive::modes::tracked_unwrap_trk)
+                                            quote_spanned!(span => vstd::modes::tracked_unwrap_trk)
                                         }
                                     };
                                     stmts.push(Stmt::Semi(
@@ -445,7 +445,11 @@ impl Visitor {
         }
     }
 
-    fn visit_local_extend(&mut self, local: &mut Local) -> Vec<Stmt> {
+    fn visit_local_extend(&mut self, local: &mut Local) -> (bool, Vec<Stmt>) {
+        if self.erase_ghost && (local.tracked.is_some() || local.ghost.is_some()) {
+            return (true, vec![]);
+        }
+
         let mut splitter: Option<&str> = None;
         let mut stmts: Vec<Stmt> = Vec::new();
         let mut n: u64 = 0;
@@ -467,13 +471,13 @@ impl Visitor {
                 local.init = Some((eq, Box::new(init)));
             }
         }
-        stmts
+        (false, stmts)
     }
 
-    fn visit_stmt_extend(&mut self, stmt: &mut Stmt) -> Vec<Stmt> {
+    fn visit_stmt_extend(&mut self, stmt: &mut Stmt) -> (bool, Vec<Stmt>) {
         match stmt {
             Stmt::Local(local) => self.visit_local_extend(local),
-            _ => vec![],
+            _ => (false, vec![]),
         }
     }
 
@@ -984,7 +988,7 @@ impl VisitMut for Visitor {
                         } else if self.pervasive_in_same_crate {
                             quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ crate::pervasive::modes::ghost_exec(#[verifier(ghost_block_wrapped)] /* vattr */ #inner))
                         } else {
-                            quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ vstd::pervasive::modes::ghost_exec(#[verifier(ghost_block_wrapped)] /* vattr */ #inner))
+                            quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ vstd::modes::ghost_exec(#[verifier(ghost_block_wrapped)] /* vattr */ #inner))
                         });
                     }
                     (false, (true, false), _) => {
@@ -1001,7 +1005,7 @@ impl VisitMut for Visitor {
                         } else if self.pervasive_in_same_crate {
                             quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ crate::pervasive::modes::tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ #inner))
                         } else {
-                            quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ vstd::pervasive::modes::tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ #inner))
+                            quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ vstd::modes::tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ #inner))
                         });
                     }
                     (true, (true, true), _) => {
@@ -1488,6 +1492,8 @@ impl VisitMut for Visitor {
         visit_local_mut(self, local);
         if let Some(tracked) = std::mem::take(&mut local.tracked) {
             local.attrs.push(mk_verus_attr(tracked.span, quote! { proof }));
+        } else if let Some(tracked) = std::mem::take(&mut local.ghost) {
+            local.attrs.push(mk_verus_attr(tracked.span, quote! { spec }));
         }
     }
 
@@ -1495,8 +1501,10 @@ impl VisitMut for Visitor {
         let mut stmts: Vec<Stmt> = Vec::new();
         let block_stmts = std::mem::replace(&mut block.stmts, vec![]);
         for mut stmt in block_stmts {
-            let extra_stmts = self.visit_stmt_extend(&mut stmt);
-            stmts.push(stmt);
+            let (skip, extra_stmts) = self.visit_stmt_extend(&mut stmt);
+            if !skip {
+                stmts.push(stmt);
+            }
             stmts.extend(extra_stmts);
         }
         block.stmts = stmts;

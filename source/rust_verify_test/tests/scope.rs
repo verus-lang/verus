@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] test1 code! {
+    #[test] test1 verus_code! {
         fn test1() {
             {
                 let mut x = 5;
@@ -19,7 +19,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test1_fails code! {
+    #[test] test1_fails verus_code! {
         fn test1() {
             {
                 let mut x = 5;
@@ -34,7 +34,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test2 code! {
+    #[test] test2 verus_code! {
         fn test1() {
             let mut x = 6;
             x = 60;
@@ -49,7 +49,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test2_fails code! {
+    #[test] test2_fails verus_code! {
         fn test1() {
             let mut x = 6;
             x = 60;
@@ -65,7 +65,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test3 code! {
+    #[test] test3 verus_code! {
         fn test1() {
             let mut x = 6;
             x = 60;
@@ -82,7 +82,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test3_fails code! {
+    #[test] test3_fails verus_code! {
         fn test1() {
             let mut x = 6;
             x = 60;
@@ -100,7 +100,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test4 code! {
+    #[test] test4 verus_code! {
         fn test1() {
             let mut x = 6;
             x = 60;
@@ -117,7 +117,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test4_fails code! {
+    #[test] test4_fails verus_code! {
         fn test1() {
             let mut x = 6;
             x = 60;
@@ -135,7 +135,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test5 code! {
+    #[test] test5 verus_code! {
         fn test1() {
             let mut x = 6;
             x = 60;
@@ -151,7 +151,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test5_fails code! {
+    #[test] test5_fails verus_code! {
         fn test1() {
             let mut x = 6;
             x = 60;

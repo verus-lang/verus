@@ -4,10 +4,18 @@ use builtin::*;
 use builtin_macros::*;
 #[allow(unused_imports)]
 use crate::pervasive::*;
+#[cfg(not(vstd_build_todo))]
 #[allow(unused_imports)]
 use crate::pervasive::seq::*;
+#[cfg(vstd_build_todo)]
+#[allow(unused_imports)]
+use crate::seq::*;
+#[cfg(not(vstd_build_todo))]
 #[allow(unused_imports)]
 use crate::pervasive::set::Set;
+#[cfg(vstd_build_todo)]
+#[allow(unused_imports)]
+use crate::set::Set;
 
 verus! {
 
@@ -18,6 +26,132 @@ impl<A> Seq<A> {
 
     pub open spec fn map<B>(self, f: FnSpec(int, A) -> B) -> Seq<B> {
         Seq::new(self.len(), |i: int| f(i, self[i]))
+    }
+
+    pub closed spec fn filter(self, pred: FnSpec(A) -> bool) -> Self
+        decreases self.len()
+    {
+        if self.len() == 0 {
+            self
+        } else {
+            let subseq = self.drop_last().filter(pred);
+            if pred(self.last()) { subseq.push(self.last()) } else { subseq }
+        }
+    }
+
+    pub proof fn filter_lemma(self, pred: FnSpec(A) -> bool)
+        ensures
+            // we don't keep anything bad
+            // TODO(andrea): recommends didn't catch this error, where i isn't known to be in
+            // self.filter(pred).len()
+            //forall |i: int| 0 <= i < self.len() ==> pred(#[trigger] self.filter(pred)[i]),
+            forall |i: int| 0 <= i < self.filter(pred).len() ==> pred(#[trigger] self.filter(pred)[i]),
+            // we keep everything we should
+            forall |i: int| 0 <= i < self.len() && pred(self[i])
+                ==> #[trigger] self.filter(pred).contains(self[i]),
+            // the filtered list can't grow
+            self.filter(pred).len() <= self.len(),
+        decreases self.len()
+    {
+        let out = self.filter(pred);
+        if 0 < self.len() {
+            self.drop_last().filter_lemma(pred);
+            assert forall |i: int| 0 <= i < out.len() implies pred(out[i]) by {
+                if i < out.len()-1 {
+                    assert(self.drop_last().filter(pred)[i] == out.drop_last()[i]); // trigger drop_last
+                    assert(pred(out[i]));   // TODO(andrea): why is this line required? It's the conclusion of the assert-forall.
+                }
+            }
+            assert forall |i: int| 0 <= i < self.len() && pred(self[i])
+                implies #[trigger] out.contains(self[i]) by {
+                if i==self.len()-1 {
+                    assert(self[i] == out[out.len()-1]);  // witness to contains
+                } else {
+                    let subseq = self.drop_last().filter(pred);
+                    assert(subseq.contains(self.drop_last()[i]));   // trigger recursive invocation
+                    let j = choose(|j| 0<=j<subseq.len() && subseq[j]==self[i]);
+                    assert(out[j] == self[i]);  // TODO(andrea): same, seems needless
+                }
+            }
+        }
+    }
+
+    #[verifier(external_body)]
+    #[verifier(broadcast_forall)]
+    pub proof fn filter_lemma_broadcast(self, pred: FnSpec(A) -> bool)
+        ensures
+            forall |i: int| 0 <= i < self.filter(pred).len() ==> pred(#[trigger] self.filter(pred)[i]),
+            forall |i: int| 0 <= i < self.len() && pred(self[i])
+                ==> #[trigger] self.filter(pred).contains(self[i]),
+            self.filter(pred).len() <= self.len();
+
+    proof fn filter_distributes_over_add(a:Self, b:Self, pred:FnSpec(A)->bool)
+    ensures
+        (a+b).filter(pred) == a.filter(pred) + b.filter(pred),
+    decreases b.len()
+    {
+        if 0 < b.len()
+        {
+            Self::drop_last_distributes_over_add(a, b);
+            Self::filter_distributes_over_add(a, b.drop_last(), pred);
+            if pred(b.last()) {
+                Self::push_distributes_over_add(a.filter(pred), b.drop_last().filter(pred), b.last());
+            }
+        } else {
+            Self::add_empty(a, b);
+            Self::add_empty(a.filter(pred), b.filter(pred));
+        }
+    }
+
+    pub proof fn add_empty(a: Self, b: Self)
+    requires
+        b.len() == 0,
+    ensures
+        a+b == a,
+    {
+        assert_seqs_equal!(a+b, a);
+    }
+
+    pub proof fn push_distributes_over_add(a: Self, b: Self, elt: A)
+    ensures
+        (a+b).push(elt) == a+b.push(elt),
+    {
+        assert_seqs_equal!((a+b).push(elt), a+b.push(elt));
+    }
+
+    #[verifier(external_body)]
+    #[verifier(broadcast_forall)]
+    pub proof fn filter_distributes_over_add_broacast(a:Self, b:Self, pred:FnSpec(A)->bool)
+    ensures
+        #[trigger] (a+b).filter(pred) == a.filter(pred) + b.filter(pred),
+    {
+    // TODO(chris): We have perfectly good proofs sitting around for these broadcasts; they don't
+    // need to be axioms!
+//        assert forall |a:Self, b:Self, pred:FnSpec(A)->bool| (a+b).filter(pred) == a.filter(pred) + b.filter(pred) by {
+//            Self::filter_distributes_over_add(a, b, pred);
+//        }
+    }
+
+    #[verifier(external_body)]
+    #[verifier(broadcast_forall)]
+    pub proof fn add_empty_broacast(a:Self, b:Self)
+    ensures
+        b.len()==0 ==> a+b == a
+    {
+//        assert forall |a:Self, b:Self| b.len()==0 implies a+b == a {
+//            add_empty(a, b);
+//        }
+    }
+
+    #[verifier(external_body)]
+    #[verifier(broadcast_forall)]
+    pub proof fn push_distributes_over_add_broacast(a:Self, b:Self, elt: A)
+    ensures
+        (a+b).push(elt) == a+b.push(elt),
+    {
+//        assert forall |a:Self, b:Self, elt: A| (a+b).push(elt) == a+b.push(elt) {
+//            push_distributes_over_add(a, b, elt);
+//        }
     }
 
     // TODO is_sorted -- extract from summer_school e22
@@ -37,6 +171,15 @@ impl<A> Seq<A> {
         recommends self.len() >= 1
     {
         self.subrange(0, self.len() as int - 1)
+    }
+
+    pub proof fn drop_last_distributes_over_add(a: Self, b: Self)
+    requires
+        0 < b.len(),
+    ensures
+        (a+b).drop_last() == a+b.drop_last(),
+    {
+        assert_seqs_equal!((a+b).drop_last(), a+b.drop_last());
     }
 
     /// returns `true` if the sequequence has no duplicate elements

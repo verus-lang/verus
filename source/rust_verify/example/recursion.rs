@@ -9,7 +9,7 @@ use pervasive::{*, vec::*, seq::*, modes::*};
 
 #[cfg(vstd_todo)]
 #[allow(unused_imports)]
-use vstd::pervasive::{*, vec::*, seq::*, modes::*};
+use vstd::{*, vec::*, seq::*, modes::*};
 
 verus! {
 

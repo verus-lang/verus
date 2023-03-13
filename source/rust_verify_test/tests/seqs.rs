@@ -5,8 +5,8 @@ use common::*;
 
 test_verify_one_file! {
     #[test] test1 verus_code! {
-        use crate::pervasive::seq::*;
-        use crate::pervasive::seq_lib::*;
+        use vstd::seq::*;
+        use vstd::seq_lib::*;
 
         proof fn test_seq() {
             let s1 = Seq::new(5, |i: int| 10 * i);
@@ -45,7 +45,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_fails1 verus_code! {
-        use crate::pervasive::seq::*;
+        use vstd::seq::*;
 
         proof fn test_seq() {
             let s1 = Seq::new(5, |i: int| 10 * i);
@@ -58,7 +58,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_fails2 verus_code! {
-        use crate::pervasive::seq::*;
+        use vstd::seq::*;
 
         proof fn test_seq() {
             let s1 = Seq::new(5, |i: int| 10 * i);
@@ -82,8 +82,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] auto_extensionality_syntax1 verus_code! {
-        use crate::pervasive::seq::*;
-        use crate::pervasive::seq_lib::*;
+        use vstd::seq::*;
+        use vstd::seq_lib::*;
         proof fn test() {
             let s1 = Seq::new(5, |i: int| 10 * i);
             assert(s1.len() == 5);
@@ -97,8 +97,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] auto_extensionality_syntax2 verus_code! {
-        use crate::pervasive::seq::*;
-        use crate::pervasive::seq_lib::*;
+        use vstd::seq::*;
+        use vstd::seq_lib::*;
         proof fn test() {
             let s1 = Seq::new(5, |i: int| 10 * i);
             assert(s1.len() == 5);
@@ -106,6 +106,26 @@ test_verify_one_file! {
             let s2 = Seq::<int>::empty().push(0).push(10).push(20).push(30).push(40);
             assert_seqs_equal!(s1 == s2); // new syntax
             assert(s1 == s2);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] filter_lemmas verus_code! {
+        use vstd::seq::*;
+        use vstd::seq_lib::*;
+
+        proof fn test() {
+            let s1 = seq![10, 20, 30, 45, 55, 70];
+            let s2 = s1.filter(|x: int| x < 40);
+            let s3 = seq![90, 100];
+            let s4 = s3.filter(|x: int| x < 40);
+            // Test for successful broadcast of filter_lemma_broadcast
+            assert(forall|i: nat| i < s2.len() ==> s2[i as int] < 40);
+            // Test for successful broadcast of filter_distributes_over_add
+            assert((s1 + s3).filter(|x: int| x < 40) == (s2 + s4));
+            // Test for successful broadcast of push_distributes_over_add
+            assert((s2 + s4).push(120) == s2 + s4.push(120));
         }
     } => Ok(())
 }

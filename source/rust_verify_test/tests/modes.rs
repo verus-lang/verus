@@ -24,7 +24,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] verus_struct1 verus_code! {
-        use crate::pervasive::modes::*;
+        use vstd::modes::*;
         struct S {
             i: Ghost<bool>,
             j: bool,
@@ -56,7 +56,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] verus_struct_fails1 verus_code! {
-        use crate::pervasive::modes::*;
+        use vstd::modes::*;
         struct S {
             i: Ghost<bool>,
             j: bool,
@@ -305,7 +305,7 @@ test_verify_one_file! {
             } else if a == 3 {
                 4
             } else {
-                arbitrary()
+                pervasive::arbitrary()
             }
         }
     } => Ok(())
@@ -625,7 +625,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] ghost_wrapper_assign_fail1 verus_code! {
-        use pervasive::modes::*;
+        use vstd::modes::*;
 
         fn f() {
             let g: Ghost<bool> = ghost(true);
@@ -638,7 +638,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] ghost_wrapper_assign_fail2 verus_code! {
-        use pervasive::modes::*;
+        use vstd::modes::*;
 
         fn f() {
             let g: Ghost<bool> = ghost(true);
@@ -649,7 +649,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] ghost_wrapper_assign_fail3 verus_code! {
-        use pervasive::modes::*;
+        use vstd::modes::*;
 
         fn f() {
             let mut e: bool = false;
@@ -662,7 +662,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] ghost_wrapper_assign_fail4 verus_code! {
-        use pervasive::modes::*;
+        use vstd::modes::*;
 
         fn f(t: Tracked<bool>) {
             let g: Ghost<bool> = ghost(true);
@@ -676,7 +676,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] ghost_wrapper_call_fail1 verus_code! {
-        use pervasive::modes::*;
+        use vstd::modes::*;
 
         fn f(x: bool) {
         }
@@ -689,7 +689,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] ghost_wrapper_call_fail2 verus_code! {
-        use pervasive::modes::*;
+        use vstd::modes::*;
 
         fn f(x: bool) {
         }
@@ -702,7 +702,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] ghost_wrapper_call_fail3 verus_code! {
-        use pervasive::modes::*;
+        use vstd::modes::*;
 
         proof fn f(tracked x: bool) {
         }
@@ -717,7 +717,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] ghost_wrapper_call_mut_fail1 verus_code! {
-        use pervasive::modes::*;
+        use vstd::modes::*;
 
         fn f(x: &mut bool) {
         }
@@ -731,7 +731,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] ghost_wrapper_call_mut_fail2 verus_code! {
-        use pervasive::modes::*;
+        use vstd::modes::*;
 
         fn f(x: &mut bool) {
         }
@@ -745,7 +745,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] ghost_wrapper_call_mut_fail3 verus_code! {
-        use pervasive::modes::*;
+        use vstd::modes::*;
 
         proof fn f(tracked x: &mut bool) {
         }
@@ -761,7 +761,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] ghost_wrapper_call_mut_fail4 verus_code! {
-        use pervasive::modes::*;
+        use vstd::modes::*;
 
         proof fn f(x: &mut bool) {
         }
@@ -777,7 +777,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] ghost_wrapper_assign_struct_fail1 verus_code! {
-        use pervasive::modes::*;
+        use vstd::modes::*;
         struct S {
             e: bool,
         }
@@ -791,7 +791,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] ghost_wrapper_assign_struct_fail2 verus_code! {
-        use pervasive::modes::*;
+        use vstd::modes::*;
         struct S {
             e: bool,
         }
@@ -803,7 +803,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] ghost_wrapper_assign_struct_fail3 verus_code! {
-        use pervasive::modes::*;
+        use vstd::modes::*;
         struct S {
             e: bool,
         }
@@ -818,6 +818,7 @@ test_verify_one_file! {
 }
 
 const TRACKED_TYP_PARAMS_COMMON: &str = verus_code_str! {
+    use vstd::modes::*;
     tracked struct Tok {
         v: nat,
     }
@@ -829,7 +830,7 @@ const TRACKED_TYP_PARAMS_COMMON: &str = verus_code_str! {
 
 test_verify_one_file! {
     #[test] tracked_ghost_typ_params_make verus_code! {
-        use pervasive::modes::*;
+        use vstd::modes::*;
 
         tracked struct Tok {
             ghost v: nat,
@@ -896,7 +897,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] tracked_ghost_typ_params_misc TRACKED_TYP_PARAMS_COMMON.to_owned() + verus_code_str! {
-        use pervasive::modes::*;
+        use vstd::modes::*;
 
         proof fn identity(tracked b: B<Ghost<Tok>>) -> (tracked out: B<Ghost<Tok>>) {
             tracked b
@@ -1007,6 +1008,64 @@ test_verify_one_file! {
                 } else {
                     assert(some_fn(j));
                 }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] initialize_proof_var_in_exec verus_code! {
+        fn myfun() {
+            let tracked b = false;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "exec code cannot initialize non-exec variables")
+}
+
+test_verify_one_file! {
+    #[test] initialize_spec_var_in_exec verus_code! {
+        fn myfun() {
+            let ghost b = false;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "exec code cannot initialize non-exec variable")
+}
+
+test_verify_one_file! {
+    #[test] assign_proof_var_in_exec verus_code! {
+        fn myfun() {
+            let tracked b;
+            b = false;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "exec code cannot mutate non-exec variable")
+}
+
+test_verify_one_file! {
+    #[test] assign_spec_var_in_exec verus_code! {
+        fn myfun() {
+            let ghost b;
+            b = false;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "exec code cannot mutate non-exec variable")
+}
+
+test_verify_one_file! {
+    #[test] declare_proof_var_in_exec verus_code! {
+        fn myfun() {
+            let tracked b;
+            proof {
+                b = false;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] declare_spec_var_in_exec verus_code! {
+        fn myfun() {
+            // note: has to be 'mut' because we currently don't support
+            // late-initialized non-mut spec variables
+            let ghost mut b;
+            proof {
+                b = false;
             }
         }
     } => Ok(())
