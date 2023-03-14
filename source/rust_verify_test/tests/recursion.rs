@@ -132,6 +132,9 @@ test_verify_one_file! {
             assert(count_down_a(1) == 1);
         }
 
+        // Since count_down_a calls itself directly, there is a cycle of length 1
+        // from count_down_a to itself, so the default fuel for count_down_a is 1,
+        // which is not enough for count_down_a(1) == 1 to succeed.
         proof fn count_down_properties_fail() {
             assert(count_down_a(1) == 1);   // FAILS
         }
