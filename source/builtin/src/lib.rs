@@ -328,6 +328,23 @@ impl<A> Clone for Ghost<A> {
 
 impl<A> Copy for Ghost<A> {}
 
+#[verifier(external_body)]
+pub fn ghost_exec<A>(#[verifier::spec] _a: A) -> Ghost<A> {
+    Ghost::assume_new()
+}
+
+#[verifier(external_body)]
+pub fn tracked_exec<A>(#[verifier::proof] _a: A) -> Tracked<A> {
+    Tracked::assume_new()
+}
+
+#[verifier(external_body)]
+pub fn tracked_exec_borrow<'a, A>(#[verifier::proof] _a: &'a A) -> &'a Tracked<A> {
+    // TODO: implement this (using unsafe) or mark function as ghost (if supported by Rust)
+    unimplemented!();
+}
+
+// TODO: delete split_tuple
 macro_rules! emit_phantom {
     ($x:ident) => {
         PhantomData

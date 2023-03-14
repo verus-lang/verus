@@ -556,20 +556,13 @@ fn fn_call_to_vir<'tcx>(
     let is_ghost_borrow = f_name == "builtin::Ghost::<A>::borrow";
     let is_ghost_borrow_mut = f_name == "builtin::Ghost::<A>::borrow_mut";
     let is_ghost_new = f_name == "builtin::Ghost::<A>::new";
-    // TODO: move ghost_exec, tracked_exec, tracked_split_tuple to builtin
-    let is_ghost_exec = f_name == "pervasive::modes::ghost_exec"
-        || f_name == "vstd::modes::ghost_exec"
-        || f_name == "modes::ghost_exec";
+    let is_ghost_exec = f_name == "builtin::ghost_exec";
     let is_ghost_split_tuple = f_name.starts_with("builtin::ghost_split_tuple");
     let is_tracked_view = f_name == "builtin::Tracked::<A>::view";
     let is_tracked_borrow = f_name == "builtin::Tracked::<A>::borrow";
     let is_tracked_borrow_mut = f_name == "builtin::Tracked::<A>::borrow_mut";
-    let is_tracked_exec = f_name == "pervasive::modes::tracked_exec"
-        || f_name == "vstd::modes::tracked_exec"
-        || f_name == "modes::tracked_exec";
-    let is_tracked_exec_borrow = f_name == "pervasive::modes::tracked_exec_borrow"
-        || f_name == "vstd::modes::tracked_exec_borrow"
-        || f_name == "modes::tracked_exec_borrow";
+    let is_tracked_exec = f_name == "builtin::tracked_exec";
+    let is_tracked_exec_borrow = f_name == "builtin::tracked_exec_borrow";
     let is_tracked_get = f_name == "builtin::Tracked::<A>::get";
     let is_tracked_split_tuple = f_name.starts_with("builtin::tracked_split_tuple");
     let is_new_strlit = tcx.is_diagnostic_item(Symbol::intern("pervasive::string::new_strlit"), f);
@@ -724,6 +717,9 @@ fn fn_call_to_vir<'tcx>(
         _ if is_implies => Some(CompilableOperator::Implies),
         _ if is_smartptr_new => Some(CompilableOperator::SmartPtrNew),
         _ if is_new_strlit => Some(CompilableOperator::NewStrLit),
+        _ if is_ghost_exec => Some(CompilableOperator::GhostExec),
+        _ if is_tracked_exec => Some(CompilableOperator::TrackedExec),
+        _ if is_tracked_exec_borrow => Some(CompilableOperator::TrackedExecBorrow),
         _ if is_tracked_get => Some(CompilableOperator::TrackedGet),
         _ if is_tracked_borrow => Some(CompilableOperator::TrackedBorrow),
         _ if is_tracked_borrow_mut => Some(CompilableOperator::TrackedBorrowMut),
@@ -984,18 +980,17 @@ fn fn_call_to_vir<'tcx>(
             == Some(GhostBlockAttr::Wrapper)
         {
             let vir_arg = expr_to_vir(bctx, arg, ExprModifier::REGULAR)?;
-            let alloc_wrapper = name;
             match (is_tracked_exec, get_ghost_block_opt(bctx.ctxt.tcx.hir().attrs(arg.hir_id))) {
                 (false, Some(GhostBlockAttr::GhostWrapped)) => {
                     return Ok(mk_expr(ExprX::Ghost {
-                        alloc_wrapper,
+                        alloc_wrapper: true,
                         tracked: false,
                         expr: vir_arg,
                     }));
                 }
                 (true, Some(GhostBlockAttr::TrackedWrapped)) => {
                     return Ok(mk_expr(ExprX::Ghost {
-                        alloc_wrapper,
+                        alloc_wrapper: true,
                         tracked: true,
                         expr: vir_arg,
                     }));
@@ -2251,7 +2246,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         return err_span_str(expr.span, "unexpected ghost block wrapper");
                     }
                 };
-                Ok(mk_expr(ExprX::Ghost { alloc_wrapper: None, tracked, expr: block? }))
+                Ok(mk_expr(ExprX::Ghost { alloc_wrapper: false, tracked, expr: block? }))
             } else {
                 block_to_vir(bctx, body, &expr.span, &expr_typ(), modifier)
             }

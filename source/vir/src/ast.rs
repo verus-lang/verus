@@ -560,7 +560,7 @@ pub enum ExprX {
     /// However, we can't easily communicate the inferred modes back to rustc for erasure
     /// and lifetime checking -- rustc needs syntactic annotations for these, and the mode checker
     /// needs to confirm that these annotations agree with what would have been inferred.
-    Ghost { alloc_wrapper: Option<Fun>, tracked: bool, expr: Expr },
+    Ghost { alloc_wrapper: bool, tracked: bool, expr: Expr },
     /// Sequence of statements, optionally including an expression at the end
     Block(Stmts, Option<Expr>),
     /// `assert_by` with a dedicated prover option (nonlinear_arith, bit_vector)

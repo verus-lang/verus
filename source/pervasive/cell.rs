@@ -262,7 +262,6 @@ impl<T> InvCell<T> {
         &&& self.possible_values@.contains(val)
     }
 
-    /*
     pub fn new(val: T, #[verifier::spec] f: Ghost<FnSpec(T) -> bool>) -> (cell: Self)
         requires f@(val),
         ensures cell.wf() && forall |v| f@(v) <==> cell.inv(v),
@@ -277,20 +276,6 @@ impl<T> InvCell<T> {
             possible_values,
             pcell,
             perm_inv,
-        }
-    }
-    */
-    // TODO (vstd_build_todo) : restore the code above once we move ghost_exec, tracked_exec to builtin
-    #[verifier(external_body)]
-    pub fn new(val: T, #[verifier::spec] f: Ghost<FnSpec(T) -> bool>) -> (cell: Self)
-        requires f@(val),
-        ensures cell.wf() && forall |v| f@(v) <==> cell.inv(v),
-    {
-        let (pcell, _perm) = PCell::new(val);
-        InvCell {
-            possible_values: Ghost::assume_new(),
-            pcell,
-            perm_inv: Tracked::assume_new(),
         }
     }
 }
@@ -309,7 +294,7 @@ impl<T> InvCell<T> {
 
         let r;
         crate::open_local_invariant!(self.perm_inv.borrow() => perm => {
-            let mut t = tracked_exec(perm);
+            let mut t = #[verifier(ghost_wrapper)] /* vattr */ tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ perm);
             r = self.pcell.replace(&mut t, val);
             perm = t.get();
         });

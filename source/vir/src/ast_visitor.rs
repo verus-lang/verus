@@ -789,7 +789,7 @@ where
         }
         ExprX::Ghost { alloc_wrapper, tracked, expr: e1 } => {
             let expr = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
-            ExprX::Ghost { alloc_wrapper: alloc_wrapper.clone(), tracked: *tracked, expr }
+            ExprX::Ghost { alloc_wrapper: *alloc_wrapper, tracked: *tracked, expr }
         }
         ExprX::Block(ss, e1) => {
             let mut stmts: Vec<Stmt> = Vec::new();

@@ -387,7 +387,7 @@ fn get_var_loc_mode(
             // For now, only support the special case for Tracked::borrow_mut.
             get_var_loc_mode(typing, outer_mode, None, e1, init_not_mut)?
         }
-        ExprX::Ghost { alloc_wrapper: None, tracked: true, expr: e1 } => {
+        ExprX::Ghost { alloc_wrapper: false, tracked: true, expr: e1 } => {
             // For now, only support the special case for Tracked::borrow_mut.
             let prev = typing.block_ghostness;
             typing.block_ghostness = Ghost::Ghost;
@@ -1018,21 +1018,21 @@ fn check_expr_handle_mut_arg(
         ExprX::Ghost { alloc_wrapper, tracked, expr: e1 } => {
             let prev = typing.block_ghostness;
             let block_ghostness = match (prev, alloc_wrapper, tracked) {
-                (Ghost::Exec, None, false) => match &*e1.typ {
+                (Ghost::Exec, false, false) => match &*e1.typ {
                     crate::ast::TypX::Tuple(ts) if ts.len() == 0 => Ghost::Ghost,
                     _ => {
                         return err_str(&expr.span, "proof block must have type ()");
                     }
                 },
-                (_, None, false) => {
+                (_, false, false) => {
                     return err_str(&expr.span, "already in proof mode");
                 }
-                (Ghost::Exec, None, true) => {
+                (Ghost::Exec, false, true) => {
                     return err_str(&expr.span, "cannot mark expression as tracked in exec mode");
                 }
-                (Ghost::Ghost, None, true) => Ghost::Ghost,
-                (Ghost::Exec, Some(_), _) => Ghost::Ghost,
-                (Ghost::Ghost, Some(_), _) => {
+                (Ghost::Ghost, false, true) => Ghost::Ghost,
+                (Ghost::Exec, true, _) => Ghost::Ghost,
+                (Ghost::Ghost, true, _) => {
                     return err_str(
                         &expr.span,
                         "ghost(...) or tracked(...) can only be used in exec mode",
@@ -1044,7 +1044,7 @@ fn check_expr_handle_mut_arg(
                 (Mode::Exec, Ghost::Ghost) => Mode::Proof,
                 _ => outer_mode,
             };
-            let mode = if alloc_wrapper.is_none() {
+            let mode = if !alloc_wrapper {
                 check_expr_handle_mut_arg(typing, outer_mode, erasure_mode, e1)?
             } else {
                 let target_mode = if *tracked { Mode::Proof } else { Mode::Spec };

@@ -5,33 +5,6 @@
 
 verus! {
 
-// TODO: the *_exec* functions would be better in builtin,
-// but it's painful to implement the support in erase.rs at the moment.
-#[verifier(external_body)]
-pub fn ghost_exec<A>(#[verifier::spec] a: A) -> (s: Ghost<A>)
-    ensures a == s@,
-{
-    Ghost::assume_new()
-}
-
-#[verifier(external_body)]
-pub fn tracked_exec<A>(#[verifier::proof] a: A) -> (s: Tracked<A>)
-    ensures a == s@
-{
-    opens_invariants_none();
-    Tracked::assume_new()
-}
-
-#[verifier(external_body)]
-pub fn tracked_exec_borrow<'a, A>(#[verifier::proof] a: &'a A) -> (s: &'a Tracked<A>)
-    ensures *a == s@
-{
-    opens_invariants_none();
-
-    // TODO: implement this (using unsafe) or mark function as ghost (if supported by Rust)
-    unimplemented!();
-}
-
 // REVIEW: consider moving these into builtin and erasing them from the VIR
 pub struct Gho<A>(pub ghost A);
 pub struct Trk<A>(pub tracked A);

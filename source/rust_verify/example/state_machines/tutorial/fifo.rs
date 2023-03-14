@@ -664,7 +664,7 @@ impl<T> Producer<T> {
 
                 // Write the element t into the buffer, updating the cell
                 // from uninitialized to initialized (to the value t).
-                let mut cell_perm = tracked_exec(cell_perm);
+                let mut cell_perm = #[verifier(ghost_wrapper)] /* vattr */ tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ cell_perm);
                 queue.buffer.index(self.tail).put(&mut cell_perm, t);
                 #[verifier::proof] let cell_perm = cell_perm.get();
 
@@ -718,7 +718,7 @@ impl<T> Consumer<T> {
                     Option::Some(cp) => cp,
                     Option::None => { assert(false); proof_from_false() }
                 };
-                let mut cell_perm = tracked_exec(cell_perm);
+                let mut cell_perm = #[verifier(ghost_wrapper)] /* vattr */ tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ cell_perm);
                 let t = queue.buffer.index(self.head).take(&mut cell_perm);
                 #[verifier::proof] let cell_perm = cell_perm.get();
 

@@ -312,7 +312,7 @@ impl<S> MyRc<S> {
         #[verifier::proof] let new_reader;
         open_local_invariant!(self.inv.borrow() => g => {
             #[verifier::proof] let GhostStuff { rc_perm: rc_perm, rc_token: mut rc_token } = g;
-            let mut rc_perm = tracked_exec(rc_perm);
+            let mut rc_perm = #[verifier(ghost_wrapper)] /* vattr */ tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ rc_perm);
 
             let count = inner_rc_ref.rc_cell.take(&mut rc_perm);
 
@@ -350,7 +350,7 @@ impl<S> MyRc<S> {
 
         open_local_invariant!(inv.borrow() => g => {
             #[verifier::proof] let GhostStuff { rc_perm: rc_perm, rc_token: mut rc_token } = g;
-            let mut rc_perm = tracked_exec(rc_perm);
+            let mut rc_perm = #[verifier(ghost_wrapper)] /* vattr */ tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ rc_perm);
 
             let count = inner_rc_ref.rc_cell.take(&mut rc_perm);
             if count >= 2 {
@@ -366,7 +366,7 @@ impl<S> MyRc<S> {
                     reader.view().key,
                     &mut rc_token,
                     reader);
-                let mut inner_rc_perm = tracked_exec(inner_rc_perm);
+                let mut inner_rc_perm = #[verifier(ghost_wrapper)] /* vattr */ tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ inner_rc_perm);
 
                 let inner_rc = ptr.take(&mut inner_rc_perm);
 

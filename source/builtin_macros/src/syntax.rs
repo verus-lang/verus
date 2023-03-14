@@ -973,7 +973,7 @@ impl VisitMut for Visitor {
                         *expr = Expr::Verbatim(if self.erase_ghost {
                             quote_spanned!(span => Ghost::assume_new())
                         } else {
-                            quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ vstd::modes::ghost_exec(#[verifier(ghost_block_wrapped)] /* vattr */ #inner))
+                            quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ ::builtin::ghost_exec(#[verifier(ghost_block_wrapped)] /* vattr */ #inner))
                         });
                     }
                     (false, (true, false), _) => {
@@ -988,7 +988,7 @@ impl VisitMut for Visitor {
                         *expr = Expr::Verbatim(if self.erase_ghost {
                             quote_spanned!(span => Tracked::assume_new())
                         } else {
-                            quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ vstd::modes::tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ #inner))
+                            quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ ::builtin::tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ #inner))
                         });
                     }
                     (true, (true, true), _) => {
