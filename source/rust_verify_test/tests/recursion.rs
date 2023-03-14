@@ -88,7 +88,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // Test that fuel only provides one definition unfolding
+    // Test that default fuel only provides one cycle of unfolding
     #[test] mutually_recursive_expressions_insufficient_fuel verus_code! {
         spec fn count_down_a(i: nat) -> nat
             decreases i
@@ -103,13 +103,46 @@ test_verify_one_file! {
         }
 
         proof fn count_down_properties() {
+            assert(count_down_a(1) == 1);
+        }
+
+        proof fn count_down_properties_fail() {
+            assert(count_down_a(2) == 2);   // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // Test that default fuel only provides one cycle of unfolding
+    #[test] mutually_recursive_expressions_insufficient_fuel_short_cycle verus_code! {
+        spec fn count_down_a(i: nat) -> nat
+            decreases i
+        {
+            if i == 0 { 0 } else if i == 100 { 1 + count_down_a((i - 1) as nat) } else { 1 + count_down_b((i - 1) as nat) }
+        }
+
+        spec fn count_down_b(i: nat) -> nat
+            decreases i
+        {
+            if i == 0 { 0 } else { 1 + count_down_a((i - 1) as nat) }
+        }
+
+        proof fn count_down_properties() {
+            reveal_with_fuel(count_down_a, 2);
+            assert(count_down_a(1) == 1);
+        }
+
+        // Since count_down_a calls itself directly, there is a cycle of length 1
+        // from count_down_a to itself, so the default fuel for count_down_a is 1,
+        // which is not enough for count_down_a(1) == 1 to succeed.
+        proof fn count_down_properties_fail() {
             assert(count_down_a(1) == 1);   // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
-    // Test that fuel only provides one definition unfolding
+    // Test that default fuel only provides one cycle of unfolding
     #[test] mutually_recursive_expressions_insufficient_fuel_j verus_code! {
         spec fn count_down_a(i: nat) -> nat
             decreases i
@@ -124,7 +157,11 @@ test_verify_one_file! {
         }
 
         proof fn count_down_properties() {
-            assert(count_down_a(1) == 1);   // FAILS
+            assert(count_down_a(1) == 1);
+        }
+
+        proof fn count_down_properties_fail() {
+            assert(count_down_a(2) == 2);   // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
