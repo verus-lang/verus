@@ -300,17 +300,6 @@ pub proof fn axiom_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int)
 {
 }
 
-#[cfg(not(vstd_build_todo))]
-#[doc(hidden)]
-#[macro_export]
-macro_rules! seq_internal {
-    [$($elem:expr),* $(,)?] => {
-        $crate::pervasive::seq::Seq::empty()
-            $(.push($elem))*
-    }
-}
-
-#[cfg(vstd_build_todo)]
 #[doc(hidden)]
 #[macro_export]
 macro_rules! seq_internal {
@@ -333,15 +322,6 @@ macro_rules! seq_internal {
 /// assert(s[2] == 13);
 /// ```
 
-#[cfg(not(vstd_build_todo))]
-#[macro_export]
-macro_rules! seq {
-    [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::pervasive::seq::seq_internal!($($tail)*))
-    };
-}
-
-#[cfg(vstd_build_todo)]
 #[macro_export]
 macro_rules! seq {
     [$($tail:tt)*] => {

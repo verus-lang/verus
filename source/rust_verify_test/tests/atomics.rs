@@ -23,7 +23,7 @@ const COMMON: &str = code_str! {
 };
 
 const COMMON_TODO_DELETE_THIS: &str = code_str! {
-    use crate::pervasive::invariant::*;
+    use vstd::invariant::*;
 
     #[verifier(atomic)] /* vattr */
     #[verifier(external_body)] /* vattr */

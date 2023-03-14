@@ -1,13 +1,12 @@
-// rust_verify/tests/example.rs vstd-todo
+// rust_verify/tests/example.rs erasure-todo
 
 #![allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-mod pervasive;
-use pervasive::*;
-use crate::pervasive::{atomic_ghost::*};
-use crate::pervasive::option::*;
-use crate::pervasive::result::*;
+use vstd::{*, pervasive::*};
+use vstd::{atomic_ghost::*};
+use vstd::option::*;
+use vstd::result::*;
 
 struct_with_invariants!{
     struct Lock<T> {

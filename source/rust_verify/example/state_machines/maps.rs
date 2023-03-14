@@ -1,8 +1,7 @@
 #[allow(unused_imports)]
 use builtin::*;
-mod pervasive;
-use pervasive::*;
-use pervasive::map::*;
+use vstd::{*, pervasive::*};
+use vstd::map::*;
 
 use state_machines_macros::tokenized_state_machine;
 

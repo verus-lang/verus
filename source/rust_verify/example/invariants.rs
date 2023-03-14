@@ -1,14 +1,7 @@
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-
-#[cfg(not(vstd_todo))]
-mod pervasive;
-#[cfg(not(vstd_todo))]
-use pervasive::{*, invariant::*};
-
-#[cfg(vstd_todo)]
-use vstd::{*, pervasive::{*, invariant::*}};
+use vstd::{*, pervasive::*, invariant::*};
 
 verus!{
 struct ModPredicate { }
@@ -48,5 +41,5 @@ pub fn main() {
 
   #[verifier::proof] let j = i.into_inner();
 
-  assert(verus_proof_expr!(j % 2 == 1));
+  assert_(verus_proof_expr!(j % 2 == 1));
 }

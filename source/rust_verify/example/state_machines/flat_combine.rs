@@ -1,12 +1,11 @@
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-mod pervasive;
-use pervasive::*;
-use pervasive::multiset::*;
-use pervasive::map::*;
-use pervasive::seq::*;
-use pervasive::option::*;
+use vstd::{*, pervasive::*};
+use vstd::multiset::*;
+use vstd::map::*;
+use vstd::seq::*;
+use vstd::option::*;
 
 use state_machines_macros::tokenized_state_machine;
 

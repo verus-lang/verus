@@ -3,14 +3,13 @@
 // ANCHOR: full
 use builtin::*;
 use builtin_macros::*;
-mod pervasive;
-use pervasive::*;
-use crate::pervasive::{atomic_ghost::*};
-use crate::pervasive::{modes::*};
-use crate::pervasive::{thread::*};
-use crate::pervasive::{vec::*};
+use vstd::{*, pervasive::*};
+use vstd::{atomic_ghost::*};
+use vstd::{modes::*};
+use vstd::{thread::*};
+use vstd::{vec::*};
 use state_machines_macros::tokenized_state_machine;
-use crate::pervasive::result::*;
+use vstd::result::*;
 use std::sync::Arc;
 
 verus_old_todo_no_ghost_blocks!{

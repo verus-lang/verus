@@ -25,46 +25,27 @@ pub fn fndecl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
 #[proc_macro]
 pub fn verus_keep_ghost(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    syntax::rewrite_items(input, false, true, true, false)
+    syntax::rewrite_items(input, false, true, true)
 }
 
 #[proc_macro]
 pub fn verus_erase_ghost(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    syntax::rewrite_items(input, true, true, true, false)
-}
-
-#[proc_macro]
-pub fn verus_keep_ghost_old(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    syntax::rewrite_items(input, false, true, true, true)
-}
-
-#[proc_macro]
-pub fn verus_erase_ghost_old(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    syntax::rewrite_items(input, true, true, true, true)
+    syntax::rewrite_items(input, true, true, true)
 }
 
 #[proc_macro]
 pub fn verus(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     proc_macro::quote! {
-        #[cfg(all(not(verus_macro_erase_ghost), vstd_todo))]
+        #[cfg(all(not(verus_macro_erase_ghost)))]
         verus_keep_ghost! { $input }
-        #[cfg(all(verus_macro_erase_ghost, vstd_todo))]
+        #[cfg(all(verus_macro_erase_ghost))]
         verus_erase_ghost! { $input }
-        #[cfg(all(not(verus_macro_erase_ghost), not(vstd_todo)))]
-        verus_keep_ghost_old! { $input }
-        #[cfg(all(verus_macro_erase_ghost, not(vstd_todo)))]
-        verus_erase_ghost_old! { $input }
     }
 }
 
 #[proc_macro]
-pub fn verus_old_todo_replace_this(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    syntax::rewrite_items(input, false, false, true, true)
-}
-
-#[proc_macro]
 pub fn verus_old_todo_no_ghost_blocks(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    syntax::rewrite_items(input, false, true, false, true)
+    syntax::rewrite_items(input, false, true, false)
 }
 
 #[proc_macro]

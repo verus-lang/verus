@@ -4,11 +4,13 @@ mod common;
 use common::*;
 
 const IMPORTS: &str = code_str! {
-    #[allow(unused_imports)] use crate::pervasive::{cell::*};
-    #[allow(unused_imports)] use crate::pervasive::{ptr::*};
-    #[allow(unused_imports)] use crate::pervasive::{modes::*};
-    #[allow(unused_imports)] use crate::pervasive::{option::*};
-    #[allow(unused_imports)] use crate::pervasive::result::*;
+    #[allow(unused_imports)] use vstd::*;
+    #[allow(unused_imports)] use vstd::pervasive::*;
+    #[allow(unused_imports)] use vstd::{cell::*};
+    #[allow(unused_imports)] use vstd::{ptr::*};
+    #[allow(unused_imports)] use vstd::{modes::*};
+    #[allow(unused_imports)] use vstd::{option::*};
+    #[allow(unused_imports)] use vstd::result::*;
 };
 
 /// With contradiction_smoke_test, add a final `assert(false)` that is expected to fail at the end

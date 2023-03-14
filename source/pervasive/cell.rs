@@ -4,12 +4,10 @@ use core::marker;
 
 #[allow(unused_imports)] use builtin::*;
 #[allow(unused_imports)] use builtin_macros::*;
+#[allow(unused_imports)] use crate::*;
 #[allow(unused_imports)] use crate::pervasive::*;
-#[allow(unused_imports)] use crate::pervasive::modes::*;
-#[allow(unused_imports)] use crate::pervasive::invariant::*;
-#[cfg(not(vstd_build_todo))]
-#[allow(unused_imports)] use crate::pervasive::set::*;
-#[cfg(vstd_build_todo)]
+#[allow(unused_imports)] use crate::modes::*;
+#[allow(unused_imports)] use crate::invariant::*;
 #[allow(unused_imports)] use crate::set::*;
 
 verus!{
@@ -86,7 +84,7 @@ pub ghost struct PermissionOptData<V> {
 #[macro_export]
 macro_rules! pcell_opt_internal {
     [$pcell:expr => $val:expr] => {
-        $crate::pervasive::cell::PermissionOptData {
+        $crate::cell::PermissionOptData {
             pcell: $pcell,
             value: $val,
         }
@@ -97,7 +95,7 @@ macro_rules! pcell_opt_internal {
 macro_rules! pcell_opt {
     [$($tail:tt)*] => {
         ::builtin_macros::verus_proof_macro_exprs!(
-            $crate::pervasive::cell::pcell_opt_internal!($($tail)*)
+            $crate::cell::pcell_opt_internal!($($tail)*)
         )
     }
 }
@@ -264,6 +262,7 @@ impl<T> InvCell<T> {
         &&& self.possible_values@.contains(val)
     }
 
+    /*
     pub fn new(val: T, #[verifier::spec] f: Ghost<FnSpec(T) -> bool>) -> (cell: Self)
         requires f@(val),
         ensures cell.wf() && forall |v| f@(v) <==> cell.inv(v),
@@ -278,6 +277,20 @@ impl<T> InvCell<T> {
             possible_values,
             pcell,
             perm_inv,
+        }
+    }
+    */
+    // TODO (vstd_build_todo) : restore the code above once we move ghost_exec, tracked_exec to builtin
+    #[verifier(external_body)]
+    pub fn new(val: T, #[verifier::spec] f: Ghost<FnSpec(T) -> bool>) -> (cell: Self)
+        requires f@(val),
+        ensures cell.wf() && forall |v| f@(v) <==> cell.inv(v),
+    {
+        let (pcell, _perm) = PCell::new(val);
+        InvCell {
+            possible_values: Ghost::assume_new(),
+            pcell,
+            perm_inv: Tracked::assume_new(),
         }
     }
 }

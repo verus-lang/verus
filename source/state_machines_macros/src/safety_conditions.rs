@@ -106,13 +106,13 @@ pub fn safety_condition_body_simpl(sop: &SimplStmt, let_skip_brace: bool) -> Opt
             panic!("should SplitKind should have been translated out");
         }
         SimplStmt::Require(span, e) => Some(Expr::Verbatim(quote_spanned! {*span =>
-            crate::pervasive::assume(#e);
+            builtin::assume_(#e);
         })),
         SimplStmt::PostCondition(_span, _e, _reason) => None,
         SimplStmt::Assert(span, e, AssertProof { proof: None, error_msg }) => {
             let assert_fn = Ident::new(error_msg, *span);
             Some(Expr::Verbatim(quote_spanned! {*span =>
-                crate::pervasive::state_machine_internal::#assert_fn(#e);
+                vstd::state_machine_internal::#assert_fn(#e);
             }))
         }
         SimplStmt::Assert(span, e, AssertProof { proof: Some(proof), error_msg }) => {
@@ -120,7 +120,7 @@ pub fn safety_condition_body_simpl(sop: &SimplStmt, let_skip_brace: bool) -> Opt
             Some(Expr::Verbatim(quote_spanned! {*span =>
                 assert(#e) by {
                     #proof
-                    crate::pervasive::state_machine_internal::#assert_fn(#e);
+                    vstd::state_machine_internal::#assert_fn(#e);
                 };
             }))
         }

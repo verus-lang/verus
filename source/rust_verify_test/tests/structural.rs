@@ -46,7 +46,7 @@ test_verify_one_file! {
         fn test_not_structural(passengers: u64) {
             let v1 = Thing { v: true };
             let v2 = Thing { v: true };
-            assert(v1 == v2);
+            assert_(v1 == v2);
         }
     } => Err(err) => assert_vir_error_msg(err, "==/!= for non smt equality types")
 }

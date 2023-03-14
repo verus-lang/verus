@@ -82,10 +82,6 @@ struct Visitor {
     // if we are inside bit-vector assertion, warn users to use add/sub/mul for fixed-width operators,
     // rather than +/-/*, which will be promoted to integer operators
     inside_bitvector: bool,
-
-    // Temporary hack (see https://github.com/rust-lang/rust/issues/54363 ) for backward compatability
-    // When we fully commit to having pervasive in a separate crate, we can eliminate this:
-    pervasive_in_same_crate: bool,
 }
 
 fn data_mode_attrs(mode: &DataMode) -> Vec<Attribute> {
@@ -406,17 +402,9 @@ impl Visitor {
                                     let x = x.ident.clone();
                                     let span = x.span();
                                     let f: TokenStream = if path_is_ident(&trk.path, "Gho") {
-                                        if self.pervasive_in_same_crate {
-                                            quote_spanned!(span => crate::pervasive::modes::tracked_unwrap_gho)
-                                        } else {
-                                            quote_spanned!(span => vstd::modes::tracked_unwrap_gho)
-                                        }
+                                        quote_spanned!(span => vstd::modes::tracked_unwrap_gho)
                                     } else {
-                                        if self.pervasive_in_same_crate {
-                                            quote_spanned!(span => crate::pervasive::modes::tracked_unwrap_trk)
-                                        } else {
-                                            quote_spanned!(span => vstd::modes::tracked_unwrap_trk)
-                                        }
+                                        quote_spanned!(span => vstd::modes::tracked_unwrap_trk)
                                     };
                                     stmts.push(Stmt::Semi(
                                         Expr::Verbatim(quote_spanned!(span => let #x = #f(#x))),
@@ -984,8 +972,6 @@ impl VisitMut for Visitor {
                         let inner = take_expr(&mut *unary.expr);
                         *expr = Expr::Verbatim(if self.erase_ghost {
                             quote_spanned!(span => Ghost::assume_new())
-                        } else if self.pervasive_in_same_crate {
-                            quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ crate::pervasive::modes::ghost_exec(#[verifier(ghost_block_wrapped)] /* vattr */ #inner))
                         } else {
                             quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ vstd::modes::ghost_exec(#[verifier(ghost_block_wrapped)] /* vattr */ #inner))
                         });
@@ -1001,8 +987,6 @@ impl VisitMut for Visitor {
                         let inner = take_expr(&mut *unary.expr);
                         *expr = Expr::Verbatim(if self.erase_ghost {
                             quote_spanned!(span => Tracked::assume_new())
-                        } else if self.pervasive_in_same_crate {
-                            quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ crate::pervasive::modes::tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ #inner))
                         } else {
                             quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ vstd::modes::tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ #inner))
                         });
@@ -1818,7 +1802,6 @@ pub(crate) fn rewrite_items(
     erase_ghost: bool,
     use_spec_traits: bool,
     verus_macro_attr: bool,
-    pervasive_in_same_crate: bool,
 ) -> proc_macro::TokenStream {
     use quote::ToTokens;
     let stream = rejoin_tokens(stream);
@@ -1834,7 +1817,6 @@ pub(crate) fn rewrite_items(
         rustdoc: env_rustdoc(),
         inside_bitvector: false,
         verus_macro_attr,
-        pervasive_in_same_crate,
     };
     visitor.visit_items_prefilter(&mut items.items);
     for mut item in items.items {
@@ -1865,7 +1847,6 @@ pub(crate) fn rewrite_expr(
         assign_to: false,
         rustdoc: env_rustdoc(),
         inside_bitvector: false,
-        pervasive_in_same_crate: true,
     };
     visitor.visit_expr_mut(&mut expr);
     expr.to_tokens(&mut new_stream);
@@ -1946,7 +1927,6 @@ pub(crate) fn proof_macro_exprs(
         assign_to: false,
         rustdoc: env_rustdoc(),
         inside_bitvector: false,
-        pervasive_in_same_crate: true,
     };
     for element in &mut invoke.elements.elements {
         match element {

@@ -2,10 +2,9 @@
 
 use builtin::*;
 use builtin_macros::*;
-mod pervasive;
-use crate::pervasive::{*, cell::*};
-use crate::pervasive::modes::*;
-use crate::pervasive::option::*;
+use vstd::{pervasive::*, cell::*};
+use vstd::modes::*;
+use vstd::option::*;
 
 verus!{
 

@@ -2,12 +2,6 @@ fn main() {}
 
 // ## 11 -- 10-program.rs
 
-#[cfg(not(vstd_todo))]
-mod pervasive;
-#[cfg(not(vstd_todo))]
-#[allow(unused_imports)] use { builtin_macros::*, builtin::*, pervasive::*, option::*, seq::*, vec::*, };
-
-#[cfg(vstd_todo)]
 #[allow(unused_imports)] use { builtin_macros::*, builtin::*, vstd::*, option::*, seq::*, vec::*, };
 
 verus! {

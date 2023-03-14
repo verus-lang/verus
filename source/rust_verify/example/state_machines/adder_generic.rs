@@ -1,7 +1,6 @@
 #[allow(unused_imports)]
 use builtin::*;
-mod pervasive;
-use pervasive::*;
+use vstd::{*, pervasive::*};
 
 use state_machines_macros::state_machine;
 

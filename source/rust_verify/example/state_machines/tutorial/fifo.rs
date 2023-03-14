@@ -8,17 +8,16 @@
 // ANCHOR:full
 use builtin::*;
 use builtin_macros::*;
-mod pervasive;
-use pervasive::*;
-use pervasive::multiset::*;
-use pervasive::vec::*;
-use pervasive::option::*;
-use pervasive::map::*;
-use pervasive::ptr::*;
-use pervasive::seq::*;
-use pervasive::cell::*;
-use pervasive::atomic_ghost::*;
-use pervasive::modes::*;
+use vstd::{*, pervasive::*};
+use vstd::multiset::*;
+use vstd::vec::*;
+use vstd::option::*;
+use vstd::map::*;
+use vstd::ptr::*;
+use vstd::seq::*;
+use vstd::cell::*;
+use vstd::atomic_ghost::*;
+use vstd::modes::*;
 use std::sync::Arc;
 
 verus_old_todo_no_ghost_blocks!{

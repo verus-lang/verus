@@ -5,8 +5,7 @@
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-use pervasive::*;
-mod pervasive;
+use vstd::{*, pervasive::*};
 
 verus! {
 

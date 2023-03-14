@@ -291,6 +291,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] regression_int_if code! {
+        use vstd::pervasive::*;
         fn int_if() {
             #[verifier::spec] let a: u128 = 3;
             if a == 4 {
@@ -305,7 +306,7 @@ test_verify_one_file! {
             } else if a == 3 {
                 4
             } else {
-                pervasive::arbitrary()
+                vstd::pervasive::arbitrary()
             }
         }
     } => Ok(())
@@ -322,7 +323,7 @@ test_verify_one_file! {
 
         fn test_ret() {
             #[verifier::spec] let x = ret_spec();
-            assert(x == 3);
+            builtin::assert_(x == 3);
         }
     } => Ok(())
 }
@@ -338,7 +339,7 @@ test_verify_one_file! {
 
         fn test_ret() {
             let x = ret_spec();
-            assert(x == 3);
+            builtin::assert_(x == 3);
         }
     } => Err(err) => assert_error_msg(err, "expression has mode spec, expected mode exec")
 }
@@ -366,7 +367,7 @@ test_verify_one_file! {
     #[test] let_spec_pass code! {
         fn test1() {
             #[verifier::spec] let x: u64 = 2;
-            assert(x == 2);
+            builtin::assert_(x == 2);
         }
     } => Ok(())
 }
@@ -377,7 +378,7 @@ test_verify_one_file! {
             #[verifier::spec] let x: u64;
             x = 2;
             x = 3;
-            assert(false); // FAILS
+            builtin::assert_(false); // FAILS
         }
     } => Err(err) => assert_vir_error_msg(err, "delayed assignment to non-mut let not allowed for spec variables")
 }
@@ -440,7 +441,7 @@ test_verify_one_file! {
             if tr {
                 f(&mut e, b); // should fail: exec <- proof out assign
             }
-            assert(e);
+            builtin::assert_(e);
         }
     } => Err(err) => assert_vir_error_msg(err, "expected mode proof, &mut argument has mode exec")
 }
@@ -528,7 +529,9 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_proof_fn_call_fail PROOF_FN_COMMON.to_string() + code_str! {
+    // TODO (erasure-todo)
+    // This needs to be ported to verus_code
+    #[ignore] #[test] test_proof_fn_call_fail PROOF_FN_COMMON.to_string() + code_str! {
         #[verifier::proof]
         fn lemma(#[verifier::proof] node: Node) {
             requires(node.v < 10);
@@ -537,7 +540,7 @@ test_verify_one_file! {
 
         #[verifier::proof]
         fn other(#[verifier::proof] node: Node) {
-            assume(node.v < 10);
+            builtin::assume_(node.v < 10);
             lemma(node);
             lemma(node);
         }
@@ -555,7 +558,7 @@ test_verify_one_file! {
 
             #[verifier::proof]
             fn other(&self, other_node: Node) {
-                assume(other_node.v < 10);
+                builtin::assume_(other_node.v < 10);
                 other_node.lemma();
             }
         }
@@ -613,12 +616,12 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] tracked_double_deref code! {
-        use pervasive::modes::*;
+        use vstd::modes::*;
 
         fn foo<V>(x: Tracked<V>) {
             let y = &x;
 
-            assert(equal((*y).view(), x.view()));
+            builtin::assert_(equal((*y).view(), x.view()));
         }
     } => Ok(())
 }

@@ -1,3 +1,8 @@
+//! The "standard library" for [Verus](https://github.com/verus-lang/verus).
+//! Contains various utilities and datatypes for proofs,
+//! as well as runtime functionality with specifications.
+//! For an introduction to Verus, see [the tutorial](https://verus-lang.github.io/verus/guide/).
+
 pub mod pervasive;
 pub mod map;
 pub mod option;
@@ -23,4 +28,7 @@ pub mod ptr;
 pub mod string;
 #[cfg(not(feature = "no_global_allocator"))] 
 pub mod vec;
+
+// Re-exports all pervasive types, traits, and functions that are commonly used or replace
+// regular `core` or `std` definitions.
 pub mod prelude;

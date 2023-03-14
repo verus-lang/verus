@@ -2,13 +2,6 @@
 
 use builtin::*;
 use builtin_macros::*;
-
-#[cfg(not(vstd_todo))]
-mod pervasive;
-#[cfg(not(vstd_todo))]
-use crate::pervasive::{*, ptr::*, seq::*, seq_lib::*, map::*, modes::*};
-
-#[cfg(vstd_todo)]
 use vstd::{*, ptr::*, seq::*, seq_lib::*, map::*, modes::*};
 
 // "XOR Linked List". This is a sorta-cute (if not usually practical) folk data structure:

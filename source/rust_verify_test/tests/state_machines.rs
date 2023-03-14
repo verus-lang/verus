@@ -4,13 +4,14 @@ mod common;
 use common::*;
 
 const IMPORTS: &str = code_str! {
-    #[allow(unused_imports)] use crate::pervasive::{atomic::*};
-    #[allow(unused_imports)] use crate::pervasive::{modes::*};
-    #[allow(unused_imports)] use crate::pervasive::result::*;
-    #[allow(unused_imports)] use crate::pervasive::option::*;
-    #[allow(unused_imports)] use crate::pervasive::map::*;
-    #[allow(unused_imports)] use crate::pervasive::set::*;
-    #[allow(unused_imports)] use crate::pervasive::multiset::*;
+    #[allow(unused_imports)] use vstd::{atomic::*};
+    #[allow(unused_imports)] use vstd::{modes::*};
+    #[allow(unused_imports)] use vstd::result::*;
+    #[allow(unused_imports)] use vstd::option::*;
+    #[allow(unused_imports)] use vstd::map::*;
+    #[allow(unused_imports)] use vstd::set::*;
+    #[allow(unused_imports)] use vstd::multiset::*;
+    #[allow(unused_imports)] use vstd::pervasive::*;
     #[allow(unused_imports)] use builtin::*;
     #[allow(unused_imports)] use builtin_macros::*;
     #[allow(unused_imports)] use state_machines_macros::*;

@@ -166,7 +166,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[ignore] #[test] test_nested_assert_forall_by_regression_155 code! {
-        use crate::pervasive::map::*;
+        use vstd::map::*;
 
         #[verifier::proof]
         pub fn test_forall_forall<S, T>() {
@@ -188,7 +188,7 @@ test_verify_one_file! {
                                 ::builtin::equal(m1.index(key), m2.index(key)))]);
                         { {} }
                     });
-                    crate::pervasive::assert(m1.ext_equal(m2));
+                    builtin::assert_(m1.ext_equal(m2));
                 });
 
                 assume(equal(union1, union2));

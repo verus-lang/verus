@@ -81,7 +81,7 @@ test_verify_one_file! {
         fn caller() {
             let mut a = 2;
             add1(&mut a);
-            assert(a == 3);
+            builtin::assert_(a == 3);
         }
     } => Err(err) => assert_vir_error_msg(err, "expected mode proof, &mut argument has mode exec")
 }
@@ -91,7 +91,7 @@ test_verify_one_file! {
         fn caller() {
             #[verifier::proof] let mut a = 2;
             add1(&mut a);
-            assert(a == 3);
+            builtin::assert_(a == 3);
         }
     } => Ok(())
 }
@@ -347,7 +347,7 @@ test_verify_one_file! {
         fn bar(#[verifier::proof] x: int) {
             #[verifier::proof] let mut x = x;
             #[verifier::proof] let (a, b) = foo(&mut x);
-            assert(a + b == x); // THIS LINE FAILS
+            builtin::assert_(a + b == x); // THIS LINE FAILS
         }
     } => Ok(())
 }
@@ -364,7 +364,7 @@ test_verify_one_file! {
         fn bar(#[verifier::proof] x: int) {
             let mut x = true;
             let (a, b) = foo(&mut x);
-            assert(x == true); // FAILS
+            builtin::assert_(x == true); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
 }
