@@ -369,7 +369,7 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
                     }
                 };
                 let block = ExprX::Block(Arc::new(decls), Some(arm.x.body.clone()));
-                let body = SpannedTyped::new(&arm.x.pattern.span, &t_bool, block);
+                let body = SpannedTyped::new(&arm.x.pattern.span, &expr.typ, block);
                 if let Some(prev) = if_expr {
                     // if pattern && guard then body else prev
                     let ifx = ExprX::If(test.clone(), body, Some(prev));
