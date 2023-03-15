@@ -2307,8 +2307,6 @@ impl PartialEq for UnOp {
             (UnOp::BigAnd(_), UnOp::BigAnd(_)) => true,
             (UnOp::BigOr(_), UnOp::BigOr(_)) => true,
             (UnOp::Proof(_), UnOp::Proof(_)) => true,
-            (UnOp::Ghost(_), UnOp::Ghost(_)) => true,
-            (UnOp::Tracked(_), UnOp::Tracked(_)) => true,
             (UnOp::Forall(_), UnOp::Forall(_)) => true,
             (UnOp::Exists(_), UnOp::Exists(_)) => true,
             (UnOp::Choose(_), UnOp::Choose(_)) => true,

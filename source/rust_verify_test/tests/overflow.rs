@@ -7,8 +7,8 @@ test_verify_one_file! {
     #[test] test_overflow_spec_pass verus_code! {
         use vstd::*;
         fn test(a: u64) {
-            let mut j: Ghost<u64> = ghost(a);
-            proof { j@ = add(j@, 2); }
+            let ghost mut j: u64 = a;
+            proof { j = add(j, 2); }
             assert(j == add(a, 2));
         }
     } => Ok(())
@@ -37,10 +37,10 @@ test_verify_one_file! {
     #[test] test_overflow_spec_fails_2 verus_code! {
         use vstd::*;
         fn test(a: u64) {
-            let mut j: Ghost<u64> = ghost(a);
+            let ghost mut j: u64 = a;
             proof {
-                j@ = add(j@, 2);
-                j@ = add(j@, 2);
+                j = add(j, 2);
+                j = add(j, 2);
             }
             assert(j == a + 4); // FAILS
         }

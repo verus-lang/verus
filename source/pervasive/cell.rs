@@ -267,8 +267,8 @@ impl<T> InvCell<T> {
         ensures cell.wf() && forall |v| f@(v) <==> cell.inv(v),
     {
         let (pcell, perm) = PCell::new(val);
-        let possible_values = ghost(Set::new(f@));
-        let perm_inv = tracked(LocalInvariant::new(
+        let possible_values = Ghost(Set::new(f@));
+        let perm_inv = Tracked(LocalInvariant::new(
             (possible_values@, pcell),
             perm.get(),
             0));

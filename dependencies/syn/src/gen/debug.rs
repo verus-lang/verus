@@ -3267,16 +3267,6 @@ impl Debug for UnOp {
                 formatter.field(v0);
                 formatter.finish()
             }
-            UnOp::Ghost(v0) => {
-                let mut formatter = formatter.debug_tuple("Ghost");
-                formatter.field(v0);
-                formatter.finish()
-            }
-            UnOp::Tracked(v0) => {
-                let mut formatter = formatter.debug_tuple("Tracked");
-                formatter.field(v0);
-                formatter.finish()
-            }
             UnOp::Forall(v0) => {
                 let mut formatter = formatter.debug_tuple("Forall");
                 formatter.field(v0);

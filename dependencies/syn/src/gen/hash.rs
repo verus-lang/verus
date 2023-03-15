@@ -3065,20 +3065,14 @@ impl Hash for UnOp {
             UnOp::Proof(_) => {
                 state.write_u8(5u8);
             }
-            UnOp::Ghost(_) => {
+            UnOp::Forall(_) => {
                 state.write_u8(6u8);
             }
-            UnOp::Tracked(_) => {
+            UnOp::Exists(_) => {
                 state.write_u8(7u8);
             }
-            UnOp::Forall(_) => {
-                state.write_u8(8u8);
-            }
-            UnOp::Exists(_) => {
-                state.write_u8(9u8);
-            }
             UnOp::Choose(_) => {
-                state.write_u8(10u8);
+                state.write_u8(8u8);
             }
         }
     }

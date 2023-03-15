@@ -23,7 +23,7 @@ fn binary_search(v: &Vec<u64>, k: u64) -> (r: usize)
             exists|i:int| i1 <= i <= i2 && k == v[i],
             forall|i:int, j:int| 0 <= i <= j < v.len() ==> v[i] <= v[j],
     {
-        let d: Ghost<int> = ghost(i2 - i1);
+        let ghost d = i2 - i1;
 
         let ix = i1 + (i2 - i1) / 2;
         if *v.index(ix) < k {
@@ -32,7 +32,7 @@ fn binary_search(v: &Vec<u64>, k: u64) -> (r: usize)
             i2 = ix;
         }
 
-        assert(i2 - i1 < d@);
+        assert(i2 - i1 < d);
     }
     i1
 }
@@ -43,14 +43,14 @@ fn reverse(v: &mut Vec<u64>)
         forall|i: int| 0 <= i < old(v).len() ==> v[i] == old(v)[old(v).len() - i - 1],
 {
     let length = v.len();
-    let v1: Ghost<Seq<u64>> = ghost(v@);
+    let ghost v1 = v@;
     let mut n: usize = 0;
     while n < length / 2
         invariant
             length == v.len(),
-            forall|i: int| 0 <= i < n ==> v[i] == v1@[length - i - 1],
-            forall|i: int| 0 <= i < n ==> v1@[i] == v[length - i - 1],
-            forall|i: int| n <= i && i + n < length ==> #[trigger] v[i] == v1@[i],
+            forall|i: int| 0 <= i < n ==> v[i] == v1[length - i - 1],
+            forall|i: int| 0 <= i < n ==> v1[i] == v[length - i - 1],
+            forall|i: int| n <= i && i + n < length ==> #[trigger] v[i] == v1[i],
     {
         let x = *v.index(n);
         let y = *v.index(length - 1 - n);
@@ -68,13 +68,13 @@ fn pusher() -> Vec<u64> {
     v.push(2);
     v.push(3);
     v.push(4);
-    let goal: Ghost<Seq<u64>> = ghost(Seq::new(5, |i: int| i as u64));
-    assert(v@.ext_equal(goal@));
+    let ghost goal = Seq::new(5, |i: int| i as u64);
+    assert(v@.ext_equal(goal));
     assert(v[2] == 2);
 
     v.pop();
     v.push(4);
-    assert(v@.ext_equal(goal@));
+    assert(v@.ext_equal(goal));
 
     v
 }

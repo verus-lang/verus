@@ -329,22 +329,22 @@ test_verify_one_file! {
 
         impl<V> Foo<V> {
             fn bar<F: Fn(V) -> bool>(f: Ghost<F>, v: Ghost<V>) -> Ghost<bool> {
-                ghost(f.requires((v,)))
+                Ghost(f.requires((v,)))
             }
 
             fn bar2<F: Fn(V) -> bool>(self, f: Ghost<F>) -> Ghost<bool> {
-                ghost(f.requires((self.v,)))
+                Ghost(f.requires((self.v,)))
             }
         }
 
         fn test() {
-            let x: Ghost<u64> = ghost(0u64);
+            let x: Ghost<u64> = Ghost(0u64);
             let z = |y: u64| true;
-            Foo::<u64>::bar(ghost(z), x);
+            Foo::<u64>::bar(Ghost(z), x);
 
             let f = Foo::<u64> { v: 17 };
             let w = |y: u64| true;
-            let b: Ghost<bool> = f.bar2(ghost(w));
+            let b: Ghost<bool> = f.bar2(Ghost(w));
         }
     } => Ok(())
 }

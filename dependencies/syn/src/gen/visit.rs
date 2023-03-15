@@ -4106,12 +4106,6 @@ where
         UnOp::Proof(_binding_0) => {
             tokens_helper(v, &_binding_0.span);
         }
-        UnOp::Ghost(_binding_0) => {
-            tokens_helper(v, &_binding_0.span);
-        }
-        UnOp::Tracked(_binding_0) => {
-            tokens_helper(v, &_binding_0.span);
-        }
         UnOp::Forall(_binding_0) => {
             tokens_helper(v, &_binding_0.span);
         }
