@@ -2,12 +2,11 @@
 
 #![allow(unused_imports)]
 
-mod pervasive;
-use crate::pervasive::*;
-use crate::pervasive::option::*;
-use crate::pervasive::map::*;
-use crate::pervasive::modes::*;
-use crate::pervasive::multiset::*;
+use vstd::pervasive::*;
+use vstd::option::*;
+use vstd::map::*;
+use vstd::modes::*;
+use vstd::multiset::*;
 use builtin::*;
 use builtin_macros::*;
 use state_machines_macros::*;

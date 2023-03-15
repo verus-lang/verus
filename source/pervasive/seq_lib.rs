@@ -4,16 +4,8 @@ use builtin::*;
 use builtin_macros::*;
 #[allow(unused_imports)]
 use crate::pervasive::*;
-#[cfg(not(vstd_build_todo))]
-#[allow(unused_imports)]
-use crate::pervasive::seq::*;
-#[cfg(vstd_build_todo)]
 #[allow(unused_imports)]
 use crate::seq::*;
-#[cfg(not(vstd_build_todo))]
-#[allow(unused_imports)]
-use crate::pervasive::set::Set;
-#[cfg(vstd_build_todo)]
 #[allow(unused_imports)]
 use crate::set::Set;
 
@@ -330,7 +322,7 @@ pub open spec fn check_argument_is_seq<A>(s: Seq<A>) -> Seq<A> { s }
 #[macro_export]
 macro_rules! assert_seqs_equal {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::pervasive::seq_lib::assert_seqs_equal_internal!($($tail)*))
+        ::builtin_macros::verus_proof_macro_exprs!($crate::seq_lib::assert_seqs_equal_internal!($($tail)*))
     };
 }
 
@@ -347,16 +339,16 @@ macro_rules! assert_seqs_equal_internal {
         assert_seqs_equal_internal!($s1, $s2, idx => { })
     };
     ($s1:expr, $s2:expr, $idx:ident => $bblock:block) => {
-        #[verifier::spec] let s1 = $crate::pervasive::seq_lib::check_argument_is_seq($s1);
-        #[verifier::spec] let s2 = $crate::pervasive::seq_lib::check_argument_is_seq($s2);
+        #[verifier::spec] let s1 = $crate::seq_lib::check_argument_is_seq($s1);
+        #[verifier::spec] let s2 = $crate::seq_lib::check_argument_is_seq($s2);
         ::builtin::assert_by(::builtin::equal(s1, s2), {
-            $crate::pervasive::assert(s1.len() == s2.len());
+            ::builtin::assert_(s1.len() == s2.len());
             ::builtin::assert_forall_by(|$idx : ::builtin::int| {
                 ::builtin::requires(::builtin_macros::verus_proof_expr!(0 <= $idx && $idx < s1.len()));
                 ::builtin::ensures(::builtin::equal(s1.index($idx), s2.index($idx)));
                 { $bblock }
             });
-            $crate::pervasive::assert(s1.ext_equal(s2));
+            ::builtin::assert_(s1.ext_equal(s2));
         });
     }
 }

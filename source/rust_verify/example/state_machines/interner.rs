@@ -2,17 +2,16 @@
 
 use builtin::*;
 use builtin_macros::*;
-mod pervasive;
-use pervasive::*;
-use pervasive::multiset::*;
-use pervasive::option::*;
-use pervasive::ptr::*;
-use pervasive::cell::*;
-use pervasive::seq::*;
-use pervasive::map::*;
-use pervasive::vec::*;
-use pervasive::modes::*;
-use pervasive::invariant::*;
+use vstd::{*, pervasive::*};
+use vstd::multiset::*;
+use vstd::option::*;
+use vstd::ptr::*;
+use vstd::cell::*;
+use vstd::seq::*;
+use vstd::map::*;
+use vstd::vec::*;
+use vstd::modes::*;
+use vstd::invariant::*;
 
 use state_machines_macros::tokenized_state_machine;
 

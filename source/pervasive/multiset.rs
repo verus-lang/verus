@@ -6,10 +6,6 @@ use builtin::*;
 use builtin_macros::*;
 #[allow(unused_imports)]
 use crate::pervasive::*;
-#[cfg(not(vstd_build_todo))]
-#[allow(unused_imports)]
-use crate::pervasive::set::*;
-#[cfg(vstd_build_todo)]
 #[allow(unused_imports)]
 use crate::set::*;
 
@@ -224,7 +220,7 @@ macro_rules! assert_multisets_equal {
                 ]);
                 { $bblock }
             });
-            $crate::pervasive::assert(m1.ext_equal(m2));
+            ::builtin::assert_(m1.ext_equal(m2));
         });
     }
 }

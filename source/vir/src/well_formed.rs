@@ -101,7 +101,7 @@ fn check_one_expr(
                         ExprX::Unary(UnaryOp::CoerceMode { .. }, e1) => is_ok(e1),
                         ExprX::UnaryOpr(UnaryOpr::Field { .. }, base) => is_ok(base),
                         ExprX::Block(stmts, Some(e1)) if stmts.len() == 0 => is_ok(e1),
-                        ExprX::Ghost { alloc_wrapper: None, tracked: true, expr: e1 } => is_ok(e1),
+                        ExprX::Ghost { alloc_wrapper: false, tracked: true, expr: e1 } => is_ok(e1),
                         _ => false,
                     }
                 }

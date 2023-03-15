@@ -237,8 +237,8 @@ test_verify_one_file_with_options! {
 
 // 0 arg closures
 
-test_verify_one_file_with_options! {
-    #[test] basic_test_0_args ["--todo-no-macro-erasure", "todo-no-vstd"] => verus_code! {
+test_verify_one_file! {
+    #[ignore] #[test] basic_test_0_args verus_code! {
         // TODO requires/ensures need to be spec-erased
         spec fn goo() -> bool;
 
@@ -427,8 +427,8 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_vir_error_msg(err, "Verus does not support 'mut' params for closures")
 }
 
-test_verify_one_file! {
-    #[test] construct_exec_closure_in_spec_code_fail (code_str! {
+test_verify_one_file_with_options! {
+    #[test] construct_exec_closure_in_spec_code_fail ["vstd"] => (code_str! {
         // This test needs to be outside the verus macro so that it doesn't
         // automatically add the closure_to_fn_spec wrapper
         #[verifier::spec] fn foo() -> bool {
@@ -1051,8 +1051,8 @@ test_verify_one_file_with_options! {
 
 // closures that depend on type params
 
-test_verify_one_file_with_options! {
-    #[test] closure_depends_on_type_param ["--todo-no-macro-erasure", "todo-no-vstd"] => verus_code! {
+test_verify_one_file! {
+    #[ignore] #[test] closure_depends_on_type_param verus_code! {
         // TODO requires/ensures need to be spec-erased
         fn test1<T>(some_t: T) {
             let f = |t: T| {

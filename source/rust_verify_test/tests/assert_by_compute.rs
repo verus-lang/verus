@@ -358,10 +358,10 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
 }
 
-test_verify_one_file_with_options! {
-    #[test] sequences ["todo-no-vstd"] => verus_code! {
+test_verify_one_file! {
+    #[test] sequences verus_code! {
         #[allow(unused_imports)]
-        use pervasive::seq::*;
+        use vstd::seq::*;
 
         proof fn test() {
             assert(Seq::<u32>::empty().len() == 0) by (compute_only);

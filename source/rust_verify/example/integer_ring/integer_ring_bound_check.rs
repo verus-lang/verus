@@ -8,9 +8,7 @@
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
-mod pervasive;
-#[allow(unused_imports)]
-use pervasive::*;
+use vstd::{*, pervasive::*};
 #[allow(unused_imports)]
 use builtin_macros::*;
 

@@ -82,10 +82,6 @@ struct Visitor {
     // if we are inside bit-vector assertion, warn users to use add/sub/mul for fixed-width operators,
     // rather than +/-/*, which will be promoted to integer operators
     inside_bitvector: bool,
-
-    // Temporary hack (see https://github.com/rust-lang/rust/issues/54363 ) for backward compatability
-    // When we fully commit to having pervasive in a separate crate, we can eliminate this:
-    pervasive_in_same_crate: bool,
 }
 
 // For exec "let pat = init" declarations, recursively find Tracked(x), Ghost(x), x in pat
@@ -1124,20 +1120,16 @@ impl VisitMut for Visitor {
                     let inner = take_expr(&mut call.args[0]);
                     *expr = Expr::Verbatim(if self.erase_ghost {
                         quote_spanned!(span => Tracked::assume_new())
-                    } else if self.pervasive_in_same_crate {
-                        quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ crate::pervasive::modes::tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ #inner))
                     } else {
-                        quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ vstd::modes::tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ #inner))
+                        quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ ::builtin::tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ #inner))
                     });
                 } else {
                     // Ghost(...)
                     let inner = take_expr(&mut call.args[0]);
                     *expr = Expr::Verbatim(if self.erase_ghost {
                         quote_spanned!(span => Ghost::assume_new())
-                    } else if self.pervasive_in_same_crate {
-                        quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ crate::pervasive::modes::ghost_exec(#[verifier(ghost_block_wrapped)] /* vattr */ #inner))
                     } else {
-                        quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ vstd::modes::ghost_exec(#[verifier(ghost_block_wrapped)] /* vattr */ #inner))
+                        quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ ::builtin::ghost_exec(#[verifier(ghost_block_wrapped)] /* vattr */ #inner))
                     });
                 }
             }
@@ -1968,7 +1960,6 @@ pub(crate) fn rewrite_items(
     erase_ghost: bool,
     use_spec_traits: bool,
     verus_macro_attr: bool,
-    pervasive_in_same_crate: bool,
 ) -> proc_macro::TokenStream {
     use quote::ToTokens;
     let stream = rejoin_tokens(stream);
@@ -1984,7 +1975,6 @@ pub(crate) fn rewrite_items(
         rustdoc: env_rustdoc(),
         inside_bitvector: false,
         verus_macro_attr,
-        pervasive_in_same_crate,
     };
     visitor.visit_items_prefilter(&mut items.items);
     for mut item in items.items {
@@ -2015,7 +2005,6 @@ pub(crate) fn rewrite_expr(
         assign_to: false,
         rustdoc: env_rustdoc(),
         inside_bitvector: false,
-        pervasive_in_same_crate: true,
     };
     visitor.visit_expr_mut(&mut expr);
     expr.to_tokens(&mut new_stream);
@@ -2096,7 +2085,6 @@ pub(crate) fn proof_macro_exprs(
         assign_to: false,
         rustdoc: env_rustdoc(),
         inside_bitvector: false,
-        pervasive_in_same_crate: true,
     };
     for element in &mut invoke.elements.elements {
         match element {

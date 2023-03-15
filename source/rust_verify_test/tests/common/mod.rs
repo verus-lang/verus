@@ -147,7 +147,7 @@ pub fn verify_files_vstd(
                 our_args.arch_word_bits = vir::prelude::ArchWordBits::Exactly(64);
             } else if *option == "--todo-no-macro-erasure" {
                 macro_erasure = false;
-            } else if *option == "vstd" || *option == "todo-no-vstd" {
+            } else if *option == "vstd" {
                 // ignore
             } else {
                 panic!("option '{}' not recognized by test harness", option);
@@ -155,22 +155,24 @@ pub fn verify_files_vstd(
         }
         if macro_erasure {
             our_args.erasure = rust_verify::config::Erasure::Macro;
-            if import_vstd {
-                our_args.import =
-                    vec![("vstd".to_string(), "../../rust/install/bin/vstd.vir".to_string())];
-            }
+        } else {
+            // TODO (erasure-todo) : switch entirely to macro erasure; right now, the old erasure is disabled
+            our_args.no_lifetime = true;
+        }
+        if import_vstd {
+            our_args.import =
+                vec![("vstd".to_string(), "../../rust/install/bin/vstd.vir".to_string())];
         }
         our_args
     };
     if macro_erasure {
         rustc_args.append(&mut vec!["--cfg".to_string(), "erasure_macro_todo".to_string()]);
-        if import_vstd {
-            rustc_args.append(&mut vec!["--cfg".to_string(), "vstd_todo".to_string()]);
-            rustc_args.append(&mut vec![
-                "--extern".to_string(),
-                "vstd=../../rust/install/bin/libvstd.rlib".to_string(),
-            ]);
-        }
+    }
+    if import_vstd {
+        rustc_args.append(&mut vec![
+            "--extern".to_string(),
+            "vstd=../../rust/install/bin/libvstd.rlib".to_string(),
+        ]);
     }
 
     let files = files.into_iter().map(|(p, f)| (p.into(), f)).collect();
@@ -234,23 +236,10 @@ pub const USE_PRELUDE: &str = crate::common::code_str! {
 };
 
 #[allow(dead_code)]
-pub const PERVASIVE_PRELUDE: &str = "mod pervasive; #[allow(unused_imports)] use pervasive::*;";
-
-#[allow(dead_code)]
 pub fn verify_one_file(code: String, options: &[&str]) -> Result<(), TestErr> {
-    let verus_macro = code.contains("::builtin_macros::verus!");
     let vstd = code.contains("vstd::") || code.contains("pervasive::") || options.contains(&"vstd");
-    let todo_no_vstd = options.contains(&"todo-no-vstd");
-    let files = vec![(
-        "test.rs".to_string(),
-        format!(
-            "{}\n{}\n{}",
-            USE_PRELUDE,
-            if !verus_macro || todo_no_vstd { PERVASIVE_PRELUDE } else { "" },
-            code.as_str()
-        ),
-    )];
-    verify_files_vstd(files, "test.rs".to_string(), vstd && verus_macro && !todo_no_vstd, options)
+    let files = vec![("test.rs".to_string(), format!("{}\n{}", USE_PRELUDE, code.as_str()))];
+    verify_files_vstd(files, "test.rs".to_string(), vstd, options)
 }
 
 #[macro_export]

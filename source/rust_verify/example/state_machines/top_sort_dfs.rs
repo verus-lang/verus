@@ -1,15 +1,14 @@
 #![allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-mod pervasive;
-use pervasive::*;
-use pervasive::set::*;
-use pervasive::vec::*;
-use pervasive::slice::*;
-use pervasive::option::*;
-use pervasive::seq::*;
-use pervasive::map::*;
-use pervasive::modes::*;
+use vstd::{*, pervasive::*};
+use vstd::set::*;
+use vstd::vec::*;
+use vstd::slice::*;
+use vstd::option::*;
+use vstd::seq::*;
+use vstd::map::*;
+use vstd::modes::*;
 use state_machines_macros::tokenized_state_machine;
 
 use option::Option::Some;

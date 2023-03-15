@@ -3,14 +3,6 @@ extern crate builtin;
 use builtin::*;
 #[allow(unused_imports)]
 use builtin_macros::*;
-
-#[cfg(not(vstd_todo))]
-mod pervasive;
-#[cfg(not(vstd_todo))]
-#[allow(unused_imports)]
-use pervasive::{*, vec::*, seq::*, modes::*};
-
-#[cfg(vstd_todo)]
 #[allow(unused_imports)]
 use vstd::{*, vec::*, seq::*, modes::*};
 

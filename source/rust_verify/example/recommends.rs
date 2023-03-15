@@ -1,14 +1,6 @@
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-
-#[cfg(not(vstd_todo))]
-mod pervasive;
-#[cfg(not(vstd_todo))]
-#[allow(unused_imports)]
-use crate::pervasive::{*, seq::*, seq_lib::*};
-
-#[cfg(vstd_todo)]
 #[allow(unused_imports)]
 use vstd::{pervasive::*, seq::*, seq_lib::*};
 

@@ -680,12 +680,12 @@ fn seq_to_sst(span: &Span, typ: Typ, s: &Vector<Exp>) -> Exp {
     let exp_new = |e: ExpX| SpannedTyped::new(span, &typ, e);
     let typs = Arc::new(vec![typ.clone()]);
     let path_empty = Arc::new(PathX {
-        krate: None,
-        segments: strs_to_idents(vec!["pervasive", "seq", "Seq", "empty"]),
+        krate: Some(Arc::new("vstd".to_string())),
+        segments: strs_to_idents(vec!["seq", "Seq", "empty"]),
     });
     let path_push = Arc::new(PathX {
-        krate: None,
-        segments: strs_to_idents(vec!["pervasive", "seq", "Seq", "push"]),
+        krate: Some(Arc::new("vstd".to_string())),
+        segments: strs_to_idents(vec!["seq", "Seq", "push"]),
     });
     let fun_empty = Arc::new(FunX { path: path_empty, trait_path: None });
     let fun_push = Arc::new(FunX { path: path_push, trait_path: None });

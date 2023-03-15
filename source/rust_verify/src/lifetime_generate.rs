@@ -456,7 +456,7 @@ fn erase_spec_exps_typ<'tcx>(
 
 // Return an Exp instead of an Option<Exp>
 // (in particulary, instead of returning None, return a dummy expression with the intended type)
-fn erase_spec_exps_force<'tcx>(
+fn erase_spec_exps_force_typ<'tcx>(
     ctxt: &Context<'tcx>,
     state: &mut State,
     span: Span,
@@ -464,6 +464,16 @@ fn erase_spec_exps_force<'tcx>(
     exps: Vec<Option<Exp>>,
 ) -> Exp {
     erase_spec_exps_typ(ctxt, state, span, |_| typ, exps, true).expect("erase expr force")
+}
+
+fn erase_spec_exps_force<'tcx>(
+    ctxt: &Context<'tcx>,
+    state: &mut State,
+    expr: &Expr<'tcx>,
+    exps: Vec<Option<Exp>>,
+) -> Exp {
+    let expr_typ = |state: &mut State| erase_ty(ctxt, state, ctxt.types().node_type(expr.hir_id));
+    erase_spec_exps_typ(ctxt, state, expr.span, expr_typ, exps, true).expect("erase expr force")
 }
 
 fn erase_spec_exps<'tcx>(
@@ -480,7 +490,7 @@ fn phantom_data_expr<'tcx>(ctxt: &Context<'tcx>, state: &mut State, expr: &Expr<
     let e = erase_expr(ctxt, state, true, expr);
     let ty = ctxt.types().node_type(expr.hir_id);
     let typ = Box::new(TypX::Phantom(erase_ty(ctxt, state, ty)));
-    erase_spec_exps_force(ctxt, state, expr.span, typ, vec![e])
+    erase_spec_exps_force_typ(ctxt, state, expr.span, typ, vec![e])
 }
 
 // Convert an Option<Exp> into an Exp by converting None into an empty block
@@ -552,6 +562,7 @@ fn erase_call<'tcx>(
                 TrackedGet => Some("get"),
                 TrackedBorrow => Some("borrow"),
                 TrackedBorrowMut => Some("borrow_mut"),
+                GhostExec | TrackedExec | TrackedExecBorrow => None,
                 IntIntrinsic | Implies | SmartPtrNew | NewStrLit => None,
                 GhostSplitTuple | TrackedSplitTuple => None,
             };
@@ -561,6 +572,8 @@ fn erase_call<'tcx>(
                 let exp =
                     erase_expr(ctxt, state, expect_spec, &args_slice[0]).expect("builtin method");
                 mk_exp(ExpX::BuiltinMethod(exp, method.to_string()))
+            } else if let GhostExec = op {
+                Some(erase_spec_exps_force(ctxt, state, expr, vec![]))
             } else {
                 let exps =
                     args_slice.iter().map(|a| erase_expr(ctxt, state, expect_spec, a)).collect();
@@ -569,13 +582,13 @@ fn erase_call<'tcx>(
         }
         ResolvedCall::Call(f_name) => {
             if !ctxt.functions.contains_key(f_name) {
-                panic!("internal error: function call to {:?} not found", f_name);
+                panic!("internal error: function call to {:?} not found {:?}", f_name, expr.span);
             }
             let f = &ctxt.functions[f_name];
             let f = if let Some(f) = f {
                 f
             } else {
-                panic!("internal error: call to external function {:?}", f_name);
+                panic!("internal error: call to external function {:?} {:?}", f_name, expr.span);
             };
             if f.x.mode == Mode::Spec {
                 return None;
@@ -589,7 +602,7 @@ fn erase_call<'tcx>(
                 if param.x.mode == Mode::Spec {
                     let exp = erase_expr(ctxt, state, true, e);
                     is_some = is_some || exp.is_some();
-                    exps.push(erase_spec_exps_force(
+                    exps.push(erase_spec_exps_force_typ(
                         ctxt,
                         state,
                         e.span,

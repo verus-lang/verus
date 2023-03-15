@@ -1,8 +1,7 @@
 use builtin::*;
 use builtin_macros::*;
 use state_machines_macros::*;
-mod pervasive;
-use pervasive::option::*;
+use vstd::option::*;
 
 pub enum ThreadState {
     Idle,

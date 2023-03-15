@@ -544,7 +544,7 @@ fn parse_let(
 
                 if ids.len() > 1 {
                     match_select = expr_from_tokens(quote_spanned! { stmt_span =>
-                        match #tmp_ident { #pat => (#(#ids),*) , _ => crate::pervasive::arbitrary() }
+                        match #tmp_ident { #pat => (#(#ids),*) , _ => vstd::pervasive::arbitrary() }
                     });
                     pat_tup = pat_from_tokens(quote_spanned! { stmt_span =>
                         (#(#ids),*)
@@ -552,7 +552,7 @@ fn parse_let(
                 } else {
                     let id = &ids[0];
                     match_select = expr_from_tokens(quote_spanned! { stmt_span =>
-                        match #tmp_ident { #pat => #id , _ => crate::pervasive::arbitrary() }
+                        match #tmp_ident { #pat => #id , _ => vstd::pervasive::arbitrary() }
                     });
                     pat_tup = pat_from_tokens(quote_spanned! { stmt_span =>
                         #id

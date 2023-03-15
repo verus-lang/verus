@@ -3,11 +3,10 @@
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-mod pervasive;
-use pervasive::*;
-use pervasive::seq::*;
-use pervasive::set::*;
-use pervasive::map::*;
+use vstd::{*, pervasive::*};
+use vstd::seq::*;
+use vstd::set::*;
+use vstd::map::*;
 
 use state_machines_macros::*;
 

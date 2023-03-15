@@ -330,7 +330,7 @@ pub fn output_primary_stuff(
             impl_stream.extend(quote! {
                 #[verifier::proof]
                 pub fn #name(#params) {
-                    crate::pervasive::assume(pre.invariant());
+                    builtin::assume_(pre.invariant());
                     ::builtin_macros::verus_proof_expr!({
                         #b
                     })
@@ -541,7 +541,7 @@ fn output_step_datatype(
 
                         //::builtin::reveal(super::State::init);
                         //::builtin::reveal(super::State::init_by);
-                        //crate::pervasive::assert(super::State::init_by(post,
+                        //builtin::assert_(super::State::init_by(post,
                         //    super::Init::#tr_name(#step_args)));
                     }
                 });
@@ -558,7 +558,7 @@ fn output_step_datatype(
 
                         //::builtin::reveal(super::State::next);
                         //::builtin::reveal(super::State::next_by);
-                        //crate::pervasive::assert(super::State::next_by(pre, post,
+                        //builtin::assert_(super::State::next_by(pre, post,
                         //    super::Step::#tr_name(#step_args)));
                     }
                 });
@@ -764,18 +764,18 @@ pub fn shardable_type_to_type(span: Span, stype: &ShardableType) -> Type {
         ShardableType::Option(ty)
         | ShardableType::PersistentOption(ty)
         | ShardableType::StorageOption(ty) => {
-            Type::Verbatim(quote_spanned! { span => crate::pervasive::option::Option<#ty> })
+            Type::Verbatim(quote_spanned! { span => vstd::option::Option<#ty> })
         }
         ShardableType::Set(ty) | ShardableType::PersistentSet(ty) => {
-            Type::Verbatim(quote_spanned! { span => crate::pervasive::set::Set<#ty> })
+            Type::Verbatim(quote_spanned! { span => vstd::set::Set<#ty> })
         }
         ShardableType::Map(key, val)
         | ShardableType::PersistentMap(key, val)
         | ShardableType::StorageMap(key, val) => {
-            Type::Verbatim(quote_spanned! { span => crate::pervasive::map::Map<#key, #val> })
+            Type::Verbatim(quote_spanned! { span => vstd::map::Map<#key, #val> })
         }
         ShardableType::Multiset(ty) => {
-            Type::Verbatim(quote_spanned! { span => crate::pervasive::multiset::Multiset<#ty> })
+            Type::Verbatim(quote_spanned! { span => vstd::multiset::Multiset<#ty> })
         }
         ShardableType::Count | ShardableType::PersistentCount => {
             Type::Verbatim(quote_spanned! { span => ::builtin::nat })

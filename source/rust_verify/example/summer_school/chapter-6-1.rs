@@ -1,13 +1,12 @@
-// rust_verify/tests/example.rs vstd-todo
+// rust_verify/tests/example.rs erasure-todo
 
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-mod pervasive;
-use pervasive::*;
-use pervasive::seq::*;
-use pervasive::map::*;
-use pervasive::set::*;
+use vstd::{*, pervasive::*};
+use vstd::seq::*;
+use vstd::map::*;
+use vstd::set::*;
 
 use state_machines_macros::state_machine;
 use state_machines_macros::case_on_next;

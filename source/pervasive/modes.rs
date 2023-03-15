@@ -5,33 +5,6 @@
 
 verus! {
 
-// TODO: the *_exec* functions would be better in builtin,
-// but it's painful to implement the support in erase.rs at the moment.
-#[verifier(external_body)]
-pub fn ghost_exec<A>(#[verifier::spec] a: A) -> (s: Ghost<A>)
-    ensures a == s@,
-{
-    Ghost::assume_new()
-}
-
-#[verifier(external_body)]
-pub fn tracked_exec<A>(#[verifier::proof] a: A) -> (s: Tracked<A>)
-    ensures a == s@
-{
-    opens_invariants_none();
-    Tracked::assume_new()
-}
-
-#[verifier(external_body)]
-pub fn tracked_exec_borrow<'a, A>(#[verifier::proof] a: &'a A) -> (s: &'a Tracked<A>)
-    ensures *a == s@
-{
-    opens_invariants_none();
-
-    // TODO: implement this (using unsafe) or mark function as ghost (if supported by Rust)
-    unimplemented!();
-}
-
 // REVIEW: consider moving these into builtin and erasing them from the VIR
 pub struct Gho<A>(pub ghost A);
 pub struct Trk<A>(pub tracked A);
@@ -78,13 +51,8 @@ pub struct Spec<#[verifier(strictly_positive)] A> {
 }
 */
 
-#[cfg(not(verus_macro_erase_ghost))]
 pub struct Proof<A>(
     #[verifier::proof] pub A,
-);
-#[cfg(verus_macro_erase_ghost)]
-pub struct Proof<A>(
-    #[verifier::proof] pub std::marker::PhantomData<A>,
 );
 
 /*
@@ -137,7 +105,6 @@ impl<A> PartialEq for Proof<A> {
 impl<A> Eq for Proof<A> {
 }
 
-#[cfg(not(verus_macro_erase_ghost))]
 #[allow(dead_code)]
 #[inline(always)]
 #[verifier(external_body)]
@@ -145,16 +112,6 @@ pub fn exec_proof_from_false<A>() -> Proof<A>
     requires false
 {
     Proof(proof_from_false())
-}
-
-#[cfg(verus_macro_erase_ghost)]
-#[allow(dead_code)]
-#[inline(always)]
-#[verifier(external_body)]
-pub fn exec_proof_from_false<A>() -> Proof<A>
-    requires false
-{
-    Proof(std::marker::PhantomData::default())
 }
 
 } // verus

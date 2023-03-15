@@ -2,10 +2,9 @@
 
 use builtin::*;
 use builtin_macros::*;
-mod pervasive;
-use pervasive::*;
-use pervasive::option::*;
-use pervasive::modes::*;
+use vstd::{*, pervasive::*};
+use vstd::option::*;
+use vstd::modes::*;
 
 use state_machines_macros::tokenized_state_machine;
 

@@ -1,7 +1,5 @@
 use builtin::*;
 use builtin_macros::*;
-#[cfg(not(vstd_todo))]
-mod pervasive;
 
 verus! {
 

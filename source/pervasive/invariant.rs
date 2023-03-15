@@ -91,7 +91,7 @@ pub trait InvariantPredicate<K, V> {
 /// and may be shared between threads.
 /// However, this means that an `AtomicInvariant` can be only opened for
 /// the duration of a single _sequentially consistent atomic_ operation.
-/// Such operations are provided by our [`PAtomic`](crate::pervasive::atomic) library.
+/// Such operations are provided by our [`PAtomic`](crate::atomic) library.
 /// For an invariant object without this atomicity restriction,
 /// see [`LocalInvariant`], which gives up thread safety in exchange.
 ///
@@ -301,12 +301,12 @@ pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
 /// that is, it can be shared across threads. In order for the ghost state to be shared
 /// safely, it must be restored after each atomic operation.
 ///
-/// The atomic operations may be found in the [`PAtomic`](crate::pervasive::atomic) library.
+/// The atomic operations may be found in the [`PAtomic`](crate::atomic) library.
 /// The user can also mark their own functions as "atomic operations" using
 /// `#[verifier(atomic)]`; however, this is not useful for very much other than defining
-/// wrappers around the existing atomic operations from [`PAtomic`](crate::pervasive::atomic).
-/// Note that reading and writing through a [`PCell`](crate::pervasive::cell::PCell)
-/// or a [`PPtr`](crate::pervasive::ptr::PPtr) are _not_ atomic operations.
+/// wrappers around the existing atomic operations from [`PAtomic`](crate::atomic).
+/// Note that reading and writing through a [`PCell`](crate::cell::PCell)
+/// or a [`PPtr`](crate::ptr::PPtr) are _not_ atomic operations.
 ///
 /// **Note:** Rather than using `open_atomic_invariant!` directly, we generally recommend
 /// using the [`atomic_ghost` APIs](atomic_ghost).
@@ -320,7 +320,7 @@ pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
 #[macro_export]
 macro_rules! open_atomic_invariant {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_exec_macro_exprs!($crate::pervasive::invariant::open_atomic_invariant_internal!($($tail)*))
+        ::builtin_macros::verus_exec_macro_exprs!($crate::invariant::open_atomic_invariant_internal!($($tail)*))
     };
 }
 
@@ -328,9 +328,9 @@ macro_rules! open_atomic_invariant {
 macro_rules! open_atomic_invariant_internal {
     ($eexpr:expr => $iident:ident => $bblock:block) => {
         #[verifier(invariant_block)] /* vattr */ {
-            #[allow(unused_mut)] let (guard, mut $iident) = $crate::pervasive::invariant::open_atomic_invariant_begin($eexpr);
+            #[allow(unused_mut)] let (guard, mut $iident) = $crate::invariant::open_atomic_invariant_begin($eexpr);
             $bblock
-            $crate::pervasive::invariant::open_invariant_end(guard, $iident);
+            $crate::invariant::open_invariant_end(guard, $iident);
         }
     }
 }
@@ -435,7 +435,7 @@ pub use open_atomic_invariant;
 macro_rules! open_local_invariant {
     [$($tail:tt)*] => {
         ::builtin_macros::verus_exec_macro_exprs!(
-            $crate::pervasive::invariant::open_local_invariant_internal!($($tail)*))
+            $crate::invariant::open_local_invariant_internal!($($tail)*))
     };
 }
 
@@ -443,9 +443,9 @@ macro_rules! open_local_invariant {
 macro_rules! open_local_invariant_internal {
     ($eexpr:expr => $iident:ident => $bblock:block) => {
         #[verifier(invariant_block)] /* vattr */ {
-            #[allow(unused_mut)] let (guard, mut $iident) = $crate::pervasive::invariant::open_local_invariant_begin($eexpr);
+            #[allow(unused_mut)] let (guard, mut $iident) = $crate::invariant::open_local_invariant_begin($eexpr);
             $bblock
-            $crate::pervasive::invariant::open_invariant_end(guard, $iident);
+            $crate::invariant::open_invariant_end(guard, $iident);
         }
     }
 }

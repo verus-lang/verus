@@ -7,8 +7,8 @@ use core::sync::atomic::{
 #[allow(unused_imports)] use builtin::*;
 #[allow(unused_imports)] use builtin_macros::*;
 #[allow(unused_imports)] use crate::pervasive::*;
-#[allow(unused_imports)] use crate::pervasive::modes::*;
-#[allow(unused_imports)] use crate::pervasive::result::*;
+#[allow(unused_imports)] use crate::modes::*;
+#[allow(unused_imports)] use crate::result::*;
 
 macro_rules! make_unsigned_integer_atomic {
     ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident) => {
@@ -112,16 +112,14 @@ macro_rules! atomic_types {
             #[verifier(external_body)] /* vattr */
             pub fn view(self) -> $p_data_ident { unimplemented!(); }
 
-            #[cfg(not(verus_macro_erase_ghost))]
-            #[verifier::spec] #[verifier(publish)] /* vattr */
-            pub fn is_for(&self, patomic: $at_ident) -> bool {
+            verus! {
+            pub open spec fn is_for(&self, patomic: $at_ident) -> bool {
                 self.view().patomic == patomic.id()
             }
 
-            #[cfg(not(verus_macro_erase_ghost))]
-            #[verifier::spec] #[verifier(publish)] /* vattr */
-            pub fn points_to(&self, v: $value_ty) -> bool {
+            pub open spec fn points_to(&self, v: $value_ty) -> bool {
                 self.view().value == v
+            }
             }
         }
     }

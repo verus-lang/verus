@@ -1,11 +1,8 @@
 #![allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-#[cfg(not(vstd_build_todo))]
-use crate::pervasive::seq::*;
-#[cfg(vstd_build_todo)]
 use crate::seq::*;
-use crate::pervasive::vec::*;
+use crate::vec::*;
 
 verus!{
 

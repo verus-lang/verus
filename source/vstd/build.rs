@@ -38,8 +38,6 @@ fn main() {
         INSTALL_REL_PATH.to_string(),
         "--cfg".to_string(),
         "erasure_macro_todo".to_string(),
-        "--cfg".to_string(),
-        "vstd_build_todo".to_string(),
         "--crate-type=lib".to_string(),
         "--out-dir".to_string(),
         INSTALL_BIN_REL_PATH.to_string(),

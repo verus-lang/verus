@@ -3,10 +3,8 @@
 
 #[allow(unused_imports)]
 use builtin::*;
-mod pervasive;
-use pervasive::*;
 #[allow(unused_imports)]
-use crate::pervasive::seq::*;
+use vstd::seq::*;
 use builtin_macros::*;
 
 macro_rules! get_bit_macro {

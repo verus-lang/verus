@@ -3,8 +3,9 @@ extern crate alloc;
 
 #[allow(unused_imports)] use builtin::*;
 #[allow(unused_imports)] use builtin_macros::*;
+#[allow(unused_imports)] use crate::*;
 #[allow(unused_imports)] use crate::pervasive::*;
-#[allow(unused_imports)] use crate::pervasive::modes::*;
+#[allow(unused_imports)] use crate::modes::*;
 
 verus!{
 

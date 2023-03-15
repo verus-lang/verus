@@ -4,9 +4,10 @@ mod common;
 use common::*;
 
 const IMPORTS: &str = code_str! {
-    use crate::pervasive::{atomic::*};
-    use crate::pervasive::{modes::*};
-    use crate::pervasive::result::*;
+    use vstd::pervasive::*;
+    use vstd::{atomic::*};
+    use vstd::{modes::*};
+    use vstd::result::*;
 };
 
 /// With contradiction_smoke_test, add a final `assert(false)` that is expected to fail at the end

@@ -1,110 +1,3 @@
-//! The "standard library" for [Verus](https://github.com/verus-lang/verus).
-//! Contains various utilities and datatypes for proofs,
-//! as well as runtime functionality with specifications.
-//! For an introduction to Verus, see [the tutorial](https://verus-lang.github.io/verus/guide/).
-//!
-//! **Note about using the library:** A current limitation of Verus is that it does not
-//! support multi-crate projects. Therefore, this library needs to be embedded as a
-//! a _module_ in every user crate.
-//! See [this page](https://verus-lang.github.io/verus/guide/pervasive.html) for more details.
-//! We expect these hacks to go away once Verus has proper multi-crate support.
-
-#[cfg(not(vstd_build_todo))]
-pub mod map;
-#[cfg(not(vstd_build_todo))]
-pub mod option;
-#[cfg(not(vstd_build_todo))]
-pub mod result;
-#[cfg(not(vstd_build_todo))]
-pub mod seq;
-#[cfg(not(vstd_build_todo))]
-pub mod seq_lib;
-#[cfg(not(vstd_build_todo))]
-pub mod set;
-#[cfg(not(vstd_build_todo))]
-pub mod set_lib;
-#[cfg(not(vstd_build_todo))]
-pub mod slice;
-#[cfg(not(vstd_build_todo))]
-pub mod cell;
-#[cfg(not(vstd_build_todo))]
-pub mod invariant;
-#[cfg(not(vstd_build_todo))]
-pub mod atomic;
-#[cfg(not(vstd_build_todo))]
-pub mod atomic_ghost;
-#[cfg(not(vstd_build_todo))]
-pub mod modes;
-#[cfg(not(vstd_build_todo))]
-pub mod multiset;
-#[cfg(not(vstd_build_todo))]
-pub mod function;
-#[cfg(not(vstd_build_todo))]
-pub mod state_machine_internal;
-#[cfg(not(vstd_build_todo))]
-#[cfg(not(feature = "non_std"))]
-pub mod thread;
-#[cfg(not(vstd_build_todo))]
-#[cfg(not(feature = "no_global_allocator"))] 
-pub mod ptr;
-#[cfg(not(vstd_build_todo))]
-#[cfg(not(feature = "no_global_allocator"))] 
-pub mod string;
-#[cfg(not(vstd_build_todo))]
-#[cfg(not(feature = "no_global_allocator"))] 
-pub mod vec;
-
-// TODO: remove this compatibility shim when everything is ported to vstd:
-//#[cfg(vstd_build_todo)]
-//pub use crate::map;
-#[cfg(vstd_build_todo)]
-pub use crate::option;
-#[cfg(vstd_build_todo)]
-pub use crate::result;
-//#[cfg(vstd_build_todo)]
-//pub use crate::seq;
-#[cfg(vstd_build_todo)]
-pub use crate::seq_lib;
-//#[cfg(vstd_build_todo)]
-//pub use crate::set;
-#[cfg(vstd_build_todo)]
-pub use crate::set_lib;
-#[cfg(vstd_build_todo)]
-pub use crate::slice;
-#[cfg(vstd_build_todo)]
-pub use crate::cell;
-#[cfg(vstd_build_todo)]
-pub use crate::invariant;
-#[cfg(vstd_build_todo)]
-pub use crate::atomic;
-#[cfg(vstd_build_todo)]
-pub use crate::atomic_ghost;
-#[cfg(vstd_build_todo)]
-pub use crate::modes;
-#[cfg(vstd_build_todo)]
-pub use crate::multiset;
-#[cfg(vstd_build_todo)]
-pub use crate::function;
-#[cfg(vstd_build_todo)]
-pub use crate::state_machine_internal;
-#[cfg(vstd_build_todo)]
-#[cfg(not(feature = "non_std"))]
-pub use crate::thread;
-#[cfg(vstd_build_todo)]
-#[cfg(not(feature = "no_global_allocator"))] 
-pub use crate::ptr;
-#[cfg(vstd_build_todo)]
-#[cfg(not(feature = "no_global_allocator"))] 
-pub use crate::string;
-#[cfg(vstd_build_todo)]
-#[cfg(not(feature = "no_global_allocator"))] 
-pub use crate::vec;
-
-// Re-exports all pervasive types, traits, and functions that are commonly used or replace
-// regular `core` or `std` definitions.
-#[cfg(not(vstd_build_todo))]
-pub mod prelude;
-
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
@@ -117,12 +10,14 @@ macro_rules! println {
 }
 
 verus! {
+// TODO: remove this
 pub proof fn assume(b: bool)
     ensures b
 {
     admit();
 }
 
+// TODO: remove this
 #[verifier(custom_req_err("assertion failure"))]
 pub proof fn assert(b: bool)
     requires b
@@ -244,7 +139,7 @@ macro_rules! assert_by_contradiction_internal {
         ::builtin::assert_by($predicate, {
             if !$predicate {
                 $bblock
-                crate::pervasive::assert(false);
+                builtin::assert_(false);
             }
         });
     }
@@ -372,4 +267,3 @@ macro_rules! assert_by_contradiction_internal {
 /// # Macro Expansion (TODO)
 
 pub use builtin_macros::struct_with_invariants;
-

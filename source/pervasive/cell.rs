@@ -4,12 +4,10 @@ use core::marker;
 
 #[allow(unused_imports)] use builtin::*;
 #[allow(unused_imports)] use builtin_macros::*;
+#[allow(unused_imports)] use crate::*;
 #[allow(unused_imports)] use crate::pervasive::*;
-#[allow(unused_imports)] use crate::pervasive::modes::*;
-#[allow(unused_imports)] use crate::pervasive::invariant::*;
-#[cfg(not(vstd_build_todo))]
-#[allow(unused_imports)] use crate::pervasive::set::*;
-#[cfg(vstd_build_todo)]
+#[allow(unused_imports)] use crate::modes::*;
+#[allow(unused_imports)] use crate::invariant::*;
 #[allow(unused_imports)] use crate::set::*;
 
 verus!{
@@ -86,7 +84,7 @@ pub ghost struct PermissionOptData<V> {
 #[macro_export]
 macro_rules! pcell_opt_internal {
     [$pcell:expr => $val:expr] => {
-        $crate::pervasive::cell::PermissionOptData {
+        $crate::cell::PermissionOptData {
             pcell: $pcell,
             value: $val,
         }
@@ -97,7 +95,7 @@ macro_rules! pcell_opt_internal {
 macro_rules! pcell_opt {
     [$($tail:tt)*] => {
         ::builtin_macros::verus_proof_macro_exprs!(
-            $crate::pervasive::cell::pcell_opt_internal!($($tail)*)
+            $crate::cell::pcell_opt_internal!($($tail)*)
         )
     }
 }
@@ -296,7 +294,7 @@ impl<T> InvCell<T> {
 
         let r;
         crate::open_local_invariant!(self.perm_inv.borrow() => perm => {
-            let mut t = tracked_exec(perm);
+            let mut t = #[verifier(ghost_wrapper)] /* vattr */ tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ perm);
             r = self.pcell.replace(&mut t, val);
             perm = t.get();
         });
