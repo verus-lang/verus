@@ -128,6 +128,8 @@ pub struct ErasureHints {
     pub resolved_pats: Vec<(SpanData, Pattern)>,
     /// Results of mode (spec/proof/exec) inference from first run's VIR
     pub erasure_modes: ErasureModes,
+    /// Modes specified directly during rust_to_vir
+    pub direct_var_modes: Vec<(HirId, Mode)>,
     /// List of #[verifier(external)] functions.  (These don't appear in vir_crate,
     /// so we need to record them separately here.)
     pub external_functions: Vec<Fun>,

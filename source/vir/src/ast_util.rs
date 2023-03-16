@@ -81,8 +81,12 @@ pub fn params_equal_opt(
     check_names: bool,
     check_modes: bool,
 ) -> bool {
-    let ParamX { name: name1, typ: typ1, mode: mode1, is_mut: is_mut1 } = &param1.x;
-    let ParamX { name: name2, typ: typ2, mode: mode2, is_mut: is_mut2 } = &param2.x;
+    // Note: unwrapped_info is internal to the function and is not part of comparing
+    // the publicly visible parameters.
+    let ParamX { name: name1, typ: typ1, mode: mode1, is_mut: is_mut1, unwrapped_info: _ } =
+        &param1.x;
+    let ParamX { name: name2, typ: typ2, mode: mode2, is_mut: is_mut2, unwrapped_info: _ } =
+        &param2.x;
     (!check_names || name1 == name2)
         && types_equal(typ1, typ2)
         && (!check_modes || mode1 == mode2)

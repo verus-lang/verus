@@ -1437,7 +1437,12 @@ fn erase_fn_common<'tcx>(
         erase_mir_generics(ctxt, state, id, true, &mut lifetimes, &mut typ_params);
         let mut params: Vec<(Option<Span>, Id, Typ)> = Vec::new();
         for ((input, param), sp) in inputs.iter().zip(f_vir.x.params.iter()).zip(p_spans.iter()) {
-            let x = state.local(param.x.name.to_string());
+            let name = if let Some((_, name)) = &param.x.unwrapped_info {
+                name.to_string()
+            } else {
+                param.x.name.to_string()
+            };
+            let x = state.local(name);
             let typ = if param.x.mode == Mode::Spec {
                 TypX::mk_unit()
             } else {
@@ -1793,6 +1798,9 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
         for hir_id in &id_to_hir[&span.id] {
             ctxt.var_modes.insert(*hir_id, *mode).map(|v| panic!("{:?} {:?}", span, v));
         }
+    }
+    for (hir_id, mode) in &erasure_hints.direct_var_modes {
+        ctxt.var_modes.insert(*hir_id, *mode).map(|v| panic!("{:?}", v));
     }
     if let Some(copy) = tcx.lang_items().copy_trait() {
         for c in tcx.crates(()) {

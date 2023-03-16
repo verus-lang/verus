@@ -1,6 +1,6 @@
 use crate::ast::{
     Expr, ExprX, Exprs, Fun, HeaderExprX, Ident, LoopInvariant, LoopInvariantKind, LoopInvariants,
-    MaskSpec, Stmt, StmtX, Typ, VirErr,
+    MaskSpec, Stmt, StmtX, Typ, UnwrapParameter, VirErr,
 };
 use crate::ast_util::err_str;
 use std::sync::Arc;
@@ -8,6 +8,7 @@ use std::sync::Arc;
 #[derive(Clone, Debug)]
 pub struct Header {
     pub no_method_body: bool,
+    pub unwrap_parameters: Vec<UnwrapParameter>,
     pub hidden: Vec<Fun>,
     pub require: Exprs,
     pub recommend: Exprs,
@@ -23,6 +24,7 @@ pub struct Header {
 }
 
 fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
+    let mut unwrap_parameters: Vec<UnwrapParameter> = Vec::new();
     let mut hidden: Vec<Fun> = Vec::new();
     let mut extra_dependencies: Vec<Fun> = Vec::new();
     let mut require: Option<Exprs> = None;
@@ -35,10 +37,19 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let mut decrease_by: Option<Fun> = None;
     let mut invariant_mask = MaskSpec::NoSpec;
     let mut n = 0;
+    let mut unwrap_parameter_allowed = true;
     for stmt in block.iter() {
+        let mut is_unwrap_parameter = false;
         match &stmt.x {
             StmtX::Expr(expr) => match &expr.x {
                 ExprX::Header(header) => match &**header {
+                    HeaderExprX::UnwrapParameter(unwrap) => {
+                        if !unwrap_parameter_allowed {
+                            return err_str(&stmt.span, "unwrap_parameter must appear ");
+                        }
+                        is_unwrap_parameter = true;
+                        unwrap_parameters.push(unwrap.clone());
+                    }
                     HeaderExprX::NoMethodBody => {
                         return err_str(
                             &stmt.span,
@@ -146,6 +157,9 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
             },
             _ => break,
         }
+        if !is_unwrap_parameter {
+            unwrap_parameter_allowed = false;
+        }
         n += 1;
     }
     *block = block[n..].to_vec();
@@ -159,6 +173,7 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let invariant_ensure = invariant_ensure.unwrap_or(Arc::new(vec![]));
     let decrease = decrease.unwrap_or(Arc::new(vec![]));
     Ok(Header {
+        unwrap_parameters,
         no_method_body: false,
         hidden,
         require,

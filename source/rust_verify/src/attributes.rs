@@ -190,6 +190,8 @@ pub(crate) enum Attr {
     Inline,
     // Rust ghost block
     GhostBlock(GhostBlockAttr),
+    // Header to unwrap Tracked<T> and Ghost<T> parameters
+    UnwrapParameter,
     // type parameter is not necessarily used in strictly positive positions
     MaybeNegative,
     // type parameter is used in strictly positive positions
@@ -439,6 +441,9 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                         if arg == "returns" && name == "exec" =>
                     {
                         v.push(Attr::ReturnMode(Mode::Exec))
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "header_unwrap_parameter" => {
+                        v.push(Attr::UnwrapParameter)
                     }
                     AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
                         if arg == "prover" =>

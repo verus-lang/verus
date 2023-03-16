@@ -725,6 +725,7 @@ fn simplify_function(
             typ: Arc::new(TypX::Int(IntRange::Int)),
             mode: Mode::Spec,
             is_mut: false,
+            unwrapped_info: None,
         };
         let param = Spanned::new(function.span.clone(), paramx);
         functionx.params = Arc::new(vec![param]);

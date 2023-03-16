@@ -16,6 +16,7 @@ use rustc_hir::{
 use rustc_middle::ty::TyCtxt;
 use rustc_span::symbol::{Ident, Symbol};
 use rustc_span::Span;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
     Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, KrateX, MaskSpec, Mode,
@@ -222,14 +223,14 @@ pub(crate) fn check_item_fn<'tcx>(
 
     let body = find_body(ctxt, body_id);
     let Body { params, value: _, generator_kind } = body;
-    let mut vir_params: Vec<vir::ast::Param> = Vec::new();
+    let mut vir_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
 
     assert!(params.len() == inputs.len());
     for (param, input) in params.iter().zip(inputs.iter()) {
         let Param { hir_id, pat, ty_span: _, span } = param;
 
         // is_mut_var: means a parameter is like `mut x: X` (unsupported)
-        // is_mut: means a parameter is like `x: &mut X`
+        // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
 
         let (is_mut_var, name) = pat_to_mut_var(pat);
         if is_mut_var {
@@ -243,20 +244,23 @@ pub(crate) fn check_item_fn<'tcx>(
 
         let name = Arc::new(name);
         let param_mode = get_var_mode(mode, ctxt.tcx.hir().attrs(*hir_id));
-        let is_mut = is_mut_ty(input);
-        if is_mut.is_some() && mode == Mode::Spec {
+        let is_ref_mut = is_mut_ty(ctxt, input);
+        if is_ref_mut.is_some() && mode == Mode::Spec {
             return err_span_string(
                 *span,
                 format!("&mut argument not allowed for #[verifier::spec] functions"),
             );
         }
 
-        let typ = mid_ty_to_vir(ctxt.tcx, is_mut.unwrap_or(input), false);
+        let typ = mid_ty_to_vir(ctxt.tcx, is_ref_mut.map(|(t, _)| t).unwrap_or(input), false);
 
-        let is_mut = is_mut.is_some();
+        let is_mut = is_ref_mut.is_some();
 
-        let vir_param = ctxt.spanned_new(*span, ParamX { name, typ, mode: param_mode, is_mut });
-        vir_params.push(vir_param);
+        let vir_param = ctxt.spanned_new(
+            *span,
+            ParamX { name, typ, mode: param_mode, is_mut, unwrapped_info: None },
+        );
+        vir_params.push((vir_param, is_ref_mut.map(|(_, m)| m).flatten()));
     }
 
     match generator_kind {
@@ -313,7 +317,43 @@ pub(crate) fn check_item_fn<'tcx>(
             }
         }
     }
-    let params = Arc::new(vir_params);
+
+    use vir::ast::UnwrapParameter;
+    let mut all_param_names: Vec<vir::ast::Ident> = Vec::new();
+    let mut all_param_name_set: HashSet<vir::ast::Ident> = HashSet::new();
+    let mut unwrap_param_map: HashMap<vir::ast::Ident, UnwrapParameter> = HashMap::new();
+    for unwrap in header.unwrap_parameters.iter() {
+        all_param_names.push(unwrap.inner_name.clone());
+        unwrap_param_map.insert(unwrap.outer_name.clone(), unwrap.clone());
+    }
+    for (param, unwrap_mut) in vir_params.iter_mut() {
+        all_param_names.push(param.x.name.clone());
+        if let Some(unwrap) = unwrap_param_map.get(&param.x.name) {
+            if mode != Mode::Exec {
+                return err_span_str(
+                    sig.span,
+                    "only exec functions can use Ghost(x) or Tracked(x) parameters",
+                );
+            }
+            let mut paramx = param.x.clone();
+            paramx.name = unwrap.inner_name.clone();
+            paramx.unwrapped_info = Some((unwrap.mode, unwrap.outer_name.clone()));
+            *param = vir::def::Spanned::new(param.span.clone(), paramx);
+        } else if unwrap_mut.is_some() {
+            return err_span_string(
+                sig.span,
+                format!("parameter {} must be unwrapped", &param.x.name),
+            );
+        }
+    }
+    for name in all_param_names.iter() {
+        if all_param_name_set.contains(name) {
+            return err_span_string(sig.span, format!("duplicate parameter name {}", name));
+        }
+        all_param_name_set.insert(name.clone());
+    }
+    let params: vir::ast::Params = Arc::new(vir_params.into_iter().map(|(p, _)| p).collect());
+
     let (ret_name, ret_typ, ret_mode) = match (header.ensure_id_typ, ret_typ_mode) {
         (None, None) => {
             (Arc::new(RETURN_VALUE.to_string()), Arc::new(TypX::Tuple(Arc::new(vec![]))), mode)
@@ -324,7 +364,13 @@ pub(crate) fn check_item_fn<'tcx>(
     };
     let ret = ctxt.spanned_new(
         sig.span,
-        ParamX { name: ret_name, typ: ret_typ, mode: ret_mode, is_mut: false },
+        ParamX {
+            name: ret_name,
+            typ: ret_typ,
+            mode: ret_mode,
+            is_mut: false,
+            unwrapped_info: None,
+        },
     );
     let typ_bounds = {
         let mut typ_bounds: Vec<(vir::ast::Ident, vir::ast::GenericBound)> = Vec::new();
@@ -426,9 +472,31 @@ pub(crate) fn check_item_fn<'tcx>(
     Ok(Some(name))
 }
 
-fn is_mut_ty<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> Option<rustc_middle::ty::Ty<'tcx>> {
+// &mut T => Some(T, None)
+// Ghost<&mut T> => Some(T, Some(Spec))
+// Tracked<&mut T> => Some(T, Some(Proof))
+// _ => None
+fn is_mut_ty<'tcx>(
+    ctxt: &Context<'tcx>,
+    ty: rustc_middle::ty::Ty<'tcx>,
+) -> Option<(rustc_middle::ty::Ty<'tcx>, Option<Mode>)> {
+    use rustc_middle::ty::*;
     match ty.kind() {
-        rustc_middle::ty::TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) => Some(tys),
+        TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) => Some((tys, None)),
+        TyKind::Adt(AdtDef { did, .. }, args) => {
+            let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(ctxt.tcx, *did));
+            let is_ghost = def_name == "builtin::Ghost" && args.len() == 1;
+            let is_tracked = def_name == "builtin::Tracked" && args.len() == 1;
+            if is_ghost || is_tracked {
+                if let subst::GenericArgKind::Type(t) = args[0].unpack() {
+                    if let Some((inner, None)) = is_mut_ty(ctxt, t) {
+                        let mode = if is_ghost { Mode::Spec } else { Mode::Proof };
+                        return Some((inner, Some(mode)));
+                    }
+                }
+            }
+            None
+        }
         _ => None,
     }
 }
@@ -457,8 +525,10 @@ pub(crate) fn check_item_const<'tcx>(
     let vir_body = body_to_vir(ctxt, body_id, body, mode, vattrs.external_body)?;
 
     let ret_name = Arc::new(RETURN_VALUE.to_string());
-    let ret =
-        ctxt.spanned_new(span, ParamX { name: ret_name, typ: typ.clone(), mode, is_mut: false });
+    let ret = ctxt.spanned_new(
+        span,
+        ParamX { name: ret_name, typ: typ.clone(), mode, is_mut: false, unwrapped_info: None },
+    );
     let func = FunctionX {
         name,
         kind: FunctionKind::Static,
@@ -513,11 +583,13 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     assert!(idents.len() == inputs.len());
     for (param, input) in idents.iter().zip(inputs.iter()) {
         let name = Arc::new(foreign_param_to_var(param));
-        let is_mut = is_mut_ty(input);
-        let typ = mid_ty_to_vir(ctxt.tcx, is_mut.unwrap_or(input), false);
+        let is_mut = is_mut_ty(ctxt, input);
+        let typ = mid_ty_to_vir(ctxt.tcx, is_mut.map(|(t, _)| t).unwrap_or(input), false);
         // REVIEW: the parameters don't have attributes, so we use the overall mode
-        let vir_param =
-            ctxt.spanned_new(param.span, ParamX { name, typ, mode, is_mut: is_mut.is_some() });
+        let vir_param = ctxt.spanned_new(
+            param.span,
+            ParamX { name, typ, mode, is_mut: is_mut.is_some(), unwrapped_info: None },
+        );
         vir_params.push(vir_param);
     }
     let path = def_id_to_vir_path(ctxt.tcx, id);
@@ -532,6 +604,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         typ: ret_typ,
         mode: ret_mode,
         is_mut: false,
+        unwrapped_info: None,
     };
     let ret = ctxt.spanned_new(span, ret_param);
     let func = FunctionX {

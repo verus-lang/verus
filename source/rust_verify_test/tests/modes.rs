@@ -1104,7 +1104,6 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] fn_param_wrappers verus_code! {
-        use vstd::modes::*;
         struct S(int);
 
         fn test1(Ghost(g): Ghost<int>, Tracked(t): Tracked<S>)
@@ -1132,4 +1131,117 @@ test_verify_one_file! {
             test1(g, t);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] fn_param_wrappers_mut verus_code! {
+        struct S(int);
+
+        fn test1(Ghost(g): Ghost<&mut int>, Tracked(t): Tracked<&mut S>)
+            requires
+                *old(g) > 100,
+                old(t).0 > 100,
+            ensures
+                *g == *old(g) + *old(g),
+                *g > 200,
+                *t == *old(t),
+        {
+            assert(*g >= 100);
+            proof {
+                *g = *g * 2;
+            }
+        }
+
+        fn test2(Tracked(t1): Tracked<S>) {
+            assume(t1.0 > 100);
+            let tracked mut t2 = t1;
+            let ghost mut i = 1000;
+            assert(i == 1000);
+            test1(Ghost(&mut i), Tracked(&mut t2));
+            assert(i == 2000);
+            assert(t2.0 > 100);
+        }
+
+        fn test3(Tracked(t1): Tracked<S>) {
+            assume(t1.0 > 100);
+            let tracked mut t2 = t1;
+            let ghost mut i = 1000;
+            assert(i == 1000);
+            test1(Ghost(&mut i), Tracked(&mut t2));
+            assert(i == 2000);
+            assert(t2.0 > 101); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] fn_param_wrappers_mut_fail1 verus_code! {
+        struct S(int);
+
+        fn test1(Tracked(g): Ghost<&mut int>, Tracked(t): Tracked<&mut S>)
+        {
+        }
+    } => Err(err) => assert_error_msg(err, "no method named `get` found for struct `builtin::Ghost`")
+}
+
+test_verify_one_file! {
+    #[test] fn_param_wrappers_mut_fail2 verus_code! {
+        struct S(int);
+
+        fn test1(Ghost(g): Ghost<&mut int>, Ghost(t): Tracked<&mut S>)
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "ill-formed unwrap_parameter header")
+}
+
+test_verify_one_file! {
+    #[test] fn_param_wrappers_mut_fail3 verus_code! {
+        struct S(int);
+
+        fn test1(Ghost(g): Ghost<&mut int>, Tracked(t): Tracked<&mut S>)
+        {
+        }
+
+        fn test2(Tracked(t1): Tracked<S>) {
+            let tracked mut t2 = t1;
+            let ghost mut i = 1000;
+            test1(Tracked(&mut i), Tracked(&mut t2));
+        }
+    } => Err(err) => assert_error_msg(err, "expected struct `builtin::Ghost`, found struct `builtin::Tracked`")
+}
+
+test_verify_one_file! {
+    #[test] fn_param_wrappers_mut_well_formed1 verus_code! {
+        struct S(int);
+
+        fn test1(tmp_g: Ghost<&mut int>) {
+            #[verus::internal(header_unwrap_parameter)] let g;
+            #[verifier(proof_block)] { g = tmp_g.view() };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] fn_param_wrappers_mut_ill_formed1 verus_code! {
+        struct S(int);
+
+        fn test1(tmp_g: Ghost<&mut int>, tmp_h: Ghost<&mut int>) {
+            #[verus::internal(header_unwrap_parameter)] let g;
+            #[verifier(proof_block)] { g = tmp_g.view() };
+            // fails to unwrap h
+        }
+    } => Err(err) => assert_vir_error_msg(err, "must be unwrapped")
+}
+
+test_verify_one_file! {
+    #[test] fn_param_wrappers_mut_ill_formed2 verus_code! {
+        struct S(int);
+
+        fn test1(tmp_g: Ghost<&mut int>, tmp_h: Ghost<&mut int>) {
+            #[verus::internal(header_unwrap_parameter)] let g;
+            #[verifier(proof_block)] { g = tmp_g.view() };
+            #[verus::internal(header_unwrap_parameter)] let h;
+            #[verifier(proof_block)] { h = g }; // should be tmp_h.view()
+        }
+    } => Err(err) => assert_vir_error_msg(err, "ill-formed unwrap_parameter header")
 }

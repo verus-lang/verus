@@ -233,6 +233,27 @@ pub(crate) fn local_to_var<'tcx>(
     unique_local_name(ident.to_string(), local_id.index())
 }
 
+pub(crate) fn qpath_to_ident<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    qpath: &QPath<'tcx>,
+) -> Option<vir::ast::Ident> {
+    use rustc_hir::def::Res;
+    use rustc_hir::{BindingAnnotation, Node, Pat, PatKind};
+    if let QPath::Resolved(None, rustc_hir::Path { res: Res::Local(id), .. }) = qpath {
+        if let Node::Binding(Pat {
+            kind: PatKind::Binding(BindingAnnotation::Unannotated, hir_id, x, None),
+            ..
+        }) = tcx.hir().get(*id)
+        {
+            Some(Arc::new(local_to_var(x, hir_id.local_id)))
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
 pub(crate) fn is_visibility_private(vis_kind: &VisibilityKind, inherited_is_private: bool) -> bool {
     match vis_kind {
         VisibilityKind::Inherited => inherited_is_private,

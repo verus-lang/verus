@@ -12,6 +12,7 @@ pub struct ErasureInfo {
     pub(crate) resolved_calls: Vec<(HirId, SpanData, ResolvedCall)>,
     pub(crate) resolved_exprs: Vec<(SpanData, Expr)>,
     pub(crate) resolved_pats: Vec<(SpanData, Pattern)>,
+    pub(crate) direct_var_modes: Vec<(HirId, Mode)>,
     pub(crate) external_functions: Vec<vir::ast::Fun>,
     pub(crate) ignored_functions: Vec<(rustc_span::def_id::DefId, SpanData)>,
 }
