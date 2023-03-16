@@ -1245,3 +1245,34 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "ill-formed unwrap_parameter header")
 }
+
+test_verify_one_file! {
+    #[test] fn_param_wrappers_mut_wrong_mode1 verus_code! {
+        struct S(int);
+
+        fn test1(Ghost(g): Ghost<&mut int>, Tracked(t): Tracked<&mut S>)
+        {
+        }
+
+        fn test2(Tracked(t1): Tracked<S>) {
+            let ghost mut t2 = t1;
+            let ghost mut i = 1000;
+            test1(Ghost(&mut i), Tracked(&mut t2));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
+
+test_verify_one_file! {
+    #[test] fn_param_wrappers_mut_wrong_mode2 verus_code! {
+        struct S(int);
+
+        fn test1(Ghost(g): Ghost<&mut S>)
+        {
+        }
+
+        fn test2(Tracked(t1): Tracked<S>) {
+            let tracked mut t2 = t1;
+            test1(Ghost(&mut t2));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot write to argument with mode exec")
+}

@@ -543,7 +543,14 @@ fn check_expr_handle_mut_arg(
                     let arg_erasure = ErasureModeX::new(Some(param.x.mode));
                     let (arg_mode_read, arg_mode_write) =
                         check_expr_handle_mut_arg(typing, outer_mode, &arg_erasure, arg)?;
-                    let arg_mode_write = arg_mode_write.expect("internal error: no arg_mode_write");
+                    let arg_mode_write = if let Some(arg_mode_write) = arg_mode_write {
+                        arg_mode_write
+                    } else {
+                        return err_string(
+                            &arg.span,
+                            format!("cannot write to argument with mode {}", param_mode),
+                        );
+                    };
                     if arg_mode_read != param_mode {
                         return err_string(
                             &arg.span,
