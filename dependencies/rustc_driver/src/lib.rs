@@ -4,6 +4,8 @@
 //!
 //! This API is completely unstable and subject to change.
 
+#![feature(rustc_private)]
+
 #![doc(html_root_url = "https://doc.rust-lang.org/nightly/nightly-rustc/")]
 #![feature(is_terminal)]
 #![feature(once_cell)]
@@ -12,6 +14,28 @@
 #![allow(rustc::potential_query_instability)]
 #![deny(rustc::untranslatable_diagnostic)]
 #![deny(rustc::diagnostic_outside_of_impl)]
+
+extern crate rustc_log;
+extern crate rustc_middle;
+extern crate rustc_ast_pretty;
+extern crate rustc_target;
+extern crate rustc_lint;
+extern crate rustc_data_structures;
+extern crate rustc_errors;
+extern crate rustc_feature;
+extern crate rustc_hir;
+extern crate rustc_hir_pretty;
+extern crate rustc_macros;
+extern crate rustc_metadata;
+extern crate rustc_parse;
+extern crate rustc_plugin_impl;
+extern crate rustc_save_analysis;
+extern crate rustc_codegen_ssa;
+extern crate rustc_session;
+extern crate rustc_error_codes;
+extern crate rustc_ast;
+extern crate rustc_span;
+extern crate rustc_hir_analysis;
 
 #[macro_use]
 extern crate tracing;
@@ -26,8 +50,8 @@ use rustc_errors::registry::{InvalidErrorCode, Registry};
 use rustc_errors::{ErrorGuaranteed, PResult};
 use rustc_feature::find_gated_cfg;
 use rustc_hir::def_id::LOCAL_CRATE;
-use rustc_interface::util::{self, collect_crate_types, get_codegen_backend};
-use rustc_interface::{interface, Queries};
+use verus_rustc_interface::util::{self, collect_crate_types, get_codegen_backend};
+use verus_rustc_interface::{interface, Queries};
 use rustc_lint::LintStore;
 use rustc_metadata::locator;
 use rustc_save_analysis as save;
@@ -231,7 +255,7 @@ fn run_compiler(
     };
 
     if !tracing::dispatcher::has_been_set() {
-        init_rustc_env_logger_with_backtrace_option(&config.opts.unstable_opts.log_backtrace);
+        // TODO(main_new) init_rustc_env_logger_with_backtrace_option(&config.opts.unstable_opts.log_backtrace);
     }
 
     match make_input(config.opts.error_format, &matches.free) {
@@ -621,11 +645,12 @@ fn print_crate_info(
             Sysroot => println!("{}", sess.sysroot.display()),
             TargetLibdir => println!("{}", sess.target_tlib_path.dir.display()),
             TargetSpec => {
-                println!("{}", serde_json::to_string_pretty(&sess.target.to_json()).unwrap());
+                todo!()
+                // println!("{}", serde_json::to_string_pretty(&sess.target.to_json()).unwrap());
             }
             FileNames | CrateName => {
                 let attrs = attrs.as_ref().unwrap();
-                let t_outputs = rustc_interface::util::build_output_filenames(attrs, sess);
+                let t_outputs = verus_rustc_interface::util::build_output_filenames(attrs, sess);
                 let id = rustc_session::output::find_crate_name(sess, attrs);
                 if *req == PrintRequest::CrateName {
                     println!("{id}");

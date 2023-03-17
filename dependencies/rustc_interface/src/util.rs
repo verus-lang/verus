@@ -256,7 +256,7 @@ pub fn get_codegen_backend(
 pub fn rustc_path<'a>() -> Option<&'a Path> {
     static RUSTC_PATH: OnceLock<Option<PathBuf>> = OnceLock::new();
 
-    const BIN_PATH: &str = env!("RUSTC_INSTALL_BINDIR");
+    const BIN_PATH: &str = ""; // TODO env!("RUSTC_INSTALL_BINDIR");
 
     RUSTC_PATH.get_or_init(|| get_rustc_path_inner(BIN_PATH)).as_deref()
 }
@@ -324,7 +324,7 @@ fn get_codegen_sysroot(maybe_sysroot: &Option<PathBuf>, backend_name: &str) -> M
     let mut file: Option<PathBuf> = None;
 
     let expected_names = &[
-        format!("rustc_codegen_{}-{}", backend_name, env!("CFG_RELEASE")),
+        format!("rustc_codegen_{}-{}", backend_name, todo!()), // TODO env!("CFG_RELEASE")),
         format!("rustc_codegen_{backend_name}"),
     ];
     for entry in d.filter_map(|e| e.ok()) {

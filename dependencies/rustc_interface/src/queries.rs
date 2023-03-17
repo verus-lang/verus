@@ -157,7 +157,7 @@ impl<'tcx> Queries<'tcx> {
         })
     }
 
-    fn crate_name(&self) -> Result<QueryResult<'_, Symbol>> {
+    /* ~ */ pub fn crate_name(&self) -> Result<QueryResult<'_, Symbol>> {
         self.crate_name.compute(|| {
             Ok({
                 let parse_result = self.parse()?;
