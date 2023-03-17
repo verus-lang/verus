@@ -12,11 +12,11 @@ struct X {
 fn main() {
     let x = X { i: 5 };
 
-    let (pcell, mut token) = PCell::empty();
+    let (pcell, Tracked(mut token)) = PCell::empty();
 
-    pcell.put(&mut token, x);
+    pcell.put(Tracked(&mut token), x);
 
-    assert(token@@.value === option::Option::Some(X { i : 5 }));
+    assert(token@.value === option::Option::Some(X { i : 5 }));
 }
 
 }
