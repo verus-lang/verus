@@ -166,3 +166,69 @@ fn g(Tracked(t): Tracked<S>) -> k {
     f(5, Ghost(6), Tracked(t))
 }
 ```
+
+## Structs
+
+### Old syntax
+
+```
+struct X {
+    x: u32,
+    #[spec] g: int,
+    #[proof] t: int,
+}
+
+#[proof]
+struct Y {
+    #[spec] g: int,
+    #[proof] t: int,
+}
+
+#[spec]
+struct Z {
+    i: int,
+}
+
+fn f(#[proof] t: int) -> (Spec<Z>, Proof<Y>) {
+    let x = X {
+        x: 7,
+        g: 9,
+        t,
+    };
+    #[spec] let g = x.g;
+    #[proof] let t = x.t;
+    #[proof] let y = Y { g, t };
+    (Spec(Z { i: g + 1 }), Proof(y))
+}
+```
+
+### New syntax
+
+```
+struct X {
+    x: u32,
+    g: Ghost<int>,
+    t: Tracked<int>,
+}
+
+tracked struct Y {
+    ghost g: int,
+    tracked t: int,
+}
+
+ghost struct Z {
+    i: int,
+}
+
+fn f(Tracked(t): Tracked<int>) -> (Ghost<Z>, Tracked<Y>) {
+    let x = X {
+        x: 7,
+        g: Ghost(9),
+        t: Tracked(t),
+    };
+    let Ghost(g) = x.g;
+    let Tracked(t) = x.t;
+    let tracked y = Y { g, t };
+    (Ghost(Z { i: g + 1 }), Tracked(y))
+}
+```
