@@ -1109,6 +1109,8 @@ impl VisitMut for Visitor {
                     let inner = take_expr(&mut call.args[0]);
                     *expr = Expr::Verbatim(if self.erase_ghost {
                         quote_spanned!(span => Tracked::assume_new())
+                    } else if is_inside_ghost {
+                        quote_spanned!(span => ::builtin::Tracked::new(#inner))
                     } else {
                         quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ ::builtin::tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ #inner))
                     });
@@ -1117,6 +1119,8 @@ impl VisitMut for Visitor {
                     let inner = take_expr(&mut call.args[0]);
                     *expr = Expr::Verbatim(if self.erase_ghost {
                         quote_spanned!(span => Ghost::assume_new())
+                    } else if is_inside_ghost {
+                        quote_spanned!(span => ::builtin::Ghost::new(#inner))
                     } else {
                         quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ ::builtin::ghost_exec(#[verifier(ghost_block_wrapped)] /* vattr */ #inner))
                     });

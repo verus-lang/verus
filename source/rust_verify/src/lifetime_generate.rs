@@ -562,7 +562,7 @@ fn erase_call<'tcx>(
                 TrackedGet => Some("get"),
                 TrackedBorrow => Some("borrow"),
                 TrackedBorrowMut => Some("borrow_mut"),
-                GhostExec | TrackedExec | TrackedExecBorrow => None,
+                GhostExec | TrackedNew | TrackedExec | TrackedExecBorrow => None,
                 IntIntrinsic | Implies | SmartPtrNew | NewStrLit => None,
                 GhostSplitTuple | TrackedSplitTuple => None,
             };

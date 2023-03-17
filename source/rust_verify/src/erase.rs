@@ -88,6 +88,7 @@ pub enum CompilableOperator {
     SmartPtrClone,
     NewStrLit,
     GhostExec,
+    TrackedNew,
     TrackedExec,
     TrackedExecBorrow,
     TrackedGet,

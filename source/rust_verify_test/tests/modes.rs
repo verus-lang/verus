@@ -1276,3 +1276,73 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot write to argument with mode exec")
 }
+
+test_verify_one_file! {
+    #[test] ghost_tracked_new1 verus_code! {
+        struct S {}
+        fn test1(t: Tracked<S>) {
+            let Tracked(x) = t;
+            proof {
+                let g: Ghost<int> = Ghost(5);
+                let tracked z: Tracked<S> = Tracked(x);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] ghost_tracked_new_fail1 verus_code! {
+        fn test1() {
+            let g = Ghost::new(true);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot perform operation with mode spec")
+}
+
+test_verify_one_file! {
+    #[test] ghost_tracked_new_fail2 verus_code! {
+        struct S {}
+        fn test1(t: Tracked<S>) {
+            let Tracked(x) = t;
+            let t = Tracked::new(x);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot perform operation with mode proof")
+}
+
+test_verify_one_file! {
+    #[test] ghost_tracked_new_fail3 verus_code! {
+        struct S {}
+        fn test1(t: Tracked<S>) {
+            let Tracked(x) = t;
+            proof {
+                let tracked z: Tracked<S> = Tracked(x);
+                let tracked z: Tracked<S> = Tracked(x);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `x`")
+}
+
+test_verify_one_file! {
+    #[test] ghost_tracked_new_fail4 verus_code! {
+        struct S {}
+        fn test1(t: Tracked<S>) {
+            let Tracked(x) = t;
+            proof {
+                let tracked z: Tracked<S> = Tracked(x);
+            }
+            let tracked y = x;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `x`")
+}
+
+test_verify_one_file! {
+    #[test] ghost_tracked_new_fail5 verus_code! {
+        struct S {}
+        fn test1(t: Tracked<S>) {
+            let Tracked(x) = t;
+            proof {
+                let g = x; // ghost
+                let tracked z: Tracked<S> = Tracked(g);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}

@@ -561,6 +561,7 @@ fn fn_call_to_vir<'tcx>(
     let is_tracked_view = f_name == "builtin::Tracked::<A>::view";
     let is_tracked_borrow = f_name == "builtin::Tracked::<A>::borrow";
     let is_tracked_borrow_mut = f_name == "builtin::Tracked::<A>::borrow_mut";
+    let is_tracked_new = f_name == "builtin::Tracked::<A>::new";
     let is_tracked_exec = f_name == "builtin::tracked_exec";
     let is_tracked_exec_borrow = f_name == "builtin::tracked_exec_borrow";
     let is_tracked_get = f_name == "builtin::Tracked::<A>::get";
@@ -718,6 +719,7 @@ fn fn_call_to_vir<'tcx>(
         _ if is_smartptr_new => Some(CompilableOperator::SmartPtrNew),
         _ if is_new_strlit => Some(CompilableOperator::NewStrLit),
         _ if is_ghost_exec => Some(CompilableOperator::GhostExec),
+        _ if is_tracked_new => Some(CompilableOperator::TrackedNew),
         _ if is_tracked_exec => Some(CompilableOperator::TrackedExec),
         _ if is_tracked_exec_borrow => Some(CompilableOperator::TrackedExecBorrow),
         _ if is_tracked_get => Some(CompilableOperator::TrackedGet),
@@ -1542,6 +1544,15 @@ fn fn_call_to_vir<'tcx>(
             op_mode: Mode::Exec,
             from_mode: Mode::Spec,
             to_mode: Mode::Exec,
+            kind: ModeCoercion::Other,
+        };
+        Ok(mk_expr(ExprX::Unary(op, vir_args[0].clone())))
+    } else if is_tracked_new {
+        assert!(vir_args.len() == 1);
+        let op = UnaryOp::CoerceMode {
+            op_mode: Mode::Proof,
+            from_mode: Mode::Proof,
+            to_mode: Mode::Proof,
             kind: ModeCoercion::Other,
         };
         Ok(mk_expr(ExprX::Unary(op, vir_args[0].clone())))
