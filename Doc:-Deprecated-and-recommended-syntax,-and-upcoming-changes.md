@@ -232,3 +232,26 @@ fn f(Tracked(t): Tracked<int>) -> (Ghost<Z>, Tracked<Y>) {
     (Ghost(Z { i: g + 1 }), Tracked(y))
 }
 ```
+
+## Forall, exists, implies, equals
+
+### Old syntax
+
+```
+forall(|i: int, j: int| imply(f(i, j), g(j, i)))
+exists(|i: int, j: int| equal(f(i, j), g(j, i)))
+```
+
+or
+
+```
+forall(|i: int, j: int| f(i, j) >>= g(j, i))
+exists(|i: int, j: int| f(i, j) === g(j, i))
+```
+
+### New syntax
+
+```
+forall|i: int, j: int| f(i, j) ==> g(j, i)
+exists|i: int, j: int| f(i, j) == g(j, i)
+```
