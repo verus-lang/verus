@@ -1019,12 +1019,16 @@ fn parse_suppose(
         }
         let span = arg.span();
         if let Expr::Binary(ExprBinary { op: BinOp::Imply(..), left, right, .. }) = arg {
+            let paren_token = Paren { span };
+            let left = syn_verus::ExprParen { attrs: vec![], paren_token, expr: left };
+            let left = Expr::Paren(left);
             if let Some(imp) = implies {
                 let op = BinOp::And(Token![&&](span));
+                let left = Box::new(left);
                 let bin = ExprBinary { attrs: vec![], op, left: Box::new(imp), right: left };
                 implies = Some(Expr::Binary(bin));
             } else {
-                implies = Some(*left);
+                implies = Some(left);
             }
             arg = *right;
         } else {

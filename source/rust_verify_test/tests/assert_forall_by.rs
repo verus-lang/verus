@@ -271,3 +271,24 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_assert_forall_parens verus_code! {
+        spec fn f(i: int) -> bool;
+        spec fn g(i: int) -> bool;
+        spec fn h(i: int) -> bool;
+        proof fn lemma(i: int)
+            requires f(i) && g(i)
+            ensures h(i)
+        {
+            assume(false);
+        }
+        fn test()
+            ensures forall|i: int| f(i) || f(i) ==> g(i) ==> h(i)
+        {
+            assert(forall|i: int| f(i) || f(i) ==> g(i) ==> h(i)) by(suppose) {
+                lemma(i);
+            }
+        }
+    } => Ok(())
+}
