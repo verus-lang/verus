@@ -2,6 +2,25 @@ The Verus syntax is in flux, and breaking changes are coming with the https://gi
 
 This document collects snippets of syntax that we plan to support long term, details breaking changes, and what deprecated syntax it replaces.
 
+## Standard library
+
+### Old syntax
+
+```
+mod pervasive;
+#[allow(unused_imports)]
+use pervasive::prelude::*;
+use pervasive::set_lib::lemma_len_union;
+```
+
+### New syntax
+
+```
+#[allow(unused_imports)]
+use vstd::prelude::*;
+use vstd::set_lib::lemma_len_union;
+```
+
 ## Functions
 
 ### Old syntax
