@@ -1005,7 +1005,7 @@ test_verify_one_file! {
         fn test() {
             let i = 5;
 
-            assert forall |j| some_fn(j) by {
+            assert(forall|j| some_fn(j)) by(suppose) {
                 if j < i {
                     assert(some_fn(j));
                 } else {

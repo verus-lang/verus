@@ -454,9 +454,9 @@ test_verify_one_file! {
 
             assert(maxSet.len() == 3);
 
-            assert forall|eltSet: Set<HAlign>| eltSet.len() <= 3 by {
+            assert(forall|eltSet: Set<HAlign>| eltSet.len() <= 3) by(suppose) {
                 // Prove eltSet <= maxSet
-                assert forall|elt: HAlign| eltSet.contains(elt) implies maxSet.contains(elt) by {
+                assert(forall|elt: HAlign| eltSet.contains(elt) ==> maxSet.contains(elt)) by(suppose) {
                     if let HAlign::Left = elt { }  // hint at a case analysis
                 }
 
@@ -545,8 +545,8 @@ fn e13_pass() {
                     }
 
                     proof fn cheese_take_two() {
-                        assert forall|o1:Order| o1.is_appetizer() implies
-                            exists(|o2:Order| o2.is_sandwich() && o1.get_cheese() == o2.get_cheese()) by
+                        assert(forall|o1:Order| o1.is_appetizer() ==>
+                            exists|o2:Order| o2.is_sandwich() && o1.get_cheese() == o2.get_cheese()) by(suppose)
                         {
                             // ensures(exists(|o2: Order| matches!((o1, o2), (Order::Appetizer { cheese: c1, .. }, Order::Sanwhich { cheese: c2, .. }) if c1 == c2)))
 
@@ -802,7 +802,7 @@ test_verify_one_file! {
             // RIGHT THERE! Error should say "matching loop" instead.
             // assume(forall(|i:nat| fibo(i) < fibo(i+1)));
 
-            assert forall|i: nat, j: nat| i <= j implies fibo(i) <= fibo(j) by {
+            assert(forall|i: nat, j: nat| i <= j ==> fibo(i) <= fibo(j)) by(suppose) {
                 fibo_monotonic(i, j);
             }
         }
@@ -1009,13 +1009,13 @@ test_verify_one_file! {
                 if *haystack.index(mid) < needle {
                     let ghost old_low = low;
                     low = mid + 1;
-                    assert forall|i: int| 0 <= i < low implies haystack[i] < needle by {
+                    assert(forall|i: int| 0 <= i < low ==> haystack[i] < needle) by(suppose) {
                         assert(view_u64(haystack.view())[i] <= view_u64(haystack.view())[mid as int]);
                     }
                 } else {
                     let ghost old_high = high;
                     high = mid;
-                    assert forall|i: int| high < i < haystack.len() implies needle <= haystack[i] by {
+                    assert(forall|i: int| high < i < haystack.len() ==> needle <= haystack[i]) by(suppose) {
                         assert(view_u64(haystack.view())[mid as int] <= view_u64(haystack.view())[i]);
                     }
                 }

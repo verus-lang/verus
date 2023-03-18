@@ -34,7 +34,7 @@ fn main() {
     // not going to slow things down elsewhere in code that doesn't talk about literals?
     proof {
         let candidate = 7;
-        assert forall|factor: nat| 1 < factor < candidate implies !divides(factor, candidate) by {
+        assert(forall|factor: nat| 1 < factor < candidate ==> !divides(factor, candidate)) by(suppose) {
             assert(!divides(2, candidate));
             assert(!divides(3, candidate));
             assert(!divides(4, candidate));

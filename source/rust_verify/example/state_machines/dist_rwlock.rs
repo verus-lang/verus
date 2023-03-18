@@ -186,11 +186,11 @@ tokenized_state_machine!{
 
         #[inductive(initialize)]
         fn initialize_inductive(post: Self, rc_width: int, init_t: T) {
-            assert forall |r| 0 <= r < post.rc_width implies
+            assert(forall |r| 0 <= r < post.rc_width ==>
                 #[trigger] post.ref_counts.index(r) ==
                     post.shared_pending.count(r) as int +
                         Self::filter_r(post.shared_guard, r).len() as int
-            by {
+            ) by(suppose) {
                 assert(post.ref_counts.index(r) == 0);
                 assert(post.shared_pending.count(r) == 0);
                 assert_multisets_equal!(
@@ -210,9 +210,9 @@ tokenized_state_machine!{
         #[inductive(exc_check_count)]
         fn exc_check_count_inductive(pre: Self, post: Self) {
             let prev_r = pre.exc_pending.get_Some_0();
-            assert forall |x| #[trigger] post.shared_guard.count(x) > 0
-                && x.0 == prev_r implies false
-            by {
+            assert(forall |x| #[trigger] post.shared_guard.count(x) > 0
+                && x.0 == prev_r ==> false
+            ) by(suppose) {
                 assert(Self::filter_r(post.shared_guard, prev_r).count(x) > 0);
             }
         }
@@ -233,11 +233,11 @@ tokenized_state_machine!{
         fn shared_finish_inductive(pre: Self, post: Self, r: int) {
             let t = pre.storage.get_Some_0();
 
-            assert forall |r0| 0 <= r0 < post.rc_width implies
+            assert(forall |r0| 0 <= r0 < post.rc_width ==>
                 #[trigger] post.ref_counts.index(r0) ==
                     post.shared_pending.count(r0) as int +
                         Self::filter_r(post.shared_guard, r0).len() as int
-            by {
+            ) by(suppose) {
                 if r == r0 {
                     assert_multisets_equal!(
                         pre.shared_pending,
@@ -266,11 +266,11 @@ tokenized_state_machine!{
         #[inductive(shared_release)]
         fn shared_release_inductive(pre: Self, post: Self, val: (int, T)) {
             let r = val.0;
-            assert forall |r0| 0 <= r0 < post.rc_width implies
+            assert(forall |r0| 0 <= r0 < post.rc_width ==>
                 #[trigger] post.ref_counts.index(r0) ==
                     post.shared_pending.count(r0) as int +
                         Self::filter_r(post.shared_guard, r0).len() as int
-            by {
+            ) by(suppose) {
                 if r0 == r {
                     assert_multisets_equal!(
                         Self::filter_r(pre.shared_guard, r),
@@ -343,13 +343,13 @@ impl<T> RwLock<T> {
             = Vec::new();
         let mut i: usize = 0;
 
-        assert forall |j: int|
-            i <= j && j < rc_width implies
+        assert(forall |j: int|
+            i <= j && j < rc_width ==>
             #[trigger] ref_counts_tokens.dom().contains(j)
                   && equal(ref_counts_tokens.index(j)@.instance, inst)
                   && equal(ref_counts_tokens.index(j)@.key, j)
                   && equal(ref_counts_tokens.index(j)@.value, 0)
-        by {
+        ) by(suppose) {
             assert(ref_counts_tokens.dom().contains(j));
             assert(equal(ref_counts_tokens.index(j)@.instance, inst));
             assert(equal(ref_counts_tokens.index(j)@.key, j));
@@ -396,13 +396,13 @@ impl<T> RwLock<T> {
 
             i = i + 1;
 
-            assert forall |j: int|
-                i <= j && j < rc_width implies
+            assert(forall |j: int|
+                i <= j && j < rc_width ==>
                 #[trigger] ref_counts_tokens.dom().contains(j)
                       && equal(ref_counts_tokens.index(j)@.instance, inst)
                       && equal(ref_counts_tokens.index(j)@.key, j)
                       && equal(ref_counts_tokens.index(j)@.value, 0)
-            by {
+            ) by(suppose) {
                 assert(ref_counts_tokens.dom().contains(j));
                 assert(equal(ref_counts_tokens.index(j)@.instance, inst));
                 assert(equal(ref_counts_tokens.index(j)@.key, j));

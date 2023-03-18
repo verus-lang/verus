@@ -409,7 +409,7 @@ proof fn test_even_f()
     ensures
         forall|i: int| is_even(i) ==> f(i),
 {
-    assert forall|i: int| is_even(i) implies f(i) by {
+    assert(forall|i: int| is_even(i) ==> f(i)) by(suppose) {
         // First, i is in scope here
         // Second, we assume is_even(i) here
         lemma_even_f(i);

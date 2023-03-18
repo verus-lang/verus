@@ -353,9 +353,9 @@ tokenized_state_machine!{FifoQueue<T> {
 
     #[inductive(initialize)]
     fn initialize_inductive(post: Self, backing_cells: Seq<CellId>, storage: Map<nat, cell::PermissionOpt<T>>) {
-        assert forall|i: nat|
-            0 <= i && i < post.len() implies post.valid_storage_at_idx(i)
-        by {
+        assert(forall|i: nat|
+            0 <= i && i < post.len() ==> post.valid_storage_at_idx(i)
+        ) by(suppose) {
             assert(post.storage.dom().contains(i));
             /*
             assert(
@@ -395,10 +395,10 @@ tokenized_state_machine!{FifoQueue<T> {
 
     #[inductive(produce_end)]
     fn produce_end_inductive(pre: Self, post: Self, perm: cell::PermissionOpt<T>) {
-        assert forall |i|
-            pre.valid_storage_at_idx(i) implies
+        assert(forall |i|
+            pre.valid_storage_at_idx(i) ==>
             post.valid_storage_at_idx(i)
-        by {
+        ) by(suppose) {
             /*if post.is_checked_out(i) {
                 assert(!post.storage.dom().contains(i));
             } else {
@@ -418,9 +418,9 @@ tokenized_state_machine!{FifoQueue<T> {
 
     #[inductive(consume_start)]
     fn consume_start_inductive(pre: Self, post: Self) {
-        assert forall |i|
-            pre.valid_storage_at_idx(i) implies post.valid_storage_at_idx(i)
-        by { }
+        assert(forall |i|
+            pre.valid_storage_at_idx(i) ==> post.valid_storage_at_idx(i)
+        ) by(suppose) { }
     }
    
     #[inductive(consume_end)]
@@ -456,9 +456,9 @@ tokenized_state_machine!{FifoQueue<T> {
         assert(!post.is_checked_out(head));
         assert(post.valid_storage_at_idx(head));
 
-        assert forall |i|
-            pre.valid_storage_at_idx(i) implies post.valid_storage_at_idx(i)
-        by { }
+        assert(forall |i|
+            pre.valid_storage_at_idx(i) ==> post.valid_storage_at_idx(i)
+        ) by(suppose) { }
     }
 }}
 

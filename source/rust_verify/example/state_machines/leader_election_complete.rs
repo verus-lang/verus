@@ -105,13 +105,13 @@ state_machine!(
             let dst_new_max = max(pre.highest_heard.index(dstidx), message);
 
             assert_by(post.on_chord_heard_dominates_id_inv(), {
-              assert forall |start: int, end: int| post.is_chord(start, end)
-                implies post.OnChordHeardDominatesId(start, end)
-              by {
-                assert forall |node: int|
+              assert(forall |start: int, end: int| post.is_chord(start, end)
+                ==> post.OnChordHeardDominatesId(start, end)
+              ) by(suppose) {
+                assert(forall |node: int|
                   between(start, node, end) && post.valid_idx(node)
-                  implies post.highest_heard.index(node) > post.ids.index(node)
-                by {
+                  ==> post.highest_heard.index(node) > post.ids.index(node)
+                ) by(suppose) {
                   if dstidx == end {
                     // maybe this chord just sprung into existence
                     if post.highest_heard.index(end) == pre.highest_heard.index(end) {
@@ -139,9 +139,9 @@ state_machine!(
             });
 
             assert_by(post.safety_condition(), {
-                assert forall |i: int, j: int|
-                    post.is_leader(i) && post.is_leader(j) implies i == j
-                by {
+                assert(forall |i: int, j: int|
+                    post.is_leader(i) && post.is_leader(j) ==> i == j
+                ) by(suppose) {
 
                     if i != j {
                         if pre.is_leader(i) {

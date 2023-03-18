@@ -151,7 +151,7 @@ test_verify_one_file! {
         proof fn foo(s: S) {
           let p1 = |s1| prop_1(s1);
           something(p1, |s1| prop_2(s1));
-          assert forall|s: S| prop_1(s) implies prop_2(s) by {
+          assert(forall|s: S| prop_1(s) ==> prop_2(s)) by(suppose) {
             assert(p1(s));
             assert(prop_2(s));
           }
@@ -167,7 +167,7 @@ test_verify_one_file! {
 
         proof fn foo(s: S) {
           something(|s1| #[trigger] prop_1(s1), |s1| prop_2(s1));
-          assert forall|s: S| prop_1(s) implies prop_2(s) by {
+          assert(forall|s: S| prop_1(s) ==> prop_2(s)) by(suppose) {
             assert(prop_1(s));
             assert(prop_2(s));
           }

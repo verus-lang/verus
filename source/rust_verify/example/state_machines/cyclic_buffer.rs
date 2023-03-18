@@ -192,11 +192,11 @@ tokenized_state_machine!{ CyclicBuffer {
                 assert(observed_head <= pre.tail);
                 assert(new_tail <= pre.tail + pre.buffer_size);
                 assert(new_tail - pre.buffer_size <= pre.tail);
-                assert forall |i: int|
+                assert(forall |i: int|
                     pre.tail - pre.buffer_size <= i < new_tail - pre.buffer_size
-                    implies
+                    ==>
                     pre.contents.dom().contains(i)
-                by {
+                ) by(suppose) {
                     assert(i < pre.tail);
                     assert(pre.tail <= i + pre.buffer_size);
                     let min_local_head = map_min_value(pre.local_heads, (pre.num_replicas - 1) as nat);

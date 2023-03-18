@@ -825,10 +825,10 @@ tokenized_state_machine!{
 
             }
 
-            assert forall |node_id1| #[trigger] post.combiner.dom().contains(node_id1)
+            assert(forall |node_id1| #[trigger] post.combiner.dom().contains(node_id1)
                 && node_id1 != node_id
-                implies post.wf_combiner_for_node_id(node_id1)
-            by {
+                ==> post.wf_combiner_for_node_id(node_id1)
+            ) by(suppose) {
                 assert(pre.combiner.index(node_id1) === post.combiner.index(node_id1));
                 assert(pre.wf_combiner_for_node_id(node_id1));
                 match pre.combiner.index(node_id1) {
@@ -858,11 +858,11 @@ tokenized_state_machine!{
                 }
             }
 
-            assert forall |node_id1|
+            assert(forall |node_id1|
               (#[trigger] post.combiner.dom().contains(node_id1)
-              && node_id1 != node_id) implies
+              && node_id1 != node_id) ==>
                 CombinerRidsDistinctTwoNodes(post.combiner.index(node_id1), post.combiner.index(node_id))
-            by {
+            ) by(suppose) {
                 assert(pre.wf_combiner_for_node_id(node_id1));
 
                 /*let c1 = post.combiner.index(node_id1);
@@ -885,9 +885,9 @@ tokenized_state_machine!{
                       CombinerState::UpdatedVersion{queued_ops, ..} => queued_ops,
                     };*/
 
-                    assert forall |j| 0 <= j < queued_ops1.len()
-                        && queued_ops1.index(j) == rid implies false
-                    by {
+                    assert(forall|j| 0 <= j < queued_ops1.len()
+                        && queued_ops1.index(j) == rid ==> false
+                    ) by(suppose) {
                       // should follow from QueueRidsUpdatePlaced, QueueRidsUpdateDone
                       assert(pre.local_updates.index(queued_ops1.index(j)).is_Placed()
                           || pre.local_updates.index(queued_ops1.index(j)).is_Applied()
@@ -896,9 +896,9 @@ tokenized_state_machine!{
 
                     assert(!queued_ops1.contains(rid));
 
-                    /*assert forall |i, j| 0 <= i < queued_ops1.len() && 0 <= j < queued_ops2.len()
-                        implies #[trigger] queued_ops1.index(i) !== #[trigger] queued_ops2.index(j)
-                    by {
+                    /*assert(forall |i, j| 0 <= i < queued_ops1.len() && 0 <= j < queued_ops2.len()
+                        ==> #[trigger] queued_ops1.index(i) !== #[trigger] queued_ops2.index(j)
+                    ) by(suppose) {
                     }*/
 
                     //assert(seqs_disjoint(queued_ops1, queued_ops2));
@@ -955,9 +955,9 @@ tokenized_state_machine!{
             }
             let c = pre.combiner.index(node_id);
             let rid = c.get_Loop_queued_ops().index(c.get_Loop_queue_index());
-            assert forall |node_id0| #[trigger] post.combiner.dom().contains(node_id0) && node_id0 != node_id
-                implies post.wf_combiner_for_node_id(node_id0)
-            by {
+            assert(forall |node_id0| #[trigger] post.combiner.dom().contains(node_id0) && node_id0 != node_id
+                ==> post.wf_combiner_for_node_id(node_id0)
+            ) by(suppose) {
               match pre.combiner.index(node_id0) {
                 CombinerState::Ready => {
                 }

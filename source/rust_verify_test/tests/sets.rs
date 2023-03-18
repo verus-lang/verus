@@ -34,7 +34,7 @@ test_verify_one_file! {
             let pos1 = nonneg.filter(|i: int| i > 0);
             assert(forall|i: int| pos1.contains(i) == (i > 0));
             let pos2 = nonneg.map(|i: int| i + 1);
-            assert forall|i: int| pos2.contains(i) == (i > 0) by {
+            assert(forall|i: int| pos2.contains(i) == (i > 0)) by(suppose) {
                 assert(pos2.contains(i) == nonneg.contains(i - 1));
             }
             assert(forall|i: int| pos2.contains(i) == (i > 0));
@@ -58,7 +58,7 @@ test_verify_one_file! {
             let pos1 = nonneg.filter(|i: int| i > 0);
             assert(forall|i: int| pos1.contains(i) == (i > 0));
             let pos2 = set_map(nonneg, |i: int| i + 1);
-            assert forall|i: int| pos2.contains(i) == (i > 0) by {} // FAILS
+            assert(forall|i: int| pos2.contains(i) == (i > 0)) by(suppose) {} // FAILS
             assert(forall|i: int| pos2.contains(i) == (i > 0));
             assert(pos1.ext_equal(pos2));
             assert(pos1 === pos2);

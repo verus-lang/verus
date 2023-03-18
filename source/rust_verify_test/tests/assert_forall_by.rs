@@ -71,14 +71,14 @@ test_verify_one_file! {
         }
 
         fn forallstmt_test() {
-            assert forall|x: int| f1(x) > x by {
+            assert(forall|x: int| f1(x) > x) by(suppose) {
                 reveal(f1);
             }
             assert(f1(3) > 3);
         }
 
         fn forallstmt_test_inference() {
-            assert forall|x| f1(x) > x by {
+            assert(forall|x| f1(x) > x) by(suppose) {
                 reveal(f1);
             }
             assert(f1(3) > 3);
@@ -88,7 +88,7 @@ test_verify_one_file! {
         }
 
         fn forallstmt_proof_var_allowed_as_spec(#[verifier::proof] x: bool) {
-            assert forall|i: int| f1(i) == f1(i) by {
+            assert(forall|i: int| f1(i) == f1(i)) by(suppose) {
                 no_consume(x);
             }
         }
@@ -103,7 +103,7 @@ test_verify_one_file! {
         }
 
         fn forallstmt_test() {
-            assert forall|x: int| f1(x) < x by { // FAILS
+            assert(forall|x: int| f1(x) < x) by(suppose) { // FAILS
                 reveal(f1);
             }
         }
@@ -118,7 +118,7 @@ test_verify_one_file! {
         }
 
         fn forallstmt_test() {
-            assert forall|x: int| f1(x) > x by {
+            assert(forall|x: int| f1(x) > x) by(suppose) {
                 reveal(f1);
             }
             assert(f1(3) == 4); // FAILS
@@ -137,7 +137,7 @@ test_verify_one_file! {
         }
 
         proof fn forallstmt_proof_var_disallowed(tracked x: bool) {
-            assert forall|i: int| f1(i) == f1(i) by {
+            assert(forall|i: int| f1(i) == f1(i)) by(suppose) {
                 consume(x);
             }
         }
@@ -152,7 +152,7 @@ test_verify_one_file! {
         }
 
         fn forallstmt_test() {
-            assert forall|x: int| 0 <= x implies 1 <= f1(x) by {
+            assert(forall|x: int| 0 <= x ==> 1 <= f1(x)) by(suppose) {
                 reveal(f1);
             }
             assert(f1(3) > 0);
@@ -168,7 +168,7 @@ test_verify_one_file! {
         }
 
         fn forallstmt_test() {
-            assert forall|x: int| 0 <= x implies 1 <= f1(x) by {
+            assert(forall|x: int| 0 <= x ==> 1 <= f1(x)) by(suppose) {
                 reveal(f1);
             }
             assert(f1(-3) > 0); // FAILS
@@ -184,7 +184,7 @@ test_verify_one_file! {
         }
 
         fn forallstmt_test() {
-            assert forall|x: int| 1 <= f1(x) by { // FAILS
+            assert(forall|x: int| 1 <= f1(x)) by(suppose) { // FAILS
                 reveal(f1);
             }
             assert(f1(3) > 0);
@@ -199,12 +199,12 @@ test_verify_one_file! {
         fn scope(b: bool, i: u64) {
             if b {
                 let i = 5;
-                assert forall|i: int| f(i) by {}
-                assert forall|j: int| f(j) by {}
+                assert(forall|i: int| f(i)) by(suppose) {}
+                assert(forall|j: int| f(j)) by(suppose) {}
             } else {
                 let i = 6;
-                assert forall|i: int| f(i) by {}
-                assert forall|j: int| f(j) by {}
+                assert(forall|i: int| f(i)) by(suppose) {}
+                assert(forall|j: int| f(j)) by(suppose) {}
             }
         }
     } => Ok(())
@@ -218,7 +218,7 @@ test_verify_one_file! {
         }
 
         fn forallstmt_test() {
-            assert forall|x: nat| 1 <= f1(x as int) by {
+            assert(forall|x: nat| 1 <= f1(x as int)) by(suppose) {
                 reveal(f1);
             }
             assert(f1(3) > 0);
@@ -234,7 +234,7 @@ test_verify_one_file! {
         }
 
         fn forallstmt_test() {
-            assert forall|x: nat| 1 <= f1(x as int) by {} // FAILS
+            assert(forall|x: nat| 1 <= f1(x as int)) by(suppose) {} // FAILS
             assert(f1(3) > 0);
         }
     } => Err(err) => assert_one_fails(err)
@@ -264,7 +264,7 @@ test_verify_one_file! {
         }
 
         fn forallstmt_test() {
-            assert forall|x: nat| { let a: int = 1; a <= #[trigger] f1(x as int) } by {
+            assert(forall|x: nat| { let a: int = 1; a <= #[trigger] f1(x as int) }) by(suppose) {
                 reveal(f1);
             }
             assert(f1(3) > 0);

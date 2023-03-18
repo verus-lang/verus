@@ -115,9 +115,9 @@ tokenized_state_machine!{
         fn push_into_top_sort_inductive(pre: Self, post: Self, v: V) {
             assert_sets_equal!(post.unvisited, post.visited.complement());
 
-            assert forall |a| #[trigger] post.visited.contains(a) implies
+            assert(forall |a| #[trigger] post.visited.contains(a) ==>
                 post.top_sort.contains(a)
-            by {
+            ) by(suppose) {
                 if a === v {
                     assert(post.top_sort.last() === a);
                     assert(post.top_sort.contains(a));
@@ -130,9 +130,9 @@ tokenized_state_machine!{
                 }
             }
 
-            assert forall |v| #[trigger] post.top_sort.contains(v) implies
+            assert(forall |v| #[trigger] post.top_sort.contains(v) ==>
                 post.visited.contains(v)
-            by {
+            ) by(suppose) {
             }
         }
 
@@ -284,8 +284,8 @@ fn find_cycle(
     dfs_state.cycle = cycle;
 
     assert(graph@.is_cycle(dfs_state.cycle@)) by {
-        assert forall |i: int| 0 <= i < dfs_state.cycle@.len() - 1 implies graph@.is_cycle_i(dfs_state.cycle@, i)
-        by {
+        assert(forall |i: int| 0 <= i < dfs_state.cycle@.len() - 1 ==> graph@.is_cycle_i(dfs_state.cycle@, i)
+        ) by(suppose) {
             assert(valid_stack_i(dfs_state.cur_stack@, graph@, i + j)); // trigger
         }
     };
@@ -345,10 +345,10 @@ fn visit(
         assert(valid_stack(dfs_state.cur_stack@, graph@));
 
         #[verifier::spec] let v = v_spec;
-        assert forall |i: usize|
-            0 <= i && i < dfs_state.node_states@.len() implies
+        assert(forall |i: usize|
+            0 <= i && i < dfs_state.node_states@.len() ==>
                 dfs_state.node_states@.index(i as int).in_stack == dfs_state.cur_stack@.contains(i)
-        by {
+        ) by(suppose) {
             if i == v {
                 assert(dfs_state.cur_stack@.last() == i);
                 assert(dfs_state.cur_stack@.contains(i));
@@ -407,14 +407,14 @@ fn visit(
 
         idx = idx + 1;
 
-        assert forall |idx0: int|
-            0 <= idx0 && idx0 < idx implies
+        assert(forall |idx0: int|
+            0 <= idx0 && idx0 < idx ==>
             ({
                 #[verifier::spec] let w = #[trigger] graph.edges@.index(v as int)@.index(idx0);
                 map_visited_deps.dom().contains(w)
                     && equal(map_visited_deps.index(w)@, TopSort::token![ dfs_state.instance => visited => w ])
             })
-        by {
+        ) by(suppose) {
             assume(false);
         }
     }
@@ -587,9 +587,9 @@ fn compute_top_sort(graph: &ConcreteDirectedGraph) -> TopSortResult
         &map_visited_deps,
         &top_sort_token);
 
-    assert forall |i: usize| 0 <= i && i < graph.edges@.len()
-        implies top_sort@.contains(i)
-    by {
+    assert(forall |i: usize| 0 <= i && i < graph.edges@.len()
+        ==> top_sort@.contains(i)
+    ) by(suppose) {
         assert(s.contains(i));
     }
     assert(is_complete_top_sort(&top_sort, graph));

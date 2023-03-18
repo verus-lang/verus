@@ -995,6 +995,45 @@ impl Visitor {
     }
 }
 
+fn parse_suppose(
+    mut arg: Expr,
+) -> Result<(Punctuated<Pat, Token![,]>, Option<Expr>, Expr), String> {
+    // Parse forall|bound_vars| implies ==> ... ==> implies ==> rhs
+    while let Expr::Paren(e) = arg {
+        arg = *e.expr;
+    }
+    let (bound_vars, mut arg) =
+        if let Expr::Unary(ExprUnary { op: UnOp::Forall(..), expr, .. }) = arg {
+            if let Expr::Closure(syn_verus::ExprClosure { inputs, body, .. }) = *expr {
+                (inputs, *body)
+            } else {
+                return Err("expected closure in forall".to_string());
+            }
+        } else {
+            (Punctuated::new(), arg)
+        };
+    let mut implies: Option<Expr> = None;
+    loop {
+        while let Expr::Paren(e) = arg {
+            arg = *e.expr;
+        }
+        let span = arg.span();
+        if let Expr::Binary(ExprBinary { op: BinOp::Imply(..), left, right, .. }) = arg {
+            if let Some(imp) = implies {
+                let op = BinOp::And(Token![&&](span));
+                let bin = ExprBinary { attrs: vec![], op, left: Box::new(imp), right: left };
+                implies = Some(Expr::Binary(bin));
+            } else {
+                implies = Some(*left);
+            }
+            arg = *right;
+        } else {
+            break;
+        }
+    }
+    Ok((bound_vars, implies, arg))
+}
+
 impl VisitMut for Visitor {
     fn visit_expr_mut(&mut self, expr: &mut Expr) {
         if self.chain_operators(expr) {
@@ -1080,6 +1119,65 @@ impl VisitMut for Visitor {
             Expr::Field(..) => self.assign_to,
             _ => false,
         };
+
+        let is_assert_by_suppose = match &expr {
+            Expr::Assert(syn_verus::Assert { prover: Some((_, id)), .. })
+                if id.to_string() == "suppose" =>
+            {
+                true
+            }
+            _ => false,
+        };
+        if is_assert_by_suppose {
+            // parse_suppose needs to match on Forall and Imply, so we have to match
+            // before the recursive call to visit_expr_mut translates Forall and Imply
+            match take_expr(expr) {
+                Expr::Assert(assert) => {
+                    let span = assert.assert_token.span;
+                    let arg = assert.expr;
+                    let attrs = assert.attrs;
+                    match (assert.by_token, assert.prover, assert.requires, assert.body) {
+                        (Some(_), Some((_, id)), None, Some(box mut block))
+                            if id.to_string() == "suppose" =>
+                        {
+                            self.visit_block_mut(&mut block);
+                            match parse_suppose(*arg) {
+                                Err(msg) => {
+                                    *expr = quote_verbatim!(span, attrs => compile_error!(#msg))
+                                }
+                                Ok((mut bound_vars, implies, mut rhs)) => {
+                                    for mut input in Punctuated::pairs_mut(&mut bound_vars) {
+                                        self.visit_pat_mut(input.value_mut());
+                                    }
+                                    self.visit_expr_mut(&mut rhs);
+                                    let mut stmts: Vec<Stmt> = Vec::new();
+                                    if let Some(mut lhs) = implies {
+                                        self.visit_expr_mut(&mut lhs);
+                                        stmts.push(
+                                            stmt_with_semi!(span => ::builtin::requires(#lhs)),
+                                        );
+                                        stmts.push(
+                                            stmt_with_semi!(span => ::builtin::ensures(#rhs)),
+                                        );
+                                    } else {
+                                        stmts.push(
+                                            stmt_with_semi!(span => ::builtin::ensures(#rhs)),
+                                        );
+                                    }
+                                    block.stmts.splice(0..0, stmts);
+                                    *expr = quote_verbatim!(span, attrs =>
+                                        {::builtin::assert_forall_by(|#bound_vars| #block);});
+                                }
+                            }
+                        }
+                        _ => {
+                            *expr = quote_verbatim!(span, attrs => compile_error!("assert-by-suppose needs a body and no requires clause"));
+                        }
+                    }
+                }
+                _ => panic!("is_assert_by_suppose"),
+            }
+        }
 
         // Recursively call visit_expr_mut
         let is_inside_ghost = self.inside_ghost > 0;
@@ -1518,6 +1616,7 @@ impl VisitMut for Visitor {
                         }
                     }
                 }
+                /* TODO (cleanup, later): remove AssertForall from syntax
                 Expr::AssertForall(assert) => {
                     let span = assert.assert_token.span;
                     let attrs = assert.attrs;
@@ -1534,6 +1633,7 @@ impl VisitMut for Visitor {
                     block.stmts.splice(0..0, stmts);
                     *expr = quote_verbatim!(span, attrs => {::builtin::assert_forall_by(|#inputs| #block);});
                 }
+                */
                 Expr::Closure(clos) => {
                     if is_inside_ghost {
                         let span = clos.span();

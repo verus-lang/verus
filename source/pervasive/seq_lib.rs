@@ -36,10 +36,10 @@ impl<A> Seq<A> {
             // we don't keep anything bad
             // TODO(andrea): recommends didn't catch this error, where i isn't known to be in
             // self.filter(pred).len()
-            //forall |i: int| 0 <= i < self.len() ==> pred(#[trigger] self.filter(pred)[i]),
-            forall |i: int| 0 <= i < self.filter(pred).len() ==> pred(#[trigger] self.filter(pred)[i]),
+            //forall|i: int| 0 <= i < self.len() ==> pred(#[trigger] self.filter(pred)[i]),
+            forall|i: int| 0 <= i < self.filter(pred).len() ==> pred(#[trigger] self.filter(pred)[i]),
             // we keep everything we should
-            forall |i: int| 0 <= i < self.len() && pred(self[i])
+            forall|i: int| 0 <= i < self.len() && pred(self[i])
                 ==> #[trigger] self.filter(pred).contains(self[i]),
             // the filtered list can't grow
             self.filter(pred).len() <= self.len(),
@@ -48,20 +48,20 @@ impl<A> Seq<A> {
         let out = self.filter(pred);
         if 0 < self.len() {
             self.drop_last().filter_lemma(pred);
-            assert forall |i: int| 0 <= i < out.len() implies pred(out[i]) by {
-                if i < out.len()-1 {
+            assert(forall|i: int| 0 <= i < out.len() ==> pred(out[i])) by(suppose) {
+                if i < out.len() - 1 {
                     assert(self.drop_last().filter(pred)[i] == out.drop_last()[i]); // trigger drop_last
                     assert(pred(out[i]));   // TODO(andrea): why is this line required? It's the conclusion of the assert-forall.
                 }
             }
-            assert forall |i: int| 0 <= i < self.len() && pred(self[i])
-                implies #[trigger] out.contains(self[i]) by {
-                if i==self.len()-1 {
-                    assert(self[i] == out[out.len()-1]);  // witness to contains
+            assert(forall|i: int| 0 <= i < self.len() && pred(self[i])
+                ==> #[trigger] out.contains(self[i])) by(suppose) {
+                if i == self.len() - 1 {
+                    assert(self[i] == out[out.len() - 1]);  // witness to contains
                 } else {
                     let subseq = self.drop_last().filter(pred);
                     assert(subseq.contains(self.drop_last()[i]));   // trigger recursive invocation
-                    let j = choose(|j| 0<=j<subseq.len() && subseq[j]==self[i]);
+                    let j = choose(|j| 0 <= j < subseq.len() && subseq[j] == self[i]);
                     assert(out[j] == self[i]);  // TODO(andrea): same, seems needless
                 }
             }
@@ -72,15 +72,15 @@ impl<A> Seq<A> {
     #[verifier(broadcast_forall)]
     pub proof fn filter_lemma_broadcast(self, pred: FnSpec(A) -> bool)
         ensures
-            forall |i: int| 0 <= i < self.filter(pred).len() ==> pred(#[trigger] self.filter(pred)[i]),
-            forall |i: int| 0 <= i < self.len() && pred(self[i])
+            forall|i: int| 0 <= i < self.filter(pred).len() ==> pred(#[trigger] self.filter(pred)[i]),
+            forall|i: int| 0 <= i < self.len() && pred(self[i])
                 ==> #[trigger] self.filter(pred).contains(self[i]),
-            self.filter(pred).len() <= self.len();
+            (#[trigger] self.filter(pred)).len() <= self.len();
 
     proof fn filter_distributes_over_add(a:Self, b:Self, pred:FnSpec(A)->bool)
-    ensures
-        (a+b).filter(pred) == a.filter(pred) + b.filter(pred),
-    decreases b.len()
+        ensures
+            (a + b).filter(pred) == a.filter(pred) + b.filter(pred),
+        decreases b.len()
     {
         if 0 < b.len()
         {
@@ -99,27 +99,27 @@ impl<A> Seq<A> {
     requires
         b.len() == 0,
     ensures
-        a+b == a,
+        a + b == a,
     {
-        assert_seqs_equal!(a+b, a);
+        assert_seqs_equal!(a + b, a);
     }
 
     pub proof fn push_distributes_over_add(a: Self, b: Self, elt: A)
     ensures
-        (a+b).push(elt) == a+b.push(elt),
+        (a + b).push(elt) == a + b.push(elt),
     {
-        assert_seqs_equal!((a+b).push(elt), a+b.push(elt));
+        assert_seqs_equal!((a + b).push(elt), a + b.push(elt));
     }
 
     #[verifier(external_body)]
     #[verifier(broadcast_forall)]
     pub proof fn filter_distributes_over_add_broacast(a:Self, b:Self, pred:FnSpec(A)->bool)
     ensures
-        #[trigger] (a+b).filter(pred) == a.filter(pred) + b.filter(pred),
+        #[trigger] (a + b).filter(pred) == a.filter(pred) + b.filter(pred),
     {
     // TODO(chris): We have perfectly good proofs sitting around for these broadcasts; they don't
     // need to be axioms!
-//        assert forall |a:Self, b:Self, pred:FnSpec(A)->bool| (a+b).filter(pred) == a.filter(pred) + b.filter(pred) by {
+//        assert forall|a:Self, b:Self, pred:FnSpec(A)->bool| (a + b).filter(pred) == a.filter(pred) + b.filter(pred) by {
 //            Self::filter_distributes_over_add(a, b, pred);
 //        }
     }
@@ -128,9 +128,9 @@ impl<A> Seq<A> {
     #[verifier(broadcast_forall)]
     pub proof fn add_empty_broacast(a:Self, b:Self)
     ensures
-        b.len()==0 ==> a+b == a
+        b.len()==0 ==> a + b == a
     {
-//        assert forall |a:Self, b:Self| b.len()==0 implies a+b == a {
+//        assert forall|a:Self, b:Self| b.len()==0 implies a + b == a {
 //            add_empty(a, b);
 //        }
     }
@@ -139,9 +139,9 @@ impl<A> Seq<A> {
     #[verifier(broadcast_forall)]
     pub proof fn push_distributes_over_add_broacast(a:Self, b:Self, elt: A)
     ensures
-        (a+b).push(elt) == a+b.push(elt),
+        (a + b).push(elt) == a + b.push(elt),
     {
-//        assert forall |a:Self, b:Self, elt: A| (a+b).push(elt) == a+b.push(elt) {
+//        assert forall|a:Self, b:Self, elt: A| (a + b).push(elt) == a + b.push(elt) {
 //            push_distributes_over_add(a, b, elt);
 //        }
     }
@@ -169,9 +169,9 @@ impl<A> Seq<A> {
     requires
         0 < b.len(),
     ensures
-        (a+b).drop_last() == a+b.drop_last(),
+        (a + b).drop_last() == a + b.drop_last(),
     {
-        assert_seqs_equal!((a+b).drop_last(), a+b.drop_last());
+        assert_seqs_equal!((a + b).drop_last(), a + b.drop_last());
     }
 
     /// returns `true` if the sequequence has no duplicate elements
@@ -218,16 +218,16 @@ proof fn seq_to_set_rec_is_finite<A>(seq: Seq<A>)
 
 /// helper function showing that the resulting set contains all elements of the sequence
 proof fn seq_to_set_rec_contains<A>(seq: Seq<A>)
-    ensures forall |a| #[trigger] seq.contains(a) <==> seq_to_set_rec(seq).contains(a)
+    ensures forall|a| #[trigger] seq.contains(a) <==> seq_to_set_rec(seq).contains(a)
     decreases seq.len()
 {
     if seq.len() > 0 {
-        assert(forall |a| #[trigger] seq.drop_last().contains(a) <==> seq_to_set_rec(seq.drop_last()).contains(a)) by {
+        assert(forall|a| #[trigger] seq.drop_last().contains(a) <==> seq_to_set_rec(seq.drop_last()).contains(a)) by {
             seq_to_set_rec_contains(seq.drop_last());
         }
 
         assert(seq.ext_equal(seq.drop_last().push(seq.last())));
-        assert forall |a| #[trigger] seq.contains(a) <==> seq_to_set_rec(seq).contains(a) by {
+        assert(forall|a| #[trigger] seq.contains(a) <==> seq_to_set_rec(seq).contains(a)) by(suppose) {
             if !seq.drop_last().contains(a) {
                 if a == seq.last() {
                     assert(seq.contains(a));
@@ -244,10 +244,10 @@ proof fn seq_to_set_rec_contains<A>(seq: Seq<A>)
 proof fn seq_to_set_equal_rec<A>(seq: Seq<A>)
     ensures seq.to_set() == seq_to_set_rec(seq)
 {
-    assert(forall |n| #[trigger] seq.contains(n) <==> seq_to_set_rec(seq).contains(n)) by {
+    assert(forall|n| #[trigger] seq.contains(n) <==> seq_to_set_rec(seq).contains(n)) by {
         seq_to_set_rec_contains(seq);
     }
-    assert(forall |n| #[trigger] seq.contains(n) <==> seq.to_set().contains(n));
+    assert(forall|n| #[trigger] seq.contains(n) <==> seq.to_set().contains(n));
     assert(seq.to_set().ext_equal(seq_to_set_rec(seq)));
 }
 

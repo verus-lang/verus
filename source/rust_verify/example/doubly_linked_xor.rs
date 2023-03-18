@@ -223,7 +223,7 @@ impl<V> DListXor<V> {
                 assert(self.wf_tail());
 
                 assert(self@[self.ptrs@.len() - 1] == v);
-                assert forall|i: int| 0 <= i < self.ptrs@.len() - 1 implies old(self)@[i] == self@[i] by {
+                assert(forall|i: int| 0 <= i < self.ptrs@.len() - 1 ==> old(self)@[i] == self@[i]) by(suppose) {
                     assert(old(self).wf_perm(i as nat)); // trigger
                 };
                 assert(self@.ext_equal(old(self)@.push(v)));
@@ -328,9 +328,9 @@ impl<V> DListXor<V> {
                 old(self).wf_perm(i) ==> self.wf_perm(i));
             assert(self.wf_perms());
 
-            assert forall|i: int|
-                0 <= i < self@.len() implies
-                #[trigger] self@[i] == old(self)@.drop_last()[i] by
+            assert(forall|i: int|
+                0 <= i < self@.len() ==>
+                #[trigger] self@[i] == old(self)@.drop_last()[i]) by(suppose)
             {
                 assert(old(self).wf_perm(i as nat)); // trigger
             }
@@ -410,9 +410,9 @@ impl<V> DListXor<V> {
                 (self.perms.borrow_mut())
                     .tracked_insert(1, (second_perm).get());
 
-                assert forall |j: nat| 1 <= j < old(self)@.len() implies
+                assert(forall|j: nat| 1 <= j < old(self)@.len() ==>
                     self.perms@.dom().contains(j)
-                by { assert(old(self).wf_perm(j)); }
+                ) by(suppose) { assert(old(self).wf_perm(j)); }
 
                 (self.perms.borrow_mut()).tracked_map_keys_in_place(
                     Map::<nat, nat>::new(
@@ -439,9 +439,9 @@ impl<V> DListXor<V> {
                 old(self).wf_perm(i + 1) ==> self.wf_perm(i));
             assert(self.wf_perms());
 
-            assert forall|i: int|
-                0 <= i < self@.len() implies
-                #[trigger] self@[i] == old(self)@.subrange(1, old(self)@.len() as int)[i] by
+            assert(forall|i: int|
+                0 <= i < self@.len() ==>
+                #[trigger] self@[i] == old(self)@.subrange(1, old(self)@.len() as int)[i]) by(suppose)
             {
                 assert(old(self).wf_perm(i as nat + 1)); // trigger
             }
@@ -499,9 +499,9 @@ impl<V> DListXor<V> {
                 (self.perms.borrow_mut())
                     .tracked_insert(0, (head_perm).get());
 
-                assert forall |j: nat| 0 <= j < old(self)@.len() implies
+                assert(forall |j: nat| 0 <= j < old(self)@.len() ==>
                     self.perms@.dom().contains(j)
-                by { assert(old(self).wf_perm(j)); }
+                ) by(suppose) { assert(old(self).wf_perm(j)); }
 
                 (self.perms.borrow_mut()).tracked_map_keys_in_place(
                     Map::<nat, nat>::new(
@@ -543,7 +543,7 @@ impl<V> DListXor<V> {
                 assert(self.wf_tail());
 
                 assert(self@[0] == v);
-                assert forall|i: int| 1 <= i <= self.ptrs@.len() - 1 implies old(self)@[i - 1] == self@[i] by {
+                assert(forall|i: int| 1 <= i <= self.ptrs@.len() - 1 ==> old(self)@[i - 1] == self@[i]) by(suppose) {
                     assert(old(self).wf_perm((i - 1) as nat)); // trigger
                 };
                 assert(self@.ext_equal(seq![v].add(old(self)@)));
