@@ -51,7 +51,9 @@ spec fn h() {
 }
 ```
 
-## Spec functions
+## Spec functions, ghost variables
+
+Note: all variables are ghost in spec functions
 
 ### Old syntax
 
@@ -82,7 +84,9 @@ spec fn f(i: int, j: int) -> int
 }
 ```
 
-## Proof functions
+## Proof functions, tracked variables, ghost variables
+
+Note: variables are ghost by default in proof functions
 
 ### Old syntax
 
@@ -121,7 +125,9 @@ proof fn f(i: int, j: int, tracked t: S) -> (k: int)
 }
 ```
 
-## Exec functions
+## Exec functions, exec variables, tracked variables, ghost variables
+
+Note: variables are exec by default in exec functions
 
 ### Old syntax
 
@@ -147,6 +153,39 @@ fn f(i: u32, #[spec] j: int, #[proof] t: S) -> u32 {
 
 fn g(#[proof] t: S) -> u32 {
     f(5, 6, t)
+}
+```
+
+### Recent, but now old syntax
+
+Note: ghost/tracked parameters in exec functions must be wrapped in `Ghost<T>` and `Tracked<T>` types.
+The `ghost(expr)` and `tracked(expr)` expressions can be used to construct values of type
+`Ghost<T>` and `Tracked<T>`.
+
+```
+proof fn lemma1(i: int, tracked t: S) {
+}
+
+fn f(i: u32, j: Ghost<int>, t: Tracked<S>) -> (k: u32)
+    requires
+        i != j@,
+        i < 10,
+    ensures
+        k == i + 1,
+{
+    let i_plus_j: Ghost<int> = ghost(i + j@);
+    let t_ghost_copy: Ghost<S> = ghost(t@);
+    let t_moved: Tracked<S> = tracked(t.get());
+    proof {
+        lemma1(i as int, t_moved.get());
+    }
+    assert(t_moved@ == t_ghost_copy@);
+    assert(i_plus_j@ == i + j@);
+    i + 1
+}
+
+fn g(t: Tracked<S>) -> u32 {
+    f(5, ghost(6), t)
 }
 ```
 
@@ -181,7 +220,7 @@ fn f(i: u32, Ghost(j): Ghost<int>, Tracked(t): Tracked<S>) -> (k: u32)
     i + 1
 }
 
-fn g(Tracked(t): Tracked<S>) -> k {
+fn g(Tracked(t): Tracked<S>) -> u32 {
     f(5, Ghost(6), Tracked(t))
 }
 ```
@@ -222,6 +261,9 @@ fn f(#[proof] t: int) -> (Spec<Z>, Proof<Y>) {
 ```
 
 ### New syntax
+
+Note: ghost/tracked fields in exec structs must be wrapped in Ghost<T> and Tracked<T> types.
+All fields in ghost structs are ghost.
 
 ```
 struct X {
