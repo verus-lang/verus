@@ -100,7 +100,7 @@ struct_with_invariants!{
         // the same value as the atomic (`v`).
         // Furthermore, the ghost token should have the appropriate `instance`.
         invariant on atomic with (instance) is (v: u32, g: X::counter) {
-            g@ === X::token![instance@ => counter => v as int]
+            g@ == X::token![instance@ => counter => v as int]
         }
     }
 }
@@ -128,8 +128,8 @@ fn main() {
 
     let global_arc1 = global_arc.clone();
     let join_handle1 = spawn(move || {
-        ensures(|new_token: Proof<X::inc_a>|
-            new_token.0@ ===
+        ensures(|new_token: Tracked<X::inc_a>|
+            new_token@@ ==
                 X::token![instance => inc_a => true]
         );
 
@@ -143,15 +143,15 @@ fn main() {
             }
         );
 
-        Proof(token)
+        Tracked(token)
     });
 
     // Thread 2
 
     let global_arc2 = global_arc.clone();
     let join_handle2 = spawn(move || {
-        ensures(|new_token: Proof<X::inc_b>|
-            new_token.0@ ===
+        ensures(|new_token: Tracked<X::inc_b>|
+            new_token@@ ==
                 X::token![instance => inc_b => true]
         );
 
@@ -165,20 +165,20 @@ fn main() {
             }
         );
 
-        Proof(token)
+        Tracked(token)
     });
 
     // Join threads
 
     let tracked inc_a_token;
     match join_handle1.join() {
-        Result::Ok(Proof(token)) => { inc_a_token = token; }
+        Result::Ok(token) => { proof { inc_a_token = token.get(); } }
         _ => { return; }
     };
 
     let tracked inc_b_token;
     match join_handle2.join() {
-        Result::Ok(Proof(token)) => { inc_b_token = token; }
+        Result::Ok(token) => { proof { inc_b_token = token.get(); } }
         _ => { return; }
     };
 
