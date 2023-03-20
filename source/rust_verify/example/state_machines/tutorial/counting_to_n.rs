@@ -168,7 +168,7 @@ fn do_count(num_threads: u32) {
         let join_handle = spawn(move || {
             ensures(|new_token: Proof<X::stamped_tickets>|
                 new_token.0@.instance === instance
-                    && new_token.0@.count == 1nat 
+                    && new_token.0@.count == spec_cast_integer::<_, nat>(1)
             );
 
             let tracked unstamped_token = unstamped_token;
