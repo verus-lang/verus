@@ -1346,3 +1346,19 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
 }
+
+test_verify_one_file! {
+    #[test] let_tracked_wildcard_in_exec verus_code! {
+        struct X { }
+
+        proof fn stuff() -> (tracked res: X)
+            requires false,
+        {
+            X { }
+        }
+
+        fn test_r() {
+            let tracked _ = stuff(); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

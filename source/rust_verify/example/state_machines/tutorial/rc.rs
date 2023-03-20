@@ -33,7 +33,7 @@ tokenized_state_machine!(Dupe<T> {
 
     #[invariant]
     pub fn agreement(&self) -> bool {
-        self.storage === Option::Some(self.val)
+        self.storage == Option::Some(self.val)
     }
 
     property!{
@@ -60,7 +60,7 @@ impl<T> Duplicable<T> {
     }
 
     pub proof fn new(tracked t: T) -> (tracked s: Self)
-        ensures s.wf() && s@ === t,
+        ensures s.wf() && s@ == t,
     {
         let tracked inst = Dupe::Instance::initialize_one(/* spec */ t, Option::Some(t));
         Duplicable {
@@ -68,21 +68,16 @@ impl<T> Duplicable<T> {
         }
     }
 
-    #[verifier::proof]
-    #[verifier(returns(proof))]
-    pub fn clone(#[verifier::proof] &self) -> (other: Self)
+    pub proof fn clone(tracked &self) -> (tracked other: Self)
         requires self.wf(),
-        ensures other.wf() && self@ === other@,
+        ensures other.wf() && self@ == other@,
     {
-
         Duplicable { inst: self.inst.clone() }
     }
 
-    #[verifier::proof]
-    #[verifier(returns(proof))]
-    pub fn borrow(#[verifier::proof] &self) -> (t: &T)
+    pub proof fn borrow(tracked &self) -> (tracked t: &T)
         requires self.wf(),
-        ensures *t === self@,
+        ensures *t == self@,
     {
         self.inst.borrow()
     }
@@ -105,7 +100,7 @@ tokenized_state_machine!(RefCounter<Perm> {
     #[invariant]
     pub fn reader_agrees_storage(&self) -> bool {
         forall |t: Perm| self.reader.count(t) > 0 ==>
-            self.storage === Option::Some(t)
+            self.storage == Option::Some(t)
     }
 
     #[invariant]
@@ -165,7 +160,7 @@ tokenized_state_machine!(RefCounter<Perm> {
     #[inductive(do_clone)]
     fn do_clone_inductive(pre: Self, post: Self, x: Perm) {
         assert(pre.reader.count(x) > 0);
-        assert(pre.storage === Option::Some(x));
+        assert(pre.storage == Option::Some(x));
         assert(pre.storage.is_Some());
         assert(pre.counter > 0);
     }
@@ -191,7 +186,7 @@ tokenized_state_machine!(RefCounter<Perm> {
     #[inductive(dec_basic)]
     fn dec_basic_inductive(pre: Self, post: Self, x: Perm) {
         assert(pre.reader.count(x) > 0);
-        assert(pre.storage === Option::Some(x));
+        assert(pre.storage == Option::Some(x));
     }
 
     #[inductive(dec_to_zero)]
@@ -210,8 +205,8 @@ tracked struct GhostStuff<S> {
 
 impl<S> GhostStuff<S> {
     pub open spec fn wf(self, inst: RefCounter::Instance<ptr::PermissionOpt<InnerRc<S>>>, cell: PCell<u64>) -> bool {
-        &&& self.rc_perm@.pcell === cell.id()
-        &&& self.rc_token@.instance === inst
+        &&& self.rc_perm@.pcell == cell.id()
+        &&& self.rc_token@.instance == inst
         &&& self.rc_perm@.value.is_Some()
         &&& self.rc_perm@.value.get_Some_0() as nat == self.rc_token@.value
     }
@@ -219,120 +214,129 @@ impl<S> GhostStuff<S> {
 
 impl<S> InnerRc<S> {
     spec fn wf(self, cell: PCell<u64>) -> bool {
-        self.rc_cell === cell
+        self.rc_cell == cell
     }
 }
 
 struct_with_invariants!{
     struct MyRc<S> {
-        #[verifier::proof] pub inst: RefCounter::Instance<ptr::PermissionOpt<InnerRc<S>>>,
-        #[verifier::proof] pub inv: Duplicable<LocalInvariant<_, GhostStuff<S>, _>>,
-        #[verifier::proof] pub reader: RefCounter::reader<ptr::PermissionOpt<InnerRc<S>>>,
+        pub inst: Tracked< RefCounter::Instance<ptr::PermissionOpt<InnerRc<S>>> >,
+        pub inv: Tracked< Duplicable<LocalInvariant<_, GhostStuff<S>, _>> >,
+        pub reader: Tracked< RefCounter::reader<ptr::PermissionOpt<InnerRc<S>>> >,
+
         pub ptr: PPtr<InnerRc<S>>,
 
-        #[verifier::spec] pub rc_cell: PCell<u64>,
+        pub rc_cell: Ghost< PCell<u64> >,
     }
 
     spec fn wf(self) -> bool {
         predicate {
-            &&& self.reader@.key@.pptr === self.ptr.id()
-            &&& self.reader@.instance === self.inst
-            &&& self.reader@.count === 1
-            &&& self.reader@.key@.value.is_Some()
-            &&& self.inv.wf()
-            &&& self.reader@.key@.value.get_Some_0().rc_cell === self.rc_cell
+            &&& self.reader@@.key@.pptr == self.ptr.id()
+            &&& self.reader@@.instance == self.inst@
+            &&& self.reader@@.count == 1
+            &&& self.reader@@.key@.value.is_Some()
+            &&& self.inv@.wf()
+            &&& self.reader@@.key@.value.get_Some_0().rc_cell == self.rc_cell
         }
 
         invariant on inv with (inst, rc_cell)
-            specifically (self.inv@)
+            specifically (self.inv@@)
             is (v: GhostStuff<S>)
         {
-            v.wf(inst, rc_cell)
+            v.wf(inst@, rc_cell@)
         }
     }
 }
 
 impl<S> MyRc<S> {
     spec fn view(self) -> S {
-        self.reader@.key@.value.get_Some_0().s
+        self.reader@@.key@.value.get_Some_0().s
     }
 
-    fn new(s: S) -> Self {
-        ensures(|rc: MyRc<S>| [
+    fn new(s: S) -> (rc: Self)
+        ensures
             rc.wf(),
-            rc@ === s,
-        ]);
+            rc@ == s,
+    {
 
-        let (rc_cell, rc_perm) = PCell::new(1);
+        let (rc_cell, Tracked(rc_perm)) = PCell::new(1);
         let inner_rc = InnerRc::<S> { rc_cell, s };
 
-        let (ptr, ptr_perm) = PPtr::new(inner_rc);
+        let (ptr, Tracked(ptr_perm)) = PPtr::new(inner_rc);
 
-        #[verifier::proof] let (Trk(inst), Trk(mut rc_token), _) = RefCounter::Instance::initialize_empty(Option::None);
-        
-        #[verifier::proof] let ptr_perm = ptr_perm.get();
-        #[verifier::proof] let reader = inst.do_deposit(ptr_perm, &mut rc_token, ptr_perm);
-
-        #[verifier::proof] let g = GhostStuff::<S> { rc_perm: rc_perm.get(), rc_token };
-
-        #[verifier::proof] let inv;
+        let tracked inst;
+        let tracked reader;
+        let tracked inv;
+        let tracked g;
         proof {
-            inv = LocalInvariant::new(
-                (inst, rc_cell),
-                g,
-                0);
+            let tracked (Trk(inst0), Trk(mut rc_token), _) = RefCounter::Instance::initialize_empty(Option::None);
+            inst = inst0;
+
+            let tracked reader0 = inst.do_deposit(ptr_perm, &mut rc_token, ptr_perm);
+            g = GhostStuff::<S> { rc_perm, rc_token };
+            reader = reader0;
+        }
+        let tr_inst = Tracked(inst);
+        let gh_cell = Ghost(rc_cell);
+
+        proof {
+            let tracked inv0 = LocalInvariant::new(
+                (tr_inst, gh_cell), g, 0);
+            let tracked inv0 = Duplicable::new(inv0);
+
+            inv = inv0;
         }
 
-        #[verifier::proof] let inv = Duplicable::new(inv);
-
-        MyRc { inst, inv, reader, ptr, rc_cell }
+        MyRc {
+            inst: tr_inst, inv: Tracked(inv), reader: Tracked(reader),
+            ptr,
+            rc_cell: gh_cell,
+        }
     }
 
     fn borrow<'b>(&'b self) -> (s: &'b S)
         requires self.wf(),
-        ensures *s === self@,
+        ensures *s == self@,
     {
-
-        #[verifier::proof] let perm = self.inst.reader_guard(
-            self.reader@.key,
-            &self.reader);
+        let tracked inst = self.inst.borrow();
+        let tracked reader = self.reader.borrow();
+        let tracked perm = inst.reader_guard(reader@.key, &reader);
         &self.ptr.borrow(tracked_exec_borrow(perm)).s
     }
 
     fn clone(&self) -> (s: Self)
         requires self.wf(),
-        ensures s.wf() && s@ === self@,
+        ensures s.wf() && s@ == self@,
     {
+        let tracked inst = self.inst.borrow();
+        let tracked reader = self.reader.borrow();
 
-        #[verifier::proof] let perm = self.inst.reader_guard(
-            self.reader@.key,
-            &self.reader);
-        let inner_rc_ref = &self.ptr.borrow(tracked_exec_borrow(perm));
+        let tracked perm = inst.reader_guard(reader@.key, &reader);
+        let inner_rc_ref = self.ptr.borrow(tracked_exec_borrow(perm));
 
-        #[verifier::proof] let new_reader;
-        open_local_invariant!(self.inv.borrow() => g => {
-            #[verifier::proof] let GhostStuff { rc_perm: rc_perm, rc_token: mut rc_token } = g;
-            let mut rc_perm = #[verifier(ghost_wrapper)] /* vattr */ tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ rc_perm);
+        let tracked new_reader;
+        open_local_invariant!(self.inv.borrow().borrow() => g => {
+            let tracked GhostStuff { rc_perm: mut rc_perm, rc_token: mut rc_token } = g;
 
-            let count = inner_rc_ref.rc_cell.take(&mut rc_perm);
+            let count = inner_rc_ref.rc_cell.take(Tracked(&mut rc_perm));
 
             assume(count < 100000000);
 
             let count = count + 1;
-            inner_rc_ref.rc_cell.put(&mut rc_perm, count);
+            inner_rc_ref.rc_cell.put(Tracked(&mut rc_perm), count);
 
-            new_reader = self.inst.do_clone(
-                self.reader.view().key,
+            new_reader = self.inst.borrow().do_clone(
+                reader@.key,
                 &mut rc_token,
-                &self.reader);
+                &reader);
                 
-            g = GhostStuff { rc_perm: rc_perm.get(), rc_token };
+            g = GhostStuff { rc_perm, rc_token };
         });
 
         MyRc {
-            inst: self.inst.clone(),
-            inv: self.inv.clone(),
-            reader: new_reader,
+            inst: Tracked(self.inst.get().clone()),
+            inv: Tracked(self.inv.get().clone()),
+            reader: Tracked(new_reader),
             ptr: self.ptr.clone(),
             rc_cell: self.rc_cell,
         }
@@ -341,45 +345,46 @@ impl<S> MyRc<S> {
     fn dispose(self)
         requires self.wf(),
     {
-        let MyRc { inst, inv, reader, ptr, rc_cell: _ } = self;
+        let MyRc { inst: Tracked(inst), inv: Tracked(inv), reader: Tracked(reader), ptr, rc_cell: _ } = self;
 
-        #[verifier::proof] let perm = inst.reader_guard(
+        let tracked perm = inst.reader_guard(
             reader@.key,
             &reader);
+
         let inner_rc_ref = &ptr.borrow(tracked_exec_borrow(perm));
 
         open_local_invariant!(inv.borrow() => g => {
-            #[verifier::proof] let GhostStuff { rc_perm: rc_perm, rc_token: mut rc_token } = g;
-            let mut rc_perm = #[verifier(ghost_wrapper)] /* vattr */ tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ rc_perm);
+            let tracked GhostStuff { rc_perm: mut rc_perm, rc_token: mut rc_token } = g;
 
-            let count = inner_rc_ref.rc_cell.take(&mut rc_perm);
+            let count = inner_rc_ref.rc_cell.take(Tracked(&mut rc_perm));
             if count >= 2 {
                 let count = count - 1;
-                inner_rc_ref.rc_cell.put(&mut rc_perm, count);
+                inner_rc_ref.rc_cell.put(Tracked(&mut rc_perm), count);
 
                 inst.dec_basic(
                     reader.view().key,
                     &mut rc_token,
                     reader);
             } else {
-                #[verifier::proof] let inner_rc_perm = inst.dec_to_zero(
+                let tracked inner_rc_perm = inst.dec_to_zero(
                     reader.view().key,
                     &mut rc_token,
                     reader);
-                let mut inner_rc_perm = #[verifier(ghost_wrapper)] /* vattr */ tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ inner_rc_perm);
 
-                let inner_rc = ptr.take(&mut inner_rc_perm);
+                let mut t = Tracked(inner_rc_perm);
+                let inner_rc = ptr.take(&mut t);
+                let tracked inner_rc_perm = t.get();
 
                 // we still have to write back to the `inner_rc` to restore the invariant
                 // even though inner_rc has been moved onto the stack here.
                 // so this will probably get optimized out
                 let count = count - 1;
-                inner_rc.rc_cell.put(&mut rc_perm, count);
+                inner_rc.rc_cell.put(Tracked(&mut rc_perm), count);
 
-                ptr.dispose(inner_rc_perm);
+                ptr.dispose(Tracked(inner_rc_perm));
             }
 
-            g = GhostStuff { rc_perm: rc_perm.get(), rc_token };
+            g = GhostStuff { rc_perm, rc_token };
         });
     }
 }

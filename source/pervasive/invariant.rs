@@ -320,7 +320,7 @@ pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
 #[macro_export]
 macro_rules! open_atomic_invariant {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_exec_macro_exprs!($crate::invariant::open_atomic_invariant_internal!($($tail)*))
+        ::builtin_macros::verus_inv_macro_exprs!($crate::invariant::open_atomic_invariant_internal!($($tail)*))
     };
 }
 
@@ -328,8 +328,10 @@ macro_rules! open_atomic_invariant {
 macro_rules! open_atomic_invariant_internal {
     ($eexpr:expr => $iident:ident => $bblock:block) => {
         #[verifier(invariant_block)] /* vattr */ {
+            #[cfg(not(verus_macro_erase_ghost))]
             #[allow(unused_mut)] let (guard, mut $iident) = $crate::invariant::open_atomic_invariant_begin($eexpr);
             $bblock
+            #[cfg(not(verus_macro_erase_ghost))]
             $crate::invariant::open_invariant_end(guard, $iident);
         }
     }
@@ -434,7 +436,7 @@ pub use open_atomic_invariant;
 #[macro_export]
 macro_rules! open_local_invariant {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_exec_macro_exprs!(
+        ::builtin_macros::verus_inv_macro_exprs!(
             $crate::invariant::open_local_invariant_internal!($($tail)*))
     };
 }
@@ -443,8 +445,10 @@ macro_rules! open_local_invariant {
 macro_rules! open_local_invariant_internal {
     ($eexpr:expr => $iident:ident => $bblock:block) => {
         #[verifier(invariant_block)] /* vattr */ {
+            #[cfg(not(verus_macro_erase_ghost))]
             #[allow(unused_mut)] let (guard, mut $iident) = $crate::invariant::open_local_invariant_begin($eexpr);
             $bblock
+            #[cfg(not(verus_macro_erase_ghost))]
             $crate::invariant::open_invariant_end(guard, $iident);
         }
     }

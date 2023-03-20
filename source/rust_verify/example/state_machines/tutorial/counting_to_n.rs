@@ -96,16 +96,16 @@ tokenized_state_machine!{
 struct_with_invariants!{
     pub struct Global {
         pub atomic: AtomicU32<_, X::counter, _>,
-        #[verifier::proof] pub instance: X::Instance,
+        pub instance: Tracked<X::Instance>,
     }
 
     spec fn wf(&self) -> bool {
         invariant on atomic with (instance) is (v: u32, g: X::counter) {
-            g@ === X::token![instance => counter => v as int]
+            g@ === X::token![instance@ => counter => v as int]
         }
 
         predicate {
-            self.instance.num_threads() < 0x100000000
+            self.instance@.num_threads() < 0x100000000
         }
     }
 }
@@ -113,13 +113,13 @@ struct_with_invariants!{
 fn do_count(num_threads: u32) {
     // Initialize protocol 
 
-    #[verifier::proof] let instance;
-    #[verifier::proof] let counter_token;
-    #[verifier::proof] let mut unstamped_tokens;
-    #[verifier::proof] let mut stamped_tokens;
+    let tracked instance;
+    let tracked counter_token;
+    let tracked mut unstamped_tokens;
+    let tracked mut stamped_tokens;
 
     proof {
-        #[verifier::proof] let (Trk(instance0),
+        let tracked (Trk(instance0),
             Trk(counter_token0),
             Trk(unstamped_tokens0),
             Trk(stamped_tokens0)) = X::Instance::initialize(num_threads as nat);
@@ -131,9 +131,10 @@ fn do_count(num_threads: u32) {
 
     // Initialize the counter
 
-    let atomic = AtomicU32::new(instance, 0, counter_token);
+    let tracked_instance = Tracked(instance.clone());
+    let atomic = AtomicU32::new(Ghost(tracked_instance), 0, Tracked(counter_token));
 
-    let global = Global { atomic, instance: instance.clone() };
+    let global = Global { atomic, instance: tracked_instance };
     let global_arc = Arc::new(global);
 
     // ANCHOR: loop_spawn
@@ -153,11 +154,11 @@ fn do_count(num_threads: u32) {
                 join_handles@.index(j).predicate(ret) ==>
                     ret.0@.instance === instance && ret.0@.count == 1,
             (*global_arc).wf(),
-            (*global_arc).instance === instance,
+            (*global_arc).instance@ === instance,
     {
-        #[verifier::proof] let unstamped_token;
+        let tracked unstamped_token;
         proof {
-            #[verifier::proof] let (Trk(unstamped_token0), Trk(rest)) = unstamped_tokens.split(1 as nat);
+            let tracked (Trk(unstamped_token0), Trk(rest)) = unstamped_tokens.split(1 as nat);
             unstamped_tokens = rest;
             unstamped_token = unstamped_token0;
         }
@@ -170,18 +171,18 @@ fn do_count(num_threads: u32) {
                     && new_token.0@.count == spec_cast_integer::<_, nat>(1)
             );
 
-            #[verifier::proof] let unstamped_token = unstamped_token;
+            let tracked unstamped_token = unstamped_token;
             let globals = &*global_arc;
 
-            #[verifier::proof] let stamped_token;
+            let tracked stamped_token;
 
             let _ = atomic_with_ghost!(
                 &global_arc.atomic => fetch_add(1);
                 update prev -> next;
                 returning ret;
                 ghost c => {
-                    #[verifier::proof] stamped_token =
-                        global_arc.instance.tr_inc(&mut c, unstamped_token);
+                    stamped_token =
+                        global_arc.instance.borrow().tr_inc(&mut c, unstamped_token);
                 }
             );
 
@@ -209,7 +210,7 @@ fn do_count(num_threads: u32) {
                 #[trigger] join_handles@.index(j).predicate(ret) ==>
                     ret.0@.instance === instance && ret.0@.count == 1,
             (*global_arc).wf(),
-            (*global_arc).instance === instance,
+            (*global_arc).instance@ === instance,
     {
 
         let join_handle = join_handles.pop();
