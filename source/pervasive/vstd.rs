@@ -1,4 +1,5 @@
 pub mod pervasive;
+pub mod calc_macro;
 pub mod map;
 pub mod option;
 pub mod result;

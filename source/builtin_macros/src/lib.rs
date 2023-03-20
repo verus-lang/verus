@@ -116,6 +116,16 @@ pub fn verus_exec_macro_exprs(input: proc_macro::TokenStream) -> proc_macro::Tok
     syntax::proof_macro_exprs(false, false, input)
 }
 
+/// `verus_proof_macro_explicit_exprs!(f!(tts))` applies verus syntax to transform `tts` into
+/// `tts'`, then returns `f!(tts')`, only applying the transform to any of the exprs within it that
+/// are explicitly prefixed with `@@`, leaving the rest as-is. Contrast this to
+/// [`verus_proof_macro_exprs`] which is likely what you want to try first to see if it satisfies
+/// your needs.
+#[proc_macro]
+pub fn verus_proof_macro_explicit_exprs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    syntax::proof_macro_explicit_exprs(false, true, input)
+}
+
 #[proc_macro]
 pub fn struct_with_invariants(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     struct_decl_inv::struct_decl_inv(input)
