@@ -560,10 +560,10 @@ impl Visitor {
             x_assigns: Vec::new(),
         };
         visit_pat.visit_pat_mut(&mut local.pat);
-        /*if visit_pat.x_decls.len() == 0 {
+        if visit_pat.x_decls.len() == 0 && local.tracked.is_none() && local.ghost.is_none() {
             assert!(visit_pat.x_assigns.len() == 0);
             return (false, vec![]);
-        }*/
+        }
         if self.erase_ghost {
             return (false, vec![]);
         }
