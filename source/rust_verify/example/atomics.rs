@@ -8,6 +8,8 @@ use vstd::{atomic_ghost::*};
 use vstd::option::*;
 use vstd::result::*;
 
+verus!{
+
 struct_with_invariants!{
     struct Lock<T> {
         field: AtomicBool<_, Option<T>, _>,
@@ -20,14 +22,14 @@ struct_with_invariants!{
     }
 }
 
-#[verifier(returns(proof))] /* vattr */
-fn take<T>(lock: &Lock<T>) -> T {
-    requires(lock.well_formed());
+fn take<T>(lock: &Lock<T>) -> (t: Tracked<T>)
+    requires lock.well_formed(),
+{
+    loop 
+        invariant lock.well_formed(),
+    {
 
-    loop {
-        invariant(lock.well_formed());
-
-        #[verifier::proof] let ghost_value: Option<T>;
+        let tracked ghost_value: Option<T>;
 
         let result = atomic_with_ghost!(
             &lock.field => compare_exchange(true, false);
@@ -43,38 +45,32 @@ fn take<T>(lock: &Lock<T>) -> T {
         );
 
         if let Result::Ok(_) = result {
-            return match ghost_value {
+            return Tracked(match ghost_value {
                 Option::Some(s) => s,
                 _ => { proof_from_false() },
-            };
+            });
         }
     }
 }
 
 struct VEqualG { }
 impl AtomicInvariantPredicate<(), u64, u64> for VEqualG {
-    #[verifier::spec] fn atomic_inv(k: (), v: u64, g: u64) -> bool {
+    spec fn atomic_inv(k: (), v: u64, g: u64) -> bool {
         v == g
     }
 }
 
-verus!{
 proof fn proof_int(x: u64) -> (tracked y: u64)
     ensures x == y
 {
     assume(false);
     proof_from_false()
 }
-}
 
 pub fn main() {
-    let ato = AtomicU64::<(), u64, VEqualG>::new((), 10, 10);
+    let ato = AtomicU64::<(), u64, VEqualG>::new(Ghost(()), 10, Tracked(10));
 
-    // one macro to rule them all, with operation specified in the token stream?
-
-    // fetch_or(ato, 19);
-    // ato.fetch_or(19)
-    // ato ~ fetch_or(19)
+    // illustration of atomic_with_ghost!
 
     atomic_with_ghost!(ato => fetch_or(19); ghost g => {
         g = proof_int(g | 19);
@@ -132,8 +128,6 @@ pub fn main() {
     => {
         g = proof_int(36);
     });
-
-
-
+}
 
 }

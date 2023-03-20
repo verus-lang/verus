@@ -91,7 +91,7 @@ struct_with_invariants!{
         pub atomic: AtomicU32<_, X::counter, _>,
 
         // The instance of the protocol that the `counter` is part of.
-        #[verifier::proof] pub instance: X::Instance,
+        pub instance: Tracked<X::Instance>,
     }
 
     spec fn wf(&self) -> bool {
@@ -100,7 +100,7 @@ struct_with_invariants!{
         // the same value as the atomic (`v`).
         // Furthermore, the ghost token should have the appropriate `instance`.
         invariant on atomic with (instance) is (v: u32, g: X::counter) {
-            g@ === X::token![instance => counter => v as int]
+            g@ === X::token![instance@ => counter => v as int]
         }
     }
 }
@@ -109,16 +109,17 @@ struct_with_invariants!{
 fn main() {
     // Initialize protocol 
 
-    #[verifier::proof] let (Trk(instance),
+    let tracked (Trk(instance),
         Trk(counter_token),
         Trk(inc_a_token),
         Trk(inc_b_token)) = X::Instance::initialize();
 
     // Initialize the counter
 
-    let atomic = AtomicU32::new(instance, 0, counter_token);
+    let tr_instance = Tracked(instance);
+    let atomic = AtomicU32::new(Ghost(tr_instance), 0, Tracked(counter_token));
 
-    let global = Global { atomic, instance: instance.clone() };
+    let global = Global { atomic, instance: Tracked(instance.clone()) };
     let global_arc = Arc::new(global);
 
     // Spawn threads
@@ -138,7 +139,7 @@ fn main() {
 
         let _ = atomic_with_ghost!(&globals.atomic => fetch_add(1);
             ghost c => {
-                globals.instance.tr_inc_a(&mut c, &mut token); // atomic increment
+                globals.instance.borrow().tr_inc_a(&mut c, &mut token); // atomic increment
             }
         );
 
@@ -160,7 +161,7 @@ fn main() {
 
         let _ = atomic_with_ghost!(&globals.atomic => fetch_add(1);
             ghost c => {
-                globals.instance.tr_inc_b(&mut c, &mut token); // atomic increment
+                globals.instance.borrow().tr_inc_b(&mut c, &mut token); // atomic increment
             }
         );
 

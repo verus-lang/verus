@@ -1,4 +1,5 @@
 ///! Helper proc-macro for the atomic_ghost lib
+
 use crate::struct_decl_inv::keyword;
 use crate::struct_decl_inv::peek_keyword;
 use proc_macro2::TokenStream;
@@ -10,7 +11,7 @@ use syn_verus::punctuated::Punctuated;
 use syn_verus::spanned::Spanned;
 use syn_verus::token;
 use syn_verus::Token;
-use syn_verus::{parenthesized, Block, Error, Expr, Ident, Path};
+use syn_verus::{parenthesized, Block, Error, Expr, Ident, Path, ExprBlock};
 
 pub fn atomic_ghost(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let ag: AG = parse_macro_input!(input as AG);
@@ -128,13 +129,13 @@ fn atomic_ghost_main(ag: AG) -> parse::Result<TokenStream> {
         Some((_, _)) => {
             let AG {
                 inner_macro_path,
-                atomic,
+                mut atomic,
                 op_name,
-                operands,
+                mut operands,
                 prev_next,
                 ret,
                 ghost_name,
-                block,
+                mut block,
             } = ag;
 
             let (prev, next) = match prev_next {
@@ -146,6 +147,23 @@ fn atomic_ghost_main(ag: AG) -> parse::Result<TokenStream> {
                 Some(r) => quote! { #r },
                 None => quote! { _ },
             };
+
+            let erase = crate::cfg_erase();
+            crate::syntax::rewrite_expr_node(erase, false, &mut atomic);
+            for operand in operands.iter_mut() {
+                crate::syntax::rewrite_expr_node(erase, false, operand);
+            }
+
+            let mut block_expr = Expr::Block(ExprBlock {
+                attrs: vec![],
+                label: None,
+                block});
+            crate::syntax::rewrite_expr_node(false, true, &mut block_expr);
+            if let Expr::Block(expr_block) = block_expr {
+                block = expr_block.block;
+            } else {
+                panic!("the Block should still be a Block");
+            }
 
             Ok(quote! {
                 #inner_macro_path!(

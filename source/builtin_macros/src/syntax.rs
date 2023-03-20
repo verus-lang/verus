@@ -560,10 +560,10 @@ impl Visitor {
             x_assigns: Vec::new(),
         };
         visit_pat.visit_pat_mut(&mut local.pat);
-        if visit_pat.x_decls.len() == 0 {
+        /*if visit_pat.x_decls.len() == 0 {
             assert!(visit_pat.x_assigns.len() == 0);
             return (false, vec![]);
-        }
+        }*/
         if self.erase_ghost {
             return (false, vec![]);
         }
@@ -2004,6 +2004,25 @@ pub(crate) fn rewrite_expr(
     proc_macro::TokenStream::from(new_stream)
 }
 
+pub(crate) fn rewrite_expr_node(
+    erase_ghost: bool,
+    inside_ghost: bool,
+    expr: &mut Expr,
+) {
+    let mut visitor = Visitor {
+        erase_ghost,
+        use_spec_traits: true,
+        verus_macro_attr: true,
+        inside_ghost: if inside_ghost { 1 } else { 0 },
+        inside_type: 0,
+        inside_arith: InsideArith::None,
+        assign_to: false,
+        rustdoc: env_rustdoc(),
+        inside_bitvector: false,
+    };
+    visitor.visit_expr_mut(expr);
+}
+
 // Unfortunately, the macro_rules tt tokenizer breaks tokens like &&& and ==> into smaller tokens.
 // Try to put the original tokens back together here.
 fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -2084,6 +2103,37 @@ pub(crate) fn proof_macro_exprs(
             MacroElement::Expr(expr) => visitor.visit_expr_mut(expr),
             _ => {}
         }
+    }
+    invoke.to_tokens(&mut new_stream);
+    proc_macro::TokenStream::from(new_stream)
+}
+
+pub(crate) fn inv_macro_exprs(
+    erase_ghost: bool,
+    stream: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    use quote::ToTokens;
+    let stream = rejoin_tokens(stream);
+    let mut invoke: MacroInvoke = parse_macro_input!(stream as MacroInvoke);
+    let mut new_stream = TokenStream::new();
+    let mut visitor = Visitor {
+        erase_ghost,
+        use_spec_traits: true,
+        verus_macro_attr: true,
+        inside_ghost: 1,
+        inside_type: 0,
+        inside_arith: InsideArith::None,
+        assign_to: false,
+        rustdoc: env_rustdoc(),
+        inside_bitvector: false,
+    };
+    for element in &mut invoke.elements.elements {
+        match element {
+            MacroElement::Expr(expr) => visitor.visit_expr_mut(expr),
+            _ => {}
+        }
+        // After the first element, parse as 'exec' expression
+        visitor.inside_ghost = 0;
     }
     invoke.to_tokens(&mut new_stream);
     proc_macro::TokenStream::from(new_stream)
