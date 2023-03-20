@@ -391,20 +391,40 @@ proof fn test_tracked(
 }
 
 /// Variables in exec code may be exec, ghost, or tracked.
+fn test_ghost(x: u32, y: u32)
+    requires
+        x < 100,
+        y < 100,
+{
+    let ghost u: int = my_spec_fun(x as int, y as int);
+    let ghost mut v = u + 1;
+    assert(v == x + y + 1);
+    proof {
+        v = v + 1; // proof code may assign to ghost mut variables
+    }
+    let ghost w = {
+        let temp = v + 1;
+        temp + 1
+    };
+    assert(w == x + y + 4);
+}
+
+/// Variables in exec code may be exec, ghost, or tracked.
 /// However, exec function parameters and return values are always exec.
 /// In these places, the library types Ghost and Tracked are used
 /// to wrap ghost values and tracked values.
 /// Ghost and tracked expressions Ghost(expr) and Tracked(expr) create values of type Ghost<T>
 /// and Tracked<T>, where expr is treated as proof code whose value is wrapped inside Ghost or Tracked.
 /// The view x@ of a Ghost or Tracked x is the ghost or tracked value inside the Ghost or Tracked.
-fn test_ghost(x: u32, y: u32)
+fn test_ghost_wrappers(x: u32, y: Ghost<u32>)
     requires
         x < 100,
-        y < 100,
+        y@ < 100,
 {
-    let u: Ghost<int> = Ghost(my_spec_fun(x as int, y as int));
+    // Ghost(...) expressions can create values of type Ghost<...>:
+    let u: Ghost<int> = Ghost(my_spec_fun(x as int, y@ as int));
     let mut v: Ghost<int> = Ghost(u@ + 1);
-    assert(v@ == x + y + 1);
+    assert(v@ == x + y@ + 1);
     proof {
         v@ = v@ + 1; // proof code may assign to the view of exec variables of type Ghost/Tracked
     }
@@ -413,7 +433,7 @@ fn test_ghost(x: u32, y: u32)
         let temp = v@ + 1;
         temp + 1
     });
-    assert(w@ == x + y + 4);
+    assert(w@ == x + y@ + 4);
 }
 
 fn test_consume(t: Tracked<int>)
@@ -424,6 +444,27 @@ fn test_consume(t: Tracked<int>)
         assert(x <= 7);
         consume(x);
     }
+}
+
+/// Ghost(...) and Tracked(...) patterns can unwrap Ghost<...> and Tracked<...> values:
+fn test_ghost_unwrap(x: u32, Ghost(y): Ghost<u32>) // unwrap so that y has typ u32, not Ghost<u32>
+    requires
+        x < 100,
+        y < 100,
+{
+    // Ghost(u) pattern unwraps Ghost<...> values and gives u and v type int:
+    let Ghost(u): Ghost<int> = Ghost(my_spec_fun(x as int, y as int));
+    let Ghost(mut v): Ghost<int> = Ghost(u + 1);
+    assert(v == x + y + 1);
+    proof {
+        v = v + 1; // assign directly to ghost mut v
+    }
+    let Ghost(w): Ghost<int> = Ghost({
+        // proof block that returns a ghost value
+        let temp = v + 1;
+        temp + 1
+    });
+    assert(w == x + y + 4);
 }
 
 struct S {}
@@ -441,6 +482,23 @@ fn test_ghost_tuple_match(t: (Tracked<S>, Tracked<S>, Ghost<int>, Ghost<int>)) -
     // b1, b2: Tracked<S> and g3, g4: Ghost<int>
     let (Tracked(b1), Tracked(b2), Ghost(g3), Ghost(g4)) = t;
     Tracked(b2)
+}
+
+/// Exec code can Ghost(...) or Tracked(...) unwrapped parameter
+/// to create a mutable ghost or tracked parameter:
+fn test_ghost_mut(Ghost(g): Ghost<&mut int>)
+    ensures
+        *g == *old(g) + 1,
+{
+    proof {
+        *g = *g + 1;
+    }
+}
+
+fn test_call_ghost_mut() {
+    let ghost mut g = 10int;
+    test_ghost_mut(Ghost(&mut g));
+    assert(g == 11);
 }
 
 /// Spec functions are not checked for correctness (although they are checked for termination).
