@@ -2004,11 +2004,7 @@ pub(crate) fn rewrite_expr(
     proc_macro::TokenStream::from(new_stream)
 }
 
-pub(crate) fn rewrite_expr_node(
-    erase_ghost: bool,
-    inside_ghost: bool,
-    expr: &mut Expr,
-) {
+pub(crate) fn rewrite_expr_node(erase_ghost: bool, inside_ghost: bool, expr: &mut Expr) {
     let mut visitor = Visitor {
         erase_ghost,
         use_spec_traits: true,

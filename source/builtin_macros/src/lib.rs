@@ -65,7 +65,8 @@ pub fn verus_exec_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
 }
 
 pub(crate) fn cfg_erase() -> bool {
-    let ts: proc_macro::TokenStream = quote::quote! { ::core::cfg!(verus_macro_erase_ghost) }.into();
+    let ts: proc_macro::TokenStream =
+        quote::quote! { ::core::cfg!(verus_macro_erase_ghost) }.into();
     let bool_ts = ts.expand_expr();
     let bool_ts = match bool_ts {
         Ok(name) => name,
