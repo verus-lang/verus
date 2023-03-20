@@ -274,6 +274,8 @@ pub fn output_primary_stuff(
             if trans.kind == TransitionKind::Init {
                 let args = post_params(&trans.params);
                 rel_fn = quote! {
+                    #[cfg(not(verus_macro_erase_ghost))]
+                    #[verus::internal(verus_macro)]
                     #[verifier::spec]
                     #[verifier(publish)] /* vattr */
                     pub fn #name (#args) -> ::core::primitive::bool {
@@ -283,6 +285,8 @@ pub fn output_primary_stuff(
             } else {
                 let args = pre_post_params(&trans.params);
                 rel_fn = quote! {
+                    #[cfg(not(verus_macro_erase_ghost))]
+                    #[verus::internal(verus_macro)]
                     #[verifier::spec]
                     #[verifier(publish)] /* vattr */
                     pub fn #name (#args) -> ::core::primitive::bool {
@@ -304,6 +308,8 @@ pub fn output_primary_stuff(
             let f = to_relation(&simplified_body, false /* weak */);
 
             let rel_fn = quote! {
+                #[cfg(not(verus_macro_erase_ghost))]
+                #[verus::internal(verus_macro)]
                 #[verifier::spec]
                 #[verifier(publish)] /* vattr */
                 pub fn #name (#params) -> ::core::primitive::bool {
@@ -328,6 +334,8 @@ pub fn output_primary_stuff(
                 None => TokenStream::new(),
             };
             impl_stream.extend(quote! {
+                #[cfg(not(verus_macro_erase_ghost))]
+                #[verus::internal(verus_macro)]
                 #[verifier::proof]
                 pub fn #name(#params) {
                     builtin::assume_(pre.invariant());
@@ -437,8 +445,10 @@ fn output_step_datatype(
 
     if is_init {
         impl_stream.extend(quote! {
+            #[cfg(not(verus_macro_erase_ghost))]
             #[verifier(opaque)] /* vattr */
             #[verifier(publish)] /* vattr */
+            #[verus::internal(verus_macro)]
             #[verifier::spec]
             pub fn init_by(post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
                 match step {
@@ -448,8 +458,10 @@ fn output_step_datatype(
                 }
             }
 
+            #[cfg(not(verus_macro_erase_ghost))]
             #[verifier(opaque)] /* vattr */
             #[verifier(publish)] /* vattr */
+            #[verus::internal(verus_macro)]
             #[verifier::spec]
             pub fn init(post: #self_ty, #label_param) -> ::core::primitive::bool {
                 ::builtin::exists(|step: #step_ty| Self::init_by(post, #label_arg step))
@@ -477,8 +489,10 @@ fn output_step_datatype(
             .collect();
 
         impl_stream.extend(quote!{
+            #[cfg(not(verus_macro_erase_ghost))]
             #[verifier(opaque)] /* vattr */
             #[verifier(publish)] /* vattr */
+            #[verus::internal(verus_macro)]
             #[verifier::spec]
             pub fn next_by(pre: #self_ty, post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
                 match step {
@@ -487,15 +501,19 @@ fn output_step_datatype(
                 }
             }
 
+            #[cfg(not(verus_macro_erase_ghost))]
             #[verifier(opaque)] /* vattr */
             #[verifier(publish)] /* vattr */
+            #[verus::internal(verus_macro)]
             #[verifier::spec]
             pub fn next(pre: #self_ty, post: #self_ty, #label_param) -> ::core::primitive::bool {
                 ::builtin::exists(|step: #step_ty| Self::next_by(pre, post, #label_arg step))
             }
 
+            #[cfg(not(verus_macro_erase_ghost))]
             #[verifier(opaque)] /* vattr */
             #[verifier(publish)] /* vattr */
+            #[verus::internal(verus_macro)]
             #[verifier::spec]
             pub fn next_strong_by(pre: #self_ty, post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
                 match step {
@@ -504,8 +522,10 @@ fn output_step_datatype(
                 }
             }
 
+            #[cfg(not(verus_macro_erase_ghost))]
             #[verifier(opaque)] /* vattr */
             #[verifier(publish)] /* vattr */
+            #[verus::internal(verus_macro)]
             #[verifier::spec]
             pub fn next_strong(pre: #self_ty, post: #self_ty, #label_param) -> ::core::primitive::bool {
                 ::builtin::exists(|step: #step_ty| Self::next_strong_by(pre, post, #label_arg step))
@@ -533,6 +553,8 @@ fn output_step_datatype(
 
                 //let step_args = just_args(&trans.params);
                 show_stream.extend(quote! {
+                    #[cfg(not(verus_macro_erase_ghost))]
+                    #[verus::internal(verus_macro)]
                     #[verifier(external_body)] /* vattr */
                     #[verifier::proof]
                     pub fn #tr_name#gen1(#params) #gen2 {
@@ -544,12 +566,17 @@ fn output_step_datatype(
                         //builtin::assert_(super::State::init_by(post,
                         //    super::Init::#tr_name(#step_args)));
                     }
+
+                    #[cfg(verus_macro_erase_ghost)]
+                    use bool as #tr_name;
                 });
             } else {
                 let params = pre_post_assoc_params(&super_self_ty, &trans.params);
                 let args = pre_post_args(&trans.params);
                 //let step_args = just_args(&trans.params);
                 show_stream.extend(quote! {
+                    #[cfg(not(verus_macro_erase_ghost))]
+                    #[verus::internal(verus_macro)]
                     #[verifier(external_body)] /* vattr */
                     #[verifier::proof]
                     pub fn #tr_name#gen1(#params) #gen2 {
@@ -561,6 +588,9 @@ fn output_step_datatype(
                         //builtin::assert_(super::State::next_by(pre, post,
                         //    super::Step::#tr_name(#step_args)));
                     }
+
+                    #[cfg(verus_macro_erase_ghost)]
+                    use bool as #tr_name;
                 });
             }
         }
@@ -800,7 +830,9 @@ fn output_other_fns(
         quote! { #(self.#inv_names())&&* }
     };
     impl_stream.extend(quote! {
+        #[cfg(not(verus_macro_erase_ghost))]
         #[verifier::spec]
+        #[verus::internal(verus_macro)]
         #[verifier(publish)] /* vattr */
         pub fn invariant(&self) -> ::core::primitive::bool {
             #conj
@@ -813,7 +845,8 @@ fn output_other_fns(
         // TODO allow spec(checked) or something
         f.sig.mode = FnMode::Spec(ModeSpec { spec_token: token::Spec { span: inv.func.span() } });
         f.sig.publish = Publish::Open(Open { token: token::Open { span: inv.func.span() } });
-        impl_stream.extend(quote! { ::builtin_macros::verus!{ #f } });
+        impl_stream
+            .extend(quote! { #[cfg(not(verus_macro_erase_ghost))] ::builtin_macros::verus!{ #f } });
     }
 
     for inv in invariants {
@@ -823,12 +856,14 @@ fn output_other_fns(
         let lemma_msg_ident = Ident::new(&format!("lemma_msg_{:}", inv_name), inv_ident.span());
         let self_ty = get_self_ty(&bundle.sm);
         impl_stream.extend(quote! {
+            #[cfg(not(verus_macro_erase_ghost))]
             #[verifier(custom_req_err(#error_msg))] /* vattr */
             #[verifier(external_body)] /* vattr */
+            #[verus::internal(verus_macro)]
             #[verifier::proof]
             fn #lemma_msg_ident(s: #self_ty) {
-                requires(s.#inv_ident());
-                ensures(s.#inv_ident());
+                ::builtin::requires(s.#inv_ident());
+                ::builtin::ensures(s.#inv_ident());
             }
         });
     }
@@ -839,7 +874,10 @@ fn output_other_fns(
         let span = f.sig.span(); // TODO better span choice
         set_mode_proof(&mut f.sig, span);
         fix_attrs(&mut f.attrs);
-        impl_stream.extend(quote! { ::builtin_macros::verus!{ #f } })
+        impl_stream.extend(quote! {
+          #[cfg(not(verus_macro_erase_ghost))]
+          ::builtin_macros::verus!{ #f }
+        })
     }
 
     let mut normal_fn_stream = TokenStream::new();

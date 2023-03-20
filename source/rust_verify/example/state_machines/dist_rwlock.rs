@@ -12,7 +12,7 @@ use vstd::atomic_ghost::*;
 
 use state_machines_macros::tokenized_state_machine;
 
-verus_old_todo_no_ghost_blocks!{
+verus!{
 
 tokenized_state_machine!{
     DistRwLock<T> {
@@ -322,10 +322,10 @@ struct_with_invariants!{
 
 impl<T> RwLock<T> {
     #[verifier(spinoff_prover)] 
-    fn new(rc_width: usize, t: T) -> Self {
-        requires(0 < rc_width);
-        ensures(|s: Self| s.wf());
-        
+    fn new(rc_width: usize, t: T) -> (s: Self)
+        requires 0 < rc_width,
+        ensures s.wf(),
+    {
         let tracked inst;
         let tracked exc_locked_token;
         let tracked mut ref_counts_tokens;
@@ -337,7 +337,7 @@ impl<T> RwLock<T> {
             ref_counts_tokens = ref_counts_tokens0;
         }
 
-        let tracked_inst = Tracked(inst.clone());
+        let tracked_inst: Tracked<DistRwLock::Instance<T>> = Tracked(inst.clone());
         let exc_locked_atomic = AtomicBool::new(Ghost(tracked_inst), false, Tracked(exc_locked_token));
 
         let mut v: Vec<AtomicU64<(Tracked<DistRwLock::Instance<T>>, int), DistRwLock::ref_counts<T>, _>>
