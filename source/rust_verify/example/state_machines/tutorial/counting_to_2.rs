@@ -134,7 +134,7 @@ fn main() {
         );
 
         // `inc_a_token` is moved into the closure
-        #[verifier::proof] let mut token = inc_a_token;
+        let tracked mut token = inc_a_token;
         let globals = &*global_arc1;
 
         let _ = atomic_with_ghost!(&globals.atomic => fetch_add(1);
@@ -156,7 +156,7 @@ fn main() {
         );
 
         // `inc_b_token` is moved into the closure
-        #[verifier::proof] let mut token = inc_b_token;
+        let tracked mut token = inc_b_token;
         let globals = &*global_arc2;
 
         let _ = atomic_with_ghost!(&globals.atomic => fetch_add(1);
@@ -170,13 +170,13 @@ fn main() {
 
     // Join threads
 
-    #[verifier::proof] let inc_a_token;
+    let tracked inc_a_token;
     match join_handle1.join() {
         Result::Ok(Proof(token)) => { inc_a_token = token; }
         _ => { return; }
     };
 
-    #[verifier::proof] let inc_b_token;
+    let tracked inc_b_token;
     match join_handle2.join() {
         Result::Ok(Proof(token)) => { inc_b_token = token; }
         _ => { return; }
