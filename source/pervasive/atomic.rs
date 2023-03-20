@@ -486,7 +486,7 @@ macro_rules! atomic_bool_methods {
             #[cfg(not(verus_macro_erase_ghost))]
             opens_invariants_none();
 
-            return self.ato.fetch_or(n, Ordering::SeqCst);
+            return self.ato.fetch_xor(n, Ordering::SeqCst);
         }
 
         #[inline(always)]
