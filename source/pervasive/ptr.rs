@@ -261,13 +261,13 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn put(&self, perm: &mut Tracked<PermissionOpt<V>>, v: V)
+    pub fn put(&self, Tracked(perm): Tracked<&mut PermissionOpt<V>>, v: V)
         requires
-            self.id() === old(perm)@@.pptr,
-            old(perm)@@.value === option::Option::None,
+            self.id() === old(perm)@.pptr,
+            old(perm)@.value === option::Option::None,
         ensures
-            perm@@.pptr === old(perm)@@.pptr,
-            perm@@.value === option::Option::Some(v),
+            perm@.pptr === old(perm)@.pptr,
+            perm@.value === option::Option::Some(v),
     {
         opens_invariants_none();
 
@@ -280,20 +280,20 @@ impl<V> PPtr<V> {
     /// and returns it.
     /// Requires the memory to be initialized, and leaves it uninitialized.
     ///
-    /// In the ghost perspective, this updates `perm@.value`
+    /// In the ghost perspective, this updates `perm.value`
     /// from `Some(v)` to `None`,
     /// while returning the `v` as an `exec` value.
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn take(&self, perm: &mut Tracked<PermissionOpt<V>>) -> (v: V)
+    pub fn take(&self, Tracked(perm): Tracked<&mut PermissionOpt<V>>) -> (v: V)
         requires
-            self.id() === old(perm)@@.pptr,
-            old(perm)@@.value.is_Some(),
+            self.id() === old(perm)@.pptr,
+            old(perm)@.value.is_Some(),
         ensures
-            perm@@.pptr === old(perm)@@.pptr,
-            perm@@.value === option::Option::None,
-            v === old(perm)@@.value.get_Some_0(),
+            perm@.pptr === old(perm)@.pptr,
+            perm@.value === option::Option::None,
+            v === old(perm)@.value.get_Some_0(),
     {
         opens_invariants_none();
 
@@ -309,14 +309,14 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn replace(&self, perm: &mut Tracked<PermissionOpt<V>>, in_v: V) -> (out_v: V)
+    pub fn replace(&self, Tracked(perm): Tracked<&mut PermissionOpt<V>>, in_v: V) -> (out_v: V)
         requires
-            self.id() === old(perm)@@.pptr,
-            old(perm)@@.value.is_Some(),
+            self.id() === old(perm)@.pptr,
+            old(perm)@.value.is_Some(),
         ensures
-            perm@@.pptr === old(perm)@@.pptr,
-            perm@@.value === option::Option::Some(in_v),
-            out_v === old(perm)@@.value.get_Some_0(),
+            perm@.pptr === old(perm)@.pptr,
+            perm@.value === option::Option::Some(in_v),
+            out_v === old(perm)@.value.get_Some_0(),
     {
         opens_invariants_none();
 
@@ -334,11 +334,11 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn borrow<'a>(&self, perm: &'a Tracked<PermissionOpt<V>>) -> (v: &'a V)
+    pub fn borrow<'a>(&self, Tracked(perm): Tracked<&'a PermissionOpt<V>>) -> (v: &'a V)
         requires
-            self.id() === perm@@.pptr,
-            perm@@.value.is_Some(),
-        ensures *v === perm@@.value.get_Some_0(),
+            self.id() === perm@.pptr,
+            perm@.value.is_Some(),
+        ensures *v === perm@.value.get_Some_0(),
     {
         opens_invariants_none();
         
@@ -355,10 +355,10 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn dispose(&self, perm: Tracked<PermissionOpt<V>>)
+    pub fn dispose(&self, Tracked(perm): Tracked<PermissionOpt<V>>)
         requires
-            self.id() === perm@@.pptr,
-            perm@@.value === option::Option::None,
+            self.id() === perm@.pptr,
+            perm@.value === option::Option::None,
     {
         opens_invariants_none();
 
@@ -377,18 +377,18 @@ impl<V> PPtr<V> {
     /// access to the memory by freeing it.
 
     #[inline(always)]
-    pub fn into_inner(self, perm: Tracked<PermissionOpt<V>>) -> (v: V)
+    pub fn into_inner(self, Tracked(perm): Tracked<PermissionOpt<V>>) -> (v: V)
         requires
-            self.id() === perm@@.pptr,
-            perm@@.value.is_Some(),
+            self.id() === perm@.pptr,
+            perm@.value.is_Some(),
         ensures
-            v === perm@@.value.get_Some_0(),
+            v === perm@.value.get_Some_0(),
     {
         opens_invariants_none();
 
-        let mut perm = perm;
-        let v = self.take(&mut perm);
-        self.dispose(perm);
+        let tracked mut perm = perm;
+        let v = self.take(Tracked(&mut perm));
+        self.dispose(Tracked(perm));
         v
     }
 
@@ -400,9 +400,9 @@ impl<V> PPtr<V> {
         ensures
             (pt.1@@ === PermissionOptData{ pptr: pt.0.id(), value: option::Option::Some(v) }),
     {
-        let (p, mut t) = Self::empty();
-        p.put(&mut t, v);
-        (p, t)
+        let (p, Tracked(mut t)) = Self::empty();
+        p.put(Tracked(&mut t), v);
+        (p, Tracked(t))
     }
 }
 

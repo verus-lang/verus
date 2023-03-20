@@ -301,7 +301,7 @@ impl<S> MyRc<S> {
         let tracked inst = self.inst.borrow();
         let tracked reader = self.reader.borrow();
         let tracked perm = inst.reader_guard(reader@.key, &reader);
-        &self.ptr.borrow(tracked_exec_borrow(perm)).s
+        &self.ptr.borrow(Tracked(perm)).s
     }
 
     fn clone(&self) -> (s: Self)
@@ -312,7 +312,7 @@ impl<S> MyRc<S> {
         let tracked reader = self.reader.borrow();
 
         let tracked perm = inst.reader_guard(reader@.key, &reader);
-        let inner_rc_ref = self.ptr.borrow(tracked_exec_borrow(perm));
+        let inner_rc_ref = self.ptr.borrow(Tracked(perm));
 
         let tracked new_reader;
         open_local_invariant!(self.inv.borrow().borrow() => g => {
@@ -325,10 +325,12 @@ impl<S> MyRc<S> {
             let count = count + 1;
             inner_rc_ref.rc_cell.put(Tracked(&mut rc_perm), count);
 
-            new_reader = self.inst.borrow().do_clone(
-                reader@.key,
-                &mut rc_token,
-                &reader);
+            proof {
+                new_reader = self.inst.borrow().do_clone(
+                    reader@.key,
+                    &mut rc_token,
+                    &reader);
+            }
                 
             g = GhostStuff { rc_perm, rc_token };
         });
@@ -351,7 +353,7 @@ impl<S> MyRc<S> {
             reader@.key,
             &reader);
 
-        let inner_rc_ref = &ptr.borrow(tracked_exec_borrow(perm));
+        let inner_rc_ref = &ptr.borrow(Tracked(perm));
 
         open_local_invariant!(inv.borrow() => g => {
             let tracked GhostStuff { rc_perm: mut rc_perm, rc_token: mut rc_token } = g;
@@ -366,14 +368,12 @@ impl<S> MyRc<S> {
                     &mut rc_token,
                     reader);
             } else {
-                let tracked inner_rc_perm = inst.dec_to_zero(
+                let tracked mut inner_rc_perm = inst.dec_to_zero(
                     reader.view().key,
                     &mut rc_token,
                     reader);
 
-                let mut t = Tracked(inner_rc_perm);
-                let inner_rc = ptr.take(&mut t);
-                let tracked inner_rc_perm = t.get();
+                let inner_rc = ptr.take(Tracked(&mut inner_rc_perm));
 
                 // we still have to write back to the `inner_rc` to restore the invariant
                 // even though inner_rc has been moved onto the stack here.
