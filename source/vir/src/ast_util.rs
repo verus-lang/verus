@@ -108,6 +108,14 @@ pub fn allowed_bitvector_type(typ: &Typ) -> bool {
     }
 }
 
+pub fn is_integer_type(typ: &Typ) -> bool {
+    match &**typ {
+        TypX::Int(_) => true,
+        TypX::Boxed(typ) => is_integer_type(typ),
+        _ => false,
+    }
+}
+
 #[derive(PartialEq, Eq, Debug)]
 pub enum IntegerTypeBitwidth {
     Width(u32),

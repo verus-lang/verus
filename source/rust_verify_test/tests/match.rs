@@ -703,3 +703,42 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 2)
 }
+
+test_verify_one_file! {
+    #[test] match_single_arm_issue_444 verus_code! {
+        enum A { B }
+        impl A {
+            fn c(self) {
+                let (d, e) = match self {
+                    A::B => (0, 0),
+                };
+                assert(d == 0);
+            }
+
+            fn c_fail(self) {
+                let (d, e) = match self {
+                    A::B => (0, 0),
+                };
+                assert(false); // FAILS
+            }
+
+
+            spec fn d(self) -> (int, int) {
+                match self {
+                    A::B => (0, 0)
+                }
+            }
+
+            proof fn test_d(self) {
+                let p = self.d();
+                assert(p.0 == 0);
+            }
+
+            proof fn test_d_fails(self) {
+                let p = self.d();
+                assert(false); // FAILS
+            }
+
+        }
+    } => Err(err) => assert_fails(err, 2)
+}

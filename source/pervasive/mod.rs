@@ -10,6 +10,8 @@
 //! We expect these hacks to go away once Verus has proper multi-crate support.
 
 #[cfg(not(vstd_build_todo))]
+pub mod calc_macro;
+#[cfg(not(vstd_build_todo))]
 pub mod map;
 #[cfg(not(vstd_build_todo))]
 pub mod option;
@@ -27,9 +29,6 @@ pub mod set_lib;
 pub mod slice;
 #[cfg(not(vstd_build_todo))]
 pub mod cell;
-#[cfg(not(vstd_build_todo))]
-#[cfg(not(erasure_macro_todo))]
-pub mod cell_old_style;
 #[cfg(not(vstd_build_todo))]
 pub mod invariant;
 #[cfg(not(vstd_build_todo))]
@@ -51,10 +50,6 @@ pub mod thread;
 #[cfg(not(feature = "no_global_allocator"))] 
 pub mod ptr;
 #[cfg(not(vstd_build_todo))]
-#[cfg(not(erasure_macro_todo))]
-#[cfg(not(feature = "no_global_allocator"))] 
-pub mod ptr_old_style;
-#[cfg(not(vstd_build_todo))]
 #[cfg(not(feature = "no_global_allocator"))] 
 pub mod string;
 #[cfg(not(vstd_build_todo))]
@@ -62,6 +57,8 @@ pub mod string;
 pub mod vec;
 
 // TODO: remove this compatibility shim when everything is ported to vstd:
+#[cfg(vstd_build_todo)]
+pub use crate::calc_macro;
 //#[cfg(vstd_build_todo)]
 //pub use crate::map;
 #[cfg(vstd_build_todo)]
@@ -80,9 +77,6 @@ pub use crate::set_lib;
 pub use crate::slice;
 #[cfg(vstd_build_todo)]
 pub use crate::cell;
-#[cfg(vstd_build_todo)]
-#[cfg(not(erasure_macro_todo))]
-pub use crate::cell_old_style;
 #[cfg(vstd_build_todo)]
 pub use crate::invariant;
 #[cfg(vstd_build_todo)]
@@ -103,10 +97,6 @@ pub use crate::thread;
 #[cfg(vstd_build_todo)]
 #[cfg(not(feature = "no_global_allocator"))] 
 pub use crate::ptr;
-#[cfg(vstd_build_todo)]
-#[cfg(not(erasure_macro_todo))]
-#[cfg(not(feature = "no_global_allocator"))] 
-pub use crate::ptr_old_style;
 #[cfg(vstd_build_todo)]
 #[cfg(not(feature = "no_global_allocator"))] 
 pub use crate::string;

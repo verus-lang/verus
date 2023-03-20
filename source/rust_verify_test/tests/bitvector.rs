@@ -234,6 +234,15 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] not_supported_datatype_in_by_bit_vector verus_code! {
+        struct X { }
+        proof fn test_int(x: X) {
+            assert(x == x) by (bit_vector);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "bit_vector prover cannot handle this type")
+}
+
+test_verify_one_file! {
     #[test] not_supported_const_int_in_by_bit_vector verus_code! {
         proof fn test_int() {
             assert(0int == 0int) by (bit_vector);
@@ -372,4 +381,13 @@ test_verify_one_file! {
                 requires b == 20 && w == 276 { }
         }
     } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_bool_variable_issue369 verus_code! {
+        proof fn test() {
+            let b: bool = true;
+            assert(b ==> (0 | 1u8 == 1) == b) by(bit_vector);
+        }
+    } => Ok(())
 }

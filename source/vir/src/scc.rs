@@ -4,36 +4,42 @@
  * Derived from code written by Travis Hance.
  */
 use std::cmp::min;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+
+type SccId = usize;
+type NodeIndex = usize;
 
 pub struct Graph<T> {
-    h: HashMap<T, usize>,
+    // Map T to index in nodes
+    h: HashMap<T, NodeIndex>,
     nodes: Vec<Node<T>>,
 
     has_run: bool,
-    stack: Vec<usize>,
+    stack: Vec<NodeIndex>,
     stack_len: usize,
     index: usize,
 
     sccs: Vec<SCC>,
-    mapping: HashMap<T, usize>,
+    // Map T to SCC.id
+    mapping: HashMap<T, SccId>,
 }
 
 struct SCC /* <T> */ {
-    id: usize,
-    nodes: Vec<usize>,
+    id: SccId,
+    nodes: Vec<NodeIndex>,
 }
 
 struct Node<T> {
     t: T,
-    edges: Vec<usize>,
-    index: usize,
-    lowlink: usize,
+    edges: Vec<NodeIndex>,
+    // index in Graph.nodes or usize::MAX
+    index: NodeIndex,
+    lowlink: NodeIndex,
     on_stack: bool,
 }
 
 impl SCC {
-    pub fn new(id: usize) -> SCC {
+    pub fn new(id: SccId) -> SCC {
         SCC { id, nodes: Vec::new() }
     }
 
@@ -41,7 +47,7 @@ impl SCC {
         self.nodes.len()
     }
 
-    fn rep(&self) -> usize {
+    fn rep(&self) -> NodeIndex {
         self.nodes[0]
     }
 }
@@ -73,7 +79,7 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> Graph<T> {
         }
     }
 
-    fn get_or_add(&mut self, value: T) -> usize {
+    fn get_or_add(&mut self, value: T) -> NodeIndex {
         match self.h.get(&value) {
             Some(v) => *v,
             None => {
@@ -100,7 +106,7 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> Graph<T> {
         }
     }
 
-    fn strongconnect(&mut self, v: usize) {
+    fn strongconnect(&mut self, v: NodeIndex) {
         self.nodes[v].index = self.index;
         self.nodes[v].lowlink = self.index;
         self.index += 1;
@@ -148,7 +154,7 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> Graph<T> {
         }
     }
 
-    fn sort_sccs_node(&self, visited: &mut Vec<bool>, sorted: &mut Vec<T>, s: usize) {
+    fn sort_sccs_node(&self, visited: &mut Vec<bool>, sorted: &mut Vec<T>, s: SccId) {
         if visited[s] {
             return;
         }
@@ -194,5 +200,33 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> Graph<T> {
         let id = self.mapping[t];
         let scc = &self.sccs[id];
         scc.nodes.iter().map(|i| self.nodes[*i].t.clone()).collect()
+    }
+
+    pub fn shortest_cycle_back_to_self(&self, t: &T) -> usize {
+        assert!(self.has_run);
+        assert!(self.h.contains_key(&t));
+        let root: NodeIndex = *self.h.get(t).expect("key not present");
+        let mut at_depth: Vec<NodeIndex> = vec![root];
+        let mut reached: HashSet<NodeIndex> = HashSet::new();
+        reached.insert(root);
+        let mut depth: usize = 1;
+        loop {
+            let mut at_next_depth: Vec<NodeIndex> = Vec::new();
+            assert!(at_depth.len() != 0);
+            for i in at_depth.into_iter() {
+                for edge in self.nodes[i].edges.iter() {
+                    if *edge == root {
+                        // reached the root, found cycle
+                        return depth;
+                    }
+                    if !reached.contains(edge) {
+                        reached.insert(*edge);
+                        at_next_depth.push(*edge);
+                    }
+                }
+            }
+            depth += 1;
+            at_depth = at_next_depth;
+        }
     }
 }
