@@ -448,6 +448,7 @@ macro_rules! atomic_bool_methods {
             requires
                 equal(self.id(), old(perm).view().patomic),
             ensures
+                   equal(old(perm).view().value, ret)
                 && perm.view().patomic == old(perm).view().patomic
                 && perm.view().value == (old(perm).view().value && n),
         {
@@ -464,6 +465,7 @@ macro_rules! atomic_bool_methods {
             requires
                 equal(self.id(), old(perm).view().patomic),
             ensures
+                  equal(old(perm).view().value, ret)
                 && perm.view().patomic == old(perm).view().patomic
                 && perm.view().value == (old(perm).view().value || n),
         {
@@ -480,6 +482,7 @@ macro_rules! atomic_bool_methods {
             requires
                 equal(self.id(), old(perm).view().patomic),
             ensures
+                equal(old(perm).view().value, ret)
                 && perm.view().patomic == old(perm).view().patomic
                 && perm.view().value == ((old(perm).view().value && !n) || (!old(perm).view().value && n)),
         {
@@ -496,6 +499,7 @@ macro_rules! atomic_bool_methods {
             requires
                 equal(self.id(), old(perm).view().patomic),
             ensures
+                equal(old(perm).view().value, ret)
                 && perm.view().patomic == old(perm).view().patomic
                 && perm.view().value == !(old(perm).view().value && n),
         {

@@ -97,7 +97,7 @@ const ATOMIC_U64: &str = code_str! {
 
     let l = at.fetch_nand(Tracked(&mut perm), 3);
     assert(l == 6);
-    assert(!(6u64 & 3u64) == 0xffff_ffff_ffff_fffd) by(bit_vector);
+    assert(!(6u64 & 3u64) == 0xffff_ffff_ffff_fffdu64) by(bit_vector);
     assert(perm.view().value == 0xffff_ffff_ffff_fffd);
 
     at.store(Tracked(&mut perm), 6);
@@ -190,7 +190,7 @@ const ATOMIC_U32: &str = code_str! {
 
     let l = at.fetch_nand(Tracked(&mut perm), 3);
     assert(l == 6);
-    assert(!(6u32 & 3u32) == 0xffff_fffd) by(bit_vector);
+    assert(!(6u32 & 3u32) == 0xffff_fffdu32) by(bit_vector);
     assert(perm.view().value == 0xffff_fffd);
 
     at.store(Tracked(&mut perm), 6);
@@ -921,10 +921,12 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_unsigned_add_overflow_fail
     IMPORTS.to_string() + code_str! {
+        verus!{
         pub fn do_nothing() {
             let (at, Tracked(mut perm)) = PAtomicU32::new(0xf000_0000);
 
             at.fetch_add(Tracked(&mut perm), 0xf000_0000); // FAILS
+        }
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -932,10 +934,12 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_unsigned_sub_underflow_fail
     IMPORTS.to_string() + code_str! {
+        verus!{
         pub fn do_nothing() {
             let (at, Tracked(mut perm)) = PAtomicU32::new(5);
 
             at.fetch_sub(Tracked(&mut perm), 6); // FAILS
+        }
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -943,10 +947,12 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_signed_add_overflow_fail
     IMPORTS.to_string() + code_str! {
+        verus!{
         pub fn do_nothing() {
             let (at, Tracked(mut perm)) = PAtomicI32::new(0x7000_0000);
 
             at.fetch_add(Tracked(&mut perm), 0x7000_0000); // FAILS
+        }
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -954,10 +960,12 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_signed_add_underflow_fail
     IMPORTS.to_string() + code_str! {
+        verus!{
         pub fn do_nothing() {
             let (at, Tracked(mut perm)) = PAtomicI32::new(-0x7000_0000);
 
             at.fetch_add(Tracked(&mut perm), -0x7000_0000); // FAILS
+        }
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -965,10 +973,12 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_signed_sub_overflow_fail
     IMPORTS.to_string() + code_str! {
+        verus!{
         pub fn do_nothing() {
             let (at, Tracked(mut perm)) = PAtomicI32::new(0x7000_0000);
 
             at.fetch_sub(Tracked(&mut perm), -0x7000_0000); // FAILS
+        }
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -976,10 +986,12 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_signed_sub_underflow_fail
     IMPORTS.to_string() + code_str! {
+        verus!{
         pub fn do_nothing() {
             let (at, Tracked(mut perm)) = PAtomicI32::new(-0x7000_0000);
 
             at.fetch_sub(Tracked(&mut perm), 0x7000_0000); // FAILS
+        }
         }
     } => Err(err) => assert_one_fails(err)
 }
