@@ -125,7 +125,7 @@ tokenized_state_machine!{InternSystem<T> {
     fn get_frag_inductive(pre: Self, post: Self, idx: int) { }
 }}
 
-verus_old_todo_no_ghost_blocks!{
+verus!{
 
 // We want the following properties:
 //
@@ -141,14 +141,14 @@ verus_old_todo_no_ghost_blocks!{
 // - evaluate string equality by comparing the IDs
 
 struct Interner<T> {
-    #[verifier::proof] inst: InternSystem::Instance<T>,
-    #[verifier::proof] auth: InternSystem::auth<T>,
+    inst: Tracked<InternSystem::Instance<T>>,
+    auth: Tracked<InternSystem::auth<T>>,
     store: Vec<T>
 }
 
 struct Interned<T> {
-    #[verifier::proof] inst: InternSystem::Instance<T>,
-    #[verifier::proof] frag: InternSystem::frag<T>,
+    inst: Tracked<InternSystem::Instance<T>>,
+    frag: Tracked<InternSystem::frag<T>>,
     id: usize,
 }
 
@@ -161,25 +161,25 @@ fn compute_eq<T>(a: &T, b: &T) -> (res: bool)
 
 impl<T> Interner<T> {
     spec fn wf(&self, inst: InternSystem::Instance<T>) -> bool {
-        &&& self.inst === inst
-        &&& self.auth@.instance === inst
-        &&& self.auth@.value === self.store@
+        &&& self.inst@ === inst
+        &&& self.auth@@.instance === inst
+        &&& self.auth@@.value === self.store@
     }
 
-    fn new() -> (x: (Self, Trk<InternSystem::Instance<T>>))
+    fn new() -> (x: (Self, Tracked<InternSystem::Instance<T>>))
         ensures ({
-            #[verifier::spec] let s = x.0;
-            #[verifier::spec] let inst = x.1.0;
+            let s = x.0;
+            let inst = x.1@;
             s.wf(inst)
         }),
     {
-        #[verifier::proof] let (Trk(inst), Trk(auth), Trk(_f)) = InternSystem::Instance::empty();
+        let tracked (Trk(inst), Trk(auth), Trk(_f)) = InternSystem::Instance::empty();
         let store = Vec::new();
 
-        (Interner { inst: inst.clone(), auth, store }, Trk(inst))
+        (Interner { inst: Tracked(inst.clone()), auth: Tracked(auth), store }, Tracked(inst))
     }
 
-    fn insert(&mut self, #[verifier::spec] inst: InternSystem::Instance<T>, val: T) -> (st: Interned<T>)
+    fn insert(&mut self, Ghost(inst): Ghost<InternSystem::Instance<T>>, val: T) -> (st: Interned<T>)
         requires old(self).wf(inst),
         ensures self.wf(inst) && st.wf(inst) && st@ === val,
     {
@@ -191,13 +191,10 @@ impl<T> Interner<T> {
         {
             let eq = compute_eq(&val, self.store.index(idx));
             if eq {
-                #[verifier::proof] let frag;
-                proof {
-                    frag = self.inst.get_frag(idx as int, &self.auth);
-                };
+                let tracked frag = self.inst.borrow().get_frag(idx as int, self.auth.borrow());
                 return Interned {
-                    inst: self.inst.clone(),
-                    frag,
+                    inst: Tracked(self.inst.borrow().clone()),
+                    frag: Tracked(frag),
                     id: idx,
                 };
             }
@@ -206,15 +203,14 @@ impl<T> Interner<T> {
         let idx: usize = self.store.len();
         self.store.push(val);
 
-        self.inst.insert(val, &mut self.auth);
-
-        #[verifier::proof] let frag;
         proof {
-            frag = self.inst.get_frag(idx as int, &self.auth)
-        };
+            self.inst.borrow().insert(val, self.auth.borrow_mut());
+        }
+
+        let tracked frag = self.inst.borrow().get_frag(idx as int, self.auth.borrow());
         Interned {
-            inst: self.inst.clone(),
-            frag,
+            inst: Tracked(self.inst.borrow().clone()),
+            frag: Tracked(frag),
             id: idx,
         }
     }
@@ -222,13 +218,13 @@ impl<T> Interner<T> {
     fn get<'a>(
         &'a self,
         interned: &Interned<T>,
-        #[verifier::spec] inst: InternSystem::Instance<T>
+        Ghost(inst): Ghost<InternSystem::Instance<T>>
     ) -> (st: &'a T)
         requires self.wf(inst) && interned.wf(inst),
         ensures *st === interned@,
     {
         proof {
-            self.inst.get_value(interned.id as int, &self.auth, &interned.frag);
+            self.inst.borrow().get_value(interned.id as int, self.auth.borrow(), interned.frag.borrow());
         }
         self.store.index(interned.id)
     }
@@ -236,65 +232,65 @@ impl<T> Interner<T> {
 
 impl<T> Interned<T> {
     spec fn wf(&self, inst: InternSystem::Instance<T>) -> bool {
-        &&& self.frag@.instance === inst
-        &&& inst === self.inst
-        &&& self.id as int == self.frag@.key
+        &&& self.frag@@.instance === inst
+        &&& inst === self.inst@
+        &&& self.id as int == self.frag@@.key
     }
 
     spec fn view(&self) -> T {
-        self.frag@.value
+        self.frag@@.value
     }
 
-    fn clone(&self, #[verifier::spec] inst: InternSystem::Instance<T>) -> (s: Self)
+    fn clone(&self, Ghost(inst): Ghost<InternSystem::Instance<T>>) -> (s: Self)
         requires self.wf(inst),
         ensures s.wf(inst) && s@ === self@,
     {
         Interned {
-            inst: self.inst.clone(),
-            frag: self.frag.clone(),
+            inst: Tracked(self.inst.borrow().clone()),
+            frag: Tracked(self.frag.borrow().clone()),
             id: self.id,
         }
     }
 
-    fn cmp_eq(&self, other: &Self, #[verifier::spec] inst: InternSystem::Instance<T>) -> (b: bool)
+    fn cmp_eq(&self, other: &Self, Ghost(inst): Ghost<InternSystem::Instance<T>>) -> (b: bool)
         requires self.wf(inst) && other.wf(inst),
         ensures b == (self@ === other@),
     {
-
-        self.inst.compute_equality(
-            self.frag@.key,
-            self.frag@.value,
-            other.frag@.key,
-            other.frag@.value,
-            &self.frag, &other.frag);
+        proof {
+            self.inst.borrow().compute_equality(
+                self.frag@@.key,
+                self.frag@@.value,
+                other.frag@@.key,
+                other.frag@@.value,
+                self.frag.borrow(), other.frag.borrow());
+        }
 
         self.id == other.id
     }
 }
 
 fn main() {
-    let (mut interner, Trk(inst)) = Interner::<u64>::new();
+    let (mut interner, Tracked(inst)) = Interner::<u64>::new();
 
-    let s1 = interner.insert(inst, 1);
-    let s2 = interner.insert(inst, 2);
-    let s3 = interner.insert(inst, 3);
+    let s1 = interner.insert(Ghost(inst), 1);
+    let s2 = interner.insert(Ghost(inst), 2);
+    let s3 = interner.insert(Ghost(inst), 3);
 
-    let s1_other = interner.insert(inst, 1);
+    let s1_other = interner.insert(Ghost(inst), 1);
 
-    let b1 = s1.cmp_eq(&s1_other, inst);
+    let b1 = s1.cmp_eq(&s1_other, Ghost(inst));
     assert(b1);
 
-    let b2 = s1.cmp_eq(&s2, inst);
+    let b2 = s1.cmp_eq(&s2, Ghost(inst));
     assert(!b2);
 
-    let t1 = s1.clone(inst);
-    let get1 = *interner.get(&t1, inst);
+    let t1 = s1.clone(Ghost(inst));
+    let get1 = *interner.get(&t1, Ghost(inst));
     assert(get1 == 1);
 
-    let t2 = s2.clone(inst);
-    let get2 = *interner.get(&t2, inst);
+    let t2 = s2.clone(Ghost(inst));
+    let get2 = *interner.get(&t2, Ghost(inst));
     assert(get1 == 1);
-
 }
 
 }
