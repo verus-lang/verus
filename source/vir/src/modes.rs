@@ -543,7 +543,14 @@ fn check_expr_handle_mut_arg(
                     let arg_erasure = ErasureModeX::new(Some(param.x.mode));
                     let (arg_mode_read, arg_mode_write) =
                         check_expr_handle_mut_arg(typing, outer_mode, &arg_erasure, arg)?;
-                    let arg_mode_write = arg_mode_write.expect("internal error: no arg_mode_write");
+                    let arg_mode_write = if let Some(arg_mode_write) = arg_mode_write {
+                        arg_mode_write
+                    } else {
+                        return err_string(
+                            &arg.span,
+                            format!("cannot write to argument with mode {}", param_mode),
+                        );
+                    };
                     if arg_mode_read != param_mode {
                         return err_string(
                             &arg.span,
@@ -1044,12 +1051,27 @@ fn check_expr_handle_mut_arg(
                 (Mode::Exec, Ghost::Ghost) => Mode::Proof,
                 _ => outer_mode,
             };
-            let mode = if !alloc_wrapper {
-                check_expr_handle_mut_arg(typing, outer_mode, erasure_mode, e1)?
-            } else {
+            let inner_mode = check_expr_handle_mut_arg(typing, outer_mode, erasure_mode, e1)?;
+            let mode = if *alloc_wrapper {
+                let (inner_read, inner_write) = inner_mode;
                 let target_mode = if *tracked { Mode::Proof } else { Mode::Spec };
-                check_expr_has_mode(typing, outer_mode, e1, target_mode)?;
-                (Mode::Exec, None)
+                if !mode_le(inner_read, target_mode) {
+                    return err_string(
+                        &expr.span,
+                        format!(
+                            "expression has mode {}, expected mode {}",
+                            inner_read, target_mode
+                        ),
+                    );
+                }
+                let outer_write = if inner_write == Some(inner_read) && inner_read == target_mode {
+                    Some(Mode::Exec)
+                } else {
+                    None
+                };
+                (Mode::Exec, outer_write)
+            } else {
+                inner_mode
             };
             typing.block_ghostness = prev;
             return Ok(mode);
@@ -1196,7 +1218,9 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
                 format!("parameter {} cannot have mode {}", param.x.name, param.x.mode),
             );
         }
-        typing.insert(&function.span, &param.x.name, param.x.is_mut, param.x.mode);
+        let inner_param_mode =
+            if let Some((mode, _)) = param.x.unwrapped_info { mode } else { param.x.mode };
+        typing.insert(&function.span, &param.x.name, param.x.is_mut, inner_param_mode);
     }
 
     for expr in function.x.require.iter() {

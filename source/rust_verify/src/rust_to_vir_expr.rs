@@ -561,6 +561,7 @@ fn fn_call_to_vir<'tcx>(
     let is_tracked_view = f_name == "builtin::Tracked::<A>::view";
     let is_tracked_borrow = f_name == "builtin::Tracked::<A>::borrow";
     let is_tracked_borrow_mut = f_name == "builtin::Tracked::<A>::borrow_mut";
+    let is_tracked_new = f_name == "builtin::Tracked::<A>::new";
     let is_tracked_exec = f_name == "builtin::tracked_exec";
     let is_tracked_exec_borrow = f_name == "builtin::tracked_exec_borrow";
     let is_tracked_get = f_name == "builtin::Tracked::<A>::get";
@@ -718,6 +719,7 @@ fn fn_call_to_vir<'tcx>(
         _ if is_smartptr_new => Some(CompilableOperator::SmartPtrNew),
         _ if is_new_strlit => Some(CompilableOperator::NewStrLit),
         _ if is_ghost_exec => Some(CompilableOperator::GhostExec),
+        _ if is_tracked_new => Some(CompilableOperator::TrackedNew),
         _ if is_tracked_exec => Some(CompilableOperator::TrackedExec),
         _ if is_tracked_exec_borrow => Some(CompilableOperator::TrackedExecBorrow),
         _ if is_tracked_get => Some(CompilableOperator::TrackedGet),
@@ -973,38 +975,6 @@ fn fn_call_to_vir<'tcx>(
         );
     }
 
-    if is_ghost_exec || is_tracked_exec {
-        unsupported_err_unless!(len == 1, expr.span, "expected Ghost/Tracked", &args);
-        let arg = &args[0];
-        if get_ghost_block_opt(bctx.ctxt.tcx.hir().attrs(expr.hir_id))
-            == Some(GhostBlockAttr::Wrapper)
-        {
-            let vir_arg = expr_to_vir(bctx, arg, ExprModifier::REGULAR)?;
-            match (is_tracked_exec, get_ghost_block_opt(bctx.ctxt.tcx.hir().attrs(arg.hir_id))) {
-                (false, Some(GhostBlockAttr::GhostWrapped)) => {
-                    return Ok(mk_expr(ExprX::Ghost {
-                        alloc_wrapper: true,
-                        tracked: false,
-                        expr: vir_arg,
-                    }));
-                }
-                (true, Some(GhostBlockAttr::TrackedWrapped)) => {
-                    return Ok(mk_expr(ExprX::Ghost {
-                        alloc_wrapper: true,
-                        tracked: true,
-                        expr: vir_arg,
-                    }));
-                }
-                (_, attr) => {
-                    return err_span_string(
-                        expr.span,
-                        format!("unexpected ghost block attribute {:?}", attr),
-                    );
-                }
-            }
-        }
-    }
-
     if is_decreases_by {
         unsupported_err_unless!(len == 1, expr.span, "expected function", &args);
         let x = get_fn_path(bctx, &args[0])?;
@@ -1246,8 +1216,8 @@ fn fn_call_to_vir<'tcx>(
         };
     }
 
-    // If we need to, we could also apply substs to f's type (see fn method_callee(...) in rustc).
-    let raw_inputs = bctx.ctxt.tcx.fn_sig(f).skip_binder().inputs();
+    use crate::rustc_middle::ty::subst::Subst;
+    let raw_inputs = bctx.ctxt.tcx.fn_sig(f).subst(tcx, node_substs).skip_binder().inputs();
     assert!(raw_inputs.len() == args.len());
     let mut vir_args = args
         .iter()
@@ -1362,6 +1332,36 @@ fn fn_call_to_vir<'tcx>(
     } else {
         false
     };
+
+    if is_ghost_exec || is_tracked_exec {
+        // Handle some of the is_ghost_exec || is_tracked_exec cases here
+        // (specifically, the exec-mode cases)
+        unsupported_err_unless!(len == 1, expr.span, "expected Ghost/Tracked", &args);
+        let arg = &args[0];
+        if get_ghost_block_opt(bctx.ctxt.tcx.hir().attrs(expr.hir_id))
+            == Some(GhostBlockAttr::Wrapper)
+        {
+            let vir_arg = vir_args[0].clone();
+            match (is_tracked_exec, get_ghost_block_opt(bctx.ctxt.tcx.hir().attrs(arg.hir_id))) {
+                (false, Some(GhostBlockAttr::GhostWrapped)) => {
+                    let exprx =
+                        ExprX::Ghost { alloc_wrapper: true, tracked: false, expr: vir_arg.clone() };
+                    return Ok(bctx.spanned_typed_new(arg.span, &vir_arg.typ.clone(), exprx));
+                }
+                (true, Some(GhostBlockAttr::TrackedWrapped)) => {
+                    let exprx =
+                        ExprX::Ghost { alloc_wrapper: true, tracked: true, expr: vir_arg.clone() };
+                    return Ok(bctx.spanned_typed_new(arg.span, &vir_arg.typ.clone(), exprx));
+                }
+                (_, attr) => {
+                    return err_span_string(
+                        expr.span,
+                        format!("unexpected ghost block attribute {:?}", attr),
+                    );
+                }
+            }
+        }
+    }
 
     if is_decreases_when {
         unsupported_err_unless!(len == 1, expr.span, "expected decreases_when", &args);
@@ -1544,6 +1544,15 @@ fn fn_call_to_vir<'tcx>(
             op_mode: Mode::Exec,
             from_mode: Mode::Spec,
             to_mode: Mode::Exec,
+            kind: ModeCoercion::Other,
+        };
+        Ok(mk_expr(ExprX::Unary(op, vir_args[0].clone())))
+    } else if is_tracked_new {
+        assert!(vir_args.len() == 1);
+        let op = UnaryOp::CoerceMode {
+            op_mode: Mode::Proof,
+            from_mode: Mode::Proof,
+            to_mode: Mode::Proof,
             kind: ModeCoercion::Other,
         };
         Ok(mk_expr(ExprX::Unary(op, vir_args[0].clone())))
@@ -1873,18 +1882,17 @@ pub(crate) fn block_to_vir<'tcx>(
     ty: &Typ,
     mut modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
-    let vir_stmts: Stmts = Arc::new(
-        slice_vec_map_result(block.stmts, |stmt| stmt_to_vir(bctx, stmt))?
-            .into_iter()
-            .flatten()
-            .collect(),
-    );
+    let mut vir_stmts: Vec<vir::ast::Stmt> = Vec::new();
+    let mut stmts_iter = block.stmts.iter();
+    while let Some(mut some_stmts) = stmts_to_vir(bctx, &mut stmts_iter)? {
+        vir_stmts.append(&mut some_stmts);
+    }
     if block.stmts.len() != 0 {
         modifier = ExprModifier { deref_mut: false, ..modifier };
     }
     let vir_expr = block.expr.map(|expr| expr_to_vir(bctx, &expr, modifier)).transpose()?;
 
-    let x = ExprX::Block(vir_stmts, vir_expr);
+    let x = ExprX::Block(Arc::new(vir_stmts), vir_expr);
     Ok(bctx.spanned_typed_new(span.clone(), ty, x))
 }
 
@@ -3040,6 +3048,105 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
     Ok(vec![bctx.spanned_new(pattern.span, StmtX::Decl { pattern: vir_pattern, mode, init })])
 }
 
+fn unwrap_parameter_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    stmt1: &Stmt<'tcx>,
+    stmt2: &Stmt<'tcx>,
+) -> Result<Vec<vir::ast::Stmt>, VirErr> {
+    // match "let x;"
+    let x = if let StmtKind::Local(Local {
+        pat:
+            pat @ Pat { kind: PatKind::Binding(BindingAnnotation::Unannotated, hir_id, x, None), .. },
+        ty: None,
+        init: None,
+        ..
+    }) = &stmt1.kind
+    {
+        Some((pat.hir_id, Arc::new(local_to_var(x, hir_id.local_id))))
+    } else {
+        None
+    };
+    // match #[verifier(proof_block)]
+    let ghost = get_ghost_block_opt(bctx.ctxt.tcx.hir().attrs(stmt2.hir_id));
+    // match { x = y.get() } or { x = y.view() }
+    let xy_mode = if let StmtKind::Semi(Expr {
+        kind:
+            ExprKind::Block(
+                Block {
+                    stmts: [],
+                    expr:
+                        Some(Expr {
+                            kind:
+                                ExprKind::Assign(
+                                    expr_x @ Expr { kind: ExprKind::Path(path_x), .. },
+                                    expr_get @ Expr {
+                                        kind:
+                                            ExprKind::MethodCall(
+                                                _path_get,
+                                                _span1,
+                                                [
+                                                    expr_y @ Expr {
+                                                        kind: ExprKind::Path(path_y),
+                                                        ..
+                                                    },
+                                                ],
+                                                _span2,
+                                            ),
+                                        ..
+                                    },
+                                    _,
+                                ),
+                            ..
+                        }),
+                    ..
+                },
+                None,
+            ),
+        ..
+    }) = &stmt2.kind
+    {
+        let fn_def_id = bctx
+            .types
+            .type_dependent_def_id(expr_get.hir_id)
+            .expect("def id of the method definition");
+        let f_name = bctx.ctxt.tcx.def_path_str(fn_def_id);
+        let is_ghost_view = f_name == "builtin::Ghost::<A>::view";
+        let is_tracked_get = f_name == "builtin::Tracked::<A>::get";
+        let ident_x = crate::rust_to_vir_base::qpath_to_ident(bctx.ctxt.tcx, path_x);
+        let ident_y = crate::rust_to_vir_base::qpath_to_ident(bctx.ctxt.tcx, path_y);
+        let mode = if is_ghost_view {
+            Some((Mode::Spec, ResolvedCall::Spec))
+        } else if is_tracked_get {
+            Some((Mode::Proof, ResolvedCall::CompilableOperator(CompilableOperator::TrackedGet)))
+        } else {
+            None
+        };
+        Some((expr_x.hir_id, expr_y.hir_id, expr_get.hir_id, ident_x, ident_y, mode))
+    } else {
+        None
+    };
+    match (x, ghost, xy_mode) {
+        (
+            Some((hir_id1, x1)),
+            Some(GhostBlockAttr::Proof),
+            Some((hir_id2, hir_id_y, hir_id_get, Some(x2), Some(y), Some((mode, resolved_call)))),
+        ) if x1 == x2 => {
+            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+            erasure_info.direct_var_modes.push((hir_id1, mode));
+            erasure_info.direct_var_modes.push((hir_id2, mode));
+            erasure_info.direct_var_modes.push((hir_id_y, Mode::Exec));
+            erasure_info.resolved_calls.push((hir_id_get, stmt2.span.data(), resolved_call));
+            let unwrap = vir::ast::UnwrapParameter { mode, outer_name: y, inner_name: x1 };
+            let headerx = HeaderExprX::UnwrapParameter(unwrap);
+            let exprx = ExprX::Header(Arc::new(headerx));
+            let expr = bctx.spanned_typed_new(stmt1.span, &Arc::new(TypX::Bool), exprx);
+            let stmt = bctx.spanned_new(stmt1.span, StmtX::Expr(expr));
+            Ok(vec![stmt])
+        }
+        _ => err_span_str(stmt1.span, "ill-formed unwrap_parameter header"),
+    }
+}
+
 pub(crate) fn stmt_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     stmt: &Stmt<'tcx>,
@@ -3063,6 +3170,25 @@ pub(crate) fn stmt_to_vir<'tcx>(
         _ => {
             unsupported_err!(stmt.span, "statement", stmt)
         }
+    }
+}
+
+pub(crate) fn stmts_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    stmts: &mut impl Iterator<Item = &'tcx Stmt<'tcx>>,
+) -> Result<Option<Vec<vir::ast::Stmt>>, VirErr> {
+    if let Some(stmt) = stmts.next() {
+        let attrs = crate::attributes::parse_attrs_opt(bctx.ctxt.tcx.hir().attrs(stmt.hir_id));
+        if let [Attr::UnwrapParameter] = attrs[..] {
+            if let Some(stmt2) = stmts.next() {
+                return Ok(Some(unwrap_parameter_to_vir(bctx, stmt, stmt2)?));
+            } else {
+                return err_span_str(stmt.span, "ill-formed unwrap_parameter header");
+            }
+        }
+        Ok(Some(stmt_to_vir(bctx, stmt)?))
+    } else {
+        Ok(None)
     }
 }
 

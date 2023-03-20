@@ -146,7 +146,6 @@ impl Visitor {
         is_trait: bool,
     ) -> Vec<Stmt> {
         let mut stmts: Vec<Stmt> = Vec::new();
-        let mut view_ghost_tracked: Vec<Stmt> = Vec::new();
         let mut unwrap_ghost_tracked: Vec<Stmt> = Vec::new();
 
         let inside_bitvector = if attrs.len() == 1 {
@@ -182,25 +181,30 @@ impl Visitor {
                     tracked_wrapper = path_is_ident(&tup.path, "Tracked");
                     if ghost_wrapper || tracked_wrapper || tup.pat.elems.len() == 1 {
                         if let Pat::Ident(id) = &tup.pat.elems[0] {
-                            wrapped_pat_id = Some((tup.pat.elems[0].clone(), id.clone()));
+                            wrapped_pat_id = Some(id.clone());
                         }
                     }
                 }
-                if let Some((wrapped_pat, wrapped_id)) = wrapped_pat_id {
-                    use syn_verus::parse_quote_spanned;
-                    *pat = wrapped_pat;
-                    let x = wrapped_id.ident;
+                if let Some(mut wrapped_pat_id) = wrapped_pat_id {
+                    // Change
+                    //   fn f(x: Tracked<T>) {
+                    // to
+                    //   fn f(verus_tmp_x: Tracked<T>) {
+                    //       #[verus::internal(header_unwrap_parameter)] let t;
+                    //       #[verifier(proof_block)] { t = verus_tmp_x.get() };
                     let span = pat.span();
-                    view_ghost_tracked.push(stmt_with_semi!(span => let #x = #x.view()));
-                    // Note: we let subsequent processing desugar unwrap_ghost_tracked
-                    if is_trait {
-                        // do nothing
-                    } else if tracked_wrapper {
-                        let stmt = parse_quote_spanned!(span => let Tracked(#x) = #x;);
-                        unwrap_ghost_tracked.push(stmt);
+                    let x = wrapped_pat_id.ident;
+                    let tmp_id = Ident::new(&format!("verus_tmp_{x}"), Span::mixed_site());
+                    wrapped_pat_id.ident = tmp_id.clone();
+                    *pat = Pat::Ident(wrapped_pat_id);
+                    unwrap_ghost_tracked.push(stmt_with_semi!(
+                        span => #[verus::internal(header_unwrap_parameter)] let #x));
+                    if tracked_wrapper {
+                        unwrap_ghost_tracked.push(stmt_with_semi!(
+                            span => #[verifier(proof_block)] { #x = #tmp_id.get() }));
                     } else {
-                        let stmt = parse_quote_spanned!(span => let Ghost(#x) = #x;);
-                        unwrap_ghost_tracked.push(stmt);
+                        unwrap_ghost_tracked.push(stmt_with_semi!(
+                            span => #[verifier(proof_block)] { #x = #tmp_id.view() }));
                     }
                 }
             }
@@ -280,18 +284,6 @@ impl Visitor {
         self.inside_ghost += 1; // for requires, ensures, etc.
         self.inside_bitvector = inside_bitvector;
 
-        let expr_with_view = |expr: Expr| {
-            if view_ghost_tracked.len() == 0 {
-                expr
-            } else {
-                let span = expr.span();
-                let mut stmts = view_ghost_tracked.clone();
-                stmts.push(Stmt::Expr(expr));
-                let block = Block { brace_token: Brace(span), stmts };
-                Expr::Block(syn_verus::ExprBlock { attrs: vec![], label: None, block })
-            }
-        };
-
         let requires = self.take_ghost(&mut sig.requires);
         let recommends = self.take_ghost(&mut sig.recommends);
         let ensures = self.take_ghost(&mut sig.ensures);
@@ -301,7 +293,6 @@ impl Visitor {
             for expr in exprs.exprs.iter_mut() {
                 self.visit_expr_mut(expr);
             }
-            exprs.exprs = exprs.exprs.into_iter().map(expr_with_view).collect();
             stmts.push(Stmt::Semi(
                 Expr::Verbatim(quote_spanned!(token.span => ::builtin::requires([#exprs]))),
                 Semi { spans: [token.span] },
@@ -311,7 +302,6 @@ impl Visitor {
             for expr in exprs.exprs.iter_mut() {
                 self.visit_expr_mut(expr);
             }
-            exprs.exprs = exprs.exprs.into_iter().map(expr_with_view).collect();
             stmts.push(Stmt::Semi(
                 Expr::Verbatim(quote_spanned!(token.span => ::builtin::recommends([#exprs]))),
                 Semi { spans: [token.span] },
@@ -329,7 +319,6 @@ impl Visitor {
             for expr in exprs.exprs.iter_mut() {
                 self.visit_expr_mut(expr);
             }
-            exprs.exprs = exprs.exprs.into_iter().map(expr_with_view).collect();
             if let Some((p, ty)) = ret_pat {
                 stmts.push(Stmt::Semi(
                     Expr::Verbatim(
@@ -350,7 +339,6 @@ impl Visitor {
             for expr in exprs.exprs.iter_mut() {
                 self.visit_expr_mut(expr);
             }
-            exprs.exprs = exprs.exprs.into_iter().map(expr_with_view).collect();
             stmts.push(Stmt::Semi(
                 Expr::Verbatim(quote_spanned!(token.span => ::builtin::decreases((#exprs)))),
                 Semi { spans: [token.span] },
@@ -383,8 +371,9 @@ impl Visitor {
         attrs.extend(mode_attrs);
         attrs.extend(prover_attr.into_iter());
         attrs.extend(ext_attrs);
+        // unwrap_ghost_tracked must go first so that unwrapped vars are in scope in other headers
+        stmts.splice(0..0, unwrap_ghost_tracked);
         stmts.extend(unimpl);
-        stmts.extend(unwrap_ghost_tracked);
         stmts
     }
 
@@ -1120,6 +1109,8 @@ impl VisitMut for Visitor {
                     let inner = take_expr(&mut call.args[0]);
                     *expr = Expr::Verbatim(if self.erase_ghost {
                         quote_spanned!(span => Tracked::assume_new())
+                    } else if is_inside_ghost {
+                        quote_spanned!(span => ::builtin::Tracked::new(#inner))
                     } else {
                         quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ ::builtin::tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ #inner))
                     });
@@ -1128,6 +1119,8 @@ impl VisitMut for Visitor {
                     let inner = take_expr(&mut call.args[0]);
                     *expr = Expr::Verbatim(if self.erase_ghost {
                         quote_spanned!(span => Ghost::assume_new())
+                    } else if is_inside_ghost {
+                        quote_spanned!(span => ::builtin::Ghost::new(#inner))
                     } else {
                         quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ ::builtin::ghost_exec(#[verifier(ghost_block_wrapped)] /* vattr */ #inner))
                     });

@@ -413,7 +413,7 @@ pub fn func_name_to_air(
 
 pub(crate) fn param_to_par(param: &Param, allow_is_mut: bool) -> Par {
     param.map_x(|p| {
-        let ParamX { name, typ, mode, is_mut } = p;
+        let ParamX { name, typ, mode, is_mut, unwrapped_info: _ } = p;
         if *is_mut && !allow_is_mut {
             panic!("mut unexpected here");
         }

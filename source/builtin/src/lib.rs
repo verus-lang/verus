@@ -287,6 +287,12 @@ impl<A> Tracked<A> {
         unimplemented!()
     }
 
+    #[verifier::proof]
+    #[verifier(external_body)]
+    pub fn new(#[verifier::proof] _a: A) -> Tracked<A> {
+        Tracked { phantom: PhantomData }
+    }
+
     #[doc(hidden)]
     #[verifier(external)]
     #[inline(always)]

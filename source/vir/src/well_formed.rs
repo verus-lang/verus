@@ -105,7 +105,13 @@ fn check_one_expr(
                         _ => false,
                     }
                 }
-                let is_ok = match &arg.x {
+                let arg_x = match &arg.x {
+                    // Tracked(&mut x) and Ghost(&mut x) arguments appear as
+                    // Expr::Ghost { ... Expr::Loc ... }
+                    ExprX::Ghost { alloc_wrapper: true, tracked: _, expr: e } => &e.x,
+                    e => e,
+                };
+                let is_ok = match &arg_x {
                     ExprX::Loc(l) => is_ok(l),
                     _ => false,
                 };

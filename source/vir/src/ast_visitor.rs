@@ -860,8 +860,13 @@ where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
     let typ = map_typ_visitor_env(&param.x.typ, env, ft)?;
-    let paramx =
-        ParamX { name: param.x.name.clone(), typ, mode: param.x.mode, is_mut: param.x.is_mut };
+    let paramx = ParamX {
+        name: param.x.name.clone(),
+        typ,
+        mode: param.x.mode,
+        is_mut: param.x.is_mut,
+        unwrapped_info: param.x.unwrapped_info.clone(),
+    };
     Ok(Spanned::new(param.span.clone(), paramx))
 }
 
