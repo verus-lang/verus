@@ -197,14 +197,16 @@ impl Visitor {
                     let tmp_id = Ident::new(&format!("verus_tmp_{x}"), Span::mixed_site());
                     wrapped_pat_id.ident = tmp_id.clone();
                     *pat = Pat::Ident(wrapped_pat_id);
-                    unwrap_ghost_tracked.push(stmt_with_semi!(
-                        span => #[verus::internal(header_unwrap_parameter)] let #x));
-                    if tracked_wrapper {
+                    if !self.erase_ghost {
                         unwrap_ghost_tracked.push(stmt_with_semi!(
-                            span => #[verifier(proof_block)] { #x = #tmp_id.get() }));
-                    } else {
-                        unwrap_ghost_tracked.push(stmt_with_semi!(
-                            span => #[verifier(proof_block)] { #x = #tmp_id.view() }));
+                            span => #[verus::internal(header_unwrap_parameter)] let #x));
+                        if tracked_wrapper {
+                            unwrap_ghost_tracked.push(stmt_with_semi!(
+                                span => #[verifier(proof_block)] { #x = #tmp_id.get() }));
+                        } else {
+                            unwrap_ghost_tracked.push(stmt_with_semi!(
+                                span => #[verifier(proof_block)] { #x = #tmp_id.view() }));
+                        }
                     }
                 }
             }

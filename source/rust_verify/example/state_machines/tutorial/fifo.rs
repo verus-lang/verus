@@ -620,8 +620,9 @@ impl<T> Producer<T> {
         ensures self.wf(),
     {
         // Loop: if the queue is full, then block until it is not.  
-        loop {
-            invariant(self.wf());
+        loop
+            invariant self.wf(),
+        {
 
             let queue = &*self.queue;
             let len = queue.buffer.len();
@@ -687,9 +688,9 @@ impl<T> Consumer<T> {
         ensures self.wf(),
     {
 
-        loop {
-            invariant(self.wf());
-
+        loop
+            invariant self.wf(),
+        {
             let queue = &*self.queue;
             let len = queue.buffer.len();
 
