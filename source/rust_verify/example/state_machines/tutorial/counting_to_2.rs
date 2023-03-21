@@ -127,12 +127,9 @@ fn main() {
     // Thread 1
 
     let global_arc1 = global_arc.clone();
-    let join_handle1 = spawn(move || {
-        ensures(|new_token: Tracked<X::inc_a>|
-            new_token@@ ===
-                X::token![instance => inc_a => true]
-        );
-
+    let join_handle1 = spawn(move || -> (new_token: Tracked<X::inc_a>)
+        ensures new_token@@ == X::token![instance => inc_a => true]
+    {
         // `inc_a_token` is moved into the closure
         let tracked mut token = inc_a_token;
         let globals = &*global_arc1;
@@ -149,12 +146,9 @@ fn main() {
     // Thread 2
 
     let global_arc2 = global_arc.clone();
-    let join_handle2 = spawn(move || {
-        ensures(|new_token: Tracked<X::inc_b>|
-            new_token@@ ===
-                X::token![instance => inc_b => true]
-        );
-
+    let join_handle2 = spawn(move || -> (new_token: Tracked<X::inc_b>)
+        ensures new_token@@ == X::token![instance => inc_b => true]
+    {
         // `inc_b_token` is moved into the closure
         let tracked mut token = inc_b_token;
         let globals = &*global_arc2;

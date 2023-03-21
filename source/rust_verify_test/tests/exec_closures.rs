@@ -9,9 +9,10 @@ use common::*;
 test_verify_one_file_with_options! {
     #[test] basic_test ["vstd"] => verus_code! {
         fn testfn() {
-            let f = |y: u64| {
-                requires(y == 2);
-                ensures(|z: u64| z == 2);
+            let f = |y: u64| -> (z: u64)
+                requires y == 2
+                ensures z == 2
+            {
                 y
             };
 
@@ -27,10 +28,10 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] test_ensures_fail ["vstd"] => verus_code! {
         fn testfn() {
-            let f = |y: u64| {
-                requires(y == 2);
-                ensures(|z: u64| z == 3);
-
+            let f = |y: u64| -> (z: u64)
+                requires y == 2
+                ensures z == 3
+            {
                 y // FAILS
             };
         }
@@ -40,10 +41,10 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] test_ensures_fail_return_stmt ["vstd"] => verus_code! {
         fn testfn() {
-            let f = |y: u64| {
-                requires(y == 2);
-                ensures(|z: u64| z == 3);
-
+            let f = |y: u64| -> (z: u64)
+                requires y == 2
+                ensures z == 3
+            {
                 return y; // FAILS
             };
         }
@@ -53,8 +54,9 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] test_assert_requires_fail ["vstd"] => verus_code! {
         fn testfn() {
-            let f = |y: u64| {
-                requires(y == 2);
+            let f = |y: u64|
+                requires y == 2
+            {
             };
 
             assert(f.requires((3,))); // FAILS
@@ -65,10 +67,10 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] test_assert_not_ensures_fail ["vstd"] => verus_code! {
         fn testfn() {
-            let f = |y: u64| {
-                requires(y == 2);
-                ensures(|z: u64| z == 3);
-
+            let f = |y: u64| -> (z: u64)
+                requires y == 2
+                ensures z == 3
+            {
                 y + 1
             };
 
@@ -80,8 +82,9 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] test_call_requires_fail ["vstd"] => verus_code! {
         fn testfn() {
-            let f = |y: u64| {
-                requires(y == 2);
+            let f = |y: u64|
+                requires y == 2
+            {
             };
 
             f(3); // FAILS
@@ -92,9 +95,10 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] test_call_ensures_fail ["vstd"] => verus_code! {
         fn testfn() {
-            let f = |y: u64| {
-                requires(y == 2);
-                ensures(|z: u64| z == 2);
+            let f = |y: u64| -> (z: u64)
+                requires y == 2
+                ensures z == 2
+            {
                 y
             };
 
@@ -107,9 +111,10 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] test_loop_forever ["vstd"] => verus_code! {
         fn testfn() {
-            let f = |y: u64| {
-                requires(y == 2);
-                ensures(false);
+            let f = |y: u64|
+                requires y == 2
+                ensures false
+            {
                 loop { }
             };
 
@@ -122,10 +127,10 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] test_requires_is_about_external_var ["vstd"] => verus_code! {
         fn testfn(b: bool) {
-            let f = |y: u64| {
-                requires(y == 2);
-                ensures(b);
-
+            let f = |y: u64|
+                requires y == 2
+                ensures b
+            {
                 if !b { loop { } }
             };
 
@@ -140,9 +145,10 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] basic_test_2_args ["vstd"] => verus_code! {
         fn testfn() {
-            let f = |x: u64, y: u64| {
-                requires(x == y);
-                ensures(|z: u64| z == x);
+            let f = |x: u64, y: u64| -> (z: u64)
+                requires x == y
+                ensures z == x
+            {
                 y
             };
 
@@ -158,10 +164,10 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] test_ensures_fail_2_args ["vstd"] => verus_code! {
         fn testfn() {
-            let f = |x: u64, y: u64| {
-                requires(x == y);
-                ensures(|z: u64| z == x);
-
+            let f = |x: u64, y: u64| -> (z: u64)
+                requires x == y
+                ensures z == x
+            {
                 0 as u64 // FAILS
             };
         }
@@ -171,10 +177,10 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] test_ensures_fail_return_stmt_2_args ["vstd"] => verus_code! {
         fn testfn() {
-            let f = |x: u64, y: u64| {
-                requires(y == 2);
-                ensures(|z: u64| z == 3);
-
+            let f = |x: u64, y: u64| -> (z: u64)
+                requires y == 2
+                ensures z == 3
+            {
                 return 0 as u64; // FAILS
             };
         }
@@ -184,8 +190,9 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] test_assert_requires_fail_2_args ["vstd"] => verus_code! {
         fn testfn() {
-            let f = |x: u64, y: u64| {
-                requires(y == x);
+            let f = |x: u64, y: u64|
+                requires y == x
+            {
             };
 
             assert(f.requires((3,4))); // FAILS
@@ -196,10 +203,10 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] test_assert_not_ensures_fail_2_args ["vstd"] => verus_code! {
         fn testfn() {
-            let f = |x: u64, y: u64| {
-                requires(x == y);
-                ensures(|z: u64| z == x);
-
+            let f = |x: u64, y: u64| -> (z: u64)
+                requires x == y
+                ensures z == x
+            {
                 y
             };
 
@@ -211,8 +218,9 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] test_call_requires_fail_2_args ["vstd"] => verus_code! {
         fn testfn() {
-            let f = |x: u64, y: u64| {
-                requires(x == y);
+            let f = |x: u64, y: u64|
+                requires x == y
+            {
             };
 
             f(3, 4); // FAILS
@@ -223,9 +231,10 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] test_call_ensures_fail_2_args ["vstd"] => verus_code! {
         fn testfn() {
-            let f = |x: u64, y: u64| {
-                requires(x == y);
-                ensures(|z: u64| z == x);
+            let f = |x: u64, y: u64| -> (z: u64)
+                requires x == y
+                ensures z == x
+            {
                 y
             };
 
@@ -237,13 +246,13 @@ test_verify_one_file_with_options! {
 
 // 0 arg closures
 
-test_verify_one_file! {
-    #[ignore] #[test] basic_test_0_args verus_code! {
+test_verify_one_file_with_options! {
+    #[test] basic_test_0_args ["vstd"] => verus_code! {
         // TODO requires/ensures need to be spec-erased
         spec fn goo() -> bool;
 
         fn testfn() {
-            let f = || { ensures(goo()); assume(goo()); };
+            let f = || ensures goo() { assume(goo()); };
 
             assert(f.requires(()));
             assert(f.ensures((),()) ==> goo());
@@ -259,8 +268,9 @@ test_verify_one_file_with_options! {
         spec fn goo() -> bool;
 
         fn testfn() {
-            let f = || {
-                ensures(goo());
+            let f = ||
+                ensures goo()
+            {
             }; // FAILS
         }
     } => Err(err) => assert_one_fails(err)
@@ -271,8 +281,9 @@ test_verify_one_file_with_options! {
         spec fn goo() -> bool;
 
         fn testfn() {
-            let f = || {
-                ensures(goo());
+            let f = ||
+                ensures goo()
+            {
                 return; // FAILS
             };
         }
@@ -284,8 +295,9 @@ test_verify_one_file_with_options! {
         spec fn goo() -> bool;
 
         fn testfn() {
-            let f = || {
-                requires(goo());
+            let f = ||
+                requires goo()
+            {
             };
 
             assert(f.requires(())); // FAILS
@@ -298,8 +310,9 @@ test_verify_one_file_with_options! {
         spec fn goo() -> bool;
 
         fn testfn() {
-            let f = || {
-                ensures(goo());
+            let f = ||
+                ensures goo()
+            {
                 assume(goo());
             };
 
@@ -313,8 +326,9 @@ test_verify_one_file_with_options! {
         spec fn goo() -> bool;
 
         fn testfn() {
-            let f = || {
-                requires(goo());
+            let f = ||
+                requires goo()
+            {
             };
 
             f(); // FAILS
@@ -327,8 +341,9 @@ test_verify_one_file_with_options! {
         spec fn goo() -> bool;
 
         fn testfn() {
-            let f = || {
-                ensures(goo());
+            let f = ||
+                ensures goo()
+            {
                 assume(goo());
             };
 
@@ -343,21 +358,20 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] pass_closure_via_typ_param ["vstd"] => verus_code! {
 
-        fn f1<T: Fn(u64) -> u64>(t: T) {
-            requires([
-                forall |x: u64| 0 <= x < 5 ==> t.requires((x,)),
-                forall |x: u64, y: u64| t.ensures((x,), y) ==> y == x + 1,
-            ]);
-
+        fn f1<T: Fn(u64) -> u64>(t: T)
+            requires
+                forall|x: u64| 0 <= x < 5 ==> t.requires((x,)),
+                forall|x: u64, y: u64| t.ensures((x,), y) ==> y == x + 1,
+        {
             let ret = t(3);
             assert(ret == 4);
         }
 
         fn f2() {
-            let t = |a: u64| {
-                requires(0 <= a < 5);
-                ensures(|ret: u64| ret == a + 1);
-
+            let t = |a: u64| -> (ret: u64)
+                requires 0 <= a < 5
+                ensures ret == a + 1
+            {
                 a + 1
             };
 
@@ -369,21 +383,20 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] pass_closure_via_typ_param_fn_once ["vstd"] => verus_code! {
 
-        fn f1<T: FnOnce(u64) -> u64>(t: T) {
-            requires([
-                forall |x: u64| 0 <= x < 5 ==> t.requires((x,)),
-                forall |x: u64, y: u64| t.ensures((x,), y) ==> y == x + 1,
-            ]);
-
+        fn f1<T: FnOnce(u64) -> u64>(t: T)
+            requires
+                forall|x: u64| 0 <= x < 5 ==> t.requires((x,)),
+                forall|x: u64, y: u64| t.ensures((x,), y) ==> y == x + 1,
+        {
             let ret = t(3);
             assert(ret == 4);
         }
 
         fn f2() {
-            let t = |a: u64| {
-                requires(0 <= a < 5);
-                ensures(|ret: u64| ret == a + 1);
-
+            let t = |a: u64| -> (ret: u64)
+                requires 0 <= a < 5
+                ensures ret == a + 1
+            {
                 a + 1
             };
 
@@ -395,22 +408,21 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] pass_closure_via_typ_param_fn_mut ["vstd"] => verus_code! {
 
-        fn f1<T: FnMut(u64) -> u64>(t: T) {
-            requires([
-                forall |x: u64| 0 <= x < 5 ==> t.requires((x,)),
-                forall |x: u64, y: u64| t.ensures((x,), y) ==> y == x + 1,
-            ]);
-
+        fn f1<T: FnMut(u64) -> u64>(t: T)
+            requires
+                forall|x: u64| 0 <= x < 5 ==> t.requires((x,)),
+                forall|x: u64, y: u64| t.ensures((x,), y) ==> y == x + 1,
+        {
             let mut t = t;
             let ret = t(3);
             assert(ret == 4);
         }
 
         fn f2() {
-            let t = |a: u64| {
-                requires(0 <= a < 5);
-                ensures(|ret: u64| ret == a + 1);
-
+            let t = |a: u64| -> (ret: u64)
+                requires 0 <= a < 5
+                ensures ret == a + 1
+            {
                 a + 1
             };
 
@@ -498,8 +510,9 @@ test_verify_one_file_with_options! {
         fn some_exec_fn() -> bool { true }
 
         fn foo() {
-            let f = |x: u64| {
-                requires(some_exec_fn());
+            let f = |x: u64|
+                requires some_exec_fn()
+            {
             };
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode exec")
@@ -510,8 +523,9 @@ test_verify_one_file_with_options! {
         fn some_exec_fn() -> bool { true }
 
         fn foo() {
-            let f = |x: u64| {
-                ensures(some_exec_fn());
+            let f = |x: u64|
+                ensures some_exec_fn()
+            {
             };
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode exec")
@@ -546,9 +560,9 @@ test_verify_one_file_with_options! {
         fn foo() -> (i: u64)
             ensures i == 0
         {
-            let f = || {
-                ensures(|j: u64| j == 1);
-
+            let f = || -> (j: u64)
+                ensures j == 1
+            {
                 loop {
                     return 1 as u64;
                 }
@@ -564,8 +578,9 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] test_calls_in_assignments_to_mut_var ["vstd"] => verus_code! {
         fn foo(b: bool) {
-            let f = |i: u64| {
-                ensures(|j: u64| j == i);
+            let f = |i: u64| -> (j: u64)
+                ensures j == i
+            {
                 i
             };
 
@@ -587,8 +602,9 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] test_calls_in_assignments_to_mut_var_fail ["vstd"] => verus_code! {
         fn foo(b: bool) {
-            let f = |i: u64| {
-                ensures(|j: u64| j == i);
+            let f = |i: u64| -> (j: u64)
+                ensures j == i
+            {
                 i
             };
 
@@ -615,8 +631,9 @@ test_verify_one_file_with_options! {
         { }
 
         fn foo(b: bool) {
-            let f = |i: u64| {
-                ensures(|j: u64| j == i);
+            let f = |i: u64| -> (j: u64)
+                ensures j == i
+            {
                 i
             };
 
@@ -632,8 +649,9 @@ test_verify_one_file_with_options! {
         { }
 
         fn foo(b: bool) {
-            let f = |i: u64| {
-                ensures(|j: u64| j == i);
+            let f = |i: u64| -> (j: u64)
+                ensures j == i
+            {
                 i
             };
 
@@ -660,8 +678,9 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] old_for_closure_param_error ["vstd"] => verus_code! {
         fn foo() {
-            let g = |y: u64| {
-                requires(old(y) == 6);
+            let g = |y: u64|
+                requires old(y) == 6
+            {
                 y
             };
         }
@@ -711,7 +730,7 @@ test_verify_one_file_with_options! {
                 // appear first so that typechecking works.
                 // That's why we have all this junk in the condition of the while loop.
 
-                let f = move |j: u64| { requires(j == 20 || j == i); j };
+                let f = move |j: u64| requires j == 20 || j == i { j };
                 if i == 0 { fun1 = Option::Some(f); }
                 else if i == 1 { fun2 = Option::Some(f); }
 
@@ -719,14 +738,13 @@ test_verify_one_file_with_options! {
 
                 i < 2
             })
-            {
-              invariant([
+              invariant
                   i == 0 || i == 1 || i == 2,
                   i >= 1 ==> fun1.is_Some() &&
-                      (forall |x: u64| (x == 20 || x == 0 ==> fun1.get_Some_0().requires((x,)))),
+                      (forall|x: u64| (x == 20 || x == 0 ==> fun1.get_Some_0().requires((x,)))),
                   i >= 2 ==> fun2.is_Some() &&
-                      (forall |x: u64| (x == 20 || x == 1 ==> fun2.get_Some_0().requires((x,)))),
-              ]);
+                      (forall|x: u64| (x == 20 || x == 1 ==> fun2.get_Some_0().requires((x,)))),
+            {
             }
 
             assert(i == 2 || i == 3);
@@ -746,7 +764,7 @@ test_verify_one_file_with_options! {
             let mut fun2 = Option::None;
 
             while ({
-                let f = move |j: u64| { requires(j == 20 || j == i); j };
+                let f = move |j: u64| requires j == 20 || j == i { j };
                 if i == 0 { fun1 = Option::Some(f); }
                 else if i == 1 { fun2 = Option::Some(f); }
 
@@ -754,14 +772,13 @@ test_verify_one_file_with_options! {
 
                 i < 2
             })
-            {
-              invariant([
+              invariant
                   i == 0 || i == 1 || i == 2,
                   i >= 1 ==> fun1.is_Some() &&
-                      (forall |x: u64| (x == 20 || x == 0 ==> fun1.get_Some_0().requires((x,)))),
+                      (forall|x: u64| (x == 20 || x == 0 ==> fun1.get_Some_0().requires((x,)))),
                   i >= 2 ==> fun2.is_Some() &&
-                      (forall |x: u64| (x == 20 || x == 1 ==> fun2.get_Some_0().requires((x,)))),
-              ]);
+                      (forall|x: u64| (x == 20 || x == 1 ==> fun2.get_Some_0().requires((x,)))),
+            {
             }
 
             assert(i == 2 || i == 3);
@@ -778,16 +795,18 @@ test_verify_one_file_with_options! {
     #[test] name_collisions ["vstd"] => verus_code! {
         fn test1(b: bool) {
             let x: u64 = 5;
-            let f = |x: u64| {
-                requires(x == 6);
+            let f = |x: u64|
+                requires x == 6
+            {
             };
             f(6);
         }
 
         fn test2(b: bool) {
             let x: u64 = 5;
-            let f = |x: u64| {
-                requires(x == 6);
+            let f = |x: u64|
+                requires x == 6
+            {
                 assert(false); // FAILS
             };
             f(6);
@@ -795,10 +814,10 @@ test_verify_one_file_with_options! {
 
         fn test3(b: bool) {
             let x: u64 = 5;
-            let f = |x: u64| {
-                requires(x == 6);
-                ensures(|x: u64| x == 7);
-
+            let f = |x: u64| -> (x: u64)
+                requires x == 6
+                ensures x == 7
+            {
                 7 as u64
             };
             let t = f(6);
@@ -807,10 +826,10 @@ test_verify_one_file_with_options! {
 
         fn test4(b: bool) {
             let x: u64 = 7;
-            let f = |x: u64| {
-                requires(x == 6);
-                ensures(|x: u64| x == 7);
-
+            let f = |x: u64| -> (x: u64)
+                requires x == 6
+                ensures x == 7
+            {
                 return 8 as u64; // FAILS
             };
             let t = f(6);
@@ -819,12 +838,12 @@ test_verify_one_file_with_options! {
 
         fn test5(b: bool) {
             let x: u64 = 7;
-            let f = |x: u64| {
-                requires(x == 6);
-
-                let g = |x: u64| {
-                    requires(x == 19);
-
+            let f = |x: u64|
+                requires x == 6
+            {
+                let g = |x: u64|
+                    requires x == 19
+                {
                     assert(false); // FAILS
                 };
             };
@@ -832,11 +851,12 @@ test_verify_one_file_with_options! {
 
         fn test6(b: bool) {
             let x: u64 = 7;
-            let f = |x: u64| {
-                requires(x == 6);
-
-                let g = |x: u64| {
-                    requires(x == 19);
+            let f = |x: u64|
+                requires x == 6
+            {
+                let g = |x: u64|
+                    requires x == 19
+                {
                 };
 
                 assert(g.requires((19,)));
@@ -846,9 +866,9 @@ test_verify_one_file_with_options! {
 
         fn test7(b: bool) {
             let x: u64 = 7;
-            let f = |x: u64| {
-                requires(x == 6);
-
+            let f = |x: u64|
+                requires x == 6
+            {
                 assert(x == 6);
 
                 let x = 19;
@@ -860,12 +880,13 @@ test_verify_one_file_with_options! {
 
         fn test8(b: bool) {
             let x: u64 = 7;
-            let f = |x: u64, y: u64| {
-                requires(x == 5 && {
-                    let x = y;
-                    x != 5
-                });
-
+            let f = |x: u64, y: u64|
+                requires
+                    x == 5 && {
+                        let x = y;
+                        x != 5
+                    }
+            {
                 assert(x == 5);
                 assert(y != 5);
                 assert(false); // FAILS
@@ -874,11 +895,13 @@ test_verify_one_file_with_options! {
 
         fn test9(b: bool) {
             let x: u64 = 7;
-            let f = |x: u64, y: u64| {
-                requires(x == 5 && {
-                    let x = y;
-                    x != 5
-                });
+            let f = |x: u64, y: u64|
+                requires
+                    x == 5 && {
+                        let x = y;
+                        x != 5
+                    }
+            {
             };
 
             assert(f.requires((5, 7)));
@@ -890,17 +913,20 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] return_unit ["vstd"] => verus_code! {
         fn test() {
-            let f = |x: u64| {
-                ensures(|res: ()| res === ());
+            let f = |x: u64| -> (res: ())
+                ensures res === ()
+            {
             };
 
-            let f1 = |x: u64| {
-                ensures(|res: ()| res === ());
+            let f1 = |x: u64| -> (res: ())
+                ensures res === ()
+            {
                 ()
             };
 
-            let g = |x: u64| {
-                ensures(false);
+            let g = |x: u64|
+                ensures false
+            {
                 assume(false);
             };
 
@@ -1051,12 +1077,12 @@ test_verify_one_file_with_options! {
 
 // closures that depend on type params
 
-test_verify_one_file! {
-    #[ignore] #[test] closure_depends_on_type_param verus_code! {
-        // TODO requires/ensures need to be spec-erased
+test_verify_one_file_with_options! {
+    #[test] closure_depends_on_type_param ["vstd"] => verus_code! {
         fn test1<T>(some_t: T) {
-            let f = |t: T| {
-                ensures(|s: T| equal(s, t));
+            let f = |t: T| -> (s: T)
+                ensures s == t
+            {
                 t
             };
 
