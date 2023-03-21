@@ -260,6 +260,13 @@ fn func_body_to_air(
     let def_body = if !is_recursive {
         body_expr
     } else {
+        // Compute shortest path from function back to itself
+        // Example: f calls g, g calls f, so shortest cycle f --> g --> f has len 2
+        // We use this as the minimum default fuel for f
+        let fun_node = crate::recursion::Node::Fun(function.x.name.clone());
+        let cycle_len = ctx.global.func_call_graph.shortest_cycle_back_to_self(&fun_node);
+        assert!(cycle_len >= 1);
+
         let rec_f = suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&name)));
         let fuel_nat_f = prefix_fuel_nat(&fun_to_air_ident(&name));
         let args = func_def_args(&function.x.typ_params(), &pars);
@@ -270,7 +277,11 @@ fn func_body_to_air(
         args_zero.push(str_var(ZERO));
         args_fuel.push(str_var(FUEL_LOCAL));
         args_succ.push(str_apply(SUCC, &vec![str_var(FUEL_LOCAL)]));
-        args_def.push(str_apply(SUCC, &vec![ident_var(&fuel_nat_f)]));
+        let mut succ_fuel_nat_f = ident_var(&fuel_nat_f);
+        for _ in 0..cycle_len {
+            succ_fuel_nat_f = str_apply(SUCC, &vec![succ_fuel_nat_f]);
+        }
+        args_def.push(succ_fuel_nat_f);
         let rec_f_zero = ident_apply(&rec_f, &args_zero);
         let rec_f_fuel = ident_apply(&rec_f, &args_fuel);
         let rec_f_succ = ident_apply(&rec_f, &args_succ);

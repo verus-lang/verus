@@ -4,6 +4,8 @@
 //! For an introduction to Verus, see [the tutorial](https://verus-lang.github.io/verus/guide/).
 
 pub mod pervasive;
+pub mod bytes;
+pub mod calc_macro;
 pub mod map;
 pub mod option;
 pub mod result;

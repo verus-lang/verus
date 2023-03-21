@@ -176,6 +176,26 @@ impl<K, V> Map<K, V> {
         )
     }
 
+    /// Complement to `remove_keys`. Restricts the map to (key, value) pairs
+    /// for keys that are _in_ the given set; that is, it removes any keys
+    /// _not_ in the set.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// assert_maps_equal!(
+    ///    map![1 => 10, 2 => 11, 3 => 12].remove_keys(set!{2, 3, 4}),
+    ///    map![2 => 11, 3 => 12],
+    /// );
+    /// ```
+
+    pub open spec fn restrict(self, keys: Set<K>) -> Self {
+        Self::new(
+            |k: K| self.dom().contains(k) && keys.contains(k),
+            |k: K| self[k]
+        )
+    }
+
     /// Returns `true` if the two given maps agree on all keys that their domains
     /// share in common.
 
@@ -241,6 +261,19 @@ impl<K, V> Map<K, V> {
     {
         unimplemented!();
     }
+
+    #[verifier(external_body)]
+    pub proof fn tracked_remove_keys(tracked &mut self, keys: Set<K>)
+        -> (tracked out_map: Map<K, V>)
+        requires
+            keys.subset_of(old(self).dom())
+        ensures
+            self == old(self).remove_keys(keys),
+            out_map == old(self).restrict(keys),
+    {
+        unimplemented!();
+    }
+
 }
 
 // Trusted axioms

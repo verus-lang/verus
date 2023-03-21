@@ -3094,7 +3094,16 @@ pub(crate) mod parsing {
             float_repr.truncate(float_repr.len() - 1);
         }
         for part in float_repr.split('.') {
-            let index = crate::parse_str(part).map_err(|err| Error::new(float.span(), err))?;
+            let mut index: Index =
+                crate::parse_str(part).map_err(|err| Error::new(float.span(), err))?;
+
+            // note: I made this fix 'cause otherwise a type error doing
+            // something like `x.1.0` gives a really bad span.
+            // This span still isn't great (it will highlight all of 1.0 rather than
+            // just the field that matters) but at least it doesn't highlight the entire
+            // macro invocation.
+            index.span = float.span();
+
             #[cfg(not(syn_no_const_vec_new))]
             let base = mem::replace(e, Expr::DUMMY);
             #[cfg(syn_no_const_vec_new)]
