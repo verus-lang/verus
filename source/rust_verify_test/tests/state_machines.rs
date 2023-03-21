@@ -16,17 +16,20 @@ const IMPORTS: &str = code_str! {
     #[allow(unused_imports)] use builtin_macros::*;
     #[allow(unused_imports)] use state_machines_macros::*;
 
-    #[verifier::spec]
+    verus!{
+
     #[is_variant]
-    pub enum Foo {
+    pub ghost enum Foo {
         Bar(int),
         Qax(int),
         Duck(int),
     }
+
+    }
 };
 
 test_verify_one_file! {
-    #[test] dupe_name_fail IMPORTS.to_string() + code_str! {
+    #[test] dupe_name_fail IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub v: Map<int, int>,
@@ -46,7 +49,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_birds_eye_init_error IMPORTS.to_string() + code_str! {
+    #[test] test_birds_eye_init_error IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields { #[sharding(variable)] pub t: int }
 
@@ -61,7 +64,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_birds_eye_nontokenized_error IMPORTS.to_string() + code_str! {
+    #[test] test_birds_eye_nontokenized_error IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields { pub t: int }
 
@@ -76,7 +79,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_birds_eye_guard IMPORTS.to_string() + code_str! {
+    #[test] test_birds_eye_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_option)] pub so: Option<int>
@@ -93,7 +96,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_withdraw_bind_guard IMPORTS.to_string() + code_str! {
+    #[test] test_withdraw_bind_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_option)] pub so: Option<int>
@@ -110,7 +113,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_birds_eye_req IMPORTS.to_string() + code_str! {
+    #[test] test_birds_eye_req IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_option)] pub so: Option<int>
@@ -127,7 +130,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] require_let_birds_eye_fail IMPORTS.to_string() + code_str! {
+    #[test] require_let_birds_eye_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(variable)]
@@ -144,7 +147,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_withdraw_bind_req IMPORTS.to_string() + code_str! {
+    #[test] test_withdraw_bind_req IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_option)] pub so: Option<int>
@@ -161,7 +164,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_birds_eye_req2 IMPORTS.to_string() + code_str! {
+    #[test] test_birds_eye_req2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_option)] pub so: Option<int>
@@ -181,7 +184,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_withdraw_bind_req2 IMPORTS.to_string() + code_str! {
+    #[test] test_withdraw_bind_req2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_option)] pub so: Option<int>
@@ -201,7 +204,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_birds_eye_special IMPORTS.to_string() + code_str! {
+    #[test] test_birds_eye_special IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)] pub so: Option<int>
@@ -218,7 +221,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_withdraw_binding_remove IMPORTS.to_string() + code_str! {
+    #[test] test_withdraw_binding_remove IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)] pub so: Option<int>
@@ -235,7 +238,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_birds_eye_special2 IMPORTS.to_string() + code_str! {
+    #[test] test_birds_eye_special2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)] pub so: Option<int>
@@ -255,7 +258,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_update_constant IMPORTS.to_string() + code_str! {
+    #[test] test_update_constant IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(constant)] pub t: int
@@ -271,7 +274,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_add_constant IMPORTS.to_string() + code_str! {
+    #[test] test_add_constant IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(constant)] pub t: int
@@ -287,7 +290,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_have_constant IMPORTS.to_string() + code_str! {
+    #[test] test_have_constant IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(constant)] pub t: int
@@ -303,7 +306,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_use_option_directly IMPORTS.to_string() + code_str! {
+    #[test] test_use_option_directly IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)] pub t: Option<int>,
@@ -320,7 +323,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_use_map_directly IMPORTS.to_string() + code_str! {
+    #[test] test_use_map_directly IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(map)] pub t: Map<int, int>,
@@ -337,7 +340,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_use_multiset_directly IMPORTS.to_string() + code_str! {
+    #[test] test_use_multiset_directly IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(multiset)] pub t: Multiset<int>,
@@ -354,7 +357,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_use_storage_option_directly IMPORTS.to_string() + code_str! {
+    #[test] test_use_storage_option_directly IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_option)] pub t: Option<int>,
@@ -371,7 +374,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_use_nottokenized_directly IMPORTS.to_string() + code_str! {
+    #[test] test_use_nottokenized_directly IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(not_tokenized)] pub t: int,
@@ -388,7 +391,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_use_pre_no_field IMPORTS.to_string() + code_str! {
+    #[test] test_use_pre_no_field IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub v: int,
@@ -404,7 +407,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_use_pre_no_field_withdraw_kv_value IMPORTS.to_string() + code_str! {
+    #[test] test_use_pre_no_field_withdraw_kv_value IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_map)] pub v: Map<int, int>,
@@ -420,7 +423,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_use_pre_no_field_remove_kv_key IMPORTS.to_string() + code_str! {
+    #[test] test_use_pre_no_field_remove_kv_key IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(map)] pub v: Map<int, int>,
@@ -436,7 +439,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_use_pre_no_field_withdraw_kv_key IMPORTS.to_string() + code_str! {
+    #[test] test_use_pre_no_field_withdraw_kv_key IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_map)] pub v: Map<int, int>,
@@ -472,7 +475,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_use_pre_no_field2 IMPORTS.to_string() + code_str! {
+    #[test] test_use_pre_no_field2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub v: int,
@@ -488,7 +491,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_use_pre_no_field3 IMPORTS.to_string() + code_str! {
+    #[test] test_use_pre_no_field3 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub v: int,
@@ -504,7 +507,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_use_pre_no_field4 IMPORTS.to_string() + code_str! {
+    #[test] test_use_pre_no_field4 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub v: int,
@@ -520,7 +523,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] field_name_reserved_ident1 IMPORTS.to_string() + code_str! {
+    #[test] field_name_reserved_ident1 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub instance: int,
@@ -530,7 +533,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] field_name_reserved_ident2 IMPORTS.to_string() + code_str! {
+    #[test] field_name_reserved_ident2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub param_token_a: int,
@@ -540,7 +543,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] sm_name_reserved_ident1 IMPORTS.to_string() + code_str! {
+    #[test] sm_name_reserved_ident1 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ instance {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -550,7 +553,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] sm_name_reserved_ident2 IMPORTS.to_string() + code_str! {
+    #[test] sm_name_reserved_ident2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ param_token_a {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -560,7 +563,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] let_name_reserved_ident1 IMPORTS.to_string() + code_str! {
+    #[test] let_name_reserved_ident1 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -576,7 +579,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] let_name_reserved_ident2 IMPORTS.to_string() + code_str! {
+    #[test] let_name_reserved_ident2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -592,7 +595,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] arg_reserved_ident1 IMPORTS.to_string() + code_str! {
+    #[test] arg_reserved_ident1 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -607,7 +610,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] arg_reserved_ident2 IMPORTS.to_string() + code_str! {
+    #[test] arg_reserved_ident2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -622,7 +625,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] binding_reserved_ident1 IMPORTS.to_string() + code_str! {
+    #[test] binding_reserved_ident1 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)] pub t: Option<int>,
@@ -638,7 +641,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] duplicate_inductive_lemma IMPORTS.to_string() + code_str! {
+    #[test] duplicate_inductive_lemma IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -662,7 +665,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] missing_inductive_lemma IMPORTS.to_string() + code_str! {
+    #[test] missing_inductive_lemma IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -683,7 +686,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] missing_inductive_lemma_init IMPORTS.to_string() + code_str! {
+    #[test] missing_inductive_lemma_init IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -704,7 +707,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inductive_lemma_readonly IMPORTS.to_string() + code_str! {
+    #[test] inductive_lemma_readonly IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -723,7 +726,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inductive_lemma_property IMPORTS.to_string() + code_str! {
+    #[test] inductive_lemma_property IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -742,7 +745,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] lemma_wrong_args IMPORTS.to_string() + code_str! {
+    #[test] lemma_wrong_args IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -761,7 +764,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] lemma_bad_transition_name IMPORTS.to_string() + code_str! {
+    #[test] lemma_bad_transition_name IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -780,7 +783,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] lemma_bad_generic_params IMPORTS.to_string() + code_str! {
+    #[test] lemma_bad_generic_params IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -799,7 +802,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] lemma_bad_return_type IMPORTS.to_string() + code_str! {
+    #[test] lemma_bad_return_type IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -818,7 +821,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] lemma_bad_header IMPORTS.to_string() + code_str! {
+    #[test] lemma_bad_header IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -838,7 +841,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] lemma_doesnt_verify IMPORTS.to_string() + code_str! {
+    #[test] lemma_doesnt_verify IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -863,7 +866,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] lemma_doesnt_verify_init IMPORTS.to_string() + code_str! {
+    #[test] lemma_doesnt_verify_init IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -888,7 +891,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] sm_generic_param_not_type IMPORTS.to_string() + code_str! {
+    #[test] sm_generic_param_not_type IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X<'a> {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -898,7 +901,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] multiple_fields IMPORTS.to_string() + code_str! {
+    #[test] multiple_fields IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -912,14 +915,14 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] no_fields IMPORTS.to_string() + code_str! {
+    #[test] no_fields IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
         }}
     } => Err(e) => assert_error_msg(e, "'fields' declaration was not found")
 }
 
 test_verify_one_file! {
-    #[test] conflicting_attrs IMPORTS.to_string() + code_str! {
+    #[test] conflicting_attrs IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -941,7 +944,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] explicit_mode_inv IMPORTS.to_string() + code_str! {
+    #[test] explicit_mode_inv IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -963,7 +966,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] wrong_mode_inv IMPORTS.to_string() + code_str! {
+    #[test] wrong_mode_inv IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -984,7 +987,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] wrong_mode_inductive IMPORTS.to_string() + code_str! {
+    #[test] wrong_mode_inductive IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -1009,7 +1012,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] explicit_mode_field IMPORTS.to_string() + code_str! {
+    #[test] explicit_mode_field IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] #[verifier::spec] pub t: int,
@@ -1019,7 +1022,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] explicit_mode_proof IMPORTS.to_string() + code_str! {
+    #[test] explicit_mode_proof IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -1045,7 +1048,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inv_wrong_params IMPORTS.to_string() + code_str! {
+    #[test] inv_wrong_params IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -1071,7 +1074,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inv_wrong_ret IMPORTS.to_string() + code_str! {
+    #[test] inv_wrong_ret IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -1097,7 +1100,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inv_wrong_generics IMPORTS.to_string() + code_str! {
+    #[test] inv_wrong_generics IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -1123,7 +1126,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] normal_sm_sharding IMPORTS.to_string() + code_str! {
+    #[test] normal_sm_sharding IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 #[sharding(variable)] pub t: int,
@@ -1133,7 +1136,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] tokenized_sm_no_sharding IMPORTS.to_string() + code_str! {
+    #[test] tokenized_sm_no_sharding IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 pub t: int,
@@ -1143,7 +1146,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] unrecognized_sharding_strategy_name IMPORTS.to_string() + code_str! {
+    #[test] unrecognized_sharding_strategy_name IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(foo)] pub t: int,
@@ -1153,7 +1156,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] duplicate_sharding_attr IMPORTS.to_string() + code_str! {
+    #[test] duplicate_sharding_attr IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)]
@@ -1165,7 +1168,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] wrong_form_option IMPORTS.to_string() + code_str! {
+    #[test] wrong_form_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)]
@@ -1176,7 +1179,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] wrong_form_option2 IMPORTS.to_string() + code_str! {
+    #[test] wrong_form_option2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)]
@@ -1187,7 +1190,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] wrong_form_option3 IMPORTS.to_string() + code_str! {
+    #[test] wrong_form_option3 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)]
@@ -1198,7 +1201,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] wrong_form_storage_option IMPORTS.to_string() + code_str! {
+    #[test] wrong_form_storage_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_option)]
@@ -1209,7 +1212,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] wrong_form_map IMPORTS.to_string() + code_str! {
+    #[test] wrong_form_map IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(map)]
@@ -1220,7 +1223,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] wrong_form_storage_map IMPORTS.to_string() + code_str! {
+    #[test] wrong_form_storage_map IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_map)]
@@ -1231,7 +1234,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] wrong_form_multiset IMPORTS.to_string() + code_str! {
+    #[test] wrong_form_multiset IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(multiset)]
@@ -1242,7 +1245,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] wrong_form_set IMPORTS.to_string() + code_str! {
+    #[test] wrong_form_set IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(set)]
@@ -1253,7 +1256,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] wrong_form_count IMPORTS.to_string() + code_str! {
+    #[test] wrong_form_count IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(count)]
@@ -1264,7 +1267,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] wrong_form_bool IMPORTS.to_string() + code_str! {
+    #[test] wrong_form_bool IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(bool)]
@@ -1275,7 +1278,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] special_op_conditional IMPORTS.to_string() + code_str! {
+    #[test] special_op_conditional IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)]
@@ -1294,7 +1297,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] special_op_binding_conditional IMPORTS.to_string() + code_str! {
+    #[test] special_op_binding_conditional IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)]
@@ -1313,7 +1316,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] special_op_match IMPORTS.to_string() + code_str! {
+    #[test] special_op_match IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)]
@@ -1336,7 +1339,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] remove_after_have IMPORTS.to_string() + code_str! {
+    #[test] remove_after_have IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)]
@@ -1354,7 +1357,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] remove_after_have_with_binding IMPORTS.to_string() + code_str! {
+    #[test] remove_after_have_with_binding IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)]
@@ -1372,7 +1375,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] have_after_add IMPORTS.to_string() + code_str! {
+    #[test] have_after_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)]
@@ -1390,7 +1393,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] remove_after_add IMPORTS.to_string() + code_str! {
+    #[test] remove_after_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)]
@@ -1408,7 +1411,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] init_wf_init_missing IMPORTS.to_string() + code_str! {
+    #[test] init_wf_init_missing IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -1423,7 +1426,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] init_wf_init_dupe IMPORTS.to_string() + code_str! {
+    #[test] init_wf_init_dupe IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -1440,7 +1443,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] init_wf_init_dupe_conditional IMPORTS.to_string() + code_str! {
+    #[test] init_wf_init_dupe_conditional IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -1461,7 +1464,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] init_wf_init_if IMPORTS.to_string() + code_str! {
+    #[test] init_wf_init_if IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -1480,7 +1483,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] init_wf_init_dupe_match IMPORTS.to_string() + code_str! {
+    #[test] init_wf_init_dupe_match IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -1501,7 +1504,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] init_wf_init_else IMPORTS.to_string() + code_str! {
+    #[test] init_wf_init_else IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -1520,7 +1523,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] init_wf_init_match IMPORTS.to_string() + code_str! {
+    #[test] init_wf_init_match IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -1545,7 +1548,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] init_wf_init_match2 IMPORTS.to_string() + code_str! {
+    #[test] init_wf_init_match2 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -1569,7 +1572,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] init_wf_update IMPORTS.to_string() + code_str! {
+    #[test] init_wf_update IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -1586,7 +1589,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] init_wf_update2 IMPORTS.to_string() + code_str! {
+    #[test] init_wf_update2 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -1602,7 +1605,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] init_wf_special IMPORTS.to_string() + code_str! {
+    #[test] init_wf_special IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)]
@@ -1619,7 +1622,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] init_wf_special_with_binding IMPORTS.to_string() + code_str! {
+    #[test] init_wf_special_with_binding IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)]
@@ -1636,7 +1639,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] init_wf_assert IMPORTS.to_string() + code_str! {
+    #[test] init_wf_assert IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -1653,7 +1656,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] normal_wf_update_dupe IMPORTS.to_string() + code_str! {
+    #[test] normal_wf_update_dupe IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -1670,7 +1673,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] normal_wf_update_dupe_conditional IMPORTS.to_string() + code_str! {
+    #[test] normal_wf_update_dupe_conditional IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -1689,7 +1692,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] normal_wf_update_dupe_conditional2 IMPORTS.to_string() + code_str! {
+    #[test] normal_wf_update_dupe_conditional2 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -1709,7 +1712,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] normal_wf_update_dupe_match IMPORTS.to_string() + code_str! {
+    #[test] normal_wf_update_dupe_match IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -1732,7 +1735,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] normal_wf_update_init IMPORTS.to_string() + code_str! {
+    #[test] normal_wf_update_init IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -1748,7 +1751,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] normal_wf_update_guard IMPORTS.to_string() + code_str! {
+    #[test] normal_wf_update_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_option)]
@@ -1765,7 +1768,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] readonly_wf_update IMPORTS.to_string() + code_str! {
+    #[test] readonly_wf_update IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -1781,7 +1784,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] property_wf_update IMPORTS.to_string() + code_str! {
+    #[test] property_wf_update IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -1797,7 +1800,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] readonly_wf_init IMPORTS.to_string() + code_str! {
+    #[test] readonly_wf_init IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -1813,7 +1816,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] property_wf_init IMPORTS.to_string() + code_str! {
+    #[test] property_wf_init IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -1829,7 +1832,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] readonly_wf_add IMPORTS.to_string() + code_str! {
+    #[test] readonly_wf_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)]
@@ -1846,7 +1849,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] property_wf_add IMPORTS.to_string() + code_str! {
+    #[test] property_wf_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)]
@@ -1863,7 +1866,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] readonly_wf_remove_with_binding IMPORTS.to_string() + code_str! {
+    #[test] readonly_wf_remove_with_binding IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)]
@@ -1880,7 +1883,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] readonly_wf_remove IMPORTS.to_string() + code_str! {
+    #[test] readonly_wf_remove IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)]
@@ -1897,7 +1900,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] readonly_wf_deposit IMPORTS.to_string() + code_str! {
+    #[test] readonly_wf_deposit IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_option)]
@@ -1914,7 +1917,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] readonly_wf_withdraw IMPORTS.to_string() + code_str! {
+    #[test] readonly_wf_withdraw IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_option)]
@@ -1931,7 +1934,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] field_not_found IMPORTS.to_string() + code_str! {
+    #[test] field_not_found IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -1947,7 +1950,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inherent_safety_condition_option_remove IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_option_remove IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)]
@@ -1964,7 +1967,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inherent_safety_condition_option_remove_with_binding IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_option_remove_with_binding IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)]
@@ -1981,7 +1984,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inherent_safety_condition_map_remove IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_map_remove IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(map)]
@@ -1998,7 +2001,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inherent_safety_condition_multiset_remove IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_multiset_remove IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(multiset)]
@@ -2015,7 +2018,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inherent_safety_condition_option_add IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_option_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)]
@@ -2039,7 +2042,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inherent_safety_condition_option_general_add IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_option_general_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)]
@@ -2063,7 +2066,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inherent_safety_condition_map_add IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_map_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(map)]
@@ -2087,7 +2090,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inherent_safety_condition_map_general_add IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_map_general_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(map)]
@@ -2111,7 +2114,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inherent_safety_condition_multiset_add IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_multiset_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(multiset)]
@@ -2128,7 +2131,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inherent_safety_condition_multiset_general_add IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_multiset_general_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(multiset)]
@@ -2145,7 +2148,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inherent_safety_condition_option_have IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_option_have IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)]
@@ -2162,7 +2165,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inherent_safety_condition_map_have IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_map_have IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(map)]
@@ -2179,7 +2182,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inherent_safety_condition_multiset_have IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_multiset_have IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(multiset)]
@@ -2196,7 +2199,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inherent_safety_condition_option_withdraw IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_option_withdraw IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_option)]
@@ -2220,7 +2223,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inherent_safety_condition_map_withdraw IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_map_withdraw IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_map)]
@@ -2244,7 +2247,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inherent_safety_condition_map_withdraw_with_binding IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_map_withdraw_with_binding IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_map)]
@@ -2267,7 +2270,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inherent_safety_condition_multiset_withdraw IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_multiset_withdraw IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_multiset)]
@@ -2292,7 +2295,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inherent_safety_condition_option_guard IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_option_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_option)]
@@ -2312,7 +2315,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inherent_safety_condition_map_guard IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_map_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_map)]
@@ -2332,7 +2335,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inherent_safety_condition_option_general_guard IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_option_general_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_option)]
@@ -2352,7 +2355,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inherent_safety_condition_map_general_guard IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_map_general_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_map)]
@@ -2375,7 +2378,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inherent_safety_condition_multiset_guard IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_multiset_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_multiset)]
@@ -2397,7 +2400,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inherent_safety_condition_multiset_general_guard IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_multiset_general_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_multiset)]
@@ -2419,7 +2422,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inherent_safety_condition_option_deposit IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_option_deposit IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_option)]
@@ -2443,7 +2446,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inherent_safety_condition_map_deposit IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_map_deposit IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_map)]
@@ -2467,7 +2470,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] inherent_safety_condition_multiset_deposit IMPORTS.to_string() + code_str! {
+    #[test] inherent_safety_condition_multiset_deposit IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_multiset)]
@@ -2484,7 +2487,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] assert_safety_condition_fail IMPORTS.to_string() + code_str! {
+    #[test] assert_safety_condition_fail IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -2500,7 +2503,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] assert_safety_condition_readonly_fail IMPORTS.to_string() + code_str! {
+    #[test] assert_safety_condition_readonly_fail IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -2516,7 +2519,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] assert_safety_condition_property_fail IMPORTS.to_string() + code_str! {
+    #[test] assert_safety_condition_property_fail IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -2532,7 +2535,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] wrong_op_var_add_option IMPORTS.to_string() + code_str! {
+    #[test] wrong_op_var_add_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)]
@@ -2549,7 +2552,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] wrong_op_multiset_add_option IMPORTS.to_string() + code_str! {
+    #[test] wrong_op_multiset_add_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(multiset)]
@@ -2566,7 +2569,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] wrong_op_multiset_add_set IMPORTS.to_string() + code_str! {
+    #[test] wrong_op_multiset_add_set IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(multiset)]
@@ -2583,7 +2586,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] wrong_op_set_add_multiset IMPORTS.to_string() + code_str! {
+    #[test] wrong_op_set_add_multiset IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(set)]
@@ -2600,7 +2603,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] wrong_op_multiset_add_option_with_binding IMPORTS.to_string() + code_str! {
+    #[test] wrong_op_multiset_add_option_with_binding IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(multiset)]
@@ -2617,7 +2620,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] wrong_op_map_add_option IMPORTS.to_string() + code_str! {
+    #[test] wrong_op_map_add_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(map)]
@@ -2634,7 +2637,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] wrong_op_option_add_map IMPORTS.to_string() + code_str! {
+    #[test] wrong_op_option_add_map IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)]
@@ -2651,7 +2654,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] wrong_op_option_add_multiset IMPORTS.to_string() + code_str! {
+    #[test] wrong_op_option_add_multiset IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)]
@@ -2668,7 +2671,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] wrong_op_map_add_multiset IMPORTS.to_string() + code_str! {
+    #[test] wrong_op_map_add_multiset IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(map)]
@@ -2685,7 +2688,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] wrong_op_multiset_add_map IMPORTS.to_string() + code_str! {
+    #[test] wrong_op_multiset_add_map IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(multiset)]
@@ -2702,7 +2705,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] wrong_op_map_guard_option IMPORTS.to_string() + code_str! {
+    #[test] wrong_op_map_guard_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(map)]
@@ -2719,7 +2722,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] wrong_op_count_add_option IMPORTS.to_string() + code_str! {
+    #[test] wrong_op_count_add_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(count)]
@@ -2736,7 +2739,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] wrong_op_option_deposit_option IMPORTS.to_string() + code_str! {
+    #[test] wrong_op_option_deposit_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)]
@@ -2753,7 +2756,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] wrong_op_storage_option_add_option IMPORTS.to_string() + code_str! {
+    #[test] wrong_op_storage_option_add_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_option)]
@@ -2770,7 +2773,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] no_let_repeated_idents IMPORTS.to_string() + code_str! {
+    #[test] no_let_repeated_idents IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: Map<int, int>
@@ -2790,7 +2793,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] no_let_repeated_idents2 IMPORTS.to_string() + code_str! {
+    #[test] no_let_repeated_idents2 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: Map<int, int>
@@ -2807,7 +2810,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] no_let_repeated_idents3 IMPORTS.to_string() + code_str! {
+    #[test] no_let_repeated_idents3 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: Map<int, int>
@@ -2823,7 +2826,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] no_let_repeated_idents4 IMPORTS.to_string() + code_str! {
+    #[test] no_let_repeated_idents4 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)]
@@ -2851,7 +2854,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] type_recursion_fail_negative IMPORTS.to_string() + code_str! {
+    #[test] type_recursion_fail_negative IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 // this should fail because Map has a maybe_negative first param
@@ -2864,7 +2867,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] lemma_recursion_fail IMPORTS.to_string() + code_str! {
+    #[test] lemma_recursion_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)]
@@ -2899,7 +2902,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] lemma_recursion_assert_fail IMPORTS.to_string() + code_str! {
+    #[test] lemma_recursion_assert_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)]
@@ -2931,7 +2934,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] relation_codegen IMPORTS.to_string() + code_str! {
+    #[test] relation_codegen IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub x: int,
@@ -3139,7 +3142,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] relation_codegen_match IMPORTS.to_string() + code_str! {
+    #[test] relation_codegen_match IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub x: int,
@@ -3260,7 +3263,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] relation_codegen_special IMPORTS.to_string() + code_str! {
+    #[test] relation_codegen_special IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(option)]
@@ -3512,7 +3515,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] relation_codegen_special_general IMPORTS.to_string() + code_str! {
+    #[test] relation_codegen_special_general IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(option)]
@@ -3782,7 +3785,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] relation_codegen_opt_general IMPORTS.to_string() + code_str! {
+    #[test] relation_codegen_opt_general IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(option)]
@@ -3910,7 +3913,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] nondet_tokenizing IMPORTS.to_string() + code_str! {
+    #[test] nondet_tokenizing IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Z {
             fields {
                 #[sharding(variable)]
@@ -3988,7 +3991,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] pre_in_init IMPORTS.to_string() + code_str! {
+    #[test] pre_in_init IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -4004,7 +4007,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] self_in_transition IMPORTS.to_string() + code_str! {
+    #[test] self_in_transition IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -4020,7 +4023,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] post_in_transition IMPORTS.to_string() + code_str! {
+    #[test] post_in_transition IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub t: int,
@@ -4036,7 +4039,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_let_pattern IMPORTS.to_string() + code_str! {
+    #[test] test_let_pattern IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields { #[sharding(variable)] pub t: (int, int) }
 
@@ -4068,7 +4071,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] super_error IMPORTS.to_string() + code_str! {
+    #[test] super_error IMPORTS.to_string() + verus_code_str! {
         struct Bar { }
 
         state_machine!{ X {
@@ -4086,7 +4089,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] if_let_fail IMPORTS.to_string() + code_str! {
+    #[test] if_let_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_option)] pub so: Option<int>
@@ -4104,7 +4107,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] if_let_fail_with_else IMPORTS.to_string() + code_str! {
+    #[test] if_let_fail_with_else IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_option)] pub so: Option<int>
@@ -4124,7 +4127,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] if_let_fail_with_chain IMPORTS.to_string() + code_str! {
+    #[test] if_let_fail_with_chain IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_option)] pub so: Option<int>
@@ -4144,7 +4147,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] use_self_type IMPORTS.to_string() + code_str! {
+    #[test] use_self_type IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(variable)]
@@ -4206,7 +4209,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] bind_codegen IMPORTS.to_string() + code_str! {
+    #[test] bind_codegen IMPORTS.to_string() + verus_code_str! {
 
         tokenized_state_machine!{ Y {
             fields {
@@ -4416,7 +4419,7 @@ test_verify_one_file! {
 
         proof fn do_tokens() {
             let tracked mut m: Map<int, u64> = Map::tracked_empty();
-            m.tracked_insert(spec_literal_int("1"), 6);
+            m.tracked_insert(spec_literal_int("1"), 6u64);
             let tracked (Tracked(inst), Tracked(opt_token), Tracked(mut map_tokens)) = Y::Instance::initialize(m);
 
             match opt_token {
@@ -4442,7 +4445,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] bind_fail_add IMPORTS.to_string() + code_str! {
+    #[test] bind_fail_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(option)]
@@ -4459,7 +4462,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] bind_fail_deposit IMPORTS.to_string() + code_str! {
+    #[test] bind_fail_deposit IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(storage_option)]
@@ -4476,7 +4479,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] bind_fail_guard IMPORTS.to_string() + code_str! {
+    #[test] bind_fail_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(storage_option)]
@@ -4493,7 +4496,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] assert_let_fail_1_bind IMPORTS.to_string() + code_str! {
+    #[test] assert_let_fail_1_bind IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(variable)]
@@ -4510,7 +4513,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] assert_let_fail_0_bind IMPORTS.to_string() + code_str! {
+    #[test] assert_let_fail_0_bind IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(variable)]
@@ -4527,7 +4530,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] assert_require_let_codegen IMPORTS.to_string() + code_str! {
+    #[test] assert_require_let_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(variable)]
@@ -4689,7 +4692,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] count_codegen IMPORTS.to_string() + code_str! {
+    #[test] count_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(count)]
@@ -4794,7 +4797,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] persistent_option_remove_fail IMPORTS.to_string() + code_str! {
+    #[test] persistent_option_remove_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(persistent_option)]
@@ -4811,7 +4814,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] persistent_map_remove_fail IMPORTS.to_string() + code_str! {
+    #[test] persistent_map_remove_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(persistent_map)]
@@ -4828,7 +4831,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] persistent_bool_remove_fail IMPORTS.to_string() + code_str! {
+    #[test] persistent_bool_remove_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(persistent_bool)]
@@ -4845,7 +4848,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] use_plus_for_persistent_fail IMPORTS.to_string() + code_str! {
+    #[test] use_plus_for_persistent_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(persistent_bool)]
@@ -4862,7 +4865,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] use_union_for_nonpersistent_fail IMPORTS.to_string() + code_str! {
+    #[test] use_union_for_nonpersistent_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(bool)]
@@ -4879,7 +4882,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] persistent_count_remove_fail IMPORTS.to_string() + code_str! {
+    #[test] persistent_count_remove_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(persistent_count)]
@@ -4896,7 +4899,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] persistent_set_remove_fail IMPORTS.to_string() + code_str! {
+    #[test] persistent_set_remove_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(persistent_set)]
@@ -4913,7 +4916,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] persistent_option_codegen IMPORTS.to_string() + code_str! {
+    #[test] persistent_option_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(persistent_option)]
@@ -5083,7 +5086,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] persistent_map_codegen IMPORTS.to_string() + code_str! {
+    #[test] persistent_map_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(persistent_map)]
@@ -5253,7 +5256,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] pattern_binding_withdraw_assert_fails IMPORTS.to_string() + code_str! {
+    #[test] pattern_binding_withdraw_assert_fails IMPORTS.to_string() + verus_code_str! {
         pub enum Goo {
             Bar,
             Qux(u64),
@@ -5321,7 +5324,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] special_refutable_pattern_binding_codegen IMPORTS.to_string() + code_str! {
+    #[test] special_refutable_pattern_binding_codegen IMPORTS.to_string() + verus_code_str! {
         pub enum Goo {
             Bar,
             Qux(u64),
@@ -5793,13 +5796,13 @@ test_verify_one_file! {
 
         proof fn test_inst2() {
             let tracked mut p_m = Map::tracked_empty();
-            p_m.tracked_insert(spec_literal_int("1"), Goo::Qux(8));
+            p_m.tracked_insert(spec_literal_int("1"), Goo::Qux(8u64));
 
             let tracked (Tracked(inst), Tracked(mut m_token), Tracked(opt_token)) = Y::Instance::initialize(
-                map![spec_literal_int("1") => Goo::Qux(8)],
-                Option::Some(Goo::Qux(8)),
+                map![spec_literal_int("1") => Goo::Qux(8u64)],
+                Option::Some(Goo::Qux(8u64)),
                 p_m,
-                Option::Some(Goo::Qux(8)),
+                Option::Some(Goo::Qux(8u64)),
             );
 
             assert(m_token.dom().contains(spec_literal_int("1")));
@@ -5812,21 +5815,21 @@ test_verify_one_file! {
             inst.tr8(spec_literal_int("1"), &kv, &o);
 
             let tracked wi = inst.tr2(o);
-            assert(equal(wi, Goo::Qux(8)));
+            assert(equal(wi, Goo::Qux(8u64)));
 
             let tracked wi2 = inst.tr5(spec_literal_int("1"), kv);
-            assert(equal(wi2, Goo::Qux(8)));
+            assert(equal(wi2, Goo::Qux(8u64)));
         }
 
         proof fn test_inst3() {
             let tracked mut p_m = Map::tracked_empty();
-            p_m.tracked_insert(spec_literal_int("1"), Goo::Tal(8, 9));
+            p_m.tracked_insert(spec_literal_int("1"), Goo::Tal(8u64, 9u64));
 
             let tracked (Tracked(inst), Tracked(mut m_token), Tracked(opt_token)) = Y::Instance::initialize(
-                map![spec_literal_int("1") => Goo::Tal(8, 9)],
-                Option::Some(Goo::Tal(8, 9)),
+                map![spec_literal_int("1") => Goo::Tal(8u64, 9u64)],
+                Option::Some(Goo::Tal(8u64, 9u64)),
                 p_m,
-                Option::Some(Goo::Tal(8, 9)),
+                Option::Some(Goo::Tal(8u64, 9u64)),
             );
 
             assert(m_token.dom().contains(spec_literal_int("1")));
@@ -5839,10 +5842,10 @@ test_verify_one_file! {
             inst.tr9(spec_literal_int("1"), &kv, &o);
 
             let tracked wi = inst.tr3(o);
-            assert(equal(wi, Goo::Tal(8, 9)));
+            assert(equal(wi, Goo::Tal(8u64, 9u64)));
 
             let tracked wi2 = inst.tr6(spec_literal_int("1"), kv);
-            assert(equal(wi2, Goo::Tal(8, 9)));
+            assert(equal(wi2, Goo::Tal(8u64, 9u64)));
         }
 
         proof fn test_precondition_remove1(tracked inst: Y::Instance, tracked t: Y::opt)
@@ -5916,7 +5919,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] labels_wrong_type_name IMPORTS.to_string() + code_str! {
+    #[test] labels_wrong_type_name IMPORTS.to_string() + verus_code_str! {
         state_machine!{ Y {
             fields {
                 pub x: int,
@@ -5928,7 +5931,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] labels_init_missing IMPORTS.to_string() + code_str! {
+    #[test] labels_init_missing IMPORTS.to_string() + verus_code_str! {
         state_machine!{ Y {
             fields {
                 pub x: int,
@@ -5946,7 +5949,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] labels_init_missing2 IMPORTS.to_string() + code_str! {
+    #[test] labels_init_missing2 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ Y {
             fields {
                 pub x: int,
@@ -5964,7 +5967,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] labels_tr_missing IMPORTS.to_string() + code_str! {
+    #[test] labels_tr_missing IMPORTS.to_string() + verus_code_str! {
         state_machine!{ Y {
             fields {
                 pub x: int,
@@ -5982,7 +5985,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] labels_readonly_missing IMPORTS.to_string() + code_str! {
+    #[test] labels_readonly_missing IMPORTS.to_string() + verus_code_str! {
         state_machine!{ Y {
             fields {
                 pub x: int,
@@ -6000,7 +6003,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] bool_codegen IMPORTS.to_string() + code_str! {
+    #[test] bool_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(bool)]
@@ -6169,7 +6172,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] persistent_bool_codegen IMPORTS.to_string() + code_str! {
+    #[test] persistent_bool_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(persistent_bool)]
@@ -6302,7 +6305,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] persistent_count_codegen IMPORTS.to_string() + code_str! {
+    #[test] persistent_count_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(persistent_count)]
@@ -6380,7 +6383,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] set_codegen IMPORTS.to_string() + code_str! {
+    #[test] set_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(set)]
@@ -6539,7 +6542,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] persistent_set_codegen IMPORTS.to_string() + code_str! {
+    #[test] persistent_set_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(persistent_set)]
@@ -6659,7 +6662,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] tokenized_with_conditional IMPORTS.to_string() + code_str! {
+    #[test] tokenized_with_conditional IMPORTS.to_string() + verus_code_str! {
 
         tokenized_state_machine!{ Y {
             fields {
