@@ -20,7 +20,7 @@ use vstd::atomic_ghost::*;
 use vstd::modes::*;
 use std::sync::Arc;
 
-verus_old_todo_no_ghost_blocks!{
+verus!{
 
 use state_machines_macros::tokenized_state_machine;
 
@@ -469,25 +469,25 @@ struct_with_invariants!{
         head: AtomicU64<_, FifoQueue::head<T>, _>,
         tail: AtomicU64<_, FifoQueue::tail<T>, _>,
 
-        #[verifier::proof] instance: FifoQueue::Instance<T>,
+        instance: Tracked<FifoQueue::Instance<T>>,
     }
 
     pub closed spec fn wf(&self) -> bool {
         predicate {
             // The Cell IDs in the instance protocol match the cell IDs in the actual vector:
-            &&& self.instance.backing_cells().len() == self.buffer@.len()
+            &&& self.instance@.backing_cells().len() == self.buffer@.len()
             &&& (forall|i: int| 0 <= i && i < self.buffer@.len() as int ==>
-                self.instance.backing_cells().index(i) ===
+                self.instance@.backing_cells().index(i) ===
                     self.buffer@.index(i).id())
         }
 
         invariant on head with (instance) is (v: u64, g: FifoQueue::head<T>) {
-            &&& g@.instance === instance
+            &&& g@.instance === instance@
             &&& g@.value == v as int
         }
 
         invariant on tail with (instance) is (v: u64, g: FifoQueue::tail<T>) {
-            &&& g@.instance === instance
+            &&& g@.instance === instance@
             &&& g@.value == v as int
         }
     }
@@ -499,14 +499,14 @@ pub struct Producer<T> {
     queue: Arc<Queue<T>>,
     tail: usize,
 
-    #[verifier::proof] producer: FifoQueue::producer<T>
+    producer: Tracked<FifoQueue::producer<T>>
 }
 
 impl<T> Producer<T> {
     pub closed spec fn wf(&self) -> bool {
            (*self.queue).wf()
-        && self.producer@.instance === (*self.queue).instance
-        && self.producer@.value === ProducerState::Idle(self.tail as nat)
+        && self.producer@@.instance == (*self.queue).instance@
+        && self.producer@@.value == ProducerState::Idle(self.tail as nat)
         && (self.tail as int) < (*self.queue).buffer@.len()
     }
 }
@@ -517,33 +517,32 @@ pub struct Consumer<T> {
     queue: Arc<Queue<T>>,
     head: usize,
 
-    #[verifier::proof] consumer: FifoQueue::consumer<T>
+    consumer: Tracked<FifoQueue::consumer<T>>
 }
 
 impl<T> Consumer<T> {
     pub closed spec fn wf(&self) -> bool {
            (*self.queue).wf()
-        && self.consumer@.instance === (*self.queue).instance
-        && self.consumer@.value === ConsumerState::Idle(self.head as nat)
+        && self.consumer@@.instance === (*self.queue).instance@
+        && self.consumer@@.value === ConsumerState::Idle(self.head as nat)
         && (self.head as int) < (*self.queue).buffer@.len()
     }
 }
 // ANCHOR_END: impl_consumer_struct
 
 // ANCHOR: impl_new_queue
-pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
-    requires(len > 0);
-    ensures(|pc: (Producer<T>, Consumer<T>)| [
+pub fn new_queue<T>(len: usize) -> (pc: (Producer<T>, Consumer<T>))
+    requires len > 0,
+    ensures
         pc.0.wf(),
         pc.1.wf(),
-    ]);
-
+{
     // Initialize the vector to store the cells
     let mut backing_cells_vec = Vec::<PCell<T>>::empty();
 
     // Initialize map for the permissions to the cells
     // (keyed by the indices into the vector)
-    #[verifier::proof] let mut perms = Map::<nat, cell::PermissionOpt<T>>::tracked_empty();
+    let tracked mut perms = Map::<nat, cell::PermissionOpt<T>>::tracked_empty();
 
     while backing_cells_vec.len() < len
         invariant
@@ -558,7 +557,7 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
                     &&
                     perms.index(j)@.value.is_None(),
     {
-        #[verifier::spec] let i = backing_cells_vec.len();
+        let ghost i = backing_cells_vec.len();
         
         let (cell, cell_perm) = PCell::empty();
         backing_cells_vec.push(cell);
@@ -573,24 +572,23 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
     }
 
     // Vector for ids
-    #[verifier::spec] let mut backing_cells_ids;
-    proof {
-        backing_cells_ids = Seq::<CellId>::new(
+    let ghost mut backing_cells_ids =
+        Seq::<CellId>::new(
             backing_cells_vec@.len(),
             |i: int| backing_cells_vec@.index(i).id());
-    }
 
     // Initialize an instance of the FIFO queue
-    #[verifier::proof] let (Tracked(instance), Tracked(head_token), Tracked(tail_token), Tracked(producer_token), Tracked(consumer_token))
+    let tracked (Tracked(instance), Tracked(head_token), Tracked(tail_token), Tracked(producer_token), Tracked(consumer_token))
         = FifoQueue::Instance::initialize(backing_cells_ids, perms, perms);
 
     // Initialize atomics
-    let head_atomic = AtomicU64::new(instance, 0, head_token);
-    let tail_atomic = AtomicU64::new(instance, 0, tail_token);
+    let tracked_inst: Tracked<FifoQueue::Instance<T>> = Tracked(instance.clone());
+    let head_atomic = AtomicU64::new(Ghost(tracked_inst), 0, Tracked(head_token));
+    let tail_atomic = AtomicU64::new(Ghost(tracked_inst), 0, Tracked(tail_token));
 
     // Initialize the queue
     let queue = Queue::<T> {
-        instance,
+        instance: Tracked(instance),
         head: head_atomic,
         tail: tail_atomic,
         buffer: backing_cells_vec,
@@ -602,13 +600,13 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
     let prod = Producer::<T> {
         queue: queue_arc.clone(),
         tail: 0,
-        producer: producer_token,
+        producer: Tracked(producer_token),
     };
 
     let cons = Consumer::<T> {
         queue: queue_arc,
         head: 0,
-        consumer: consumer_token,
+        consumer: Tracked(consumer_token),
     };
 
     (prod, cons)
@@ -617,10 +615,10 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
 
 // ANCHOR: impl_producer
 impl<T> Producer<T> {
-    fn enqueue(&mut self, t: T) {
-        requires(old(self).wf());
-        ensures(self.wf());
-
+    fn enqueue(&mut self, t: T)
+        requires old(self).wf(),
+        ensures self.wf(),
+    {
         // Loop: if the queue is full, then block until it is not.  
         loop {
             invariant(self.wf());
@@ -635,7 +633,7 @@ impl<T> Producer<T> {
             // the `tail` to this value.
             let next_tail = if self.tail + 1 == len { 0 } else { self.tail + 1 };
 
-            #[verifier::proof] let cell_perm: Option<cell::PermissionOpt<T>>;
+            let tracked cell_perm: Option<cell::PermissionOpt<T>>;
 
             // Get the current `head` value from the shared atomic.
             let head = atomic_with_ghost!(&queue.head => load();
@@ -646,7 +644,7 @@ impl<T> Producer<T> {
                     // If so, we proceed with the `produce_start` transition
                     // and obtain the cell permission.
                     cell_perm = if head != next_tail as u64 {
-                        #[verifier::proof] let cp = queue.instance.produce_start(&head_token, &mut self.producer);
+                        let tracked cp = queue.instance.borrow().produce_start(&head_token, self.producer.borrow_mut());
                         Option::Some(cp)
                     } else {
                         Option::None
@@ -657,22 +655,20 @@ impl<T> Producer<T> {
             // Here's where we "actually" do the `head != next_tail` check:
             if head != next_tail as u64 {
                 // Unwrap the cell_perm from the option.
-                #[verifier::proof] let cell_perm = match cell_perm {
+                let tracked mut cell_perm = match cell_perm {
                     Option::Some(cp) => cp,
                     Option::None => { assert(false); proof_from_false() }
                 };
 
                 // Write the element t into the buffer, updating the cell
                 // from uninitialized to initialized (to the value t).
-                let mut cell_perm = #[verifier(ghost_wrapper)] /* vattr */ tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ cell_perm);
-                queue.buffer.index(self.tail).put(&mut cell_perm, t);
-                #[verifier::proof] let cell_perm = cell_perm.get();
+                queue.buffer.index(self.tail).put(Tracked(&mut cell_perm), t);
 
                 // Store the updated tail to the shared `tail` atomic,
                 // while performing the `produce_end` transition.
                 atomic_with_ghost!(&queue.tail => store(next_tail as u64); ghost tail_token => {
-                    queue.instance.produce_end(cell_perm,
-                        cell_perm, &mut tail_token, &mut self.producer);
+                    queue.instance.borrow().produce_end(cell_perm,
+                        cell_perm, &mut tail_token, self.producer.borrow_mut());
                 });
 
                 self.tail = next_tail;
@@ -686,9 +682,10 @@ impl<T> Producer<T> {
 
 // ANCHOR: impl_consumer
 impl<T> Consumer<T> {
-    fn dequeue(&mut self) -> T {
-        requires(old(self).wf());
-        ensures(|t: T| self.wf());
+    fn dequeue(&mut self) -> (t: T)
+        requires old(self).wf(),
+        ensures self.wf(),
+    {
 
         loop {
             invariant(self.wf());
@@ -700,12 +697,12 @@ impl<T> Consumer<T> {
 
             let next_head = if self.head + 1 == len { 0 } else { self.head + 1 };
 
-            #[verifier::proof] let cell_perm: Option<cell::PermissionOpt<T>>;
+            let tracked cell_perm: Option<cell::PermissionOpt<T>>;
             let tail = atomic_with_ghost!(&queue.tail => load();
                 returning tail;
                 ghost tail_token => {
                     cell_perm = if self.head as u64 != tail {
-                        #[verifier::proof] let (_, Tracked(cp)) = queue.instance.consume_start(&tail_token, &mut self.consumer);
+                        let tracked (_, Tracked(cp)) = queue.instance.borrow().consume_start(&tail_token, self.consumer.borrow_mut());
                         Option::Some(cp)
                     } else {
                         Option::None
@@ -714,17 +711,15 @@ impl<T> Consumer<T> {
             );
 
             if self.head as u64 != tail {
-                #[verifier::proof] let cell_perm = match cell_perm {
+                let tracked mut cell_perm = match cell_perm {
                     Option::Some(cp) => cp,
                     Option::None => { assert(false); proof_from_false() }
                 };
-                let mut cell_perm = #[verifier(ghost_wrapper)] /* vattr */ tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ cell_perm);
-                let t = queue.buffer.index(self.head).take(&mut cell_perm);
-                #[verifier::proof] let cell_perm = cell_perm.get();
+                let t = queue.buffer.index(self.head).take(Tracked(&mut cell_perm));
 
                 atomic_with_ghost!(&queue.head => store(next_head as u64); ghost head_token => {
-                    queue.instance.consume_end(cell_perm,
-                        cell_perm, &mut head_token, &mut self.consumer);
+                    queue.instance.borrow().consume_end(cell_perm,
+                        cell_perm, &mut head_token, self.consumer.borrow_mut());
                 });
 
                 self.head = next_head;
