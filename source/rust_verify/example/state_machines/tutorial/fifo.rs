@@ -581,7 +581,7 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
     }
 
     // Initialize an instance of the FIFO queue
-    #[verifier::proof] let (Trk(instance), Trk(head_token), Trk(tail_token), Trk(producer_token), Trk(consumer_token))
+    #[verifier::proof] let (Tracked(instance), Tracked(head_token), Tracked(tail_token), Tracked(producer_token), Tracked(consumer_token))
         = FifoQueue::Instance::initialize(backing_cells_ids, perms, perms);
 
     // Initialize atomics
@@ -705,7 +705,7 @@ impl<T> Consumer<T> {
                 returning tail;
                 ghost tail_token => {
                     cell_perm = if self.head as u64 != tail {
-                        #[verifier::proof] let (_, Trk(cp)) = queue.instance.consume_start(&tail_token, &mut self.consumer);
+                        #[verifier::proof] let (_, Tracked(cp)) = queue.instance.consume_start(&tail_token, &mut self.consumer);
                         Option::Some(cp)
                     } else {
                         Option::None

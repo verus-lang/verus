@@ -208,15 +208,15 @@ fn take_step(
     #[verifier::proof] interp1: AuthFrag::auth<nat, Block>,
     #[verifier::proof] lt1: LinearTree,
     tree1_state: TreeSM::State,
-) -> (Trk<AuthFrag::auth<nat, Block>>, Trk<LinearTree>, Gho<TreeSM::State>)
+) -> (Tracked<AuthFrag::auth<nat, Block>>, Tracked<LinearTree>, Gho<TreeSM::State>)
 {
   requires([
       DiskSM::State::update_child(state1, state2, is_left, new_val),
       equal(interp1, state_interp_fn(inst, state1)),
       tree_relation(inst, lt1, tree1_state)
   ]);
-  ensures(|ret: (Trk<AuthFrag::auth<nat, Block>>, Trk<LinearTree>, Gho<TreeSM::State>)| {
-      let (Trk(interp2), Trk(lt2), Gho(tree2)) = ret;
+  ensures(|ret: (Tracked<AuthFrag::auth<nat, Block>>, Tracked<LinearTree>, Gho<TreeSM::State>)| {
+      let (Tracked(interp2), Tracked(lt2), Gho(tree2)) = ret;
       equal(interp2, state_interp_fn(inst, state2))
       && TreeSM::State::update_child(tree1_state, tree2, is_left, new_val)
       && tree_relation(inst, lt2, tree2)
@@ -264,7 +264,7 @@ fn take_step(
 
                         assert(tree_relation(inst, lt2, tree2));
 
-                        (Trk(interp2), Trk(lt2), Gho(tree2))
+                        (Tracked(interp2), Tracked(lt2), Gho(tree2))
                     }
                     LinearTree::Node(lt_node_fragment, _, _) => {
                         inst.values_agree(left_address, &interp, &lt_node_fragment);

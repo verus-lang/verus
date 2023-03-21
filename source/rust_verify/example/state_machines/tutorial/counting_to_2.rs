@@ -109,10 +109,10 @@ struct_with_invariants!{
 fn main() {
     // Initialize protocol 
 
-    let tracked (Trk(instance),
-        Trk(counter_token),
-        Trk(inc_a_token),
-        Trk(inc_b_token)) = X::Instance::initialize();
+    let tracked (Tracked(instance),
+        Tracked(counter_token),
+        Tracked(inc_a_token),
+        Tracked(inc_b_token)) = X::Instance::initialize();
 
     // Initialize the counter
 

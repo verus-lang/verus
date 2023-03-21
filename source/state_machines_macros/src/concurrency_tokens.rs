@@ -1145,10 +1145,10 @@ pub fn exchange_stream(
                 let ty = &oa.1;
                 match oa.2 {
                     Mode::Ghost => {
-                        quote! { vstd::modes::Gho<#ty> }
+                        quote! { ::builtin::Ghost<#ty> }
                     }
                     Mode::Tracked => {
-                        quote! { vstd::modes::Trk<#ty> }
+                        quote! { ::builtin::Tracked<#ty> }
                     }
                 }
             })
@@ -1157,16 +1157,17 @@ pub fn exchange_stream(
             .iter()
             .map(|oa| {
                 let name = &oa.0;
-                match oa.2 {
-                    Mode::Ghost => {
-                        quote! { vstd::modes::Gho(#name) }
-                    }
-                    Mode::Tracked => {
-                        quote! { vstd::modes::Trk(#name) }
-                    }
-                }
+                quote! { #name }
             })
             .collect();
+        let let_stmts: Vec<TokenStream> = out_params
+            .iter()
+            .map(|oa| {
+                let name = &oa.0;
+                quote! { let #name = #name.view(); }
+            })
+            .collect();
+
         let tup_typ = quote! { (#(#param_tys),*) };
         let tup_names = quote! { (#(#param_names),*) };
 
@@ -1175,6 +1176,7 @@ pub fn exchange_stream(
                 ::builtin::ensures(
                     |tmp_tuple: #tup_typ| ::builtin_macros::verus_proof_expr!([{
                         let #tup_names = tmp_tuple;
+                        #(#let_stmts)*
                         #((#enss))&&*
                     }])
                 );
@@ -1649,10 +1651,11 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 #[verifier(external_body)] /* vattr */
                 #[verifier(returns(proof))] /* vattr */
                 #[verifier::proof]
-                pub fn split(#[verifier::proof] self, i: nat) -> (vstd::modes::Trk<Self>, vstd::modes::Trk<Self>) {
+                pub fn split(#[verifier::proof] self, i: nat) -> (::builtin::Tracked<Self>, ::builtin::Tracked<Self>) {
                     ::builtin::requires(i <= self.view().count);
-                    ::builtin::ensures(|s: (vstd::modes::Trk<Self>, vstd::modes::Trk<Self>)| {
-                        let (vstd::modes::Trk(x), vstd::modes::Trk(y)) = s;
+                    ::builtin::ensures(|s: (::builtin::Tracked<Self>, ::builtin::Tracked<Self>)| {
+                        let x = s.0.view();
+                        let y = s.1.view();
                         ::builtin::equal(x.view().instance, self.view().instance)
                         && ::builtin::equal(y.view().instance, self.view().instance)
                         && ::builtin::equal(x.view().key, self.view().key)
@@ -1688,10 +1691,11 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 #[verifier(external_body)] /* vattr */
                 #[verifier(returns(proof))] /* vattr */
                 #[verifier::proof]
-                pub fn split(#[verifier::proof] self, i: nat) -> (vstd::modes::Trk<Self>, vstd::modes::Trk<Self>) {
+                pub fn split(#[verifier::proof] self, i: nat) -> (::builtin::Tracked<Self>, ::builtin::Tracked<Self>) {
                     ::builtin::requires(i <= self.view().count);
-                    ::builtin::ensures(|s: (vstd::modes::Trk<Self>, vstd::modes::Trk<Self>)| {
-                        let (vstd::modes::Trk(x), vstd::modes::Trk(y)) = s;
+                    ::builtin::ensures(|s: (::builtin::Tracked<Self>, ::builtin::Tracked<Self>)| {
+                        let x = s.0.view();
+                        let y = s.1.view();
                         ::builtin::equal(x.view().instance, self.view().instance)
                         && ::builtin::equal(y.view().instance, self.view().instance)
                         && ::builtin::equal(x.view().count, i)

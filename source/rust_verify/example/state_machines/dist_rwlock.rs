@@ -330,7 +330,7 @@ impl<T> RwLock<T> {
         let tracked exc_locked_token;
         let tracked mut ref_counts_tokens;
         proof {
-            let tracked (Trk(inst0), Trk(exc_locked_token0), Trk(ref_counts_tokens0), _, _, _, _) =
+            let tracked (Tracked(inst0), Tracked(exc_locked_token0), Tracked(ref_counts_tokens0), _, _, _, _) =
                 DistRwLock::Instance::initialize(rc_width as int, t, Option::Some(t));
             inst = inst0;
             exc_locked_token = exc_locked_token0;

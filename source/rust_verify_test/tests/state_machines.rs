@@ -2890,7 +2890,7 @@ test_verify_one_file! {
 
             #[inductive(initialize)]
             fn inductive_init(post: Self) {
-                #[verifier::proof] let tracked (Trk(inst), Trk(token)) = X::Instance::initialize();
+                let tracked (Tracked(inst), Tracked(token)) = X::Instance::initialize();
                 inst.ro(&token);
                 // this should derive a contradiction if not for the recursion checking
             }
@@ -2921,10 +2921,11 @@ test_verify_one_file! {
             }
         }}
 
-        #[verifier::proof]
-        fn foo_lemma() {
-            #[verifier::proof] let (Trk(inst), Trk(token)) = X::Instance::initialize();
+        verus!{
+        proof fn foo_lemma() {
+            let tracked (Tracked(inst), Tracked(token)) = X::Instance::initialize();
             inst.ro(&token);
+        }
         }
     } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
@@ -3958,29 +3959,30 @@ test_verify_one_file! {
             }
         }}
 
-        #[verifier::proof]
-        fn go() {
-            #[verifier::proof] let (Trk(instance), Trk(mut v1), Trk(v2)) = Z::Instance::initialize();
+        verus!{
+        proof fn go() {
+            let tracked (Tracked(instance), Tracked(mut v1), Tracked(v2)) = Z::Instance::initialize();
             assert(equal(v1.view().instance, instance));
             assert(equal(v2.view().instance, instance));
             assert(equal(v1.view().value, spec_literal_int("0")));
             assert(equal(v2.view().value, spec_literal_int("1")));
             assert(equal(instance.c(), spec_literal_int("3")));
 
-            #[verifier::proof] instance.tr1(&mut v1);
+            instance.tr1(&mut v1);
             assert(equal(v1.view().instance, instance));
             assert(equal(v1.view().value, spec_literal_int("2")));
 
-            #[verifier::spec] let old_v1_value = v1.view().value;
-            #[verifier::proof] let (Gho(birds_eye_v2), Gho(birds_eye_nt)) = instance.tr2(&mut v1);
+            let old_v1_value = v1.view().value;
+            let tracked (Ghost(birds_eye_v2), Ghost(birds_eye_nt)) = instance.tr2(&mut v1);
             assert(equal(v1.view().instance, instance));
             assert(equal(v1.view().value,
                 birds_eye_nt + instance.c() + old_v1_value - birds_eye_v2));
 
-            #[verifier::spec] let old_v1_value = v1.view().value;
-            #[verifier::spec] let birds_eye_nt = instance.tr3(&mut v1, &v2);
+            let old_v1_value = v1.view().value;
+            let birds_eye_nt = instance.tr3(&mut v1, &v2);
             assert(equal(v1.view().instance, instance));
             assert(equal(v1.view().value, birds_eye_nt + instance.c() + old_v1_value + spec_literal_int("3") * v2.view().value));
+        }
         }
     } => Ok(())
 }
@@ -4185,8 +4187,9 @@ test_verify_one_file! {
 
         }}
 
-        pub fn foo() {
-            #[verifier::proof] let (Trk(inst), Trk(mut x_tok), Trk(mut r_tok)) = Y::Instance::ini(
+        verus!{
+        pub proof fn foo() {
+            let tracked (Tracked(inst), Tracked(mut x_tok), Tracked(mut r_tok)) = Y::Instance::ini(
                 Y::State { x: spec_literal_int("5"), recursing: Option::None }
             );
             inst.tr(spec_literal_int("19"), &mut x_tok);
@@ -4197,6 +4200,7 @@ test_verify_one_file! {
 
             inst.tr3(&mut r_tok);
             assert(equal(Option::<Box<Y::State>>::None, r_tok.view().value));
+        }
         }
     } => Ok(())
 }
@@ -4349,84 +4353,71 @@ test_verify_one_file! {
               }
            )
         }
-        } // verus!
 
-        #[verifier::proof]
-        fn correct_tr1(pre: Y::State, post: Y::State) {
+        proof fn correct_tr1(pre: Y::State, post: Y::State) {
             requires(Y::State::tr1(pre, post));
             ensures(rel_tr1(pre, post));
         }
 
-        #[verifier::proof]
-        fn rev_tr1(pre: Y::State, post: Y::State) {
+        proof fn rev_tr1(pre: Y::State, post: Y::State) {
             requires(rel_tr1(pre, post));
             ensures(Y::State::tr1(pre, post));
         }
 
-        #[verifier::proof]
-        fn correct_tr1_strong(pre: Y::State, post: Y::State) {
+        proof fn correct_tr1_strong(pre: Y::State, post: Y::State) {
             requires(Y::State::tr1_strong(pre, post));
             ensures(rel_tr1_strong(pre, post));
         }
 
-        #[verifier::proof]
-        fn rev_tr1_strong(pre: Y::State, post: Y::State) {
+        proof fn rev_tr1_strong(pre: Y::State, post: Y::State) {
             requires(rel_tr1_strong(pre, post));
             ensures(Y::State::tr1_strong(pre, post));
         }
 
-        #[verifier::proof]
-        fn correct_tr2(pre: Y::State, post: Y::State, key: int) {
+        proof fn correct_tr2(pre: Y::State, post: Y::State, key: int) {
             requires(Y::State::tr2(pre, post, key));
             ensures(rel_tr2(pre, post, key));
         }
 
-        #[verifier::proof]
-        fn rev_tr2(pre: Y::State, post: Y::State, key: int) {
+        proof fn rev_tr2(pre: Y::State, post: Y::State, key: int) {
             requires(rel_tr2(pre, post, key));
             ensures(Y::State::tr2(pre, post, key));
         }
 
-        #[verifier::proof]
-        fn correct_tr2_strong(pre: Y::State, post: Y::State, key: int) {
+        proof fn correct_tr2_strong(pre: Y::State, post: Y::State, key: int) {
             requires(Y::State::tr2_strong(pre, post, key));
             ensures(rel_tr2_strong(pre, post, key));
         }
 
-        #[verifier::proof]
-        fn rev_tr2_strong(pre: Y::State, post: Y::State, key: int) {
+        proof fn rev_tr2_strong(pre: Y::State, post: Y::State, key: int) {
             requires(rel_tr2_strong(pre, post, key));
             ensures(Y::State::tr2_strong(pre, post, key));
         }
 
-        #[verifier::proof]
-        fn correct_tr3(pre: Y::State, post: Y::State, key: int) {
+        proof fn correct_tr3(pre: Y::State, post: Y::State, key: int) {
             requires(Y::State::tr3(pre, post, key));
             ensures(rel_tr3(pre, post, key));
         }
 
-        #[verifier::proof]
-        fn rev_tr3(pre: Y::State, post: Y::State, key: int) {
+        proof fn rev_tr3(pre: Y::State, post: Y::State, key: int) {
             requires(rel_tr3(pre, post, key));
             ensures(Y::State::tr3(pre, post, key));
         }
 
-        #[verifier::proof]
-        fn correct_tr3_strong(pre: Y::State, post: Y::State, key: int) {
+        proof fn correct_tr3_strong(pre: Y::State, post: Y::State, key: int) {
             requires(Y::State::tr3_strong(pre, post, key));
             ensures(rel_tr3_strong(pre, post, key));
         }
 
-        #[verifier::proof]
-        fn rev_tr3_strong(pre: Y::State, post: Y::State, key: int) {
+        proof fn rev_tr3_strong(pre: Y::State, post: Y::State, key: int) {
             requires(rel_tr3_strong(pre, post, key));
             ensures(Y::State::tr3_strong(pre, post, key));
         }
 
-        fn do_tokens() {
-            #[verifier::proof] let mut m: Map<int, u64> = Map::tracked_empty();
+        proof fn do_tokens() {
+            let tracked mut m: Map<int, u64> = Map::tracked_empty();
             m.tracked_insert(spec_literal_int("1"), 6);
-            #[verifier::proof] let (Trk(inst), Trk(opt_token), Trk(mut map_tokens)) = Y::Instance::initialize(m);
+            let tracked (Tracked(inst), Tracked(opt_token), Tracked(mut map_tokens)) = Y::Instance::initialize(m);
 
             match opt_token {
                 Option::None => { assert(false); }
@@ -4434,16 +4425,18 @@ test_verify_one_file! {
                     inst.tr1(opt_token);
 
                     assert(map_tokens.dom().contains(spec_literal_int("1")));
-                    #[verifier::proof] let map_token = map_tokens.tracked_remove(spec_literal_int("1"));
+                    let tracked map_token = map_tokens.tracked_remove(spec_literal_int("1"));
 
-                    #[verifier::proof] let the_guard = inst.tr4(spec_literal_int("1"), &map_token);
+                    let tracked the_guard = inst.tr4(spec_literal_int("1"), &map_token);
                     assert(*the_guard == 6);
 
-                    #[verifier::proof] let t = inst.tr2(spec_literal_int("1"), map_token);
+                    let tracked t = inst.tr2(spec_literal_int("1"), map_token);
                     assert(t == 6);
                 }
             };
         }
+
+        } // verus!
 
     } => Ok(())
 }
@@ -4656,11 +4649,11 @@ test_verify_one_file! {
         }
 
         proof fn test_transition(
-            #[verifier::proof] inst: Y::Instance,
-            #[verifier::proof] t1: Y::opt1,
-            #[verifier::proof] t2: Y::opt2,
-            #[verifier::proof] t3: Y::opt3,
-            #[verifier::proof] t4: Y::opt4
+            tracked inst: Y::Instance,
+            tracked t1: Y::opt1,
+            tracked t2: Y::opt2,
+            tracked t3: Y::opt3,
+            tracked t4: Y::opt4
         ) {
             requires([
                 equal(inst, t1@.instance),
@@ -4671,11 +4664,11 @@ test_verify_one_file! {
                 equal(t2@.value, Option::Some(5)),
             ]);
 
-            #[verifier::spec] let old_t1 = t1;
-            #[verifier::spec] let old_t3 = t3;
+            let old_t1 = t1;
+            let old_t3 = t3;
 
-            #[verifier::proof] let mut t1 = t1;
-            #[verifier::proof] let mut t3 = t3;
+            let tracked mut t1 = t1;
+            let tracked mut t3 = t3;
 
             inst.tr1(&mut t1, &t2, &mut t3, &t4);
 
@@ -4686,7 +4679,7 @@ test_verify_one_file! {
         }
 
         proof fn test_start() {
-            #[verifier::proof] let (Trk(inst), Trk(t1), Trk(t2), Trk(t3), Trk(t4)) = Y::Instance::initialize();
+            let tracked (Tracked(inst), Tracked(t1), Tracked(t2), Tracked(t3), Tracked(t4)) = Y::Instance::initialize();
             test_transition(inst, t1, t2, t3, t4);
         }
 
@@ -4728,38 +4721,33 @@ test_verify_one_file! {
             }
         }}
 
-        #[verifier::spec]
-        fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+        verus!{
+
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
             post.c == pre.c + spec_literal_nat("2")
         }
 
-        #[verifier::spec]
-        fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
             post.c == pre.c + spec_literal_nat("2")
         }
 
-        #[verifier::spec]
-        fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+        spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
             pre.c >= spec_literal_nat("2") && post.c == pre.c
         }
 
-        #[verifier::spec]
-        fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+        spec fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
             pre.c >= spec_literal_nat("2") && post.c == pre.c
         }
 
-        #[verifier::spec]
-        fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
+        spec fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
             pre.c >= spec_literal_nat("2") && post.c == pre.c - spec_literal_nat("2")
         }
 
-        #[verifier::spec]
-        fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
+        spec fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
             pre.c >= spec_literal_nat("2") && post.c == pre.c - spec_literal_nat("2")
         }
 
-        #[verifier::proof]
-        fn correct_tr(pre: Y::State, post: Y::State) {
+        proof fn correct_tr(pre: Y::State, post: Y::State) {
             ensures([
                 rel_tr1(pre, post) == Y::State::tr_add(pre, post),
                 rel_tr1_strong(pre, post) == Y::State::tr_add_strong(pre, post),
@@ -4770,11 +4758,11 @@ test_verify_one_file! {
             ]);
         }
 
-        fn test_inst() {
-            #[verifier::proof] let (Trk(inst), Trk(t1)) = Y::Instance::initialize();
+        proof fn test_inst() {
+            let tracked (Tracked(inst), Tracked(t1)) = Y::Instance::initialize();
             assert(t1.view().count == spec_literal_nat("9"));
 
-            #[verifier::proof] let (Trk(t2), Trk(t3)) = t1.split(spec_literal_nat("2"));
+            let tracked (Tracked(t2), Tracked(t3)) = t1.split(spec_literal_nat("2"));
 
             assert(t2.view().count == spec_literal_nat("2"));
             assert(t3.view().count == spec_literal_nat("7"));
@@ -4782,23 +4770,25 @@ test_verify_one_file! {
             inst.tr_have(&t2);
             inst.tr_remove(t2);
 
-            #[verifier::proof] let t4 = inst.tr_add();
+            let tracked t4 = inst.tr_add();
             assert(t4.view().count == spec_literal_nat("2"));
 
-            #[verifier::proof] let q = t4.join(t3);
+            let tracked q = t4.join(t3);
             assert(q.view().count == spec_literal_nat("9"));
         }
 
-        fn test_join_fail() {
-            #[verifier::proof] let (Trk(inst1), Trk(t1)) = Y::Instance::initialize();
-            #[verifier::proof] let (Trk(inst2), Trk(t2)) = Y::Instance::initialize();
-            #[verifier::proof] let t = t1.join(t2); // FAILS
+        proof fn test_join_fail() {
+            let tracked (Tracked(inst1), Tracked(t1)) = Y::Instance::initialize();
+            let tracked (Tracked(inst2), Tracked(t2)) = Y::Instance::initialize();
+            let tracked t = t1.join(t2); // FAILS
         }
 
-        fn test_split_fail() {
-            #[verifier::proof] let (Trk(inst), Trk(t1)) = Y::Instance::initialize();
+        proof fn test_split_fail() {
+            let tracked (Tracked(inst), Tracked(t1)) = Y::Instance::initialize();
 
-            #[verifier::proof] let (Trk(t2), Trk(t3)) = t1.split(spec_literal_nat("10")); // FAILS
+            let tracked (Tracked(t2), Tracked(t3)) = t1.split(spec_literal_nat("10")); // FAILS
+        }
+
         }
     } => Err(e) => assert_fails(e, 2)
 }
@@ -5048,10 +5038,7 @@ test_verify_one_file! {
             rel_tr3(pre, post)
         }
 
-        } // verus!
-
-        #[verifier::proof]
-        fn correct_tr(pre: Y::State, post: Y::State) {
+        proof fn correct_tr(pre: Y::State, post: Y::State) {
             ensures([
                 rel_tr1(pre, post) == Y::State::tr1(pre, post),
                 rel_tr1_strong(pre, post) == Y::State::tr1_strong(pre, post),
@@ -5062,33 +5049,36 @@ test_verify_one_file! {
             ]);
         }
 
-        fn test_inst() {
-            #[verifier::proof] let (Trk(inst), Trk(_c), Trk(d_opt)) = Y::Instance::initialize();
+        proof fn test_inst() {
+            let tracked (Tracked(inst), Tracked(_c), Tracked(d_opt)) = Y::Instance::initialize();
 
-            #[verifier::proof] let d = match d_opt {
+            let tracked d = match d_opt {
                 Option::Some(d) => d,
                 Option::None => proof_from_false(),
             };
 
-            #[verifier::proof] let cloned = d.clone();
+            let tracked cloned = d.clone();
             assert(equal(cloned.view().instance, inst));
             assert(d.view().value == spec_literal_int("7"));
 
-            #[verifier::proof] let c = inst.tr1(&d);
+            let tracked c = inst.tr1(&d);
             assert(c.view().value == spec_literal_int("3"));
             assert(equal(c.view().instance, inst));
 
-            #[verifier::proof] let c2_opt = inst.tr2();
-            #[verifier::proof] let c2 = match c2_opt {
+            let tracked c2_opt = inst.tr2();
+            let tracked c2 = match c2_opt {
                 Option::Some(c2) => c2,
                 Option::None => proof_from_false(),
             };
             assert(c2.view().value == spec_literal_int("3"));
             assert(equal(c2.view().instance, inst));
 
-            #[verifier::proof] let c_opt = Option::Some(c);
+            let tracked c_opt = Option::Some(c);
             inst.tr3(&c_opt);
         }
+
+        } // verus!
+
     } => Ok(())
 }
 
@@ -5234,23 +5224,22 @@ test_verify_one_file! {
                 assert(rel_tr3(pre, post));
             }
         }
-        } // verus!
 
-        fn test_inst() {
-            #[verifier::proof] let (Trk(inst), Trk(mut init_m)) = Y::Instance::initialize();
+        proof fn test_inst() {
+            let tracked (Tracked(inst), Tracked(mut init_m)) = Y::Instance::initialize();
             assert(init_m.dom().contains(spec_literal_int("1")));
-            #[verifier::proof] let m_1 = init_m.tracked_remove(spec_literal_int("1"));
+            let tracked m_1 = init_m.tracked_remove(spec_literal_int("1"));
             assert(m_1.view().value == spec_literal_int("2"));
 
-            #[verifier::proof] let cloned = m_1.clone();
+            let tracked cloned = m_1.clone();
             assert(equal(cloned.view().instance, inst));
             assert(cloned.view().key == spec_literal_int("1"));
             assert(cloned.view().value == spec_literal_int("2"));
 
-            #[verifier::proof] let m_3 = inst.tr1(&m_1);
+            let tracked m_3 = inst.tr1(&m_1);
             assert(m_3.view().value == spec_literal_int("4"));
 
-            #[verifier::proof] let m_5_12 = inst.tr2();
+            let tracked m_5_12 = inst.tr2();
             assert(m_5_12.dom().contains(spec_literal_int("5")));
             assert(m_5_12.index(spec_literal_int("5")).view().value == spec_literal_int("9"));
             assert(m_5_12.dom().contains(spec_literal_int("12")));
@@ -5258,6 +5247,8 @@ test_verify_one_file! {
 
             inst.tr3(&m_5_12);
         }
+
+        } // verus!
     } => Ok(())
 }
 
@@ -5471,8 +5462,7 @@ test_verify_one_file! {
         }}
 
         verus! {
-        #[verifier::spec]
-        fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
             match pre.opt {
                 Option::Some(Goo::Bar) => {
                     match pre.storage_opt {
@@ -5489,8 +5479,7 @@ test_verify_one_file! {
             }
         }
 
-        #[verifier::spec]
-        fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
             match pre.opt {
                 Option::Some(Goo::Bar) => {
                     match pre.storage_opt {
@@ -5681,8 +5670,7 @@ test_verify_one_file! {
             }
         }
 
-        #[verifier::spec]
-        fn rel_tr6_strong(pre: Y::State, post: Y::State, key: int) -> bool {
+        spec fn rel_tr6_strong(pre: Y::State, post: Y::State, key: int) -> bool {
             pre.m.dom().contains(key)
             && match pre.m.index(key) {
                 Goo::Tal(i1, i2) => {
@@ -5702,8 +5690,7 @@ test_verify_one_file! {
             }
         }
 
-        #[verifier::spec]
-        fn rel_tr7(pre: Y::State, post: Y::State, key: int) -> bool {
+        spec fn rel_tr7(pre: Y::State, post: Y::State, key: int) -> bool {
             match pre.opt {
                 Option::Some(Goo::Bar) => {
                     pre.m.dom().contains(key)
@@ -5716,13 +5703,11 @@ test_verify_one_file! {
             }
         }
 
-        #[verifier::spec]
-        fn rel_tr7_strong(pre: Y::State, post: Y::State, key: int) -> bool {
+        spec fn rel_tr7_strong(pre: Y::State, post: Y::State, key: int) -> bool {
             rel_tr7(pre, post, key)
         }
 
-        #[verifier::spec]
-        fn rel_tr8(pre: Y::State, post: Y::State, key: int) -> bool {
+        spec fn rel_tr8(pre: Y::State, post: Y::State, key: int) -> bool {
             match pre.opt {
                 Option::Some(Goo::Qux(i1)) => {
                     pre.m.dom().contains(key)
@@ -5735,13 +5720,11 @@ test_verify_one_file! {
             }
         }
 
-        #[verifier::spec]
-        fn rel_tr8_strong(pre: Y::State, post: Y::State, key: int) -> bool {
+        spec fn rel_tr8_strong(pre: Y::State, post: Y::State, key: int) -> bool {
             rel_tr8(pre, post, key)
         }
 
-        #[verifier::spec]
-        fn rel_tr9(pre: Y::State, post: Y::State, key: int) -> bool {
+        spec fn rel_tr9(pre: Y::State, post: Y::State, key: int) -> bool {
             match pre.opt {
                 Option::Some(Goo::Tal(i1, i2)) => {
                     pre.m.dom().contains(key)
@@ -5754,13 +5737,11 @@ test_verify_one_file! {
             }
         }
 
-        #[verifier::spec]
-        fn rel_tr9_strong(pre: Y::State, post: Y::State, key: int) -> bool {
+        spec fn rel_tr9_strong(pre: Y::State, post: Y::State, key: int) -> bool {
             rel_tr9(pre, post, key)
         }
 
-        #[verifier::proof]
-        fn correct_tr(pre: Y::State, post: Y::State, key: int) {
+        proof fn correct_tr(pre: Y::State, post: Y::State, key: int) {
           ensures([
               rel_tr1(pre, post) == Y::State::tr1(pre, post),
               rel_tr1_strong(pre, post) == Y::State::tr1_strong(pre, post),
@@ -5783,13 +5764,11 @@ test_verify_one_file! {
           ]);
         }
 
-        } // verus!
-
-        fn test_inst1() {
-            #[verifier::proof] let mut p_m = Map::tracked_empty();
+        proof fn test_inst1() {
+            let tracked mut p_m = Map::tracked_empty();
             p_m.tracked_insert(spec_literal_int("1"), Goo::Bar);
 
-            #[verifier::proof] let (Trk(inst), Trk(mut m_token), Trk(opt_token)) = Y::Instance::initialize(
+            let tracked (Tracked(inst), Tracked(mut m_token), Tracked(opt_token)) = Y::Instance::initialize(
                 map![spec_literal_int("1") => Goo::Bar],
                 Option::Some(Goo::Bar),
                 p_m,
@@ -5797,26 +5776,26 @@ test_verify_one_file! {
             );
 
             assert(m_token.dom().contains(spec_literal_int("1")));
-            #[verifier::proof] let kv = m_token.tracked_remove(spec_literal_int("1"));
-            #[verifier::proof] let o = match opt_token {
+            let tracked kv = m_token.tracked_remove(spec_literal_int("1"));
+            let tracked o = match opt_token {
                 Option::None => proof_from_false(),
                 Option::Some(t) => t,
             };
 
             inst.tr7(spec_literal_int("1"), &kv, &o);
 
-            #[verifier::proof] let wi = inst.tr1(o);
+            let tracked wi = inst.tr1(o);
             assert(equal(wi, Goo::Bar));
 
-            #[verifier::proof] let wi2 = inst.tr4(spec_literal_int("1"), kv);
+            let tracked wi2 = inst.tr4(spec_literal_int("1"), kv);
             assert(equal(wi2, Goo::Bar));
         }
 
-        fn test_inst2() {
-            #[verifier::proof] let mut p_m = Map::tracked_empty();
+        proof fn test_inst2() {
+            let tracked mut p_m = Map::tracked_empty();
             p_m.tracked_insert(spec_literal_int("1"), Goo::Qux(8));
 
-            #[verifier::proof] let (Trk(inst), Trk(mut m_token), Trk(opt_token)) = Y::Instance::initialize(
+            let tracked (Tracked(inst), Tracked(mut m_token), Tracked(opt_token)) = Y::Instance::initialize(
                 map![spec_literal_int("1") => Goo::Qux(8)],
                 Option::Some(Goo::Qux(8)),
                 p_m,
@@ -5824,26 +5803,26 @@ test_verify_one_file! {
             );
 
             assert(m_token.dom().contains(spec_literal_int("1")));
-            #[verifier::proof] let kv = m_token.tracked_remove(spec_literal_int("1"));
-            #[verifier::proof] let o = match opt_token {
+            let tracked kv = m_token.tracked_remove(spec_literal_int("1"));
+            let tracked o = match opt_token {
                 Option::None => proof_from_false(),
                 Option::Some(t) => t,
             };
 
             inst.tr8(spec_literal_int("1"), &kv, &o);
 
-            #[verifier::proof] let wi = inst.tr2(o);
+            let tracked wi = inst.tr2(o);
             assert(equal(wi, Goo::Qux(8)));
 
-            #[verifier::proof] let wi2 = inst.tr5(spec_literal_int("1"), kv);
+            let tracked wi2 = inst.tr5(spec_literal_int("1"), kv);
             assert(equal(wi2, Goo::Qux(8)));
         }
 
-        fn test_inst3() {
-            #[verifier::proof] let mut p_m = Map::tracked_empty();
+        proof fn test_inst3() {
+            let tracked mut p_m = Map::tracked_empty();
             p_m.tracked_insert(spec_literal_int("1"), Goo::Tal(8, 9));
 
-            #[verifier::proof] let (Trk(inst), Trk(mut m_token), Trk(opt_token)) = Y::Instance::initialize(
+            let tracked (Tracked(inst), Tracked(mut m_token), Tracked(opt_token)) = Y::Instance::initialize(
                 map![spec_literal_int("1") => Goo::Tal(8, 9)],
                 Option::Some(Goo::Tal(8, 9)),
                 p_m,
@@ -5851,81 +5830,79 @@ test_verify_one_file! {
             );
 
             assert(m_token.dom().contains(spec_literal_int("1")));
-            #[verifier::proof] let kv = m_token.tracked_remove(spec_literal_int("1"));
-            #[verifier::proof] let o = match opt_token {
+            let tracked kv = m_token.tracked_remove(spec_literal_int("1"));
+            let tracked o = match opt_token {
                 Option::None => proof_from_false(),
                 Option::Some(t) => t,
             };
 
             inst.tr9(spec_literal_int("1"), &kv, &o);
 
-            #[verifier::proof] let wi = inst.tr3(o);
+            let tracked wi = inst.tr3(o);
             assert(equal(wi, Goo::Tal(8, 9)));
 
-            #[verifier::proof] let wi2 = inst.tr6(spec_literal_int("1"), kv);
+            let tracked wi2 = inst.tr6(spec_literal_int("1"), kv);
             assert(equal(wi2, Goo::Tal(8, 9)));
         }
 
-        fn test_precondition_remove1(inst: Y::Instance, t: Y::opt)
+        proof fn test_precondition_remove1(tracked inst: Y::Instance, tracked t: Y::opt)
         {
           requires(equal(t.view().instance, inst));
-          #[verifier::proof] let k = inst.tr1(t); // FAILS
+          let tracked k = inst.tr1(t); // FAILS
         }
 
-        fn test_precondition_remove2(inst: Y::Instance, t: Y::opt)
+        proof fn test_precondition_remove2(tracked inst: Y::Instance, tracked t: Y::opt)
         {
           requires(equal(t.view().instance, inst));
-          #[verifier::proof] let k = inst.tr2(t); // FAILS
+          let tracked k = inst.tr2(t); // FAILS
         }
 
-        fn test_precondition_remove3(inst: Y::Instance, t: Y::opt)
+        proof fn test_precondition_remove3(tracked inst: Y::Instance, tracked t: Y::opt)
         {
           requires(equal(t.view().instance, inst));
-          #[verifier::proof] let k = inst.tr3(t); // FAILS
+          let tracked k = inst.tr3(t); // FAILS
         }
 
-        fn test_precondition_map_remove1(inst: Y::Instance, t: Y::m)
+        proof fn test_precondition_map_remove1(tracked inst: Y::Instance, tracked t: Y::m)
         {
           requires(equal(t.view().instance, inst) && t.view().key == spec_literal_int("1"));
-          #[verifier::proof] let k = inst.tr4(spec_literal_int("1"), t); // FAILS
+          let tracked k = inst.tr4(spec_literal_int("1"), t); // FAILS
         }
 
-        fn test_precondition_map_remove2(inst: Y::Instance, t: Y::m)
+        proof fn test_precondition_map_remove2(tracked inst: Y::Instance, tracked t: Y::m)
         {
           requires(equal(t.view().instance, inst) && t.view().key == spec_literal_int("1"));
-          #[verifier::proof] let k = inst.tr5(spec_literal_int("1"), t); // FAILS
+          let tracked k = inst.tr5(spec_literal_int("1"), t); // FAILS
         }
 
-        fn test_precondition_map_remove3(inst: Y::Instance, t: Y::m)
+        proof fn test_precondition_map_remove3(tracked inst: Y::Instance, tracked t: Y::m)
         {
           requires(equal(t.view().instance, inst) && t.view().key == spec_literal_int("1"));
-          #[verifier::proof] let k = inst.tr6(spec_literal_int("1"), t); // FAILS
+          let tracked k = inst.tr6(spec_literal_int("1"), t); // FAILS
         }
 
-        fn test_precondition_have1(inst: Y::Instance, t: Y::opt, u: Y::m)
+        proof fn test_precondition_have1(tracked inst: Y::Instance, tracked t: Y::opt, tracked u: Y::m)
         {
           requires(equal(t.view().instance, inst) && equal(u.view().instance, inst) && u.view().key == spec_literal_int("1")
               && equal(t.view().value, Goo::Bar)
           );
-          #[verifier::proof] let k = inst.tr7(spec_literal_int("1"), &u, &t); // FAILS
+          let tracked k = inst.tr7(spec_literal_int("1"), &u, &t); // FAILS
         }
 
-        fn test_precondition_have2(inst: Y::Instance, t: Y::opt, u: Y::m)
+        proof fn test_precondition_have2(tracked inst: Y::Instance, tracked t: Y::opt, tracked u: Y::m)
         {
           requires(equal(t.view().instance, inst) && equal(u.view().instance, inst) && u.view().key == spec_literal_int("1")
               && equal(u.view().value, Goo::Bar)
           );
-          #[verifier::proof] let k = inst.tr7(spec_literal_int("1"), &u, &t); // FAILS
+          let tracked k = inst.tr7(spec_literal_int("1"), &u, &t); // FAILS
         }
 
-        fn test_precondition_have3(inst: Y::Instance, t: Y::opt, u: Y::m)
+        proof fn test_precondition_have3(tracked inst: Y::Instance, tracked t: Y::opt, tracked u: Y::m)
         {
           requires(equal(t.view().instance, inst) && equal(u.view().instance, inst) && u.view().key == spec_literal_int("1")
               && equal(u.view().value, t.view().value));
-          #[verifier::proof] let k = inst.tr8(spec_literal_int("1"), &u, &t); // FAILS
+          let tracked k = inst.tr8(spec_literal_int("1"), &u, &t); // FAILS
         }
-
-        verus!{
 
         proof fn test_precondition_have4(tracked inst: Y::Instance, tracked t: Y::opt, tracked u: Y::m)
         {
@@ -6151,42 +6128,42 @@ test_verify_one_file! {
             ]);
         }
 
-        }
-
-        fn test_inst1() {
-            #[verifier::proof] let (Trk(inst), Trk(token_f)) = Y::Instance::init_false();
+        proof fn test_inst1() {
+            let tracked (Tracked(inst), Tracked(token_f)) = Y::Instance::init_false();
             assert(token_f.is_None());
 
-            #[verifier::proof] let tok = inst.tr_add();
+            let tracked tok = inst.tr_add();
             assert(equal(tok.view().instance, inst));
             inst.tr_have(&tok);
             inst.tr_remove(tok);
 
-            #[verifier::proof] let opt_tok = inst.tr_add_gen(true);
+            let tracked opt_tok = inst.tr_add_gen(true);
             assert(opt_tok.is_Some());
             assert(equal(opt_tok.get_Some_0().view().instance, inst));
             inst.tr_have_gen(true, &opt_tok);
             inst.tr_remove_gen(true, opt_tok);
 
-            #[verifier::proof] let opt_tok = inst.tr_add_gen(false);
+            let tracked opt_tok = inst.tr_add_gen(false);
             assert(opt_tok.is_None());
             inst.tr_have_gen(false, &opt_tok);
             inst.tr_remove_gen(false, opt_tok);
         }
 
-        fn test_inst1_fail() {
-            #[verifier::proof] let (Trk(inst), Trk(token_f)) = Y::Instance::init_false();
+        proof fn test_inst1_fail() {
+            let tracked (Tracked(inst), Tracked(token_f)) = Y::Instance::init_false();
             assert(token_f.is_None());
 
-            #[verifier::proof] let opt_tok = inst.tr_add_gen(false);
+            let tracked opt_tok = inst.tr_add_gen(false);
             assert(opt_tok.is_None());
             inst.tr_have_gen(true, &opt_tok);   // FAILS
         }
 
-        fn test_inst2() {
-            #[verifier::proof] let (Trk(inst), Trk(token_t)) = Y::Instance::init_true();
+        proof fn test_inst2() {
+            let tracked (Tracked(inst), Tracked(token_t)) = Y::Instance::init_true();
             assert(token_t.is_Some());
             assert(equal(token_t.get_Some_0().view().instance, inst));
+        }
+
         }
     } => Err(e) => assert_fails(e, 3)
 }
@@ -6270,10 +6247,7 @@ test_verify_one_file! {
             (x ==> pre.b) && (post.b === pre.b)
         }
 
-        }
-
-        #[verifier::proof]
-        fn correct_tr(pre: Y::State, post: Y::State, x: bool) {
+        proof fn correct_tr(pre: Y::State, post: Y::State, x: bool) {
             ensures([
                 rel_tr1(pre, post) == Y::State::tr_add(pre, post),
                 rel_tr1_strong(pre, post) == Y::State::tr_add_strong(pre, post),
@@ -6287,40 +6261,42 @@ test_verify_one_file! {
             ]);
         }
 
-        fn test_inst1() {
-            #[verifier::proof] let (Trk(inst), Trk(token_f)) = Y::Instance::init_false();
+        proof fn test_inst1() {
+            let tracked (Tracked(inst), Tracked(token_f)) = Y::Instance::init_false();
             assert(token_f.is_None());
 
-            #[verifier::proof] let tok = inst.tr_add();
+            let tracked tok = inst.tr_add();
             assert(equal(tok.view().instance, inst));
             inst.tr_have(&tok);
 
-            #[verifier::proof] let tok1 = tok.clone();
+            let tracked tok1 = tok.clone();
             assert(equal(tok, tok1));
 
-            #[verifier::proof] let opt_tok = inst.tr_add_gen(true);
+            let tracked opt_tok = inst.tr_add_gen(true);
             assert(opt_tok.is_Some());
             assert(equal(opt_tok.get_Some_0().view().instance, inst));
             inst.tr_have_gen(true, &opt_tok);
 
-            #[verifier::proof] let opt_tok = inst.tr_add_gen(false);
+            let tracked opt_tok = inst.tr_add_gen(false);
             assert(opt_tok.is_None());
             inst.tr_have_gen(false, &opt_tok);
         }
 
-        fn test_inst1_fail() {
-            #[verifier::proof] let (Trk(inst), Trk(token_f)) = Y::Instance::init_false();
+        proof fn test_inst1_fail() {
+            let tracked (Tracked(inst), Tracked(token_f)) = Y::Instance::init_false();
             assert(token_f.is_None());
 
-            #[verifier::proof] let opt_tok = inst.tr_add_gen(false);
+            let tracked opt_tok = inst.tr_add_gen(false);
             assert(opt_tok.is_None());
             inst.tr_have_gen(true, &opt_tok);   // FAILS
         }
 
-        fn test_inst2() {
-            #[verifier::proof] let (Trk(inst), Trk(token_t)) = Y::Instance::init_true();
+        proof fn test_inst2() {
+            let tracked (Tracked(inst), Tracked(token_t)) = Y::Instance::init_true();
             assert(token_t.is_Some());
             assert(equal(token_t.get_Some_0().view().instance, inst));
+        }
+
         }
     } => Err(e) => assert_fails(e, 1)
 }
@@ -6379,26 +6355,26 @@ test_verify_one_file! {
             ]);
         }
 
-        }
-
-        fn test_inst() {
-            #[verifier::proof] let (Trk(inst), Trk(t1)) = Y::Instance::initialize();
+        proof fn test_inst() {
+            let tracked (Tracked(inst), Tracked(t1)) = Y::Instance::initialize();
             assert(t1.view().count == spec_literal_nat("9"));
 
-            #[verifier::proof] let t2 = t1.weaken(spec_literal_nat("2"));
+            let tracked t2 = t1.weaken(spec_literal_nat("2"));
 
             inst.tr_have(&t2);
 
-            #[verifier::proof] let t4 = inst.tr_add();
+            let tracked t4 = inst.tr_add();
             assert(t4.view().count == spec_literal_nat("2"));
 
-            #[verifier::proof] let t2_clone = t2.clone();
+            let tracked t2_clone = t2.clone();
             assert(equal(t2, t2_clone));
         }
 
-        fn test_weaken_fail() {
-            #[verifier::proof] let (Trk(inst), Trk(t1)) = Y::Instance::initialize();
-            #[verifier::proof] let t2 = t1.weaken(spec_literal_nat("800")); // FAILS
+        proof fn test_weaken_fail() {
+            let tracked (Tracked(inst), Tracked(t1)) = Y::Instance::initialize();
+            let tracked t2 = t1.weaken(spec_literal_nat("800")); // FAILS
+        }
+
         }
     } => Err(e) => assert_fails(e, 1)
 }
@@ -6516,10 +6492,7 @@ test_verify_one_file! {
             && post.b === pre.b.difference(Set::empty().insert(6))
         }
 
-        }
-
-        #[verifier::proof]
-        fn correct_tr(pre: Y::State, post: Y::State) {
+        proof fn correct_tr(pre: Y::State, post: Y::State) {
             ensures([
                 rel_tr1(pre, post) == Y::State::tr_add(pre, post),
                 rel_tr1_strong(pre, post) == Y::State::tr_add_strong(pre, post),
@@ -6537,22 +6510,21 @@ test_verify_one_file! {
             ]);
         }
 
-        #[verifier::proof]
-        fn test_inst1() {
-            #[verifier::proof] let (Trk(inst), Trk(token_f)) = Y::Instance::initialize();
+        proof fn test_inst1() {
+            let tracked (Tracked(inst), Tracked(token_f)) = Y::Instance::initialize();
             assert(Set::empty().insert(spec_literal_int("19")).contains(spec_literal_int("19")));
             assert(token_f.dom().contains(spec_literal_int("19")));
             assert(equal(token_f.index(spec_literal_int("19")).view(), Y::token![
                 inst => b => spec_literal_int("19")
             ]));
 
-            #[verifier::proof] let token1 = inst.tr_add();
+            let tracked token1 = inst.tr_add();
             assert(equal(token1.view().instance, inst));
             assert(token1.view().key == spec_literal_int("5"));
             inst.tr_have(&token1);
             inst.tr_remove(token1);
 
-            #[verifier::proof] let token_set = inst.tr_add_gen();
+            let tracked token_set = inst.tr_add_gen();
             assert(Set::empty().insert(spec_literal_int("6")).contains(spec_literal_int("6")));
             assert(token_set.dom().contains(spec_literal_int("6")));
             assert(equal(token_set.index(spec_literal_int("6")).view(), Y::token![
@@ -6560,6 +6532,8 @@ test_verify_one_file! {
             ]));
             inst.tr_have_gen(&token_set);
             inst.tr_remove_gen(token_set);
+        }
+
         }
     } => Err(e) => assert_fails(e, 2)
 }
@@ -6641,10 +6615,7 @@ test_verify_one_file! {
             && pre.b === post.b
         }
 
-        }
-
-        #[verifier::proof]
-        fn correct_tr(pre: Y::State, post: Y::State) {
+        proof fn correct_tr(pre: Y::State, post: Y::State) {
             ensures([
                 rel_tr1(pre, post) == Y::State::tr_add(pre, post),
                 rel_tr1_strong(pre, post) == Y::State::tr_add_strong(pre, post),
@@ -6658,16 +6629,15 @@ test_verify_one_file! {
             ]);
         }
 
-        #[verifier::proof]
-        fn test_inst1() {
-            #[verifier::proof] let (Trk(inst), Trk(token_f)) = Y::Instance::initialize();
+        proof fn test_inst1() {
+            let tracked (Tracked(inst), Tracked(token_f)) = Y::Instance::initialize();
             assert(Set::empty().insert(spec_literal_int("19")).contains(spec_literal_int("19")));
             assert(token_f.dom().contains(spec_literal_int("19")));
             assert(equal(token_f.index(spec_literal_int("19")).view(), Y::token![
                 inst => b => spec_literal_int("19")
             ]));
 
-            #[verifier::proof] let token1 = inst.tr_add();
+            let tracked token1 = inst.tr_add();
             assert(equal(token1.view().instance, inst));
             assert(token1.view().key == spec_literal_int("5"));
             inst.tr_have(&token1);
@@ -6675,13 +6645,15 @@ test_verify_one_file! {
             let token1_clone = token1.clone();
             assert(equal(token1_clone, token1));
 
-            #[verifier::proof] let token_set = inst.tr_add_gen();
+            let tracked token_set = inst.tr_add_gen();
             assert(Set::empty().insert(spec_literal_int("6")).contains(spec_literal_int("6")));
             assert(token_set.dom().contains(spec_literal_int("6")));
             assert(equal(token_set.index(spec_literal_int("6")).view(), Y::token![
                 inst => b => spec_literal_int("6")
             ]));
             inst.tr_have_gen(&token_set);
+        }
+
         }
     } => Ok(())
 }
@@ -6728,26 +6700,28 @@ test_verify_one_file! {
             }
         }}
 
-        #[verifier::proof] fn test1() {
-            #[verifier::proof] let (Trk(inst), Trk(x), Trk(mut y)) = Y::Instance::initialize(spec_literal_int("0"), spec_literal_int("0"));
+        verus!{
+        proof fn test1() {
+            let tracked (Tracked(inst), Tracked(x), Tracked(mut y)) = Y::Instance::initialize(spec_literal_int("0"), spec_literal_int("0"));
             inst.upd(&x, &mut y);
             assert(y.view().value == spec_literal_int("1"));
         }
 
-        #[verifier::proof] fn test2() {
-            #[verifier::proof] let (Trk(inst), Trk(x), Trk(mut y)) = Y::Instance::initialize(spec_literal_int("12"), spec_literal_int("0"));
+        proof fn test2() {
+            let tracked (Tracked(inst), Tracked(x), Tracked(mut y)) = Y::Instance::initialize(spec_literal_int("12"), spec_literal_int("0"));
             inst.upd(&x, &mut y);
             assert(y.view().value == spec_literal_int("2"));
         }
 
-        #[verifier::proof] fn test3() {
-            #[verifier::proof] let (Trk(inst), Trk(x), Trk(mut y)) = Y::Instance::initialize(spec_literal_int("0"), spec_literal_int("2"));
+        proof fn test3() {
+            let tracked (Tracked(inst), Tracked(x), Tracked(mut y)) = Y::Instance::initialize(spec_literal_int("0"), spec_literal_int("2"));
             inst.req(&x, &mut y); // FAILS
         }
 
-        #[verifier::proof] fn test4() {
-            #[verifier::proof] let (Trk(inst), Trk(x), Trk(mut y)) = Y::Instance::initialize(spec_literal_int("1"), spec_literal_int("1"));
+        proof fn test4() {
+            let tracked (Tracked(inst), Tracked(x), Tracked(mut y)) = Y::Instance::initialize(spec_literal_int("1"), spec_literal_int("1"));
             inst.req(&x, &mut y); // FAILS
+        }
         }
 
     } => Err(e) => assert_fails(e, 2)

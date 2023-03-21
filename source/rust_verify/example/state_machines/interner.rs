@@ -173,7 +173,7 @@ impl<T> Interner<T> {
             s.wf(inst)
         }),
     {
-        let tracked (Trk(inst), Trk(auth), Trk(_f)) = InternSystem::Instance::empty();
+        let tracked (Tracked(inst), Tracked(auth), Tracked(_f)) = InternSystem::Instance::empty();
         let store = Vec::new();
 
         (Interner { inst: Tracked(inst.clone()), auth: Tracked(auth), store }, Tracked(inst))

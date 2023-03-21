@@ -72,7 +72,7 @@ tokenized_state_machine!{ State {
 }}
 
 proof fn option_example() {
-    #[verifier::proof] let (Trk(instance), Trk(mut token_exists), Trk(token_opt)) =
+    #[verifier::proof] let (Tracked(instance), Tracked(mut token_exists), Tracked(token_opt)) =
         State::Instance::initialize(5);
 
     #[verifier::proof] let token = token_opt.tracked_unwrap();

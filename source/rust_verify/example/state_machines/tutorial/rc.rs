@@ -269,7 +269,7 @@ impl<S> MyRc<S> {
         let tracked inv;
         let tracked g;
         proof {
-            let tracked (Trk(inst0), Trk(mut rc_token), _) = RefCounter::Instance::initialize_empty(Option::None);
+            let tracked (Tracked(inst0), Tracked(mut rc_token), _) = RefCounter::Instance::initialize_empty(Option::None);
             inst = inst0;
 
             let tracked reader0 = inst.do_deposit(ptr_perm, &mut rc_token, ptr_perm);

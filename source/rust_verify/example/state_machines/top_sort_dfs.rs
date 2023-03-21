@@ -533,7 +533,7 @@ fn compute_top_sort(graph: &ConcreteDirectedGraph) -> (tsr: TopSortResult)
     )
 {
 
-    let tracked (Trk(instance), Trk(unv), Trk(_), Trk(top_sort_token))
+    let tracked (Tracked(instance), Tracked(unv), _, Tracked(top_sort_token))
         = TopSort::Instance::<usize>::initialize(graph@);
 
     let mut dfs_state = DfsState {
