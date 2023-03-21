@@ -140,7 +140,7 @@ fn do_count(num_threads: u32) {
     // ANCHOR: loop_spawn
     // Spawn threads
 
-    let mut join_handles: Vec<JoinHandle<Proof<X::stamped_tickets>>> = Vec::new();
+    let mut join_handles: Vec<JoinHandle<Tracked<X::stamped_tickets>>> = Vec::new();
 
     let mut i = 0;
     while i < num_threads
@@ -152,7 +152,7 @@ fn do_count(num_threads: u32) {
             join_handles@.len() == i as int,
             forall |j: int, ret| 0 <= j && j < i ==>
                 join_handles@.index(j).predicate(ret) ==>
-                    ret.0@.instance === instance && ret.0@.count == 1,
+                    ret@@.instance === instance && ret@@.count == 1,
             (*global_arc).wf(),
             (*global_arc).instance@ === instance,
     {
@@ -166,9 +166,9 @@ fn do_count(num_threads: u32) {
         let global_arc = global_arc.clone();
 
         let join_handle = spawn(move || {
-            ensures(|new_token: Proof<X::stamped_tickets>|
-                new_token.0@.instance === instance
-                    && new_token.0@.count == spec_cast_integer::<_, nat>(1)
+            ensures(|new_token: Tracked<X::stamped_tickets>|
+                new_token@@.instance === instance
+                    && new_token@@.count == spec_cast_integer::<_, nat>(1)
             );
 
             let tracked unstamped_token = unstamped_token;
@@ -186,7 +186,7 @@ fn do_count(num_threads: u32) {
                 }
             );
 
-            Proof(stamped_token)
+            Tracked(stamped_token)
         });
 
         join_handles.push(join_handle);
@@ -208,7 +208,7 @@ fn do_count(num_threads: u32) {
             join_handles@.len() as int + i as int == num_threads,
             forall |j: int, ret| 0 <= j && j < join_handles@.len() ==>
                 #[trigger] join_handles@.index(j).predicate(ret) ==>
-                    ret.0@.instance === instance && ret.0@.count == 1,
+                    ret@@.instance === instance && ret@@.count == 1,
             (*global_arc).wf(),
             (*global_arc).instance@ === instance,
     {
@@ -216,8 +216,10 @@ fn do_count(num_threads: u32) {
         let join_handle = join_handles.pop();
 
         match join_handle.join() {
-            Result::Ok(Proof(token)) => {
-                stamped_tokens = stamped_tokens.join(token);
+            Result::Ok(token) => {
+                proof {
+                    stamped_tokens = stamped_tokens.join(token.get());
+                }
             }
             _ => { return; }
         };
