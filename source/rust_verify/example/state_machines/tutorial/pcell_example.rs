@@ -22,7 +22,7 @@ fn main() {
     assert(perm@ === pcell_opt![ pcell.id() => Option::None ]);
 
     // The above could also be written by accessing the fields of the
-    // `PermissionOptData` struct:
+    // `PointsToData` struct:
     assert(perm@.pcell === pcell.id());
     assert(perm@.value === Option::None);
 

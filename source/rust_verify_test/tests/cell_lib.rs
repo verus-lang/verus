@@ -273,7 +273,7 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-// Test that cell::PermissionOpt<T> correctly inherits the Send and Sync properties of T
+// Test that cell::PointsTo<T> correctly inherits the Send and Sync properties of T
 
 test_verify_one_file! {
     #[test] permission_inherits_sync IMPORTS.to_string() + code_str! {
@@ -286,7 +286,7 @@ test_verify_one_file! {
         pub fn f<T: Sync>(t: T) {
         }
 
-        pub fn foo(r: cell::PermissionOpt<Foo>) {
+        pub fn foo(r: cell::PointsTo<Foo>) {
             f(r);
         }
     } => Err(e) => assert_error_msg(e, "the trait `std::marker::Sync` is not implemented for `Foo`")
@@ -303,7 +303,7 @@ test_verify_one_file! {
         pub fn f<T: Send>(t: T) {
         }
 
-        pub fn foo(r: cell::PermissionOpt<Foo>) {
+        pub fn foo(r: cell::PointsTo<Foo>) {
             f(r);
         }
     } => Err(e) => assert_error_msg(e, "the trait `std::marker::Send` is not implemented for `Foo`")

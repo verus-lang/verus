@@ -36,7 +36,7 @@ struct Node<V> {
 
 struct DListXor<V> {
     ptrs: Ghost<Seq<PPtr<Node<V>>>>,
-    perms: Tracked<Map<nat, PermissionOpt<Node<V>>>>,
+    perms: Tracked<Map<nat, PointsTo<Node<V>>>>,
 
     head: u64,
     tail: u64,
@@ -173,7 +173,7 @@ impl<V> DListXor<V> {
             let tail_ptr_u64 = self.tail;
             proof { lemma_usize_u64(tail_ptr_u64); }
             let tail_ptr = PPtr::<Node<V>>::from_usize(tail_ptr_u64 as usize);
-            let tracked mut tail_perm: PermissionOpt<Node<V>> =
+            let tracked mut tail_perm: PointsTo<Node<V>> =
                 (self.perms.borrow_mut()).tracked_remove((self.ptrs@.len() - 1) as nat);
             let mut tail_node = tail_ptr.take(Tracked(&mut tail_perm));
             let second_to_last_ptr = tail_node.xored;
@@ -244,7 +244,7 @@ impl<V> DListXor<V> {
         let last_u64 = self.tail;
         proof { lemma_usize_u64(last_u64); }
         let last_ptr = PPtr::<Node<V>>::from_usize(last_u64 as usize);
-        let last_perm: Tracked<PermissionOpt<Node<V>>> = Tracked(
+        let last_perm: Tracked<PointsTo<Node<V>>> = Tracked(
             (self.perms.borrow_mut()).tracked_remove((self.ptrs@.len() - 1) as nat)
         );
         let last_node = last_ptr.into_inner(last_perm);
@@ -353,7 +353,7 @@ impl<V> DListXor<V> {
         let first_u64 = self.head;
         proof { lemma_usize_u64(first_u64); }
         let first_ptr = PPtr::<Node<V>>::from_usize(first_u64 as usize);
-        let first_perm: Tracked<PermissionOpt<Node<V>>> = Tracked(
+        let first_perm: Tracked<PointsTo<Node<V>>> = Tracked(
             (self.perms.borrow_mut()).tracked_remove(0)
         );
         let first_node = first_ptr.into_inner(first_perm);
@@ -473,7 +473,7 @@ impl<V> DListXor<V> {
             let head_ptr_u64 = self.head;
             proof { lemma_usize_u64(head_ptr_u64); }
             let head_ptr = PPtr::<Node<V>>::from_usize(head_ptr_u64 as usize);
-            let tracked mut head_perm: PermissionOpt<Node<V>> =
+            let tracked mut head_perm: PointsTo<Node<V>> =
                 (self.perms.borrow_mut()).tracked_remove(0);
             let mut head_node = head_ptr.take(Tracked(&mut head_perm));
             let second_ptr = head_node.xored;

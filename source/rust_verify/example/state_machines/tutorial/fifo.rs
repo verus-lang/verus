@@ -50,7 +50,7 @@ tokenized_state_machine!{FifoQueue<T> {
         // All the stored permissions
 
         #[sharding(storage_map)]
-        pub storage: Map<nat, cell::PermissionOpt<T>>,
+        pub storage: Map<nat, cell::PointsTo<T>>,
 
         // Represents the shared `head` field
 
@@ -190,7 +190,7 @@ tokenized_state_machine!{FifoQueue<T> {
     }
 
     init!{
-        initialize(backing_cells: Seq<CellId>, storage: Map<nat, cell::PermissionOpt<T>>) {
+        initialize(backing_cells: Seq<CellId>, storage: Map<nat, cell::PointsTo<T>>) {
             // Upon initialization, the user needs to deposit _all_ the relevant
             // cell permissions to start with. Each permission should indicate
             // an empty cell.
@@ -264,7 +264,7 @@ tokenized_state_machine!{FifoQueue<T> {
         // (coming from "outside" the system) we can't compute it as a
         // function of the current state, unlike how we did it for the
         // `produce_start` transition).
-        produce_end(perm: cell::PermissionOpt<T>) {
+        produce_end(perm: cell::PointsTo<T>) {
             // In order to complete the produce step,
             // we have to be in ProducerState::Producing.
             require(pre.producer.is_Producing());
@@ -335,7 +335,7 @@ tokenized_state_machine!{FifoQueue<T> {
     }
 
     transition!{
-        consume_end(perm: cell::PermissionOpt<T>) {
+        consume_end(perm: cell::PointsTo<T>) {
             require(pre.consumer.is_Consuming());
             let head = pre.consumer.get_Consuming_0();
 
@@ -352,7 +352,7 @@ tokenized_state_machine!{FifoQueue<T> {
     }
 
     #[inductive(initialize)]
-    fn initialize_inductive(post: Self, backing_cells: Seq<CellId>, storage: Map<nat, cell::PermissionOpt<T>>) {
+    fn initialize_inductive(post: Self, backing_cells: Seq<CellId>, storage: Map<nat, cell::PointsTo<T>>) {
         assert forall|i: nat|
             0 <= i && i < post.len() implies post.valid_storage_at_idx(i)
         by {
@@ -394,7 +394,7 @@ tokenized_state_machine!{FifoQueue<T> {
     }
 
     #[inductive(produce_end)]
-    fn produce_end_inductive(pre: Self, post: Self, perm: cell::PermissionOpt<T>) {
+    fn produce_end_inductive(pre: Self, post: Self, perm: cell::PointsTo<T>) {
         assert forall |i|
             pre.valid_storage_at_idx(i) implies
             post.valid_storage_at_idx(i)
@@ -424,7 +424,7 @@ tokenized_state_machine!{FifoQueue<T> {
     }
    
     #[inductive(consume_end)]
-    fn consume_end_inductive(pre: Self, post: Self, perm: cell::PermissionOpt<T>) {
+    fn consume_end_inductive(pre: Self, post: Self, perm: cell::PointsTo<T>) {
         let head = pre.consumer.get_Consuming_0();
         assert(post.storage.dom().contains(head));
         assert(
@@ -542,7 +542,7 @@ pub fn new_queue<T>(len: usize) -> (pc: (Producer<T>, Consumer<T>))
 
     // Initialize map for the permissions to the cells
     // (keyed by the indices into the vector)
-    let tracked mut perms = Map::<nat, cell::PermissionOpt<T>>::tracked_empty();
+    let tracked mut perms = Map::<nat, cell::PointsTo<T>>::tracked_empty();
 
     while backing_cells_vec.len() < len
         invariant
@@ -634,7 +634,7 @@ impl<T> Producer<T> {
             // the `tail` to this value.
             let next_tail = if self.tail + 1 == len { 0 } else { self.tail + 1 };
 
-            let tracked cell_perm: Option<cell::PermissionOpt<T>>;
+            let tracked cell_perm: Option<cell::PointsTo<T>>;
 
             // Get the current `head` value from the shared atomic.
             let head = atomic_with_ghost!(&queue.head => load();
@@ -698,7 +698,7 @@ impl<T> Consumer<T> {
 
             let next_head = if self.head + 1 == len { 0 } else { self.head + 1 };
 
-            let tracked cell_perm: Option<cell::PermissionOpt<T>>;
+            let tracked cell_perm: Option<cell::PointsTo<T>>;
             let tail = atomic_with_ghost!(&queue.tail => load();
                 returning tail;
                 ghost tail_token => {

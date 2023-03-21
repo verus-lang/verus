@@ -199,12 +199,12 @@ struct InnerRc<S> {
 }
 
 tracked struct GhostStuff<S> {
-    pub tracked rc_perm: cell::PermissionOpt<u64>,
-    pub tracked rc_token: RefCounter::counter<ptr::PermissionOpt<InnerRc<S>>>,
+    pub tracked rc_perm: cell::PointsTo<u64>,
+    pub tracked rc_token: RefCounter::counter<ptr::PointsTo<InnerRc<S>>>,
 }
 
 impl<S> GhostStuff<S> {
-    pub open spec fn wf(self, inst: RefCounter::Instance<ptr::PermissionOpt<InnerRc<S>>>, cell: PCell<u64>) -> bool {
+    pub open spec fn wf(self, inst: RefCounter::Instance<ptr::PointsTo<InnerRc<S>>>, cell: PCell<u64>) -> bool {
         &&& self.rc_perm@.pcell == cell.id()
         &&& self.rc_token@.instance == inst
         &&& self.rc_perm@.value.is_Some()
@@ -220,9 +220,9 @@ impl<S> InnerRc<S> {
 
 struct_with_invariants!{
     struct MyRc<S> {
-        pub inst: Tracked< RefCounter::Instance<ptr::PermissionOpt<InnerRc<S>>> >,
+        pub inst: Tracked< RefCounter::Instance<ptr::PointsTo<InnerRc<S>>> >,
         pub inv: Tracked< Duplicable<LocalInvariant<_, GhostStuff<S>, _>> >,
-        pub reader: Tracked< RefCounter::reader<ptr::PermissionOpt<InnerRc<S>>> >,
+        pub reader: Tracked< RefCounter::reader<ptr::PointsTo<InnerRc<S>>> >,
 
         pub ptr: PPtr<InnerRc<S>>,
 

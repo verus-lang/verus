@@ -30,7 +30,7 @@ verus!{
 ///
 /// `PCell` uses a _ghost permission token_ similar to [`ptr::PPtr`] -- see the [`ptr::PPtr`]
 /// documentation for the basics.
-/// For `PCell`, the associated type of the permission token is [`cell::PermissionOpt`].
+/// For `PCell`, the associated type of the permission token is [`cell::PointsTo`].
 ///
 /// ### Differences from `PPtr`.
 ///
@@ -45,8 +45,8 @@ verus!{
 /// has no concept of a "null ID",
 /// and has no runtime representation.
 ///
-/// Also note that the `PCell` might be dropped before the `PermissionOpt` token is dropped,
-/// although in that case it will no longer be possible to use the `PermissionOpt` in `exec` code
+/// Also note that the `PCell` might be dropped before the `PointsTo` token is dropped,
+/// although in that case it will no longer be possible to use the `PointsTo` in `exec` code
 /// to extract data from the cell.
 ///
 /// ### Example (TODO)
@@ -56,7 +56,7 @@ pub struct PCell<#[verifier(strictly_positive)] V> {
     ucell: UnsafeCell<MaybeUninit<V>>,
 }
 
-// PCell is always safe to Send/Sync. It's the PermissionOpt object where Send/Sync matters.
+// PCell is always safe to Send/Sync. It's the PointsTo object where Send/Sync matters.
 // (It doesn't matter if you move the bytes to another thread if you can't access them.)
 
 #[verifier(external)]
@@ -65,17 +65,17 @@ unsafe impl<T> Sync for PCell<T> {}
 #[verifier(external)]
 unsafe impl<T> Send for PCell<T> {}
 
-// PermissionOpt<V>, on the other hand, needs to inherit both Send and Sync from the V,
+// PointsTo<V>, on the other hand, needs to inherit both Send and Sync from the V,
 // which it does by default in the given definition.
 // (Note: this depends on the current behavior that #[verifier::spec] fields are still counted for marker traits)
 
 #[verifier(external_body)]
-pub tracked struct PermissionOpt<#[verifier(strictly_positive)] V> {
+pub tracked struct PointsTo<#[verifier(strictly_positive)] V> {
     phantom: marker::PhantomData<V>,
     no_copy: NoCopy,
 }
 
-pub ghost struct PermissionOptData<V> {
+pub ghost struct PointsToData<V> {
     pub pcell: CellId,
     pub value: option::Option<V>,
 }
@@ -84,7 +84,7 @@ pub ghost struct PermissionOptData<V> {
 #[macro_export]
 macro_rules! pcell_opt_internal {
     [$pcell:expr => $val:expr] => {
-        $crate::cell::PermissionOptData {
+        $crate::cell::PointsToData {
             pcell: $pcell,
             value: $val,
         }
@@ -108,8 +108,8 @@ pub struct CellId {
     id: int,
 }
 
-impl<V> PermissionOpt<V> {
-    pub spec fn view(self) -> PermissionOptData<V>;
+impl<V> PointsTo<V> {
+    pub spec fn view(self) -> PointsToData<V>;
 }
 
 impl<V> PCell<V> {
@@ -121,7 +121,7 @@ impl<V> PCell<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn empty() -> (pt: (PCell<V>, Tracked<PermissionOpt<V>>))
+    pub fn empty() -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
         ensures pt.1@@ ===
             pcell_opt![ pt.0.id() => option::Option::None ],
     {
@@ -131,7 +131,7 @@ impl<V> PCell<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn put(&self, Tracked(perm): Tracked<&mut PermissionOpt<V>>, v: V)
+    pub fn put(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, v: V)
         requires
             old(perm)@ ===
               pcell_opt![ self.id() => option::Option::None ],
@@ -148,7 +148,7 @@ impl<V> PCell<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn take(&self, Tracked(perm): Tracked<&mut PermissionOpt<V>>) -> (v: V)
+    pub fn take(&self, Tracked(perm): Tracked<&mut PointsTo<V>>) -> (v: V)
         requires
             self.id() === old(perm)@.pcell,
             old(perm)@.value.is_Some(),
@@ -167,7 +167,7 @@ impl<V> PCell<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn replace(&self, Tracked(perm): Tracked<&mut PermissionOpt<V>>, in_v: V) -> (out_v: V)
+    pub fn replace(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V) -> (out_v: V)
         requires
             self.id() === old(perm)@.pcell,
             old(perm)@.value.is_Some(),
@@ -190,7 +190,7 @@ impl<V> PCell<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn borrow<'a>(&'a self, Tracked(perm): Tracked<&'a PermissionOpt<V>>) -> (v: &'a V)
+    pub fn borrow<'a>(&'a self, Tracked(perm): Tracked<&'a PointsTo<V>>) -> (v: &'a V)
         requires
             self.id() === perm@.pcell,
             perm@.value.is_Some(),
@@ -207,7 +207,7 @@ impl<V> PCell<V> {
     // Untrusted functions below here
 
     #[inline(always)]
-    pub fn into_inner(self, Tracked(perm): Tracked<PermissionOpt<V>>) -> (v: V)
+    pub fn into_inner(self, Tracked(perm): Tracked<PointsTo<V>>) -> (v: V)
         requires
             self.id() === perm@.pcell,
             perm@.value.is_Some(),
@@ -220,8 +220,8 @@ impl<V> PCell<V> {
     }
 
     #[inline(always)]
-    pub fn new(v: V) -> (pt: (PCell<V>, Tracked<PermissionOpt<V>>))
-        ensures (pt.1@@ === PermissionOptData{ pcell: pt.0.id(), value: option::Option::Some(v) }),
+    pub fn new(v: V) -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
+        ensures (pt.1@@ === PointsToData{ pcell: pt.0.id(), value: option::Option::Some(v) }),
     {
         let (p, Tracked(mut t)) = Self::empty();
         p.put(Tracked(&mut t), v);
@@ -230,8 +230,8 @@ impl<V> PCell<V> {
 }
 
 struct InvCellPred { }
-impl<T> InvariantPredicate<(Set<T>, PCell<T>), PermissionOpt<T>> for InvCellPred {
-    spec fn inv(k: (Set<T>, PCell<T>), perm: PermissionOpt<T>) -> bool {
+impl<T> InvariantPredicate<(Set<T>, PCell<T>), PointsTo<T>> for InvCellPred {
+    spec fn inv(k: (Set<T>, PCell<T>), perm: PointsTo<T>) -> bool {
         let (possible_values, pcell) = k; {
           &&& perm@.value.is_Some()
           &&& possible_values.contains(perm@.value.get_Some_0())
@@ -243,7 +243,7 @@ impl<T> InvariantPredicate<(Set<T>, PCell<T>), PermissionOpt<T>> for InvCellPred
 pub struct InvCell<#[verifier(maybe_negative)] T> {
     possible_values: Ghost<Set<T>>,
     pcell: PCell<T>,
-    perm_inv: Tracked<LocalInvariant<(Set<T>, PCell<T>), PermissionOpt<T>, InvCellPred>>,
+    perm_inv: Tracked<LocalInvariant<(Set<T>, PCell<T>), PointsTo<T>, InvCellPred>>,
 }
 
 impl<T> InvCell<T> {
