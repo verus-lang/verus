@@ -733,8 +733,44 @@ impl<T> Consumer<T> {
 
 fn main() {
     let (mut producer, mut consumer) = new_queue(20);
+
+    // Simple test:
+
     producer.enqueue(5);
-    let _x = consumer.dequeue();
+    producer.enqueue(6);
+    producer.enqueue(7);
+
+    let x = consumer.dequeue();
+    print_u64(x);
+
+    let x = consumer.dequeue();
+    print_u64(x);
+
+    let x = consumer.dequeue();
+    print_u64(x);
+
+    // Multi-threaded test:
+
+    let producer = producer;
+    let _join_handle = vstd::thread::spawn(move || {
+        let mut producer = producer;
+        let mut i = 0;
+        while i < 100
+            invariant producer.wf(),
+        {
+            producer.enqueue(i);
+            i = i + 1;
+        }
+    });
+
+    let mut i = 0;
+    while i < 100
+        invariant consumer.wf(),
+    {
+        let x = consumer.dequeue();
+        print_u64(x);
+        i = i + 1;
+    }
 }
 
 }
