@@ -1620,6 +1620,12 @@ where
     }
     tokens_helper(v, &mut node.or2_token.spans);
     v.visit_return_type_mut(&mut node.output);
+    if let Some(it) = &mut node.requires {
+        v.visit_requires_mut(it);
+    }
+    if let Some(it) = &mut node.ensures {
+        v.visit_ensures_mut(it);
+    }
     for it in &mut node.inner_attrs {
         v.visit_attribute_mut(it);
     }

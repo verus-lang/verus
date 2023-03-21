@@ -776,6 +776,8 @@ impl Hash for ExprClosure {
         self.capture.hash(state);
         self.inputs.hash(state);
         self.output.hash(state);
+        self.requires.hash(state);
+        self.ensures.hash(state);
         self.inner_attrs.hash(state);
         self.body.hash(state);
     }

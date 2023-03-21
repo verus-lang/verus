@@ -886,6 +886,8 @@ impl Debug for ExprClosure {
         formatter.field("inputs", &self.inputs);
         formatter.field("or2_token", &self.or2_token);
         formatter.field("output", &self.output);
+        formatter.field("requires", &self.requires);
+        formatter.field("ensures", &self.ensures);
         formatter.field("inner_attrs", &self.inner_attrs);
         formatter.field("body", &self.body);
         formatter.finish()

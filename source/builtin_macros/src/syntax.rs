@@ -856,8 +856,8 @@ impl Visitor {
         true
     }
 
-    /// Turn `forall |x| { ... }`
-    /// into `::builtin::forall(|x| { ... })`
+    /// Turn `forall|x| ...`
+    /// into `::builtin::forall(|x| ...)`
     /// and similarly for `exists` and `choose`
     ///
     /// Also handle trigger attributes.
@@ -885,6 +885,11 @@ impl Visitor {
         let arg = &mut *unary.expr;
         let (inner_attrs, n_inputs) = match &mut *arg {
             Expr::Closure(closure) => {
+                if closure.requires.is_some() || closure.ensures.is_some() {
+                    let err = "quantifiers cannot have requires/ensures";
+                    *expr = Expr::Verbatim(quote_spanned!(span => compile_error!(#err)));
+                    return true;
+                }
                 (std::mem::take(&mut closure.inner_attrs), closure.inputs.len())
             }
             _ => panic!("expected closure for quantifier"),
@@ -1277,7 +1282,7 @@ impl VisitMut for Visitor {
             }) if use_spec_traits => true,
             Expr::Assume(..) | Expr::Assert(..) | Expr::AssertForall(..) => true,
             Expr::View(..) => true,
-            Expr::Closure(..) if self.inside_ghost > 0 => true,
+            Expr::Closure(..) => true,
             _ => false,
         };
         if do_replace && self.inside_type == 0 {
@@ -1552,13 +1557,65 @@ impl VisitMut for Visitor {
                     block.stmts.splice(0..0, stmts);
                     *expr = quote_verbatim!(span, attrs => {::builtin::assert_forall_by(|#inputs| #block);});
                 }
-                Expr::Closure(clos) => {
+                Expr::Closure(mut clos) => {
                     if is_inside_ghost {
                         let span = clos.span();
+                        if clos.requires.is_some() || clos.ensures.is_some() {
+                            let err = "ghost closures cannot have requires/ensures";
+                            *expr = Expr::Verbatim(quote_spanned!(span => compile_error!(#err)));
+                            return;
+                        }
                         *expr = Expr::Verbatim(quote_spanned!(span =>
                             ::builtin::closure_to_fn_spec(#clos)
                         ));
                     } else {
+                        let ret_pat = match &mut clos.output {
+                            ReturnType::Default => None,
+                            ReturnType::Type(_, ref mut tracked, ref mut ret_opt, ty) => {
+                                if let Some(tracked) = tracked {
+                                    *expr = Expr::Verbatim(quote_spanned!(tracked.span() =>
+                                        compile_error!("'tracked' not supported here")
+                                    ));
+                                    return;
+                                }
+                                match std::mem::take(ret_opt) {
+                                    None => None,
+                                    Some(box (_, p, _)) => Some((p.clone(), ty.clone())),
+                                }
+                            }
+                        };
+                        let requires = self.take_ghost(&mut clos.requires);
+                        let ensures = self.take_ghost(&mut clos.ensures);
+                        let mut stmts: Vec<Stmt> = Vec::new();
+                        // TODO: wrap specs inside ghost blocks
+                        self.inside_ghost += 1;
+                        if let Some(Requires { token, mut exprs }) = requires {
+                            for expr in exprs.exprs.iter_mut() {
+                                self.visit_expr_mut(expr);
+                            }
+                            stmts.push(stmt_with_semi!(
+                                token.span => ::builtin::requires([#exprs])));
+                        }
+                        if let Some(Ensures { token, mut exprs }) = ensures {
+                            for expr in exprs.exprs.iter_mut() {
+                                self.visit_expr_mut(expr);
+                            }
+                            if let Some((p, ty)) = ret_pat {
+                                stmts.push(stmt_with_semi!(
+                                    token.span => ::builtin::ensures(|#p: #ty| [#exprs])));
+                            } else {
+                                stmts.push(stmt_with_semi!(
+                                    token.span => ::builtin::ensures([#exprs])));
+                            }
+                        }
+                        self.inside_ghost -= 1;
+                        if stmts.len() > 0 {
+                            if let Expr::Block(block) = &mut *clos.body {
+                                block.block.stmts.splice(0..0, stmts);
+                            } else {
+                                panic!("parser requires Expr::Block for requires/ensures")
+                            }
+                        }
                         *expr = Expr::Closure(clos);
                     }
                 }

@@ -413,6 +413,8 @@ ast_struct! {
         pub inputs: Punctuated<Pat, Token![,]>,
         pub or2_token: Token![|],
         pub output: ReturnType,
+        pub requires: Option<Requires>,
+        pub ensures: Option<Ensures>,
         pub inner_attrs: Vec<Attribute>,
         pub body: Box<Expr>,
     }
@@ -2644,23 +2646,24 @@ pub(crate) mod parsing {
 
         let or2_token: Token![|] = input.parse()?;
 
-        let (output, inner_attrs, body) = if input.peek(Token![->]) {
-            let arrow_token: Token![->] = input.parse()?;
-            let tracked: Option<Token![tracked]> = input.parse()?;
-            let ty: Type = input.parse()?;
+        let needs_block =
+            input.peek(Token![->]) || input.peek(Token![requires]) || input.peek(Token![ensures]);
+        let (output, requires, ensures, inner_attrs, body) = if needs_block {
+            let output = input.parse()?;
+            let requires: Option<Requires> = input.parse()?;
+            let ensures: Option<Ensures> = input.parse()?;
             let body: Block = input.parse()?;
-            let output = ReturnType::Type(arrow_token, tracked, None, Box::new(ty));
             let inner_attrs = input.call(Attribute::parse_inner)?;
             let block = Expr::Block(ExprBlock {
                 attrs: Vec::new(),
                 label: None,
                 block: body,
             });
-            (output, inner_attrs, block)
+            (output, requires, ensures, inner_attrs, block)
         } else {
             let inner_attrs = input.call(Attribute::parse_inner)?;
             let body = ambiguous_expr(input, allow_struct)?;
-            (ReturnType::Default, inner_attrs, body)
+            (ReturnType::Default, None, None, inner_attrs, body)
         };
 
         Ok(ExprClosure {
@@ -2672,6 +2675,8 @@ pub(crate) mod parsing {
             inputs,
             or2_token,
             output,
+            requires,
+            ensures,
             inner_attrs,
             body: Box::new(body),
         })
@@ -3493,6 +3498,8 @@ pub(crate) mod printing {
             self.inputs.to_tokens(tokens);
             self.or2_token.to_tokens(tokens);
             self.output.to_tokens(tokens);
+            self.requires.to_tokens(tokens);
+            self.ensures.to_tokens(tokens);
             inner_attrs_to_tokens(&self.inner_attrs, tokens);
             self.body.to_tokens(tokens);
         }

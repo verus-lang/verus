@@ -509,6 +509,8 @@ impl Clone for ExprClosure {
             inputs: self.inputs.clone(),
             or2_token: self.or2_token.clone(),
             output: self.output.clone(),
+            requires: self.requires.clone(),
+            ensures: self.ensures.clone(),
             inner_attrs: self.inner_attrs.clone(),
             body: self.body.clone(),
         }

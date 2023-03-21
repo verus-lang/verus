@@ -1619,6 +1619,12 @@ where
     }
     tokens_helper(v, &node.or2_token.spans);
     v.visit_return_type(&node.output);
+    if let Some(it) = &node.requires {
+        v.visit_requires(it);
+    }
+    if let Some(it) = &node.ensures {
+        v.visit_ensures(it);
+    }
     for it in &node.inner_attrs {
         v.visit_attribute(it);
     }

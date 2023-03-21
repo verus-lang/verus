@@ -825,6 +825,38 @@ impl Debug for Lite<syn::Expr> {
                     formatter.field("inputs", Lite(&_val.inputs));
                 }
                 formatter.field("output", Lite(&_val.output));
+                if let Some(val) = &_val.requires {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::Requires);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            let _val = &self.0;
+                            formatter.write_str("(")?;
+                            Debug::fmt(Lite(_val), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("requires", Print::ref_cast(val));
+                }
+                if let Some(val) = &_val.ensures {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::Ensures);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            let _val = &self.0;
+                            formatter.write_str("(")?;
+                            Debug::fmt(Lite(_val), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("ensures", Print::ref_cast(val));
+                }
                 if !_val.inner_attrs.is_empty() {
                     formatter.field("inner_attrs", Lite(&_val.inner_attrs));
                 }
@@ -1687,6 +1719,38 @@ impl Debug for Lite<syn::ExprClosure> {
             formatter.field("inputs", Lite(&_val.inputs));
         }
         formatter.field("output", Lite(&_val.output));
+        if let Some(val) = &_val.requires {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::Requires);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("requires", Print::ref_cast(val));
+        }
+        if let Some(val) = &_val.ensures {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::Ensures);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("ensures", Print::ref_cast(val));
+        }
         if !_val.inner_attrs.is_empty() {
             formatter.field("inner_attrs", Lite(&_val.inner_attrs));
         }

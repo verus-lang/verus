@@ -507,6 +507,7 @@ impl PartialEq for ExprClosure {
         self.attrs == other.attrs && self.movability == other.movability
             && self.asyncness == other.asyncness && self.capture == other.capture
             && self.inputs == other.inputs && self.output == other.output
+            && self.requires == other.requires && self.ensures == other.ensures
             && self.inner_attrs == other.inner_attrs && self.body == other.body
     }
 }

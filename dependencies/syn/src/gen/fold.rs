@@ -1496,6 +1496,8 @@ where
         inputs: FoldHelper::lift(node.inputs, |it| f.fold_pat(it)),
         or2_token: Token![|](tokens_helper(f, &node.or2_token.spans)),
         output: f.fold_return_type(node.output),
+        requires: (node.requires).map(|it| f.fold_requires(it)),
+        ensures: (node.ensures).map(|it| f.fold_ensures(it)),
         inner_attrs: FoldHelper::lift(node.inner_attrs, |it| f.fold_attribute(it)),
         body: Box::new(f.fold_expr(*node.body)),
     }

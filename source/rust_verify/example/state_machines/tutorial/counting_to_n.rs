@@ -165,12 +165,11 @@ fn do_count(num_threads: u32) {
 
         let global_arc = global_arc.clone();
 
-        let join_handle = spawn(move || {
-            ensures(|new_token: Tracked<X::stamped_tickets>|
-                new_token@@.instance === instance
-                    && new_token@@.count == spec_cast_integer::<_, nat>(1)
-            );
-
+        let join_handle = spawn(move || -> (new_token: Tracked<X::stamped_tickets>)
+            ensures
+                new_token@@.instance == instance,
+                new_token@@.count == 1nat,
+        {
             let tracked unstamped_token = unstamped_token;
             let globals = &*global_arc;
 

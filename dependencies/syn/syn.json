@@ -1377,6 +1377,16 @@
         "output": {
           "syn": "ReturnType"
         },
+        "requires": {
+          "option": {
+            "syn": "Requires"
+          }
+        },
+        "ensures": {
+          "option": {
+            "syn": "Ensures"
+          }
+        },
         "inner_attrs": {
           "vec": {
             "syn": "Attribute"
