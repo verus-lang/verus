@@ -1175,6 +1175,31 @@ impl Clone for InvariantEnsures {
         }
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for InvariantNameSet {
+    fn clone(&self) -> Self {
+        match self {
+            InvariantNameSet::Any(v0) => InvariantNameSet::Any(v0.clone()),
+            InvariantNameSet::None(v0) => InvariantNameSet::None(v0.clone()),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for InvariantNameSetAny {
+    fn clone(&self) -> Self {
+        InvariantNameSetAny {
+            token: self.token.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for InvariantNameSetNone {
+    fn clone(&self) -> Self {
+        InvariantNameSetNone {
+            token: self.token.clone(),
+        }
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
 impl Clone for Item {
@@ -2045,6 +2070,7 @@ impl Clone for Signature {
             recommends: self.recommends.clone(),
             ensures: self.ensures.clone(),
             decreases: self.decreases.clone(),
+            invariants: self.invariants.clone(),
         }
     }
 }
@@ -2055,6 +2081,15 @@ impl Clone for SignatureDecreases {
             decreases: self.decreases.clone(),
             when: self.when.clone(),
             via: self.via.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for SignatureInvariants {
+    fn clone(&self) -> Self {
+        SignatureInvariants {
+            token: self.token.clone(),
+            set: self.set.clone(),
         }
     }
 }

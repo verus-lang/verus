@@ -392,6 +392,15 @@ pub trait VisitMut {
     fn visit_invariant_ensures_mut(&mut self, i: &mut InvariantEnsures) {
         visit_invariant_ensures_mut(self, i);
     }
+    fn visit_invariant_name_set_mut(&mut self, i: &mut InvariantNameSet) {
+        visit_invariant_name_set_mut(self, i);
+    }
+    fn visit_invariant_name_set_any_mut(&mut self, i: &mut InvariantNameSetAny) {
+        visit_invariant_name_set_any_mut(self, i);
+    }
+    fn visit_invariant_name_set_none_mut(&mut self, i: &mut InvariantNameSetNone) {
+        visit_invariant_name_set_none_mut(self, i);
+    }
     #[cfg(feature = "full")]
     fn visit_item_mut(&mut self, i: &mut Item) {
         visit_item_mut(self, i);
@@ -684,6 +693,9 @@ pub trait VisitMut {
     }
     fn visit_signature_decreases_mut(&mut self, i: &mut SignatureDecreases) {
         visit_signature_decreases_mut(self, i);
+    }
+    fn visit_signature_invariants_mut(&mut self, i: &mut SignatureInvariants) {
+        visit_signature_invariants_mut(self, i);
     }
     fn visit_span_mut(&mut self, i: &mut Span) {
         visit_span_mut(self, i);
@@ -2438,6 +2450,31 @@ where
     tokens_helper(v, &mut node.token.span);
     v.visit_specification_mut(&mut node.exprs);
 }
+pub fn visit_invariant_name_set_mut<V>(v: &mut V, node: &mut InvariantNameSet)
+where
+    V: VisitMut + ?Sized,
+{
+    match node {
+        InvariantNameSet::Any(_binding_0) => {
+            v.visit_invariant_name_set_any_mut(_binding_0);
+        }
+        InvariantNameSet::None(_binding_0) => {
+            v.visit_invariant_name_set_none_mut(_binding_0);
+        }
+    }
+}
+pub fn visit_invariant_name_set_any_mut<V>(v: &mut V, node: &mut InvariantNameSetAny)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.token.span);
+}
+pub fn visit_invariant_name_set_none_mut<V>(v: &mut V, node: &mut InvariantNameSetNone)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.token.span);
+}
 #[cfg(feature = "full")]
 pub fn visit_item_mut<V>(v: &mut V, node: &mut Item)
 where
@@ -3625,6 +3662,9 @@ where
     if let Some(it) = &mut node.decreases {
         v.visit_signature_decreases_mut(it);
     }
+    if let Some(it) = &mut node.invariants {
+        v.visit_signature_invariants_mut(it);
+    }
 }
 pub fn visit_signature_decreases_mut<V>(v: &mut V, node: &mut SignatureDecreases)
 where
@@ -3639,6 +3679,13 @@ where
         tokens_helper(v, &mut (it).0.span);
         v.visit_expr_mut(&mut (it).1);
     }
+}
+pub fn visit_signature_invariants_mut<V>(v: &mut V, node: &mut SignatureInvariants)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.token.span);
+    v.visit_invariant_name_set_mut(&mut node.set);
 }
 pub fn visit_span_mut<V>(v: &mut V, node: &mut Span)
 where

@@ -10,13 +10,15 @@ const COMMON: &str = code_str! {
 
     #[verifier(atomic)] /* vattr */
     #[verifier(external_body)] /* vattr */
-    fn atomic_op() {
-        opens_invariants_none();
+    fn atomic_op()
+        opens_invariants none
+    {
     }
 
     #[verifier(external_body)] /* vattr */
-    fn non_atomic_op() {
-        opens_invariants_none();
+    fn non_atomic_op()
+        opens_invariants none
+    {
     }
 
     #[verifier(external_body)] /* vattr */
@@ -32,13 +34,15 @@ const COMMON_TODO_DELETE_THIS: &str = code_str! {
 
     #[verifier(atomic)] /* vattr */
     #[verifier(external_body)] /* vattr */
-    fn atomic_op() {
-        opens_invariants_none();
+    fn atomic_op()
+        opens_invariants none
+    {
     }
 
     #[verifier(external_body)] /* vattr */
-    fn non_atomic_op() {
-        opens_invariants_none();
+    fn non_atomic_op()
+        opens_invariants none
+    {
     }
 
     #[verifier(external_body)] /* vattr */

@@ -1543,6 +1543,38 @@ impl Hash for InvariantEnsures {
         self.exprs.hash(state);
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for InvariantNameSet {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        match self {
+            InvariantNameSet::Any(v0) => {
+                state.write_u8(0u8);
+                v0.hash(state);
+            }
+            InvariantNameSet::None(v0) => {
+                state.write_u8(1u8);
+                v0.hash(state);
+            }
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for InvariantNameSetAny {
+    fn hash<H>(&self, _state: &mut H)
+    where
+        H: Hasher,
+    {}
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for InvariantNameSetNone {
+    fn hash<H>(&self, _state: &mut H)
+    where
+        H: Hasher,
+    {}
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for Item {
@@ -2603,6 +2635,7 @@ impl Hash for Signature {
         self.recommends.hash(state);
         self.ensures.hash(state);
         self.decreases.hash(state);
+        self.invariants.hash(state);
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
@@ -2614,6 +2647,15 @@ impl Hash for SignatureDecreases {
         self.decreases.hash(state);
         self.when.hash(state);
         self.via.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for SignatureInvariants {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.set.hash(state);
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]

@@ -392,6 +392,21 @@ pub trait Fold {
     fn fold_invariant_ensures(&mut self, i: InvariantEnsures) -> InvariantEnsures {
         fold_invariant_ensures(self, i)
     }
+    fn fold_invariant_name_set(&mut self, i: InvariantNameSet) -> InvariantNameSet {
+        fold_invariant_name_set(self, i)
+    }
+    fn fold_invariant_name_set_any(
+        &mut self,
+        i: InvariantNameSetAny,
+    ) -> InvariantNameSetAny {
+        fold_invariant_name_set_any(self, i)
+    }
+    fn fold_invariant_name_set_none(
+        &mut self,
+        i: InvariantNameSetNone,
+    ) -> InvariantNameSetNone {
+        fold_invariant_name_set_none(self, i)
+    }
     #[cfg(feature = "full")]
     fn fold_item(&mut self, i: Item) -> Item {
         fold_item(self, i)
@@ -684,6 +699,12 @@ pub trait Fold {
     }
     fn fold_signature_decreases(&mut self, i: SignatureDecreases) -> SignatureDecreases {
         fold_signature_decreases(self, i)
+    }
+    fn fold_signature_invariants(
+        &mut self,
+        i: SignatureInvariants,
+    ) -> SignatureInvariants {
+        fold_signature_invariants(self, i)
     }
     fn fold_span(&mut self, i: Span) -> Span {
         fold_span(self, i)
@@ -2202,6 +2223,41 @@ where
         exprs: f.fold_specification(node.exprs),
     }
 }
+pub fn fold_invariant_name_set<F>(f: &mut F, node: InvariantNameSet) -> InvariantNameSet
+where
+    F: Fold + ?Sized,
+{
+    match node {
+        InvariantNameSet::Any(_binding_0) => {
+            InvariantNameSet::Any(f.fold_invariant_name_set_any(_binding_0))
+        }
+        InvariantNameSet::None(_binding_0) => {
+            InvariantNameSet::None(f.fold_invariant_name_set_none(_binding_0))
+        }
+    }
+}
+pub fn fold_invariant_name_set_any<F>(
+    f: &mut F,
+    node: InvariantNameSetAny,
+) -> InvariantNameSetAny
+where
+    F: Fold + ?Sized,
+{
+    InvariantNameSetAny {
+        token: Token![any](tokens_helper(f, &node.token.span)),
+    }
+}
+pub fn fold_invariant_name_set_none<F>(
+    f: &mut F,
+    node: InvariantNameSetNone,
+) -> InvariantNameSetNone
+where
+    F: Fold + ?Sized,
+{
+    InvariantNameSetNone {
+        token: Token![none](tokens_helper(f, &node.token.span)),
+    }
+}
 #[cfg(feature = "full")]
 pub fn fold_item<F>(f: &mut F, node: Item) -> Item
 where
@@ -3220,6 +3276,7 @@ where
         recommends: (node.recommends).map(|it| f.fold_recommends(it)),
         ensures: (node.ensures).map(|it| f.fold_ensures(it)),
         decreases: (node.decreases).map(|it| f.fold_signature_decreases(it)),
+        invariants: (node.invariants).map(|it| f.fold_signature_invariants(it)),
     }
 }
 pub fn fold_signature_decreases<F>(
@@ -3238,6 +3295,18 @@ where
             )),
         via: (node.via)
             .map(|it| (Token![via](tokens_helper(f, &(it).0.span)), f.fold_expr((it).1))),
+    }
+}
+pub fn fold_signature_invariants<F>(
+    f: &mut F,
+    node: SignatureInvariants,
+) -> SignatureInvariants
+where
+    F: Fold + ?Sized,
+{
+    SignatureInvariants {
+        token: Token![opens_invariants](tokens_helper(f, &node.token.span)),
+        set: f.fold_invariant_name_set(node.set),
     }
 }
 pub fn fold_span<F>(f: &mut F, node: Span) -> Span

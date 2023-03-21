@@ -227,9 +227,8 @@ impl<V> PPtr<V> {
     #[verifier(external_body)]
     pub fn empty() -> (pt: (PPtr<V>, Tracked<PermissionOpt<V>>))
         ensures pt.1@@ === (PermissionOptData{ pptr: pt.0.id(), value: option::Option::None }),
+        opens_invariants none
     {
-        opens_invariants_none();
-
         let p = PPtr {
             uptr: alloc::boxed::Box::leak(alloc::boxed::Box::new(MaybeUninit::uninit())).as_mut_ptr(),
         };
@@ -247,9 +246,8 @@ impl<V> PPtr<V> {
     #[verifier(external_body)]
     pub fn clone(&self) -> (pt: PPtr<V>)
         ensures pt.id() === self.id(),
+        opens_invariants none
     {
-        opens_invariants_none();
-
         PPtr { uptr: self.uptr }
     }
 
@@ -268,9 +266,8 @@ impl<V> PPtr<V> {
         ensures
             perm@.pptr === old(perm)@.pptr,
             perm@.value === option::Option::Some(v),
+        opens_invariants none
     {
-        opens_invariants_none();
-
         unsafe {
             *(self.uptr) = MaybeUninit::new(v);
         }
@@ -294,9 +291,8 @@ impl<V> PPtr<V> {
             perm@.pptr === old(perm)@.pptr,
             perm@.value === option::Option::None,
             v === old(perm)@.value.get_Some_0(),
+        opens_invariants none
     {
-        opens_invariants_none();
-
         unsafe {
             let mut m = MaybeUninit::uninit();
             mem::swap(&mut m, &mut *self.uptr);
@@ -317,9 +313,8 @@ impl<V> PPtr<V> {
             perm@.pptr === old(perm)@.pptr,
             perm@.value === option::Option::Some(in_v),
             out_v === old(perm)@.value.get_Some_0(),
+        opens_invariants none
     {
-        opens_invariants_none();
-
         unsafe {
             let mut m = MaybeUninit::new(in_v);
             mem::swap(&mut m, &mut *self.uptr);
@@ -339,9 +334,8 @@ impl<V> PPtr<V> {
             self.id() === perm@.pptr,
             perm@.value.is_Some(),
         ensures *v === perm@.value.get_Some_0(),
+        opens_invariants none
     {
-        opens_invariants_none();
-        
         unsafe {
             (*self.uptr).assume_init_ref()
         }
@@ -359,9 +353,8 @@ impl<V> PPtr<V> {
         requires
             self.id() === perm@.pptr,
             perm@.value === option::Option::None,
+        opens_invariants none
     {
-        opens_invariants_none();
-
         unsafe {
             alloc::alloc::dealloc(self.uptr as *mut u8, alloc::alloc::Layout::for_value(&*self.uptr));
         }
@@ -383,9 +376,8 @@ impl<V> PPtr<V> {
             perm@.value.is_Some(),
         ensures
             v === perm@.value.get_Some_0(),
+        opens_invariants none
     {
-        opens_invariants_none();
-
         let tracked mut perm = perm;
         let v = self.take(Tracked(&mut perm));
         self.dispose(Tracked(perm));

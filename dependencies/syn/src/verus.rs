@@ -155,6 +155,32 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct SignatureInvariants {
+        pub token: Token![opens_invariants],
+        pub set: InvariantNameSet,
+    }
+}
+
+ast_enum_of_structs! {
+    pub enum InvariantNameSet {
+        Any(InvariantNameSetAny),
+        None(InvariantNameSetNone),
+    }
+}
+
+ast_struct! {
+    pub struct InvariantNameSetAny {
+        pub token: Token![any],
+    }
+}
+
+ast_struct! {
+    pub struct InvariantNameSetNone {
+        pub token: Token![none],
+    }
+}
+
+ast_struct! {
     pub struct Assert {
         pub attrs: Vec<Attribute>,
         pub assert_token: Token![assert],
@@ -320,7 +346,8 @@ pub mod parsing {
                 || input.peek(Token![invariant])
                 || input.peek(Token![invariant_ensures])
                 || input.peek(Token![ensures])
-                || input.peek(Token![decreases]))
+                || input.peek(Token![decreases])
+                || input.peek(Token![opens_invariants]))
             {
                 let expr = Expr::parse_without_eager_brace(input)?;
                 exprs.push(expr);
@@ -339,6 +366,9 @@ pub mod parsing {
                 }
                 if input.peek2(Token![ensures]) {
                     return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'ensures' (if you meant this block to be part of the specification, try parenthesizing it)"));
+                }
+                if input.peek2(Token![opens_invariants]) {
+                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'opens_invariants' (if you meant this block to be part of the specification, try parenthesizing it)"));
                 }
                 if input.peek2(Token![invariant_ensures]) {
                     return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'invariant_ensures' (if you meant this block to be part of the specification, try parenthesizing it)"));
@@ -444,6 +474,62 @@ pub mod parsing {
                 when,
                 via,
             })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for SignatureInvariants {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let opens_invariants = input.parse()?;
+            let set = input.parse()?;
+
+            Ok(SignatureInvariants {
+                token: opens_invariants,
+                set,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<SignatureInvariants> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![opens_invariants]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for InvariantNameSet {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let set = if input.peek(Token![any]) {
+                let all = input.parse()?;
+                InvariantNameSet::Any(all)
+            } else if input.peek(Token![none]) {
+                let none = input.parse()?;
+                InvariantNameSet::None(none)
+            } else {
+                return Err(input.error("invariant clause expected `any` or `none`"));
+            };
+            Ok(set)
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for InvariantNameSetAny {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let token_all = input.parse()?;
+            Ok(InvariantNameSetAny { token: token_all })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for InvariantNameSetNone {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let token_none = input.parse()?;
+            Ok(InvariantNameSetNone { token: token_none })
         }
     }
 
@@ -802,6 +888,28 @@ mod printing {
                 via_token.to_tokens(tokens);
                 via.to_tokens(tokens);
             }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for SignatureInvariants {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+            self.set.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for InvariantNameSetAny {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for InvariantNameSetNone {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
         }
     }
 

@@ -1664,6 +1664,39 @@ impl Debug for InvariantEnsures {
         formatter.finish()
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for InvariantNameSet {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            InvariantNameSet::Any(v0) => {
+                let mut formatter = formatter.debug_tuple("Any");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            InvariantNameSet::None(v0) => {
+                let mut formatter = formatter.debug_tuple("None");
+                formatter.field(v0);
+                formatter.finish()
+            }
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for InvariantNameSetAny {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("InvariantNameSetAny");
+        formatter.field("token", &self.token);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for InvariantNameSetNone {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("InvariantNameSetNone");
+        formatter.field("token", &self.token);
+        formatter.finish()
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for Item {
@@ -2783,6 +2816,7 @@ impl Debug for Signature {
         formatter.field("recommends", &self.recommends);
         formatter.field("ensures", &self.ensures);
         formatter.field("decreases", &self.decreases);
+        formatter.field("invariants", &self.invariants);
         formatter.finish()
     }
 }
@@ -2793,6 +2827,15 @@ impl Debug for SignatureDecreases {
         formatter.field("decreases", &self.decreases);
         formatter.field("when", &self.when);
         formatter.field("via", &self.via);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for SignatureInvariants {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("SignatureInvariants");
+        formatter.field("token", &self.token);
+        formatter.field("set", &self.set);
         formatter.finish()
     }
 }

@@ -421,7 +421,7 @@ pub use open_atomic_invariant;
 /// and we expect to expand them.
 ///
 /// The invariant set of a function can be specified by putting either
-/// `opens_invariants_none();` or `opens_invariants_any();` as the first line of the body.
+/// `opens_invariants none` or `opens_invariants any` in the function signature.
 /// The default for an `exec`-mode function is to open any, while the default
 /// for a `proof`-mode function is to open none.
 ///

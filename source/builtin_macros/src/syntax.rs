@@ -17,10 +17,11 @@ use syn_verus::{
     braced, bracketed, parenthesized, parse_macro_input, AttrStyle, Attribute, BareFnArg, BinOp,
     Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop, ExprTuple,
     ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Ident, ImplItem, ImplItemMethod, Invariant,
-    InvariantEnsures, Item, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod, ItemStruct, ItemTrait,
-    Lit, Local, Meta, ModeSpec, ModeSpecChecked, Pat, Path, PathArguments, PathSegment, Publish,
-    Recommends, Requires, ReturnType, Signature, SignatureDecreases, Stmt, Token, TraitItem,
-    TraitItemMethod, Type, TypeFnSpec, UnOp, Visibility,
+    InvariantEnsures, InvariantNameSet, Item, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod,
+    ItemStruct, ItemTrait, Lit, Local, Meta, ModeSpec, ModeSpecChecked, Pat, Path, PathArguments,
+    PathSegment, Publish, Recommends, Requires, ReturnType, Signature, SignatureDecreases,
+    SignatureInvariants, Stmt, Token, TraitItem, TraitItemMethod, Type, TypeFnSpec, UnOp,
+    Visibility,
 };
 
 fn take_expr(expr: &mut Expr) -> Expr {
@@ -290,6 +291,7 @@ impl Visitor {
         let recommends = self.take_ghost(&mut sig.recommends);
         let ensures = self.take_ghost(&mut sig.ensures);
         let decreases = self.take_ghost(&mut sig.decreases);
+        let opens_invariants = self.take_ghost(&mut sig.invariants);
         // TODO: wrap specs inside ghost blocks
         if let Some(Requires { token, mut exprs }) = requires {
             for expr in exprs.exprs.iter_mut() {
@@ -361,6 +363,26 @@ impl Visitor {
                     ),
                     Semi { spans: [via_token.span] },
                 ));
+            }
+        }
+        if let Some(SignatureInvariants { token: _, set }) = opens_invariants {
+            match set {
+                InvariantNameSet::Any(any) => {
+                    stmts.push(Stmt::Semi(
+                        Expr::Verbatim(
+                            quote_spanned!(any.span() => ::builtin::opens_invariants_any()),
+                        ),
+                        Semi { spans: [any.span()] },
+                    ));
+                }
+                InvariantNameSet::None(none) => {
+                    stmts.push(Stmt::Semi(
+                        Expr::Verbatim(
+                            quote_spanned!(none.span() => ::builtin::opens_invariants_none()),
+                        ),
+                        Semi { spans: [none.span()] },
+                    ));
+                }
             }
         }
 

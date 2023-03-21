@@ -3134,6 +3134,35 @@ impl Debug for Lite<syn::InvariantEnsures> {
         formatter.finish()
     }
 }
+impl Debug for Lite<syn::InvariantNameSet> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        match _val {
+            syn::InvariantNameSet::Any(_val) => {
+                let mut formatter = formatter.debug_struct("InvariantNameSet::Any");
+                formatter.finish()
+            }
+            syn::InvariantNameSet::None(_val) => {
+                let mut formatter = formatter.debug_struct("InvariantNameSet::None");
+                formatter.finish()
+            }
+        }
+    }
+}
+impl Debug for Lite<syn::InvariantNameSetAny> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("InvariantNameSetAny");
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::InvariantNameSetNone> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("InvariantNameSetNone");
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::Item> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
@@ -5390,6 +5419,22 @@ impl Debug for Lite<syn::Signature> {
             }
             formatter.field("decreases", Print::ref_cast(val));
         }
+        if let Some(val) = &_val.invariants {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::SignatureInvariants);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("invariants", Print::ref_cast(val));
+        }
         formatter.finish()
     }
 }
@@ -5430,6 +5475,14 @@ impl Debug for Lite<syn::SignatureDecreases> {
             }
             formatter.field("via", Print::ref_cast(val));
         }
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::SignatureInvariants> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("SignatureInvariants");
+        formatter.field("set", Lite(&_val.set));
         formatter.finish()
     }
 }
