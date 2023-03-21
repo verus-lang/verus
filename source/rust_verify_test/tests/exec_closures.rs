@@ -1065,3 +1065,17 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+// type invariants
+
+test_verify_one_file_with_options! {
+    #[test] closure_params_type_invariants_issue457 ["vstd"] => verus_code! {
+        fn test(x: u8) {
+            assert(x < 256);
+            let f = |y: u8| {
+                assert(x < 256);
+                assert(y < 256);
+            };
+        }
+    } => Ok(())
+}
