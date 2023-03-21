@@ -12,7 +12,7 @@ use vstd::modes::*;
 use vstd::invariant::*;
 use state_machines_macros::tokenized_state_machine;
 
-verus_old_todo_no_ghost_blocks!{
+verus!{
 
 tokenized_state_machine!(Dupe<T> {
     fields {
@@ -332,15 +332,15 @@ impl<S> MyRc<S> {
                     &reader);
             }
                 
-            g = GhostStuff { rc_perm, rc_token };
+            proof { g = GhostStuff { rc_perm, rc_token }; }
         });
 
         MyRc {
-            inst: Tracked(self.inst.get().clone()),
-            inv: Tracked(self.inv.get().clone()),
+            inst: Tracked(self.inst.borrow().clone()),
+            inv: Tracked(self.inv.borrow().clone()),
             reader: Tracked(new_reader),
             ptr: self.ptr.clone(),
-            rc_cell: self.rc_cell,
+            rc_cell: Ghost(self.rc_cell@),
         }
     }
 
@@ -363,10 +363,12 @@ impl<S> MyRc<S> {
                 let count = count - 1;
                 inner_rc_ref.rc_cell.put(Tracked(&mut rc_perm), count);
 
-                inst.dec_basic(
-                    reader.view().key,
-                    &mut rc_token,
-                    reader);
+                proof {
+                    inst.dec_basic(
+                        reader.view().key,
+                        &mut rc_token,
+                        reader);
+                }
             } else {
                 let tracked mut inner_rc_perm = inst.dec_to_zero(
                     reader.view().key,
@@ -384,7 +386,7 @@ impl<S> MyRc<S> {
                 ptr.dispose(Tracked(inner_rc_perm));
             }
 
-            g = GhostStuff { rc_perm, rc_token };
+            proof { g = GhostStuff { rc_perm, rc_token }; }
         });
     }
 }
