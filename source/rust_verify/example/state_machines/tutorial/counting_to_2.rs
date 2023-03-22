@@ -11,7 +11,7 @@ use state_machines_macros::tokenized_state_machine;
 use vstd::result::*;
 use std::sync::Arc;
 
-verus_old_todo_no_ghost_blocks!{
+verus!{
 
 tokenized_state_machine!(
     X {
@@ -116,7 +116,7 @@ fn main() {
 
     // Initialize the counter
 
-    let tr_instance = Tracked(instance);
+    let tr_instance: Tracked<X::Instance> = Tracked(instance.clone());
     let atomic = AtomicU32::new(Ghost(tr_instance), 0, Tracked(counter_token));
 
     let global = Global { atomic, instance: Tracked(instance.clone()) };

@@ -12,7 +12,7 @@ use state_machines_macros::tokenized_state_machine;
 use vstd::result::*;
 use std::sync::Arc;
 
-verus_old_todo_no_ghost_blocks!{
+verus!{
 
 // ANCHOR: fields
 tokenized_state_machine!{
@@ -113,21 +113,10 @@ struct_with_invariants!{
 fn do_count(num_threads: u32) {
     // Initialize protocol 
 
-    let tracked instance;
-    let tracked counter_token;
-    let tracked mut unstamped_tokens;
-    let tracked mut stamped_tokens;
-
-    proof {
-        let tracked (Tracked(instance0),
-            Tracked(counter_token0),
-            Tracked(unstamped_tokens0),
-            Tracked(stamped_tokens0)) = X::Instance::initialize(num_threads as nat);
-        instance = instance0;
-        counter_token = counter_token0;
-        unstamped_tokens = unstamped_tokens0;
-        stamped_tokens = stamped_tokens0;
-    }
+    let tracked (Tracked(instance),
+        Tracked(counter_token),
+        Tracked(unstamped_tokens),
+        Tracked(stamped_tokens)) = X::Instance::initialize(num_threads as nat);
 
     // Initialize the counter
 

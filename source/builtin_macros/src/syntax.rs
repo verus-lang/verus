@@ -60,8 +60,6 @@ struct Visitor {
     erase_ghost: bool,
     // TODO: this should always be true
     use_spec_traits: bool,
-    // TODO: this should always be true
-    verus_macro_attr: bool,
     // inside_ghost > 0 means we're currently visiting ghost code
     inside_ghost: u32,
     // inside_type > 0 means we're currently visiting a type
@@ -158,9 +156,7 @@ impl Visitor {
             false
         };
 
-        if self.verus_macro_attr {
-            attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
-        }
+        attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
 
         for arg in &mut sig.inputs {
             match (arg.tracked, &mut arg.kind) {
@@ -2155,7 +2151,6 @@ pub(crate) fn rewrite_items(
     stream: proc_macro::TokenStream,
     erase_ghost: bool,
     use_spec_traits: bool,
-    verus_macro_attr: bool,
 ) -> proc_macro::TokenStream {
     use quote::ToTokens;
     let stream = rejoin_tokens(stream);
@@ -2170,7 +2165,6 @@ pub(crate) fn rewrite_items(
         assign_to: false,
         rustdoc: env_rustdoc(),
         inside_bitvector: false,
-        verus_macro_attr,
     };
     visitor.visit_items_prefilter(&mut items.items);
     for mut item in items.items {
@@ -2194,7 +2188,6 @@ pub(crate) fn rewrite_expr(
     let mut visitor = Visitor {
         erase_ghost,
         use_spec_traits: true,
-        verus_macro_attr: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
         inside_type: 0,
         inside_arith: InsideArith::None,
@@ -2211,7 +2204,6 @@ pub(crate) fn rewrite_expr_node(erase_ghost: bool, inside_ghost: bool, expr: &mu
     let mut visitor = Visitor {
         erase_ghost,
         use_spec_traits: true,
-        verus_macro_attr: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
         inside_type: 0,
         inside_arith: InsideArith::None,
@@ -2289,7 +2281,6 @@ pub(crate) fn proof_macro_exprs(
     let mut visitor = Visitor {
         erase_ghost,
         use_spec_traits: true,
-        verus_macro_attr: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
         inside_type: 0,
         inside_arith: InsideArith::None,
@@ -2318,7 +2309,6 @@ pub(crate) fn inv_macro_exprs(
     let mut visitor = Visitor {
         erase_ghost,
         use_spec_traits: true,
-        verus_macro_attr: true,
         inside_ghost: 1,
         inside_type: 0,
         inside_arith: InsideArith::None,
@@ -2350,7 +2340,6 @@ pub(crate) fn proof_macro_explicit_exprs(
     let mut visitor = Visitor {
         erase_ghost,
         use_spec_traits: true,
-        verus_macro_attr: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
         inside_type: 0,
         inside_arith: InsideArith::None,
