@@ -1735,13 +1735,23 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             stmts.push(Arc::new(StmtX::Assume(air::ast_util::mk_false())));
             stmts
         }
-        StmX::ClosureInner(s) => {
+        StmX::ClosureInner { body, typ_inv_vars } => {
+            let mut stmts = vec![];
+            for (x, typ) in typ_inv_vars.iter() {
+                let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
+                if let Some(expr) = typ_inv {
+                    stmts.push(Arc::new(StmtX::Assume(expr)));
+                }
+            }
+
             // Right now there is no way to specify an invariant mask on a closure function
             // All closure funcs are assumed to have mask set 'full'
             let mut mask = MaskSet::full();
             std::mem::swap(&mut state.mask, &mut mask);
-            let stmts = stm_to_stmts(ctx, state, s)?;
+            let mut body_stmts = stm_to_stmts(ctx, state, body)?;
             std::mem::swap(&mut state.mask, &mut mask);
+
+            stmts.append(&mut body_stmts);
 
             vec![Arc::new(StmtX::DeadEnd(one_stmt(stmts)))]
         }
