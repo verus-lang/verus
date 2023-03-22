@@ -56,7 +56,7 @@ fn run_example_for_file(file_path: &str) {
     };
 
     let mut mode = Mode::ExpectSuccess;
-    let mut macro_erasure = !file_path.contains("state_machines");
+    let mut macro_erasure = true;
 
     if let ["//", "rust_verify/tests/example.rs", command] = &first_line_elements[..] {
         match command.strip_suffix("\n").unwrap_or("unexpected") {
