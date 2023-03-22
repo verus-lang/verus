@@ -35,6 +35,24 @@ impl<A> Option<A> {
         }
     }
 
+    pub const fn is_some(&self) -> (res: bool)
+        ensures res <==> self.is_Some(),
+    {
+        match self {
+            Option::Some(_) => true,
+            Option::None => false,
+        }
+    }
+
+    pub const fn is_none(&self) -> (res: bool)
+        ensures res <==> self.is_None(),
+    {
+        match self {
+            Option::Some(_) => false,
+            Option::None => true,
+        }
+    }
+
     pub fn as_ref(&self) -> (a: Option<&A>)
         ensures
           a.is_Some() <==> self.is_Some(),
