@@ -35,6 +35,7 @@ impl<A> Option<A> {
         }
     }
 
+    #[inline(always)]
     pub const fn is_some(&self) -> (res: bool)
         ensures res <==> self.is_Some(),
     {
@@ -44,6 +45,7 @@ impl<A> Option<A> {
         }
     }
 
+    #[inline(always)]
     pub const fn is_none(&self) -> (res: bool)
         ensures res <==> self.is_None(),
     {
