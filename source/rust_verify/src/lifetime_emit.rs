@@ -618,6 +618,9 @@ fn emit_generic_param(param: &GenericParam) -> String {
             Bound::Copy => {
                 buf += "Copy";
             }
+            Bound::Clone => {
+                buf += "Clone";
+            }
             Bound::Id(x) => {
                 buf += &x.to_string();
             }
@@ -634,6 +637,17 @@ fn emit_generic_param(param: &GenericParam) -> String {
         }
     }
     buf
+}
+
+fn emit_generic_params(state: &mut EmitState, generics: &Vec<GenericParam>) {
+    if generics.len() > 0 {
+        state.write("<");
+        for gparam in generics.iter() {
+            state.write(emit_generic_param(gparam));
+            state.write(", ");
+        }
+        state.write(">");
+    }
 }
 
 pub(crate) fn emit_const_decl(state: &mut EmitState, f: &ConstDecl) {
@@ -656,14 +670,7 @@ pub(crate) fn emit_fun_decl(state: &mut EmitState, f: &FunDecl) {
     state.begin_span(f.sig_span);
     state.write("fn ");
     state.write_spanned(f.name.to_string(), f.name_span);
-    if f.generics.len() > 0 {
-        state.write("<");
-        for gparam in f.generics.iter() {
-            state.write(emit_generic_param(gparam));
-            state.write(", ");
-        }
-        state.write(">");
-    }
+    emit_generic_params(state, &f.generics);
     state.write("(");
     state.push_indent();
     for (span, x, typ) in f.params.iter() {
@@ -728,12 +735,37 @@ fn emit_fields(state: &mut EmitState, fields: &Fields, suffix: &str) {
     }
 }
 
+fn emit_copy_clone(
+    state: &mut EmitState,
+    d: &DatatypeDecl,
+    copy_bounds: &Vec<bool>,
+    bound: &Bound,
+    bound_name: &str,
+    body: &str,
+) {
+    // impl<A: Clone, B> Clone for S<A, B> { fn clone(&self) -> Self { panic!() } }
+    // impl<A: Copy, B> Copy for S<A, B> {}
+    assert!(d.generics.len() == copy_bounds.len());
+    state.newline();
+    state.write("impl");
+    let mut copy_generics: Vec<GenericParam> = Vec::new();
+    let mut generic_args: Vec<GenericParam> = Vec::new();
+    for (gparam, copy_bound) in d.generics.iter().zip(copy_bounds.iter()) {
+        let bounds = if *copy_bound { vec![bound.clone()] } else { vec![] };
+        let name = gparam.name.clone();
+        copy_generics.push(GenericParam { bounds, ..gparam.clone() });
+        generic_args.push(GenericParam { name, const_typ: None, bounds: vec![] });
+    }
+    emit_generic_params(state, &copy_generics);
+    state.write(format!(" {bound_name} for "));
+    state.write(d.name.to_string());
+    emit_generic_params(state, &generic_args);
+    state.write(" ");
+    state.write(body);
+}
+
 pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
     state.newline();
-    if d.implements_copy {
-        state.newline();
-        state.write("#[derive(Clone, Copy)]");
-    }
     let d_keyword = match &*d.datatype {
         Datatype::Struct(..) => "struct ",
         Datatype::Enum(..) => "enum ",
@@ -741,14 +773,7 @@ pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
     state.newline();
     state.write_spanned(d_keyword, d.span);
     state.write(&d.name.to_string());
-    if d.generics.len() > 0 {
-        state.write("<");
-        for gparam in d.generics.iter() {
-            state.write(emit_generic_param(gparam));
-            state.write(", ");
-        }
-        state.write(">");
-    }
+    emit_generic_params(state, &d.generics);
     match &*d.datatype {
         Datatype::Struct(fields) => {
             emit_fields(state, fields, ";");
@@ -765,5 +790,10 @@ pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
             state.newline_unindent();
             state.write("}");
         }
+    }
+    if let Some(copy_bounds) = &d.implements_copy {
+        let clone_body = "{ fn clone(&self) -> Self { panic!() } }";
+        emit_copy_clone(state, d, copy_bounds, &Bound::Clone, "Clone", clone_body);
+        emit_copy_clone(state, d, copy_bounds, &Bound::Copy, "Copy", "{}");
     }
 }

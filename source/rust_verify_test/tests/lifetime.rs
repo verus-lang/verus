@@ -408,3 +408,37 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] lifetime_copy_succeed verus_code! {
+        #[verifier(external_body)]
+        struct S<#[verifier(maybe_negative)]A, #[verifier(maybe_negative)]B>(A, std::marker::PhantomData<B>);
+
+        #[verifier(external)]
+        impl<A, B> Clone for S<A, B> { fn clone(&self) -> Self { panic!() } }
+        impl<A: Copy, B> Copy for S<A, B> {}
+
+        struct Q {}
+
+        fn f(x: S<u8, Q>) -> (S<u8, Q>, S<u8, Q>) {
+            (x, x)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] lifetime_copy_fail verus_code! {
+        #[verifier(external_body)]
+        struct S<#[verifier(maybe_negative)]A, #[verifier(maybe_negative)]B>(A, std::marker::PhantomData<B>);
+
+        #[verifier(external)]
+        impl<A, B> Clone for S<A, B> { fn clone(&self) -> Self { panic!() } }
+        impl<A: Copy, B> Copy for S<A, B> {}
+
+        struct Q {}
+
+        fn f(x: S<Q, u8>) -> (S<Q, u8>, S<Q, u8>) {
+            (x, x)
+        }
+    } => Err(err) => assert_error_msg(err, "use of moved value")
+}
