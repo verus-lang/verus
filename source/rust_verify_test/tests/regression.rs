@@ -223,3 +223,17 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "reveal/fuel statements require a spec-mode function")
 }
+
+test_verify_one_file! {
+    #[test] let_with_parens_issue_260 verus_code! {
+        fn f() {
+            let (x):usize = 0;
+            assert(x == 0);
+        }
+
+        fn g() {
+            let (x):usize = 0;
+            assert(x == 1); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
