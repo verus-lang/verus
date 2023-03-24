@@ -237,3 +237,26 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file! {
+    #[test] use_statement_of_spec_fn_issue293 verus_code! {
+        mod Y {
+            #![allow(dead_code)] // this was needed for the original crash
+
+            use builtin::*;
+            use builtin_macros::*;
+
+            verus!{
+                mod X {
+                    pub open spec fn foo();
+                }
+
+                proof fn some_proof_fn() {
+                    let x = foo();
+                }
+            }
+
+            use X::foo; // this was needed for the original crash
+        }
+    } => Ok(())
+}
