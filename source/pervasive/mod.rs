@@ -10,6 +10,8 @@
 //! We expect these hacks to go away once Verus has proper multi-crate support.
 
 #[cfg(not(vstd_build_todo))]
+pub mod bytes;
+#[cfg(not(vstd_build_todo))]
 pub mod calc_macro;
 #[cfg(not(vstd_build_todo))]
 pub mod map;
@@ -57,6 +59,8 @@ pub mod string;
 pub mod vec;
 
 // TODO: remove this compatibility shim when everything is ported to vstd:
+#[cfg(vstd_build_todo)]
+pub use crate::bytes;
 #[cfg(vstd_build_todo)]
 pub use crate::calc_macro;
 //#[cfg(vstd_build_todo)]

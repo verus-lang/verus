@@ -229,7 +229,7 @@ pub mod parsing {
         let let_token: Token![let] = input.parse()?;
         let tracked: Option<Token![tracked]> = input.parse()?;
         let ghost: Option<Token![ghost]> = input.parse()?;
-        
+
         if tracked.is_some() && ghost.is_some() {
             return Err(input.error("declaration cannot be both 'tracked' and 'ghost'"));
         }
