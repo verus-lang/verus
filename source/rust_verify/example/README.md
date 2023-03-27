@@ -18,4 +18,6 @@ These checks are implemented with a regular expression that matches the expected
 
 If no tag is specified on the first line, `expect-success` is assumed.
 
-It is recommended to include the optional comment if either `ignore` or `expect-failures` is used.
+The "optional comment" field is _required_ if `ignore` is used.
+
+It is recommended to include the optional comment if `expect-failures` is used.

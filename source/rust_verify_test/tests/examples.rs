@@ -66,9 +66,6 @@ fn run_example_for_file(file_path: &str) {
             "vstd-todo" => use_vstd = false,
             "ignore" => {
                 if first_line_elements.len() > 3 {
-                    // There is an extra comment; this might be made required in the future, but
-                    // currently is optional.
-                    //
                     // We require that any comment is separated by a `---` which acts as a good
                     // visual separator.
                     if first_line_elements[3] != "---" {
@@ -81,6 +78,11 @@ fn run_example_for_file(file_path: &str) {
                             "Expected comment after visual separator '---' but no comment found."
                         );
                     }
+                } else {
+                    panic!(
+                        "{}",
+                        "Expected '--- {reason}' after the 'ignore', but none was provided."
+                    );
                 }
                 return;
             }
