@@ -52,23 +52,43 @@ fn run_example_for_file(file_path: &str) {
     let first_line_elements: Vec<_> = {
         use std::io::BufRead;
         reader.read_line(&mut first_line).expect("unable to read first line");
-        first_line.split(" ").collect()
+        first_line.trim().split(" ").collect()
     };
 
     let mut mode = Mode::ExpectSuccess;
     let mut use_vstd = !file_path.contains("state_machines");
 
-    if let ["//", "rust_verify/tests/example.rs", command] = &first_line_elements[..] {
-        match command.strip_suffix("\n").unwrap_or("unexpected") {
+    if let ["//", "rust_verify/tests/example.rs", command, ..] = &first_line_elements[..] {
+        match *command {
             "expect-success" => mode = Mode::ExpectSuccess,
             "expect-errors" => mode = Mode::ExpectErrors,
             "expect-failures" => mode = Mode::ExpectFailures,
             "vstd-todo" => use_vstd = false,
             "ignore" => {
+                if first_line_elements.len() > 3 {
+                    // We require that any comment is separated by a `---` which acts as a good
+                    // visual separator.
+                    if first_line_elements[3] != "---" {
+                        panic!(
+                            "Expected '---' to separate the extra comment from the 'ignore' declaration. Found {:?}",
+                            first_line_elements[3],
+                        );
+                    } else if first_line_elements.len() == 4 {
+                        panic!(
+                            "Expected comment after visual separator '---' but no comment found."
+                        );
+                    }
+                } else {
+                    panic!(
+                        "{}",
+                        "Expected '--- {reason}' after the 'ignore', but none was provided."
+                    );
+                }
                 return;
             }
             _ => panic!(
-                "invalid command for example file test: use one of 'expect-success', 'expect-errors', 'expect-failures', or 'ignore'"
+                "invalid command {:?} for example file test: use one of 'expect-success', 'expect-errors', 'expect-failures', or 'ignore'",
+                command
             ),
         }
     }
