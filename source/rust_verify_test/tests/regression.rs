@@ -223,3 +223,40 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "reveal/fuel statements require a spec-mode function")
 }
+
+test_verify_one_file! {
+    #[test] let_with_parens_issue_260 verus_code! {
+        fn f() {
+            let (x):usize = 0;
+            assert(x == 0);
+        }
+
+        fn g() {
+            let (x):usize = 0;
+            assert(x == 1); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] use_statement_of_spec_fn_issue293 verus_code! {
+        mod Y {
+            #![allow(dead_code)] // this was needed for the original crash
+
+            use builtin::*;
+            use builtin_macros::*;
+
+            verus!{
+                mod X {
+                    pub open spec fn foo();
+                }
+
+                proof fn some_proof_fn() {
+                    let x = foo();
+                }
+            }
+
+            use X::foo; // this was needed for the original crash
+        }
+    } => Ok(())
+}

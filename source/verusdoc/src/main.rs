@@ -456,16 +456,16 @@ fn next_comma_or_rparen(s: &str, i: usize) -> usize {
 }
 
 fn write_css(dir_path: &Path) {
-    let mut file = std::fs::OpenOptions::new()
+    let mut rustdoc_css = std::fs::OpenOptions::new()
         .write(true)
         .append(true)
         .open(dir_path.join("rustdoc.css"))
         .unwrap();
-    file.write_all(
-        r#"
+    rustdoc_css
+        .write_all(
+            r#"
 .verus-spec-code {
   padding: 0px !important;
-  background-color: #ffffff !important;
   margin: 0px;
   font-size: 14px;
 }
@@ -476,21 +476,12 @@ pre.verus-spec-code {
 
 .verus-body-code {
   padding: 0px !important;
-  background-color: #ffffff !important;
   margin: 0px;
   font-size: 14px;
 }
 
 pre.verus-body-code {
   margin-left: 8px !important;
-}
-
-.verus-spec-code code {
-  background-color: #ffffff !important;
-}
-
-.verus-body-code code {
-  background-color: #ffffff !important;
 }
 
 .verus-spec-keyword {
@@ -510,7 +501,26 @@ pre.verus-body-code {
     margin-left: 16px;
 }
 "#
-        .as_bytes(),
-    )
-    .expect("write css file");
+            .as_bytes(),
+        )
+        .expect("write css file");
+
+    let bg_colors = [("light.css", "ffffff"), ("dark.css", "353535"), ("ayu.css", "0f1419")];
+
+    for (theme_css, bg_color) in &bg_colors {
+        let mut css = std::fs::OpenOptions::new()
+            .write(true)
+            .append(true)
+            .open(dir_path.join(theme_css))
+            .unwrap();
+        writeln!(css).unwrap();
+        for selector in [
+            ".verus-body-code",
+            ".verus-spec-code",
+            ".verus-spec-code code",
+            ".verus-body-code code",
+        ] {
+            writeln!(css, "{selector} {{ background-color: #{bg_color} !important; }}").unwrap();
+        }
+    }
 }

@@ -6,7 +6,8 @@ use crate::ast::{
 use crate::ast_util::bitwidth_from_int_range;
 use crate::ast_util::IntegerTypeBitwidth;
 use crate::ast_util::{
-    allowed_bitvector_type, bitwidth_from_type, err_string, fun_as_rust_dbg, get_field, get_variant,
+    allowed_bitvector_type, bitwidth_from_type, err_string, fun_as_rust_dbg, get_field,
+    get_variant, is_integer_type,
 };
 use crate::context::Ctx;
 use crate::def::{fn_inv_name, fn_namespace_name, new_user_qid_name};
@@ -580,8 +581,25 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         }
         (ExpX::Var(x), _) => {
             if expr_ctxt.is_bit_vector {
-                let width = bitwidth_from_type(&exp.typ);
-                bitvector_expect_exact(ctx, &exp.span, &exp.typ, &width)?;
+                if is_integer_type(&exp.typ) {
+                    // error if either:
+                    //  - it's an infinite width type
+                    //  - it's usize or isize and the arch-size is not specified
+                    // (TODO allow the second one)
+                    let width = bitwidth_from_type(&exp.typ);
+                    bitvector_expect_exact(ctx, &exp.span, &exp.typ, &width)?;
+                } else {
+                    if allowed_bitvector_type(&exp.typ) {
+                        // ok
+                    } else {
+                        return err_string(
+                            &exp.span,
+                            format!(
+                                "error: bit_vector prover cannot handle this type (bit_vector can only handle variables of type `bool` or of fixed-width integers)"
+                            ),
+                        );
+                    }
+                }
             }
 
             string_var(&suffix_local_unique_id(x))
@@ -1717,13 +1735,23 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             stmts.push(Arc::new(StmtX::Assume(air::ast_util::mk_false())));
             stmts
         }
-        StmX::ClosureInner(s) => {
+        StmX::ClosureInner { body, typ_inv_vars } => {
+            let mut stmts = vec![];
+            for (x, typ) in typ_inv_vars.iter() {
+                let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
+                if let Some(expr) = typ_inv {
+                    stmts.push(Arc::new(StmtX::Assume(expr)));
+                }
+            }
+
             // Right now there is no way to specify an invariant mask on a closure function
             // All closure funcs are assumed to have mask set 'full'
             let mut mask = MaskSet::full();
             std::mem::swap(&mut state.mask, &mut mask);
-            let stmts = stm_to_stmts(ctx, state, s)?;
+            let mut body_stmts = stm_to_stmts(ctx, state, body)?;
             std::mem::swap(&mut state.mask, &mut mask);
+
+            stmts.append(&mut body_stmts);
 
             vec![Arc::new(StmtX::DeadEnd(one_stmt(stmts)))]
         }

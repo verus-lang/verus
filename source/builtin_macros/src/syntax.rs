@@ -1,6 +1,7 @@
 use crate::rustdoc::env_rustdoc;
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
+use proc_macro2::TokenTree;
 use quote::{quote, quote_spanned};
 use std::iter::FromIterator;
 use syn_verus::parse::{Parse, ParseStream};
@@ -1706,8 +1707,22 @@ enum MacroElement {
 }
 
 #[derive(Debug)]
+enum MacroElementExplicitExpr {
+    Comma(Token![,]),
+    Semi(Token![;]),
+    FatArrow(Token![=>]),
+    ExplicitExpr(Token![@], Token![@], Expr),
+    TT(TokenTree),
+}
+
+#[derive(Debug)]
 struct MacroElements {
     elements: Vec<MacroElement>,
+}
+
+#[derive(Debug)]
+struct MacroElementsExplicitExpr {
+    elements: Vec<MacroElementExplicitExpr>,
 }
 
 #[derive(Debug)]
@@ -1725,6 +1740,14 @@ struct MacroInvoke {
     elements: MacroElements,
 }
 
+#[derive(Debug)]
+struct MacroInvokeExplicitExpr {
+    path: Path,
+    bang: Token![!],
+    delimiter: Delimiter,
+    elements: MacroElementsExplicitExpr,
+}
+
 impl Parse for MacroElement {
     fn parse(input: ParseStream) -> syn_verus::parse::Result<MacroElement> {
         if input.peek(Token![,]) {
@@ -1739,6 +1762,25 @@ impl Parse for MacroElement {
     }
 }
 
+impl Parse for MacroElementExplicitExpr {
+    fn parse(input: ParseStream) -> syn_verus::parse::Result<MacroElementExplicitExpr> {
+        if input.peek(Token![,]) {
+            Ok(MacroElementExplicitExpr::Comma(input.parse()?))
+        } else if input.peek(Token![;]) {
+            Ok(MacroElementExplicitExpr::Semi(input.parse()?))
+        } else if input.peek(Token![=>]) {
+            Ok(MacroElementExplicitExpr::FatArrow(input.parse()?))
+        } else if input.peek(Token![@]) && input.peek2(Token![@]) {
+            let at1 = input.parse()?;
+            let at2 = input.parse()?;
+            let e = input.parse()?;
+            Ok(MacroElementExplicitExpr::ExplicitExpr(at1, at2, e))
+        } else {
+            Ok(MacroElementExplicitExpr::TT(input.parse()?))
+        }
+    }
+}
+
 impl Parse for MacroElements {
     fn parse(input: ParseStream) -> syn_verus::parse::Result<MacroElements> {
         let mut elements = Vec::new();
@@ -1746,6 +1788,16 @@ impl Parse for MacroElements {
             elements.push(input.parse()?);
         }
         Ok(MacroElements { elements })
+    }
+}
+
+impl Parse for MacroElementsExplicitExpr {
+    fn parse(input: ParseStream) -> syn_verus::parse::Result<MacroElementsExplicitExpr> {
+        let mut elements = Vec::new();
+        while !input.is_empty() {
+            elements.push(input.parse()?);
+        }
+        Ok(MacroElementsExplicitExpr { elements })
     }
 }
 
@@ -1770,6 +1822,32 @@ impl Parse for MacroInvoke {
     }
 }
 
+impl Parse for MacroInvokeExplicitExpr {
+    fn parse(input: ParseStream) -> syn_verus::parse::Result<MacroInvokeExplicitExpr> {
+        let path = input.parse()?;
+        let bang = input.parse()?;
+        let content;
+        if input.peek(syn_verus::token::Paren) {
+            let paren = parenthesized!(content in input);
+            let elements = content.parse()?;
+            Ok(MacroInvokeExplicitExpr { path, bang, delimiter: Delimiter::Paren(paren), elements })
+        } else if input.peek(syn_verus::token::Bracket) {
+            let bracket = bracketed!(content in input);
+            let elements = content.parse()?;
+            Ok(MacroInvokeExplicitExpr {
+                path,
+                bang,
+                delimiter: Delimiter::Bracket(bracket),
+                elements,
+            })
+        } else {
+            let brace = braced!(content in input);
+            let elements = content.parse()?;
+            Ok(MacroInvokeExplicitExpr { path, bang, delimiter: Delimiter::Brace(brace), elements })
+        }
+    }
+}
+
 impl quote::ToTokens for MacroElement {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
@@ -1777,6 +1855,18 @@ impl quote::ToTokens for MacroElement {
             MacroElement::Semi(e) => e.to_tokens(tokens),
             MacroElement::FatArrow(e) => e.to_tokens(tokens),
             MacroElement::Expr(e) => e.to_tokens(tokens),
+        }
+    }
+}
+
+impl quote::ToTokens for MacroElementExplicitExpr {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        match self {
+            MacroElementExplicitExpr::Comma(e) => e.to_tokens(tokens),
+            MacroElementExplicitExpr::Semi(e) => e.to_tokens(tokens),
+            MacroElementExplicitExpr::FatArrow(e) => e.to_tokens(tokens),
+            MacroElementExplicitExpr::ExplicitExpr(_at1, _at2, e) => e.to_tokens(tokens),
+            MacroElementExplicitExpr::TT(e) => e.to_tokens(tokens),
         }
     }
 }
@@ -1789,7 +1879,39 @@ impl quote::ToTokens for MacroElements {
     }
 }
 
+impl quote::ToTokens for MacroElementsExplicitExpr {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        for element in &self.elements {
+            element.to_tokens(tokens);
+        }
+    }
+}
+
 impl quote::ToTokens for MacroInvoke {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        self.path.to_tokens(tokens);
+        self.bang.to_tokens(tokens);
+        match self.delimiter {
+            Delimiter::Paren(d) => {
+                d.surround(tokens, |tokens| {
+                    self.elements.to_tokens(tokens);
+                });
+            }
+            Delimiter::Bracket(d) => {
+                d.surround(tokens, |tokens| {
+                    self.elements.to_tokens(tokens);
+                });
+            }
+            Delimiter::Brace(d) => {
+                d.surround(tokens, |tokens| {
+                    self.elements.to_tokens(tokens);
+                });
+            }
+        }
+    }
+}
+
+impl quote::ToTokens for MacroInvokeExplicitExpr {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         self.path.to_tokens(tokens);
         self.bang.to_tokens(tokens);
@@ -1951,6 +2073,39 @@ pub(crate) fn proof_macro_exprs(
     for element in &mut invoke.elements.elements {
         match element {
             MacroElement::Expr(expr) => visitor.visit_expr_mut(expr),
+            _ => {}
+        }
+    }
+    invoke.to_tokens(&mut new_stream);
+    proc_macro::TokenStream::from(new_stream)
+}
+
+pub(crate) fn proof_macro_explicit_exprs(
+    erase_ghost: bool,
+    inside_ghost: bool,
+    stream: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    use quote::ToTokens;
+    let stream = rejoin_tokens(stream);
+    let mut invoke: MacroInvokeExplicitExpr = parse_macro_input!(stream as MacroInvokeExplicitExpr);
+    let mut new_stream = TokenStream::new();
+    let mut visitor = Visitor {
+        erase_ghost,
+        use_spec_traits: true,
+        verus_macro_attr: true,
+        inside_ghost: if inside_ghost { 1 } else { 0 },
+        inside_type: 0,
+        inside_arith: InsideArith::None,
+        assign_to: false,
+        rustdoc: env_rustdoc(),
+        inside_bitvector: false,
+        pervasive_in_same_crate: true,
+    };
+    for element in &mut invoke.elements.elements {
+        match element {
+            MacroElementExplicitExpr::ExplicitExpr(_at1, _at2, expr) => {
+                visitor.visit_expr_mut(expr)
+            }
             _ => {}
         }
     }

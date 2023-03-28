@@ -155,7 +155,10 @@ pub enum StmX {
     },
     OpenInvariant(Exp, UniqueIdent, Typ, Stm, InvAtomicity),
     Block(Stms),
-    ClosureInner(Stm),
+    ClosureInner {
+        body: Stm,
+        typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
+    },
     AssertQuery {
         mode: AssertQueryMode,
         typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
