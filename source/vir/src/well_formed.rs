@@ -176,7 +176,10 @@ fn check_one_expr(
                     }
                 }
             } else {
-                panic!("field access of undefined datatype");
+                return Err(error(
+                    "field access of datatype with inaccessible fields",
+                    &expr.span,
+                ));
             }
         }
         ExprX::Multi(MultiOp::Chained(ops), _) => {

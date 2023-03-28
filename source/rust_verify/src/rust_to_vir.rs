@@ -79,6 +79,12 @@ fn check_item<'tcx>(
             // rustc_middle; in fact, we still rely on attributes which we can only
             // get from the HIR data.
 
+            let attrs = ctxt.tcx.hir().attrs(item.hir_id());
+            let vattrs = get_verifier_attrs(attrs)?;
+            if vattrs.external {
+                return Ok(());
+            }
+
             let tyof = ctxt.tcx.type_of(item.def_id.to_def_id());
             let adt_def = tyof.ty_adt_def().expect("adt_def");
 
