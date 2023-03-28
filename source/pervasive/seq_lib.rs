@@ -204,7 +204,7 @@ impl<A> Seq<A> {
     {
         self.subrange(0, i).push(a) + self.subrange(i, self.len() as int)
     }
-   
+
     /// Remove item at index i, shifting remaining elements to the left
     pub open spec fn remove(self, i: int) -> Seq<A>
         recommends 0 <= i < self.len()
