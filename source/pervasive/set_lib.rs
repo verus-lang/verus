@@ -14,6 +14,10 @@ use crate::set::*;
 verus! {
 
 impl<A> Set<A> {
+    pub open spec fn is_full(self) -> bool {
+        self == Set::<A>::full()
+    }
+
     pub proof fn is_empty(self) -> (b: bool)
         requires
             self.finite(),
