@@ -211,6 +211,38 @@ impl<A> Seq<A> {
     {
         self.subrange(0, i) + self.subrange(i + 1, self.len() as int)
     }
+
+    /// Folds the sequence to the left, applying `f` to perform the fold.
+    ///
+    /// Equivalent to `Iterator::fold` in Rust.
+    ///
+    /// Given a sequence `s = [x0, x1, x2, ..., xn]`, applying this function `s.fold_left(b, f)`
+    /// returns `f(...f(f(b, x0), x1), ..., xn)`.
+    pub open spec fn fold_left<B>(self, b: B, f: FnSpec(B, A) -> B) -> (res: B)
+        decreases self.len(),
+    {
+        if self.len() == 0 {
+            b
+        } else {
+            self.subrange(1, self.len() as int).fold_left(f(b, self[0]), f)
+        }
+    }
+
+    /// Folds the sequence to the right, applying `f` to perform the fold.
+    ///
+    /// Equivalent to `DoubleEndedIterator::rfold` in Rust.
+    ///
+    /// Given a sequence `s = [x0, x1, x2, ..., xn]`, applying this function `s.fold_right(b, f)`
+    /// returns `f(x0, f(x1, f(x2, ..., f(xn, b)...)))`.
+    pub open spec fn fold_right<B>(self, f: FnSpec(A, B) -> B, b: B) -> (res: B)
+        decreases self.len(),
+    {
+        if self.len() == 0 {
+            b
+        } else {
+            f(self[0], self.subrange(1, self.len() as int).fold_right(f, b))
+        }
+    }
 }
 
 
