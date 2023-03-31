@@ -10,5 +10,5 @@
     "rust-analyzer.procMacro.enable": true,
     "rust-analyzer.rustc.source": "discover",
     "rust-analyzer.workspace.symbol.search.scope": "workspace_and_dependencies",
-    "rust-analyzer.diagnostics.disabled": ["unresolved-extern-crate"]
+    "rust-analyzer.diagnostics.disabled": ["unresolved-extern-crate", "syntax-error"]
 }

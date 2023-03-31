@@ -1,7 +1,5 @@
-use crate::util::signalling;
 use crate::verifier::{Verifier, VerifierCallbacksEraseMacro};
 use rustc_errors::ErrorGuaranteed;
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 fn mk_compiler<'a, 'b>(

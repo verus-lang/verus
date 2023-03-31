@@ -3,7 +3,7 @@ use crate::context::{ArchContextX, ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::spans::{SpanContext, SpanContextX};
 use crate::unsupported;
-use crate::util::{error, signalling};
+use crate::util::error;
 use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, ValidityResult};
 use air::messages::{message, note, note_bare, Diagnostics, Message, MessageLabel, MessageLevel};
@@ -21,7 +21,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Write;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use vir::ast::{Fun, Function, Ident, InferMode, Krate, Mode, VirErr, Visibility};
@@ -1469,19 +1469,6 @@ impl Verifier {
         self.time_vir_rust_to_vir = time2 - time1;
 
         Ok(true)
-    }
-}
-
-pub(crate) struct DiagnosticOutputBuffer {
-    pub(crate) output: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
-}
-
-impl std::io::Write for DiagnosticOutputBuffer {
-    fn write(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
-        self.output.lock().expect("internal error: cannot lock captured output").write(buf)
-    }
-    fn flush(&mut self) -> Result<(), std::io::Error> {
-        self.output.lock().expect("internal error: cannot lock captured output").flush()
     }
 }
 

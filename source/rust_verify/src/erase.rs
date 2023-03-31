@@ -1,35 +1,10 @@
-use crate::attributes::{get_mode, get_verifier_attrs};
-use crate::rust_to_vir_expr::attrs_is_invariant_block;
-use crate::spans::from_raw_span;
-use crate::unsupported;
-use crate::util::vec_map;
-use crate::verifier::DiagnosticOutputBuffer;
-
 use air::ast::AstId;
 
-use rustc_ast::ast::{
-    AngleBracketedArg, AngleBracketedArgs, Arm, AssocItem, AssocItemKind, BinOpKind, Block, Crate,
-    EnumDef, Expr, ExprField, ExprKind, FieldDef, FnDecl, FnRetTy, FnSig, GenericArg, GenericArgs,
-    GenericParam, GenericParamKind, Generics, Impl, Item, ItemKind, LitIntType, LitKind, Local,
-    LocalKind, ModKind, NodeId, Param, Pat, PatField, PatKind, PathSegment, Stmt, StmtKind,
-    StructExpr, StructRest, Trait, Ty, TyKind, Variant, VariantData,
-};
-use rustc_ast::ptr::P;
 use rustc_hir::HirId;
-use rustc_span::symbol::{Ident, Symbol};
-use rustc_span::{Span, SpanData};
+use rustc_span::SpanData;
 
-use std::cell::Cell;
-use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
-
-use vir::ast::{
-    Datatype, ExprX, FieldOpr, Fun, Function, GenericBoundX, Krate, Mode, Path, Pattern, PatternX,
-    UnaryOpr,
-};
-use vir::ast_util::get_field;
-use vir::modes::{mode_join, ErasureModes};
+use vir::ast::{Fun, Krate, Mode, Path, Pattern};
+use vir::modes::ErasureModes;
 
 #[derive(Clone, Copy, Debug)]
 pub enum CompilableOperator {
