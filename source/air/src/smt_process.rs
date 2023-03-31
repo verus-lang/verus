@@ -6,7 +6,12 @@ pub static SMT_EXECUTABLE_NAME_OVERRIDE: std::sync::RwLock<Option<String>> =
     std::sync::RwLock::new(None);
 
 fn smt_executable_name() -> String {
+    #[cfg(not(target_os = "windows"))]
     let override_path = { SMT_EXECUTABLE_NAME_OVERRIDE.read().unwrap().clone() };
+
+    #[cfg(target_os = "windows")]
+    let override_path = None;
+
     if let Some(path) = override_path {
         path
     } else if let Ok(path) = std::env::var("VERUS_Z3_PATH") {

@@ -161,13 +161,13 @@ pub fn run_verus(
     }
 
     #[cfg(target_os = "macos")]
-    let (pre, dl) = ("lib", "dylib");
+    let (pre, dl, exe) = ("lib", "dylib", "");
 
     #[cfg(target_os = "linux")]
-    let (pre, dl) = ("lib", "so");
+    let (pre, dl, exe) = ("lib", "so", "");
 
     #[cfg(target_os = "windows")]
-    let (pre, dl) = ("", "dll");
+    let (pre, dl, exe) = ("", "dll", ".exe");
 
     let vars = std::env::vars().collect::<Vec<_>>();
     let current_exe = std::env::current_exe().unwrap();
@@ -189,7 +189,7 @@ pub fn run_verus(
         }
     }
 
-    let lib_builtin_path = verus_target_path.join(format!("{}builtin.rlib", pre));
+    let lib_builtin_path = verus_target_path.join("libbuiltin.rlib");
     wait_exists(&lib_builtin_path);
     assert!(lib_builtin_path.exists());
     let lib_builtin_path = lib_builtin_path.to_str().unwrap();
@@ -203,8 +203,13 @@ pub fn run_verus(
     assert!(lib_state_machines_macros_path.exists());
     let lib_state_machines_macros_path = lib_state_machines_macros_path.to_str().unwrap();
 
-    let bin = verus_target_path.join("rust_verify");
+    let bin = verus_target_path.join(format!("rust_verify{exe}"));
     wait_exists(&bin);
+
+    // Delay so that we not only "wait_exists" for the files to be created,
+    // but also wait for the files to be written to and closed.
+    #[cfg(target_os = "windows")]
+    std::thread::sleep(std::time::Duration::from_millis(1000));
 
     let mut verus_args = Vec::new();
 
@@ -254,7 +259,7 @@ pub fn run_verus(
     if import_vstd {
         let lib_vstd_vir_path = target_dir.join("vstd.vir");
         let lib_vstd_vir_path = lib_vstd_vir_path.to_str().unwrap();
-        let lib_vstd_path = target_dir.join(pre.to_string() + "vstd.rlib");
+        let lib_vstd_path = target_dir.join("libvstd.rlib");
         let lib_vstd_path = lib_vstd_path.to_str().unwrap();
         verus_args.append(&mut vec!["--cfg".to_string(), "vstd_todo".to_string()]);
         verus_args.append(&mut vec![
@@ -265,7 +270,8 @@ pub fn run_verus(
         ]);
     }
 
-    let mut child = std::process::Command::new(bin);
+    let mut child = &mut std::process::Command::new(bin);
+    #[cfg(not(target_os = "windows"))]
     let mut child = child.env("VERUS_Z3_PATH", "../z3");
     if quiet {
         child = child.env("VERUS_TEST_QUIET", "1");
