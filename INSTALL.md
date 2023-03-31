@@ -1,3 +1,6 @@
+**NOTE: These installation instructions need to be updated for the new version of Verus
+which does not rely on a fork of the rust compiler.**
+
 Below, you can find instructions for:
   * [Building Verus](./INSTALL.md#building-the-project)
   * [Running Verus on the command line](./INSTALL.md#running-the-verifier)

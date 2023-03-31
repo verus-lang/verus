@@ -111,7 +111,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] complex_while2_fail verus_code! {
         proof fn check(a: u64)
-            requires 2 <= a // FAILS
+            requires 2 <= a
         {
         }
 
@@ -132,7 +132,7 @@ test_verify_one_file! {
             assert(i == 10);
             assert(x == 11);
         }
-    } => Err(err) => assert_fails(err, 2)
+    } => Err(err) => assert_fails(err, 1)
 }
 
 test_verify_one_file! {

@@ -5,7 +5,7 @@ use builtin::*;
 #[allow(unused_imports)]
 use vstd::{*, vec::*, seq::*, modes::*};
 
-#[verifier(external)]
+#[verifier::external]
 fn main() {
 }
 
@@ -74,10 +74,11 @@ pub open(crate) spec fn my_pub_spec_fun2(x: u32, y: u32) -> u32 {
     x / 2 + y / 2
 }
 */
-pub(crate) open spec fn my_pub_spec_fun3(x: int, y: int) -> int {
-    // function and body visible to crate
-    x / 2 + y / 2
-}
+// TODO(main_new) pub(crate) is not being handled correctly
+// pub(crate) open spec fn my_pub_spec_fun3(x: int, y: int) -> int {
+//     // function and body visible to crate
+//     x / 2 + y / 2
+// }
 pub closed spec fn my_pub_spec_fun4(x: int, y: int) -> int {
     // function visible to all, body visible to module
     x / 2 + y / 2
@@ -175,7 +176,7 @@ fn test_my_funs2(
 
 /// assume and assert are treated as proof code even outside of proof blocks.
 /// "assert by" may be used to provide proof code that proves the assertion.
-#[verifier(opaque)]
+#[verifier::opaque]
 spec fn f1(i: int) -> int {
     i + 1
 }

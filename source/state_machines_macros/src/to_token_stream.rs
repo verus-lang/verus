@@ -277,7 +277,7 @@ pub fn output_primary_stuff(
                     #[cfg(not(verus_macro_erase_ghost))]
                     #[verus::internal(verus_macro)]
                     #[verifier::spec]
-                    #[verifier(publish)] /* vattr */
+                    #[verifier::publish] /* vattr */
                     pub fn #name (#args) -> ::core::primitive::bool {
                         ::builtin_macros::verus_proof_expr!({ #f })
                     }
@@ -288,7 +288,7 @@ pub fn output_primary_stuff(
                     #[cfg(not(verus_macro_erase_ghost))]
                     #[verus::internal(verus_macro)]
                     #[verifier::spec]
-                    #[verifier(publish)] /* vattr */
+                    #[verifier::publish] /* vattr */
                     pub fn #name (#args) -> ::core::primitive::bool {
                         ::builtin_macros::verus_proof_expr!({ #f })
                     }
@@ -311,7 +311,7 @@ pub fn output_primary_stuff(
                 #[cfg(not(verus_macro_erase_ghost))]
                 #[verus::internal(verus_macro)]
                 #[verifier::spec]
-                #[verifier(publish)] /* vattr */
+                #[verifier::publish] /* vattr */
                 pub fn #name (#params) -> ::core::primitive::bool {
                     ::builtin_macros::verus_proof_expr!({ #f })
                 }
@@ -446,8 +446,8 @@ fn output_step_datatype(
     if is_init {
         impl_stream.extend(quote! {
             #[cfg(not(verus_macro_erase_ghost))]
-            #[verifier(opaque)] /* vattr */
-            #[verifier(publish)] /* vattr */
+            #[verifier::opaque] /* vattr */
+            #[verifier::publish] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::spec]
             pub fn init_by(post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
@@ -459,8 +459,8 @@ fn output_step_datatype(
             }
 
             #[cfg(not(verus_macro_erase_ghost))]
-            #[verifier(opaque)] /* vattr */
-            #[verifier(publish)] /* vattr */
+            #[verifier::opaque] /* vattr */
+            #[verifier::publish] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::spec]
             pub fn init(post: #self_ty, #label_param) -> ::core::primitive::bool {
@@ -490,8 +490,8 @@ fn output_step_datatype(
 
         impl_stream.extend(quote!{
             #[cfg(not(verus_macro_erase_ghost))]
-            #[verifier(opaque)] /* vattr */
-            #[verifier(publish)] /* vattr */
+            #[verifier::opaque] /* vattr */
+            #[verifier::publish] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::spec]
             pub fn next_by(pre: #self_ty, post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
@@ -502,8 +502,8 @@ fn output_step_datatype(
             }
 
             #[cfg(not(verus_macro_erase_ghost))]
-            #[verifier(opaque)] /* vattr */
-            #[verifier(publish)] /* vattr */
+            #[verifier::opaque] /* vattr */
+            #[verifier::publish] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::spec]
             pub fn next(pre: #self_ty, post: #self_ty, #label_param) -> ::core::primitive::bool {
@@ -511,8 +511,8 @@ fn output_step_datatype(
             }
 
             #[cfg(not(verus_macro_erase_ghost))]
-            #[verifier(opaque)] /* vattr */
-            #[verifier(publish)] /* vattr */
+            #[verifier::opaque] /* vattr */
+            #[verifier::publish] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::spec]
             pub fn next_strong_by(pre: #self_ty, post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
@@ -523,8 +523,8 @@ fn output_step_datatype(
             }
 
             #[cfg(not(verus_macro_erase_ghost))]
-            #[verifier(opaque)] /* vattr */
-            #[verifier(publish)] /* vattr */
+            #[verifier::opaque] /* vattr */
+            #[verifier::publish] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::spec]
             pub fn next_strong(pre: #self_ty, post: #self_ty, #label_param) -> ::core::primitive::bool {
@@ -555,7 +555,7 @@ fn output_step_datatype(
                 show_stream.extend(quote! {
                     #[cfg(not(verus_macro_erase_ghost))]
                     #[verus::internal(verus_macro)]
-                    #[verifier(external_body)] /* vattr */
+                    #[verifier::external_body] /* vattr */
                     #[verifier::proof]
                     pub fn #tr_name#gen1(#params) #gen2 {
                         ::builtin::requires(super::State::#tr_name(#args));
@@ -577,7 +577,7 @@ fn output_step_datatype(
                 show_stream.extend(quote! {
                     #[cfg(not(verus_macro_erase_ghost))]
                     #[verus::internal(verus_macro)]
-                    #[verifier(external_body)] /* vattr */
+                    #[verifier::external_body] /* vattr */
                     #[verifier::proof]
                     pub fn #tr_name#gen1(#params) #gen2 {
                         ::builtin::requires(super::State::#tr_name(#args));
@@ -833,7 +833,7 @@ fn output_other_fns(
         #[cfg(not(verus_macro_erase_ghost))]
         #[verifier::spec]
         #[verus::internal(verus_macro)]
-        #[verifier(publish)] /* vattr */
+        #[verifier::publish] /* vattr */
         pub fn invariant(&self) -> ::core::primitive::bool {
             #conj
         }
@@ -857,8 +857,8 @@ fn output_other_fns(
         let self_ty = get_self_ty(&bundle.sm);
         impl_stream.extend(quote! {
             #[cfg(not(verus_macro_erase_ghost))]
-            #[verifier(custom_req_err(#error_msg))] /* vattr */
-            #[verifier(external_body)] /* vattr */
+            #[verifier::custom_req_err(#error_msg)] /* vattr */
+            #[verifier::external_body] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::proof]
             fn #lemma_msg_ident(s: #self_ty) {

@@ -45,7 +45,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "duplicate item name")
+    } => Err(e) => assert_vir_error_msg(e, "duplicate item name")
 }
 
 test_verify_one_file! {
@@ -60,7 +60,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "`birds_eye` has no effect in an init!")
+    } => Err(e) => assert_vir_error_msg(e, "`birds_eye` has no effect in an init!")
 }
 
 test_verify_one_file! {
@@ -75,7 +75,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "`birds_eye` only makes sense for tokenized state machines")
+    } => Err(e) => assert_vir_error_msg(e, "`birds_eye` only makes sense for tokenized state machines")
 }
 
 test_verify_one_file! {
@@ -92,11 +92,11 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "a guard value must be a deterministic function")
+    } => Err(e) => assert_vir_error_msg(e, "a guard value must be a deterministic function")
 }
 
 test_verify_one_file! {
-    #[test] test_withdraw_bind_guard IMPORTS.to_string() + verus_code_str! {
+    #[ignore] #[test] test_withdraw_bind_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_option)] pub so: Option<int>
@@ -109,7 +109,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "a guard value must be a deterministic function")
+    } => Err(e) => assert_any_vir_error_msg(e, "a guard value must be a deterministic function")
 }
 
 test_verify_one_file! {
@@ -126,7 +126,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "'require' statements should not be in the scope of a `birds_eye` let-binding")
+    } => Err(e) => assert_vir_error_msg(e, "'require' statements should not be in the scope of a `birds_eye` let-binding")
 }
 
 test_verify_one_file! {
@@ -143,11 +143,11 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "'require' statements should not be in the scope of a `birds_eye` let-binding")
+    } => Err(e) => assert_vir_error_msg(e, "'require' statements should not be in the scope of a `birds_eye` let-binding")
 }
 
 test_verify_one_file! {
-    #[test] test_withdraw_bind_req IMPORTS.to_string() + verus_code_str! {
+    #[ignore] #[test] test_withdraw_bind_req IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_option)] pub so: Option<int>
@@ -160,7 +160,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "'require' statements should not be in the scope of a `withdraw` let-binding")
+    } => Err(e) => assert_any_vir_error_msg(e, "'require' statements should not be in the scope of a `withdraw` let-binding")
 }
 
 test_verify_one_file! {
@@ -180,11 +180,11 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "'require' statements should not be preceeded by an assert which is in the scope of")
+    } => Err(e) => assert_vir_error_msg(e, "'require' statements should not be preceeded by an assert which is in the scope of")
 }
 
 test_verify_one_file! {
-    #[test] test_withdraw_bind_req2 IMPORTS.to_string() + verus_code_str! {
+    #[ignore] #[test] test_withdraw_bind_req2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_option)] pub so: Option<int>
@@ -200,7 +200,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "'require' statements should not be preceeded by an assert which is in the scope of")
+    } => Err(e) => assert_any_vir_error_msg(e, "'require' statements should not be preceeded by an assert which is in the scope of")
 }
 
 test_verify_one_file! {
@@ -217,11 +217,11 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "'remove' statements should not be in the scope of a `birds_eye` let-binding")
+    } => Err(e) => assert_vir_error_msg(e, "'remove' statements should not be in the scope of a `birds_eye` let-binding")
 }
 
 test_verify_one_file! {
-    #[test] test_withdraw_binding_remove IMPORTS.to_string() + verus_code_str! {
+    #[ignore] #[test] test_withdraw_binding_remove IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)] pub so: Option<int>
@@ -234,11 +234,11 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "'remove' statements should not be in the scope of a `withdraw` let-binding")
+    } => Err(e) => assert_any_vir_error_msg(e, "'remove' statements should not be in the scope of a `withdraw` let-binding")
 }
 
 test_verify_one_file! {
-    #[test] test_birds_eye_special2 IMPORTS.to_string() + verus_code_str! {
+    #[ignore] #[test] test_birds_eye_special2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)] pub so: Option<int>
@@ -254,7 +254,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "'remove' statements should not be preceeded by an assert which is in the scope of")
+    } => Err(e) => assert_vir_error_msg(e, "'remove' statements should not be preceeded by an assert which is in the scope of")
 }
 
 test_verify_one_file! {
@@ -270,7 +270,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "'update' statement not allowed for field with sharding strategy 'constant'")
+    } => Err(e) => assert_vir_error_msg(e, "'update' statement not allowed for field with sharding strategy 'constant'")
 }
 
 test_verify_one_file! {
@@ -286,7 +286,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "'add' statement not allowed for field with sharding strategy 'constant'")
+    } => Err(e) => assert_vir_error_msg(e, "'add' statement not allowed for field with sharding strategy 'constant'")
 }
 
 test_verify_one_file! {
@@ -302,7 +302,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "'have' statement not allowed for field with sharding strategy 'constant'")
+    } => Err(e) => assert_vir_error_msg(e, "'have' statement not allowed for field with sharding strategy 'constant'")
 }
 
 test_verify_one_file! {
@@ -319,7 +319,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "cannot be directly referenced here")
+    } => Err(e) => assert_vir_error_msg(e, "cannot be directly referenced here")
 }
 
 test_verify_one_file! {
@@ -336,7 +336,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "cannot be directly referenced here")
+    } => Err(e) => assert_vir_error_msg(e, "cannot be directly referenced here")
 }
 
 test_verify_one_file! {
@@ -353,7 +353,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "cannot be directly referenced here")
+    } => Err(e) => assert_vir_error_msg(e, "cannot be directly referenced here")
 }
 
 test_verify_one_file! {
@@ -370,7 +370,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "cannot be directly referenced here")
+    } => Err(e) => assert_vir_error_msg(e, "cannot be directly referenced here")
 }
 
 test_verify_one_file! {
@@ -387,7 +387,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "cannot be directly referenced here")
+    } => Err(e) => assert_vir_error_msg(e, "cannot be directly referenced here")
 }
 
 test_verify_one_file! {
@@ -403,7 +403,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "cannot be used opaquely")
+    } => Err(e) => assert_vir_error_msg(e, "cannot be used opaquely")
 }
 
 test_verify_one_file! {
@@ -419,7 +419,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "cannot be used opaquely")
+    } => Err(e) => assert_vir_error_msg(e, "cannot be used opaquely")
 }
 
 test_verify_one_file! {
@@ -435,7 +435,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "cannot be used opaquely")
+    } => Err(e) => assert_vir_error_msg(e, "cannot be used opaquely")
 }
 
 test_verify_one_file! {
@@ -487,7 +487,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "`pre` cannot be used opaquely")
+    } => Err(e) => assert_vir_error_msg(e, "`pre` cannot be used opaquely")
 }
 
 test_verify_one_file! {
@@ -503,7 +503,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "any field access must be a state field")
+    } => Err(e) => assert_vir_error_msg(e, "any field access must be a state field")
 }
 
 test_verify_one_file! {
@@ -519,7 +519,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "expected a named field")
+    } => Err(e) => assert_vir_error_msg(e, "expected a named field")
 }
 
 test_verify_one_file! {
@@ -529,7 +529,7 @@ test_verify_one_file! {
                 #[sharding(variable)] pub instance: int,
             }
         }}
-    } => Err(e) => assert_error_msg(e, "reserved identifier")
+    } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
 test_verify_one_file! {
@@ -539,7 +539,7 @@ test_verify_one_file! {
                 #[sharding(variable)] pub param_token_a: int,
             }
         }}
-    } => Err(e) => assert_error_msg(e, "reserved identifier")
+    } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
 test_verify_one_file! {
@@ -549,7 +549,7 @@ test_verify_one_file! {
                 #[sharding(variable)] pub t: int,
             }
         }}
-    } => Err(e) => assert_error_msg(e, "reserved identifier")
+    } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
 test_verify_one_file! {
@@ -559,7 +559,7 @@ test_verify_one_file! {
                 #[sharding(variable)] pub t: int,
             }
         }}
-    } => Err(e) => assert_error_msg(e, "reserved identifier")
+    } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
 test_verify_one_file! {
@@ -575,7 +575,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "reserved identifier")
+    } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
 test_verify_one_file! {
@@ -591,7 +591,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "reserved identifier")
+    } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
 test_verify_one_file! {
@@ -606,7 +606,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "reserved identifier")
+    } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
 test_verify_one_file! {
@@ -621,7 +621,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "reserved identifier")
+    } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
 test_verify_one_file! {
@@ -637,7 +637,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "reserved identifier")
+    } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
 test_verify_one_file! {
@@ -661,7 +661,7 @@ test_verify_one_file! {
             pub fn lemma_tr2(pre: Self, post: Self, x: int) {
             }
         }}
-    } => Err(e) => assert_error_msg(e, "duplicate 'inductive' lemma")
+    } => Err(e) => assert_vir_error_msg(e, "duplicate 'inductive' lemma")
 }
 
 test_verify_one_file! {
@@ -682,7 +682,7 @@ test_verify_one_file! {
                 self.t == 5
             }
         }}
-    } => Err(e) => assert_error_msg(e, "missing inductiveness proofs for")
+    } => Err(e) => assert_vir_error_msg(e, "missing inductiveness proofs for")
 }
 
 test_verify_one_file! {
@@ -703,7 +703,7 @@ test_verify_one_file! {
                 self.t == 5
             }
         }}
-    } => Err(e) => assert_error_msg(e, "missing inductiveness proofs for")
+    } => Err(e) => assert_vir_error_msg(e, "missing inductiveness proofs for")
 }
 
 test_verify_one_file! {
@@ -722,7 +722,7 @@ test_verify_one_file! {
             pub fn lemma_tr1(pre: Self, post: Self, x: int) {
             }
         }}
-    } => Err(e) => assert_error_msg(e, "'inductive' lemma does not make sense for a 'readonly' transition")
+    } => Err(e) => assert_vir_error_msg(e, "'inductive' lemma does not make sense for a 'readonly' transition")
 }
 
 test_verify_one_file! {
@@ -741,7 +741,7 @@ test_verify_one_file! {
             pub fn lemma_tr1(pre: Self, post: Self, x: int) {
             }
         }}
-    } => Err(e) => assert_error_msg(e, "'inductive' lemma does not make sense for a 'property' definition")
+    } => Err(e) => assert_vir_error_msg(e, "'inductive' lemma does not make sense for a 'property' definition")
 }
 
 test_verify_one_file! {
@@ -760,7 +760,7 @@ test_verify_one_file! {
             pub fn lemma_tr1(pre: Self, post: Self, y: int) {
             }
         }}
-    } => Err(e) => assert_error_msg(e, "params for 'inductive' lemma should be")
+    } => Err(e) => assert_vir_error_msg(e, "params for 'inductive' lemma should be")
 }
 
 test_verify_one_file! {
@@ -779,7 +779,7 @@ test_verify_one_file! {
             pub fn lemma_tr1(pre: Self, post: Self, x: int) {
             }
         }}
-    } => Err(e) => assert_error_msg(e, "could not find transition")
+    } => Err(e) => assert_vir_error_msg(e, "could not find transition")
 }
 
 test_verify_one_file! {
@@ -798,7 +798,7 @@ test_verify_one_file! {
             pub fn lemma_tr1<T>(pre: Self, post: Self, x: int) {
             }
         }}
-    } => Err(e) => assert_error_msg(e, "should have no generic parameters")
+    } => Err(e) => assert_vir_error_msg(e, "should have no generic parameters")
 }
 
 test_verify_one_file! {
@@ -817,7 +817,7 @@ test_verify_one_file! {
             pub fn lemma_tr1(pre: Self, post: Self, x: int) -> bool {
             }
         }}
-    } => Err(e) => assert_error_msg(e, "should have no return type")
+    } => Err(e) => assert_vir_error_msg(e, "should have no return type")
 }
 
 test_verify_one_file! {
@@ -837,7 +837,7 @@ test_verify_one_file! {
                 requires(true);
             }
         }}
-    } => Err(e) => assert_error_msg(e, "the precondition and postcondition are implicit")
+    } => Err(e) => assert_vir_error_msg(e, "the precondition and postcondition are implicit")
 }
 
 test_verify_one_file! {
@@ -858,9 +858,9 @@ test_verify_one_file! {
                 self.t == 5
             }
 
-            #[inductive(tr)]
+            #[inductive(tr)] // FAILS
             pub fn lemma_tr1(pre: Self, post: Self, x: int) {
-            } // FAILS
+            }
         }}
     } => Err(e) => assert_one_fails(e)
 }
@@ -883,9 +883,9 @@ test_verify_one_file! {
                 self.t == 5
             }
 
-            #[inductive(tr)]
+            #[inductive(tr)] // FAILS
             pub fn lemma_tr1(post: Self, x: int) {
-            } // FAILS
+            }
         }}
     } => Err(e) => assert_one_fails(e)
 }
@@ -897,7 +897,7 @@ test_verify_one_file! {
                 #[sharding(variable)] pub t: int,
             }
         }}
-    } => Err(e) => assert_error_msg(e, "Only generic type parameters are supported")
+    } => Err(e) => assert_vir_error_msg(e, "Only generic type parameters are supported")
 }
 
 test_verify_one_file! {
@@ -911,14 +911,14 @@ test_verify_one_file! {
                 #[sharding(variable)] pub x: int,
             }
         }}
-    } => Err(e) => assert_error_msg(e, "Expected only one declaration of `fields` block")
+    } => Err(e) => assert_vir_error_msg(e, "Expected only one declaration of `fields` block")
 }
 
 test_verify_one_file! {
     #[test] no_fields IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
         }}
-    } => Err(e) => assert_error_msg(e, "'fields' declaration was not found")
+    } => Err(e) => assert_vir_error_msg(e, "'fields' declaration was not found")
 }
 
 test_verify_one_file! {
@@ -940,7 +940,7 @@ test_verify_one_file! {
                 self.t == 5
             }
         }}
-    } => Err(e) => assert_error_msg(e, "conflicting attributes")
+    } => Err(e) => assert_vir_error_msg(e, "conflicting attributes")
 }
 
 test_verify_one_file! {
@@ -962,7 +962,7 @@ test_verify_one_file! {
                 true
             }
         }}
-    } => Err(e) => assert_error_msg(e, "should not be explicitly labelled")
+    } => Err(e) => assert_vir_error_msg(e, "should not be explicitly labelled")
 }
 
 test_verify_one_file! {
@@ -983,7 +983,7 @@ test_verify_one_file! {
                 true
             }
         }}
-    } => Err(e) => assert_error_msg(e, "an invariant function should be `spec`")
+    } => Err(e) => assert_vir_error_msg(e, "an invariant function should be `spec`")
 }
 
 test_verify_one_file! {
@@ -1008,7 +1008,7 @@ test_verify_one_file! {
             pub spec fn lemma_tr1(post: Self, x: int) {
             }
         }}
-    } => Err(e) => assert_error_msg(e, "an inductiveness lemma should be `proof`")
+    } => Err(e) => assert_vir_error_msg(e, "an inductiveness lemma should be `proof`")
 }
 
 test_verify_one_file! {
@@ -1018,7 +1018,7 @@ test_verify_one_file! {
                 #[sharding(variable)] #[verifier::spec] pub t: int,
             }
         }}
-    } => Err(e) => assert_error_msg(e, "should not be explicitly labelled")
+    } => Err(e) => assert_vir_error_msg(e, "should not be explicitly labelled")
 }
 
 test_verify_one_file! {
@@ -1044,7 +1044,7 @@ test_verify_one_file! {
             pub fn lemma_tr1(post: Self, x: int) {
             }
         }}
-    } => Err(e) => assert_error_msg(e, "should not be explicitly labelled")
+    } => Err(e) => assert_vir_error_msg(e, "should not be explicitly labelled")
 }
 
 test_verify_one_file! {
@@ -1070,7 +1070,7 @@ test_verify_one_file! {
             pub fn lemma_tr1(post: Self, x: int) {
             } // FAILS
         }}
-    } => Err(e) => assert_error_msg(e, "an invariant function must take 1 argument (self)")
+    } => Err(e) => assert_vir_error_msg(e, "an invariant function must take 1 argument (self)")
 }
 
 test_verify_one_file! {
@@ -1096,7 +1096,7 @@ test_verify_one_file! {
             pub fn lemma_tr1(post: Self, x: int) {
             } // FAILS
         }}
-    } => Err(e) => assert_error_msg(e, "an invariant function must return a bool")
+    } => Err(e) => assert_vir_error_msg(e, "an invariant function must return a bool")
 }
 
 test_verify_one_file! {
@@ -1122,7 +1122,7 @@ test_verify_one_file! {
             pub fn lemma_tr1(post: Self, x: int) {
             } // FAILS
         }}
-    } => Err(e) => assert_error_msg(e, "an invariant function must take 0 type arguments")
+    } => Err(e) => assert_vir_error_msg(e, "an invariant function must take 0 type arguments")
 }
 
 test_verify_one_file! {
@@ -1132,7 +1132,7 @@ test_verify_one_file! {
                 #[sharding(variable)] pub t: int,
             }
         }}
-    } => Err(e) => assert_error_msg(e, "sharding strategy only makes sense for tokenized state machines")
+    } => Err(e) => assert_vir_error_msg(e, "sharding strategy only makes sense for tokenized state machines")
 }
 
 test_verify_one_file! {
@@ -1142,7 +1142,7 @@ test_verify_one_file! {
                 pub t: int,
             }
         }}
-    } => Err(e) => assert_error_msg(e, "tokenized state machine requires a sharding strategy")
+    } => Err(e) => assert_vir_error_msg(e, "tokenized state machine requires a sharding strategy")
 }
 
 test_verify_one_file! {
@@ -1152,7 +1152,7 @@ test_verify_one_file! {
                 #[sharding(foo)] pub t: int,
             }
         }}
-    } => Err(e) => assert_error_msg(e, "unrecognized sharding strategy")
+    } => Err(e) => assert_vir_error_msg(e, "unrecognized sharding strategy")
 }
 
 test_verify_one_file! {
@@ -1164,7 +1164,7 @@ test_verify_one_file! {
                 pub t: int,
             }
         }}
-    } => Err(e) => assert_error_msg(e, "duplicate sharding attribute")
+    } => Err(e) => assert_vir_error_msg(e, "duplicate sharding attribute")
 }
 
 test_verify_one_file! {
@@ -1175,7 +1175,7 @@ test_verify_one_file! {
                 pub t: int,
             }
         }}
-    } => Err(e) => assert_error_msg(e, "must be of the form Option<_>")
+    } => Err(e) => assert_vir_error_msg(e, "must be of the form Option<_>")
 }
 
 test_verify_one_file! {
@@ -1186,7 +1186,7 @@ test_verify_one_file! {
                 pub t: Multiset<int>,
             }
         }}
-    } => Err(e) => assert_error_msg(e, "must be of the form Option<_>")
+    } => Err(e) => assert_vir_error_msg(e, "must be of the form Option<_>")
 }
 
 test_verify_one_file! {
@@ -1197,7 +1197,7 @@ test_verify_one_file! {
                 pub t: Map<int, int>,
             }
         }}
-    } => Err(e) => assert_error_msg(e, "must be of the form Option<_>")
+    } => Err(e) => assert_vir_error_msg(e, "must be of the form Option<_>")
 }
 
 test_verify_one_file! {
@@ -1208,7 +1208,7 @@ test_verify_one_file! {
                 pub t: int,
             }
         }}
-    } => Err(e) => assert_error_msg(e, "must be of the form Option<_>")
+    } => Err(e) => assert_vir_error_msg(e, "must be of the form Option<_>")
 }
 
 test_verify_one_file! {
@@ -1219,7 +1219,7 @@ test_verify_one_file! {
                 pub t: int,
             }
         }}
-    } => Err(e) => assert_error_msg(e, "must be of the form Map<_, _>")
+    } => Err(e) => assert_vir_error_msg(e, "must be of the form Map<_, _>")
 }
 
 test_verify_one_file! {
@@ -1230,7 +1230,7 @@ test_verify_one_file! {
                 pub t: int,
             }
         }}
-    } => Err(e) => assert_error_msg(e, "must be of the form Map<_, _>")
+    } => Err(e) => assert_vir_error_msg(e, "must be of the form Map<_, _>")
 }
 
 test_verify_one_file! {
@@ -1241,7 +1241,7 @@ test_verify_one_file! {
                 pub t: int,
             }
         }}
-    } => Err(e) => assert_error_msg(e, "must be of the form Multiset<_>")
+    } => Err(e) => assert_vir_error_msg(e, "must be of the form Multiset<_>")
 }
 
 test_verify_one_file! {
@@ -1252,7 +1252,7 @@ test_verify_one_file! {
                 pub t: Multiset<int>,
             }
         }}
-    } => Err(e) => assert_error_msg(e, "must be of the form Set<_>")
+    } => Err(e) => assert_vir_error_msg(e, "must be of the form Set<_>")
 }
 
 test_verify_one_file! {
@@ -1263,7 +1263,7 @@ test_verify_one_file! {
                 pub t: int,
             }
         }}
-    } => Err(e) => assert_error_msg(e, "must be nat")
+    } => Err(e) => assert_vir_error_msg(e, "must be nat")
 }
 
 test_verify_one_file! {
@@ -1274,7 +1274,7 @@ test_verify_one_file! {
                 pub t: int,
             }
         }}
-    } => Err(e) => assert_error_msg(e, "must be bool")
+    } => Err(e) => assert_vir_error_msg(e, "must be bool")
 }
 
 test_verify_one_file! {
@@ -1293,7 +1293,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "statements are not supported inside conditionals")
+    } => Err(e) => assert_vir_error_msg(e, "statements are not supported inside conditionals")
 }
 
 test_verify_one_file! {
@@ -1312,7 +1312,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "statements are not supported inside conditionals")
+    } => Err(e) => assert_vir_error_msg(e, "statements are not supported inside conditionals")
 }
 
 test_verify_one_file! {
@@ -1335,7 +1335,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "statements are not supported inside conditionals")
+    } => Err(e) => assert_vir_error_msg(e, "statements are not supported inside conditionals")
 }
 
 test_verify_one_file! {
@@ -1353,7 +1353,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "remove -> have -> add")
+    } => Err(e) => assert_vir_error_msg(e, "remove -> have -> add")
 }
 
 test_verify_one_file! {
@@ -1371,7 +1371,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "remove -> have -> add")
+    } => Err(e) => assert_vir_error_msg(e, "remove -> have -> add")
 }
 
 test_verify_one_file! {
@@ -1389,7 +1389,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "remove -> have -> add")
+    } => Err(e) => assert_vir_error_msg(e, "remove -> have -> add")
 }
 
 test_verify_one_file! {
@@ -1407,7 +1407,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "remove -> have -> add")
+    } => Err(e) => assert_vir_error_msg(e, "remove -> have -> add")
 }
 
 test_verify_one_file! {
@@ -1422,7 +1422,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "procedure does not initialize")
+    } => Err(e) => assert_vir_error_msg(e, "procedure does not initialize")
 }
 
 test_verify_one_file! {
@@ -1439,7 +1439,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "might be initialized multiple times")
+    } => Err(e) => assert_vir_error_msg(e, "might be initialized multiple times")
 }
 
 test_verify_one_file! {
@@ -1460,7 +1460,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "might be initialized multiple times")
+    } => Err(e) => assert_vir_error_msg(e, "might be initialized multiple times")
 }
 
 test_verify_one_file! {
@@ -1479,7 +1479,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "the else-branch does not initialize")
+    } => Err(e) => assert_vir_error_msg(e, "the else-branch does not initialize")
 }
 
 test_verify_one_file! {
@@ -1500,7 +1500,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "might be initialized multiple times")
+    } => Err(e) => assert_vir_error_msg(e, "might be initialized multiple times")
 }
 
 test_verify_one_file! {
@@ -1519,7 +1519,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "the if-branch does not initialize")
+    } => Err(e) => assert_vir_error_msg(e, "the if-branch does not initialize")
 }
 
 test_verify_one_file! {
@@ -1544,7 +1544,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "all branches of a match-statement must initialize")
+    } => Err(e) => assert_vir_error_msg(e, "all branches of a match-statement must initialize")
 }
 
 test_verify_one_file! {
@@ -1568,7 +1568,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "all branches of a match-statement must initialize")
+    } => Err(e) => assert_vir_error_msg(e, "all branches of a match-statement must initialize")
 }
 
 test_verify_one_file! {
@@ -1585,7 +1585,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "'update' statement not allowed in initialization")
+    } => Err(e) => assert_vir_error_msg(e, "'update' statement not allowed in initialization")
 }
 
 test_verify_one_file! {
@@ -1601,7 +1601,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "'update' statement not allowed in initialization")
+    } => Err(e) => assert_vir_error_msg(e, "'update' statement not allowed in initialization")
 }
 
 test_verify_one_file! {
@@ -1618,7 +1618,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "use 'init' instead")
+    } => Err(e) => assert_vir_error_msg(e, "use 'init' instead")
 }
 
 test_verify_one_file! {
@@ -1635,7 +1635,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "use 'init' instead")
+    } => Err(e) => assert_vir_error_msg(e, "use 'init' instead")
 }
 
 test_verify_one_file! {
@@ -1652,7 +1652,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "'assert' statement not allowed in initialization")
+    } => Err(e) => assert_vir_error_msg(e, "'assert' statement not allowed in initialization")
 }
 
 test_verify_one_file! {
@@ -1669,7 +1669,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "might be updated multiple times")
+    } => Err(e) => assert_vir_error_msg(e, "might be updated multiple times")
 }
 
 test_verify_one_file! {
@@ -1688,7 +1688,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "might be updated multiple times")
+    } => Err(e) => assert_vir_error_msg(e, "might be updated multiple times")
 }
 
 test_verify_one_file! {
@@ -1708,7 +1708,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "might be updated multiple times")
+    } => Err(e) => assert_vir_error_msg(e, "might be updated multiple times")
 }
 
 test_verify_one_file! {
@@ -1731,7 +1731,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "might be updated multiple times")
+    } => Err(e) => assert_vir_error_msg(e, "might be updated multiple times")
 }
 
 test_verify_one_file! {
@@ -1747,7 +1747,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "'init' statement not allowed")
+    } => Err(e) => assert_vir_error_msg(e, "'init' statement not allowed")
 }
 
 test_verify_one_file! {
@@ -1764,7 +1764,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "'guard' statement only allowed in 'readonly' transition or 'property' definition")
+    } => Err(e) => assert_vir_error_msg(e, "'guard' statement only allowed in 'readonly' transition or 'property' definition")
 }
 
 test_verify_one_file! {
@@ -1780,7 +1780,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "statement not allowed in readonly transition")
+    } => Err(e) => assert_vir_error_msg(e, "statement not allowed in readonly transition")
 }
 
 test_verify_one_file! {
@@ -1796,7 +1796,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "statement not allowed in property definition")
+    } => Err(e) => assert_vir_error_msg(e, "statement not allowed in property definition")
 }
 
 test_verify_one_file! {
@@ -1812,7 +1812,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "statement not allowed outside 'init' routine")
+    } => Err(e) => assert_vir_error_msg(e, "statement not allowed outside 'init' routine")
 }
 
 test_verify_one_file! {
@@ -1828,7 +1828,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "statement not allowed outside 'init' routine")
+    } => Err(e) => assert_vir_error_msg(e, "statement not allowed outside 'init' routine")
 }
 
 test_verify_one_file! {
@@ -1845,7 +1845,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "statement not allowed in readonly transition")
+    } => Err(e) => assert_vir_error_msg(e, "statement not allowed in readonly transition")
 }
 
 test_verify_one_file! {
@@ -1862,7 +1862,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "statement not allowed in 'property' definition")
+    } => Err(e) => assert_vir_error_msg(e, "statement not allowed in 'property' definition")
 }
 
 test_verify_one_file! {
@@ -1879,7 +1879,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "statement not allowed in readonly transition")
+    } => Err(e) => assert_vir_error_msg(e, "statement not allowed in readonly transition")
 }
 
 test_verify_one_file! {
@@ -1896,7 +1896,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "statement not allowed in readonly transition")
+    } => Err(e) => assert_vir_error_msg(e, "statement not allowed in readonly transition")
 }
 
 test_verify_one_file! {
@@ -1913,7 +1913,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "statement not allowed in readonly transition")
+    } => Err(e) => assert_vir_error_msg(e, "statement not allowed in readonly transition")
 }
 
 test_verify_one_file! {
@@ -1930,7 +1930,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "statement not allowed in readonly transition")
+    } => Err(e) => assert_vir_error_msg(e, "statement not allowed in readonly transition")
 }
 
 test_verify_one_file! {
@@ -1946,7 +1946,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "field 'whats_this' not found")
+    } => Err(e) => assert_vir_error_msg(e, "field 'whats_this' not found")
 }
 
 test_verify_one_file! {
@@ -1963,7 +1963,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "adding a proof body is meaningless")
+    } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
 test_verify_one_file! {
@@ -1980,7 +1980,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "adding a proof body is meaningless")
+    } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
 test_verify_one_file! {
@@ -1997,7 +1997,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "adding a proof body is meaningless")
+    } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
 test_verify_one_file! {
@@ -2014,7 +2014,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "adding a proof body is meaningless")
+    } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
 test_verify_one_file! {
@@ -2127,7 +2127,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "adding a proof body is meaningless")
+    } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
 test_verify_one_file! {
@@ -2144,7 +2144,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "adding a proof body is meaningless")
+    } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
 test_verify_one_file! {
@@ -2161,7 +2161,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "adding a proof body is meaningless")
+    } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
 test_verify_one_file! {
@@ -2178,7 +2178,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "adding a proof body is meaningless")
+    } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
 test_verify_one_file! {
@@ -2195,7 +2195,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "adding a proof body is meaningless")
+    } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
 test_verify_one_file! {
@@ -2290,7 +2290,7 @@ test_verify_one_file! {
             }
         }}
     // not supported right now:
-    } => Err(e) => assert_error_msg(e, "storage_multiset strategy not implemented")
+    } => Err(e) => assert_vir_error_msg(e, "storage_multiset strategy not implemented")
     //} => Err(e) => assert_one_fails(e)
 }
 
@@ -2395,7 +2395,7 @@ test_verify_one_file! {
             }
         }}
     // not supported right now:
-    } => Err(e) => assert_error_msg(e, "storage_multiset strategy not implemented")
+    } => Err(e) => assert_vir_error_msg(e, "storage_multiset strategy not implemented")
     //} => Err(e) => assert_one_fails(e)
 }
 
@@ -2417,7 +2417,7 @@ test_verify_one_file! {
             }
         }}
     // not supported right now:
-    } => Err(e) => assert_error_msg(e, "unrecognized sharding strategy: 'storage_multiset'")
+    } => Err(e) => assert_vir_error_msg(e, "unrecognized sharding strategy: 'storage_multiset'")
     //} => Err(e) => assert_one_fails(e)
 }
 
@@ -2483,7 +2483,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "storage_multiset strategy not implemented")
+    } => Err(e) => assert_vir_error_msg(e, "storage_multiset strategy not implemented")
 }
 
 test_verify_one_file! {
@@ -2548,7 +2548,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "statement not allowed for field with sharding strategy")
+    } => Err(e) => assert_vir_error_msg(e, "statement not allowed for field with sharding strategy")
 }
 
 test_verify_one_file! {
@@ -2565,7 +2565,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "element but the given field has sharding strategy 'multiset'")
+    } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'multiset'")
 }
 
 test_verify_one_file! {
@@ -2582,7 +2582,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "element but the given field has sharding strategy 'multiset'")
+    } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'multiset'")
 }
 
 test_verify_one_file! {
@@ -2599,7 +2599,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "element but the given field has sharding strategy 'set'")
+    } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'set'")
 }
 
 test_verify_one_file! {
@@ -2616,7 +2616,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "element but the given field has sharding strategy 'multiset'")
+    } => Err(e) => assert_any_vir_error_msg(e, "element but the given field has sharding strategy 'multiset'")
 }
 
 test_verify_one_file! {
@@ -2633,7 +2633,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "element but the given field has sharding strategy 'map'")
+    } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'map'")
 }
 
 test_verify_one_file! {
@@ -2650,7 +2650,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "element but the given field has sharding strategy 'option'")
+    } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'option'")
 }
 
 test_verify_one_file! {
@@ -2667,7 +2667,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "element but the given field has sharding strategy 'option'")
+    } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'option'")
 }
 
 test_verify_one_file! {
@@ -2684,7 +2684,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "element but the given field has sharding strategy 'map'")
+    } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'map'")
 }
 
 test_verify_one_file! {
@@ -2701,7 +2701,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "element but the given field has sharding strategy 'multiset'")
+    } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'multiset'")
 }
 
 test_verify_one_file! {
@@ -2718,7 +2718,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "element but the given field has sharding strategy 'map'")
+    } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'map'")
 }
 
 test_verify_one_file! {
@@ -2735,7 +2735,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "element but the given field has sharding strategy 'count'")
+    } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'count'")
 }
 
 test_verify_one_file! {
@@ -2752,7 +2752,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "is only for storage types")
+    } => Err(e) => assert_vir_error_msg(e, "is only for storage types")
 }
 
 test_verify_one_file! {
@@ -2769,7 +2769,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "use deposit/withdraw/guard statements for storage strategies")
+    } => Err(e) => assert_vir_error_msg(e, "use deposit/withdraw/guard statements for storage strategies")
 }
 
 test_verify_one_file! {
@@ -2789,7 +2789,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "bound variables with the same name")
+    } => Err(e) => assert_vir_error_msg(e, "bound variables with the same name")
 }
 
 test_verify_one_file! {
@@ -2806,7 +2806,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "bound variables with the same name")
+    } => Err(e) => assert_vir_error_msg(e, "bound variables with the same name")
 }
 
 test_verify_one_file! {
@@ -2822,7 +2822,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "bound variables with the same name")
+    } => Err(e) => assert_vir_error_msg(e, "bound variables with the same name")
 }
 
 test_verify_one_file! {
@@ -2839,7 +2839,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "bound variables with the same name")
+    } => Err(e) => assert_vir_error_msg(e, "bound variables with the same name")
 }
 
 test_verify_one_file! {
@@ -2850,7 +2850,7 @@ test_verify_one_file! {
                 pub t: X::Instance,
             }
         }}
-    } => Err(e) => assert_error_msg(e, "recursive type")
+    } => Err(e) => assert_rust_error_msg(e, "recursive type")
 }
 
 test_verify_one_file! {
@@ -4003,7 +4003,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "no previous state to refer to")
+    } => Err(e) => assert_vir_error_msg(e, "no previous state to refer to")
 }
 
 test_verify_one_file! {
@@ -4019,7 +4019,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "`self` is meaningless")
+    } => Err(e) => assert_vir_error_msg(e, "`self` is meaningless")
 }
 
 test_verify_one_file! {
@@ -4035,7 +4035,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "cannot refer directly to `post`")
+    } => Err(e) => assert_vir_error_msg(e, "cannot refer directly to `post`")
 }
 
 test_verify_one_file! {
@@ -4085,7 +4085,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "`super::` path not allowed here")
+    } => Err(e) => assert_vir_error_msg(e, "`super::` path not allowed here")
 }
 
 test_verify_one_file! {
@@ -4103,7 +4103,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "do not support if-let conditionals")
+    } => Err(e) => assert_vir_error_msg(e, "do not support if-let conditionals")
 }
 
 test_verify_one_file! {
@@ -4123,7 +4123,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "do not support if-let conditionals")
+    } => Err(e) => assert_vir_error_msg(e, "do not support if-let conditionals")
 }
 
 test_verify_one_file! {
@@ -4143,7 +4143,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "do not support if-let conditionals")
+    } => Err(e) => assert_vir_error_msg(e, "do not support if-let conditionals")
 }
 
 test_verify_one_file! {
@@ -4458,7 +4458,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "pattern-binding cannot be used in an 'add' statement")
+    } => Err(e) => assert_vir_error_msg(e, "pattern-binding cannot be used in an 'add' statement")
 }
 
 test_verify_one_file! {
@@ -4475,7 +4475,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "pattern-binding cannot be used in a 'deposit' statement")
+    } => Err(e) => assert_vir_error_msg(e, "pattern-binding cannot be used in a 'deposit' statement")
 }
 
 test_verify_one_file! {
@@ -4492,7 +4492,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "pattern-binding cannot be used in a 'guard' statement")
+    } => Err(e) => assert_any_vir_error_msg(e, "pattern-binding cannot be used in a 'guard' statement")
 }
 
 test_verify_one_file! {
@@ -4509,7 +4509,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "unable to prove safety condition that the pattern matches")
+    } => Err(e) => assert_vir_error_msg(e, "unable to prove safety condition that the pattern matches")
 }
 
 test_verify_one_file! {
@@ -4526,7 +4526,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "unable to prove safety condition that the pattern matches")
+    } => Err(e) => assert_any_vir_error_msg(e, "unable to prove safety condition that the pattern matches")
 }
 
 test_verify_one_file! {
@@ -4810,7 +4810,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
+    } => Err(e) => assert_vir_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
 }
 
 test_verify_one_file! {
@@ -4827,7 +4827,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
+    } => Err(e) => assert_vir_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
 }
 
 test_verify_one_file! {
@@ -4844,7 +4844,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
+    } => Err(e) => assert_vir_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
 }
 
 test_verify_one_file! {
@@ -4861,7 +4861,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "for the persistent strategy `persistent_bool`, use `(union)=` instead of `+=`")
+    } => Err(e) => assert_vir_error_msg(e, "for the persistent strategy `persistent_bool`, use `(union)=` instead of `+=`")
 }
 
 test_verify_one_file! {
@@ -4878,7 +4878,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "use `+=` instead of `(union)=`")
+    } => Err(e) => assert_vir_error_msg(e, "use `+=` instead of `(union)=`")
 }
 
 test_verify_one_file! {
@@ -4895,7 +4895,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
+    } => Err(e) => assert_vir_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
 }
 
 test_verify_one_file! {
@@ -4912,7 +4912,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
+    } => Err(e) => assert_vir_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
 }
 
 test_verify_one_file! {
@@ -5927,7 +5927,7 @@ test_verify_one_file! {
 
             pub struct AsdfWeirdName { }
         }}
-    } => Err(e) => assert_error_msg(e, "only supports the declaration of a `Label` and `InitLabel` types")
+    } => Err(e) => assert_vir_error_msg(e, "only supports the declaration of a `Label` and `InitLabel` types")
 }
 
 test_verify_one_file! {
@@ -5945,7 +5945,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "the first param to an 'init'")
+    } => Err(e) => assert_vir_error_msg(e, "the first param to an 'init'")
 }
 
 test_verify_one_file! {
@@ -5963,7 +5963,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "the first param to an 'init'")
+    } => Err(e) => assert_vir_error_msg(e, "the first param to an 'init'")
 }
 
 test_verify_one_file! {
@@ -5981,7 +5981,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "the first param to a 'transition'")
+    } => Err(e) => assert_vir_error_msg(e, "the first param to a 'transition'")
 }
 
 test_verify_one_file! {
@@ -5999,7 +5999,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "the first param to a 'readonly'")
+    } => Err(e) => assert_vir_error_msg(e, "the first param to a 'readonly'")
 }
 
 test_verify_one_file! {

@@ -85,8 +85,8 @@ test_verify_one_file! {
                 ensures exists|x: &Self| self.f() != x.f();
         }
 
-        #[verifier(external_body)] /* vattr */
-        #[verifier(broadcast_forall)] /* vattr */
+        #[verifier::external_body] /* vattr */
+        #[verifier::broadcast_forall] /* vattr */
         proof fn f_not_g<A: T>()
             ensures exists|x: &A, y: &A| x.f() != y.f()
         {
@@ -97,7 +97,7 @@ test_verify_one_file! {
         fn test() {
             assert(false);
         }
-    } => Err(err) => assert_error_msg(err, ": bounds on broadcast_forall function type parameters")
+    } => Err(err) => assert_vir_error_msg(err, ": bounds on broadcast_forall function type parameters")
 }
 
 test_verify_one_file! {
@@ -109,7 +109,7 @@ test_verify_one_file! {
         trait S : T {
             spec fn g(&self) -> bool;
         }
-    } => Err(err) => assert_error_msg(err, ": trait generic bounds")
+    } => Err(err) => assert_vir_error_msg(err, ": trait generic bounds")
 }
 
 test_verify_one_file! {
@@ -129,7 +129,7 @@ test_verify_one_file! {
                 assert(self.t.f() == self.t.f());
             }
         }
-    } => Err(err) => assert_error_msg(err, "could not find this type parameter")
+    } => Err(err) => assert_vir_error_msg(err, "could not find this type parameter")
 }
 
 test_verify_one_file! {
@@ -341,7 +341,7 @@ test_verify_one_file! {
         }
         struct S {}
         impl T1 for S {
-            #[verifier(returns(spec))] /* vattr */
+            #[verifier::returns(spec)] /* vattr */
             fn f(&self) -> bool {
                 true
             }
@@ -443,7 +443,11 @@ test_verify_one_file! {
                 self.f(x, n - 1); // FAILS
             }
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+        assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+    }
 }
 
 test_verify_one_file! {
@@ -459,7 +463,11 @@ test_verify_one_file! {
                 self.f(x, n - 1); // FAILS
             }
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+        assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+    }
 }
 
 test_verify_one_file! {
@@ -480,7 +488,11 @@ test_verify_one_file! {
                 x.f(y, n - 1);
             }
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+        assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+    }
 }
 
 test_verify_one_file! {
@@ -496,7 +508,11 @@ test_verify_one_file! {
                 x.f(self, n - 1); // FAILS
             }
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+        assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+    }
 }
 
 test_verify_one_file! {
@@ -512,7 +528,11 @@ test_verify_one_file! {
                 x.f(self, n - 1); // FAILS
             }
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+        assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+    }
 }
 
 test_verify_one_file! {

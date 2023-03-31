@@ -1,3 +1,4 @@
+# vargo: main workspace tag (do not modify this line)
 [workspace]
 members = [
   "air",

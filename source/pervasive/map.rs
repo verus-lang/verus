@@ -446,7 +446,7 @@ macro_rules! assert_maps_equal_internal {
                 // TODO better error message here: show the individual conjunct that fails,
                 // and maybe give an error message in english as well
                 ::builtin::ensures([
-                    ::builtin::imply(#[verifier(trigger)] m1.dom().contains($k), m2.dom().contains($k))
+                    ::builtin::imply(#[verifier::trigger] m1.dom().contains($k), m2.dom().contains($k))
                     && ::builtin::imply(m2.dom().contains($k), m1.dom().contains($k))
                     && ::builtin::imply(m1.dom().contains($k) && m2.dom().contains($k),
                         ::builtin::equal(m1.index($k), m2.index($k)))

@@ -18,7 +18,7 @@ test_verify_one_file! {
         spec fn arith_sum_nat(i: nat) -> nat {
             if i == 0 { 0 } else { i + arith_sum_nat((i - 1) as nat) }
         }
-    } => Err(err) => assert_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
 test_verify_one_file! {
@@ -40,7 +40,7 @@ test_verify_one_file! {
                 count_down_stmt((i - 1) as nat);
             }
         }
-    } => Err(err) => assert_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
 test_verify_one_file! {
@@ -495,7 +495,7 @@ test_verify_one_file! {
                 dec1((j - 1) as nat);
             }
         }
-    } => Err(err) => assert_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
 test_verify_one_file! {
@@ -514,7 +514,11 @@ test_verify_one_file! {
                 dec1((j - 1) as nat);
             }
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert_eq!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some(), true);
+        assert_eq!(err.errors[1].message, "recursive function must have a decreases clause");
+    }
 }
 
 test_verify_one_file! {
@@ -610,6 +614,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    // REVIEW is it okay that only one of the two calls are reported as errors?
     #[test] termination_checked_across_modules2 verus_code! {
         mod M1 {
             use builtin::*;
@@ -624,10 +629,10 @@ test_verify_one_file! {
             pub(crate) closed spec fn f2(i: int) -> int
                 decreases i
             {
-                crate::M1::f1(i - 1) // FAILS
+                crate::M1::f1(i - 1)
             }
         }
-    } => Err(err) => assert_fails(err, 2)
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
@@ -1149,10 +1154,10 @@ test_verify_one_file! {
         fn e(s: &mut u64) -> u64
             decreases *s
         {
-            *s = *s - 1;
+            *s = *s - 1; // FAILS
             e(s) // FAILS
         }
-    } => Err(e) => assert_one_fails(e)
+    } => Err(e) => assert_fails(e, 2)
 }
 
 test_verify_one_file! {

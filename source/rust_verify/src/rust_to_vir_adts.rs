@@ -15,14 +15,17 @@ use vir::ast::{DatatypeTransparency, DatatypeX, Ident, KrateX, Mode, Path, Varia
 use vir::ast_util::ident_binder;
 use vir::def::positional_field_ident;
 
-fn check_variant_data<'tcx>(
+fn check_variant_data<'tcx, 'fd>(
     ctxt: &Context<'tcx>,
     module_path: &Path,
     name: &Ident,
     variant_data: &'tcx VariantData<'tcx>,
     in_enum: bool,
-    field_defs: impl Iterator<Item = &'tcx rustc_middle::ty::FieldDef>,
-) -> (Variant, bool) {
+    field_defs: impl Iterator<Item = &'fd rustc_middle::ty::FieldDef>,
+) -> (Variant, bool)
+where
+    'tcx: 'fd,
+{
     // TODO handle field visibility; does rustc_middle::ty::Visibility have better visibility
     // information than hir?
     let (vir_fields, one_field_private) = match variant_data {
@@ -32,49 +35,59 @@ fn check_variant_data<'tcx>(
                 .iter()
                 .zip(field_defs)
                 .map(|(field, field_def)| {
-                    assert!(field.ident.name == field_def.ident.name);
+                    assert!(field.ident.name == field_def.ident(ctxt.tcx).name);
                     let field_ty = ctxt.tcx.type_of(field_def.did);
 
                     (
                         ident_binder(
                             &str_ident(&field.ident.as_str()),
                             &(
-                                mid_ty_to_vir(ctxt.tcx, field_ty, false),
+                                mid_ty_to_vir(ctxt.tcx, &field_ty, false),
                                 get_mode(Mode::Exec, ctxt.tcx.hir().attrs(field.hir_id)),
-                                mk_visibility(&Some(module_path.clone()), &field.vis, !in_enum),
+                                mk_visibility(
+                                    ctxt,
+                                    &Some(module_path.clone()),
+                                    !in_enum,
+                                    field.def_id.to_def_id(),
+                                ),
                             ),
                         ),
-                        is_visibility_private(&field.vis.node, !in_enum),
+                        is_visibility_private(ctxt, field.def_id.to_def_id(), !in_enum),
                     )
                 })
                 .unzip();
             (Arc::new(vir_fields), field_private.into_iter().any(|x| x))
         }
-        VariantData::Tuple(fields, _variant_id) => {
+        VariantData::Tuple(fields, _variant_id, _local_def_id) => {
             let (vir_fields, field_private): (Vec<_>, Vec<_>) = fields
                 .iter()
                 .zip(field_defs)
                 .enumerate()
                 .map(|(i, (field, field_def))| {
-                    assert!(field.ident.name == field_def.ident.name);
+                    assert!(field.ident.name == field_def.ident(ctxt.tcx).name);
                     let field_ty = ctxt.tcx.type_of(field_def.did);
 
                     (
                         ident_binder(
                             &positional_field_ident(i),
                             &(
-                                mid_ty_to_vir(ctxt.tcx, field_ty, false),
+                                mid_ty_to_vir(ctxt.tcx, &field_ty, false),
                                 get_mode(Mode::Exec, ctxt.tcx.hir().attrs(field.hir_id)),
-                                mk_visibility(&Some(module_path.clone()), &field.vis, !in_enum),
+                                mk_visibility(
+                                    ctxt,
+                                    &Some(module_path.clone()),
+                                    !in_enum,
+                                    field.def_id.to_def_id(),
+                                ),
                             ),
                         ),
-                        is_visibility_private(&field.vis.node, !in_enum),
+                        is_visibility_private(ctxt, field.def_id.to_def_id(), !in_enum),
                     )
                 })
                 .unzip();
             (Arc::new(vir_fields), field_private.into_iter().any(|x| x))
         }
-        VariantData::Unit(_vairant_id) => (Arc::new(vec![]), false),
+        VariantData::Unit(_variant_id, _local_def_id) => (Arc::new(vec![]), false),
     };
     (ident_binder(name, &vir_fields), one_field_private)
 }
@@ -89,20 +102,20 @@ pub fn check_item_struct<'tcx>(
     attrs: &[Attribute],
     variant_data: &'tcx VariantData<'tcx>,
     generics: &'tcx Generics<'tcx>,
-    adt_def: &'tcx rustc_middle::ty::AdtDef,
+    adt_def: &'_ rustc_middle::ty::AdtDef,
 ) -> Result<(), VirErr> {
     assert!(adt_def.is_struct());
 
     let is_strslice_struct = ctxt
         .tcx
-        .is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice"), id.def_id.to_def_id());
+        .is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice"), id.owner_id.to_def_id());
 
     if is_strslice_struct {
         return Ok(());
     }
 
     let vattrs = get_verifier_attrs(attrs)?;
-    let def_id = id.def_id.to_def_id();
+    let def_id = id.owner_id.to_def_id();
     let typ_params =
         Arc::new(check_generics_bounds(ctxt.tcx, generics, vattrs.external_body, def_id)?);
     let name = hack_get_def_name(ctxt.tcx, def_id);
@@ -129,12 +142,16 @@ pub fn check_item_struct<'tcx>(
     Ok(())
 }
 
-pub fn get_mid_variant_def_by_name<'a>(
-    adt_def: &'a rustc_middle::ty::AdtDef,
+pub fn get_mid_variant_def_by_name<'tcx, 'df>(
+    ctxt: &Context<'tcx>,
+    adt_def: &'df rustc_middle::ty::AdtDef,
     variant_name: &str,
-) -> &'a rustc_middle::ty::VariantDef {
-    for variant_def in adt_def.variants.iter() {
-        if variant_def.ident.name.as_str() == variant_name {
+) -> &'df rustc_middle::ty::VariantDef
+where
+    'tcx: 'df,
+{
+    for variant_def in adt_def.variants().iter() {
+        if variant_def.ident(ctxt.tcx).name.as_str() == variant_name {
             return variant_def;
         }
     }
@@ -151,12 +168,12 @@ pub fn check_item_enum<'tcx>(
     attrs: &[Attribute],
     enum_def: &'tcx EnumDef<'tcx>,
     generics: &'tcx Generics<'tcx>,
-    adt_def: &'tcx rustc_middle::ty::AdtDef,
+    adt_def: &rustc_middle::ty::AdtDef,
 ) -> Result<(), VirErr> {
     assert!(adt_def.is_enum());
 
     let vattrs = get_verifier_attrs(attrs)?;
-    let def_id = id.def_id.to_def_id();
+    let def_id = id.owner_id.to_def_id();
     let typ_params =
         Arc::new(check_generics_bounds(ctxt.tcx, generics, vattrs.external_body, def_id)?);
     let path = def_id_to_vir_path(ctxt.tcx, def_id);
@@ -165,7 +182,7 @@ pub fn check_item_enum<'tcx>(
         .iter()
         .map(|variant| {
             let variant_name = &variant.ident.as_str();
-            let variant_def = get_mid_variant_def_by_name(&adt_def, variant_name);
+            let variant_def = get_mid_variant_def_by_name(ctxt, &adt_def, variant_name);
             let variant_name = str_ident(variant_name);
             let field_defs = variant_def.fields.iter();
             check_variant_data(ctxt, module_path, &variant_name, &variant.data, true, field_defs)

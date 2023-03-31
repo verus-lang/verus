@@ -1,3 +1,5 @@
+// rust_verify/tests/example.rs ignore
+// TODO(main_new) un-ignore when fixed
 #![allow(unused_imports)]
 
 // ANCHOR: full

@@ -1,0 +1,3 @@
+[toolchain]
+channel = "1.68.0"
+components = [ "rustfmt", "rustc-dev", "llvm-tools-preview" ] # TODO llvm-tools-preview may be unnecessary

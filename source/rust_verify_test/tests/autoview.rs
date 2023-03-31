@@ -187,7 +187,7 @@ test_verify_one_file! {
                 V {}
             }
         }
-    } => Err(err) => assert_error_msg(err, "test will be removed")
+    } => Err(err) => assert_rust_error_msg(err, "test will be removed")
 }
 
 test_verify_one_file! {
@@ -217,7 +217,7 @@ test_verify_one_file! {
                 V {}
             }
         }
-    } => Err(err) => assert_error_msg(err, "test will be removed")
+    } => Err(err) => assert_rust_error_msg(err, "test will be removed")
 }
 
 test_verify_one_file! {
@@ -243,6 +243,6 @@ test_verify_one_file! {
 
             // ERROR: view is missing
         }
-    } => Err(err) => assert_error_msg(err, "test will be removed")
+    } => Err(err) => assert_rust_error_msg(err, "test will be removed")
 }
 */

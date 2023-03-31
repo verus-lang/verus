@@ -179,6 +179,7 @@ pub const ASSERTION_FAILURE: &str = "assertion failure";
 pub const PRECONDITION_FAILURE: &str = "precondition not satisfied";
 pub const POSTCONDITION_FAILURE: &str = "postcondition not satisfied";
 pub const THIS_POST_FAILED: &str = "failed this postcondition";
+pub const THIS_PRE_FAILED: &str = "failed precondition";
 pub const INV_FAIL_LOOP_END: &str = "invariant not satisfied at end of loop body";
 pub const INV_FAIL_LOOP_FRONT: &str = "invariant not satisfied before loop";
 pub const SPLIT_ASSERT_FAILURE: &str = "split assertion failure";

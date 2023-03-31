@@ -7,7 +7,7 @@ pub fn attribute_is_variant(
     let ast = &s.ast();
     match ast.data {
         syn::Data::Enum(_) => {}
-        _ => panic!("#[is_variant] is only allowed on enums"),
+        _ => return quote! { compile_error!("#[is_variant] is only allowed on enums"); },
     }
     let struct_name = &s.ast().ident;
     let is_impls = s
@@ -32,7 +32,7 @@ pub fn attribute_is_variant(
                         quote! {
                             #[verifier::spec]
                             #[allow(non_snake_case)]
-                            #[verifier(get_variant(#variant_ident, #field_ident))] /* vattr */
+                            #[verifier::get_variant(#variant_ident, #field_ident)] /* vattr */
                             pub fn #get_ident(self) -> #field_ty {
                                 unimplemented!()
                             }
@@ -56,7 +56,7 @@ pub fn attribute_is_variant(
                         quote! {
                             #[verifier::spec]
                             #[allow(non_snake_case)]
-                            #[verifier(get_variant(#variant_ident_str, #field_lit))] /* vattr */
+                            #[verifier::get_variant(#variant_ident_str, #field_lit)] /* vattr */
                             pub fn #get_ident(self) -> #field_ty {
                                 unimplemented!()
                             }
@@ -68,7 +68,7 @@ pub fn attribute_is_variant(
 
             quote! {
                 #[verifier::spec]
-                #[verifier(is_variant(#variant_ident_str))] /* vattr */
+                #[verifier::is_variant(#variant_ident_str)] /* vattr */
                 #[allow(non_snake_case)]
                 pub fn #fun_ident(&self) -> bool { unimplemented!() }
 

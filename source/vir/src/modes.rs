@@ -1282,7 +1282,7 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
 
 pub fn check_crate(
     krate: &Krate,
-    macro_erasure: bool,
+    macro_erasure: bool, // TODO(main_new) remove, always true
 ) -> Result<(ErasureModes, HashMap<InferMode, Mode>), VirErr> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     let mut datatypes: HashMap<Path, Datatype> = HashMap::new();

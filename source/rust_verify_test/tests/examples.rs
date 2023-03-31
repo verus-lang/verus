@@ -1,5 +1,10 @@
+#![feature(rustc_private)]
+#[macro_use]
+mod common;
+use common::*;
+
 use rust_verify_test_macros::examples_in_dir;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[cfg(target_os = "macos")]
@@ -56,14 +61,12 @@ fn run_example_for_file(file_path: &str) {
     };
 
     let mut mode = Mode::ExpectSuccess;
-    let mut macro_erasure = true;
 
     if let ["//", "rust_verify/tests/example.rs", command] = &first_line_elements[..] {
         match command.strip_suffix("\n").unwrap_or("unexpected") {
             "expect-success" => mode = Mode::ExpectSuccess,
             "expect-errors" => mode = Mode::ExpectErrors,
             "expect-failures" => mode = Mode::ExpectFailures,
-            "erasure-todo" => macro_erasure = false,
             "ignore" => {
                 return;
             }
@@ -73,35 +76,11 @@ fn run_example_for_file(file_path: &str) {
         }
     }
 
-    // TODO (erasure-todo) : switch entirely to macro erasure; right now, the old erasure is disabled
-    let erasure = if macro_erasure { "--erasure macro" } else { "--no-lifetime" };
+    let deps_dir = std::env::current_exe().unwrap();
+    let deps_dir = deps_dir.parent().unwrap();
+    let target_dir = deps_dir.parent().unwrap();
 
-    #[cfg(target_os = "windows")]
-    let script = format!(
-        "..\\rust\\install\\bin\\rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/builtin_macros.dll --extern state_machines_macros=../rust/install/bin/state_machines_macros.dll --edition=2018 --cfg erasure_macro_todo {erasure} --extern vstd=../rust/install/bin/libvstd.rlib  --import vstd=../rust/install/bin/vstd.vir {}",
-        &path
-    );
-
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    let script = format!(
-        "{DYN_LIB_VAR}=../rust/install/lib/rustlib/{RUST_LIB_TARGET}/lib:../rust/install/lib ../rust/install/bin/rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/libbuiltin_macros.{DYN_LIB_EXT} --extern state_machines_macros=../rust/install/bin/libstate_machines_macros.{DYN_LIB_EXT} --edition=2018 --cfg erasure_macro_todo {erasure} --extern vstd=../rust/install/bin/libvstd.rlib  --import vstd=../rust/install/bin/vstd.vir {}",
-        &path
-    );
-
-    let output = if cfg!(target_os = "windows") {
-        Command::new("cmd")
-            .current_dir("..")
-            .args(&["/C", &script])
-            .output()
-            .expect("failed to execute process")
-    } else {
-        Command::new("sh")
-            .current_dir("..")
-            .arg("-c")
-            .arg(script)
-            .output()
-            .expect("failed to execute process")
-    };
+    let output = run_verus(&[], &PathBuf::from(relative_path), true, target_dir, false, false);
 
     use regex::Regex;
     let re = Regex::new(r"verification results:: verified: (\d+) errors: (\d+)").unwrap();

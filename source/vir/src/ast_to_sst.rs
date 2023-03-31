@@ -1981,7 +1981,7 @@ fn closure_emit_postconditions(
                 &ret_value.span,
                 "returning this expression",
             )
-            .secondary_label(&ens.span, "this post-condition fails");
+            .secondary_label(&ens.span, crate::def::THIS_POST_FAILED);
             let stm = Spanned::new(ens.span.clone(), StmX::Assert(Some(er), ens.clone()));
             stms.push(stm);
         }

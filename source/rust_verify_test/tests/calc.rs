@@ -111,5 +111,5 @@ test_verify_one_file! {
                 5;
             };
         }
-    } => Err(err) => assert_error_msg(err, "inconsistent relation `>` with `<=`")
+    } => Err(err) => assert_vir_error_msg(err, "inconsistent relation `>` with `<=`")
 }

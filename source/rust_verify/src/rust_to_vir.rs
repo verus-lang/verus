@@ -21,7 +21,7 @@ use crate::{err_unless, unsupported_err, unsupported_err_unless};
 use rustc_ast::IsAuto;
 use rustc_hir::{
     AssocItemKind, ForeignItem, ForeignItemId, ForeignItemKind, ImplItemKind, Item, ItemId,
-    ItemKind, OwnerNode, QPath, TraitFn, TraitItem, TraitItemKind, TraitRef, Unsafety,
+    ItemKind, MaybeOwner, OwnerNode, QPath, TraitFn, TraitItem, TraitItemKind, TraitRef, Unsafety,
 };
 
 use std::collections::HashMap;
@@ -42,19 +42,22 @@ fn check_item<'tcx>(
         if let Some(Some(path)) = mpath {
             path.clone()
         } else {
-            let owned_by =
-                ctxt.krate.owners[item.hir_id().owner].as_ref().expect("owner of item").node();
+            let owned_by = ctxt.krate.owners[item.hir_id().owner.def_id]
+                .as_owner()
+                .as_ref()
+                .expect("owner of item")
+                .node();
             def_id_to_vir_path(ctxt.tcx, owned_by.def_id().to_def_id())
         }
     };
 
-    let visibility = || mk_visibility(&Some(module_path()), &item.vis, true);
+    let visibility = || mk_visibility(ctxt, &Some(module_path()), true, item.owner_id.to_def_id());
     match &item.kind {
         ItemKind::Fn(sig, generics, body_id) => {
             check_item_fn(
                 ctxt,
                 vir,
-                item.def_id.to_def_id(),
+                item.owner_id.to_def_id(),
                 FunctionKind::Static,
                 visibility(),
                 ctxt.tcx.hir().attrs(item.hir_id()),
@@ -79,7 +82,7 @@ fn check_item<'tcx>(
             // rustc_middle; in fact, we still rely on attributes which we can only
             // get from the HIR data.
 
-            let tyof = ctxt.tcx.type_of(item.def_id.to_def_id());
+            let tyof = ctxt.tcx.type_of(item.owner_id.to_def_id());
             let adt_def = tyof.ty_adt_def().expect("adt_def");
 
             check_item_struct(
@@ -92,11 +95,11 @@ fn check_item<'tcx>(
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 variant_data,
                 generics,
-                adt_def,
+                &adt_def,
             )?;
         }
         ItemKind::Enum(enum_def, generics) => {
-            let tyof = ctxt.tcx.type_of(item.def_id.to_def_id());
+            let tyof = ctxt.tcx.type_of(item.owner_id.to_def_id());
             let adt_def = tyof.ty_adt_def().expect("adt_def");
 
             // TODO use rustc_middle? see `Struct` case
@@ -110,13 +113,13 @@ fn check_item<'tcx>(
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 enum_def,
                 generics,
-                adt_def,
+                &adt_def,
             )?;
         }
         ItemKind::Impl(impll) => {
             let attrs = ctxt.tcx.hir().attrs(item.hir_id());
             let vattrs = get_verifier_attrs(attrs)?;
-            let impl_def_id = item.def_id.to_def_id();
+            let impl_def_id = item.owner_id.to_def_id();
 
             if vattrs.external {
                 return Ok(());
@@ -148,7 +151,7 @@ fn check_item<'tcx>(
                     let ty_kind_applied_never =
                         if let rustc_middle::ty::TyKind::Adt(def, substs) = ty.kind() {
                             rustc_middle::ty::TyKind::Adt(
-                                def,
+                                def.to_owned(),
                                 ctxt.tcx.mk_substs(substs.iter().map(|g| match g.unpack() {
                                     rustc_middle::ty::subst::GenericArgKind::Type(_) => {
                                         (*ctxt.tcx).types.never.into()
@@ -188,7 +191,7 @@ fn check_item<'tcx>(
                                     ctxt.erasure_info
                                         .borrow_mut()
                                         .ignored_functions
-                                        .push((impl_item.def_id.to_def_id(), sig.span.data()));
+                                        .push((impl_item.owner_id.to_def_id(), sig.span.data()));
                                 } else {
                                     panic!("Fn impl item expected");
                                 }
@@ -200,8 +203,8 @@ fn check_item<'tcx>(
                 }
             }
 
-            let self_ty = ctxt.tcx.type_of(item.def_id.to_def_id());
-            let self_typ = mid_ty_to_vir(ctxt.tcx, self_ty, false);
+            let self_ty = ctxt.tcx.type_of(item.owner_id.to_def_id());
+            let self_typ = mid_ty_to_vir(ctxt.tcx, &self_ty, false);
 
             let (self_path, datatype_typ_args) = match &*self_typ {
                 TypX::Datatype(p, typ_args) => (p.clone(), typ_args.clone()),
@@ -220,14 +223,15 @@ fn check_item<'tcx>(
 
             let trait_path_typ_args = impll.of_trait.as_ref().map(|TraitRef { path, .. }| {
                 let trait_ref =
-                    ctxt.tcx.impl_trait_ref(item.def_id.to_def_id()).expect("impl_trait_ref");
+                    ctxt.tcx.impl_trait_ref(item.owner_id.to_def_id()).expect("impl_trait_ref");
                 // If we have `impl X for Z<A, B, C>` then the list of types is [X, A, B, C].
                 // So to get the type args, we strip off the first element.
                 let types: Vec<Typ> = trait_ref
+                    .0
                     .substs
                     .types()
                     .skip(1)
-                    .map(|ty| mid_ty_to_vir(ctxt.tcx, ty, false))
+                    .map(|ty| mid_ty_to_vir(ctxt.tcx, &ty, false))
                     .collect();
                 let path = def_id_to_vir_path(ctxt.tcx, path.res.def_id());
                 (path, Arc::new(types))
@@ -237,8 +241,12 @@ fn check_item<'tcx>(
                 match impl_item_ref.kind {
                     AssocItemKind::Fn { has_self: true | false } => {
                         let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
-                        let mut impl_item_visibility =
-                            mk_visibility(&Some(module_path()), &impl_item.vis, true);
+                        let mut impl_item_visibility = mk_visibility(
+                            &ctxt,
+                            &Some(module_path()),
+                            true,
+                            impl_item.owner_id.to_def_id(),
+                        ); // TODO(main_new) correct?
                         match &impl_item.kind {
                             ImplItemKind::Fn(sig, body_id) => {
                                 let fn_attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
@@ -249,9 +257,9 @@ fn check_item<'tcx>(
                                         fn_item_hir_id_to_self_def_id(ctxt.tcx, impl_item.hir_id())
                                             .map(|self_def_id| ctxt.tcx.adt_def(self_def_id))
                                             .and_then(|adt| {
-                                                adt.variants
-                                                    .iter()
-                                                    .find(|v| v.ident.as_str() == variant_name)
+                                                adt.variants().iter().find(|v| {
+                                                    v.ident(ctxt.tcx).as_str() == variant_name
+                                                })
                                             })
                                     };
                                     let valid = if let Some(variant_name) = fn_vattrs.is_variant {
@@ -268,7 +276,8 @@ fn check_item<'tcx>(
                                         find_variant(&variant_name)
                                             .and_then(|variant| {
                                                 variant.fields.iter().find(|f| {
-                                                    f.ident.as_str() == field_name_str.as_str()
+                                                    f.ident(ctxt.tcx).as_str()
+                                                        == field_name_str.as_str()
                                                 })
                                             })
                                             .is_some()
@@ -291,9 +300,10 @@ fn check_item<'tcx>(
                                         trait_path_typ_args.clone()
                                     {
                                         impl_item_visibility = mk_visibility(
+                                            &ctxt,
                                             &Some(module_path()),
-                                            &impl_item.vis,
                                             false,
+                                            impl_item.owner_id.to_def_id(), // TODO(main_new) correct?
                                         );
                                         let ident = impl_item_ref.ident.to_string();
                                         let ident = Arc::new(ident);
@@ -316,7 +326,7 @@ fn check_item<'tcx>(
                                     check_item_fn(
                                         ctxt,
                                         vir,
-                                        impl_item.def_id.to_def_id(),
+                                        impl_item.owner_id.to_def_id(),
                                         kind,
                                         impl_item_visibility,
                                         fn_attrs,
@@ -356,27 +366,27 @@ fn check_item<'tcx>(
                 ctxt.erasure_info
                     .borrow_mut()
                     .ignored_functions
-                    .push((item.def_id.to_def_id(), item.span.data()));
+                    .push((item.owner_id.to_def_id(), item.span.data()));
                 return Ok(());
             }
 
             let mid_ty = ctxt.tcx.type_of(def_id);
-            let vir_ty = mid_ty_to_vir(ctxt.tcx, mid_ty, false);
+            let vir_ty = mid_ty_to_vir(ctxt.tcx, &mid_ty, false);
 
             crate::rust_to_vir_func::check_item_const(
                 ctxt,
                 vir,
                 item.span,
-                item.def_id.to_def_id(),
+                item.owner_id.to_def_id(),
                 visibility(),
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 &vir_ty,
                 body_id,
             )?;
         }
-        ItemKind::Macro(_macro_def) => {}
+        ItemKind::Macro(_, _) => {}
         ItemKind::Trait(IsAuto::No, Unsafety::Normal, trait_generics, bounds, trait_items) => {
-            let trait_def_id = item.def_id.to_def_id();
+            let trait_def_id = item.owner_id.to_def_id();
             for bound in bounds.iter() {
                 if let Some(r) = bound.trait_ref() {
                     if let Some(id) = r.trait_def_id() {
@@ -395,10 +405,16 @@ fn check_item<'tcx>(
             let mut methods: Vec<Fun> = Vec::new();
             for trait_item_ref in *trait_items {
                 let trait_item = ctxt.tcx.hir().trait_item(trait_item_ref.id);
-                let TraitItem { ident: _, def_id, generics: item_generics, kind, span } =
-                    trait_item;
+                let TraitItem {
+                    ident: _,
+                    owner_id,
+                    generics: item_generics,
+                    kind,
+                    span,
+                    defaultness: _,
+                } = trait_item;
                 let generics_bnds =
-                    check_generics_bounds(ctxt.tcx, item_generics, false, def_id.to_def_id())?;
+                    check_generics_bounds(ctxt.tcx, item_generics, false, owner_id.to_def_id())?;
                 unsupported_err_unless!(generics_bnds.len() == 0, *span, "trait generics");
                 match kind {
                     TraitItemKind::Fn(sig, fun) => {
@@ -417,7 +433,7 @@ fn check_item<'tcx>(
                         let fun = check_item_fn(
                             ctxt,
                             vir,
-                            def_id.to_def_id(),
+                            owner_id.to_def_id(),
                             FunctionKind::TraitMethodDecl { trait_path: trait_path.clone() },
                             visibility(),
                             attrs,
@@ -470,9 +486,9 @@ fn check_foreign_item<'tcx>(
             check_foreign_item_fn(
                 ctxt,
                 vir,
-                item.def_id.to_def_id(),
+                item.owner_id.to_def_id(),
                 item.span,
-                mk_visibility(&None, &item.vis, true),
+                mk_visibility(ctxt, &None, true, item.owner_id.to_def_id()),
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 decl,
                 idents,
@@ -499,10 +515,6 @@ struct VisitMod<'tcx> {
 impl<'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'tcx> {
     type Map = rustc_middle::hir::map::Map<'tcx>;
 
-    fn nested_visit_map(&mut self) -> rustc_hir::intravisit::NestedVisitorMap<Self::Map> {
-        rustc_hir::intravisit::NestedVisitorMap::All(self.tcx.hir())
-    }
-
     fn visit_item(&mut self, item: &'tcx Item<'tcx>) {
         self.ids.push(item.item_id());
         rustc_hir::intravisit::walk_item(self, item);
@@ -515,9 +527,9 @@ pub(crate) fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> 
     // Map each item to the module that contains it, or None if the module is external
     let mut item_to_module: HashMap<ItemId, Option<Path>> = HashMap::new();
     for (owner_id, owner_opt) in ctxt.krate.owners.iter_enumerated() {
-        if let Some(owner) = owner_opt {
+        if let MaybeOwner::Owner(owner) = owner_opt {
             match owner.node() {
-                OwnerNode::Item(item @ Item { kind: ItemKind::Mod(mod_), def_id, .. }) => {
+                OwnerNode::Item(item @ Item { kind: ItemKind::Mod(mod_), owner_id, .. }) => {
                     let attrs = ctxt.tcx.hir().attrs(item.hir_id());
                     let vattrs = get_verifier_attrs(attrs)?;
                     if vattrs.external {
@@ -529,7 +541,7 @@ pub(crate) fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> 
                         item_to_module.extend(visitor.ids.iter().map(move |ii| (*ii, None)))
                     } else {
                         // Shallowly visit just the top-level items (don't visit nested modules)
-                        let path = def_id_to_vir_path(ctxt.tcx, def_id.to_def_id());
+                        let path = def_id_to_vir_path(ctxt.tcx, owner_id.to_def_id());
                         vir.module_ids.push(path.clone());
                         let path = Some(path);
                         item_to_module
@@ -547,7 +559,7 @@ pub(crate) fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> 
         }
     }
     for owner in ctxt.krate.owners.iter() {
-        if let Some(owner) = owner {
+        if let MaybeOwner::Owner(owner) = owner {
             match owner.node() {
                 OwnerNode::Item(item) => {
                     // If the item does not belong to a module, use the def_id of its owner as the
@@ -579,7 +591,7 @@ pub(crate) fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> 
                             // TODO: check whether these implement the correct trait
                         }
                     }
-                    ImplItemKind::TyAlias(_ty) => {
+                    ImplItemKind::Type(_ty) => {
                         // checked by the type system
                     }
                     _ => {

@@ -2,8 +2,14 @@ use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout};
 use std::sync::mpsc::{channel, Receiver, Sender};
 
+pub static SMT_EXECUTABLE_NAME_OVERRIDE: std::sync::RwLock<Option<String>> =
+    std::sync::RwLock::new(None);
+
 fn smt_executable_name() -> String {
-    if let Ok(path) = std::env::var("VERUS_Z3_PATH") {
+    let override_path = { SMT_EXECUTABLE_NAME_OVERRIDE.read().unwrap().clone() };
+    if let Some(path) = override_path {
+        path
+    } else if let Ok(path) = std::env::var("VERUS_Z3_PATH") {
         path
     } else {
         if cfg!(windows) { "z3.exe" } else { "z3" }.to_string()

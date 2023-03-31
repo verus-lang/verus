@@ -4,6 +4,7 @@
 #![feature(unboxed_closures)]
 #![feature(fn_traits)]
 #![feature(register_tool)]
+#![feature(tuple_trait)]
 #![register_tool(verus)]
 #![register_tool(verifier)]
 
@@ -237,13 +238,13 @@ pub fn internal_arbitrary<A>(_: u64) -> A {
 // Ghost, Tracked
 //
 
-#[verifier(external_body)]
-pub struct Ghost<#[verifier(strictly_positive)] A> {
+#[verifier::external_body]
+pub struct Ghost<#[verifier::strictly_positive] A> {
     phantom: PhantomData<A>,
 }
 
-#[verifier(external_body)]
-pub struct Tracked<#[verifier(strictly_positive)] A> {
+#[verifier::external_body]
+pub struct Tracked<#[verifier::strictly_positive] A> {
     phantom: PhantomData<A>,
 }
 
@@ -254,13 +255,13 @@ impl<A> Ghost<A> {
     }
 
     #[verifier::spec]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn new(_a: A) -> Ghost<A> {
         Ghost { phantom: PhantomData }
     }
 
     #[doc(hidden)]
-    #[verifier(external)]
+    #[verifier::external]
     #[inline(always)]
     pub fn assume_new() -> Self {
         Ghost { phantom: PhantomData }
@@ -268,14 +269,14 @@ impl<A> Ghost<A> {
 
     // note that because we return #[verifier::spec], not #[verifier::exec], we do not implement the Borrow trait
     #[verifier::spec]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn borrow(&self) -> &A {
         unimplemented!()
     }
 
     // note that because we return #[verifier::spec], not #[verifier::exec], we do not implement the BorrowMut trait
     #[verifier::proof]
-    #[verifier(external)]
+    #[verifier::external]
     pub fn borrow_mut(#[verifier::proof] &mut self) -> &mut A {
         unimplemented!()
     }
@@ -288,44 +289,44 @@ impl<A> Tracked<A> {
     }
 
     #[verifier::proof]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn new(#[verifier::proof] _a: A) -> Tracked<A> {
         Tracked { phantom: PhantomData }
     }
 
     #[doc(hidden)]
-    #[verifier(external)]
+    #[verifier::external]
     #[inline(always)]
     pub fn assume_new() -> Self {
         Tracked { phantom: PhantomData }
     }
 
     #[verifier::proof]
-    #[verifier(external_body)]
-    #[verifier(returns(proof))]
+    #[verifier::external_body]
+    #[verifier::returns(proof)]
     pub fn get(#[verifier::proof] self) -> A {
         unimplemented!()
     }
 
     // note that because we return #[verifier::proof], not #[verifier::exec], we do not implement the Borrow trait
     #[verifier::proof]
-    #[verifier(external_body)]
-    #[verifier(returns(proof))]
+    #[verifier::external_body]
+    #[verifier::returns(proof)]
     pub fn borrow(#[verifier::proof] &self) -> &A {
         unimplemented!()
     }
 
     // note that because we return #[verifier::proof], not #[verifier::exec], we do not implement the BorrowMut trait
     #[verifier::proof]
-    #[verifier(external_body)]
-    #[verifier(returns(proof))]
+    #[verifier::external_body]
+    #[verifier::returns(proof)]
     pub fn borrow_mut(#[verifier::proof] &mut self) -> &mut A {
         unimplemented!()
     }
 }
 
 impl<A> Clone for Ghost<A> {
-    #[verifier(external_body)]
+    #[verifier::external_body]
     #[inline(always)]
     fn clone(&self) -> Self {
         Ghost { phantom: PhantomData }
@@ -334,17 +335,17 @@ impl<A> Clone for Ghost<A> {
 
 impl<A> Copy for Ghost<A> {}
 
-#[verifier(external_body)]
+#[verifier::external_body]
 pub fn ghost_exec<A>(#[verifier::spec] _a: A) -> Ghost<A> {
     Ghost::assume_new()
 }
 
-#[verifier(external_body)]
+#[verifier::external_body]
 pub fn tracked_exec<A>(#[verifier::proof] _a: A) -> Tracked<A> {
     Tracked::assume_new()
 }
 
-#[verifier(external_body)]
+#[verifier::external_body]
 pub fn tracked_exec_borrow<'a, A>(#[verifier::proof] _a: &'a A) -> &'a Tracked<A> {
     // TODO: implement this (using unsafe) or mark function as ghost (if supported by Rust)
     unimplemented!();
@@ -984,27 +985,29 @@ pub struct FnSpec<Args, Output> {
     phantom: PhantomData<(Args, Output)>,
 }
 
-impl<Args, Output> FnOnce<Args> for FnSpec<Args, Output> {
+impl<Args: core::marker::Tuple, Output> FnOnce<Args> for FnSpec<Args, Output> {
     type Output = Output;
     extern "rust-call" fn call_once(self, _: Args) -> <Self as FnOnce<Args>>::Output {
         todo!()
     }
 }
 
-impl<Args, Output> FnMut<Args> for FnSpec<Args, Output> {
+impl<Args: core::marker::Tuple, Output> FnMut<Args> for FnSpec<Args, Output> {
     extern "rust-call" fn call_mut(&mut self, _: Args) -> <Self as FnOnce<Args>>::Output {
         todo!()
     }
 }
 
-impl<Args, Output> Fn<Args> for FnSpec<Args, Output> {
+impl<Args: core::marker::Tuple, Output> Fn<Args> for FnSpec<Args, Output> {
     extern "rust-call" fn call(&self, _: Args) -> <Self as FnOnce<Args>>::Output {
         todo!()
     }
 }
 
 #[rustc_diagnostic_item = "builtin::closure_to_fn_spec"]
-pub fn closure_to_fn_spec<Args, F: FnOnce<Args>>(_f: F) -> FnSpec<Args, F::Output> {
+pub fn closure_to_fn_spec<Args: core::marker::Tuple, F: FnOnce<Args>>(
+    _f: F,
+) -> FnSpec<Args, F::Output> {
     unimplemented!();
 }
 
@@ -1014,7 +1017,7 @@ pub trait FnWithSpecification<Args> {
     fn ensures(&self, args: Args, output: Self::Output) -> bool;
 }
 
-impl<Args, F: FnOnce<Args>> FnWithSpecification<Args> for F {
+impl<Args: core::marker::Tuple, F: FnOnce<Args>> FnWithSpecification<Args> for F {
     type Output = F::Output;
 
     fn requires(&self, _args: Args) -> bool {

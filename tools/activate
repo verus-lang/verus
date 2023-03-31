@@ -1,0 +1,12 @@
+#! /bin/bash
+
+# Determine the directory that this script is in
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+
+echo "building vargo"
+(
+    cd "$SCRIPT_DIR/vargo" || exit 1
+    cargo build --release
+)
+
+export PATH="$SCRIPT_DIR/vargo/target/release:$PATH"

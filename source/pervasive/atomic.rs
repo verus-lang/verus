@@ -94,12 +94,12 @@ macro_rules! atomic_types {
     ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty) => {
         verus!{
 
-        #[verifier(external_body)] /* vattr */
+        #[verifier::external_body] /* vattr */
         pub struct $at_ident {
             ato: $rust_ty,
         }
 
-        #[verifier(external_body)] /* vattr */
+        #[verifier::external_body] /* vattr */
         pub tracked struct $p_ident {
             no_copy: NoCopy,
         }
@@ -110,7 +110,7 @@ macro_rules! atomic_types {
         }
 
         impl $p_ident {
-            #[verifier(external_body)] /* vattr */
+            #[verifier::external_body] /* vattr */
             pub spec fn view(self) -> $p_data_ident;
 
             pub open spec fn is_for(&self, patomic: $at_ident) -> bool {
@@ -133,7 +133,7 @@ macro_rules! atomic_common_methods {
         pub spec fn id(&self) -> int;
 
         #[inline(always)]
-        #[verifier(external_body)] /* vattr */
+        #[verifier::external_body] /* vattr */
         pub fn new(i: $value_ty) -> (res: ($at_ident, Tracked<$p_ident>))
             ensures
                 equal(res.1@.view(), $p_data_ident{ patomic: res.0.id(), value: i }),
@@ -143,8 +143,8 @@ macro_rules! atomic_common_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)] /* vattr */
-        #[verifier(atomic)] /* vattr */
+        #[verifier::external_body] /* vattr */
+        #[verifier::atomic] /* vattr */
         pub fn load(&self, Tracked(perm): Tracked<&$p_ident>) -> (ret: $value_ty)
             requires
                 equal(self.id(), perm.view().patomic),
@@ -155,8 +155,8 @@ macro_rules! atomic_common_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)] /* vattr */
-        #[verifier(atomic)] /* vattr */
+        #[verifier::external_body] /* vattr */
+        #[verifier::atomic] /* vattr */
         pub fn store(&self, Tracked(perm): Tracked<&mut $p_ident>, v: $value_ty)
             requires
                 equal(self.id(), old(perm).view().patomic),
@@ -167,8 +167,8 @@ macro_rules! atomic_common_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)] /* vattr */
-        #[verifier(atomic)] /* vattr */
+        #[verifier::external_body] /* vattr */
+        #[verifier::atomic] /* vattr */
         pub fn compare_exchange(&self, Tracked(perm): Tracked<&mut $p_ident>, current: $value_ty, new: $value_ty) -> (ret: Result<$value_ty, $value_ty>)
             requires
                 equal(self.id(), old(perm).view().patomic),
@@ -193,8 +193,8 @@ macro_rules! atomic_common_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)] /* vattr */
-        #[verifier(atomic)] /* vattr */
+        #[verifier::external_body] /* vattr */
+        #[verifier::atomic] /* vattr */
         pub fn compare_exchange_weak(&self, Tracked(perm): Tracked<&mut $p_ident>, current: $value_ty, new: $value_ty) -> (ret: Result<$value_ty, $value_ty>)
             requires
                 equal(self.id(), old(perm).view().patomic),
@@ -218,8 +218,8 @@ macro_rules! atomic_common_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)] /* vattr */
-        #[verifier(atomic)] /* vattr */
+        #[verifier::external_body] /* vattr */
+        #[verifier::atomic] /* vattr */
         pub fn swap(&self, Tracked(perm): Tracked<&mut $p_ident>, v: $value_ty) -> (ret: $value_ty)
             requires
                 equal(self.id(), old(perm).view().patomic),
@@ -233,7 +233,7 @@ macro_rules! atomic_common_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)] /* vattr */
+        #[verifier::external_body] /* vattr */
         pub fn into_inner(self, Tracked(perm): Tracked<$p_ident>) -> (ret: $value_ty)
             requires
                 equal(self.id(), perm.view().patomic),
@@ -255,8 +255,8 @@ macro_rules! atomic_integer_methods {
         // for Rust's atomics (in contrast to ordinary arithmetic)
 
         #[inline(always)]
-        #[verifier(external_body)] /* vattr */
-        #[verifier(atomic)] /* vattr */
+        #[verifier::external_body] /* vattr */
+        #[verifier::atomic] /* vattr */
         pub fn fetch_add_wrapping(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
             requires equal(self.id(), old(perm).view().patomic),
             ensures
@@ -269,8 +269,8 @@ macro_rules! atomic_integer_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)] /* vattr */
-        #[verifier(atomic)] /* vattr */
+        #[verifier::external_body] /* vattr */
+        #[verifier::atomic] /* vattr */
         pub fn fetch_sub_wrapping(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
             requires equal(self.id(), old(perm).view().patomic),
             ensures
@@ -286,7 +286,7 @@ macro_rules! atomic_integer_methods {
         // don't expect wrapping
 
         #[inline(always)]
-        #[verifier(atomic)] /* vattr */
+        #[verifier::atomic] /* vattr */
         pub fn fetch_add(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
             requires
                 equal(self.id(), old(perm).view().patomic),
@@ -302,7 +302,7 @@ macro_rules! atomic_integer_methods {
         }
 
         #[inline(always)]
-        #[verifier(atomic)] /* vattr */
+        #[verifier::atomic] /* vattr */
         pub fn fetch_sub(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
             requires
                 equal(self.id(), old(perm).view().patomic),
@@ -318,8 +318,8 @@ macro_rules! atomic_integer_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)] /* vattr */
-        #[verifier(atomic)] /* vattr */
+        #[verifier::external_body] /* vattr */
+        #[verifier::atomic] /* vattr */
         pub fn fetch_and(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
             requires equal(self.id(), old(perm).view().patomic),
             ensures
@@ -332,8 +332,8 @@ macro_rules! atomic_integer_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)] /* vattr */
-        #[verifier(atomic)] /* vattr */
+        #[verifier::external_body] /* vattr */
+        #[verifier::atomic] /* vattr */
         pub fn fetch_or(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
             requires equal(self.id(), old(perm).view().patomic),
             ensures
@@ -346,8 +346,8 @@ macro_rules! atomic_integer_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)] /* vattr */
-        #[verifier(atomic)] /* vattr */
+        #[verifier::external_body] /* vattr */
+        #[verifier::atomic] /* vattr */
         pub fn fetch_xor(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
             requires equal(self.id(), old(perm).view().patomic),
             ensures
@@ -360,8 +360,8 @@ macro_rules! atomic_integer_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)] /* vattr */
-        #[verifier(atomic)] /* vattr */
+        #[verifier::external_body] /* vattr */
+        #[verifier::atomic] /* vattr */
         pub fn fetch_nand(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
             requires equal(self.id(), old(perm).view().patomic),
             ensures
@@ -374,8 +374,8 @@ macro_rules! atomic_integer_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)] /* vattr */
-        #[verifier(atomic)] /* vattr */
+        #[verifier::external_body] /* vattr */
+        #[verifier::atomic] /* vattr */
         pub fn fetch_max(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
             requires equal(self.id(), old(perm).view().patomic),
             ensures
@@ -388,8 +388,8 @@ macro_rules! atomic_integer_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)] /* vattr */
-        #[verifier(atomic)] /* vattr */
+        #[verifier::external_body] /* vattr */
+        #[verifier::atomic] /* vattr */
         pub fn fetch_min(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
             requires equal(self.id(), old(perm).view().patomic),
             ensures
@@ -410,8 +410,8 @@ macro_rules! atomic_bool_methods {
         verus!{
 
         #[inline(always)]
-        #[verifier(external_body)] /* vattr */
-        #[verifier(atomic)] /* vattr */
+        #[verifier::external_body] /* vattr */
+        #[verifier::atomic] /* vattr */
         pub fn fetch_and(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
             requires
                 equal(self.id(), old(perm).view().patomic),
@@ -425,8 +425,8 @@ macro_rules! atomic_bool_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)] /* vattr */
-        #[verifier(atomic)] /* vattr */
+        #[verifier::external_body] /* vattr */
+        #[verifier::atomic] /* vattr */
         pub fn fetch_or(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
             requires
                 equal(self.id(), old(perm).view().patomic),
@@ -440,8 +440,8 @@ macro_rules! atomic_bool_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)] /* vattr */
-        #[verifier(atomic)] /* vattr */
+        #[verifier::external_body] /* vattr */
+        #[verifier::atomic] /* vattr */
         pub fn fetch_xor(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
             requires
                 equal(self.id(), old(perm).view().patomic),
@@ -455,8 +455,8 @@ macro_rules! atomic_bool_methods {
         }
 
         #[inline(always)]
-        #[verifier(external_body)] /* vattr */
-        #[verifier(atomic)] /* vattr */
+        #[verifier::external_body] /* vattr */
+        #[verifier::atomic] /* vattr */
         pub fn fetch_nand(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
             requires
                 equal(self.id(), old(perm).view().patomic),
