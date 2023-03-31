@@ -16,6 +16,9 @@ num-bigint = "0.4.3"
 num-format = "0.4.0"
 getopts = { git = "https://github.com/utaal/getopts.git", branch = "parse-partial" }
 
+verus_rustc_driver = { path = "../../dependencies/rustc_driver" }
+verus_rustc_interface = { path = "../../dependencies/rustc_interface" }
+
 [target.'cfg(windows)'.dependencies]
 win32job = "1"
 
@@ -25,3 +28,6 @@ regex = "1"
 
 [features]
 singular = ["vir/singular", "air/singular"]
+
+[package.metadata.rust-analyzer]
+rustc_private = true

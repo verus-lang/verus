@@ -1,6 +1,7 @@
 # Copied from Rust compiler's rustfmt.toml settings
 
 # Run rustfmt with this config (it should be picked up automatically).
-version = "Two"
+# unstable_features=true # provided by vargo
+# version=Two # provided by vargo
 use_small_heuristics = "Max"
 merge_derives = false
