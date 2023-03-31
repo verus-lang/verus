@@ -203,7 +203,8 @@ fn run() -> Result<(), String> {
             .unwrap();
 
     let proc_macro_re = regex::Regex::new(
-        (pre.to_string() + r"([a-zA-Z0-9_]+)(-([a-zA-Z0-9_]+))?\." + dl).as_str(),
+        // note: on Windows, there are .dll.exp and .dll.lib files; be sure not to match those
+        (pre.to_string() + r"([a-zA-Z0-9_]+)(-([a-zA-Z0-9_]+))?\." + dl + "$").as_str(),
     )
     .unwrap();
 

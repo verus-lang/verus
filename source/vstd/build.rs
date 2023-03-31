@@ -54,7 +54,7 @@ fn main() {
         .join("target-verus")
         .join(profile);
 
-    let lib_builtin_path = verus_target_path.join(format!("{}builtin.rlib", pre));
+    let lib_builtin_path = verus_target_path.join("libbuiltin.rlib");
     wait_exists(&lib_builtin_path);
     assert!(lib_builtin_path.exists());
     let lib_builtin_path = lib_builtin_path.to_str().unwrap();
