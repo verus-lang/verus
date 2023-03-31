@@ -412,7 +412,7 @@ fn e10_pass() {
             },
         ),
     ];
-    let result = verify_files(files, "test.rs".to_string(), &[]);
+    let result = verify_files("e10_pass", files, "test.rs".to_string(), &[]);
     assert!(result.is_ok());
 }
 
@@ -558,7 +558,7 @@ fn e13_pass() {
                 },
         ),
     ];
-    let result = verify_files_vstd(files, "test.rs".to_string(), true, &[]);
+    let result = verify_files_vstd("e13_pass", files, "test.rs".to_string(), true, &[]);
     assert!(result.is_ok());
 }
 

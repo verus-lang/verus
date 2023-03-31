@@ -88,5 +88,5 @@ proof fn test9(b1: u32, b2:u32, b3:u32) {
 
 
 } // verus!
-#[verifier(external_body)]
+#[verifier::external_body]
 fn main() {}

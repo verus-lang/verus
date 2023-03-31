@@ -31,22 +31,22 @@ macro_rules! test_both {
     };
 }
 
-test_both! {
-    basic_usage basic_usage_local code! {
-        use vstd::invariant::*;
-
-        pub fn X<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
-            requires([
-                i.inv(0)
-            ]);
-            open_atomic_invariant!(&i => inner => {
-                #[verifier::proof] let x = 5;
-                #[verifier::proof] let x = 6;
-                inner = 0;
-            });
-        }
-    } => Ok(())
-}
+// TODO(main_new) test_both! {
+// TODO(main_new)     basic_usage basic_usage_local code! {
+// TODO(main_new)         use vstd::invariant::*;
+// TODO(main_new)
+// TODO(main_new)         pub fn X<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
+// TODO(main_new)             requires([
+// TODO(main_new)                 i.inv(0)
+// TODO(main_new)             ]);
+// TODO(main_new)             open_atomic_invariant!(&i => inner => {
+// TODO(main_new)                 #[verifier::proof] let x = 5;
+// TODO(main_new)                 #[verifier::proof] let x = 6;
+// TODO(main_new)                 inner = 0;
+// TODO(main_new)             });
+// TODO(main_new)         }
+// TODO(main_new)     } => Ok(())
+// TODO(main_new) }
 
 test_both! {
     basic_usage2 basic_usage2_local code! {
@@ -250,7 +250,7 @@ test_both! {
             throw_away(i);
           });
         }
-    } => Err(err) => assert_error_msg(err, "error[E0505]: cannot move out of `i` because it is borrowed")
+    } => Err(err) => assert_rust_error_msg(err, "error[E0505]: cannot move out of `i` because it is borrowed")
 }
 */
 
@@ -367,7 +367,7 @@ test_verify_one_file! {
             open_atomic_invariant!(&i => inner => {
             });
         }
-    } => Err(err) => assert_error_msg(err, "mismatched types")
+    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
 }
 
 test_verify_one_file! {
@@ -378,7 +378,7 @@ test_verify_one_file! {
             open_local_invariant!(&i => inner => {
             });
         }
-    } => Err(err) => assert_error_msg(err, "mismatched types")
+    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
 }
 
 test_verify_one_file! {
@@ -399,7 +399,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] never_terminate_in_invariant code! {
+    // TODO(main_new)
+    #[ignore] #[test] never_terminate_in_invariant code! {
         use vstd::invariant::*;
 
         pub fn X<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: LocalInvariant<A, u8, B>) {

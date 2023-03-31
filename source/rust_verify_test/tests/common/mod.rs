@@ -2,224 +2,282 @@ extern crate rustc_driver;
 extern crate rustc_errors;
 extern crate rustc_span;
 
-pub use rust_verify::verifier::ErrorSpan;
-pub use rust_verify_test_macros::{code, code_str, verus_code, verus_code_str};
+use serde::Deserialize;
 
-use rust_verify::config::{parse_args, Args, DEFAULT_RLIMIT_SECS};
-use rust_verify::verifier::Verifier;
+pub use rust_verify_test_macros::{code, code_str, verus_code, verus_code_str};
 
 use rustc_span::source_map::FileLoader;
 
-#[derive(Clone, Default)]
-struct TestFileLoader {
-    files: std::collections::HashMap<std::path::PathBuf, String>,
-    pervasive_path: String,
+#[derive(Debug, Deserialize)]
+pub struct DiagnosticText {
+    pub text: String,
+    pub highlight_start: usize,
+    pub highlight_end: usize,
 }
 
-impl TestFileLoader {
-    fn remap_pervasive_path(&self, path: &std::path::Path) -> std::path::PathBuf {
-        if path.parent().and_then(|x| x.file_name()) == Some(std::ffi::OsStr::new("pervasive")) {
-            if let Some(file_name) = path.file_name() {
-                return std::path::Path::new(&self.pervasive_path).join(file_name).into();
-            }
-        }
-        path.into()
-    }
+#[derive(Debug, Deserialize)]
+pub struct DiagnosticSpan {
+    pub file_name: String,
+    pub line_start: usize,
+    pub line_end: usize,
+    pub column_start: usize,
+    pub column_end: usize,
+    pub byte_start: usize,
+    pub byte_end: usize,
+    pub is_primary: bool,
+    pub label: Option<String>,
+    pub text: Vec<DiagnosticText>,
 }
 
-impl FileLoader for TestFileLoader {
-    fn file_exists(&self, path: &std::path::Path) -> bool {
-        self.remap_pervasive_path(path).exists() || self.files.contains_key(path)
-    }
+#[derive(Debug, Deserialize)]
+pub struct DiagnosticCode {
+    pub code: String,
+    pub explanation: Option<String>,
+}
 
-    fn read_file(&self, path: &std::path::Path) -> Result<String, std::io::Error> {
-        let remapped = self.remap_pervasive_path(path);
-        if remapped.exists() {
-            std::fs::read_to_string(remapped)
-        } else {
-            match self.files.get(path) {
-                Some(content) => Ok(content.clone()),
-                None => Err(std::io::Error::new(std::io::ErrorKind::NotFound, "file not found")),
-            }
-        }
-    }
+#[derive(Debug, Deserialize)]
+pub struct Diagnostic {
+    pub code: Option<DiagnosticCode>,
+    pub message: String,
+    pub level: String,
+    pub spans: Vec<DiagnosticSpan>,
+    pub rendered: String,
 }
 
 #[derive(Debug)]
 pub struct TestErr {
-    pub errors: Vec<Vec<ErrorSpan>>,
-    pub expand_errors: Vec<Vec<ErrorSpan>>, // when Verus is with `expand-errors` flag
-    pub has_vir_error: bool,
-    pub output: String,
+    pub errors: Vec<Diagnostic>,
+    pub expand_errors_notes: Vec<Diagnostic>, // produced by the `--expand-errors` flag
 }
 
 #[allow(dead_code)]
 pub fn verify_files(
+    name: &str,
     files: impl IntoIterator<Item = (String, String)>,
     entry_file: String,
     options: &[&str],
 ) -> Result<(), TestErr> {
-    verify_files_vstd(files, entry_file, false, options)
+    verify_files_vstd(name, files, entry_file, false, options)
+}
+
+use std::cell::RefCell;
+thread_local! {
+    pub static THREAD_LOCAL_TEST_NAME: RefCell<Option<String>> = RefCell::new(None);
 }
 
 #[allow(dead_code)]
 pub fn verify_files_vstd(
+    name: &str,
     files: impl IntoIterator<Item = (String, String)>,
     entry_file: String,
     import_vstd: bool,
     options: &[&str],
 ) -> Result<(), TestErr> {
+    THREAD_LOCAL_TEST_NAME.with(|tn| *tn.borrow_mut() = Some(name.to_string()));
+
     let files: Vec<(String, String)> = files.into_iter().collect();
-    let mut rustc_args = vec![
-        "../../rust/install/bin/rust_verify".to_string(),
-        "--edition".to_string(),
-        "2018".to_string(),
-        "--crate-name".to_string(),
-        "test_crate".to_string(),
-        "--crate-type".to_string(),
-        "lib".to_string(),
-        "--sysroot".to_string(),
-        "../../rust/install".to_string(),
-    ];
+
+    let deps_dir = std::env::current_exe().unwrap();
+    let deps_dir = deps_dir.parent().unwrap();
+    let target_dir = deps_dir.parent().unwrap();
+
+    let (test_binary, test_name) = {
+        let mut args = std::env::args();
+        let test_binary = std::path::PathBuf::from(args.next().unwrap());
+        let test_name = THREAD_LOCAL_TEST_NAME.with(|tn| tn.take().unwrap());
+        (test_binary.file_name().unwrap().to_str().unwrap().to_string(), test_name)
+    };
+    let test_input_dir_parent = target_dir.join("test_inputs");
+    std::fs::create_dir(&test_input_dir_parent);
+    let test_input_dir = test_input_dir_parent.join(format!("{test_binary}-{test_name}"));
+    std::fs::remove_dir_all(&test_input_dir);
+    std::fs::create_dir(&test_input_dir);
+
+    for (file_name, file_contents) in files {
+        use std::io::Write;
+        let mut f = std::fs::File::create(test_input_dir.join(file_name))
+            .expect("failed to create test file");
+        f.write_all(file_contents.as_bytes()).expect("failed to write test file contents");
+    }
+
+    let run =
+        run_verus(options, &test_input_dir.join(entry_file), import_vstd, target_dir, true, true);
+    let rust_output = std::str::from_utf8(&run.stderr[..]).unwrap().trim();
+
+    let mut errors = Vec::new();
+    let mut expand_errors_notes = Vec::new();
+    let aborting_due_to_re =
+        regex::Regex::new(r"^aborting due to( [0-9]+)? previous errors?").unwrap();
+
+    let mut is_failure = run.status.code().unwrap() != 0;
+
+    // eprintln!("rust_output: {}", &rust_output);
+    if rust_output.len() > 0 {
+        for ss in rust_output.split("\n") {
+            let diag: Result<Diagnostic, _> = serde_json::from_str(ss);
+            if let Ok(diag) = diag {
+                eprintln!("{}", diag.rendered);
+                if diag.level == "note"
+                    && (diag.message == "split assertion failure"
+                        || diag.message == "split precondition failure"
+                        || diag.message == "split postcondition failure")
+                {
+                    // TODO(main_new) define in defs
+                    expand_errors_notes.push(diag);
+                    continue;
+                }
+                if diag.level == "failure-note" || diag.level == "note" || diag.level == "warning" {
+                    continue;
+                }
+                assert!(diag.level == "error");
+                if aborting_due_to_re.is_match(&diag.message) {
+                    continue;
+                }
+                errors.push(diag);
+            } else {
+                is_failure = true;
+                eprintln!("[unexpected json] {}", ss);
+            }
+        }
+    }
+
+    if !is_failure {
+        std::fs::remove_dir_all(&test_input_dir);
+    }
+
+    if is_failure { Err(TestErr { errors, expand_errors_notes }) } else { Ok(()) }
+}
+
+pub fn run_verus(
+    options: &[&str],
+    entry_file: &std::path::PathBuf,
+    import_vstd: bool,
+    target_dir: &std::path::Path,
+    json_errors: bool,
+    quiet: bool,
+) -> std::process::Output {
+    if std::env::var("VERUS_IN_VARGO").is_err() {
+        panic!("not running in vargo, read the README for instructions");
+    }
 
     #[cfg(target_os = "macos")]
-    rustc_args.append(&mut vec![
-        "--extern".to_string(),
-        "builtin=../../rust/install/bin/libbuiltin.rlib".to_string(),
-        "--extern".to_string(),
-        "builtin_macros=../../rust/install/bin/libbuiltin_macros.dylib".to_string(),
-        "--extern".to_string(),
-        "state_machines_macros=../../rust/install/bin/libstate_machines_macros.dylib".to_string(),
-    ]);
+    let (pre, dl) = ("lib", "dylib");
 
     #[cfg(target_os = "linux")]
-    rustc_args.append(&mut vec![
-        "--extern".to_string(),
-        "builtin=../../rust/install/bin/libbuiltin.rlib".to_string(),
-        "--extern".to_string(),
-        "builtin_macros=../../rust/install/bin/libbuiltin_macros.so".to_string(),
-        "--extern".to_string(),
-        "state_machines_macros=../../rust/install/bin/libstate_machines_macros.so".to_string(),
-    ]);
+    let (pre, dl) = ("lib", "so");
 
     #[cfg(target_os = "windows")]
-    rustc_args.append(&mut vec![
-        "--extern".to_string(),
-        "builtin=../../rust/install/bin/libbuiltin.rlib".to_string(),
-        "--extern".to_string(),
-        "builtin_macros=../../rust/install/bin/builtin_macros.dll".to_string(),
-        "--extern".to_string(),
-        "state_machines_macros=../../rust/install/bin/state_machines_macros.dll".to_string(),
-    ]);
+    let (pre, dl) = ("", "dll");
 
-    rustc_args.push(entry_file);
+    let vars = std::env::vars().collect::<Vec<_>>();
+    let current_exe = std::env::current_exe().unwrap();
+    let deps_path = current_exe.parent().unwrap();
+    let target_path = deps_path.parent().unwrap();
+    let profile = target_path.file_name().unwrap().to_str().unwrap();
+    let verus_target_path = target_path
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf()
+        .join("target-verus")
+        .join(profile);
 
-    let mut macro_erasure = files.iter().any(|(_, body)| body.contains("::builtin_macros::verus!"));
-    let our_args = {
-        let mut our_args: Args = if let Ok(extra_args) = std::env::var("VERIFY_EXTRA_ARGS") {
-            let (args, rest) = parse_args(
-                &"test".to_string(),
-                extra_args.split(" ").map(|x| x.to_string()).chain(Some("test".to_string())),
-            );
-            if rest.len() != 2 {
-                eprintln!("warning: unparsed extra arguments from VERIFY_EXTRA_ARGS");
-            }
-            args
-        } else {
-            Default::default()
-        };
-
-        if !files.iter().any(|(_, body)| body.contains("#[verifier(integer_ring)]")) {
-            our_args.no_enhanced_typecheck = true;
+    fn wait_exists(path: &std::path::Path) {
+        while !path.exists() {
+            std::thread::sleep(std::time::Duration::from_millis(100));
         }
-        if let Ok(path) = std::env::var("VERIFY_LOG_IR_PATH") {
-            our_args.log_dir = Some(path);
-            our_args.log_all = true;
-        }
-        our_args.rlimit = DEFAULT_RLIMIT_SECS;
-        for option in options.iter() {
-            if *option == "--expand-errors" {
-                our_args.expand_errors = true;
-                our_args.multiple_errors = 2;
-            } else if *option == "--arch-word-bits 32" {
-                our_args.arch_word_bits = vir::prelude::ArchWordBits::Exactly(32);
-            } else if *option == "--arch-word-bits 64" {
-                our_args.arch_word_bits = vir::prelude::ArchWordBits::Exactly(64);
-            } else if *option == "--todo-no-macro-erasure" {
-                macro_erasure = false;
-            } else if *option == "vstd" {
-                // ignore
-            } else {
-                panic!("option '{}' not recognized by test harness", option);
-            }
-        }
-        if macro_erasure {
-            our_args.erasure = rust_verify::config::Erasure::Macro;
-        } else {
-            // TODO (erasure-todo) : switch entirely to macro erasure; right now, the old erasure is disabled
-            our_args.no_lifetime = true;
-        }
-        if import_vstd {
-            our_args.import =
-                vec![("vstd".to_string(), "../../rust/install/bin/vstd.vir".to_string())];
-        }
-        our_args
-    };
-    if macro_erasure {
-        rustc_args.append(&mut vec!["--cfg".to_string(), "erasure_macro_todo".to_string()]);
     }
-    if import_vstd {
-        rustc_args.append(&mut vec![
+
+    let lib_builtin_path = verus_target_path.join(format!("{}builtin.rlib", pre));
+    wait_exists(&lib_builtin_path);
+    assert!(lib_builtin_path.exists());
+    let lib_builtin_path = lib_builtin_path.to_str().unwrap();
+    let lib_builtin_macros_path = verus_target_path.join(format!("{}builtin_macros.{}", pre, dl));
+    wait_exists(&lib_builtin_macros_path);
+    assert!(lib_builtin_macros_path.exists());
+    let lib_builtin_macros_path = lib_builtin_macros_path.to_str().unwrap();
+    let lib_state_machines_macros_path =
+        verus_target_path.join(format!("{}state_machines_macros.{}", pre, dl));
+    wait_exists(&lib_state_machines_macros_path);
+    assert!(lib_state_machines_macros_path.exists());
+    let lib_state_machines_macros_path = lib_state_machines_macros_path.to_str().unwrap();
+
+    let bin = verus_target_path.join("rust_verify");
+    wait_exists(&bin);
+
+    let mut verus_args = Vec::new();
+
+    for option in options.iter() {
+        if *option == "--expand-errors" {
+            verus_args.push("--expand-errors".to_string());
+            verus_args.push("--multiple-errors".to_string());
+            verus_args.push("2".to_string());
+        } else if *option == "--arch-word-bits 32" {
+            verus_args.push("--arch-word-bits".to_string());
+            verus_args.push("32".to_string());
+        } else if *option == "--arch-word-bits 64" {
+            verus_args.push("--arch-word-bits".to_string());
+            verus_args.push("64".to_string());
+        } else if *option == "vstd" {
+            // ignore
+        } else {
+            panic!("option '{}' not recognized by test harness", option);
+        }
+    }
+
+    verus_args.extend(
+        vec![
+            "--edition".to_string(),
+            "2018".to_string(),
+            "--crate-name".to_string(),
+            "test_crate".to_string(),
+            "--crate-type".to_string(),
+            "lib".to_string(),
             "--extern".to_string(),
-            "vstd=../../rust/install/bin/libvstd.rlib".to_string(),
+            format!("builtin={lib_builtin_path}"),
+            "--extern".to_string(),
+            format!("builtin_macros={lib_builtin_macros_path}"),
+            "--extern".to_string(),
+            format!("state_machines_macros={lib_state_machines_macros_path}"),
+        ]
+        .into_iter(),
+    );
+
+    if json_errors {
+        verus_args.push("--error-format=json".to_string());
+    }
+
+    verus_args.push(entry_file.to_str().unwrap().to_string());
+    verus_args.append(&mut vec!["--cfg".to_string(), "erasure_macro_todo".to_string()]);
+
+    if import_vstd {
+        let lib_vstd_vir_path = target_dir.join("vstd.vir");
+        let lib_vstd_vir_path = lib_vstd_vir_path.to_str().unwrap();
+        let lib_vstd_path = target_dir.join(pre.to_string() + "vstd.rlib");
+        let lib_vstd_path = lib_vstd_path.to_str().unwrap();
+        verus_args.append(&mut vec!["--cfg".to_string(), "vstd_todo".to_string()]);
+        verus_args.append(&mut vec![
+            "--extern".to_string(),
+            format!("vstd={lib_vstd_path}"),
+            "--import".to_string(),
+            format!("vstd={lib_vstd_vir_path}"),
         ]);
     }
 
-    let files = files.into_iter().map(|(p, f)| (p.into(), f)).collect();
-    let captured_output = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    let captured_output_1 = captured_output.clone();
-
-    let pervasive_path = match std::env::var("TEST_PERVASIVE_PATH") {
-        Ok(path) if !macro_erasure => path,
-        _ => "../pervasive".to_string(),
-    };
-
-    let result = std::panic::catch_unwind(move || {
-        let mut verifier = Verifier::new(our_args);
-        verifier.test_capture_output = Some(captured_output_1);
-        let file_loader: TestFileLoader = TestFileLoader { files, pervasive_path };
-        let (verifier, _stats, status) =
-            rust_verify::driver::run(verifier, rustc_args, file_loader);
-        status.map_err(|_| TestErr {
-            errors: verifier.errors,
-            has_vir_error: verifier.encountered_vir_error,
-            output: "".to_string(),
-            expand_errors: verifier.expand_errors,
-        })
-    });
-    let output = std::str::from_utf8(
-        &captured_output.lock().expect("internal error: cannot lock captured output"),
-    )
-    .expect("captured output is invalid utf8")
-    .to_string();
-    eprintln!("{}", output);
-    match result {
-        Ok(result) => {
-            let mut result = result;
-            match &mut result {
-                Ok(_) => {}
-                Err(res) => {
-                    res.output = output;
-                }
-            }
-            result
-        }
-        Err(_) => {
-            panic!(
-                "The compiler panicked. This may be due to rustc not being available in the `rust` directory in the project root. Check the README for more information."
-            )
-        }
+    let mut child = std::process::Command::new(bin);
+    let mut child = child.env("VERUS_Z3_PATH", "../z3");
+    if quiet {
+        child = child.env("VERUS_TEST_QUIET", "1");
     }
+    let mut child = child
+        .args(&verus_args[..])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("could not execute test rustc process");
+    let run = child.wait_with_output().expect("lifetime rustc wait failed");
+    run
 }
 
 #[allow(dead_code)]
@@ -236,10 +294,10 @@ pub const USE_PRELUDE: &str = crate::common::code_str! {
 };
 
 #[allow(dead_code)]
-pub fn verify_one_file(code: String, options: &[&str]) -> Result<(), TestErr> {
+pub fn verify_one_file(name: &str, code: String, options: &[&str]) -> Result<(), TestErr> {
     let vstd = code.contains("vstd::") || code.contains("pervasive::") || options.contains(&"vstd");
     let files = vec![("test.rs".to_string(), format!("{}\n{}", USE_PRELUDE, code.as_str()))];
-    verify_files_vstd(files, "test.rs".to_string(), vstd, options)
+    verify_files_vstd(name, files, "test.rs".to_string(), vstd, options)
 }
 
 #[macro_export]
@@ -247,23 +305,23 @@ macro_rules! test_verify_one_file_with_options {
     ($(#[$attrs:meta])* $name:ident $options:expr => $body:expr => $result:pat => $assertions:expr ) => {
         $(#[$attrs])*
         fn $name() {
-            let result = verify_one_file($body, &$options);
+            let result = verify_one_file(::std::stringify!($name), $body, &$options);
             #[allow(irrefutable_let_patterns)]
             if let $result = result {
                 $assertions
             } else {
-                assert!(false, "{:?} does not match $result", result);
+                assert!(false, "Err(_) does not match $result");
             }
         }
     };
     ($(#[$attrs:meta])* $name:ident $options:expr => $body:expr => $result:pat) => {
         $(#[$attrs])*
         fn $name() {
-            let result = verify_one_file($body, &$options);
+            let result = verify_one_file(::std::stringify!($name), $body, &$options);
             #[allow(irrefutable_let_patterns)]
             if let $result = result {
             } else {
-                assert!(false, "{:?} does not match $result", result);
+                assert!(false, "Err(_) does not match $result");
             }
         }
     };
@@ -279,34 +337,42 @@ macro_rules! test_verify_one_file {
     };
 }
 
-fn relevant_error_span(err: &Vec<ErrorSpan>) -> &ErrorSpan {
-    if let Some(e) = err.iter().find(|e| e.description == Some("at this exit".to_string())) {
+pub fn relevant_error_span(err: &Vec<DiagnosticSpan>) -> &DiagnosticSpan {
+    if let Some(e) = err.iter().find(|e| e.label == Some("at this exit".to_string())) {
         return e;
     } else if let Some(e) = err.iter().find(|e| {
-        e.description == Some(vir::def::THIS_POST_FAILED.to_string())
-            && !e.test_span_line.contains("TRAIT")
+        e.label == Some(vir::def::THIS_POST_FAILED.to_string()) && !e.text[0].text.contains("TRAIT")
     }) {
         return e;
     }
-    err.first().expect("span")
+    err.iter()
+        .filter(|e| e.label != Some(vir::def::THIS_PRE_FAILED.to_string()))
+        .next()
+        .expect("span")
 }
 
 /// Assert that one verification failure happened on source lines containin the string "FAILS".
 #[allow(dead_code)]
 pub fn assert_one_fails(err: TestErr) {
     assert_eq!(err.errors.len(), 1);
-    assert!(relevant_error_span(&err.errors[0]).test_span_line.contains("FAILS"));
+    assert!(
+        relevant_error_span(&err.errors[0].spans)
+            .text
+            .iter()
+            .find(|x| x.text.contains("FAILS"))
+            .is_some()
+    );
 }
 
 /// When this testcase has ONE verification failure,
 /// assert that all spans are properly reported (All spans are respoinsible to the verification failure)
 #[allow(dead_code)]
 pub fn assert_expand_fails(err: TestErr, span_count: usize) {
-    assert_eq!(err.expand_errors.len(), 1);
-    let expand_errors = err.expand_errors.first().expect("EXPAND-ERRORS");
-    assert_eq!(expand_errors.len(), span_count);
+    assert_eq!(err.expand_errors_notes.len(), 1);
+    let expand_errors_diag = &err.expand_errors_notes.last().unwrap();
+    assert_eq!(expand_errors_diag.spans.len(), span_count);
     for c in 0..span_count {
-        assert!(&expand_errors[c].test_span_line.contains("EXPAND-ERRORS"));
+        assert!(&expand_errors_diag.spans[c].text[0].text.contains("EXPAND-ERRORS"));
     }
 }
 
@@ -315,19 +381,33 @@ pub fn assert_expand_fails(err: TestErr, span_count: usize) {
 pub fn assert_fails(err: TestErr, count: usize) {
     assert_eq!(err.errors.len(), count);
     for c in 0..count {
-        assert!(relevant_error_span(&err.errors[c]).test_span_line.contains("FAILS"));
+        assert!(
+            relevant_error_span(&err.errors[c].spans)
+                .text
+                .iter()
+                .find(|x| x.text.contains("FAILS"))
+                .is_some()
+        );
     }
 }
 
 #[allow(dead_code)]
 pub fn assert_vir_error_msg(err: TestErr, expected_msg: &str) {
-    assert!(err.has_vir_error);
-    assert!(err.output.contains(expected_msg));
+    assert_eq!(err.errors.len(), 1);
+    assert!(err.errors[0].code.is_none()); // thus likely a VIR error
+    assert!(err.errors[0].message.contains(expected_msg));
 }
 
 #[allow(dead_code)]
-pub fn assert_error_msg(err: TestErr, expected_msg: &str) {
-    if !err.output.contains(expected_msg) {
-        panic!("expected error message not found in output: {}", err.output);
-    }
+pub fn assert_any_vir_error_msg(err: TestErr, expected_msg: &str) {
+    assert!(err.errors.iter().all(|x| x.code.is_none())); // thus likely a VIR error
+    assert!(err.errors.iter().any(|x| x.message.contains(expected_msg)));
+}
+
+#[allow(dead_code)]
+pub fn assert_rust_error_msg(err: TestErr, expected_msg: &str) {
+    assert_eq!(err.errors.len(), 1);
+    let error_re = regex::Regex::new(r"^E[0-9]{4}$").unwrap();
+    assert!(err.errors[0].code.as_ref().map(|x| error_re.is_match(&x.code)) == Some(true)); // thus a Rust error
+    assert!(err.errors[0].message.contains(expected_msg));
 }
