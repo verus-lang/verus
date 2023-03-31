@@ -189,7 +189,7 @@ impl Visitor {
                     // to
                     //   fn f(verus_tmp_x: Tracked<T>) {
                     //       #[verus::internal(header_unwrap_parameter)] let t;
-                    //       #[verifier(proof_block)] { t = verus_tmp_x.get() };
+                    //       #[verifier::proof_block] { t = verus_tmp_x.get() };
                     let span = pat.span();
                     let x = wrapped_pat_id.ident;
                     let tmp_id = Ident::new(&format!("verus_tmp_{x}"), Span::mixed_site());
@@ -200,10 +200,10 @@ impl Visitor {
                             span => #[verus::internal(header_unwrap_parameter)] let #x));
                         if tracked_wrapper {
                             unwrap_ghost_tracked.push(stmt_with_semi!(
-                                span => #[verifier(proof_block)] { #x = #tmp_id.get() }));
+                                span => #[verifier::proof_block] { #x = #tmp_id.get() }));
                         } else {
                             unwrap_ghost_tracked.push(stmt_with_semi!(
-                                span => #[verifier(proof_block)] { #x = #tmp_id.view() }));
+                                span => #[verifier::proof_block] { #x = #tmp_id.view() }));
                         }
                     }
                 }
@@ -1138,7 +1138,7 @@ impl VisitMut for Visitor {
                     } else if is_inside_ghost {
                         quote_spanned!(span => ::builtin::Tracked::new(#inner))
                     } else {
-                        quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ ::builtin::tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ #inner))
+                        quote_spanned!(span => #[verifier::ghost_wrapper] /* vattr */ ::builtin::tracked_exec(#[verifier::tracked_block_wrapped] /* vattr */ #inner))
                     });
                 } else {
                     // Ghost(...)
@@ -1148,7 +1148,7 @@ impl VisitMut for Visitor {
                     } else if is_inside_ghost {
                         quote_spanned!(span => ::builtin::Ghost::new(#inner))
                     } else {
-                        quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ ::builtin::ghost_exec(#[verifier(ghost_block_wrapped)] /* vattr */ #inner))
+                        quote_spanned!(span => #[verifier::ghost_wrapper] /* vattr */ ::builtin::ghost_exec(#[verifier::ghost_block_wrapped] /* vattr */ #inner))
                     });
                 }
             }
@@ -1170,7 +1170,7 @@ impl VisitMut for Visitor {
                         *expr = self.maybe_erase_expr(
                             span,
                             Expr::Verbatim(
-                                quote_spanned!(span => #[verifier(proof_block)] /* vattr */ #inner),
+                                quote_spanned!(span => #[verifier::proof_block] /* vattr */ #inner),
                             ),
                         );
                     }
@@ -1626,7 +1626,7 @@ impl VisitMut for Visitor {
             *expr = self.maybe_erase_expr(
                 span,
                 Expr::Verbatim(
-                    quote_spanned!(span => #[verifier(proof_block)] /* vattr */ { #inner } ),
+                    quote_spanned!(span => #[verifier::proof_block] /* vattr */ { #inner } ),
                 ),
             );
         }
@@ -1643,6 +1643,44 @@ impl VisitMut for Visitor {
                 }
                 [attr_name] if attr_name.to_string() == "via_fn" => {
                     *attr = mk_verus_attr(attr.span(), quote! { via });
+                }
+                [attr_name] if attr_name.to_string() == "verifier" => {
+                    let parsed = attr.parse_meta().expect("failed to parse attribute");
+                    match parsed {
+                        syn_verus::Meta::List(meta_list) if meta_list.nested.len() == 1 => {
+                            let span = attr.span();
+                            let (second_segment, nested) = match &meta_list.nested[0] {
+                                syn_verus::NestedMeta::Meta(syn_verus::Meta::List(meta_list)) => {
+                                    let rest = &meta_list.nested[0];
+                                    (&meta_list.path.segments[0], Some(quote! { (#rest) }))
+                                }
+                                syn_verus::NestedMeta::Meta(syn_verus::Meta::Path(meta_path)) => {
+                                    (&meta_path.segments[0], None)
+                                }
+                                _ => {
+                                    panic!("invalid verifier attribute (1)"); // TODO(main_new) use compile_error! if possible
+                                }
+                            };
+                            let mut path_segments = Punctuated::new();
+                            path_segments.push(PathSegment {
+                                ident: Ident::new("verifier", span),
+                                arguments: PathArguments::None,
+                            });
+                            path_segments.push(second_segment.clone());
+                            *attr = Attribute {
+                                pound_token: token::Pound { spans: [span] },
+                                style: AttrStyle::Outer,
+                                bracket_token: token::Bracket { span },
+                                path: Path { leading_colon: None, segments: path_segments },
+                                tokens: if let Some(nested) = nested {
+                                    quote! { #nested }
+                                } else {
+                                    quote! {}
+                                },
+                            };
+                        }
+                        _ => panic!("invalid verifier attribute (2)"), // TODO(main_new) use compile_error! if possible
+                    }
                 }
                 _ => (),
             }
@@ -2375,7 +2413,7 @@ fn mk_verus_attr(span: Span, tokens: TokenStream) -> Attribute {
     }
 }
 
-/// Get `arg` from `#[verifier(arg)]`, and if `attr` is not a verifier attribute, return `None`
+/// Get `arg` from `#[verifier::arg]`, and if `attr` is not a verifier attribute, return `None`
 fn get_arg_from_verifier_attr(attr: &Attribute) -> Option<String> {
     let parsed = attr.parse_meta();
     if parsed.is_err() {
@@ -2392,7 +2430,7 @@ fn get_arg_from_verifier_attr(attr: &Attribute) -> Option<String> {
     }
 }
 
-/// Get idents from all "Path" in attributes(e.g. collect "verifier"` and `arg` from  `#[verifier(arg)]`)
+/// Get idents from all "Path" in attributes(e.g. collect "verifier"` and `arg` from  `#[verifier::arg]`)
 fn get_idents_from_meta(parsed: &Meta) -> Vec<String> {
     match parsed {
         syn_verus::Meta::List(meta_list) => {

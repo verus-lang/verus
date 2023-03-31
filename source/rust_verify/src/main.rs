@@ -1,14 +1,6 @@
 #![feature(rustc_private)]
 
-extern crate rustc_ast;
-extern crate rustc_driver;
-extern crate rustc_errors;
-extern crate rustc_hir;
-extern crate rustc_interface;
-extern crate rustc_middle;
-extern crate rustc_mir_build;
-extern crate rustc_span;
-extern crate rustc_typeck;
+extern crate rustc_driver; // TODO(main_new) can we remove this?
 
 #[cfg(target_family = "windows")]
 fn os_setup() -> Result<(), Box<dyn std::error::Error>> {
@@ -29,22 +21,78 @@ fn os_setup() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub fn main() {
-    if cfg!(debug_assertions) {
-        eprintln!(
-            "warning: verus was compiled in debug mode, which will result in worse performance"
-        );
-        eprintln!();
-        eprintln!("to compile in release mode use ./tools/cargo.sh build --release");
+    let test_quiet = std::env::var("VERUS_TEST_QUIET").is_ok();
+
+    let mut internal_args = std::env::args();
+    let internal_program = internal_args.next().unwrap();
+    if let Some(first_arg) = internal_args.next() {
+        match first_arg.as_str() {
+            rust_verify::lifetime::LIFETIME_DRIVER_ARG => {
+                let mut internal_args: Vec<_> = internal_args.collect();
+                internal_args.insert(0, internal_program);
+                let mut buffer = String::new();
+                use std::io::Read;
+                std::io::stdin().read_to_string(&mut buffer).expect("cannot read stdin");
+                rust_verify::lifetime::lifetime_rustc_driver(&internal_args[..], buffer);
+                return;
+            }
+            "--internal-build-vstd-driver" => {
+                let pervasive_path = internal_args.next().unwrap();
+                let vstd_vir = internal_args.next().unwrap();
+                let target_path = internal_args.next().unwrap();
+                let z3_path = internal_args.next().unwrap();
+
+                let mut internal_args: Vec<_> = internal_args.collect();
+                internal_args.insert(0, internal_program);
+
+                use rust_verify::config::Args;
+                use rust_verify::file_loader::PervasiveFileLoader;
+                use rust_verify::verifier::Verifier;
+
+                let mut our_args: Args = Default::default();
+                our_args.pervasive_path = Some(pervasive_path.to_string());
+                our_args.verify_pervasive = true;
+                our_args.multiple_errors = 2;
+                our_args.export = Some(target_path.to_string() + vstd_vir.as_str());
+                our_args.compile = true;
+
+                {
+                    *air::smt_process::SMT_EXECUTABLE_NAME_OVERRIDE.write().unwrap() =
+                        Some(z3_path);
+                }
+
+                let file_loader = PervasiveFileLoader::new(Some(pervasive_path.to_string()));
+                let verifier = Verifier::new(our_args);
+                dbg!(&internal_args);
+                let (_verifier, _stats, status) =
+                    rust_verify::driver::run(verifier, internal_args, file_loader);
+                status.expect("failed to build vstd library");
+                return;
+            }
+            _ => (),
+        }
     }
+
+    if cfg!(debug_assertions) {
+        if !test_quiet {
+            eprintln!(
+                "warning: verus was compiled in debug mode, which will result in worse performance"
+            );
+            // TODO(main_new) eprintln!("to compile in release mode use ./tools/cargo.sh build --release");
+        }
+    }
+
     let total_time_0 = std::time::Instant::now();
 
     let _ = os_setup();
-    rustc_driver::init_env_logger("RUSTVERIFY_LOG");
+    verus_rustc_driver::init_env_logger("RUSTVERIFY_LOG");
 
     let mut args = std::env::args();
     let program = args.next().unwrap();
     let (our_args, rustc_args) = rust_verify::config::parse_args(&program, args);
     let pervasive_path = our_args.pervasive_path.clone();
+
+    std::env::set_var("RUSTC_BOOTSTRAP", "1");
 
     let file_loader = rust_verify::file_loader::PervasiveFileLoader::new(pervasive_path);
     let verifier = rust_verify::verifier::Verifier::new(our_args);

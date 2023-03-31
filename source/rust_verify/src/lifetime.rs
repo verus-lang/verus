@@ -116,7 +116,7 @@ use crate::spans::SpanContext;
 use crate::util::error;
 use crate::verifier::DiagnosticOutputBuffer;
 use air::messages::{message_bare, Message, MessageLevel};
-use rustc_hir::{AssocItemKind, Crate, ItemKind, OwnerNode};
+use rustc_hir::{AssocItemKind, Crate, ItemKind, MaybeOwner, OwnerNode};
 use rustc_middle::ty::TyCtxt;
 use serde::Deserialize;
 use std::fs::File;
@@ -124,22 +124,22 @@ use std::io::Write;
 use vir::ast::VirErr;
 
 // Call Rust's mir_borrowck to check lifetimes of #[spec] and #[proof] code and variables
-pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
-    queries.global_ctxt().expect("global_ctxt").peek_mut().enter(|tcx| {
+pub(crate) fn check<'tcx>(queries: &'tcx verus_rustc_interface::Queries<'tcx>) {
+    queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
         let hir = tcx.hir();
         let krate = hir.krate();
         for owner in &krate.owners {
-            if let Some(owner) = owner {
+            if let MaybeOwner::Owner(owner) = owner {
                 match owner.node() {
                     OwnerNode::Item(item) => match &item.kind {
                         rustc_hir::ItemKind::Fn(..) => {
-                            tcx.ensure().mir_borrowck(item.def_id);
+                            tcx.ensure().mir_borrowck(item.owner_id.def_id); // REVIEW(main_new) correct?
                         }
                         ItemKind::Impl(impll) => {
                             for item in impll.items {
                                 match item.kind {
                                     AssocItemKind::Fn { .. } => {
-                                        tcx.ensure().mir_borrowck(item.id.def_id);
+                                        tcx.ensure().mir_borrowck(item.id.owner_id.def_id); // REVIEW(main_new) correct?
                                     }
                                     _ => {}
                                 }
@@ -215,25 +215,16 @@ fn emit_check_tracked_lifetimes<'tcx>(
     gen_state
 }
 
-struct LifetimeCallbacks {
-    capture_output: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
-}
+struct LifetimeCallbacks {}
 
-impl rustc_driver::Callbacks for LifetimeCallbacks {
-    fn config(&mut self, config: &mut rustc_interface::interface::Config) {
-        config.diagnostic_output =
-            rustc_session::DiagnosticOutput::Raw(Box::new(DiagnosticOutputBuffer {
-                output: self.capture_output.clone(),
-            }));
-    }
-
+impl verus_rustc_driver::Callbacks for LifetimeCallbacks {
     fn after_parsing<'tcx>(
         &mut self,
-        _compiler: &rustc_interface::interface::Compiler,
-        queries: &'tcx rustc_interface::Queries<'tcx>,
-    ) -> rustc_driver::Compilation {
+        _compiler: &verus_rustc_interface::interface::Compiler,
+        queries: &'tcx verus_rustc_interface::Queries<'tcx>,
+    ) -> verus_rustc_driver::Compilation {
         check(queries);
-        rustc_driver::Compilation::Stop
+        verus_rustc_driver::Compilation::Stop
     }
 }
 
@@ -271,10 +262,21 @@ struct Diagnostic {
     spans: Vec<DiagnosticSpan>,
 }
 
+pub const LIFETIME_DRIVER_ARG: &'static str = "--internal-lifetime-driver";
+
+pub fn lifetime_rustc_driver(rustc_args: &[String], rust_code: String) {
+    let mut callbacks = LifetimeCallbacks {};
+    let mut compiler = verus_rustc_driver::RunCompiler::new(rustc_args, &mut callbacks);
+    compiler.set_file_loader(Some(Box::new(LifetimeFileLoader { rust_code })));
+    match compiler.run() {
+        Ok(()) => (),
+        Err(_) => std::process::exit(128),
+    }
+}
+
 pub(crate) fn check_tracked_lifetimes<'tcx>(
     tcx: TyCtxt<'tcx>,
     spans: &SpanContext,
-    parent_rustc_args: Vec<String>,
     crate_names: Vec<String>,
     erasure_hints: &ErasureHints,
     lifetime_log_file: Option<File>,
@@ -291,24 +293,22 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
     if let Some(mut file) = lifetime_log_file {
         write!(file, "{}", &rust_code).expect("error writing to lifetime log file");
     }
-    let mut rustc_args = vec![
-        "dummyexe".to_string(),
-        LifetimeFileLoader::FILENAME.to_string(),
-        "--error-format=json".to_string(),
-    ];
-    for i in 0..parent_rustc_args.len() {
-        if parent_rustc_args[i] == "--sysroot" && i + 1 < parent_rustc_args.len() {
-            rustc_args.push(parent_rustc_args[i].clone());
-            rustc_args.push(parent_rustc_args[i + 1].clone());
-        }
-    }
-    let capture_output = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    let mut callbacks = LifetimeCallbacks { capture_output };
-    let mut compiler = rustc_driver::RunCompiler::new(&rustc_args, &mut callbacks);
-    compiler.set_file_loader(Some(Box::new(LifetimeFileLoader { rust_code })));
-    let run = compiler.run();
-    let bytes: &Vec<u8> = &*callbacks.capture_output.lock().expect("lock capture_output");
-    let rust_output = std::str::from_utf8(bytes).unwrap().trim();
+    let mut rustc_args =
+        vec![LIFETIME_DRIVER_ARG, LifetimeFileLoader::FILENAME, "--error-format=json"];
+
+    let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(&rustc_args[..])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("could not execute lifetime rustc process");
+    let mut child_stdin = child.stdin.take().expect("take stdin");
+    // std::fs::write("/tmp/verus_lifetime_generate.rs", rust_code.clone()).unwrap();
+    child_stdin.write(rust_code.as_bytes());
+    std::mem::drop(child_stdin);
+    let run = child.wait_with_output().expect("lifetime rustc wait failed");
+    let rust_output = std::str::from_utf8(&run.stderr[..]).unwrap().trim();
     let mut msgs: Vec<Message> = Vec::new();
     let debug = false;
     if rust_output.len() > 0 {
@@ -346,5 +346,9 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
     if debug {
         dbg!(msgs.len());
     }
-    if msgs.len() == 0 && run.is_err() { Err(error("lifetime checking failed")) } else { Ok(msgs) }
+    if msgs.len() == 0 && !run.status.success() {
+        Err(error("lifetime checking failed"))
+    } else {
+        Ok(msgs)
+    }
 }

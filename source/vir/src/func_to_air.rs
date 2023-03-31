@@ -8,7 +8,7 @@ use crate::def::{
     new_internal_qid, prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_pre_var,
     prefix_recursive_fun, prefix_requires, suffix_global_id, suffix_local_stmt_id,
     suffix_typ_param_id, unique_local, CommandsWithContext, SnapPos, Spanned, FUEL_BOOL,
-    FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE, SUCC, ZERO,
+    FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE, SUCC, THIS_PRE_FAILED, ZERO,
 };
 use crate::sst::{BndX, Exp, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst_to_air::{
@@ -484,7 +484,7 @@ pub fn func_decl_to_air(
             (_, Some(_)) => None,
             // Standard message
             (Mode::Spec, None) => Some("recommendation not met".to_string()),
-            (_, None) => Some("failed precondition".to_string()),
+            (_, None) => Some(THIS_PRE_FAILED.to_string()),
         };
         let req_params = params_to_pre_post_pars(&function.x.params, true);
         let _ = req_ens_to_air(

@@ -11,7 +11,7 @@ use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_un
 use rustc_ast::Attribute;
 use rustc_hir::{
     def::Res, Body, BodyId, Crate, FnDecl, FnHeader, FnRetTy, FnSig, Generics, ImplicitSelfKind,
-    Param, PrimTy, QPath, Ty, TyKind, Unsafety,
+    MaybeOwner, MutTy, Param, PrimTy, QPath, Ty, TyKind, Unsafety,
 };
 use rustc_middle::ty::TyCtxt;
 use rustc_span::symbol::{Ident, Symbol};
@@ -40,7 +40,7 @@ pub(crate) fn body_to_vir<'tcx>(
     mode: Mode,
     external_body: bool,
 ) -> Result<vir::ast::Expr, VirErr> {
-    let def = rustc_middle::ty::WithOptConstParam::unknown(id.hir_id.owner);
+    let def = rustc_middle::ty::WithOptConstParam::unknown(id.hir_id.owner.def_id);
     let types = ctxt.tcx.typeck_opt_const_arg(def);
     let bctx =
         BodyCtxt { ctxt: ctxt.clone(), types, mode, external_body, in_ghost: mode != Mode::Exec };
@@ -54,7 +54,7 @@ fn check_fn_decl<'tcx>(
     mode: Mode,
     output_ty: rustc_middle::ty::Ty<'tcx>,
 ) -> Result<Option<(Typ, Mode)>, VirErr> {
-    let FnDecl { inputs: _, output, c_variadic, implicit_self } = decl;
+    let FnDecl { inputs: _, output, c_variadic, implicit_self, lifetime_elision_allowed: _ } = decl;
     unsupported_unless!(!c_variadic, "c_variadic");
     match implicit_self {
         rustc_hir::ImplicitSelfKind::None => {}
@@ -69,7 +69,7 @@ fn check_fn_decl<'tcx>(
         // so we always return the default mode.
         // The current workaround is to return a struct if the default doesn't work.
         rustc_hir::FnRetTy::Return(_ty) => {
-            let typ = mid_ty_to_vir(tcx, output_ty, false);
+            let typ = mid_ty_to_vir(tcx, &output_ty, false);
             Ok(Some((typ, get_ret_mode(mode, attrs))))
         }
     }
@@ -89,8 +89,8 @@ pub(crate) fn find_body_krate<'tcx>(
     krate: &'tcx Crate<'tcx>,
     body_id: &BodyId,
 ) -> &'tcx Body<'tcx> {
-    let owner = krate.owners[body_id.hir_id.owner].as_ref();
-    if let Some(owner) = owner {
+    let owner = krate.owners[body_id.hir_id.owner.def_id];
+    if let MaybeOwner::Owner(owner) = owner {
         if let Some(body) = owner.nodes.bodies.get(&body_id.hir_id.local_id) {
             return body;
         }
@@ -115,8 +115,11 @@ fn check_new_strlit<'tcx>(ctx: &Context<'tcx>, sig: &'tcx FnSig<'tcx>) -> Result
     }
 
     let (kind, span) = match &decl.inputs[0].kind {
-        TyKind::Rptr(_, mutty) => (&mutty.ty.kind, mutty.ty.span),
-        _ => return err_span_string(decl.inputs[0].span, format!("expected a str")),
+        TyKind::Ref(_, MutTy { ty, mutbl }) => (&ty.kind, ty.span),
+        _ => {
+            dbg!(&decl.inputs[0]);
+            return err_span_string(decl.inputs[0].span, format!("expected a str"));
+        }
     };
 
     let (res, span) = match kind {
@@ -244,7 +247,7 @@ pub(crate) fn check_item_fn<'tcx>(
 
         let name = Arc::new(name);
         let param_mode = get_var_mode(mode, ctxt.tcx.hir().attrs(*hir_id));
-        let is_ref_mut = is_mut_ty(ctxt, input);
+        let is_ref_mut = is_mut_ty(ctxt, *input);
         if is_ref_mut.is_some() && mode == Mode::Spec {
             return err_span_string(
                 *span,
@@ -479,12 +482,13 @@ pub(crate) fn check_item_fn<'tcx>(
 fn is_mut_ty<'tcx>(
     ctxt: &Context<'tcx>,
     ty: rustc_middle::ty::Ty<'tcx>,
-) -> Option<(rustc_middle::ty::Ty<'tcx>, Option<Mode>)> {
+) -> Option<(&'tcx rustc_middle::ty::Ty<'tcx>, Option<Mode>)> {
     use rustc_middle::ty::*;
     match ty.kind() {
         TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) => Some((tys, None)),
-        TyKind::Adt(AdtDef { did, .. }, args) => {
-            let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(ctxt.tcx, *did));
+        TyKind::Adt(AdtDef(adt_def_data), args) => {
+            let did = adt_def_data.did;
+            let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(ctxt.tcx, did));
             let is_ghost = def_name == "builtin::Ghost" && args.len() == 1;
             let is_tracked = def_name == "builtin::Tracked" && args.len() == 1;
             if is_ghost || is_tracked {
@@ -583,7 +587,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     assert!(idents.len() == inputs.len());
     for (param, input) in idents.iter().zip(inputs.iter()) {
         let name = Arc::new(foreign_param_to_var(param));
-        let is_mut = is_mut_ty(ctxt, input);
+        let is_mut = is_mut_ty(ctxt, *input);
         let typ = mid_ty_to_vir(ctxt.tcx, is_mut.map(|(t, _)| t).unwrap_or(input), false);
         // REVIEW: the parameters don't have attributes, so we use the overall mode
         let vir_param = ctxt.spanned_new(
