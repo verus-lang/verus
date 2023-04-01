@@ -20,7 +20,6 @@ fn check_variant_data<'tcx, 'fd>(
     module_path: &Path,
     name: &Ident,
     variant_data: &'tcx VariantData<'tcx>,
-    in_enum: bool,
     field_defs: impl Iterator<Item = &'fd rustc_middle::ty::FieldDef>,
 ) -> (Variant, bool)
 where
@@ -47,12 +46,15 @@ where
                                 mk_visibility(
                                     ctxt,
                                     &Some(module_path.clone()),
-                                    !in_enum,
                                     field.def_id.to_def_id(),
                                 ),
                             ),
                         ),
-                        is_visibility_private(ctxt, field.def_id.to_def_id(), !in_enum),
+                        is_visibility_private(
+                            ctxt,
+                            &Some(module_path.clone()),
+                            field.def_id.to_def_id(),
+                        ),
                     )
                 })
                 .unzip();
@@ -76,12 +78,15 @@ where
                                 mk_visibility(
                                     ctxt,
                                     &Some(module_path.clone()),
-                                    !in_enum,
                                     field.def_id.to_def_id(),
                                 ),
                             ),
                         ),
-                        is_visibility_private(ctxt, field.def_id.to_def_id(), !in_enum),
+                        is_visibility_private(
+                            ctxt,
+                            &Some(module_path.clone()),
+                            field.def_id.to_def_id(),
+                        ),
                     )
                 })
                 .unzip();
@@ -126,7 +131,7 @@ pub fn check_item_struct<'tcx>(
         (ident_binder(&variant_name, &Arc::new(vec![])), false)
     } else {
         let field_defs = adt_def.all_fields();
-        check_variant_data(ctxt, module_path, &variant_name, variant_data, false, field_defs)
+        check_variant_data(ctxt, module_path, &variant_name, variant_data, field_defs)
     };
     let transparency = if vattrs.external_body {
         DatatypeTransparency::Never
@@ -185,7 +190,7 @@ pub fn check_item_enum<'tcx>(
             let variant_def = get_mid_variant_def_by_name(ctxt, &adt_def, variant_name);
             let variant_name = str_ident(variant_name);
             let field_defs = variant_def.fields.iter();
-            check_variant_data(ctxt, module_path, &variant_name, &variant.data, true, field_defs)
+            check_variant_data(ctxt, module_path, &variant_name, &variant.data, field_defs)
         })
         .unzip();
     let one_field_private = one_field_private.into_iter().any(|x| x);

@@ -115,7 +115,7 @@ fn tr_inline_function(
         fun_to_inline.span.clone(),
         "Note: this function is closed at the module boundary".to_string(),
     ));
-    let foriegn_module_err = Err((
+    let foreign_module_err = Err((
         fun_to_inline.span.clone(),
         "Note: this function is inside a foreign module".to_string(),
     ));
@@ -156,9 +156,10 @@ fn tr_inline_function(
         return opaque_err;
     } else {
         if fun_to_inline.x.visibility.owning_module.is_none() {
-            return foriegn_module_err;
+            return foreign_module_err;
         } else {
-            if *ctx.module != **fun_to_inline.x.visibility.owning_module.as_ref().unwrap() {
+            use crate::ast_util::is_visible_to_of_owner;
+            if !is_visible_to_of_owner(&fun_to_inline.x.visibility.owning_module, &ctx.module) {
                 // if the target inline function is outside this module, track `open` `closed` at module boundaries
                 match fun_to_inline.x.publish {
                     Some(b) => {

@@ -3,10 +3,6 @@
 mod common;
 use common::*;
 
-// TODO(main_new)
-// most of these tests are currently failing; I don't know what the expected behavior
-// with pub(crate) is
-
 // Note: this file is simply traits_modules.rs with pub replaced with pub(crate)
 test_verify_one_file! {
     #[test] test_not_yet_supported_1 verus_code! {
@@ -76,7 +72,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_not_yet_supported_10 verus_code! {
+    #[test] test_not_yet_supported_10 verus_code! {
         mod M1 {
             pub(crate) trait T {
                 spec fn f(&self) -> bool;
@@ -87,8 +83,8 @@ test_verify_one_file! {
         }
 
         mod M2 {
-            #[verifier(external_body)] /* vattr */
-            #[verifier(broadcast_forall)] /* vattr */
+            #[verifier::external_body] /* vattr */
+            #[verifier::broadcast_forall] /* vattr */
             proof fn f_not_g<A: crate::M1::T>()
                 ensures exists|x: &A, y: &A| x.f() != y.f()
             {
@@ -104,7 +100,7 @@ test_verify_one_file! {
                 assert(false);
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, ": bounds on broadcast_forall function type parameters")
+    } => Err(err) => assert_vir_error_msg(err, ": bounds on broadcast_forall function type parameters")
 }
 
 test_verify_one_file! {
@@ -277,7 +273,7 @@ test_verify_one_file! {
     #[test] test_mode_matches_7 verus_code! {
         mod M1 {
             pub(crate) trait T1 {
-                #[verifier(returns(spec))] /* vattr */
+                #[verifier::returns(spec)] /* vattr */
                 fn f(&self) -> bool;
             }
         }
@@ -293,7 +289,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_mode_matches_8 code! {
+    #[test] test_mode_matches_8 code! {
         mod M1 {
             pub(crate) trait T1 {
                 fn f(&self) -> bool {
@@ -304,7 +300,7 @@ test_verify_one_file! {
         mod M2 {
             struct S {}
             impl crate::M1::T1 for S {
-                #[verifier(returns(spec))] /* vattr */
+                #[verifier::returns(spec)] /* vattr */
                 fn f(&self) -> bool {
                     true
                 }
@@ -416,7 +412,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_termination_4_fail_1a verus_code! {
+    #[test] test_termination_4_fail_1a verus_code! {
         mod M1 {
             pub(crate) trait T {
                 fn f(&self, x: &Self, n: u64);
@@ -432,11 +428,15 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+        assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+    }
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_termination_4_fail_1b verus_code! {
+    #[test] test_termination_4_fail_1b verus_code! {
         mod M1 {
             pub(crate) trait T {
                 fn f(&self, x: &Self, n: u64);
@@ -451,11 +451,15 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+        assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+    }
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_termination_4_fail_1c verus_code! {
+    #[test] test_termination_4_fail_1c verus_code! {
         mod M1 {
             pub(crate) trait T {
                 fn f(&self, x: &Self, n: u64);
@@ -476,11 +480,15 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+        assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+    }
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_termination_4_fail_2a verus_code! {
+    #[test] test_termination_4_fail_2a verus_code! {
         mod M1 {
             pub(crate) trait T {
                 fn f(&self, x: &Self, n: u64);
@@ -495,11 +503,15 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+        assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+    }
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_termination_4_fail_2b verus_code! {
+    #[test] test_termination_4_fail_2b verus_code! {
         mod M1 {
             pub(crate) trait T {
                 fn f(&self, x: &Self, n: u64);
@@ -514,11 +526,15 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+        assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+    }
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_verify_1 verus_code! {
+    #[test] test_verify_1 verus_code! {
         mod M1 {
             pub(crate) trait T {
                 fn f(&self)
@@ -557,7 +573,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_verify_3 verus_code! {
+    #[test] test_verify_3 verus_code! {
         mod M1 {
             pub(crate) trait T {
                 spec fn req(&self) -> bool;
@@ -583,7 +599,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_verify_4 verus_code! {
+    #[test] test_verify_4 verus_code! {
         mod M1 {
             pub(crate) trait T {
                 spec fn ens(&self) -> bool;
@@ -602,7 +618,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_verify_5_private verus_code! {
+    #[test] test_verify_5_private verus_code! {
         mod M1 {
             pub(crate) trait T {
                 spec fn req(&self) -> bool;
@@ -632,7 +648,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_verify_5_publish verus_code! {
+    #[test] test_verify_5_publish verus_code! {
         mod M1 {
             pub(crate) trait T {
                 spec fn req(&self) -> bool;
@@ -643,7 +659,7 @@ test_verify_one_file! {
         mod M2 {
             pub(crate) struct S {}
             impl crate::M1::T for S {
-                #[verifier(publish)] /* vattr */
+                #[verifier::publish] /* vattr */
                 spec fn req(&self) -> bool { true }
                 fn f(&self) {}
             }
@@ -663,7 +679,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_verify_6 verus_code! {
+    #[test] test_verify_6 verus_code! {
         mod M1 {
             pub(crate) trait T<A> {
                 spec fn req(&self, a: A) -> bool;
@@ -740,7 +756,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_multiple verus_code! {
+    #[test] test_multiple verus_code! {
         mod M1 {
             use builtin::*;
             pub(crate) trait T1 {
@@ -780,7 +796,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_generic_1_private verus_code! {
+    #[test] test_generic_1_private verus_code! {
         mod M1 {
             pub(crate) trait T<A> {
                 spec fn apple(&self, b: A) -> bool;
@@ -815,7 +831,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_generic_1_public_ok verus_code! {
+    #[test] test_generic_1_public_ok verus_code! {
         mod M1 {
             pub(crate) trait T<A> {
                 spec fn apple(&self, b: A) -> bool;
@@ -829,7 +845,7 @@ test_verify_one_file! {
         mod M3 {
             use builtin::*;
             impl<C> crate::M1::T<(C, u16)> for crate::M2::S<bool, C> {
-                #[verifier(publish)] /* vattr */
+                #[verifier::publish] /* vattr */
                 spec fn apple(&self, b: (C, u16)) -> bool {
                     b.1 > 10
                 }
@@ -851,7 +867,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_generic_1_ok_markers verus_code! {
+    #[test] test_generic_1_ok_markers verus_code! {
         mod M1 {
             pub(crate) trait T<A: Sized> : Sized {
                 spec fn apple(&self, b: A) -> bool;
@@ -863,7 +879,7 @@ test_verify_one_file! {
             pub(crate) struct S<A: Sized, B: Sized>(pub(crate) A, pub(crate) B);
 
             impl<C: Sized> crate::M1::T<(C, u16)> for S<bool, C> {
-                #[verifier(publish)] /* vattr */
+                #[verifier::publish] /* vattr */
                 spec fn apple(&self, b: (C, u16)) -> bool {
                     b.1 > 10
                 }
@@ -885,7 +901,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_generic_1_fail verus_code! {
+    #[test] test_generic_1_fail verus_code! {
         mod M1 {
             pub(crate) trait T<A> {
                 spec fn apple(&self, b: A) -> bool;
@@ -922,7 +938,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_generic_2 verus_code! {
+    #[test] test_generic_2 verus_code! {
         mod M1 {
             pub(crate) trait T<A> {
                 spec fn apple(&self, b: A) -> bool;
@@ -935,7 +951,7 @@ test_verify_one_file! {
             pub(crate) struct S<A, B>(pub(crate) A, pub(crate) B);
 
             impl crate::M1::T<u8> for S<u16, u32> {
-                #[verifier(publish)]
+                #[verifier::publish]
                 spec fn apple(&self, b: u8) -> bool {
                     b > 10
                 }
@@ -959,7 +975,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_generic_3 verus_code! {
+    #[test] test_generic_3 verus_code! {
         mod M1 {
             pub(crate) trait T {
                 spec fn apple(&self, b: bool) -> bool;
@@ -984,7 +1000,7 @@ test_verify_one_file! {
 
         mod M4 {
             impl crate::M1::T for crate::M2::S<bool, bool> {
-                #[verifier(publish)] /* vattr */
+                #[verifier::publish] /* vattr */
                 spec fn apple(&self, b: bool) -> bool {
                     self.0 && self.1 && b
                 }
@@ -1021,7 +1037,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_self_ok verus_code! {
+    #[test] test_self_ok verus_code! {
         mod M1 {
             pub(crate) trait T {
                 spec fn r<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self;
@@ -1067,7 +1083,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_self_fail verus_code! {
+    #[test] test_self_fail verus_code! {
         mod M1 {
             pub(crate) trait T {
                 fn f<'a>(&'a self, x: &'a Self, b: bool) -> (r: &'a Self)

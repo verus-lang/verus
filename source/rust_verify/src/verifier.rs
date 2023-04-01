@@ -792,11 +792,17 @@ impl Verifier {
         for function in &krate.functions {
             assert!(!funs.contains_key(&function.x.name));
             let vis = function.x.visibility.clone();
-            let vis = Visibility { is_private: vis.is_private, ..vis };
             if !is_visible_to(&vis, module) || function.x.attrs.is_decrease_by {
                 continue;
             }
-            let vis_abs = Visibility { is_private: function.x.publish.is_none(), ..vis };
+            let restricted_to = if function.x.publish.is_none() {
+                // private to owning_module
+                vis.owning_module.clone()
+            } else {
+                // public
+                None
+            };
+            let vis_abs = Visibility { restricted_to, ..vis };
             funs.insert(function.x.name.clone(), (function.clone(), vis_abs));
         }
 

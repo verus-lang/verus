@@ -769,7 +769,7 @@ fn mk_fun_decl(
         span.clone(),
         FunctionX {
             name: Arc::new(FunX { path: path.clone(), trait_path: None }),
-            visibility: Visibility { owning_module: None, is_private: false },
+            visibility: Visibility { owning_module: None, restricted_to: None },
             mode: Mode::Spec,
             fuel: 0,
             typ_bounds: Arc::new(vec_map(typ_params, |x| {
@@ -801,7 +801,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
 
     // Add a generic datatype to represent each tuple arity
     for (arity, path) in state.tuple_typs {
-        let visibility = Visibility { owning_module: None, is_private: false };
+        let visibility = Visibility { owning_module: None, restricted_to: None };
         let transparency = DatatypeTransparency::Always;
         let bound = Arc::new(GenericBoundX::Traits(vec![]));
         let typ_params =
@@ -809,7 +809,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         let mut fields: Vec<Field> = Vec::new();
         for i in 0..arity {
             let typ = Arc::new(TypX::TypParam(prefix_tuple_param(i)));
-            let vis = Visibility { owning_module: None, is_private: false };
+            let vis = Visibility { owning_module: None, restricted_to: None };
             // Note: the mode is irrelevant at this stage, so we arbitrarily use Mode::Exec
             fields.push(ident_binder(&prefix_tuple_field(i), &(typ, Mode::Exec, vis)));
         }
@@ -848,7 +848,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         // since they are arguments to the 'requires' and 'ensures' predicates, but thanks
         // to Rust's restrictions, we don't have to do any additional checks.)
 
-        let visibility = Visibility { owning_module: None, is_private: false };
+        let visibility = Visibility { owning_module: None, restricted_to: None };
         let transparency = DatatypeTransparency::Never;
 
         let typ_params = Arc::new(vec![]);

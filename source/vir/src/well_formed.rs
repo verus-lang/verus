@@ -2,7 +2,9 @@ use crate::ast::{
     CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, FunX, Function, FunctionKind, Krate,
     MaskSpec, Mode, MultiOp, Path, PathX, TypX, UnaryOp, UnaryOpr, VirErr, VirErrAs,
 };
-use crate::ast_util::{err_str, err_string, error, path_as_rust_name, referenced_vars_expr};
+use crate::ast_util::{
+    err_str, err_string, error, is_visible_to_opt, path_as_rust_name, referenced_vars_expr,
+};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::user_local_name;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
@@ -41,7 +43,7 @@ fn check_typ(ctxt: &Ctxt, typ: &Arc<TypX>, span: &air::ast::Span) -> Result<(), 
 fn check_path_and_get_function<'a>(
     ctxt: &'a Ctxt,
     x: &Fun,
-    disallow_private_access: Option<&str>,
+    disallow_private_access: Option<(&Option<Path>, &str)>,
     span: &air::ast::Span,
 ) -> Result<&'a Function, VirErr> {
     let f = match ctxt.funs.get(x) {
@@ -57,8 +59,8 @@ fn check_path_and_get_function<'a>(
         }
     };
 
-    if let Some(msg) = disallow_private_access {
-        if f.x.visibility.is_private {
+    if let Some((source_module, msg)) = disallow_private_access {
+        if !is_visible_to_opt(&f.x.visibility, source_module) {
             return err_str(&span, msg);
         }
     }
@@ -70,7 +72,7 @@ fn check_one_expr(
     ctxt: &Ctxt,
     function: &Function,
     expr: &Expr,
-    disallow_private_access: Option<&str>,
+    disallow_private_access: Option<(&Option<Path>, &str)>,
 ) -> Result<(), VirErr> {
     match &expr.x {
         ExprX::ConstVar(x) => {
@@ -136,10 +138,20 @@ fn check_one_expr(
                         ));
                     }
                 }
-                match (disallow_private_access, &dt.x.transparency, dt.x.visibility.is_private) {
-                    (None, _, _) => {}
-                    (_, crate::ast::DatatypeTransparency::Always, false) => {}
-                    (Some(msg), _, _) => {
+                use crate::ast::{DatatypeTransparency, Visibility};
+                let field_vis = match dt.x.transparency {
+                    DatatypeTransparency::Never => None,
+                    DatatypeTransparency::WithinModule => {
+                        let own = &dt.x.visibility.owning_module;
+                        Some(Visibility { restricted_to: own.clone(), owning_module: own.clone() })
+                    }
+                    DatatypeTransparency::Always => Some(dt.x.visibility.clone()),
+                };
+                match (disallow_private_access, field_vis) {
+                    (None, _) => {}
+                    (Some((source_module, _)), Some(field_vis))
+                        if is_visible_to_opt(&field_vis, source_module) => {}
+                    (Some((_, msg)), _) => {
                         return err_str(&expr.span, msg);
                     }
                 }
@@ -174,10 +186,10 @@ fn check_one_expr(
                         ));
                     }
                 }
-                if let Some(msg) = disallow_private_access {
+                if let Some((source_module, msg)) = disallow_private_access {
                     let variant = dt.x.get_variant(variant);
                     let (_, _, vis) = &crate::ast_util::get_field(&variant.a, &field).a;
-                    if vis.is_private {
+                    if !is_visible_to_opt(vis, source_module) {
                         return err_str(&expr.span, msg);
                     }
                 }
@@ -258,7 +270,7 @@ fn check_expr(
     ctxt: &Ctxt,
     function: &Function,
     expr: &Expr,
-    disallow_private_access: Option<&str>,
+    disallow_private_access: Option<(&Option<Path>, &str)>,
 ) -> Result<(), VirErr> {
     crate::ast_visitor::expr_visitor_check(expr, &mut |_scope_map, expr| {
         check_one_expr(ctxt, function, expr, disallow_private_access)
@@ -366,7 +378,7 @@ fn check_function(
             return err_str(&function.span, "'inline' is only allowed for 'spec' functions");
         }
         // make sure we don't leak private bodies by inlining
-        if !function.x.visibility.is_private && function.x.publish != Some(true) {
+        if !function.x.visibility.is_private() && function.x.publish != Some(true) {
             return err_str(
                 &function.span,
                 "'inline' is only allowed for private or 'open spec' functions",
@@ -639,7 +651,7 @@ fn check_function(
         return err_str(&function.span, "`main` function should be #[verifier::exec]");
     }
 
-    if function.x.publish.is_some() && function.x.visibility.is_private {
+    if function.x.publish.is_some() && function.x.visibility.is_private() {
         return err_str(
             &function.span,
             "function is marked #[verifier(publish)] but not marked `pub`; for the body of a function to be visible, the function symbol must also be visible",
@@ -647,11 +659,8 @@ fn check_function(
     }
 
     for req in function.x.require.iter() {
-        let disallow_private_access = if function.x.visibility.is_private {
-            None
-        } else {
-            Some("public function requires cannot refer to private items")
-        };
+        let msg = "public function requires cannot refer to private items";
+        let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
         check_expr(ctxt, function, req, disallow_private_access)?;
         crate::ast_visitor::expr_visitor_check(req, &mut |_scope_map, expr| {
             if let ExprX::Var(x) = &expr.x {
@@ -671,27 +680,18 @@ fn check_function(
         })?;
     }
     for ens in function.x.ensure.iter() {
-        let disallow_private_access = if function.x.visibility.is_private {
-            None
-        } else {
-            Some("public function ensures cannot refer to private items")
-        };
+        let msg = "public function ensures cannot refer to private items";
+        let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
         check_expr(ctxt, function, ens, disallow_private_access)?;
     }
     for expr in function.x.decrease.iter() {
-        let disallow_private_access = if function.x.visibility.is_private {
-            None
-        } else {
-            Some("public function decreases cannot refer to private items")
-        };
+        let msg = "public function decreases cannot refer to private items";
+        let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
         check_expr(ctxt, function, expr, disallow_private_access)?;
     }
     if let Some(expr) = &function.x.decrease_when {
-        let disallow_private_access = if function.x.visibility.is_private {
-            None
-        } else {
-            Some("public function decreases_when cannot refer to private items")
-        };
+        let msg = "public function decreases_when cannot refer to private items";
+        let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
         if function.x.mode != Mode::Spec {
             return err_str(
                 &function.span,
@@ -717,17 +717,13 @@ fn check_function(
 
     if let Some(body) = &function.x.body {
         // Check that public, non-abstract spec function bodies don't refer to private items:
-        let disallow_private_access = function.x.publish.is_some()
-            && !function.x.visibility.is_private
-            && function.x.mode == Mode::Spec;
-        let disallow_private_access = if disallow_private_access {
-            Some(
-                "public spec function cannot refer to private items, if it is marked #[verifier(publish)]",
-            )
-        } else {
-            None
+        let disallow_private_access = match (&function.x.publish, function.x.mode) {
+            (Some(_), Mode::Spec) => {
+                let msg = "public spec function cannot refer to private items, if it is marked #[verifier(publish)]";
+                Some((&function.x.visibility.restricted_to, msg))
+            }
+            _ => None,
         };
-
         check_expr(ctxt, function, body, disallow_private_access)?;
     }
     Ok(())

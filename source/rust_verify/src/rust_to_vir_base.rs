@@ -251,28 +251,37 @@ pub(crate) fn qpath_to_ident<'tcx>(
 
 pub(crate) fn is_visibility_private<'tcx>(
     ctxt: &Context<'tcx>,
+    owning_module: &Option<Path>,
     def_id: DefId,
-    inherited_is_private: bool,
 ) -> bool {
     let vis = ctxt.tcx.visibility(def_id);
     match vis {
         Visibility::Public => false,
-        // TODO(main_new) reject pub(crate)?
-        // TODO(main_new) this is almost certainly not quite right; some related tests are failing
-        Visibility::Restricted(_) => inherited_is_private,
+        Visibility::Restricted(id) => {
+            let restricted_to = def_id_to_vir_path(ctxt.tcx, id);
+            if restricted_to.segments.len() == 0 {
+                // pub(crate)
+                false
+            } else if &Some(restricted_to) == owning_module {
+                // private
+                true
+            } else {
+                unsupported!("restricted visibility");
+            }
+        }
     }
 }
 
 pub(crate) fn mk_visibility<'tcx>(
     ctxt: &Context<'tcx>,
     owning_module: &Option<Path>,
-    inherited_is_private: bool,
     def_id: DefId,
 ) -> vir::ast::Visibility {
-    vir::ast::Visibility {
-        owning_module: owning_module.clone(),
-        is_private: is_visibility_private(ctxt, def_id, inherited_is_private),
-    }
+    let restricted_to = match ctxt.tcx.visibility(def_id) {
+        Visibility::Public => None,
+        Visibility::Restricted(id) => Some(def_id_to_vir_path(ctxt.tcx, id)),
+    };
+    vir::ast::Visibility { owning_module: owning_module.clone(), restricted_to }
 }
 
 pub(crate) fn get_range(typ: &Typ) -> IntRange {

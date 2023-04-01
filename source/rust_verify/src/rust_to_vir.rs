@@ -51,7 +51,7 @@ fn check_item<'tcx>(
         }
     };
 
-    let visibility = || mk_visibility(ctxt, &Some(module_path()), true, item.owner_id.to_def_id());
+    let visibility = || mk_visibility(ctxt, &Some(module_path()), item.owner_id.to_def_id());
     match &item.kind {
         ItemKind::Fn(sig, generics, body_id) => {
             check_item_fn(
@@ -244,7 +244,6 @@ fn check_item<'tcx>(
                         let mut impl_item_visibility = mk_visibility(
                             &ctxt,
                             &Some(module_path()),
-                            true,
                             impl_item.owner_id.to_def_id(),
                         ); // TODO(main_new) correct?
                         match &impl_item.kind {
@@ -302,7 +301,6 @@ fn check_item<'tcx>(
                                         impl_item_visibility = mk_visibility(
                                             &ctxt,
                                             &Some(module_path()),
-                                            false,
                                             impl_item.owner_id.to_def_id(), // TODO(main_new) correct?
                                         );
                                         let ident = impl_item_ref.ident.to_string();
@@ -488,7 +486,7 @@ fn check_foreign_item<'tcx>(
                 vir,
                 item.owner_id.to_def_id(),
                 item.span,
-                mk_visibility(ctxt, &None, true, item.owner_id.to_def_id()),
+                mk_visibility(ctxt, &None, item.owner_id.to_def_id()),
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 decl,
                 idents,

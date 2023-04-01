@@ -429,7 +429,7 @@ pub(crate) fn check_item_fn<'tcx>(
     // mark it non-private in order to avoid errors down the line.
     let mut visibility = visibility;
     if path == vir::def::exec_nonstatic_call_path(&ctxt.vstd_crate_name) {
-        visibility.is_private = false;
+        visibility.restricted_to = None;
     }
 
     if trait_path.is_some() && sig_uses_self_param(sig) {

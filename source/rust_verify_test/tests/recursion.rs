@@ -614,7 +614,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // REVIEW is it okay that only one of the two calls are reported as errors?
     #[test] termination_checked_across_modules2 verus_code! {
         mod M1 {
             use builtin::*;
@@ -629,10 +628,10 @@ test_verify_one_file! {
             pub(crate) closed spec fn f2(i: int) -> int
                 decreases i
             {
-                crate::M1::f1(i - 1)
+                crate::M1::f1(i - 1) // FAILS
             }
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_fails(err, 2)
 }
 
 test_verify_one_file! {

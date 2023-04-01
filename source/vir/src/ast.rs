@@ -40,8 +40,9 @@ pub struct PathX {
 pub struct Visibility {
     /// Module that owns this item, or None for a foreign module
     pub owning_module: Option<Path>,
-    /// true for private, false for pub, pub(crate)
-    pub is_private: bool,
+    /// None for pub
+    /// Some(path) means visible to path and path's descendents
+    pub restricted_to: Option<Path>,
 }
 
 /// Describes whether a variable, function, etc. is compiled or just used for verification
