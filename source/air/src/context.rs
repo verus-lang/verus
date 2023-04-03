@@ -403,7 +403,7 @@ impl Context {
 
     pub fn finish_query(&mut self) {
         self.pop_name_scope();
-        if !self.disable_incremental_solving{
+        if !self.disable_incremental_solving {
             self.smt_log.log_pop();
         }
         self.state = ContextState::ReadyForQuery;
