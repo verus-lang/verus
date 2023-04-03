@@ -551,7 +551,12 @@ pub(crate) fn expand_call_graph(
                                 // f --> D.f2
                                 match method_map.get(&(x.clone(), datatype.clone())) {
                                     Some(v) => Some(v),
-                                    None => return err_str(&expr.span, "(INTERNAL ERROR) method not found in method_map"),
+                                    None => {
+                                        return err_str(
+                                            &expr.span,
+                                            "(INTERNAL ERROR) method not found in method_map",
+                                        );
+                                    }
                                 }
                             }
                             _ => panic!("unexpected Self type instantiation"),
