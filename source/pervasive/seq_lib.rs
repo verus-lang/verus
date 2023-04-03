@@ -83,7 +83,7 @@ impl<A> Seq<A> {
             forall |i: int| 0 <= i < self.filter(pred).len() ==> pred(#[trigger] self.filter(pred)[i]),
             forall |i: int| 0 <= i < self.len() && pred(self[i])
                 ==> #[trigger] self.filter(pred).contains(self[i]),
-            self.filter(pred).len() <= self.len();
+            #[trigger] self.filter(pred).len() <= self.len();
 
     proof fn filter_distributes_over_add(a:Self, b:Self, pred:FnSpec(A)->bool)
     ensures
