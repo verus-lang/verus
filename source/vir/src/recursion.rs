@@ -549,7 +549,10 @@ pub(crate) fn expand_call_graph(
                             }
                             TypX::Datatype(datatype, _) => {
                                 // f --> D.f2
-                                Some(&method_map[&(x.clone(), datatype.clone())])
+                                match method_map.get(&(x.clone(), datatype.clone())) {
+                                    Some(v) => Some(v),
+                                    None => return err_str(&expr.span, "(INTERNAL ERROR) method not found in method_map"),
+                                }
                             }
                             _ => panic!("unexpected Self type instantiation"),
                         }
