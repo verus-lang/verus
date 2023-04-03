@@ -18,6 +18,7 @@ fn run_compiler<'a, 'b>(
     erase_ghost: bool,
     verifier: &'b mut (dyn verus_rustc_driver::Callbacks + Send),
     file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
+    build_test_mode: bool,
 ) -> Result<(), ErrorGuaranteed> {
     crate::config::enable_default_features_and_verus_attr(
         &mut rustc_args,
@@ -118,6 +119,7 @@ pub(crate) fn run_with_erase_macro_compile(
     mut rustc_args: Vec<String>,
     file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
     compile: bool,
+    build_test_mode: bool,
 ) -> Result<(), ErrorGuaranteed> {
     let mut callbacks = CompilerCallbacksEraseMacro { lifetimes_only: !compile };
     rustc_args.extend(["--cfg", "verus_macro_erase_ghost"].map(|s| s.to_string()));
@@ -136,17 +138,131 @@ pub(crate) fn run_with_erase_macro_compile(
     for a in allow {
         rustc_args.extend(["-A", a].map(|s| s.to_string()));
     }
-    run_compiler(rustc_args, true, true, &mut callbacks, file_loader)
+    run_compiler(rustc_args, true, true, &mut callbacks, file_loader, build_test_mode)
 }
 
-fn run_with_erase_macro<F>(
-    verifier: Verifier,
-    rustc_args: Vec<String>,
+struct VerusRoot {
+    path: std::path::PathBuf,
+    in_vargo: bool,
+}
+
+fn find_verusroot() -> Option<VerusRoot> {
+    std::env::var("VARGO_TARGET_DIR")
+        .ok()
+        .and_then(|target_dir| {
+            let path = std::path::PathBuf::from(&target_dir);
+            Some(VerusRoot { path, in_vargo: true })
+        })
+        .or_else(|| {
+            std::env::var("VERUS_ROOT").ok().and_then(|verusroot| {
+                let mut path = std::path::PathBuf::from(&verusroot);
+                if !path.is_absolute() {
+                    path = std::env::current_dir().expect("working directory invalid").join(path);
+                }
+                Some(VerusRoot { path, in_vargo: false })
+            })
+        })
+}
+
+#[cfg(target_os = "macos")]
+mod lib_exe_names {
+    pub const LIB_PRE: &str = "lib";
+    pub const LIB_DL: &str = "dylib";
+    pub const EXE: &str = "exe";
+}
+
+#[cfg(target_os = "linux")]
+mod lib_exe_names {
+    pub const LIB_PRE: &str = "lib";
+    pub const LIB_DL: &str = "so";
+    pub const EXE: &str = "";
+}
+
+#[cfg(target_os = "windows")]
+mod lib_exe_names {
+    pub const LIB_PRE: &str = "";
+    pub const LIB_DL: &str = "dll";
+    pub const EXE: &str = "exe";
+}
+
+use lib_exe_names::{LIB_DL, LIB_PRE};
+
+#[derive(Debug)]
+pub struct VerusExterns<'a> {
+    path: &'a std::path::PathBuf,
+    has_vstd: bool,
+}
+
+impl<'a> VerusExterns<'a> {
+    pub fn to_args(&self) -> impl Iterator<Item = String> {
+        let mut args = vec![
+            format!("--extern"),
+            format!(
+                "builtin={}",
+                self.path.join(format!("{LIB_PRE}builtin.rlib")).to_str().unwrap()
+            ),
+            format!("--extern"),
+            format!(
+                "builtin_macros={}",
+                self.path.join(format!("{LIB_PRE}builtin_macros.{LIB_DL}")).to_str().unwrap()
+            ),
+            format!("--extern"),
+            format!(
+                "state_machines_macros={}",
+                self.path
+                    .join(format!("{LIB_PRE}state_machines_macros.{LIB_DL}"))
+                    .to_str()
+                    .unwrap()
+            ),
+        ];
+        if self.has_vstd {
+            args.push(format!("--extern"));
+            args.push(format!(
+                "vstd={}",
+                self.path.join(format!("{LIB_PRE}vstd.rlib")).to_str().unwrap()
+            ));
+        }
+        args.into_iter()
+    }
+}
+
+pub fn run<F>(
+    mut verifier: Verifier,
+    mut rustc_args: Vec<String>,
     file_loader: F,
+    build_test_mode: bool,
 ) -> (Verifier, Stats, Result<(), ()>)
 where
     F: 'static + rustc_span::source_map::FileLoader + Send + Sync + Clone,
 {
+    if !build_test_mode {
+        if let Some(VerusRoot { path: verusroot, in_vargo }) = find_verusroot() {
+            verifier
+                .args
+                .import
+                .push((format!("vstd"), verusroot.join("vstd.vir").to_str().unwrap().to_string()));
+            rustc_args.push(format!("--edition"));
+            rustc_args.push(format!("2018"));
+            let externs = VerusExterns { path: &verusroot, has_vstd: !verifier.args.no_vstd };
+            rustc_args.extend(externs.to_args());
+            if in_vargo {
+                #[cfg(not(target_os = "windows"))]
+                std::env::set_var(
+                    "VERUS_Z3_PATH",
+                    verusroot
+                        .parent()
+                        .and_then(|x| x.parent())
+                        .unwrap()
+                        .join("z3")
+                        .to_str()
+                        .unwrap(),
+                );
+            }
+        }
+    } else if verifier.args.no_vstd {
+        panic!("cannot use --no-vstd in test mode");
+    }
+
     let time0 = Instant::now();
 
     // Build VIR and run verification
@@ -155,6 +271,7 @@ where
         lifetime_start_time: None,
         rustc_args: rustc_args.clone(),
         file_loader: Some(Box::new(file_loader.clone())),
+        build_test_mode,
     };
     let status = run_compiler(
         rustc_args.clone(),
@@ -162,6 +279,7 @@ where
         false,
         &mut verifier_callbacks,
         Box::new(file_loader.clone()),
+        build_test_mode,
     );
     if !verifier_callbacks.verifier.encountered_vir_error {
         print_verification_results(&verifier_callbacks.verifier);
@@ -183,8 +301,12 @@ where
         );
     }
 
-    let compile_status =
-        run_with_erase_macro_compile(rustc_args, Box::new(file_loader), verifier.args.compile);
+    let compile_status = run_with_erase_macro_compile(
+        rustc_args,
+        Box::new(file_loader),
+        verifier.args.compile,
+        build_test_mode,
+    );
 
     let time3 = Instant::now();
 
@@ -201,15 +323,4 @@ where
     }
 
     (verifier, stats, Ok(()))
-}
-
-pub fn run<F>(
-    verifier: Verifier,
-    rustc_args: Vec<String>,
-    file_loader: F,
-) -> (Verifier, Stats, Result<(), ()>)
-where
-    F: 'static + rustc_span::source_map::FileLoader + Send + Sync + Clone,
-{
-    run_with_erase_macro(verifier, rustc_args, file_loader)
 }

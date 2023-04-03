@@ -21,11 +21,9 @@ fn os_setup() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub fn main() {
-    let test_quiet = std::env::var("VERUS_TEST_QUIET").is_ok();
-
     let mut internal_args = std::env::args();
     let internal_program = internal_args.next().unwrap();
-    if let Some(first_arg) = internal_args.next() {
+    let build_test_mode = if let Some(first_arg) = internal_args.next() {
         match first_arg.as_str() {
             rust_verify::lifetime::LIFETIME_DRIVER_ARG => {
                 let mut internal_args: Vec<_> = internal_args.collect();
@@ -56,25 +54,25 @@ pub fn main() {
                 our_args.export = Some(target_path.to_string() + vstd_vir.as_str());
                 our_args.compile = true;
 
-                {
-                    *air::smt_process::SMT_EXECUTABLE_NAME_OVERRIDE.write().unwrap() =
-                        Some(z3_path);
-                }
+                std::env::set_var("VERUS_Z3_PATH", z3_path);
 
                 let file_loader = PervasiveFileLoader::new(Some(pervasive_path.to_string()));
                 let verifier = Verifier::new(our_args);
                 dbg!(&internal_args);
                 let (_verifier, _stats, status) =
-                    rust_verify::driver::run(verifier, internal_args, file_loader);
+                    rust_verify::driver::run(verifier, internal_args, file_loader, true);
                 status.expect("failed to build vstd library");
                 return;
             }
-            _ => (),
+            "--internal-test-mode" => true,
+            _ => false,
         }
-    }
+    } else {
+        false
+    };
 
     if cfg!(debug_assertions) {
-        if !test_quiet {
+        if !build_test_mode {
             eprintln!(
                 "warning: verus was compiled in debug mode, which will result in worse performance"
             );
@@ -87,8 +85,8 @@ pub fn main() {
     let _ = os_setup();
     verus_rustc_driver::init_env_logger("RUSTVERIFY_LOG");
 
-    let mut args = std::env::args();
-    let program = args.next().unwrap();
+    let mut args = if build_test_mode { internal_args } else { std::env::args() };
+    let program = if build_test_mode { internal_program } else { args.next().unwrap() };
     let (our_args, rustc_args) = rust_verify::config::parse_args(&program, args);
     let pervasive_path = our_args.pervasive_path.clone();
 
@@ -97,7 +95,8 @@ pub fn main() {
     let file_loader = rust_verify::file_loader::PervasiveFileLoader::new(pervasive_path);
     let verifier = rust_verify::verifier::Verifier::new(our_args);
 
-    let (verifier, stats, status) = rust_verify::driver::run(verifier, rustc_args, file_loader);
+    let (verifier, stats, status) =
+        rust_verify::driver::run(verifier, rustc_args, file_loader, build_test_mode);
 
     let total_time_1 = std::time::Instant::now();
     let total_time = total_time_1 - total_time_0;

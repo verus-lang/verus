@@ -1479,6 +1479,7 @@ pub(crate) struct VerifierCallbacksEraseMacro {
     pub(crate) rustc_args: Vec<String>,
     pub(crate) file_loader:
         Option<Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>>,
+    pub(crate) build_test_mode: bool,
 }
 
 impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
@@ -1567,6 +1568,7 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                                 self.rustc_args.clone(),
                                 file_loader,
                                 false,
+                                self.build_test_mode,
                             );
                             if compile_status.is_err() {
                                 return;

@@ -1,4 +1,3 @@
-# vargo: main workspace tag (do not modify this line)
 [workspace]
 members = [
   "air",
@@ -13,3 +12,7 @@ members = [
   "verusdoc",
   "vstd",
 ]
+
+# do not modify the following two lines
+[workspace.metadata.vargo]
+tag = "workspace"
