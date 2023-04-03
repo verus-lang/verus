@@ -212,6 +212,7 @@ pub fn run_verus(
     std::thread::sleep(std::time::Duration::from_millis(1000));
 
     let mut verus_args = Vec::new();
+    verus_args.push("--internal-test-mode".to_string());
 
     for option in options.iter() {
         if *option == "--expand-errors" {
@@ -257,9 +258,9 @@ pub fn run_verus(
     verus_args.append(&mut vec!["--cfg".to_string(), "erasure_macro_todo".to_string()]);
 
     if import_vstd {
-        let lib_vstd_vir_path = target_dir.join("vstd.vir");
+        let lib_vstd_vir_path = verus_target_path.join("vstd.vir");
         let lib_vstd_vir_path = lib_vstd_vir_path.to_str().unwrap();
-        let lib_vstd_path = target_dir.join("libvstd.rlib");
+        let lib_vstd_path = verus_target_path.join("libvstd.rlib");
         let lib_vstd_path = lib_vstd_path.to_str().unwrap();
         verus_args.append(&mut vec!["--cfg".to_string(), "vstd_todo".to_string()]);
         verus_args.append(&mut vec![
@@ -270,12 +271,9 @@ pub fn run_verus(
         ]);
     }
 
-    let mut child = &mut std::process::Command::new(bin);
+    let mut child = std::process::Command::new(bin);
     #[cfg(not(target_os = "windows"))]
     let mut child = child.env("VERUS_Z3_PATH", "../z3");
-    if quiet {
-        child = child.env("VERUS_TEST_QUIET", "1");
-    }
     let mut child = child
         .args(&verus_args[..])
         .stdout(std::process::Stdio::piped())

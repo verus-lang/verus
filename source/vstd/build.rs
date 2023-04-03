@@ -68,15 +68,13 @@ fn main() {
     assert!(lib_state_machines_macros_path.exists());
     let lib_state_machines_macros_path = lib_state_machines_macros_path.to_str().unwrap();
 
-    let vstd_vir_verus_target_path = verus_target_path.join(VSTD_VIR);
-
-    let target_path_str = target_path.to_str().unwrap().to_string() + "/";
+    let target_deps_path_str = target_path.join("deps").to_str().unwrap().to_string() + "/";
 
     let child_args: Vec<String> = vec![
         "--internal-build-vstd-driver".to_string(),
         PERVASIVE_PATH.to_string(),
         VSTD_VIR.to_string(),
-        target_path_str.to_string(),
+        target_deps_path_str.to_string(),
         "../z3".to_string(),
         "--extern".to_string(),
         format!("builtin={lib_builtin_path}"),
@@ -89,7 +87,7 @@ fn main() {
         "erasure_macro_todo".to_string(),
         "--crate-type=lib".to_string(),
         "--out-dir".to_string(),
-        target_path_str.to_string(),
+        target_deps_path_str.to_string(),
         VSTD_RS_PATH.to_string(),
     ];
 
@@ -101,9 +99,6 @@ fn main() {
     if !child.wait().expect("vstd verus wait failed").success() {
         panic!("vstd build failed");
     }
-
-    std::fs::copy(target_path.join(VSTD_VIR), vstd_vir_verus_target_path)
-        .expect("could not copy vstd.vir");
 
     println!("cargo:rerun-if-changed={PERVASIVE_PATH}");
 }
