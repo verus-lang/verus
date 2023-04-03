@@ -257,6 +257,12 @@ pub(crate) fn smt_check_assertion<'ctx>(
                 } else if line.starts_with("(:reason-unknown \"(incomplete") {
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Incomplete);
+                } else if line
+                    == "(:reason-unknown \"smt tactic failed to show goal to be sat/unsat (incomplete quantifiers)\")"
+                {
+                    // failure when outside push/pop, since this is reserved for single query, skip tracing
+                    assert!(reason == None);
+                    reason = Some(SmtReasonUnknown::Unknown);
                 } else if context.ignore_unexpected_smt {
                     diagnostics
                         .report(&warning_bare(format!("warning: unexpected SMT output: {}", line)));
