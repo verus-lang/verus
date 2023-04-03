@@ -1079,6 +1079,8 @@ impl Verifier {
                             spinoff_context_counter,
                             &span,
                         )?;
+                        // for spinoff, only one query, maybe no push/pop
+                        spinoff_z3_context.set_disable_incremental_solving(true);
                         spinoff_context_counter += 1;
                         &mut spinoff_z3_context
                     } else {

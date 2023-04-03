@@ -335,7 +335,9 @@ pub(crate) fn smt_check_query<'ctx>(
     air_model: Model,
     report_long_running: Option<&mut ReportLongRunning>,
 ) -> ValidityResult {
-    context.smt_log.log_push();
+    if !context.disable_incremental_solving {
+        context.smt_log.log_push();
+    }
     context.push_name_scope();
 
     // add query-local declarations

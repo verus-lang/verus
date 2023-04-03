@@ -83,6 +83,7 @@ pub struct Context {
     pub(crate) time_smt_run: Duration,
     pub(crate) state: ContextState,
     pub(crate) expected_solver_version: Option<String>,
+    pub(crate) disable_incremental_solving: bool,
 }
 
 impl Context {
@@ -112,6 +113,7 @@ impl Context {
             time_smt_run: Duration::new(0, 0),
             state: ContextState::NotStarted,
             expected_solver_version: None,
+            disable_incremental_solving: false,
         };
         context.axiom_infos.push_scope(false);
         context.lambda_map.push_scope(false);
@@ -269,6 +271,14 @@ impl Context {
         }
     }
 
+    pub fn get_disable_incremental_solving(&self) -> bool {
+        self.disable_incremental_solving
+    }
+
+    pub fn set_disable_incremental_solving(&mut self, disable: bool) {
+        self.disable_incremental_solving = disable;
+    }
+
     pub(crate) fn push_name_scope(&mut self) {
         self.axiom_infos.push_scope(false);
         self.lambda_map.push_scope(false);
@@ -393,7 +403,9 @@ impl Context {
 
     pub fn finish_query(&mut self) {
         self.pop_name_scope();
-        self.smt_log.log_pop();
+        if !self.disable_incremental_solving{
+            self.smt_log.log_pop();
+        }
         self.state = ContextState::ReadyForQuery;
     }
 
