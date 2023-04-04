@@ -59,3 +59,31 @@ jobs:
             VERUS_Z3_PATH="$(pwd)/z3" vargo test -p air
             VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test
           fi
+
+  smoke-test-windows:
+    runs-on: windows-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: get z3
+        shell: pwsh
+        working-directory: .\source
+        run: |
+          .\tools\get-z3.ps1
+          Write-Host "z3 version $(.\z3.exe --version)"
+      - name: setup rust
+        run: |
+          # Disable the download progress bar which can cause perf issues
+          $ProgressPreference = "SilentlyContinue"
+          Invoke-WebRequest https://win.rustup.rs/ -OutFile rustup-init.exe
+          .\rustup-init.exe -y --default-host=x86_64-pc-windows-msvc --default-toolchain=none
+          del rustup-init.exe
+        shell: powershell
+      - name: cargo test
+        working-directory: .\source
+        run: |
+          ../tools/activate.ps1
+          vargo clean
+          vargo build
+          $env:VERUS_Z3_PATH = "$(Get-Location)/z3"; vargo test -p rust_verify_test --test basic
+        shell: powershell

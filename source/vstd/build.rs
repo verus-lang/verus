@@ -70,12 +70,15 @@ fn main() {
 
     let target_deps_path_str = target_path.join("deps").to_str().unwrap().to_string() + "/";
 
+    if !std::env::var("VERUS_Z3_PATH").is_ok() {
+        std::env::set_var("VERUS_Z3_PATH", if cfg!(windows) { "..\\z3.exe" } else { "../z3" });
+    }
+
     let child_args: Vec<String> = vec![
         "--internal-build-vstd-driver".to_string(),
         PERVASIVE_PATH.to_string(),
         VSTD_VIR.to_string(),
         target_deps_path_str.to_string(),
-        "../z3".to_string(),
         "--extern".to_string(),
         format!("builtin={lib_builtin_path}"),
         "--extern".to_string(),

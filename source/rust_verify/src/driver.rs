@@ -245,15 +245,14 @@ where
             rustc_args.push(format!("2018"));
             let externs = VerusExterns { path: &verusroot, has_vstd: !verifier.args.no_vstd };
             rustc_args.extend(externs.to_args());
-            if in_vargo {
-                #[cfg(not(target_os = "windows"))]
+            if in_vargo && !std::env::var("VERUS_Z3_PATH").is_ok() {
                 std::env::set_var(
                     "VERUS_Z3_PATH",
                     verusroot
                         .parent()
                         .and_then(|x| x.parent())
                         .unwrap()
-                        .join("z3")
+                        .join(if cfg!(windows) { "z3.exe" } else { "z3" })
                         .to_str()
                         .unwrap(),
                 );
