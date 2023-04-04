@@ -274,6 +274,15 @@ impl<K, V> Map<K, V> {
         unimplemented!();
     }
 
+    #[verifier(external_body)]
+    pub proof fn tracked_union_prefer_right(tracked &mut self, right: Self)
+        ensures
+            *self == old(self).union_prefer_right(right),
+    {
+        unimplemented!();
+    }
+
+
 }
 
 // Trusted axioms

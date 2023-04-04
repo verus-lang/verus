@@ -2,13 +2,12 @@ use core::cell::UnsafeCell;
 use core::{mem, mem::MaybeUninit};
 use core::marker;
 
-#[allow(unused_imports)] use builtin::*;
-#[allow(unused_imports)] use builtin_macros::*;
 #[allow(unused_imports)] use crate::*;
 #[allow(unused_imports)] use crate::pervasive::*;
 #[allow(unused_imports)] use crate::modes::*;
 #[allow(unused_imports)] use crate::invariant::*;
 #[allow(unused_imports)] use crate::set::*;
+#[allow(unused_imports)] use crate::prelude::*;
 
 verus!{
 
@@ -226,6 +225,22 @@ impl<V> PCell<V> {
         let (p, Tracked(mut t)) = Self::empty();
         p.put(Tracked(&mut t), v);
         (p, Tracked(t))
+    }
+}
+
+impl<V: Copy> PCell<V> {
+    #[inline(always)]
+    #[verifier(external_body)]
+    pub fn write(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V)
+        requires
+            self.id() === old(perm)@.pcell,
+            old(perm)@.value.is_Some(),
+        ensures
+            perm@.pcell === old(perm)@.pcell,
+            perm@.value === Some(in_v),
+        opens_invariants none
+    {
+        let _out = self.replace(Tracked(&mut *perm), in_v);
     }
 }
 
