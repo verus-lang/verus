@@ -1,4 +1,4 @@
-// rust_verify/tests/example.rs ignore
+// rust_verify/tests/example.rs ignore --- TODO main_new
 // TODO(main_new) un-ignore when fixed
 
 #![allow(unused_imports)]

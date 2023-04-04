@@ -165,36 +165,48 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_nested_assert_forall_by_regression_155 code! {
+    #[test] test_nested_assert_forall_by_regression_155 verus_code! {
         use vstd::map::*;
 
-        #[verifier::proof]
-        pub fn test_forall_forall<S, T>() {
-            assert_forall_by(|m1: Map<S, T>, m2: Map<S, T>, n: S| {
-                requires(m1.dom().contains(n) && !m2.dom().contains(n));
-                ensures(equal(m1.remove(n).union_prefer_right(m2), m1.union_prefer_right(m2).remove(n)));
+        pub proof fn test<S, T>() {
+            assert forall |m1: Map<S, T>, m2: Map<S, T>, n: S|
+                m1.dom().contains(n) && !m2.dom().contains(n) implies
+                equal(m1.remove(n).union_prefer_right(m2), m1.union_prefer_right(m2).remove(n))
+            by {
+                let union1 = m1.remove(n).union_prefer_right(m2);
+                let union2 = m1.union_prefer_right(m2).remove(n);
+                assert_maps_equal!(union1, union2);
+                assert(equal(m1.remove(n).union_prefer_right(m2), union2));
+                assert(equal(union1, m1.union_prefer_right(m2).remove(n)));
+            }
+        }
+
+        pub proof fn test_forall_forall<S, T>() {
+            assert forall |m1: Map<S, T>, m2: Map<S, T>, n: S|
+                m1.dom().contains(n) && !m2.dom().contains(n) implies
+                equal(m1.remove(n).union_prefer_right(m2), m1.union_prefer_right(m2).remove(n))
+            by {
 
                 let union1 = m1.remove(n).union_prefer_right(m2);
                 let union2 = m1.union_prefer_right(m2).remove(n);
-                #[verifier::spec] let m1 = union1;
-                #[verifier::spec] let m2 = union2;
 
-                ::builtin::assert_by(::builtin::equal(m1, m2), {
-                    ::builtin::assert_forall_by(|key| {
-                        ::builtin::ensures([
-                        imply(#[trigger] m1.dom().contains(key)), m2.dom().contains(key)
-                            && imply(m2.dom().contains(key), m1.dom().contains(key))
-                            imply(m1.dom().contains(key) && m2.dom().contains(key),
-                                ::builtin::equal(m1.index(key), m2.index(key)))]);
-                        { {} }
-                    });
-                    builtin::assert_(m1.ext_equal(m2));
-                });
+                let mm1 = union1;
+                let mm2 = union2;
+
+                assert(equal(mm1, mm2)) by {
+                    assert forall |key|
+                        imply(#[trigger] mm1.dom().contains(key), mm2.dom().contains(key))
+                            && imply(mm2.dom().contains(key), mm1.dom().contains(key))
+                            && imply(mm1.dom().contains(key) && mm2.dom().contains(key),
+                                equal(mm1.index(key), mm2.index(key)))
+                        by { {} }
+                    assert(mm1.ext_equal(mm2));
+                }
 
                 assume(equal(union1, union2));
                 assert(equal(m1.remove(n).union_prefer_right(m2), union2));
                 assert(equal(union1, m1.union_prefer_right(m2).remove(n)));
-            });
+            }
         }
     } => Ok(())
 }

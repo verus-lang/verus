@@ -27,7 +27,29 @@ impl<A> Vec<A> {
     {
         Vec { vec: vec::Vec::new() }
     }
-    
+
+    /// Constructs a new, empty `Vec<A>` with at least the specified capacity. Equivalent to
+    /// [`Self::new`], but useful to improve performance when the size is known in advance.
+    #[verifier(external_body)]
+    pub fn with_capacity(capacity: usize) -> (v: Self)
+        ensures
+            v@ == Seq::<A>::empty(),
+    {
+        Vec { vec: vec::Vec::with_capacity(capacity) }
+    }
+
+    /// Reserves capacity for at least additional more elements to be inserted in the given `Vec<A>`.
+    /// The collection may reserve more space to speculatively avoid frequent reallocations. After
+    /// calling reserve, capacity will be greater than or equal to `self.len() + additional`. Does
+    /// nothing if capacity is already sufficient.
+    #[verifier(external_body)]
+    pub fn reserve(&mut self, additional: usize)
+        ensures
+            self@ == old(self)@,
+    {
+        self.vec.reserve(additional);
+    }
+
     pub fn empty() -> (v: Self)
         ensures
             v@ == Seq::<A>::empty(),
@@ -91,6 +113,27 @@ impl<A> Vec<A> {
             *a == old(self)@.index(i as int)
     {
         core::mem::swap(&mut self.vec[i], a);
+    }
+
+    #[verifier(external_body)]
+    pub fn insert(&mut self, i: usize, a: A)
+        requires
+            i <= old(self).len(),
+        ensures
+            self@ == old(self)@.insert(i as int, a),
+    {
+        self.vec.insert(i, a);
+    }
+
+    #[verifier(external_body)]
+    pub fn remove(&mut self, i: usize) -> (r: A)
+        requires
+            i < old(self).len(),
+        ensures
+            r == old(self)[i as int],
+            self@ == old(self)@.remove(i as int),
+    {
+        self.vec.remove(i)
     }
 
     pub spec fn spec_len(&self) -> usize;

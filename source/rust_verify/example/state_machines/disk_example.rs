@@ -1,4 +1,4 @@
-// rust_verify/tests/example.rs ignore
+// rust_verify/tests/example.rs ignore --- old experimental example
 
 #![allow(unused_imports)]
 

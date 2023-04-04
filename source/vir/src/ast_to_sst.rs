@@ -1226,10 +1226,11 @@ fn expr_to_stm_opt(
             // Emit the internals of the closure (ClosureInner behaves like a dead-end)
             // This includes assuming the requires, asserting the ensures, everything else
 
-            let inner_stms =
+            let (inner_stms, typ_inv_vars) =
                 exec_closure_body_stms(ctx, state, params, ret, body, requires, ensures)?;
             let block = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(inner_stms)));
-            let clos = Spanned::new(expr.span.clone(), StmX::ClosureInner(block));
+            let clos =
+                Spanned::new(expr.span.clone(), StmX::ClosureInner { body: block, typ_inv_vars });
             all_stms.push(clos);
 
             // Create the closure object and assume all the information given in its
@@ -1917,10 +1918,13 @@ fn exec_closure_body_stms(
     body: &Expr,
     requires: &Exprs,
     ensures: &Exprs,
-) -> Result<Vec<Stm>, VirErr> {
+) -> Result<(Vec<Stm>, Arc<Vec<(UniqueIdent, Typ)>>), VirErr> {
+    let mut typ_inv_vars = vec![];
+
     state.push_scope();
     for param in params.iter() {
-        state.declare_new_var(&param.name, &param.a, false, false);
+        let uid = state.declare_new_var(&param.name, &param.a, false, false);
+        typ_inv_vars.push((uid, param.a.clone()));
     }
 
     // Assert all the requires
@@ -1962,7 +1966,7 @@ fn exec_closure_body_stms(
 
     state.pop_scope();
 
-    Ok(stms)
+    Ok((stms, Arc::new(typ_inv_vars)))
 }
 
 fn closure_emit_postconditions(

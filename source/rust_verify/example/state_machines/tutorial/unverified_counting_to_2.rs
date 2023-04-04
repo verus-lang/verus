@@ -1,4 +1,4 @@
-// rust_verify/tests/example.rs ignore
+// rust_verify/tests/example.rs ignore --- ordinary rust, not verus
 
 // ANCHOR: full
 // Ordinary Rust code, not Verus

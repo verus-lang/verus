@@ -800,7 +800,10 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     let mut datatypes = vec_map_result(&datatypes, |d| simplify_datatype(&mut state, d))?;
 
     // Add a generic datatype to represent each tuple arity
-    for (arity, path) in state.tuple_typs {
+    // Iterate in sorted order to get consistent output
+    let mut tuples: Vec<_> = state.tuple_typs.into_iter().collect();
+    tuples.sort_by_key(|kv| kv.0);
+    for (arity, path) in tuples {
         let visibility = Visibility { owning_module: None, restricted_to: None };
         let transparency = DatatypeTransparency::Always;
         let bound = Arc::new(GenericBoundX::Traits(vec![]));
@@ -820,7 +823,9 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         datatypes.push(Spanned::new(ctx.no_span.clone(), datatypex));
     }
 
-    for (_id, path) in state.closure_typs {
+    let mut closures: Vec<_> = state.closure_typs.into_iter().collect();
+    closures.sort_by_key(|kv| kv.0);
+    for (_id, path) in closures {
         // Right now, we translate the closure type into an a global datatype.
         //
         // However, I'm pretty sure an anonymous closure can't actually be referenced

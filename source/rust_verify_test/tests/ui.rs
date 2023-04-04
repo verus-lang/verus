@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[ignore] #[test] regression_114_unrelated_precondition verus_code! {
+    #[test] regression_114_unrelated_precondition verus_code! {
         fn get_bool() -> (b: bool)
             ensures b == true
         {
