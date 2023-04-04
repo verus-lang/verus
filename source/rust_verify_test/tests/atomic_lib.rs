@@ -3,9 +3,6 @@
 mod common;
 use common::*;
 
-// TODO(main_new) these tests have been ignored but should be updated to
-// macro-based erasure before we switch to `main_new`
-
 const IMPORTS: &str = code_str! {
     use vstd::pervasive::*;
     use vstd::{atomic::*};
@@ -109,13 +106,11 @@ const ATOMIC_U64: &str = code_str! {
 };
 
 test_verify_one_file! {
-    // TODO(main_new) ?
-    #[ignore] #[test] test_atomic_u64_pass test_body(ATOMIC_U64, false) => Ok(())
+    #[test] test_atomic_u64_pass test_body(ATOMIC_U64, false) => Ok(())
 }
 
 test_verify_one_file! {
-    // TODO(main_new) ?
-    #[ignore] #[test] test_atomic_u64_smoke test_body(ATOMIC_U64, true) => Err(e) => assert_one_fails(e)
+    #[test] test_atomic_u64_smoke test_body(ATOMIC_U64, true) => Err(e) => assert_one_fails(e)
 }
 
 const ATOMIC_U32: &str = code_str! {
@@ -204,13 +199,11 @@ const ATOMIC_U32: &str = code_str! {
 };
 
 test_verify_one_file! {
-    // TODO(main_new) ?
-    #[ignore] #[test] test_atomic_u32_pass test_body(ATOMIC_U32, false) => Ok(())
+    #[test] test_atomic_u32_pass test_body(ATOMIC_U32, false) => Ok(())
 }
 
 test_verify_one_file! {
-    // TODO(main_new) ?
-    #[ignore] #[test] test_atomic_u32_smoke test_body(ATOMIC_U32, true) => Err(e) => assert_one_fails(e)
+    #[test] test_atomic_u32_smoke test_body(ATOMIC_U32, true) => Err(e) => assert_one_fails(e)
 }
 
 const ATOMIC_U16: &str = code_str! {
@@ -299,13 +292,11 @@ const ATOMIC_U16: &str = code_str! {
 };
 
 test_verify_one_file! {
-    // TODO(main_new) ?
-    #[ignore] #[test] test_atomic_u16_pass test_body(ATOMIC_U16, false) => Ok(())
+    #[test] test_atomic_u16_pass test_body(ATOMIC_U16, false) => Ok(())
 }
 
 test_verify_one_file! {
-    // TODO(main_new) ?
-    #[ignore] #[test] test_atomic_u16_smoke test_body(ATOMIC_U16, true) => Err(e) => assert_one_fails(e)
+    #[test] test_atomic_u16_smoke test_body(ATOMIC_U16, true) => Err(e) => assert_one_fails(e)
 }
 
 const ATOMIC_U8: &str = code_str! {
@@ -394,13 +385,11 @@ const ATOMIC_U8: &str = code_str! {
 };
 
 test_verify_one_file! {
-    // TODO(main_new) ?
-    #[ignore] #[test] test_atomic_u8_pass test_body(ATOMIC_U8, false) => Ok(())
+    #[test] test_atomic_u8_pass test_body(ATOMIC_U8, false) => Ok(())
 }
 
 test_verify_one_file! {
-    // TODO(main_new) ?
-    #[ignore] #[test] test_atomic_u8_smoke test_body(ATOMIC_U8, true) => Err(e) => assert_one_fails(e)
+    #[test] test_atomic_u8_smoke test_body(ATOMIC_U8, true) => Err(e) => assert_one_fails(e)
 }
 
 const ATOMIC_I64: &str = code_str! {
@@ -497,13 +486,11 @@ const ATOMIC_I64: &str = code_str! {
 };
 
 test_verify_one_file! {
-    // TODO(main_new) ?
-    #[ignore] #[test] test_atomic_i64_pass test_body(ATOMIC_I64, false) => Ok(())
+    #[test] test_atomic_i64_pass test_body(ATOMIC_I64, false) => Ok(())
 }
 
 test_verify_one_file! {
-    // TODO(main_new) ?
-    #[ignore] #[test] test_atomic_i64_smoke test_body(ATOMIC_I64, true) => Err(e) => assert_one_fails(e)
+    #[test] test_atomic_i64_smoke test_body(ATOMIC_I64, true) => Err(e) => assert_one_fails(e)
 }
 
 const ATOMIC_I32: &str = code_str! {
@@ -600,13 +587,11 @@ const ATOMIC_I32: &str = code_str! {
 };
 
 test_verify_one_file! {
-    // TODO(main_new) ?
-    #[ignore] #[test] test_atomic_i32_pass test_body(ATOMIC_I32, false) => Ok(())
+    #[test] test_atomic_i32_pass test_body(ATOMIC_I32, false) => Ok(())
 }
 
 test_verify_one_file! {
-    // TODO(main_new) ?
-    #[ignore] #[test] test_atomic_i32_smoke test_body(ATOMIC_I32, true) => Err(e) => assert_one_fails(e)
+    #[test] test_atomic_i32_smoke test_body(ATOMIC_I32, true) => Err(e) => assert_one_fails(e)
 }
 
 const ATOMIC_I16: &str = code_str! {
@@ -703,13 +688,11 @@ const ATOMIC_I16: &str = code_str! {
 };
 
 test_verify_one_file! {
-    // TODO(main_new) ?
-    #[ignore] #[test] test_atomic_i16_pass test_body(ATOMIC_I16, false) => Ok(())
+    #[test] test_atomic_i16_pass test_body(ATOMIC_I16, false) => Ok(())
 }
 
 test_verify_one_file! {
-    // TODO(main_new) ?
-    #[ignore] #[test] test_atomic_i16_smoke test_body(ATOMIC_I16, true) => Err(e) => assert_one_fails(e)
+    #[test] test_atomic_i16_smoke test_body(ATOMIC_I16, true) => Err(e) => assert_one_fails(e)
 }
 
 const ATOMIC_I8: &str = code_str! {
@@ -806,13 +789,11 @@ const ATOMIC_I8: &str = code_str! {
 };
 
 test_verify_one_file! {
-    // TODO(main_new) ?
-    #[ignore] #[test] test_atomic_i8_pass test_body(ATOMIC_I8, false) => Ok(())
+    #[test] test_atomic_i8_pass test_body(ATOMIC_I8, false) => Ok(())
 }
 
 test_verify_one_file! {
-    // TODO(main_new) ?
-    #[ignore] #[test] test_atomic_i8_smoke test_body(ATOMIC_I8, true) => Err(e) => assert_one_fails(e)
+    #[test] test_atomic_i8_smoke test_body(ATOMIC_I8, true) => Err(e) => assert_one_fails(e)
 }
 
 const ATOMIC_BOOL: &str = code_str! {
@@ -930,13 +911,11 @@ const ATOMIC_BOOL: &str = code_str! {
 };
 
 test_verify_one_file! {
-    // TODO(main_new) ?
-    #[ignore] #[test] test_atomic_bool_pass test_body(ATOMIC_BOOL, false) => Ok(())
+    #[test] test_atomic_bool_pass test_body(ATOMIC_BOOL, false) => Ok(())
 }
 
 test_verify_one_file! {
-    // TODO(main_new) ?
-    #[ignore] #[test] test_atomic_bool_smoke test_body(ATOMIC_BOOL, true) => Err(e) => assert_one_fails(e)
+    #[test] test_atomic_bool_smoke test_body(ATOMIC_BOOL, true) => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
@@ -1020,27 +999,23 @@ test_verify_one_file! {
 // 32-bit
 
 test_verify_one_file_with_options! {
-    // TODO(main_new) ?
-    #[ignore] #[test] test_atomic_usize_32_pass ["--arch-word-bits 32"] => test_body(
+    #[test] test_atomic_usize_32_pass ["--arch-word-bits 32"] => test_body(
       &ATOMIC_U32.replace("u32", "usize").replace("PAtomicU32", "PAtomicUsize"),
       false) => Ok(())
 }
 test_verify_one_file_with_options! {
-    // TODO(main_new) ?
-    #[ignore] #[test] test_atomic_usize_32_fail ["--arch-word-bits 32"] => test_body(
+    #[test] test_atomic_usize_32_fail ["--arch-word-bits 32"] => test_body(
       &ATOMIC_U32.replace("u32", "usize").replace("PAtomicU32", "PAtomicUsize"),
       true) => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file_with_options! {
-    // TODO(main_new) ?
-    #[ignore] #[test] test_atomic_isize_32_pass ["--arch-word-bits 32"] => test_body(
+    #[test] test_atomic_isize_32_pass ["--arch-word-bits 32"] => test_body(
       &ATOMIC_I32.replace("i32", "isize").replace("PAtomicI32", "PAtomicIsize"),
       false) => Ok(())
 }
 test_verify_one_file_with_options! {
-    // TODO(main_new) ?
-    #[ignore] #[test] test_atomic_isize_32_fail ["--arch-word-bits 32"] => test_body(
+    #[test] test_atomic_isize_32_fail ["--arch-word-bits 32"] => test_body(
       &ATOMIC_I32.replace("i32", "isize").replace("PAtomicI32", "PAtomicIsize"),
       true) => Err(e) => assert_one_fails(e)
 }
@@ -1048,27 +1023,23 @@ test_verify_one_file_with_options! {
 // 64-bit
 
 test_verify_one_file_with_options! {
-    // TODO(main_new) ?
-    #[ignore] #[test] test_atomic_usize_64_pass ["--arch-word-bits 64"] => test_body(
+    #[test] test_atomic_usize_64_pass ["--arch-word-bits 64"] => test_body(
       &ATOMIC_U64.replace("u64", "usize").replace("PAtomicU64", "PAtomicUsize"),
       false) => Ok(())
 }
 test_verify_one_file_with_options! {
-    // TODO(main_new) ?
-    #[ignore] #[test] test_atomic_usize_64_fail ["--arch-word-bits 64"] => test_body(
+    #[test] test_atomic_usize_64_fail ["--arch-word-bits 64"] => test_body(
       &ATOMIC_U64.replace("u64", "usize").replace("PAtomicU64", "PAtomicUsize"),
       true) => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file_with_options! {
-    // TODO(main_new) ?
-    #[ignore] #[test] test_atomic_isize_64_pass ["--arch-word-bits 64"] => test_body(
+    #[test] test_atomic_isize_64_pass ["--arch-word-bits 64"] => test_body(
       &ATOMIC_I64.replace("i64", "isize").replace("PAtomicI64", "PAtomicIsize"),
       false) => Ok(())
 }
 test_verify_one_file_with_options! {
-    // TODO(main_new) ?
-    #[ignore] #[test] test_atomic_isize_64_fail ["--arch-word-bits 64"] => test_body(
+    #[test] test_atomic_isize_64_fail ["--arch-word-bits 64"] => test_body(
       &ATOMIC_I64.replace("i64", "isize").replace("PAtomicI64", "PAtomicIsize"),
       true) => Err(e) => assert_one_fails(e)
 }
