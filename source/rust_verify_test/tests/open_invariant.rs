@@ -31,28 +31,30 @@ macro_rules! test_both {
     };
 }
 
-// TODO(main_new) test_both! {
-// TODO(main_new)     basic_usage basic_usage_local code! {
-// TODO(main_new)         use vstd::invariant::*;
-// TODO(main_new)
-// TODO(main_new)         pub fn X<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
-// TODO(main_new)             requires([
-// TODO(main_new)                 i.inv(0)
-// TODO(main_new)             ]);
-// TODO(main_new)             open_atomic_invariant!(&i => inner => {
-// TODO(main_new)                 #[verifier::proof] let x = 5;
-// TODO(main_new)                 #[verifier::proof] let x = 6;
-// TODO(main_new)                 inner = 0;
-// TODO(main_new)             });
-// TODO(main_new)         }
-// TODO(main_new)     } => Ok(())
-// TODO(main_new) }
-
 test_both! {
-    basic_usage2 basic_usage2_local code! {
+    basic_usage basic_usage_local verus_code! {
         use vstd::invariant::*;
 
-        pub fn X<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
+        struct Foo { }
+
+        pub fn X<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>)
+            requires
+                i.inv(0),
+        {
+            open_atomic_invariant!(&i => inner => {
+                let tracked x = Foo { };
+                let tracked x = Foo { };
+                proof { inner = 0u8; }
+            });
+        }
+    } => Ok(())
+}
+
+test_both! {
+    basic_usage2 basic_usage2_local verus_code! {
+        use vstd::invariant::*;
+
+        pub fn X<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>) {
             open_atomic_invariant!(&i => inner => {
             });
         }
@@ -60,30 +62,31 @@ test_both! {
 }
 
 test_both! {
-    inv_fail inv_fail_local code! {
+    inv_fail inv_fail_local verus_code! {
         use vstd::invariant::*;
-        pub fn X<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
+        struct Foo { }
+        pub fn X<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>) {
             open_atomic_invariant!(&i => inner => {
-                #[verifier::proof] let x = 5;
-                #[verifier::proof] let x = 6;
-                inner = 0;
+                let tracked x = Foo { };
+                let tracked x = Foo { };
+                proof { inner = 0u8; }
             }); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
 
 test_both! {
-    nested_failure nested_failure_local code! {
+    nested_failure nested_failure_local verus_code! {
         use vstd::invariant::*;
-        pub fn nested<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
-            requires([
-                i.inv(0)
-            ]);
+        pub fn nested<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>)
+            requires
+                i.inv(0),
+        {
             open_atomic_invariant!(&i => inner => { // FAILS
                 open_atomic_invariant!(&i => inner2 => {
-                    inner2 = 0;
+                    proof { inner2 = 0u8; }
                 });
-                inner = 0;
+                proof { inner = 0u8; }
             });
         }
     } => Err(err) => assert_one_fails(err)
@@ -92,7 +95,7 @@ test_both! {
 test_both! {
     nested_good nested_good_local verus_code! {
         use vstd::invariant::*;
-        pub fn nested_good<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>, #[verifier::proof] j: AtomicInvariant<A, u8, B>)
+        pub fn nested_good<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>, Tracked(j): Tracked<AtomicInvariant<A, u8, B>>)
             requires
                 i.inv(0),
                 j.inv(1),
@@ -110,44 +113,45 @@ test_both! {
 }
 
 test_both! {
-    full_call_empty full_call_empty_local code! {
+    full_call_empty full_call_empty_local verus_code! {
         use vstd::invariant::*;
-        #[verifier::proof]
-        pub fn callee_mask_empty() {
-          opens_invariants_none(); // will not open any invariant
+        pub proof fn callee_mask_empty()
+          opens_invariants none // will not open any invariant
+        {
         }
-        pub fn t1<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
+        pub fn t1<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>) {
           open_atomic_invariant!(&i => inner => {
-            callee_mask_empty();
+            proof { callee_mask_empty(); }
           });
         }
     } => Ok(())
 }
 
 test_both! {
-    open_call_full open_call_full_local code! {
+    open_call_full open_call_full_local verus_code! {
         use vstd::invariant::*;
-        #[verifier::proof]
-        pub fn callee_mask_full() {
-          opens_invariants_any(); // can open any invariant
+        pub proof fn callee_mask_full()
+          opens_invariants any // can open any invariant
+        {
         }
-        pub fn t2<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
+        pub fn t2<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>) {
           open_atomic_invariant!(&i => inner => { // FAILS
-            callee_mask_full();
+            proof { callee_mask_full(); }
           });
         }
     } => Err(err) => assert_one_fails(err)
 }
 
 test_both! {
-    empty_open empty_open_local code! {
+    empty_open empty_open_local verus_code! {
         use vstd::invariant::*;
-        #[verifier::proof]
-        pub fn callee_mask_empty() {
-          opens_invariants_none(); // will not open any invariant
+        pub proof fn callee_mask_empty()
+          opens_invariants none // will not open any invariant
+        {
         }
-        pub fn t3<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
-          opens_invariants_none();
+        pub fn t3<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>)
+          opens_invariants none
+        {
           open_atomic_invariant!(&i => inner => { // FAILS
           });
         }
@@ -157,11 +161,10 @@ test_both! {
 // mode stuff
 
 test_both! {
-    open_inv_in_spec open_inv_in_spec_local code! {
+    open_inv_in_spec open_inv_in_spec_local verus_code! {
         use vstd::invariant::*;
 
-        #[verifier::spec]
-        pub fn open_inv_in_spec<A, B: InvariantPredicate<A, u8>>(i: AtomicInvariant<A, u8, B>) {
+        pub closed spec fn open_inv_in_spec<A, B: InvariantPredicate<A, u8>>(i: AtomicInvariant<A, u8, B>) {
           open_atomic_invariant!(&i => inner => {
           });
         }
@@ -169,23 +172,23 @@ test_both! {
 }
 
 test_both! {
-    inv_header_in_spec inv_header_in_spec_local code! {
+    inv_header_in_spec inv_header_in_spec_local verus_code! {
         use vstd::invariant::*;
 
-        #[verifier::spec]
-        pub fn inv_header_in_spec<A, B: InvariantPredicate<A, u8>>(i: AtomicInvariant<A, u8, B>) {
-          opens_invariants_any();
+        pub closed spec fn inv_header_in_spec<A, B: InvariantPredicate<A, u8>>(i: AtomicInvariant<A, u8, B>)
+          opens_invariants any
+        {
         }
     } => Err(err) => assert_vir_error_msg(err, "invariants cannot be opened in spec functions")
 }
 
 test_both! {
-    open_inv_in_proof open_inv_in_proof_local code! {
+    open_inv_in_proof open_inv_in_proof_local verus_code! {
         use vstd::invariant::*;
 
-        #[verifier::proof]
-        pub fn open_inv_in_proof<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
-          opens_invariants_any();
+        pub proof fn open_inv_in_proof<A, B: InvariantPredicate<A, u8>>(tracked i: AtomicInvariant<A, u8, B>)
+          opens_invariants any
+        {
           open_atomic_invariant!(&i => inner => {
           });
         }
@@ -193,22 +196,24 @@ test_both! {
 }
 
 test_both! {
-    inv_cannot_be_exec inv_cannot_be_exec_local code! {
+    inv_exec inv_exec_local verus_code! {
         use vstd::invariant::*;
 
-        pub fn X<A, B: InvariantPredicate<A, u8>>(#[verifier::exec] i: AtomicInvariant<A, u8, B>) {
+        // this is no longer an error because the `&i` is processed as a 'proof block' argument
+        // so the `i` is automatically upgraded to proof mode
+
+        pub fn X<A, B: InvariantPredicate<A, u8>>(i: AtomicInvariant<A, u8, B>) {
             open_atomic_invariant!(&i => inner => {
             });
         }
-
-    } => Err(err) => assert_vir_error_msg(err, "Invariant must be Proof mode")
+    } => Ok(())
 }
 
 test_both! {
-    inv_cannot_be_spec inv_cannot_be_spec_local code! {
+    inv_cannot_be_spec inv_cannot_be_spec_local verus_code! {
         use vstd::invariant::*;
 
-        pub fn X<A, B: InvariantPredicate<A, u8>>(#[verifier::spec] i: AtomicInvariant<A, u8, B>) {
+        pub fn X<A, B: InvariantPredicate<A, u8>>(Ghost(i): Ghost<AtomicInvariant<A, u8, B>>) {
             open_atomic_invariant!(&i => inner => {
             });
         }
@@ -218,12 +223,12 @@ test_both! {
 
 // This test doesn't apply to LocalInvariant
 test_verify_one_file! {
-    #[test] exec_code_in_inv_block code! {
+    #[test] exec_code_in_inv_block verus_code! {
         use vstd::invariant::*;
 
         pub fn exec_fn() { }
 
-        pub fn X<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
+        pub fn X<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>) {
             open_atomic_invariant!(&i => inner => {
                 exec_fn();
             });
@@ -231,34 +236,29 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain non-atomic operations")
 }
 
-/*
-// TODO (erasure-todo)
-// This needs to be ported to verus_code
 test_both! {
-    inv_lifetime inv_lifetime_local code! {
+    inv_lifetime inv_lifetime_local verus_code! {
         use vstd::invariant::*;
 
-        #[verifier::proof]
-        fn throw_away<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
+        proof fn throw_away<A, B: InvariantPredicate<A, u8>>(tracked i: AtomicInvariant<A, u8, B>) {
         }
 
-        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
-          requires([
-            i.inv(0)
-          ]);
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>)
+          requires
+            i.inv(0),
+        {
           open_atomic_invariant!(&i => inner => {
-            throw_away(i);
+            proof { throw_away(i); }
           });
         }
-    } => Err(err) => assert_rust_error_msg(err, "error[E0505]: cannot move out of `i` because it is borrowed")
+    } => Err(err) => assert_vir_error_msg(err, "cannot move out of `i` because it is borrowed")
 }
-*/
 
 test_both! {
-    return_early return_early_local code! {
+    return_early return_early_local verus_code! {
         use vstd::invariant::*;
 
-        pub fn blah<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
+        pub fn blah<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>) {
           open_atomic_invariant!(&i => inner => {
             return;
           });
@@ -267,10 +267,10 @@ test_both! {
 }
 
 test_both! {
-    return_early_nested return_early_nested_local code! {
+    return_early_nested return_early_nested_local verus_code! {
         use vstd::invariant::*;
 
-        pub fn blah<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>, #[verifier::proof] j: AtomicInvariant<A, u8, B>) {
+        pub fn blah<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>, Tracked(j): Tracked<AtomicInvariant<A, u8, B>>) {
           open_atomic_invariant!(&i => inner => {
             open_atomic_invariant!(&j => inner => {
               return;
@@ -281,10 +281,10 @@ test_both! {
 }
 
 test_both! {
-    break_early break_early_local code! {
+    break_early break_early_local verus_code! {
         use vstd::invariant::*;
 
-        pub fn blah<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
+        pub fn blah<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>) {
           let mut idx = 0;
           while idx < 5 {
             open_atomic_invariant!(&i => inner => {
@@ -296,10 +296,10 @@ test_both! {
 }
 
 test_both! {
-    continue_early continue_early_local code! {
+    continue_early continue_early_local verus_code! {
         use vstd::invariant::*;
 
-        pub fn blah<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
+        pub fn blah<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>) {
           let mut idx = 0;
           while idx < 5 {
             open_atomic_invariant!(&i => inner => {
@@ -311,11 +311,10 @@ test_both! {
 }
 
 test_both! {
-    return_early_proof return_early_proof_local code! {
+    return_early_proof return_early_proof_local verus_code! {
         use vstd::invariant::*;
 
-        #[verifier::proof]
-        pub fn blah<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
+        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(tracked i: AtomicInvariant<A, u8, B>) {
           open_atomic_invariant!(&i => inner => {
             return;
           });
@@ -324,12 +323,11 @@ test_both! {
 }
 
 test_both! {
-    break_early_proof break_early_proof_local code! {
+    break_early_proof break_early_proof_local verus_code! {
         use vstd::invariant::*;
 
-        #[verifier::proof]
-        pub fn blah<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
-          let mut idx = 0;
+        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(tracked i: AtomicInvariant<A, u8, B>) {
+          let mut idx: int = 0;
           while idx < 5 {
             open_atomic_invariant!(&i => inner => {
               break;
@@ -341,12 +339,11 @@ test_both! {
 }
 
 test_both! {
-    continue_early_proof continue_early_proof_local code! {
+    continue_early_proof continue_early_proof_local verus_code! {
         use vstd::invariant::*;
 
-        #[verifier::proof]
-        pub fn blah<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
-          let mut idx = 0;
+        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(tracked i: AtomicInvariant<A, u8, B>) {
+          let mut idx: int = 0;
           while idx < 5 {
             open_atomic_invariant!(&i => inner => {
               break;
@@ -360,10 +357,10 @@ test_both! {
 // Check that we can't open a AtomicInvariant with open_local_invariant and vice-versa
 
 test_verify_one_file! {
-    #[test] mixup1 code! {
+    #[test] mixup1 verus_code! {
         use vstd::invariant::*;
 
-        pub fn X<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: LocalInvariant<A, u8, B>) {
+        pub fn X<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<LocalInvariant<A, u8, B>>) {
             open_atomic_invariant!(&i => inner => {
             });
         }
@@ -371,10 +368,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] mixup2 code! {
+    #[test] mixup2 verus_code! {
         use vstd::invariant::*;
 
-        pub fn X<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>) {
+        pub fn X<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>) {
             open_local_invariant!(&i => inner => {
             });
         }
@@ -382,10 +379,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] nest_local_loop_local code! {
+    #[test] nest_local_loop_local verus_code! {
         use vstd::invariant::*;
 
-        pub fn X<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: LocalInvariant<A, u8, B>, #[verifier::proof] j: LocalInvariant<A, u8, B>) {
+        pub fn X<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<LocalInvariant<A, u8, B>>, Tracked(j): Tracked<LocalInvariant<A, u8, B>>) {
             open_local_invariant!(&i => inner => { // FAILS
                 let mut idx: u64 = 0;
                 while idx < 5 {
@@ -399,13 +396,12 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // TODO(main_new)
-    #[ignore] #[test] never_terminate_in_invariant code! {
+    #[test] never_terminate_in_invariant verus_code! {
         use vstd::invariant::*;
 
-        pub fn X<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: LocalInvariant<A, u8, B>) {
+        pub fn X<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<LocalInvariant<A, u8, B>>) {
             open_local_invariant!(&i => inner => {
-                inner = 7;
+                proof { inner = 7u8; }
                 loop { }
             });
         }
