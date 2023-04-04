@@ -2731,7 +2731,7 @@ test_verify_one_file! {
 
             transition!{
                 tr() {
-                    add t += Some(spec_literal_nat("5"));
+                    add t += Some(5);
                 }
             }
         }}
@@ -3967,13 +3967,13 @@ test_verify_one_file! {
             let tracked (Tracked(instance), Tracked(mut v1), Tracked(v2)) = Z::Instance::initialize();
             assert(equal(v1.view().instance, instance));
             assert(equal(v2.view().instance, instance));
-            assert(equal(v1.view().value, spec_literal_int("0")));
-            assert(equal(v2.view().value, spec_literal_int("1")));
-            assert(equal(instance.c(), spec_literal_int("3")));
+            assert(equal(v1.view().value, 0));
+            assert(equal(v2.view().value, 1));
+            assert(equal(instance.c(), 3));
 
             instance.tr1(&mut v1);
             assert(equal(v1.view().instance, instance));
-            assert(equal(v1.view().value, spec_literal_int("2")));
+            assert(equal(v1.view().value, 2));
 
             let old_v1_value = v1.view().value;
             let tracked (Ghost(birds_eye_v2), Ghost(birds_eye_nt)) = instance.tr2(&mut v1);
@@ -3984,7 +3984,7 @@ test_verify_one_file! {
             let old_v1_value = v1.view().value;
             let birds_eye_nt = instance.tr3(&mut v1, &v2);
             assert(equal(v1.view().instance, instance));
-            assert(equal(v1.view().value, birds_eye_nt + instance.c() + old_v1_value + spec_literal_int("3") * v2.view().value));
+            assert(equal(v1.view().value, birds_eye_nt + instance.c() + old_v1_value + 3 * v2.view().value));
         }
         }
     } => Ok(())
@@ -4193,10 +4193,10 @@ test_verify_one_file! {
         verus!{
         pub proof fn foo() {
             let tracked (Tracked(inst), Tracked(mut x_tok), Tracked(mut r_tok)) = Y::Instance::ini(
-                Y::State { x: spec_literal_int("5"), recursing: Option::None }
+                Y::State { x: 5, recursing: Option::None }
             );
-            inst.tr(spec_literal_int("19"), &mut x_tok);
-            assert(x_tok.view().value == spec_literal_int("20"));
+            inst.tr(19, &mut x_tok);
+            assert(x_tok.view().value == 20);
 
             inst.tr2(Option::<Box<Y::State>>::None, &mut r_tok);
             assert(equal(Option::<Box<Y::State>>::None, r_tok.view().value));
@@ -4419,7 +4419,7 @@ test_verify_one_file! {
 
         proof fn do_tokens() {
             let tracked mut m: Map<int, u64> = Map::tracked_empty();
-            m.tracked_insert(spec_literal_int("1"), 6u64);
+            m.tracked_insert(1, 6u64);
             let tracked (Tracked(inst), Tracked(opt_token), Tracked(mut map_tokens)) = Y::Instance::initialize(m);
 
             match opt_token {
@@ -4427,13 +4427,13 @@ test_verify_one_file! {
                 Option::Some(opt_token) => {
                     inst.tr1(opt_token);
 
-                    assert(map_tokens.dom().contains(spec_literal_int("1")));
-                    let tracked map_token = map_tokens.tracked_remove(spec_literal_int("1"));
+                    assert(map_tokens.dom().contains(1));
+                    let tracked map_token = map_tokens.tracked_remove(1);
 
-                    let tracked the_guard = inst.tr4(spec_literal_int("1"), &map_token);
+                    let tracked the_guard = inst.tr4(1, &map_token);
                     assert(*the_guard == 6);
 
-                    let tracked t = inst.tr2(spec_literal_int("1"), map_token);
+                    let tracked t = inst.tr2(1, map_token);
                     assert(t == 6);
                 }
             };
@@ -4707,19 +4707,19 @@ test_verify_one_file! {
 
             transition!{
                 tr_add() {
-                    add c += (spec_literal_nat("2"));
+                    add c += (2);
                 }
             }
 
             transition!{
                 tr_have() {
-                    have c >= (spec_literal_nat("2"));
+                    have c >= (2);
                 }
             }
 
             transition!{
                 tr_remove() {
-                    remove c -= (spec_literal_nat("2"));
+                    remove c -= (2);
                 }
             }
         }}
@@ -4727,27 +4727,27 @@ test_verify_one_file! {
         verus!{
 
         spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
-            post.c == pre.c + spec_literal_nat("2")
+            post.c == pre.c + 2
         }
 
         spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
-            post.c == pre.c + spec_literal_nat("2")
+            post.c == pre.c + 2
         }
 
         spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
-            pre.c >= spec_literal_nat("2") && post.c == pre.c
+            pre.c >= 2 && post.c == pre.c
         }
 
         spec fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
-            pre.c >= spec_literal_nat("2") && post.c == pre.c
+            pre.c >= 2 && post.c == pre.c
         }
 
         spec fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
-            pre.c >= spec_literal_nat("2") && post.c == pre.c - spec_literal_nat("2")
+            pre.c >= 2 && post.c == pre.c - 2
         }
 
         spec fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
-            pre.c >= spec_literal_nat("2") && post.c == pre.c - spec_literal_nat("2")
+            pre.c >= 2 && post.c == pre.c - 2
         }
 
         proof fn correct_tr(pre: Y::State, post: Y::State) {
@@ -4763,21 +4763,21 @@ test_verify_one_file! {
 
         proof fn test_inst() {
             let tracked (Tracked(inst), Tracked(t1)) = Y::Instance::initialize();
-            assert(t1.view().count == spec_literal_nat("9"));
+            assert(t1.view().count == 9);
 
-            let tracked (Tracked(t2), Tracked(t3)) = t1.split(spec_literal_nat("2"));
+            let tracked (Tracked(t2), Tracked(t3)) = t1.split(2);
 
-            assert(t2.view().count == spec_literal_nat("2"));
-            assert(t3.view().count == spec_literal_nat("7"));
+            assert(t2.view().count == 2);
+            assert(t3.view().count == 7);
 
             inst.tr_have(&t2);
             inst.tr_remove(t2);
 
             let tracked t4 = inst.tr_add();
-            assert(t4.view().count == spec_literal_nat("2"));
+            assert(t4.view().count == 2);
 
             let tracked q = t4.join(t3);
-            assert(q.view().count == spec_literal_nat("9"));
+            assert(q.view().count == 9);
         }
 
         proof fn test_join_fail() {
@@ -4789,7 +4789,7 @@ test_verify_one_file! {
         proof fn test_split_fail() {
             let tracked (Tracked(inst), Tracked(t1)) = Y::Instance::initialize();
 
-            let tracked (Tracked(t2), Tracked(t3)) = t1.split(spec_literal_nat("10")); // FAILS
+            let tracked (Tracked(t2), Tracked(t3)) = t1.split(10); // FAILS
         }
 
         }
@@ -5062,10 +5062,10 @@ test_verify_one_file! {
 
             let tracked cloned = d.clone();
             assert(equal(cloned.view().instance, inst));
-            assert(d.view().value == spec_literal_int("7"));
+            assert(d.view().value == 7);
 
             let tracked c = inst.tr1(&d);
-            assert(c.view().value == spec_literal_int("3"));
+            assert(c.view().value == 3);
             assert(equal(c.view().instance, inst));
 
             let tracked c2_opt = inst.tr2();
@@ -5073,7 +5073,7 @@ test_verify_one_file! {
                 Option::Some(c2) => c2,
                 Option::None => proof_from_false(),
             };
-            assert(c2.view().value == spec_literal_int("3"));
+            assert(c2.view().value == 3);
             assert(equal(c2.view().instance, inst));
 
             let tracked c_opt = Option::Some(c);
@@ -5230,23 +5230,23 @@ test_verify_one_file! {
 
         proof fn test_inst() {
             let tracked (Tracked(inst), Tracked(mut init_m)) = Y::Instance::initialize();
-            assert(init_m.dom().contains(spec_literal_int("1")));
-            let tracked m_1 = init_m.tracked_remove(spec_literal_int("1"));
-            assert(m_1.view().value == spec_literal_int("2"));
+            assert(init_m.dom().contains(1));
+            let tracked m_1 = init_m.tracked_remove(1);
+            assert(m_1.view().value == 2);
 
             let tracked cloned = m_1.clone();
             assert(equal(cloned.view().instance, inst));
-            assert(cloned.view().key == spec_literal_int("1"));
-            assert(cloned.view().value == spec_literal_int("2"));
+            assert(cloned.view().key == 1);
+            assert(cloned.view().value == 2);
 
             let tracked m_3 = inst.tr1(&m_1);
-            assert(m_3.view().value == spec_literal_int("4"));
+            assert(m_3.view().value == 4);
 
             let tracked m_5_12 = inst.tr2();
-            assert(m_5_12.dom().contains(spec_literal_int("5")));
-            assert(m_5_12.index(spec_literal_int("5")).view().value == spec_literal_int("9"));
-            assert(m_5_12.dom().contains(spec_literal_int("12")));
-            assert(m_5_12.index(spec_literal_int("12")).view().value == spec_literal_int("15"));
+            assert(m_5_12.dom().contains(5));
+            assert(m_5_12.index(5).view().value == 9);
+            assert(m_5_12.dom().contains(12));
+            assert(m_5_12.index(12).view().value == 15);
 
             inst.tr3(&m_5_12);
         }
@@ -5769,82 +5769,82 @@ test_verify_one_file! {
 
         proof fn test_inst1() {
             let tracked mut p_m = Map::tracked_empty();
-            p_m.tracked_insert(spec_literal_int("1"), Goo::Bar);
+            p_m.tracked_insert(1, Goo::Bar);
 
             let tracked (Tracked(inst), Tracked(mut m_token), Tracked(opt_token)) = Y::Instance::initialize(
-                map![spec_literal_int("1") => Goo::Bar],
+                map![1 => Goo::Bar],
                 Option::Some(Goo::Bar),
                 p_m,
                 Option::Some(Goo::Bar),
             );
 
-            assert(m_token.dom().contains(spec_literal_int("1")));
-            let tracked kv = m_token.tracked_remove(spec_literal_int("1"));
+            assert(m_token.dom().contains(1));
+            let tracked kv = m_token.tracked_remove(1);
             let tracked o = match opt_token {
                 Option::None => proof_from_false(),
                 Option::Some(t) => t,
             };
 
-            inst.tr7(spec_literal_int("1"), &kv, &o);
+            inst.tr7(1, &kv, &o);
 
             let tracked wi = inst.tr1(o);
             assert(equal(wi, Goo::Bar));
 
-            let tracked wi2 = inst.tr4(spec_literal_int("1"), kv);
+            let tracked wi2 = inst.tr4(1, kv);
             assert(equal(wi2, Goo::Bar));
         }
 
         proof fn test_inst2() {
             let tracked mut p_m = Map::tracked_empty();
-            p_m.tracked_insert(spec_literal_int("1"), Goo::Qux(8u64));
+            p_m.tracked_insert(1, Goo::Qux(8u64));
 
             let tracked (Tracked(inst), Tracked(mut m_token), Tracked(opt_token)) = Y::Instance::initialize(
-                map![spec_literal_int("1") => Goo::Qux(8u64)],
+                map![1 => Goo::Qux(8u64)],
                 Option::Some(Goo::Qux(8u64)),
                 p_m,
                 Option::Some(Goo::Qux(8u64)),
             );
 
-            assert(m_token.dom().contains(spec_literal_int("1")));
-            let tracked kv = m_token.tracked_remove(spec_literal_int("1"));
+            assert(m_token.dom().contains(1));
+            let tracked kv = m_token.tracked_remove(1);
             let tracked o = match opt_token {
                 Option::None => proof_from_false(),
                 Option::Some(t) => t,
             };
 
-            inst.tr8(spec_literal_int("1"), &kv, &o);
+            inst.tr8(1, &kv, &o);
 
             let tracked wi = inst.tr2(o);
             assert(equal(wi, Goo::Qux(8u64)));
 
-            let tracked wi2 = inst.tr5(spec_literal_int("1"), kv);
+            let tracked wi2 = inst.tr5(1, kv);
             assert(equal(wi2, Goo::Qux(8u64)));
         }
 
         proof fn test_inst3() {
             let tracked mut p_m = Map::tracked_empty();
-            p_m.tracked_insert(spec_literal_int("1"), Goo::Tal(8u64, 9u64));
+            p_m.tracked_insert(1, Goo::Tal(8u64, 9u64));
 
             let tracked (Tracked(inst), Tracked(mut m_token), Tracked(opt_token)) = Y::Instance::initialize(
-                map![spec_literal_int("1") => Goo::Tal(8u64, 9u64)],
+                map![1 => Goo::Tal(8u64, 9u64)],
                 Option::Some(Goo::Tal(8u64, 9u64)),
                 p_m,
                 Option::Some(Goo::Tal(8u64, 9u64)),
             );
 
-            assert(m_token.dom().contains(spec_literal_int("1")));
-            let tracked kv = m_token.tracked_remove(spec_literal_int("1"));
+            assert(m_token.dom().contains(1));
+            let tracked kv = m_token.tracked_remove(1);
             let tracked o = match opt_token {
                 Option::None => proof_from_false(),
                 Option::Some(t) => t,
             };
 
-            inst.tr9(spec_literal_int("1"), &kv, &o);
+            inst.tr9(1, &kv, &o);
 
             let tracked wi = inst.tr3(o);
             assert(equal(wi, Goo::Tal(8u64, 9u64)));
 
-            let tracked wi2 = inst.tr6(spec_literal_int("1"), kv);
+            let tracked wi2 = inst.tr6(1, kv);
             assert(equal(wi2, Goo::Tal(8u64, 9u64)));
         }
 
@@ -5868,48 +5868,48 @@ test_verify_one_file! {
 
         proof fn test_precondition_map_remove1(tracked inst: Y::Instance, tracked t: Y::m)
         {
-          requires(equal(t.view().instance, inst) && t.view().key == spec_literal_int("1"));
-          let tracked k = inst.tr4(spec_literal_int("1"), t); // FAILS
+          requires(equal(t.view().instance, inst) && t.view().key == 1);
+          let tracked k = inst.tr4(1, t); // FAILS
         }
 
         proof fn test_precondition_map_remove2(tracked inst: Y::Instance, tracked t: Y::m)
         {
-          requires(equal(t.view().instance, inst) && t.view().key == spec_literal_int("1"));
-          let tracked k = inst.tr5(spec_literal_int("1"), t); // FAILS
+          requires(equal(t.view().instance, inst) && t.view().key == 1);
+          let tracked k = inst.tr5(1, t); // FAILS
         }
 
         proof fn test_precondition_map_remove3(tracked inst: Y::Instance, tracked t: Y::m)
         {
-          requires(equal(t.view().instance, inst) && t.view().key == spec_literal_int("1"));
-          let tracked k = inst.tr6(spec_literal_int("1"), t); // FAILS
+          requires(equal(t.view().instance, inst) && t.view().key == 1);
+          let tracked k = inst.tr6(1, t); // FAILS
         }
 
         proof fn test_precondition_have1(tracked inst: Y::Instance, tracked t: Y::opt, tracked u: Y::m)
         {
-          requires(equal(t.view().instance, inst) && equal(u.view().instance, inst) && u.view().key == spec_literal_int("1")
+          requires(equal(t.view().instance, inst) && equal(u.view().instance, inst) && u.view().key == 1
               && equal(t.view().value, Goo::Bar)
           );
-          let tracked k = inst.tr7(spec_literal_int("1"), &u, &t); // FAILS
+          let tracked k = inst.tr7(1, &u, &t); // FAILS
         }
 
         proof fn test_precondition_have2(tracked inst: Y::Instance, tracked t: Y::opt, tracked u: Y::m)
         {
-          requires(equal(t.view().instance, inst) && equal(u.view().instance, inst) && u.view().key == spec_literal_int("1")
+          requires(equal(t.view().instance, inst) && equal(u.view().instance, inst) && u.view().key == 1
               && equal(u.view().value, Goo::Bar)
           );
-          let tracked k = inst.tr7(spec_literal_int("1"), &u, &t); // FAILS
+          let tracked k = inst.tr7(1, &u, &t); // FAILS
         }
 
         proof fn test_precondition_have3(tracked inst: Y::Instance, tracked t: Y::opt, tracked u: Y::m)
         {
-          requires(equal(t.view().instance, inst) && equal(u.view().instance, inst) && u.view().key == spec_literal_int("1")
+          requires(equal(t.view().instance, inst) && equal(u.view().instance, inst) && u.view().key == 1
               && equal(u.view().value, t.view().value));
-          let tracked k = inst.tr8(spec_literal_int("1"), &u, &t); // FAILS
+          let tracked k = inst.tr8(1, &u, &t); // FAILS
         }
 
         proof fn test_precondition_have4(tracked inst: Y::Instance, tracked t: Y::opt, tracked u: Y::m)
         {
-          requires(equal(t.view().instance, inst) && equal(u.view().instance, inst) && u.view().key == spec_literal_int("1")
+          requires(equal(t.view().instance, inst) && equal(u.view().instance, inst) && u.view().key == 1
               && equal(u.view().value, t.view().value));
           let k = inst.tr9(1, &u, &t); // FAILS
         }
@@ -6360,14 +6360,14 @@ test_verify_one_file! {
 
         proof fn test_inst() {
             let tracked (Tracked(inst), Tracked(t1)) = Y::Instance::initialize();
-            assert(t1.view().count == spec_literal_nat("9"));
+            assert(t1.view().count == 9);
 
-            let tracked t2 = t1.weaken(spec_literal_nat("2"));
+            let tracked t2 = t1.weaken(2);
 
             inst.tr_have(&t2);
 
             let tracked t4 = inst.tr_add();
-            assert(t4.view().count == spec_literal_nat("2"));
+            assert(t4.view().count == 2);
 
             let tracked t2_clone = t2.clone();
             assert(equal(t2, t2_clone));
@@ -6375,7 +6375,7 @@ test_verify_one_file! {
 
         proof fn test_weaken_fail() {
             let tracked (Tracked(inst), Tracked(t1)) = Y::Instance::initialize();
-            let tracked t2 = t1.weaken(spec_literal_nat("800")); // FAILS
+            let tracked t2 = t1.weaken(800); // FAILS
         }
 
         }
@@ -6392,7 +6392,7 @@ test_verify_one_file! {
 
             init!{
                 initialize() {
-                    init b = Set::empty().insert(19);
+                    init b = Set::<int>::empty().insert(19);
                 }
             }
 
@@ -6416,19 +6416,19 @@ test_verify_one_file! {
 
             transition!{
                 tr_add_gen() {
-                    add b += (Set::empty().insert(6)); // FAILS
+                    add b += (Set::<int>::empty().insert(6)); // FAILS
                 }
             }
 
             transition!{
                 tr_have_gen() {
-                    have b >= (Set::empty().insert(6));
+                    have b >= (Set::<int>::empty().insert(6));
                 }
             }
 
             transition!{
                 tr_remove_gen() {
-                    remove b -= (Set::empty().insert(6));
+                    remove b -= (Set::<int>::empty().insert(6));
                 }
             }
         }}
@@ -6467,12 +6467,12 @@ test_verify_one_file! {
 
         spec fn rel_tr4(pre: Y::State, post: Y::State) -> bool {
             !pre.b.contains(6)
-            ==> post.b === pre.b.union(Set::empty().insert(6))
+            ==> post.b === pre.b.union(Set::<int>::empty().insert(6))
         }
 
         spec fn rel_tr4_strong(pre: Y::State, post: Y::State) -> bool {
             !pre.b.contains(6)
-            && post.b === pre.b.union(Set::empty().insert(6))
+            && post.b === pre.b.union(Set::<int>::empty().insert(6))
         }
 
         spec fn rel_tr5(pre: Y::State, post: Y::State) -> bool {
@@ -6487,12 +6487,12 @@ test_verify_one_file! {
 
         spec fn rel_tr6(pre: Y::State, post: Y::State) -> bool {
             pre.b.contains(6)
-            && post.b === pre.b.difference(Set::empty().insert(6))
+            && post.b === pre.b.difference(Set::<int>::empty().insert(6))
         }
 
         spec fn rel_tr6_strong(pre: Y::State, post: Y::State) -> bool {
             pre.b.contains(6)
-            && post.b === pre.b.difference(Set::empty().insert(6))
+            && post.b === pre.b.difference(Set::<int>::empty().insert(6))
         }
 
         proof fn correct_tr(pre: Y::State, post: Y::State) {
@@ -6515,23 +6515,23 @@ test_verify_one_file! {
 
         proof fn test_inst1() {
             let tracked (Tracked(inst), Tracked(token_f)) = Y::Instance::initialize();
-            assert(Set::empty().insert(spec_literal_int("19")).contains(spec_literal_int("19")));
-            assert(token_f.dom().contains(spec_literal_int("19")));
-            assert(equal(token_f.index(spec_literal_int("19")).view(), Y::b_token_data {
+            assert(Set::<int>::empty().insert(19).contains(19));
+            assert(token_f.dom().contains(19));
+            assert(equal(token_f.index(19).view(), Y::b_token_data {
                 instance: inst,
                 key: 19
             }));
 
             let tracked token1 = inst.tr_add();
             assert(equal(token1.view().instance, inst));
-            assert(token1.view().key == spec_literal_int("5"));
+            assert(token1.view().key == 5);
             inst.tr_have(&token1);
             inst.tr_remove(token1);
 
             let tracked token_set = inst.tr_add_gen();
-            assert(Set::empty().insert(spec_literal_int("6")).contains(spec_literal_int("6")));
-            assert(token_set.dom().contains(spec_literal_int("6")));
-            assert(equal(token_set.index(spec_literal_int("6")).view(), Y::b_token_data {
+            assert(Set::<int>::empty().insert(6).contains(6));
+            assert(token_set.dom().contains(6));
+            assert(equal(token_set.index(6).view(), Y::b_token_data {
                 instance: inst,
                 key: 6,
             }));
@@ -6553,7 +6553,7 @@ test_verify_one_file! {
 
             init!{
                 initialize() {
-                    init b = Set::empty().insert(19);
+                    init b = Set::<int>::empty().insert(19);
                 }
             }
 
@@ -6571,13 +6571,13 @@ test_verify_one_file! {
 
             transition!{
                 tr_add_gen() {
-                    add b (union)= (Set::empty().insert(6));
+                    add b (union)= (Set::<int>::empty().insert(6));
                 }
             }
 
             transition!{
                 tr_have_gen() {
-                    have b >= (Set::empty().insert(6));
+                    have b >= (Set::<int>::empty().insert(6));
                 }
             }
         }}
@@ -6603,11 +6603,11 @@ test_verify_one_file! {
         }
 
         spec fn rel_tr4(pre: Y::State, post: Y::State) -> bool {
-            post.b === pre.b.union(Set::empty().insert(6))
+            post.b === pre.b.union(Set::<int>::empty().insert(6))
         }
 
         spec fn rel_tr4_strong(pre: Y::State, post: Y::State) -> bool {
-            post.b === pre.b.union(Set::empty().insert(6))
+            post.b === pre.b.union(Set::<int>::empty().insert(6))
         }
 
         spec fn rel_tr5(pre: Y::State, post: Y::State) -> bool {
@@ -6636,25 +6636,25 @@ test_verify_one_file! {
 
         proof fn test_inst1() {
             let tracked (Tracked(inst), Tracked(token_f)) = Y::Instance::initialize();
-            assert(Set::empty().insert(spec_literal_int("19")).contains(spec_literal_int("19")));
-            assert(token_f.dom().contains(spec_literal_int("19")));
-            assert(equal(token_f.index(spec_literal_int("19")).view(), Y::b_token_data {
+            assert(Set::<int>::empty().insert(19).contains(19));
+            assert(token_f.dom().contains(19));
+            assert(equal(token_f.index(19).view(), Y::b_token_data {
                 instance: inst,
                 key: 19,
             }));
 
             let tracked token1 = inst.tr_add();
             assert(equal(token1.view().instance, inst));
-            assert(token1.view().key == spec_literal_int("5"));
+            assert(token1.view().key == 5);
             inst.tr_have(&token1);
 
             let token1_clone = token1.clone();
             assert(equal(token1_clone, token1));
 
             let tracked token_set = inst.tr_add_gen();
-            assert(Set::empty().insert(spec_literal_int("6")).contains(spec_literal_int("6")));
-            assert(token_set.dom().contains(spec_literal_int("6")));
-            assert(equal(token_set.index(spec_literal_int("6")).view(), Y::b_token_data {
+            assert(Set::<int>::empty().insert(6).contains(6));
+            assert(token_set.dom().contains(6));
+            assert(equal(token_set.index(6).view(), Y::b_token_data {
                 instance: inst,
                 key: 6,
             }));
@@ -6709,24 +6709,24 @@ test_verify_one_file! {
 
         verus!{
         proof fn test1() {
-            let tracked (Tracked(inst), Tracked(x), Tracked(mut y)) = Y::Instance::initialize(spec_literal_int("0"), spec_literal_int("0"));
+            let tracked (Tracked(inst), Tracked(x), Tracked(mut y)) = Y::Instance::initialize(0, 0);
             inst.upd(&x, &mut y);
-            assert(y.view().value == spec_literal_int("1"));
+            assert(y.view().value == 1);
         }
 
         proof fn test2() {
-            let tracked (Tracked(inst), Tracked(x), Tracked(mut y)) = Y::Instance::initialize(spec_literal_int("12"), spec_literal_int("0"));
+            let tracked (Tracked(inst), Tracked(x), Tracked(mut y)) = Y::Instance::initialize(12, 0);
             inst.upd(&x, &mut y);
-            assert(y.view().value == spec_literal_int("2"));
+            assert(y.view().value == 2);
         }
 
         proof fn test3() {
-            let tracked (Tracked(inst), Tracked(x), Tracked(mut y)) = Y::Instance::initialize(spec_literal_int("0"), spec_literal_int("2"));
+            let tracked (Tracked(inst), Tracked(x), Tracked(mut y)) = Y::Instance::initialize(0, 2);
             inst.req(&x, &mut y); // FAILS
         }
 
         proof fn test4() {
-            let tracked (Tracked(inst), Tracked(x), Tracked(mut y)) = Y::Instance::initialize(spec_literal_int("1"), spec_literal_int("1"));
+            let tracked (Tracked(inst), Tracked(x), Tracked(mut y)) = Y::Instance::initialize(1, 1);
             inst.req(&x, &mut y); // FAILS
         }
         }
