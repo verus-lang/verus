@@ -301,7 +301,63 @@ impl<A> Seq<A> {
         if self.len() == 0 {
             b
         } else {
-            f(self[0], self.subrange(1, self.len() as int).fold_right(f, b))
+            self.drop_last().fold_right(f, f(self.last(), b))
+        }
+    }
+
+    /// Equivalent to [`Self::fold_right`] but defined by breaking off the leftmost element when
+    /// recursing, rather than the rightmost. See [`Self::lemma_fold_right_alt`] that proves
+    /// equivalence.
+    pub open spec fn fold_right_alt<B>(self, f: FnSpec(A, B) -> B, b: B) -> (res: B)
+        decreases self.len(),
+    {
+        if self.len() == 0 {
+            b
+        } else {
+            f(self[0], self.subrange(1, self.len() as int).fold_right_alt(f, b))
+        }
+    }
+
+    /// An auxiliary lemma for proving [`Self::lemma_fold_right_alt`].
+    proof fn aux_lemma_fold_right_alt<B>(self, f: FnSpec(A, B) -> B, b: B, k: int)
+        requires 0 <= k < self.len(),
+        ensures
+          self.subrange(0, k).fold_right(f, self.subrange(k, self.len() as int).fold_right(f, b)) ==
+          self.fold_right(f, b),
+        decreases self.len(),
+    {
+        reveal_with_fuel(Self::fold_right::<B>, 2);
+        if k == self.len() - 1 {
+            // trivial base case
+        } else {
+            self.subrange(0, self.len() - 1).aux_lemma_fold_right_alt(f, f(self.last(), b), k);
+            assert_seqs_equal!(
+                self.subrange(0, self.len() - 1).subrange(0, k) ==
+                self.subrange(0, k)
+            );
+            assert_seqs_equal!(
+                self.subrange(0, self.len() - 1).subrange(k, self.subrange(0, self.len() - 1).len() as int) ==
+                self.subrange(k, self.len() - 1)
+            );
+            assert_seqs_equal!(
+                self.subrange(k, self.len() as int).drop_last() ==
+                self.subrange(k, self.len() - 1)
+            );
+        }
+    }
+
+    /// [`Self::fold_right`] and [`Self::fold_right_alt`] are equivalent.
+    pub proof fn lemma_fold_right_alt<B>(self, f: FnSpec(A, B) -> B, b: B)
+        ensures self.fold_right(f, b) == self.fold_right_alt(f, b),
+        decreases self.len(),
+    {
+        reveal_with_fuel(Self::fold_right::<B>, 2);
+        reveal_with_fuel(Self::fold_right_alt::<B>, 2);
+        if self.len() <= 1 {
+            // trivial base cases
+        } else {
+            self.subrange(1, self.len() as int).lemma_fold_right_alt(f, b);
+            self.aux_lemma_fold_right_alt(f, b, 1);
         }
     }
 }
