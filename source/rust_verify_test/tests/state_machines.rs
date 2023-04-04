@@ -96,7 +96,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_withdraw_bind_guard IMPORTS.to_string() + verus_code_str! {
+    #[test] test_withdraw_bind_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_option)] pub so: Option<int>
@@ -147,7 +147,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_withdraw_bind_req IMPORTS.to_string() + verus_code_str! {
+    #[test] test_withdraw_bind_req IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_option)] pub so: Option<int>
@@ -184,7 +184,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_withdraw_bind_req2 IMPORTS.to_string() + verus_code_str! {
+    #[test] test_withdraw_bind_req2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_option)] pub so: Option<int>
@@ -221,7 +221,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_withdraw_binding_remove IMPORTS.to_string() + verus_code_str! {
+    #[test] test_withdraw_binding_remove IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)] pub so: Option<int>
@@ -238,7 +238,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_birds_eye_special2 IMPORTS.to_string() + verus_code_str! {
+    #[test] test_birds_eye_special2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)] pub so: Option<int>
