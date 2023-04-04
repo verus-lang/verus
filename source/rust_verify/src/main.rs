@@ -38,7 +38,6 @@ pub fn main() {
                 let pervasive_path = internal_args.next().unwrap();
                 let vstd_vir = internal_args.next().unwrap();
                 let target_path = internal_args.next().unwrap();
-                let z3_path = internal_args.next().unwrap();
 
                 let mut internal_args: Vec<_> = internal_args.collect();
                 internal_args.insert(0, internal_program);
@@ -53,8 +52,6 @@ pub fn main() {
                 our_args.multiple_errors = 2;
                 our_args.export = Some(target_path.to_string() + vstd_vir.as_str());
                 our_args.compile = true;
-
-                std::env::set_var("VERUS_Z3_PATH", z3_path);
 
                 let file_loader = PervasiveFileLoader::new(Some(pervasive_path.to_string()));
                 let verifier = Verifier::new(our_args);
