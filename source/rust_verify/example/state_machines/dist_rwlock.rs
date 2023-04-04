@@ -306,7 +306,8 @@ struct_with_invariants!{
         }
 
         invariant on exc_locked with (inst) is (b: bool, g: DistRwLock::exc_locked<T>) {
-            g@ === DistRwLock::token![ inst@ => exc_locked => b ]
+            g@.instance == inst@
+            && g@.value == b
         }
 
         invariant on ref_counts with (inst)
@@ -315,7 +316,9 @@ struct_with_invariants!{
             specifically (self.ref_counts@[i])
             is (v: u64, g: DistRwLock::ref_counts<T>)
         {
-            g@ === DistRwLock::token![ inst@ => ref_counts => i => v as int ]
+            g@.instance == inst@
+            && g@.key == i
+            && g@.value == v as int
         }
     }
 }

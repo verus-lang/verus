@@ -6517,9 +6517,10 @@ test_verify_one_file! {
             let tracked (Tracked(inst), Tracked(token_f)) = Y::Instance::initialize();
             assert(Set::empty().insert(spec_literal_int("19")).contains(spec_literal_int("19")));
             assert(token_f.dom().contains(spec_literal_int("19")));
-            assert(equal(token_f.index(spec_literal_int("19")).view(), Y::token![
-                inst => b => spec_literal_int("19")
-            ]));
+            assert(equal(token_f.index(spec_literal_int("19")).view(), Y::b_token_data {
+                instance: inst,
+                key: 19
+            }));
 
             let tracked token1 = inst.tr_add();
             assert(equal(token1.view().instance, inst));
@@ -6530,9 +6531,10 @@ test_verify_one_file! {
             let tracked token_set = inst.tr_add_gen();
             assert(Set::empty().insert(spec_literal_int("6")).contains(spec_literal_int("6")));
             assert(token_set.dom().contains(spec_literal_int("6")));
-            assert(equal(token_set.index(spec_literal_int("6")).view(), Y::token![
-                inst => b => spec_literal_int("6")
-            ]));
+            assert(equal(token_set.index(spec_literal_int("6")).view(), Y::b_token_data {
+                instance: inst,
+                key: 6,
+            }));
             inst.tr_have_gen(&token_set);
             inst.tr_remove_gen(token_set);
         }
@@ -6636,9 +6638,10 @@ test_verify_one_file! {
             let tracked (Tracked(inst), Tracked(token_f)) = Y::Instance::initialize();
             assert(Set::empty().insert(spec_literal_int("19")).contains(spec_literal_int("19")));
             assert(token_f.dom().contains(spec_literal_int("19")));
-            assert(equal(token_f.index(spec_literal_int("19")).view(), Y::token![
-                inst => b => spec_literal_int("19")
-            ]));
+            assert(equal(token_f.index(spec_literal_int("19")).view(), Y::b_token_data {
+                instance: inst,
+                key: 19,
+            }));
 
             let tracked token1 = inst.tr_add();
             assert(equal(token1.view().instance, inst));
@@ -6651,9 +6654,10 @@ test_verify_one_file! {
             let tracked token_set = inst.tr_add_gen();
             assert(Set::empty().insert(spec_literal_int("6")).contains(spec_literal_int("6")));
             assert(token_set.dom().contains(spec_literal_int("6")));
-            assert(equal(token_set.index(spec_literal_int("6")).view(), Y::token![
-                inst => b => spec_literal_int("6")
-            ]));
+            assert(equal(token_set.index(spec_literal_int("6")).view(), Y::b_token_data {
+                instance: inst,
+                key: 6,
+            }));
             inst.tr_have_gen(&token_set);
         }
 
