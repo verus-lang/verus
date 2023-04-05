@@ -6,8 +6,6 @@ use serde::Deserialize;
 
 pub use rust_verify_test_macros::{code, code_str, verus_code, verus_code_str};
 
-use rustc_span::source_map::FileLoader;
-
 #[derive(Debug, Deserialize)]
 pub struct DiagnosticText {
     pub text: String,
@@ -88,10 +86,13 @@ pub fn verify_files_vstd(
         (test_binary.file_name().unwrap().to_str().unwrap().to_string(), test_name)
     };
     let test_input_dir_parent = target_dir.join("test_inputs");
-    std::fs::create_dir(&test_input_dir_parent);
+
+    std::fs::create_dir_all(&test_input_dir_parent).unwrap();
     let test_input_dir = test_input_dir_parent.join(format!("{test_binary}-{test_name}"));
-    std::fs::remove_dir_all(&test_input_dir);
-    std::fs::create_dir(&test_input_dir);
+    if test_input_dir.exists() {
+        std::fs::remove_dir_all(&test_input_dir).unwrap();
+    }
+    std::fs::create_dir(&test_input_dir).unwrap();
 
     for (file_name, file_contents) in files {
         use std::io::Write;
@@ -100,8 +101,7 @@ pub fn verify_files_vstd(
         f.write_all(file_contents.as_bytes()).expect("failed to write test file contents");
     }
 
-    let run =
-        run_verus(options, &test_input_dir.join(entry_file), import_vstd, target_dir, true, true);
+    let run = run_verus(options, &test_input_dir.join(entry_file), import_vstd, true);
     let rust_output = std::str::from_utf8(&run.stderr[..]).unwrap().trim();
 
     let mut errors = Vec::new();
@@ -142,7 +142,7 @@ pub fn verify_files_vstd(
     }
 
     if !is_failure {
-        std::fs::remove_dir_all(&test_input_dir);
+        std::fs::remove_dir_all(&test_input_dir).unwrap();
     }
 
     if is_failure { Err(TestErr { errors, expand_errors_notes }) } else { Ok(()) }
@@ -152,9 +152,7 @@ pub fn run_verus(
     options: &[&str],
     entry_file: &std::path::PathBuf,
     import_vstd: bool,
-    target_dir: &std::path::Path,
     json_errors: bool,
-    quiet: bool,
 ) -> std::process::Output {
     if std::env::var("VERUS_IN_VARGO").is_err() {
         panic!("not running in vargo, read the README for instructions");
@@ -169,7 +167,6 @@ pub fn run_verus(
     #[cfg(target_os = "windows")]
     let (pre, dl, exe) = ("", "dll", ".exe");
 
-    let vars = std::env::vars().collect::<Vec<_>>();
     let current_exe = std::env::current_exe().unwrap();
     let deps_path = current_exe.parent().unwrap();
     let target_path = deps_path.parent().unwrap();
@@ -273,8 +270,8 @@ pub fn run_verus(
 
     let mut child = std::process::Command::new(bin);
     #[cfg(not(target_os = "windows"))]
-    let mut child = child.env("VERUS_Z3_PATH", "../z3");
-    let mut child = child
+    let child = child.env("VERUS_Z3_PATH", "../z3");
+    let child = child
         .args(&verus_args[..])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())

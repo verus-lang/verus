@@ -5,31 +5,6 @@ use common::*;
 
 use rust_verify_test_macros::examples_in_dir;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-
-#[cfg(target_os = "macos")]
-const DYN_LIB_VAR: &str = "DYLD_LIBRARY_PATH";
-
-#[cfg(target_os = "linux")]
-const DYN_LIB_VAR: &str = "LD_LIBRARY_PATH";
-
-#[cfg(target_os = "macos")]
-const DYN_LIB_EXT: &str = "dylib";
-
-#[cfg(target_os = "linux")]
-const DYN_LIB_EXT: &str = "so";
-
-#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-const RUST_LIB_TARGET: &str = "x86_64-apple-darwin";
-
-#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-const RUST_LIB_TARGET: &str = "aarch64-apple-darwin";
-
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-const RUST_LIB_TARGET: &str = "x86_64-unknown-linux-gnu";
-
-#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
-const RUST_LIB_TARGET: &str = "aarch64-unknown-linux-gnu";
 
 #[derive(Debug)]
 enum Mode {
@@ -96,11 +71,7 @@ fn run_example_for_file(file_path: &str) {
         }
     }
 
-    let deps_dir = std::env::current_exe().unwrap();
-    let deps_dir = deps_dir.parent().unwrap();
-    let target_dir = deps_dir.parent().unwrap();
-
-    let output = run_verus(&[], &PathBuf::from(relative_path), true, target_dir, false, false);
+    let output = run_verus(&[], &PathBuf::from(relative_path), true, false);
 
     use regex::Regex;
     let re = Regex::new(r"verification results:: verified: (\d+) errors: (\d+)").unwrap();

@@ -512,7 +512,7 @@ fn check_foreign_item<'tcx>(
 }
 
 struct VisitMod<'tcx> {
-    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    _tcx: rustc_middle::ty::TyCtxt<'tcx>,
     ids: Vec<ItemId>,
 }
 
@@ -540,7 +540,7 @@ pub(crate) fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> 
                         // Recursively mark every item in the module external,
                         // even in nested modules
                         use crate::rustc_hir::intravisit::Visitor;
-                        let mut visitor = VisitMod { tcx: ctxt.tcx, ids: Vec::new() };
+                        let mut visitor = VisitMod { _tcx: ctxt.tcx, ids: Vec::new() };
                         visitor.visit_item(item);
                         item_to_module.extend(visitor.ids.iter().map(move |ii| (*ii, None)))
                     } else {

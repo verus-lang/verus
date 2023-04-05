@@ -139,7 +139,7 @@ impl State {
     }
 
     fn lifetime(&mut self, key: (String, Option<u32>)) -> Id {
-        let (raw_id, maybe_disambiguator) = &key;
+        let (raw_id, _maybe_disambiguator) = &key;
         let f = || raw_id.replace("'", "");
         Self::id(&mut self.rename_count, &mut self.lifetime_to_name, IdKind::Lifetime, &key, f)
     }

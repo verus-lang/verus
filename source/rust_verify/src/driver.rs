@@ -18,7 +18,7 @@ fn run_compiler<'a, 'b>(
     erase_ghost: bool,
     verifier: &'b mut (dyn verus_rustc_driver::Callbacks + Send),
     file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
-    build_test_mode: bool,
+    _build_test_mode: bool, // TODO is this needed?
 ) -> Result<(), ErrorGuaranteed> {
     crate::config::enable_default_features_and_verus_attr(
         &mut rustc_args,
@@ -168,21 +168,18 @@ fn find_verusroot() -> Option<VerusRoot> {
 mod lib_exe_names {
     pub const LIB_PRE: &str = "lib";
     pub const LIB_DL: &str = "dylib";
-    pub const EXE: &str = "exe";
 }
 
 #[cfg(target_os = "linux")]
 mod lib_exe_names {
     pub const LIB_PRE: &str = "lib";
     pub const LIB_DL: &str = "so";
-    pub const EXE: &str = "";
 }
 
 #[cfg(target_os = "windows")]
 mod lib_exe_names {
     pub const LIB_PRE: &str = "";
     pub const LIB_DL: &str = "dll";
-    pub const EXE: &str = "exe";
 }
 
 use lib_exe_names::{LIB_DL, LIB_PRE};

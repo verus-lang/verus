@@ -9,7 +9,7 @@ use vir::ast::{Mode, TriggerAnnotation, VirErr};
 #[derive(Debug)]
 pub(crate) enum AttrTree {
     Fun(Span, String, Option<Box<[AttrTree]>>),
-    Eq(Span, String, String),
+    //Eq(Span, String, String), // TODO(main_new)
 }
 
 pub(crate) fn token_to_string(token: &Token) -> Result<Option<String>, ()> {
