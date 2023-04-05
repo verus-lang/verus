@@ -1066,8 +1066,7 @@ impl Verifier {
                     }
                     let mut spinoff_z3_context;
                     let do_spinoff = (*prover_choice == vir::def::ProverChoice::Spinoff)
-                        || (*prover_choice == vir::def::ProverChoice::BitVector)
-                        || (*prover_choice == vir::def::ProverChoice::NonLinear);
+                        || (*prover_choice == vir::def::ProverChoice::BitVector);
                     let query_air_context = if do_spinoff {
                         spinoff_z3_context = self.new_air_context_with_module_context(
                             ctx,

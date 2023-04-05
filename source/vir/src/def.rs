@@ -542,7 +542,6 @@ pub enum ProverChoice {
     DefaultProver,
     Spinoff,
     BitVector,
-    NonLinear,
     Singular,
 }
 
