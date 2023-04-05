@@ -115,7 +115,7 @@ fn check_new_strlit<'tcx>(ctx: &Context<'tcx>, sig: &'tcx FnSig<'tcx>) -> Result
     }
 
     let (kind, span) = match &decl.inputs[0].kind {
-        TyKind::Ref(_, MutTy { ty, mutbl }) => (&ty.kind, ty.span),
+        TyKind::Ref(_, MutTy { ty, mutbl: _ }) => (&ty.kind, ty.span),
         _ => {
             dbg!(&decl.inputs[0]);
             return err_span_string(decl.inputs[0].span, format!("expected a str"));

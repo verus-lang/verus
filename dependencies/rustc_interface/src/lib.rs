@@ -11,6 +11,11 @@
 #![deny(rustc::untranslatable_diagnostic)]
 #![deny(rustc::diagnostic_outside_of_impl)]
 
+#![allow(unused_mut)]
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(unreachable_code)]
+
 extern crate rustc_ast;
 extern crate rustc_ast_lowering;
 extern crate rustc_ast_passes;

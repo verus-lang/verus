@@ -15,6 +15,11 @@
 #![deny(rustc::untranslatable_diagnostic)]
 #![deny(rustc::diagnostic_outside_of_impl)]
 
+#![allow(unused_mut)]
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(unreachable_code)]
+
 extern crate rustc_log;
 extern crate rustc_middle;
 extern crate rustc_ast_pretty;
