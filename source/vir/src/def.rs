@@ -541,6 +541,8 @@ impl<X: Debug> Debug for Spanned<X> {
 pub enum ProverChoice {
     DefaultProver,
     Spinoff,
+    BitVector,
+    NonLinear,
     Singular,
 }
 

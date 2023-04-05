@@ -1065,7 +1065,10 @@ impl Verifier {
                         }
                     }
                     let mut spinoff_z3_context;
-                    let query_air_context = if *prover_choice == vir::def::ProverChoice::Spinoff {
+                    let do_spinoff = (*prover_choice == vir::def::ProverChoice::Spinoff)
+                        || (*prover_choice == vir::def::ProverChoice::BitVector)
+                        || (*prover_choice == vir::def::ProverChoice::NonLinear);
+                    let query_air_context = if do_spinoff {
                         spinoff_z3_context = self.new_air_context_with_module_context(
                             ctx,
                             &reporter,
@@ -1079,8 +1082,10 @@ impl Verifier {
                             spinoff_context_counter,
                             &span,
                         )?;
-                        // for spinoff, only one query, maybe no push/pop
-                        spinoff_z3_context.set_disable_incremental_solving(true);
+                        // for bitvector, only one query, no push/pop
+                        if *prover_choice == vir::def::ProverChoice::BitVector {
+                            spinoff_z3_context.set_disable_incremental_solving(true);
+                        }
                         spinoff_context_counter += 1;
                         &mut spinoff_z3_context
                     } else {
@@ -1101,7 +1106,7 @@ impl Verifier {
                         &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),
                         desc_prefix,
                     );
-                    if *prover_choice == vir::def::ProverChoice::Spinoff {
+                    if do_spinoff {
                         let (time_smt_init, time_smt_run) = query_air_context.get_time();
                         spunoff_time_smt_init += time_smt_init;
                         spunoff_time_smt_run += time_smt_run;

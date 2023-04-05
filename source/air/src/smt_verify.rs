@@ -286,7 +286,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
         ValidityResult::Valid
     } else {
         context.smt_log.log_word("get-model");
-               
+
         let smt_data = context.smt_log.take_pipe_data();
         let smt_output = context.get_smt_process().send_commands(smt_data);
 
@@ -294,7 +294,6 @@ pub(crate) fn smt_check_assertion<'ctx>(
             context.state = ContextState::Canceled;
             return ValidityResult::Canceled;
         };
-
 
         let model = crate::parser::Parser::new().lines_to_model(&smt_output);
         let mut model_defs: HashMap<Ident, ModelDef> = HashMap::new();
