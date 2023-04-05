@@ -262,7 +262,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
                 {
                     // failure when outside push/pop, since this is reserved for single query, skip tracing
                     assert!(reason == None);
-                    reason = Some(SmtReasonUnknown::Unknown);
+                    reason = Some(SmtReasonUnknown::Incomplete);
                 } else if context.ignore_unexpected_smt {
                     diagnostics
                         .report(&warning_bare(format!("warning: unexpected SMT output: {}", line)));
@@ -286,8 +286,16 @@ pub(crate) fn smt_check_assertion<'ctx>(
         ValidityResult::Valid
     } else {
         context.smt_log.log_word("get-model");
+               
         let smt_data = context.smt_log.take_pipe_data();
         let smt_output = context.get_smt_process().send_commands(smt_data);
+
+        if smt_output.iter().any(|line| line.contains("model is not available")) {
+            context.state = ContextState::Canceled;
+            return ValidityResult::Canceled;
+        };
+
+
         let model = crate::parser::Parser::new().lines_to_model(&smt_output);
         let mut model_defs: HashMap<Ident, ModelDef> = HashMap::new();
         for def in model.iter() {
@@ -343,8 +351,8 @@ pub(crate) fn smt_check_query<'ctx>(
 ) -> ValidityResult {
     if !context.disable_incremental_solving {
         context.smt_log.log_push();
+        context.push_name_scope();
     }
-    context.push_name_scope();
 
     // add query-local declarations
     for decl in query.local.iter() {
