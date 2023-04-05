@@ -200,7 +200,7 @@ test_verify_one_file! {
     #[test] test10_fails verus_code! {
         #[verifier(bit_vector)]
         proof fn f2() { // FAILS
-            ensures(forall |i: u64| (1 << i) > 0); // FAILS: should not panic
+            ensures(forall |i: u64| (1 << i) > 0); // Although this line should be reported instead of the above line, since Z3 does not return model which we utilize for error reporting, just use the above line
         }
     } => Err(err) => assert_one_fails(err)
 }

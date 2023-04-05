@@ -1602,7 +1602,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                             mk_option_command("smt.arith.solver", "6"),
                             Arc::new(CommandX::CheckValid(query)),
                         ]),
-                        ProverChoice::NonLinear,
+                        ProverChoice::Spinoff,
                         true,
                     ));
                 }
@@ -2340,12 +2340,10 @@ pub(crate) fn body_stm_to_air(
             func_span.clone(),
             "function body check".to_string(),
             Arc::new(commands),
-            if is_spinoff_prover {
+            if is_spinoff_prover || is_nonlinear {
                 ProverChoice::Spinoff
             } else if is_bit_vector_mode {
                 ProverChoice::BitVector
-            } else if is_nonlinear {
-                ProverChoice::NonLinear
             } else {
                 ProverChoice::DefaultProver
             },

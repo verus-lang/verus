@@ -260,7 +260,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
                 } else if line
                     == "(:reason-unknown \"smt tactic failed to show goal to be sat/unsat (incomplete quantifiers)\")"
                 {
-                    // failure when outside push/pop, since this is reserved for single query, skip tracing
+                    // longer message shows up when there's no push/pop around the query
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Incomplete);
                 } else if context.ignore_unexpected_smt {
@@ -291,6 +291,8 @@ pub(crate) fn smt_check_assertion<'ctx>(
         let smt_output = context.get_smt_process().send_commands(smt_data);
 
         if smt_output.iter().any(|line| line.contains("model is not available")) {
+            // when model not available, cancel to avoid rerun
+            // when we don't use incremental solving, sometime the model is not available when the z3 result is unknown
             context.state = ContextState::Canceled;
             return ValidityResult::Canceled;
         };
