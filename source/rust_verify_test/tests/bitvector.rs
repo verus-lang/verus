@@ -391,3 +391,16 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_issue415 verus_code! {
+        #[verifier(bit_vector)]
+        proof fn lemma_shift_right_u64_upper_bound(val: u64, amt: u64, upper_bound: u64)
+        requires
+            amt < 64u64,
+            val <= upper_bound,
+        ensures
+            (val >> amt) <= (upper_bound >> amt)
+        {}
+    } => Ok(())
+}
