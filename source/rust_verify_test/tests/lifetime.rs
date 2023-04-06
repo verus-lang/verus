@@ -292,25 +292,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // TODO(main_new) this should be failing; the issue may be due to the changes in the lifetime checker
-    #[ignore] #[test] return_wrong_lifetime1 verus_code! {
-        proof fn f<'a, 'b>(tracked x: &'a u32, tracked y: &'a u32, tracked z: &'b u32) -> &'b u32 {
+    #[test] return_wrong_lifetime1 verus_code! {
+        proof fn f<'a, 'b>(tracked x: &'a u32, tracked y: &'a u32, tracked z: &'b u32) -> tracked &'b u32 {
             y
         }
-    } => Err(err) => assert_rust_error_msg(err, "error[E0623]: lifetime mismatch")
+    } => Err(err) => assert_vir_error_msg(err, "lifetime may not live long enough")
 }
 
 test_verify_one_file! {
-    // TODO(main_new) this should be failing; the issue may be due to the changes in the lifetime checker
-    #[ignore] #[test] return_wrong_lifetime2 verus_code! {
-        proof fn f<'a, 'b>(tracked x: &'a u32, tracked y: &'a u32, tracked z: &'b u32) -> &'b u32 {
+    #[test] return_wrong_lifetime2 verus_code! {
+        proof fn f<'a, 'b>(tracked x: &'a u32, tracked y: &'a u32, tracked z: &'b u32) -> tracked &'b u32 {
             z
         }
 
-        proof fn g<'a, 'b>(tracked x: &'a u32, tracked y: &'a u32, tracked z: &'b u32) -> &'b u32 {
+        proof fn g<'a, 'b>(tracked x: &'a u32, tracked y: &'a u32, tracked z: &'b u32) -> tracked &'b u32 {
             f(z, z, x)
         }
-    } => Err(err) => assert_rust_error_msg(err, "error[E0623]: lifetime mismatch")
+    } => Err(err) => assert_vir_error_msg(err, "lifetime may not live long enough")
 }
 
 test_verify_one_file! {

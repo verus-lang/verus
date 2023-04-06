@@ -1362,7 +1362,7 @@ fn erase_mir_generics<'tcx>(
                     if !matches!(*fn_params, TypX::Tuple(_)) {
                         fn_params = Box::new(TypX::Tuple(vec![fn_params]));
                     }
-                    let fn_ret = erase_ty(ctxt, state, &pred.self_ty()); // REVIEW(main_new) correct?
+                    let fn_ret = erase_ty(ctxt, state, &pred.term.ty().expect("fn_ret"));
                     fn_projections.insert(x, (fn_params, fn_ret)).map(|_| panic!("{:?}", pred));
                 }
             }

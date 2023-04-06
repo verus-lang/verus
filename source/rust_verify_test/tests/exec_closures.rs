@@ -356,8 +356,7 @@ test_verify_one_file_with_options! {
 // misc tests
 
 test_verify_one_file_with_options! {
-    // TODO(main_new)
-    #[ignore] #[test] pass_closure_via_typ_param ["vstd"] => verus_code! {
+    #[test] pass_closure_via_typ_param ["vstd"] => verus_code! {
 
         fn f1<T: Fn(u64) -> u64>(t: T)
             requires
@@ -382,8 +381,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    // TODO(main_new)
-    #[ignore] #[test] pass_closure_via_typ_param_fn_once ["vstd"] => verus_code! {
+    #[test] pass_closure_via_typ_param_fn_once ["vstd"] => verus_code! {
 
         fn f1<T: FnOnce(u64) -> u64>(t: T)
             requires
@@ -408,8 +406,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    // TODO(main_new)
-    #[ignore] #[test] pass_closure_via_typ_param_fn_mut ["vstd"] => verus_code! {
+    #[test] pass_closure_via_typ_param_fn_mut ["vstd"] => verus_code! {
 
         fn f1<T: FnMut(u64) -> u64>(t: T)
             requires
