@@ -158,6 +158,13 @@ impl<A> Vec<A> {
     {
         self.vec.as_slice()
     }
+
+    #[verifier(external_body)]
+    pub fn clear(&mut self)
+        ensures self.len() == 0
+    {
+        self.vec.clear();
+    }
 }
 
 #[verifier(external_body)]
