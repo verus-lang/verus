@@ -7,30 +7,26 @@ extern crate rustc_driver;
 // the build script’s current directory is the source directory of the build script’s package
 
 // path to vstd.rs relative to our directory (source/vstd)
-const VSTD_RS_PATH: &str = "../pervasive/vstd.rs";
+const VSTD_RS_PATH: &str = "pervasive/vstd.rs";
 // path to pervasive relative to our directory (source/vstd)
-const PERVASIVE_PATH: &str = "../pervasive";
+const PERVASIVE_PATH: &str = "pervasive";
 // name of generated veruslib.vir in target
 const VSTD_VIR: &str = "vstd.vir";
-
-fn wait_exists(path: &std::path::Path) {
-    for _ in 0..200 {
-        if path.exists() {
-            return;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
-    panic!("path {} does not exist after 20 seconds", path.display());
-}
 
 fn main() {
     if std::env::var("VERUS_IN_VARGO").is_err() {
         panic!("not running in vargo, read the README for instructions");
     }
 
-    // Consider using links for the rlib paths instead
-    // https://rust-lang.zulipchat.com/#narrow/stream/122651-general/topic/cargo.20build.2Ers.20artifact/near/340569806
-    let out_dir = std::env::var("OUT_DIR").unwrap();
+    let mut args = std::env::args();
+    args.next().expect("executable name");
+    let verus_target_path =
+        std::path::PathBuf::from(args.next().expect("missing verus target path"));
+    let _release = match args.next().as_ref().map(|x| x.as_str()) {
+        Some("release") => true,
+        Some(_) => panic!("unexpected profile argument"),
+        None => false,
+    };
 
     #[cfg(target_os = "macos")]
     let (pre, dl) = ("lib", "dylib");
@@ -41,44 +37,26 @@ fn main() {
     #[cfg(target_os = "windows")]
     let (pre, dl) = ("", "dll");
 
-    let profile = std::env::var("PROFILE").unwrap();
-
-    let target_path =
-        std::path::Path::new(&out_dir).parent().unwrap().parent().unwrap().parent().unwrap();
-    let verus_target_path = target_path
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .to_path_buf()
-        .join("target-verus")
-        .join(profile);
-
     let lib_builtin_path = verus_target_path.join("libbuiltin.rlib");
-    wait_exists(&lib_builtin_path);
     assert!(lib_builtin_path.exists());
     let lib_builtin_path = lib_builtin_path.to_str().unwrap();
     let lib_builtin_macros_path = verus_target_path.join(format!("{}builtin_macros.{}", pre, dl));
-    wait_exists(&lib_builtin_macros_path);
     assert!(lib_builtin_macros_path.exists());
     let lib_builtin_macros_path = lib_builtin_macros_path.to_str().unwrap();
     let lib_state_machines_macros_path =
         verus_target_path.join(format!("{}state_machines_macros.{}", pre, dl));
-    wait_exists(&lib_state_machines_macros_path);
     assert!(lib_state_machines_macros_path.exists());
     let lib_state_machines_macros_path = lib_state_machines_macros_path.to_str().unwrap();
 
-    let target_deps_path_str = target_path.join("deps").to_str().unwrap().to_string() + "/";
-
     if !std::env::var("VERUS_Z3_PATH").is_ok() {
-        std::env::set_var("VERUS_Z3_PATH", if cfg!(windows) { "..\\z3.exe" } else { "../z3" });
+        std::env::set_var("VERUS_Z3_PATH", if cfg!(windows) { ".\\z3.exe" } else { "./z3" });
     }
 
     let child_args: Vec<String> = vec![
         "--internal-build-vstd-driver".to_string(),
         PERVASIVE_PATH.to_string(),
         VSTD_VIR.to_string(),
-        target_deps_path_str.to_string(),
+        verus_target_path.to_str().expect("invalid path").to_string(),
         "--extern".to_string(),
         format!("builtin={lib_builtin_path}"),
         "--extern".to_string(),
@@ -90,11 +68,11 @@ fn main() {
         "erasure_macro_todo".to_string(),
         "--crate-type=lib".to_string(),
         "--out-dir".to_string(),
-        target_deps_path_str.to_string(),
+        verus_target_path.to_str().expect("invalid path").to_string(),
         VSTD_RS_PATH.to_string(),
     ];
 
-    let cmd = std::env::var("CARGO_BIN_FILE_RUST_VERIFY_rust_verify").unwrap();
+    let cmd = verus_target_path.join("rust_verify");
     let mut child = std::process::Command::new(cmd)
         .args(&child_args[..])
         .spawn()
@@ -102,6 +80,4 @@ fn main() {
     if !child.wait().expect("vstd verus wait failed").success() {
         panic!("vstd build failed");
     }
-
-    println!("cargo:rerun-if-changed={PERVASIVE_PATH}");
 }
