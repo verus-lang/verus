@@ -161,7 +161,7 @@ impl<A> Vec<A> {
 
     #[verifier(external_body)]
     pub fn clear(&mut self)
-        ensures self.len() == 0
+        ensures self.view() == Seq::<A>::empty(),
     {
         self.vec.clear();
     }
