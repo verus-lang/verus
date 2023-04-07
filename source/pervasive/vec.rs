@@ -153,6 +153,13 @@ impl<A> Vec<A> {
     {
         self.vec.as_slice()
     }
+
+    #[verifier(external_body)]
+    pub fn clear(&mut self)
+        ensures self.view() == Seq::<A>::empty(),
+    {
+        self.vec.clear();
+    }
 }
 
 #[verifier(external_body)]

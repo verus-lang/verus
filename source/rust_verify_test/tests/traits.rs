@@ -1310,3 +1310,24 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 4)
 }
+
+test_verify_one_file! {
+    #[test] trait_req_ens_poly verus_code! {
+        pub trait Key: Sized {
+            spec fn lt(self) -> bool;
+
+            proof fn zero_properties()
+                ensures
+                    forall|k: Self| k.lt();
+        }
+
+        struct KeyInt {
+            i: usize,
+        }
+
+        impl Key for KeyInt {
+            spec fn lt(self) -> bool { true }
+            proof fn zero_properties() {}
+        }
+    } => Ok(())
+}
