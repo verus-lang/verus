@@ -341,7 +341,17 @@ fn run() -> Result<(), String> {
                     Err(format!("cargo returned status code {:?}", x.code()))
                 }
             }),
-        (Task::Build, _, false) => {
+        (Task::Build, Some("air"), false) => {
+            let status = std::process::Command::new("cargo")
+                .env("RUSTC_BOOTSTRAP", "1")
+                .env("VERUS_IN_VARGO", "1")
+                .args(args)
+                .status()
+                .map_err(|x| format!("could not execute cargo ({})", x))?;
+
+            std::process::exit(status.code().unwrap_or(1));
+        }
+        (Task::Build, None, false) => {
             fn build_target(
                 release: bool,
                 target: &str,
@@ -477,6 +487,9 @@ fn run() -> Result<(), String> {
 
             Ok(())
         }
+        (Task::Build, Some(package), false) => Err(format!(
+            "only package `air` is allowed for `vargo build -p`, {package} unexpected"
+        )),
         otherwise => panic!("unexpected state: {:?}", otherwise),
     }
 }
