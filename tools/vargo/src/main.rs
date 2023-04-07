@@ -65,7 +65,7 @@ const SUPPORTED_COMMANDS: &[&str] = &[
 ];
 
 const CARGO_FORWARD_ARGS: &[&str] = &["-v", "-vv", "--verbose", "--offline"];
-const CARGO_FORWARD_ARGS_NEXT: &[&str] = &["-F", "--features"];
+const CARGO_FORWARD_ARGS_NEXT: &[&str] = &[];
 
 #[derive(Clone, Copy, Debug)]
 enum Task {
@@ -202,14 +202,25 @@ fn run() -> Result<(), String> {
             .collect();
         forward_args.extend(
             args.iter()
-                .position(|x| {
+                .enumerate()
+                .filter(|(_, x)| {
                     let x = x.as_str();
                     CARGO_FORWARD_ARGS_NEXT.contains(&x)
                 })
-                .map(|p| args[p + 1].clone()),
+                .flat_map(|(p, _)| [args[p].clone(), args[p + 1].clone()]),
         );
         forward_args
     };
+
+    let feature_args: Vec<_> = args
+        .iter()
+        .enumerate()
+        .filter(|(_, x)| {
+            let x = x.as_str();
+            x == "-F" || x == "--features"
+        })
+        .flat_map(|(p, _)| [args[p].clone(), args[p + 1].clone()])
+        .collect();
 
     if !in_nextest {
         match (task, package.as_ref().map(|x| x.as_str())) {
@@ -395,7 +406,12 @@ fn run() -> Result<(), String> {
                     })
             }
 
-            build_target(release, "rust_verify", &cargo_forward_args[..])?;
+            let rust_verify_build_args: Vec<_> = cargo_forward_args
+                .iter()
+                .chain(feature_args.iter())
+                .cloned()
+                .collect();
+            build_target(release, "rust_verify", &rust_verify_build_args[..])?;
             build_target(release, "builtin", &cargo_forward_args[..])?;
             build_target(release, "builtin_macros", &cargo_forward_args[..])?;
             build_target(release, "state_machines_macros", &cargo_forward_args[..])?;
