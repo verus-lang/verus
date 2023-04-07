@@ -1,5 +1,4 @@
-**NOTE: This README and installation instruction need to be updated for the new version of Verus
-which does not rely on a fork of the rust compiler.**
+**NOTE: The Verus guide needs to be updated for the new version of Verus which does not rely on a fork of the rust compiler.**
 
 [![Quick Start](https://img.shields.io/badge/tutorial-quick%20start-informational)](https://verus-lang.github.io/verus/guide/getting_started.html) [![Library Documentation](https://img.shields.io/badge/docs-vstd-informational)](https://verus-lang.github.io/verus/verusdoc/lib/)
 

@@ -37,7 +37,7 @@ pub fn main() {
             "--internal-build-vstd-driver" => {
                 let pervasive_path = internal_args.next().unwrap();
                 let vstd_vir = internal_args.next().unwrap();
-                let target_path = internal_args.next().unwrap();
+                let target_path = std::path::PathBuf::from(internal_args.next().unwrap());
 
                 let mut internal_args: Vec<_> = internal_args.collect();
                 internal_args.insert(0, internal_program);
@@ -50,12 +50,11 @@ pub fn main() {
                 our_args.pervasive_path = Some(pervasive_path.to_string());
                 our_args.verify_pervasive = true;
                 our_args.multiple_errors = 2;
-                our_args.export = Some(target_path.to_string() + vstd_vir.as_str());
+                our_args.export = Some(target_path.join(vstd_vir).to_str().unwrap().to_string());
                 our_args.compile = true;
 
                 let file_loader = PervasiveFileLoader::new(Some(pervasive_path.to_string()));
                 let verifier = Verifier::new(our_args);
-                dbg!(&internal_args);
                 let (_verifier, _stats, status) =
                     rust_verify::driver::run(verifier, internal_args, file_loader, true);
                 status.expect("failed to build vstd library");

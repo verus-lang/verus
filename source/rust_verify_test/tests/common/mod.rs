@@ -180,28 +180,19 @@ pub fn run_verus(
         .join("target-verus")
         .join(profile);
 
-    fn wait_exists(path: &std::path::Path) {
-        while !path.exists() {
-            std::thread::sleep(std::time::Duration::from_millis(100));
-        }
-    }
-
+    let verus_target_path_str = verus_target_path.to_str().unwrap();
     let lib_builtin_path = verus_target_path.join("libbuiltin.rlib");
-    wait_exists(&lib_builtin_path);
     assert!(lib_builtin_path.exists());
     let lib_builtin_path = lib_builtin_path.to_str().unwrap();
     let lib_builtin_macros_path = verus_target_path.join(format!("{}builtin_macros.{}", pre, dl));
-    wait_exists(&lib_builtin_macros_path);
     assert!(lib_builtin_macros_path.exists());
     let lib_builtin_macros_path = lib_builtin_macros_path.to_str().unwrap();
     let lib_state_machines_macros_path =
         verus_target_path.join(format!("{}state_machines_macros.{}", pre, dl));
-    wait_exists(&lib_state_machines_macros_path);
     assert!(lib_state_machines_macros_path.exists());
     let lib_state_machines_macros_path = lib_state_machines_macros_path.to_str().unwrap();
 
     let bin = verus_target_path.join(format!("rust_verify{exe}"));
-    wait_exists(&bin);
 
     // Delay so that we not only "wait_exists" for the files to be created,
     // but also wait for the files to be written to and closed.
@@ -243,6 +234,8 @@ pub fn run_verus(
             format!("builtin_macros={lib_builtin_macros_path}"),
             "--extern".to_string(),
             format!("state_machines_macros={lib_state_machines_macros_path}"),
+            "-L".to_string(),
+            format!("dependency={verus_target_path_str}"),
         ]
         .into_iter(),
     );
