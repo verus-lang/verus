@@ -1,6 +1,3 @@
-// rust_verify/tests/example.rs ignore --- TODO main_new
-// TODO(main_new) un-ignore when fixed
-
 #![allow(unused_imports)]
 
 // ANCHOR: full
@@ -103,7 +100,8 @@ struct_with_invariants!{
         // the same value as the atomic (`v`).
         // Furthermore, the ghost token should have the appropriate `instance`.
         invariant on atomic with (instance) is (v: u32, g: X::counter) {
-            g@ === X::token![instance@ => counter => v as int]
+            g@.instance == instance@
+            && g@.value == v as int
         }
     }
 }
@@ -131,7 +129,8 @@ fn main() {
 
     let global_arc1 = global_arc.clone();
     let join_handle1 = spawn(move || -> (new_token: Tracked<X::inc_a>)
-        ensures new_token@@ == X::token![instance => inc_a => true]
+        ensures new_token@@.instance == instance
+          && new_token@@.value == true
     {
         // `inc_a_token` is moved into the closure
         let tracked mut token = inc_a_token;
@@ -150,7 +149,8 @@ fn main() {
 
     let global_arc2 = global_arc.clone();
     let join_handle2 = spawn(move || -> (new_token: Tracked<X::inc_b>)
-        ensures new_token@@ == X::token![instance => inc_b => true]
+        ensures new_token@@.instance == instance
+          && new_token@@.value == true
     {
         // `inc_b_token` is moved into the closure
         let tracked mut token = inc_b_token;

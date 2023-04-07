@@ -1,6 +1,3 @@
-// rust_verify/tests/example.rs ignore --- TODO main_new
-// TODO(main_new) un-ignore when fixed
-
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]

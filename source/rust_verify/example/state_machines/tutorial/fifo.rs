@@ -1,5 +1,3 @@
-// rust_verify/tests/example.rs ignore --- unignored on main_new branch https://github.com/verus-lang/verus/pull/433#issuecomment-1480073871
-
 #![allow(unused_imports)]
 
 // port of single-producer single-consumer queue from LinearDafny
