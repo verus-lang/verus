@@ -211,6 +211,8 @@ impl<'a> VerusExterns<'a> {
                     .to_str()
                     .unwrap()
             ),
+            format!("-L"),
+            format!("dependency={}", self.path.to_str().unwrap()),
         ];
         if self.has_vstd {
             args.push(format!("--extern"));
