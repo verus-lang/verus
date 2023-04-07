@@ -22,7 +22,7 @@ fn main() {
     args.next().expect("executable name");
     let verus_target_path =
         std::path::PathBuf::from(args.next().expect("missing verus target path"));
-    let _release = match args.next().as_ref().map(|x| x.as_str()) {
+    let release = match args.next().as_ref().map(|x| x.as_str()) {
         Some("--release") => true,
         Some(_) => panic!("unexpected profile argument"),
         None => false,
@@ -52,7 +52,7 @@ fn main() {
         std::env::set_var("VERUS_Z3_PATH", if cfg!(windows) { ".\\z3.exe" } else { "./z3" });
     }
 
-    let child_args: Vec<String> = vec![
+    let mut child_args: Vec<String> = vec![
         "--internal-build-vstd-driver".to_string(),
         PERVASIVE_PATH.to_string(),
         VSTD_VIR.to_string(),
@@ -69,8 +69,12 @@ fn main() {
         "--crate-type=lib".to_string(),
         "--out-dir".to_string(),
         verus_target_path.to_str().expect("invalid path").to_string(),
-        VSTD_RS_PATH.to_string(),
     ];
+    if release {
+        child_args.push("-C".to_string());
+        child_args.push("opt-level=3".to_string());
+    }
+    child_args.push(VSTD_RS_PATH.to_string());
 
     let cmd = verus_target_path.join("rust_verify");
     let mut child = std::process::Command::new(cmd)

@@ -77,6 +77,47 @@ enum Task {
     Fmt,
 }
 
+#[cfg(target_os = "macos")]
+mod lib_exe_names {
+    pub const LIB_PRE: &str = "lib";
+    pub const LIB_DL: &str = "dylib";
+    pub const EXE: &str = "";
+}
+
+#[cfg(target_os = "linux")]
+mod lib_exe_names {
+    pub const LIB_PRE: &str = "lib";
+    pub const LIB_DL: &str = "so";
+    pub const EXE: &str = "";
+}
+
+#[cfg(target_os = "windows")]
+mod lib_exe_names {
+    pub const LIB_PRE: &str = "";
+    pub const LIB_DL: &str = "dll";
+    pub const EXE: &str = ".exe";
+}
+
+use lib_exe_names::*;
+
+fn clean_vstd(target_verus_dir: &std::path::PathBuf) -> Result<(), String> {
+    for f in vec![
+        format!("vstd.vir"),
+        format!("{LIB_PRE}vstd.rlib"),
+        format!(".vstd-fingerprint"),
+    ]
+    .into_iter()
+    {
+        let f = target_verus_dir.join(f);
+        if f.is_file() {
+            info(format!("removing {}", f.display()).as_str());
+            std::fs::remove_file(&f)
+                .map_err(|x| format!("could not delete file {} ({x})", f.display()))?;
+        }
+    }
+    Ok(())
+}
+
 fn run() -> Result<(), String> {
     let _vargo_nest = {
         let vargo_nest = std::env::var("VARGO_NEST")
@@ -89,6 +130,7 @@ fn run() -> Result<(), String> {
     };
 
     let mut args = std::env::args().skip(1).collect::<Vec<_>>();
+    let mut args_bucket = args.clone();
     let in_nextest = std::env::var("VARGO_IN_NEXTEST").is_ok();
 
     let rust_toolchain_toml = toml::from_str::<toml::Value>(
@@ -163,14 +205,14 @@ fn run() -> Result<(), String> {
         return Err("Cargo.toml does not have the vargo tag\nrun vargo in `source`".to_string());
     }
 
-    let cmd_position = args
+    let cmd_position = args_bucket
         .iter()
         .position(|x| SUPPORTED_COMMANDS.contains(&x.as_str()))
         .ok_or(format!(
             "vargo supports the following cargo commands: {}",
             SUPPORTED_COMMANDS.join(", ")
         ))?;
-    let cmd = args[cmd_position].clone();
+    let cmd = args_bucket.remove(cmd_position);
     let task = match cmd.as_str() {
         "build" => Task::Build,
         "test" => Task::Test { nextest: false },
@@ -181,46 +223,58 @@ fn run() -> Result<(), String> {
         "fmt" => Task::Fmt,
         _ => panic!("unexpected command"),
     };
-    let release = args
+    let release = args_bucket
         .iter()
-        .find(|x| x.as_str() == "--release" || x.as_str() == "-r")
+        .position(|x| x.as_str() == "--release" || x.as_str() == "-r")
+        .map(|p| args_bucket.remove(p))
         .is_some();
 
-    let package = args
+    let package = args_bucket
         .iter()
         .position(|x| x == "--package" || x == "-p")
-        .map(|pos| args[pos + 1].clone());
+        .map(|pos| {
+            args_bucket.remove(pos);
+            args_bucket.remove(pos)
+        });
 
     let cargo_forward_args: Vec<_> = {
-        let mut forward_args: Vec<_> = args
-            .iter()
-            .filter(|x| {
-                let x = x.as_str();
-                CARGO_FORWARD_ARGS.contains(&x)
-            })
-            .cloned()
-            .collect();
-        forward_args.extend(
-            args.iter()
-                .enumerate()
-                .filter(|(_, x)| {
+        let mut forward_args: Vec<_> = {
+            let (forward_args, new_args_bucket): (Vec<_>, Vec<_>) =
+                args_bucket.into_iter().partition(|x| {
                     let x = x.as_str();
-                    CARGO_FORWARD_ARGS_NEXT.contains(&x)
-                })
-                .flat_map(|(p, _)| [args[p].clone(), args[p + 1].clone()]),
-        );
+                    CARGO_FORWARD_ARGS.contains(&x)
+                });
+            args_bucket = new_args_bucket;
+            forward_args
+        };
+        forward_args.extend({
+            let (forward_args, new_args_bucket): (Vec<_>, Vec<_>) =
+                args_bucket.iter().cloned().enumerate().partition(|(i, y)| {
+                    args_bucket
+                        .get(i - 1)
+                        .map(|x| CARGO_FORWARD_ARGS_NEXT.contains(&x.as_str()))
+                        .unwrap_or(false)
+                        || CARGO_FORWARD_ARGS_NEXT.contains(&y.as_str())
+                });
+            args_bucket = new_args_bucket.into_iter().map(|(_, x)| x).collect();
+            forward_args.into_iter().map(|(_, x)| x)
+        });
         forward_args
     };
 
-    let feature_args: Vec<_> = args
-        .iter()
-        .enumerate()
-        .filter(|(_, x)| {
-            let x = x.as_str();
-            x == "-F" || x == "--features"
-        })
-        .flat_map(|(p, _)| [args[p].clone(), args[p + 1].clone()])
-        .collect();
+    let feature_args: Vec<_> = {
+        let (feature_args, new_args_bucket): (Vec<_>, Vec<_>) =
+            args_bucket.iter().cloned().enumerate().partition(|(i, y)| {
+                args_bucket
+                    .get(i - 1)
+                    .map(|x| x.as_str() == "-F" || x.as_str() == "--features")
+                    .unwrap_or(false)
+                    || y.as_str() == "-F"
+                    || y.as_str() == "--features"
+            });
+        args_bucket = new_args_bucket.into_iter().map(|(_, x)| x).collect();
+        feature_args.into_iter().map(|(_, x)| x).collect()
+    };
 
     if !in_nextest {
         match (task, package.as_ref().map(|x| x.as_str())) {
@@ -292,7 +346,7 @@ fn run() -> Result<(), String> {
     }
 
     match (task, package.as_ref().map(|x| x.as_str()), in_nextest) {
-        (Task::Clean | Task::Fmt | Task::Run | Task::Metadata, _, false) => {
+        (Task::Clean | Task::Fmt | Task::Run | Task::Metadata, package, false) => {
             if let Task::Fmt = task {
                 let pos = dashdash_pos.unwrap();
 
@@ -303,26 +357,30 @@ fn run() -> Result<(), String> {
             let target_verus_dir_absolute = std::fs::canonicalize(&target_verus_dir)
                 .map_err(|x| format!("could not canonicalize target-verus directory ({})", x))?;
 
-            let status = std::process::Command::new("cargo")
-                .env("RUSTC_BOOTSTRAP", "1")
-                .env("VARGO_TARGET_DIR", target_verus_dir_absolute)
-                .args(&args)
-                .status()
-                .map_err(|x| format!("could not execute cargo ({})", x))?;
+            if let (Task::Clean, Some("vstd")) = (task, package) {
+                clean_vstd(&target_verus_dir)
+            } else {
+                let status = std::process::Command::new("cargo")
+                    .env("RUSTC_BOOTSTRAP", "1")
+                    .env("VARGO_TARGET_DIR", target_verus_dir_absolute)
+                    .args(&args)
+                    .status()
+                    .map_err(|x| format!("could not execute cargo ({})", x))?;
 
-            match task {
-                Task::Clean => {
-                    if !status.success() {
-                        return Err(format!(
-                            "`cargo clean` returned status code {:?}",
-                            status.code()
-                        ));
+                match task {
+                    Task::Clean => {
+                        if !status.success() {
+                            return Err(format!(
+                                "`cargo clean` returned status code {:?}",
+                                status.code()
+                            ));
+                        }
+
+                        std::fs::remove_dir_all(&target_verus_dir)
+                            .map_err(|x| format!("could not remove target-verus directory ({})", x))
                     }
-
-                    std::fs::remove_dir_all(&target_verus_dir)
-                        .map_err(|x| format!("could not remove target-verus directory ({})", x))
+                    _ => std::process::exit(status.code().unwrap_or(1)),
                 }
-                _ => std::process::exit(status.code().unwrap_or(1)),
             }
         }
         (Task::Test { nextest: _ }, None, false) => {
@@ -377,94 +435,131 @@ fn run() -> Result<(), String> {
 
             std::process::exit(status.code().unwrap_or(1));
         }
-        (Task::Build, None, false) => {
+        (Task::Build, package, false) => {
+            if args_bucket.len() > 0 {
+                return Err(format!(
+                    "unexpected or unsupported arguments: {}",
+                    args_bucket.join(", ")
+                ));
+            }
+
             fn build_target(
                 release: bool,
                 target: &str,
                 extra_args: &[String],
+                package: Option<&str>,
             ) -> Result<(), String> {
-                info(format!("building {}", target).as_str());
-                let mut cmd = std::process::Command::new("cargo");
-                let mut cmd = cmd
-                    .env("RUSTC_BOOTSTRAP", "1")
-                    .env("VERUS_IN_VARGO", "1")
-                    .arg("build")
-                    .arg("-p")
-                    .arg(target);
-                if release {
-                    cmd = cmd.arg("--release");
+                if package == Some(target) || package == None {
+                    info(format!("building {}", target).as_str());
+                    let mut cmd = std::process::Command::new("cargo");
+                    let mut cmd = cmd
+                        .env("RUSTC_BOOTSTRAP", "1")
+                        .env("VERUS_IN_VARGO", "1")
+                        .arg("build")
+                        .arg("-p")
+                        .arg(target);
+                    if release {
+                        cmd = cmd.arg("--release");
+                    }
+                    cmd = cmd.args(extra_args);
+                    cmd.status()
+                        .map_err(|x| format!("could not execute cargo ({})", x))
+                        .and_then(|x| {
+                            if x.success() {
+                                Ok(())
+                            } else {
+                                Err(format!("cargo returned status code {:?}", x.code()))
+                            }
+                        })
+                } else {
+                    Ok(())
                 }
-                cmd.args(extra_args)
-                    .status()
-                    .map_err(|x| format!("could not execute cargo ({})", x))
-                    .and_then(|x| {
-                        if x.success() {
-                            Ok(())
-                        } else {
-                            Err(format!("cargo returned status code {:?}", x.code()))
-                        }
-                    })
             }
 
-            let rust_verify_build_args: Vec<_> = cargo_forward_args
-                .iter()
-                .chain(feature_args.iter())
-                .cloned()
-                .collect();
-            build_target(release, "rust_verify", &rust_verify_build_args[..])?;
-            build_target(release, "builtin", &cargo_forward_args[..])?;
-            build_target(release, "builtin_macros", &cargo_forward_args[..])?;
-            build_target(release, "state_machines_macros", &cargo_forward_args[..])?;
-            build_target(release, "vstd_build", &cargo_forward_args[..])?;
+            let packages = &[
+                "rust_verify",
+                "builtin",
+                "builtin_macros",
+                "state_machines_macros",
+                "vstd_build",
+            ];
 
-            #[cfg(target_os = "macos")]
-            let (pre, dl, exe) = ("lib", "dylib", "");
+            let build_vstd = {
+                if let Some(package) = package {
+                    if packages.contains(&package) {
+                        false
+                    } else if package == "vstd" {
+                        true
+                    } else {
+                        return Err(format!("unknown package {package}"));
+                    }
+                } else {
+                    true
+                }
+            };
 
-            #[cfg(target_os = "linux")]
-            let (pre, dl, exe) = ("lib", "so", "");
+            for p in packages {
+                let rust_verify_forward_args;
+                let extra_args = if p == &"rust_verify" {
+                    rust_verify_forward_args = cargo_forward_args
+                        .iter()
+                        .chain(feature_args.iter())
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    &rust_verify_forward_args
+                } else {
+                    &cargo_forward_args
+                };
+                build_target(release, p, &extra_args[..], package)?;
+            }
 
-            #[cfg(target_os = "windows")]
-            let (pre, dl, exe) = ("", "dll", ".exe");
-
-            let mut dependencies_mtime = FFileTime::zero();
+            let mut dependencies_mtime = None;
+            let mut dependency_missing = false;
 
             for from_f_name in [
                 format!("libbuiltin.rlib"),
-                format!("{}builtin_macros.{}", pre, dl),
-                format!("{}state_machines_macros.{}", pre, dl),
-                format!("{}state_machines_macros.{}", pre, dl),
-                format!("rust_verify{}", exe),
+                format!("{}builtin_macros.{}", LIB_PRE, LIB_DL),
+                format!("{}state_machines_macros.{}", LIB_PRE, LIB_DL),
+                format!("rust_verify{}", EXE),
             ]
             .into_iter()
             {
                 let from_f = target_dir.join(&from_f_name);
-                let from_f_meta = from_f
-                    .metadata()
-                    .map_err(|x| format!("cannot obtain metadata for {from_f_name} ({x:?})"))?;
-                dependencies_mtime =
-                    dependencies_mtime.max(FFileTime::from_last_modification_time(&from_f_meta));
-                let to_f = target_verus_dir.join(&from_f_name);
-                // info(&format!(
-                //     "copying {} to {}",
-                //     from_f.display(),
-                //     to_f.display()
-                // ));
-                std::fs::copy(&from_f, &to_f)
-                    .map_err(|x| format!("could not copy file ({})", x))?;
+                if from_f.exists() {
+                    let from_f_meta = from_f
+                        .metadata()
+                        .map_err(|x| format!("cannot obtain metadata for {from_f_name} ({x:?})"))?;
+                    dependencies_mtime = Some(
+                        dependencies_mtime
+                            .unwrap_or(FFileTime::zero())
+                            .max(FFileTime::from_last_modification_time(&from_f_meta)),
+                    );
+                    let to_f = target_verus_dir.join(&from_f_name);
+                    // info(&format!(
+                    //     "copying {} to {}",
+                    //     from_f.display(),
+                    //     to_f.display()
+                    // ));
+                    std::fs::copy(&from_f, &to_f)
+                        .map_err(|x| format!("could not copy file ({})", x))?;
+                } else {
+                    dependency_missing = true;
+                }
             }
 
-            assert_ne!(dependencies_mtime, FFileTime::zero());
-            let dependencies_mtime: FileTime = dependencies_mtime.into();
-
-            let pervasive_path = std::path::Path::new("pervasive");
-            let vstd_mtime: FileTime = util::mtime_recursive(&pervasive_path)?.into();
-
-            let current_fingerprint = Fingerprint {
-                dependencies_mtime,
-                vstd_mtime,
-            };
-
             let fingerprint_path = target_verus_dir.join(".vstd-fingerprint");
+
+            for f in [format!("vstd.vir"), format!("{LIB_PRE}vstd.rlib")] {
+                if !target_verus_dir.join(f).exists() {
+                    if fingerprint_path.exists() {
+                        info(&format!("removing {}", fingerprint_path.display()));
+                        std::fs::remove_file(&fingerprint_path).map_err(|x| {
+                            format!("could not delete file {} ({x})", fingerprint_path.display())
+                        })?;
+                    }
+                }
+            }
+
             let stored_fingerprint = if fingerprint_path.exists() {
                 let s = std::fs::read_to_string(&fingerprint_path)
                     .map_err(|x| format!("cannot read {} ({x:?})", fingerprint_path.display()))?;
@@ -479,48 +574,65 @@ fn run() -> Result<(), String> {
                 None
             };
 
-            if stored_fingerprint
-                .map(|s| current_fingerprint > s)
-                .unwrap_or(true)
-            {
-                info("vstd outdated, rebuilding");
-                let mut vstd_build = std::process::Command::new("cargo");
-                let mut vstd_build = vstd_build
-                    .env("RUSTC_BOOTSTRAP", "1")
-                    .env("VERUS_IN_VARGO", "1")
-                    .arg("run")
-                    .arg("-p")
-                    .arg("vstd_build")
-                    .arg("--")
-                    .arg(&target_verus_dir);
-                if release {
-                    vstd_build = vstd_build.arg("--release");
-                }
-                vstd_build
-                    .status()
-                    .map_err(|x| format!("could not execute cargo ({})", x))
-                    .and_then(|x| {
-                        if x.success() {
-                            Ok(())
-                        } else {
-                            Err(format!("vstd_build returned status code {:?}", x.code()))
+            if build_vstd {
+                if dependency_missing {
+                    info("not all of the vstd dependencies are built, skipping vstd build");
+
+                    clean_vstd(&target_verus_dir)?;
+                } else {
+                    let dependencies_mtime: FileTime = dependencies_mtime
+                        .expect("dependencies_mtime should be Some here")
+                        .into();
+
+                    let pervasive_path = std::path::Path::new("pervasive");
+                    let vstd_mtime: FileTime = util::mtime_recursive(&pervasive_path)?.into();
+
+                    let current_fingerprint = Fingerprint {
+                        dependencies_mtime,
+                        vstd_mtime,
+                    };
+
+                    if stored_fingerprint
+                        .map(|s| current_fingerprint > s)
+                        .unwrap_or(true)
+                    {
+                        info("vstd outdated, rebuilding");
+                        let mut vstd_build = std::process::Command::new("cargo");
+                        let mut vstd_build = vstd_build
+                            .env("RUSTC_BOOTSTRAP", "1")
+                            .env("VERUS_IN_VARGO", "1")
+                            .arg("run")
+                            .arg("-p")
+                            .arg("vstd_build")
+                            .arg("--")
+                            .arg(&target_verus_dir);
+                        if release {
+                            vstd_build = vstd_build.arg("--release");
                         }
-                    })?;
+                        vstd_build
+                            .status()
+                            .map_err(|x| format!("could not execute cargo ({})", x))
+                            .and_then(|x| {
+                                if x.success() {
+                                    Ok(())
+                                } else {
+                                    Err(format!("vstd_build returned status code {:?}", x.code()))
+                                }
+                            })?;
 
-                std::fs::write(
-                    &fingerprint_path,
-                    toml::to_string(&current_fingerprint).expect("failed to serialize fingerprint"),
-                )
-                .map_err(|x| format!("cannot write fingerprint file ({x})"))?;
-            } else {
-                info("vstd fresh");
+                        std::fs::write(
+                            &fingerprint_path,
+                            toml::to_string(&current_fingerprint)
+                                .expect("failed to serialize fingerprint"),
+                        )
+                        .map_err(|x| format!("cannot write fingerprint file ({x})"))?;
+                    } else {
+                        info("vstd fresh");
+                    }
+                }
             }
-
             Ok(())
         }
-        (Task::Build, Some(package), false) => Err(format!(
-            "only package `air` is allowed for `vargo build -p`, {package} unexpected"
-        )),
         otherwise => panic!("unexpected state: {:?}", otherwise),
     }
 }
