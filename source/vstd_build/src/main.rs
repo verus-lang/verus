@@ -77,7 +77,9 @@ fn main() {
         .args(&child_args[..])
         .spawn()
         .expect("could not execute lifetime rustc process");
-    if !child.wait().expect("vstd verus wait failed").success() {
-        panic!("vstd build failed");
+    let result = child.wait().expect("vstd verus wait failed");
+    if !result.success() {
+        let code = result.code();
+        panic!("vstd build failed with exit code {:?}", code);
     }
 }

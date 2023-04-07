@@ -459,20 +459,20 @@ fn run() -> Result<(), String> {
                     .env("VERUS_IN_VARGO", "1")
                     .arg("run")
                     .arg("-p")
-                    .arg("vstd_build");
+                    .arg("vstd_build")
+                    .arg("--")
+                    .arg(&target_verus_dir);
                 if release {
                     vstd_build = vstd_build.arg("--release");
                 }
                 vstd_build
-                    .arg("--")
-                    .arg(&target_verus_dir)
                     .status()
                     .map_err(|x| format!("could not execute cargo ({})", x))
                     .and_then(|x| {
                         if x.success() {
                             Ok(())
                         } else {
-                            Err(format!("cargo returned status code {:?}", x.code()))
+                            Err(format!("vstd_build returned status code {:?}", x.code()))
                         }
                     })?;
 
