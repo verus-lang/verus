@@ -73,7 +73,7 @@ From the `source` directory, run:
 vargo run -p rust_verify --release -- rust_verify/example/recursion.rs
 ```
 
-You can also use the helper script to skip the build step on **Linux and macOS**:
+You can also use the helper script to run the verifier without re-building on **Linux and macOS**:
 
 ```
 ./tools/rust-verify.sh rust_verify/example/recursion.rs
