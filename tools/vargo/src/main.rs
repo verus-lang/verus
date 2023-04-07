@@ -65,6 +65,7 @@ const SUPPORTED_COMMANDS: &[&str] = &[
 ];
 
 const CARGO_FORWARD_ARGS: &[&str] = &["-v", "-vv", "--verbose", "--offline"];
+const CARGO_FORWARD_ARGS_NEXT: &[&str] = &["-F", "--features"];
 
 #[derive(Clone, Copy, Debug)]
 enum Task {
@@ -180,21 +181,35 @@ fn run() -> Result<(), String> {
         "fmt" => Task::Fmt,
         _ => panic!("unexpected command"),
     };
-    let release = args.iter().find(|x| x.as_str() == "--release").is_some();
+    let release = args
+        .iter()
+        .find(|x| x.as_str() == "--release" || x.as_str() == "-r")
+        .is_some();
 
     let package = args
         .iter()
         .position(|x| x == "--package" || x == "-p")
         .map(|pos| args[pos + 1].clone());
 
-    let cargo_forward_args: Vec<_> = args
-        .iter()
-        .filter(|x| {
-            let x = x.as_str();
-            CARGO_FORWARD_ARGS.contains(&x)
-        })
-        .cloned()
-        .collect();
+    let cargo_forward_args: Vec<_> = {
+        let mut forward_args: Vec<_> = args
+            .iter()
+            .filter(|x| {
+                let x = x.as_str();
+                CARGO_FORWARD_ARGS.contains(&x)
+            })
+            .cloned()
+            .collect();
+        forward_args.extend(
+            args.iter()
+                .position(|x| {
+                    let x = x.as_str();
+                    CARGO_FORWARD_ARGS_NEXT.contains(&x)
+                })
+                .map(|p| args[p + 1].clone()),
+        );
+        forward_args
+    };
 
     if !in_nextest {
         match (task, package.as_ref().map(|x| x.as_str())) {

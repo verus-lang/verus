@@ -23,7 +23,7 @@ fn main() {
     let verus_target_path =
         std::path::PathBuf::from(args.next().expect("missing verus target path"));
     let _release = match args.next().as_ref().map(|x| x.as_str()) {
-        Some("release") => true,
+        Some("--release") => true,
         Some(_) => panic!("unexpected profile argument"),
         None => false,
     };
