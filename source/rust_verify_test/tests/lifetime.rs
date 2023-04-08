@@ -292,6 +292,28 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] if_branch_uninit verus_code! {
+        struct S {}
+        proof fn test(b: bool) -> (tracked t: S) {
+            let tracked mut s: S;
+            if b { s = S {}; }
+            s
+        }
+    } => Err(err) => assert_vir_error_msg(err, "used binding `s` is possibly-uninitialized")
+}
+
+test_verify_one_file! {
+    #[test] match_branch_uninit verus_code! {
+        struct S {}
+        proof fn test(b: bool) -> (tracked t: S) {
+            let tracked mut s: S;
+            match b { _ if true => { s = S {}; } _ => {} }
+            s
+        }
+    } => Err(err) => assert_vir_error_msg(err, "used binding `s` is possibly-uninitialized")
+}
+
+test_verify_one_file! {
     #[test] return_wrong_lifetime1 verus_code! {
         proof fn f<'a, 'b>(tracked x: &'a u32, tracked y: &'a u32, tracked z: &'b u32) -> tracked &'b u32 {
             y

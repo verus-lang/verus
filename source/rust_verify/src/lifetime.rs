@@ -163,6 +163,7 @@ const PRELUDE: &str = "\
 #![allow(unused_braces)]
 #![allow(dead_code)]
 #![allow(unreachable_code)]
+#![allow(unconditional_recursion)]
 #![allow(unused_mut)]
 #![allow(unused_labels)]
 use std::marker::PhantomData;

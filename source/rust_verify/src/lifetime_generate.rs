@@ -1062,12 +1062,6 @@ fn erase_expr<'tcx>(
                     };
                     match (expect_spec, e1, e2) {
                         (true, None, None) => erase_spec_exps(ctxt, state, expr, vec![ec]),
-                        (true, Some(e1), None) => {
-                            erase_spec_exps(ctxt, state, expr, vec![ec, Some(e1)])
-                        }
-                        (true, None, Some(e2)) => {
-                            erase_spec_exps(ctxt, state, expr, vec![ec, Some(e2)])
-                        }
                         (_, e1, e2) => {
                             let c = match ec {
                                 None => mk_exp1(ExpX::Op(vec![], TypX::mk_bool())),
