@@ -507,6 +507,22 @@ impl VisitMut for ExecGhostPatVisitor {
                     return;
                 }
             }
+            Pat::Struct(pat_struct) => {
+                // When syn parses a struct pattern like `Foo { x }`,
+                // it results in an AST similar to `Foo { x: x }`,
+                // that is, with a separate node for the field and the expression.
+                // The only difference is that one of the nodes has a 'colon' token
+                // and one doesn't.
+                // Since the transformation we're doing here might change
+                // `x: x` to `x: verus_tmp_x`, we can't output it using the shorthand.
+                // So we need to add the colon token in.
+                for field_pat in pat_struct.fields.iter_mut() {
+                    if field_pat.colon_token.is_none() {
+                        let span = field_pat.member.span();
+                        field_pat.colon_token = Some(token::Colon { spans: [span] });
+                    }
+                }
+            }
             Pat::Ident(id)
                 if (self.tracked.is_some() || self.ghost.is_some()) && self.inside_ghost == 0 =>
             {

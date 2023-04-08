@@ -1369,3 +1369,45 @@ test_verify_one_file! {
         assert_one_fails(err)
     }
 }
+
+test_verify_one_file! {
+    #[test] destructure_tracked_shorthand verus_code! {
+        struct Y { }
+        struct Z { }
+
+        tracked struct X {
+            tracked y: Y,
+            tracked z: Z
+        }
+
+        proof fn test2(tracked y: Y, z: Z) { }
+
+        fn test(Tracked(x): Tracked<X>) {
+            let tracked X { y, z } = x;
+            proof {
+                test2(y, z);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] destructure_ghost_shorthand verus_code! {
+        struct Y { }
+        struct Z { }
+
+        struct X {
+            y: Y,
+            z: Z
+        }
+
+        proof fn test2(tracked y: Y, tracked z: Z) { }
+
+        fn test(Tracked(x): Tracked<X>) {
+            let ghost X { y, z } = x;
+            proof {
+                test2(y, z);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
