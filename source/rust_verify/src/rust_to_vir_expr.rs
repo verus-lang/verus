@@ -618,7 +618,7 @@ fn fn_call_to_vir<'tcx>(
         || is_chained_value
         || is_chained_ineq;
     let is_spec_ghost_tracked =
-        is_ghost_view || is_ghost_borrow || is_ghost_borrow_mut || is_ghost_new || is_tracked_view;
+        is_ghost_view || is_ghost_borrow || is_ghost_borrow_mut || is_tracked_view;
 
     // These functions are all no-ops in the SMT encoding, so we don't emit any VIR
     let is_smartptr_new = f_name == "std::boxed::Box::<T>::new"
@@ -714,7 +714,7 @@ fn fn_call_to_vir<'tcx>(
         _ if is_implies => Some(CompilableOperator::Implies),
         _ if is_smartptr_new => Some(CompilableOperator::SmartPtrNew),
         _ if is_new_strlit => Some(CompilableOperator::NewStrLit),
-        _ if is_ghost_exec => Some(CompilableOperator::GhostExec),
+        _ if is_ghost_exec || is_ghost_new => Some(CompilableOperator::GhostExec),
         _ if is_tracked_new => Some(CompilableOperator::TrackedNew),
         _ if is_tracked_exec => Some(CompilableOperator::TrackedExec),
         _ if is_tracked_exec_borrow => Some(CompilableOperator::TrackedExecBorrow),
@@ -1531,7 +1531,7 @@ fn fn_call_to_vir<'tcx>(
         let op = UnaryOp::CoerceMode {
             op_mode: Mode::Spec,
             from_mode: Mode::Spec,
-            to_mode: Mode::Spec,
+            to_mode: if is_ghost_new { Mode::Proof } else { Mode::Spec },
             kind: ModeCoercion::Other,
         };
         Ok(mk_expr(ExprX::Unary(op, vir_args[0].clone())))

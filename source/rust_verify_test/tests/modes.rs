@@ -1411,3 +1411,11 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
 }
+
+test_verify_one_file! {
+    #[test] new_ghost_wrapper_is_tracked verus_code! {
+        proof fn test1() -> (tracked t: Ghost<bool>) {
+            Ghost(true)
+        }
+    } => Ok(())
+}
