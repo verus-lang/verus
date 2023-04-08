@@ -107,7 +107,6 @@ pub fn main() {
         let smt_run = verifier.time_smt_run;
         let lifetime = stats.time_lifetime;
         let compile = stats.time_compile;
-        let erasure = stats.time_erasure;
         let rust_init = verify - vir;
         let rust = rust_init + lifetime + compile;
         vir_verify -= air;
@@ -121,7 +120,6 @@ pub fn main() {
         println!("    vir-time:        {:>10} ms", vir.as_millis());
         println!("        rust-to-vir:     {:>10} ms", vir_rust_to_vir.as_millis());
         println!("        verify:          {:>10} ms", vir_verify.as_millis());
-        println!("        erase:           {:>10} ms", erasure.as_millis());
         println!("    air-time:        {:>10} ms", air.as_millis());
         println!("    smt-time:        {:>10} ms", (smt_init + smt_run).as_millis());
         println!("        smt-init:        {:>10} ms", smt_init.as_millis());

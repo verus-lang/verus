@@ -1482,6 +1482,7 @@ impl Verifier {
 pub(crate) struct VerifierCallbacksEraseMacro {
     pub(crate) verifier: Verifier,
     pub(crate) lifetime_start_time: Option<Instant>,
+    pub(crate) lifetime_end_time: Option<Instant>,
     pub(crate) rustc_args: Vec<String>,
     pub(crate) file_loader:
         Option<Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>>,
@@ -1535,31 +1536,37 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     return;
                 }
                 self.lifetime_start_time = Some(Instant::now());
-                let log_lifetime = self.verifier.args.log_all || self.verifier.args.log_lifetime;
-                let lifetime_log_file = if log_lifetime {
-                    let file = self.verifier.create_log_file(
-                        None,
-                        None,
-                        crate::config::LIFETIME_FILE_SUFFIX,
-                    );
-                    match file {
-                        Err(err) => {
-                            reporter.report_as(&err, MessageLevel::Error);
-                            self.verifier.encountered_vir_error = true;
-                            return;
-                        }
-                        Ok(file) => Some(file),
-                    }
+                let status = if self.verifier.args.no_lifetime {
+                    Ok(vec![])
                 } else {
-                    None
+                    let log_lifetime =
+                        self.verifier.args.log_all || self.verifier.args.log_lifetime;
+                    let lifetime_log_file = if log_lifetime {
+                        let file = self.verifier.create_log_file(
+                            None,
+                            None,
+                            crate::config::LIFETIME_FILE_SUFFIX,
+                        );
+                        match file {
+                            Err(err) => {
+                                reporter.report_as(&err, MessageLevel::Error);
+                                self.verifier.encountered_vir_error = true;
+                                return;
+                            }
+                            Ok(file) => Some(file),
+                        }
+                    } else {
+                        None
+                    };
+                    crate::lifetime::check_tracked_lifetimes(
+                        tcx,
+                        &spans,
+                        self.verifier.crate_names.clone().expect("crate_names"),
+                        self.verifier.erasure_hints.as_ref().expect("erasure_hints"),
+                        lifetime_log_file,
+                    )
                 };
-                let status = crate::lifetime::check_tracked_lifetimes(
-                    tcx,
-                    &spans,
-                    self.verifier.crate_names.clone().expect("crate_names"),
-                    self.verifier.erasure_hints.as_ref().expect("erasure_hints"),
-                    lifetime_log_file,
-                );
+                self.lifetime_end_time = Some(Instant::now());
                 match status {
                     Ok(msgs) => {
                         if msgs.len() > 0 {

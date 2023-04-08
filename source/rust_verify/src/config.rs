@@ -16,17 +16,6 @@ impl Default for ShowTriggers {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Erasure {
-    Ast,
-    Macro,
-}
-impl Default for Erasure {
-    fn default() -> Self {
-        Erasure::Ast
-    }
-}
-
 pub const LOG_DIR: &str = ".verus-log";
 pub const VIR_FILE_SUFFIX: &str = ".vir";
 pub const VIR_SIMPLE_FILE_SUFFIX: &str = "-simple.vir";

@@ -38,8 +38,7 @@ fn print_verification_results(verifier: &Verifier) {
 }
 
 /*
-When using the --erasure macro option (Erasure::Macro),
-we have to run rustc twice on the original source code,
+We have to run rustc twice on the original source code,
 once erasing ghost code and once keeping ghost code.
 
 exec code --> type-check, mode-check --> lifetime (borrow) check exec code --> compile
@@ -90,7 +89,7 @@ This would avoid the complex interleaving above and avoid needing to use lifetim
 for all functions (it would only be needed for functions with tracked data in proof code).
 */
 pub struct CompilerCallbacksEraseMacro {
-    pub lifetimes_only: bool,
+    pub do_compile: bool,
 }
 
 impl verus_rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
@@ -99,7 +98,7 @@ impl verus_rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
         _compiler: &verus_rustc_interface::interface::Compiler,
         queries: &'tcx verus_rustc_interface::Queries<'tcx>,
     ) -> verus_rustc_driver::Compilation {
-        if self.lifetimes_only {
+        if !self.do_compile {
             crate::lifetime::check(queries);
             verus_rustc_driver::Compilation::Stop
         } else {
@@ -112,7 +111,6 @@ pub struct Stats {
     pub time_verify: Duration,
     pub time_lifetime: Duration,
     pub time_compile: Duration,
-    pub time_erasure: Duration,
 }
 
 pub(crate) fn run_with_erase_macro_compile(
@@ -121,7 +119,7 @@ pub(crate) fn run_with_erase_macro_compile(
     compile: bool,
     build_test_mode: bool,
 ) -> Result<(), ErrorGuaranteed> {
-    let mut callbacks = CompilerCallbacksEraseMacro { lifetimes_only: !compile };
+    let mut callbacks = CompilerCallbacksEraseMacro { do_compile: compile };
     rustc_args.extend(["--cfg", "verus_macro_erase_ghost"].map(|s| s.to_string()));
     let allow = &[
         "unused_imports",
@@ -267,6 +265,7 @@ where
     let mut verifier_callbacks = VerifierCallbacksEraseMacro {
         verifier,
         lifetime_start_time: None,
+        lifetime_end_time: None,
         rustc_args: rustc_args.clone(),
         file_loader: Some(Box::new(file_loader.clone())),
         build_test_mode,
@@ -282,37 +281,43 @@ where
     if !verifier_callbacks.verifier.encountered_vir_error {
         print_verification_results(&verifier_callbacks.verifier);
     }
-    let VerifierCallbacksEraseMacro { verifier, lifetime_start_time, .. } = verifier_callbacks;
-    let time2 = Instant::now();
-    let time1 = lifetime_start_time.unwrap_or(time2);
+    let VerifierCallbacksEraseMacro { verifier, lifetime_start_time, lifetime_end_time, .. } =
+        verifier_callbacks;
+    let time1 = Instant::now();
+    let time_lifetime = match (lifetime_start_time, lifetime_end_time) {
+        (Some(t1), Some(t2)) => t2 - t1,
+        _ => Duration::new(0, 0),
+    };
 
     if status.is_err() || verifier.encountered_vir_error {
         return (
             verifier,
             Stats {
-                time_verify: time1 - time0,
-                time_lifetime: time2 - time1,
+                time_verify: time1 - time0 - time_lifetime,
+                time_lifetime,
                 time_compile: Duration::new(0, 0),
-                time_erasure: Duration::new(0, 0),
             },
             Err(()),
         );
     }
 
-    let compile_status = run_with_erase_macro_compile(
-        rustc_args,
-        Box::new(file_loader),
-        verifier.args.compile,
-        build_test_mode,
-    );
+    let compile_status = if !verifier.args.compile && verifier.args.no_lifetime {
+        Ok(())
+    } else {
+        run_with_erase_macro_compile(
+            rustc_args,
+            Box::new(file_loader),
+            verifier.args.compile,
+            build_test_mode,
+        )
+    };
 
-    let time3 = Instant::now();
+    let time2 = Instant::now();
 
     let stats = Stats {
-        time_verify: time1 - time0,
-        time_lifetime: time2 - time1,
-        time_compile: time3 - time2,
-        time_erasure: Duration::new(0, 0),
+        time_verify: time1 - time0 - time_lifetime,
+        time_lifetime,
+        time_compile: time2 - time1,
     };
 
     // Run borrow checker and compiler with #[exec] (not #[proof])
