@@ -25,6 +25,8 @@ use syn_verus::{
     Visibility,
 };
 
+const VERUS_SPEC: &str = "VERUS_SPEC__";
+
 fn take_expr(expr: &mut Expr) -> Expr {
     let dummy: Expr = Expr::Verbatim(TokenStream::new());
     std::mem::replace(expr, dummy)
@@ -781,19 +783,42 @@ impl Visitor {
     }
 
     fn visit_trait_items_prefilter(&mut self, items: &mut Vec<TraitItem>) {
+        // In addition to prefiltering ghost code, we also split methods declarations
+        // into separate spec and implementation declarations.  For example:
+        //   fn f() requires x;
+        // becomes
+        //   fn VERUS_SPEC__f() requires x;
+        //   fn f();
+        // In a later pass, this becomes:
+        //   fn VERUS_SPEC__f() { requires(x); ... }
+        //   fn f();
+        // Note: we don't do this if there's a default body (although default bodies
+        // aren't supported yet anyway), because it turns out that the parameter names
+        // don't exactly match between fun and fun.clone() (they have different macro contexts),
+        // which would cause the body and specs to mismatch.
         let erase_ghost = self.erase_ghost;
+        let mut spec_items: Vec<TraitItem> = Vec::new();
         for item in items.iter_mut() {
             match item {
-                TraitItem::Method(fun) => match fun.sig.mode {
+                TraitItem::Method(ref mut fun) => match fun.sig.mode {
                     FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) if erase_ghost => {
                         fun.default = None;
                         continue;
+                    }
+                    _ if !erase_ghost && fun.default.is_none() => {
+                        // Copy into separate spec method, then remove spec from original method
+                        let mut spec_fun = fun.clone();
+                        let x = &fun.sig.ident;
+                        spec_fun.sig.ident = Ident::new(&format!("{VERUS_SPEC}{x}"), x.span());
+                        fun.sig.erase_spec_fields();
+                        spec_items.push(TraitItem::Method(spec_fun));
                     }
                     _ => {}
                 },
                 _ => {}
             }
         }
+        items.append(&mut spec_items);
     }
 }
 
@@ -1813,11 +1838,12 @@ impl VisitMut for Visitor {
             crate::rustdoc::process_trait_item_method(method);
         }
 
+        let is_spec_method = method.sig.ident.to_string().starts_with(VERUS_SPEC);
         let mut stmts =
             self.visit_fn(&mut method.attrs, None, &mut method.sig, method.semi_token, true);
         if let Some(block) = &mut method.default {
             block.stmts.splice(0..0, stmts);
-        } else if !self.erase_ghost {
+        } else if !self.erase_ghost && is_spec_method {
             let span = method.sig.fn_token.span;
             stmts.push(Stmt::Expr(Expr::Verbatim(
                 quote_spanned!(span => ::builtin::no_method_body()),
@@ -1825,7 +1851,7 @@ impl VisitMut for Visitor {
             let block = Block { brace_token: Brace(span), stmts };
             method.default = Some(block);
         }
-        if !self.erase_ghost {
+        if !self.erase_ghost && is_spec_method {
             method.semi_token = None;
         }
         visit_trait_item_method_mut(self, method);

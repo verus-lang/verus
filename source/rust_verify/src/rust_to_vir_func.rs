@@ -10,8 +10,8 @@ use crate::util::{err_span_str, err_span_string, unsupported_err_span};
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{
-    def::Res, Body, BodyId, Crate, FnDecl, FnHeader, FnRetTy, FnSig, Generics, ImplicitSelfKind,
-    MaybeOwner, MutTy, Param, PrimTy, QPath, Ty, TyKind, Unsafety,
+    def::Res, Body, BodyId, Crate, FnDecl, FnHeader, FnRetTy, FnSig, Generics, HirId,
+    ImplicitSelfKind, MaybeOwner, MutTy, Param, PrimTy, QPath, Ty, TyKind, Unsafety,
 };
 use rustc_middle::ty::TyCtxt;
 use rustc_span::symbol::{Ident, Symbol};
@@ -22,7 +22,8 @@ use vir::ast::{
     Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, KrateX, MaskSpec, Mode,
     ParamX, Typ, TypX, VirErr,
 };
-use vir::def::RETURN_VALUE;
+use vir::def::{RETURN_VALUE, VERUS_SPEC};
+use vir::util::Either;
 
 pub(crate) fn autospec_fun(path: &vir::ast::Path, method_name: String) -> vir::ast::Path {
     // turn a::b::c into a::b::method_name
@@ -154,7 +155,7 @@ fn check_new_strlit<'tcx>(ctx: &Context<'tcx>, sig: &'tcx FnSig<'tcx>) -> Result
 
 pub(crate) fn check_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
-    vir: &mut KrateX,
+    functions: &mut Vec<vir::ast::Function>,
     id: rustc_span::def_id::DefId,
     kind: FunctionKind,
     visibility: vir::ast::Visibility,
@@ -164,7 +165,7 @@ pub(crate) fn check_item_fn<'tcx>(
     // (impl generics, impl def_id)
     self_generics: Option<(&'tcx Generics, rustc_span::def_id::DefId)>,
     generics: &'tcx Generics,
-    body_id: &BodyId,
+    body_id: Either<&BodyId, &[Ident]>,
 ) -> Result<Option<Fun>, VirErr> {
     let path = def_id_to_vir_path(ctxt.tcx, id);
     let name = Arc::new(FunX { path: path.clone(), trait_path: trait_path.clone() });
@@ -177,6 +178,7 @@ pub(crate) fn check_item_fn<'tcx>(
         return Ok(None);
     }
 
+    let is_verus_spec = path.segments.last().expect("segment.last").starts_with(VERUS_SPEC);
     let is_new_strlit =
         ctxt.tcx.is_diagnostic_item(Symbol::intern("pervasive::string::new_strlit"), id);
 
@@ -224,68 +226,97 @@ pub(crate) fn check_item_fn<'tcx>(
     let sig_typ_bounds = check_generics_bounds_fun(ctxt.tcx, generics, id)?;
     let fuel = get_fuel(&vattrs);
 
-    let body = find_body(ctxt, body_id);
-    let Body { params, value: _, generator_kind } = body;
-    let mut vir_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
-
-    assert!(params.len() == inputs.len());
-    for (param, input) in params.iter().zip(inputs.iter()) {
-        let Param { hir_id, pat, ty_span: _, span } = param;
-
-        // is_mut_var: means a parameter is like `mut x: X` (unsupported)
-        // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
-
-        let (is_mut_var, name) = pat_to_mut_var(pat);
-        if is_mut_var {
-            return err_span_string(
-                *span,
-                format!(
-                    "Verus does not support `mut` arguments (try writing `let mut param = param;` in the body of the function)"
-                ),
-            );
+    let (vir_body, header, params): (_, _, Vec<(String, Span, Option<HirId>)>) = match body_id {
+        Either::Left(body_id) => {
+            let body = find_body(ctxt, body_id);
+            let Body { params, value: _, generator_kind } = body;
+            match generator_kind {
+                None => {}
+                _ => {
+                    unsupported_err!(sig.span, "generator_kind", generator_kind);
+                }
+            }
+            let mut ps = Vec::new();
+            for Param { hir_id, pat, ty_span: _, span } in params.iter() {
+                let (is_mut_var, name) = pat_to_mut_var(pat);
+                // is_mut_var: means a parameter is like `mut x: X` (unsupported)
+                // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
+                if is_mut_var {
+                    return err_span_string(
+                        *span,
+                        format!(
+                            "Verus does not support `mut` arguments (try writing `let mut param = param;` in the body of the function)"
+                        ),
+                    );
+                }
+                ps.push((name, *span, Some(*hir_id)));
+            }
+            let mut vir_body = body_to_vir(ctxt, body_id, body, mode, vattrs.external_body)?;
+            let header = vir::headers::read_header(&mut vir_body)?;
+            (Some(vir_body), header, ps)
         }
+        Either::Right(params) => {
+            let params = params.iter().map(|p| (p.to_string(), p.span, None)).collect();
+            let header = vir::headers::read_header_block(&mut vec![])?;
+            (None, header, params)
+        }
+    };
 
+    let mut vir_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
+    assert!(params.len() == inputs.len());
+    for ((name, span, hir_id), input) in params.into_iter().zip(inputs.iter()) {
         let name = Arc::new(name);
-        let param_mode = get_var_mode(mode, ctxt.tcx.hir().attrs(*hir_id));
+        let param_mode = if let Some(hir_id) = hir_id {
+            get_var_mode(mode, ctxt.tcx.hir().attrs(hir_id))
+        } else {
+            assert!(matches!(kind, FunctionKind::TraitMethodDecl { .. }));
+            // This case is for a trait method declaration,
+            // where the mode will later be overridden by the separate spec method anyway:
+            Mode::Exec
+        };
         let is_ref_mut = is_mut_ty(ctxt, *input);
         if is_ref_mut.is_some() && mode == Mode::Spec {
             return err_span_string(
-                *span,
+                span,
                 format!("&mut argument not allowed for #[verifier::spec] functions"),
             );
         }
 
         let typ = mid_ty_to_vir(ctxt.tcx, is_ref_mut.map(|(t, _)| t).unwrap_or(input), false);
 
+        // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
         let is_mut = is_ref_mut.is_some();
 
         let vir_param = ctxt.spanned_new(
-            *span,
+            span,
             ParamX { name, typ, mode: param_mode, is_mut, unwrapped_info: None },
         );
         vir_params.push((vir_param, is_ref_mut.map(|(_, m)| m).flatten()));
     }
 
-    match generator_kind {
-        None => {}
-        _ => {
-            unsupported_err!(sig.span, "generator_kind", generator_kind);
+    match (&kind, header.no_method_body, is_verus_spec, vir_body.is_some()) {
+        (FunctionKind::TraitMethodDecl { .. }, false, false, false) => {}
+        (FunctionKind::TraitMethodDecl { .. }, false, false, true) => {
+            return err_span_str(sig.span, "trait default methods are not yet supported");
         }
-    }
-
-    let mut vir_body = body_to_vir(ctxt, body_id, body, mode, vattrs.external_body)?;
-
-    let header = vir::headers::read_header(&mut vir_body)?;
-    match (&kind, header.no_method_body) {
-        (FunctionKind::TraitMethodDecl { .. }, true) => {}
-        (FunctionKind::TraitMethodDecl { .. }, false) => {
+        (FunctionKind::TraitMethodDecl { .. }, true, true, _) => {}
+        (FunctionKind::TraitMethodDecl { .. }, false, true, _) => {
             return err_span_str(
                 sig.span,
                 "trait method declaration body must end with call to no_method_body()",
             );
         }
-        (_, false) => {}
-        (_, true) => {
+        (_, _, true, _) => {
+            return err_span_string(
+                sig.span,
+                format!("{VERUS_SPEC} can only appear in trait method declarations"),
+            );
+        }
+        (_, false, false, true) => {}
+        (_, false, false, false) => {
+            return err_span_str(sig.span, "function must have a body");
+        }
+        (_, true, _, _) => {
             return err_span_str(
                 sig.span,
                 "no_method_body can only appear in trait method declarations",
@@ -466,13 +497,13 @@ pub(crate) fn check_item_fn<'tcx>(
         is_const: false,
         publish,
         attrs: Arc::new(fattrs),
-        body: if vattrs.external_body || header.no_method_body { None } else { Some(vir_body) },
+        body: if vattrs.external_body || header.no_method_body { None } else { vir_body },
         extra_dependencies: header.extra_dependencies,
     };
 
     let function = ctxt.spanned_new(sig.span, func);
-    vir.functions.push(function);
-    Ok(Some(name))
+    functions.push(function);
+    if is_verus_spec { Ok(None) } else { Ok(Some(name)) }
 }
 
 // &mut T => Some(T, None)

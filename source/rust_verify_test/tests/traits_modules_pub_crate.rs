@@ -194,12 +194,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mode_matches_3 code! {
+    #[test] test_mode_matches_3 verus_code! {
         mod M1 {
             pub(crate) trait T1 {
-                fn f(#[verifier::spec] &self) {
-                    builtin::no_method_body()
-                }
+                fn f(#[verifier::spec] &self);
             }
         }
         mod M2 {
@@ -213,12 +211,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mode_matches_4 code! {
+    #[test] test_mode_matches_4 verus_code! {
         mod M1 {
             pub(crate) trait T1 {
-                fn f(&self) {
-                    builtin::no_method_body()
-                }
+                fn f(&self);
             }
         }
         mod M2 {
@@ -232,12 +228,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mode_matches_5 code! {
+    #[test] test_mode_matches_5 verus_code! {
         mod M1 {
             pub(crate) trait T1 {
-                fn f(&self, #[verifier::spec] b: bool) {
-                    builtin::no_method_body()
-                }
+                fn f(&self, #[verifier::spec] b: bool);
             }
         }
         mod M2 {
@@ -251,12 +245,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mode_matches_6 code! {
+    #[test] test_mode_matches_6 verus_code! {
         mod M1 {
             pub(crate) trait T1 {
-                fn f(&self, b: bool) {
-                    builtin::no_method_body()
-                }
+                fn f(&self, b: bool);
             }
         }
         mod M2 {
@@ -289,12 +281,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mode_matches_8 code! {
+    #[test] test_mode_matches_8 verus_code! {
         mod M1 {
             pub(crate) trait T1 {
-                fn f(&self) -> bool {
-                    builtin::no_method_body()
-                }
+                fn f(&self) -> bool;
             }
         }
         mod M2 {

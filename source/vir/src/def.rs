@@ -156,6 +156,8 @@ pub const QID_ACCESSOR: &str = "accessor";
 pub const QID_INVARIANT: &str = "invariant";
 pub const QID_HAS_TYPE_ALWAYS: &str = "has_type_always";
 
+pub const VERUS_SPEC: &str = "VERUS_SPEC__";
+
 pub const STRSLICE: &str = "StrSlice";
 pub const STRSLICE_IS_ASCII: &str = "strslice_is_ascii";
 pub const STRSLICE_LEN: &str = "strslice_len";
