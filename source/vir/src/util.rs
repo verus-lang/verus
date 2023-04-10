@@ -8,8 +8,3 @@ where
 {
     v.iter().map(f).collect::<Result<Vec<B>, C>>()
 }
-
-pub enum Either<A, B> {
-    Left(A),
-    Right(B),
-}

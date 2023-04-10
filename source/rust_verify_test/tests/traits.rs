@@ -282,6 +282,17 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_ill_formed_15 verus_code! {
+        trait T {
+            fn f(&self);
+        }
+        fn test<A: T>(a: &A) {
+            a.VERUS_SPEC__f();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`crate::T::VERUS_SPEC__f` is not supported")
+}
+
+test_verify_one_file! {
     #[test] test_mode_matches_1 verus_code! {
         trait T1 {
             spec fn f(&self);

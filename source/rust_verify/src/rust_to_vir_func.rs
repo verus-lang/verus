@@ -23,7 +23,6 @@ use vir::ast::{
     ParamX, Typ, TypX, VirErr,
 };
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
-use vir::util::Either;
 
 pub(crate) fn autospec_fun(path: &vir::ast::Path, method_name: String) -> vir::ast::Path {
     // turn a::b::c into a::b::method_name
@@ -153,6 +152,11 @@ fn check_new_strlit<'tcx>(ctx: &Context<'tcx>, sig: &'tcx FnSig<'tcx>) -> Result
     Ok(())
 }
 
+pub enum CheckItemFnEither<A, B> {
+    BodyId(A),
+    ParamNames(B),
+}
+
 pub(crate) fn check_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
     functions: &mut Vec<vir::ast::Function>,
@@ -165,7 +169,7 @@ pub(crate) fn check_item_fn<'tcx>(
     // (impl generics, impl def_id)
     self_generics: Option<(&'tcx Generics, rustc_span::def_id::DefId)>,
     generics: &'tcx Generics,
-    body_id: Either<&BodyId, &[Ident]>,
+    body_id: CheckItemFnEither<&BodyId, &[Ident]>,
 ) -> Result<Option<Fun>, VirErr> {
     let path = def_id_to_vir_path(ctxt.tcx, id);
     let name = Arc::new(FunX { path: path.clone(), trait_path: trait_path.clone() });
@@ -227,7 +231,7 @@ pub(crate) fn check_item_fn<'tcx>(
     let fuel = get_fuel(&vattrs);
 
     let (vir_body, header, params): (_, _, Vec<(String, Span, Option<HirId>)>) = match body_id {
-        Either::Left(body_id) => {
+        CheckItemFnEither::BodyId(body_id) => {
             let body = find_body(ctxt, body_id);
             let Body { params, value: _, generator_kind } = body;
             match generator_kind {
@@ -255,7 +259,7 @@ pub(crate) fn check_item_fn<'tcx>(
             let header = vir::headers::read_header(&mut vir_body)?;
             (Some(vir_body), header, ps)
         }
-        Either::Right(params) => {
+        CheckItemFnEither::ParamNames(params) => {
             let params = params.iter().map(|p| (p.to_string(), p.span, None)).collect();
             let header = vir::headers::read_header_block(&mut vec![])?;
             (None, header, params)

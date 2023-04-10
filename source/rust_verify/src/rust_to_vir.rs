@@ -14,7 +14,7 @@ use crate::rust_to_vir_base::{
     check_generic_bound, check_generics_bounds, def_id_to_vir_path, fn_item_hir_id_to_self_def_id,
     hack_get_def_name, mid_ty_to_vir, mk_visibility, typ_path_and_ident_to_vir_path,
 };
-use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
+use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn, CheckItemFnEither};
 use crate::util::{err_span_str, unsupported_err_span};
 use crate::{err_unless, unsupported_err, unsupported_err_unless};
 
@@ -29,7 +29,6 @@ use std::sync::Arc;
 use vir::ast::Typ;
 use vir::ast::{Fun, FunX, FunctionKind, GenericBoundX, Krate, KrateX, Mode, Path, TypX, VirErr};
 use vir::ast_util::path_as_rust_name;
-use vir::util::Either;
 
 fn check_item<'tcx>(
     ctxt: &Context<'tcx>,
@@ -66,7 +65,7 @@ fn check_item<'tcx>(
                 None,
                 None,
                 generics,
-                Either::Left(body_id),
+                CheckItemFnEither::BodyId(body_id),
             )?;
         }
         ItemKind::Use { .. } => {}
@@ -339,7 +338,7 @@ fn check_item<'tcx>(
                                         trait_path_typ_args.clone().map(|(p, _)| p),
                                         Some((&impll.generics, impl_def_id)),
                                         &impl_item.generics,
-                                        Either::Left(body_id),
+                                        CheckItemFnEither::BodyId(body_id),
                                     )?;
                                 }
                             }
@@ -425,8 +424,10 @@ fn check_item<'tcx>(
                 match kind {
                     TraitItemKind::Fn(sig, fun) => {
                         let body_id = match fun {
-                            TraitFn::Provided(body_id) => Either::Left(body_id),
-                            TraitFn::Required(param_names) => Either::Right(*param_names),
+                            TraitFn::Provided(body_id) => CheckItemFnEither::BodyId(body_id),
+                            TraitFn::Required(param_names) => {
+                                CheckItemFnEither::ParamNames(*param_names)
+                            }
                         };
                         let attrs = ctxt.tcx.hir().attrs(trait_item.hir_id());
                         let fun = check_item_fn(
