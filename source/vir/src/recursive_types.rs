@@ -150,7 +150,8 @@ fn check_positive_uses(
             }
             let typ_params = &global.datatypes[path].x.typ_params;
             for ((_, _, strictly_positive), t) in typ_params.iter().zip(ts.iter()) {
-                let t_polarity = if *strictly_positive { Some(true) } else { None };
+                let t_polarity =
+                    if *strictly_positive && polarity == Some(true) { Some(true) } else { None };
                 check_positive_uses(global, local, t_polarity, t)?;
             }
             Ok(())
