@@ -121,9 +121,11 @@ pub fn main() {
         println!("        rust-to-vir:     {:>10} ms", vir_rust_to_vir.as_millis());
         println!("        verify:          {:>10} ms", vir_verify.as_millis());
         println!("    air-time:        {:>10} ms", air.as_millis());
-        println!("    smt-time:        {:>10} ms", (smt_init + smt_run).as_millis());
-        println!("        smt-init:        {:>10} ms", smt_init.as_millis());
-        println!("        smt-run:         {:>10} ms", smt_run.as_millis());
+        if !verifier.encountered_vir_error {
+            println!("    smt-time:        {:>10} ms", (smt_init + smt_run).as_millis());
+            println!("        smt-init:        {:>10} ms", smt_init.as_millis());
+            println!("        smt-run:         {:>10} ms", smt_run.as_millis());
+        }
     }
     match status {
         Ok(()) => (),
