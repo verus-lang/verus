@@ -236,3 +236,15 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "in a non-positive polarity")
 }
+
+test_verify_one_file! {
+    #[test] type_argument_in_nested_negative_position verus_code! {
+        #[verifier(external_body)]
+        pub struct Set<#[verifier(maybe_negative)] A> {
+            dummy: std::marker::PhantomData<A>,
+        }
+        struct X<A>(A);
+        struct Y<A>(Set<X<A>>);
+        struct Z(Y<Z>);
+    } => Err(err) => assert_vir_error_msg(err, "Type parameter A must be declared #[verifier(maybe_negative)] to be used in a non-positive position")
+}
