@@ -28,13 +28,10 @@ fn run_compiler<'a, 'b>(
     mk_compiler(&rustc_args, verifier, file_loader).run()
 }
 
-fn print_verification_results(verifier: &Verifier) {
-    if !verifier.encountered_vir_error {
-        println!(
-            "verification results:: verified: {} errors: {}",
-            verifier.count_verified, verifier.count_errors
-        );
-    }
+pub fn is_verifying_entire_crate(verifier: &Verifier) -> bool {
+    verifier.args.verify_function.is_none()
+        && verifier.args.verify_module.is_empty()
+        && !verifier.args.verify_root
 }
 
 /*
@@ -278,11 +275,20 @@ where
         Box::new(file_loader.clone()),
         build_test_mode,
     );
-    if !verifier_callbacks.verifier.encountered_vir_error {
-        print_verification_results(&verifier_callbacks.verifier);
-    }
     let VerifierCallbacksEraseMacro { verifier, lifetime_start_time, lifetime_end_time, .. } =
         verifier_callbacks;
+    if !verifier.args.output_json && !verifier.encountered_vir_error {
+        println!(
+            "verification results:: verified: {} errors: {}{}",
+            verifier.count_verified,
+            verifier.count_errors,
+            if !is_verifying_entire_crate(&verifier) {
+                " (partial verification with `--verify-*`)"
+            } else {
+                ""
+            }
+        );
+    }
     let time1 = Instant::now();
     let time_lifetime = match (lifetime_start_time, lifetime_end_time) {
         (Some(t1), Some(t2)) => t2 - t1,
