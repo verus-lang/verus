@@ -289,7 +289,7 @@ test_verify_one_file! {
             fn f(#[verifier::spec] &self) {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "self has mode spec, function has mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "parameter must have mode exec")
 }
 
 test_verify_one_file! {
@@ -302,7 +302,7 @@ test_verify_one_file! {
             proof fn f(&self, b: bool) {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "self has mode spec, function has mode proof")
+    } => Err(err) => assert_vir_error_msg(err, "parameter must have mode proof")
 }
 
 test_verify_one_file! {
@@ -315,7 +315,7 @@ test_verify_one_file! {
             proof fn f(&self, tracked b: bool) {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "self has mode spec, function has mode proof")
+    } => Err(err) => assert_vir_error_msg(err, "parameter must have mode spec")
 }
 
 test_verify_one_file! {
@@ -329,7 +329,7 @@ test_verify_one_file! {
                 true
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "self has mode spec, function has mode proof")
+    } => Err(err) => assert_vir_error_msg(err, "function return value must have mode proof")
 }
 
 test_verify_one_file! {
