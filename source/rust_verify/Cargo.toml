@@ -9,7 +9,7 @@ edition = "2018"
 air = { path = "../air" }
 vir = { path = "../vir" }
 serde = "1"
-serde_json = { version = "1.0", features = ["preserve_order"] }
+serde_json = { version = ">=1.0.95", features = ["preserve_order"] }
 bincode = "1.0.1"
 sise = "0.6.0"
 num-bigint = "0.4.3"
