@@ -184,8 +184,9 @@ test_verify_one_file! {
             true
         }
 
-        fn g() -> bool {
-            ensures(|res: bool| forall(|i: nat| f(i)));
+        fn g() -> (res: bool)
+            ensures forall|i: nat| f(i)
+        {
             return true;
         }
     } => Ok(())

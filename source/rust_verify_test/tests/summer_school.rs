@@ -546,7 +546,7 @@ fn e13_pass() {
 
                     proof fn cheese_take_two() {
                         assert forall|o1:Order| o1.is_appetizer() implies
-                            exists(|o2:Order| o2.is_sandwich() && o1.get_cheese() == o2.get_cheese()) by
+                            exists|o2:Order| o2.is_sandwich() && o1.get_cheese() == o2.get_cheese() by
                         {
                             // ensures(exists(|o2: Order| matches!((o1, o2), (Order::Appetizer { cheese: c1, .. }, Order::Sanwhich { cheese: c2, .. }) if c1 == c2)))
 

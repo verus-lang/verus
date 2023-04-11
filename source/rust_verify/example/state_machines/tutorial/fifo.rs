@@ -183,8 +183,8 @@ tokenized_state_machine!{FifoQueue<T> {
 
     #[invariant]
     pub fn valid_storage_all(&self) -> bool {
-        forall(|i: nat| 0 <= i && i < self.len() ==>
-            self.valid_storage_at_idx(i))
+        forall|i: nat| 0 <= i && i < self.len() ==>
+            self.valid_storage_at_idx(i)
     }
 
     init!{
@@ -194,11 +194,10 @@ tokenized_state_machine!{FifoQueue<T> {
             // an empty cell.
 
             require(
-                forall(|i: nat| 0 <= i && i < backing_cells.len() ==>
+                (forall|i: nat| 0 <= i && i < backing_cells.len() ==>
                     #[trigger] storage.dom().contains(i)
                     && storage.index(i)@.pcell === backing_cells.index(i as int)
-                    && storage.index(i)@.value.is_None(),
-                )
+                    && storage.index(i)@.value.is_None())
             );
             require(backing_cells.len() > 0);
 
@@ -388,7 +387,7 @@ tokenized_state_machine!{FifoQueue<T> {
                 assert(head != tail);
             }
         }
-        assert(forall(|i| pre.valid_storage_at_idx(i) ==> post.valid_storage_at_idx(i)));
+        assert(forall|i| pre.valid_storage_at_idx(i) ==> post.valid_storage_at_idx(i));
     }
 
     #[inductive(produce_end)]
