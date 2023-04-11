@@ -810,6 +810,8 @@ fn chain_count(expr: &Expr) -> u32 {
     }
 }
 
+const ILLEGAL_CALLEES: &[&str] = &["forall", "exists", "choose"];
+
 impl Visitor {
     fn chain_operators(&mut self, expr: &mut Expr) -> bool {
         let count = chain_count(expr);
@@ -881,6 +883,21 @@ impl Visitor {
             Expr::Unary(u @ ExprUnary { op: UnOp::Forall(..), .. }) => u,
             Expr::Unary(u @ ExprUnary { op: UnOp::Exists(..), .. }) => u,
             Expr::Unary(u @ ExprUnary { op: UnOp::Choose(..), .. }) => u,
+            Expr::Call(ExprCall { attrs: _, func, paren_token: _, args: _ }) => {
+                if let Expr::Path(syn_verus::ExprPath { path, qself: None, attrs: _ }) = &**func {
+                    if path.segments.len() == 1
+                        && ILLEGAL_CALLEES.contains(&path.segments[0].ident.to_string().as_str())
+                    {
+                        let err = format!(
+                            "forall, choose, and exists do not allow parentheses, use `{}|<vars>| expr` instead",
+                            path.segments[0].ident.to_string()
+                        );
+                        *expr = Expr::Verbatim(quote_spanned!(expr.span() => compile_error!(#err)));
+                        return true;
+                    }
+                }
+                return false;
+            }
             _ => {
                 return false;
             }

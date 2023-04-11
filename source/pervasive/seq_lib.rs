@@ -61,7 +61,7 @@ impl<A> Seq<A> {
                 } else {
                     let subseq = self.drop_last().filter(pred);
                     assert(subseq.contains(self.drop_last()[i]));   // trigger recursive invocation
-                    let j = choose(|j| 0<=j<subseq.len() && subseq[j]==self[i]);
+                    let j = choose|j| 0<=j<subseq.len() && subseq[j]==self[i];
                     assert(out[j] == self[i]);  // TODO(andrea): same, seems needless
                 }
             }
@@ -176,8 +176,8 @@ impl<A> Seq<A> {
 
     /// returns `true` if the sequequence has no duplicate elements
     pub open spec fn no_duplicates(self) -> bool {
-        forall(|i, j| 0 <= i < self.len() && 0 <= j < self.len() && i != j
-            ==> self[i] != self[j])
+        forall|i, j| 0 <= i < self.len() && 0 <= j < self.len() && i != j
+            ==> self[i] != self[j]
     }
 
     /// Returns `true` if two sequences are disjoint

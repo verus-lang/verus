@@ -91,7 +91,7 @@ proof fn next_refines_next(pre: A::State, post: A::State, label: B::Label) {
 
     reveal(A::State::next);
 
-    match choose(|step: A::Step| A::State::next_by(pre, post, label, step)) {
+    match choose|step: A::Step| A::State::next_by(pre, post, label, step) {
         A::Step::add(n) => {
             assert_by(A::State::add(pre, post, label, n), { reveal(A::State::next_by); });
 
