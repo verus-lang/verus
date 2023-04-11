@@ -1,3 +1,5 @@
+**NOTE: An updated Verus is under heavy development in the [`main_new` branch](https://github.com/verus-lang/verus/tree/main_new): most issues are being addressed there. The `main` branch will soon be archived, and replaced with the `main_new` branch.**
+
 [![Quick Start](https://img.shields.io/badge/tutorial-quick%20start-informational)](https://verus-lang.github.io/verus/guide/getting_started.html) [![Library Documentation](https://img.shields.io/badge/docs-vstd-informational)](https://verus-lang.github.io/verus/verusdoc/lib/)
 
 Verus is a tool for verifying the correctness of code written in Rust.
