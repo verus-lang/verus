@@ -262,6 +262,29 @@ fn run() -> Result<(), String> {
         forward_args
     };
 
+    let exclude: Vec<_> = {
+        let mut i = 0;
+        while i < args.len() {
+            if args[i] == "--exclude" {
+                args.remove(i);
+                args.remove(i);
+            } else {
+                i += 1;
+            }
+        }
+        let mut exclude = Vec::new();
+        let mut i = 0;
+        while i < args_bucket.len() {
+            if args_bucket[i] == "--exclude" {
+                args_bucket.remove(i);
+                exclude.push(args_bucket.remove(i));
+            } else {
+                i += 1;
+            }
+        }
+        exclude
+    };
+
     let feature_args: Vec<_> = {
         let (feature_args, new_args_bucket): (Vec<_>, Vec<_>) =
             args_bucket.iter().cloned().enumerate().partition(|(i, y)| {
@@ -287,8 +310,11 @@ fn run() -> Result<(), String> {
                 if release {
                     vargo = vargo.arg("--release");
                 }
+                vargo = vargo.args(&cargo_forward_args);
+                for e in exclude.iter() {
+                    vargo = vargo.arg("--exclude").arg(e);
+                }
                 vargo
-                    .args(&cargo_forward_args)
                     .status()
                     .map_err(|x| format!("vargo could not execute vargo ({})", x))
                     .and_then(|x| {
@@ -448,8 +474,11 @@ fn run() -> Result<(), String> {
                 target: &str,
                 extra_args: &[String],
                 package: Option<&str>,
+                exclude: &[String],
             ) -> Result<(), String> {
-                if package == Some(target) || package == None {
+                if package == Some(target)
+                    || package == None && !exclude.iter().find(|x| x.as_str() == target).is_some()
+                {
                     info(format!("building {}", target).as_str());
                     let mut cmd = std::process::Command::new("cargo");
                     let mut cmd = cmd
@@ -485,7 +514,7 @@ fn run() -> Result<(), String> {
             ];
 
             let build_vstd = {
-                if let Some(package) = package {
+                (if let Some(package) = package {
                     if packages.contains(&package) {
                         false
                     } else if package == "vstd" {
@@ -495,7 +524,7 @@ fn run() -> Result<(), String> {
                     }
                 } else {
                     true
-                }
+                }) && !exclude.iter().find(|x| x.as_str() == "vstd").is_some()
             };
 
             for p in packages {
@@ -510,7 +539,7 @@ fn run() -> Result<(), String> {
                 } else {
                     &cargo_forward_args
                 };
-                build_target(release, p, &extra_args[..], package)?;
+                build_target(release, p, &extra_args[..], package, &exclude[..])?;
             }
 
             let mut dependencies_mtime = None;
