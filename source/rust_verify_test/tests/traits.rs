@@ -1331,3 +1331,52 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] proof_fn_spec_self verus_code! {
+        trait Bar {
+            proof fn bar(&self, other: &Self);
+        }
+
+        proof fn consume<V>(v: V) { }
+
+        struct X;
+        impl Bar for X {
+            proof fn bar(&self, other: &Self)
+            {
+                consume(*self); // fine, since 'self' is spec-mode
+                consume(*self);
+            }
+        }
+
+        trait Qux {
+            proof fn bar(&self, other: &Self)
+                ensures self != other; // FAILS
+        }
+
+        struct Y { some_int: u8 }
+        impl Qux for Y {
+            proof fn bar(&self, other: &Self)
+            {
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] proof_fn_spec_self_with_proof_arg verus_code! {
+        trait Bar {
+            proof fn bar(&self, tracked other: &Self);
+        }
+
+        proof fn consume<V>(tracked v: V) { }
+
+        struct X;
+        impl Bar for X {
+            proof fn bar(&self, tracked other: &Self)
+            {
+                consume(*other);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot move out of `*other` which is behind a shared reference")
+}
