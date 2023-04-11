@@ -39,6 +39,7 @@ test_verify_one_file! {
 
         fn test() {
             let x: () = returns_nothing(0, 0);
+            assert(x == ());
         }
     } => Ok(())
 }
