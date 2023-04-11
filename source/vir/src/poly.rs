@@ -288,7 +288,9 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                     };
                     args.push(arg);
                 }
-                let typ = if is_trait || typ_is_poly(ctx, &function.ret.x.typ) {
+                let typ = if (is_trait || typ_is_poly(ctx, &function.ret.x.typ))
+                    && function.has_return()
+                {
                     coerce_typ_to_poly(ctx, &expr.typ)
                 } else {
                     coerce_typ_to_native(ctx, &expr.typ)

@@ -28,3 +28,38 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_ensures_returns_default_regression_392 verus_code! {
+        fn returns_nothing(a: u8, b: u8)
+            requires a == b,
+            ensures a == b,
+        {
+        }
+
+        fn test() {
+            let x: () = returns_nothing(0, 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_ensures_returns_default_regression_497 verus_code! {
+        trait Foo {
+            exec fn foo(&self);
+        }
+
+        struct X;
+
+        impl Foo for X {
+            exec fn foo(&self) {
+                // do nothing
+            }
+        }
+
+        exec fn bar() {
+            let z: X = X;
+            let x: () = z.foo();
+        }
+    } => Ok(())
+}
