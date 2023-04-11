@@ -282,7 +282,13 @@ impl<K, V> Map<K, V> {
         unimplemented!();
     }
 
+    pub open spec fn map_entries<W>(self, f: FnSpec(K, V) -> W) -> Map<K, W> {
+        Map::new(|k: K| self.contains_key(k), |k: K| f(k, self[k]))
+    }
 
+    pub open spec fn map_values<W>(self, f: FnSpec(V) -> W) -> Map<K, W> {
+        Map::new(|k: K| self.contains_key(k), |k: K| f(self[k]))
+    }
 }
 
 // Trusted axioms
