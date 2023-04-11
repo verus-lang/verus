@@ -30,7 +30,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_ensures_returns_default_regression_392 verus_code! {
+    #[test] test_ensures_returns_default_regression_392_1 verus_code! {
         fn returns_nothing(a: u8, b: u8)
             requires a == b,
             ensures a == b,
@@ -60,6 +60,35 @@ test_verify_one_file! {
         exec fn bar() {
             let z: X = X;
             let x: () = z.foo();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_ensures_returns_default_regression_392_2 verus_code! {
+        spec fn foo() -> bool { true }
+
+        fn returns_unit() ensures foo() { }
+
+        fn test(b: bool) {
+            let x: ();
+            if b {
+                x = returns_unit();
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_ensures_returns_default_regression_392_3 verus_code! {
+        spec fn foo() -> bool { true }
+
+        fn returns_unit() ensures foo() { }
+
+        fn takes_unit(u: ()) { }
+
+        fn test(b: bool) {
+            takes_unit(returns_unit());
         }
     } => Ok(())
 }
