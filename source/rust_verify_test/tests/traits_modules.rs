@@ -227,7 +227,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "self has mode spec, function has mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "parameter must have mode exec")
 }
 
 test_verify_one_file! {
