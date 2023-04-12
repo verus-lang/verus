@@ -75,16 +75,6 @@ fn check_fn_decl<'tcx>(
     }
 }
 
-fn sig_uses_self_param<'tcx>(sig: &'tcx FnSig<'tcx>) -> bool {
-    match &sig.decl.implicit_self {
-        ImplicitSelfKind::None => false,
-        ImplicitSelfKind::Imm
-        | ImplicitSelfKind::Mut
-        | ImplicitSelfKind::ImmRef
-        | ImplicitSelfKind::MutRef => true,
-    }
-}
-
 pub(crate) fn find_body_krate<'tcx>(
     krate: &'tcx Crate<'tcx>,
     body_id: &BodyId,
@@ -465,21 +455,6 @@ pub(crate) fn check_item_fn<'tcx>(
     let mut visibility = visibility;
     if path == vir::def::exec_nonstatic_call_path(&ctxt.vstd_crate_name) {
         visibility.restricted_to = None;
-    }
-
-    if trait_path.is_some() && sig_uses_self_param(sig) {
-        let self_mode = params[0].x.mode;
-        if mode != self_mode {
-            // It's hard for erase.rs to support mode != param_mode (we'd have to erase self),
-            // so we currently disallow it:
-            return err_span_str(
-                sig.span,
-                &format!(
-                    "self has mode {}, function has mode {} -- these cannot be different",
-                    self_mode, mode
-                ),
-            );
-        }
     }
 
     let func = FunctionX {

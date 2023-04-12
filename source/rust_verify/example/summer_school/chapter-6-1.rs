@@ -112,7 +112,7 @@ state_machine!{
         }
 
         pub open spec fn key_holder(&self, key: Key) -> int {
-            choose(|idx| self.host_has_key(idx, key))
+            choose|idx| self.host_has_key(idx, key)
         }
 
         pub open spec fn abstraction_one_key(&self, key: Key) -> Value {

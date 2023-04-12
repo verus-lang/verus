@@ -1292,17 +1292,16 @@ impl Verifier {
         &mut self,
         compiler: &Compiler,
         spans: &SpanContext,
-    ) -> Result<bool, VirErr> {
+    ) -> Result<(), VirErr> {
         // Verify crate
         let time3 = Instant::now();
-        if !self.args.no_verify {
-            self.verify_crate_inner(&compiler, spans)?;
-        }
+        let result =
+            if !self.args.no_verify { self.verify_crate_inner(&compiler, spans) } else { Ok(()) };
         let time4 = Instant::now();
 
         self.time_vir_verify = time4 - time3;
         self.time_vir += self.time_vir_verify;
-        Ok(true)
+        result
     }
 
     fn construct_vir_crate<'tcx>(
@@ -1605,7 +1604,7 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             }
 
             match self.verifier.verify_crate(compiler, &spans) {
-                Ok(_) => {}
+                Ok(()) => {}
                 Err(err) => {
                     let reporter = Reporter::new(&spans, compiler);
                     reporter.report_as(&err, MessageLevel::Error);

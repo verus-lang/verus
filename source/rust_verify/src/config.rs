@@ -42,6 +42,7 @@ pub struct Args {
     pub no_auto_recommends_check: bool,
     pub arch_word_bits: vir::prelude::ArchWordBits,
     pub time: bool,
+    pub output_json: bool,
     pub rlimit: u32,
     pub smt_options: Vec<(String, String)>,
     pub multiple_errors: u32,
@@ -119,6 +120,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_NO_AUTO_RECOMMENDS_CHECK: &str = "no-auto-recommends-check";
     const OPT_ARCH_WORD_BITS: &str = "arch-word-bits";
     const OPT_TIME: &str = "time";
+    const OPT_OUTPUT_JSON: &str = "output-json";
     const OPT_RLIMIT: &str = "rlimit";
     const OPT_SMT_OPTION: &str = "smt-option";
     const OPT_MULTIPLE_ERRORS: &str = "multiple-errors";
@@ -176,6 +178,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     );
     opts.optopt("", OPT_ARCH_WORD_BITS, "Size in bits for usize/isize: valid options are either '32', '64', or '32,64'. (default: 32,64)\nWARNING: this flag is a temporary workaround and will be removed in the near future", "BITS");
     opts.optflag("", OPT_TIME, "Measure and report time taken");
+    opts.optflag("", OPT_OUTPUT_JSON, "Emit verification results and timing as json");
     opts.optopt(
         "",
         OPT_RLIMIT,
@@ -294,6 +297,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
             })
             .unwrap_or(vir::prelude::ArchWordBits::Either32Or64),
         time: matches.opt_present(OPT_TIME),
+        output_json: matches.opt_present(OPT_OUTPUT_JSON),
         rlimit: matches
             .opt_get::<u32>(OPT_RLIMIT)
             .unwrap_or_else(|_| error("expected integer after rlimit".to_string()))

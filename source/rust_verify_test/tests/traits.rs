@@ -352,7 +352,7 @@ test_verify_one_file! {
             fn f(#[verifier::spec] &self) {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "self has mode spec, function has mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "parameter must have mode exec")
 }
 
 test_verify_one_file! {
@@ -365,7 +365,7 @@ test_verify_one_file! {
             proof fn f(&self, b: bool) {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "self has mode spec, function has mode proof")
+    } => Err(err) => assert_vir_error_msg(err, "parameter must have mode proof")
 }
 
 test_verify_one_file! {
@@ -378,7 +378,7 @@ test_verify_one_file! {
             proof fn f(&self, tracked b: bool) {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "self has mode spec, function has mode proof")
+    } => Err(err) => assert_vir_error_msg(err, "parameter must have mode spec")
 }
 
 test_verify_one_file! {
@@ -392,7 +392,7 @@ test_verify_one_file! {
                 true
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "self has mode spec, function has mode proof")
+    } => Err(err) => assert_vir_error_msg(err, "function return value must have mode proof")
 }
 
 test_verify_one_file! {
@@ -1417,4 +1417,53 @@ test_verify_one_file! {
             assert(false);
         }
     } => Err(err) => assert_rust_error_msg(err, "not all trait items implemented, missing: `unprovable`")
+}
+
+test_verify_one_file! {
+    #[test] proof_fn_spec_self verus_code! {
+        trait Bar {
+            proof fn bar(&self, other: &Self);
+        }
+
+        proof fn consume<V>(v: V) { }
+
+        struct X;
+        impl Bar for X {
+            proof fn bar(&self, other: &Self)
+            {
+                consume(*self); // fine, since 'self' is spec-mode
+                consume(*self);
+            }
+        }
+
+        trait Qux {
+            proof fn bar(&self, other: &Self)
+                ensures self != other; // FAILS
+        }
+
+        struct Y { some_int: u8 }
+        impl Qux for Y {
+            proof fn bar(&self, other: &Self)
+            {
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] proof_fn_spec_self_with_proof_arg verus_code! {
+        trait Bar {
+            proof fn bar(&self, tracked other: &Self);
+        }
+
+        proof fn consume<V>(tracked v: V) { }
+
+        struct X;
+        impl Bar for X {
+            proof fn bar(&self, tracked other: &Self)
+            {
+                consume(*other);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot move out of `*other` which is behind a shared reference")
 }

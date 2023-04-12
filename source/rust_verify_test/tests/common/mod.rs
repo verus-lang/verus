@@ -158,6 +158,10 @@ pub fn run_verus(
         panic!("not running in vargo, read the README for instructions");
     }
 
+    let extra_args: Vec<_> = std::env::var("VERUS_EXTRA_ARGS")
+        .map(|x| x.split_whitespace().map(|x| x.to_string()).collect::<Vec<_>>())
+        .unwrap_or(Vec::new());
+
     #[cfg(target_os = "macos")]
     let (pre, dl, exe) = ("lib", "dylib", "");
 
@@ -243,6 +247,8 @@ pub fn run_verus(
     if json_errors {
         verus_args.push("--error-format=json".to_string());
     }
+
+    verus_args.extend(extra_args.into_iter());
 
     verus_args.push(entry_file.to_str().unwrap().to_string());
     verus_args.append(&mut vec!["--cfg".to_string(), "erasure_macro_todo".to_string()]);

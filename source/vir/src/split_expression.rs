@@ -532,6 +532,12 @@ fn split_call(
         )
         .expect("expr_to_exp_as_spec");
 
+        // In requires, old(x) is really just x:
+        let mut f_var_at = |e: &Exp| match &e.x {
+            ExpX::VarAt(x, crate::ast::VarAt::Pre) => e.new_x(ExpX::Var(x.clone())),
+            _ => e.clone(),
+        };
+        let exp = crate::sst_visitor::map_exp_visitor(&exp, &mut f_var_at);
         let exp_subsituted = inline_expression(args, typs, params, typ_bounds, &exp);
         if exp_subsituted.is_err() {
             continue;

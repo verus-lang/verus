@@ -374,10 +374,9 @@ impl<T> RwLock<T> {
             invariant
                 i <= rc_width,
                 v@.len() == i as int,
-                forall(|j: int| 0 <= j && j < i ==>
+                forall|j: int| 0 <= j && j < i ==>
                     v@.index(j).well_formed()
-                      && equal(v@.index(j).constant(), (tracked_inst, j))
-                ),
+                      && equal(v@.index(j).constant(), (tracked_inst, j)),
                 tracked_inst@ == inst,
                 forall |j: int|
                     #![trigger( ref_counts_tokens.dom().contains(j) )]

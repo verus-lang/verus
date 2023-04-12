@@ -2,15 +2,23 @@
 
 set -e
 
-if [ "$1" = "--release" ]; then
-    shift
+DIR="$( cd "$( dirname $(readlink -f "${BASH_SOURCE[0]}") )" >/dev/null 2>&1 && pwd )"
+SOURCE="$DIR/.."
+
+# default to release, if it is compiled
+if [ -e "$SOURCE"/target-verus/release/rust_verify ]; then
     PROFILE=release
 else
     PROFILE=debug
 fi
 
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-SOURCE="$DIR/.."
+if [ "$1" = "--release" ]; then
+    shift
+    PROFILE=release
+elif [ "$1" = "--debug" ]; then
+    shift
+    PROFILE=debug
+fi
 
 TOOLCHAIN=$(cd "$SOURCE" && rustup show active-toolchain | cut -d ' ' -f 1)
 
