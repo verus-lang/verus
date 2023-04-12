@@ -14,7 +14,7 @@ use crate::rust_to_vir_base::{
     check_generic_bound, check_generics_bounds, def_id_to_vir_path, fn_item_hir_id_to_self_def_id,
     hack_get_def_name, mid_ty_to_vir, mk_visibility, typ_path_and_ident_to_vir_path,
 };
-use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
+use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn, CheckItemFnEither};
 use crate::util::{err_span_str, unsupported_err_span};
 use crate::{err_unless, unsupported_err, unsupported_err_unless};
 
@@ -56,7 +56,7 @@ fn check_item<'tcx>(
         ItemKind::Fn(sig, generics, body_id) => {
             check_item_fn(
                 ctxt,
-                vir,
+                &mut vir.functions,
                 item.owner_id.to_def_id(),
                 FunctionKind::Static,
                 visibility(),
@@ -65,7 +65,7 @@ fn check_item<'tcx>(
                 None,
                 None,
                 generics,
-                body_id,
+                CheckItemFnEither::BodyId(body_id),
             )?;
         }
         ItemKind::Use { .. } => {}
@@ -329,7 +329,7 @@ fn check_item<'tcx>(
                                     };
                                     check_item_fn(
                                         ctxt,
-                                        vir,
+                                        &mut vir.functions,
                                         impl_item.owner_id.to_def_id(),
                                         kind,
                                         impl_item_visibility,
@@ -338,7 +338,7 @@ fn check_item<'tcx>(
                                         trait_path_typ_args.clone().map(|(p, _)| p),
                                         Some((&impll.generics, impl_def_id)),
                                         &impl_item.generics,
-                                        body_id,
+                                        CheckItemFnEither::BodyId(body_id),
                                     )?;
                                 }
                             }
@@ -406,7 +406,8 @@ fn check_item<'tcx>(
             let generics_bnds =
                 check_generics_bounds(ctxt.tcx, trait_generics, false, trait_def_id)?;
             let trait_path = def_id_to_vir_path(ctxt.tcx, trait_def_id);
-            let mut methods: Vec<Fun> = Vec::new();
+            let mut methods: Vec<vir::ast::Function> = Vec::new();
+            let mut method_names: Vec<Fun> = Vec::new();
             for trait_item_ref in *trait_items {
                 let trait_item = ctxt.tcx.hir().trait_item(trait_item_ref.id);
                 let TraitItem {
@@ -423,20 +424,15 @@ fn check_item<'tcx>(
                 match kind {
                     TraitItemKind::Fn(sig, fun) => {
                         let body_id = match fun {
-                            TraitFn::Required(..) => {
-                                // REVIEW: it would be nice to allow spec functions to omit the body,
-                                // but rustc seems to drop the parameter attributes if there's no body.
-                                unsupported_err!(
-                                    *span,
-                                    "trait function must have a body that calls no_method_body()"
-                                )
+                            TraitFn::Provided(body_id) => CheckItemFnEither::BodyId(body_id),
+                            TraitFn::Required(param_names) => {
+                                CheckItemFnEither::ParamNames(*param_names)
                             }
-                            TraitFn::Provided(body_id) => body_id,
                         };
                         let attrs = ctxt.tcx.hir().attrs(trait_item.hir_id());
                         let fun = check_item_fn(
                             ctxt,
-                            vir,
+                            &mut methods,
                             owner_id.to_def_id(),
                             FunctionKind::TraitMethodDecl { trait_path: trait_path.clone() },
                             visibility(),
@@ -448,7 +444,7 @@ fn check_item<'tcx>(
                             body_id,
                         )?;
                         if let Some(fun) = fun {
-                            methods.push(fun);
+                            method_names.push(fun);
                         }
                     }
                     _ => {
@@ -456,9 +452,11 @@ fn check_item<'tcx>(
                     }
                 }
             }
+            let mut methods = vir::headers::make_trait_decls(methods)?;
+            vir.functions.append(&mut methods);
             let traitx = vir::ast::TraitX {
                 name: trait_path,
-                methods: Arc::new(methods),
+                methods: Arc::new(method_names),
                 typ_params: Arc::new(generics_bnds),
             };
             vir.traits.push(ctxt.spanned_new(item.span, traitx));

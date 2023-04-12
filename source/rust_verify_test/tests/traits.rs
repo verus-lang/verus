@@ -135,19 +135,20 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_ill_formed_1 code! {
         trait T1 {
-            fn f(&self); // need to call no_method_body()
+            fn f(&self) {
+                no_method_body()
+            }
         }
-    } => Err(err) => assert_vir_error_msg(err, ": trait function must have a body that calls no_method_body()")
+    } => Err(err) => assert_vir_error_msg(err, "no_method_body can only appear in trait method declarations")
 }
 
 test_verify_one_file! {
     #[test] test_ill_formed_2 code! {
         trait T1 {
             fn f(&self) {
-                // need to call no_method_body()
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "trait method declaration body must end with call to no_method_body()")
+    } => Err(err) => assert_vir_error_msg(err, "trait default methods are not yet supported")
 }
 
 test_verify_one_file! {
@@ -237,6 +238,72 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_ill_formed_10 code! {
+        trait T1 {
+            fn VERUS_SPEC__f(&self) { no_method_body() }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "no matching method found for method specification")
+}
+
+test_verify_one_file! {
+    #[test] test_ill_formed_11 code! {
+        trait T1 {
+            fn VERUS_SPEC__f(&self) { }
+            fn f(&self);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "trait method declaration body must end with call to no_method_body()")
+}
+
+test_verify_one_file! {
+    #[test] test_ill_formed_12 code! {
+        trait T1 {
+            fn VERUS_SPEC__f(&self, x: bool) { no_method_body() }
+            fn f(&self);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "method specification has different number of parameters from method")
+}
+
+test_verify_one_file! {
+    #[test] test_ill_formed_13 code! {
+        trait T1 {
+            fn VERUS_SPEC__f(&self, x: bool) { no_method_body() }
+            fn f(&self, x: u16);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "method specification has different parameters from method")
+}
+
+test_verify_one_file! {
+    #[test] test_ill_formed_14 code! {
+        trait T1 {
+            fn VERUS_SPEC__f(&self, x: bool) -> bool { no_method_body() }
+            fn f(&self, x: bool) -> u16;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "method specification has a different return from method")
+}
+
+test_verify_one_file! {
+    #[test] test_ill_formed_15_todo code! {
+        trait T1 {
+            fn VERUS_SPEC__f<A>(&self, x: A) -> bool { no_method_body() }
+            fn f<B>(&self, x: B) -> bool; // error: A and B have different names
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: trait generics")
+    // when generics on trait methods are supported, this should be the error message:
+    // } => Err(err) => assert_vir_error_msg(err, "method specification has different type parameters or bounds from method")
+}
+
+test_verify_one_file! {
+    #[test] test_ill_formed_16 verus_code! {
+        trait T {
+            fn f(&self);
+        }
+        fn test<A: T>(a: &A) {
+            a.VERUS_SPEC__f();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`crate::T::VERUS_SPEC__f` is not supported")
+}
+
+test_verify_one_file! {
     #[test] test_mode_matches_1 verus_code! {
         trait T1 {
             spec fn f(&self);
@@ -263,11 +330,9 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mode_matches_3 code! {
+    #[test] test_mode_matches_3 verus_code! {
         trait T1 {
-            fn f(#[verifier::spec] &self) {
-                no_method_body()
-            }
+            fn f(#[verifier::spec] &self);
         }
         struct S {}
         impl T1 for S {
@@ -278,11 +343,9 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mode_matches_4 code! {
+    #[test] test_mode_matches_4 verus_code! {
         trait T1 {
-            fn f(&self) {
-                no_method_body()
-            }
+            fn f(&self);
         }
         struct S {}
         impl T1 for S {
@@ -333,11 +396,9 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mode_matches_8 code! {
+    #[test] test_mode_matches_8 verus_code! {
         trait T1 {
-            fn f(&self) -> bool {
-                no_method_body()
-            }
+            fn f(&self) -> bool;
         }
         struct S {}
         impl T1 for S {
@@ -1239,7 +1300,9 @@ test_verify_one_file! {
     #[test] test_impl_trait_bound_cycle3 verus_code! {
         struct R {}
         struct S {}
-        impl U for R {}
+        impl U for R {
+            fn m() {}
+        }
         impl T<R> for S {}
         spec fn g<A: T<R>>() -> bool { true }
         spec fn f() -> bool { g::<S>() }
@@ -1330,6 +1393,30 @@ test_verify_one_file! {
             proof fn zero_properties() {}
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_implement_all_trait_items verus_code! {
+        trait T {
+            proof fn unprovable(&self)
+                ensures false;
+        }
+        struct S { }
+        impl T for S { }
+
+        proof fn foo<J: T>(t: J)
+            ensures false
+        {
+            t.unprovable();
+            assert(false);
+        }
+
+        proof fn some_proof() {
+            let s = S { };
+            foo::<S>(s);
+            assert(false);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "not all trait items implemented, missing: `unprovable`")
 }
 
 test_verify_one_file! {
