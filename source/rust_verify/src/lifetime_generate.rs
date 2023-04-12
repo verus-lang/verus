@@ -27,6 +27,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{Fun, FunX, Function, Mode, Path};
 use vir::ast_util::get_field;
+use vir::def::VERUS_SPEC;
 
 impl TypX {
     fn mk_unit() -> Typ {
@@ -1398,6 +1399,10 @@ fn erase_fn_common<'tcx>(
     } else {
         def_id_to_vir_path(ctxt.tcx, id)
     };
+    let is_verus_spec = path.segments.last().expect("segment.last").starts_with(VERUS_SPEC);
+    if is_verus_spec {
+        return;
+    }
     let fun_name = Arc::new(FunX { path: path.clone(), trait_path });
     if let Some(f_vir) = &ctxt.functions[&fun_name] {
         if f_vir.x.mode == Mode::Spec {
@@ -1416,7 +1421,7 @@ fn erase_fn_common<'tcx>(
         } else {
             None
         };
-        let body_exp = if external_body {
+        let body_exp = if body.is_none() || external_body {
             force_block(Some(Box::new((sig_span, ExpX::Panic))), sig_span)
         } else {
             let body = &body.expect("body");
@@ -1528,7 +1533,7 @@ fn erase_fn<'tcx>(
     impl_generics: Option<DefId>,
     empty_body: bool,
     external_body: bool,
-    body_id: &BodyId,
+    body_id: Option<&BodyId>,
 ) {
     erase_fn_common(
         Some(krate),
@@ -1543,7 +1548,7 @@ fn erase_fn<'tcx>(
         impl_generics,
         empty_body,
         external_body,
-        Some(body_id),
+        body_id,
     );
 }
 
@@ -1560,8 +1565,8 @@ fn erase_trait<'tcx>(
         match kind {
             TraitItemKind::Fn(sig, fun) => {
                 let body_id = match fun {
-                    TraitFn::Provided(body_id) => body_id,
-                    _ => panic!("unexpected trait function"),
+                    TraitFn::Provided(body_id) => Some(body_id),
+                    TraitFn::Required(..) => None,
                 };
                 let id = owner_id.to_def_id();
                 erase_fn(
@@ -1622,7 +1627,7 @@ fn erase_impl<'tcx>(
                             Some(impl_id),
                             false,
                             vattrs.external_body,
-                            body_id,
+                            Some(body_id),
                         );
                     }
                     _ => panic!(),
@@ -1890,7 +1895,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                                 None,
                                 false,
                                 vattrs.external_body,
-                                body_id,
+                                Some(body_id),
                             );
                         }
                         ItemKind::Trait(
