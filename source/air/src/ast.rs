@@ -1,4 +1,5 @@
 use crate::messages::{Message, MessageLabels};
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -19,7 +20,7 @@ pub type TypeError = String;
 
 pub type Ident = Arc<String>;
 
-pub(crate) type Snapshot = HashMap<Ident, u32>;
+pub(crate) type Snapshot = IndexMap<Ident, u32>;
 pub(crate) type Snapshots = HashMap<Ident, Snapshot>;
 
 pub type Typ = Arc<TypX>;
