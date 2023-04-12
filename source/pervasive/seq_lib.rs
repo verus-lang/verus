@@ -15,9 +15,17 @@ impl<A> Seq<A> {
     /// Applies the function `f` to each element of the sequence, and returns
     /// the resulting sequence.
     /// The `int` parameter of `f` is the index of the element being mapped.
-
+    // TODO(verus): rename to map_entries, for consistency with Map::map
     pub open spec fn map<B>(self, f: FnSpec(int, A) -> B) -> Seq<B> {
         Seq::new(self.len(), |i: int| f(i, self[i]))
+    }
+
+    /// Applies the function `f` to each element of the sequence, and returns
+    /// the resulting sequence.
+    /// The `int` parameter of `f` is the index of the element being mapped.
+    // TODO(verus): rename to map, because this is what everybody wants.
+    pub open spec fn map_values<B>(self, f: FnSpec(A) -> B) -> Seq<B> {
+        Seq::new(self.len(), |i: int| f(self[i]))
     }
 
     #[verifier::opaque]
