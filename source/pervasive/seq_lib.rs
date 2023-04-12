@@ -20,7 +20,8 @@ impl<A> Seq<A> {
         Seq::new(self.len(), |i: int| f(i, self[i]))
     }
 
-    pub closed spec fn filter(self, pred: FnSpec(A) -> bool) -> Self
+    #[verifier::opaque]
+    pub open spec fn filter(self, pred: FnSpec(A) -> bool) -> Self
         decreases self.len()
     {
         if self.len() == 0 {
@@ -45,6 +46,7 @@ impl<A> Seq<A> {
             self.filter(pred).len() <= self.len(),
         decreases self.len()
     {
+        reveal(Self::filter);
         let out = self.filter(pred);
         if 0 < self.len() {
             self.drop_last().filter_lemma(pred);
@@ -82,6 +84,7 @@ impl<A> Seq<A> {
         (a+b).filter(pred) == a.filter(pred) + b.filter(pred),
     decreases b.len()
     {
+        reveal(Self::filter);
         if 0 < b.len()
         {
             Self::drop_last_distributes_over_add(a, b);

@@ -14,7 +14,7 @@ We are using the default `rustfmt` settings from the Rust repository.
 To check the source code, type the following from the `source` directory:
 
 ```
-../rust/install/bin/cargo-fmt -- --check
+vargo fmt -- --check
 ```
 
 If you have other toolchains installed (with `rustup`) this will run the active
