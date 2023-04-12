@@ -3,11 +3,11 @@ use crate::def::Spanned;
 use crate::sst::{Dest, Exp, ExpX, Stm, StmX, Stms, UniqueIdent};
 use crate::sst_visitor::exp_visitor_check;
 use air::scope_map::ScopeMap;
-use std::collections::{HashMap, HashSet};
+use indexmap::{IndexMap, IndexSet};
 use std::sync::Arc;
 
-fn to_ident_set(input: &HashSet<UniqueIdent>) -> HashSet<Arc<String>> {
-    let mut output = HashSet::new();
+fn to_ident_set(input: &IndexSet<UniqueIdent>) -> IndexSet<Arc<String>> {
+    let mut output = IndexSet::new();
     for item in input {
         output.insert(item.name.clone());
     }
@@ -17,7 +17,7 @@ fn to_ident_set(input: &HashSet<UniqueIdent>) -> HashSet<Arc<String>> {
 // Compute:
 // - which variables have definitely been assigned to up to each statement
 // - which variables have been modified within each statement
-pub type AssignMap = HashMap<*const Spanned<StmX>, HashSet<Arc<String>>>;
+pub type AssignMap = IndexMap<*const Spanned<StmX>, IndexSet<Arc<String>>>;
 
 pub(crate) fn get_loc_var(exp: &Exp) -> UniqueIdent {
     match &exp.x {
@@ -31,9 +31,9 @@ pub(crate) fn get_loc_var(exp: &Exp) -> UniqueIdent {
 
 pub(crate) fn stm_assign(
     assign_map: &mut AssignMap,
-    declared: &HashMap<UniqueIdent, Typ>,
-    assigned: &mut HashSet<UniqueIdent>,
-    modified: &mut HashSet<UniqueIdent>,
+    declared: &IndexMap<UniqueIdent, Typ>,
+    assigned: &mut IndexSet<UniqueIdent>,
+    modified: &mut IndexSet<UniqueIdent>,
     stm: &Stm,
 ) -> Stm {
     let result = match &stm.x {
@@ -118,7 +118,7 @@ pub(crate) fn stm_assign(
         }
         StmX::Loop { label, cond, body, invs, typ_inv_vars, modified_vars } => {
             let mut pre_modified = modified.clone();
-            *modified = HashSet::new();
+            *modified = IndexSet::new();
             let cond = if let Some((cond_stm, cond_exp)) = cond {
                 let cond_stm = stm_assign(assign_map, declared, assigned, modified, cond_stm);
                 Some((cond_stm, cond_exp.clone()))
@@ -183,9 +183,9 @@ pub(crate) fn stm_assign(
 
 pub(crate) fn stms_assign(
     assign_map: &mut AssignMap,
-    declared: &HashMap<UniqueIdent, Typ>,
-    assigned: &mut HashSet<UniqueIdent>,
-    modified: &mut HashSet<UniqueIdent>,
+    declared: &IndexMap<UniqueIdent, Typ>,
+    assigned: &mut IndexSet<UniqueIdent>,
+    modified: &mut IndexSet<UniqueIdent>,
     stms: &Stms,
 ) -> Stms {
     let stms: Vec<Stm> =

@@ -2181,8 +2181,9 @@ pub(crate) fn body_stm_to_air(
 
     set_fuel(ctx, &mut local_shared, hidden);
 
-    let mut declared: HashMap<UniqueIdent, Typ> = HashMap::new();
-    let mut assigned: HashSet<UniqueIdent> = HashSet::new();
+    use indexmap::{IndexMap, IndexSet};
+    let mut declared: IndexMap<UniqueIdent, Typ> = IndexMap::new();
+    let mut assigned: IndexSet<UniqueIdent> = IndexSet::new();
     let mut has_mut_params = false;
     for param in params.iter() {
         declared.insert(unique_local(&param.x.name), param.x.typ.clone());
@@ -2222,7 +2223,7 @@ pub(crate) fn body_stm_to_air(
         snapshot_count: 0,
         sids: vec![initial_sid.clone()],
         snap_map: Vec::new(),
-        assign_map: HashMap::new(),
+        assign_map: indexmap::IndexMap::new(),
         mask,
         post_condition_info: PostConditionInfo {
             dest,
@@ -2233,7 +2234,7 @@ pub(crate) fn body_stm_to_air(
         loop_infos: Vec::new(),
     };
 
-    let mut _modified = HashSet::new();
+    let mut _modified = IndexSet::new();
 
     let stm = crate::sst_vars::stm_assign(
         &mut state.assign_map,
