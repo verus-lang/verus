@@ -282,7 +282,18 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_ill_formed_15 verus_code! {
+    #[test] test_ill_formed_15_todo code! {
+        trait T1 {
+            fn VERUS_SPEC__f<A>(&self, x: A) -> bool { no_method_body() }
+            fn f<B>(&self, x: B) -> bool; // error: A and B have different names
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: trait generics")
+    // when generics on trait methods are supported, this should be the error message:
+    // } => Err(err) => assert_vir_error_msg(err, "method specification has different type parameters or bounds from method")
+}
+
+test_verify_one_file! {
+    #[test] test_ill_formed_16 verus_code! {
         trait T {
             fn f(&self);
         }

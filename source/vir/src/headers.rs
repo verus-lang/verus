@@ -278,7 +278,7 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
                 if x1 != x2 || ps1 != ps2 {
                     return err_str(
                         &spec_method.span,
-                        "method specification different type parameters from method",
+                        "method specification has different type parameters or bounds from method",
                     );
                 }
             }
