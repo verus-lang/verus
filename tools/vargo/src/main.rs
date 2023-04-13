@@ -569,6 +569,14 @@ fn run() -> Result<(), String> {
                     //     from_f.display(),
                     //     to_f.display()
                     // ));
+
+                    if to_f.exists() {
+                        // If we directly overwrite a binary it can cause
+                        // a code-signing issue on macs. To work around this, we
+                        // delete the old file first before moving the new one.
+                        std::fs::remove_file(&to_f).unwrap();
+                    }
+
                     std::fs::copy(&from_f, &to_f)
                         .map_err(|x| format!("could not copy file ({})", x))?;
                 } else {
