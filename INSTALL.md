@@ -64,7 +64,7 @@ vargo build --release
 This will build everything you need to use Verus:
 - The `rust_verify` binary, which verifies Verus code.
 - Additional libraries that Verus code will need to include (`builtin`, `builtin_macros`, and `state_machines_macros`).
-- The [Verus standard library", `vstd`](https://verus-lang.github.io/verus/verusdoc/lib/), which is written in Verus. Our build system builds **and verifies** the `vstd` crate.
+- The [Verus standard library, `vstd`](https://verus-lang.github.io/verus/verusdoc/lib/), which is written in Verus. Our build system builds **and verifies** the `vstd` crate.
 
 If everything is successful, you should see output indicating that various modules in `vstd` are being verified.
 
