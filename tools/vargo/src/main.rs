@@ -103,7 +103,7 @@ use lib_exe_names::*;
 fn clean_vstd(target_verus_dir: &std::path::PathBuf) -> Result<(), String> {
     for f in vec![
         format!("vstd.vir"),
-        format!("{LIB_PRE}vstd.rlib"),
+        format!("libvstd.rlib"),
         format!(".vstd-fingerprint"),
     ]
     .into_iter()
@@ -578,7 +578,7 @@ fn run() -> Result<(), String> {
 
             let fingerprint_path = target_verus_dir.join(".vstd-fingerprint");
 
-            for f in [format!("vstd.vir"), format!("{LIB_PRE}vstd.rlib")] {
+            for f in [format!("vstd.vir"), format!("libvstd.rlib")] {
                 if !target_verus_dir.join(f).exists() {
                     if fingerprint_path.exists() {
                         info(&format!("removing {}", fingerprint_path.display()));
