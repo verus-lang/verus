@@ -38,6 +38,11 @@ pub fn main() {
                 let pervasive_path = internal_args.next().unwrap();
                 let vstd_vir = internal_args.next().unwrap();
                 let target_path = std::path::PathBuf::from(internal_args.next().unwrap());
+                let verify = match internal_args.next().unwrap().as_str() {
+                    "verify" => true,
+                    "no-verify" => false,
+                    _ => panic!("invalid verify argument"),
+                };
 
                 let mut internal_args: Vec<_> = internal_args.collect();
                 internal_args.insert(0, internal_program);
@@ -49,6 +54,8 @@ pub fn main() {
                 let mut our_args: Args = Default::default();
                 our_args.pervasive_path = Some(pervasive_path.to_string());
                 our_args.verify_pervasive = true;
+                our_args.no_verify = !verify;
+                our_args.no_lifetime = !verify;
                 our_args.multiple_errors = 2;
                 our_args.export = Some(target_path.join(vstd_vir).to_str().unwrap().to_string());
                 our_args.compile = true;
