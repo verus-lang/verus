@@ -10,8 +10,8 @@ use crate::util::{err_span_str, err_span_string, unsupported_err_span};
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{
-    def::Res, Body, BodyId, Crate, FnDecl, FnHeader, FnRetTy, FnSig, Generics, HirId,
-    ImplicitSelfKind, MaybeOwner, MutTy, Param, PrimTy, QPath, Ty, TyKind, Unsafety,
+    def::Res, Body, BodyId, Crate, FnDecl, FnHeader, FnRetTy, FnSig, Generics, HirId, MaybeOwner,
+    MutTy, Param, PrimTy, QPath, Ty, TyKind, Unsafety,
 };
 use rustc_middle::ty::TyCtxt;
 use rustc_span::symbol::{Ident, Symbol};
