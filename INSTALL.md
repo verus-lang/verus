@@ -38,31 +38,35 @@ If you don't have it yet, obtain rustup from https://rustup.rs.
 We have only tested recent versions (1.25.2); older versions of rustup may behave in way our build
 process does not expect.
 
-## Step 3: Build the Verifier
+## Step 3: Build Verus
 
 You should be in the `source` subdirectory.
 
-Activate the development environment with `. ../tools/activate` (for bash and zsh), `. ../tools/activate.fish`
-(for fish), or `..\tools\activate.bat` or `..\tools\activate.ps1` (on Windows). This will (re-)build `vargo`,
-our cargo wrapper, and add it to the `PATH` for the current shell.
+First, activate the development environment with one of the following:
 
-Then run `vargo build --release` (omit `--release` for a debug build).
+```
+source ../tools/activate       # for bash and zsh
+source ../tools/activate.fish  # for fish
+..\tools\activate.bat          # for Windows
+..\tools\activate.ps1          # for Windows (Power Shell)
+```
 
-This will build Verus' crates:
-- three crates that constitute the verifier:
-    - AIR (assertion intermediate language):
-      an intermediate language based on assert and assume statements,
-      which is translated into SMT queries for Z3
-    - VIR (verification intermediate language):
-      a simplified subset of Rust,
-      which is translated into AIR
-    - `rust_verify`, which contains a `main` function that runs Rust and translates
-      the Rust intermediate representation into VIR
-- three crates that contains built-in definitions and macros used by code being verified:
-    - `builtin`
-    - `builtin_macros`
-    - `states_machines_macros`
-- the `vstd` crate, built with Verus itself, that contains Verus' standard library
+This command builds (or re-builds) `vargo`, our cargo wrapper, and adds it to the `PATH` for the current shell.
+
+Now, simply run,
+
+```
+vargo build --release
+```
+
+(Omit `--release` for a debug build.)
+
+This will build everything you need to use Verus:
+- The `rust_verify` binary, which verifies Verus code.
+- Additional libraries that Verus libraries will need to include (`builtin`, `builtin_macros`, and `state_machines_macros`).
+- The [Verus standard library", `vstd`](https://verus-lang.github.io/verus/verusdoc/lib/), which is written in Verus. Our build system builds **and verifies** the `vstd` crate.
+
+If everything is successful, you should see output indicating that various modules in `vstd` are being verified.
 
 # Running the Verifier 
 
@@ -73,14 +77,28 @@ From the `source` directory, run:
 vargo run -p rust_verify --release -- rust_verify/example/recursion.rs
 ```
 
-You can also use the helper script to run the verifier without re-building on **Linux and macOS**:
+This will make sure that the Verus and `vstd` builds are up-to-date, then run the verifier.
+
+You can also run the verifier directly (skipping the up-to-date check) on **Linux and macOS**:
 
 ```
 ./tools/rust-verify.sh rust_verify/example/recursion.rs
 ```
 
-This runs the `Rust --> VIR --> AIR --> Z3` pipeline on `recursion.rs`
-and reports the errors that Z3 finds.
+You should see something like the following, indicating that verification was a success:
+
+```
+verification results:: verified: 11 errors: 0
+```
+
+You can also add the `--compile` flag, which tells Verus to compile the Verus code into a binary via `rustc`. For example:
+
+```
+./tools/rust-verify.sh rust_verify/example/doubly_linked_xor.rs --compile
+./doubly_linked_xor
+```
+
+Now you're ready to write some Verus! Check out [our guide](https://verus-lang.github.io/verus/guide/getting_started.html) if you haven't yet.
 
 # IDE Support
 
