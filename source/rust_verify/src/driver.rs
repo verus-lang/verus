@@ -157,6 +157,18 @@ fn find_verusroot() -> Option<VerusRoot> {
                 Some(VerusRoot { path, in_vargo: false })
             })
         })
+        .or_else(|| {
+            std::env::current_exe().ok().and_then(|current| {
+                current.parent().and_then(|p| {
+                    let mut path = std::path::PathBuf::from(&p);
+                    if !path.is_absolute() {
+                        path =
+                            std::env::current_dir().expect("working directory invalid").join(path);
+                    }
+                    Some(VerusRoot { path, in_vargo: false })
+                })
+            })
+        })
 }
 
 #[cfg(target_os = "macos")]
@@ -189,10 +201,7 @@ impl<'a> VerusExterns<'a> {
     pub fn to_args(&self) -> impl Iterator<Item = String> {
         let mut args = vec![
             format!("--extern"),
-            format!(
-                "builtin={}",
-                self.path.join(format!("{LIB_PRE}builtin.rlib")).to_str().unwrap()
-            ),
+            format!("builtin={}", self.path.join(format!("libbuiltin.rlib")).to_str().unwrap()),
             format!("--extern"),
             format!(
                 "builtin_macros={}",
@@ -213,7 +222,7 @@ impl<'a> VerusExterns<'a> {
             args.push(format!("--extern"));
             args.push(format!(
                 "vstd={}",
-                self.path.join(format!("{LIB_PRE}vstd.rlib")).to_str().unwrap()
+                self.path.join(format!("libvstd.rlib")).to_str().unwrap()
             ));
         }
         args.into_iter()

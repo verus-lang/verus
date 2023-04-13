@@ -79,6 +79,15 @@ You can also use the helper script to run the verifier without re-building on **
 ./tools/rust-verify.sh rust_verify/example/recursion.rs
 ```
 
+On **Windows**, you can also run the verifier executable directly.
+First, add the rustc binary path to the Windows `PATH`.
+You can get the rustc binary path by running `vargo path`, which will print the rustc binary path.
+Then run:
+
+```
+.\target-verus\release\rust_verify.exe rust_verify/example/recursion.rs
+```
+
 This runs the `Rust --> VIR --> AIR --> Z3` pipeline on `recursion.rs`
 and reports the errors that Z3 finds.
 

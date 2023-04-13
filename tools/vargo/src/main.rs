@@ -61,7 +61,7 @@ fn warn(msg: &str) {
 }
 
 const SUPPORTED_COMMANDS: &[&str] = &[
-    "build", "test", "nextest", "run", "clean", "fmt", "metadata",
+    "build", "test", "nextest", "run", "clean", "fmt", "metadata", "path",
 ];
 
 const CARGO_FORWARD_ARGS: &[&str] = &["-v", "-vv", "--verbose", "--offline"];
@@ -75,6 +75,7 @@ enum Task {
     Clean,
     Metadata,
     Fmt,
+    Path,
 }
 
 #[cfg(target_os = "macos")]
@@ -118,6 +119,19 @@ fn clean_vstd(target_verus_dir: &std::path::PathBuf) -> Result<(), String> {
     Ok(())
 }
 
+fn rustup_show(arg: &str) -> Result<String, String> {
+    let output = std::process::Command::new("rustup")
+        .arg("show")
+        .arg(arg)
+        .stderr(std::process::Stdio::inherit())
+        .output()
+        .map_err(|x| format!("could not execute rustup ({})", x))?;
+    if !output.status.success() {
+        return Err(format!("rustup failed"));
+    }
+    String::from_utf8(output.stdout).map_err(|_| format!("rustup output is invalid utf8"))
+}
+
 fn run() -> Result<(), String> {
     let _vargo_nest = {
         let vargo_nest = std::env::var("VARGO_NEST")
@@ -149,33 +163,26 @@ fn run() -> Result<(), String> {
         .ok_or(
             format!("rust-toolchain.toml does not contain the toolchain.channel key, or it isn't a string\nrun vargo in `source`"))?;
 
-    if !in_nextest {
-        let output = std::process::Command::new("rustup")
-            .arg("show")
-            .arg("active-toolchain")
-            .stderr(std::process::Stdio::inherit())
-            .output()
-            .map_err(|x| format!("could not execute rustup ({})", x))?;
-        if !output.status.success() {
-            return Err(format!("rustup failed"));
-        }
+    let toolchain = if !in_nextest {
+        let stdout = rustup_show("active-toolchain")?;
         let active_toolchain_re = Regex::new(
             r"^(([A-Za-z0-9.]+)-[A-Za-z0-9_]+-[A-Za-z0-9]+-[A-Za-z0-9-]+) \(overridden by '(.*)'\)",
         )
         .unwrap();
-        let stdout = std::str::from_utf8(&output.stdout)
-            .map_err(|_| format!("rustup output is invalid utf8"))?;
         let mut captures = active_toolchain_re.captures_iter(&stdout);
         if let Some(cap) = captures.next() {
             let channel = &cap[2];
-            let _toolchain = &cap[1];
+            let toolchain = &cap[1];
             if rust_toolchain_toml_channel != channel {
                 return Err(format!("rustup is using a toolchain with channel {channel}, we expect {rust_toolchain_toml_channel}\ndo you have a rustup override set?"));
             }
+            Some(toolchain.to_string())
         } else {
             return Err(format!("unexpected output from `rustup show active-toolchain`\nexpected a toolchain override\ngot: {stdout}"));
         }
-    }
+    } else {
+        None
+    };
 
     if !std::path::Path::new(if cfg!(target_os = "windows") {
         ".\\z3.exe"
@@ -221,6 +228,7 @@ fn run() -> Result<(), String> {
         "clean" => Task::Clean,
         "metadata" => Task::Metadata,
         "fmt" => Task::Fmt,
+        "path" => Task::Path,
         _ => panic!("unexpected command"),
     };
     let release = args_bucket
@@ -451,6 +459,23 @@ fn run() -> Result<(), String> {
                     Err(format!("cargo returned status code {:?}", x.code()))
                 }
             }),
+        (Task::Path, _, false) => {
+            let stdout = rustup_show("home")?;
+            let home = std::path::Path::new(stdout.trim());
+            let toolchains = std::path::Path::new("toolchains");
+            let toolchain = &toolchain.expect("toolchain");
+            let toolchain = std::path::Path::new(toolchain);
+            let bin = std::path::Path::new("bin");
+            let path = home.join(toolchains).join(toolchain).join(bin);
+            if !path.is_dir() {
+                return Err(format!(
+                    "expected path to be {} but this directory does not exist",
+                    path.display()
+                ));
+            }
+            println!("{}", path.display());
+            Ok(())
+        }
         (Task::Build, Some("air"), false) => {
             let status = std::process::Command::new("cargo")
                 .env("RUSTC_BOOTSTRAP", "1")
