@@ -71,6 +71,7 @@ fn main() {
         PERVASIVE_PATH.to_string(),
         VSTD_VIR.to_string(),
         verus_target_path.to_str().expect("invalid path").to_string(),
+        (if no_verify { "no-verify" } else { "verify" }).to_string(),
         "--extern".to_string(),
         format!("builtin={lib_builtin_path}"),
         "--extern".to_string(),
@@ -84,10 +85,6 @@ fn main() {
         "--out-dir".to_string(),
         verus_target_path.to_str().expect("invalid path").to_string(),
     ];
-    if no_verify {
-        child_args.push("--no-verify".to_string());
-        child_args.push("--no-lifetime".to_string());
-    }
     if release {
         child_args.push("-C".to_string());
         child_args.push("opt-level=3".to_string());
