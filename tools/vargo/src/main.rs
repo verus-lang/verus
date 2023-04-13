@@ -60,11 +60,22 @@ fn warn(msg: &str) {
     );
 }
 
+fn log_command(cmd: &std::process::Command, verbose: bool) {
+    if verbose {
+        let vargo_nest = *VARGO_NEST.read().unwrap();
+        eprintln!(
+            "{}",
+            yansi::Paint::magenta(format!("vargo running [{}]: {:?}", vargo_nest, cmd))
+        );
+    }
+}
+
 const SUPPORTED_COMMANDS: &[&str] = &[
     "build", "test", "nextest", "run", "clean", "fmt", "metadata",
 ];
 
 const CARGO_FORWARD_ARGS: &[&str] = &["-v", "-vv", "--verbose", "--offline"];
+const CARGO_FORWARD_ARG_KEYS: &[&str] = &["--color="];
 const CARGO_FORWARD_ARGS_NEXT: &[&str] = &[];
 
 #[derive(Clone, Copy, Debug)]
@@ -229,6 +240,20 @@ fn run() -> Result<(), String> {
         .map(|p| args_bucket.remove(p))
         .is_some();
 
+    // This argument is --vargo-verbose to distinguish it from --verbose
+    // which is forwarded to cargo
+    let verbose = args_bucket
+        .iter()
+        .position(|x| x.as_str() == "--vargo-verbose")
+        .map(|p| args_bucket.remove(p))
+        .is_some();
+
+    let vstd_no_verify = args_bucket
+        .iter()
+        .position(|x| x.as_str() == "--vstd-no-verify")
+        .map(|p| args_bucket.remove(p))
+        .is_some();
+
     let package = args_bucket
         .iter()
         .position(|x| x == "--package" || x == "-p")
@@ -243,6 +268,9 @@ fn run() -> Result<(), String> {
                 args_bucket.into_iter().partition(|x| {
                     let x = x.as_str();
                     CARGO_FORWARD_ARGS.contains(&x)
+                        || CARGO_FORWARD_ARG_KEYS
+                            .iter()
+                            .any(|prefix| x.starts_with(prefix))
                 });
             args_bucket = new_args_bucket;
             forward_args
@@ -314,6 +342,7 @@ fn run() -> Result<(), String> {
                 for e in exclude.iter() {
                     vargo = vargo.arg("--exclude").arg(e);
                 }
+                log_command(&vargo, verbose);
                 vargo
                     .status()
                     .map_err(|x| format!("vargo could not execute vargo ({})", x))
@@ -386,10 +415,13 @@ fn run() -> Result<(), String> {
             if let (Task::Clean, Some("vstd")) = (task, package) {
                 clean_vstd(&target_verus_dir)
             } else {
-                let status = std::process::Command::new("cargo")
+                let mut cargo = std::process::Command::new("cargo");
+                let cargo = cargo
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VARGO_TARGET_DIR", target_verus_dir_absolute)
-                    .args(&args)
+                    .args(&args);
+                log_command(&cargo, verbose);
+                let status = cargo
                     .status()
                     .map_err(|x| format!("could not execute cargo ({})", x))?;
 
@@ -419,43 +451,57 @@ fn run() -> Result<(), String> {
                     .ok_or(format!("vargo only supports `vargo nextest run` for now"))?;
                 let current_exe =
                     std::env::current_exe().expect("no path for the current executable");
-                let status = std::process::Command::new("cargo")
+                let mut cargo = std::process::Command::new("cargo");
+                let cargo = cargo
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VARGO_IN_NEXTEST", "1")
                     .env("VERUS_IN_VARGO", "1")
                     .env("CARGO", current_exe)
-                    .args(&args)
+                    .args(&args);
+                log_command(&cargo, verbose);
+                let status = cargo
                     .status()
                     .map_err(|x| format!("could not execute cargo ({})", x))?;
                 std::process::exit(status.code().unwrap_or(1));
             } else {
-                let status = std::process::Command::new("cargo")
+                let mut cargo = std::process::Command::new("cargo");
+                let cargo = cargo
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VERUS_IN_VARGO", "1")
-                    .args(&args)
+                    .args(&args);
+                log_command(&cargo, verbose);
+                let status = cargo
                     .status()
                     .map_err(|x| format!("could not execute cargo ({})", x))?;
                 std::process::exit(status.code().unwrap_or(1));
             }
         }
-        (Task::Metadata | Task::Test { .. }, _, true) => std::process::Command::new("cargo")
-            .env("RUSTC_BOOTSTRAP", "1")
-            .env("VERUS_IN_VARGO", "1")
-            .args(&args)
-            .status()
-            .map_err(|x| format!("could not execute cargo ({})", x))
-            .and_then(|x| {
-                if x.success() {
-                    Ok(())
-                } else {
-                    Err(format!("cargo returned status code {:?}", x.code()))
-                }
-            }),
-        (Task::Build, Some("air"), false) => {
-            let status = std::process::Command::new("cargo")
+        (Task::Metadata | Task::Test { .. }, _, true) => {
+            let mut cargo = std::process::Command::new("cargo");
+            let cargo = cargo
                 .env("RUSTC_BOOTSTRAP", "1")
                 .env("VERUS_IN_VARGO", "1")
-                .args(args)
+                .args(&args);
+            log_command(&cargo, verbose);
+            cargo
+                .status()
+                .map_err(|x| format!("could not execute cargo ({})", x))
+                .and_then(|x| {
+                    if x.success() {
+                        Ok(())
+                    } else {
+                        Err(format!("cargo returned status code {:?}", x.code()))
+                    }
+                })
+        }
+        (Task::Build, Some("air"), false) => {
+            let mut cargo = std::process::Command::new("cargo");
+            let cargo = cargo
+                .env("RUSTC_BOOTSTRAP", "1")
+                .env("VERUS_IN_VARGO", "1")
+                .args(args);
+            log_command(&cargo, verbose);
+            let status = cargo
                 .status()
                 .map_err(|x| format!("could not execute cargo ({})", x))?;
 
@@ -475,6 +521,7 @@ fn run() -> Result<(), String> {
                 extra_args: &[String],
                 package: Option<&str>,
                 exclude: &[String],
+                verbose: bool,
             ) -> Result<(), String> {
                 if package == Some(target)
                     || package == None && !exclude.iter().find(|x| x.as_str() == target).is_some()
@@ -491,6 +538,7 @@ fn run() -> Result<(), String> {
                         cmd = cmd.arg("--release");
                     }
                     cmd = cmd.args(extra_args);
+                    log_command(&cmd, verbose);
                     cmd.status()
                         .map_err(|x| format!("could not execute cargo ({})", x))
                         .and_then(|x| {
@@ -539,7 +587,7 @@ fn run() -> Result<(), String> {
                 } else {
                     &cargo_forward_args
                 };
-                build_target(release, p, &extra_args[..], package, &exclude[..])?;
+                build_target(release, p, &extra_args[..], package, &exclude[..], verbose)?;
             }
 
             let mut dependencies_mtime = None;
@@ -638,6 +686,13 @@ fn run() -> Result<(), String> {
                         if release {
                             vstd_build = vstd_build.arg("--release");
                         }
+                        if vstd_no_verify {
+                            vstd_build = vstd_build.arg("--no-verify");
+                        }
+                        if verbose {
+                            vstd_build = vstd_build.arg("--verbose");
+                        }
+                        log_command(&vstd_build, verbose);
                         vstd_build
                             .status()
                             .map_err(|x| format!("could not execute cargo ({})", x))
