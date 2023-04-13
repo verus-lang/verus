@@ -75,8 +75,7 @@ const SUPPORTED_COMMANDS: &[&str] = &[
 ];
 
 const CARGO_FORWARD_ARGS: &[&str] = &["-v", "-vv", "--verbose", "--offline"];
-const CARGO_FORWARD_ARG_KEYS: &[&str] = &["--color="];
-const CARGO_FORWARD_ARGS_NEXT: &[&str] = &[];
+const CARGO_FORWARD_ARGS_NEXT: &[&str] = &["--color"];
 
 #[derive(Clone, Copy, Debug)]
 enum Task {
@@ -268,9 +267,6 @@ fn run() -> Result<(), String> {
                 args_bucket.into_iter().partition(|x| {
                     let x = x.as_str();
                     CARGO_FORWARD_ARGS.contains(&x)
-                        || CARGO_FORWARD_ARG_KEYS
-                            .iter()
-                            .any(|prefix| x.starts_with(prefix))
                 });
             args_bucket = new_args_bucket;
             forward_args
