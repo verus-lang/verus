@@ -3,3 +3,5 @@ name = "vstd_build"
 version = "0.1.0"
 edition = "2018"
 
+[dependencies]
+yansi = "0.5"
