@@ -1,0 +1,12 @@
+[package]
+name = "verus"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+[target."cfg(windows)".dependencies]
+win32job = "1"
+
+[build_dependencies]
+regex = "1"

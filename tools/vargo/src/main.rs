@@ -147,7 +147,7 @@ fn run() -> Result<(), String> {
         .ok_or(
             format!("rust-toolchain.toml does not contain the toolchain.channel key, or it isn't a string\nrun vargo in `source`"))?;
 
-    if !in_nextest {
+    let toolchain = if !in_nextest {
         let output = std::process::Command::new("rustup")
             .arg("show")
             .arg("active-toolchain")
@@ -166,13 +166,20 @@ fn run() -> Result<(), String> {
         let mut captures = active_toolchain_re.captures_iter(&stdout);
         if let Some(cap) = captures.next() {
             let channel = &cap[2];
-            let _toolchain = &cap[1];
+            let toolchain = cap[1].to_string();
             if rust_toolchain_toml_channel != channel {
                 return Err(format!("rustup is using a toolchain with channel {channel}, we expect {rust_toolchain_toml_channel}\ndo you have a rustup override set?"));
             }
+            Some(toolchain)
         } else {
             return Err(format!("unexpected output from `rustup show active-toolchain`\nexpected a toolchain override\ngot: {stdout}"));
         }
+    } else {
+        None
+    };
+
+    if let Some(toolchain) = toolchain {
+        std::env::set_var("VARGO_TOOLCHAIN", toolchain);
     }
 
     if !std::path::Path::new(if cfg!(target_os = "windows") {
@@ -514,6 +521,7 @@ fn run() -> Result<(), String> {
                 "builtin_macros",
                 "state_machines_macros",
                 "vstd_build",
+                "verus",
             ];
 
             let build_vstd = {
@@ -553,6 +561,7 @@ fn run() -> Result<(), String> {
                 format!("{}builtin_macros.{}", LIB_PRE, LIB_DL),
                 format!("{}state_machines_macros.{}", LIB_PRE, LIB_DL),
                 format!("rust_verify{}", EXE),
+                format!("verus{}", EXE),
             ]
             .into_iter()
             {
@@ -679,6 +688,7 @@ fn run() -> Result<(), String> {
                     !f.is_file()
                 })
             {
+                info(format!("removing {}", verus_root_path.display()).as_str());
                 std::fs::remove_file(&verus_root_path).map_err(|x| {
                     format!("could not delete file {} ({x})", verus_root_path.display())
                 })?;
