@@ -7,6 +7,7 @@ use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, ValidityResult};
 use air::messages::{message, note, note_bare, Diagnostics, Message, MessageLabel, MessageLevel};
 use air::profiler::Profiler;
+use rustc_errors::{DiagnosticBuilder, EmissionGuarantee};
 use rustc_hir::OwnerNode;
 use verus_rustc_interface::interface::Compiler;
 
@@ -69,14 +70,34 @@ impl Diagnostics for Reporter<'_> {
             }
         }
 
+        fn emit_with_diagnostic_details<'a, G: EmissionGuarantee>(
+            mut diag: DiagnosticBuilder<'a, G>,
+            multispan: MultiSpan,
+            help: &Option<String>,
+        ) {
+            diag.span = multispan;
+            if let Some(help) = help {
+                diag.help(help);
+            }
+            diag.emit();
+        }
+
         match level {
-            MessageLevel::Note => {
-                self.compiler_diagnostics.span_note_without_error(multispan, &msg.note)
-            }
-            MessageLevel::Warning => self.compiler_diagnostics.span_warn(multispan, &msg.note),
-            MessageLevel::Error => {
-                self.compiler_diagnostics.span_err(multispan, &msg.note);
-            }
+            MessageLevel::Note => emit_with_diagnostic_details(
+                self.compiler_diagnostics.struct_note_without_error(&msg.note),
+                multispan,
+                &msg.help,
+            ),
+            MessageLevel::Warning => emit_with_diagnostic_details(
+                self.compiler_diagnostics.struct_warn(&msg.note),
+                multispan,
+                &msg.help,
+            ),
+            MessageLevel::Error => emit_with_diagnostic_details(
+                self.compiler_diagnostics.struct_err(&msg.note),
+                multispan,
+                &msg.help,
+            ),
         }
     }
 }

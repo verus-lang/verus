@@ -44,6 +44,7 @@ pub struct MessageX {
     pub note: String,
     pub spans: Vec<Span>,          // "primary" spans
     pub labels: Vec<MessageLabel>, // additional spans, with string annotations
+    pub help: Option<String>,
 }
 pub type Message = Arc<MessageX>;
 
@@ -74,12 +75,18 @@ impl Diagnostics for Reporter {
 
 /// Basic message, with a note and a single span to be highlighted with ^^^^^^
 pub fn message<S: Into<String>>(level: MessageLevel, note: S, span: &Span) -> Message {
-    Arc::new(MessageX { level, note: note.into(), spans: vec![span.clone()], labels: Vec::new() })
+    Arc::new(MessageX {
+        level,
+        note: note.into(),
+        spans: vec![span.clone()],
+        labels: Vec::new(),
+        help: None,
+    })
 }
 
 /// Bare message without any span
 pub fn message_bare<S: Into<String>>(level: MessageLevel, note: S) -> Message {
-    Arc::new(MessageX { level, note: note.into(), spans: vec![], labels: Vec::new() })
+    Arc::new(MessageX { level, note: note.into(), spans: vec![], labels: Vec::new(), help: None })
 }
 
 /// Message with a span to be highlighted with ^^^^^^, and a label for that span
@@ -94,6 +101,7 @@ pub fn message_with_label<S: Into<String>, T: Into<String>>(
         note: note.into(),
         spans: vec![span.clone()],
         labels: vec![MessageLabel { span: span.clone(), note: label.into() }],
+        help: None,
     })
 }
 
@@ -181,6 +189,18 @@ impl MessageX {
             note: self.note.clone(),
             spans: self.spans.clone(),
             labels: l,
+            help: None,
+        })
+    }
+
+    pub fn help(&self, help: impl Into<String>) -> Message {
+        let MessageX { level, note, spans, labels, help: _ } = &self;
+        Arc::new(MessageX {
+            level: *level,
+            note: note.clone(),
+            spans: spans.clone(),
+            labels: labels.clone(),
+            help: Some(help.into()),
         })
     }
 }
@@ -193,6 +213,7 @@ pub fn error_from_spans(spans: Vec<Span>) -> Message {
         note: "".to_string(),
         spans: spans,
         labels: Vec::new(),
+        help: None,
     })
 }
 
@@ -203,6 +224,7 @@ pub fn error_from_labels(labels: MessageLabels) -> Message {
             note: "".to_string(),
             spans: Vec::new(),
             labels: Vec::new(),
+            help: None,
         })
     } else {
         // Choose the first label to make the "primary" span.
@@ -212,6 +234,7 @@ pub fn error_from_labels(labels: MessageLabels) -> Message {
             note: note,
             spans: vec![span],
             labels: labels[1..].to_vec(),
+            help: None,
         })
     }
 }
