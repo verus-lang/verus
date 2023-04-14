@@ -32,16 +32,20 @@ mod platform {
 
 const TOOLCHAIN: &str = env!("VERUS_TOOLCHAIN");
 
-const RUST_VERIFY: &str =
+const RUST_VERIFY_FILE_NAME: &str =
     if cfg!(target_os = "windows") { "rust_verify.exe" } else { "rust_verify" };
+
+const Z3_FILE_NAME: &str = if cfg!(target_os = "windows") { ".\\z3.exe" } else { "./z3" };
 
 fn main() {
     let mut args = std::env::args().into_iter();
     let _bin = args.next().expect("executable in args");
 
-    let Some(verusroot_path) = std::env::current_exe().ok().and_then(|current| {
-        current.parent().and_then(|p| {
-            let mut path = std::path::PathBuf::from(&p);
+    let parent = std::env::current_exe()
+        .ok()
+        .and_then(|current| current.parent().map(std::path::PathBuf::from));
+
+    let Some(verusroot_path) = parent.clone().and_then(|mut path| {
             if path.join("verus-root").is_file() {
                 if !path.is_absolute() {
                     path =
@@ -51,17 +55,28 @@ fn main() {
             } else {
                 None
             }
-        })
     }) else {
         eprintln!("error: did not find a valid verusroot");
         std::process::exit(128);
     };
 
     let mut cmd = Command::new("rustup");
+    if std::env::var("VERUS_Z3_PATH").ok().is_none() {
+        if let Some(mut maybe_z3_path) = parent.map(|p| p.join(Z3_FILE_NAME)) {
+            if maybe_z3_path.exists() {
+                if !maybe_z3_path.is_absolute() {
+                    maybe_z3_path = std::env::current_dir()
+                        .expect("working directory invalid")
+                        .join(maybe_z3_path);
+                }
+                cmd.env("VERUS_Z3_PATH", maybe_z3_path);
+            }
+        }
+    }
     cmd.arg("run")
         .arg(TOOLCHAIN)
         .arg("--")
-        .arg(verusroot_path.join(RUST_VERIFY))
+        .arg(verusroot_path.join(RUST_VERIFY_FILE_NAME))
         .args(args)
         .stdin(std::process::Stdio::inherit());
     match platform::exec(&mut cmd) {

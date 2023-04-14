@@ -63,12 +63,24 @@ fn reader_thread(
 
 impl SmtProcess {
     pub fn launch() -> Self {
-        let mut child = std::process::Command::new(smt_executable_name())
+        let mut child = match std::process::Command::new(smt_executable_name())
             .args(&["-smt2", "-in"])
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .spawn()
-            .expect("could not execute Z3 process");
+        {
+            Ok(child) => child,
+            Err(err) => {
+                eprintln!(
+                    "{}",
+                    yansi::Paint::red(format!("error: could not execute Z3 process ({err})"))
+                );
+                eprintln!(
+                    "help: z3 needs to be in the PATH, or the environment variable VERUS_Z3_PATH must be set to the path of the z3 executable"
+                );
+                std::process::exit(128);
+            }
+        };
         let smt_pipe_stdout = BufReader::new(child.stdout.take().expect("take stdout"));
         let child_stdin = child.stdin.take().expect("take stdin");
         let (requests_sender, requests_receiver) = channel();
