@@ -116,6 +116,12 @@ fn clean_vstd(target_verus_dir: &std::path::PathBuf) -> Result<(), String> {
     Ok(())
 }
 
+const Z3_FILE_NAME: &str = if cfg!(target_os = "windows") {
+    ".\\z3.exe"
+} else {
+    "./z3"
+};
+
 fn run() -> Result<(), String> {
     let _vargo_nest = {
         let vargo_nest = std::env::var("VARGO_NEST")
@@ -182,14 +188,9 @@ fn run() -> Result<(), String> {
         std::env::set_var("VARGO_TOOLCHAIN", toolchain);
     }
 
-    if !std::path::Path::new(if cfg!(target_os = "windows") {
-        ".\\z3.exe"
-    } else {
-        "./z3"
-    })
-    .is_file()
-        && std::env::var("VERUS_Z3_PATH").is_err()
-    {
+    let z3_path = std::path::Path::new(Z3_FILE_NAME);
+
+    if !z3_path.is_file() && std::env::var("VERUS_Z3_PATH").is_err() {
         warn("z3 not found -- this is likely to cause errors; run `tools/get-z3.sh`, or set VERUS_Z3_PATH");
     }
 
@@ -594,6 +595,19 @@ fn run() -> Result<(), String> {
                 } else {
                     dependency_missing = true;
                 }
+            }
+
+            if z3_path.is_file() {
+                let from_f = &z3_path;
+                let to_f = target_verus_dir.join(Z3_FILE_NAME);
+                if to_f.exists() {
+                    // If we directly overwrite a binary it can cause
+                    // a code-signing issue on macs. To work around this, we
+                    // delete the old file first before moving the new one.
+                    std::fs::remove_file(&to_f).unwrap();
+                }
+                std::fs::copy(&from_f, &to_f)
+                    .map_err(|x| format!("could not copy file ({})", x))?;
             }
 
             let fingerprint_path = target_verus_dir.join(".vstd-fingerprint");
