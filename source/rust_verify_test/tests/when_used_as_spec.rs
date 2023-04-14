@@ -116,3 +116,26 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot find function referred to in when_used_as_spec")
 }
+
+test_verify_one_file! {
+    #[test] vec_len_regression_issue212 verus_code! {
+        use vstd::vec::*;
+
+        struct S {
+            pub vec: Vec<()>,
+        }
+
+        impl S {
+            spec fn f(&self) -> bool {
+                0 < self.vec.len()
+            }
+        }
+
+        fn test() {
+            let mut s = S { vec: Vec::new() };
+            assert(!s.f());
+            s.vec.push(());
+            assert(s.f());
+        }
+    } => Ok(())
+}
