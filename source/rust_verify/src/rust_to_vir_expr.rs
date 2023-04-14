@@ -5,10 +5,10 @@ use crate::attributes::{
 use crate::context::{BodyCtxt, Context};
 use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::rust_to_vir_base::{
-    def_id_self_to_vir_path, def_id_self_to_vir_path_expect, def_id_to_vir_path, def_to_path_ident,
-    get_range, hack_get_def_name, is_smt_arith, is_smt_equality, is_type_std_rc_or_arc,
-    local_to_var, mid_ty_simplify, mid_ty_to_vir, mid_ty_to_vir_datatype, mid_ty_to_vir_ghost,
-    mk_range, typ_of_node, typ_of_node_expect_mut_ref, typ_path_and_ident_to_vir_path,
+    def_id_self_to_vir_path, def_id_self_to_vir_path_expect, def_id_to_vir_path, get_range,
+    hack_get_def_name, is_smt_arith, is_smt_equality, is_type_std_rc_or_arc, local_to_var,
+    mid_ty_simplify, mid_ty_to_vir, mid_ty_to_vir_datatype, mid_ty_to_vir_ghost, mk_range,
+    typ_of_node, typ_of_node_expect_mut_ref,
 };
 use crate::rust_to_vir_func::autospec_fun;
 use crate::util::{
@@ -465,8 +465,6 @@ fn fn_call_to_vir<'tcx>(
     node_substs: &[rustc_middle::ty::subst::GenericArg<'tcx>],
     fn_span: Span,
     args: Vec<&'tcx Expr<'tcx>>,
-    // TODO: autoview is being discontinued and should be deleted:
-    autoview_typ: Option<&Typ>,
     defined_locally: bool,
     outer_modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
@@ -730,14 +728,6 @@ fn fn_call_to_vir<'tcx>(
         || is_compilable_operator.is_some());
     let path = if !needs_name {
         None
-    } else if let Some(autoview_typ) = autoview_typ {
-        if let TypX::Datatype(type_path, _) = &**autoview_typ {
-            // If the function call was originally Foo::X with autoview type Bar,
-            // then use the function Bar::X instead.
-            Some(typ_path_and_ident_to_vir_path(type_path, def_to_path_ident(tcx, f)))
-        } else {
-            panic!("autoview_typ must be Datatype");
-        }
     } else if let Some(self_path) = &self_path {
         def_id_self_to_vir_path(tcx, &Some(self_path.clone()), f)
     } else {
@@ -1216,7 +1206,7 @@ fn fn_call_to_vir<'tcx>(
     let raw_inputs =
         EarlyBinder(bctx.ctxt.tcx.fn_sig(f)).subst(tcx, node_substs).skip_binder().inputs();
     assert!(raw_inputs.len() == args.len());
-    let mut vir_args = args
+    let vir_args = args
         .iter()
         .zip(raw_inputs)
         .map(|(arg, raw_param)| {
@@ -1242,27 +1232,7 @@ fn fn_call_to_vir<'tcx>(
             }
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let self_path = if let Some(autoview_typ) = autoview_typ {
-        // replace f(arg0, arg1, ..., argn) with f(arg0.view(), arg1, ..., argn)
-        let typ_args = if let TypX::Datatype(_, args) = &**autoview_typ {
-            args.clone()
-        } else {
-            panic!("autoview_typ must be Datatype")
-        };
-
-        let receiver = args.first().expect("receiver in method call");
-        let self_path = match &(*typ_of_node(bctx, &receiver.hir_id, true)) {
-            TypX::Datatype(path, _) => path.clone(),
-            _ => panic!("unexpected receiver type"),
-        };
-        let view_path = typ_path_and_ident_to_vir_path(&self_path, Arc::new("view".to_string()));
-
-        let fun = Arc::new(FunX { path: view_path, trait_path: None });
-        let target = CallTarget::Static(fun, typ_args);
-        let viewx = ExprX::Call(target, Arc::new(vec![vir_args[0].clone()]));
-        vir_args[0] = bctx.spanned_typed_new(expr.span, autoview_typ, viewx);
-        Some(self_path)
-    } else if let Some(mut self_path) = path.clone() {
+    let self_path = if let Some(mut self_path) = path.clone() {
         let self_path_mut = Arc::make_mut(&mut self_path);
         Arc::make_mut(&mut self_path_mut.segments).pop();
         Some(self_path)
@@ -2290,7 +2260,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 bctx.types.node_substs(fun.hir_id),
                                 fun.span,
                                 args,
-                                None,
                                 true,
                                 modifier,
                             ))
@@ -2994,7 +2963,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 }
                 _ => panic!("unexpected hir for method impl item"),
             };
-            let autoview_typ = bctx.ctxt.autoviewed_call_typs.get(&expr.hir_id);
             let all_args = std::iter::once(*receiver).chain(other_args.iter()).collect::<Vec<_>>();
             fn_call_to_vir(
                 bctx,
@@ -3004,7 +2972,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 bctx.types.node_substs(expr.hir_id),
                 *fn_span,
                 all_args,
-                autoview_typ,
                 defined_locally,
                 modifier,
             )

@@ -84,7 +84,6 @@ impl<A> Vec<A> {
     }
 
     #[verifier(external_body)]
-    #[verifier(autoview)]
     pub fn index(&self, i: usize) -> (r: &A)
         requires
             i < self.len(),

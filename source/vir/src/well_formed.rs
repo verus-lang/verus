@@ -1,6 +1,6 @@
 use crate::ast::{
-    CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, FunX, Function, FunctionKind, Krate,
-    MaskSpec, Mode, MultiOp, Path, PathX, TypX, UnaryOp, UnaryOpr, VirErr, VirErrAs,
+    CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec,
+    Mode, MultiOp, Path, PathX, TypX, UnaryOp, UnaryOpr, VirErr, VirErrAs,
 };
 use crate::ast_util::{
     err_str, err_string, error, is_visible_to_opt, path_as_rust_name, referenced_vars_expr,
@@ -594,48 +594,6 @@ fn check_function(
             return err_str(
                 &function.span,
                 "#[verifier(nonlinear) is only allowed on proof and exec functions",
-            );
-        }
-    }
-
-    if function.x.attrs.autoview {
-        if function.x.mode == Mode::Spec {
-            return err_str(&function.span, "autoview function cannot be declared spec");
-        }
-        let mut segments = (*function.x.name.path.segments).clone();
-        *segments.last_mut().expect("autoview segments") = Arc::new("view".to_string());
-        let segments = Arc::new(segments);
-        let path = Arc::new(PathX { segments, ..(*function.x.name.path).clone() });
-        let fun = Arc::new(FunX { path, ..(*function.x.name).clone() });
-        if let Some(f) = ctxt.funs.get(&fun) {
-            if f.x.params.len() != 1 {
-                return err_str(
-                    &f.span,
-                    "because of autoview, view() function must have 0 paramters",
-                );
-            }
-            let typ_args = if let TypX::Datatype(_, args) = &*f.x.params[0].x.typ {
-                args.clone()
-            } else {
-                panic!("autoview_typ must be Datatype")
-            };
-            assert!(typ_args.len() <= f.x.typ_bounds.len());
-            if f.x.typ_bounds.len() != typ_args.len() {
-                return err_str(
-                    &f.span,
-                    "because of autoview, view() function must have 0 type paramters",
-                );
-            }
-            if f.x.mode != Mode::Spec {
-                return err_str(
-                    &f.span,
-                    "because of autoview, view() function must be declared spec",
-                );
-            }
-        } else {
-            return err_str(
-                &function.span,
-                "autoview function must have corresponding view() function",
             );
         }
     }

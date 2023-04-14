@@ -432,7 +432,6 @@ pub(crate) fn check_item_fn<'tcx>(
         no_auto_trigger: vattrs.no_auto_trigger,
         broadcast_forall: vattrs.broadcast_forall,
         bit_vector: vattrs.bit_vector,
-        autoview: vattrs.autoview,
         autospec,
         atomic: vattrs.atomic,
         integer_ring: vattrs.integer_ring,
