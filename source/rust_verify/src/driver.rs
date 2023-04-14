@@ -161,11 +161,16 @@ fn find_verusroot() -> Option<VerusRoot> {
             std::env::current_exe().ok().and_then(|current| {
                 current.parent().and_then(|p| {
                     let mut path = std::path::PathBuf::from(&p);
-                    if !path.is_absolute() {
-                        path =
-                            std::env::current_dir().expect("working directory invalid").join(path);
+                    if path.join("verus-root").is_file() {
+                        if !path.is_absolute() {
+                            path =
+                                std::env::current_dir().expect("working directory invalid").join(path);
+                        }
+                        Some(VerusRoot { path, in_vargo: false })
+                    } else {
+                        eprintln!("warning: did not find a valid verusroot; continuing, but the builtin and vstd crates are likely missing");
+                        None
                     }
-                    Some(VerusRoot { path, in_vargo: false })
                 })
             })
         })
