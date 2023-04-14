@@ -118,3 +118,56 @@ pub(crate) fn slice_vec_map_result<A, B, E, F: Fn(&A) -> Result<B, E>>(
 ) -> Result<Vec<B>, E> {
     slice.iter().map(f).collect()
 }
+
+pub enum VerusBuildProfile {
+    Debug,
+    Release,
+    Unknown,
+}
+
+impl std::fmt::Display for VerusBuildProfile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            VerusBuildProfile::Debug => "debug",
+            VerusBuildProfile::Release => "release",
+            VerusBuildProfile::Unknown => "unknown",
+        };
+        f.write_str(s)
+    }
+}
+
+pub const fn verus_build_profile() -> VerusBuildProfile {
+    let profile = option_env!("VARGO_BUILD_PROFILE");
+    match profile {
+        Some(p) => {
+            if const_str_equal(p, "release") {
+                VerusBuildProfile::Release
+            } else if const_str_equal(p, "debug") {
+                VerusBuildProfile::Debug
+            } else {
+                panic!("unexpected VARGO_BUILD_PROFILE");
+            }
+        }
+        None => VerusBuildProfile::Unknown,
+    }
+}
+
+// ==================================================================================================
+// this function was copied from https://github.com/Nugine/const-str/blob/main/const-str/src/bytes.rs
+// const-str is MIT licensed
+pub const fn const_str_equal(lhs: &str, rhs: &str) -> bool {
+    let lhs = lhs.as_bytes();
+    let rhs = rhs.as_bytes();
+    if lhs.len() != rhs.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < lhs.len() {
+        if lhs[i] != rhs[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+// ==================================================================================================

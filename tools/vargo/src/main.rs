@@ -229,6 +229,11 @@ fn run() -> Result<(), String> {
         .map(|p| args_bucket.remove(p))
         .is_some();
 
+    std::env::set_var(
+        "VARGO_BUILD_PROFILE",
+        if release { "release" } else { "debug" },
+    );
+
     let package = args_bucket
         .iter()
         .position(|x| x == "--package" || x == "-p")
