@@ -3,10 +3,12 @@
 Thanks for contributing to Verus!  Verus is an Open Source project and welcomes
 contributions.  Please report issues or start discussions here on GitHub.
 
-## Editing the Source Code of Verus
+We use GitHub discussions for feature requests and more open-ended conversations about
+upcoming features, and we reserve GitHub issues for actionable issues (bugs) with
+existing features. Don't worry though: if we think an issue should be a discussion (or
+viceversa) we can always move it later.
 
-You should make sure that your check-out of `rust` is up to date.
-Use the `./tools/update-rust.sh` script from the project root.
+## Editing the Source Code of Verus
 
 Before committing any changes to the source code,
 make sure that it conforms to the `rustfmt` tool's guidelines.
@@ -17,26 +19,13 @@ To check the source code, type the following from the `source` directory:
 vargo fmt -- --check
 ```
 
-If you have other toolchains installed (with `rustup`) this will run the active
-toolchain by default, and not the `rust-fmt` that we compiled with the `rust` compiler.
-
-To switch to the correct tools, you can add the custom toolchain to `rustup`, and set an
-override for this project:
-
-```
-cd ..
-## In the project root:
-rustup toolchain link rust-verify rust/install/
-rustup override set rust-verify
-```
-
-If the source code follows the guidelines, `cargo-fmt -- --check` will produce no output.
+If the source code follows the guidelines, `vargo fmt -- --check` will produce no output.
 Otherwise, it will report suggestions on how to reformat the source code.
 
 To automatically apply these suggestions to the source code, type:
 
 ```
-../rust/install/bin/cargo-fmt
+vargo fmt
 ```
 
 ## Code Documentation
