@@ -1168,11 +1168,14 @@ fn expr_to_stm_opt(
                     // Add overflow checks for bit shifts
                     // For a shift `a << b` or `a >> b`, Rust requires that
                     //    0 <= b < (bitsize of a)
+                    // However, for spec code, this is extended in the obvious way to
+                    // integers outside the range (at least, for b >= 0).
+                    // So we don't need to do a check for here spec code.
 
                     if let BinaryOp::Bitwise(bitwise, mode) = op {
-                        match (state.checking_bounds_for_mode(ctx, *mode), bitwise) {
-                            (false, _) => {}
-                            (true, BitwiseOp::Shr | BitwiseOp::Shl) => {
+                        match (*mode, state.checking_bounds_for_mode(ctx, *mode), bitwise) {
+                            (_, false, _) => {}
+                            (Mode::Exec, true, BitwiseOp::Shr | BitwiseOp::Shl) => {
                                 let zero = sst_int_literal(&expr.span, 0);
                                 let bitwidth =
                                     bitwidth_sst_from_typ(&expr.span, &e1.typ, &ctx.global.arch);
@@ -1190,7 +1193,8 @@ fn expr_to_stm_opt(
                                 let assert = Spanned::new(expr.span.clone(), assert);
                                 stms1.push(assert);
                             }
-                            (true, BitwiseOp::BitXor | BitwiseOp::BitAnd | BitwiseOp::BitOr) => {
+                            (Mode::Proof | Mode::Spec, true, BitwiseOp::Shr | BitwiseOp::Shl) => {}
+                            (_, true, BitwiseOp::BitXor | BitwiseOp::BitAnd | BitwiseOp::BitOr) => {
                                 // no overflow check needed
                             }
                         }

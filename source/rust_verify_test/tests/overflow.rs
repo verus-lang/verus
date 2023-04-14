@@ -185,17 +185,51 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] bit_shift_underflow verus_code! {
-        // TODO Verus currently doesn't support bit-shifts by signed types.
-        // However, if it ever does, then this test case should test that Verus
-        // checks for underflow.
+    #[test] bit_shift_width_mismatch verus_code! {
+        fn test_underflow() {
+            // This type mismatch is unsupported; however, if it is ever supported,
+            // it should be an overflow error.
+            let x: u16 = 0;
+            let y: u32 = 40;
+
+            let z = x << y; // FAILS
+        }
+    } => Err(e) => assert_vir_error_msg(e, "argument bit-width does not match")
+}
+
+test_verify_one_file! {
+    #[test] bit_shift_width_mismatch_signed verus_code! {
+        fn test_underflow() {
+            // This type mismatch is unsupported; however, if it is ever supported,
+            // it should be an underflow error.
+            let x: u16 = 0;
+            let y: i32 = -1;
+
+            let z = x << y; // FAILS
+        }
+    } => Err(e) => assert_vir_error_msg(e, "argument bit-width does not match")
+}
+
+test_verify_one_file! {
+    #[test] bit_shift_unsigned_shift_signed verus_code! {
         fn test_underflow() {
             let x: u16 = 0;
             let y: i16 = -1;
 
-            let z = 0 << y; // FAILS
+            let z = x << y; // FAILS
         }
-    } => Err(e) => assert_vir_error_msg(e, "argument bit-width does not match")
+    } => Err(e) => assert_vir_error_msg(e, "possible bit shift underflow/overflow")
+}
+
+test_verify_one_file! {
+    #[test] bit_shift_underflow verus_code! {
+        fn test_underflow() {
+            let x: i16 = 0;
+            let y: i16 = -1;
+
+            let z = x << y; // FAILS
+        }
+    } => Err(e) => assert_vir_error_msg(e, "possible bit shift underflow/overflow")
 }
 
 test_verify_one_file_with_options! {
@@ -232,4 +266,29 @@ test_verify_one_file_with_options! {
             let z = x << y;
         }
     } => Err(e) => assert_fails(e, 1)
+}
+
+test_verify_one_file! {
+    #[test] spec_bitshift_defined_for_larger_ints verus_code! {
+        fn test() {
+            // Unlike Rust, Z3's bitvector reasoning allows the right-hand side to
+            // be out-of-range
+            assert(1u8 >> 20u8 == 0u8) by(bit_vector);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] spec_bitshift_negative verus_code! {
+        // TODO bit_vector solver currently doesn't support bit-shifts by signed types.
+        // However, if it ever does, then this test case should test that Verus
+        // checks for underflow (maybe as a recommends check?)
+
+        // If our solver interprets (-1i8) as 255 then the following assert would pass,
+        // but it may be preferable to leave shifts-by-negatives underspecified?
+        // That can be decided later, though.
+        fn test() {
+            assert(1i8 >> (-1i8) == 0i8) by(bit_vector); // FAILS
+        }
+    } => Err(e) => assert_vir_error_msg(e, "signed integer is not supported for bit-vector reasoning")
 }
