@@ -1,7 +1,7 @@
 use crate::attributes::get_verifier_attrs;
 use crate::context::{BodyCtxt, Context};
 use crate::util::{err_span_str, unsupported_err_span};
-use crate::{unsupported, unsupported_err_unless};
+use crate::{unsupported_err, unsupported_err_unless};
 use rustc_ast::{ByRef, Mutability};
 use rustc_hir::definitions::DefPath;
 use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, QPath, Ty};
@@ -141,10 +141,15 @@ pub(crate) fn fn_item_hir_id_to_self_path<'tcx>(tcx: TyCtxt<'tcx>, hir_id: HirId
                 // but converted into VIR datatypes.
 
                 let self_ty = tcx.type_of(owner_id.to_def_id());
-                let vir_ty = mid_ty_to_vir_ghost(tcx, &self_ty, true, false).0;
-                match &*vir_ty {
+                let vir_ty = mid_ty_to_vir_ghost(tcx, impll.self_ty.span, &self_ty, true, false);
+                let vir_ty = if let Ok(t) = vir_ty {
+                    t
+                } else {
+                    return None;
+                };
+                match &*vir_ty.0 {
                     TypX::Datatype(p, _typ_args) => Some(p.clone()),
-                    _ => panic!("impl type is not given by a path"),
+                    _ => panic!("{:?} {}", impll.self_ty.span, "impl type is not given by a path"),
                 }
             }
         },
@@ -251,22 +256,23 @@ pub(crate) fn qpath_to_ident<'tcx>(
 
 pub(crate) fn is_visibility_private<'tcx>(
     ctxt: &Context<'tcx>,
+    span: Span,
     owning_module: &Option<Path>,
     def_id: DefId,
-) -> bool {
+) -> Result<bool, VirErr> {
     let vis = ctxt.tcx.visibility(def_id);
     match vis {
-        Visibility::Public => false,
+        Visibility::Public => Ok(false),
         Visibility::Restricted(id) => {
             let restricted_to = def_id_to_vir_path(ctxt.tcx, id);
             if restricted_to.segments.len() == 0 {
                 // pub(crate)
-                false
+                Ok(false)
             } else if &Some(restricted_to) == owning_module {
                 // private
-                true
+                Ok(true)
             } else {
-                unsupported!("restricted visibility");
+                unsupported_err!(span, "restricted visibility")
             }
         }
     }
@@ -349,18 +355,19 @@ pub(crate) fn mid_ty_simplify<'tcx>(
 // returns VIR Typ and whether Ghost/Tracked was erased from around the outside of the VIR Typ
 pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
     tcx: TyCtxt<'tcx>,
+    span: Span,
     ty: &rustc_middle::ty::Ty<'tcx>,
     as_datatype: bool,
     allow_mut_ref: bool,
-) -> (Typ, bool) {
-    match ty.kind() {
+) -> Result<(Typ, bool), VirErr> {
+    let t = match ty.kind() {
         TyKind::Bool => (Arc::new(TypX::Bool), false),
         TyKind::Uint(_) | TyKind::Int(_) => (Arc::new(TypX::Int(mk_range(ty))), false),
         TyKind::Ref(_, tys, rustc_ast::Mutability::Not) => {
-            mid_ty_to_vir_ghost(tcx, tys, as_datatype, allow_mut_ref)
+            mid_ty_to_vir_ghost(tcx, span, tys, as_datatype, allow_mut_ref)?
         }
         TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) if allow_mut_ref => {
-            mid_ty_to_vir_ghost(tcx, tys, as_datatype, allow_mut_ref)
+            mid_ty_to_vir_ghost(tcx, span, tys, as_datatype, allow_mut_ref)?
         }
         TyKind::Param(param) if param.name == kw::SelfUpper => {
             (Arc::new(TypX::TypParam(vir::def::trait_self_type_param())), false)
@@ -373,15 +380,14 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             (Arc::new(TypX::Tuple(Arc::new(vec![]))), false)
         }
         TyKind::Tuple(_) => {
-            let typs: Vec<Typ> = ty
-                .tuple_fields()
-                .iter()
-                .map(|t| mid_ty_to_vir_ghost(tcx, &t, as_datatype, allow_mut_ref).0)
-                .collect();
+            let mut typs: Vec<Typ> = Vec::new();
+            for t in ty.tuple_fields().iter() {
+                typs.push(mid_ty_to_vir_ghost(tcx, span, &t, as_datatype, allow_mut_ref)?.0);
+            }
             (Arc::new(TypX::Tuple(Arc::new(typs))), false)
         }
         TyKind::Slice(ty) => {
-            let typ = mid_ty_to_vir_ghost(tcx, ty, as_datatype, allow_mut_ref).0;
+            let typ = mid_ty_to_vir_ghost(tcx, span, ty, as_datatype, allow_mut_ref)?.0;
             let typs = Arc::new(vec![typ]);
             (Arc::new(TypX::Datatype(vir::def::slice_type(), typs)), false)
         }
@@ -391,7 +397,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let is_strslice =
                 tcx.is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice"), did);
             if is_strslice && !as_datatype {
-                return (Arc::new(TypX::StrSlice), false);
+                return Ok((Arc::new(TypX::StrSlice), false));
             }
             // TODO use lang items instead of string comparisons
             if s == crate::def::BUILTIN_INT {
@@ -399,31 +405,37 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             } else if s == crate::def::BUILTIN_NAT {
                 (Arc::new(TypX::Int(IntRange::Nat)), false)
             } else {
-                let typ_args: Vec<(Typ, bool)> = args
-                    .iter()
-                    .filter_map(|arg| match arg.unpack() {
+                let mut typ_args: Vec<(Typ, bool)> = Vec::new();
+                for arg in args.iter() {
+                    match arg.unpack() {
                         rustc_middle::ty::subst::GenericArgKind::Type(t) => {
-                            Some(mid_ty_to_vir_ghost(tcx, &t, as_datatype, allow_mut_ref))
+                            typ_args.push(mid_ty_to_vir_ghost(
+                                tcx,
+                                span,
+                                &t,
+                                as_datatype,
+                                allow_mut_ref,
+                            )?);
                         }
-                        rustc_middle::ty::subst::GenericArgKind::Lifetime(_) => None,
+                        rustc_middle::ty::subst::GenericArgKind::Lifetime(_) => {}
                         rustc_middle::ty::subst::GenericArgKind::Const(cnst) => {
-                            Some((mid_ty_const_to_vir(tcx, &cnst), false))
+                            typ_args.push((mid_ty_const_to_vir(tcx, Some(span), &cnst)?, false));
                         }
-                    })
-                    .collect();
+                    }
+                }
                 if Some(did) == tcx.lang_items().owned_box() && typ_args.len() == 2 {
-                    return typ_args[0].clone();
+                    return Ok(typ_args[0].clone());
                 }
                 let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(tcx, did));
                 if (def_name == "alloc::rc::Rc" || def_name == "alloc::sync::Arc")
                     && typ_args.len() == 1
                 {
-                    return typ_args[0].clone();
+                    return Ok(typ_args[0].clone());
                 }
                 if (def_name == "builtin::Ghost" || def_name == "builtin::Tracked")
                     && typ_args.len() == 1
                 {
-                    return (typ_args[0].0.clone(), true);
+                    return Ok((typ_args[0].0.clone(), true));
                 }
                 if def_name == "builtin::FnSpec" {
                     assert!(typ_args.len() == 2);
@@ -436,7 +448,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                             panic!("expected first type argument of FnSpec to be a tuple");
                         }
                     };
-                    return (Arc::new(TypX::Lambda(param_typs, ret_typ)), false);
+                    return Ok((Arc::new(TypX::Lambda(param_typs, ret_typ)), false));
                 }
                 let typ_args = typ_args.into_iter().map(|(t, _)| t).collect();
                 (Arc::new(def_id_to_datatype(tcx, did, Arc::new(typ_args))), false)
@@ -444,50 +456,73 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         }
         TyKind::Closure(def, substs) => {
             let sig = substs.as_closure().sig();
-            let args: Vec<Typ> = sig
-                .inputs()
-                .skip_binder()
-                .iter()
-                .map(|t| mid_ty_to_vir_ghost(tcx, t, as_datatype, allow_mut_ref).0)
-                .collect();
+            let mut args: Vec<Typ> = Vec::new();
+            for t in sig.inputs().skip_binder().iter() {
+                args.push(mid_ty_to_vir_ghost(tcx, span, t, as_datatype, allow_mut_ref)?.0);
+            }
             assert!(args.len() == 1);
             let args = match &*args[0] {
                 TypX::Tuple(typs) => typs.clone(),
                 _ => panic!("expected tuple type"),
             };
 
-            let ret =
-                mid_ty_to_vir_ghost(tcx, &sig.output().skip_binder(), as_datatype, allow_mut_ref).0;
+            let ret = mid_ty_to_vir_ghost(
+                tcx,
+                span,
+                &sig.output().skip_binder(),
+                as_datatype,
+                allow_mut_ref,
+            )?
+            .0;
             let id = def.as_local().unwrap().local_def_index.index();
             (Arc::new(TypX::AnonymousClosure(args, ret, id)), false)
         }
         TyKind::Char => (Arc::new(TypX::Char), false),
-        _ => {
-            unsupported!(format!("type {:?}", ty))
+        TyKind::Float(..) => unsupported_err!(span, "floating point types"),
+        TyKind::Foreign(..) => unsupported_err!(span, "foreign types"),
+        TyKind::Str => unsupported_err!(span, "str type"),
+        TyKind::Array(..) => unsupported_err!(span, "array types"),
+        TyKind::RawPtr(..) => unsupported_err!(span, "raw pointer types"),
+        TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => {
+            unsupported_err!(span, "&mut types, except in special cases")
         }
-    }
+        TyKind::FnDef(..) => unsupported_err!(span, "anonymous function types"),
+        TyKind::FnPtr(..) => unsupported_err!(span, "function pointer types"),
+        TyKind::Dynamic(..) => unsupported_err!(span, "dynamic types"),
+        TyKind::Generator(..) => unsupported_err!(span, "generator types"),
+        TyKind::GeneratorWitness(..) => unsupported_err!(span, "generator witness types"),
+        TyKind::Alias(..) => unsupported_err!(span, "projection or opaque type"),
+        TyKind::Bound(..) => unsupported_err!(span, "for<'a> types"),
+        TyKind::Placeholder(..) => unsupported_err!(span, "type inference placeholder types"),
+        TyKind::Infer(..) => unsupported_err!(span, "type inference placeholder types"),
+        TyKind::Error(..) => unsupported_err!(span, "type inference placeholder error types"),
+    };
+    Ok(t)
 }
 
 pub(crate) fn mid_ty_to_vir_datatype<'tcx>(
     tcx: TyCtxt<'tcx>,
+    span: Span,
     ty: rustc_middle::ty::Ty<'tcx>,
     allow_mut_ref: bool,
-) -> Typ {
-    mid_ty_to_vir_ghost(tcx, &ty, true, allow_mut_ref).0
+) -> Result<Typ, VirErr> {
+    Ok(mid_ty_to_vir_ghost(tcx, span, &ty, true, allow_mut_ref)?.0)
 }
 
 pub(crate) fn mid_ty_to_vir<'tcx>(
     tcx: TyCtxt<'tcx>,
+    span: Span,
     ty: &rustc_middle::ty::Ty<'tcx>,
     allow_mut_ref: bool,
-) -> Typ {
-    mid_ty_to_vir_ghost(tcx, ty, false, allow_mut_ref).0
+) -> Result<Typ, VirErr> {
+    Ok(mid_ty_to_vir_ghost(tcx, span, ty, false, allow_mut_ref)?.0)
 }
 
 pub(crate) fn mid_ty_const_to_vir<'tcx>(
     tcx: TyCtxt<'tcx>,
+    span: Option<Span>,
     cnst: &rustc_middle::ty::Const<'tcx>,
-) -> Typ {
+) -> Result<Typ, VirErr> {
     // use rustc_middle::mir::interpret::{ConstValue, Scalar};
     use rustc_middle::ty::ConstKind;
     use rustc_middle::ty::ValTree;
@@ -497,13 +532,13 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
         _ => *cnst,
     };
     match cnst.kind() {
-        ConstKind::Param(param) => Arc::new(TypX::TypParam(Arc::new(param.name.to_string()))),
+        ConstKind::Param(param) => Ok(Arc::new(TypX::TypParam(Arc::new(param.name.to_string())))),
         ConstKind::Value(ValTree::Leaf(i)) => {
             let c = num_bigint::BigInt::from(i.assert_bits(i.size()));
-            Arc::new(TypX::ConstInt(c))
+            Ok(Arc::new(TypX::ConstInt(c)))
         }
         _ => {
-            unsupported!(format!("const type argument {:?}", cnst))
+            unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst))
         }
     }
 }
@@ -539,18 +574,23 @@ pub(crate) fn _ty_resolved_path_to_debug_path(_tcx: TyCtxt<'_>, ty: &Ty) -> Stri
     }
 }
 
-pub(crate) fn typ_of_node<'tcx>(bctx: &BodyCtxt<'tcx>, id: &HirId, allow_mut_ref: bool) -> Typ {
-    mid_ty_to_vir(bctx.ctxt.tcx, &bctx.types.node_type(*id), allow_mut_ref)
+pub(crate) fn typ_of_node<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    id: &HirId,
+    allow_mut_ref: bool,
+) -> Result<Typ, VirErr> {
+    mid_ty_to_vir(bctx.ctxt.tcx, span, &bctx.types.node_type(*id), allow_mut_ref)
 }
 
 pub(crate) fn typ_of_node_expect_mut_ref<'tcx>(
     bctx: &BodyCtxt<'tcx>,
-    id: &HirId,
     span: Span,
+    id: &HirId,
 ) -> Result<Typ, VirErr> {
     let ty = bctx.types.node_type(*id);
     if let TyKind::Ref(_, _tys, rustc_ast::Mutability::Mut) = ty.kind() {
-        Ok(mid_ty_to_vir(bctx.ctxt.tcx, &ty, true))
+        mid_ty_to_vir(bctx.ctxt.tcx, span, &ty, true)
     } else {
         err_span_str(span, "a mutable reference is expected here")
     }
@@ -583,30 +623,36 @@ pub(crate) fn implements_structural<'tcx>(
 // Do equality operations on these operands translate into the SMT solver's == operation?
 pub(crate) fn is_smt_equality<'tcx>(
     bctx: &BodyCtxt<'tcx>,
-    _span: Span,
+    span: Span,
     id1: &HirId,
     id2: &HirId,
-) -> bool {
-    let (t1, t2) = (typ_of_node(bctx, id1, false), typ_of_node(bctx, id2, false));
+) -> Result<bool, VirErr> {
+    let (t1, t2) = (typ_of_node(bctx, span, id1, false)?, typ_of_node(bctx, span, id2, false)?);
     match (&*t1, &*t2) {
-        (TypX::Bool, TypX::Bool) => true,
-        (TypX::Int(_), TypX::Int(_)) => true,
-        (TypX::Char, TypX::Char) => true,
+        (TypX::Bool, TypX::Bool) => Ok(true),
+        (TypX::Int(_), TypX::Int(_)) => Ok(true),
+        (TypX::Char, TypX::Char) => Ok(true),
         (TypX::Datatype(..), TypX::Datatype(..)) if types_equal(&t1, &t2) => {
             let ty = bctx.types.node_type(*id1);
-            implements_structural(bctx.ctxt.tcx, ty)
+            Ok(implements_structural(bctx.ctxt.tcx, ty))
         }
-        _ => false,
+        _ => Ok(false),
     }
 }
 
 // Do arithmetic operations on these operands translate into the SMT solver's <=, +, =>, etc.?
 // (possibly with clipping/wrapping for finite-size integers?)
-pub(crate) fn is_smt_arith<'tcx>(bctx: &BodyCtxt<'tcx>, id1: &HirId, id2: &HirId) -> bool {
-    match (&*typ_of_node(bctx, id1, false), &*typ_of_node(bctx, id2, false)) {
-        (TypX::Bool, TypX::Bool) => true,
-        (TypX::Int(_), TypX::Int(_)) => true,
-        _ => false,
+pub(crate) fn is_smt_arith<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span1: Span,
+    span2: Span,
+    id1: &HirId,
+    id2: &HirId,
+) -> Result<bool, VirErr> {
+    match (&*typ_of_node(bctx, span1, id1, false)?, &*typ_of_node(bctx, span2, id2, false)?) {
+        (TypX::Bool, TypX::Bool) => Ok(true),
+        (TypX::Int(_), TypX::Int(_)) => Ok(true),
+        _ => Ok(false),
     }
 }
 

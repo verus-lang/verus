@@ -317,7 +317,7 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
                         }
                     }
                     rustc_middle::ty::subst::GenericArgKind::Const(cnst) => {
-                        let t = match &*mid_ty_const_to_vir(ctxt.tcx, &cnst) {
+                        let t = match &*mid_ty_const_to_vir(ctxt.tcx, None, &cnst).expect("typ") {
                             vir::ast::TypX::TypParam(x) => {
                                 Box::new(TypX::TypParam(state.typ_param(x.to_string(), None)))
                             }
@@ -897,8 +897,13 @@ fn erase_expr<'tcx>(
         }
         ExprKind::MethodCall(segment, receiver, args, _call_span) => {
             let fn_def_id = ctxt.types().type_dependent_def_id(expr.hir_id).expect("method id");
-            let rcvr_typ =
-                mid_ty_to_vir_datatype(ctxt.tcx, ctxt.types().node_type(receiver.hir_id), true);
+            let rcvr_typ = mid_ty_to_vir_datatype(
+                ctxt.tcx,
+                receiver.span,
+                ctxt.types().node_type(receiver.hir_id),
+                true,
+            )
+            .expect("type");
             let self_path = match &*rcvr_typ {
                 vir::ast::TypX::Datatype(path, _) => Some(path.clone()),
                 _ => None,
@@ -1123,7 +1128,8 @@ fn erase_expr<'tcx>(
             let body = ctxt.tcx.hir().body(*body_id);
             let ps = &body.params;
             for p in ps.iter() {
-                let x = state.local(crate::rust_to_vir_expr::pat_to_var(p.pat));
+                let x =
+                    state.local(crate::rust_to_vir_expr::pat_to_var(p.pat).expect("pat_to_var"));
                 let typ = erase_ty(ctxt, state, &ctxt.types().node_type(p.hir_id));
                 params.push((p.pat.span, x, typ));
             }
