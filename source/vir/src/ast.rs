@@ -293,7 +293,8 @@ pub enum BinaryOp {
     /// TODO: if the syntax macro can tell us the Mode, can we get rid of InferMode?
     Arith(ArithOp, Option<InferMode>),
     /// Bit Vector Operators
-    Bitwise(BitwiseOp),
+    /// mode=Exec means we need overflow-checking
+    Bitwise(BitwiseOp, Mode),
     /// Used only for handling builtin::strslice_get_char
     StrGetChar,
 }

@@ -821,7 +821,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             // disallow signed integer from bitvec reasoning. However, allow that for shift
             // TODO: sanity check for shift
             let _ = match op {
-                BinaryOp::Bitwise(BitwiseOp::Shl | BitwiseOp::Shr) => (),
+                BinaryOp::Bitwise(BitwiseOp::Shl | BitwiseOp::Shr, _) => (),
                 _ => {
                     check_unsigned(&lhs)?;
                     check_unsigned(&rhs)?;
@@ -862,11 +862,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 BinaryOp::Inequality(InequalityOp::Lt) => air::ast::BinaryOp::BitULt,
                 BinaryOp::Inequality(InequalityOp::Ge) => air::ast::BinaryOp::BitUGe,
                 BinaryOp::Inequality(InequalityOp::Gt) => air::ast::BinaryOp::BitUGt,
-                BinaryOp::Bitwise(BitwiseOp::BitXor) => air::ast::BinaryOp::BitXor,
-                BinaryOp::Bitwise(BitwiseOp::BitAnd) => air::ast::BinaryOp::BitAnd,
-                BinaryOp::Bitwise(BitwiseOp::BitOr) => air::ast::BinaryOp::BitOr,
-                BinaryOp::Bitwise(BitwiseOp::Shl) => air::ast::BinaryOp::Shl,
-                BinaryOp::Bitwise(BitwiseOp::Shr) => air::ast::BinaryOp::LShr,
+                BinaryOp::Bitwise(BitwiseOp::BitXor, _) => air::ast::BinaryOp::BitXor,
+                BinaryOp::Bitwise(BitwiseOp::BitAnd, _) => air::ast::BinaryOp::BitAnd,
+                BinaryOp::Bitwise(BitwiseOp::BitOr, _) => air::ast::BinaryOp::BitOr,
+                BinaryOp::Bitwise(BitwiseOp::Shl, _) => air::ast::BinaryOp::Shl,
+                BinaryOp::Bitwise(BitwiseOp::Shr, _) => air::ast::BinaryOp::LShr,
                 BinaryOp::Implies => air::ast::BinaryOp::Implies,
                 BinaryOp::And => unreachable!(),
                 BinaryOp::Or => unreachable!(),
@@ -927,7 +927,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 ),
                 // here the binary bitvector Ops are translated into the integer versions
                 // Similar to typ_invariant(), make obvious range according to bit-width
-                BinaryOp::Bitwise(bo) => {
+                BinaryOp::Bitwise(bo, _) => {
                     let box_lh = try_box(ctx, lh, &lhs.typ).expect("Box");
                     let box_rh = try_box(ctx, rh, &rhs.typ).expect("Box");
 
