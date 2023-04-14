@@ -7,7 +7,7 @@ use crate::rust_to_vir_base::{
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_mut_var, ExprModifier};
 use crate::util::{err_span_str, err_span_string, unsupported_err_span};
-use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
+use crate::{unsupported_err, unsupported_err_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{
     def::Res, Body, BodyId, Crate, FnDecl, FnHeader, FnRetTy, FnSig, Generics, HirId, MaybeOwner,
@@ -48,6 +48,7 @@ pub(crate) fn body_to_vir<'tcx>(
 }
 
 fn check_fn_decl<'tcx>(
+    span: Span,
     tcx: TyCtxt<'tcx>,
     decl: &'tcx FnDecl<'tcx>,
     attrs: &[Attribute],
@@ -55,13 +56,13 @@ fn check_fn_decl<'tcx>(
     output_ty: rustc_middle::ty::Ty<'tcx>,
 ) -> Result<Option<(Typ, Mode)>, VirErr> {
     let FnDecl { inputs: _, output, c_variadic, implicit_self, lifetime_elision_allowed: _ } = decl;
-    unsupported_unless!(!c_variadic, "c_variadic");
+    unsupported_err_unless!(!c_variadic, span, "c_variadic functions");
     match implicit_self {
         rustc_hir::ImplicitSelfKind::None => {}
         rustc_hir::ImplicitSelfKind::Imm => {}
         rustc_hir::ImplicitSelfKind::ImmRef => {}
         rustc_hir::ImplicitSelfKind::MutRef => {}
-        _ => unsupported!("implicit_self"),
+        rustc_hir::ImplicitSelfKind::Mut => unsupported_err!(span, "mut self"),
     }
     match output {
         rustc_hir::FnRetTy::DefaultReturn(_) => Ok(None),
@@ -69,7 +70,7 @@ fn check_fn_decl<'tcx>(
         // so we always return the default mode.
         // The current workaround is to return a struct if the default doesn't work.
         rustc_hir::FnRetTy::Return(_ty) => {
-            let typ = mid_ty_to_vir(tcx, &output_ty, false);
+            let typ = mid_ty_to_vir(tcx, span, &output_ty, false)?;
             Ok(Some((typ, get_ret_mode(mode, attrs))))
         }
     }
@@ -196,7 +197,7 @@ pub(crate) fn check_item_fn<'tcx>(
             span: _,
         } => {
             unsupported_err_unless!(*unsafety == Unsafety::Normal, sig.span, "unsafe");
-            check_fn_decl(ctxt.tcx, decl, attrs, mode, fn_sig.output())?
+            check_fn_decl(sig.span, ctxt.tcx, decl, attrs, mode, fn_sig.output())?
         }
     };
 
@@ -232,7 +233,7 @@ pub(crate) fn check_item_fn<'tcx>(
             }
             let mut ps = Vec::new();
             for Param { hir_id, pat, ty_span: _, span } in params.iter() {
-                let (is_mut_var, name) = pat_to_mut_var(pat);
+                let (is_mut_var, name) = pat_to_mut_var(pat)?;
                 // is_mut_var: means a parameter is like `mut x: X` (unsupported)
                 // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
                 if is_mut_var {
@@ -276,7 +277,8 @@ pub(crate) fn check_item_fn<'tcx>(
             );
         }
 
-        let typ = mid_ty_to_vir(ctxt.tcx, is_ref_mut.map(|(t, _)| t).unwrap_or(input), false);
+        let typ =
+            mid_ty_to_vir(ctxt.tcx, span, is_ref_mut.map(|(t, _)| t).unwrap_or(input), false)?;
 
         // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
         let is_mut = is_ref_mut.is_some();
@@ -587,7 +589,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let fn_sig = fn_sig.skip_binder();
     let inputs = fn_sig.inputs();
 
-    let ret_typ_mode = check_fn_decl(ctxt.tcx, decl, attrs, mode, fn_sig.output())?;
+    let ret_typ_mode = check_fn_decl(span, ctxt.tcx, decl, attrs, mode, fn_sig.output())?;
     let typ_bounds = check_generics_bounds_fun(ctxt.tcx, generics, id)?;
     let vattrs = get_verifier_attrs(attrs)?;
     let fuel = get_fuel(&vattrs);
@@ -597,7 +599,8 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     for (param, input) in idents.iter().zip(inputs.iter()) {
         let name = Arc::new(foreign_param_to_var(param));
         let is_mut = is_mut_ty(ctxt, *input);
-        let typ = mid_ty_to_vir(ctxt.tcx, is_mut.map(|(t, _)| t).unwrap_or(input), false);
+        let typ =
+            mid_ty_to_vir(ctxt.tcx, param.span, is_mut.map(|(t, _)| t).unwrap_or(input), false)?;
         // REVIEW: the parameters don't have attributes, so we use the overall mode
         let vir_param = ctxt.spanned_new(
             param.span,

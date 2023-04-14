@@ -2,7 +2,6 @@ use crate::config::{Args, ShowTriggers};
 use crate::context::{ArchContextX, ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::spans::{SpanContext, SpanContextX};
-use crate::unsupported;
 use crate::util::error;
 use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, ValidityResult};
@@ -14,8 +13,7 @@ use verus_rustc_interface::interface::Compiler;
 use num_format::{Locale, ToFormattedString};
 use rustc_error_messages::MultiSpan;
 use rustc_middle::ty::TyCtxt;
-use rustc_span::source_map::SourceMap;
-use rustc_span::{CharPos, FileName, Span};
+use rustc_span::Span;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -87,7 +85,6 @@ pub struct Verifier {
     pub encountered_vir_error: bool,
     pub count_verified: u64,
     pub count_errors: u64,
-    pub errors: Vec<Vec<ErrorSpan>>,
     pub args: Args,
     pub erasure_hints: Option<crate::erase::ErasureHints>,
     pub time_vir: Duration,
@@ -108,44 +105,6 @@ pub struct Verifier {
     // proof debugging purposes
     expand_flag: bool,
     pub expand_targets: Vec<air::messages::Message>,
-}
-
-#[derive(Debug)]
-pub struct ErrorSpan {
-    pub description: Option<String>,
-    pub span_data: (String, (usize, CharPos), (usize, CharPos)),
-}
-
-impl ErrorSpan {
-    fn new_from_air_span(
-        spans: &SpanContext,
-        source_map: &SourceMap,
-        msg: &String,
-        air_span: &air::ast::Span,
-    ) -> Self {
-        let span = if let Some(span) = spans.from_air_span(&air_span) {
-            span
-        } else {
-            return Self {
-                description: Some(msg.clone()),
-                span_data: (air_span.as_string.clone(), (0, CharPos(0)), (0, CharPos(0))),
-            };
-        };
-        let filename: String = match source_map.span_to_filename(span) {
-            FileName::Real(rfn) => rfn
-                .local_path()
-                .expect("internal error: not a local path")
-                .to_str()
-                .expect("internal error: path is not a valid string")
-                .to_string(),
-            _ => unsupported!("non real filenames in verifier errors", air_span),
-        };
-        let (start, end) = source_map.is_valid_span(span).expect("internal error: invalid Span");
-        Self {
-            description: Some(msg.clone()),
-            span_data: (filename, (start.line, start.col), (end.line, end.col)),
-        }
-    }
 }
 
 fn report_chosen_triggers(diagnostics: &impl Diagnostics, chosen: &vir::context::ChosenTriggers) {
@@ -174,7 +133,6 @@ impl Verifier {
             encountered_vir_error: false,
             count_verified: 0,
             count_errors: 0,
-            errors: Vec::new(),
             args,
             erasure_hints: None,
             time_vir: Duration::new(0, 0),
@@ -384,14 +342,6 @@ impl Verifier {
                         msg.push_str("; consider rerunning with --profile for more details");
                     }
                     reporter.report(&message(level, msg, &context.0));
-
-                    self.errors.push(vec![ErrorSpan::new_from_air_span(
-                        spans,
-                        compiler.session().source_map(),
-                        &context.1.to_string(),
-                        &context.0,
-                    )]);
-
                     if self.args.profile {
                         let profiler = Profiler::new(&reporter);
                         self.print_profile_stats(&reporter, profiler, qid_map);
@@ -416,21 +366,6 @@ impl Verifier {
                     }
 
                     if level == MessageLevel::Error {
-                        let mut errors = vec![ErrorSpan::new_from_air_span(
-                            spans,
-                            compiler.session().source_map(),
-                            &error.note,
-                            &error.spans[0],
-                        )];
-                        for MessageLabel { note, span } in &error.labels {
-                            errors.push(ErrorSpan::new_from_air_span(
-                                spans,
-                                compiler.session().source_map(),
-                                note,
-                                span,
-                            ));
-                        }
-                        self.errors.push(errors);
                         if self.args.expand_errors {
                             assert!(!self.expand_flag);
                             self.expand_targets.push(error.clone());

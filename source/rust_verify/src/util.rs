@@ -69,30 +69,6 @@ macro_rules! err_unless {
     };
 }
 
-#[macro_export]
-macro_rules! unsupported {
-    ($msg: expr) => {{ panic!("The verifier does not yet support the following Rust feature: {}", $msg) }};
-    ($msg: expr, $info: expr) => {{
-        dbg!($info);
-        panic!("The verifier does not yet support the following Rust feature: {}", $msg)
-    }};
-}
-
-#[macro_export]
-macro_rules! unsupported_unless {
-    ($assertion: expr, $msg: expr) => {
-        if (!$assertion) {
-            panic!("The verifier does not yet support the following Rust feature: {}", $msg)
-        }
-    };
-    ($assertion: expr, $msg: expr, $info: expr) => {
-        if (!$assertion) {
-            dbg!($info);
-            panic!("The verifier does not yet support the following Rust feature: {}", $msg)
-        }
-    };
-}
-
 /// Basic error, with just a message
 pub fn error<S: Into<String>>(msg: S) -> VirErr {
     air::messages::error_bare(msg)

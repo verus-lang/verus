@@ -4,7 +4,8 @@ use crate::rust_to_vir_base::{
     check_generics_bounds, def_id_to_vir_path, hack_get_def_name, is_visibility_private,
     mid_ty_to_vir, mk_visibility,
 };
-use crate::unsupported_unless;
+use crate::unsupported_err_unless;
+use crate::util::unsupported_err_span;
 use air::ast_util::str_ident;
 use rustc_ast::Attribute;
 use rustc_hir::{EnumDef, Generics, ItemId, VariantData};
@@ -16,12 +17,13 @@ use vir::ast_util::ident_binder;
 use vir::def::positional_field_ident;
 
 fn check_variant_data<'tcx, 'fd>(
+    span: Span,
     ctxt: &Context<'tcx>,
     module_path: &Path,
     name: &Ident,
     variant_data: &'tcx VariantData<'tcx>,
     field_defs: impl Iterator<Item = &'fd rustc_middle::ty::FieldDef>,
-) -> (Variant, bool)
+) -> Result<(Variant, bool), VirErr>
 where
     'tcx: 'fd,
 {
@@ -29,7 +31,7 @@ where
     // information than hir?
     let (vir_fields, one_field_private) = match variant_data {
         VariantData::Struct(fields, recovered) => {
-            unsupported_unless!(!recovered, "recovered_struct", variant_data);
+            unsupported_err_unless!(!recovered, span, "recovered_struct", variant_data);
             let (vir_fields, field_private): (Vec<_>, Vec<_>) = fields
                 .iter()
                 .zip(field_defs)
@@ -37,11 +39,11 @@ where
                     assert!(field.ident.name == field_def.ident(ctxt.tcx).name);
                     let field_ty = ctxt.tcx.type_of(field_def.did);
 
-                    (
+                    Ok((
                         ident_binder(
                             &str_ident(&field.ident.as_str()),
                             &(
-                                mid_ty_to_vir(ctxt.tcx, &field_ty, false),
+                                mid_ty_to_vir(ctxt.tcx, span, &field_ty, false)?,
                                 get_mode(Mode::Exec, ctxt.tcx.hir().attrs(field.hir_id)),
                                 mk_visibility(
                                     ctxt,
@@ -52,11 +54,14 @@ where
                         ),
                         is_visibility_private(
                             ctxt,
+                            span,
                             &Some(module_path.clone()),
                             field.def_id.to_def_id(),
-                        ),
-                    )
+                        )?,
+                    ))
                 })
+                .collect::<Result<Vec<_>, VirErr>>()?
+                .into_iter()
                 .unzip();
             (Arc::new(vir_fields), field_private.into_iter().any(|x| x))
         }
@@ -69,11 +74,11 @@ where
                     assert!(field.ident.name == field_def.ident(ctxt.tcx).name);
                     let field_ty = ctxt.tcx.type_of(field_def.did);
 
-                    (
+                    Ok((
                         ident_binder(
                             &positional_field_ident(i),
                             &(
-                                mid_ty_to_vir(ctxt.tcx, &field_ty, false),
+                                mid_ty_to_vir(ctxt.tcx, span, &field_ty, false)?,
                                 get_mode(Mode::Exec, ctxt.tcx.hir().attrs(field.hir_id)),
                                 mk_visibility(
                                     ctxt,
@@ -84,17 +89,20 @@ where
                         ),
                         is_visibility_private(
                             ctxt,
+                            span,
                             &Some(module_path.clone()),
                             field.def_id.to_def_id(),
-                        ),
-                    )
+                        )?,
+                    ))
                 })
+                .collect::<Result<Vec<_>, VirErr>>()?
+                .into_iter()
                 .unzip();
             (Arc::new(vir_fields), field_private.into_iter().any(|x| x))
         }
         VariantData::Unit(_variant_id, _local_def_id) => (Arc::new(vec![]), false),
     };
-    (ident_binder(name, &vir_fields), one_field_private)
+    Ok((ident_binder(name, &vir_fields), one_field_private))
 }
 
 pub fn check_item_struct<'tcx>(
@@ -131,7 +139,7 @@ pub fn check_item_struct<'tcx>(
         (ident_binder(&variant_name, &Arc::new(vec![])), false)
     } else {
         let field_defs = adt_def.all_fields();
-        check_variant_data(ctxt, module_path, &variant_name, variant_data, field_defs)
+        check_variant_data(span, ctxt, module_path, &variant_name, variant_data, field_defs)?
     };
     let transparency = if vattrs.external_body {
         DatatypeTransparency::Never
@@ -190,8 +198,17 @@ pub fn check_item_enum<'tcx>(
             let variant_def = get_mid_variant_def_by_name(ctxt, &adt_def, variant_name);
             let variant_name = str_ident(variant_name);
             let field_defs = variant_def.fields.iter();
-            check_variant_data(ctxt, module_path, &variant_name, &variant.data, field_defs)
+            check_variant_data(
+                variant.span,
+                ctxt,
+                module_path,
+                &variant_name,
+                &variant.data,
+                field_defs,
+            )
         })
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
         .unzip();
     let one_field_private = one_field_private.into_iter().any(|x| x);
     let transparency = if vattrs.external_body {
