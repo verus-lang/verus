@@ -227,8 +227,6 @@ pub(crate) enum Attr {
     AutoTrigger,
     // exclude a particular function from being chosen in a trigger by triggers_auto
     NoAutoTrigger,
-    // when used in a spec context, promote to spec by inserting .view()
-    Autoview,
     // when used in a ghost context, redirect to a specified spec method
     Autospec(String),
     // add manual trigger to expression inside quantifier
@@ -342,7 +340,6 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 AttrTree::Fun(_, arg, None) if arg == "no_auto_trigger" => {
                     v.push(Attr::NoAutoTrigger)
                 }
-                AttrTree::Fun(_, arg, None) if arg == "autoview" => v.push(Attr::Autoview),
                 AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
                     if arg == "when_used_as_spec" =>
                 {
@@ -589,7 +586,6 @@ pub(crate) struct VerifierAttrs {
     pub(crate) maybe_negative: bool,
     pub(crate) broadcast_forall: bool,
     pub(crate) no_auto_trigger: bool,
-    pub(crate) autoview: bool,
     pub(crate) autospec: Option<String>,
     pub(crate) custom_req_err: Option<String>,
     pub(crate) bit_vector: bool,
@@ -618,7 +614,6 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         strictly_positive: false,
         broadcast_forall: false,
         no_auto_trigger: false,
-        autoview: false,
         autospec: None,
         custom_req_err: None,
         bit_vector: false,
@@ -646,7 +641,6 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::StrictlyPositive => vs.strictly_positive = true,
             Attr::BroadcastForall => vs.broadcast_forall = true,
             Attr::NoAutoTrigger => vs.no_auto_trigger = true,
-            Attr::Autoview => vs.autoview = true,
             Attr::Autospec(method_ident) => vs.autospec = Some(method_ident),
             Attr::CustomReqErr(s) => vs.custom_req_err = Some(s.clone()),
             Attr::BitVector => vs.bit_vector = true,
