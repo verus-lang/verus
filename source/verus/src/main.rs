@@ -41,9 +41,11 @@ fn main() {
     let mut args = std::env::args().into_iter();
     let _bin = args.next().expect("executable in args");
 
-    let parent = std::env::current_exe()
-        .ok()
-        .and_then(|current| current.parent().map(std::path::PathBuf::from));
+    let current_exe = std::env::current_exe().ok().and_then(|c| {
+        if c.symlink_metadata().ok()?.is_symlink() { std::fs::read_link(c).ok() } else { Some(c) }
+    });
+
+    let parent = current_exe.and_then(|current| current.parent().map(std::path::PathBuf::from));
 
     let Some(verusroot_path) = parent.clone().and_then(|mut path| {
             if path.join("verus-root").is_file() {

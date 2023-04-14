@@ -158,7 +158,15 @@ fn find_verusroot() -> Option<VerusRoot> {
             })
         })
         .or_else(|| {
-            std::env::current_exe().ok().and_then(|current| {
+            let current_exe = std::env::current_exe().ok()
+                .and_then(|c| {
+                    if c.symlink_metadata().ok()?.is_symlink() {
+                        std::fs::read_link(c).ok()
+                    } else {
+                        Some(c)
+                    }
+                });
+            current_exe.and_then(|current| {
                 current.parent().and_then(|p| {
                     let mut path = std::path::PathBuf::from(&p);
                     if path.join("verus-root").is_file() {
