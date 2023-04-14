@@ -334,6 +334,11 @@ impl Visitor {
         {
             for expr in exprs.exprs.iter_mut() {
                 self.visit_expr_mut(expr);
+                if matches!(expr, Expr::Tuple(..)) {
+                    let err = "decreases cannot be a tuple; use `decreases x, y` rather than `decreases (x, y)`";
+                    let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
+                    stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
+                }
             }
             stmts.push(Stmt::Semi(
                 Expr::Verbatim(quote_spanned!(token.span => ::builtin::decreases((#exprs)))),
@@ -1019,6 +1024,11 @@ impl Visitor {
         if let Some(Decreases { token, mut exprs }) = decreases {
             for expr in exprs.exprs.iter_mut() {
                 self.visit_expr_mut(expr);
+                if matches!(expr, Expr::Tuple(..)) {
+                    let err = "decreases cannot be a tuple; use `decreases x, y` rather than `decreases (x, y)`";
+                    let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
+                    stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
+                }
             }
             stmts.push(stmt_with_semi!(token.span => ::builtin::decreases((#exprs))));
         }
