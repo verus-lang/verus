@@ -100,14 +100,12 @@ mod lib_exe_names {
 
 use lib_exe_names::*;
 
+const VSTD_FILES: &[&str] = &["vstd.vir", "libvstd.rlib", ".vstd-fingerprint"];
+
+const VERUS_ROOT_FILE: &str = "verus-root";
+
 fn clean_vstd(target_verus_dir: &std::path::PathBuf) -> Result<(), String> {
-    for f in vec![
-        format!("vstd.vir"),
-        format!("libvstd.rlib"),
-        format!(".vstd-fingerprint"),
-    ]
-    .into_iter()
-    {
+    for f in VSTD_FILES.iter() {
         let f = target_verus_dir.join(f);
         if f.is_file() {
             info(format!("removing {}", f.display()).as_str());
@@ -228,6 +226,11 @@ fn run() -> Result<(), String> {
         .position(|x| x.as_str() == "--release" || x.as_str() == "-r")
         .map(|p| args_bucket.remove(p))
         .is_some();
+
+    std::env::set_var(
+        "VARGO_BUILD_PROFILE",
+        if release { "release" } else { "debug" },
+    );
 
     let package = args_bucket
         .iter()
@@ -667,6 +670,28 @@ fn run() -> Result<(), String> {
                         info("vstd fresh");
                     }
                 }
+            }
+
+            let verus_root_path = target_verus_dir.join(VERUS_ROOT_FILE);
+            if dependency_missing
+                || VSTD_FILES.iter().any(|f| {
+                    let f = target_verus_dir.join(f);
+                    !f.is_file()
+                })
+            {
+                std::fs::remove_file(&verus_root_path).map_err(|x| {
+                    format!("could not delete file {} ({x})", verus_root_path.display())
+                })?;
+            } else {
+                std::mem::drop(
+                    std::fs::OpenOptions::new()
+                        .create(true)
+                        .write(true)
+                        .open(&verus_root_path)
+                        .map_err(|x| {
+                            format!("could not touch file {} ({x})", verus_root_path.display())
+                        })?,
+                );
             }
             Ok(())
         }

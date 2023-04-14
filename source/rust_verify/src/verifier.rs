@@ -1248,7 +1248,6 @@ impl Verifier {
         diagnostics: &impl Diagnostics,
         crate_name: String,
     ) -> Result<bool, VirErr> {
-        let autoviewed_call_typs = Arc::new(std::sync::Mutex::new(HashMap::new()));
         match rustc_hir_analysis::check_crate(tcx) {
             Ok(()) => {}
             Err(_) => {
@@ -1262,9 +1261,6 @@ impl Verifier {
         hir.par_for_each_module(|module| {
             tcx.ensure().check_mod_privacy(module);
         });
-
-        let autoviewed_call_typs =
-            autoviewed_call_typs.lock().expect("get autoviewed_call_typs").clone();
 
         self.air_no_span = {
             let no_span = hir
@@ -1318,7 +1314,6 @@ impl Verifier {
             krate: hir.krate(),
             crate_names: crate_names.clone(),
             erasure_info,
-            autoviewed_call_typs,
             unique_id: std::cell::Cell::new(0),
             spans: spans.clone(),
             vstd_crate_name: vstd_crate_name.clone(),

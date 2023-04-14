@@ -583,21 +583,18 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // TODO un-ignore when #124 is fixed
-    #[test] #[ignore] test_associated_proof_fn_call_fail_2_regression_124 PROOF_FN_COMMON.to_string() + code_str! {
+    #[test] test_associated_proof_fn_call_fail_2_regression_124 PROOF_FN_COMMON.to_string() + verus_code_str! {
         struct Token {}
 
         impl Node {
-            #[verifier::proof]
-            fn lemma(self, #[verifier::proof] t: Token) {}
+            proof fn lemma(self, tracked t: Token) {}
 
-            #[verifier::proof]
-            fn other(self, #[verifier::proof] t: Token) {
+            proof fn other(self, tracked t: Token) {
                 self.lemma(t);
                 self.lemma(t);
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "test currently ignored")
+    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `t`")
 }
 
 test_verify_one_file! {

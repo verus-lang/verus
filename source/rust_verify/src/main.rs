@@ -1,5 +1,7 @@
 #![feature(rustc_private)]
 
+use rust_verify::util::{verus_build_profile, VerusBuildProfile};
+
 extern crate rustc_driver; // TODO(main_new) can we remove this?
 
 #[cfg(target_family = "windows")]
@@ -67,12 +69,17 @@ pub fn main() {
         false
     };
 
-    if cfg!(debug_assertions) {
-        if !build_test_mode {
-            eprintln!(
+    let profile = verus_build_profile();
+
+    if !build_test_mode {
+        match profile {
+            VerusBuildProfile::Debug => eprintln!(
                 "warning: verus was compiled in debug mode, which will result in worse performance"
-            );
-            // TODO(main_new) eprintln!("to compile in release mode use ./tools/cargo.sh build --release");
+            ),
+            VerusBuildProfile::Unknown => eprintln!(
+                "warning: verus was compiled outside vargo, and we cannot determine whether it was built in debug mode, which will result in worse performance"
+            ),
+            VerusBuildProfile::Release => (),
         }
     }
 
@@ -142,6 +149,7 @@ pub fn main() {
             }
             Some(times)
         } else {
+            println!("verus-build-profile: {}", profile.to_string());
             println!("total-time:      {:>10} ms", total_time.as_millis());
             println!("    rust-time:       {:>10} ms", rust.as_millis());
             println!("        init-and-types:  {:>10} ms", rust_init.as_millis());
@@ -185,6 +193,10 @@ pub fn main() {
         if let Some(times_ms) = times_ms_json_data {
             out.insert("times-ms".to_string(), times_ms);
         }
+        out.insert(
+            "verus-build-profile".to_string(),
+            serde_json::Value::String(profile.to_string()),
+        );
         println!("{}", serde_json::ser::to_string_pretty(&out).expect("invalid json"));
     }
 
