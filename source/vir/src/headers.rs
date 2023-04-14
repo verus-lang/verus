@@ -2,7 +2,7 @@ use crate::ast::{
     Expr, ExprX, Exprs, Fun, Function, FunctionX, GenericBoundX, HeaderExprX, Ident, LoopInvariant,
     LoopInvariantKind, LoopInvariants, MaskSpec, Stmt, StmtX, Typ, UnwrapParameter, VirErr,
 };
-use crate::ast_util::{err_str, params_equal_opt};
+use crate::ast_util::{error, params_equal_opt};
 use crate::def::VERUS_SPEC;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -47,20 +47,20 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                 ExprX::Header(header) => match &**header {
                     HeaderExprX::UnwrapParameter(unwrap) => {
                         if !unwrap_parameter_allowed {
-                            return err_str(&stmt.span, "unwrap_parameter must appear ");
+                            return error(&stmt.span, "unwrap_parameter must appear ");
                         }
                         is_unwrap_parameter = true;
                         unwrap_parameters.push(unwrap.clone());
                     }
                     HeaderExprX::NoMethodBody => {
-                        return err_str(
+                        return error(
                             &stmt.span,
                             "no_method_body() must be a method's final expression, with no semicolon",
                         );
                     }
                     HeaderExprX::Requires(es) => {
                         if require.is_some() {
-                            return err_str(
+                            return error(
                                 &stmt.span,
                                 "only one call to requires allowed (use requires([e1, ..., en]) for multiple expressions",
                             );
@@ -69,7 +69,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                     }
                     HeaderExprX::Recommends(es) => {
                         if recommend.is_some() {
-                            return err_str(
+                            return error(
                                 &stmt.span,
                                 "only one call to recommends allowed (use recommends([e1, ..., en]) for multiple expressions",
                             );
@@ -78,7 +78,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                     }
                     HeaderExprX::Ensures(id_typ, es) => {
                         if ensure.is_some() {
-                            return err_str(
+                            return error(
                                 &stmt.span,
                                 "only one call to ensures allowed (use ensures([e1, ..., en]) for multiple expressions",
                             );
@@ -87,7 +87,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                     }
                     HeaderExprX::Invariant(es) => {
                         if invariant.is_some() {
-                            return err_str(
+                            return error(
                                 &stmt.span,
                                 "only one call to invariant allowed (use invariant([e1, ..., en]) for multiple expressions",
                             );
@@ -96,7 +96,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                     }
                     HeaderExprX::InvariantEnsures(es) => {
                         if invariant_ensure.is_some() {
-                            return err_str(
+                            return error(
                                 &stmt.span,
                                 "only one call to invariant_ensures allowed (use invariant_ensures([e1, ..., en]) for multiple expressions",
                             );
@@ -105,7 +105,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                     }
                     HeaderExprX::Decreases(es) => {
                         if decrease.is_some() {
-                            return err_str(
+                            return error(
                                 &stmt.span,
                                 "only one decreases expression currently supported",
                             );
@@ -114,7 +114,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                     }
                     HeaderExprX::DecreasesWhen(e) => {
                         if decrease_when.is_some() {
-                            return err_str(
+                            return error(
                                 &stmt.span,
                                 "only one if decrease_when expression currently supported",
                             );
@@ -123,7 +123,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                     }
                     HeaderExprX::DecreasesBy(path) => {
                         if decrease_by.is_some() {
-                            return err_str(
+                            return error(
                                 &stmt.span,
                                 "only one decreases_by expression currently supported",
                             );
@@ -140,7 +140,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                         match invariant_mask {
                             MaskSpec::NoSpec => {}
                             _ => {
-                                return err_str(&stmt.span, "only one invariant mask spec allowed");
+                                return error(&stmt.span, "only one invariant mask spec allowed");
                             }
                         }
                         invariant_mask = MaskSpec::InvariantOpens(es.clone());
@@ -149,7 +149,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                         match invariant_mask {
                             MaskSpec::NoSpec => {}
                             _ => {
-                                return err_str(&stmt.span, "only one invariant mask spec allowed");
+                                return error(&stmt.span, "only one invariant mask spec allowed");
                             }
                         }
                         invariant_mask = MaskSpec::InvariantOpensExcept(es.clone());
@@ -202,7 +202,7 @@ pub fn read_header(body: &mut Expr) -> Result<Header, VirErr> {
                 if let ExprX::Header(h) = &e.x {
                     if let HeaderExprX::NoMethodBody = **h {
                         if block.len() != 0 {
-                            return err_str(
+                            return error(
                                 &e.span,
                                 "no statements are allowed before no_method_body()",
                             );
@@ -210,7 +210,7 @@ pub fn read_header(body: &mut Expr) -> Result<Header, VirErr> {
                         expr = None;
                         header.no_method_body = true;
                     } else {
-                        return err_str(&e.span, "header must be a statement, with a semicolon");
+                        return error(&e.span, "header must be a statement, with a semicolon");
                     }
                 }
             }
@@ -266,7 +266,7 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
     } = spec_method.x.clone();
     let mut methodx = method.x.clone();
     if methodx.typ_bounds.len() != typ_bounds.len() {
-        return err_str(
+        return error(
             &spec_method.span,
             "method specification has different number of type parameters from method",
         );
@@ -276,7 +276,7 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         match (&**g1, &**g2) {
             (GenericBoundX::Traits(ps1), GenericBoundX::Traits(ps2)) => {
                 if x1 != x2 || ps1 != ps2 {
-                    return err_str(
+                    return error(
                         &spec_method.span,
                         "method specification has different type parameters or bounds from method",
                     );
@@ -285,24 +285,21 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         }
     }
     if methodx.params.len() != params.len() {
-        return err_str(
+        return error(
             &spec_method.span,
             "method specification has different number of parameters from method",
         );
     }
     for (p1, p2) in methodx.params.iter().zip(params.iter()) {
         if !params_equal_opt(p1, p2, false, false) {
-            return err_str(
+            return error(
                 &spec_method.span,
                 "method specification has different parameters from method",
             );
         }
     }
     if !params_equal_opt(&methodx.ret, &ret, false, false) {
-        return err_str(
-            &spec_method.span,
-            "method specification has a different return from method",
-        );
+        return error(&spec_method.span, "method specification has a different return from method");
     }
     methodx.fuel = fuel;
     methodx.params = params; // this is important; the correct parameter modes are in spec_method
@@ -345,7 +342,7 @@ pub fn make_trait_decls(methods: Vec<Function>) -> Result<Vec<Function>, VirErr>
         }
     }
     for (_, extra_spec) in specs.iter() {
-        return err_str(&extra_spec.span, "no matching method found for method specification");
+        return error(&extra_spec.span, "no matching method found for method specification");
     }
     Ok(decls)
 }

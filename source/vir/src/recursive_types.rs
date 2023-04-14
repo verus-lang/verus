@@ -1,7 +1,7 @@
 use crate::ast::{
     Datatype, FunctionKind, GenericBoundX, Ident, Krate, Path, Trait, Typ, TypX, VirErr,
 };
-use crate::ast_util::{err_str, err_string, path_as_rust_name};
+use crate::ast_util::{error, path_as_rust_name};
 use crate::context::GlobalCtx;
 use crate::recursion::Node;
 use crate::scc::Graph;
@@ -39,7 +39,7 @@ fn check_well_founded(
         return Ok(true);
     }
     // No base cases found, only inductive cases
-    err_str(&datatype.span, "datatype must have at least one non-recursive variant")
+    error(&datatype.span, "datatype must have at least one non-recursive variant")
 }
 
 fn check_well_founded_typ(
@@ -137,7 +137,7 @@ fn check_positive_uses(
                 match polarity {
                     Some(true) => {}
                     _ => {
-                        return err_string(
+                        return error(
                             &local.span,
                             format!(
                                 "Type {} recursively uses type {} in a non-positive polarity",
@@ -162,7 +162,7 @@ fn check_positive_uses(
             match (strictly_positive, polarity) {
                 (false, _) => Ok(()),
                 (true, Some(true)) => Ok(()),
-                (true, _) => err_string(
+                (true, _) => error(
                     &local.span,
                     format!(
                         "Type parameter {} must be declared #[verifier(maybe_negative)] to be used in a non-positive position",
@@ -213,7 +213,7 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
             match &**bound {
                 GenericBoundX::Traits(ts) if function.x.attrs.broadcast_forall && ts.len() != 0 => {
                     // See the todo!() in func_to_air.rs
-                    return err_str(
+                    return error(
                         &function.span,
                         "not yet supported: bounds on broadcast_forall function type parameters",
                     );

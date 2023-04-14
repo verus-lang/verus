@@ -4,7 +4,7 @@ use crate::ast::{
     Constant, Expr, ExprX, Fun, Function, Ident, LoopInvariantKind, Mode, PatternX, SpannedTyped,
     Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
-use crate::ast_util::{err_str, err_string, types_equal, QUANT_FORALL};
+use crate::ast_util::{error, types_equal, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{unique_bound, unique_local, Spanned};
 use crate::func_to_air::{SstInfo, SstMap};
@@ -355,7 +355,7 @@ fn init_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
 
 pub(crate) fn get_function(ctx: &Ctx, span: &Span, name: &Fun) -> Result<Function, VirErr> {
     match ctx.func_map.get(name) {
-        None => err_string(span, format!("could not find function {:?}", &name)),
+        None => error(span, format!("could not find function {:?}", &name)),
         Some(func) => Ok(func.clone()),
     }
 }
@@ -517,7 +517,7 @@ pub(crate) fn expr_to_pure_exp(ctx: &Ctx, state: &mut State, expr: &Expr) -> Res
     let result = if stms.len() == 0 {
         Ok(exp)
     } else {
-        err_str(&expr.span, "expected pure mathematical expression")
+        error(&expr.span, "expected pure mathematical expression")
     };
     state.disable_recommends -= 1;
     result
@@ -646,7 +646,7 @@ pub(crate) fn expr_to_stm_or_error(
     let (stms, exp_opt) = expr_to_stm_opt(ctx, state, expr)?;
     match exp_opt.to_value() {
         Some(e) => Ok((stms, e)),
-        None => err_str(&expr.span, "expression must produce a value"),
+        None => error(&expr.span, "expression must produce a value"),
     }
 }
 
@@ -899,7 +899,7 @@ fn expr_to_stm_opt(
         ExprX::VarAt(x, VarAt::Pre) => {
             if let Some((scope, _)) = state.rename_map.scope_and_index_of_key(x) {
                 if scope != 0 {
-                    err_str(&expr.span, "the parameter is shadowed here")?;
+                    error(&expr.span, "the parameter is shadowed here")?;
                 }
             }
             Ok((
@@ -1348,7 +1348,7 @@ fn expr_to_stm_opt(
             Ok((vec![stm], ReturnValue::ImplicitUnit(expr.span.clone())))
         }
         ExprX::Header(_) => {
-            return err_str(&expr.span, "header expression not allowed here");
+            return error(&expr.span, "header expression not allowed here");
         }
         ExprX::AssertAssume { is_assume: false, expr: e } => {
             if state.checking_recommends(ctx) {
@@ -1397,7 +1397,7 @@ fn expr_to_stm_opt(
             }
             let (mut proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
             if let ReturnValue::Some(_) = e {
-                return err_str(&expr.span, "'assert ... by' block cannot end with an expression");
+                return error(&expr.span, "'assert ... by' block cannot end with an expression");
             }
             let (check_recommends, require_exp) = expr_to_pure_exp_check(ctx, state, &require)?;
             body.extend(check_recommends);
@@ -1447,7 +1447,7 @@ fn expr_to_stm_opt(
 
                     let (proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
                     if let ReturnValue::Some(_) = e {
-                        return err_str(
+                        return error(
                             &expr.span,
                             "'assert ... by' block cannot end with an expression",
                         );
@@ -1518,9 +1518,9 @@ fn expr_to_stm_opt(
                     // check if assertion block is consisted only with requires/ensures
                     let (proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
                     let proof_block_err =
-                        err_str(&expr.span, "assert_bitvector_by cannot contain a proof block");
+                        error(&expr.span, "assert_bitvector_by cannot contain a proof block");
                     if let ReturnValue::Some(_) = e {
-                        return err_str(
+                        return error(
                             &expr.span,
                             "assert_bitvector_by cannot contain a return value",
                         );

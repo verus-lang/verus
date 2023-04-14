@@ -9,7 +9,7 @@ use crate::ast::{
     SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
 };
 use crate::ast_util::{conjoin, disjoin, if_then_else};
-use crate::ast_util::{err_str, err_string, wrap_in_trigger};
+use crate::ast_util::{error, wrap_in_trigger};
 use crate::context::GlobalCtx;
 use crate::def::{prefix_tuple_field, prefix_tuple_param, prefix_tuple_variant, Spanned};
 use crate::util::vec_map_result;
@@ -388,7 +388,7 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
                 };
                 Ok(if_expr)
             } else {
-                err_str(&expr.span, "not yet implemented: zero-arm match expressions")
+                error(&expr.span, "not yet implemented: zero-arm match expressions")
             }
         }
         ExprX::Ghost { alloc_wrapper: _, tracked: _, expr: expr1 } => Ok(expr1.clone()),
@@ -443,7 +443,7 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
     match &stmt.x {
         StmtX::Decl { pattern, mode: _, init: None } => match &pattern.x {
             PatternX::Var { .. } => Ok(vec![stmt.clone()]),
-            _ => err_str(&stmt.span, "let-pattern declaration must have an initializer"),
+            _ => error(&stmt.span, "let-pattern declaration must have an initializer"),
         },
         StmtX::Decl { pattern, mode: _, init: Some(init) }
             if !matches!(pattern.x, PatternX::Var { .. }) =>
@@ -470,7 +470,7 @@ fn simplify_one_typ(local: &LocalCtxt, state: &mut State, typ: &Typ) -> Result<T
         }
         TypX::TypParam(x) => {
             if !local.bounds.contains_key(x) {
-                return err_string(
+                return error(
                     &local.span,
                     format!("type parameter {} used before being declared", x),
                 );

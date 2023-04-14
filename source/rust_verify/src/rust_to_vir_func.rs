@@ -6,7 +6,7 @@ use crate::rust_to_vir_base::{
     check_generics_bounds_fun, def_id_to_vir_path, foreign_param_to_var, mid_ty_to_vir,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_mut_var, ExprModifier};
-use crate::util::{err_span_str, err_span_string, unsupported_err_span};
+use crate::util::{err_span, unsupported_err_span};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{
@@ -102,43 +102,43 @@ fn check_new_strlit<'tcx>(ctx: &Context<'tcx>, sig: &'tcx FnSig<'tcx>) -> Result
     let expected_input_num = 1;
 
     if decl.inputs.len() != expected_input_num {
-        return err_span_string(*sig_span, format!("Expected one argument to new_strlit"));
+        return err_span(*sig_span, format!("Expected one argument to new_strlit"));
     }
 
     let (kind, span) = match &decl.inputs[0].kind {
         TyKind::Ref(_, MutTy { ty, mutbl: _ }) => (&ty.kind, ty.span),
         _ => {
             dbg!(&decl.inputs[0]);
-            return err_span_string(decl.inputs[0].span, format!("expected a str"));
+            return err_span(decl.inputs[0].span, format!("expected a str"));
         }
     };
 
     let (res, span) = match kind {
         TyKind::Path(QPath::Resolved(_, path)) => (path.res, path.span),
-        _ => return err_span_string(span, format!("expected str")),
+        _ => return err_span(span, format!("expected str")),
     };
 
     if res != Res::PrimTy(PrimTy::Str) {
-        return err_span_string(span, format!("expected a str"));
+        return err_span(span, format!("expected a str"));
     }
 
     let (kind, span) = match decl.output {
         FnRetTy::Return(Ty { hir_id: _, kind, span }) => (kind, span),
-        _ => return err_span_string(*sig_span, format!("expected a return type of StrSlice")),
+        _ => return err_span(*sig_span, format!("expected a return type of StrSlice")),
     };
 
     let (res, span) = match kind {
         TyKind::Path(QPath::Resolved(_, path)) => (path.res, path.span),
-        _ => return err_span_string(*span, format!("expected a StrSlice")),
+        _ => return err_span(*span, format!("expected a StrSlice")),
     };
 
     let id = match res {
         Res::Def(_, id) => id,
-        _ => return err_span_string(span, format!("")),
+        _ => return err_span(span, format!("")),
     };
 
     if !ctx.tcx.is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice"), id) {
-        return err_span_string(span, format!("expected a StrSlice"));
+        return err_span(span, format!("expected a StrSlice"));
     }
     Ok(())
 }
@@ -237,7 +237,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 // is_mut_var: means a parameter is like `mut x: X` (unsupported)
                 // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
                 if is_mut_var {
-                    return err_span_string(
+                    return err_span(
                         *span,
                         format!(
                             "Verus does not support `mut` arguments (try writing `let mut param = param;` in the body of the function)"
@@ -271,7 +271,7 @@ pub(crate) fn check_item_fn<'tcx>(
         };
         let is_ref_mut = is_mut_ty(ctxt, *input);
         if is_ref_mut.is_some() && mode == Mode::Spec {
-            return err_span_string(
+            return err_span(
                 span,
                 format!("&mut argument not allowed for #[verifier::spec] functions"),
             );
@@ -293,50 +293,50 @@ pub(crate) fn check_item_fn<'tcx>(
     match (&kind, header.no_method_body, is_verus_spec, vir_body.is_some()) {
         (FunctionKind::TraitMethodDecl { .. }, false, false, false) => {}
         (FunctionKind::TraitMethodDecl { .. }, false, false, true) => {
-            return err_span_str(sig.span, "trait default methods are not yet supported");
+            return err_span(sig.span, "trait default methods are not yet supported");
         }
         (FunctionKind::TraitMethodDecl { .. }, true, true, _) => {}
         (FunctionKind::TraitMethodDecl { .. }, false, true, _) => {
-            return err_span_str(
+            return err_span(
                 sig.span,
                 "trait method declaration body must end with call to no_method_body()",
             );
         }
         (_, _, true, _) => {
-            return err_span_string(
+            return err_span(
                 sig.span,
                 format!("{VERUS_SPEC} can only appear in trait method declarations"),
             );
         }
         (_, false, false, true) => {}
         (_, false, false, false) => {
-            return err_span_str(sig.span, "function must have a body");
+            return err_span(sig.span, "function must have a body");
         }
         (_, true, _, _) => {
-            return err_span_str(
+            return err_span(
                 sig.span,
                 "no_method_body can only appear in trait method declarations",
             );
         }
     }
     if mode == Mode::Spec && (header.require.len() + header.ensure.len()) > 0 {
-        return err_span_str(sig.span, "spec functions cannot have requires/ensures");
+        return err_span(sig.span, "spec functions cannot have requires/ensures");
     }
     if mode != Mode::Spec && header.recommend.len() > 0 {
-        return err_span_str(sig.span, "non-spec functions cannot have recommends");
+        return err_span(sig.span, "non-spec functions cannot have recommends");
     }
     if header.ensure.len() > 0 {
         match (&header.ensure_id_typ, ret_typ_mode.as_ref()) {
             (None, None) => {}
             (None, Some(_)) => {
-                return err_span_str(sig.span, "ensures clause must be a closure");
+                return err_span(sig.span, "ensures clause must be a closure");
             }
             (Some(_), None) => {
-                return err_span_str(sig.span, "ensures clause cannot be a closure");
+                return err_span(sig.span, "ensures clause cannot be a closure");
             }
             (Some((_, typ)), Some((ret_typ, _))) => {
                 if !vir::ast_util::types_equal(&typ, &ret_typ) {
-                    return err_span_string(
+                    return err_span(
                         sig.span,
                         format!(
                             "return type is {:?}, but ensures expects type {:?}",
@@ -360,7 +360,7 @@ pub(crate) fn check_item_fn<'tcx>(
         all_param_names.push(param.x.name.clone());
         if let Some(unwrap) = unwrap_param_map.get(&param.x.name) {
             if mode != Mode::Exec {
-                return err_span_str(
+                return err_span(
                     sig.span,
                     "only exec functions can use Ghost(x) or Tracked(x) parameters",
                 );
@@ -370,15 +370,12 @@ pub(crate) fn check_item_fn<'tcx>(
             paramx.unwrapped_info = Some((unwrap.mode, unwrap.outer_name.clone()));
             *param = vir::def::Spanned::new(param.span.clone(), paramx);
         } else if unwrap_mut.is_some() {
-            return err_span_string(
-                sig.span,
-                format!("parameter {} must be unwrapped", &param.x.name),
-            );
+            return err_span(sig.span, format!("parameter {} must be unwrapped", &param.x.name));
         }
     }
     for name in all_param_names.iter() {
         if all_param_name_set.contains(name) {
-            return err_span_string(sig.span, format!("duplicate parameter name {}", name));
+            return err_span(sig.span, format!("duplicate parameter name {}", name));
         }
         all_param_name_set.insert(name.clone());
     }
@@ -421,7 +418,7 @@ pub(crate) fn check_item_fn<'tcx>(
     });
 
     if vattrs.nonlinear && vattrs.spinoff_prover {
-        return err_span_str(
+        return err_span(
             sig.span,
             "#[verifier(spinoff_prover)] is implied for assert by nonlinear_arith",
         );

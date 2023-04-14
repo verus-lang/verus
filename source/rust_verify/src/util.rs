@@ -1,13 +1,9 @@
 use rustc_span::Span;
 use vir::ast::VirErr;
-use vir::ast_util::err_string;
+use vir::ast_util::error as vir_error;
 
-pub(crate) fn err_span_str<A>(span: Span, msg: &str) -> Result<A, VirErr> {
-    err_span_string(span, msg.to_string())
-}
-
-pub(crate) fn err_span_string<A>(span: Span, msg: String) -> Result<A, VirErr> {
-    err_string(&crate::spans::err_air_span(span), msg)
+pub(crate) fn err_span<A, S: Into<String>>(span: Span, msg: S) -> Result<A, VirErr> {
+    vir_error(&crate::spans::err_air_span(span), msg)
 }
 
 pub(crate) fn vir_err_span_str(span: Span, msg: &str) -> VirErr {
@@ -19,10 +15,7 @@ pub(crate) fn vir_err_span_string(span: Span, msg: String) -> VirErr {
 }
 
 pub(crate) fn unsupported_err_span<A>(span: Span, msg: String) -> Result<A, VirErr> {
-    err_span_string(
-        span,
-        format!("The verifier does not yet support the following Rust feature: {}", msg),
-    )
+    err_span(span, format!("The verifier does not yet support the following Rust feature: {}", msg))
 }
 
 #[macro_export]
@@ -58,13 +51,13 @@ macro_rules! err_unless {
     ($assertion: expr, $span: expr, $msg: expr) => {
         if (!$assertion) {
             dbg!();
-            crate::util::err_span_string($span, $msg)?;
+            crate::util::err_span($span, $msg)?;
         }
     };
     ($assertion: expr, $span: expr, $msg: expr, $info: expr) => {
         if (!$assertion) {
             dbg!($info);
-            crate::util::err_span_string($span, $msg)?;
+            crate::util::err_span($span, $msg)?;
         }
     };
 }

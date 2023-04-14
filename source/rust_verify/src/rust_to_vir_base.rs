@@ -1,6 +1,6 @@
 use crate::attributes::get_verifier_attrs;
 use crate::context::{BodyCtxt, Context};
-use crate::util::{err_span_str, unsupported_err_span};
+use crate::util::{err_span, unsupported_err_span};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_ast::{ByRef, Mutability};
 use rustc_hir::definitions::DefPath;
@@ -592,7 +592,7 @@ pub(crate) fn typ_of_node_expect_mut_ref<'tcx>(
     if let TyKind::Ref(_, _tys, rustc_ast::Mutability::Mut) = ty.kind() {
         mid_ty_to_vir(bctx.ctxt.tcx, span, &ty, true)
     } else {
-        err_span_str(span, "a mutable reference is expected here")
+        err_span(span, "a mutable reference is expected here")
     }
 }
 
@@ -827,7 +827,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
                                 match &*generic_bound {
                                     GenericBoundX::Traits(l) if l.len() == 0 => {}
                                     _ => {
-                                        return err_span_str(
+                                        return err_span(
                                             *span,
                                             "Verus does not yet support trait bounds on Self",
                                         );
@@ -838,10 +838,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
                             let type_param_name = param_ty_to_vir_name(&param);
                             match typ_param_bounds.get_mut(&type_param_name) {
                                 None => {
-                                    return err_span_str(
-                                        *span,
-                                        "could not find this type parameter",
-                                    );
+                                    return err_span(*span, "could not find this type parameter");
                                 }
                                 Some(r) => {
                                     r.push(generic_bound);
@@ -850,7 +847,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
                         }
                     }
                     _ => {
-                        return err_span_str(
+                        return err_span(
                             *span,
                             "Verus does yet not support trait bounds on types that are not type parameters",
                         );
@@ -873,11 +870,11 @@ pub(crate) fn check_generics_bounds<'tcx>(
                 if Some(item_def_id) == tcx.lang_items().fn_once_output() {
                     // Do nothing
                 } else {
-                    return err_span_str(*span, "Verus does yet not support this type of bound");
+                    return err_span(*span, "Verus does yet not support this type of bound");
                 }
             }
             _ => {
-                return err_span_str(*span, "Verus does yet not support this type of bound");
+                return err_span(*span, "Verus does yet not support this type of bound");
             }
         }
     }
@@ -907,7 +904,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
         let neg = vattrs.maybe_negative;
         let pos = vattrs.strictly_positive;
         if neg && pos {
-            return err_span_str(
+            return err_span(
                 hir_param.span,
                 "type parameter cannot be both maybe_negative and strictly_positive",
             );
@@ -927,7 +924,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
 
         if let GenericParamKind::Type { .. } = kind {
             if check_that_external_body_datatype_declares_positivity && !neg && !pos {
-                return err_span_str(
+                return err_span(
                     *span,
                     "in external_body datatype, each type parameter must be either #[verifier(maybe_negative)] or #[verifier(strictly_positive)] (maybe_negative is always safe to use)",
                 );

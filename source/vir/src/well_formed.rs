@@ -3,7 +3,7 @@ use crate::ast::{
     Mode, MultiOp, Path, PathX, TypX, UnaryOp, UnaryOpr, VirErr, VirErrAs,
 };
 use crate::ast_util::{
-    err_str, err_string, error, is_visible_to_opt, path_as_rust_name, referenced_vars_expr,
+    error, is_visible_to_opt, msg_error, path_as_rust_name, referenced_vars_expr,
 };
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::user_local_name;
@@ -26,7 +26,7 @@ fn check_typ(ctxt: &Ctxt, typ: &Arc<TypX>, span: &air::ast::Span) -> Result<(), 
             match krate {
                 None => Ok(()),
                 Some(krate_name) if ctxt.crate_names.contains(&krate_name) => Ok(()),
-                Some(_) => err_str(
+                Some(_) => error(
                     span,
                     &format!(
                         "type `{:}` is not supported (note: currently Verus does not support definitions external to the crate, including most features in std)",
@@ -50,7 +50,7 @@ fn check_path_and_get_function<'a>(
         Some(f) => f,
         None => {
             let path = path_as_rust_name(&x.path);
-            return err_str(
+            return error(
                 span,
                 &format!(
                     "`{path:}` is not supported (note: currently Verus does not support definitions external to the crate, including most features in std)"
@@ -61,7 +61,7 @@ fn check_path_and_get_function<'a>(
 
     if let Some((source_module, msg)) = disallow_private_access {
         if !is_visible_to_opt(&f.x.visibility, source_module) {
-            return err_str(&span, msg);
+            return error(&span, msg);
         }
     }
 
@@ -83,7 +83,7 @@ fn check_one_expr(
             if f.x.attrs.is_decrease_by {
                 // a decreases_by function isn't a real function;
                 // it's just a container for proof code that goes in the corresponding spec function
-                return err_str(
+                return error(
                     &expr.span,
                     "cannot call a decreases_by/recommends_by function directly",
                 );
@@ -91,7 +91,7 @@ fn check_one_expr(
             if f.x.attrs.broadcast_forall && f.x.params.len() == 0 {
                 // REVIEW: this is a rather arbitrary restriction due to ast_simplify's treatment of 0-argument functions.
                 // When we generalize broadcast_forall, this restriction should be removed.
-                return err_str(
+                return error(
                     &expr.span,
                     "cannot call a broadcast_forall function with 0 arguments directly",
                 );
@@ -118,7 +118,7 @@ fn check_one_expr(
                     _ => false,
                 };
                 if !is_ok {
-                    return err_str(
+                    return error(
                         &arg.span,
                         "complex arguments to &mut parameters are currently unsupported",
                     );
@@ -129,7 +129,7 @@ fn check_one_expr(
             if let Some(dt) = ctxt.dts.get(path) {
                 if let Some(module) = &function.x.visibility.owning_module {
                     if !is_datatype_transparent(&module, dt) {
-                        return Err(error(
+                        return Err(msg_error(
                             "constructor of datatype with inaccessible fields",
                             &expr.span,
                         ).secondary_label(
@@ -152,11 +152,11 @@ fn check_one_expr(
                     (Some((source_module, _)), Some(field_vis))
                         if is_visible_to_opt(&field_vis, source_module) => {}
                     (Some((_, msg)), _) => {
-                        return err_str(&expr.span, msg);
+                        return error(&expr.span, msg);
                     }
                 }
             } else {
-                return err_str(
+                return error(
                     &expr.span,
                     &format!(
                         "`{:}` is not supported (note: currently Verus does not support definitions external to the crate, including most features in std)",
@@ -167,17 +167,17 @@ fn check_one_expr(
         }
         ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e) => {
             if !crate::ast_util::type_is_bool(&e.typ) {
-                return Err(error(
-                    "`custom_err` attribute only makes sense for bool expressions",
+                return error(
                     &expr.span,
-                ));
+                    "`custom_err` attribute only makes sense for bool expressions",
+                );
             }
         }
         ExprX::UnaryOpr(UnaryOpr::Field(FieldOpr { datatype: path, variant, field }), _) => {
             if let Some(dt) = ctxt.dts.get(path) {
                 if let Some(module) = &function.x.visibility.owning_module {
                     if !is_datatype_transparent(&module, dt) {
-                        return Err(error(
+                        return Err(msg_error(
                             "field access of datatype with inaccessible fields",
                             &expr.span,
                         ).secondary_label(
@@ -190,19 +190,16 @@ fn check_one_expr(
                     let variant = dt.x.get_variant(variant);
                     let (_, _, vis) = &crate::ast_util::get_field(&variant.a, &field).a;
                     if !is_visible_to_opt(vis, source_module) {
-                        return err_str(&expr.span, msg);
+                        return error(&expr.span, msg);
                     }
                 }
             } else {
-                return Err(error("field access of datatype with inaccessible fields", &expr.span));
+                return error(&expr.span, "field access of datatype with inaccessible fields");
             }
         }
         ExprX::Multi(MultiOp::Chained(ops), _) => {
             if ops.len() < 1 {
-                return err_str(
-                    &expr.span,
-                    "chained inequalities must have at least one inequality",
-                );
+                return error(&expr.span, "chained inequalities must have at least one inequality");
             }
         }
         ExprX::OpenInvariant(_inv, _binder, body, _atomicity) => {
@@ -210,7 +207,7 @@ fn check_one_expr(
         }
         ExprX::AssertQuery { requires, ensures, proof, mode: _ } => {
             if function.x.attrs.nonlinear {
-                return err_str(
+                return error(
                     &expr.span,
                     "assert_by_query not allowed in #[verifier(nonlinear)] functions",
                 );
@@ -233,7 +230,7 @@ fn check_one_expr(
                     ExprX::Var(x) | ExprX::VarLoc(x)
                         if !scope_map.contains_key(&x) && !referenced.contains(x) =>
                     {
-                        VisitorControlFlow::Stop(error(
+                        VisitorControlFlow::Stop(msg_error(
                             format!("variable {} not mentioned in requires/ensures", x).as_str(),
                             &e.span,
                         ))
@@ -252,7 +249,7 @@ fn check_one_expr(
         ExprX::Fuel(f, _) => {
             let f = check_path_and_get_function(ctxt, f, None, &expr.span)?;
             if f.x.mode != Mode::Spec {
-                return err_str(
+                return error(
                     &expr.span,
                     &format!(
                         "reveal/fuel statements require a spec-mode function, got {:}-mode function",
@@ -286,13 +283,13 @@ fn check_function(
         if function.x.body.is_some() && function.x.mode != Mode::Exec {
             // REVIEW: If we allow default method implementations, we'll need to make sure
             // it doesn't introduce nontermination into proof/spec.
-            return err_str(
+            return error(
                 &function.span,
                 "trait proof/spec method declaration cannot provide a default implementation",
             );
         }
         if !matches!(function.x.mask_spec, MaskSpec::NoSpec) {
-            return err_str(
+            return error(
                 &function.span,
                 "not yet supported: trait method declarations that open invariants",
             );
@@ -301,13 +298,13 @@ fn check_function(
 
     if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
         if function.x.require.len() + function.x.ensure.len() != 0 {
-            return err_str(
+            return error(
                 &function.span,
                 "trait method implementation cannot declare requires/ensures; these can only be inherited from the trait declaration",
             );
         }
         if !matches!(function.x.mask_spec, MaskSpec::NoSpec) {
-            return err_str(
+            return error(
                 &function.span,
                 "trait method implementation cannot open invariants; this can only be inherited from the trait declaration",
             );
@@ -318,38 +315,38 @@ fn check_function(
         match function.x.kind {
             FunctionKind::Static => {}
             FunctionKind::TraitMethodDecl { .. } | FunctionKind::TraitMethodImpl { .. } => {
-                return err_str(
+                return error(
                     &function.span,
                     "decreases_by/recommends_by function cannot be a trait method",
                 );
             }
         }
         if function.x.mode != Mode::Proof {
-            return err_str(
+            return error(
                 &function.span,
                 "decreases_by/recommends_by function must have mode proof",
             );
         }
         if function.x.decrease.len() != 0 {
-            return err_str(
+            return error(
                 &function.span,
                 "decreases_by/recommends_by function cannot have its own decreases clause",
             );
         }
         if function.x.require.len() != 0 {
-            return err_str(
+            return error(
                 &function.span,
                 "decreases_by/recommends_by function cannot have requires clauses (use decreases_when in the spec function instead)",
             );
         }
         if function.x.ensure.len() != 0 {
-            return err_str(
+            return error(
                 &function.span,
                 "decreases_by/recommends_by function cannot have ensures clauses",
             );
         }
         if function.x.has_return() {
-            return err_str(
+            return error(
                 &function.span,
                 "decreases_by/recommends_by function cannot have a return value",
             );
@@ -358,10 +355,7 @@ fn check_function(
 
     if function.x.decrease_by.is_some() {
         if function.x.mode != Mode::Spec {
-            return err_str(
-                &function.span,
-                "only spec functions can use decreases_by/recommends_by",
-            );
+            return error(&function.span, "only spec functions can use decreases_by/recommends_by");
         }
     }
 
@@ -369,59 +363,59 @@ fn check_function(
     for p in function.x.params.iter() {
         check_typ(ctxt, &p.x.typ, &p.span)?;
         if user_local_name(&*p.x.name) == ret_name {
-            return err_str(&p.span, "parameter name cannot be the same as the return value name");
+            return error(&p.span, "parameter name cannot be the same as the return value name");
         }
     }
 
     if function.x.attrs.inline {
         if function.x.mode != Mode::Spec {
-            return err_str(&function.span, "'inline' is only allowed for 'spec' functions");
+            return error(&function.span, "'inline' is only allowed for 'spec' functions");
         }
         // make sure we don't leak private bodies by inlining
         if !function.x.visibility.is_private() && function.x.publish != Some(true) {
-            return err_str(
+            return error(
                 &function.span,
                 "'inline' is only allowed for private or 'open spec' functions",
             );
         }
         if function.x.decrease.len() != 0 {
-            return err_str(&function.span, "'inline' functions cannot be recursive");
+            return error(&function.span, "'inline' functions cannot be recursive");
         }
         if function.x.body.is_none() {
-            return err_str(&function.span, "'inline' functions must have a body");
+            return error(&function.span, "'inline' functions must have a body");
         }
     }
 
     if function.x.attrs.atomic {
         if function.x.mode != Mode::Exec {
-            return err_str(&function.span, "'atomic' only makes sense on an 'exec' function");
+            return error(&function.span, "'atomic' only makes sense on an 'exec' function");
         }
     }
     match &function.x.mask_spec {
         MaskSpec::NoSpec => {}
         _ => {
             if function.x.mode == Mode::Spec {
-                return err_str(&function.span, "invariants cannot be opened in spec functions");
+                return error(&function.span, "invariants cannot be opened in spec functions");
             }
         }
     }
     if function.x.attrs.broadcast_forall {
         if function.x.mode != Mode::Proof {
-            return err_str(&function.span, "broadcast_forall function must be declared as proof");
+            return error(&function.span, "broadcast_forall function must be declared as proof");
         }
         if function.x.has_return() {
-            return err_str(&function.span, "broadcast_forall function cannot have return type");
+            return error(&function.span, "broadcast_forall function cannot have return type");
         }
         for param in function.x.params.iter() {
             if param.x.mode != Mode::Spec {
-                return err_str(
+                return error(
                     &function.span,
                     "broadcast_forall function must have spec parameters",
                 );
             }
         }
         if function.x.body.is_some() {
-            return err_str(
+            return error(
                 &function.span,
                 "broadcast_forall function must be declared as external_body",
             );
@@ -434,7 +428,7 @@ fn check_function(
             && function.x.attrs.nonlinear
             && function.x.attrs.integer_ring)
     {
-        return err_str(
+        return error(
             &function.span,
             "Select at most one verifier attribute: integer_ring, non_linear, bit_vector",
         );
@@ -442,14 +436,14 @@ fn check_function(
 
     if function.x.attrs.bit_vector {
         if function.x.mode != Mode::Proof {
-            return err_str(&function.span, "bit-vector function mode must be declared as proof");
+            return error(&function.span, "bit-vector function mode must be declared as proof");
         }
         if let Some(body) = &function.x.body {
             crate::ast_visitor::expr_visitor_check(body, &mut |_scope_map, expr| {
                 match &expr.x {
                     ExprX::Block(_, _) => {}
                     _ => {
-                        return err_str(
+                        return error(
                             &function.span,
                             "bit-vector function mode cannot have a body",
                         );
@@ -462,7 +456,7 @@ fn check_function(
             match *p.x.typ {
                 TypX::Bool | TypX::Int(_) | TypX::Boxed(_) => {}
                 _ => {
-                    return err_str(
+                    return error(
                         &p.span,
                         "bit-vector function mode cannot have a datatype other than Integer/Boolean",
                     );
@@ -473,7 +467,7 @@ fn check_function(
 
     #[cfg(not(feature = "singular"))]
     if function.x.attrs.integer_ring {
-        return err_str(
+        return error(
             &function.span,
             "Please cargo build with `--features singular` to use integer_ring attribute",
         );
@@ -484,7 +478,7 @@ fn check_function(
         let _ = match std::env::var("VERUS_SINGULAR_PATH") {
             Ok(_) => {}
             Err(_) => {
-                return err_str(
+                return error(
                     &function.span,
                     "Please provide VERUS_SINGULAR_PATH to use integer_ring attribute",
                 );
@@ -492,14 +486,14 @@ fn check_function(
         };
 
         if function.x.mode != Mode::Proof {
-            return err_str(&function.span, "integer_ring mode must be declared as proof");
+            return error(&function.span, "integer_ring mode must be declared as proof");
         }
         if let Some(body) = &function.x.body {
             crate::ast_visitor::expr_visitor_check(body, &mut |_scope_map, expr| {
                 match &expr.x {
                     ExprX::Block(_, _) => {}
                     _ => {
-                        return err_str(&function.span, "integer_ring mode cannot have a body");
+                        return error(&function.span, "integer_ring mode cannot have a body");
                     }
                 }
                 Ok(())
@@ -510,7 +504,7 @@ fn check_function(
                 TypX::Int(crate::ast::IntRange::Int) => {}
                 TypX::Boxed(_) => {}
                 _ => {
-                    return err_str(
+                    return error(
                         &p.span,
                         "integer_ring proof's parameters should all be int type",
                     );
@@ -518,10 +512,7 @@ fn check_function(
             }
         }
         if function.x.ensure.len() != 1 {
-            return err_str(
-                &function.span,
-                "only a single ensures is allowed in integer_ring mode",
-            );
+            return error(&function.span, "only a single ensures is allowed in integer_ring mode");
         } else {
             let ens = function.x.ensure[0].clone();
             if let crate::ast::ExprX::Binary(crate::ast::BinaryOp::Eq(_), lhs, rhs) = &ens.x {
@@ -535,7 +526,7 @@ fn check_function(
                         crate::ast::ExprX::Const(crate::ast::Constant::Int(zero))
                             if "0" == zero.to_string() => {}
                         _ => {
-                            return err_str(
+                            return error(
                                 &function.span,
                                 "integer_ring mode ensures expression error: when the lhs is has % operator, the rhs should be zero. The ensures expression should be `Expr % m == 0` or `Expr == Expr` ",
                             );
@@ -543,17 +534,14 @@ fn check_function(
                     }
                 }
             } else {
-                return err_str(
+                return error(
                     &function.span,
                     "In the integer_ring's ensures expression, the outermost operator should be equality operator. For example, inequality operator is not supported",
                 );
             }
         }
         if function.x.has_return() {
-            return err_str(
-                &function.span,
-                "integer_ring mode function cannot have a return value",
-            );
+            return error(&function.span, "integer_ring mode function cannot have a return value");
         }
         for req in function.x.require.iter() {
             crate::ast_visitor::expr_visitor_check(req, &mut |_scope_map, expr| {
@@ -562,7 +550,7 @@ fn check_function(
                     TypX::Bool => {}
                     TypX::Boxed(_) => {}
                     _ => {
-                        return err_str(
+                        return error(
                             &req.span,
                             "integer_ring mode's expressions should be int/bool type",
                         );
@@ -578,7 +566,7 @@ fn check_function(
                     TypX::Bool => {}
                     TypX::Boxed(_) => {}
                     _ => {
-                        return err_str(
+                        return error(
                             &ens.span,
                             "integer_ring mode's expressions should be int/bool type",
                         );
@@ -591,7 +579,7 @@ fn check_function(
 
     if function.x.attrs.nonlinear {
         if function.x.mode == Mode::Spec {
-            return err_str(
+            return error(
                 &function.span,
                 "#[verifier(nonlinear) is only allowed on proof and exec functions",
             );
@@ -599,18 +587,18 @@ fn check_function(
     }
 
     if function.x.publish.is_some() && function.x.mode != Mode::Spec {
-        return err_str(
+        return error(
             &function.span,
             "function is marked #[verifier(publish)] but not marked #[verifier::spec]",
         );
     }
 
     if function.x.is_main() && function.x.mode != Mode::Exec {
-        return err_str(&function.span, "`main` function should be #[verifier::exec]");
+        return error(&function.span, "`main` function should be #[verifier::exec]");
     }
 
     if function.x.publish.is_some() && function.x.visibility.is_private() {
-        return err_str(
+        return error(
             &function.span,
             "function is marked #[verifier(publish)] but not marked `pub`; for the body of a function to be visible, the function symbol must also be visible",
         );
@@ -624,7 +612,7 @@ fn check_function(
             if let ExprX::Var(x) = &expr.x {
                 for param in function.x.params.iter().filter(|p| p.x.is_mut) {
                     if *x == param.x.name {
-                        return err_string(
+                        return error(
                             &expr.span,
                             format!(
                                 "in requires, use `old({})` to refer to the pre-state of an &mut variable",
@@ -651,13 +639,13 @@ fn check_function(
         let msg = "public function decreases_when cannot refer to private items";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
         if function.x.mode != Mode::Spec {
-            return err_str(
+            return error(
                 &function.span,
                 "only spec functions can use decreases_when (use requires for proof/exec functions)",
             );
         }
         if function.x.decrease.len() == 0 {
-            return err_str(
+            return error(
                 &function.span,
                 "decreases_when can only be used when there is a decreases clause (use recommends(...) for nonrecursive functions)",
             );
@@ -669,7 +657,7 @@ fn check_function(
         && (function.x.decrease.len() > 0 || function.x.decrease_by.is_some())
     {
         diags.push(VirErrAs::Warning(
-            error("decreases checks in exec functions do not guarantee termination of functions with loops or of their callers", &function.span),
+            msg_error("decreases checks in exec functions do not guarantee termination of functions with loops or of their callers", &function.span),
         ));
     }
 
@@ -780,7 +768,7 @@ pub fn check_crate(
             let proof_function = if let Some(proof_function) = funs.get(proof_fun) {
                 proof_function
             } else {
-                return err_str(
+                return error(
                     &function.span,
                     "cannot find function referred to in decreases_by/recommends_by",
                 );
@@ -821,7 +809,7 @@ pub fn check_crate(
             let spec_function = if let Some(spec_function) = funs.get(spec_fun) {
                 spec_function
             } else {
-                return err_str(
+                return error(
                     &function.span,
                     "cannot find function referred to in when_used_as_spec",
                 );
@@ -847,7 +835,7 @@ pub fn check_crate(
         if function.x.attrs.is_decrease_by
             && !decreases_by_proof_to_spec.contains_key(&function.x.name)
         {
-            return err_str(
+            return error(
                 &function.span,
                 "function cannot be marked #[verifier(decreases_by)] or #[verifier(recommends_by)] unless it is used in some decreases_by/recommends_by",
             );

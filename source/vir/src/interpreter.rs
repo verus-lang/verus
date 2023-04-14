@@ -9,7 +9,7 @@ use crate::ast::{
     ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Fun, FunX, Idents, InequalityOp, IntRange,
     IntegerTypeBoundKind, PathX, SpannedTyped, Typ, TypX, UnaryOp, VirErr,
 };
-use crate::ast_util::{err_str, path_as_vstd_name};
+use crate::ast_util::{error, path_as_vstd_name};
 use crate::func_to_air::{SstInfo, SstMap};
 use crate::prelude::ArchWordBits;
 use crate::sst::{Bnd, BndX, Exp, ExpX, Exps, Trigs, UniqueIdent};
@@ -882,7 +882,7 @@ fn eval_seq(
 fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, VirErr> {
     state.iterations += 1;
     if state.iterations > ctx.max_iterations {
-        return err_str(&exp.span, "assert_by_compute timed out");
+        return error(&exp.span, "assert_by_compute timed out");
     }
     state.log(format!("{}Evaluating {:}", "\t".repeat(state.depth), exp));
     let ok = Ok(exp.clone());
@@ -1532,7 +1532,7 @@ fn eval_expr_launch(
         log.replace(state.log.unwrap());
     }
     if let ExpX::Const(Constant::Bool(false)) = res.x {
-        err_str(&exp.span, "assert simplifies to false")
+        error(&exp.span, "assert simplifies to false")
     } else {
         match mode {
             // Send partial result to Z3
@@ -1542,7 +1542,7 @@ fn eval_expr_launch(
                     ExpX::Interp(InterpExp::FreeVar(v)) => {
                         Ok(SpannedTyped::new(&e.span, &e.typ, ExpX::Var(v.clone())))
                     }
-                    ExpX::Interp(InterpExp::Closure(..)) => err_str(
+                    ExpX::Interp(InterpExp::Closure(..)) => error(
                         &e.span,
                         "Proof by computation included a closure literal that wasn't applied.  This is not yet supported.",
                     ),
@@ -1558,7 +1558,7 @@ fn eval_expr_launch(
             // Proof must succeed purely through computation
             ComputeMode::ComputeOnly => match res.x {
                 ExpX::Const(Constant::Bool(true)) => Ok((res, state.msgs)),
-                _ => err_str(
+                _ => error(
                     &exp.span,
                     &format!(
                         "assert_by_compute_only failed to simplify down to true.  Instead got: {}.",

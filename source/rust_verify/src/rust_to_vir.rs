@@ -15,7 +15,7 @@ use crate::rust_to_vir_base::{
     hack_get_def_name, mid_ty_to_vir, mk_visibility, typ_path_and_ident_to_vir_path,
 };
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn, CheckItemFnEither};
-use crate::util::{err_span_str, unsupported_err_span};
+use crate::util::{err_span, unsupported_err_span};
 use crate::{err_unless, unsupported_err, unsupported_err_unless};
 
 use rustc_ast::IsAuto;
@@ -131,7 +131,7 @@ fn check_item<'tcx>(
                 return Ok(());
             }
             if impll.unsafety != Unsafety::Normal {
-                return err_span_str(item.span, "the verifier does not support `unsafe` here");
+                return err_span(item.span, "the verifier does not support `unsafe` here");
             }
 
             if let Some(TraitRef { path, hir_ref_id: _ }) = impll.of_trait {
@@ -220,7 +220,7 @@ fn check_item<'tcx>(
                     (path, typ_args)
                 }
                 _ => {
-                    return err_span_str(
+                    return err_span(
                         item.span.clone(),
                         "Verus does not yet support trait implementations for this type",
                     );
@@ -294,7 +294,7 @@ fn check_item<'tcx>(
                                         unreachable!()
                                     };
                                     if !valid || get_mode(Mode::Exec, fn_attrs) != Mode::Spec {
-                                        return err_span_str(
+                                        return err_span(
                                             sig.span,
                                             "invalid is_variant function, do not use #[verifier(is_variant)] directly, use the #[is_variant] macro instead",
                                         );
