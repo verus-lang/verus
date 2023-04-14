@@ -3,7 +3,7 @@ use crate::ast::{
     InferMode, InvAtomicity, Krate, Mode, ModeCoercion, MultiOp, Path, Pattern, PatternX, Stmt,
     StmtX, UnaryOp, UnaryOpr, VirErr,
 };
-use crate::ast_util::{error, get_field, msg_error, path_as_vstd_name};
+use crate::ast_util::{error, error_with_help, get_field, msg_error, path_as_vstd_name};
 use crate::def::user_local_name;
 use crate::util::vec_map_result;
 use air::ast::Span;
@@ -834,13 +834,21 @@ fn check_expr_handle_mut_arg(
         }
         ExprX::Fuel(_, _) => {
             if typing.macro_erasure && typing.block_ghostness == Ghost::Exec {
-                return error(&expr.span, "cannot use reveal/hide in exec mode");
+                return error_with_help(
+                    &expr.span,
+                    "cannot use reveal/hide in exec mode",
+                    "wrap the reveal call in a `proof` block",
+                );
             }
             Ok(outer_mode)
         }
         ExprX::RevealString(_) => {
             if typing.macro_erasure && typing.block_ghostness == Ghost::Exec {
-                return error(&expr.span, "cannot use reveal_strlit in exec mode");
+                return error_with_help(
+                    &expr.span,
+                    "cannot use reveal_strlit in exec mode",
+                    "wrap the reveal_strlit call in a `proof` block",
+                );
             }
             Ok(outer_mode)
         }
@@ -854,7 +862,11 @@ fn check_expr_handle_mut_arg(
         }
         ExprX::Forall { vars, require, ensure, proof } => {
             if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
-                return error(&expr.span, "cannot use 'assert ... by' in exec mode");
+                return error_with_help(
+                    &expr.span,
+                    "cannot use 'assert ... by' in exec mode",
+                    "use a `proof` block",
+                );
             }
             let in_forall_stmt = typing.in_forall_stmt;
             // REVIEW: we could allow proof vars when vars.len() == 0,

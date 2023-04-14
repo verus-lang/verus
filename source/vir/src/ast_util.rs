@@ -23,6 +23,14 @@ pub fn error<A, S: Into<String>>(span: &Span, msg: S) -> Result<A, VirErr> {
     Err(msg_error(msg, span))
 }
 
+pub fn error_with_help<A, S: Into<String>, H: Into<String>>(
+    span: &Span,
+    msg: S,
+    help: H,
+) -> Result<A, VirErr> {
+    Err(msg_error(msg, span).help(help))
+}
+
 impl PathX {
     pub fn pop_segment(&self) -> Path {
         let mut segments = (*self.segments).clone();
