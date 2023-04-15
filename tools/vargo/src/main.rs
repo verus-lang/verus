@@ -61,13 +61,13 @@ fn warn(msg: &str) {
 }
 
 const SUPPORTED_COMMANDS: &[&str] = &[
-    "build", "test", "nextest", "run", "clean", "fmt", "metadata",
+    "build", "test", "nextest", "run", "clean", "fmt", "metadata", "cmd",
 ];
 
 const CARGO_FORWARD_ARGS: &[&str] = &["-v", "-vv", "--verbose", "--offline"];
 const CARGO_FORWARD_ARGS_NEXT: &[&str] = &[];
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Task {
     Build,
     Test { nextest: bool },
@@ -75,6 +75,7 @@ enum Task {
     Clean,
     Metadata,
     Fmt,
+    Cmd,
 }
 
 #[cfg(target_os = "macos")]
@@ -184,7 +185,7 @@ fn run() -> Result<(), String> {
         None
     };
 
-    if let Some(toolchain) = toolchain {
+    if let Some(ref toolchain) = toolchain {
         std::env::set_var("VARGO_TOOLCHAIN", toolchain);
     }
 
@@ -227,8 +228,28 @@ fn run() -> Result<(), String> {
         "clean" => Task::Clean,
         "metadata" => Task::Metadata,
         "fmt" => Task::Fmt,
+        "cmd" => Task::Cmd,
         _ => panic!("unexpected command"),
     };
+
+    if task == Task::Cmd {
+        return std::process::Command::new("rustup")
+            .arg("run")
+            .arg(toolchain.expect("not in nextest"))
+            .args(args_bucket)
+            .stderr(std::process::Stdio::inherit())
+            .stdout(std::process::Stdio::inherit())
+            .status()
+            .map_err(|x| format!("vargo could not execute rustup ({})", x))
+            .and_then(|x| {
+                if x.success() {
+                    Ok(())
+                } else {
+                    Err(format!("vargo returned status code {:?}", x.code()))
+                }
+            });
+    }
+
     let release = args_bucket
         .iter()
         .position(|x| x.as_str() == "--release" || x.as_str() == "-r")
