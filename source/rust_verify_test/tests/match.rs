@@ -743,3 +743,31 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 2)
 }
+
+test_verify_one_file! {
+    #[test] match_arm_returns_poly_issue_523 verus_code! {
+        enum Option<A> { Some(A), None }
+
+        #[verifier(external_body)]
+        fn unreached<A>() -> A {
+            panic!()
+        }
+
+        fn test(x: Option<Option<bool>>) -> u8 {
+            match x {
+                Option::Some(m) =>
+                    match m {
+                        Option::Some(_) => {
+                            return 77;
+                        }
+                        _ => {
+                            unreached()
+                        },
+                    },
+                _ => {
+                    unreached()
+                }
+            }
+        }
+    } => Ok(())
+}

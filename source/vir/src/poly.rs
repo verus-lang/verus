@@ -578,7 +578,12 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let e1 = poly_expr(ctx, state, e1);
             let e2 = poly_expr(ctx, state, e2);
             let (e1, e2) = coerce_exprs_to_agree(ctx, &e1, &e2);
-            mk_expr_typ(&e1.typ, ExprX::If(e0, e1.clone(), Some(e2)))
+            let t = if typ_is_poly(ctx, &e1.typ) {
+                coerce_typ_to_poly(ctx, &expr.typ)
+            } else {
+                coerce_typ_to_native(ctx, &expr.typ)
+            };
+            mk_expr_typ(&t, ExprX::If(e0, e1.clone(), Some(e2)))
         }
         ExprX::Match(..) => panic!("Match should already be removed"),
         ExprX::Loop { label, cond, body, invs } => {
