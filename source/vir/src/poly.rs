@@ -376,7 +376,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                     let exprx = ExprX::UnaryOpr(op.clone(), e1.clone());
                     SpannedTyped::new(&e1.span, &e1.typ, exprx)
                 }
-                UnaryOpr::Field(FieldOpr { datatype, variant, field }) => {
+                UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _ }) => {
                     let fields = &ctx.datatype_map[datatype].x.get_variant(variant).a;
                     let field = crate::ast_util::get_field(fields, field);
 

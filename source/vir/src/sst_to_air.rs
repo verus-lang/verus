@@ -797,7 +797,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 let name = suffix_global_id(&fun_to_air_ident(&height()));
                 Arc::new(ExprX::Apply(name, Arc::new(vec![expr])))
             }
-            UnaryOpr::Field(FieldOpr { datatype, variant, field }) => {
+            UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _ }) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 Arc::new(ExprX::Apply(
                     variant_field_ident(datatype, variant, field),
@@ -1306,7 +1306,7 @@ fn assume_other_fields_unchanged_inner(
         [f] if f.len() == 0 => Ok(vec![]),
         _ => {
             let mut updated_fields: BTreeMap<_, Vec<_>> = BTreeMap::new();
-            let FieldOpr { datatype, variant, field: _ } = &updates[0][0];
+            let FieldOpr { datatype, variant, field: _, get_variant: _ } = &updates[0][0];
             for u in updates {
                 assert!(u[0].datatype == *datatype && u[0].variant == *variant);
                 updated_fields.entry(&u[0].field).or_insert(Vec::new()).push(u[1..].to_vec());
@@ -1322,6 +1322,7 @@ fn assume_other_fields_unchanged_inner(
                                 datatype: datatype.clone(),
                                 variant: variant.clone(),
                                 field: field.name.clone(),
+                                get_variant: false,
                             }),
                             base.clone(),
                         ),

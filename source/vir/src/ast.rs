@@ -187,6 +187,7 @@ pub struct FieldOpr {
     pub datatype: Path,
     pub variant: Ident,
     pub field: Ident,
+    pub get_variant: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]

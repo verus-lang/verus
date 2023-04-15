@@ -263,6 +263,25 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] is_variant_in_exec_issue_341 verus_code! {
+        pub struct Lock {}
+
+        #[is_variant]
+        pub enum OptionX<T> {
+            NoneX,
+            SomeX(T)
+        }
+
+        pub fn what_is_wrong() -> bool
+        {
+            let opt_lock = OptionX::SomeX(Lock{});
+            let lock = opt_lock.get_SomeX_0();   // This line triggers panic
+            true
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot get variant in exec mode")
+}
+
+test_verify_one_file! {
     #[ignore] #[test] trait_argument_names_issue278 verus_code! {
         trait T {
             fn f(&self, a: usize) -> (res: usize)

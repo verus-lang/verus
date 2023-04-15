@@ -1254,6 +1254,7 @@ fn fn_call_to_vir<'tcx>(
                         GetVariantField::Named(n) => str_ident(&n),
                         GetVariantField::Unnamed(i) => positional_field_ident(i),
                     },
+                    get_variant: true,
                 }),
                 vir_args.into_iter().next().expect("missing arg for is_variant"),
             ));
@@ -2721,6 +2722,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         datatype,
                         variant: variant_name,
                         field: field_name,
+                        get_variant: false,
                     }),
                     vir_lhs,
                 ),
