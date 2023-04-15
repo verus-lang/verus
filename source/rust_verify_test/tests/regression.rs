@@ -261,3 +261,20 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[ignore] #[test] trait_argument_names_issue278 verus_code! {
+        trait T {
+            fn f(&self, a: usize) -> (res: usize)
+                ensures res == a;
+        }
+
+        struct S { }
+
+        impl T for S {
+            fn f(&self, b: usize) -> usize {
+                b
+            }
+        }
+    } => Ok(())
+}
