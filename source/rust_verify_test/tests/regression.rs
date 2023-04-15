@@ -297,3 +297,47 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] reveal_non_opaque_issue236_1 verus_code! {
+        spec fn is_true(a: bool) -> bool { a }
+
+        proof fn foo() {
+            hide(is_true);
+            assert(is_true(true)); // FAILS
+            reveal(is_true);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] reveal_non_opaque_issue236_2 verus_code! {
+        spec fn is_true(a: bool) -> bool { a }
+
+        proof fn foo() {
+            hide(is_true);
+            reveal(is_true);
+            assert(is_true(true));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] reveal_with_fuel_non_opaque_non_recursive_issue236_373_pass verus_code! {
+        spec fn is_true(a: bool) -> bool { a }
+
+        proof fn foo() {
+            reveal_with_fuel(is_true, 1);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] reveal_with_fuel_non_opaque_non_recursive_issue236_373_fail verus_code! {
+        spec fn is_true(a: bool) -> bool { a }
+
+        proof fn foo() {
+            reveal_with_fuel(is_true, 2);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "reveal_with_fuel statements require a function with a decreases clause")
+}
