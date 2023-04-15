@@ -173,7 +173,10 @@ fn check_one_expr(
                 );
             }
         }
-        ExprX::UnaryOpr(UnaryOpr::Field(FieldOpr { datatype: path, variant, field }), _) => {
+        ExprX::UnaryOpr(
+            UnaryOpr::Field(FieldOpr { datatype: path, variant, field, get_variant: _ }),
+            _,
+        ) => {
             if let Some(dt) = ctxt.dts.get(path) {
                 if let Some(module) = &function.x.visibility.owning_module {
                     if !is_datatype_transparent(&module, dt) {

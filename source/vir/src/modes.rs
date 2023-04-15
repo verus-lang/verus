@@ -372,7 +372,10 @@ fn get_var_loc_mode(
             }
             *to_mode
         }
-        ExprX::UnaryOpr(UnaryOpr::Field(FieldOpr { datatype, variant: _, field }), rcvr) => {
+        ExprX::UnaryOpr(
+            UnaryOpr::Field(FieldOpr { datatype, variant: _, field, get_variant }),
+            rcvr,
+        ) => {
             let rcvr_mode =
                 get_var_loc_mode(typing, outer_mode, expr_inner_mode, rcvr, init_not_mut)?;
             let datatype = &typing.datatypes[datatype].x;
@@ -383,7 +386,8 @@ fn get_var_loc_mode(
                 .find(|x| x.name == *field)
                 .expect("datatype field valid")
                 .a;
-            mode_join(rcvr_mode, *field_mode)
+            let call_mode = if *get_variant { Mode::Spec } else { rcvr_mode };
+            mode_join(call_mode, *field_mode)
         }
         ExprX::Block(stmts, Some(e1)) if stmts.len() == 0 => {
             // For now, only support the special case for Tracked::borrow_mut.
@@ -663,7 +667,13 @@ fn check_expr_handle_mut_arg(
         ExprX::UnaryOpr(UnaryOpr::TupleField { .. }, e1) => {
             return check_expr_handle_mut_arg(typing, outer_mode, erasure_mode, e1);
         }
-        ExprX::UnaryOpr(UnaryOpr::Field(FieldOpr { datatype, variant, field }), e1) => {
+        ExprX::UnaryOpr(
+            UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant }),
+            e1,
+        ) => {
+            if *get_variant && typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
+                return err_str(&expr.span, "cannot get variant in exec mode");
+            }
             let (e1_mode_read, e1_mode_write) =
                 check_expr_handle_mut_arg(typing, outer_mode, erasure_mode, e1)?;
             let datatype = &typing.datatypes[datatype];

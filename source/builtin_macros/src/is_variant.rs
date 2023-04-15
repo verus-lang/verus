@@ -30,11 +30,12 @@ pub fn attribute_is_variant(
                         );
 
                         quote! {
-                            #[verifier::spec]
-                            #[allow(non_snake_case)]
-                            #[verifier::get_variant(#variant_ident, #field_ident)] /* vattr */
-                            pub fn #get_ident(self) -> #field_ty {
-                                unimplemented!()
+                            verus! {
+                                #[allow(non_snake_case)]
+                                #[verifier::get_variant(#variant_ident, #field_ident)] /* vattr */
+                                pub open spec fn #get_ident(self) -> #field_ty {
+                                    unimplemented!()
+                                }
                             }
                         }
                     })
@@ -54,11 +55,12 @@ pub fn attribute_is_variant(
                         );
 
                         quote! {
-                            #[verifier::spec]
-                            #[allow(non_snake_case)]
-                            #[verifier::get_variant(#variant_ident_str, #field_lit)] /* vattr */
-                            pub fn #get_ident(self) -> #field_ty {
-                                unimplemented!()
+                            verus! {
+                                #[allow(non_snake_case)]
+                                #[verifier::get_variant(#variant_ident_str, #field_lit)] /* vattr */
+                                pub open spec fn #get_ident(self) -> #field_ty {
+                                    unimplemented!()
+                                }
                             }
                         }
                     })
@@ -67,12 +69,13 @@ pub fn attribute_is_variant(
             };
 
             quote! {
-                #[verifier::spec]
-                #[verifier::is_variant(#variant_ident_str)] /* vattr */
-                #[allow(non_snake_case)]
-                pub fn #fun_ident(&self) -> bool { unimplemented!() }
+                verus! {
+                    #[verifier::is_variant(#variant_ident_str)] /* vattr */
+                    #[allow(non_snake_case)]
+                    pub open spec fn #fun_ident(&self) -> bool { unimplemented!() }
 
-                #get_fns
+                    #get_fns
+                }
             }
         })
         .collect::<proc_macro2::TokenStream>();
