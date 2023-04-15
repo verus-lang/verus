@@ -109,13 +109,19 @@ pub fn verify_files_vstd(
     let aborting_due_to_re =
         regex::Regex::new(r"^aborting due to( [0-9]+)? previous errors?").unwrap();
 
-    let mut is_failure = match run.status.code() {
+    #[cfg(target_os = "windows")]
+    let code = run.status.code().expect("unexpected signal in Windows");
+
+    #[cfg(not(target_os = "windows"))]
+    let code = match run.status.code() {
         Some(code) => code,
         None => {
             use std::os::unix::process::ExitStatusExt;
             panic!("test terminated by a signal: {:?}", run.status.signal());
         }
-    } != 0;
+    };
+
+    let mut is_failure = code != 0;
 
     // eprintln!("rust_output: {}", &rust_output);
     if rust_output.len() > 0 {
