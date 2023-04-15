@@ -11,10 +11,7 @@ use crate::rust_to_vir_base::{
     typ_of_node, typ_of_node_expect_mut_ref,
 };
 use crate::rust_to_vir_func::autospec_fun;
-use crate::util::{
-    err_span_str, err_span_string, slice_vec_map_result, unsupported_err_span, vec_map,
-    vec_map_result,
-};
+use crate::util::{err_span, slice_vec_map_result, unsupported_err_span, vec_map, vec_map_result};
 use crate::{unsupported_err, unsupported_err_unless};
 use air::ast::{Binder, BinderX};
 use air::ast_util::str_ident;
@@ -93,7 +90,7 @@ fn get_ensures_arg<'tcx>(
     if matches!(bctx.types.node_type(expr.hir_id).kind(), TyKind::Bool) {
         expr_to_vir(bctx, expr, ExprModifier::REGULAR)
     } else {
-        err_span_str(expr.span, "ensures needs a bool expression")
+        err_span(expr.span, "ensures needs a bool expression")
     }
 }
 
@@ -154,7 +151,7 @@ fn extract_ensures<'tcx>(
                 let id_typ = Some((Arc::new(xs[0].clone()), typs[0].clone()));
                 Ok(Arc::new(HeaderExprX::Ensures(id_typ, Arc::new(args))))
             } else {
-                err_span_str(expr.span, "expected 1 parameter in closure")
+                err_span(expr.span, "expected 1 parameter in closure")
             }
         }
         _ => {
@@ -185,15 +182,15 @@ fn extract_quant<'tcx>(
             let mut vir_expr = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
             let header = vir::headers::read_header(&mut vir_expr)?;
             if header.require.len() + header.ensure.len() > 0 {
-                return err_span_str(expr.span, "forall/ensures cannot have requires/ensures");
+                return err_span(expr.span, "forall/ensures cannot have requires/ensures");
             }
             let typ = Arc::new(TypX::Bool);
             if !matches!(bctx.types.node_type(expr.hir_id).kind(), TyKind::Bool) {
-                return err_span_str(expr.span, "forall/ensures needs a bool expression");
+                return err_span(expr.span, "forall/ensures needs a bool expression");
             }
             Ok(bctx.spanned_typed_new(span, &typ, ExprX::Quant(quant, Arc::new(binders), vir_expr)))
         }
-        _ => err_span_str(expr.span, "argument to forall/exists must be a closure"),
+        _ => err_span(expr.span, "argument to forall/exists must be a closure"),
     }
 }
 
@@ -217,13 +214,13 @@ fn extract_assert_forall_by<'tcx>(
             let mut vir_expr = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
             let header = vir::headers::read_header(&mut vir_expr)?;
             if header.require.len() > 1 {
-                return err_span_str(expr.span, "assert_forall_by can have at most one requires");
+                return err_span(expr.span, "assert_forall_by can have at most one requires");
             }
             if header.ensure.len() != 1 {
-                return err_span_str(expr.span, "assert_forall_by must have exactly one ensures");
+                return err_span(expr.span, "assert_forall_by must have exactly one ensures");
             }
             if header.ensure_id_typ.is_some() {
-                return err_span_str(expr.span, "ensures clause must be a bool");
+                return err_span(expr.span, "ensures clause must be a bool");
             }
             let typ = Arc::new(TypX::Tuple(Arc::new(vec![])));
             let vars = Arc::new(binders);
@@ -240,7 +237,7 @@ fn extract_assert_forall_by<'tcx>(
             let forallx = ExprX::Forall { vars, require, ensure, proof: vir_expr };
             Ok(bctx.spanned_typed_new(span, &typ, forallx))
         }
-        _ => err_span_str(expr.span, "argument to forall/exists must be a closure"),
+        _ => err_span(expr.span, "argument to forall/exists must be a closure"),
     }
 }
 
@@ -274,7 +271,7 @@ fn extract_choose<'tcx>(
             let body = if tuple {
                 let typ = Arc::new(TypX::Tuple(Arc::new(typs)));
                 if !vir::ast_util::types_equal(&typ, &expr_typ) {
-                    return err_span_string(
+                    return err_span(
                         expr.span,
                         format!(
                             "expected choose_tuple to have type {:?}, found type {:?}",
@@ -285,7 +282,7 @@ fn extract_choose<'tcx>(
                 bctx.spanned_typed_new(span, &typ, ExprX::Tuple(Arc::new(vars)))
             } else {
                 if params.len() != 1 {
-                    return err_span_str(
+                    return err_span(
                         expr.span,
                         "choose expects exactly one parameter (use choose_tuple for multiple parameters)",
                     );
@@ -299,7 +296,7 @@ fn extract_choose<'tcx>(
                 ExprX::Choose { params, cond, body },
             ))
         }
-        _ => err_span_str(expr.span, "argument to choose must be a closure"),
+        _ => err_span(expr.span, "argument to choose must be a closure"),
     }
 }
 
@@ -376,11 +373,11 @@ fn check_lit_int(
                 Ok(())
             }
             _ => {
-                return err_span_str(span, "integer literal out of range");
+                return err_span(span, "integer literal out of range");
             }
         }
     } else {
-        return err_span_str(span, "expected integer type");
+        return err_span(span, "expected integer type");
     }
 }
 
@@ -636,7 +633,7 @@ fn fn_call_to_vir<'tcx>(
         // Thus, they should end up being processed by `invariant_block_to_vir` before
         // we get here. Thus, for any well-formed use of an invariant block, we should
         // not reach this point.
-        return err_span_string(
+        return err_span(
             expr.span,
             format!(
                 "{} should never be used except through open_atomic_invariant or open_local_invariant macro",
@@ -663,7 +660,7 @@ fn fn_call_to_vir<'tcx>(
     }
 
     if is_panic {
-        return err_span_string(
+        return err_span(
             expr.span,
             format!(
                 "panic is not supported (if you used Rust's `assert!` macro, you may have meant to use Verus's `assert` function)"
@@ -809,10 +806,7 @@ fn fn_call_to_vir<'tcx>(
                     let i: u128 = match s.to_string().parse() {
                         Ok(i) => i,
                         Err(err) => {
-                            return err_span_string(
-                                arg.span,
-                                format!("integer out of range {}", err),
-                            );
+                            return err_span(arg.span, format!("integer out of range {}", err));
                         }
                     };
                     let in_negative_literal = false;
@@ -821,7 +815,7 @@ fn fn_call_to_vir<'tcx>(
                 return mk_expr(ExprX::Const(const_int_from_string(s.to_string())));
             }
             _ => {
-                return err_span_str(arg.span, "spec_literal_* requires a string literal");
+                return err_span(arg.span, "spec_literal_* requires a string literal");
             }
         }
     }
@@ -834,7 +828,7 @@ fn fn_call_to_vir<'tcx>(
         let subargs = extract_array(args[0]);
         for arg in &subargs {
             if !matches!(bctx.types.node_type(arg.hir_id).kind(), TyKind::Bool) {
-                return err_span_str(arg.span, "requires/recommends needs a bool expression");
+                return err_span(arg.span, "requires/recommends needs a bool expression");
             }
         }
         let vir_args =
@@ -847,7 +841,7 @@ fn fn_call_to_vir<'tcx>(
         return mk_expr(ExprX::Header(header));
     }
     if is_opens_invariants || is_opens_invariants_except {
-        return err_span_str(
+        return err_span(
             expr.span,
             "'is_opens_invariants' and 'is_opens_invariants_except' are not yet implemented",
         );
@@ -873,7 +867,7 @@ fn fn_call_to_vir<'tcx>(
         let subargs = extract_array(args[0]);
         for arg in &subargs {
             if !matches!(bctx.types.node_type(arg.hir_id).kind(), TyKind::Bool) {
-                return err_span_str(arg.span, "invariant needs a bool expression");
+                return err_span(arg.span, "invariant needs a bool expression");
             }
         }
         let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
@@ -910,7 +904,7 @@ fn fn_call_to_vir<'tcx>(
         if let ExprKind::Closure(..) = &args[0].kind {
             return closure_to_vir(bctx, &args[0], expr_typ()?, true, ExprModifier::REGULAR);
         } else {
-            return err_span_str(
+            return err_span(
                 args[0].span,
                 "the argument to `closure_to_spec_fn` must be a closure",
             );
@@ -936,11 +930,11 @@ fn fn_call_to_vir<'tcx>(
                 if let ExprX::Tuple(terms) = &trigger_tuple.x {
                     trigs.push(terms.clone());
                 } else {
-                    return err_span_str(expr.span, "expected tuple arguments to with_triggers");
+                    return err_span(expr.span, "expected tuple arguments to with_triggers");
                 }
             }
         } else {
-            return err_span_str(expr.span, "expected tuple arguments to with_triggers");
+            return err_span(expr.span, "expected tuple arguments to with_triggers");
         }
         let triggers = Arc::new(trigs);
         return mk_expr(ExprX::WithTriggers { triggers, body });
@@ -958,10 +952,7 @@ fn fn_call_to_vir<'tcx>(
                 ));
             }
         }
-        return err_span_str(
-            expr.span,
-            "only a variable binding is allowed as the argument to old",
-        );
+        return err_span(expr.span, "only a variable binding is allowed as the argument to old");
     }
 
     if is_decreases_by {
@@ -1036,7 +1027,7 @@ fn fn_call_to_vir<'tcx>(
             )])
         };
         if header.ensure.len() == 0 {
-            return err_span_str(
+            return err_span(
                 expr.span,
                 "assert_nonlinear_by/assert_bitvector_by must have at least one ensures",
             );
@@ -1047,7 +1038,7 @@ fn fn_call_to_vir<'tcx>(
         let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
         let expr_vattrs = get_verifier_attrs(expr_attrs)?;
         if expr_vattrs.spinoff_prover {
-            return err_span_str(
+            return err_span(
                 expr.span,
                 "#[verifier(spinoff_prover)] is implied for assert by nonlinear_arith and assert by bit_vector",
             );
@@ -1153,7 +1144,7 @@ fn fn_call_to_vir<'tcx>(
         } {
             return mk_expr(ExprX::RevealString(Arc::new(s.to_string())));
         } else {
-            return err_span_string(args[0].span, "string literal expected".to_string());
+            return err_span(args[0].span, "string literal expected".to_string());
         }
     }
 
@@ -1289,7 +1280,7 @@ fn fn_call_to_vir<'tcx>(
         {
             true
         } else {
-            return err_span_str(expr.span, "types must be compatible to use == or !=");
+            return err_span(expr.span, "types must be compatible to use == or !=");
         }
     } else if is_eq || is_ne {
         is_smt_equality(bctx, expr.span, &args[0].hir_id, &args[1].hir_id)?
@@ -1326,7 +1317,7 @@ fn fn_call_to_vir<'tcx>(
                     return Ok(bctx.spanned_typed_new(arg.span, &vir_arg.typ.clone(), exprx));
                 }
                 (_, attr) => {
-                    return err_span_string(
+                    return err_span(
                         expr.span,
                         format!("unexpected ghost block attribute {:?}", attr),
                     );
@@ -1377,7 +1368,7 @@ fn fn_call_to_vir<'tcx>(
                 return Ok(mk_ty_clip(&to_ty, &source_unicode, expr_vattrs.truncate));
             }
             _ => {
-                return err_span_str(
+                return err_span(
                     expr.span,
                     "Verus currently only supports casts from integer types and `char` to integer types",
                 );
@@ -1900,7 +1891,7 @@ fn is_invariant_block(bctx: &BodyCtxt, expr: &Expr) -> Result<bool, VirErr> {
 }
 
 fn malformed_inv_block_err<'tcx>(expr: &Expr<'tcx>) -> Result<vir::ast::Expr, VirErr> {
-    err_span_str(
+    err_span(
         expr.span,
         "malformed invariant block; use `open_atomic_invariant!` or `open_local_invariant!` macro instead",
     )
@@ -2216,7 +2207,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             },
             _ => false,
         } {
-            return err_span_str(
+            return err_span(
                 expr.span,
                 "the attribute #[verifier(truncate)] is only allowed on casts (you may need parentheses around the cast)",
             );
@@ -2238,7 +2229,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         return block;
                     }
                     GhostBlockAttr::Wrapper => {
-                        return err_span_str(expr.span, "unexpected ghost block wrapper");
+                        return err_span(expr.span, "unexpected ghost block wrapper");
                     }
                 };
                 mk_expr(ExprX::Ghost { alloc_wrapper: false, tracked, expr: block? })
@@ -2381,7 +2372,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     Ok(mk_ty_clip(&to_ty, &source_unicode, expr_vattrs.truncate))
                 }
                 _ => {
-                    return err_span_str(
+                    return err_span(
                         expr.span,
                         "Verus currently only supports casts from integer types and `char` to integer types",
                     );
@@ -2642,7 +2633,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         if not_mut {
                             match bctx.ctxt.tcx.hir().get_parent(*id) {
                                 Node::Param(_) => {
-                                    err_span_str(lhs.span, "cannot assign to non-mut parameter")?
+                                    err_span(lhs.span, "cannot assign to non-mut parameter")?
                                 }
                                 Node::Local(_) => (),
                                 other => unsupported_err!(lhs.span, "assignee node", other),
@@ -2852,7 +2843,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let mut body = expr_to_vir(bctx, body, ExprModifier::REGULAR)?;
             let header = vir::headers::read_header(&mut body)?;
             if header.decrease.len() > 0 {
-                return err_span_str(expr.span, "termination checking of loops is not supported");
+                return err_span(expr.span, "termination checking of loops is not supported");
             }
             let label = label.map(|l| l.ident.to_string());
             mk_expr(ExprX::Loop { label, cond, body, invs: header.loop_invariants() })
@@ -3166,7 +3157,7 @@ fn unwrap_parameter_to_vir<'tcx>(
             let stmt = bctx.spanned_new(stmt1.span, StmtX::Expr(expr));
             Ok(vec![stmt])
         }
-        _ => err_span_str(stmt1.span, "ill-formed unwrap_parameter header"),
+        _ => err_span(stmt1.span, "ill-formed unwrap_parameter header"),
     }
 }
 
@@ -3204,7 +3195,7 @@ pub(crate) fn stmts_to_vir<'tcx>(
             if let Some(stmt2) = stmts.next() {
                 return Ok(Some(unwrap_parameter_to_vir(bctx, stmt, stmt2)?));
             } else {
-                return err_span_str(stmt.span, "ill-formed unwrap_parameter header");
+                return err_span(stmt.span, "ill-formed unwrap_parameter header");
             }
         }
         Ok(Some(stmt_to_vir(bctx, stmt)?))
@@ -3239,15 +3230,12 @@ fn closure_to_vir<'tcx>(
                 let attrs = bctx.ctxt.tcx.hir().attrs(x.hir_id);
                 let mode = crate::attributes::get_mode(Mode::Exec, attrs);
                 if mode != Mode::Exec {
-                    return err_span_str(x.span, "closures only accept exec-mode parameters");
+                    return err_span(x.span, "closures only accept exec-mode parameters");
                 }
 
                 let (is_mut, name) = pat_to_mut_var(x.pat)?;
                 if is_mut {
-                    return err_span_str(
-                        x.span,
-                        "Verus does not support 'mut' params for closures",
-                    );
+                    return err_span(x.span, "Verus does not support 'mut' params for closures");
                 }
                 Ok(Arc::new(BinderX { name: Arc::new(name), a: t }))
             })
@@ -3259,7 +3247,7 @@ fn closure_to_vir<'tcx>(
 
         let exprx = if is_spec_fn {
             if require.len() > 0 || ensure.len() > 0 {
-                return err_span_str(
+                return err_span(
                     closure_expr.span,
                     "SpecFn should not have `requires` clause or `ensures` clause",
                 );
@@ -3271,7 +3259,7 @@ fn closure_to_vir<'tcx>(
             let id = match ensure_id_typ {
                 Some((id, ensures_typ)) => {
                     if !types_equal(&ensures_typ, &ret_typ) {
-                        return err_span_str(
+                        return err_span(
                             closure_expr.span,
                             "return type given in `ensures` clause should match the actual closure return type",
                         );

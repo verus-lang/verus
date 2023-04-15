@@ -9,7 +9,7 @@ use crate::sst::{Par, Pars};
 use crate::util::vec_map;
 use air::ast::{Binder, BinderX, Binders, Span};
 pub use air::ast_util::{ident_binder, str_ident};
-pub use air::messages::error;
+pub use air::messages::error as msg_error;
 use num_bigint::{BigInt, Sign};
 use std::collections::HashSet;
 use std::fmt;
@@ -19,12 +19,16 @@ use std::sync::Arc;
 /// Construct an Error and wrap it in Err.
 /// For more complex Error objects, use the builder functions in air::errors
 
-pub fn err_str<A>(span: &Span, msg: &str) -> Result<A, VirErr> {
-    Err(error(msg, span))
+pub fn error<A, S: Into<String>>(span: &Span, msg: S) -> Result<A, VirErr> {
+    Err(msg_error(msg, span))
 }
 
-pub fn err_string<A>(span: &Span, msg: String) -> Result<A, VirErr> {
-    Err(error(msg, span))
+pub fn error_with_help<A, S: Into<String>, H: Into<String>>(
+    span: &Span,
+    msg: S,
+    help: H,
+) -> Result<A, VirErr> {
+    Err(msg_error(msg, span).help(help))
 }
 
 impl PathX {
@@ -288,7 +292,7 @@ pub fn chain_binary(span: &Span, op: BinaryOp, init: &Expr, exprs: &Vec<Expr>) -
 pub fn const_int_to_u32(span: &Span, i: &BigInt) -> Result<u32, VirErr> {
     let (sign, digits) = i.to_u32_digits();
     if sign != Sign::Plus || digits.len() != 1 {
-        return err_str(span, "Fuel must be a u32 value");
+        return error(span, "Fuel must be a u32 value");
     }
     let n = digits[0];
     Ok(n)

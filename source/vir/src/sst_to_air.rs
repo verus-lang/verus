@@ -6,8 +6,8 @@ use crate::ast::{
 use crate::ast_util::bitwidth_from_int_range;
 use crate::ast_util::IntegerTypeBitwidth;
 use crate::ast_util::{
-    allowed_bitvector_type, bitwidth_from_type, err_string, fun_as_rust_dbg, get_field,
-    get_variant, is_integer_type,
+    allowed_bitvector_type, bitwidth_from_type, error, fun_as_rust_dbg, get_field, get_variant,
+    is_integer_type, msg_error,
 };
 use crate::context::Ctx;
 use crate::def::{fn_inv_name, fn_namespace_name, new_user_qid_name};
@@ -37,7 +37,7 @@ use air::ast_util::{
     mk_bind_expr, mk_bitvector_option, mk_eq, mk_exists, mk_implies, mk_ite, mk_nat, mk_not,
     mk_option_command, mk_or, mk_sub, mk_xor, str_apply, str_ident, str_typ, str_var, string_var,
 };
-use air::messages::{error, error_with_label};
+use air::messages::error_with_label;
 use num_bigint::BigInt;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem::swap;
@@ -469,7 +469,7 @@ fn clip_bitwise_result(bit_expr: ExprX, exp: &Exp) -> Result<Expr, VirErr> {
             _ => return Ok(Arc::new(bit_expr)),
         };
     } else {
-        return err_string(
+        return error(
             &exp.span,
             format!("In translating Bitwise operator, encountered non-integer operand",),
         );
@@ -480,7 +480,7 @@ fn check_unsigned(exp: &Exp) -> Result<(), VirErr> {
     if let TypX::Int(range) = &*exp.typ {
         match range {
             IntRange::I(_) | IntRange::ISize => {
-                return err_string(
+                return error(
                     &exp.span,
                     format!("error: signed integer is not supported for bit-vector reasoning",),
                 );
@@ -514,7 +514,7 @@ fn bitvector_expect_exact(
             let w = w.to_exact(&ctx.global.arch);
             match w {
                 Some(w) => Ok(w),
-                None => err_string(
+                None => error(
                     span,
                     format!(
                         "IntRange error: the bit-width of type {:?} is architecture-dependent, which `by(bit_vector)` does not currently support",
@@ -523,7 +523,7 @@ fn bitvector_expect_exact(
                 ),
             }
         }
-        None => err_string(
+        None => error(
             span,
             format!("IntRange error: expected finite-width integer for bit-vector, got {:?}", typ),
         ),
@@ -592,7 +592,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     if allowed_bitvector_type(&exp.typ) {
                         // ok
                     } else {
-                        return err_string(
+                        return error(
                             &exp.span,
                             format!(
                                 "error: bit_vector prover cannot handle this type (bit_vector can only handle variables of type `bool` or of fixed-width integers)"
@@ -641,7 +641,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         }
         (ExpX::Unary(op, arg), true) => {
             if !allowed_bitvector_type(&arg.typ) {
-                return err_string(
+                return error(
                     &arg.span,
                     format!("error: cannot use bit-vector arithmetic on type {:?}", arg.typ),
                 );
@@ -813,7 +813,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         },
         (ExpX::Binary(op, lhs, rhs), true) => {
             if !allowed_bitvector_type(&exp.typ) {
-                return err_string(
+                return error(
                     &exp.span,
                     format!("error: cannot use bit-vector arithmetic on type {:?}", exp.typ),
                 );
@@ -937,7 +937,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     let width_right = bitwidth_from_type(&rhs.typ).expect("bounded integer type");
 
                     if width_left != width_right {
-                        return err_string(
+                        return error(
                             &exp.span,
                             format!(
                                 "error: argument bit-width does not match. Left: {}, Right: {}",
@@ -1035,7 +1035,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     let typ = if expr_ctxt.is_bit_vector {
                         let bv_typ_option = bv_typ_to_air(&b.a);
                         if bv_typ_option.is_none() {
-                            return err_string(
+                            return error(
                                 &exp.span,
                                 format!("unsupported type in bitvector {:?}", &b.a),
                             );
@@ -1101,7 +1101,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 choose_expr
             }
             (_, true) => {
-                return err_string(
+                return error(
                     &exp.span,
                     format!("unsupported for bit-vector: bind conversion, {:?} ", exp.x),
                 );
@@ -1111,7 +1111,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             panic!("Found an interpreter expression {:?} outside the interpreter", exp)
         }
         (_, true) => {
-            return err_string(
+            return error(
                 &exp.span,
                 format!("unsupported for bit-vector: expression conversion {:?}", exp.x),
             );
@@ -1375,7 +1375,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     (_, None) => crate::def::PRECONDITION_FAILURE.to_string(),
                     (_, Some(s)) => s.clone(),
                 };
-                let error = error(description, &stm.span);
+                let error = msg_error(description, &stm.span);
                 stmts.push(Arc::new(StmtX::Assert(error, e_req)));
             }
 
@@ -1635,7 +1635,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             let mut air_body: Vec<Stmt> = Vec::new();
             for (span, ens) in ensures_air.iter() {
-                let error = error("bitvector ensures not satisfied", span);
+                let error = msg_error("bitvector ensures not satisfied", span);
                 let ens_stmt = StmtX::Assert(error, ens.clone());
                 air_body.push(Arc::new(ens_stmt));
             }
@@ -1886,7 +1886,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             if !ctx.checking_recommends() {
                 for (span, inv) in invs_entry.iter() {
-                    let error = error(crate::def::INV_FAIL_LOOP_END, span);
+                    let error = msg_error(crate::def::INV_FAIL_LOOP_END, span);
                     let inv_stmt = StmtX::Assert(error, inv.clone());
                     air_body.push(Arc::new(inv_stmt));
                 }
@@ -1917,7 +1917,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let mut stmts: Vec<Stmt> = Vec::new();
             if !ctx.checking_recommends() {
                 for (span, inv) in invs_entry.iter() {
-                    let error = error(crate::def::INV_FAIL_LOOP_FRONT, span);
+                    let error = msg_error(crate::def::INV_FAIL_LOOP_FRONT, span);
                     let inv_stmt = StmtX::Assert(error, inv.clone());
                     stmts.push(Arc::new(inv_stmt));
                 }
@@ -1993,7 +1993,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             // given by `uid` which may have been assigned to since the start of the block.
             // so this may evaluate differently in the SMT.
             if !ctx.checking_recommends() {
-                let error = error("Cannot show invariant holds at end of block", &body_stm.span);
+                let error =
+                    msg_error("Cannot show invariant holds at end of block", &body_stm.span);
                 stmts.push(Arc::new(StmtX::Assert(error, main_inv)));
             }
 

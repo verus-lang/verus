@@ -1,4 +1,4 @@
-use crate::util::{err_span_str, err_span_string, vir_err_span_str};
+use crate::util::{err_span, vir_err_span_str};
 use rustc_ast::ast::AttrArgs;
 use rustc_ast::token::{Token, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
@@ -111,7 +111,7 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
                 // TODO(main_new)     let trees: Box<[AttrTree]> = token_stream_to_trees(attr.span, token_stream)
                 // TODO(main_new)         .map_err(|_| vir_err_span_str(attr.span, "invalid verifier attribute"))?;
                 // TODO(main_new)     if trees.len() != 1 {
-                // TODO(main_new)         return err_span_str(attr.span, "invalid verifier attribute");
+                // TODO(main_new)         return err_span(attr.span, "invalid verifier attribute");
                 // TODO(main_new)     }
                 // TODO(main_new)     let mut trees = trees.into_vec().into_iter();
                 // TODO(main_new)     let tree: AttrTree = trees
@@ -119,7 +119,7 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
                 // TODO(main_new)         .ok_or(vir_err_span_str(attr.span, "invalid verifier attribute"))?;
                 // TODO(main_new)     Ok(Some((AttrPrefix::Verifier, attr.span, tree)))
                 // TODO(main_new) }
-                _ => return err_span_str(attr.span, "invalid verifier attribute"),
+                _ => return err_span(attr.span, "invalid verifier attribute"),
             },
             [prefix_segment, segment] if prefix_segment.ident.as_str() == "verifier" => {
                 attr_args_to_tree(attr.span, segment.ident.to_string(), &item.item.args)
@@ -131,7 +131,7 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
                 let verus_prefix = match &*name {
                     "internal" => VerusPrefix::Internal,
                     _ => {
-                        return err_span_str(attr.span, "invalid verus attribute");
+                        return err_span(attr.span, "invalid verus attribute");
                     }
                 };
                 match &item.item.args {
@@ -141,7 +141,7 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
                                 vir_err_span_str(attr.span, "invalid verus attribute")
                             })?;
                         if trees.len() != 1 {
-                            return err_span_str(attr.span, "invalid verus attribute");
+                            return err_span(attr.span, "invalid verus attribute");
                         }
                         let mut trees = trees.into_vec().into_iter();
                         let tree: AttrTree = trees
@@ -149,7 +149,7 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
                             .ok_or(vir_err_span_str(attr.span, "invalid verus attribute"))?;
                         Ok(Some((AttrPrefix::Verus(verus_prefix), attr.span, tree)))
                     }
-                    _ => return err_span_str(attr.span, "invalid verus attribute"),
+                    _ => return err_span(attr.span, "invalid verus attribute"),
                 }
             }
             [segment]
@@ -157,7 +157,7 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
                     || segment.ident.as_str() == "proof"
                     || segment.ident.as_str() == "exec" =>
             {
-                return err_span_str(
+                return err_span(
                     attr.span,
                     "attributes spec, proof, exec are not supported anymore; use the verus! macro instead",
                 );
@@ -271,7 +271,7 @@ fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
     };
     match i {
         Some(i) => Ok(i),
-        None => err_span_string(span, format!("expected integer constant, found {:?}", &attr_tree)),
+        None => err_span(span, format!("expected integer constant, found {:?}", &attr_tree)),
     }
 }
 
@@ -296,7 +296,7 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                         groups.push(get_trigger_arg(*span, arg)?);
                     }
                     if groups.len() == 0 {
-                        return err_span_str(
+                        return err_span(
                             *span,
                             "expected either #[trigger] or non-empty #[trigger(...)]",
                         );
@@ -406,7 +406,7 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 }
                 AttrTree::Fun(_, arg, None) if arg == "memoize" => v.push(Attr::Memoize),
                 AttrTree::Fun(_, arg, None) if arg == "truncate" => v.push(Attr::Truncate),
-                _ => return err_span_str(span, "unrecognized verifier attribute"),
+                _ => return err_span(span, "unrecognized verifier attribute"),
             },
             AttrPrefix::Verus(verus_prefix) => match verus_prefix {
                 VerusPrefix::Internal => match &attr {
@@ -434,7 +434,7 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                             groups.push(get_trigger_arg(*span, arg)?);
                         }
                         if groups.len() == 0 {
-                            return err_span_str(
+                            return err_span(
                                 *span,
                                 "expected either #[trigger] or non-empty #[trigger(...)]",
                             );
@@ -474,12 +474,12 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                             "nonlinear_arith" => v.push(Attr::NonLinear),
                             "bit_vector" => v.push(Attr::BitVector),
                             "integer_ring" => v.push(Attr::IntegerRing),
-                            _ => return err_span_str(span, "invalid prover"),
+                            _ => return err_span(span, "invalid prover"),
                         }
                     }
                     AttrTree::Fun(_, arg, None) if arg == "via" => v.push(Attr::DecreasesBy),
                     _ => {
-                        return err_span_str(span, "unrecognized internal attribute");
+                        return err_span(span, "unrecognized internal attribute");
                     }
                 },
             },

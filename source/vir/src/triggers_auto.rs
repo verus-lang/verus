@@ -2,7 +2,7 @@ use crate::ast::{
     BinaryOp, BitwiseOp, Constant, FieldOpr, Fun, Ident, Path, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
     VirErr,
 };
-use crate::ast_util::{err_str, path_as_rust_name};
+use crate::ast_util::{error, path_as_rust_name};
 use crate::context::{ChosenTriggers, Ctx, FunctionCtx};
 use crate::sst::{Exp, ExpX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map;
@@ -181,7 +181,7 @@ struct Timer {
 
 fn check_timeout(timer: &mut Timer) -> Result<(), VirErr> {
     if timer.timeout_countdown == 0 {
-        err_str(
+        error(
             &timer.span,
             "could not infer triggers, because quantifier is too large (use manual #[trigger] instead)",
         )
@@ -646,7 +646,7 @@ pub(crate) fn build_triggers(
         });
         Ok(Arc::new(trigs))
     } else {
-        err_str(
+        error(
             span,
             "Could not automatically infer triggers for this quantifer.  Use #[trigger] annotations to manually mark trigger terms instead.",
         )

@@ -3,7 +3,7 @@ use crate::ast::{
     MaskSpec, Path, SpannedTyped, TypX, Typs, UnaryOp, UnaryOpr, VirErr,
 };
 use crate::ast_to_sst::expr_to_exp;
-use crate::ast_util::{err_str, QUANT_FORALL};
+use crate::ast_util::{error, msg_error, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{
     check_decrease_int, decrease_at_entry, height, prefix_recursive_fun, suffix_rename,
@@ -20,7 +20,7 @@ use crate::sst_visitor::{
 use crate::util::vec_map_result;
 use air::ast::{Binder, Commands, Span};
 use air::ast_util::{ident_binder, str_ident, str_typ};
-use air::messages::{error, Diagnostics};
+use air::messages::Diagnostics;
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -340,7 +340,7 @@ fn disallow_recursion_exp(ctxt: &Ctxt, exp: &Exp) -> Result<(), VirErr> {
     let mut scope_map = ScopeMap::new();
     exp_visitor_check(exp, &mut scope_map, &mut |exp, _scope_map| match &exp.x {
         ExpX::Call(x, targs, _) if is_recursive_call(ctxt, x, targs) => {
-            err_str(&exp.span, "recursion not allowed here")
+            error(&exp.span, "recursion not allowed here")
         }
         _ => Ok(()),
     })
@@ -361,7 +361,7 @@ pub(crate) fn check_termination_exp(
     }
     let num_decreases = function.x.decrease.len();
     if num_decreases == 0 {
-        return err_str(&function.span, "recursive function must have a decreases clause");
+        return error(&function.span, "recursive function must have a decreases clause");
     }
 
     let decreases_exps = vec_map_result(&function.x.decrease, |e| {
@@ -438,7 +438,7 @@ pub(crate) fn check_termination_stm(
     }
     let num_decreases = function.x.decrease.len();
     if num_decreases == 0 {
-        return err_str(&function.span, "recursive function must have a decreases clause");
+        return error(&function.span, "recursive function must have a decreases clause");
     }
 
     let decreases_exps = vec_map_result(&function.x.decrease, |e| {
@@ -451,7 +451,7 @@ pub(crate) fn check_termination_stm(
         StmX::Call { fun, typ_args, args, .. } if is_recursive_call(&ctxt, fun, typ_args) => {
             let check =
                 check_decrease_call(&ctxt, diagnostics, fun_ssts, &s.span, fun, typ_args, args)?;
-            let error = error("could not prove termination", &s.span);
+            let error = msg_error("could not prove termination", &s.span);
             let stm_assert = Spanned::new(s.span.clone(), StmX::Assert(Some(error), check));
             let stm_block =
                 Spanned::new(s.span.clone(), StmX::Block(Arc::new(vec![stm_assert, s.clone()])));
@@ -534,7 +534,7 @@ pub(crate) fn expand_call_graph(
                                         Some(x)
                                     }
                                     _ => {
-                                        return err_str(&expr.span, "unsupported use of Self type");
+                                        return error(&expr.span, "unsupported use of Self type");
                                     }
                                 }
                             }
@@ -552,7 +552,7 @@ pub(crate) fn expand_call_graph(
                                 match method_map.get(&(x.clone(), datatype.clone())) {
                                     Some(v) => Some(v),
                                     None => {
-                                        return err_str(
+                                        return error(
                                             &expr.span,
                                             "(INTERNAL ERROR) method not found in method_map",
                                         );
@@ -593,7 +593,7 @@ pub(crate) fn expand_call_graph(
                                         );
                                     }
                                     _ => {
-                                        return err_str(
+                                        return error(
                                             &expr.span,
                                             "not yet supported: type bounds on non-datatypes",
                                         );
