@@ -329,10 +329,16 @@ pub(crate) fn check_item_fn<'tcx>(
         match (&header.ensure_id_typ, ret_typ_mode.as_ref()) {
             (None, None) => {}
             (None, Some(_)) => {
-                return err_span(sig.span, "ensures clause must be a closure");
+                return err_span(
+                    sig.span,
+                    "the return value must be named in a function with an ensures clause",
+                );
             }
             (Some(_), None) => {
-                return err_span(sig.span, "ensures clause cannot be a closure");
+                return err_span(
+                    sig.span,
+                    "unexpected named return value for function with default return",
+                );
             }
             (Some((_, typ)), Some((ret_typ, _))) => {
                 if !vir::ast_util::types_equal(&typ, &ret_typ) {
