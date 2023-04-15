@@ -246,7 +246,7 @@ fn check_one_expr(
         ExprX::ExecClosure { .. } => {
             crate::closures::check_closure_well_formed(expr)?;
         }
-        ExprX::Fuel(f, _) => {
+        ExprX::Fuel(f, fuel) => {
             let f = check_path_and_get_function(ctxt, f, None, &expr.span)?;
             if f.x.mode != Mode::Spec {
                 return error(
@@ -255,6 +255,12 @@ fn check_one_expr(
                         "reveal/fuel statements require a spec-mode function, got {:}-mode function",
                         f.x.mode
                     ),
+                );
+            }
+            if f.x.decrease.is_empty() && *fuel > 1 {
+                return error(
+                    &expr.span,
+                    "reveal_with_fuel statements require a function with a decreases clause",
                 );
             }
         }
