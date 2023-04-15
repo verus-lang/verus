@@ -71,13 +71,13 @@ fn log_command(cmd: &std::process::Command, verbose: bool) {
 }
 
 const SUPPORTED_COMMANDS: &[&str] = &[
-    "build", "test", "nextest", "run", "clean", "fmt", "metadata",
+    "build", "test", "nextest", "run", "clean", "fmt", "metadata", "cmd",
 ];
 
 const CARGO_FORWARD_ARGS: &[&str] = &["-v", "-vv", "--verbose", "--offline"];
 const CARGO_FORWARD_ARGS_NEXT: &[&str] = &["--color"];
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Task {
     Build,
     Test { nextest: bool },
@@ -85,6 +85,7 @@ enum Task {
     Clean,
     Metadata,
     Fmt,
+    Cmd,
 }
 
 #[cfg(target_os = "macos")]
@@ -159,7 +160,7 @@ fn run() -> Result<(), String> {
         .ok_or(
             format!("rust-toolchain.toml does not contain the toolchain.channel key, or it isn't a string\nrun vargo in `source`"))?;
 
-    if !in_nextest {
+    let toolchain = if !in_nextest {
         let output = std::process::Command::new("rustup")
             .arg("show")
             .arg("active-toolchain")
@@ -178,14 +179,17 @@ fn run() -> Result<(), String> {
         let mut captures = active_toolchain_re.captures_iter(&stdout);
         if let Some(cap) = captures.next() {
             let channel = &cap[2];
-            let _toolchain = &cap[1];
+            let toolchain = cap[1].to_owned();
             if rust_toolchain_toml_channel != channel {
                 return Err(format!("rustup is using a toolchain with channel {channel}, we expect {rust_toolchain_toml_channel}\ndo you have a rustup override set?"));
             }
+            Some(toolchain)
         } else {
             return Err(format!("unexpected output from `rustup show active-toolchain`\nexpected a toolchain override\ngot: {stdout}"));
         }
-    }
+    } else {
+        None
+    };
 
     if !std::path::Path::new(if cfg!(target_os = "windows") {
         ".\\z3.exe"
@@ -231,8 +235,28 @@ fn run() -> Result<(), String> {
         "clean" => Task::Clean,
         "metadata" => Task::Metadata,
         "fmt" => Task::Fmt,
+        "cmd" => Task::Cmd,
         _ => panic!("unexpected command"),
     };
+
+    if task == Task::Cmd {
+        return std::process::Command::new("rustup")
+            .arg("run")
+            .arg(toolchain.expect("not in nextest"))
+            .args(args_bucket)
+            .stderr(std::process::Stdio::inherit())
+            .stdout(std::process::Stdio::inherit())
+            .status()
+            .map_err(|x| format!("vargo could not execute rustup ({})", x))
+            .and_then(|x| {
+                if x.success() {
+                    Ok(())
+                } else {
+                    Err(format!("vargo returned status code {:?}", x.code()))
+                }
+            });
+    }
+
     let release = args_bucket
         .iter()
         .position(|x| x.as_str() == "--release" || x.as_str() == "-r")

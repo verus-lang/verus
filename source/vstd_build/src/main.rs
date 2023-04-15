@@ -13,8 +13,10 @@ const PERVASIVE_PATH: &str = "pervasive";
 // name of generated veruslib.vir in target
 const VSTD_VIR: &str = "vstd.vir";
 
-fn log_command(cmd: &std::process::Command) {
-    eprintln!("{}", yansi::Paint::magenta(format!("vstd_build running: {:?}", cmd)));
+fn log_command(cmd: &std::process::Command, verbose: bool) {
+    if verbose {
+        eprintln!("{}", yansi::Paint::magenta(format!("vstd_build running: {:?}", cmd)));
+    }
 }
 
 fn main() {
@@ -95,14 +97,7 @@ fn main() {
     let mut child = std::process::Command::new(cmd);
     child.args(&child_args[..]);
 
-    if verbose {
-        // This environment variable (set by cargo) is important
-        // Put it on the command explicitly so it shows up in the verbose output
-        if let Ok(path) = std::env::var("DYLD_FALLBACK_LIBRARY_PATH") {
-            child.env("DYLD_FALLBACK_LIBRARY_PATH", path);
-        }
-        log_command(&child);
-    }
+    log_command(&child, verbose);
 
     let mut child = child.spawn().expect("could not execute lifetime rustc process");
     let result = child.wait().expect("vstd verus wait failed");
