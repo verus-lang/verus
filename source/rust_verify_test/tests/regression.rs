@@ -341,3 +341,16 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "reveal_with_fuel statements require a function with a decreases clause")
 }
+
+test_verify_one_file_with_options! {
+    #[test] call_spec_fn_from_external_body_issue_257 ["--compile"] => verus_code! {
+        #[verifier(external_body)]
+        fn f(x: usize) -> usize {
+            id(x)
+        }
+
+        pub open spec fn id(x: usize) -> usize {
+            x
+        }
+    } => Ok(())
+}

@@ -101,7 +101,8 @@ pub fn verify_files_vstd(
         f.write_all(file_contents.as_bytes()).expect("failed to write test file contents");
     }
 
-    let run = run_verus(options, &test_input_dir.join(entry_file), import_vstd, true);
+    let run =
+        run_verus(options, &test_input_dir, &test_input_dir.join(entry_file), import_vstd, true);
     let rust_output = std::str::from_utf8(&run.stderr[..]).unwrap().trim();
 
     let mut errors = Vec::new();
@@ -162,6 +163,7 @@ pub fn verify_files_vstd(
 
 pub fn run_verus(
     options: &[&str],
+    test_dir: &std::path::Path,
     entry_file: &std::path::PathBuf,
     import_vstd: bool,
     json_errors: bool,
@@ -229,6 +231,10 @@ pub fn run_verus(
         } else if *option == "--arch-word-bits 64" {
             verus_args.push("--arch-word-bits".to_string());
             verus_args.push("64".to_string());
+        } else if *option == "--compile" {
+            verus_args.push("--compile".to_string());
+            verus_args.push("-o".to_string());
+            verus_args.push(test_dir.join("libtest.rlib").to_str().expect("valid path").to_owned());
         } else if *option == "vstd" {
             // ignore
         } else {
