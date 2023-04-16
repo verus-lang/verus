@@ -672,7 +672,7 @@ fn check_expr_handle_mut_arg(
             e1,
         ) => {
             if *get_variant && typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
-                return err_str(&expr.span, "cannot get variant in exec mode");
+                return error(&expr.span, "cannot get variant in exec mode");
             }
             let (e1_mode_read, e1_mode_write) =
                 check_expr_handle_mut_arg(typing, outer_mode, erasure_mode, e1)?;
