@@ -81,11 +81,12 @@ pub fn attribute_is_variant(
         .collect::<proc_macro2::TokenStream>();
 
     let generics = &ast.generics;
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     quote! {
         #ast
 
         #[automatically_derived]
-        impl#generics #struct_name#generics {
+        impl #impl_generics #struct_name #ty_generics #where_clause {
             #is_impls
         }
     }
