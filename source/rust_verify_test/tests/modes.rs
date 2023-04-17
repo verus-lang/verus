@@ -1416,3 +1416,17 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] ghost_wrapper_is_copyable verus_code! {
+        struct NonCopy { a: u64 }
+
+        fn use_g(g: Ghost<NonCopy>) {
+        }
+
+        fn with_g(g: Ghost<NonCopy>) {
+            use_g(g);
+            use_g(g);
+        }
+    } => Ok(())
+}

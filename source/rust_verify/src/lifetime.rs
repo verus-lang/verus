@@ -176,7 +176,9 @@ impl<A> Tracked<A> {
     pub fn borrow(&self) -> &A { panic!() }
     pub fn borrow_mut(&mut self) -> &mut A { panic!() }
 }
-#[derive(Clone, Copy)] struct Ghost<A> { a: PhantomData<A> }
+struct Ghost<A> { a: PhantomData<A> }
+impl<A> Clone for Ghost<A> { fn clone(&self) -> Self { panic!() } }
+impl<A> Copy for Ghost<A> { }
 #[derive(Clone, Copy)] struct int;
 #[derive(Clone, Copy)] struct nat;
 struct FnSpec<Args, Output> { x: PhantomData<(Args, Output)> }
