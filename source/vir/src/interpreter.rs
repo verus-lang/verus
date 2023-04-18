@@ -12,7 +12,7 @@ use crate::ast::{
 use crate::ast_util::{error, path_as_vstd_name};
 use crate::func_to_air::{SstInfo, SstMap};
 use crate::prelude::ArchWordBits;
-use crate::sst::{Bnd, BndX, Exp, ExpX, Exps, Trigs, UniqueIdent};
+use crate::sst::{Bnd, BndX, CallFun, Exp, ExpX, Exps, Trigs, UniqueIdent};
 use air::ast::{Binder, BinderX, Binders, Span};
 use air::messages::{warning, Diagnostics, Message};
 use air::scope_map::ScopeMap;
@@ -689,10 +689,10 @@ fn seq_to_sst(span: &Span, typ: Typ, s: &Vector<Exp>) -> Exp {
     });
     let fun_empty = Arc::new(FunX { path: path_empty, trait_path: None });
     let fun_push = Arc::new(FunX { path: path_push, trait_path: None });
-    let empty = exp_new(ExpX::Call(fun_empty, typs.clone(), Arc::new(vec![])));
+    let empty = exp_new(ExpX::Call(CallFun::Fun(fun_empty), typs.clone(), Arc::new(vec![])));
     let seq = s.iter().fold(empty, |acc, e| {
         let args = Arc::new(vec![acc, e.clone()]);
-        exp_new(ExpX::Call(fun_push.clone(), typs.clone(), args))
+        exp_new(ExpX::Call(CallFun::Fun(fun_push.clone()), typs.clone(), args))
     });
     seq
 }
@@ -1356,7 +1356,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 _ => exp_new(If(e1, e2.clone(), e3.clone())),
             }
         }
-        Call(fun, typs, args) => {
+        Call(CallFun::Fun(fun), typs, args) => {
             if state.perf {
                 // Record the call for later performance analysis
                 match state.fun_calls.get_mut(fun) {
@@ -1380,7 +1380,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     match ctx.fun_ssts.get(fun) {
                         None => {
                             // We don't have the body for this function, so we can't simplify further
-                            exp_new(Call(fun.clone(), typs.clone(), new_args.clone()))
+                            exp_new(Call(CallFun::Fun(fun.clone()), typs.clone(), new_args.clone()))
                         }
                         Some(SstInfo { params, body, memoize, .. }) => {
                             match state.lookup_call(&fun, &new_args, *memoize) {
@@ -1408,6 +1408,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     }
                 }
             }
+        }
+        Call(fun @ CallFun::InternalFun(_), typs, args) => {
+            let new_args: Result<Vec<Exp>, VirErr> =
+                args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
+            let new_args = Arc::new(new_args?);
+            exp_new(Call(fun.clone(), typs.clone(), new_args.clone()))
         }
         CallLambda(_typ, lambda, args) => {
             let lambda = eval_expr_internal(ctx, state, lambda)?;

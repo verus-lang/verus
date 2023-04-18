@@ -1,17 +1,17 @@
-use crate::ast::Exprs;
 use crate::ast::{
-    ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, BuiltinSpecFun, CallTarget, ComputeMode,
-    Constant, Expr, ExprX, Fun, Function, Ident, LoopInvariantKind, Mode, PatternX, SpannedTyped,
-    Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
+    ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, CallTarget, ComputeMode, Constant, Expr, ExprX,
+    Fun, Function, Ident, LoopInvariantKind, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX,
+    Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
+use crate::ast::{BuiltinSpecFun, Exprs};
 use crate::ast_util::{error, types_equal, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{unique_bound, unique_local, Spanned};
 use crate::func_to_air::{SstInfo, SstMap};
 use crate::interpreter::eval_expr;
 use crate::sst::{
-    Bnd, BndX, Dest, Exp, ExpX, Exps, LocalDecl, LocalDeclX, ParPurpose, Pars, Stm, StmX,
-    UniqueIdent,
+    Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclX, ParPurpose,
+    Pars, Stm, StmX, UniqueIdent,
 };
 use crate::sst_util::{
     bitwidth_sst_from_typ, free_vars_exp, free_vars_stm, sst_conjoin, sst_int_literal, sst_le,
@@ -213,7 +213,7 @@ impl<'a> State<'a> {
             _ => exp.clone(),
         });
         let exp = crate::sst_visitor::map_exp_visitor_result(&exp, &mut |exp| match &exp.x {
-            ExpX::Call(fun, typs, args) => {
+            ExpX::Call(CallFun::Fun(fun), typs, args) => {
                 if let Some(SstInfo { inline, params, memoize: _, body }) =
                     fun_ssts.borrow().get(fun)
                 {
@@ -461,9 +461,6 @@ fn expr_get_call(
 ) -> Result<Option<(Vec<Stm>, ReturnedCall)>, VirErr> {
     match &expr.x {
         ExprX::Call(target, args) => match target {
-            CallTarget::BuiltinSpecFun(..) => {
-                panic!("internal error: CallTarget::BuiltinSpecFun");
-            }
             CallTarget::FnSpec(..) => {
                 panic!("internal error: CallTarget::FnSpec");
             }
@@ -491,6 +488,9 @@ fn expr_get_call(
                         args: Arc::new(exps),
                     },
                 )))
+            }
+            CallTarget::BuiltinSpecFun(_, _) => {
+                panic!("internal error: CallTarget::BuiltinSpecFn");
             }
         },
         _ => Ok(None),
@@ -975,15 +975,16 @@ fn expr_to_stm_opt(
             let call = ExpX::CallLambda(expr.typ.clone(), e0, args);
             Ok((vec![], ReturnValue::Some(mk_exp(call))))
         }
-        ExprX::Call(CallTarget::BuiltinSpecFun(bsf, typ_args), args) => {
+        ExprX::Call(CallTarget::BuiltinSpecFun(bsf, ts), args) => {
             let args = Arc::new(vec_map_result(args, |e| expr_to_pure_exp(ctx, state, e))?);
             let f = match bsf {
-                BuiltinSpecFun::ClosureReq => crate::def::closure_req(),
-                BuiltinSpecFun::ClosureEns => crate::def::closure_ens(),
+                BuiltinSpecFun::ClosureReq => InternalFun::ClosureReq,
+                BuiltinSpecFun::ClosureEns => InternalFun::ClosureEns,
             };
-            let call =
-                SpannedTyped::new(&expr.span, &expr.typ, ExpX::Call(f, typ_args.clone(), args));
-            Ok((vec![], ReturnValue::Some(call)))
+            Ok((
+                vec![],
+                ReturnValue::Some(mk_exp(ExpX::Call(CallFun::InternalFun(f), ts.clone(), args))),
+            ))
         }
         ExprX::Call(CallTarget::Static(..), _) => {
             match expr_get_call(ctx, state, expr)?.expect("Call") {
@@ -991,7 +992,7 @@ fn expr_to_stm_opt(
                 (mut stms, ReturnedCall::Call { fun: x, typs, has_return: ret, args }) => {
                     if function_can_be_exp(ctx, state, expr, &x)? {
                         // ExpX::Call
-                        let call = ExpX::Call(x.clone(), typs.clone(), args);
+                        let call = ExpX::Call(CallFun::Fun(x.clone()), typs.clone(), args);
                         Ok((stms, ReturnValue::Some(mk_exp(call))))
                     } else if ret {
                         let (temp, temp_var) = state.next_temp(&expr.span, &expr.typ);
@@ -1015,7 +1016,7 @@ fn expr_to_stm_opt(
                             if fun.x.mode == Mode::Spec {
                                 // for recommends, we need a StmX::Call for the recommends
                                 // and an ExpX::Call for the value.
-                                let call = ExpX::Call(x.clone(), typs.clone(), args);
+                                let call = ExpX::Call(CallFun::Fun(x.clone()), typs.clone(), args);
                                 let call = SpannedTyped::new(&expr.span, &expr.typ, call);
                                 stms.push(init_var(&expr.span, &temp_ident, &call));
                             }

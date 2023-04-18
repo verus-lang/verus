@@ -15,9 +15,9 @@ use crate::def::{
     STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT,
 };
 use crate::def::{
-    fun_to_string, height, is_variant_ident, new_internal_qid, path_to_string, prefix_box,
-    prefix_ensures, prefix_fuel_id, prefix_lambda_type, prefix_pre_var, prefix_requires,
-    prefix_unbox, snapshot_ident, suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id,
+    fun_to_string, is_variant_ident, new_internal_qid, path_to_string, prefix_box, prefix_ensures,
+    prefix_fuel_id, prefix_lambda_type, prefix_pre_var, prefix_requires, prefix_unbox,
+    snapshot_ident, suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id,
     suffix_local_unique_id, suffix_typ_param_id, unique_local, variant_field_ident, variant_ident,
     ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT,
     FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_ASSIGN,
@@ -27,7 +27,9 @@ use crate::def::{
 use crate::def::{CommandsWithContext, CommandsWithContextX};
 use crate::inv_masks::MaskSet;
 use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
-use crate::sst::{BndInfo, BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX, UniqueIdent};
+use crate::sst::{
+    BndInfo, BndX, CallFun, Dest, Exp, ExpX, InternalFun, LocalDecl, Stm, StmX, UniqueIdent,
+};
 use crate::sst_util::subst_exp;
 use crate::sst_vars::{get_loc_var, AssignMap};
 use crate::util::{vec_map, vec_map_result};
@@ -619,13 +621,27 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         (ExpX::Old(span, x), false) => {
             Arc::new(ExprX::Old(span.clone(), suffix_local_unique_id(x)))
         }
-        (ExpX::Call(x, typs, args), false) => {
+        (ExpX::Call(CallFun::Fun(x), typs, args), false) => {
             let name = suffix_global_id(&fun_to_air_ident(&x));
             let mut exprs: Vec<Expr> = vec_map(typs, typ_to_id);
             for arg in args.iter() {
                 exprs.push(exp_to_expr(ctx, arg, expr_ctxt)?);
             }
             ident_apply(&name, &exprs)
+        }
+        (ExpX::Call(CallFun::InternalFun(func), typs, args), false) => {
+            let mut exprs: Vec<Expr> = vec_map(typs, typ_to_id);
+            for arg in args.iter() {
+                exprs.push(exp_to_expr(ctx, arg, expr_ctxt)?);
+            }
+            Arc::new(ExprX::Apply(
+                match func {
+                    InternalFun::ClosureReq => str_ident(crate::def::CLOSURE_REQ),
+                    InternalFun::ClosureEns => str_ident(crate::def::CLOSURE_ENS),
+                    InternalFun::CheckDecreaseInt => str_ident(crate::def::CHECK_DECREASE_INT),
+                },
+                Arc::new(exprs),
+            ))
         }
         (ExpX::CallLambda(typ, e0, args), false) => {
             let e0 = exp_to_expr(ctx, e0, expr_ctxt)?;
@@ -795,11 +811,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 let name = Arc::new(ARCH_SIZE.to_string());
                 Arc::new(ExprX::Var(name))
             }
-            UnaryOpr::Height => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
-                let name = suffix_global_id(&fun_to_air_ident(&height()));
-                Arc::new(ExprX::Apply(name, Arc::new(vec![expr])))
-            }
+            UnaryOpr::Height => Arc::new(ExprX::Apply(
+                str_ident(crate::def::HEIGHT),
+                Arc::new(vec![exp_to_expr(ctx, exp, expr_ctxt)?]),
+            )),
             UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _ }) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 Arc::new(ExprX::Apply(

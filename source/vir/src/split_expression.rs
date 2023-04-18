@@ -7,7 +7,7 @@ use crate::context::Ctx;
 use crate::def::unique_local;
 use crate::def::Spanned;
 use crate::func_to_air::{SstInfo, SstMap};
-use crate::sst::{BndX, Exp, ExpX, Exps, Pars, Stm, StmX, UniqueIdent};
+use crate::sst::{BndX, CallFun, Exp, ExpX, Exps, Pars, Stm, StmX, UniqueIdent};
 use crate::sst_visitor::map_shallow_stm;
 use air::ast::Span;
 use air::messages::{Diagnostics, Message};
@@ -337,7 +337,7 @@ fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> Trace
                 _ => return mk_atom(exp.clone(), negated),
             }
         }
-        ExpX::Call(fun_name, typs, args) => {
+        ExpX::Call(CallFun::Fun(fun_name), typs, args) => {
             let fun = get_function(ctx, &exp.e.span, fun_name).unwrap();
             let res_inlined_exp = tr_inline_function(ctx, state, fun, args, &exp.e.span, typs);
             match res_inlined_exp {

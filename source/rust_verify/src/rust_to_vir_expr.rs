@@ -31,10 +31,10 @@ use rustc_span::symbol::Symbol;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, ArmX, AssertQueryMode, BinaryOp, BitwiseOp, CallTarget, ComputeMode, Constant, ExprX,
-    FieldOpr, FunX, HeaderExpr, HeaderExprX, Ident, InequalityOp, IntRange, IntegerTypeBoundKind,
-    InvAtomicity, Mode, ModeCoercion, MultiOp, PatternX, Quant, SpannedTyped, StmtX, Stmts, Typ,
-    TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
+    ArithOp, ArmX, AssertQueryMode, BinaryOp, BitwiseOp, BuiltinSpecFun, CallTarget, ComputeMode,
+    Constant, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, Ident, InequalityOp, IntRange,
+    IntegerTypeBoundKind, InvAtomicity, Mode, ModeCoercion, MultiOp, PatternX, Quant, SpannedTyped,
+    StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use vir::ast_util::types_equal;
 use vir::ast_util::{const_int_from_string, ident_binder, path_as_rust_name};
@@ -2957,10 +2957,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         }
                         let bsf = if is_closure_req {
                             assert!(other_args.len() == 1);
-                            vir::ast::BuiltinSpecFun::ClosureReq
+                            BuiltinSpecFun::ClosureReq
                         } else {
                             assert!(other_args.len() == 2);
-                            vir::ast::BuiltinSpecFun::ClosureEns
+                            BuiltinSpecFun::ClosureEns
                         };
                         let vir_args = std::iter::once(*receiver)
                             .chain(other_args.iter())
@@ -2982,9 +2982,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             }
                         }
 
-                        let target = CallTarget::BuiltinSpecFun(bsf, Arc::new(typ_args));
-
-                        return mk_expr(ExprX::Call(target, Arc::new(vir_args)));
+                        return mk_expr(ExprX::Call(
+                            CallTarget::BuiltinSpecFun(bsf, Arc::new(typ_args)),
+                            Arc::new(vir_args),
+                        ));
                     }
 
                     false

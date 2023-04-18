@@ -5,7 +5,7 @@ use crate::ast::{
 use crate::def::{unique_bound, Spanned};
 use crate::interpreter::InterpExp;
 use crate::prelude::ArchWordBits;
-use crate::sst::{BndX, Exp, ExpX, Stm, Trig, Trigs, UniqueIdent};
+use crate::sst::{BndX, CallFun, Exp, ExpX, Stm, Trig, Trigs, UniqueIdent};
 use air::ast::{Binder, BinderX, Binders, Ident, Span};
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
@@ -259,9 +259,13 @@ impl ExpX {
             Var(id) | VarLoc(id) => (format!("{}", id.name), 99),
             VarAt(id, _at) => (format!("old({})", id.name), 99),
             Loc(exp) => (format!("{}", exp), 99), // REVIEW: Additional decoration required?
-            Call(fun, _, exps) => {
+            Call(CallFun::Fun(fun), _, exps) => {
                 let args = exps.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
                 (format!("{}({})", fun.path.segments.last().unwrap(), args), 90)
+            }
+            Call(CallFun::InternalFun(func), _, exps) => {
+                let args = exps.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
+                (format!("{:?}({})", func, args), 90)
             }
             NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => {
                 ("const_generic".to_string(), 99)
