@@ -61,7 +61,7 @@ pub(crate) struct SpanContextX {
     pub(crate) local_crate: StableCrateId,
     // Map StableCrateId.to_u64() to CrateInfo
     imported_crates: HashMap<u64, CrateInfo>,
-    next_span_id: std::cell::Cell<u64>,
+    next_span_id: std::sync::atomic::AtomicU64,
     pub(crate) local_files: HashMap<Vec<u8>, FileStartEndPos>,
 }
 
@@ -136,7 +136,7 @@ impl SpanContextX {
             info.files.sort_by_key(|f| f.original_start_pos);
         }
 
-        let next_span_id = std::cell::Cell::new(1);
+        let next_span_id = std::sync::atomic::AtomicU64::new(1);
         Arc::new(SpanContextX { local_crate, imported_crates, next_span_id, local_files })
     }
 
@@ -228,8 +228,8 @@ impl SpanContextX {
 
     pub(crate) fn to_air_span(&self, span: Span) -> air::ast::Span {
         let raw_span = to_raw_span(span);
-        let id = self.next_span_id.get();
-        self.next_span_id.set(id + 1);
+
+        let id = self.next_span_id.fetch_add(1,  std::sync::atomic::Ordering::SeqCst);
         let data = self.pack_span(span);
         let as_string = format!("{:?}", span);
         air::ast::Span { raw_span, id, data, as_string }
