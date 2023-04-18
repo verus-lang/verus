@@ -354,3 +354,21 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] air_function_names_issue_376 verus_code! {
+        enum Nat {
+            Zero,
+            Succ(Box<Nat>),
+        }
+
+        spec fn height(n: Nat) -> nat
+            decreases n
+        {
+            match n {
+                Nat::Zero => 0,
+                Nat::Succ(box m) => height(m),
+            }
+        }
+    } => Ok(())
+}

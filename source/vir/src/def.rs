@@ -2,7 +2,6 @@ use crate::ast::{Fun, FunX, InvAtomicity, Path, PathX};
 use crate::sst::UniqueIdent;
 use crate::util::vec_map;
 use air::ast::{Commands, Ident, Span};
-use air::ast_util::str_ident;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -130,10 +129,10 @@ pub const AS_TYPE: &str = "as_type";
 pub const MK_FUN: &str = "mk_fun";
 pub const CONST_INT: &str = "const_int";
 pub const DUMMY_PARAM: &str = "no%param";
-const CHECK_DECREASE_INT: &str = "check_decrease_int";
-const HEIGHT: &str = "height";
-const CLOSURE_REQ: &str = "closure_req";
-const CLOSURE_ENS: &str = "closure_ens";
+pub const CHECK_DECREASE_INT: &str = "check_decrease_int";
+pub const HEIGHT: &str = "height";
+pub const CLOSURE_REQ: &str = "closure_req";
+pub const CLOSURE_ENS: &str = "closure_ens";
 
 pub const UINT_XOR: &str = "uintxor";
 pub const UINT_AND: &str = "uintand";
@@ -201,43 +200,12 @@ pub fn fun_to_string(fun: &Fun) -> String {
     }
 }
 
-pub fn check_decrease_int() -> Fun {
-    Arc::new(FunX {
-        path: Arc::new(PathX {
-            krate: None,
-            segments: Arc::new(vec![str_ident(CHECK_DECREASE_INT)]),
-        }),
-        trait_path: None,
-    })
-}
-
 pub fn decrease_at_entry(n: usize) -> Ident {
     Arc::new(format!("{}{}", DECREASE_AT_ENTRY, n))
 }
 
 pub fn trait_self_type_param() -> Ident {
     Arc::new(TRAIT_SELF_TYPE_PARAM.to_string())
-}
-
-pub fn height() -> Fun {
-    Arc::new(FunX {
-        path: Arc::new(PathX { krate: None, segments: Arc::new(vec![str_ident(HEIGHT)]) }),
-        trait_path: None,
-    })
-}
-
-pub fn closure_req() -> Fun {
-    Arc::new(FunX {
-        path: Arc::new(PathX { krate: None, segments: Arc::new(vec![str_ident(CLOSURE_REQ)]) }),
-        trait_path: None,
-    })
-}
-
-pub fn closure_ens() -> Fun {
-    Arc::new(FunX {
-        path: Arc::new(PathX { krate: None, segments: Arc::new(vec![str_ident(CLOSURE_ENS)]) }),
-        trait_path: None,
-    })
 }
 
 pub fn suffix_global_id(ident: &Ident) -> Ident {

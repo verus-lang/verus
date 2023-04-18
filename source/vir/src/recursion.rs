@@ -6,12 +6,15 @@ use crate::ast_to_sst::expr_to_exp;
 use crate::ast_util::{error, msg_error, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{
-    check_decrease_int, decrease_at_entry, height, prefix_recursive_fun, suffix_rename,
-    unique_bound, unique_local, Spanned, FUEL_PARAM, FUEL_TYPE,
+    decrease_at_entry, prefix_recursive_fun, suffix_rename, unique_bound, unique_local, Spanned,
+    FUEL_PARAM, FUEL_TYPE,
 };
 use crate::func_to_air::{params_to_pars, SstMap};
 use crate::scc::Graph;
-use crate::sst::{BndX, Dest, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, StmX, UniqueIdent};
+use crate::sst::{
+    BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclX, Stm, StmX,
+    UniqueIdent,
+};
 use crate::sst_to_air::PostConditionKind;
 use crate::sst_visitor::{
     exp_rename_vars, exp_visitor_check, exp_visitor_dfs, map_exp_visitor, map_stm_visitor,
@@ -81,7 +84,7 @@ fn height_of_exp(ctxt: &Ctxt, exp: &Exp) -> Exp {
                 let argx = ExpX::UnaryOpr(op, exp.clone());
                 SpannedTyped::new(&exp.span, &exp.typ, argx)
             };
-            let call = ExpX::Call(height(), Arc::new(vec![]), Arc::new(vec![arg]));
+            let call = ExpX::UnaryOpr(UnaryOpr::Height, arg);
             SpannedTyped::new(&exp.span, &Arc::new(TypX::Int(IntRange::Int)), call)
         }
         // TODO: non-panic error message
@@ -104,7 +107,11 @@ fn check_decrease(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> Exp {
             SpannedTyped::new(&exp.span, &Arc::new(TypX::Int(IntRange::Int)), decreases_at_entryx);
         // 0 <= decreases_exp < decreases_at_entry
         let args = vec![height_of_exp(ctxt, exp), decreases_at_entry, dec_exp];
-        let call = ExpX::Call(check_decrease_int(), Arc::new(vec![]), Arc::new(args));
+        let call = ExpX::Call(
+            CallFun::InternalFun(InternalFun::CheckDecreaseInt),
+            Arc::new(vec![]),
+            Arc::new(args),
+        );
         dec_exp = SpannedTyped::new(&exp.span, &Arc::new(TypX::Bool), call);
     }
     dec_exp
@@ -177,12 +184,20 @@ fn terminates(
         | ExpX::Old(..)
         | ExpX::NullaryOpr(..) => Ok(bool_exp(ExpX::Const(Constant::Bool(true)))),
         ExpX::Loc(e) => r(e),
-        ExpX::Call(x, targs, args) => {
+        ExpX::Call(CallFun::Fun(x), targs, args) => {
             let mut e = if is_recursive_call(ctxt, x, targs) {
                 check_decrease_call(ctxt, diagnostics, fun_ssts, &exp.span, x, targs, args)?
             } else {
                 bool_exp(ExpX::Const(Constant::Bool(true)))
             };
+            for arg in args.iter().rev() {
+                let e_arg = r(arg)?;
+                e = bool_exp(ExpX::Binary(BinaryOp::And, e_arg, e));
+            }
+            Ok(e)
+        }
+        ExpX::Call(CallFun::InternalFun(_func), _tys, args) => {
+            let mut e = bool_exp(ExpX::Const(Constant::Bool(true)));
             for arg in args.iter().rev() {
                 let e_arg = r(arg)?;
                 e = bool_exp(ExpX::Binary(BinaryOp::And, e_arg, e));
@@ -278,7 +293,7 @@ pub(crate) fn is_recursive_exp(ctx: &Ctx, name: &Fun, body: &Exp) -> bool {
         let mut scope_map = ScopeMap::new();
         // Check for self-recursion, which SCC computation does not account for
         match exp_visitor_dfs(body, &mut scope_map, &mut |exp, _scope_map| match &exp.x {
-            ExpX::Call(x, targs, _) if is_self_call(ctx, x, targs, name) => {
+            ExpX::Call(CallFun::Fun(x), targs, _) if is_self_call(ctx, x, targs, name) => {
                 VisitorControlFlow::Stop(())
             }
             _ => VisitorControlFlow::Recurse,
@@ -339,7 +354,7 @@ fn mk_decreases_at_entry(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> (Vec<Loca
 fn disallow_recursion_exp(ctxt: &Ctxt, exp: &Exp) -> Result<(), VirErr> {
     let mut scope_map = ScopeMap::new();
     exp_visitor_check(exp, &mut scope_map, &mut |exp, _scope_map| match &exp.x {
-        ExpX::Call(x, targs, _) if is_recursive_call(ctxt, x, targs) => {
+        ExpX::Call(CallFun::Fun(x), targs, _) if is_recursive_call(ctxt, x, targs) => {
             error(&exp.span, "recursion not allowed here")
         }
         _ => Ok(()),
@@ -409,7 +424,7 @@ pub(crate) fn check_termination_exp(
 
     // New body: substitute rec%f(args, fuel) for f(args)
     let body = map_exp_visitor(&body, &mut |exp| match &exp.x {
-        ExpX::Call(x, typs, args)
+        ExpX::Call(CallFun::Fun(x), typs, args)
             if is_recursive_call(&ctxt, x, typs) && ctx.func_map[x].x.body.is_some() =>
         {
             let mut args = (**args).clone();
@@ -417,7 +432,7 @@ pub(crate) fn check_termination_exp(
             let var_typ = Arc::new(TypX::Air(str_typ(FUEL_TYPE)));
             args.push(SpannedTyped::new(&exp.span, &var_typ, varx));
             let rec_name = prefix_recursive_fun(&x);
-            let callx = ExpX::Call(rec_name, typs.clone(), Arc::new(args));
+            let callx = ExpX::Call(CallFun::Fun(rec_name), typs.clone(), Arc::new(args));
             SpannedTyped::new(&exp.span, &exp.typ, callx)
         }
         _ => exp.clone(),

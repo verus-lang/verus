@@ -1,6 +1,6 @@
 use crate::ast::Path;
 use crate::def::*;
-use crate::sst_to_air::{fun_to_air_ident, path_to_air_ident};
+use crate::sst_to_air::path_to_air_ident;
 use air::ast::Ident;
 use air::printer::{macro_push_node, str_to_node};
 use air::{node, nodes, nodes_vec};
@@ -62,11 +62,10 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let EucDiv = str_to_node(EUC_DIV);
     #[allow(non_snake_case)]
     let EucMod = str_to_node(EUC_MOD);
-    let check_decrease_int =
-        str_to_node(&suffix_global_id(&fun_to_air_ident(&check_decrease_int())));
-    let height = str_to_node(&suffix_global_id(&fun_to_air_ident(&height())));
-    let closure_req = str_to_node(&suffix_global_id(&fun_to_air_ident(&closure_req())));
-    let closure_ens = str_to_node(&suffix_global_id(&fun_to_air_ident(&closure_ens())));
+    let check_decrease_int = str_to_node(CHECK_DECREASE_INT);
+    let height = str_to_node(HEIGHT);
+    let closure_req = str_to_node(CLOSURE_REQ);
+    let closure_ens = str_to_node(CLOSURE_ENS);
     #[allow(non_snake_case)]
     let Poly = str_to_node(POLY);
     let box_int = str_to_node(BOX_INT);
@@ -540,7 +539,7 @@ pub(crate) fn datatype_height_axiom(
     is_variant_ident: &Ident,
     field: &Ident,
 ) -> Node {
-    let height = str_to_node(&suffix_global_id(&fun_to_air_ident(&height())));
+    let height = str_to_node(HEIGHT);
     let field = str_to_node(field.as_str());
     let is_variant = str_to_node(is_variant_ident.as_str());
     let typ1 = str_to_node(path_to_air_ident(typ_name1).as_str());

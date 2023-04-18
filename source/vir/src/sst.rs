@@ -40,6 +40,19 @@ pub struct UniqueIdent {
     pub local: Option<u64>,
 }
 
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+pub enum InternalFun {
+    ClosureReq,
+    ClosureEns,
+    CheckDecreaseInt,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum CallFun {
+    Fun(Fun),
+    InternalFun(InternalFun),
+}
+
 pub type Exp = Arc<SpannedTyped<ExpX>>;
 pub type Exps = Arc<Vec<Exp>>;
 #[derive(Debug, Clone)]
@@ -52,7 +65,7 @@ pub enum ExpX {
     // used only during sst_to_air to generate AIR Old
     Old(Ident, UniqueIdent),
     // call to spec function
-    Call(Fun, Typs, Exps),
+    Call(CallFun, Typs, Exps),
     CallLambda(Typ, Exp, Exps),
     Ctor(Path, Ident, Binders<Exp>),
     NullaryOpr(NullaryOpr),
