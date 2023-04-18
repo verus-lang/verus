@@ -10,7 +10,10 @@ use crate::ast_util::{
     is_integer_type, msg_error,
 };
 use crate::context::Ctx;
-use crate::def::{fn_inv_name, fn_namespace_name, new_user_qid_name};
+use crate::def::{
+    fn_inv_name, fn_namespace_name, new_user_qid_name, CHAR_FROM_UNICODE, CHAR_TO_UNICODE,
+    STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT,
+};
 use crate::def::{
     fun_to_string, height, is_variant_ident, new_internal_qid, path_to_string, prefix_box,
     prefix_ensures, prefix_fuel_id, prefix_lambda_type, prefix_pre_var, prefix_requires,
@@ -370,7 +373,7 @@ pub(crate) fn ctor_to_apply<'a>(
 
 fn str_to_const_str(ctx: &Ctx, s: Arc<String>) -> Expr {
     Arc::new(ExprX::Apply(
-        crate::def::strslice_new_strlit_ident(),
+        str_ident(STRSLICE_NEW_STRLIT),
         Arc::new(vec![Arc::new(ExprX::Const(Constant::Nat({
             use num_bigint::BigUint;
             use sha2::{Digest, Sha512};
@@ -411,7 +414,7 @@ pub(crate) fn constant_to_expr(ctx: &Ctx, constant: &crate::ast::Constant) -> Ex
         crate::ast::Constant::Int(i) => big_int_to_expr(i),
         crate::ast::Constant::StrSlice(s) => str_to_const_str(ctx, s.clone()),
         crate::ast::Constant::Char(c) => Arc::new(ExprX::Apply(
-            crate::def::char_from_unicode_ident(),
+            str_ident(CHAR_FROM_UNICODE),
             Arc::new(vec![Arc::new(ExprX::Const(Constant::Nat(Arc::new(
                 char_to_unicode_repr(*c).to_string(),
             ))))]),
@@ -704,11 +707,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         }
         (ExpX::Unary(op, exp), false) => match op {
             UnaryOp::StrLen => Arc::new(ExprX::Apply(
-                crate::def::strslice_len_ident(),
+                str_ident(STRSLICE_LEN),
                 Arc::new(vec![exp_to_expr(ctx, exp, expr_ctxt)?]),
             )),
             UnaryOp::StrIsAscii => Arc::new(ExprX::Apply(
-                crate::def::strslice_is_ascii_ident(),
+                str_ident(STRSLICE_IS_ASCII),
                 Arc::new(vec![exp_to_expr(ctx, exp, expr_ctxt)?]),
             )),
             UnaryOp::Not => mk_not(&exp_to_expr(ctx, exp, expr_ctxt)?),
@@ -744,7 +747,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             UnaryOp::CharToInt => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
 
-                Arc::new(ExprX::Apply(crate::def::char_to_unicode_ident(), Arc::new(vec![expr])))
+                Arc::new(ExprX::Apply(str_ident(CHAR_TO_UNICODE), Arc::new(vec![expr])))
             }
         },
         (ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), exp), true) => {
@@ -919,7 +922,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     ExprX::Unary(air::ast::UnaryOp::Not, Arc::new(eq))
                 }
                 BinaryOp::StrGetChar => ExprX::Apply(
-                    crate::def::strslice_get_char_ident(),
+                    str_ident(STRSLICE_GET_CHAR),
                     Arc::new(vec![
                         exp_to_expr(ctx, lhs, expr_ctxt)?,
                         exp_to_expr(ctx, rhs, expr_ctxt)?,
@@ -2060,7 +2063,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
 fn string_len_to_air(ctx: &Ctx, lit: Arc<String>) -> Expr {
     let cnst = str_to_const_str(ctx, lit.clone());
-    let lhs = str_apply(&crate::def::strslice_len_ident(), &vec![cnst]);
+    let lhs = str_apply(&str_ident(STRSLICE_LEN), &vec![cnst]);
     let len_val = Arc::new(ExprX::Const(Constant::Nat(Arc::new(lit.chars().count().to_string()))));
     Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, lhs, len_val))
 }
@@ -2069,8 +2072,8 @@ fn string_index_to_air(cnst: &Expr, index: usize, value: char) -> Expr {
     let index_expr = Arc::new(ExprX::Const(Constant::Nat(Arc::new(index.to_string()))));
     let value_expr =
         Arc::new(ExprX::Const(Constant::Nat(Arc::new((char_to_unicode_repr(value)).to_string()))));
-    let char_expr = str_apply(&crate::def::char_from_unicode_ident(), &vec![value_expr]);
-    let lhs = str_apply(&crate::def::strslice_get_char_ident(), &vec![cnst.clone(), index_expr]);
+    let char_expr = str_apply(&str_ident(CHAR_FROM_UNICODE), &vec![value_expr]);
+    let lhs = str_apply(&str_ident(STRSLICE_GET_CHAR), &vec![cnst.clone(), index_expr]);
     Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, lhs, char_expr))
 }
 
@@ -2089,7 +2092,7 @@ fn string_indices_to_air(ctx: &Ctx, lit: Arc<String>) -> Expr {
 fn string_is_ascii_to_air(ctx: &Ctx, lit: Arc<String>) -> Expr {
     let is_ascii = lit.is_ascii();
     let cnst = str_to_const_str(ctx, lit);
-    let lhs = str_apply(&crate::def::strslice_is_ascii_ident(), &vec![cnst]);
+    let lhs = str_apply(&str_ident(STRSLICE_IS_ASCII), &vec![cnst]);
     let is_ascii = Arc::new(ExprX::Const(Constant::Bool(is_ascii)));
     Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, lhs, is_ascii))
 }

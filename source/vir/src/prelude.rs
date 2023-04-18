@@ -100,18 +100,18 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let uint_shl = str_to_node(UINT_SHL);
     let uint_not = str_to_node(UINT_NOT);
 
-    let strslice = strslice();
-    let char_ = char_();
+    let strslice = str_to_node(STRSLICE);
+    let char_ = str_to_node(CHAR);
 
-    let strslice_is_ascii = strslice_is_ascii();
-    let strslice_len = strslice_len();
-    let strslice_get_char = strslice_get_char();
+    let strslice_is_ascii = str_to_node(STRSLICE_IS_ASCII);
+    let strslice_len = str_to_node(STRSLICE_LEN);
+    let strslice_get_char = str_to_node(STRSLICE_GET_CHAR);
     let type_id_strslice = str_to_node(TYPE_ID_STRSLICE);
-    let new_strlit = strslice_new_strlit();
-    let from_strlit = strslice_from_strlit();
+    let new_strlit = str_to_node(STRSLICE_NEW_STRLIT);
+    let from_strlit = str_to_node(STRSLICE_FROM_STRLIT);
 
-    let from_unicode = char_from_unicode();
-    let to_unicode = char_to_unicode();
+    let from_unicode = str_to_node(CHAR_FROM_UNICODE);
+    let to_unicode = str_to_node(CHAR_TO_UNICODE);
 
     nodes_vec!(
         // Fuel

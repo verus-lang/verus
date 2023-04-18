@@ -3,9 +3,7 @@ use crate::sst::UniqueIdent;
 use crate::util::vec_map;
 use air::ast::{Commands, Ident, Span};
 use air::ast_util::str_ident;
-use air::printer::str_to_node;
 use serde::{Deserialize, Serialize};
-use sise::Node;
 use std::fmt::Debug;
 use std::sync::Arc;
 
@@ -44,8 +42,6 @@ const SUFFIX_PATH: &str = ".";
 const PREFIX_FUEL_ID: &str = "fuel%";
 const PREFIX_FUEL_NAT: &str = "fuel_nat%";
 const PREFIX_REQUIRES: &str = "req%";
-const PREFIX_STR: &str = "str%";
-const PREFIX_CHAR: &str = "char%";
 const PREFIX_ENSURES: &str = "ens%";
 const PREFIX_RECURSIVE: &str = "rec%";
 const PREFIX_SIMPLIFY_TEMP_VAR: &str = "tmp%%";
@@ -159,16 +155,16 @@ pub const QID_HAS_TYPE_ALWAYS: &str = "has_type_always";
 pub const VERUS_SPEC: &str = "VERUS_SPEC__";
 
 pub const STRSLICE: &str = "StrSlice";
-pub const STRSLICE_IS_ASCII: &str = "strslice_is_ascii";
-pub const STRSLICE_LEN: &str = "strslice_len";
-pub const STRSLICE_GET_CHAR: &str = "strslice_get_char";
-pub const STRSLICE_NEW_STRLIT: &str = "new_strlit";
+pub const STRSLICE_IS_ASCII: &str = "str%strslice_is_ascii";
+pub const STRSLICE_LEN: &str = "str%strslice_len";
+pub const STRSLICE_GET_CHAR: &str = "str%strslice_get_char";
+pub const STRSLICE_NEW_STRLIT: &str = "str%new_strlit";
 // only used to prove that new_strlit is injective
-pub const STRSLICE_FROM_STRLIT: &str = "from_strlit";
+pub const STRSLICE_FROM_STRLIT: &str = "str%from_strlit";
 
 pub const CHAR: &str = "Char";
-pub const CHAR_FROM_UNICODE: &str = "from_unicode";
-pub const CHAR_TO_UNICODE: &str = "to_unicode";
+pub const CHAR_FROM_UNICODE: &str = "char%from_unicode";
+pub const CHAR_TO_UNICODE: &str = "char%to_unicode";
 
 pub const VERUSLIB: &str = "vstd";
 pub const VERUSLIB_PREFIX: &str = "vstd::";
@@ -363,14 +359,6 @@ pub fn prefix_fuel_nat(ident: &Ident) -> Ident {
 
 pub fn prefix_requires(ident: &Ident) -> Ident {
     Arc::new(PREFIX_REQUIRES.to_string() + ident)
-}
-
-pub fn prefix_str(ident: &Ident) -> Ident {
-    Arc::new(PREFIX_STR.to_string() + ident)
-}
-
-pub fn prefix_char(ident: &Ident) -> Ident {
-    Arc::new(PREFIX_CHAR.to_string() + ident)
 }
 
 pub fn prefix_ensures(ident: &Ident) -> Ident {
@@ -643,47 +631,6 @@ pub fn fn_namespace_name(vstd_crate_name: &Option<Ident>, atomicity: InvAtomicit
     })
 }
 
-// string related definitions
-pub fn strslice() -> Node {
-    str_to_node(STRSLICE)
-}
-
-pub fn strslice_is_ascii_ident() -> Ident {
-    prefix_str(&std::sync::Arc::new(STRSLICE_IS_ASCII.to_string()))
-}
-
-pub fn strslice_len_ident() -> Ident {
-    prefix_str(&std::sync::Arc::new(STRSLICE_LEN.to_string()))
-}
-
-pub fn strslice_get_char_ident() -> Ident {
-    prefix_str(&std::sync::Arc::new(STRSLICE_GET_CHAR.to_string()))
-}
-
-pub fn strslice_new_strlit_ident() -> Ident {
-    prefix_str(&std::sync::Arc::new(STRSLICE_NEW_STRLIT.to_string()))
-}
-
-pub fn strslice_is_ascii() -> Node {
-    str_to_node(&strslice_is_ascii_ident())
-}
-
-pub fn strslice_len() -> Node {
-    str_to_node(&strslice_len_ident())
-}
-
-pub fn strslice_get_char() -> Node {
-    str_to_node(&strslice_get_char_ident())
-}
-
-pub fn strslice_new_strlit() -> Node {
-    str_to_node(&strslice_new_strlit_ident())
-}
-
-pub fn strslice_from_strlit() -> Node {
-    str_to_node(&prefix_str(&std::sync::Arc::new(STRSLICE_FROM_STRLIT.to_string())))
-}
-
 pub fn strslice_defn_path(vstd_crate_name: &Option<Ident>) -> Path {
     Arc::new(PathX {
         krate: vstd_crate_name.clone(),
@@ -704,27 +651,6 @@ pub fn pervasive_assert_path() -> Path {
         krate: None,
         segments: Arc::new(PERVASIVE_ASSERT.iter().map(|x| Arc::new(x.to_string())).collect()),
     })
-}
-
-// char related definitions
-pub fn char_() -> Node {
-    str_to_node(CHAR)
-}
-
-pub fn char_from_unicode_ident() -> Ident {
-    prefix_char(&std::sync::Arc::new(CHAR_FROM_UNICODE.to_string()))
-}
-
-pub fn char_from_unicode() -> Node {
-    str_to_node(&char_from_unicode_ident())
-}
-
-pub fn char_to_unicode_ident() -> Ident {
-    prefix_char(&std::sync::Arc::new(CHAR_TO_UNICODE.to_string()))
-}
-
-pub fn char_to_unicode() -> Node {
-    str_to_node(&char_to_unicode_ident())
 }
 
 /// Inverse of unique_local_name: extracts the user_given_name from
