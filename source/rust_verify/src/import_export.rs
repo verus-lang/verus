@@ -28,7 +28,7 @@ pub(crate) fn import_crates(args: &Args) -> Result<ImportOutput, VirErr> {
     let mut metadatas = Vec::new();
     let mut crate_names = Vec::new();
     let mut vir_crates = Vec::new();
-    for (crate_name, file_path) in &args.import {
+    for (crate_name, file_path) in args.import.lock().unwrap().iter() {
         crate_names.push(crate_name.clone());
         let file = std::io::BufReader::new(match std::fs::File::open(file_path) {
             Ok(file) => file,

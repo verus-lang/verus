@@ -1333,7 +1333,8 @@ impl Verifier {
             ignored_functions: vec![],
         };
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
-        let vstd_crate_name = if self.args.import.len() > 0 || self.args.export.is_some() {
+        let import_len = { self.args.import.lock().unwrap().len() };
+        let vstd_crate_name = if import_len > 0 || self.args.export.is_some() {
             Some(Arc::new(vir::def::VERUSLIB.to_string()))
         } else {
             None
@@ -1347,7 +1348,7 @@ impl Verifier {
             vstd_crate_name: vstd_crate_name.clone(),
             arch: Arc::new(ArchContextX { word_bits: self.args.arch_word_bits }),
         });
-        let multi_crate = self.args.export.is_some() || self.args.import.len() > 0;
+        let multi_crate = self.args.export.is_some() || import_len > 0;
         crate::rust_to_vir_base::MULTI_CRATE
             .with(|m| m.store(multi_crate, std::sync::atomic::Ordering::Relaxed));
 

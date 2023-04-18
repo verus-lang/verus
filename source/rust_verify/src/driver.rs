@@ -255,7 +255,7 @@ where
         if let Some(VerusRoot { path: verusroot, in_vargo }) = find_verusroot() {
             if !verifier.args.no_vstd {
                 let vstd = verusroot.join("vstd.vir").to_str().unwrap().to_string();
-                verifier.args.import.push((format!("vstd"), vstd));
+                verifier.args.import.lock().unwarp().push((format!("vstd"), vstd));
             }
             rustc_args.push(format!("--edition"));
             rustc_args.push(format!("2018"));

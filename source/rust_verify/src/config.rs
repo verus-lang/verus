@@ -1,3 +1,4 @@
+use std::sync::{Arc, Mutex};
 use getopts::Options;
 use vir::printer::ToDebugSNodeOpts as VirLogOption;
 
@@ -29,10 +30,10 @@ pub const SINGULAR_FILE_SUFFIX: &str = ".singular";
 pub const TRIGGERS_FILE_SUFFIX: &str = ".triggers";
 
 #[derive(Debug, Default)]
-pub struct Args {
+pub struct ArgsX {
     pub pervasive_path: Option<String>,
     pub export: Option<String>,
-    pub import: Vec<(String, String)>,
+    pub import: Mutex<Vec<(String, String)>>,
     pub verify_root: bool,
     pub verify_module: Vec<String>,
     pub verify_function: Option<String>,
@@ -70,6 +71,8 @@ pub struct Args {
     pub compile: bool,
     pub solver_version_check: bool,
 }
+
+pub type Args = Arc<ArgsX>;
 
 pub fn enable_default_features_and_verus_attr(
     rustc_args: &mut Vec<String>,
@@ -270,11 +273,11 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         }
     };
 
-    let args = Args {
+    let args = ArgsX {
         pervasive_path: matches.opt_str(OPT_PERVASIVE_PATH),
         verify_root: matches.opt_present(OPT_VERIFY_ROOT),
         export: matches.opt_str(OPT_EXPORT),
-        import: matches.opt_strs(OPT_IMPORT).iter().map(split_pair_eq).collect(),
+        import: Mutex::new(matches.opt_strs(OPT_IMPORT).iter().map(split_pair_eq).collect()),
         verify_module: matches.opt_strs(OPT_VERIFY_MODULE),
         verify_function: matches.opt_str(OPT_VERIFY_FUNCTION),
         verify_pervasive: matches.opt_present(OPT_VERIFY_PERVASIVE),
@@ -361,5 +364,5 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         solver_version_check: !matches.opt_present(OPT_NO_SOLVER_VERSION_CHECK),
     };
 
-    (args, unmatched)
+    (Arc::new(args), unmatched)
 }

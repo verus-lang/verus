@@ -49,11 +49,11 @@ pub fn main() {
                 let mut internal_args: Vec<_> = internal_args.collect();
                 internal_args.insert(0, internal_program);
 
-                use rust_verify::config::Args;
+                use rust_verify::config::{Args, ArgsX};
                 use rust_verify::file_loader::PervasiveFileLoader;
                 use rust_verify::verifier::Verifier;
 
-                let mut our_args: Args = Default::default();
+                let mut our_args: ArgsX = Default::default();
                 our_args.pervasive_path = Some(pervasive_path.to_string());
                 our_args.verify_pervasive = true;
                 our_args.no_verify = !verify;
@@ -61,6 +61,7 @@ pub fn main() {
                 our_args.multiple_errors = 2;
                 our_args.export = Some(target_path.join(vstd_vir).to_str().unwrap().to_string());
                 our_args.compile = true;
+                let our_args = Args::from(our_args);
 
                 let file_loader = PervasiveFileLoader::new(Some(pervasive_path.to_string()));
                 let verifier = Verifier::new(our_args);
