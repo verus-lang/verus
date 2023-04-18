@@ -15,11 +15,9 @@ use num_format::{Locale, ToFormattedString};
 use rustc_error_messages::MultiSpan;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
-use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Write;
-use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -796,7 +794,7 @@ impl Verifier {
         // termination checking precedes consequence axioms for each SCC.
         let mut fun_axioms: HashMap<Fun, Commands> = HashMap::new();
         let mut fun_ssts = UpdateCell::new(HashMap::new());
-        for scc in &ctx.global.func_call_sccs.clone() {
+        for scc in &ctx.global.func_call_sccs.as_ref().clone() {
             let scc_nodes = ctx.global.func_call_graph.get_scc_nodes(scc);
             let mut scc_fun_nodes: Vec<Fun> = Vec::new();
             for node in scc_nodes.into_iter() {
@@ -1109,7 +1107,7 @@ impl Verifier {
         vir::check_ast_flavor::check_krate(&krate);
 
         let interpreter_log_file =
-            Rc::new(RefCell::new(if self.args.log_all || self.args.log_interpreter {
+            Arc::new(std::sync::Mutex::new(if self.args.log_all || self.args.log_interpreter {
                 Some(self.create_log_file(None, None, crate::config::INTERPRETER_FILE_SUFFIX)?)
             } else {
                 None

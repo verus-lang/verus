@@ -457,7 +457,7 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     // we don't do anything extra.  As stated above, D carries just its fields,
     // and nothing related to traits and dictionaries.
 
-    for scc in &ctx.func_call_sccs {
+    for scc in ctx.func_call_sccs.iter() {
         let scc_nodes = ctx.func_call_graph.get_scc_nodes(scc);
         let count = scc_nodes.len();
         for node in scc_nodes.iter() {
