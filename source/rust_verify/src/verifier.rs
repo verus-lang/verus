@@ -1,6 +1,6 @@
 use crate::config::{Args, ShowTriggers};
 use crate::context::{ArchContextX, ContextX, ErasureInfo};
-use crate::debugger::Debugger;
+// use crate::debugger::Debugger;
 use crate::spans::{SpanContext, SpanContextX};
 use crate::util::error;
 use air::ast::{Command, CommandX, Commands};
@@ -285,12 +285,12 @@ impl Verifier {
     /// Returns true if there was at least one Invalid resulting in an error.
     fn check_result_validity(
         &mut self,
-        compiler: &Compiler,
-        spans: &SpanContext,
+        reporter: &impl Diagnostics,
+        _spans: &SpanContext,
         level: MessageLevel,
         air_context: &mut air::context::Context,
-        assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<std::string::String>>>,
-        snap_map: &Vec<(air::ast::Span, SnapPos)>,
+        _assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<std::string::String>>>,
+        _snap_map: &Vec<(air::ast::Span, SnapPos)>,
         qid_map: &HashMap<String, vir::sst::BndInfo>,
         command: &Command,
         context: &(&air::ast::Span, &str),
@@ -301,7 +301,8 @@ impl Verifier {
             let report_fn: Box<dyn FnMut(std::time::Duration) -> ()> = Box::new(move |elapsed| {
                 let msg =
                     format!("{} has been running for {} seconds", context.1, elapsed.as_secs());
-                let reporter = Reporter::new(spans, compiler);
+                // TODO(multithreading): mark the message as periodic here so it shows up
+                //                       early in the output.
                 if counter % 5 == 0 {
                     reporter.report(&note(msg, &context.0));
                 } else {
@@ -311,7 +312,6 @@ impl Verifier {
             });
             (std::time::Duration::from_secs(2), report_fn)
         };
-        let reporter = Reporter::new(spans, compiler);
         let is_check_valid = matches!(**command, CommandX::CheckValid(_));
         let time0 = Instant::now();
         #[cfg(feature = "singular")]
@@ -332,7 +332,7 @@ impl Verifier {
 
         #[cfg(not(feature = "singular"))]
         let mut result = air_context.command(
-            &reporter,
+            reporter,
             &command,
             QueryContext { report_long_running: Some(&mut report_long_running()) },
         );
@@ -367,8 +367,8 @@ impl Verifier {
                     }
                     reporter.report(&message(level, msg, &context.0));
                     if self.args.profile {
-                        let profiler = Profiler::new(&reporter);
-                        self.print_profile_stats(&reporter, profiler, qid_map);
+                        let profiler = Profiler::new(reporter);
+                        self.print_profile_stats(reporter, profiler, qid_map);
                     }
                     break;
                 }
@@ -379,7 +379,7 @@ impl Verifier {
                         reporter.report_as(&error, level);
                         break;
                     }
-                    let air_model = air_model.unwrap();
+                    // let air_model = air_model.unwrap();
 
                     if is_first_check && level == MessageLevel::Error {
                         self.count_errors += 1;
@@ -396,13 +396,14 @@ impl Verifier {
                         }
 
                         if self.args.debug {
-                            let mut debugger = Debugger::new(
-                                air_model,
-                                assign_map,
-                                snap_map,
-                                compiler.session().source_map(),
-                            );
-                            debugger.start_shell(air_context);
+                            panic!("TODO: re-enable debugger not support");
+                            // let mut debugger = Debugger::new(
+                            //     air_model,
+                            //     assign_map,
+                            //     snap_map,
+                            //     compiler.session().source_map(),
+                            // );
+                            // debugger.start_shell(air_context);
                         }
                     }
 
@@ -419,7 +420,7 @@ impl Verifier {
 
                     let time0 = Instant::now();
                     result = air_context.check_valid_again(
-                        &reporter,
+                        reporter,
                         only_check_earlier,
                         QueryContext { report_long_running: Some(&mut report_long_running()) },
                     );
@@ -472,7 +473,7 @@ impl Verifier {
     /// Returns true if there was at least one Invalid resulting in an error.
     fn run_commands_queries(
         &mut self,
-        compiler: &Compiler,
+        reporter: &impl Diagnostics,
         spans: &SpanContext,
         level: MessageLevel,
         air_context: &mut air::context::Context,
@@ -505,7 +506,7 @@ impl Verifier {
         let desc = desc_prefix.unwrap_or("").to_string() + desc;
         for command in commands.iter() {
             let result_invalidity = self.check_result_validity(
-                compiler,
+                reporter,
                 spans,
                 level,
                 air_context,
@@ -671,15 +672,14 @@ impl Verifier {
     // Verify a single module
     fn verify_module(
         &mut self,
-        compiler: &Compiler,
+        reporter: &impl Diagnostics,
         krate: &Krate,
         spans: &SpanContext,
         module: &vir::ast::Path,
         ctx: &mut vir::context::Ctx,
     ) -> Result<(Duration, Duration), VirErr> {
-        let reporter = Reporter::new(spans, compiler);
         let mut air_context = self.new_air_context_with_prelude(
-            &reporter,
+            reporter,
             module,
             None,
             false,
@@ -698,7 +698,7 @@ impl Verifier {
         air_context.comment("Fuel");
         for command in ctx.fuel().iter() {
             Self::check_internal_result(air_context.command(
-                &reporter,
+                reporter,
                 &command,
                 Default::default(),
             ));
@@ -714,7 +714,7 @@ impl Verifier {
                 .collect(),
         );
         self.run_commands(
-            &reporter,
+            reporter,
             &mut air_context,
             &datatype_commands,
             &("Datatypes".to_string()),
@@ -739,9 +739,9 @@ impl Verifier {
             if !is_visible_to(&function.x.visibility, module) || function.x.attrs.is_decrease_by {
                 continue;
             }
-            let commands = vir::func_to_air::func_name_to_air(ctx, &reporter, &function)?;
+            let commands = vir::func_to_air::func_name_to_air(ctx, reporter, &function)?;
             let comment = "Function-Decl ".to_string() + &fun_as_rust_dbg(&function.x.name);
-            self.run_commands(&reporter, &mut air_context, &commands, &comment);
+            self.run_commands(reporter, &mut air_context, &commands, &comment);
             function_decl_commands.push((commands.clone(), comment.clone()));
         }
         ctx.fun = None;
@@ -812,10 +812,10 @@ impl Verifier {
 
                 ctx.fun = mk_fun_ctx(&function, false);
                 let decl_commands =
-                    vir::func_to_air::func_decl_to_air(ctx, &reporter, &fun_ssts, &function)?;
+                    vir::func_to_air::func_decl_to_air(ctx, reporter, &fun_ssts, &function)?;
                 ctx.fun = None;
                 let comment = "Function-Specs ".to_string() + &fun_as_rust_dbg(f);
-                self.run_commands(&reporter, &mut air_context, &decl_commands, &comment);
+                self.run_commands(reporter, &mut air_context, &decl_commands, &comment);
                 function_spec_commands.push((decl_commands.clone(), comment.clone()));
             }
             // Check termination
@@ -830,7 +830,7 @@ impl Verifier {
                 let (decl_commands, check_commands, new_fun_ssts) =
                     vir::func_to_air::func_axioms_to_air(
                         ctx,
-                        &reporter,
+                        reporter,
                         fun_ssts,
                         &function,
                         is_visible_to(&vis_abs, module),
@@ -844,7 +844,7 @@ impl Verifier {
                     continue;
                 }
                 let invalidity = self.run_commands_queries(
-                    compiler,
+                    reporter,
                     spans,
                     MessageLevel::Error,
                     &mut air_context,
@@ -870,7 +870,7 @@ impl Verifier {
                     ctx.fun = mk_fun_ctx(&function, true);
                     let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
                         ctx,
-                        &reporter,
+                        reporter,
                         fun_ssts,
                         &function,
                         vir::func_to_air::FuncDefPhase::CheckingSpecs,
@@ -882,7 +882,7 @@ impl Verifier {
                     let s = "Function-Decl-Check-Recommends ";
                     for command in commands.iter().map(|x| &*x) {
                         self.run_commands_queries(
-                            compiler,
+                            reporter,
                             spans,
                             level,
                             &mut air_context,
@@ -906,7 +906,7 @@ impl Verifier {
                 }
                 let decl_commands = &fun_axioms[f];
                 let comment = "Function-Axioms ".to_string() + &fun_as_rust_dbg(f);
-                self.run_commands(&reporter, &mut air_context, &decl_commands, &comment);
+                self.run_commands(reporter, &mut air_context, &decl_commands, &comment);
                 function_axiom_commands.push((decl_commands.clone(), comment.clone()));
                 funs.remove(f);
             }
@@ -937,7 +937,7 @@ impl Verifier {
                 }
                 let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
                     ctx,
-                    &reporter,
+                    reporter,
                     fun_ssts,
                     &function,
                     vir::func_to_air::FuncDefPhase::CheckingProofExec,
@@ -986,7 +986,7 @@ impl Verifier {
                     let query_air_context = if do_spinoff {
                         spinoff_z3_context = self.new_air_context_with_module_context(
                             ctx,
-                            &reporter,
+                            reporter,
                             module,
                             &(function.x.name).path,
                             datatype_commands.clone(),
@@ -1008,7 +1008,7 @@ impl Verifier {
                     };
                     let desc_prefix = recommends_rerun.then(|| "recommends check: ");
                     let command_invalidity = self.run_commands_queries(
-                        compiler,
+                        reporter,
                         spans,
                         level,
                         query_air_context,
@@ -1049,13 +1049,12 @@ impl Verifier {
 
     fn verify_module_outer(
         &mut self,
-        compiler: &Compiler,
+        reporter: &impl Diagnostics,
         krate: &Krate,
         spans: &SpanContext,
         module: &vir::ast::Path,
         mut global_ctx: vir::context::GlobalCtx,
     ) -> Result<vir::context::GlobalCtx, VirErr> {
-        let reporter = Reporter::new(spans, compiler);
         let module_name = module_name(module);
         if module.segments.len() == 0 {
             reporter.report(&note_bare("verifying root module"));
@@ -1081,7 +1080,7 @@ impl Verifier {
         }
 
         let (time_smt_init, time_smt_run) =
-            self.verify_module(compiler, &poly_krate, spans, module, &mut ctx)?;
+            self.verify_module(reporter, &poly_krate, spans, module, &mut ctx)?;
 
         global_ctx = ctx.free();
 
@@ -1097,7 +1096,6 @@ impl Verifier {
         compiler: &Compiler,
         spans: &SpanContext,
     ) -> Result<(), VirErr> {
-        let reporter = Reporter::new(spans, compiler);
         let krate = self.vir_crate.clone().expect("vir_crate should be initialized");
         let air_no_span = self.air_no_span.clone().expect("air_no_span should be initialized");
         let inferred_modes =
@@ -1196,8 +1194,9 @@ impl Verifier {
             module_ids_to_verify
         };
 
+        let reporter = Reporter::new(spans, compiler);
         for module in &module_ids_to_verify {
-            global_ctx = self.verify_module_outer(compiler, &krate, spans, module, global_ctx)?;
+            global_ctx = self.verify_module_outer(&reporter, &krate, spans, module, global_ctx)?;
         }
 
         let verified_modules: HashSet<_> = module_ids_to_verify.iter().collect();

@@ -243,7 +243,7 @@ impl<'a> VerusExterns<'a> {
 }
 
 pub fn run<F>(
-    mut verifier: Verifier,
+    verifier: Verifier,
     mut rustc_args: Vec<String>,
     file_loader: F,
     build_test_mode: bool,
