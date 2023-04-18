@@ -3,6 +3,7 @@ use getopts::Options;
 use vir::printer::ToDebugSNodeOpts as VirLogOption;
 
 pub const DEFAULT_RLIMIT_SECS: u32 = 10;
+pub const DEFAULT_NUM_THREADS: usize = 1;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ShowTriggers {
@@ -70,6 +71,7 @@ pub struct ArgsX {
     pub no_vstd: bool,
     pub compile: bool,
     pub solver_version_check: bool,
+    pub num_threads: usize,
 }
 
 pub type Args = Arc<ArgsX>;
@@ -153,6 +155,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_PROFILE_ALL: &str = "profile-all";
     const OPT_COMPILE: &str = "compile";
     const OPT_NO_SOLVER_VERSION_CHECK: &str = "no-solver-version-check";
+    const OPT_NUM_THREADS: &str = "num-threads";
 
     let mut opts = Options::new();
     opts.optopt("", OPT_PERVASIVE_PATH, "Path of the pervasive module", "PATH");
@@ -235,6 +238,14 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     opts.optflag("", OPT_PROFILE_ALL, "Always collect and report prover performance data");
     opts.optflag("", OPT_COMPILE, "Run Rustc compiler after verification");
     opts.optflag("", OPT_NO_SOLVER_VERSION_CHECK, "Skip the check that the solver has the expected version (useful to experiment with different versions of z3)");
+    opts.optopt(
+        "",
+        OPT_NUM_THREADS,
+        format!("Number of threads to use for verification. Default: {}.", DEFAULT_NUM_THREADS)
+            .as_str(),
+        "INTEGER",
+    );
+
     opts.optflag("h", "help", "print this help menu");
 
     let print_usage = || {
@@ -362,6 +373,9 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         compile: matches.opt_present(OPT_COMPILE),
         no_vstd: matches.opt_present(OPT_NO_VSTD),
         solver_version_check: !matches.opt_present(OPT_NO_SOLVER_VERSION_CHECK),
+        num_threads: matches.opt_get::<usize>(OPT_NUM_THREADS)
+            .unwrap_or_else(|_| error("expected integer after num_threads".to_string()))
+            .unwrap_or(DEFAULT_NUM_THREADS)
     };
 
     (Arc::new(args), unmatched)
