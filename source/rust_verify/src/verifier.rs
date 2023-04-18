@@ -15,7 +15,9 @@ use num_format::{Locale, ToFormattedString};
 use rustc_error_messages::MultiSpan;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
-use std::collections::{HashMap, HashSet};
+// use rustc_span::source_map::SourceMap;
+use vir::context::GlobalCtx;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::Write;
 use std::sync::Arc;
@@ -105,6 +107,39 @@ impl Diagnostics for Reporter<'_> {
     }
 }
 
+/// A reporter message that is being collected by the main thread
+pub(crate) enum ReporterMessage{
+    Message(usize, Message, MessageLevel),
+    // Debugger(),
+    Done(usize)
+}
+
+/// A reporter that forwards messages on an mpsc channel
+pub (crate) struct QueuedReporter {
+    module_id: usize,
+    queue: std::sync::mpsc::Sender<ReporterMessage>,
+}
+
+impl QueuedReporter {
+    pub(crate) fn new(module_id: usize, queue: std::sync::mpsc::Sender<ReporterMessage>) -> Self {
+        Self { module_id, queue }
+    }
+
+    pub (crate) fn done(&self) {
+        self.queue.send(ReporterMessage::Done(self.module_id)).expect("could not send!");
+    }
+
+    // pub(crate) fn debug()
+}
+
+impl Diagnostics for QueuedReporter {
+    fn report_as(&self, msg: &Message, level: MessageLevel) {
+        self.queue.send(ReporterMessage::Message(self.module_id, msg.clone(), level))
+            .expect("could not send the message!");
+    }
+}
+
+#[derive(Clone)]
 pub struct Verifier {
     pub encountered_vir_error: bool,
     pub count_verified: u64,
@@ -176,6 +211,18 @@ impl Verifier {
             expand_flag: false,
             expand_targets: vec![],
         }
+    }
+
+    /// merges two verifiers by summing up times and verified stats from other into self.
+    pub fn merge(&mut self, other: Self) {
+        self.count_verified += other.count_verified;
+        self.count_errors += other.count_errors;
+        self.time_vir += other.time_vir;
+        self.time_vir_rust_to_vir += other.time_vir_rust_to_vir;
+        self.time_vir_verify += other.time_vir_verify;
+        self.time_air += other.time_air;
+        self.time_smt_init += other.time_smt_init;
+        self.time_smt_run += other.time_smt_run;
     }
 
     fn create_log_file(
@@ -1096,6 +1143,7 @@ impl Verifier {
         compiler: &Compiler,
         spans: &SpanContext,
     ) -> Result<(), VirErr> {
+        let reporter = Reporter::new(spans, compiler);
         let krate = self.vir_crate.clone().expect("vir_crate should be initialized");
         let air_no_span = self.air_no_span.clone().expect("air_no_span should be initialized");
         let inferred_modes =
@@ -1194,9 +1242,162 @@ impl Verifier {
             module_ids_to_verify
         };
 
-        let reporter = Reporter::new(spans, compiler);
-        for module in &module_ids_to_verify {
-            global_ctx = self.verify_module_outer(&reporter, &krate, spans, module, global_ctx)?;
+        let num_workers = std::cmp::min(self.args.num_threads, module_ids_to_verify.len());
+        if num_workers > 1  {
+            // create the multiple producers, single consumer queue
+            let (sender, receiver) = std::sync::mpsc::channel();
+
+            // collect the modules and create the task queueu
+            let mut tasks = VecDeque::with_capacity(module_ids_to_verify.len());
+            let mut messages : Vec<(bool, Vec<(Message, MessageLevel)>)> = Vec::new();
+            for (i, module) in module_ids_to_verify.iter().enumerate() {
+                // give each module its own log file
+                let interpreter_log_file =
+                    Arc::new(std::sync::Mutex::new(if self.args.log_all || self.args.log_vir_simple {
+                        Some(self.create_log_file(Some(module), None, crate::config::INTERPRETER_FILE_SUFFIX)?)
+                    } else {
+                        None
+                    }));
+
+                // give each task a queued reporter to identify the module that is sending messages
+                let reporter = QueuedReporter::new(i, sender.clone());
+
+                tasks.push_back((module.clone(), global_ctx.from_self_with_log(interpreter_log_file), reporter));
+                messages.push((false, Vec::new()));
+            }
+
+            // protect the taskq with a mutex
+            let taskq = std::sync::Arc::new(std::sync::Mutex::new(tasks));
+
+            // create the worker threads
+            let mut workers = Vec::new();
+            for _tid in 0..num_workers {
+                // we create a clone of the verifier here to pass each thread its own local
+                // copy as we modify fields in the verifier struct. later, we merge the results
+                let mut thread_verifier = self.clone();
+                let thread_taskq = taskq.clone();
+                let thread_span = spans.clone();  // is an Arc<T>
+                let thread_krate = krate.clone(); // is an Arc<T>
+
+                let worker = std::thread::spawn(move || {
+                    let mut completed_tasks : Vec<GlobalCtx> = Vec::new();
+                    loop {
+                        let mut tq = thread_taskq.lock().unwrap();
+                        let elm = tq.pop_front();
+                        drop(tq);
+                        if let Some((module, task, reporter)) = elm {
+                            let res = thread_verifier.verify_module_outer(&reporter, &thread_krate, &thread_span, &module, task);
+                            reporter.done(); // we've verified the module, send the done message
+                            match res {
+                                Ok(res) => {
+                                    completed_tasks.push(res);
+                                },
+                                Err(e) => return Err(e)
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    Ok::<(Verifier, Vec<GlobalCtx>), VirErr>((thread_verifier, completed_tasks))
+                });
+                workers.push(worker);
+            }
+
+            // start handling messages, we keep track of the current active module for which we
+            // print messages immediately, while buffering other messages from the other modules
+            let mut active_module = None;
+            let mut num_done = 0;
+            let reporter = Reporter::new(spans, compiler);
+            loop {
+                let msg = receiver.recv().expect("receiving message failed");
+                match msg {
+                    ReporterMessage::Message(id, msg, level) => {
+                        if let Some(m) = active_module {
+                            // if it's the active module, print the message
+                            if id == m {
+                                reporter.report_as(&msg, level);
+                            } else {
+                                let msgs = messages.get_mut(id).expect("message id out of range");
+                                msgs.1.push((msg, level));
+                            }
+                        } else {
+                            // no active module, print this message and set the module as the
+                            // active one
+                            active_module = Some(id);
+                            reporter.report_as(&msg, level);
+                        }
+                    },
+                    ReporterMessage::Done(id) => {
+                        // the done message is sent by the thread whenever it is done with verifying
+                        // a module, we mark the module as done here.
+                        {
+                            // record that the module is done
+                            let msgs = messages.get_mut(id).expect("message id out of range");
+                            msgs.0 = true;
+                        }
+
+                        // if it is the active module, mark it as done, and reset the active module
+                        if let Some(m) = active_module {
+                            if m == id {
+                                assert!(messages.get_mut(id).expect("message id out of range").1.is_empty());
+                                active_module = None;
+                            }
+                        }
+
+                        // try to pick a new active module here, the first one that has any messages
+                        if active_module.is_none() {
+                            for (i, msgs) in messages.iter_mut().enumerate() {
+                                if msgs.1.is_empty() {
+                                    continue;
+                                }
+                                // drain and print all messages of the module
+                                for (msg, level) in msgs.1.drain(..) {
+                                    reporter.report_as(&msg, level);
+                                }
+                                // if the module wasn't done, make it active and handle next message
+                                if !msgs.0 {
+                                    active_module = Some(i);
+                                    break;
+                                }
+                            }
+                        }
+
+                        num_done = num_done + 1;
+                    }
+                }
+
+                if num_done == module_ids_to_verify.len() {
+                    break;
+                }
+            }
+
+            // join with all worker threads, theys should all have exited by now.
+            // merge the verifier and global contexts
+            for worker in workers {
+                let res = worker.join().unwrap();
+                match res {
+                    Ok((verifier, res)) => {
+                        for r in res {
+                            global_ctx.merge(r);
+                        }
+                        self.merge(verifier);
+                    }
+                    Err(e) => {
+                        return Err(e)
+                    }
+                }
+            }
+
+            // print remaining messages
+            for msgs in messages.drain(..) {
+                for (msg, level) in msgs.1 {
+                    reporter.report_as(&msg, level);
+                }
+            }
+        } else {
+            for module in &module_ids_to_verify {
+                global_ctx = self.verify_module_outer(&reporter, &krate, spans, module, global_ctx)?;
+            }
         }
 
         let verified_modules: HashSet<_> = module_ids_to_verify.iter().collect();

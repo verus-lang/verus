@@ -122,11 +122,18 @@ pub fn main() {
         let smt_run = verifier.time_smt_run;
         let lifetime = stats.time_lifetime;
         let compile = stats.time_compile;
+        println!("1------ {} - {}", verify.as_millis(), vir.as_millis());
         let rust_init = verify - vir;
         let rust = rust_init + lifetime + compile;
+
+
+        println!("2------");
         vir_verify -= air;
+        println!("3------");
         vir -= air;
+        println!("4------");
         air -= smt_init + smt_run;
+
         if verifier.args.output_json {
             let mut times = serde_json::json!({
                 "total": total_time.as_millis(),
