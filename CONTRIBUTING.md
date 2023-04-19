@@ -51,35 +51,23 @@ A work-in-progress tutorial and reference document is automatically published
 
 ## Running tests for the Rust to VIR translation, and inspecting the resulting vir/air/smt
 
-`cargo test` will run the tests for `rust_verify`,
+`vargo test` will run the tests for `rust_verify_test`,
 
 ```
-RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo test -p rust_verify
+vargo test -p rust_verify_test
 ```
-
-As discussed above, you may only need the RUSTC variable on macOS/Linux.
 
 You can run a single test file and a specific test within with the following:
 
 ```
-RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo test -p rust_verify --test <test file> <test name>
+vargo test -p rust_verify_test --test <test file> <test name>
 ```
 
 See the cargo help for more info on the test flags.
 
-If you'd like to inspect the vir/air/smt produced by a test, you can provide a target directory path as an
-environment variable, `VERIFY_LOG_IR_PATH`.
-You should only run a single test, as only the latest logged IR is preserved.
-For example, the following will emit the vir/air/smt logs to `rust_verify/logs`:
-
-```
-VERIFY_LOG_IR_PATH="logs" RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo test -p rust_verify --test refs -- test_ref_0
-```
-
 If you need to pass additional command-line arguments to the verifier in tests, for example to print the
-erased rust ast, you can use the `VERIFY_EXTRA_ARGS` environment variable, like this:
+erased rust ast, you can use the `VERUS_EXTRA_ARGS` environment variable, like this:
 
 ```
-VERIFY_EXTRA_ARGS="--print-erased-spec" RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo test -p rust_verify --test refs -- --nocapture test_ref_0
+VERUS_EXTRA_ARGS="--print-erased-spec" vargo test -p rust_verify_test --test refs -- --nocapture test_ref_0
 ```
-

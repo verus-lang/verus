@@ -1,8 +1,4 @@
-#![allow(unused_imports)]
-
-use builtin::*;
-use builtin_macros::*;
-use vstd::{*, ptr::*, seq::*, seq_lib::*, map::*, modes::*};
+use vstd::{*, prelude::*, ptr::*, string::*};
 
 // "XOR Linked List". This is a sorta-cute (if not usually practical) folk data structure:
 // A doubly-linked list which saves memory by having each node store the XOR of the two
@@ -10,8 +6,8 @@ use vstd::{*, ptr::*, seq::*, seq_lib::*, map::*, modes::*};
 //
 // This example uses the XOR Linked List to build a deque.
 //
-// TODO should really use usize, bit-vector operations aren't supported right now, so we
-// use u64 and assume it's equivalent to usize.
+// TODO should really use usize, but bit-vector operations on usize aren't supported right now,
+// so we use u64 and assume it's equivalent to usize.
 
 verus! {
 
@@ -547,12 +543,21 @@ impl<V> DListXor<V> {
     }
 }
 
+#[verifier(external_body)]
+fn print_result(msg: StrSlice<'static>, value: u32) {
+    println!("{}: {value}", msg.into_rust_str());
+}
+
 fn main() {
     let mut t = DListXor::<u32>::new();
 
     t.push_back(2);
     t.push_back(3);
     t.push_front(1);  // 1, 2, 3
+
+    print_result(new_strlit("pushed"), 2);
+    print_result(new_strlit("pushed"), 3);
+    print_result(new_strlit("pushed"), 1);
 
     let x = t.pop_back();  // 3
     let y = t.pop_front(); // 1
@@ -561,6 +566,10 @@ fn main() {
     assert(x == 3);
     assert(y == 1);
     assert(z == 2);
+
+    print_result(new_strlit("popped"), x);
+    print_result(new_strlit("popped"), y);
+    print_result(new_strlit("popped"), z);
 }
 
 } // verus!
