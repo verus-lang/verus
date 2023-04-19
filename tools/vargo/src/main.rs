@@ -74,7 +74,13 @@ const SUPPORTED_COMMANDS: &[&str] = &[
     "build", "test", "nextest", "run", "clean", "fmt", "metadata",
 ];
 
+// Arguments that cause vargo to be verbose.
+const VARGO_VERBOSE_ARGS: &[&str] = &["-v", "-vv", "--verbose", "--vargo-verbose"];
+
+// Arguments to forward to cargo
 const CARGO_FORWARD_ARGS: &[&str] = &["-v", "-vv", "--verbose", "--offline"];
+// Argument to forward to cargo which also require us to forward the following argument
+// (e.g., `--color always`)
 const CARGO_FORWARD_ARGS_NEXT: &[&str] = &["--color"];
 
 #[derive(Clone, Copy, Debug)]
@@ -242,13 +248,15 @@ fn run() -> Result<(), String> {
         if release { "release" } else { "debug" },
     );
 
-    // This argument is --vargo-verbose to distinguish it from --verbose
-    // which is forwarded to cargo
+    // Check for any argument signalling verbose-mode (either --vargo-verbose
+    // or a verbose argument that would get forwarded to cargo)
     let verbose = args_bucket
         .iter()
+        .any(|x| VARGO_VERBOSE_ARGS.contains(&x.as_str()));
+    args_bucket
+        .iter()
         .position(|x| x.as_str() == "--vargo-verbose")
-        .map(|p| args_bucket.remove(p))
-        .is_some();
+        .map(|p| args_bucket.remove(p));
 
     let vstd_no_verify = args_bucket
         .iter()
