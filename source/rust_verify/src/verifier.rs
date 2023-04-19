@@ -1533,7 +1533,7 @@ impl Verifier {
             ignored_functions: vec![],
         };
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
-        let import_len = { self.args.import.lock().unwrap().len() };
+        let import_len = self.args.import.len();
         let vstd_crate_name = if import_len > 0 || self.args.export.is_some() {
             Some(Arc::new(vir::def::VERUSLIB.to_string()))
         } else {

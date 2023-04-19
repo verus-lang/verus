@@ -136,12 +136,12 @@ pub(crate) fn run_with_erase_macro_compile(
     run_compiler(rustc_args, true, true, &mut callbacks, file_loader, build_test_mode)
 }
 
-struct VerusRoot {
-    path: std::path::PathBuf,
+pub struct VerusRoot {
+    pub path: std::path::PathBuf,
     in_vargo: bool,
 }
 
-fn find_verusroot() -> Option<VerusRoot> {
+pub fn find_verusroot() -> Option<VerusRoot> {
     std::env::var("VARGO_TARGET_DIR")
         .ok()
         .and_then(|target_dir| {
@@ -245,6 +245,7 @@ impl<'a> VerusExterns<'a> {
 pub fn run<F>(
     verifier: Verifier,
     mut rustc_args: Vec<String>,
+    verus_root: Option<VerusRoot>,
     file_loader: F,
     build_test_mode: bool,
 ) -> (Verifier, Stats, Result<(), ()>)
@@ -252,11 +253,7 @@ where
     F: 'static + rustc_span::source_map::FileLoader + Send + Sync + Clone,
 {
     if !build_test_mode {
-        if let Some(VerusRoot { path: verusroot, in_vargo }) = find_verusroot() {
-            if !verifier.args.no_vstd {
-                let vstd = verusroot.join("vstd.vir").to_str().unwrap().to_string();
-                verifier.args.import.lock().unwarp().push((format!("vstd"), vstd));
-            }
+        if let Some(VerusRoot { path: verusroot, in_vargo }) = verus_root {
             rustc_args.push(format!("--edition"));
             rustc_args.push(format!("2018"));
             let externs = VerusExterns { path: &verusroot, has_vstd: !verifier.args.no_vstd };

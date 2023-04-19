@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use getopts::Options;
 use vir::printer::ToDebugSNodeOpts as VirLogOption;
 
@@ -34,7 +34,7 @@ pub const TRIGGERS_FILE_SUFFIX: &str = ".triggers";
 pub struct ArgsX {
     pub pervasive_path: Option<String>,
     pub export: Option<String>,
-    pub import: Mutex<Vec<(String, String)>>,
+    pub import: Vec<(String, String)>,
     pub verify_root: bool,
     pub verify_module: Vec<String>,
     pub verify_function: Option<String>,
@@ -113,6 +113,10 @@ pub fn enable_default_features_and_verus_attr(
 }
 
 pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args, Vec<String>) {
+    parse_args_with_imports(program, args, vec![])
+}
+
+pub fn parse_args_with_imports(program: &String, args: impl Iterator<Item = String>, arg_imports: Vec<(String, String)>) -> (Args, Vec<String>) {
     const OPT_PERVASIVE_PATH: &str = "pervasive-path";
     const OPT_EXPORT: &str = "export";
     const OPT_IMPORT: &str = "import";
@@ -284,11 +288,14 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         }
     };
 
+    let mut import = matches.opt_strs(OPT_IMPORT).iter().map(split_pair_eq).collect::<Vec<(String, String)>>();
+    import.extend(arg_imports);
+
     let args = ArgsX {
         pervasive_path: matches.opt_str(OPT_PERVASIVE_PATH),
         verify_root: matches.opt_present(OPT_VERIFY_ROOT),
         export: matches.opt_str(OPT_EXPORT),
-        import: Mutex::new(matches.opt_strs(OPT_IMPORT).iter().map(split_pair_eq).collect()),
+        import: import,
         verify_module: matches.opt_strs(OPT_VERIFY_MODULE),
         verify_function: matches.opt_str(OPT_VERIFY_FUNCTION),
         verify_pervasive: matches.opt_present(OPT_VERIFY_PERVASIVE),

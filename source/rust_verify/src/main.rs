@@ -66,7 +66,7 @@ pub fn main() {
                 let file_loader = PervasiveFileLoader::new(Some(pervasive_path.to_string()));
                 let verifier = Verifier::new(our_args);
                 let (_verifier, _stats, status) =
-                    rust_verify::driver::run(verifier, internal_args, file_loader, true);
+                    rust_verify::driver::run(verifier, internal_args, None, file_loader, true);
                 status.expect("failed to build vstd library");
                 return;
             }
@@ -98,7 +98,22 @@ pub fn main() {
 
     let mut args = if build_test_mode { internal_args } else { std::env::args() };
     let program = if build_test_mode { internal_program } else { args.next().unwrap() };
-    let (our_args, rustc_args) = rust_verify::config::parse_args(&program, args);
+
+    let mut imports = Vec::new();
+    let verus_root = if !build_test_mode {
+        let verus_root = rust_verify::driver::find_verusroot();
+        if let Some(rust_verify::driver::VerusRoot { path: verusroot, .. }) = &verus_root {
+            if !verifier.args.no_vstd {
+                let vstd = verusroot.join("vstd.vir").to_str().unwrap().to_string();
+                imports.push((format!("vstd"), vstd));
+            }
+        }
+        verus_root
+    } else {
+        None
+    };
+
+    let (our_args, rustc_args) = rust_verify::config::parse_args_with_imports(&program, args, imports);
     let pervasive_path = our_args.pervasive_path.clone();
 
     std::env::set_var("RUSTC_BOOTSTRAP", "1");
@@ -107,7 +122,7 @@ pub fn main() {
     let verifier = rust_verify::verifier::Verifier::new(our_args);
 
     let (verifier, stats, status) =
-        rust_verify::driver::run(verifier, rustc_args, file_loader, build_test_mode);
+        rust_verify::driver::run(verifier, rustc_args, verus_root, file_loader, build_test_mode);
 
     let total_time_1 = std::time::Instant::now();
     let total_time = total_time_1 - total_time_0;
