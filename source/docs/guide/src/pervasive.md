@@ -3,31 +3,42 @@
 This chapter introduces some of Verus's built-in libraries for sequences, sets, maps, and vectors.
 The libraries are currently located in a collection of modules
 in the [pervasive](https://github.com/verus-lang/verus/tree/main/source/pervasive/) directory:
-- [seq.rs](https://github.com/verus-lang/verus/tree/main/source/pervasive/seq.rs)
-- [seq_lib.rs](https://github.com/verus-lang/verus/tree/main/source/pervasive/seq_lib.rs)
-- [set.rs](https://github.com/verus-lang/verus/tree/main/source/pervasive/set.rs)
-- [set_lib.rs](https://github.com/verus-lang/verus/tree/main/source/pervasive/set_lib.rs)
-- [map.rs](https://github.com/verus-lang/verus/tree/main/source/pervasive/map.rs)
-- [vec.rs](https://github.com/verus-lang/verus/tree/main/source/pervasive/vec.rs)
+- [vstd::seq](https://github.com/verus-lang/verus/tree/main/source/pervasive/seq.rs)
+- [vstd::seq_lib](https://github.com/verus-lang/verus/tree/main/source/pervasive/seq_lib.rs)
+- [vstd::set](https://github.com/verus-lang/verus/tree/main/source/pervasive/set.rs)
+- [vstd::set_lib](https://github.com/verus-lang/verus/tree/main/source/pervasive/set_lib.rs)
+- [vstd::map](https://github.com/verus-lang/verus/tree/main/source/pervasive/map.rs)
+- [vstd::vec](https://github.com/verus-lang/verus/tree/main/source/pervasive/vec.rs)
 
-See also the [API documentation](https://verus-lang.github.io/verus/verusdoc/lib/pervasive/index.html).
+For more information,
+see the [API documentation](https://verus-lang.github.io/verus/verusdoc/lib/pervasive/index.html).
 
-UNDER CONSTRUCTION:
-In the near future, we plan to move these libraries into their own pre-compiled crate.
-At the moment, unfortunately, Verus doesn't support verified libraries from separate crates.
-Therefore, to use the libraries, you have to make the libraries part of your own crate.
-You can do this by placing `mod pervasive;` in the root of your crate,
-as shown in
-[this example code](https://github.com/verus-lang/verus/tree/main/source/rust_verify/example/guide/pervasive_example.rs):
+As an example, the [following code](https://github.com/verus-lang/verus/tree/main/source/rust_verify/example/guide/pervasive_example.rs)
+uses the `vstd::seq` module:
 
 ```rust
 {{#include ../../../rust_verify/example/guide/pervasive_example.rs}}
 ```
 
-(If you're running the `rust_verify` executable directly,
-you also have to pass the `--pervasive-path pervasive` command-line option to `rust_verify`.
-If you're using the `rust-verify.sh` script,
-the script will pass this argument for you.)
+For convenience, the `vstd::prelude` module includes `builtin_macros`, `builtin`,
+as well as types from `seq`, `set`, `map`, `option`, `result`, and `string`:
+
+```rust
+use vstd::prelude::*;
+
+verus! {
+
+fn main() {
+    proof {
+        let s: Seq<int> = seq![0, 10, 20, 30, 40];
+        assert(s.len() == 5);
+        assert(s[2] == 20);
+        assert(s[3] == 30);
+    }
+}
+
+} // verus!
+```
 
 # Some syntactic sugar: spec_index and view
 

@@ -74,7 +74,7 @@ After running the build steps above, you can verify an example file.
 From the `source` directory, run:
 
 ```
-vargo run -p rust_verify --release -- rust_verify/example/recursion.rs
+vargo run -p rust_verify --release -- rust_verify/example/vectors.rs
 ```
 
 This will make sure that the Verus and `vstd` builds are up-to-date, then run the verifier.
@@ -84,19 +84,19 @@ You can also run the verifier directly (skipping the up-to-date check) with:
 on Linux and macOS:
 
 ```
-./target-verus/release/verus rust_verify/example/recursion.rs
+./target-verus/release/verus rust_verify/example/vectors.rs
 ```
 
 on Windows:
 
 ```
-.\target-verus\release\verus.exe rust_verify\example\recursion.rs
+.\target-verus\release\verus.exe rust_verify\example\vectors.rs
 ```
 
 You should see something like the following, indicating that verification was a success:
 
 ```
-verification results:: verified: 11 errors: 0
+verification results:: verified: 7 errors: 0
 ```
 
 You can also add the `--compile` flag, which tells Verus to compile the Verus code into a binary via `rustc`. For example:
