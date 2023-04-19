@@ -96,11 +96,6 @@ fn main() {
     child.args(&child_args[..]);
 
     if verbose {
-        // This environment variable (set by cargo) is important
-        // Put it on the command explicitly so it shows up in the verbose output
-        if let Ok(path) = std::env::var("DYLD_FALLBACK_LIBRARY_PATH") {
-            child.env("DYLD_FALLBACK_LIBRARY_PATH", path);
-        }
         log_command(&child);
     }
 
