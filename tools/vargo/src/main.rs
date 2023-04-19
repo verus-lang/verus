@@ -144,6 +144,22 @@ fn run() -> Result<(), String> {
     };
 
     let mut args = std::env::args().skip(1).collect::<Vec<_>>();
+
+    // Check for any argument signalling verbose-mode (either --vargo-verbose
+    // or a verbose argument that would get forwarded to cargo)
+    let verbose = args
+        .iter()
+        .any(|x| VARGO_VERBOSE_ARGS.contains(&x.as_str()));
+    args.iter()
+        .position(|x| x.as_str() == "--vargo-verbose")
+        .map(|p| args.remove(p));
+
+    let vstd_no_verify = args
+        .iter()
+        .position(|x| x.as_str() == "--vstd-no-verify")
+        .map(|p| args.remove(p))
+        .is_some();
+
     let mut args_bucket = args.clone();
     let in_nextest = std::env::var("VARGO_IN_NEXTEST").is_ok();
 
@@ -248,22 +264,6 @@ fn run() -> Result<(), String> {
         if release { "release" } else { "debug" },
     );
 
-    // Check for any argument signalling verbose-mode (either --vargo-verbose
-    // or a verbose argument that would get forwarded to cargo)
-    let verbose = args_bucket
-        .iter()
-        .any(|x| VARGO_VERBOSE_ARGS.contains(&x.as_str()));
-    args_bucket
-        .iter()
-        .position(|x| x.as_str() == "--vargo-verbose")
-        .map(|p| args_bucket.remove(p));
-
-    let vstd_no_verify = args_bucket
-        .iter()
-        .position(|x| x.as_str() == "--vstd-no-verify")
-        .map(|p| args_bucket.remove(p))
-        .is_some();
-
     let package = args_bucket
         .iter()
         .position(|x| x == "--package" || x == "-p")
@@ -344,6 +344,12 @@ fn run() -> Result<(), String> {
                 let mut vargo = vargo.arg("build");
                 if release {
                     vargo = vargo.arg("--release");
+                }
+                if vstd_no_verify {
+                    vargo = vargo.arg("--vstd-no-verify");
+                }
+                if verbose {
+                    vargo = vargo.arg("--vargo-verbose");
                 }
                 vargo = vargo.args(&cargo_forward_args);
                 for e in exclude.iter() {
