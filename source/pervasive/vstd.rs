@@ -3,6 +3,15 @@
 //! as well as runtime functionality with specifications.
 //! For an introduction to Verus, see [the tutorial](https://verus-lang.github.io/verus/guide/).
 
+#![feature(stmt_expr_attributes)]
+#![feature(negative_impls)]
+#![feature(register_tool)]
+#![feature(rustc_attrs)]
+#![feature(unboxed_closures)]
+
+#![allow(unused_parens)]
+#![allow(rustdoc::invalid_rust_codeblocks)]
+
 pub mod pervasive;
 pub mod bytes;
 pub mod calc_macro;
