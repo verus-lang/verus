@@ -71,3 +71,13 @@ erased rust ast, you can use the `VERUS_EXTRA_ARGS` environment variable, like t
 ```
 VERUS_EXTRA_ARGS="--print-erased-spec" vargo test -p rust_verify_test --test refs -- --nocapture test_ref_0
 ```
+
+It can be useful to inspect the intermediate representations used by Verus (VIR, AIR, SMTLIB);
+you can log the VIR, AIR, and SMTLIB for a test with:
+
+```
+VERUS_EXTRA_ARGS="--log-all" vargo test -p rust_verify_test --test refs -- --nocapture --exact test_ref_0
+```
+
+This will output the log files in `rust_verify_test/.verus-log`. Only run one test at
+a time when using this flag, so that the logs are not overwritten by other tests.

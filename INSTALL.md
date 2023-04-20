@@ -117,6 +117,9 @@ on Windows:
 
 Now you're ready to write some Verus! Check out [our guide](https://verus-lang.github.io/verus/guide/getting_started.html) if you haven't yet.
 
+Note that while `vargo` needs to be run from the `source` directory, the `verus` binary can be run (directly, or via a symlink) from any
+directory, which is useful when verifying and compiling a project elsewhere on your file-system.
+
 # IDE Support
 
 **NOTE: These IDE Support instructions are currently outdated, and need to be updated for the new build process.**
