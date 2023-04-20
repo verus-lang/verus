@@ -114,7 +114,7 @@ pub trait InvariantPredicate<K, V> {
 /// The `AtomicInvariant` API is an instance of the ["invariant" method in Verus's general philosophy on interior mutability](https://verus-lang.github.io/verus/guide/interior_mutability.html).
 ///
 /// **Note:** Rather than using `AtomicInvariant` directly, we generally recommend
-/// using the [`atomic_ghost` APIs](atomic_ghost).
+/// using the [`atomic_ghost` APIs](crate::atomic_ghost).
 
 
 #[verifier::proof]
@@ -309,7 +309,7 @@ pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
 /// or a [`PPtr`](crate::ptr::PPtr) are _not_ atomic operations.
 ///
 /// **Note:** Rather than using `open_atomic_invariant!` directly, we generally recommend
-/// using the [`atomic_ghost` APIs](atomic_ghost).
+/// using the [`atomic_ghost` APIs](crate::atomic_ghost).
 ///
 /// ### Example
 ///
