@@ -104,9 +104,16 @@ impl verus_rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
     }
 }
 
+/// Captures the verification and compilation time
 pub struct Stats {
+    /// time spent in rustc for parsing, initialization, macro expansion, etc.
+    /// (from run_compiler until we enter the `after_expansion` callback)
+    pub time_rustc: Duration,
+    /// time it took to verify the crate (this includes VIR generation, SMT solving, etc.)
     pub time_verify: Duration,
+    /// tiem for lifetime/borrow checking
     pub time_lifetime: Duration,
+    /// compilation time
     pub time_compile: Duration,
 }
 
@@ -280,6 +287,8 @@ where
     // Build VIR and run verification
     let mut verifier_callbacks = VerifierCallbacksEraseMacro {
         verifier,
+        rust_start_time: Instant::now(),
+        rust_end_time: None,
         lifetime_start_time: None,
         lifetime_end_time: None,
         rustc_args: rustc_args.clone(),
@@ -294,7 +303,7 @@ where
         Box::new(file_loader.clone()),
         build_test_mode,
     );
-    let VerifierCallbacksEraseMacro { verifier, lifetime_start_time, lifetime_end_time, .. } =
+    let VerifierCallbacksEraseMacro { verifier, rust_start_time, rust_end_time, lifetime_start_time, lifetime_end_time, .. } =
         verifier_callbacks;
     if !verifier.args.output_json && !verifier.encountered_vir_error {
         println!(
@@ -314,11 +323,17 @@ where
         _ => Duration::new(0, 0),
     };
 
+    let time_rustc = match rust_end_time {
+        Some(t1) => t1 - rust_start_time,
+        _ => Duration::new(0, 0),
+    };
+
     if status.is_err() || verifier.encountered_vir_error {
         return (
             verifier,
             Stats {
-                time_verify: time1 - time0 - time_lifetime,
+                time_rustc,
+                time_verify: (time1 - time0) - time_lifetime,
                 time_lifetime,
                 time_compile: Duration::new(0, 0),
             },
@@ -340,7 +355,8 @@ where
     let time2 = Instant::now();
 
     let stats = Stats {
-        time_verify: time1 - time0 - time_lifetime,
+        time_rustc,
+        time_verify: (time1 - time0) - time_lifetime,
         time_lifetime,
         time_compile: time2 - time1,
     };
