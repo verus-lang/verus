@@ -30,12 +30,11 @@ pub fn attribute_is_variant(
                         );
 
                         quote! {
-                            verus! {
-                                #[allow(non_snake_case)]
-                                #[verifier::get_variant(#variant_ident, #field_ident)] /* vattr */
-                                pub open spec fn #get_ident(self) -> #field_ty {
-                                    unimplemented!()
-                                }
+                            #[allow(non_snake_case)]
+                            #[verus::internal(get_variant(#variant_ident, #field_ident))]
+                            #[verus::internal(spec)]
+                            pub fn #get_ident(self) -> #field_ty {
+                                unimplemented!()
                             }
                         }
                     })
@@ -55,12 +54,11 @@ pub fn attribute_is_variant(
                         );
 
                         quote! {
-                            verus! {
-                                #[allow(non_snake_case)]
-                                #[verifier::get_variant(#variant_ident_str, #field_lit)] /* vattr */
-                                pub open spec fn #get_ident(self) -> #field_ty {
-                                    unimplemented!()
-                                }
+                            #[allow(non_snake_case)]
+                            #[verus::internal(get_variant(#variant_ident_str, #field_lit))]
+                            #[verus::internal(spec)]
+                            pub fn #get_ident(self) -> #field_ty {
+                                unimplemented!()
                             }
                         }
                     })
@@ -70,9 +68,10 @@ pub fn attribute_is_variant(
 
             quote! {
                 verus! {
-                    #[verifier::is_variant(#variant_ident_str)] /* vattr */
+                    #[verus::internal(is_variant(#variant_ident_str))]
                     #[allow(non_snake_case)]
-                    pub open spec fn #fun_ident(&self) -> bool { unimplemented!() }
+                    #[verus::internal(spec)]
+                    pub fn #fun_ident(&self) -> bool { unimplemented!() }
 
                     #get_fns
                 }
