@@ -218,9 +218,12 @@ pub(crate) enum Attr {
     // Header to unwrap Tracked<T> and Ghost<T> parameters
     UnwrapParameter,
     // type parameter is not necessarily used in strictly positive positions
-    MaybeNegative,
+    RejectRecursiveTypes,
     // type parameter is used in strictly positive positions
-    StrictlyPositive,
+    RejectGroundRecursiveTypes,
+    // type parameter is used in strictly positive positions
+    // and is not used by the ground variant
+    AcceptRecursiveTypes,
     // export function's require/ensure as global forall
     BroadcastForall,
     // accept the trigger chosen by triggers_auto without printing any diagnostics
@@ -328,11 +331,20 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 AttrTree::Fun(_, arg, None) if arg == "ghost_wrapper" => {
                     v.push(Attr::GhostBlock(GhostBlockAttr::Wrapper))
                 }
-                AttrTree::Fun(_, arg, None) if arg == "maybe_negative" => {
-                    v.push(Attr::MaybeNegative)
+                AttrTree::Fun(_, arg, None)
+                    if arg == "maybe_negative" || arg == "reject_recursive_types" =>
+                {
+                    v.push(Attr::RejectRecursiveTypes)
                 }
-                AttrTree::Fun(_, arg, None) if arg == "strictly_positive" => {
-                    v.push(Attr::StrictlyPositive)
+                AttrTree::Fun(_, arg, None)
+                    if arg == "reject_recursive_types_in_ground_variants" =>
+                {
+                    v.push(Attr::RejectGroundRecursiveTypes)
+                }
+                AttrTree::Fun(_, arg, None)
+                    if arg == "strictly_positive" || arg == "accept_recursive_types" =>
+                {
+                    v.push(Attr::AcceptRecursiveTypes)
                 }
                 AttrTree::Fun(_, arg, None) if arg == "broadcast_forall" => {
                     v.push(Attr::BroadcastForall)
@@ -582,8 +594,9 @@ pub(crate) struct VerifierAttrs {
     pub(crate) publish: bool,
     pub(crate) opaque_outside_module: bool,
     pub(crate) inline: bool,
-    pub(crate) strictly_positive: bool,
-    pub(crate) maybe_negative: bool,
+    pub(crate) accept_recursive_types: bool,
+    pub(crate) reject_recursive_types_in_ground_variants: bool,
+    pub(crate) reject_recursive_types: bool,
     pub(crate) broadcast_forall: bool,
     pub(crate) no_auto_trigger: bool,
     pub(crate) autospec: Option<String>,
@@ -610,8 +623,9 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         publish: false,
         opaque_outside_module: false,
         inline: false,
-        maybe_negative: false,
-        strictly_positive: false,
+        reject_recursive_types: false,
+        reject_recursive_types_in_ground_variants: false,
+        accept_recursive_types: false,
         broadcast_forall: false,
         no_auto_trigger: false,
         autospec: None,
@@ -637,8 +651,9 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::Publish => vs.publish = true,
             Attr::OpaqueOutsideModule => vs.opaque_outside_module = true,
             Attr::Inline => vs.inline = true,
-            Attr::MaybeNegative => vs.maybe_negative = true,
-            Attr::StrictlyPositive => vs.strictly_positive = true,
+            Attr::RejectRecursiveTypes => vs.reject_recursive_types = true,
+            Attr::RejectGroundRecursiveTypes => vs.reject_recursive_types_in_ground_variants = true,
+            Attr::AcceptRecursiveTypes => vs.accept_recursive_types = true,
             Attr::BroadcastForall => vs.broadcast_forall = true,
             Attr::NoAutoTrigger => vs.no_auto_trigger = true,
             Attr::Autospec(method_ident) => vs.autospec = Some(method_ident),

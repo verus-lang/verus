@@ -31,7 +31,7 @@ verus! {
 /// To prove that two sequences are equal, it is usually easiest to use the [`assert_sets_equal!`](crate::set_lib::assert_sets_equal) macro.
 
 #[verifier(external_body)]
-pub struct Set<#[verifier(maybe_negative)] A> {
+pub struct Set<#[verifier::reject_recursive_types] A> {
     dummy: marker::PhantomData<A>,
 }
 

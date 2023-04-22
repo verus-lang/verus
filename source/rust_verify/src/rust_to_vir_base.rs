@@ -723,7 +723,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
     hir_generics: &'tcx Generics<'tcx>,
     check_that_external_body_datatype_declares_positivity: bool,
     def_id: DefId,
-) -> Result<Vec<(vir::ast::Ident, vir::ast::GenericBound, bool)>, VirErr> {
+) -> Result<Vec<(vir::ast::Ident, vir::ast::GenericBound, vir::ast::AcceptRecursiveType)>, VirErr> {
     // TODO the 'predicates' object contains the parent def_id; we can use that
     // to handle all the params and bounds from the impl at once,
     // so then we can handle the case where a method adds extra bounds to an impl
@@ -879,7 +879,11 @@ pub(crate) fn check_generics_bounds<'tcx>(
         }
     }
 
-    let mut typ_params: Vec<(vir::ast::Ident, vir::ast::GenericBound, bool)> = Vec::new();
+    let mut typ_params: Vec<(
+        vir::ast::Ident,
+        vir::ast::GenericBound,
+        vir::ast::AcceptRecursiveType,
+    )> = Vec::new();
 
     // In traits, the first type param is Self. This is handled specially,
     // so we skip it here.
@@ -901,15 +905,22 @@ pub(crate) fn check_generics_bounds<'tcx>(
         let hir_param = &hir_params[idx];
 
         let vattrs = get_verifier_attrs(tcx.hir().attrs(hir_param.hir_id))?;
-        let neg = vattrs.maybe_negative;
-        let pos = vattrs.strictly_positive;
-        if neg && pos {
-            return err_span(
-                hir_param.span,
-                "type parameter cannot be both maybe_negative and strictly_positive",
-            );
-        }
-        let strictly_positive = !neg; // strictly_positive is the default
+        let neg = vattrs.reject_recursive_types;
+        let pos_some = vattrs.reject_recursive_types_in_ground_variants;
+        let pos_all = vattrs.accept_recursive_types;
+        use vir::ast::AcceptRecursiveType;
+        let accept_rec = match (neg, pos_some, pos_all) {
+            (true, false, false) => AcceptRecursiveType::Reject,
+            // RejectInGround is the default
+            (false, true, false) | (false, false, false) => AcceptRecursiveType::RejectInGround,
+            (false, false, true) => AcceptRecursiveType::Accept,
+            _ => {
+                return err_span(
+                    hir_param.span,
+                    "type parameter can only have one of reject_recursive_types, reject_recursive_types_in_ground_variants, accept_recursive_types",
+                );
+            }
+        };
         let GenericParam {
             hir_id: _,
             name: _,
@@ -923,10 +934,14 @@ pub(crate) fn check_generics_bounds<'tcx>(
         unsupported_err_unless!(!pure_wrt_drop, *span, "generic pure_wrt_drop");
 
         if let GenericParamKind::Type { .. } = kind {
-            if check_that_external_body_datatype_declares_positivity && !neg && !pos {
+            if check_that_external_body_datatype_declares_positivity
+                && !neg
+                && !pos_some
+                && !pos_all
+            {
                 return err_span(
                     *span,
-                    "in external_body datatype, each type parameter must be either #[verifier(maybe_negative)] or #[verifier(strictly_positive)] (maybe_negative is always safe to use)",
+                    "in external_body datatype, each type parameter must be one of: #[verifier::reject_recursive_types], #[verifier::reject_recursive_types_in_ground_variants], #[verifier::accept_recursive_types] (reject_recursive_types is always safe to use)",
                 );
             }
         } else if let GenericParamKind::Const { .. } = kind {
@@ -949,7 +964,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
                     }
                 }
                 let bound = Arc::new(GenericBoundX::Traits(trait_bounds));
-                typ_params.push((ident, bound, strictly_positive));
+                typ_params.push((ident, bound, accept_rec));
             }
             _ => {
                 panic!("shouldn't get here");

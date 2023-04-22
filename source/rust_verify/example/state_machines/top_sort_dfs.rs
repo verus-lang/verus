@@ -19,7 +19,7 @@ use option::Option::None;
 
 verus!{
 
-pub struct DirectedGraph<#[verifier(maybe_negative)] V> {
+pub struct DirectedGraph<#[verifier::reject_recursive_types] V> {
     pub edges: Set<(V, V)>,
 }
 
@@ -45,7 +45,7 @@ impl<V> DirectedGraph<V> {
 }
 
 tokenized_state_machine!{
-    TopSort<#[verifier(maybe_negative)] /* vattr */ V> {
+    TopSort<#[verifier::reject_recursive_types] /* vattr */ V> {
         fields {
             #[sharding(constant)]
             pub graph: DirectedGraph<V>,

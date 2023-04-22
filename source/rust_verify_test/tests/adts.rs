@@ -828,7 +828,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] is_variant_with_attribute_regression_480 verus_code! {
         #[is_variant]
-        enum X<#[verifier(maybe_negative)] T> {
+        enum X<#[verifier::reject_recursive_types] T> {
             ZZ(T),
         }
     } => Ok(())

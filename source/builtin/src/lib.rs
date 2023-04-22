@@ -239,12 +239,12 @@ pub fn internal_arbitrary<A>(_: u64) -> A {
 //
 
 #[verifier::external_body]
-pub struct Ghost<#[verifier::strictly_positive] A> {
+pub struct Ghost<#[verifier::reject_recursive_types_in_ground_variants] A> {
     phantom: PhantomData<A>,
 }
 
 #[verifier::external_body]
-pub struct Tracked<#[verifier::strictly_positive] A> {
+pub struct Tracked<#[verifier::reject_recursive_types_in_ground_variants] A> {
     phantom: PhantomData<A>,
 }
 

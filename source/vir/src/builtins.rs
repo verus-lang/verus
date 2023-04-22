@@ -17,8 +17,8 @@ pub fn krate_add_builtins(no_span: &Span, krate: &mut KrateX) {
     let variants = Arc::new(vec![variant]);
 
     let bound = Arc::new(GenericBoundX::Traits(vec![]));
-    let is_strictly_positive = true;
-    let typ_params = Arc::new(vec![(crate::def::slice_param(), bound, is_strictly_positive)]);
+    let accept_rec = crate::ast::AcceptRecursiveType::Accept;
+    let typ_params = Arc::new(vec![(crate::def::slice_param(), bound, accept_rec)]);
     let datatypex =
         DatatypeX { path, visibility, transparency, typ_params, variants, mode: Mode::Exec };
     krate.datatypes.push(Spanned::new(no_span.clone(), datatypex));

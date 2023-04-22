@@ -13,7 +13,7 @@ use crate::slice::*;
 verus! {
 
 #[verifier(external_body)]
-pub struct Vec<#[verifier(strictly_positive)] A> {
+pub struct Vec<#[verifier::accept_recursive_types] A> {
     pub vec: vec::Vec<A>,
 }
 
