@@ -674,7 +674,7 @@ fn check_function(
         // Check that public, non-abstract spec function bodies don't refer to private items:
         let disallow_private_access = match (&function.x.publish, function.x.mode) {
             (Some(_), Mode::Spec) => {
-                let msg = "public spec function cannot refer to private items, if it is marked #[verifier(publish)]";
+                let msg = "public spec function cannot refer to private fields, if it is marked #[verifier(publish)]";
                 Some((&function.x.visibility.restricted_to, msg))
             }
             _ => None,
