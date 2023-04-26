@@ -12,8 +12,8 @@ use rustc_hir::def::{CtorKind, DefKind, Res};
 use rustc_hir::{
     AssocItemKind, BindingAnnotation, Block, BlockCheckMode, BodyId, Closure, Crate, Expr,
     ExprKind, FnSig, HirId, Impl, ImplItem, ImplItemKind, ItemKind, Let, MaybeOwner, Node,
-    OwnerNode, Pat, PatKind, QPath, Stmt, StmtKind, TraitFn, TraitItem, TraitItemKind,
-    TraitItemRef, TraitRef, UnOp, Unsafety,
+    OpaqueTy, OpaqueTyOrigin, OwnerNode, Pat, PatKind, QPath, Stmt, StmtKind, TraitFn, TraitItem,
+    TraitItemKind, TraitItemRef, TraitRef, UnOp, Unsafety,
 };
 use rustc_middle::ty::subst::GenericArgKind;
 use rustc_middle::ty::{
@@ -1915,6 +1915,14 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         }
                         ItemKind::Impl(impll) => {
                             erase_impl(krate, &mut ctxt, &mut state, id, impll);
+                        }
+                        ItemKind::OpaqueTy(OpaqueTy {
+                            generics: _,
+                            bounds: _,
+                            origin: OpaqueTyOrigin::AsyncFn(_),
+                            in_trait: _,
+                        }) => {
+                            continue;
                         }
                         _ => {
                             dbg!(item);
