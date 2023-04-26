@@ -93,3 +93,22 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_async_external_fn_accepted verus_code! {
+        #[verifier(external)]
+        async fn foo(c: usize) -> Result<usize, ()> {
+            Ok(21)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_non_async_opaque_types_disallowed verus_code! {
+        trait Foo {
+            fn bar(&self) -> bool;
+        }
+
+        type OT = impl Foo;
+    } => Err(err) => assert_rust_error_msg(err, "`impl Trait` in type aliases is unstable")
+}
