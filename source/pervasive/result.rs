@@ -35,14 +35,14 @@ impl<T, E> Result<T, E> {
 
     // A more-readable synonym for get_Ok_0().
     #[verifier(inline)]
-    pub open spec fn spec_unwrap_ok(self) -> T
+    pub open spec fn spec_unwrap(self) -> T
     recommends self.is_Ok()
     {
         self.get_Ok_0()
     }
 
-    #[verifier(when_used_as_spec(spec_unwrap_ok))]
-    pub fn unwrap_ok(self) -> (t: T)
+    #[verifier(when_used_as_spec(spec_unwrap))]
+    pub fn unwrap(self) -> (t: T)
         requires
             self.is_Ok(),
         ensures
