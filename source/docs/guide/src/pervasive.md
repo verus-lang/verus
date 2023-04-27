@@ -11,7 +11,7 @@ in the [pervasive](https://github.com/verus-lang/verus/tree/main/source/pervasiv
 - [vstd::vec](https://github.com/verus-lang/verus/tree/main/source/pervasive/vec.rs)
 
 For more information,
-see the [API documentation](https://verus-lang.github.io/verus/verusdoc/lib/pervasive/index.html).
+see the [API documentation](https://verus-lang.github.io/verus/verusdoc/vstd/).
 
 As an example, the [following code](https://github.com/verus-lang/verus/tree/main/source/rust_verify/example/guide/pervasive_example.rs)
 uses the `vstd::seq` module:
