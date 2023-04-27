@@ -8,15 +8,15 @@ edition = "2018"
 [dependencies]
 air = { path = "../air" }
 vir = { path = "../vir" }
-rust_verify = { path = "../rust_verify" }
 
 [dev-dependencies]
-builtin = { path = "../builtin" }
-vstd = { path = "../vstd" }
-builtin_macros = { path = "../builtin_macros" }
-state_machines_macros = { path = "../state_machines_macros" }
 rust_verify_test_macros = { path = "../rust_verify_test_macros" }
 regex = "1"
+serde = "1"
+serde_json = "1"
 
 [features]
 singular = ["vir/singular", "air/singular"]
+
+[package.metadata.rust-analyzer]
+rustc_private = true

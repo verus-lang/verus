@@ -1,6 +1,6 @@
 use builtin::*;
 mod pervasive;
-use pervasive::*;
+use vstd::{*, pervasive::*};
 
 #[verifier(bit_vector)]
 #[proof]

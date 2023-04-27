@@ -1377,6 +1377,16 @@
         "output": {
           "syn": "ReturnType"
         },
+        "requires": {
+          "option": {
+            "syn": "Requires"
+          }
+        },
+        "ensures": {
+          "option": {
+            "syn": "Ensures"
+          }
+        },
         "inner_attrs": {
           "vec": {
             "syn": "Attribute"
@@ -2919,6 +2929,46 @@
         },
         "exprs": {
           "syn": "Specification"
+        }
+      }
+    },
+    {
+      "ident": "InvariantNameSet",
+      "features": {
+        "any": []
+      },
+      "variants": {
+        "Any": [
+          {
+            "syn": "InvariantNameSetAny"
+          }
+        ],
+        "None": [
+          {
+            "syn": "InvariantNameSetNone"
+          }
+        ]
+      }
+    },
+    {
+      "ident": "InvariantNameSetAny",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "InvAny"
+        }
+      }
+    },
+    {
+      "ident": "InvariantNameSetNone",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "InvNone"
         }
       }
     },
@@ -5107,6 +5157,11 @@
           "option": {
             "syn": "SignatureDecreases"
           }
+        },
+        "invariants": {
+          "option": {
+            "syn": "SignatureInvariants"
+          }
         }
       }
     },
@@ -5142,6 +5197,20 @@
               }
             ]
           }
+        }
+      }
+    },
+    {
+      "ident": "SignatureInvariants",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "OpensInvariants"
+        },
+        "set": {
+          "syn": "InvariantNameSet"
         }
       }
     },
@@ -5961,16 +6030,6 @@
             "token": "Proof"
           }
         ],
-        "Ghost": [
-          {
-            "token": "Ghost"
-          }
-        ],
-        "Tracked": [
-          {
-            "token": "Tracked"
-          }
-        ],
         "Forall": [
           {
             "token": "Forall"
@@ -6382,6 +6441,8 @@
     "Implies": "implies",
     "Imply": "==>",
     "In": "in",
+    "InvAny": "any",
+    "InvNone": "none",
     "Invariant": "invariant",
     "InvariantEnsures": "invariant_ensures",
     "Is": "is",
@@ -6399,6 +6460,7 @@
     "Ne": "!=",
     "NeEq": "!==",
     "Open": "open",
+    "OpensInvariants": "opens_invariants",
     "Or": "|",
     "OrEq": "|=",
     "OrOr": "||",

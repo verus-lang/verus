@@ -509,6 +509,8 @@ impl Clone for ExprClosure {
             inputs: self.inputs.clone(),
             or2_token: self.or2_token.clone(),
             output: self.output.clone(),
+            requires: self.requires.clone(),
+            ensures: self.ensures.clone(),
             inner_attrs: self.inner_attrs.clone(),
             body: self.body.clone(),
         }
@@ -1172,6 +1174,31 @@ impl Clone for InvariantEnsures {
         InvariantEnsures {
             token: self.token.clone(),
             exprs: self.exprs.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for InvariantNameSet {
+    fn clone(&self) -> Self {
+        match self {
+            InvariantNameSet::Any(v0) => InvariantNameSet::Any(v0.clone()),
+            InvariantNameSet::None(v0) => InvariantNameSet::None(v0.clone()),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for InvariantNameSetAny {
+    fn clone(&self) -> Self {
+        InvariantNameSetAny {
+            token: self.token.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for InvariantNameSetNone {
+    fn clone(&self) -> Self {
+        InvariantNameSetNone {
+            token: self.token.clone(),
         }
     }
 }
@@ -2045,6 +2072,7 @@ impl Clone for Signature {
             recommends: self.recommends.clone(),
             ensures: self.ensures.clone(),
             decreases: self.decreases.clone(),
+            invariants: self.invariants.clone(),
         }
     }
 }
@@ -2055,6 +2083,15 @@ impl Clone for SignatureDecreases {
             decreases: self.decreases.clone(),
             when: self.when.clone(),
             via: self.via.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for SignatureInvariants {
+    fn clone(&self) -> Self {
+        SignatureInvariants {
+            token: self.token.clone(),
+            set: self.set.clone(),
         }
     }
 }

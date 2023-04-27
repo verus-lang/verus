@@ -1,10 +1,10 @@
 name: pages
 
 on:
-  push:
-    branches: ['main']
-
-  workflow_dispatch:
+  workflow_run:
+    workflows: [ci]
+    branches: [main]
+    types: [completed]
 
 permissions:
   contents: read
@@ -16,47 +16,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-docs:
-    runs-on: ubuntu-latest
-    steps:
-      - name: checkout
-        uses: actions/checkout@v3
-
-      - name: download rust
-        uses: dawidd6/action-download-artifact@v2
-        with:
-          workflow: compile-rust.yml
-          workflow_conclusion: success
-          branch: verification
-          name: rust-bin-lib-etc
-          path: ./rust/install
-          repo: verus-lang/rust
-      - name: unpack rust
-        run: |
-          cd rust/install
-          tar -xf rust_install.tar.gz
-
-      - name: get z3
-        working-directory: ./source
-        run: |
-          ../.github/workflows/get-z3.sh
-          echo z3 version `./z3 --version`
-
-      - name: build docs
-        working-directory: ./source
-        run: |
-          ./tools/cargo.sh build
-          ./tools/docs.sh
-
-      - name: upload artifact
-        uses: actions/upload-artifact@v2
-        with:
-          name: verusdoc
-          path: source/doc
-
   build:
     runs-on: ubuntu-latest
-    needs: ['build-docs']
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: checkout
         uses: actions/checkout@v3

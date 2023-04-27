@@ -916,11 +916,13 @@ ast_struct! {
         pub inputs: Punctuated<FnArg, Token![,]>,
         pub variadic: Option<Variadic>,
         pub output: ReturnType,
+        // When adding Verus fields here, update erase_spec_fields:
         pub prover: Option<(Token![by], token::Paren, Ident)>,
         pub requires: Option<Requires>,
         pub recommends: Option<Recommends>,
         pub ensures: Option<Ensures>,
         pub decreases: Option<SignatureDecreases>,
+        pub invariants: Option<SignatureInvariants>,
     }
 }
 
@@ -939,6 +941,16 @@ impl Signature {
                 None
             }
         }
+    }
+
+    pub fn erase_spec_fields(&mut self) {
+        self.publish = Publish::Default;
+        self.prover = None;
+        self.requires = None;
+        self.recommends = None;
+        self.ensures = None;
+        self.decreases = None;
+        self.invariants = None;
     }
 }
 
@@ -1572,6 +1584,7 @@ pub mod parsing {
             let recommends: Option<Recommends> = input.parse()?;
             let ensures: Option<Ensures> = input.parse()?;
             let decreases: Option<SignatureDecreases> = input.parse()?;
+            let invariants: Option<SignatureInvariants> = input.parse()?;
 
             Ok(Signature {
                 publish,
@@ -1592,6 +1605,7 @@ pub mod parsing {
                 recommends,
                 ensures,
                 decreases,
+                invariants,
             })
         }
     }

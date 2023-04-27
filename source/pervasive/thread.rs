@@ -3,7 +3,7 @@
 use builtin::*;
 use builtin_macros::*;
 use crate::pervasive::*;
-use crate::pervasive::result::*;
+use crate::result::*;
 use core::marker;
 
 verus! {

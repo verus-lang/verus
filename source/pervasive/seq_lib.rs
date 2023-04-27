@@ -4,16 +4,8 @@ use builtin::*;
 use builtin_macros::*;
 #[allow(unused_imports)]
 use crate::pervasive::*;
-#[cfg(not(vstd_build_todo))]
-#[allow(unused_imports)]
-use crate::pervasive::seq::*;
-#[cfg(vstd_build_todo)]
 #[allow(unused_imports)]
 use crate::seq::*;
-#[cfg(not(vstd_build_todo))]
-#[allow(unused_imports)]
-use crate::pervasive::set::Set;
-#[cfg(vstd_build_todo)]
 #[allow(unused_imports)]
 use crate::set::Set;
 
@@ -23,12 +15,21 @@ impl<A> Seq<A> {
     /// Applies the function `f` to each element of the sequence, and returns
     /// the resulting sequence.
     /// The `int` parameter of `f` is the index of the element being mapped.
-
+    // TODO(verus): rename to map_entries, for consistency with Map::map
     pub open spec fn map<B>(self, f: FnSpec(int, A) -> B) -> Seq<B> {
         Seq::new(self.len(), |i: int| f(i, self[i]))
     }
 
-    pub closed spec fn filter(self, pred: FnSpec(A) -> bool) -> Self
+    /// Applies the function `f` to each element of the sequence, and returns
+    /// the resulting sequence.
+    /// The `int` parameter of `f` is the index of the element being mapped.
+    // TODO(verus): rename to map, because this is what everybody wants.
+    pub open spec fn map_values<B>(self, f: FnSpec(A) -> B) -> Seq<B> {
+        Seq::new(self.len(), |i: int| f(self[i]))
+    }
+
+    #[verifier::opaque]
+    pub open spec fn filter(self, pred: FnSpec(A) -> bool) -> Self
         decreases self.len()
     {
         if self.len() == 0 {
@@ -53,6 +54,7 @@ impl<A> Seq<A> {
             self.filter(pred).len() <= self.len(),
         decreases self.len()
     {
+        reveal(Self::filter);
         let out = self.filter(pred);
         if 0 < self.len() {
             self.drop_last().filter_lemma(pred);
@@ -69,7 +71,7 @@ impl<A> Seq<A> {
                 } else {
                     let subseq = self.drop_last().filter(pred);
                     assert(subseq.contains(self.drop_last()[i]));   // trigger recursive invocation
-                    let j = choose(|j| 0<=j<subseq.len() && subseq[j]==self[i]);
+                    let j = choose|j| 0<=j<subseq.len() && subseq[j]==self[i];
                     assert(out[j] == self[i]);  // TODO(andrea): same, seems needless
                 }
             }
@@ -90,6 +92,7 @@ impl<A> Seq<A> {
         (a+b).filter(pred) == a.filter(pred) + b.filter(pred),
     decreases b.len()
     {
+        reveal(Self::filter);
         if 0 < b.len()
         {
             Self::drop_last_distributes_over_add(a, b);
@@ -184,8 +187,8 @@ impl<A> Seq<A> {
 
     /// returns `true` if the sequequence has no duplicate elements
     pub open spec fn no_duplicates(self) -> bool {
-        forall(|i, j| 0 <= i < self.len() && 0 <= j < self.len() && i != j
-            ==> self[i] != self[j])
+        forall|i, j| 0 <= i < self.len() && 0 <= j < self.len() && i != j
+            ==> self[i] != self[j]
     }
 
     /// Returns `true` if two sequences are disjoint
@@ -512,7 +515,7 @@ pub open spec fn check_argument_is_seq<A>(s: Seq<A>) -> Seq<A> { s }
 #[macro_export]
 macro_rules! assert_seqs_equal {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::pervasive::seq_lib::assert_seqs_equal_internal!($($tail)*))
+        ::builtin_macros::verus_proof_macro_exprs!($crate::seq_lib::assert_seqs_equal_internal!($($tail)*))
     };
 }
 
@@ -529,16 +532,16 @@ macro_rules! assert_seqs_equal_internal {
         assert_seqs_equal_internal!($s1, $s2, idx => { })
     };
     ($s1:expr, $s2:expr, $idx:ident => $bblock:block) => {
-        #[verifier::spec] let s1 = $crate::pervasive::seq_lib::check_argument_is_seq($s1);
-        #[verifier::spec] let s2 = $crate::pervasive::seq_lib::check_argument_is_seq($s2);
+        #[verifier::spec] let s1 = $crate::seq_lib::check_argument_is_seq($s1);
+        #[verifier::spec] let s2 = $crate::seq_lib::check_argument_is_seq($s2);
         ::builtin::assert_by(::builtin::equal(s1, s2), {
-            $crate::pervasive::assert(s1.len() == s2.len());
+            ::builtin::assert_(s1.len() == s2.len());
             ::builtin::assert_forall_by(|$idx : ::builtin::int| {
                 ::builtin::requires(::builtin_macros::verus_proof_expr!(0 <= $idx && $idx < s1.len()));
                 ::builtin::ensures(::builtin::equal(s1.index($idx), s2.index($idx)));
                 { $bblock }
             });
-            $crate::pervasive::assert(s1.ext_equal(s2));
+            ::builtin::assert_(s1.ext_equal(s2));
         });
     }
 }

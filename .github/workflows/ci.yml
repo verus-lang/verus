@@ -15,95 +15,90 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v2
-      - name: download rust
-        uses: dawidd6/action-download-artifact@v2
-        with:
-          workflow: compile-rust.yml
-          workflow_conclusion: success
-          branch: verification
-          name: rust-bin-lib-etc
-          path: ./rust/install
-          repo: verus-lang/rust
-      - name: unpack rust
+      - name: setup rust
         run: |
-          cd rust/install
-          tar -xf rust_install.tar.gz
-
+          curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
       - name: check cargo fmt
         working-directory: ./source
         run: |
-          RUSTC=../rust/install/bin/rustc RUSTFMT=../rust/install/bin/rustfmt ../rust/install/bin/cargo-fmt -- --check
+          . ../tools/activate
+          vargo fmt -- --check
+      - name: check cargo fmt for vargo
+        working-directory: ./tools/vargo
+        run: |
+          cargo fmt -- --check
 
   test:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        features: ['', 'singular']
     steps:
       - name: checkout
         uses: actions/checkout@v2
-      - name: download rust
-        uses: dawidd6/action-download-artifact@v2
-        with:
-          workflow: compile-rust.yml
-          workflow_conclusion: success
-          branch: verification
-          name: rust-bin-lib-etc
-          path: ./rust/install
-          repo: verus-lang/rust
-      - name: unpack rust
-        run: |
-          cd rust/install
-          tar -xf rust_install.tar.gz
-      - name: prepare nextest
-        run: |
-          export PATH=/home/chanheec/.cargo/bin/:$PATH 
-          mkdir -p ~/.cargo/bin
-          rustup toolchain link rust-verify rust/install
-          cd source; rustup override set rust-verify
       - name: get z3
         working-directory: ./source
         run: |
           ../.github/workflows/get-z3.sh
           echo z3 version `./z3 --version`
-
+      - name: setup rust
+        run: |
+          curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
+      - name: setup singular
+        if: matrix.features == 'singular'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y singular 
       - name: cargo test
         working-directory: ./source
         run: |
-          echo rustc version `../rust/install/bin/rustc --version`
-          RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo clean
-          RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo build
-          LD_LIBRARY_PATH="$(pwd)/../rust/install/lib/rustlib/x86_64-unknown-linux-gnu/lib" VERUS_Z3_PATH="$(pwd)/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc ./tools/run-tests.sh
+          . ../tools/activate
+          vargo clean
+          if [ "${{ matrix.features }}" == "singular" ]; then
+            vargo build --features singular
+            VERUS_Z3_PATH="$(pwd)/z3" vargo test -p air --features singular
+            VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test --features singular
+          else
+            vargo build
+            VERUS_Z3_PATH="$(pwd)/z3" vargo test -p air
+            VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test
+          fi
+      - name: build docs
+        if: matrix.features == ''
+        working-directory: ./source
+        run: |
+          ./tools/docs.sh
+      - name: upload artifact
+        uses: actions/upload-artifact@v2
+        if: matrix.features == ''
+        with:
+          name: verusdoc
+          path: source/doc
 
-  test-with-singular:
-    runs-on: self-hosted
+  smoke-test-windows:
+    runs-on: windows-latest
     steps:
       - name: checkout
         uses: actions/checkout@v2
-      - name: download rust
-        uses: dawidd6/action-download-artifact@v2
-        with:
-          workflow: compile-rust.yml
-          workflow_conclusion: success
-          branch: verification
-          name: rust-bin-lib-etc
-          path: ./rust/install
-          repo: verus-lang/rust
-      - name: unpack rust
-        run: |
-          cd rust/install
-          tar -xf rust_install.tar.gz
-      - name: prepare nextest
-        run: |
-          export PATH=$PATH:/home/chanheec/.cargo/bin/ 
-          mkdir -p ~/.cargo/bin
-          rustup toolchain link rust-verify rust/install
-          cd source; rustup override set rust-verify
       - name: get z3
-        working-directory: ./source
+        shell: pwsh
+        working-directory: .\source
         run: |
-          ../.github/workflows/get-z3.sh
-          echo z3 version `./z3 --version`
+          .\tools\get-z3.ps1
+          Write-Host "z3 version $(.\z3.exe --version)"
+      - name: setup rust
+        run: |
+          # Disable the download progress bar which can cause perf issues
+          $ProgressPreference = "SilentlyContinue"
+          Invoke-WebRequest https://win.rustup.rs/ -OutFile rustup-init.exe
+          .\rustup-init.exe -y --default-host=x86_64-pc-windows-msvc --default-toolchain=none
+          del rustup-init.exe
+        shell: powershell
       - name: cargo test
-        working-directory: ./source
+        working-directory: .\source
         run: |
-          echo rustc version `../rust/install/bin/rustc --version`
-          RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo build --features singular       # build with singular feature 
-          VERUS_SINGULAR_PATH="/usr/bin/Singular" LD_LIBRARY_PATH="$(pwd)/../rust/install/lib/rustlib/x86_64-unknown-linux-gnu/lib" VERUS_Z3_PATH="$(pwd)/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc ./tools/run-tests.sh --features singular
+          ../tools/activate.ps1
+          vargo clean
+          vargo build
+          $env:VERUS_Z3_PATH = "$(Get-Location)/z3"; vargo test -p rust_verify_test --test basic
+        shell: powershell

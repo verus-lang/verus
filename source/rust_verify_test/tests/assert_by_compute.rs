@@ -358,10 +358,10 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
 }
 
-test_verify_one_file_with_options! {
-    #[test] sequences ["todo-no-vstd"] => verus_code! {
+test_verify_one_file! {
+    #[test] sequences verus_code! {
         #[allow(unused_imports)]
-        use pervasive::seq::*;
+        use vstd::seq::*;
 
         proof fn test() {
             assert(Seq::<u32>::empty().len() == 0) by (compute_only);
@@ -439,9 +439,9 @@ test_verify_one_file! {
             requires *old(a) < 1000,
             ensures *a == *old(a) + 30,
         {
-            let old_a: Ghost<u64> = ghost(*a);
+            let ghost old_a = *a;
             *a = *a + 5 * 6;
-            assert(*a == old_a@ + 5 * 6) by (compute);
+            assert(*a == old_a + 5 * 6) by (compute);
         }
     } => Ok(())
 }

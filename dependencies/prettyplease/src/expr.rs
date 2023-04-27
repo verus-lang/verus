@@ -1082,8 +1082,6 @@ impl Printer {
             UnOp::BigAnd(_) => "&&& ",
             UnOp::BigOr(_) => "||| ",
             UnOp::Proof(_) => "proof ",
-            UnOp::Ghost(_) => "ghost ",
-            UnOp::Tracked(_) => "tracked ",
             UnOp::Forall(_) => "forall ",
             UnOp::Exists(_) => "exists ",
             UnOp::Choose(_) => "choose ",

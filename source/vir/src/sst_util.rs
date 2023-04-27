@@ -1,9 +1,11 @@
 use crate::ast::{
-    ArithOp, BinaryOp, BitwiseOp, Constant, InequalityOp, Quant, SpannedTyped, Typ, TypX, UnaryOp,
+    ArithOp, BinaryOp, BitwiseOp, Constant, InequalityOp, IntRange, IntegerTypeBoundKind, Mode,
+    Quant, SpannedTyped, Typ, TypX, UnaryOp, UnaryOpr,
 };
 use crate::def::{unique_bound, Spanned};
 use crate::interpreter::InterpExp;
-use crate::sst::{BndX, Exp, ExpX, Stm, Trig, Trigs, UniqueIdent};
+use crate::prelude::ArchWordBits;
+use crate::sst::{BndX, CallFun, Exp, ExpX, Stm, Trig, Trigs, UniqueIdent};
 use air::ast::{Binder, BinderX, Binders, Ident, Span};
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
@@ -233,7 +235,7 @@ impl BinaryOp {
                 Add | Sub => (30, 30, 31),
                 Mul | EuclideanDiv | EuclideanMod => (40, 40, 41),
             },
-            Bitwise(o) => match o {
+            Bitwise(o, _) => match o {
                 BitXor => (22, 22, 23),
                 BitAnd => (24, 24, 25),
                 BitOr => (20, 20, 21),
@@ -257,9 +259,13 @@ impl ExpX {
             Var(id) | VarLoc(id) => (format!("{}", id.name), 99),
             VarAt(id, _at) => (format!("old({})", id.name), 99),
             Loc(exp) => (format!("{}", exp), 99), // REVIEW: Additional decoration required?
-            Call(fun, _, exps) => {
+            Call(CallFun::Fun(fun), _, exps) => {
                 let args = exps.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
                 (format!("{}({})", fun.path.segments.last().unwrap(), args), 90)
+            }
+            Call(CallFun::InternalFun(func), _, exps) => {
+                let args = exps.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
+                (format!("{:?}({})", func, args), 90)
             }
             NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => {
                 ("const_generic".to_string(), 99)
@@ -320,7 +326,7 @@ impl ExpX {
                         EuclideanDiv => "/",
                         EuclideanMod => "%",
                     },
-                    Bitwise(o) => match o {
+                    Bitwise(o, _) => match o {
                         BitXor => "^",
                         BitAnd => "&",
                         BitOr => "|",
@@ -407,4 +413,66 @@ impl fmt::Display for ExpX {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_string_prec(5))
     }
+}
+
+pub fn sst_arch_word_bits(span: &Span) -> Exp {
+    SpannedTyped::new(
+        span,
+        &Arc::new(TypX::Int(IntRange::Int)),
+        ExpX::UnaryOpr(
+            UnaryOpr::IntegerTypeBound(
+                IntegerTypeBoundKind::ArchWordBits,
+                Mode::Spec, // mode doesn't matter
+            ),
+            sst_int_literal(span, 0),
+        ),
+    )
+}
+
+/// Returns an Exp (of type `int`) that represents the bit-width of the given
+/// type. For example:
+///   - If the input type is `u8`, then it returns a constant `8`
+///   - If the input type is `usize`, then it returns the symbolic `arch_word_bits`
+
+pub fn bitwidth_sst_from_typ(span: &Span, t: &Typ, arch: &ArchWordBits) -> Exp {
+    let bitwidth = crate::ast_util::bitwidth_from_type(t)
+        .expect("bitwidth_sst_from_typ expects bounded integer type");
+    match bitwidth.to_exact(arch) {
+        Some(w) => sst_int_literal(span, w as i128),
+        None => sst_arch_word_bits(span),
+    }
+}
+
+fn chain_binary(span: &Span, op: BinaryOp, init: &Exp, exps: &Vec<Exp>) -> Exp {
+    let mut exp = init.clone();
+    for e in exps.iter() {
+        exp = SpannedTyped::new(span, &init.typ, ExpX::Binary(op, exp, e.clone()));
+    }
+    exp
+}
+
+pub fn sst_bool(span: &Span, b: bool) -> Exp {
+    SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Const(Constant::Bool(b)))
+}
+
+pub fn sst_conjoin(span: &Span, exps: &Vec<Exp>) -> Exp {
+    chain_binary(span, BinaryOp::And, &sst_bool(span, true), exps)
+}
+
+pub fn sst_lt(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
+    let op = BinaryOp::Inequality(InequalityOp::Lt);
+    SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
+}
+
+pub fn sst_le(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
+    let op = BinaryOp::Inequality(InequalityOp::Le);
+    SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
+}
+
+pub fn sst_int_literal(span: &Span, i: i128) -> Exp {
+    SpannedTyped::new(
+        span,
+        &Arc::new(TypX::Int(IntRange::Int)),
+        ExpX::Const(crate::ast_util::const_int_from_i128(i)),
+    )
 }

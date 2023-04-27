@@ -51,10 +51,10 @@ test_verify_one_file! {
         use vstd::string::*;
         fn get_char_fails() {
             let x = new_strlit("hello world");
-            let val = x.get_char(0);
+            let val = x.get_char(0); // FAILS
             assert(val === 'h'); // FAILS
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_fails(err, 2)
 }
 
 test_verify_one_file! {
@@ -200,7 +200,7 @@ test_verify_one_file! {
     #[test] test_new_strlit_invalid verus_code! {
         use vstd::string::*;
         const x: StrSlice<'static> = new_strlit(12);
-    } => Err(err) => assert_error_msg(err, "error[E0308]: mismatched types")
+    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
 }
 
 test_verify_one_file! {
@@ -222,7 +222,7 @@ test_verify_one_file! {
                 reveal_strlit("a", "a");
             }
         }
-    } => Err(err) => assert_error_msg(err, "error[E0061]: this function takes 1 argument but 2 arguments were supplied")
+    } => Err(err) => assert_rust_error_msg(err, "this function takes 1 argument but 2 arguments were supplied")
 }
 
 test_verify_one_file! {

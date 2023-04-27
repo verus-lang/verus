@@ -507,6 +507,7 @@ impl PartialEq for ExprClosure {
         self.attrs == other.attrs && self.movability == other.movability
             && self.asyncness == other.asyncness && self.capture == other.capture
             && self.inputs == other.inputs && self.output == other.output
+            && self.requires == other.requires && self.ensures == other.ensures
             && self.inner_attrs == other.inner_attrs && self.body == other.body
     }
 }
@@ -1134,6 +1135,38 @@ impl Eq for InvariantEnsures {}
 impl PartialEq for InvariantEnsures {
     fn eq(&self, other: &Self) -> bool {
         self.exprs == other.exprs
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for InvariantNameSet {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for InvariantNameSet {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (InvariantNameSet::Any(self0), InvariantNameSet::Any(other0)) => {
+                self0 == other0
+            }
+            (InvariantNameSet::None(self0), InvariantNameSet::None(other0)) => {
+                self0 == other0
+            }
+            _ => false,
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for InvariantNameSetAny {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for InvariantNameSetAny {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for InvariantNameSetNone {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for InvariantNameSetNone {
+    fn eq(&self, _other: &Self) -> bool {
+        true
     }
 }
 #[cfg(feature = "full")]
@@ -1956,6 +1989,7 @@ impl PartialEq for Signature {
             && self.output == other.output && self.prover == other.prover
             && self.requires == other.requires && self.recommends == other.recommends
             && self.ensures == other.ensures && self.decreases == other.decreases
+            && self.invariants == other.invariants
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
@@ -1965,6 +1999,14 @@ impl PartialEq for SignatureDecreases {
     fn eq(&self, other: &Self) -> bool {
         self.decreases == other.decreases && self.when == other.when
             && self.via == other.via
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for SignatureInvariants {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for SignatureInvariants {
+    fn eq(&self, other: &Self) -> bool {
+        self.set == other.set
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
@@ -2307,8 +2349,6 @@ impl PartialEq for UnOp {
             (UnOp::BigAnd(_), UnOp::BigAnd(_)) => true,
             (UnOp::BigOr(_), UnOp::BigOr(_)) => true,
             (UnOp::Proof(_), UnOp::Proof(_)) => true,
-            (UnOp::Ghost(_), UnOp::Ghost(_)) => true,
-            (UnOp::Tracked(_), UnOp::Tracked(_)) => true,
             (UnOp::Forall(_), UnOp::Forall(_)) => true,
             (UnOp::Exists(_), UnOp::Exists(_)) => true,
             (UnOp::Choose(_), UnOp::Choose(_)) => true,

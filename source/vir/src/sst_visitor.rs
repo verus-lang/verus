@@ -50,7 +50,7 @@ where
                 ExpX::Loc(e0) => {
                     expr_visitor_control_flow!(exp_visitor_dfs(e0, map, f));
                 }
-                ExpX::Call(_x, _typs, es) => {
+                ExpX::Call(_, _typs, es) => {
                     for e in es.iter() {
                         expr_visitor_control_flow!(exp_visitor_dfs(e, map, f));
                     }

@@ -2,14 +2,6 @@
 use builtin_macros::*;
 #[allow(unused_imports)]
 use builtin::*;
-
-#[cfg(not(vstd_todo))]
-mod pervasive;
-#[cfg(not(vstd_todo))]
-#[allow(unused_imports)]
-use pervasive::{seq::*, vec::*};
-
-#[cfg(vstd_todo)]
 #[allow(unused_imports)]
 use vstd::{seq::*, vec::*};
 

@@ -6,25 +6,9 @@ use builtin::*;
 use builtin_macros::*;
 
 use crate::pervasive::*;
-
-#[cfg(not(vstd_build_todo))]
-use crate::pervasive::seq::*;
-#[cfg(vstd_build_todo)]
 use crate::seq::*;
-
-#[cfg(not(vstd_build_todo))]
-use crate::pervasive::seq_lib::*;
-#[cfg(vstd_build_todo)]
 use crate::seq_lib::*;
-
-#[cfg(not(vstd_build_todo))]
-use crate::pervasive::slice::*;
-#[cfg(vstd_build_todo)]
 use crate::slice::*;
-
-#[cfg(not(vstd_build_todo))]
-use crate::pervasive::vec::*;
-#[cfg(vstd_build_todo)]
 use crate::vec::*;
 
 verus! {

@@ -288,7 +288,9 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                     };
                     args.push(arg);
                 }
-                let typ = if is_trait || typ_is_poly(ctx, &function.ret.x.typ) {
+                let typ = if (is_trait || typ_is_poly(ctx, &function.ret.x.typ))
+                    && function.has_return()
+                {
                     coerce_typ_to_poly(ctx, &expr.typ)
                 } else {
                     coerce_typ_to_native(ctx, &expr.typ)
@@ -374,7 +376,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                     let exprx = ExprX::UnaryOpr(op.clone(), e1.clone());
                     SpannedTyped::new(&e1.span, &e1.typ, exprx)
                 }
-                UnaryOpr::Field(FieldOpr { datatype, variant, field }) => {
+                UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _ }) => {
                     let fields = &ctx.datatype_map[datatype].x.get_variant(variant).a;
                     let field = crate::ast_util::get_field(fields, field);
 
@@ -576,7 +578,12 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let e1 = poly_expr(ctx, state, e1);
             let e2 = poly_expr(ctx, state, e2);
             let (e1, e2) = coerce_exprs_to_agree(ctx, &e1, &e2);
-            mk_expr_typ(&e1.typ, ExprX::If(e0, e1.clone(), Some(e2)))
+            let t = if typ_is_poly(ctx, &e1.typ) {
+                coerce_typ_to_poly(ctx, &expr.typ)
+            } else {
+                coerce_typ_to_native(ctx, &expr.typ)
+            };
+            mk_expr_typ(&t, ExprX::If(e0, e1.clone(), Some(e2)))
         }
         ExprX::Match(..) => panic!("Match should already be removed"),
         ExprX::Loop { label, cond, body, invs } => {
@@ -611,7 +618,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         ExprX::BreakOrContinue { label: _, is_break: _ } => expr.clone(),
         ExprX::Ghost { alloc_wrapper, tracked, expr: e1 } => {
             let expr = poly_expr(ctx, state, e1);
-            mk_expr(ExprX::Ghost { alloc_wrapper: alloc_wrapper.clone(), tracked: *tracked, expr })
+            mk_expr(ExprX::Ghost { alloc_wrapper: *alloc_wrapper, tracked: *tracked, expr })
         }
         ExprX::Block(ss, e1) => {
             let mut stmts: Vec<Stmt> = Vec::new();
@@ -709,14 +716,20 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
     // Parameter types are made Poly for spec functions and trait methods
     let mut new_params: Vec<Param> = Vec::new();
     for param in params.iter() {
-        let ParamX { name, typ, mode, is_mut } = &param.x;
+        let ParamX { name, typ, mode, is_mut, unwrapped_info } = &param.x;
         let typ = if function_mode == Mode::Spec || is_trait {
             coerce_typ_to_poly(ctx, typ)
         } else {
             coerce_typ_to_native(ctx, typ)
         };
         let _ = types.insert(name.clone(), typ.clone());
-        let paramx = ParamX { name: name.clone(), typ, mode: *mode, is_mut: *is_mut };
+        let paramx = ParamX {
+            name: name.clone(),
+            typ,
+            mode: *mode,
+            is_mut: *is_mut,
+            unwrapped_info: unwrapped_info.clone(),
+        };
         new_params.push(Spanned::new(param.span.clone(), paramx));
     }
     let params = Arc::new(new_params);
@@ -770,10 +783,16 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         state.types.push_scope(true);
         let mut new_params: Vec<Param> = Vec::new();
         for param in params.iter() {
-            let ParamX { name, typ, mode, is_mut } = &param.x;
+            let ParamX { name, typ, mode, is_mut, unwrapped_info } = &param.x;
             let typ = coerce_typ_to_poly(ctx, typ);
             let _ = state.types.insert(name.clone(), typ.clone());
-            let paramx = ParamX { name: name.clone(), typ, mode: *mode, is_mut: *is_mut };
+            let paramx = ParamX {
+                name: name.clone(),
+                typ,
+                mode: *mode,
+                is_mut: *is_mut,
+                unwrapped_info: unwrapped_info.clone(),
+            };
             new_params.push(Spanned::new(param.span.clone(), paramx));
         }
         let broadcast_params = Arc::new(new_params);

@@ -40,8 +40,9 @@ pub struct PathX {
 pub struct Visibility {
     /// Module that owns this item, or None for a foreign module
     pub owning_module: Option<Path>,
-    /// true for private, false for pub, pub(crate)
-    pub is_private: bool,
+    /// None for pub
+    /// Some(path) means visible to path and path's descendents
+    pub restricted_to: Option<Path>,
 }
 
 /// Describes whether a variable, function, etc. is compiled or just used for verification
@@ -186,6 +187,7 @@ pub struct FieldOpr {
     pub datatype: Path,
     pub variant: Ident,
     pub field: Ident,
+    pub get_variant: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
@@ -292,7 +294,8 @@ pub enum BinaryOp {
     /// TODO: if the syntax macro can tell us the Mode, can we get rid of InferMode?
     Arith(ArithOp, Option<InferMode>),
     /// Bit Vector Operators
-    Bitwise(BitwiseOp),
+    /// mode=Exec means we need overflow-checking
+    Bitwise(BitwiseOp, Mode),
     /// Used only for handling builtin::strslice_get_char
     StrGetChar,
 }
@@ -302,11 +305,24 @@ pub enum MultiOp {
     Chained(Arc<Vec<InequalityOp>>),
 }
 
+/// Use Ghost(x) or Tracked(x) to unwrap an argument
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub struct UnwrapParameter {
+    // indicates Ghost or Tracked
+    pub mode: Mode,
+    // dummy name chosen for official Rust parameter name
+    pub outer_name: Ident,
+    // rename the parameter to a different name using a "let" binding
+    pub inner_name: Ident,
+}
+
 /// Ghost annotations on functions and while loops; must appear at the beginning of function body
 /// or while loop body
 pub type HeaderExpr = Arc<HeaderExprX>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum HeaderExprX {
+    /// Use Ghost(x) or Tracked(x) to unwrap an argument, renaming outer_name to inner_name
+    UnwrapParameter(UnwrapParameter),
     /// Marker that trait declaration method body is omitted and should be erased
     NoMethodBody,
     /// Preconditions on exec/proof functions
@@ -560,7 +576,7 @@ pub enum ExprX {
     /// However, we can't easily communicate the inferred modes back to rustc for erasure
     /// and lifetime checking -- rustc needs syntactic annotations for these, and the mode checker
     /// needs to confirm that these annotations agree with what would have been inferred.
-    Ghost { alloc_wrapper: Option<Fun>, tracked: bool, expr: Expr },
+    Ghost { alloc_wrapper: bool, tracked: bool, expr: Expr },
     /// Sequence of statements, optionally including an expression at the end
     Block(Stmts, Option<Expr>),
     /// `assert_by` with a dedicated prover option (nonlinear_arith, bit_vector)
@@ -594,6 +610,10 @@ pub struct ParamX {
     pub mode: Mode,
     /// An &mut parameter
     pub is_mut: bool,
+    /// If the parameter uses a Ghost(x) or Tracked(x) pattern to unwrap the value, this is
+    /// the mode of the resulting unwrapped x variable (Spec for Ghost(x), Proof for Tracked(x)).
+    /// We also save a copy of the original wrapped name for lifetime_generate
+    pub unwrapped_info: Option<(Mode, Ident)>,
 }
 
 pub type GenericBound = Arc<GenericBoundX>;
@@ -622,8 +642,6 @@ pub struct FunctionAttrsX {
     pub no_auto_trigger: bool,
     /// Custom error message to display when a pre-condition fails
     pub custom_req_err: Option<String>,
-    /// coerce f(e, ...) to f(e.view(), ...)
-    pub autoview: bool,
     /// When used in a ghost context, redirect to a specified spec function
     pub autospec: Option<Fun>,
     /// Verify using bitvector theory

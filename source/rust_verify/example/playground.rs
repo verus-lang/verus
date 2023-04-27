@@ -29,11 +29,12 @@ fn foo(s: S<u32>) {
 
 // The following causes a trigger loop (useful for testing rlimit-related features):
 //
-// fndecl!(fn f(x: nat, y: nat) -> bool);
+// spec fn f(x: nat, y: nat) -> bool;
 //
-// #[verus::proof] fn goodbye_z3() {
-//     requires(forall(|x: nat, y: nat| f(x + 1, 2 * y) && f(2 * x, y + x) || f(y, x) >>= (#[trigger] f(x, y))));
-//     ensures(forall(|x: nat, y: nat| x > 2318 && y < 100 >>= f(x, y)));
+// proof fn goodbye_z3()
+//     requires forall|x: nat, y: nat| f(x + 1, 2 * y) && f(2 * x, y + x) || f(y, x) ==> (#[trigger] f(x, y)),
+//     ensures forall|x: nat, y: nat| x > 2318 && y < 100 ==> f(x, y),
+// {
 // }
 
 fn main() {}

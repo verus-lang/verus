@@ -224,3 +224,56 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] assert_forall_triggers_regression_335 verus_code! {
+        spec fn f(x:int, y:int) -> bool { true }
+        spec fn g(x:int, y:int) -> bool { true }
+        spec fn h(x:int, y:int) -> bool { true }
+        spec fn i(x:int, y:int) -> int { 5 }
+
+        proof fn test(z:int)
+        {
+            assert forall #![trigger f(k, z)] |k:int| f(k, z) && g(z, k) ==> f(z, i(z, k)) by { };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] assert_forall_triggers_regression_470 verus_code! {
+        spec fn f(x:int, y:int) -> bool { true }
+        spec fn g(x:int, y:int) -> bool { true }
+        spec fn h(x:int, y:int) -> bool { true }
+        spec fn i(x:int, y:int) -> int { 5 }
+
+        proof fn test(z:int)
+        {
+            assert forall #![auto] |k:int| f(k, z) && g(z, k) ==> f(z, i(z, k)) by { };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] assert_forall_invalid_attr verus_code! {
+        spec fn f(x:int) -> bool { true }
+
+        proof fn test(z:int)
+        {
+            assert forall #![autos] |k:int| f(k) by { };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expected trigger")
+}
+
+test_verify_one_file! {
+    #[test] forall_auto_parens_regression_378 verus_code! {
+        use vstd::seq::*;
+        proof fn foo(s: Seq<int>)
+            requires
+                5 <= s.len(),
+                forall (|i: int, j: int| #![auto]
+                    0 <= i < j < s.len() ==> s[i] != s[j]),
+        {
+            assert(s[4] != s[2]);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "forall, choose, and exists do not allow parentheses")
+}

@@ -26,5 +26,5 @@ test_verify_one_file! {
             let v = 6;
             m(&mut v);
         }
-    } => Err(err) => assert_error_msg(err, "error[E0596]: cannot borrow `v` as mutable")
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `v` as mutable, as it is not declared as mutable")
 }

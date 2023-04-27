@@ -4,10 +4,6 @@ use builtin::*;
 use builtin_macros::*;
 #[allow(unused_imports)]
 use crate::pervasive::*;
-#[cfg(not(vstd_build_todo))]
-#[allow(unused_imports)]
-use crate::pervasive::set::*;
-#[cfg(vstd_build_todo)]
 #[allow(unused_imports)]
 use crate::set::*;
 
@@ -188,7 +184,7 @@ pub open spec fn check_argument_is_set<A>(s: Set<A>) -> Set<A> { s }
 #[macro_export]
 macro_rules! assert_sets_equal {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::pervasive::set_lib::assert_sets_equal_internal!($($tail)*))
+        ::builtin_macros::verus_proof_macro_exprs!($crate::set_lib::assert_sets_equal_internal!($($tail)*))
     };
 }
 
@@ -205,8 +201,8 @@ macro_rules! assert_sets_equal_internal {
         assert_sets_equal_internal!($s1, $s2, elem => { })
     };
     ($s1:expr, $s2:expr, $elem:ident $( : $t:ty )? => $bblock:block) => {
-        #[verifier::spec] let s1 = $crate::pervasive::set_lib::check_argument_is_set($s1);
-        #[verifier::spec] let s2 = $crate::pervasive::set_lib::check_argument_is_set($s2);
+        #[verifier::spec] let s1 = $crate::set_lib::check_argument_is_set($s1);
+        #[verifier::spec] let s2 = $crate::set_lib::check_argument_is_set($s2);
         ::builtin::assert_by(::builtin::equal(s1, s2), {
             ::builtin::assert_forall_by(|$elem $( : $t )?| {
                 ::builtin::ensures(
@@ -216,7 +212,7 @@ macro_rules! assert_sets_equal_internal {
                 );
                 { $bblock }
             });
-            $crate::pervasive::assert(s1.ext_equal(s2));
+            ::builtin::assert_(s1.ext_equal(s2));
         });
     }
 }

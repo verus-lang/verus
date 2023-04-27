@@ -7,15 +7,8 @@
 { pkgs ? import <nixpkgs> {} }:
   pkgs.mkShell {
     nativeBuildInputs = with pkgs; [
-      git
-      python3
-      openssh
-      cmake
-      ninja
-      pkg-config
-      openssl
-      libiconv
-      curl
-      libgit2_1_3_0 # Interestingly, libgit2 at the moment (at version 1.4.3.x) ends up in a segfault, but 1.3.0 works fine.
+      rustup
+      unzip
+      wget
     ];
 }

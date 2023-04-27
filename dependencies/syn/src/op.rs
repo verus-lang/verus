@@ -91,8 +91,6 @@ ast_enum! {
         BigAnd(Token![&&&]),
         BigOr(Token![|||]),
         Proof(Token![proof]),
-        Ghost(Token![ghost]),
-        Tracked(Token![tracked]),
         Forall(Token![forall]),
         Exists(Token![exists]),
         Choose(Token![choose]),
@@ -207,10 +205,6 @@ pub mod parsing {
                 input.parse().map(UnOp::Neg)
             } else if lookahead.peek(Token![proof]) {
                 input.parse().map(UnOp::Proof)
-            } else if lookahead.peek(Token![ghost]) {
-                input.parse().map(UnOp::Ghost)
-            } else if lookahead.peek(Token![tracked]) {
-                input.parse().map(UnOp::Tracked)
             } else if lookahead.peek(Token![forall]) {
                 input.parse().map(UnOp::Forall)
             } else if lookahead.peek(Token![exists]) {
@@ -287,8 +281,6 @@ mod printing {
                 UnOp::BigAnd(t) => t.to_tokens(tokens),
                 UnOp::BigOr(t) => t.to_tokens(tokens),
                 UnOp::Proof(t) => t.to_tokens(tokens),
-                UnOp::Ghost(t) => t.to_tokens(tokens),
-                UnOp::Tracked(t) => t.to_tokens(tokens),
                 UnOp::Forall(t) => t.to_tokens(tokens),
                 UnOp::Exists(t) => t.to_tokens(tokens),
                 UnOp::Choose(t) => t.to_tokens(tokens),

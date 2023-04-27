@@ -1,7 +1,5 @@
 use builtin::*;
 use builtin_macros::*;
-#[cfg(not(vstd_todo))]
-mod pervasive;
 
 verus! {
 
@@ -14,7 +12,7 @@ fn test(n: u64, s: Ghost<int>)
 }
 
 fn main() {
-    test(15, ghost(200));
+    test(15, Ghost(200));
 }
 
 } // verus!

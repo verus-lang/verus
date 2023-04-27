@@ -109,10 +109,10 @@ macro_rules! try_option {
     ($x:expr) => {{
         let x = $x;
         match x {
-            $crate::Option::None => {
-                return $crate::Option::None;
+            $crate::option::Option::None => {
+                return $crate::option::Option::None;
             }
-            $crate::Option::Some(x) => x,
+            $crate::option::Option::Some(x) => x,
         }
     }};
 }

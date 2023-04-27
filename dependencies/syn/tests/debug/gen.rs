@@ -825,6 +825,38 @@ impl Debug for Lite<syn::Expr> {
                     formatter.field("inputs", Lite(&_val.inputs));
                 }
                 formatter.field("output", Lite(&_val.output));
+                if let Some(val) = &_val.requires {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::Requires);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            let _val = &self.0;
+                            formatter.write_str("(")?;
+                            Debug::fmt(Lite(_val), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("requires", Print::ref_cast(val));
+                }
+                if let Some(val) = &_val.ensures {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::Ensures);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            let _val = &self.0;
+                            formatter.write_str("(")?;
+                            Debug::fmt(Lite(_val), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("ensures", Print::ref_cast(val));
+                }
                 if !_val.inner_attrs.is_empty() {
                     formatter.field("inner_attrs", Lite(&_val.inner_attrs));
                 }
@@ -1687,6 +1719,38 @@ impl Debug for Lite<syn::ExprClosure> {
             formatter.field("inputs", Lite(&_val.inputs));
         }
         formatter.field("output", Lite(&_val.output));
+        if let Some(val) = &_val.requires {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::Requires);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("requires", Print::ref_cast(val));
+        }
+        if let Some(val) = &_val.ensures {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::Ensures);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("ensures", Print::ref_cast(val));
+        }
         if !_val.inner_attrs.is_empty() {
             formatter.field("inner_attrs", Lite(&_val.inner_attrs));
         }
@@ -3131,6 +3195,35 @@ impl Debug for Lite<syn::InvariantEnsures> {
         let _val = &self.value;
         let mut formatter = formatter.debug_struct("InvariantEnsures");
         formatter.field("exprs", Lite(&_val.exprs));
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::InvariantNameSet> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        match _val {
+            syn::InvariantNameSet::Any(_val) => {
+                let mut formatter = formatter.debug_struct("InvariantNameSet::Any");
+                formatter.finish()
+            }
+            syn::InvariantNameSet::None(_val) => {
+                let mut formatter = formatter.debug_struct("InvariantNameSet::None");
+                formatter.finish()
+            }
+        }
+    }
+}
+impl Debug for Lite<syn::InvariantNameSetAny> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("InvariantNameSetAny");
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::InvariantNameSetNone> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("InvariantNameSetNone");
         formatter.finish()
     }
 }
@@ -5390,6 +5483,22 @@ impl Debug for Lite<syn::Signature> {
             }
             formatter.field("decreases", Print::ref_cast(val));
         }
+        if let Some(val) = &_val.invariants {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::SignatureInvariants);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("invariants", Print::ref_cast(val));
+        }
         formatter.finish()
     }
 }
@@ -5430,6 +5539,14 @@ impl Debug for Lite<syn::SignatureDecreases> {
             }
             formatter.field("via", Print::ref_cast(val));
         }
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::SignatureInvariants> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("SignatureInvariants");
+        formatter.field("set", Lite(&_val.set));
         formatter.finish()
     }
 }
@@ -6411,14 +6528,6 @@ impl Debug for Lite<syn::UnOp> {
             }
             syn::UnOp::Proof(_val) => {
                 formatter.write_str("Proof")?;
-                Ok(())
-            }
-            syn::UnOp::Ghost(_val) => {
-                formatter.write_str("Ghost")?;
-                Ok(())
-            }
-            syn::UnOp::Tracked(_val) => {
-                formatter.write_str("Tracked")?;
                 Ok(())
             }
             syn::UnOp::Forall(_val) => {

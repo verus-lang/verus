@@ -3,16 +3,15 @@
 // ANCHOR: full
 use builtin::*;
 use builtin_macros::*;
-mod pervasive;
-use pervasive::*;
-use crate::pervasive::{atomic_ghost::*};
-use crate::pervasive::{modes::*};
-use crate::pervasive::{thread::*};
+use vstd::{*, pervasive::*};
+use vstd::{atomic_ghost::*};
+use vstd::{modes::*};
+use vstd::{thread::*};
 use state_machines_macros::tokenized_state_machine;
-use crate::pervasive::result::*;
+use vstd::result::*;
 use std::sync::Arc;
 
-verus_old_todo_no_ghost_blocks!{
+verus!{
 
 tokenized_state_machine!(
     X {
@@ -92,7 +91,7 @@ struct_with_invariants!{
         pub atomic: AtomicU32<_, X::counter, _>,
 
         // The instance of the protocol that the `counter` is part of.
-        #[verifier::proof] pub instance: X::Instance,
+        pub instance: Tracked<X::Instance>,
     }
 
     spec fn wf(&self) -> bool {
@@ -101,7 +100,8 @@ struct_with_invariants!{
         // the same value as the atomic (`v`).
         // Furthermore, the ghost token should have the appropriate `instance`.
         invariant on atomic with (instance) is (v: u32, g: X::counter) {
-            g@ === X::token![instance => counter => v as int]
+            g@.instance == instance@
+            && g@.value == v as int
         }
     }
 }
@@ -110,16 +110,17 @@ struct_with_invariants!{
 fn main() {
     // Initialize protocol 
 
-    #[verifier::proof] let (Trk(instance),
-        Trk(counter_token),
-        Trk(inc_a_token),
-        Trk(inc_b_token)) = X::Instance::initialize();
+    let tracked (Tracked(instance),
+        Tracked(counter_token),
+        Tracked(inc_a_token),
+        Tracked(inc_b_token)) = X::Instance::initialize();
 
     // Initialize the counter
 
-    let atomic = AtomicU32::new(instance, 0, counter_token);
+    let tr_instance: Tracked<X::Instance> = Tracked(instance.clone());
+    let atomic = AtomicU32::new(Ghost(tr_instance), 0, Tracked(counter_token));
 
-    let global = Global { atomic, instance: instance.clone() };
+    let global = Global { atomic, instance: Tracked(instance.clone()) };
     let global_arc = Arc::new(global);
 
     // Spawn threads
@@ -127,58 +128,54 @@ fn main() {
     // Thread 1
 
     let global_arc1 = global_arc.clone();
-    let join_handle1 = spawn(move || {
-        ensures(|new_token: Proof<X::inc_a>|
-            new_token.0@ ===
-                X::token![instance => inc_a => true]
-        );
-
+    let join_handle1 = spawn(move || -> (new_token: Tracked<X::inc_a>)
+        ensures new_token@@.instance == instance
+          && new_token@@.value == true
+    {
         // `inc_a_token` is moved into the closure
-        #[verifier::proof] let mut token = inc_a_token;
+        let tracked mut token = inc_a_token;
         let globals = &*global_arc1;
 
         let _ = atomic_with_ghost!(&globals.atomic => fetch_add(1);
             ghost c => {
-                globals.instance.tr_inc_a(&mut c, &mut token); // atomic increment
+                globals.instance.borrow().tr_inc_a(&mut c, &mut token); // atomic increment
             }
         );
 
-        Proof(token)
+        Tracked(token)
     });
 
     // Thread 2
 
     let global_arc2 = global_arc.clone();
-    let join_handle2 = spawn(move || {
-        ensures(|new_token: Proof<X::inc_b>|
-            new_token.0@ ===
-                X::token![instance => inc_b => true]
-        );
-
+    let join_handle2 = spawn(move || -> (new_token: Tracked<X::inc_b>)
+        ensures new_token@@.instance == instance
+          && new_token@@.value == true
+    {
         // `inc_b_token` is moved into the closure
-        #[verifier::proof] let mut token = inc_b_token;
+        let tracked mut token = inc_b_token;
         let globals = &*global_arc2;
 
         let _ = atomic_with_ghost!(&globals.atomic => fetch_add(1);
             ghost c => {
-                globals.instance.tr_inc_b(&mut c, &mut token); // atomic increment
+                globals.instance.borrow().tr_inc_b(&mut c, &mut token); // atomic increment
             }
         );
 
-        Proof(token)
+        Tracked(token)
     });
 
     // Join threads
 
-    #[verifier::proof] let inc_a_token;
+    let tracked inc_a_token;
     match join_handle1.join() {
-        Result::Ok(Proof(token)) => { inc_a_token = token; }
+        Result::Ok(token) => { proof { inc_a_token = token.get(); } }
         _ => { return; }
     };
 
-    #[verifier::proof] let inc_b_token;
+    let tracked inc_b_token;
     match join_handle2.join() {
-        Result::Ok(Proof(token)) => { inc_b_token = token; }
+        Result::Ok(token) => { proof { inc_b_token = token.get(); } }
         _ => { return; }
     };
 

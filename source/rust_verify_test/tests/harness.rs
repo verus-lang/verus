@@ -7,6 +7,7 @@ use common::*;
 fn harness_zero() {
     assert!(
         verify_one_file(
+            "harness_zero",
             verus_code! {
                 fn harness1() {
                 }
@@ -24,14 +25,16 @@ fn harness_invalid_rust() {
             invalid(true);
         }
     };
-    let err = verify_one_file(code, &[]).unwrap_err();
-    assert_eq!(err.errors.len(), 0);
+    let err = verify_one_file("harness_invalid_rust", code, &[]).unwrap_err();
+    assert_eq!(err.errors.len(), 1);
+    assert_rust_error_msg(err, "cannot find function `invalid` in this scope");
 }
 
 #[test]
 fn harness_true() {
     assert!(
         verify_one_file(
+            "harness_true",
             verus_code! {
                 fn harness1() {
                     assert(true);
@@ -46,6 +49,7 @@ fn harness_true() {
 #[test]
 fn harness_false() {
     let err = verify_one_file(
+        "harness_false",
         verus_code! {
             fn harness2() {
                 assert(false); // FAILS
@@ -55,7 +59,7 @@ fn harness_false() {
     )
     .unwrap_err();
     assert_eq!(err.errors.len(), 1);
-    assert!(err.errors[0].first().expect("span").test_span_line.contains("FAILS"));
+    assert!(err.errors[0].spans.first().expect("span").text[0].text.contains("FAILS"));
 }
 
 test_verify_one_file! {

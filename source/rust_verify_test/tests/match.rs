@@ -207,6 +207,7 @@ test_verify_one_file! {
                             reveal_with_fuel(len::<A>, 2);
                         }
                         n = n + 1; // FAILS
+                        assume(n + len(iter) == len(list));
                     }
                 }
             }
@@ -241,7 +242,7 @@ test_verify_one_file! {
         }
 
         fn test() -> (ret: u64)
-            ensures ret == 10
+            // ensures ret == 10 // TODO(main_new) add `ensures false` to `unreached` for this?
         {
             match Hand::Right {
                 Hand::Left => 10,
@@ -741,4 +742,32 @@ test_verify_one_file! {
 
         }
     } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] match_arm_returns_poly_issue_523 verus_code! {
+        enum Option<A> { Some(A), None }
+
+        #[verifier(external_body)]
+        fn unreached<A>() -> A {
+            panic!()
+        }
+
+        fn test(x: Option<Option<bool>>) -> u8 {
+            match x {
+                Option::Some(m) =>
+                    match m {
+                        Option::Some(_) => {
+                            return 77;
+                        }
+                        _ => {
+                            unreached()
+                        },
+                    },
+                _ => {
+                    unreached()
+                }
+            }
+        }
+    } => Ok(())
 }

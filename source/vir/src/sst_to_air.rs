@@ -6,15 +6,18 @@ use crate::ast::{
 use crate::ast_util::bitwidth_from_int_range;
 use crate::ast_util::IntegerTypeBitwidth;
 use crate::ast_util::{
-    allowed_bitvector_type, bitwidth_from_type, err_string, fun_as_rust_dbg, get_field,
-    get_variant, is_integer_type,
+    allowed_bitvector_type, bitwidth_from_type, error, fun_as_rust_dbg, get_field, get_variant,
+    is_integer_type, msg_error,
 };
 use crate::context::Ctx;
-use crate::def::{fn_inv_name, fn_namespace_name, new_user_qid_name};
 use crate::def::{
-    fun_to_string, height, is_variant_ident, new_internal_qid, path_to_string, prefix_box,
-    prefix_ensures, prefix_fuel_id, prefix_lambda_type, prefix_pre_var, prefix_requires,
-    prefix_unbox, snapshot_ident, suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id,
+    fn_inv_name, fn_namespace_name, new_user_qid_name, CHAR_FROM_UNICODE, CHAR_TO_UNICODE,
+    STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT,
+};
+use crate::def::{
+    fun_to_string, is_variant_ident, new_internal_qid, path_to_string, prefix_box, prefix_ensures,
+    prefix_fuel_id, prefix_lambda_type, prefix_pre_var, prefix_requires, prefix_unbox,
+    snapshot_ident, suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id,
     suffix_local_unique_id, suffix_typ_param_id, unique_local, variant_field_ident, variant_ident,
     ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT,
     FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_ASSIGN,
@@ -24,7 +27,9 @@ use crate::def::{
 use crate::def::{CommandsWithContext, CommandsWithContextX};
 use crate::inv_masks::MaskSet;
 use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
-use crate::sst::{BndInfo, BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX, UniqueIdent};
+use crate::sst::{
+    BndInfo, BndX, CallFun, Dest, Exp, ExpX, InternalFun, LocalDecl, Stm, StmX, UniqueIdent,
+};
 use crate::sst_util::subst_exp;
 use crate::sst_vars::{get_loc_var, AssignMap};
 use crate::util::{vec_map, vec_map_result};
@@ -37,7 +42,7 @@ use air::ast_util::{
     mk_bind_expr, mk_bitvector_option, mk_eq, mk_exists, mk_implies, mk_ite, mk_nat, mk_not,
     mk_option_command, mk_or, mk_sub, mk_xor, str_apply, str_ident, str_typ, str_var, string_var,
 };
-use air::messages::{error, error_with_label};
+use air::messages::error_with_label;
 use num_bigint::BigInt;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem::swap;
@@ -370,7 +375,7 @@ pub(crate) fn ctor_to_apply<'a>(
 
 fn str_to_const_str(ctx: &Ctx, s: Arc<String>) -> Expr {
     Arc::new(ExprX::Apply(
-        crate::def::strslice_new_strlit_ident(),
+        str_ident(STRSLICE_NEW_STRLIT),
         Arc::new(vec![Arc::new(ExprX::Const(Constant::Nat({
             use num_bigint::BigUint;
             use sha2::{Digest, Sha512};
@@ -411,7 +416,7 @@ pub(crate) fn constant_to_expr(ctx: &Ctx, constant: &crate::ast::Constant) -> Ex
         crate::ast::Constant::Int(i) => big_int_to_expr(i),
         crate::ast::Constant::StrSlice(s) => str_to_const_str(ctx, s.clone()),
         crate::ast::Constant::Char(c) => Arc::new(ExprX::Apply(
-            crate::def::char_from_unicode_ident(),
+            str_ident(CHAR_FROM_UNICODE),
             Arc::new(vec![Arc::new(ExprX::Const(Constant::Nat(Arc::new(
                 char_to_unicode_repr(*c).to_string(),
             ))))]),
@@ -469,7 +474,7 @@ fn clip_bitwise_result(bit_expr: ExprX, exp: &Exp) -> Result<Expr, VirErr> {
             _ => return Ok(Arc::new(bit_expr)),
         };
     } else {
-        return err_string(
+        return error(
             &exp.span,
             format!("In translating Bitwise operator, encountered non-integer operand",),
         );
@@ -480,7 +485,7 @@ fn check_unsigned(exp: &Exp) -> Result<(), VirErr> {
     if let TypX::Int(range) = &*exp.typ {
         match range {
             IntRange::I(_) | IntRange::ISize => {
-                return err_string(
+                return error(
                     &exp.span,
                     format!("error: signed integer is not supported for bit-vector reasoning",),
                 );
@@ -514,7 +519,7 @@ fn bitvector_expect_exact(
             let w = w.to_exact(&ctx.global.arch);
             match w {
                 Some(w) => Ok(w),
-                None => err_string(
+                None => error(
                     span,
                     format!(
                         "IntRange error: the bit-width of type {:?} is architecture-dependent, which `by(bit_vector)` does not currently support",
@@ -523,7 +528,7 @@ fn bitvector_expect_exact(
                 ),
             }
         }
-        None => err_string(
+        None => error(
             span,
             format!("IntRange error: expected finite-width integer for bit-vector, got {:?}", typ),
         ),
@@ -592,7 +597,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     if allowed_bitvector_type(&exp.typ) {
                         // ok
                     } else {
-                        return err_string(
+                        return error(
                             &exp.span,
                             format!(
                                 "error: bit_vector prover cannot handle this type (bit_vector can only handle variables of type `bool` or of fixed-width integers)"
@@ -616,13 +621,27 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         (ExpX::Old(span, x), false) => {
             Arc::new(ExprX::Old(span.clone(), suffix_local_unique_id(x)))
         }
-        (ExpX::Call(x, typs, args), false) => {
+        (ExpX::Call(CallFun::Fun(x), typs, args), false) => {
             let name = suffix_global_id(&fun_to_air_ident(&x));
             let mut exprs: Vec<Expr> = vec_map(typs, typ_to_id);
             for arg in args.iter() {
                 exprs.push(exp_to_expr(ctx, arg, expr_ctxt)?);
             }
             ident_apply(&name, &exprs)
+        }
+        (ExpX::Call(CallFun::InternalFun(func), typs, args), false) => {
+            let mut exprs: Vec<Expr> = vec_map(typs, typ_to_id);
+            for arg in args.iter() {
+                exprs.push(exp_to_expr(ctx, arg, expr_ctxt)?);
+            }
+            Arc::new(ExprX::Apply(
+                match func {
+                    InternalFun::ClosureReq => str_ident(crate::def::CLOSURE_REQ),
+                    InternalFun::ClosureEns => str_ident(crate::def::CLOSURE_ENS),
+                    InternalFun::CheckDecreaseInt => str_ident(crate::def::CHECK_DECREASE_INT),
+                },
+                Arc::new(exprs),
+            ))
         }
         (ExpX::CallLambda(typ, e0, args), false) => {
             let e0 = exp_to_expr(ctx, e0, expr_ctxt)?;
@@ -641,7 +660,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         }
         (ExpX::Unary(op, arg), true) => {
             if !allowed_bitvector_type(&arg.typ) {
-                return err_string(
+                return error(
                     &arg.span,
                     format!("error: cannot use bit-vector arithmetic on type {:?}", arg.typ),
                 );
@@ -704,11 +723,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         }
         (ExpX::Unary(op, exp), false) => match op {
             UnaryOp::StrLen => Arc::new(ExprX::Apply(
-                crate::def::strslice_len_ident(),
+                str_ident(STRSLICE_LEN),
                 Arc::new(vec![exp_to_expr(ctx, exp, expr_ctxt)?]),
             )),
             UnaryOp::StrIsAscii => Arc::new(ExprX::Apply(
-                crate::def::strslice_is_ascii_ident(),
+                str_ident(STRSLICE_IS_ASCII),
                 Arc::new(vec![exp_to_expr(ctx, exp, expr_ctxt)?]),
             )),
             UnaryOp::Not => mk_not(&exp_to_expr(ctx, exp, expr_ctxt)?),
@@ -744,7 +763,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             UnaryOp::CharToInt => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
 
-                Arc::new(ExprX::Apply(crate::def::char_to_unicode_ident(), Arc::new(vec![expr])))
+                Arc::new(ExprX::Apply(str_ident(CHAR_TO_UNICODE), Arc::new(vec![expr])))
             }
         },
         (ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), exp), true) => {
@@ -792,12 +811,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 let name = Arc::new(ARCH_SIZE.to_string());
                 Arc::new(ExprX::Var(name))
             }
-            UnaryOpr::Height => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
-                let name = suffix_global_id(&fun_to_air_ident(&height()));
-                Arc::new(ExprX::Apply(name, Arc::new(vec![expr])))
-            }
-            UnaryOpr::Field(FieldOpr { datatype, variant, field }) => {
+            UnaryOpr::Height => Arc::new(ExprX::Apply(
+                str_ident(crate::def::HEIGHT),
+                Arc::new(vec![exp_to_expr(ctx, exp, expr_ctxt)?]),
+            )),
+            UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _ }) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 Arc::new(ExprX::Apply(
                     variant_field_ident(datatype, variant, field),
@@ -813,7 +831,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         },
         (ExpX::Binary(op, lhs, rhs), true) => {
             if !allowed_bitvector_type(&exp.typ) {
-                return err_string(
+                return error(
                     &exp.span,
                     format!("error: cannot use bit-vector arithmetic on type {:?}", exp.typ),
                 );
@@ -821,7 +839,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             // disallow signed integer from bitvec reasoning. However, allow that for shift
             // TODO: sanity check for shift
             let _ = match op {
-                BinaryOp::Bitwise(BitwiseOp::Shl | BitwiseOp::Shr) => (),
+                BinaryOp::Bitwise(BitwiseOp::Shl | BitwiseOp::Shr, _) => (),
                 _ => {
                     check_unsigned(&lhs)?;
                     check_unsigned(&rhs)?;
@@ -862,11 +880,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 BinaryOp::Inequality(InequalityOp::Lt) => air::ast::BinaryOp::BitULt,
                 BinaryOp::Inequality(InequalityOp::Ge) => air::ast::BinaryOp::BitUGe,
                 BinaryOp::Inequality(InequalityOp::Gt) => air::ast::BinaryOp::BitUGt,
-                BinaryOp::Bitwise(BitwiseOp::BitXor) => air::ast::BinaryOp::BitXor,
-                BinaryOp::Bitwise(BitwiseOp::BitAnd) => air::ast::BinaryOp::BitAnd,
-                BinaryOp::Bitwise(BitwiseOp::BitOr) => air::ast::BinaryOp::BitOr,
-                BinaryOp::Bitwise(BitwiseOp::Shl) => air::ast::BinaryOp::Shl,
-                BinaryOp::Bitwise(BitwiseOp::Shr) => air::ast::BinaryOp::LShr,
+                BinaryOp::Bitwise(BitwiseOp::BitXor, _) => air::ast::BinaryOp::BitXor,
+                BinaryOp::Bitwise(BitwiseOp::BitAnd, _) => air::ast::BinaryOp::BitAnd,
+                BinaryOp::Bitwise(BitwiseOp::BitOr, _) => air::ast::BinaryOp::BitOr,
+                BinaryOp::Bitwise(BitwiseOp::Shl, _) => air::ast::BinaryOp::Shl,
+                BinaryOp::Bitwise(BitwiseOp::Shr, _) => air::ast::BinaryOp::LShr,
                 BinaryOp::Implies => air::ast::BinaryOp::Implies,
                 BinaryOp::And => unreachable!(),
                 BinaryOp::Or => unreachable!(),
@@ -919,7 +937,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     ExprX::Unary(air::ast::UnaryOp::Not, Arc::new(eq))
                 }
                 BinaryOp::StrGetChar => ExprX::Apply(
-                    crate::def::strslice_get_char_ident(),
+                    str_ident(STRSLICE_GET_CHAR),
                     Arc::new(vec![
                         exp_to_expr(ctx, lhs, expr_ctxt)?,
                         exp_to_expr(ctx, rhs, expr_ctxt)?,
@@ -927,7 +945,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 ),
                 // here the binary bitvector Ops are translated into the integer versions
                 // Similar to typ_invariant(), make obvious range according to bit-width
-                BinaryOp::Bitwise(bo) => {
+                BinaryOp::Bitwise(bo, _) => {
                     let box_lh = try_box(ctx, lh, &lhs.typ).expect("Box");
                     let box_rh = try_box(ctx, rh, &rhs.typ).expect("Box");
 
@@ -937,7 +955,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     let width_right = bitwidth_from_type(&rhs.typ).expect("bounded integer type");
 
                     if width_left != width_right {
-                        return err_string(
+                        return error(
                             &exp.span,
                             format!(
                                 "error: argument bit-width does not match. Left: {}, Right: {}",
@@ -1035,7 +1053,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     let typ = if expr_ctxt.is_bit_vector {
                         let bv_typ_option = bv_typ_to_air(&b.a);
                         if bv_typ_option.is_none() {
-                            return err_string(
+                            return error(
                                 &exp.span,
                                 format!("unsupported type in bitvector {:?}", &b.a),
                             );
@@ -1101,7 +1119,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 choose_expr
             }
             (_, true) => {
-                return err_string(
+                return error(
                     &exp.span,
                     format!("unsupported for bit-vector: bind conversion, {:?} ", exp.x),
                 );
@@ -1111,7 +1129,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             panic!("Found an interpreter expression {:?} outside the interpreter", exp)
         }
         (_, true) => {
-            return err_string(
+            return error(
                 &exp.span,
                 format!("unsupported for bit-vector: expression conversion {:?}", exp.x),
             );
@@ -1306,7 +1324,7 @@ fn assume_other_fields_unchanged_inner(
         [f] if f.len() == 0 => Ok(vec![]),
         _ => {
             let mut updated_fields: BTreeMap<_, Vec<_>> = BTreeMap::new();
-            let FieldOpr { datatype, variant, field: _ } = &updates[0][0];
+            let FieldOpr { datatype, variant, field: _, get_variant: _ } = &updates[0][0];
             for u in updates {
                 assert!(u[0].datatype == *datatype && u[0].variant == *variant);
                 updated_fields.entry(&u[0].field).or_insert(Vec::new()).push(u[1..].to_vec());
@@ -1322,6 +1340,7 @@ fn assume_other_fields_unchanged_inner(
                                 datatype: datatype.clone(),
                                 variant: variant.clone(),
                                 field: field.name.clone(),
+                                get_variant: false,
                             }),
                             base.clone(),
                         ),
@@ -1375,7 +1394,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     (_, None) => crate::def::PRECONDITION_FAILURE.to_string(),
                     (_, Some(s)) => s.clone(),
                 };
-                let error = error(description, &stm.span);
+                let error = msg_error(description, &stm.span);
                 stmts.push(Arc::new(StmtX::Assert(error, e_req)));
             }
 
@@ -1471,21 +1490,23 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
             let mut ens_args: Vec<_> =
                 typ_args.into_iter().chain(ens_args_wo_typ.into_iter()).collect();
-            if let Some(Dest { dest, is_init }) = dest {
-                let var = suffix_local_unique_id(&get_loc_var(dest));
-                ens_args.push(exp_to_expr(ctx, &dest, expr_ctxt)?);
-                if !*is_init {
-                    let havoc = StmtX::Havoc(var.clone());
-                    stmts.push(Arc::new(havoc));
-                }
-                if ctx.debug {
-                    // Add a snapshot after we modify the destination
-                    let sid = state.update_current_sid(SUFFIX_SNAP_MUT);
-                    // Update the snap_map so that it reflects the state _after_ the
-                    // statement takes effect.
-                    state.map_span(&stm, SpanKind::Full);
-                    let snapshot = Arc::new(StmtX::Snapshot(sid.clone()));
-                    stmts.push(snapshot);
+            if func.x.has_return() {
+                if let Some(Dest { dest, is_init }) = dest {
+                    let var = suffix_local_unique_id(&get_loc_var(dest));
+                    ens_args.push(exp_to_expr(ctx, &dest, expr_ctxt)?);
+                    if !*is_init {
+                        let havoc = StmtX::Havoc(var.clone());
+                        stmts.push(Arc::new(havoc));
+                    }
+                    if ctx.debug {
+                        // Add a snapshot after we modify the destination
+                        let sid = state.update_current_sid(SUFFIX_SNAP_MUT);
+                        // Update the snap_map so that it reflects the state _after_ the
+                        // statement takes effect.
+                        state.map_span(&stm, SpanKind::Full);
+                        let snapshot = Arc::new(StmtX::Snapshot(sid.clone()));
+                        stmts.push(snapshot);
+                    }
                 }
             }
             if ctx.funcs_with_ensure_predicate.contains(&func.x.name) {
@@ -1633,7 +1654,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             let mut air_body: Vec<Stmt> = Vec::new();
             for (span, ens) in ensures_air.iter() {
-                let error = error("bitvector ensures not satisfied", span);
+                let error = msg_error("bitvector ensures not satisfied", span);
                 let ens_stmt = StmtX::Assert(error, ens.clone());
                 air_body.push(Arc::new(ens_stmt));
             }
@@ -1884,7 +1905,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             if !ctx.checking_recommends() {
                 for (span, inv) in invs_entry.iter() {
-                    let error = error(crate::def::INV_FAIL_LOOP_END, span);
+                    let error = msg_error(crate::def::INV_FAIL_LOOP_END, span);
                     let inv_stmt = StmtX::Assert(error, inv.clone());
                     air_body.push(Arc::new(inv_stmt));
                 }
@@ -1915,7 +1936,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let mut stmts: Vec<Stmt> = Vec::new();
             if !ctx.checking_recommends() {
                 for (span, inv) in invs_entry.iter() {
-                    let error = error(crate::def::INV_FAIL_LOOP_FRONT, span);
+                    let error = msg_error(crate::def::INV_FAIL_LOOP_FRONT, span);
                     let inv_stmt = StmtX::Assert(error, inv.clone());
                     stmts.push(Arc::new(inv_stmt));
                 }
@@ -1991,7 +2012,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             // given by `uid` which may have been assigned to since the start of the block.
             // so this may evaluate differently in the SMT.
             if !ctx.checking_recommends() {
-                let error = error("Cannot show invariant holds at end of block", &body_stm.span);
+                let error =
+                    msg_error("Cannot show invariant holds at end of block", &body_stm.span);
                 stmts.push(Arc::new(StmtX::Assert(error, main_inv)));
             }
 
@@ -2056,7 +2078,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
 fn string_len_to_air(ctx: &Ctx, lit: Arc<String>) -> Expr {
     let cnst = str_to_const_str(ctx, lit.clone());
-    let lhs = str_apply(&crate::def::strslice_len_ident(), &vec![cnst]);
+    let lhs = str_apply(&str_ident(STRSLICE_LEN), &vec![cnst]);
     let len_val = Arc::new(ExprX::Const(Constant::Nat(Arc::new(lit.chars().count().to_string()))));
     Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, lhs, len_val))
 }
@@ -2065,8 +2087,8 @@ fn string_index_to_air(cnst: &Expr, index: usize, value: char) -> Expr {
     let index_expr = Arc::new(ExprX::Const(Constant::Nat(Arc::new(index.to_string()))));
     let value_expr =
         Arc::new(ExprX::Const(Constant::Nat(Arc::new((char_to_unicode_repr(value)).to_string()))));
-    let char_expr = str_apply(&crate::def::char_from_unicode_ident(), &vec![value_expr]);
-    let lhs = str_apply(&crate::def::strslice_get_char_ident(), &vec![cnst.clone(), index_expr]);
+    let char_expr = str_apply(&str_ident(CHAR_FROM_UNICODE), &vec![value_expr]);
+    let lhs = str_apply(&str_ident(STRSLICE_GET_CHAR), &vec![cnst.clone(), index_expr]);
     Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, lhs, char_expr))
 }
 
@@ -2085,7 +2107,7 @@ fn string_indices_to_air(ctx: &Ctx, lit: Arc<String>) -> Expr {
 fn string_is_ascii_to_air(ctx: &Ctx, lit: Arc<String>) -> Expr {
     let is_ascii = lit.is_ascii();
     let cnst = str_to_const_str(ctx, lit);
-    let lhs = str_apply(&crate::def::strslice_is_ascii_ident(), &vec![cnst]);
+    let lhs = str_apply(&str_ident(STRSLICE_IS_ASCII), &vec![cnst]);
     let is_ascii = Arc::new(ExprX::Const(Constant::Bool(is_ascii)));
     Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, lhs, is_ascii))
 }
@@ -2179,8 +2201,9 @@ pub(crate) fn body_stm_to_air(
 
     set_fuel(ctx, &mut local_shared, hidden);
 
-    let mut declared: HashMap<UniqueIdent, Typ> = HashMap::new();
-    let mut assigned: HashSet<UniqueIdent> = HashSet::new();
+    use indexmap::{IndexMap, IndexSet};
+    let mut declared: IndexMap<UniqueIdent, Typ> = IndexMap::new();
+    let mut assigned: IndexSet<UniqueIdent> = IndexSet::new();
     let mut has_mut_params = false;
     for param in params.iter() {
         declared.insert(unique_local(&param.x.name), param.x.typ.clone());
@@ -2220,7 +2243,7 @@ pub(crate) fn body_stm_to_air(
         snapshot_count: 0,
         sids: vec![initial_sid.clone()],
         snap_map: Vec::new(),
-        assign_map: HashMap::new(),
+        assign_map: indexmap::IndexMap::new(),
         mask,
         post_condition_info: PostConditionInfo {
             dest,
@@ -2231,7 +2254,7 @@ pub(crate) fn body_stm_to_air(
         loop_infos: Vec::new(),
     };
 
-    let mut _modified = HashSet::new();
+    let mut _modified = IndexSet::new();
 
     let stm = crate::sst_vars::stm_assign(
         &mut state.assign_map,

@@ -49,7 +49,7 @@ test_verify_one_file! {
     #[test] test1_fails4 verus_code! {
         spec const C: u64 = add(3, 5);
         const S: int = C + 1;
-    } => Err(err) => assert_error_msg(err, "error[E0308]: mismatched types")
+    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
 }
 
 test_verify_one_file! {
