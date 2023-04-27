@@ -27,7 +27,7 @@ with the [📖 Tutorial and reference](https://verus-lang.github.io/verus/guide/
 ## Documentation
 Our (work-in-progress) documentation resources include:
  * [📖 Tutorial and reference](https://verus-lang.github.io/verus/guide/)
- * [📖 API documentation for Verus's standard library](https://verus-lang.github.io/verus/verusdoc/lib/)
+ * [📖 API documentation for Verus's standard library](https://verus-lang.github.io/verus/verusdoc/vstd/)
  * [📖 Guide for verifying concurrent code](https://verus-lang.github.io/verus/state_machines/)
  * [Project Goals](../../wiki/Goals)
  * [Contributing to Verus](CONTRIBUTING.md)
