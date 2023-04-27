@@ -249,7 +249,7 @@ impl String {
     }
 
     #[verifier(external)]
-    pub fn into_rust_string_ref(&self) -> &std::string::String
+    pub fn as_rust_string_ref(&self) -> &std::string::String
     {
         &self.inner
     }
