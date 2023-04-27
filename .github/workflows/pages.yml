@@ -43,9 +43,12 @@ jobs:
           ./mdbook build -d ../../../_site/state_machines source/docs/state_machines
 
       - name: download verusdoc artifact
-        uses: actions/download-artifact@v3
+        uses: dawidd6/action-download-artifact@v2
         with:
           name: verusdoc
+          workflow: .github/workflows/ci.yml
+          run_id: ${{ github.event.workflow_run.id }}
+          workflow_conclusion: success
           path: ./_site/verusdoc
 
       - name: upload artifact
