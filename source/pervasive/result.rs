@@ -33,6 +33,19 @@ impl<T, E> Result<T, E> {
         }
     }
 
+    pub fn as_ref(&self) -> (r: Result<&T, &E>)
+        ensures
+          r.is_Ok() <==> self.is_Ok(),
+          r.is_Ok() ==> self.get_Ok_0() == r.get_Ok_0(),
+          r.is_Err() <==> self.is_Err(),
+          r.is_Err() ==> self.get_Err_0() == r.get_Err_0(),
+    {
+        match self {
+            Result::Ok(t) => Result::Ok(t),
+            Result::Err(e) => Result::Err(e),
+        }
+    }
+
     // A more-readable synonym for get_Ok_0().
     #[verifier(inline)]
     pub open spec fn spec_unwrap(self) -> T
