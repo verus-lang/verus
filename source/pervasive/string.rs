@@ -125,8 +125,8 @@ impl<'a> StrSlice<'a> {
     }
 
 
-    
-    // TODO:This should be the as_bytes function after 
+
+    // TODO:This should be the as_bytes function after
     // slice support is added
     // pub fn as_bytes<'a>(&'a [u8]) -> (ret: &'a [u8])
 
@@ -246,6 +246,12 @@ impl String {
     pub fn into_rust_string(self) -> std::string::String
     {
         self.inner
+    }
+
+    #[verifier(external)]
+    pub fn into_rust_string_ref(&self) -> &std::string::String
+    {
+        &self.inner
     }
 }
 
