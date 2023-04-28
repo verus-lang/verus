@@ -36,7 +36,7 @@ RUSTC_BOOTSTRAP=1 eval ""VERUSDOC=1 VERUS_Z3_PATH="$(pwd)/z3" rustdoc \
   -Zcrate-attr=feature\\\(unboxed_closures\\\) \
   -Zcrate-attr=register_tool\\\(verus\\\) \
   -Zcrate-attr=register_tool\\\(verifier\\\) \
-  pervasive/vstd.rs""
+  vstd/vstd.rs""
 
 echo "Running post-processor..."
 ./target/debug/verusdoc

@@ -5,7 +5,7 @@ The previous section discussed the mathematical collection types
 This section will discuss `Vec`, an executable implementation of `Seq`.
 
 UNDER CONSTRUCTION:
-Currently, Verus's `pervasive::vec::Vec` is a wrapper around Rust's `std::vec::Vec` type.
+Currently, Verus's `vstd::vec::Vec` is a wrapper around Rust's `std::vec::Vec` type.
 In the long run, it would probably be better to use `std::vec::Vec` directly,
 but Verus doesn't yet have a way to attach specifications to existing code in other crates.
 

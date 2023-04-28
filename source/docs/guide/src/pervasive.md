@@ -2,13 +2,13 @@
 
 This chapter introduces some of Verus's built-in libraries for sequences, sets, maps, and vectors.
 The libraries are currently located in a collection of modules
-in the [pervasive](https://github.com/verus-lang/verus/tree/main/source/pervasive/) directory:
-- [vstd::seq](https://github.com/verus-lang/verus/tree/main/source/pervasive/seq.rs)
-- [vstd::seq_lib](https://github.com/verus-lang/verus/tree/main/source/pervasive/seq_lib.rs)
-- [vstd::set](https://github.com/verus-lang/verus/tree/main/source/pervasive/set.rs)
-- [vstd::set_lib](https://github.com/verus-lang/verus/tree/main/source/pervasive/set_lib.rs)
-- [vstd::map](https://github.com/verus-lang/verus/tree/main/source/pervasive/map.rs)
-- [vstd::vec](https://github.com/verus-lang/verus/tree/main/source/pervasive/vec.rs)
+in the [vstd](https://github.com/verus-lang/verus/tree/main/source/vstd/) directory:
+- [vstd::seq](https://github.com/verus-lang/verus/tree/main/source/vstd/seq.rs)
+- [vstd::seq_lib](https://github.com/verus-lang/verus/tree/main/source/vstd/seq_lib.rs)
+- [vstd::set](https://github.com/verus-lang/verus/tree/main/source/vstd/set.rs)
+- [vstd::set_lib](https://github.com/verus-lang/verus/tree/main/source/vstd/set_lib.rs)
+- [vstd::map](https://github.com/verus-lang/verus/tree/main/source/vstd/map.rs)
+- [vstd::vec](https://github.com/verus-lang/verus/tree/main/source/vstd/vec.rs)
 
 For more information,
 see the [API documentation](https://verus-lang.github.io/verus/verusdoc/vstd/index.html).

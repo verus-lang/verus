@@ -56,7 +56,7 @@ error: cannot call function with mode spec
 ```
 
 As an example of ghost code that uses these abilities,
-a call to the Verus [`Seq::index(...)` function](https://github.com/verus-lang/verus/blob/main/source/pervasive/seq.rs)
+a call to the Verus [`Seq::index(...)` function](https://verus-lang.github.io/verus/verusdoc/vstd/seq/struct.Seq.html#method.index)
 can duplicate a value from the sequence, if the index `i` is within bounds,
 and create a value out of thin air if `i` is out of bounds:
 ```

@@ -300,10 +300,6 @@ pub fn run_verus(
 
 #[allow(dead_code)]
 pub const USE_PRELUDE: &str = crate::common::code_str! {
-    // If we're using the pre-macro-expanded pervasive lib, then it might have
-    // some macro-internal stuff in it, and rustc needs this option in order to accept it.
-    #![feature(fmt_internals)]
-
     #![allow(unused_imports)]
     #![allow(unused_macros)]
 

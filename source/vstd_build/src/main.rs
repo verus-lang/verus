@@ -7,9 +7,9 @@ extern crate rustc_driver;
 // the build script’s current directory is the source directory of the build script’s package
 
 // path to vstd.rs relative to our directory (source/vstd)
-const VSTD_RS_PATH: &str = "pervasive/vstd.rs";
+const VSTD_RS_PATH: &str = "vstd/vstd.rs";
 // path to pervasive relative to our directory (source/vstd)
-const PERVASIVE_PATH: &str = "pervasive";
+const VSTD_DIR_PATH: &str = "vstd";
 // name of generated veruslib.vir in target
 const VSTD_VIR: &str = "vstd.vir";
 
@@ -54,7 +54,7 @@ fn main() {
 
     let mut child_args: Vec<String> = vec![
         "--internal-build-vstd-driver".to_string(),
-        PERVASIVE_PATH.to_string(),
+        VSTD_DIR_PATH.to_string(),
         VSTD_VIR.to_string(),
         verus_target_path.to_str().expect("invalid path").to_string(),
         "--extern".to_string(),

@@ -46,11 +46,11 @@ set intersection (`.intersect`),
 etc.,
 see:
 
-- [seq.rs](https://github.com/verus-lang/verus/tree/main/source/pervasive/seq.rs)
-- [seq_lib.rs](https://github.com/verus-lang/verus/tree/main/source/pervasive/seq_lib.rs)
-- [set.rs](https://github.com/verus-lang/verus/tree/main/source/pervasive/set.rs)
-- [set_lib.rs](https://github.com/verus-lang/verus/tree/main/source/pervasive/set_lib.rs)
-- [map.rs](https://github.com/verus-lang/verus/tree/main/source/pervasive/map.rs)
+- [seq.rs](https://github.com/verus-lang/verus/tree/main/source/vstd/seq.rs)
+- [seq_lib.rs](https://github.com/verus-lang/verus/tree/main/source/vstd/seq_lib.rs)
+- [set.rs](https://github.com/verus-lang/verus/tree/main/source/vstd/set.rs)
+- [set_lib.rs](https://github.com/verus-lang/verus/tree/main/source/vstd/set_lib.rs)
+- [map.rs](https://github.com/verus-lang/verus/tree/main/source/vstd/map.rs)
 
 See also the [API documentation](https://verus-lang.github.io/verus/verusdoc/vstd/index.html).
 
