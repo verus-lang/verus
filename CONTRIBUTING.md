@@ -35,7 +35,7 @@ that [`rustdoc`](https://doc.rust-lang.org/rustdoc/what-is-rustdoc.html) can
 automatically extract into HTML documentation.
 
 The rustdoc (verusdoc) for `main` is automatically published
-[📖 here](https://verus-lang.github.io/verus/verusdoc/lib/) (if the build succeeds).
+[📖 here](https://verus-lang.github.io/verus/verusdoc/vstd/) (if the build succeeds).
 
 You can compile the current documentation by running (in the `verify` directory)
 ```

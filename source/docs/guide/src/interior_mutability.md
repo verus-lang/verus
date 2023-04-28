@@ -70,7 +70,7 @@ Therefore, we can verify this code by using a cell with a data invariant:
    where `x` is the expected result of the computation.
 
 Concretely, the above can be implemented in Verus using
-[`InvCell`](https://verus-lang.github.io/verus/verusdoc/lib/pervasive/cell/struct.InvCell.html),
+[`InvCell`](https://verus-lang.github.io/verus/verusdoc/vstd/cell/struct.InvCell.html),
 provided by Verus' standard library, which provides a data-invariant-based specification.
 When constructing a new `InvCell<T>`, the user specifies a data invariant: some boolean predicate
 over the type `T` which tells the cell what values are allowed to be stored.
