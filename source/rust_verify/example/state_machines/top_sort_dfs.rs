@@ -1,6 +1,3 @@
-// rust_verify/tests/example.rs ignore --- TODO main_new
-// TODO(main_new) un-ignore when fixed
-
 #![allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
@@ -45,7 +42,7 @@ impl<V> DirectedGraph<V> {
 }
 
 tokenized_state_machine!{
-    TopSort<#[verifier(maybe_negative)] /* vattr */ V> {
+    TopSort<#[verifier::maybe_negative] /* vattr */ V> {
         fields {
             #[sharding(constant)]
             pub graph: DirectedGraph<V>,
@@ -225,8 +222,8 @@ impl DfsState {
         &&& self.node_states@.len() == graph.edges@.len()
         &&& (forall |i| 0 <= i < self.node_states@.len() ==>
             self.node_states@[i].well_formed(i, self.instance@))
-        &&& self.top_sort_token@@
-            === TopSort::token![ self.instance@ => top_sort => self.top_sort@ ]
+        &&& self.top_sort_token@@.instance === self.instance@
+        &&& self.top_sort_token@@.value === self.top_sort@
         &&& self.instance@.graph() === graph@
         &&& valid_stack(self.cur_stack@, graph@)
         &&& (forall |i: usize| 0 <= i < self.node_states@.len() ==>
@@ -308,9 +305,8 @@ fn visit(
         res.0 ==> dfs_state.well_formed(graph),
         res.0 ==> equal(dfs_state.cur_stack@, old(dfs_state).cur_stack@),
         res.0 ==> res.1@.is_Some() &&
-            equal(res.1@.get_Some_0()@,
-                TopSort::token![ dfs_state.instance@ => visited => v ]
-            ),
+            res.1@.get_Some_0()@.instance == dfs_state.instance@ &&
+            res.1@.get_Some_0()@.key == v,
         !res.0 ==> graph@.is_cycle(dfs_state.cycle@),
         equal(dfs_state.instance, old(dfs_state).instance),
 {
@@ -342,9 +338,9 @@ fn visit(
     dfs_state.cur_stack.push(v);
 
     assert(dfs_state.well_formed(graph)) by {
-        assert(forall(|i: int| 0 <= i && i < dfs_state.cur_stack@.len() as int - 2 ==>
+        assert(forall |i: int| 0 <= i && i < dfs_state.cur_stack@.len() as int - 2 ==>
             valid_stack_i(old(dfs_state).cur_stack@, graph@, i) ==>
-            #[trigger] valid_stack_i(dfs_state.cur_stack@, graph@, i)));
+            #[trigger] valid_stack_i(dfs_state.cur_stack@, graph@, i));
         assert(valid_stack(dfs_state.cur_stack@, graph@));
 
         assert forall |i: usize|
@@ -385,7 +381,8 @@ fn visit(
             forall |idx0: int| 0 <= idx0 && idx0 < idx ==> {
                 let w = #[trigger] graph.edges@.index(v as int)@.index(idx0);
                 map_visited_deps.dom().contains(w)
-                    && equal(map_visited_deps.index(w)@, TopSort::token![ dfs_state.instance@ => visited => w ])
+                    && map_visited_deps.index(w)@.instance == dfs_state.instance@
+                    && map_visited_deps.index(w)@.key == w
             },
     {
 
@@ -416,7 +413,8 @@ fn visit(
             ({
                 let w = #[trigger] graph.edges@.index(v as int)@.index(idx0);
                 map_visited_deps.dom().contains(w)
-                    && equal(map_visited_deps.index(w)@, TopSort::token![ dfs_state.instance@ => visited => w ])
+                    && map_visited_deps.index(w)@.instance == dfs_state.instance@
+                    && map_visited_deps.index(w)@.key == w
             })
         by {
             assume(false);
@@ -448,8 +446,8 @@ fn visit(
 
     assert(dfs_state.well_formed(graph)) by {
         assert(valid_stack(dfs_state.cur_stack@, graph@));
-        assume(forall(|i: usize| 0 <= i && i < dfs_state.node_states@.len() ==>
-           (dfs_state.node_states@.index(i as int).in_stack == dfs_state.cur_stack@.contains(i))));
+        assume(forall |i: usize| 0 <= i && i < dfs_state.node_states@.len() ==>
+           (dfs_state.node_states@.index(i as int).in_stack == dfs_state.cur_stack@.contains(i)));
     };
 
     (true, Tracked(Some(visited)))
@@ -464,7 +462,8 @@ fn init_node_states(
         forall |j: usize| 0 <= j && j < n ==>
             unv.dom().contains(j),
         forall |j: usize| 0 <= j && j < n ==>
-            unv.index(j)@ === TopSort::token![ instance => unvisited => j ]
+            unv.index(j)@.instance == instance
+            && unv.index(j)@.key == j
     ensures
         node_states@.len() == n as int,
         forall |j: int| 0 <= j && j < node_states@.len() ==>
@@ -481,16 +480,15 @@ fn init_node_states(
         invariant
             0 <= i && i <= n,
             node_states@.len() == i as int,
-            forall(|j: int| 0 <= j && j < i ==>
-                node_states@.index(j).well_formed(j, instance)),
-            forall(|j: int| 0 <= j && j < i ==>
-                !node_states@.index(j).in_stack),
-            forall(|j: usize| i <= j && j < n ==>
-                #[trigger] unv.dom().contains(j)),
-            forall(|j: usize| i <= j && j < n ==>
-                equal(unv.index(j)@, TopSort::token![
-                    instance => unvisited => j
-                ])),
+            forall |j: int| 0 <= j && j < i ==>
+                node_states@.index(j).well_formed(j, instance),
+            forall |j: int| 0 <= j && j < i ==>
+                !node_states@.index(j).in_stack,
+            forall |j: usize| i <= j && j < n ==>
+                #[trigger] unv.dom().contains(j),
+            forall |j: usize| i <= j && j < n ==>
+                unv.index(j)@.instance == instance
+                && unv.index(j)@.key == j
     {
 
         assert(unv.dom().contains(i));
@@ -551,8 +549,8 @@ fn compute_top_sort(graph: &ConcreteDirectedGraph) -> (tsr: TopSortResult)
     let tracked mut map_visited_deps: Map<usize, TopSort::visited<usize>> = Map::tracked_empty();
 
     assert(dfs_state.well_formed(graph)) by {
-        assert(forall(|i: usize| 0 <= i && i < dfs_state.node_states@.len() ==>
-           (dfs_state.node_states@.index(i as int).in_stack == dfs_state.cur_stack@.contains(i))));
+        assert(forall |i: usize| 0 <= i && i < dfs_state.node_states@.len() ==>
+           (dfs_state.node_states@.index(i as int).in_stack == dfs_state.cur_stack@.contains(i)));
     }
 
     let mut v: usize = 0;
@@ -563,9 +561,8 @@ fn compute_top_sort(graph: &ConcreteDirectedGraph) -> (tsr: TopSortResult)
             forall |w| 0 <= w && (w as int) < (v as int) ==>
                 map_visited_deps.dom().contains(w),
             forall |w| 0 <= w && (w as int) < (v as int) ==>
-                equal(map_visited_deps.index(w)@, TopSort::token![
-                    dfs_state.instance@ => visited => w
-                ]),
+                map_visited_deps.index(w)@.instance == dfs_state.instance@
+                && map_visited_deps.index(w)@.key == w,
             dfs_state.cur_stack@.len() == 0,
     {
 
