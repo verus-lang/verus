@@ -194,13 +194,10 @@ impl State {
         }
     }
 
-    fn reach_fun(&mut self, ctxt: &Context, self_path: Option<Path>, id: DefId) {
+    fn reach_fun(&mut self, self_path: Option<Path>, id: DefId) {
         if id.as_local().is_none() && !self.reached.contains(&(self_path.clone(), id)) {
-            let crate_name = ctxt.tcx.crate_name(ctxt.tcx.def_path(id).krate).to_string();
-            if ctxt.crate_names.contains(&crate_name) {
-                self.reached.insert((self_path.clone(), id));
-                self.imported_fun_worklist.push(id);
-            }
+            self.reached.insert((self_path.clone(), id));
+            self.imported_fun_worklist.push(id);
         }
     }
 }
@@ -613,7 +610,7 @@ fn erase_call<'tcx>(
             if f.x.mode == Mode::Spec {
                 return None;
             }
-            state.reach_fun(ctxt, self_path, fn_def_id.expect("call id"));
+            state.reach_fun(self_path, fn_def_id.expect("call id"));
             let typ_args = mk_typ_args(ctxt, state, node_substs);
             let mut exps: Vec<Exp> = Vec::new();
             let mut is_first: bool = true;
@@ -1895,18 +1892,32 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             );
                         }
                         ItemKind::Fn(sig, _generics, body_id) => {
-                            erase_fn(
-                                krate,
-                                &mut ctxt,
-                                &mut state,
-                                item.ident.span,
-                                id,
-                                sig,
-                                None,
-                                false,
-                                vattrs.external_body,
-                                Some(body_id),
-                            );
+                            if !vattrs.external_fn_specification {
+                                erase_fn(
+                                    krate,
+                                    &mut ctxt,
+                                    &mut state,
+                                    item.ident.span,
+                                    id,
+                                    sig,
+                                    None,
+                                    false,
+                                    vattrs.external_body,
+                                    Some(body_id),
+                                );
+                            } else {
+                                let body = ctxt.tcx.hir().body(*body_id);
+                                let def_id = crate::rust_to_vir_func::get_external_def_id(
+                                    ctxt.tcx, body_id, body, sig,
+                                )
+                                .unwrap();
+
+                                // Case where the external function is local - it doesn't
+                                // end up in the 'imported_fun_worklist' in this case
+                                if def_id.as_local().is_some() {
+                                    import_fn(&mut ctxt, &mut state, def_id);
+                                }
+                            }
                         }
                         ItemKind::Trait(
                             IsAuto::No,

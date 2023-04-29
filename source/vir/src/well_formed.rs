@@ -8,6 +8,7 @@ use crate::ast_util::{
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::user_local_name;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
+use air::messages::Message;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -16,6 +17,7 @@ struct Ctxt {
     pub(crate) crate_names: Vec<String>,
     pub(crate) funs: HashMap<Fun, Function>,
     pub(crate) dts: HashMap<Path, Datatype>,
+    pub(crate) krate: Krate,
 }
 
 #[warn(unused_must_use)]
@@ -46,16 +48,55 @@ fn check_path_and_get_function<'a>(
     disallow_private_access: Option<(&Option<Path>, &str)>,
     span: &air::ast::Span,
 ) -> Result<&'a Function, VirErr> {
+    fn is_proxy<'a>(ctxt: &'a Ctxt, path: &Path) -> Option<&'a Path> {
+        // Linear scan, but this only happens if this uncommon error message triggers
+        for function in &ctxt.krate.functions {
+            match &function.x.proxy {
+                Some(proxy) => {
+                    if &proxy.x == path {
+                        return Some(&function.x.name.path);
+                    }
+                }
+                None => {}
+            }
+        }
+        return None;
+    }
+
+    fn is_external(ctxt: &Ctxt, fun: &Fun) -> bool {
+        ctxt.krate.external_fns.contains(fun)
+    }
+
     let f = match ctxt.funs.get(x) {
         Some(f) => f,
         None => {
-            let path = path_as_rust_name(&x.path);
-            return error(
-                span,
-                &format!(
-                    "`{path:}` is not supported (note: currently Verus does not support definitions external to the crate, including most features in std)"
-                ),
-            );
+            if let Some(actual_path) = is_proxy(ctxt, &x.path) {
+                return error(
+                    span,
+                    &format!(
+                        "cannot call function marked `external_fn_specification` directly; call `{:}` instead",
+                        path_as_rust_name(actual_path),
+                    ),
+                );
+            } else if is_external(ctxt, &x) {
+                return error(
+                    span,
+                    "cannot call function marked `external`; try marking it `external_body` instead, or add a Verus specification via `external_fn_specification`?",
+                );
+            } else {
+                let path = path_as_rust_name(&x.path);
+                return error(
+                    span,
+                    &format!(
+                        "`{path:}` is not supported (note: you may be able to add a Verus specification to this function with the `external_fn_specification` attribute){:}",
+                        if x.path.is_rust_std_path() {
+                            " (note: the vstd library provides some specification for the Rust std library, but it is currently limited)"
+                        } else {
+                            ""
+                        },
+                    ),
+                );
+            }
         }
     };
 
@@ -748,6 +789,28 @@ fn check_functions_match(
     Ok(())
 }
 
+/// Construct an error message for when our Krate has two functions of the same name.
+/// If this happen it's probably either:
+///  (i) an issue with our conversion from rust paths to VIR paths not being injective
+///  (ii) the user's use of `external_fn_specification` resulting in overlap
+///  (iii) an existing issue related to traits
+fn func_conflict_error(function1: &Function, function2: &Function) -> Message {
+    let add_label = |err: Message, function: &Function| match &function.x.proxy {
+        Some(proxy) => {
+            err.primary_label(&proxy.span, "specification declared via `external_fn_specification`")
+        }
+        None => err.primary_label(&function.span, "declared here (and not marked as `external`)"),
+    };
+
+    let err = air::messages::error_bare(format!(
+        "duplicate specification for `{:}`",
+        crate::ast_util::path_as_rust_name(&function1.x.name.path)
+    ));
+    let err = add_label(err, function1);
+    let err = add_label(err, function2);
+    err
+}
+
 pub fn check_crate(
     krate: &Krate,
     mut crate_names: Vec<String>,
@@ -756,12 +819,11 @@ pub fn check_crate(
     crate_names.push("builtin".to_string());
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     for function in krate.functions.iter() {
-        if funs.contains_key(&function.x.name) {
-            return Err(air::messages::error(
-                "not supported: multiple definitions of same function",
-                &function.span,
-            )
-            .secondary_span(&funs[&function.x.name].span));
+        match funs.get(&function.x.name) {
+            Some(other_function) => {
+                return Err(func_conflict_error(function, other_function));
+            }
+            None => {}
         }
         funs.insert(function.x.name.clone(), function.clone());
     }
@@ -852,7 +914,7 @@ pub fn check_crate(
         }
     }
 
-    let ctxt = Ctxt { crate_names, funs, dts };
+    let ctxt = Ctxt { crate_names, funs, dts, krate: krate.clone() };
     for function in krate.functions.iter() {
         check_function(&ctxt, function, diags)?;
     }

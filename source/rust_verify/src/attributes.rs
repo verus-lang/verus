@@ -262,6 +262,8 @@ pub(crate) enum Attr {
     Memoize,
     // Suppress the recommends check for narrowing casts that may truncate
     Truncate,
+    // In order to apply a specification to a method externally
+    ExternalFnSpecification,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -413,6 +415,9 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 }
                 AttrTree::Fun(_, arg, None) if arg == "memoize" => v.push(Attr::Memoize),
                 AttrTree::Fun(_, arg, None) if arg == "truncate" => v.push(Attr::Truncate),
+                AttrTree::Fun(_, arg, None) if arg == "external_fn_specification" => {
+                    v.push(Attr::ExternalFnSpecification)
+                }
                 _ => return err_span(span, "unrecognized verifier attribute"),
             },
             AttrPrefix::Verus(verus_prefix) => match verus_prefix {
@@ -630,6 +635,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) spinoff_prover: bool,
     pub(crate) memoize: bool,
     pub(crate) truncate: bool,
+    pub(crate) external_fn_specification: bool,
 }
 
 pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, VirErr> {
@@ -660,12 +666,14 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         spinoff_prover: false,
         memoize: false,
         truncate: false,
+        external_fn_specification: false,
     };
     for attr in parse_attrs(attrs)? {
         match attr {
             Attr::VerusMacro => vs.verus_macro = true,
             Attr::ExternalBody => vs.external_body = true,
             Attr::External => vs.external = true,
+            Attr::ExternalFnSpecification => vs.external_fn_specification = true,
             Attr::Opaque => vs.opaque = true,
             Attr::Publish => vs.publish = true,
             Attr::OpaqueOutsideModule => vs.opaque_outside_module = true,

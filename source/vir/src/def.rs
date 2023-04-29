@@ -497,7 +497,7 @@ pub struct SnapPos {
     pub kind: SpanKind,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Spanned<X> {
     pub span: Span,
     pub x: X,

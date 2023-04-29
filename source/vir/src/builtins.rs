@@ -30,6 +30,7 @@ pub fn builtin_krate(no_span: &Span) -> Krate {
         datatypes: Vec::new(),
         traits: Vec::new(),
         module_ids: Vec::new(),
+        external_fns: Vec::new(),
     };
     krate_add_builtins(no_span, &mut kratex);
     Arc::new(kratex)

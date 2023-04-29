@@ -798,7 +798,7 @@ fn mk_fun_decl(
 */
 
 pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirErr> {
-    let KrateX { functions, datatypes, traits, module_ids } = &**krate;
+    let KrateX { functions, datatypes, traits, module_ids, external_fns } = &**krate;
     let mut state = State::new();
 
     // Pre-emptively add this because unit values might be added later.
@@ -875,7 +875,8 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
 
     let traits = traits.clone();
     let module_ids = module_ids.clone();
-    let krate = Arc::new(KrateX { functions, datatypes, traits, module_ids });
+    let external_fns = external_fns.clone();
+    let krate = Arc::new(KrateX { functions, datatypes, traits, module_ids, external_fns });
     *ctx = crate::context::GlobalCtx::new(
         &krate,
         ctx.no_span.clone(),
@@ -894,12 +895,14 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
         datatypes: Vec::new(),
         traits: Vec::new(),
         module_ids: Vec::new(),
+        external_fns: Vec::new(),
     };
     for k in krates.into_iter() {
         kratex.functions.extend(k.functions.clone());
         kratex.datatypes.extend(k.datatypes.clone());
         kratex.traits.extend(k.traits.clone());
         kratex.module_ids.extend(k.module_ids.clone());
+        kratex.external_fns.extend(k.external_fns.clone());
     }
     Ok(Arc::new(kratex))
 }
