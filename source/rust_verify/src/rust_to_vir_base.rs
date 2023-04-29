@@ -46,10 +46,37 @@ fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Pa
             DefPathData::Impl => {
                 segments.push(vir::def::impl_ident(d.disambiguator));
             }
+            DefPathData::ForeignMod => {
+                // this segment can be ignored
+            }
             _ => return None,
         }
     }
     Some(Arc::new(PathX { krate, segments: Arc::new(segments) }))
+}
+
+pub(crate) fn def_path_to_vir_module<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Path {
+    let multi_crate = MULTI_CRATE.with(|m| m.load(std::sync::atomic::Ordering::Relaxed));
+    let krate = if def_path.krate == LOCAL_CRATE && !multi_crate {
+        None
+    } else {
+        Some(Arc::new(tcx.crate_name(def_path.krate).to_string()))
+    };
+    let mut segments: Vec<vir::ast::Ident> = Vec::new();
+    for d in def_path.data.iter() {
+        use rustc_hir::definitions::DefPathData;
+        match &d.data {
+            DefPathData::ValueNs(symbol) | DefPathData::TypeNs(symbol) => {
+                segments.push(Arc::new(symbol.to_string()));
+            }
+            _ => { /* ignore */ }
+        }
+    }
+    Arc::new(PathX { krate, segments: Arc::new(segments) })
+}
+
+pub(crate) fn def_id_to_vir_module<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Path {
+    def_path_to_vir_module(tcx, tcx.def_path(def_id))
 }
 
 pub(crate) fn typ_path_and_ident_to_vir_path<'tcx>(path: &Path, ident: vir::ast::Ident) -> Path {

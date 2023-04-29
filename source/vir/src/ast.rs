@@ -743,6 +743,9 @@ pub type Function = Arc<Spanned<FunctionX>>;
 pub struct FunctionX {
     /// Name of function
     pub name: Fun,
+    /// Proxy used to declare the spec of this function
+    /// (e.g., some function marked `external_fn_specification`)
+    pub proxy: Option<Spanned<Path>>,
     /// Kind (translation to AIR is different for each different kind)
     pub kind: FunctionKind,
     /// Access control (public/private)
@@ -846,4 +849,6 @@ pub struct KrateX {
     pub traits: Vec<Trait>,
     /// List of all modules in the crate
     pub module_ids: Vec<Path>,
+    /// List of all 'external' functions in the crate (only useful for diagnostics)
+    pub external_fns: Vec<Fun>,
 }

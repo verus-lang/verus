@@ -457,6 +457,7 @@ where
 {
     let FunctionX {
         name: _,
+        proxy: _,
         kind: _,
         visibility: _,
         mode: _,
@@ -913,6 +914,7 @@ where
 {
     let FunctionX {
         name,
+        proxy,
         kind,
         visibility,
         mode,
@@ -934,6 +936,7 @@ where
         extra_dependencies,
     } = &function.x;
     let name = name.clone();
+    let proxy = proxy.clone();
     let kind = match kind {
         FunctionKind::Static | FunctionKind::TraitMethodDecl { trait_path: _ } => kind.clone(),
         FunctionKind::TraitMethodImpl {
@@ -1024,6 +1027,7 @@ where
 
     let functionx = FunctionX {
         name,
+        proxy,
         kind,
         visibility,
         mode,

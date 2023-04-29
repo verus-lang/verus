@@ -685,6 +685,7 @@ fn poly_stmt(ctx: &Ctx, state: &mut State, stmt: &Stmt) -> Stmt {
 fn poly_function(ctx: &Ctx, function: &Function) -> Function {
     let FunctionX {
         name,
+        proxy,
         kind,
         visibility,
         mode: mut function_mode,
@@ -822,6 +823,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
 
     let functionx = FunctionX {
         name: name.clone(),
+        proxy: proxy.clone(),
         kind: kind.clone(),
         visibility: visibility.clone(),
         mode: function_mode,
@@ -859,12 +861,13 @@ fn poly_datatype(ctx: &Ctx, datatype: &Datatype) -> Datatype {
 }
 
 pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &Krate) -> Krate {
-    let KrateX { functions, datatypes, traits, module_ids } = &**krate;
+    let KrateX { functions, datatypes, traits, module_ids, external_fns } = &**krate;
     let kratex = KrateX {
         functions: functions.iter().map(|f| poly_function(ctx, f)).collect(),
         datatypes: datatypes.iter().map(|d| poly_datatype(ctx, d)).collect(),
         traits: traits.clone(),
         module_ids: module_ids.clone(),
+        external_fns: external_fns.clone(),
     };
     ctx.func_map = HashMap::new();
     for function in kratex.functions.iter() {

@@ -37,6 +37,13 @@ impl PathX {
         segments.pop();
         Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
     }
+
+    pub fn is_rust_std_path(&self) -> bool {
+        match &self.krate {
+            Some(k) if &**k == "std" || &**k == "alloc" || &**k == "core" => true,
+            _ => false,
+        }
+    }
 }
 
 impl fmt::Display for Mode {
@@ -245,6 +252,8 @@ pub fn is_visible_to(target_visibility: &Visibility, source_module: &Path) -> bo
     is_visible_to_of_owner(&target_visibility.restricted_to, source_module)
 }
 
+/// Is the target visible to the module?
+/// (If source_module is None, then the target needs to be visible everywhere)
 pub fn is_visible_to_opt(target_visibility: &Visibility, source_module: &Option<Path>) -> bool {
     match (&target_visibility.restricted_to, source_module) {
         (None, None) => true,
