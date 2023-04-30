@@ -17,7 +17,7 @@ use crate::to_token_stream::{
     name_with_type_args_turbofish, shardable_type_to_type,
 };
 use crate::token_transition_checks::{check_ordering_remove_have_add, check_unsupported_updates};
-use crate::util::{combine_errors_or_ok, get_module_path_of_macro_call, is_definitely_irrefutable};
+use crate::util::{combine_errors_or_ok, is_definitely_irrefutable};
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
@@ -225,7 +225,7 @@ fn instance_struct_stream(sm: &SM) -> TokenStream {
             // However, since it's not marked external_body,
             // Verus will still look at the fields when doing its type hierarchy analysis.
 
-            #[verifier::spec] send_sync: vstd::state_machine_internal::SyncSendIfSyncSend<#storage_types>,
+            #[verifier::spec] send_sync: ::vstd::state_machine_internal::SyncSendIfSyncSend<#storage_types>,
             #[verifier::spec] state: #self_ty,
             #[verifier::spec] location: ::builtin::int,
         }
@@ -259,8 +259,8 @@ fn trusted_clone() -> TokenStream {
         #[cfg(not(verus_macro_erase_ghost))]
         #[verus::internal(verus_macro)]
         #[verifier::proof]
-        #[verifier(external_body)] /* vattr */
-        #[verifier(returns(proof))] /* vattr */
+        #[verifier::external_body] /* vattr */
+        #[verifier::returns(proof)] /* vattr */
         pub fn clone(#[verifier::proof] &self) -> Self {
             ensures(|s: Self| ::builtin::equal(*self, s));
             ::std::unimplemented!();
@@ -334,7 +334,7 @@ fn token_struct_stream(
             // the type well-foundedness checks.
 
             #[verifier::proof] dummy_instance: #insttype,
-            no_copy: vstd::state_machine_internal::NoCopy,
+            no_copy: ::vstd::state_machine_internal::NoCopy,
         }
 
         #[verifier::spec]
@@ -349,8 +349,8 @@ fn token_struct_stream(
         #impldecl {
             #[cfg(not(verus_macro_erase_ghost))]
             #[verus::internal(verus_macro)]
-            #[verifier(publish)] /* vattr */
-            #[verifier(external_body)] /* vattr */
+            #[verifier::publish] /* vattr */
+            #[verifier::external_body] /* vattr */
             #[verifier::spec]
             pub fn view(self) -> #token_data_ty { ::std::unimplemented!() }
 
@@ -375,113 +375,6 @@ fn const_fn_stream(field: &Field) -> TokenStream {
             pub fn #fieldname(&self) -> #fieldtype
         );
     };
-}
-
-fn get_macro_decl(sm: &SM) -> TokenStream {
-    let sm_name = &sm.name;
-    let (mod_segments, mod_path) = get_module_path_of_macro_call();
-    let arms: Vec<TokenStream> = sm.fields.iter().map(|f| {
-        let field_name = &f.name;
-        let constructor = field_token_data_type_name(f);
-        match &f.stype {
-            ShardableType::Variable(_)
-            | ShardableType::Option(_)
-            | ShardableType::PersistentCount
-            | ShardableType::PersistentOption(_)
-            | ShardableType::Count
-            => {
-                quote!{
-                    ($instance:expr => #field_name => $value:expr) => {
-                        #mod_path::#sm_name::#constructor { instance: $instance, value: $value }
-                    };
-                }
-            }
-
-            | ShardableType::Multiset(_)
-            | ShardableType::Set(_)
-            | ShardableType::PersistentSet(_)
-            => {
-                quote!{
-                    ($instance:expr => #field_name => $key:expr) => {
-                        #mod_path::#sm_name::#constructor { instance: $instance, key: $key }
-                    };
-                }
-            }
-
-            ShardableType::Bool | ShardableType::PersistentBool => {
-                quote!{
-                    ($instance:expr => #field_name) => {
-                        #mod_path::#sm_name::#constructor { instance: $instance }
-                    };
-                }
-            }
-
-            ShardableType::Map(_, _) | ShardableType::PersistentMap(_, _) => {
-                quote!{
-                    ($instance:expr => #field_name => $key:expr => $value:expr) => {
-                        #mod_path::#sm_name::#constructor { instance: $instance, value: $value, key: $key }
-                    };
-                }
-            }
-
-            ShardableType::Constant(_) => {
-                let msg_lit = format!("The field `{field_name:}` has sharding strategy `constant`, which does not have an associated token type. To access its value, use `instance.{field_name:}()`");
-
-                quote!{
-                    ($instance:expr => #field_name => $($tt:tt)*) => {
-                        ::std::compile_error!(#msg_lit)
-                    };
-                }
-            }
-
-            ShardableType::NotTokenized(_) | ShardableType::StorageOption(_) | ShardableType::StorageMap(_, _) => {
-                let strat = f.stype.strategy_name();
-                let msg_lit = format!("The field `{field_name:}` has sharding strategy `{strat:}`, which does not have an associated token type.");
-
-                quote!{
-                    ($instance:expr => #field_name => $($tt:tt)*) => {
-                        ::std::compile_error!(#msg_lit)
-                    };
-                }
-            }
-        }
-    }).collect();
-
-    let msg_string_lit = format!("`, expected some field defined in `{:}`", sm.name.to_string());
-
-    // A macro_rules! gets exported at the root of the crate.
-    // Best effort to avoid name collisions.
-    let macro_name = Ident::new(
-        &("_".to_string() + &mod_segments.join("_") + &sm.name.to_string() + "_token"),
-        sm.name.span(),
-    );
-    let macro_name_internal = Ident::new(
-        &("_".to_string() + &mod_segments.join("_") + &sm.name.to_string() + "_token_internal"),
-        sm.name.span(),
-    );
-
-    quote! {
-        #[macro_export]
-        macro_rules! #macro_name_internal {
-            #(#arms)*
-            ($instance:expr => $id:ident => $($tt:tt)*) => {
-                ::std::compile_error!(::std::concat!(
-                    "unrecognized field name `",
-                    ::std::stringify!($id),
-                    #msg_string_lit
-                ))
-            };
-        }
-
-        #[macro_export]
-        macro_rules! #macro_name {
-            [$($tail:tt)*] => {
-                ::builtin_macros::verus_proof_macro_exprs!(#macro_name_internal!($($tail)*))
-            };
-        }
-
-        pub use #macro_name as token;
-    }
 }
 
 // Pull everything together.
@@ -560,16 +453,12 @@ pub fn output_token_types_and_fns(
     }
     combine_errors_or_ok(errors)?;
 
-    let macro_decl = get_macro_decl(&bundle.sm);
-
     let insttype = inst_type(&bundle.sm);
     let impldecl = impl_decl_stream(&insttype, &bundle.sm.generics);
     token_stream.extend(quote! {
         #impldecl {
             #inst_impl_token_stream
         }
-
-        #macro_decl
     });
 
     Ok(())
@@ -1129,7 +1018,7 @@ pub fn exchange_stream(
         };
 
         let ret_value_mode = match param_mode {
-            Mode::Tracked => quote! { #[verifier(returns(proof))] /* vattr */ },
+            Mode::Tracked => quote! { #[verifier::returns(proof)] /* vattr */ },
             Mode::Ghost => TokenStream::new(),
         };
 
@@ -1185,7 +1074,7 @@ pub fn exchange_stream(
             TokenStream::new()
         };
 
-        let ret_value_mode = quote! { #[verifier(returns(proof))] /* vattr */ };
+        let ret_value_mode = quote! { #[verifier::returns(proof)] /* vattr */ };
 
         (quote! { -> #tup_typ }, ens_stream, ret_value_mode)
     };
@@ -1204,7 +1093,7 @@ pub fn exchange_stream(
         #[cfg(not(verus_macro_erase_ghost))]
         #[verus::internal(verus_macro)]
         #ret_value_mode
-        #[verifier(external_body)] /* vattr */
+        #[verifier::external_body] /* vattr */
         #[verifier::proof]
         pub fn #exch_name#gen(#(#in_params),*) #out_params_ret {
             #req_stream
@@ -1233,10 +1122,10 @@ fn get_init_param_input_type(_sm: &SM, field: &Field) -> Option<Type> {
         ShardableType::PersistentBool => None,
         ShardableType::Count => None,
         ShardableType::StorageOption(ty) => Some(Type::Verbatim(quote! {
-            vstd::option::Option<#ty>
+            ::vstd::option::Option<#ty>
         })),
         ShardableType::StorageMap(key, val) => Some(Type::Verbatim(quote! {
-            vstd::map::Map<#key, #val>
+            ::vstd::map::Map<#key, #val>
         })),
     }
 }
@@ -1388,10 +1277,10 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             let token_ty = field_token_type(sm, field);
             let inst_ty = inst_type(sm);
             let option_token_ty = Type::Verbatim(quote! {
-                vstd::option::Option<#token_ty>
+                ::vstd::option::Option<#token_ty>
             });
             let option_normal_ty = Type::Verbatim(quote! {
-                vstd::option::Option<#ty>
+                ::vstd::option::Option<#ty>
             });
 
             // Predicate to check the option values agree:
@@ -1403,8 +1292,8 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             quote! {
                 #[cfg(not(verus_macro_erase_ghost))]
                 #[verus::internal(verus_macro)]
-                #[verifier(inline)] /* vattr */
-                #[verifier(publish)] /* vattr */
+                #[verifier::inline] /* vattr */
+                #[verifier::publish] /* vattr */
                 #[verifier::spec]
                 pub fn #fn_name_strict(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
                     Self::#fn_name(token_opt, opt, instance)
@@ -1413,7 +1302,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
 
                 #[cfg(not(verus_macro_erase_ghost))]
                 #[verus::internal(verus_macro)]
-                #[verifier(publish)] /* vattr */
+                #[verifier::publish] /* vattr */
                 #[verifier::spec]
                 pub fn #fn_name(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::imply(
@@ -1432,10 +1321,10 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             let token_ty = field_token_type(sm, field);
             let inst_ty = inst_type(sm);
             let set_token_ty = Type::Verbatim(quote! {
-                vstd::map::Map<#ty, #token_ty>
+                ::vstd::map::Map<#ty, #token_ty>
             });
             let set_normal_ty = Type::Verbatim(quote! {
-                vstd::set::Set<#ty>
+                ::vstd::set::Set<#ty>
             });
 
             // Predicate to check the set values agree:
@@ -1446,7 +1335,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             quote! {
                 #[cfg(not(verus_macro_erase_ghost))]
                 #[verus::internal(verus_macro)]
-                #[verifier(publish)] /* vattr */
+                #[verifier::publish] /* vattr */
                 #[verifier::spec]
                 pub fn #fn_name(token_map: #set_token_ty, set: #set_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|elem: #ty| {
@@ -1457,7 +1346,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                             ),
                             ::builtin::imply(
                                 set.contains(elem),
-                                (#[verifier(trigger)] token_map.dom().contains(elem))
+                                (#[verifier::trigger] token_map.dom().contains(elem))
                                 && ::builtin::equal(token_map.index(elem).view(),
                                     #constructor_name {
                                         instance: instance,
@@ -1471,8 +1360,8 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
 
                 #[cfg(not(verus_macro_erase_ghost))]
                 #[verus::internal(verus_macro)]
-                #[verifier(inline)] /* vattr */
-                #[verifier(publish)] /* vattr */
+                #[verifier::inline] /* vattr */
+                #[verifier::publish] /* vattr */
                 #[verifier::spec]
                 pub fn #fn_name_strict(token_map: #set_token_ty, set: #set_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::equal(token_map.dom(), set)
@@ -1486,7 +1375,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             let token_ty = field_token_type(sm, field);
             let inst_ty = inst_type(sm);
             let option_token_ty = Type::Verbatim(quote! {
-                vstd::option::Option<#token_ty>
+                ::vstd::option::Option<#token_ty>
             });
 
             // Predicate to check the option values agree:
@@ -1498,7 +1387,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             quote! {
                 #[cfg(not(verus_macro_erase_ghost))]
                 #[verus::internal(verus_macro)]
-                #[verifier(publish)] /* vattr */
+                #[verifier::publish] /* vattr */
                 #[verifier::spec]
                 pub fn #fn_name(token_opt: #option_token_ty, b: ::std::primitive::bool, instance: #inst_ty) -> bool {
                     ::builtin::imply(b,
@@ -1509,8 +1398,8 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
 
                 #[cfg(not(verus_macro_erase_ghost))]
                 #[verus::internal(verus_macro)]
-                #[verifier(inline)] /* vattr */
-                #[verifier(publish)] /* vattr */
+                #[verifier::inline] /* vattr */
+                #[verifier::publish] /* vattr */
                 #[verifier::spec]
                 pub fn #fn_name_strict(token_opt: #option_token_ty, b: ::std::primitive::bool, instance: #inst_ty) -> bool {
                     Self::#fn_name(token_opt, b, instance)
@@ -1524,10 +1413,10 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             let token_ty = field_token_type(sm, field);
             let inst_ty = inst_type(sm);
             let map_token_ty = Type::Verbatim(quote! {
-                vstd::map::Map<#key, #token_ty>
+                ::vstd::map::Map<#key, #token_ty>
             });
             let map_normal_ty = Type::Verbatim(quote! {
-                vstd::map::Map<#key, #val>
+                ::vstd::map::Map<#key, #val>
             });
 
             // Predicate to check the map values agree:
@@ -1543,7 +1432,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             quote! {
                 #[cfg(not(verus_macro_erase_ghost))]
                 #[verus::internal(verus_macro)]
-                #[verifier(publish)] /* vattr */
+                #[verifier::publish] /* vattr */
                 #[verifier::spec]
                 pub fn #fn_name(token_map: #map_token_ty, m: #map_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|key: #key|
@@ -1564,7 +1453,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
 
                 #[cfg(not(verus_macro_erase_ghost))]
                 #[verus::internal(verus_macro)]
-                #[verifier(publish)] /* vattr */
+                #[verifier::publish] /* vattr */
                 #[verifier::spec]
                 pub fn #fn_name_strict(token_map: #map_token_ty, m: #map_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::equal(token_map.dom(), m.dom())
@@ -1578,10 +1467,10 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             let inst_ty = inst_type(sm);
             let token_ty = field_token_type(sm, field);
             let multiset_token_ty = Type::Verbatim(quote! {
-                vstd::map::Map<#ty, #token_ty>
+                ::vstd::map::Map<#ty, #token_ty>
             });
             let multiset_normal_ty = Type::Verbatim(quote! {
-                vstd::multiset::Multiset<#ty>
+                ::vstd::multiset::Multiset<#ty>
             });
 
             // Predicate to check the multiset values agree:
@@ -1598,13 +1487,13 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             quote! {
                 #[cfg(not(verus_macro_erase_ghost))]
                 #[verus::internal(verus_macro)]
-                #[verifier(publish)] /* vattr */
+                #[verifier::publish] /* vattr */
                 #[verifier::spec]
                 pub fn #fn_name(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|x: #ty|
                         ::builtin::imply(
                             m.count(x) > ::builtin::spec_literal_nat("0"),
-                            (#[verifier(trigger)] tokens.dom().contains(x))
+                            (#[verifier::trigger] tokens.dom().contains(x))
                             && ::builtin::equal(tokens.index(x).view().instance, instance)
                             && tokens.index(x).view().count >= m.count(x)
                             && ::builtin::equal(tokens.index(x).view().key, x)
@@ -1614,7 +1503,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
 
                 #[cfg(not(verus_macro_erase_ghost))]
                 #[verus::internal(verus_macro)]
-                #[verifier(publish)] /* vattr */
+                #[verifier::publish] /* vattr */
                 #[verifier::spec]
                 pub fn #fn_name_strict(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|x: #ty| {
@@ -1634,8 +1523,8 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 #[cfg(not(verus_macro_erase_ghost))]
                 #[verus::internal(verus_macro)]
                 #[verifier::proof]
-                #[verifier(returns(proof))] /* vattr */
-                #[verifier(external_body)] /* vattr */
+                #[verifier::returns(proof)] /* vattr */
+                #[verifier::external_body] /* vattr */
                 pub fn join(#[verifier::proof] self, #[verifier::proof] other: Self) -> Self {
                     ::builtin::requires(::builtin::equal(self.view().instance, other.view().instance) && ::builtin::equal(self.view().key, other.view().key));
                     ::builtin::ensures(|s: Self|
@@ -1648,8 +1537,8 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
 
                 #[cfg(not(verus_macro_erase_ghost))]
                 #[verus::internal(verus_macro)]
-                #[verifier(external_body)] /* vattr */
-                #[verifier(returns(proof))] /* vattr */
+                #[verifier::external_body] /* vattr */
+                #[verifier::returns(proof)] /* vattr */
                 #[verifier::proof]
                 pub fn split(#[verifier::proof] self, i: nat) -> (::builtin::Tracked<Self>, ::builtin::Tracked<Self>) {
                     ::builtin::requires(i <= self.view().count);
@@ -1675,8 +1564,8 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 #[cfg(not(verus_macro_erase_ghost))]
                 #[verus::internal(verus_macro)]
                 #[verifier::proof]
-                #[verifier(returns(proof))] /* vattr */
-                #[verifier(external_body)] /* vattr */
+                #[verifier::returns(proof)] /* vattr */
+                #[verifier::external_body] /* vattr */
                 pub fn join(#[verifier::proof] self, #[verifier::proof] other: Self) -> Self {
                     ::builtin::requires(::builtin::equal(self.view().instance, other.view().instance));
                     ::builtin::ensures(|s: Self|
@@ -1688,8 +1577,8 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
 
                 #[cfg(not(verus_macro_erase_ghost))]
                 #[verus::internal(verus_macro)]
-                #[verifier(external_body)] /* vattr */
-                #[verifier(returns(proof))] /* vattr */
+                #[verifier::external_body] /* vattr */
+                #[verifier::returns(proof)] /* vattr */
                 #[verifier::proof]
                 pub fn split(#[verifier::proof] self, i: nat) -> (::builtin::Tracked<Self>, ::builtin::Tracked<Self>) {
                     ::builtin::requires(i <= self.view().count);
@@ -1712,8 +1601,8 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             quote! {
                 #[cfg(not(verus_macro_erase_ghost))]
                 #[verus::internal(verus_macro)]
-                #[verifier(external_body)] /* vattr */
-                #[verifier(returns(proof))] /* vattr */
+                #[verifier::external_body] /* vattr */
+                #[verifier::returns(proof)] /* vattr */
                 #[verifier::proof]
                 pub fn weaken(#[verifier::proof] self, i: nat) -> Self {
                     ::builtin::requires(i <= self.view().count);
@@ -2084,17 +1973,17 @@ fn field_token_collection_type(sm: &SM, field: &Field) -> Type {
         ShardableType::Option(_)
         | ShardableType::PersistentOption(_)
         | ShardableType::Bool
-        | ShardableType::PersistentBool => Type::Verbatim(quote! { vstd::option::Option<#ty> }),
+        | ShardableType::PersistentBool => Type::Verbatim(quote! { ::vstd::option::Option<#ty> }),
 
         ShardableType::Map(key, _) | ShardableType::PersistentMap(key, _) => {
-            Type::Verbatim(quote! { vstd::map::Map<#key, #ty> })
+            Type::Verbatim(quote! { ::vstd::map::Map<#key, #ty> })
         }
 
         ShardableType::Set(t) | ShardableType::PersistentSet(t) => {
-            Type::Verbatim(quote! { vstd::map::Map<#t, #ty> })
+            Type::Verbatim(quote! { ::vstd::map::Map<#t, #ty> })
         }
 
-        ShardableType::Multiset(t) => Type::Verbatim(quote! { vstd::map::Map<#t, #ty> }),
+        ShardableType::Multiset(t) => Type::Verbatim(quote! { ::vstd::map::Map<#t, #ty> }),
 
         _ => {
             panic!("field_token_collection_type expected option/map/multiset/bool");
@@ -2129,7 +2018,7 @@ pub fn assign_pat_or_arbitrary(pat: &Pat, init_e: &Expr) -> Option<(Pat, Expr)> 
         }
 
         let new_e = Expr::Verbatim(quote_spanned! { init_e.span() =>
-            match (#init_e) { #pat => #tup_expr , #[allow(unreachable_patterns)] _ => vstd::pervasive::arbitrary() }
+            match (#init_e) { #pat => #tup_expr , #[allow(unreachable_patterns)] _ => ::vstd::pervasive::arbitrary() }
         });
         Some((tup_pat, new_e))
     }

@@ -32,12 +32,14 @@ proof fn sqrt2_contradiction(a: int)
 }
 
 proof fn is_perfect_square_wlog(a: int, b: int, q: int) -> (sqrt: int)
-  requires a >= 0, b >= 0,
-      a * a + b * b == (a * b + 1) * q,
-      q > 2,
-      a < b,
-  ensures sqrt*sqrt == q
-  decreases (a + b, 0int)
+    requires
+        a >= 0,
+        b >= 0,
+        a * a + b * b == (a * b + 1) * q,
+        q > 2,
+        a < b,
+    ensures sqrt*sqrt == q
+    decreases a + b, 0int
 {
     if a == 0 {
         assert(a * a == 0);
@@ -79,10 +81,12 @@ proof fn is_perfect_square_wlog(a: int, b: int, q: int) -> (sqrt: int)
 // Main result
 
 proof fn is_perfect_square(a: int, b: int, q: int) -> (sqrt: int)
-  requires a >= 0, b >= 0,
-      a * a + b * b == (a * b + 1) * q,
-  ensures sqrt*sqrt == q
-  decreases (a + b, 1int)
+    requires
+        a >= 0,
+        b >= 0,
+        a * a + b * b == (a * b + 1) * q,
+    ensures sqrt*sqrt == q
+    decreases a + b, 1int
 {
     if q < 0 {
         assert(a >= 0 && b >= 0 &&

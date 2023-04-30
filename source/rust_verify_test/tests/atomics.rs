@@ -3,31 +3,7 @@
 mod common;
 use common::*;
 
-const COMMON: &str = code_str! {
-    use vstd::invariant::*;
-
-    verus!{
-
-    #[verifier(atomic)] /* vattr */
-    #[verifier(external_body)] /* vattr */
-    fn atomic_op()
-        opens_invariants none
-    {
-    }
-
-    #[verifier(external_body)] /* vattr */
-    fn non_atomic_op()
-        opens_invariants none
-    {
-    }
-
-    #[verifier(external_body)] /* vattr */
-    proof fn proof_op() { }
-
-    }
-};
-
-const COMMON_TODO_DELETE_THIS: &str = code_str! {
+const COMMON: &str = verus_code_str! {
     use vstd::invariant::*;
 
     verus!{
@@ -53,7 +29,7 @@ const COMMON_TODO_DELETE_THIS: &str = code_str! {
 
 test_verify_one_file! {
     #[test] one_atomic_ok
-    COMMON_TODO_DELETE_THIS.to_string() + verus_code_str! {
+    COMMON.to_string() + verus_code_str! {
         pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>) {
             open_atomic_invariant!(i.borrow() => inner => {
                 atomic_op();
@@ -64,7 +40,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] two_atomic_fail
-    COMMON_TODO_DELETE_THIS.to_string() + verus_code_str! {
+    COMMON.to_string() + verus_code_str! {
         pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>) {
             open_atomic_invariant!(i.borrow() => inner => {
                 atomic_op();
@@ -76,7 +52,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] non_atomic_fail
-    COMMON_TODO_DELETE_THIS.to_string() + verus_code_str! {
+    COMMON.to_string() + verus_code_str! {
         pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>) {
             open_atomic_invariant!(i.borrow() => inner => {
                 non_atomic_op();
@@ -87,7 +63,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] if_ok
-    COMMON_TODO_DELETE_THIS.to_string() + verus_code_str! {
+    COMMON.to_string() + verus_code_str! {
         pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>, j: u64) {
             open_atomic_invariant!(i.borrow() => inner => {
                 if j == 1 {
@@ -100,10 +76,12 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] proof_call_ok
-    COMMON_TODO_DELETE_THIS.to_string() + verus_code_str! {
+    COMMON.to_string() + verus_code_str! {
         pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>, j: u64) {
             open_atomic_invariant!(i.borrow() => inner => {
-                proof { proof_op(); }
+                proof {
+                    proof_op();
+                }
                 atomic_op();
             });
         }
@@ -112,7 +90,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] assign_ok
-    COMMON_TODO_DELETE_THIS.to_string() + verus_code_str! {
+    COMMON.to_string() + verus_code_str! {
         pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>) -> u32 {
             let mut x: u32 = 5;
             open_atomic_invariant!(i.borrow() => inner => {
@@ -126,7 +104,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] loop_fail
-    COMMON_TODO_DELETE_THIS.to_string() + verus_code_str! {
+    COMMON.to_string() + verus_code_str! {
         pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>) -> u32 {
             let mut x: u32 = 5;
             open_atomic_invariant!(i.borrow() => inner => {
@@ -141,7 +119,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] untrusted_atomic_success
-    COMMON_TODO_DELETE_THIS.to_string() + verus_code_str! {
+    COMMON.to_string() + verus_code_str! {
         #[verifier(atomic)] /* vattr */
         fn untrusted_atomic_op_1() { }
 
@@ -154,7 +132,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] untrusted_atomic_fail
-    COMMON_TODO_DELETE_THIS.to_string() + verus_code_str! {
+    COMMON.to_string() + verus_code_str! {
         #[verifier(atomic)] /* vattr */
         fn untrusted_atomic_op() {
             non_atomic_op();
@@ -165,7 +143,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] untrusted_atomic_fail2
-    COMMON_TODO_DELETE_THIS.to_string() + verus_code_str! {
+    COMMON.to_string() + verus_code_str! {
         #[verifier(atomic)] /* vattr */
         fn untrusted_atomic_op() {
             atomic_op();
@@ -177,7 +155,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] nonatomic_everything_ok
-    COMMON_TODO_DELETE_THIS.to_string() + verus_code_str! {
+    COMMON.to_string() + verus_code_str! {
         pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: LocalInvariant<A, u8, B>) -> u32 {
             let mut x: u32 = 5;
             open_local_invariant!(&i => inner => {
@@ -197,7 +175,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] two_atomic_fail_nest1
-    COMMON_TODO_DELETE_THIS.to_string() + verus_code_str! {
+    COMMON.to_string() + verus_code_str! {
         pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>, #[verifier::proof] j: LocalInvariant<A, u8, B>) {
             open_local_invariant!(&j => inner => {
                 open_atomic_invariant!(&i => inner => {
@@ -211,7 +189,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] two_atomic_fail_nest2
-    COMMON_TODO_DELETE_THIS.to_string() + verus_code_str! {
+    COMMON.to_string() + verus_code_str! {
         pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>, #[verifier::proof] j: LocalInvariant<A, u8, B>) {
             open_atomic_invariant!(&i => inner => {
                 open_local_invariant!(&j => inner => {

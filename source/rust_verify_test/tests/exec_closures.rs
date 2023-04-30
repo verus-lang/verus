@@ -30,9 +30,9 @@ test_verify_one_file_with_options! {
         fn testfn() {
             let f = |y: u64| -> (z: u64)
                 requires y == 2
-                ensures z == 3
+                ensures z == 3 // FAILS
             {
-                y // FAILS
+                y
             };
         }
     } => Err(err) => assert_one_fails(err)
@@ -43,9 +43,9 @@ test_verify_one_file_with_options! {
         fn testfn() {
             let f = |y: u64| -> (z: u64)
                 requires y == 2
-                ensures z == 3
+                ensures z == 3 // FAILS
             {
-                return y; // FAILS
+                return y;
             };
         }
     } => Err(err) => assert_one_fails(err)
@@ -166,9 +166,9 @@ test_verify_one_file_with_options! {
         fn testfn() {
             let f = |x: u64, y: u64| -> (z: u64)
                 requires x == y
-                ensures z == x
+                ensures z == x // FAILS
             {
-                0 as u64 // FAILS
+                0 as u64
             };
         }
     } => Err(err) => assert_one_fails(err)
@@ -179,9 +179,9 @@ test_verify_one_file_with_options! {
         fn testfn() {
             let f = |x: u64, y: u64| -> (z: u64)
                 requires y == 2
-                ensures z == 3
+                ensures z == 3 // FAILS
             {
-                return 0 as u64; // FAILS
+                return 0 as u64;
             };
         }
     } => Err(err) => assert_one_fails(err)
@@ -269,9 +269,9 @@ test_verify_one_file_with_options! {
 
         fn testfn() {
             let f = ||
-                ensures goo()
+                ensures goo() // FAILS
             {
-            }; // FAILS
+            };
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -282,9 +282,9 @@ test_verify_one_file_with_options! {
 
         fn testfn() {
             let f = ||
-                ensures goo()
+                ensures goo() // FAILS
             {
-                return; // FAILS
+                return;
             };
         }
     } => Err(err) => assert_one_fails(err)
@@ -828,9 +828,9 @@ test_verify_one_file_with_options! {
             let x: u64 = 7;
             let f = |x: u64| -> (x: u64)
                 requires x == 6
-                ensures x == 7
+                ensures x == 7 // FAILS
             {
-                return 8 as u64; // FAILS
+                return 8 as u64;
             };
             let t = f(6);
             assert(t ==  7);
@@ -1088,6 +1088,20 @@ test_verify_one_file_with_options! {
 
             let r = f(some_t);
             assert(equal(r, some_t));
+        }
+    } => Ok(())
+}
+
+// type invariants
+
+test_verify_one_file_with_options! {
+    #[test] closure_params_type_invariants_issue457 ["vstd"] => verus_code! {
+        fn test(x: u8) {
+            assert(x < 256);
+            let f = |y: u8| {
+                assert(x < 256);
+                assert(y < 256);
+            };
         }
     } => Ok(())
 }

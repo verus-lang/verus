@@ -9,7 +9,7 @@ use crate::sst::{Par, Pars};
 use crate::util::vec_map;
 use air::ast::{Binder, BinderX, Binders, Span};
 pub use air::ast_util::{ident_binder, str_ident};
-pub use air::messages::error;
+pub use air::messages::error as msg_error;
 use num_bigint::{BigInt, Sign};
 use std::collections::HashSet;
 use std::fmt;
@@ -19,12 +19,16 @@ use std::sync::Arc;
 /// Construct an Error and wrap it in Err.
 /// For more complex Error objects, use the builder functions in air::errors
 
-pub fn err_str<A>(span: &Span, msg: &str) -> Result<A, VirErr> {
-    Err(error(msg, span))
+pub fn error<A, S: Into<String>>(span: &Span, msg: S) -> Result<A, VirErr> {
+    Err(msg_error(msg, span))
 }
 
-pub fn err_string<A>(span: &Span, msg: String) -> Result<A, VirErr> {
-    Err(error(msg, span))
+pub fn error_with_help<A, S: Into<String>, H: Into<String>>(
+    span: &Span,
+    msg: S,
+    help: H,
+) -> Result<A, VirErr> {
+    Err(msg_error(msg, span).help(help))
 }
 
 impl PathX {
@@ -222,10 +226,10 @@ pub fn fun_name_crate_relative(module: &Path, fun: &Fun) -> String {
     }
 }
 
-// Can source_module see an item owned by owning_module?
-pub fn is_visible_to_of_owner(owning_module: &Option<Path>, source_module: &Path) -> bool {
+// Can source_module see an item restricted to restricted_to?
+pub fn is_visible_to_of_owner(restricted_to: &Option<Path>, source_module: &Path) -> bool {
     let sources = &source_module.segments;
-    match owning_module {
+    match restricted_to {
         None => true,
         Some(target) if target.segments.len() > sources.len() => false,
         Some(target) => {
@@ -238,8 +242,21 @@ pub fn is_visible_to_of_owner(owning_module: &Option<Path>, source_module: &Path
 
 // Can source_module see an item with target_visibility?
 pub fn is_visible_to(target_visibility: &Visibility, source_module: &Path) -> bool {
-    let Visibility { owning_module, is_private } = target_visibility;
-    !is_private || is_visible_to_of_owner(owning_module, source_module)
+    is_visible_to_of_owner(&target_visibility.restricted_to, source_module)
+}
+
+pub fn is_visible_to_opt(target_visibility: &Visibility, source_module: &Option<Path>) -> bool {
+    match (&target_visibility.restricted_to, source_module) {
+        (None, None) => true,
+        (Some(_), None) => false,
+        (_, Some(source_module)) => is_visible_to(target_visibility, source_module),
+    }
+}
+
+impl Visibility {
+    pub(crate) fn is_private(&self) -> bool {
+        self.owning_module.is_some() && self.owning_module == self.restricted_to
+    }
 }
 
 impl<X> SpannedTyped<X> {
@@ -275,7 +292,7 @@ pub fn chain_binary(span: &Span, op: BinaryOp, init: &Expr, exprs: &Vec<Expr>) -
 pub fn const_int_to_u32(span: &Span, i: &BigInt) -> Result<u32, VirErr> {
     let (sign, digits) = i.to_u32_digits();
     if sign != Sign::Plus || digits.len() != 1 {
-        return err_str(span, "Fuel must be a u32 value");
+        return error(span, "Fuel must be a u32 value");
     }
     let n = digits[0];
     Ok(n)

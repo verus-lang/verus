@@ -3,7 +3,7 @@ use crate::ast::{
     FunctionX, GenericBound, GenericBoundX, Ident, MaskSpec, Param, ParamX, Pattern, PatternX,
     SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOpr, Variant, VirErr,
 };
-use crate::ast_util::err_str;
+use crate::ast_util::error;
 use crate::def::Spanned;
 use crate::util::vec_map_result;
 use crate::visitor::expr_visitor_control_flow;
@@ -713,7 +713,7 @@ where
         ExprX::Fuel(path, fuel) => ExprX::Fuel(path.clone(), *fuel),
         ExprX::RevealString(path) => ExprX::RevealString(path.clone()),
         ExprX::Header(_) => {
-            return err_str(&expr.span, "header expression not allowed here");
+            return error(&expr.span, "header expression not allowed here");
         }
         ExprX::AssertAssume { is_assume, expr: e1 } => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;

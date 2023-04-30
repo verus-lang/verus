@@ -39,7 +39,7 @@ pub proof fn affirm(b: bool)
 #[verifier(custom_req_err("Call to non-static function fails to satisfy `callee.requires(args)`"))]
 #[doc(hidden)]
 #[verifier(external_body)]
-fn exec_nonstatic_call<Args, Output, F>(f: F, args: Args) -> (output: Output)
+fn exec_nonstatic_call<Args: std::marker::Tuple, Output, F>(f: F, args: Args) -> (output: Output)
     where F: FnOnce<Args, Output=Output>
     requires f.requires(args)
     ensures f.ensures(args, output)
@@ -128,7 +128,7 @@ pub fn swap<A>(x: &mut A, y: &mut A)
 #[macro_export]
 macro_rules! assert_by_contradiction {
     ($($a:tt)*) => {
-        verus_proof_macro_exprs!(assert_by_contradiction_internal!($($a)*))
+        verus_proof_macro_exprs!($crate::assert_by_contradiction_internal!($($a)*))
     }
 }
 
@@ -139,7 +139,7 @@ macro_rules! assert_by_contradiction_internal {
         ::builtin::assert_by($predicate, {
             if !$predicate {
                 $bblock
-                builtin::assert_(false);
+                ::builtin::assert_(false);
             }
         });
     }

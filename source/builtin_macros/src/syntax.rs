@@ -19,11 +19,13 @@ use syn_verus::{
     Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop, ExprTuple,
     ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Ident, ImplItem, ImplItemMethod, Invariant,
     InvariantEnsures, InvariantNameSet, Item, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod,
-    ItemStruct, ItemTrait, Lit, Local, Meta, ModeSpec, ModeSpecChecked, Pat, Path, PathArguments,
+    ItemStruct, ItemTrait, Lit, Local, ModeSpec, ModeSpecChecked, Pat, Path, PathArguments,
     PathSegment, Publish, Recommends, Requires, ReturnType, Signature, SignatureDecreases,
     SignatureInvariants, Stmt, Token, TraitItem, TraitItemMethod, Type, TypeFnSpec, UnOp,
     Visibility,
 };
+
+const VERUS_SPEC: &str = "VERUS_SPEC__";
 
 fn take_expr(expr: &mut Expr) -> Expr {
     let dummy: Expr = Expr::Verbatim(TokenStream::new());
@@ -148,14 +150,6 @@ impl Visitor {
         let mut stmts: Vec<Stmt> = Vec::new();
         let mut unwrap_ghost_tracked: Vec<Stmt> = Vec::new();
 
-        let inside_bitvector = if attrs.len() == 1 {
-            let attr = attrs.first().unwrap();
-            let arg = get_arg_from_verifier_attr(&attr);
-            if arg.is_some() { arg.unwrap() == "bit_vector".to_string() } else { false }
-        } else {
-            false
-        };
-
         attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
 
         for arg in &mut sig.inputs {
@@ -189,7 +183,7 @@ impl Visitor {
                     // to
                     //   fn f(verus_tmp_x: Tracked<T>) {
                     //       #[verus::internal(header_unwrap_parameter)] let t;
-                    //       #[verifier(proof_block)] { t = verus_tmp_x.get() };
+                    //       #[verifier::proof_block] { t = verus_tmp_x.get() };
                     let span = pat.span();
                     let x = wrapped_pat_id.ident;
                     let tmp_id = Ident::new(&format!("verus_tmp_{x}"), Span::mixed_site());
@@ -200,10 +194,10 @@ impl Visitor {
                             span => #[verus::internal(header_unwrap_parameter)] let #x));
                         if tracked_wrapper {
                             unwrap_ghost_tracked.push(stmt_with_semi!(
-                                span => #[verifier(proof_block)] { #x = #tmp_id.get() }));
+                                span => #[verifier::proof_block] { #x = #tmp_id.get() }));
                         } else {
                             unwrap_ghost_tracked.push(stmt_with_semi!(
-                                span => #[verifier(proof_block)] { #x = #tmp_id.view() }));
+                                span => #[verifier::proof_block] { #x = #tmp_id.view() }));
                         }
                     }
                 }
@@ -282,7 +276,8 @@ impl Visitor {
         });
 
         self.inside_ghost += 1; // for requires, ensures, etc.
-        self.inside_bitvector = inside_bitvector;
+        self.inside_bitvector =
+            sig.prover.as_ref().map_or(false, |(_, _, attr)| attr == "bit_vector");
 
         let requires = self.take_ghost(&mut sig.requires);
         let recommends = self.take_ghost(&mut sig.recommends);
@@ -339,6 +334,11 @@ impl Visitor {
         {
             for expr in exprs.exprs.iter_mut() {
                 self.visit_expr_mut(expr);
+                if matches!(expr, Expr::Tuple(..)) {
+                    let err = "decreases cannot be a tuple; use `decreases x, y` rather than `decreases (x, y)`";
+                    let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
+                    stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
+                }
             }
             stmts.push(Stmt::Semi(
                 Expr::Verbatim(quote_spanned!(token.span => ::builtin::decreases((#exprs)))),
@@ -505,6 +505,22 @@ impl VisitMut for ExecGhostPatVisitor {
                     }
                     *pat = parse_quote_spanned!(span => #tmp_x);
                     return;
+                }
+            }
+            Pat::Struct(pat_struct) => {
+                // When syn parses a struct pattern like `Foo { x }`,
+                // it results in an AST similar to `Foo { x: x }`,
+                // that is, with a separate node for the field and the expression.
+                // The only difference is that one of the nodes has a 'colon' token
+                // and one doesn't.
+                // Since the transformation we're doing here might change
+                // `x: x` to `x: verus_tmp_x`, we can't output it using the shorthand.
+                // So we need to add the colon token in.
+                for field_pat in pat_struct.fields.iter_mut() {
+                    if field_pat.colon_token.is_none() {
+                        let span = field_pat.member.span();
+                        field_pat.colon_token = Some(token::Colon { spans: [span] });
+                    }
                 }
             }
             Pat::Ident(id)
@@ -765,19 +781,42 @@ impl Visitor {
     }
 
     fn visit_trait_items_prefilter(&mut self, items: &mut Vec<TraitItem>) {
+        // In addition to prefiltering ghost code, we also split methods declarations
+        // into separate spec and implementation declarations.  For example:
+        //   fn f() requires x;
+        // becomes
+        //   fn VERUS_SPEC__f() requires x;
+        //   fn f();
+        // In a later pass, this becomes:
+        //   fn VERUS_SPEC__f() { requires(x); ... }
+        //   fn f();
+        // Note: we don't do this if there's a default body (although default bodies
+        // aren't supported yet anyway), because it turns out that the parameter names
+        // don't exactly match between fun and fun.clone() (they have different macro contexts),
+        // which would cause the body and specs to mismatch.
         let erase_ghost = self.erase_ghost;
+        let mut spec_items: Vec<TraitItem> = Vec::new();
         for item in items.iter_mut() {
             match item {
-                TraitItem::Method(fun) => match fun.sig.mode {
+                TraitItem::Method(ref mut fun) => match fun.sig.mode {
                     FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) if erase_ghost => {
                         fun.default = None;
                         continue;
+                    }
+                    _ if !erase_ghost && fun.default.is_none() => {
+                        // Copy into separate spec method, then remove spec from original method
+                        let mut spec_fun = fun.clone();
+                        let x = &fun.sig.ident;
+                        spec_fun.sig.ident = Ident::new(&format!("{VERUS_SPEC}{x}"), x.span());
+                        fun.sig.erase_spec_fields();
+                        spec_items.push(TraitItem::Method(spec_fun));
                     }
                     _ => {}
                 },
                 _ => {}
             }
         }
+        items.append(&mut spec_items);
     }
 }
 
@@ -793,6 +832,8 @@ fn chain_count(expr: &Expr) -> u32 {
         0
     }
 }
+
+const ILLEGAL_CALLEES: &[&str] = &["forall", "exists", "choose"];
 
 impl Visitor {
     fn chain_operators(&mut self, expr: &mut Expr) -> bool {
@@ -865,6 +906,21 @@ impl Visitor {
             Expr::Unary(u @ ExprUnary { op: UnOp::Forall(..), .. }) => u,
             Expr::Unary(u @ ExprUnary { op: UnOp::Exists(..), .. }) => u,
             Expr::Unary(u @ ExprUnary { op: UnOp::Choose(..), .. }) => u,
+            Expr::Call(ExprCall { attrs: _, func, paren_token: _, args: _ }) => {
+                if let Expr::Path(syn_verus::ExprPath { path, qself: None, attrs: _ }) = &**func {
+                    if path.segments.len() == 1
+                        && ILLEGAL_CALLEES.contains(&path.segments[0].ident.to_string().as_str())
+                    {
+                        let err = format!(
+                            "forall, choose, and exists do not allow parentheses, use `{}|<vars>| expr` instead",
+                            path.segments[0].ident.to_string()
+                        );
+                        *expr = Expr::Verbatim(quote_spanned!(expr.span() => compile_error!(#err)));
+                        return true;
+                    }
+                }
+                return false;
+            }
             _ => {
                 return false;
             }
@@ -891,57 +947,17 @@ impl Visitor {
             _ => panic!("expected closure for quantifier"),
         };
 
-        let mut triggers: Vec<Expr> = Vec::new();
-
-        for attr in inner_attrs {
-            let trigger: syn_verus::Result<syn_verus::Specification> =
-                syn_verus::parse2(attr.tokens.clone());
-            let path_segments_str =
-                attr.path.segments.iter().map(|x| x.ident.to_string()).collect::<Vec<_>>();
-            let ident_str = match &path_segments_str[..] {
-                [attr_name] => Some(attr_name),
-                _ => None,
-            };
-            match (trigger, ident_str) {
-                (Ok(trigger), Some(id)) if id == &"auto" && trigger.exprs.len() == 0 => {
-                    match &mut *arg {
-                        Expr::Closure(closure) => {
-                            let body = take_expr(&mut closure.body);
-                            closure.body = Box::new(Expr::Verbatim(
-                                quote_spanned!(span => #[verus::internal(auto_trigger)] (#body)),
-                            ));
-                        }
-                        _ => panic!("expected closure for quantifier"),
-                    }
+        match extract_quant_triggers(inner_attrs, span) {
+            Ok(ExtractQuantTriggersFound::Auto) => match &mut *arg {
+                Expr::Closure(closure) => {
+                    let body = take_expr(&mut closure.body);
+                    closure.body = Box::new(Expr::Verbatim(
+                        quote_spanned!(span => #[verus::internal(auto_trigger)] (#body)),
+                    ));
                 }
-                (Ok(trigger), Some(id)) if id == &"trigger" => {
-                    let tuple =
-                        ExprTuple { attrs: vec![], paren_token: Paren(span), elems: trigger.exprs };
-                    triggers.push(Expr::Tuple(tuple));
-                }
-                (Err(err), _) => {
-                    let span = attr.span();
-                    let err = err.to_string();
-                    *expr = Expr::Verbatim(quote_spanned!(span => compile_error!(#err)));
-                    return true;
-                }
-                _ => {
-                    let span = attr.span();
-                    *expr =
-                        Expr::Verbatim(quote_spanned!(span => compile_error!("expected trigger")));
-                    return true;
-                }
-            }
-        }
-
-        if triggers.len() > 0 {
-            let mut elems = Punctuated::new();
-            for elem in triggers {
-                elems.push(elem);
-                elems.push_punct(Token![,](span));
-            }
-            let tuple = ExprTuple { attrs: vec![], paren_token: Paren(span), elems };
-            match &mut *arg {
+                _ => panic!("expected closure for quantifier"),
+            },
+            Ok(ExtractQuantTriggersFound::Triggers(tuple)) => match &mut *arg {
                 Expr::Closure(closure) => {
                     let body = take_expr(&mut closure.body);
                     closure.body = Box::new(Expr::Verbatim(
@@ -949,6 +965,11 @@ impl Visitor {
                     ));
                 }
                 _ => panic!("expected closure for quantifier"),
+            },
+            Ok(ExtractQuantTriggersFound::None) => {}
+            Err(err_expr) => {
+                *expr = err_expr;
+                return true;
             }
         }
 
@@ -1003,11 +1024,76 @@ impl Visitor {
         if let Some(Decreases { token, mut exprs }) = decreases {
             for expr in exprs.exprs.iter_mut() {
                 self.visit_expr_mut(expr);
+                if matches!(expr, Expr::Tuple(..)) {
+                    let err = "decreases cannot be a tuple; use `decreases x, y` rather than `decreases (x, y)`";
+                    let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
+                    stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
+                }
             }
             stmts.push(stmt_with_semi!(token.span => ::builtin::decreases((#exprs))));
         }
         self.inside_ghost -= 1;
     }
+}
+
+enum ExtractQuantTriggersFound {
+    Auto,
+    Triggers(ExprTuple),
+    None,
+}
+
+fn extract_quant_triggers(
+    inner_attrs: Vec<Attribute>,
+    span: Span,
+) -> Result<ExtractQuantTriggersFound, Expr> {
+    let mut triggers: Vec<Expr> = Vec::new();
+    for attr in inner_attrs {
+        let trigger: syn_verus::Result<syn_verus::Specification> =
+            syn_verus::parse2(attr.tokens.clone());
+        let path_segments_str =
+            attr.path.segments.iter().map(|x| x.ident.to_string()).collect::<Vec<_>>();
+        let ident_str = match &path_segments_str[..] {
+            [attr_name] => Some(attr_name),
+            _ => None,
+        };
+        match (trigger, ident_str) {
+            (Ok(trigger), Some(id)) if id == &"auto" && trigger.exprs.len() == 0 => {
+                return Ok(ExtractQuantTriggersFound::Auto);
+            }
+            (Ok(trigger), Some(id)) if id == &"trigger" => {
+                let tuple =
+                    ExprTuple { attrs: vec![], paren_token: Paren(span), elems: trigger.exprs };
+                triggers.push(Expr::Tuple(tuple));
+            }
+            (Err(err), _) => {
+                let span = attr.span();
+                let err = err.to_string();
+
+                return Err(Expr::Verbatim(quote_spanned!(span => compile_error!(#err))));
+            }
+            _ => {
+                let span = attr.span();
+                return Err(Expr::Verbatim(
+                    quote_spanned!(span => compile_error!("expected trigger")),
+                ));
+            }
+        }
+    }
+
+    Ok(if triggers.len() > 0 {
+        let mut elems = Punctuated::new();
+        for elem in triggers {
+            elems.push(elem);
+            elems.push_punct(Token![,](span));
+        }
+        ExtractQuantTriggersFound::Triggers(ExprTuple {
+            attrs: vec![],
+            paren_token: Paren(span),
+            elems,
+        })
+    } else {
+        ExtractQuantTriggersFound::None
+    })
 }
 
 impl VisitMut for Visitor {
@@ -1138,7 +1224,7 @@ impl VisitMut for Visitor {
                     } else if is_inside_ghost {
                         quote_spanned!(span => ::builtin::Tracked::new(#inner))
                     } else {
-                        quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ ::builtin::tracked_exec(#[verifier(tracked_block_wrapped)] /* vattr */ #inner))
+                        quote_spanned!(span => #[verifier::ghost_wrapper] /* vattr */ ::builtin::tracked_exec(#[verifier::tracked_block_wrapped] /* vattr */ #inner))
                     });
                 } else {
                     // Ghost(...)
@@ -1148,7 +1234,7 @@ impl VisitMut for Visitor {
                     } else if is_inside_ghost {
                         quote_spanned!(span => ::builtin::Ghost::new(#inner))
                     } else {
-                        quote_spanned!(span => #[verifier(ghost_wrapper)] /* vattr */ ::builtin::ghost_exec(#[verifier(ghost_block_wrapped)] /* vattr */ #inner))
+                        quote_spanned!(span => #[verifier::ghost_wrapper] /* vattr */ ::builtin::ghost_exec(#[verifier::ghost_block_wrapped] /* vattr */ #inner))
                     });
                 }
             }
@@ -1170,7 +1256,7 @@ impl VisitMut for Visitor {
                         *expr = self.maybe_erase_expr(
                             span,
                             Expr::Verbatim(
-                                quote_spanned!(span => #[verifier(proof_block)] /* vattr */ #inner),
+                                quote_spanned!(span => #[verifier::proof_block] /* vattr */ #inner),
                             ),
                         );
                     }
@@ -1539,8 +1625,24 @@ impl VisitMut for Visitor {
                 }
                 Expr::AssertForall(assert) => {
                     let span = assert.assert_token.span;
-                    let attrs = assert.attrs;
-                    let arg = assert.expr;
+                    let mut arg = assert.expr;
+                    match extract_quant_triggers(assert.attrs, span) {
+                        Ok(ExtractQuantTriggersFound::Auto) => {
+                            arg = Box::new(Expr::Verbatim(
+                                quote_spanned!(arg.span() => #[verus::internal(auto_trigger)] #arg),
+                            ));
+                        }
+                        Ok(ExtractQuantTriggersFound::Triggers(tuple)) => {
+                            arg = Box::new(Expr::Verbatim(
+                                quote_spanned!(span => ::builtin::with_triggers(#tuple, #arg)),
+                            ));
+                        }
+                        Ok(ExtractQuantTriggersFound::None) => {}
+                        Err(err_expr) => {
+                            *expr = err_expr;
+                            return;
+                        }
+                    }
                     let inputs = assert.inputs;
                     let mut block = assert.body;
                     let mut stmts: Vec<Stmt> = Vec::new();
@@ -1551,7 +1653,9 @@ impl VisitMut for Visitor {
                         stmts.push(stmt_with_semi!(span => ::builtin::ensures(#arg)));
                     }
                     block.stmts.splice(0..0, stmts);
-                    *expr = quote_verbatim!(span, attrs => {::builtin::assert_forall_by(|#inputs| #block);});
+                    *expr = Expr::Verbatim(
+                        quote_spanned!(span => {::builtin::assert_forall_by(|#inputs| #block);}),
+                    );
                 }
                 Expr::Closure(mut clos) => {
                     if is_inside_ghost {
@@ -1626,7 +1730,7 @@ impl VisitMut for Visitor {
             *expr = self.maybe_erase_expr(
                 span,
                 Expr::Verbatim(
-                    quote_spanned!(span => #[verifier(proof_block)] /* vattr */ { #inner } ),
+                    quote_spanned!(span => #[verifier::proof_block] /* vattr */ { #inner } ),
                 ),
             );
         }
@@ -1643,6 +1747,44 @@ impl VisitMut for Visitor {
                 }
                 [attr_name] if attr_name.to_string() == "via_fn" => {
                     *attr = mk_verus_attr(attr.span(), quote! { via });
+                }
+                [attr_name] if attr_name.to_string() == "verifier" => {
+                    let parsed = attr.parse_meta().expect("failed to parse attribute");
+                    match parsed {
+                        syn_verus::Meta::List(meta_list) if meta_list.nested.len() == 1 => {
+                            let span = attr.span();
+                            let (second_segment, nested) = match &meta_list.nested[0] {
+                                syn_verus::NestedMeta::Meta(syn_verus::Meta::List(meta_list)) => {
+                                    let rest = &meta_list.nested[0];
+                                    (&meta_list.path.segments[0], Some(quote! { (#rest) }))
+                                }
+                                syn_verus::NestedMeta::Meta(syn_verus::Meta::Path(meta_path)) => {
+                                    (&meta_path.segments[0], None)
+                                }
+                                _ => {
+                                    panic!("invalid verifier attribute (1)"); // TODO(main_new) use compile_error! if possible
+                                }
+                            };
+                            let mut path_segments = Punctuated::new();
+                            path_segments.push(PathSegment {
+                                ident: Ident::new("verifier", span),
+                                arguments: PathArguments::None,
+                            });
+                            path_segments.push(second_segment.clone());
+                            *attr = Attribute {
+                                pound_token: token::Pound { spans: [span] },
+                                style: AttrStyle::Outer,
+                                bracket_token: token::Bracket { span },
+                                path: Path { leading_colon: None, segments: path_segments },
+                                tokens: if let Some(nested) = nested {
+                                    quote! { #nested }
+                                } else {
+                                    quote! {}
+                                },
+                            };
+                        }
+                        _ => panic!("invalid verifier attribute (2)"), // TODO(main_new) use compile_error! if possible
+                    }
                 }
                 _ => (),
             }
@@ -1759,11 +1901,12 @@ impl VisitMut for Visitor {
             crate::rustdoc::process_trait_item_method(method);
         }
 
+        let is_spec_method = method.sig.ident.to_string().starts_with(VERUS_SPEC);
         let mut stmts =
             self.visit_fn(&mut method.attrs, None, &mut method.sig, method.semi_token, true);
         if let Some(block) = &mut method.default {
             block.stmts.splice(0..0, stmts);
-        } else if !self.erase_ghost {
+        } else if !self.erase_ghost && is_spec_method {
             let span = method.sig.fn_token.span;
             stmts.push(Stmt::Expr(Expr::Verbatim(
                 quote_spanned!(span => ::builtin::no_method_body()),
@@ -1771,7 +1914,7 @@ impl VisitMut for Visitor {
             let block = Block { brace_token: Brace(span), stmts };
             method.default = Some(block);
         }
-        if !self.erase_ghost {
+        if !self.erase_ghost && is_spec_method {
             method.semi_token = None;
         }
         visit_trait_item_method_mut(self, method);
@@ -2373,49 +2516,4 @@ fn mk_verus_attr(span: Span, tokens: TokenStream) -> Attribute {
         path: Path { leading_colon: None, segments: path_segments },
         tokens: quote! { (#tokens) },
     }
-}
-
-/// Get `arg` from `#[verifier(arg)]`, and if `attr` is not a verifier attribute, return `None`
-fn get_arg_from_verifier_attr(attr: &Attribute) -> Option<String> {
-    let parsed = attr.parse_meta();
-    if parsed.is_err() {
-        return None;
-    }
-    let parsed = parsed.unwrap();
-    let ids = get_idents_from_meta(&parsed);
-    if ids.len() == 2 && ids.contains(&"verifier".to_string()) {
-        let mut id: Vec<String> =
-            ids.into_iter().filter(|x| x != &"verifier".to_string()).collect();
-        if id.len() == 1 { id.pop() } else { None }
-    } else {
-        None
-    }
-}
-
-/// Get idents from all "Path" in attributes(e.g. collect "verifier"` and `arg` from  `#[verifier(arg)]`)
-fn get_idents_from_meta(parsed: &Meta) -> Vec<String> {
-    match parsed {
-        syn_verus::Meta::List(meta_list) => {
-            let mut ids = get_ident_from_path(&meta_list.path);
-            for meta in &meta_list.nested {
-                match meta {
-                    syn_verus::NestedMeta::Meta(meta) => {
-                        ids.append(&mut get_idents_from_meta(&meta));
-                    }
-                    syn_verus::NestedMeta::Lit(_) => (),
-                }
-            }
-            ids
-        }
-        syn_verus::Meta::Path(path) => get_ident_from_path(&path),
-        syn_verus::Meta::NameValue(meta_name_value) => get_ident_from_path(&meta_name_value.path),
-    }
-}
-
-fn get_ident_from_path(path: &Path) -> Vec<String> {
-    let mut ids = vec![];
-    for seg in &path.segments {
-        ids.push(seg.ident.to_string().clone());
-    }
-    ids
 }

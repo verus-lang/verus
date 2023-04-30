@@ -229,6 +229,13 @@ impl String {
         self.inner == other.inner
     }
 
+    #[verifier(external_body)]
+    pub fn clone(&self) -> (result: String)
+        ensures result == self
+    {
+        String { inner: self.inner.clone() }
+    }
+
     #[verifier(external)]
     pub fn from_rust_string(inner: std::string::String) -> String
     {

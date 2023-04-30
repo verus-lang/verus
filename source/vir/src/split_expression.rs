@@ -7,7 +7,7 @@ use crate::context::Ctx;
 use crate::def::unique_local;
 use crate::def::Spanned;
 use crate::func_to_air::{SstInfo, SstMap};
-use crate::sst::{BndX, Exp, ExpX, Exps, Pars, Stm, StmX, UniqueIdent};
+use crate::sst::{BndX, CallFun, Exp, ExpX, Exps, Pars, Stm, StmX, UniqueIdent};
 use crate::sst_visitor::map_shallow_stm;
 use air::ast::Span;
 use air::messages::{Diagnostics, Message};
@@ -115,7 +115,7 @@ fn tr_inline_function(
         fun_to_inline.span.clone(),
         "Note: this function is closed at the module boundary".to_string(),
     ));
-    let foriegn_module_err = Err((
+    let foreign_module_err = Err((
         fun_to_inline.span.clone(),
         "Note: this function is inside a foreign module".to_string(),
     ));
@@ -156,9 +156,10 @@ fn tr_inline_function(
         return opaque_err;
     } else {
         if fun_to_inline.x.visibility.owning_module.is_none() {
-            return foriegn_module_err;
+            return foreign_module_err;
         } else {
-            if *ctx.module != **fun_to_inline.x.visibility.owning_module.as_ref().unwrap() {
+            use crate::ast_util::is_visible_to_of_owner;
+            if !is_visible_to_of_owner(&fun_to_inline.x.visibility.owning_module, &ctx.module) {
                 // if the target inline function is outside this module, track `open` `closed` at module boundaries
                 match fun_to_inline.x.publish {
                     Some(b) => {
@@ -336,7 +337,7 @@ fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> Trace
                 _ => return mk_atom(exp.clone(), negated),
             }
         }
-        ExpX::Call(fun_name, typs, args) => {
+        ExpX::Call(CallFun::Fun(fun_name), typs, args) => {
             let fun = get_function(ctx, &exp.e.span, fun_name).unwrap();
             let res_inlined_exp = tr_inline_function(ctx, state, fun, args, &exp.e.span, typs);
             match res_inlined_exp {
@@ -531,6 +532,12 @@ fn split_call(
         )
         .expect("expr_to_exp_as_spec");
 
+        // In requires, old(x) is really just x:
+        let mut f_var_at = |e: &Exp| match &e.x {
+            ExpX::VarAt(x, crate::ast::VarAt::Pre) => e.new_x(ExpX::Var(x.clone())),
+            _ => e.clone(),
+        };
+        let exp = crate::sst_visitor::map_exp_visitor(&exp, &mut f_var_at);
         let exp_subsituted = inline_expression(args, typs, params, typ_bounds, &exp);
         if exp_subsituted.is_err() {
             continue;

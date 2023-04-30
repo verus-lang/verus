@@ -1,0 +1,24 @@
+[package]
+name = "verus_rustc_interface"
+version = "0.0.0"
+edition = "2021"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+libloading = "0.7.1"
+tracing = "0.1"
+rustc-rayon-core = { version = "0.4.0", optional = true }
+rayon = { version = "0.4.0", package = "rustc-rayon", optional = true }
+smallvec = { version = "1.8.1", features = ["union", "may_dangle"] }
+
+[features]
+default = ['llvm']
+llvm = []
+# TODO llvm = ['rustc_codegen_llvm']
+rustc_use_parallel_compiler = ['rayon', 'rustc-rayon-core']
+# rustc_use_parallel_compiler = ['rayon', 'rustc-rayon-core', 'rustc_query_impl/rustc_use_parallel_compiler', 'rustc_errors/rustc_use_parallel_compiler']
+
+[package.metadata.rust-analyzer]
+rustc_private = true

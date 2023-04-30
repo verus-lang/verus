@@ -101,7 +101,8 @@ struct_with_invariants!{
 
     spec fn wf(&self) -> bool {
         invariant on atomic with (instance) is (v: u32, g: X::counter) {
-            g@ === X::token![instance@ => counter => v as int]
+            g@.instance == instance@
+            && g@.value == v as int
         }
 
         predicate {

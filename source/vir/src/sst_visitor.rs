@@ -50,7 +50,7 @@ where
                 ExpX::Loc(e0) => {
                     expr_visitor_control_flow!(exp_visitor_dfs(e0, map, f));
                 }
-                ExpX::Call(_x, _typs, es) => {
+                ExpX::Call(_, _typs, es) => {
                     for e in es.iter() {
                         expr_visitor_control_flow!(exp_visitor_dfs(e, map, f));
                     }
@@ -162,8 +162,8 @@ where
                     expr_visitor_control_flow!(stm_visitor_dfs(s, f));
                 }
                 StmX::BreakOrContinue { label: _, is_break: _ } => (),
-                StmX::ClosureInner(s) => {
-                    expr_visitor_control_flow!(stm_visitor_dfs(s, f));
+                StmX::ClosureInner { body, typ_inv_vars: _ } => {
+                    expr_visitor_control_flow!(stm_visitor_dfs(body, f));
                 }
                 StmX::If(_cond, lhs, rhs) => {
                     expr_visitor_control_flow!(stm_visitor_dfs(lhs, f));
@@ -231,7 +231,7 @@ where
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
             }
             StmX::BreakOrContinue { label: _, is_break: _ } => (),
-            StmX::ClosureInner(_s) => (),
+            StmX::ClosureInner { body: _, typ_inv_vars: _ } => (),
             StmX::If(exp, _s1, _s2) => {
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
             }
@@ -554,9 +554,12 @@ where
         }
         StmX::Return { .. } => fs(stm),
         StmX::BreakOrContinue { label: _, is_break: _ } => fs(stm),
-        StmX::ClosureInner(s) => {
-            let s = map_stm_visitor(s, fs)?;
-            let stm = Spanned::new(stm.span.clone(), StmX::ClosureInner(s));
+        StmX::ClosureInner { body, typ_inv_vars } => {
+            let body = map_stm_visitor(body, fs)?;
+            let stm = Spanned::new(
+                stm.span.clone(),
+                StmX::ClosureInner { body, typ_inv_vars: typ_inv_vars.clone() },
+            );
             fs(&stm)
         }
         StmX::If(cond, lhs, rhs) => {
@@ -632,9 +635,12 @@ where
         }
         StmX::Return { .. } => Ok(stm.clone()),
         StmX::BreakOrContinue { label: _, is_break: _ } => Ok(stm.clone()),
-        StmX::ClosureInner(s) => {
-            let s = fs(s)?;
-            Ok(Spanned::new(stm.span.clone(), StmX::ClosureInner(s)))
+        StmX::ClosureInner { body, typ_inv_vars } => {
+            let body = fs(body)?;
+            Ok(Spanned::new(
+                stm.span.clone(),
+                StmX::ClosureInner { body, typ_inv_vars: typ_inv_vars.clone() },
+            ))
         }
         StmX::If(cond, lhs, rhs) => {
             let lhs = fs(lhs)?;
@@ -734,7 +740,7 @@ where
                 Spanned::new(span, StmX::Return { base_error, ret_exp, inside_body })
             }
             StmX::BreakOrContinue { label: _, is_break: _ } => stm.clone(),
-            StmX::ClosureInner(_s) => stm.clone(),
+            StmX::ClosureInner { .. } => stm.clone(),
             StmX::If(exp, s1, s2) => {
                 let exp = fe(exp)?;
                 Spanned::new(span, StmX::If(exp, s1.clone(), s2.clone()))

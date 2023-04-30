@@ -697,9 +697,10 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for AssertForall {
         fn parse(input: ParseStream) -> Result<Self> {
-            let attrs = Vec::new();
+            let mut attrs = Vec::new();
             let assert_token: Token![assert] = input.parse()?;
             let forall_token: Token![forall] = input.parse()?;
+            attr::parsing::parse_inner(input, &mut attrs)?;
             let or1_token: Token![|] = input.parse()?;
             let mut inputs = Punctuated::new();
             while !input.peek(Token![|]) {

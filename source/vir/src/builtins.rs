@@ -8,7 +8,7 @@ pub fn krate_add_builtins(no_span: &Span, krate: &mut KrateX) {
     // Add a datatype for 'slice'
 
     let path = crate::def::slice_type();
-    let visibility = Visibility { owning_module: None, is_private: false };
+    let visibility = Visibility { owning_module: None, restricted_to: None };
     let transparency = DatatypeTransparency::Never;
 
     // Create a fake variant; it shouldn't matter, since transparency is Never.

@@ -117,132 +117,25 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "cannot find function referred to in when_used_as_spec")
 }
 
-/* TODO: remove this when autoview is removed
 test_verify_one_file! {
-    #[test] test1 code! {
+    #[test] vec_len_regression_issue212 verus_code! {
+        use vstd::vec::*;
+
         struct S {
-        }
-
-        struct V {
-        }
-
-        impl V {
-            #[verifier::spec]
-            fn mkint(self, _i: int) -> int {
-                8
-            }
+            pub vec: Vec<()>,
         }
 
         impl S {
-            #[verifier::proof]
-            fn f(#[verifier::proof]&self, #[verifier::spec] x: int) {
-
-            }
-
-            #[verifier(autoview)]
-            fn mkint(&self, _u: u64) -> u64 {
-                7
-            }
-
-            #[verifier::spec]
-            fn view(self) -> V {
-                V {}
+            spec fn f(&self) -> bool {
+                0 < self.vec.len()
             }
         }
 
         fn test() {
-            let s = S {};
-            #[verifier::spec] let i: int = 10;
-            s.f(s.mkint(i));
-            assert(s.mkint(i) == s.mkint(i));
-            #[verifier::spec] let x: u64 = s.mkint(10);
+            let mut s = S { vec: Vec::new() };
+            assert(!s.f());
+            s.vec.push(());
+            assert(s.f());
         }
     } => Ok(())
 }
-
-test_verify_one_file! {
-    #[test] test1_fails1 code! {
-        struct S {
-        }
-
-        struct V {
-        }
-
-        impl V {
-            #[verifier::spec]
-            fn mkint(self, _i: int) -> int {
-                8
-            }
-        }
-
-        impl S {
-            #[verifier(autoview)]
-            #[verifier::spec] // ERROR: autoview cannot be spec
-            fn mkint(&self, _u: u64) -> u64 {
-                7
-            }
-
-            #[verifier::spec]
-            fn view(self) -> V {
-                V {}
-            }
-        }
-    } => Err(err) => assert_error_msg(err, "test will be removed")
-}
-
-test_verify_one_file! {
-    #[test] test1_fails2 code! {
-        struct S {
-        }
-
-        struct V {
-        }
-
-        impl V {
-            #[verifier::spec]
-            fn mkint(self, _i: int) -> int {
-                8
-            }
-        }
-
-        impl S {
-            #[verifier(autoview)]
-            fn mkint(&self, _u: u64) -> u64 {
-                7
-            }
-
-            #[verifier::spec]
-            // ERROR: wrong signature for view
-            fn view(self, foo: int) -> V {
-                V {}
-            }
-        }
-    } => Err(err) => assert_error_msg(err, "test will be removed")
-}
-
-test_verify_one_file! {
-    #[test] test1_fails3 code! {
-        struct S {
-        }
-
-        struct V {
-        }
-
-        impl V {
-            #[verifier::spec]
-            fn mkint(self, _i: int) -> int {
-                8
-            }
-        }
-
-        impl S {
-            #[verifier(autoview)]
-            fn mkint(&self, _u: u64) -> u64 {
-                7
-            }
-
-            // ERROR: view is missing
-        }
-    } => Err(err) => assert_error_msg(err, "test will be removed")
-}
-*/

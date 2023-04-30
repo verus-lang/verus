@@ -1,6 +1,4 @@
-// rust_verify/tests/example.rs erasure-todo
-
-#[allow(unused_imports)]
+#![allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
 use vstd::{*, pervasive::*};
@@ -11,6 +9,8 @@ use vstd::set::*;
 use state_machines_macros::state_machine;
 use state_machines_macros::case_on_next;
 use state_machines_macros::case_on_init;
+
+verus!{
 
 #[verifier(external_body)] /* vattr */
 pub struct Key { }
@@ -76,8 +76,7 @@ state_machine!{
             }
         }
 
-        #[verifier::spec] #[verifier(publish)] /* vattr */
-        pub fn valid_host(&self, i: int) -> bool {
+        pub open spec fn valid_host(&self, i: int) -> bool {
             0 <= i < self.map_count
         }
 
@@ -107,19 +106,16 @@ state_machine!{
             }
         }
 
-        #[verifier::spec] #[verifier(publish)]
-        pub fn host_has_key(&self, hostidx: int, key: Key) -> bool {
+        pub open spec fn host_has_key(&self, hostidx: int, key: Key) -> bool {
             self.valid_host(hostidx)
             && self.maps.index(hostidx).dom().contains(key)
         }
 
-        #[verifier::spec] #[verifier(publish)]
-        pub fn key_holder(&self, key: Key) -> int {
-            choose(|idx| self.host_has_key(idx, key))
+        pub open spec fn key_holder(&self, key: Key) -> int {
+            choose|idx| self.host_has_key(idx, key)
         }
 
-        #[verifier::spec] #[verifier(publish)]
-        pub fn abstraction_one_key(&self, key: Key) -> Value {
+        pub open spec fn abstraction_one_key(&self, key: Key) -> Value {
             if exists |idx| self.host_has_key(idx, key) {
                 self.maps.index(self.key_holder(key)).index(key)
             } else {
@@ -193,9 +189,6 @@ state_machine!{
         }
     }
 }
-
-
-verus!{
 
 spec fn interp(a: ShardedKVProtocol::State) -> MapSpec::State {
     MapSpec::State {

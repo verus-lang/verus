@@ -1,15 +1,13 @@
-use crate::erase::CompilerCallbacksEraseAst;
-use crate::util::signalling;
-use crate::verifier::{Verifier, VerifierCallbacksEraseAst, VerifierCallbacksEraseMacro};
-use std::sync::{Arc, Mutex};
+use crate::verifier::{Verifier, VerifierCallbacksEraseMacro};
+use rustc_errors::ErrorGuaranteed;
 use std::time::{Duration, Instant};
 
 fn mk_compiler<'a, 'b>(
     rustc_args: &'a [String],
-    verifier: &'b mut (dyn rustc_driver::Callbacks + Send),
+    verifier: &'b mut (dyn verus_rustc_driver::Callbacks + Send),
     file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
-) -> rustc_driver::RunCompiler<'a, 'b> {
-    let mut compiler = rustc_driver::RunCompiler::new(rustc_args, verifier);
+) -> verus_rustc_driver::RunCompiler<'a, 'b> {
+    let mut compiler = verus_rustc_driver::RunCompiler::new(rustc_args, verifier);
     compiler.set_file_loader(Some(file_loader));
     compiler
 }
@@ -18,9 +16,10 @@ fn run_compiler<'a, 'b>(
     mut rustc_args: Vec<String>,
     syntax_macro: bool,
     erase_ghost: bool,
-    verifier: &'b mut (dyn rustc_driver::Callbacks + Send),
+    verifier: &'b mut (dyn verus_rustc_driver::Callbacks + Send),
     file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
-) -> Result<(), rustc_errors::ErrorReported> {
+    _build_test_mode: bool, // TODO is this needed?
+) -> Result<(), ErrorGuaranteed> {
     crate::config::enable_default_features_and_verus_attr(
         &mut rustc_args,
         syntax_macro,
@@ -29,18 +28,14 @@ fn run_compiler<'a, 'b>(
     mk_compiler(&rustc_args, verifier, file_loader).run()
 }
 
-fn print_verification_results(verifier: &Verifier) {
-    if !verifier.encountered_vir_error {
-        println!(
-            "verification results:: verified: {} errors: {}",
-            verifier.count_verified, verifier.count_errors
-        );
-    }
+pub fn is_verifying_entire_crate(verifier: &Verifier) -> bool {
+    verifier.args.verify_function.is_none()
+        && verifier.args.verify_module.is_empty()
+        && !verifier.args.verify_root
 }
 
 /*
-When using the --erasure macro option (Erasure::Macro),
-we have to run rustc twice on the original source code,
+We have to run rustc twice on the original source code,
 once erasing ghost code and once keeping ghost code.
 
 exec code --> type-check, mode-check --> lifetime (borrow) check exec code --> compile
@@ -91,29 +86,20 @@ This would avoid the complex interleaving above and avoid needing to use lifetim
 for all functions (it would only be needed for functions with tracked data in proof code).
 */
 pub struct CompilerCallbacksEraseMacro {
-    pub lifetimes_only: bool,
-    pub test_capture_output: Option<std::sync::Arc<std::sync::Mutex<Vec<u8>>>>,
+    pub do_compile: bool,
 }
 
-impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
-    fn config(&mut self, config: &mut rustc_interface::interface::Config) {
-        if let Some(target) = &self.test_capture_output {
-            config.diagnostic_output = rustc_session::DiagnosticOutput::Raw(Box::new(
-                crate::verifier::DiagnosticOutputBuffer { output: target.clone() },
-            ));
-        }
-    }
-
+impl verus_rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
     fn after_parsing<'tcx>(
         &mut self,
-        _compiler: &rustc_interface::interface::Compiler,
-        queries: &'tcx rustc_interface::Queries<'tcx>,
-    ) -> rustc_driver::Compilation {
-        if self.lifetimes_only {
+        _compiler: &verus_rustc_interface::interface::Compiler,
+        queries: &'tcx verus_rustc_interface::Queries<'tcx>,
+    ) -> verus_rustc_driver::Compilation {
+        if !self.do_compile {
             crate::lifetime::check(queries);
-            rustc_driver::Compilation::Stop
+            verus_rustc_driver::Compilation::Stop
         } else {
-            rustc_driver::Compilation::Continue
+            verus_rustc_driver::Compilation::Continue
         }
     }
 }
@@ -122,17 +108,15 @@ pub struct Stats {
     pub time_verify: Duration,
     pub time_lifetime: Duration,
     pub time_compile: Duration,
-    pub time_erasure: Duration,
 }
 
 pub(crate) fn run_with_erase_macro_compile(
     mut rustc_args: Vec<String>,
     file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
     compile: bool,
-    test_capture_output: Option<std::sync::Arc<std::sync::Mutex<Vec<u8>>>>,
-) -> Result<(), rustc_errors::ErrorReported> {
-    let mut callbacks =
-        CompilerCallbacksEraseMacro { lifetimes_only: !compile, test_capture_output };
+    build_test_mode: bool,
+) -> Result<(), ErrorGuaranteed> {
+    let mut callbacks = CompilerCallbacksEraseMacro { do_compile: compile };
     rustc_args.extend(["--cfg", "verus_macro_erase_ghost"].map(|s| s.to_string()));
     let allow = &[
         "unused_imports",
@@ -149,25 +133,161 @@ pub(crate) fn run_with_erase_macro_compile(
     for a in allow {
         rustc_args.extend(["-A", a].map(|s| s.to_string()));
     }
-    run_compiler(rustc_args, true, true, &mut callbacks, file_loader)
+    run_compiler(rustc_args, true, true, &mut callbacks, file_loader, build_test_mode)
 }
 
-fn run_with_erase_macro<F>(
-    verifier: Verifier,
-    rustc_args: Vec<String>,
+struct VerusRoot {
+    path: std::path::PathBuf,
+    in_vargo: bool,
+}
+
+fn find_verusroot() -> Option<VerusRoot> {
+    std::env::var("VARGO_TARGET_DIR")
+        .ok()
+        .and_then(|target_dir| {
+            let path = std::path::PathBuf::from(&target_dir);
+            Some(VerusRoot { path, in_vargo: true })
+        })
+        .or_else(|| {
+            std::env::var("VERUS_ROOT").ok().and_then(|verusroot| {
+                let mut path = std::path::PathBuf::from(&verusroot);
+                if !path.is_absolute() {
+                    path = std::env::current_dir().expect("working directory invalid").join(path);
+                }
+                Some(VerusRoot { path, in_vargo: false })
+            })
+        })
+        .or_else(|| {
+            let current_exe = std::env::current_exe().ok()
+                .and_then(|c| {
+                    if c.symlink_metadata().ok()?.is_symlink() {
+                        std::fs::read_link(c).ok()
+                    } else {
+                        Some(c)
+                    }
+                });
+            current_exe.and_then(|current| {
+                current.parent().and_then(|p| {
+                    let mut path = std::path::PathBuf::from(&p);
+                    if path.join("verus-root").is_file() {
+                        if !path.is_absolute() {
+                            path =
+                                std::env::current_dir().expect("working directory invalid").join(path);
+                        }
+                        Some(VerusRoot { path, in_vargo: false })
+                    } else {
+                        eprintln!("warning: did not find a valid verusroot; continuing, but the builtin and vstd crates are likely missing");
+                        None
+                    }
+                })
+            })
+        })
+}
+
+#[cfg(target_os = "macos")]
+mod lib_exe_names {
+    pub const LIB_PRE: &str = "lib";
+    pub const LIB_DL: &str = "dylib";
+}
+
+#[cfg(target_os = "linux")]
+mod lib_exe_names {
+    pub const LIB_PRE: &str = "lib";
+    pub const LIB_DL: &str = "so";
+}
+
+#[cfg(target_os = "windows")]
+mod lib_exe_names {
+    pub const LIB_PRE: &str = "";
+    pub const LIB_DL: &str = "dll";
+}
+
+use lib_exe_names::{LIB_DL, LIB_PRE};
+
+#[derive(Debug)]
+pub struct VerusExterns<'a> {
+    path: &'a std::path::PathBuf,
+    has_vstd: bool,
+}
+
+impl<'a> VerusExterns<'a> {
+    pub fn to_args(&self) -> impl Iterator<Item = String> {
+        let mut args = vec![
+            format!("--extern"),
+            format!("builtin={}", self.path.join(format!("libbuiltin.rlib")).to_str().unwrap()),
+            format!("--extern"),
+            format!(
+                "builtin_macros={}",
+                self.path.join(format!("{LIB_PRE}builtin_macros.{LIB_DL}")).to_str().unwrap()
+            ),
+            format!("--extern"),
+            format!(
+                "state_machines_macros={}",
+                self.path
+                    .join(format!("{LIB_PRE}state_machines_macros.{LIB_DL}"))
+                    .to_str()
+                    .unwrap()
+            ),
+            format!("-L"),
+            format!("dependency={}", self.path.to_str().unwrap()),
+        ];
+        if self.has_vstd {
+            args.push(format!("--extern"));
+            args.push(format!(
+                "vstd={}",
+                self.path.join(format!("libvstd.rlib")).to_str().unwrap()
+            ));
+        }
+        args.into_iter()
+    }
+}
+
+pub fn run<F>(
+    mut verifier: Verifier,
+    mut rustc_args: Vec<String>,
     file_loader: F,
+    build_test_mode: bool,
 ) -> (Verifier, Stats, Result<(), ()>)
 where
     F: 'static + rustc_span::source_map::FileLoader + Send + Sync + Clone,
 {
+    if !build_test_mode {
+        if let Some(VerusRoot { path: verusroot, in_vargo }) = find_verusroot() {
+            verifier
+                .args
+                .import
+                .push((format!("vstd"), verusroot.join("vstd.vir").to_str().unwrap().to_string()));
+            rustc_args.push(format!("--edition"));
+            rustc_args.push(format!("2018"));
+            let externs = VerusExterns { path: &verusroot, has_vstd: !verifier.args.no_vstd };
+            rustc_args.extend(externs.to_args());
+            if in_vargo && !std::env::var("VERUS_Z3_PATH").is_ok() {
+                std::env::set_var(
+                    "VERUS_Z3_PATH",
+                    verusroot
+                        .parent()
+                        .and_then(|x| x.parent())
+                        .unwrap()
+                        .join(if cfg!(windows) { "z3.exe" } else { "z3" })
+                        .to_str()
+                        .unwrap(),
+                );
+            }
+        }
+    } else if verifier.args.no_vstd {
+        panic!("cannot use --no-vstd in test mode");
+    }
+
     let time0 = Instant::now();
 
     // Build VIR and run verification
     let mut verifier_callbacks = VerifierCallbacksEraseMacro {
         verifier,
         lifetime_start_time: None,
+        lifetime_end_time: None,
         rustc_args: rustc_args.clone(),
         file_loader: Some(Box::new(file_loader.clone())),
+        build_test_mode,
     };
     let status = run_compiler(
         rustc_args.clone(),
@@ -175,41 +295,57 @@ where
         false,
         &mut verifier_callbacks,
         Box::new(file_loader.clone()),
+        build_test_mode,
     );
-    if !verifier_callbacks.verifier.encountered_vir_error {
-        print_verification_results(&verifier_callbacks.verifier);
+    let VerifierCallbacksEraseMacro { verifier, lifetime_start_time, lifetime_end_time, .. } =
+        verifier_callbacks;
+    if !verifier.args.output_json && !verifier.encountered_vir_error {
+        println!(
+            "verification results:: verified: {} errors: {}{}",
+            verifier.count_verified,
+            verifier.count_errors,
+            if !is_verifying_entire_crate(&verifier) {
+                " (partial verification with `--verify-*`)"
+            } else {
+                ""
+            }
+        );
     }
-    let VerifierCallbacksEraseMacro { verifier, lifetime_start_time, .. } = verifier_callbacks;
-    let time2 = Instant::now();
-    let time1 = lifetime_start_time.unwrap_or(time2);
+    let time1 = Instant::now();
+    let time_lifetime = match (lifetime_start_time, lifetime_end_time) {
+        (Some(t1), Some(t2)) => t2 - t1,
+        _ => Duration::new(0, 0),
+    };
 
     if status.is_err() || verifier.encountered_vir_error {
         return (
             verifier,
             Stats {
-                time_verify: time1 - time0,
-                time_lifetime: time2 - time1,
+                time_verify: time1 - time0 - time_lifetime,
+                time_lifetime,
                 time_compile: Duration::new(0, 0),
-                time_erasure: Duration::new(0, 0),
             },
             Err(()),
         );
     }
 
-    let compile_status = run_with_erase_macro_compile(
-        rustc_args,
-        Box::new(file_loader),
-        verifier.args.compile,
-        verifier.test_capture_output.clone(),
-    );
+    let compile_status = if !verifier.args.compile && verifier.args.no_lifetime {
+        Ok(())
+    } else {
+        run_with_erase_macro_compile(
+            rustc_args,
+            Box::new(file_loader),
+            verifier.args.compile,
+            build_test_mode,
+        )
+    };
 
-    let time3 = Instant::now();
+    let time2 = Instant::now();
 
     let stats = Stats {
-        time_verify: time1 - time0,
-        time_lifetime: time2 - time1,
-        time_compile: time3 - time2,
-        time_erasure: Duration::new(0, 0),
+        time_verify: time1 - time0 - time_lifetime,
+        time_lifetime,
+        time_compile: time2 - time1,
     };
 
     // Run borrow checker and compiler with #[exec] (not #[proof])
@@ -218,175 +354,4 @@ where
     }
 
     (verifier, stats, Ok(()))
-}
-
-fn run_with_erase_ast<F>(
-    verifier: Verifier,
-    rustc_args: Vec<String>,
-    file_loader: F,
-) -> (Verifier, Stats, Result<(), ()>)
-where
-    F: 'static + rustc_span::source_map::FileLoader + Send + Sync + Clone,
-{
-    let time0 = Instant::now();
-    let mut time_erasure1 = Duration::new(0, 0);
-    let mut time_erasure2 = Duration::new(0, 0);
-
-    // In order to run borrowck on proof and exec code _before_ lowering to AIR and running Z3,
-    // we start the first instance of rustc, pause it after expansion to generate VIR, then keep
-    // the rustc thread waiting to maintain its state for VIR->AIR and to report errors from Z3.
-
-    // Signal from the rustc thread to this thread that expansion and HIR->VIR are complete
-    let (vir_ready_s, vir_ready_d) = signalling::signal();
-    // Signal from this thread to the rustc thread that we've run borrowck (on a separate instance
-    // of rustc) and it's now time to lower to AIR and run Z3
-    let (now_verify_s, now_verify_d) = signalling::signal();
-
-    let verifier = Arc::new(Mutex::new(verifier));
-    let compiler_thread = {
-        let mut verifier_callbacks = VerifierCallbacksEraseAst {
-            verifier: verifier.clone(),
-            vir_ready: vir_ready_s.clone(),
-            now_verify: now_verify_d,
-        };
-        let rustc_args = rustc_args.clone();
-        let file_loader = file_loader.clone();
-        // Start rustc in a separate thread: run verifier callback to build VIR tree and run verifier
-        std::thread::spawn(move || {
-            let status = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                run_compiler(
-                    rustc_args,
-                    false,
-                    false,
-                    &mut verifier_callbacks,
-                    Box::new(file_loader),
-                )
-            }));
-            match status {
-                Ok(Ok(_)) => Ok(()),
-                _ => {
-                    vir_ready_s.signal(true);
-                    Err(())
-                }
-            }
-        })
-    };
-
-    let compiler_err = vir_ready_d.wait();
-
-    let time1 = Instant::now();
-
-    let borrowck_status = {
-        if compiler_err {
-            Err(())
-        } else {
-            verifier.lock().map_err(|_| ()).and_then(|verifier| {
-                if !verifier.args.no_lifetime {
-                    // Run borrow checker with both #[verifier::exec] and #[verifier::proof]
-                    let erasure_hints = verifier.erasure_hints.clone().expect("erasure_hints");
-                    let mut callbacks = CompilerCallbacksEraseAst {
-                        erasure_hints,
-                        lifetimes_only: true,
-                        print: verifier.args.print_erased_spec,
-                        test_capture_output: verifier.test_capture_output.clone(),
-                        time_erasure: Arc::new(Mutex::new(Duration::new(0, 0))),
-                    };
-                    let status = run_compiler(
-                        rustc_args.clone(),
-                        false,
-                        false,
-                        &mut callbacks,
-                        Box::new(file_loader.clone()),
-                    );
-                    time_erasure1 = *callbacks.time_erasure.lock().unwrap();
-                    status.map_err(|_| ())
-                } else {
-                    Ok(())
-                }
-            })
-        }
-    };
-
-    let time2 = Instant::now();
-
-    if let Err(()) = borrowck_status {
-        now_verify_s.signal(true);
-        let _status = compiler_thread.join().expect("join compiler thread");
-        let verifier = Arc::try_unwrap(verifier)
-            .map_err(|_| ())
-            .expect("only one Arc reference to the verifier")
-            .into_inner()
-            .unwrap_or_else(|e| e.into_inner());
-        let stats = Stats {
-            time_verify: (time1 - time0),
-            time_lifetime: time2 - time1 - time_erasure1,
-            time_compile: Duration::new(0, 0),
-            time_erasure: time_erasure1,
-        };
-        return (verifier, stats, Err(()));
-    }
-
-    now_verify_s.signal(false);
-    let status = compiler_thread.join().expect("join compiler thread");
-
-    let time3 = Instant::now();
-
-    let verifier = Arc::try_unwrap(verifier)
-        .map_err(|_| ())
-        .expect("only one Arc reference to the verifier")
-        .into_inner()
-        .unwrap_or_else(|e| e.into_inner());
-    print_verification_results(&verifier);
-
-    if let Err(()) = status {
-        let stats = Stats {
-            time_verify: (time1 - time0) + (time3 - time2),
-            time_lifetime: time2 - time1 - time_erasure1,
-            time_compile: Duration::new(0, 0),
-            time_erasure: time_erasure1 + time_erasure2,
-        };
-        return (verifier, stats, Err(()));
-    }
-
-    // Run borrow checker and compiler on #[verifier::exec] (if enabled)
-    if verifier.args.compile {
-        let erasure_hints =
-            verifier.erasure_hints.clone().expect("erasure_hints should be initialized").clone();
-        let mut callbacks = CompilerCallbacksEraseAst {
-            erasure_hints,
-            lifetimes_only: false,
-            print: verifier.args.print_erased,
-            test_capture_output: verifier.test_capture_output.clone(),
-            time_erasure: Arc::new(Mutex::new(Duration::new(0, 0))),
-        };
-        run_compiler(rustc_args, false, false, &mut callbacks, Box::new(file_loader))
-            .expect("RunCompiler.run() failed");
-        time_erasure2 = *callbacks.time_erasure.lock().unwrap();
-    }
-
-    let time4 = Instant::now();
-    (
-        verifier,
-        Stats {
-            time_verify: (time1 - time0) + (time3 - time2),
-            time_lifetime: time2 - time1 - time_erasure1,
-            time_compile: time4 - time3 - time_erasure2,
-            time_erasure: time_erasure1 + time_erasure2,
-        },
-        Ok(()),
-    )
-}
-
-pub fn run<F>(
-    verifier: Verifier,
-    rustc_args: Vec<String>,
-    file_loader: F,
-) -> (Verifier, Stats, Result<(), ()>)
-where
-    F: 'static + rustc_span::source_map::FileLoader + Send + Sync + Clone,
-{
-    match verifier.args.erasure {
-        crate::config::Erasure::Ast => run_with_erase_ast(verifier, rustc_args, file_loader),
-        crate::config::Erasure::Macro => run_with_erase_macro(verifier, rustc_args, file_loader),
-    }
 }

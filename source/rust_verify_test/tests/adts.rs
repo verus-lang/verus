@@ -184,7 +184,7 @@ test_verify_one_file! {
             let s = SpecStruct { a: 12 }; // FAILS
             assert(s.a == 12);
         }
-    } => Err(err) => assert_error_msg(err, "error[E0308]: mismatched types")
+    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
 }
 
 test_verify_one_file! {
@@ -321,7 +321,7 @@ test_verify_one_file! {
         pub struct Maybe<T> {
             t: T,
         }
-    } => Err(err) => assert_error_msg(err, "#[is_variant] is only allowed on enums")
+    } => Err(err) => assert_vir_error_msg(err, "#[is_variant] is only allowed on enums")
 }
 
 test_verify_one_file! {
@@ -423,7 +423,7 @@ test_verify_one_file! {
         fn test1(v: Maybe<u64>) {
             assert(v.get_Some_1() == 3);
         }
-    } => Err(err) => assert_error_msg(err, "error[E0599]: no method named `get_Some_1`")
+    } => Err(err) => assert_rust_error_msg(err, "no method named `get_Some_1` found for enum `Maybe` in the current scope")
 }
 
 test_verify_one_file! {
@@ -722,7 +722,7 @@ test_verify_one_file! {
                 S::V1 => assert(true),
             };
         }
-    } => Err(err) => assert_error_msg(err, "error[E0004]: non-exhaustive patterns")
+    } => Err(err) => assert_rust_error_msg(err, "non-exhaustive patterns: `S::V2` not covered")
 }
 
 test_verify_one_file! {
@@ -821,6 +821,15 @@ test_verify_one_file! {
         {
             let u = x.u;
             assert(equal(u, b));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] is_variant_with_attribute_regression_480 verus_code! {
+        #[is_variant]
+        enum X<#[verifier(maybe_negative)] T> {
+            ZZ(T),
         }
     } => Ok(())
 }

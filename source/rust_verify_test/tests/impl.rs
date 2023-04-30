@@ -265,7 +265,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_error_msg(err, "parameter must have mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "parameter must have mode exec")
 }
 
 test_verify_one_file! {
@@ -277,7 +277,7 @@ test_verify_one_file! {
             type Output = bool;
             fn index(&self, #[verifier::spec]idx: usize) -> &bool { &true }
         }
-    } => Err(err) => assert_error_msg(err, "parameter must have mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "parameter must have mode exec")
 }
 
 test_verify_one_file! {

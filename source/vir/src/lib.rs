@@ -26,8 +26,6 @@
 //!
 //! To ensure that VIR stays simple and easy to use, the vir crate does not depend on rustc.
 
-#![feature(let_else)]
-
 pub mod ast;
 pub mod ast_simplify;
 pub mod ast_sort;
@@ -63,6 +61,6 @@ pub mod traits;
 mod triggers;
 mod triggers_auto;
 pub mod update_cell;
-mod util;
+pub mod util;
 mod visitor;
 pub mod well_formed;

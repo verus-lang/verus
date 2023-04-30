@@ -52,7 +52,7 @@ see:
 - [set_lib.rs](https://github.com/verus-lang/verus/tree/main/source/pervasive/set_lib.rs)
 - [map.rs](https://github.com/verus-lang/verus/tree/main/source/pervasive/map.rs)
 
-See also the [API documentation](https://verus-lang.github.io/verus/verusdoc/lib/pervasive/index.html).
+See also the [API documentation](https://verus-lang.github.io/verus/verusdoc/vstd/index.html).
 
 ## Proving properties of Seq, Set, Map
 

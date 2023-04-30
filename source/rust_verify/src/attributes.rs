@@ -1,14 +1,15 @@
-use crate::util::{err_span_str, err_span_string, vir_err_span_str};
+use crate::util::{err_span, vir_err_span_str};
+use rustc_ast::ast::AttrArgs;
 use rustc_ast::token::{Token, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
-use rustc_ast::{AttrKind, Attribute, MacArgs};
+use rustc_ast::{AttrKind, Attribute};
 use rustc_span::Span;
 use vir::ast::{Mode, TriggerAnnotation, VirErr};
 
 #[derive(Debug)]
 pub(crate) enum AttrTree {
     Fun(Span, String, Option<Box<[AttrTree]>>),
-    Eq(Span, String, String),
+    //Eq(Span, String, String), // TODO(main_new)
 }
 
 pub(crate) fn token_to_string(token: &Token) -> Result<Option<String>, ()> {
@@ -24,7 +25,7 @@ pub(crate) fn token_stream_to_trees(
     span: Span,
     stream: &TokenStream,
 ) -> Result<Box<[AttrTree]>, ()> {
-    let mut token_trees: Vec<TokenTree> = Vec::new();
+    let mut token_trees: Vec<&TokenTree> = Vec::new();
     for x in stream.trees() {
         token_trees.push(x);
     }
@@ -32,7 +33,7 @@ pub(crate) fn token_stream_to_trees(
     let mut trees: Vec<AttrTree> = Vec::new();
     while i < token_trees.len() {
         match &token_trees[i] {
-            TokenTree::Token(token) => {
+            TokenTree::Token(token, _spacing) => {
                 if let Some(name) = token_to_string(token)? {
                     let fargs = if i + 1 < token_trees.len() {
                         if let TokenTree::Delimited(_, _, token_stream) = &token_trees[i + 1] {
@@ -54,16 +55,38 @@ pub(crate) fn token_stream_to_trees(
     Ok(trees.into_boxed_slice())
 }
 
-fn mac_args_to_tree(span: Span, name: String, args: &MacArgs) -> Result<AttrTree, ()> {
+// TODO(main_new) fn mac_args_to_tree(span: Span, name: String, args: &MacArgs) -> Result<AttrTree, ()> {
+// TODO(main_new)     match args {
+// TODO(main_new)         MacArgs::Empty => Ok(AttrTree::Fun(span, name, None)),
+// TODO(main_new)         MacArgs::Delimited(_, _, token_stream) => {
+// TODO(main_new)             Ok(AttrTree::Fun(span, name, Some(token_stream_to_trees(span, token_stream)?)))
+// TODO(main_new)         }
+// TODO(main_new)         MacArgs::Eq(_, token) => match token_to_string(token)? {
+// TODO(main_new)             None => Err(()),
+// TODO(main_new)             Some(token) => Ok(AttrTree::Eq(span, name, token)),
+// TODO(main_new)         },
+// TODO(main_new)     }
+// TODO(main_new) }
+
+fn attr_args_to_tree(span: Span, name: String, args: &AttrArgs) -> Result<AttrTree, ()> {
     match args {
-        MacArgs::Empty => Ok(AttrTree::Fun(span, name, None)),
-        MacArgs::Delimited(_, _, token_stream) => {
-            Ok(AttrTree::Fun(span, name, Some(token_stream_to_trees(span, token_stream)?)))
+        AttrArgs::Empty => Ok(AttrTree::Fun(span, name, None)),
+        AttrArgs::Delimited(delim) => {
+            Ok(AttrTree::Fun(span, name, Some(token_stream_to_trees(span, &delim.tokens)?)))
         }
-        MacArgs::Eq(_, token) => match token_to_string(token)? {
-            None => Err(()),
-            Some(token) => Ok(AttrTree::Eq(span, name, token)),
-        },
+        AttrArgs::Eq(_, rustc_ast::ast::AttrArgsEq::Ast(expr)) => {
+            dbg!(&expr);
+            // TODO(main_new) match token_to_string(expr.tokens)? {
+            // TODO(main_new)     None => Err(()),
+            // TODO(main_new)     Some(token) => Ok(AttrTree::Eq(span, name, token)),
+            // TODO(main_new) },
+            todo!()
+        }
+        AttrArgs::Eq(_, rustc_ast::ast::AttrArgsEq::Hir(lit)) => {
+            dbg!(&lit);
+            // TODO(main_new)
+            todo!()
+        }
     }
 }
 
@@ -82,24 +105,24 @@ enum AttrPrefix {
 
 fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>, VirErr> {
     match &attr.kind {
-        AttrKind::Normal(item, _) => match &item.path.segments[..] {
-            [segment] if segment.ident.as_str() == "verifier" => match &item.args {
-                MacArgs::Delimited(_, _, token_stream) => {
-                    let trees: Box<[AttrTree]> = token_stream_to_trees(attr.span, token_stream)
-                        .map_err(|_| vir_err_span_str(attr.span, "invalid verifier attribute"))?;
-                    if trees.len() != 1 {
-                        return err_span_str(attr.span, "invalid verifier attribute");
-                    }
-                    let mut trees = trees.into_vec().into_iter();
-                    let tree: AttrTree = trees
-                        .next()
-                        .ok_or(vir_err_span_str(attr.span, "invalid verifier attribute"))?;
-                    Ok(Some((AttrPrefix::Verifier, attr.span, tree)))
-                }
-                _ => return err_span_str(attr.span, "invalid verifier attribute"),
+        AttrKind::Normal(item) => match &item.item.path.segments[..] {
+            [segment] if segment.ident.as_str() == "verifier" => match &item.item.args {
+                // TODO(main_new) MacArgs::Delimited(_, _, token_stream) => {
+                // TODO(main_new)     let trees: Box<[AttrTree]> = token_stream_to_trees(attr.span, token_stream)
+                // TODO(main_new)         .map_err(|_| vir_err_span_str(attr.span, "invalid verifier attribute"))?;
+                // TODO(main_new)     if trees.len() != 1 {
+                // TODO(main_new)         return err_span(attr.span, "invalid verifier attribute");
+                // TODO(main_new)     }
+                // TODO(main_new)     let mut trees = trees.into_vec().into_iter();
+                // TODO(main_new)     let tree: AttrTree = trees
+                // TODO(main_new)         .next()
+                // TODO(main_new)         .ok_or(vir_err_span_str(attr.span, "invalid verifier attribute"))?;
+                // TODO(main_new)     Ok(Some((AttrPrefix::Verifier, attr.span, tree)))
+                // TODO(main_new) }
+                _ => return err_span(attr.span, "invalid verifier attribute"),
             },
             [prefix_segment, segment] if prefix_segment.ident.as_str() == "verifier" => {
-                mac_args_to_tree(attr.span, segment.ident.to_string(), &item.args)
+                attr_args_to_tree(attr.span, segment.ident.to_string(), &item.item.args)
                     .map(|tree| Some((AttrPrefix::Verifier, attr.span, tree)))
                     .map_err(|_| vir_err_span_str(attr.span, "invalid verifier attribute"))
             }
@@ -108,15 +131,17 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
                 let verus_prefix = match &*name {
                     "internal" => VerusPrefix::Internal,
                     _ => {
-                        return err_span_str(attr.span, "invalid verus attribute");
+                        return err_span(attr.span, "invalid verus attribute");
                     }
                 };
-                match &item.args {
-                    MacArgs::Delimited(_, _, token_stream) => {
-                        let trees: Box<[AttrTree]> = token_stream_to_trees(attr.span, token_stream)
-                            .map_err(|_| vir_err_span_str(attr.span, "invalid verus attribute"))?;
+                match &item.item.args {
+                    AttrArgs::Delimited(delim) => {
+                        let trees: Box<[AttrTree]> =
+                            token_stream_to_trees(attr.span, &delim.tokens).map_err(|_| {
+                                vir_err_span_str(attr.span, "invalid verus attribute")
+                            })?;
                         if trees.len() != 1 {
-                            return err_span_str(attr.span, "invalid verus attribute");
+                            return err_span(attr.span, "invalid verus attribute");
                         }
                         let mut trees = trees.into_vec().into_iter();
                         let tree: AttrTree = trees
@@ -124,7 +149,7 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
                             .ok_or(vir_err_span_str(attr.span, "invalid verus attribute"))?;
                         Ok(Some((AttrPrefix::Verus(verus_prefix), attr.span, tree)))
                     }
-                    _ => return err_span_str(attr.span, "invalid verus attribute"),
+                    _ => return err_span(attr.span, "invalid verus attribute"),
                 }
             }
             [segment]
@@ -132,7 +157,7 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
                     || segment.ident.as_str() == "proof"
                     || segment.ident.as_str() == "exec" =>
             {
-                return err_span_str(
+                return err_span(
                     attr.span,
                     "attributes spec, proof, exec are not supported anymore; use the verus! macro instead",
                 );
@@ -202,8 +227,6 @@ pub(crate) enum Attr {
     AutoTrigger,
     // exclude a particular function from being chosen in a trigger by triggers_auto
     NoAutoTrigger,
-    // when used in a spec context, promote to spec by inserting .view()
-    Autoview,
     // when used in a ghost context, redirect to a specified spec method
     Autospec(String),
     // add manual trigger to expression inside quantifier
@@ -248,7 +271,7 @@ fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
     };
     match i {
         Some(i) => Ok(i),
-        None => err_span_string(span, format!("expected integer constant, found {:?}", &attr_tree)),
+        None => err_span(span, format!("expected integer constant, found {:?}", &attr_tree)),
     }
 }
 
@@ -273,7 +296,7 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                         groups.push(get_trigger_arg(*span, arg)?);
                     }
                     if groups.len() == 0 {
-                        return err_span_str(
+                        return err_span(
                             *span,
                             "expected either #[trigger] or non-empty #[trigger(...)]",
                         );
@@ -317,7 +340,6 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 AttrTree::Fun(_, arg, None) if arg == "no_auto_trigger" => {
                     v.push(Attr::NoAutoTrigger)
                 }
-                AttrTree::Fun(_, arg, None) if arg == "autoview" => v.push(Attr::Autoview),
                 AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
                     if arg == "when_used_as_spec" =>
                 {
@@ -326,27 +348,6 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 AttrTree::Fun(_, arg, None) if arg == "atomic" => v.push(Attr::Atomic),
                 AttrTree::Fun(_, arg, None) if arg == "invariant_block" => {
                     v.push(Attr::InvariantBlock)
-                }
-                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
-                    if arg == "is_variant" =>
-                {
-                    v.push(Attr::IsVariant(ident.clone()))
-                }
-                AttrTree::Fun(
-                    _,
-                    arg,
-                    Some(
-                        box [
-                            AttrTree::Fun(_, variant_ident, None),
-                            AttrTree::Fun(_, field_ident, None),
-                        ],
-                    ),
-                ) if arg == "get_variant" => {
-                    let field_ident = match field_ident.parse::<usize>().ok() {
-                        Some(i) => GetVariantField::Unnamed(i),
-                        None => GetVariantField::Named(field_ident.clone()),
-                    };
-                    v.push(Attr::GetVariant(variant_ident.clone(), field_ident))
                 }
                 AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, msg, None)]))
                     if arg == "custom_req_err" =>
@@ -384,7 +385,7 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 }
                 AttrTree::Fun(_, arg, None) if arg == "memoize" => v.push(Attr::Memoize),
                 AttrTree::Fun(_, arg, None) if arg == "truncate" => v.push(Attr::Truncate),
-                _ => return err_span_str(span, "unrecognized verifier attribute"),
+                _ => return err_span(span, "unrecognized verifier attribute"),
             },
             AttrPrefix::Verus(verus_prefix) => match verus_prefix {
                 VerusPrefix::Internal => match &attr {
@@ -412,7 +413,7 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                             groups.push(get_trigger_arg(*span, arg)?);
                         }
                         if groups.len() == 0 {
-                            return err_span_str(
+                            return err_span(
                                 *span,
                                 "expected either #[trigger] or non-empty #[trigger(...)]",
                             );
@@ -452,12 +453,33 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                             "nonlinear_arith" => v.push(Attr::NonLinear),
                             "bit_vector" => v.push(Attr::BitVector),
                             "integer_ring" => v.push(Attr::IntegerRing),
-                            _ => return err_span_str(span, "invalid prover"),
+                            _ => return err_span(span, "invalid prover"),
                         }
+                    }
+                    AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
+                        if arg == "is_variant" =>
+                    {
+                        v.push(Attr::IsVariant(ident.clone()))
+                    }
+                    AttrTree::Fun(
+                        _,
+                        arg,
+                        Some(
+                            box [
+                                AttrTree::Fun(_, variant_ident, None),
+                                AttrTree::Fun(_, field_ident, None),
+                            ],
+                        ),
+                    ) if arg == "get_variant" => {
+                        let field_ident = match field_ident.parse::<usize>().ok() {
+                            Some(i) => GetVariantField::Unnamed(i),
+                            None => GetVariantField::Named(field_ident.clone()),
+                        };
+                        v.push(Attr::GetVariant(variant_ident.clone(), field_ident))
                     }
                     AttrTree::Fun(_, arg, None) if arg == "via" => v.push(Attr::DecreasesBy),
                     _ => {
-                        return err_span_str(span, "unrecognized internal attribute");
+                        return err_span(span, "unrecognized internal attribute");
                     }
                 },
             },
@@ -564,7 +586,6 @@ pub(crate) struct VerifierAttrs {
     pub(crate) maybe_negative: bool,
     pub(crate) broadcast_forall: bool,
     pub(crate) no_auto_trigger: bool,
-    pub(crate) autoview: bool,
     pub(crate) autospec: Option<String>,
     pub(crate) custom_req_err: Option<String>,
     pub(crate) bit_vector: bool,
@@ -593,7 +614,6 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         strictly_positive: false,
         broadcast_forall: false,
         no_auto_trigger: false,
-        autoview: false,
         autospec: None,
         custom_req_err: None,
         bit_vector: false,
@@ -621,7 +641,6 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::StrictlyPositive => vs.strictly_positive = true,
             Attr::BroadcastForall => vs.broadcast_forall = true,
             Attr::NoAutoTrigger => vs.no_auto_trigger = true,
-            Attr::Autoview => vs.autoview = true,
             Attr::Autospec(method_ident) => vs.autospec = Some(method_ident),
             Attr::CustomReqErr(s) => vs.custom_req_err = Some(s.clone()),
             Attr::BitVector => vs.bit_vector = true,

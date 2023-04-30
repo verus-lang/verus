@@ -2,9 +2,9 @@ use crate::ast::{
     BinaryOp, BitwiseOp, Constant, FieldOpr, Fun, Ident, Path, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
     VirErr,
 };
-use crate::ast_util::{err_str, path_as_rust_name};
+use crate::ast_util::{error, path_as_rust_name};
 use crate::context::{ChosenTriggers, Ctx, FunctionCtx};
-use crate::sst::{Exp, ExpX, Trig, Trigs, UniqueIdent};
+use crate::sst::{CallFun, Exp, ExpX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map;
 use air::ast::Span;
 use std::collections::{HashMap, HashSet};
@@ -181,7 +181,7 @@ struct Timer {
 
 fn check_timeout(timer: &mut Timer) -> Result<(), VirErr> {
     if timer.timeout_countdown == 0 {
-        err_str(
+        error(
             &timer.span,
             "could not infer triggers, because quantifier is too large (use manual #[trigger] instead)",
         )
@@ -277,11 +277,16 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 crate::ast_visitor::map_typ_visitor_env(typ, &mut all_terms, &ft).unwrap();
             }
             all_terms.extend(terms);
-            match ctx.func_map.get(x) {
-                Some(f) if f.x.attrs.no_auto_trigger => {
-                    (false, Arc::new(TermX::App(ctxt.other(), Arc::new(all_terms))))
+            match x {
+                CallFun::Fun(x) => match ctx.func_map.get(x) {
+                    Some(f) if f.x.attrs.no_auto_trigger => {
+                        (false, Arc::new(TermX::App(ctxt.other(), Arc::new(all_terms))))
+                    }
+                    _ => (is_pure, Arc::new(TermX::App(App::Call(x.clone()), Arc::new(all_terms)))),
+                },
+                CallFun::InternalFun(_) => {
+                    (is_pure, Arc::new(TermX::App(ctxt.other(), Arc::new(all_terms))))
                 }
-                _ => (is_pure, Arc::new(TermX::App(App::Call(x.clone()), Arc::new(all_terms)))),
             }
         }
         ExpX::CallLambda(_, e0, es) => {
@@ -339,7 +344,10 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::UnaryOpr(UnaryOpr::TupleField { .. }, _) => {
             panic!("internal error: TupleField should have been removed before here")
         }
-        ExpX::UnaryOpr(UnaryOpr::Field(FieldOpr { datatype, variant, field }), lhs) => {
+        ExpX::UnaryOpr(
+            UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _ }),
+            lhs,
+        ) => {
             let (is_pure, arg) = gather_terms(ctxt, ctx, lhs, depth + 1);
             (
                 is_pure,
@@ -360,7 +368,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
             let (_, term2) = gather_terms(ctxt, ctx, e2, depth);
             match op {
-                Bitwise(bp) => {
+                Bitwise(bp, _) => {
                     let bop = match bp {
                         BitwiseOp::BitXor => BitOpName::BitXor,
                         BitwiseOp::BitAnd => BitOpName::BitAnd,
@@ -646,7 +654,7 @@ pub(crate) fn build_triggers(
         });
         Ok(Arc::new(trigs))
     } else {
-        err_str(
+        error(
             span,
             "Could not automatically infer triggers for this quantifer.  Use #[trigger] annotations to manually mark trigger terms instead.",
         )

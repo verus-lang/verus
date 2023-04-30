@@ -184,8 +184,9 @@ test_verify_one_file! {
             true
         }
 
-        fn g() -> bool {
-            ensures(|res: bool| forall(|i: nat| f(i)));
+        fn g() -> (res: bool)
+            ensures forall|i: nat| f(i)
+        {
             return true;
         }
     } => Ok(())
@@ -222,4 +223,152 @@ test_verify_one_file! {
             reveal(foo);
         }
     } => Err(err) => assert_vir_error_msg(err, "reveal/fuel statements require a spec-mode function")
+}
+
+test_verify_one_file! {
+    #[test] let_with_parens_issue_260 verus_code! {
+        fn f() {
+            let (x):usize = 0;
+            assert(x == 0);
+        }
+
+        fn g() {
+            let (x):usize = 0;
+            assert(x == 1); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] use_statement_of_spec_fn_issue293 verus_code! {
+        mod Y {
+            #![allow(dead_code)] // this was needed for the original crash
+
+            use builtin::*;
+            use builtin_macros::*;
+
+            verus!{
+                mod X {
+                    pub open spec fn foo();
+                }
+
+                proof fn some_proof_fn() {
+                    let x = foo();
+                }
+            }
+
+            use X::foo; // this was needed for the original crash
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] is_variant_in_exec_issue_341 verus_code! {
+        pub struct Lock {}
+
+        #[is_variant]
+        pub enum OptionX<T> {
+            NoneX,
+            SomeX(T)
+        }
+
+        pub fn what_is_wrong() -> bool
+        {
+            let opt_lock = OptionX::SomeX(Lock{});
+            let lock = opt_lock.get_SomeX_0();   // This line triggers panic
+            true
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot get variant in exec mode")
+}
+
+test_verify_one_file! {
+    #[ignore] #[test] trait_argument_names_issue278 verus_code! {
+        trait T {
+            fn f(&self, a: usize) -> (res: usize)
+                ensures res == a;
+        }
+
+        struct S { }
+
+        impl T for S {
+            fn f(&self, b: usize) -> usize {
+                b
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] reveal_non_opaque_issue236_1 verus_code! {
+        spec fn is_true(a: bool) -> bool { a }
+
+        proof fn foo() {
+            hide(is_true);
+            assert(is_true(true)); // FAILS
+            reveal(is_true);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] reveal_non_opaque_issue236_2 verus_code! {
+        spec fn is_true(a: bool) -> bool { a }
+
+        proof fn foo() {
+            hide(is_true);
+            reveal(is_true);
+            assert(is_true(true));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] reveal_with_fuel_non_opaque_non_recursive_issue236_373_pass verus_code! {
+        spec fn is_true(a: bool) -> bool { a }
+
+        proof fn foo() {
+            reveal_with_fuel(is_true, 1);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] reveal_with_fuel_non_opaque_non_recursive_issue236_373_fail verus_code! {
+        spec fn is_true(a: bool) -> bool { a }
+
+        proof fn foo() {
+            reveal_with_fuel(is_true, 2);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "reveal_with_fuel statements require a function with a decreases clause")
+}
+
+test_verify_one_file_with_options! {
+    #[test] call_spec_fn_from_external_body_issue_257 ["--compile"] => verus_code! {
+        #[verifier(external_body)]
+        fn f(x: usize) -> usize {
+            id(x)
+        }
+
+        pub open spec fn id(x: usize) -> usize {
+            x
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] air_function_names_issue_376 verus_code! {
+        enum Nat {
+            Zero,
+            Succ(Box<Nat>),
+        }
+
+        spec fn height(n: Nat) -> nat
+            decreases n
+        {
+            match n {
+                Nat::Zero => 0,
+                Nat::Succ(box m) => height(m),
+            }
+        }
+    } => Ok(())
 }

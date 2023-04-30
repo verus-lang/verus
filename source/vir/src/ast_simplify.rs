@@ -9,7 +9,7 @@ use crate::ast::{
     SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
 };
 use crate::ast_util::{conjoin, disjoin, if_then_else};
-use crate::ast_util::{err_str, err_string, wrap_in_trigger};
+use crate::ast_util::{error, wrap_in_trigger};
 use crate::context::GlobalCtx;
 use crate::def::{prefix_tuple_field, prefix_tuple_param, prefix_tuple_variant, Spanned};
 use crate::util::vec_map_result;
@@ -166,6 +166,7 @@ fn pattern_to_exprs_rec(
                     datatype: path.clone(),
                     variant: variant.clone(),
                     field: prefix_tuple_field(i),
+                    get_variant: false,
                 });
                 let field_exp = pattern_field_expr(&pattern.span, expr, &pat.typ, field_op);
                 let pattern_test = pattern_to_exprs_rec(ctx, state, &field_exp, pat, decls)?;
@@ -184,6 +185,7 @@ fn pattern_to_exprs_rec(
                     datatype: path.clone(),
                     variant: variant.clone(),
                     field: binder.name.clone(),
+                    get_variant: false,
                 });
                 let field_exp = pattern_field_expr(&pattern.span, expr, &binder.a.typ, field_op);
                 let pattern_test = pattern_to_exprs_rec(ctx, state, &field_exp, &binder.a, decls)?;
@@ -296,6 +298,7 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
                         datatype: path.clone(),
                         variant: variant.clone(),
                         field: field.name.clone(),
+                        get_variant: false,
                     });
                     let exprx = ExprX::UnaryOpr(op, update.clone());
                     let field_exp = SpannedTyped::new(&expr.span, &field.a.0, exprx);
@@ -388,7 +391,7 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
                 };
                 Ok(if_expr)
             } else {
-                err_str(&expr.span, "not yet implemented: zero-arm match expressions")
+                error(&expr.span, "not yet implemented: zero-arm match expressions")
             }
         }
         ExprX::Ghost { alloc_wrapper: _, tracked: _, expr: expr1 } => Ok(expr1.clone()),
@@ -434,7 +437,7 @@ fn tuple_get_field_expr(
     let datatype = state.tuple_type_name(tuple_arity);
     let variant = prefix_tuple_variant(tuple_arity);
     let field = prefix_tuple_field(field);
-    let op = UnaryOpr::Field(FieldOpr { datatype, variant, field });
+    let op = UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: false });
     let field_expr = SpannedTyped::new(span, typ, ExprX::UnaryOpr(op, tuple_expr.clone()));
     field_expr
 }
@@ -443,7 +446,7 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
     match &stmt.x {
         StmtX::Decl { pattern, mode: _, init: None } => match &pattern.x {
             PatternX::Var { .. } => Ok(vec![stmt.clone()]),
-            _ => err_str(&stmt.span, "let-pattern declaration must have an initializer"),
+            _ => error(&stmt.span, "let-pattern declaration must have an initializer"),
         },
         StmtX::Decl { pattern, mode: _, init: Some(init) }
             if !matches!(pattern.x, PatternX::Var { .. }) =>
@@ -470,7 +473,7 @@ fn simplify_one_typ(local: &LocalCtxt, state: &mut State, typ: &Typ) -> Result<T
         }
         TypX::TypParam(x) => {
             if !local.bounds.contains_key(x) {
-                return err_string(
+                return error(
                     &local.span,
                     format!("type parameter {} used before being declared", x),
                 );
@@ -769,7 +772,7 @@ fn mk_fun_decl(
         span.clone(),
         FunctionX {
             name: Arc::new(FunX { path: path.clone(), trait_path: None }),
-            visibility: Visibility { owning_module: None, is_private: false },
+            visibility: Visibility { owning_module: None, restricted_to: None },
             mode: Mode::Spec,
             fuel: 0,
             typ_bounds: Arc::new(vec_map(typ_params, |x| {
@@ -800,8 +803,11 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     let mut datatypes = vec_map_result(&datatypes, |d| simplify_datatype(&mut state, d))?;
 
     // Add a generic datatype to represent each tuple arity
-    for (arity, path) in state.tuple_typs {
-        let visibility = Visibility { owning_module: None, is_private: false };
+    // Iterate in sorted order to get consistent output
+    let mut tuples: Vec<_> = state.tuple_typs.into_iter().collect();
+    tuples.sort_by_key(|kv| kv.0);
+    for (arity, path) in tuples {
+        let visibility = Visibility { owning_module: None, restricted_to: None };
         let transparency = DatatypeTransparency::Always;
         let bound = Arc::new(GenericBoundX::Traits(vec![]));
         let typ_params =
@@ -809,7 +815,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         let mut fields: Vec<Field> = Vec::new();
         for i in 0..arity {
             let typ = Arc::new(TypX::TypParam(prefix_tuple_param(i)));
-            let vis = Visibility { owning_module: None, is_private: false };
+            let vis = Visibility { owning_module: None, restricted_to: None };
             // Note: the mode is irrelevant at this stage, so we arbitrarily use Mode::Exec
             fields.push(ident_binder(&prefix_tuple_field(i), &(typ, Mode::Exec, vis)));
         }
@@ -820,7 +826,9 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         datatypes.push(Spanned::new(ctx.no_span.clone(), datatypex));
     }
 
-    for (_id, path) in state.closure_typs {
+    let mut closures: Vec<_> = state.closure_typs.into_iter().collect();
+    closures.sort_by_key(|kv| kv.0);
+    for (_id, path) in closures {
         // Right now, we translate the closure type into an a global datatype.
         //
         // However, I'm pretty sure an anonymous closure can't actually be referenced
@@ -848,7 +856,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         // since they are arguments to the 'requires' and 'ensures' predicates, but thanks
         // to Rust's restrictions, we don't have to do any additional checks.)
 
-        let visibility = Visibility { owning_module: None, is_private: false };
+        let visibility = Visibility { owning_module: None, restricted_to: None };
         let transparency = DatatypeTransparency::Never;
 
         let typ_params = Arc::new(vec![]);

@@ -40,8 +40,9 @@ pub struct PathX {
 pub struct Visibility {
     /// Module that owns this item, or None for a foreign module
     pub owning_module: Option<Path>,
-    /// true for private, false for pub, pub(crate)
-    pub is_private: bool,
+    /// None for pub
+    /// Some(path) means visible to path and path's descendents
+    pub restricted_to: Option<Path>,
 }
 
 /// Describes whether a variable, function, etc. is compiled or just used for verification
@@ -186,6 +187,7 @@ pub struct FieldOpr {
     pub datatype: Path,
     pub variant: Ident,
     pub field: Ident,
+    pub get_variant: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
@@ -292,7 +294,8 @@ pub enum BinaryOp {
     /// TODO: if the syntax macro can tell us the Mode, can we get rid of InferMode?
     Arith(ArithOp, Option<InferMode>),
     /// Bit Vector Operators
-    Bitwise(BitwiseOp),
+    /// mode=Exec means we need overflow-checking
+    Bitwise(BitwiseOp, Mode),
     /// Used only for handling builtin::strslice_get_char
     StrGetChar,
 }
@@ -639,8 +642,6 @@ pub struct FunctionAttrsX {
     pub no_auto_trigger: bool,
     /// Custom error message to display when a pre-condition fails
     pub custom_req_err: Option<String>,
-    /// coerce f(e, ...) to f(e.view(), ...)
-    pub autoview: bool,
     /// When used in a ghost context, redirect to a specified spec function
     pub autospec: Option<Fun>,
     /// Verify using bitvector theory

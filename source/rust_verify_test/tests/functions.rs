@@ -28,3 +28,87 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_ensures_returns_default_regression_392_1 verus_code! {
+        fn returns_nothing(a: u8, b: u8)
+            requires a == b,
+            ensures a == b,
+        {
+        }
+
+        fn test() {
+            let x: () = returns_nothing(0, 0);
+            assert(x == ());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_ensures_returns_default_regression_497 verus_code! {
+        trait Foo {
+            exec fn foo(&self);
+        }
+
+        struct X;
+
+        impl Foo for X {
+            exec fn foo(&self) {
+                // do nothing
+            }
+        }
+
+        exec fn bar() {
+            let z: X = X;
+            let x: () = z.foo();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_ensures_returns_default_regression_392_2 verus_code! {
+        spec fn foo() -> bool { true }
+
+        fn returns_unit() ensures foo() { }
+
+        fn test(b: bool) {
+            let x: ();
+            if b {
+                x = returns_unit();
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_ensures_returns_default_regression_392_3 verus_code! {
+        spec fn foo() -> bool { true }
+
+        fn returns_unit() ensures foo() { }
+
+        fn takes_unit(u: ()) { }
+
+        fn test(b: bool) {
+            takes_unit(returns_unit());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_async_external_fn_accepted verus_code! {
+        #[verifier(external)]
+        async fn foo(c: usize) -> Result<usize, ()> {
+            Ok(21)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_non_async_opaque_types_disallowed verus_code! {
+        trait Foo {
+            fn bar(&self) -> bool;
+        }
+
+        type OT = impl Foo;
+    } => Err(err) => assert_rust_error_msg(err, "`impl Trait` in type aliases is unstable")
+}

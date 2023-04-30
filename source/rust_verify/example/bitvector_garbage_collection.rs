@@ -1,5 +1,4 @@
-// rust_verify/tests/example.rs ignore
-// TODO this file times out with z3 4.8.17
+// rust_verify/tests/example.rs ignore --- 2022-07-12 ignored as part of upgrade to z3 4.8.17, intended to be unignored again
 
 #[allow(unused_imports)]
 use builtin::*;

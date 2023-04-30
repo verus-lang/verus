@@ -35,6 +35,26 @@ impl<A> Option<A> {
         }
     }
 
+    #[inline(always)]
+    pub const fn is_some(&self) -> (res: bool)
+        ensures res <==> self.is_Some(),
+    {
+        match self {
+            Option::Some(_) => true,
+            Option::None => false,
+        }
+    }
+
+    #[inline(always)]
+    pub const fn is_none(&self) -> (res: bool)
+        ensures res <==> self.is_None(),
+    {
+        match self {
+            Option::Some(_) => false,
+            Option::None => true,
+        }
+    }
+
     pub fn as_ref(&self) -> (a: Option<&A>)
         ensures
           a.is_Some() <==> self.is_Some(),
@@ -81,3 +101,18 @@ impl<A> Option<A> {
 }
 
 } // verus!
+
+/// A poor-person's `?` operator, until Verus switches to the "real" Rust `Option`.
+#[macro_export]
+#[allow(unused_macros)]
+macro_rules! try_option {
+    ($x:expr) => {{
+        let x = $x;
+        match x {
+            $crate::option::Option::None => {
+                return $crate::option::Option::None;
+            }
+            $crate::option::Option::Some(x) => x,
+        }
+    }};
+}

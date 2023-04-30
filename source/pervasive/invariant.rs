@@ -114,12 +114,12 @@ pub trait InvariantPredicate<K, V> {
 /// The `AtomicInvariant` API is an instance of the ["invariant" method in Verus's general philosophy on interior mutability](https://verus-lang.github.io/verus/guide/interior_mutability.html).
 ///
 /// **Note:** Rather than using `AtomicInvariant` directly, we generally recommend
-/// using the [`atomic_ghost` APIs](atomic_ghost).
+/// using the [`atomic_ghost` APIs](crate::atomic_ghost).
 
 
 #[verifier::proof]
-#[verifier(external_body)] /* vattr */
-pub struct AtomicInvariant<#[verifier(strictly_positive)] /* vattr */ K, #[verifier(strictly_positive)] /* vattr */ V, #[verifier(strictly_positive)] /* vattr */ Pred> {
+#[verifier::external_body] /* vattr */
+pub struct AtomicInvariant<#[verifier::strictly_positive] /* vattr */ K, #[verifier::strictly_positive] /* vattr */ V, #[verifier::strictly_positive] /* vattr */ Pred> {
     dummy: builtin::SyncSendIfSend<V>,
     dummy1: core::marker::PhantomData<(K, Pred)>,
 }
@@ -167,8 +167,8 @@ impl<K, V, Pred> AtomicInvariant<K, V, Pred> {
 
 
 #[verifier::proof]
-#[verifier(external_body)] /* vattr */
-pub struct LocalInvariant<#[verifier(strictly_positive)] /* vattr */ K, #[verifier(strictly_positive)] /* vattr */ V, #[verifier(strictly_positive)] /* vattr */ Pred> {
+#[verifier::external_body] /* vattr */
+pub struct LocalInvariant<#[verifier::strictly_positive] /* vattr */ K, #[verifier::strictly_positive] /* vattr */ V, #[verifier::strictly_positive] /* vattr */ Pred> {
     dummy: builtin::SendIfSend<V>,
     dummy1: core::marker::PhantomData<(K, Pred)>, // TODO ignore Send/Sync here
 }
@@ -203,7 +203,7 @@ macro_rules! declare_invariant_impl {
             ///` with constant `k`. initial stored (tracked) value `v`,
             /// and in the namespace `ns`.
 
-            #[verifier(external_body)]
+            #[verifier::external_body]
             pub proof fn new(k: K, tracked v: V, ns: int) -> (tracked i: $invariant<K, V, Pred>)
                 requires
                     Pred::inv(k, v),
@@ -218,7 +218,7 @@ macro_rules! declare_invariant_impl {
             #[doc = stringify!($invariant)]
             ///`, returning the tracked value contained within.
 
-            #[verifier(external_body)]
+            #[verifier::external_body]
             pub proof fn into_inner(#[verifier::proof] self) -> (tracked v: V)
                 ensures self.inv(v),
             {
@@ -256,19 +256,19 @@ pub struct InvariantBlockGuard;
 //  last the entire block.
 
 #[doc(hidden)]
-#[verifier(external)] /* vattr */
+#[verifier::external] /* vattr */
 pub fn open_atomic_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(_inv: &'a AtomicInvariant<K, V, Pred>) -> (&'a InvariantBlockGuard, V) {
     unimplemented!();
 }
 
 #[doc(hidden)]
-#[verifier(external)] /* vattr */
+#[verifier::external] /* vattr */
 pub fn open_local_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(_inv: &'a LocalInvariant<K, V, Pred>) -> (&'a InvariantBlockGuard, V) {
     unimplemented!();
 }
 
 #[doc(hidden)]
-#[verifier(external)] /* vattr */
+#[verifier::external] /* vattr */
 pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
     unimplemented!();
 }
@@ -303,13 +303,13 @@ pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
 ///
 /// The atomic operations may be found in the [`PAtomic`](crate::atomic) library.
 /// The user can also mark their own functions as "atomic operations" using
-/// `#[verifier(atomic)]`; however, this is not useful for very much other than defining
+/// `#[verifier::atomic)]`; however, this is not useful for very much other than defining
 /// wrappers around the existing atomic operations from [`PAtomic`](crate::atomic).
 /// Note that reading and writing through a [`PCell`](crate::cell::PCell)
 /// or a [`PPtr`](crate::ptr::PPtr) are _not_ atomic operations.
 ///
 /// **Note:** Rather than using `open_atomic_invariant!` directly, we generally recommend
-/// using the [`atomic_ghost` APIs](atomic_ghost).
+/// using the [`atomic_ghost` APIs](crate::atomic_ghost).
 ///
 /// ### Example
 ///
@@ -327,7 +327,7 @@ macro_rules! open_atomic_invariant {
 #[macro_export]
 macro_rules! open_atomic_invariant_internal {
     ($eexpr:expr => $iident:ident => $bblock:block) => {
-        #[verifier(invariant_block)] /* vattr */ {
+        #[verifier::invariant_block] /* vattr */ {
             #[cfg(not(verus_macro_erase_ghost))]
             #[allow(unused_mut)] let (guard, mut $iident) = $crate::invariant::open_atomic_invariant_begin($eexpr);
             $bblock
@@ -444,7 +444,7 @@ macro_rules! open_local_invariant {
 #[macro_export]
 macro_rules! open_local_invariant_internal {
     ($eexpr:expr => $iident:ident => $bblock:block) => {
-        #[verifier(invariant_block)] /* vattr */ {
+        #[verifier::invariant_block] /* vattr */ {
             #[cfg(not(verus_macro_erase_ghost))]
             #[allow(unused_mut)] let (guard, mut $iident) = $crate::invariant::open_local_invariant_begin($eexpr);
             $bblock

@@ -274,6 +274,23 @@ impl<K, V> Map<K, V> {
         unimplemented!();
     }
 
+    #[verifier(external_body)]
+    pub proof fn tracked_union_prefer_right(tracked &mut self, right: Self)
+        ensures
+            *self == old(self).union_prefer_right(right),
+    {
+        unimplemented!();
+    }
+
+    /// Map a function `f` over all (k, v) pairs in `self`.
+    pub open spec fn map_entries<W>(self, f: FnSpec(K, V) -> W) -> Map<K, W> {
+        Map::new(|k: K| self.contains_key(k), |k: K| f(k, self[k]))
+    }
+
+    /// Map a function `f` over the values in `self`.
+    pub open spec fn map_values<W>(self, f: FnSpec(V) -> W) -> Map<K, W> {
+        Map::new(|k: K| self.contains_key(k), |k: K| f(self[k]))
+    }
 }
 
 // Trusted axioms
@@ -446,7 +463,7 @@ macro_rules! assert_maps_equal_internal {
                 // TODO better error message here: show the individual conjunct that fails,
                 // and maybe give an error message in english as well
                 ::builtin::ensures([
-                    ::builtin::imply(#[verifier(trigger)] m1.dom().contains($k), m2.dom().contains($k))
+                    ::builtin::imply(#[verifier::trigger] m1.dom().contains($k), m2.dom().contains($k))
                     && ::builtin::imply(m2.dom().contains($k), m1.dom().contains($k))
                     && ::builtin::imply(m1.dom().contains($k) && m2.dom().contains($k),
                         ::builtin::equal(m1.index($k), m2.index($k)))

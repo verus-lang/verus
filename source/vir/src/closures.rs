@@ -22,10 +22,10 @@ pub fn check_closure_well_formed(expr: &Expr) -> Result<(), VirErr> {
                     // If this isn't in the scope_map, then the var must have been
                     // declared outside the closure.
 
-                    Err(error(
-                        "Verus does not currently support closures capturing a mutable reference for variables of any mode",
+                    error(
                         &expr.span,
-                    ))
+                        "Verus does not currently support closures capturing a mutable reference for variables of any mode",
+                    )
                 } else {
                     Ok(())
                 }

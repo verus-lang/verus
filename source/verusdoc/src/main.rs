@@ -138,38 +138,23 @@ fn interpret_as_verusdoc_attribute(node: &NodeRef) -> Option<VerusDocAttr> {
     let text_ref = text_node.as_text()?;
     let text: &String = &text_ref.borrow();
 
-    let attr_name = text.strip_prefix("// verusdoc_special_attr ")?;
+    let attr_data = text.strip_prefix("// verusdoc_special_attr ")?;
+    let attr_name = attr_data.split_whitespace().next().unwrap();
 
     if attr_name == "modes" {
-        let node1 = span_node.next_sibling().unwrap();
-        let node2 = node1.next_sibling().unwrap();
-        let json_text_node = get_single_child(&node2).unwrap();
-
-        let text_ref = json_text_node.as_text().unwrap();
-        let text: &String = &text_ref.borrow();
-
-        let json_text = text.strip_prefix("// ").unwrap();
+        let comment_idx = attr_data.find("// ").unwrap();
+        let json_text = &attr_data[comment_idx + 3..];
 
         let doc_mode_info: DocModeInfo = serde_json::from_str(json_text).unwrap();
 
         Some(VerusDocAttr::ModeInfo(doc_mode_info))
     } else if SPEC_NAMES.contains(&attr_name) {
-        let next_text_node = span_node.next_sibling().expect("expected newline");
-        let next_text_refcell = next_text_node.as_text().expect("expected newline");
-
-        if *next_text_refcell.borrow() == "\n" {
-            next_text_node.detach();
-        } else if next_text_refcell.borrow().starts_with("\n") {
-            let mut m = next_text_refcell.borrow_mut();
-            *m = (*m)[1..].to_string();
-        }
-
-        text_node.detach();
+        span_node.detach();
         pre_node.detach();
 
         Some(VerusDocAttr::Specification(attr_name.to_string(), pre_node))
     } else {
-        panic!("unrecognized attr_name: {:}", attr_name);
+        panic!("unrecognized attr_name: '{:}'", attr_name);
     }
 }
 
@@ -456,16 +441,42 @@ fn next_comma_or_rparen(s: &str, i: usize) -> usize {
 }
 
 fn write_css(dir_path: &Path) {
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .append(true)
-        .open(dir_path.join("rustdoc.css"))
-        .unwrap();
-    file.write_all(
-        r#"
+    let css_dir = dir_path.join("static.files");
+
+    let mut rustdoc_css_path = None;
+    let mut light_css_path = None;
+    let mut dark_css_path = None;
+    let mut ayu_css_path = None;
+
+    for dir_entry in std::fs::read_dir(css_dir).unwrap() {
+        let path = dir_entry.unwrap().path();
+        if let Some(filename_os) = path.file_name() {
+            if let Some(filename) = filename_os.to_str() {
+                if filename.starts_with("rustdoc-") {
+                    rustdoc_css_path = Some(path);
+                } else if filename.starts_with("light-") {
+                    light_css_path = Some(path);
+                } else if filename.starts_with("dark-") {
+                    dark_css_path = Some(path);
+                } else if filename.starts_with("ayu-") {
+                    ayu_css_path = Some(path);
+                }
+            }
+        }
+    }
+
+    let rustdoc_css_path = rustdoc_css_path.unwrap();
+    let light_css_path = light_css_path.unwrap();
+    let dark_css_path = dark_css_path.unwrap();
+    let ayu_css_path = ayu_css_path.unwrap();
+
+    let mut rustdoc_css =
+        std::fs::OpenOptions::new().write(true).append(true).open(rustdoc_css_path).unwrap();
+    rustdoc_css
+        .write_all(
+            r#"
 .verus-spec-code {
   padding: 0px !important;
-  background-color: #ffffff !important;
   margin: 0px;
   font-size: 14px;
 }
@@ -476,21 +487,12 @@ pre.verus-spec-code {
 
 .verus-body-code {
   padding: 0px !important;
-  background-color: #ffffff !important;
   margin: 0px;
   font-size: 14px;
 }
 
 pre.verus-body-code {
   margin-left: 8px !important;
-}
-
-.verus-spec-code code {
-  background-color: #ffffff !important;
-}
-
-.verus-body-code code {
-  background-color: #ffffff !important;
 }
 
 .verus-spec-keyword {
@@ -510,7 +512,23 @@ pre.verus-body-code {
     margin-left: 16px;
 }
 "#
-        .as_bytes(),
-    )
-    .expect("write css file");
+            .as_bytes(),
+        )
+        .expect("write css file");
+
+    let bg_colors =
+        [(light_css_path, "ffffff"), (dark_css_path, "353535"), (ayu_css_path, "0f1419")];
+
+    for (theme_css, bg_color) in &bg_colors {
+        let mut css = std::fs::OpenOptions::new().write(true).append(true).open(theme_css).unwrap();
+        writeln!(css).unwrap();
+        for selector in [
+            ".verus-body-code",
+            ".verus-spec-code",
+            ".verus-spec-code code",
+            ".verus-body-code code",
+        ] {
+            writeln!(css, "{selector} {{ background-color: #{bg_color} !important; }}").unwrap();
+        }
+    }
 }

@@ -306,7 +306,8 @@ struct_with_invariants!{
         }
 
         invariant on exc_locked with (inst) is (b: bool, g: DistRwLock::exc_locked<T>) {
-            g@ === DistRwLock::token![ inst@ => exc_locked => b ]
+            g@.instance == inst@
+            && g@.value == b
         }
 
         invariant on ref_counts with (inst)
@@ -315,7 +316,9 @@ struct_with_invariants!{
             specifically (self.ref_counts@[i])
             is (v: u64, g: DistRwLock::ref_counts<T>)
         {
-            g@ === DistRwLock::token![ inst@ => ref_counts => i => v as int ]
+            g@.instance == inst@
+            && g@.key == i
+            && g@.value == v as int
         }
     }
 }
@@ -371,10 +374,9 @@ impl<T> RwLock<T> {
             invariant
                 i <= rc_width,
                 v@.len() == i as int,
-                forall(|j: int| 0 <= j && j < i ==>
+                forall|j: int| 0 <= j && j < i ==>
                     v@.index(j).well_formed()
-                      && equal(v@.index(j).constant(), (tracked_inst, j))
-                ),
+                      && equal(v@.index(j).constant(), (tracked_inst, j)),
                 tracked_inst@ == inst,
                 forall |j: int|
                     #![trigger( ref_counts_tokens.dom().contains(j) )]

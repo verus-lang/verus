@@ -191,7 +191,7 @@ impl ToDebugSNode for u32 {
 impl ToDebugSNode for char {
     fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
         let a = match self.is_ascii() {
-            true => format!("'{}'", self.to_string()),
+            true => format!("char<{}>", self.to_string()),
             false => format!("char<{:x}>", *self as u32),
         };
         Node::Atom(a)

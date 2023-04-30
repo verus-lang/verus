@@ -10,7 +10,7 @@ use crate::pervasive::*;
 verus! {
 
 /// `Seq<A>` is a sequence type for specifications.
-/// To use a "sequence" in compiled code, use an `exec` type like [`vec::Vec`]
+/// To use a "sequence" in compiled code, use an `exec` type like [`vec::Vec`](crate::vec::Vec)
 /// that has `Seq<A>` as its specification type.
 ///
 /// An object `seq: Seq<A>` has a length, given by [`seq.len()`](Seq::len),
@@ -25,7 +25,8 @@ verus! {
 ///  * By manipulating an existing sequence with [`Seq::push`], [`Seq::update`],
 ///    or [`Seq::add`].
 ///
-/// To prove that two sequences are equal, it is usually easiest to use the [`assert_seqs_equal!`] macro.
+/// To prove that two sequences are equal, it is usually easiest to use the
+/// [`assert_seqs_equal!`](crate::seq_lib::assert_seqs_equal) macro.
 
 #[verifier(external_body)]
 pub struct Seq<#[verifier(strictly_positive)] A> {
@@ -100,7 +101,8 @@ impl<A> Seq<A> {
     /// by [`axiom_seq_ext_equal`].
     ///
     /// To prove that two sequences are equal via extensionality, it is generally easier
-    /// to use the [`assert_seqs_equal!`] macro, rather than using `ext_equal` directly.
+    /// to use the [`assert_seqs_equal!`](crate::seq_lib::assert_seqs_equal) macro,
+    /// rather than using `ext_equal` directly.
 
     pub open spec fn ext_equal(self, s2: Seq<A>) -> bool {
         &&& self.len() == s2.len()

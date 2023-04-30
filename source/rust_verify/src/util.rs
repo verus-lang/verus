@@ -1,13 +1,9 @@
 use rustc_span::Span;
 use vir::ast::VirErr;
-use vir::ast_util::err_string;
+use vir::ast_util::error as vir_error;
 
-pub(crate) fn err_span_str<A>(span: Span, msg: &str) -> Result<A, VirErr> {
-    err_span_string(span, msg.to_string())
-}
-
-pub(crate) fn err_span_string<A>(span: Span, msg: String) -> Result<A, VirErr> {
-    err_string(&crate::spans::err_air_span(span), msg)
+pub(crate) fn err_span<A, S: Into<String>>(span: Span, msg: S) -> Result<A, VirErr> {
+    vir_error(&crate::spans::err_air_span(span), msg)
 }
 
 pub(crate) fn vir_err_span_str(span: Span, msg: &str) -> VirErr {
@@ -19,10 +15,7 @@ pub(crate) fn vir_err_span_string(span: Span, msg: String) -> VirErr {
 }
 
 pub(crate) fn unsupported_err_span<A>(span: Span, msg: String) -> Result<A, VirErr> {
-    err_span_string(
-        span,
-        format!("The verifier does not yet support the following Rust feature: {}", msg),
-    )
+    err_span(span, format!("The verifier does not yet support the following Rust feature: {}", msg))
 }
 
 #[macro_export]
@@ -58,37 +51,13 @@ macro_rules! err_unless {
     ($assertion: expr, $span: expr, $msg: expr) => {
         if (!$assertion) {
             dbg!();
-            crate::util::err_span_string($span, $msg)?;
+            crate::util::err_span($span, $msg)?;
         }
     };
     ($assertion: expr, $span: expr, $msg: expr, $info: expr) => {
         if (!$assertion) {
             dbg!($info);
-            crate::util::err_span_string($span, $msg)?;
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! unsupported {
-    ($msg: expr) => {{ panic!("The verifier does not yet support the following Rust feature: {}", $msg) }};
-    ($msg: expr, $info: expr) => {{
-        dbg!($info);
-        panic!("The verifier does not yet support the following Rust feature: {}", $msg)
-    }};
-}
-
-#[macro_export]
-macro_rules! unsupported_unless {
-    ($assertion: expr, $msg: expr) => {
-        if (!$assertion) {
-            panic!("The verifier does not yet support the following Rust feature: {}", $msg)
-        }
-    };
-    ($assertion: expr, $msg: expr, $info: expr) => {
-        if (!$assertion) {
-            dbg!($info);
-            panic!("The verifier does not yet support the following Rust feature: {}", $msg)
+            crate::util::err_span($span, $msg)?;
         }
     };
 }
@@ -119,39 +88,55 @@ pub(crate) fn slice_vec_map_result<A, B, E, F: Fn(&A) -> Result<B, E>>(
     slice.iter().map(f).collect()
 }
 
-pub mod signalling {
-    use std::sync::{Arc, Condvar, Mutex};
+pub enum VerusBuildProfile {
+    Debug,
+    Release,
+    Unknown,
+}
 
-    #[derive(Clone)]
-    pub struct Signaller<T: Copy> {
-        coord: Arc<(Mutex<Option<T>>, Condvar)>,
-    }
-
-    impl<T: Copy> Signaller<T> {
-        pub fn signal(&self, t: T) {
-            let (value, cvar) = &*self.coord;
-            *value.lock().expect("Signaller mutex") = Some(t);
-            cvar.notify_one();
-        }
-    }
-
-    pub struct Signalled<T: Copy> {
-        coord: Arc<(Mutex<Option<T>>, Condvar)>,
-    }
-
-    impl<T: Copy> Signalled<T> {
-        pub fn wait(&self) -> T {
-            let (lock, cvar) = &*self.coord;
-            let mut value = lock.lock().expect("value mutex");
-            while value.is_none() {
-                value = cvar.wait(value).expect("cvar wait");
-            }
-            value.unwrap()
-        }
-    }
-
-    pub fn signal<T: Copy>() -> (Signaller<T>, Signalled<T>) {
-        let coord = Arc::new((Mutex::new(None), Condvar::new()));
-        (Signaller { coord: coord.clone() }, Signalled { coord: coord.clone() })
+impl std::fmt::Display for VerusBuildProfile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            VerusBuildProfile::Debug => "debug",
+            VerusBuildProfile::Release => "release",
+            VerusBuildProfile::Unknown => "unknown",
+        };
+        f.write_str(s)
     }
 }
+
+pub const fn verus_build_profile() -> VerusBuildProfile {
+    let profile = option_env!("VARGO_BUILD_PROFILE");
+    match profile {
+        Some(p) => {
+            if const_str_equal(p, "release") {
+                VerusBuildProfile::Release
+            } else if const_str_equal(p, "debug") {
+                VerusBuildProfile::Debug
+            } else {
+                panic!("unexpected VARGO_BUILD_PROFILE");
+            }
+        }
+        None => VerusBuildProfile::Unknown,
+    }
+}
+
+// ==================================================================================================
+// this function was copied from https://github.com/Nugine/const-str/blob/main/const-str/src/bytes.rs
+// const-str is MIT licensed
+pub const fn const_str_equal(lhs: &str, rhs: &str) -> bool {
+    let lhs = lhs.as_bytes();
+    let rhs = rhs.as_bytes();
+    if lhs.len() != rhs.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < lhs.len() {
+        if lhs[i] != rhs[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+// ==================================================================================================

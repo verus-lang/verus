@@ -118,7 +118,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test1_choose_must_be_tuple verus_code! {
+    #[test] test1_choose_with_closure_illegal verus_code! {
         spec fn f(i: int, j: int) -> bool {
             i <= j
         }
@@ -128,7 +128,7 @@ test_verify_one_file! {
             assert(f(7, 8));
             assert(i <= j);
         }
-    } => Err(TestErr { has_vir_error: false, .. })
+    } => Err(e) => assert_vir_error_msg(e, "forall, choose, and exists do not allow parentheses")
 }
 
 // choose_tuple

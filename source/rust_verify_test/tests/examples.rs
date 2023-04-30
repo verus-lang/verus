@@ -1,30 +1,10 @@
+#![feature(rustc_private)]
+#[macro_use]
+mod common;
+use common::*;
+
 use rust_verify_test_macros::examples_in_dir;
-use std::path::Path;
-use std::process::Command;
-
-#[cfg(target_os = "macos")]
-const DYN_LIB_VAR: &str = "DYLD_LIBRARY_PATH";
-
-#[cfg(target_os = "linux")]
-const DYN_LIB_VAR: &str = "LD_LIBRARY_PATH";
-
-#[cfg(target_os = "macos")]
-const DYN_LIB_EXT: &str = "dylib";
-
-#[cfg(target_os = "linux")]
-const DYN_LIB_EXT: &str = "so";
-
-#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-const RUST_LIB_TARGET: &str = "x86_64-apple-darwin";
-
-#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-const RUST_LIB_TARGET: &str = "aarch64-apple-darwin";
-
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-const RUST_LIB_TARGET: &str = "x86_64-unknown-linux-gnu";
-
-#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
-const RUST_LIB_TARGET: &str = "aarch64-unknown-linux-gnu";
+use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 enum Mode {
@@ -52,56 +32,48 @@ fn run_example_for_file(file_path: &str) {
     let first_line_elements: Vec<_> = {
         use std::io::BufRead;
         reader.read_line(&mut first_line).expect("unable to read first line");
-        first_line.split(" ").collect()
+        first_line.trim().split(" ").collect()
     };
 
     let mut mode = Mode::ExpectSuccess;
-    let mut macro_erasure = true;
 
-    if let ["//", "rust_verify/tests/example.rs", command] = &first_line_elements[..] {
-        match command.strip_suffix("\n").unwrap_or("unexpected") {
+    if let ["//", "rust_verify/tests/example.rs", command, ..] = &first_line_elements[..] {
+        match *command {
             "expect-success" => mode = Mode::ExpectSuccess,
             "expect-errors" => mode = Mode::ExpectErrors,
             "expect-failures" => mode = Mode::ExpectFailures,
-            "erasure-todo" => macro_erasure = false,
             "ignore" => {
+                if first_line_elements.len() > 3 {
+                    // We require that any comment is separated by a `---` which acts as a good
+                    // visual separator.
+                    if first_line_elements[3] != "---" {
+                        panic!(
+                            "Expected '---' to separate the extra comment from the 'ignore' declaration. Found {:?}",
+                            first_line_elements[3],
+                        );
+                    } else if first_line_elements.len() == 4 {
+                        panic!(
+                            "Expected comment after visual separator '---' but no comment found."
+                        );
+                    }
+                } else {
+                    panic!(
+                        "{}",
+                        "Expected '--- {reason}' after the 'ignore', but none was provided."
+                    );
+                }
                 return;
             }
             _ => panic!(
-                "invalid command for example file test: use one of 'expect-success', 'expect-errors', 'expect-failures', or 'ignore'"
+                "invalid command {:?} for example file test: use one of 'expect-success', 'expect-errors', 'expect-failures', or 'ignore'",
+                command
             ),
         }
     }
 
-    // TODO (erasure-todo) : switch entirely to macro erasure; right now, the old erasure is disabled
-    let erasure = if macro_erasure { "--erasure macro" } else { "--no-lifetime" };
-
-    #[cfg(target_os = "windows")]
-    let script = format!(
-        "..\\rust\\install\\bin\\rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/builtin_macros.dll --extern state_machines_macros=../rust/install/bin/state_machines_macros.dll --edition=2018 --cfg erasure_macro_todo {erasure} --extern vstd=../rust/install/bin/libvstd.rlib  --import vstd=../rust/install/bin/vstd.vir {}",
-        &path
-    );
-
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    let script = format!(
-        "{DYN_LIB_VAR}=../rust/install/lib/rustlib/{RUST_LIB_TARGET}/lib:../rust/install/lib ../rust/install/bin/rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/libbuiltin_macros.{DYN_LIB_EXT} --extern state_machines_macros=../rust/install/bin/libstate_machines_macros.{DYN_LIB_EXT} --edition=2018 --cfg erasure_macro_todo {erasure} --extern vstd=../rust/install/bin/libvstd.rlib  --import vstd=../rust/install/bin/vstd.vir {}",
-        &path
-    );
-
-    let output = if cfg!(target_os = "windows") {
-        Command::new("cmd")
-            .current_dir("..")
-            .args(&["/C", &script])
-            .output()
-            .expect("failed to execute process")
-    } else {
-        Command::new("sh")
-            .current_dir("..")
-            .arg("-c")
-            .arg(script)
-            .output()
-            .expect("failed to execute process")
-    };
+    let relative_path = PathBuf::from(relative_path);
+    let output =
+        run_verus(&[], relative_path.parent().expect("no parent dir"), &relative_path, true, false);
 
     use regex::Regex;
     let re = Regex::new(r"verification results:: verified: (\d+) errors: (\d+)").unwrap();
