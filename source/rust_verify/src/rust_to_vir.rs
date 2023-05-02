@@ -57,8 +57,21 @@ fn check_item<'tcx>(
     if vattrs.external_fn_specification && !matches!(&item.kind, ItemKind::Fn(..)) {
         return err_span(item.span, "`external_fn_specification` attribute not supported here");
     }
+    if vattrs.external_type_specification && !matches!(&item.kind, ItemKind::Struct(..)) {
+        if matches!(&item.kind, ItemKind::Enum(..)) {
+            return err_span(
+                item.span,
+                "`external_type_specification` proxy type should use a struct with a single field to declare the external type (even if the external type is an enum)",
+            );
+        } else {
+            return err_span(
+                item.span,
+                "`external_type_specification` attribute not supported here",
+            );
+        }
+    }
 
-    let visibility = || mk_visibility(ctxt, &Some(module_path()), item.owner_id.to_def_id());
+    let visibility = || mk_visibility(ctxt, item.owner_id.to_def_id());
     match &item.kind {
         ItemKind::Fn(sig, generics, body_id) => {
             check_item_fn(
@@ -67,6 +80,7 @@ fn check_item<'tcx>(
                 item.owner_id.to_def_id(),
                 FunctionKind::Static,
                 visibility(),
+                &module_path(),
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 sig,
                 None,
@@ -89,6 +103,17 @@ fn check_item<'tcx>(
             // get from the HIR data.
 
             if vattrs.external {
+                if vattrs.external_type_specification {
+                    return err_span(
+                        item.span,
+                        "a type cannot be marked both `external_type_specification` and `external`",
+                    );
+                }
+
+                let def_id = id.owner_id.to_def_id();
+                let path = def_id_to_vir_path(ctxt.tcx, def_id);
+                vir.external_types.push(path);
+
                 return Ok(());
             }
 
@@ -105,10 +130,18 @@ fn check_item<'tcx>(
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 variant_data,
                 generics,
-                &adt_def,
+                adt_def,
             )?;
         }
         ItemKind::Enum(enum_def, generics) => {
+            if vattrs.external {
+                let def_id = id.owner_id.to_def_id();
+                let path = def_id_to_vir_path(ctxt.tcx, def_id);
+                vir.external_types.push(path);
+
+                return Ok(());
+            }
+
             let tyof = ctxt.tcx.type_of(item.owner_id.to_def_id());
             let adt_def = tyof.ty_adt_def().expect("adt_def");
 
@@ -233,11 +266,8 @@ fn check_item<'tcx>(
                 match impl_item_ref.kind {
                     AssocItemKind::Fn { has_self: true | false } => {
                         let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
-                        let mut impl_item_visibility = mk_visibility(
-                            &ctxt,
-                            &Some(module_path()),
-                            impl_item.owner_id.to_def_id(),
-                        ); // TODO(main_new) correct?
+                        let mut impl_item_visibility =
+                            mk_visibility(&ctxt, impl_item.owner_id.to_def_id()); // TODO(main_new) correct?
                         match &impl_item.kind {
                             ImplItemKind::Fn(sig, body_id) => {
                                 let fn_attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
@@ -292,7 +322,6 @@ fn check_item<'tcx>(
                                     {
                                         impl_item_visibility = mk_visibility(
                                             &ctxt,
-                                            &Some(module_path()),
                                             impl_item.owner_id.to_def_id(), // TODO(main_new) correct?
                                         );
                                         let ident = impl_item_ref.ident.to_string();
@@ -316,6 +345,7 @@ fn check_item<'tcx>(
                                         impl_item.owner_id.to_def_id(),
                                         kind,
                                         impl_item_visibility,
+                                        &module_path(),
                                         fn_attrs,
                                         sig,
                                         Some((&impll.generics, impl_def_id)),
@@ -365,6 +395,7 @@ fn check_item<'tcx>(
                 item.span,
                 item.owner_id.to_def_id(),
                 visibility(),
+                &module_path(),
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 &vir_ty,
                 body_id,
@@ -427,6 +458,7 @@ fn check_item<'tcx>(
                             owner_id.to_def_id(),
                             FunctionKind::TraitMethodDecl { trait_path: trait_path.clone() },
                             visibility(),
+                            &module_path(),
                             attrs,
                             sig,
                             Some((trait_generics, trait_def_id)),
@@ -488,7 +520,7 @@ fn check_foreign_item<'tcx>(
                 vir,
                 item.owner_id.to_def_id(),
                 item.span,
-                mk_visibility(ctxt, &None, item.owner_id.to_def_id()),
+                mk_visibility(ctxt, item.owner_id.to_def_id()),
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 decl,
                 idents,

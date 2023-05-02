@@ -266,6 +266,8 @@ pub(crate) enum Attr {
     Truncate,
     // In order to apply a specification to a method externally
     ExternalFnSpecification,
+    // In order to apply a specification to a datatype externally
+    ExternalTypeSpecification,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -420,6 +422,9 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 AttrTree::Fun(_, arg, None) if arg == "truncate" => v.push(Attr::Truncate),
                 AttrTree::Fun(_, arg, None) if arg == "external_fn_specification" => {
                     v.push(Attr::ExternalFnSpecification)
+                }
+                AttrTree::Fun(_, arg, None) if arg == "external_type_specification" => {
+                    v.push(Attr::ExternalTypeSpecification)
                 }
                 _ => return err_span(span, "unrecognized verifier attribute"),
             },
@@ -640,6 +645,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) memoize: bool,
     pub(crate) truncate: bool,
     pub(crate) external_fn_specification: bool,
+    pub(crate) external_type_specification: bool,
 }
 
 pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, VirErr> {
@@ -672,6 +678,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         memoize: false,
         truncate: false,
         external_fn_specification: false,
+        external_type_specification: false,
     };
     for attr in parse_attrs(attrs)? {
         match attr {
@@ -679,6 +686,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::ExternalBody => vs.external_body = true,
             Attr::External => vs.external = true,
             Attr::ExternalFnSpecification => vs.external_fn_specification = true,
+            Attr::ExternalTypeSpecification => vs.external_type_specification = true,
             Attr::Opaque => vs.opaque = true,
             Attr::Publish => vs.publish = true,
             Attr::OpaqueOutsideModule => vs.opaque_outside_module = true,

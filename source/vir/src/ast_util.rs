@@ -250,8 +250,27 @@ pub fn is_visible_to_opt(target_visibility: &Visibility, source_module: &Option<
 }
 
 impl Visibility {
-    pub(crate) fn is_private(&self) -> bool {
-        self.owning_module.is_some() && self.owning_module == self.restricted_to
+    pub(crate) fn is_private_to(&self, module: &Option<Path>) -> bool {
+        module.is_some() && module == &self.restricted_to
+    }
+
+    pub fn public() -> Self {
+        Visibility { restricted_to: None }
+    }
+
+    /// Return the more restrictive of the two. Panics if the two visibility descriptors
+    /// are incompatible.
+    pub fn join(&self, vis2: &Visibility) -> Visibility {
+        match (&self.restricted_to, &vis2.restricted_to) {
+            (None, _) => vis2.clone(),
+            (_, None) => self.clone(),
+            (Some(p1), Some(p2)) => {
+                assert!(p1.krate == p2.krate);
+                let m = std::cmp::min(p1.segments.len(), p2.segments.len());
+                assert!(&p1.segments[..m] == &p2.segments[..m]);
+                if p1.segments.len() < p2.segments.len() { vis2.clone() } else { self.clone() }
+            }
+        }
     }
 }
 

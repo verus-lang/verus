@@ -1105,3 +1105,27 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+// type well-formed
+
+test_verify_one_file! {
+    #[test] error_msg_use_external_type_closure_param verus_code! {
+        #[verifier(external)]
+        struct X { }
+
+        fn stuff() {
+            let f = |x: X| { };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type marked `external`")
+}
+
+test_verify_one_file! {
+    #[test] error_msg_use_external_type_closure_ret verus_code! {
+        #[verifier(external)]
+        struct X { }
+
+        fn stuff() {
+            let f = || -> X { loop { } };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type marked `external`")
+}

@@ -42,7 +42,6 @@ impl TypX {
 struct Context<'tcx> {
     tcx: TyCtxt<'tcx>,
     types_opt: Option<&'tcx TypeckResults<'tcx>>,
-    crate_names: Vec<String>,
     /// Map each function path to its VIR Function, or to None if it is a #[verifier(external)]
     /// function
     functions: HashMap<Fun, Option<Function>>,
@@ -189,7 +188,7 @@ impl State {
     fn reach_datatype(&mut self, ctxt: &Context, id: DefId) {
         if !self.reached.contains(&(None, id)) {
             let crate_name = ctxt.tcx.crate_name(ctxt.tcx.def_path(id).krate).to_string();
-            if ctxt.crate_names.contains(&crate_name) {
+            if crate_name != "builtin" {
                 self.reached.insert((None, id));
                 self.datatype_worklist.push(id);
             }
@@ -1770,6 +1769,17 @@ fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) 
         erase_abstract_datatype(ctxt, state, span, id);
         return;
     }
+
+    let is_box = Some(id) == ctxt.tcx.lang_items().owned_box();
+    if is_box {
+        return;
+    }
+    let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(ctxt.tcx, id));
+    let is_smart_ptr = def_name == "alloc::rc::Rc" || def_name == "alloc::sync::Arc";
+    if is_smart_ptr {
+        return;
+    }
+
     let adt_def = ctxt.tcx.adt_def(id);
     if adt_def.is_struct() {
         let fields = erase_variant_data(ctxt, state, adt_def.non_enum_variant());
@@ -1792,13 +1802,11 @@ fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) 
 pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
     tcx: TyCtxt<'tcx>,
     krate: &'tcx Crate<'tcx>,
-    crate_names: Vec<String>,
     erasure_hints: &ErasureHints,
 ) -> State {
     let mut ctxt = Context {
         tcx,
         types_opt: None,
-        crate_names,
         functions: HashMap::new(),
         datatypes: HashMap::new(),
         ignored_functions: HashSet::new(),

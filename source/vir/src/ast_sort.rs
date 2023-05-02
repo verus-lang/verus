@@ -17,12 +17,14 @@ pub fn sort_krate(krate: &Krate) -> Krate {
     // - otherwise, modules are ordered as they appear in the crate
     // - all items from a module are grouped together
 
-    let KrateX { functions, datatypes, traits, module_ids, external_fns } = &**krate;
+    let KrateX { functions, datatypes, traits, module_ids, external_fns, external_types } =
+        &**krate;
     let mut functions = functions.clone();
     let mut datatypes = datatypes.clone();
     let traits = traits.clone();
     let mut module_ids = module_ids.clone();
     let external_fns = external_fns.clone();
+    let external_types = external_types.clone();
 
     // Stable sort to move children before parents, but otherwise leave children in order
     module_ids.sort_by(|p1, p2| p2.segments.len().cmp(&p1.segments.len()));
@@ -36,15 +38,11 @@ pub fn sort_krate(krate: &Krate) -> Krate {
 
     // Sort the items by owning module:
     functions.sort_by(|i1, i2| {
-        module_order
-            .get(&i1.x.visibility.owning_module)
-            .cmp(&module_order.get(&i2.x.visibility.owning_module))
+        module_order.get(&i1.x.owning_module).cmp(&module_order.get(&i2.x.owning_module))
     });
     datatypes.sort_by(|i1, i2| {
-        module_order
-            .get(&i1.x.visibility.owning_module)
-            .cmp(&module_order.get(&i2.x.visibility.owning_module))
+        module_order.get(&i1.x.owning_module).cmp(&module_order.get(&i2.x.owning_module))
     });
 
-    Arc::new(KrateX { functions, datatypes, traits, module_ids, external_fns })
+    Arc::new(KrateX { functions, datatypes, traits, module_ids, external_fns, external_types })
 }
