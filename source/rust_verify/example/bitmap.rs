@@ -1,14 +1,6 @@
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-
-#[cfg(not(vstd_todo))]
-mod pervasive;
-#[cfg(not(vstd_todo))]
-#[allow(unused_imports)]
-use pervasive::{*, seq::*, vec::*};
-
-#[cfg(vstd_todo)]
 use vstd::{seq::*, seq_lib::*, vec::*};
 
 macro_rules! get_bit64_macro {
@@ -178,6 +170,6 @@ impl BitMap {
 
 } // verus!
 
-#[verifier(external)]
+#[verifier::external]
 fn main(){
 }       

@@ -1,8 +1,7 @@
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-mod pervasive;
-use pervasive::*;
+use vstd::{*, pervasive::*};
 
 use state_machines_macros::state_machine;
 use state_machines_macros::case_on_next;
@@ -85,7 +84,7 @@ proof fn next_refines_next(pre: A::State, post: A::State) {
 
     reveal(A::State::next);
 
-    match choose(|step: A::Step| A::State::next_by(pre, post, step)) {
+    match choose|step: A::Step| A::State::next_by(pre, post, step) {
         A::Step::add(n) => {
             assert_by(A::State::add(pre, post, n), { reveal(A::State::next_by); });
 

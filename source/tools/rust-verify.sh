@@ -1,34 +1,41 @@
 #! /bin/bash
 
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-REPO="$DIR/../.."
+set -e
 
-case $(uname -m) in
-  x86_64)
-    ARCH=x86_64
-    ;;
-  arm64)
-    ARCH=aarch64
-    ;;
-  *)
-    echo "Unknown architecture $(uname -m)" 1>&2
-    exit 1
-    ;;
-esac
+DIR="$( cd "$( dirname $(readlink -f "${BASH_SOURCE[0]}") )" >/dev/null 2>&1 && pwd )"
+SOURCE="$DIR/.."
 
 if [ "$(uname)" == "Darwin" ]; then
     DYN_LIB_EXT=dylib
-    export DYLD_LIBRARY_PATH="$REPO/rust/install/lib/rustlib/${ARCH}-apple-darwin/lib"
 elif [ "$(uname)" == "Linux" ]; then
     DYN_LIB_EXT=so
-    export LD_LIBRARY_PATH="$REPO/rust/install/lib/rustlib/${ARCH}-unknown-linux-gnu/lib"
 fi
 
-export VERUS_Z3_PATH="$REPO/source/z3"
+# default to release, if it is compiled
+if [ -e "$SOURCE"/target-verus/release/verus ]; then
+    if [ -e "$SOURCE"/target-verus/release/.vstd-fingerprint ] && \
+       [ -e "$SOURCE"/target-verus/release/libbuiltin.rlib ] && \
+       [ -e "$SOURCE"/target-verus/release/libbuiltin_macros.$DYN_LIB_EXT ] && \
+       [ -e "$SOURCE"/target-verus/release/libstate_machines_macros.$DYN_LIB_EXT ] && \
+       [ -e "$SOURCE"/target-verus/release/libvstd.rlib ] && \
+       [ -e "$SOURCE"/target-verus/release/vstd.vir ] && \
+       [ -e "$SOURCE"/target-verus/release/verus-root ] && \
+       [ -e "$SOURCE"/target-verus/release/rust_verify ]; then
+        :
+    else
+        echo -e "\033[31mwarning (rust-verify.sh): detected a release build, but it appears to be incomplete\033[0m"
+    fi
+    PROFILE=release
+else
+    PROFILE=debug
+fi
 
-"$REPO"/rust/install/bin/rust_verify \
-  --pervasive-path "$REPO"/source/pervasive \
-  --extern builtin="$REPO"/rust/install/bin/libbuiltin.rlib \
-  --extern builtin_macros="$REPO"/rust/install/bin/libbuiltin_macros.$DYN_LIB_EXT \
-  --extern state_machines_macros="$REPO"/rust/install/bin/libstate_machines_macros.$DYN_LIB_EXT \
-  --edition=2018 -Z proc-macro-backtrace "$@"
+if [ "$1" = "--release" ]; then
+    shift
+    PROFILE=release
+elif [ "$1" = "--debug" ]; then
+    shift
+    PROFILE=debug
+fi
+
+VERUS_Z3_PATH="$SOURCE/z3" "$SOURCE"/target-verus/$PROFILE/verus "$@"

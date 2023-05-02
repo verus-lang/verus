@@ -174,7 +174,7 @@ test_verify_one_file! {
             assert(b << 2 == b * 4) by(bit_vector);
             assert(b << 2 == b * 4);  // FAILS
         }
-    } => Err(err) => assert_error_msg(err, "Inside bit-vector assertion, use `add` `sub` `mul` for fixed-bit operators")
+    } => Err(err) => assert_vir_error_msg(err, "Inside bit-vector assertion, use `add` `sub` `mul` for fixed-bit operators")
 }
 
 test_verify_one_file! {

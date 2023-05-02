@@ -700,7 +700,7 @@ fn output_invariant(
 
                 stream.extend(quote_spanned! { predicate.span() =>
                     #vis struct #predname { }
-                    impl<#type_params> crate::pervasive::atomic_ghost::AtomicInvariantPredicate<#k_type, #v_type, #g_type> for #predname #where_clause {
+                    impl<#type_params> vstd::atomic_ghost::AtomicInvariantPredicate<#k_type, #v_type, #g_type> for #predname #where_clause {
                         open spec fn atomic_inv(#tmp_k: #k_type, #tmp_v: #v_type, #tmp_g: #g_type) -> bool {
                             let #k_pat = #tmp_k;
                             let #v_pat = #tmp_v;
@@ -718,7 +718,7 @@ fn output_invariant(
                 let v_pat = maybe_tuple(&v_pats);
                 stream.extend(quote_spanned! { predicate.span() =>
                     #vis struct #predname { }
-                    impl<#type_params> crate::pervasive::invariant::InvariantPredicate<#k_type, #v_type> for #predname #where_clause {
+                    impl<#type_params> vstd::invariant::InvariantPredicate<#k_type, #v_type> for #predname #where_clause {
                         open spec fn inv(#tmp_k: #k_type, #tmp_v: #v_type) -> bool {
                             let #k_pat = #tmp_k;
                             let #v_pat = #tmp_v;

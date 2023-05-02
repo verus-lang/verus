@@ -6,9 +6,14 @@ members = [
   "vir",
   "vir_macros",
   "rust_verify",
+  "verus",
   "rust_verify_test",
   "rust_verify_test_macros",
   "state_machines_macros",
   "verusdoc",
-  "vstd",
+  "vstd_build",
 ]
+
+# do not modify the following two lines
+[workspace.metadata.vargo]
+tag = "workspace"

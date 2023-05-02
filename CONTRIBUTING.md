@@ -3,10 +3,12 @@
 Thanks for contributing to Verus!  Verus is an Open Source project and welcomes
 contributions.  Please report issues or start discussions here on GitHub.
 
-## Editing the Source Code of Verus
+We use GitHub discussions for feature requests and more open-ended conversations about
+upcoming features, and we reserve GitHub issues for actionable issues (bugs) with
+existing features. Don't worry though: if we think an issue should be a discussion (or
+viceversa) we can always move it later.
 
-You should make sure that your check-out of `rust` is up to date.
-Use the `./tools/update-rust.sh` script from the project root.
+## Editing the Source Code of Verus
 
 Before committing any changes to the source code,
 make sure that it conforms to the `rustfmt` tool's guidelines.
@@ -14,29 +16,16 @@ We are using the default `rustfmt` settings from the Rust repository.
 To check the source code, type the following from the `source` directory:
 
 ```
-../rust/install/bin/cargo-fmt -- --check
+vargo fmt -- --check
 ```
 
-If you have other toolchains installed (with `rustup`) this will run the active
-toolchain by default, and not the `rust-fmt` that we compiled with the `rust` compiler.
-
-To switch to the correct tools, you can add the custom toolchain to `rustup`, and set an
-override for this project:
-
-```
-cd ..
-## In the project root:
-rustup toolchain link rust-verify rust/install/
-rustup override set rust-verify
-```
-
-If the source code follows the guidelines, `cargo-fmt -- --check` will produce no output.
+If the source code follows the guidelines, `vargo fmt -- --check` will produce no output.
 Otherwise, it will report suggestions on how to reformat the source code.
 
 To automatically apply these suggestions to the source code, type:
 
 ```
-../rust/install/bin/cargo-fmt
+vargo fmt
 ```
 
 ## Code Documentation
@@ -46,7 +35,7 @@ that [`rustdoc`](https://doc.rust-lang.org/rustdoc/what-is-rustdoc.html) can
 automatically extract into HTML documentation.
 
 The rustdoc (verusdoc) for `main` is automatically published
-[📖 here](https://verus-lang.github.io/verus/verusdoc/lib/) (if the build succeeds).
+[📖 here](https://verus-lang.github.io/verus/verusdoc/vstd/) (if the build succeeds).
 
 You can compile the current documentation by running (in the `verify` directory)
 ```
@@ -62,35 +51,33 @@ A work-in-progress tutorial and reference document is automatically published
 
 ## Running tests for the Rust to VIR translation, and inspecting the resulting vir/air/smt
 
-`cargo test` will run the tests for `rust_verify`,
+`vargo test` will run the tests for `rust_verify_test`,
 
 ```
-RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo test -p rust_verify
+vargo test -p rust_verify_test
 ```
-
-As discussed above, you may only need the RUSTC variable on macOS/Linux.
 
 You can run a single test file and a specific test within with the following:
 
 ```
-RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo test -p rust_verify --test <test file> <test name>
+vargo test -p rust_verify_test --test <test file> <test name>
 ```
 
 See the cargo help for more info on the test flags.
 
-If you'd like to inspect the vir/air/smt produced by a test, you can provide a target directory path as an
-environment variable, `VERIFY_LOG_IR_PATH`.
-You should only run a single test, as only the latest logged IR is preserved.
-For example, the following will emit the vir/air/smt logs to `rust_verify/logs`:
-
-```
-VERIFY_LOG_IR_PATH="logs" RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo test -p rust_verify --test refs -- test_ref_0
-```
-
 If you need to pass additional command-line arguments to the verifier in tests, for example to print the
-erased rust ast, you can use the `VERIFY_EXTRA_ARGS` environment variable, like this:
+erased rust ast, you can use the `VERUS_EXTRA_ARGS` environment variable, like this:
 
 ```
-VERIFY_EXTRA_ARGS="--print-erased-spec" RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo test -p rust_verify --test refs -- --nocapture test_ref_0
+VERUS_EXTRA_ARGS="--print-erased-spec" vargo test -p rust_verify_test --test refs -- --nocapture test_ref_0
 ```
 
+It can be useful to inspect the intermediate representations used by Verus (VIR, AIR, SMTLIB);
+you can log the VIR, AIR, and SMTLIB for a test with:
+
+```
+VERUS_EXTRA_ARGS="--log-all" vargo test -p rust_verify_test --test refs -- --nocapture --exact test_ref_0
+```
+
+This will output the log files in `rust_verify_test/.verus-log`. Only run one test at
+a time when using this flag, so that the logs are not overwritten by other tests.

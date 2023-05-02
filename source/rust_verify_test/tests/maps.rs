@@ -77,7 +77,7 @@ test_verify_one_file! {
             let m3: Map<int, int> = m1;
             let m4: Map<nat, int> = m1; // FAILS: see https://github.com/FStarLang/FStar/issues/1542
         }
-    } => Err(err) => assert_error_msg(err, "error[E0308]: mismatched types")
+    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
 }
 
 test_verify_one_file! {

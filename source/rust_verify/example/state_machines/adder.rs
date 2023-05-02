@@ -1,10 +1,11 @@
 #[allow(unused_imports)]
 use builtin::*;
-mod pervasive;
-use pervasive::*;
+use builtin_macros::*;
+use vstd::{*, pervasive::*};
 
 use state_machines_macros::state_machine;
 
+verus! {
 state_machine!(
     X {
         fields {
@@ -39,5 +40,6 @@ state_machine!(
 
     }
 );
+}
 
 fn main() { }

@@ -412,7 +412,7 @@ fn e10_pass() {
             },
         ),
     ];
-    let result = verify_files(files, "test.rs".to_string(), &[]);
+    let result = verify_files("e10_pass", files, "test.rs".to_string(), &[]);
     assert!(result.is_ok());
 }
 
@@ -546,7 +546,7 @@ fn e13_pass() {
 
                     proof fn cheese_take_two() {
                         assert forall|o1:Order| o1.is_appetizer() implies
-                            exists(|o2:Order| o2.is_sandwich() && o1.get_cheese() == o2.get_cheese()) by
+                            exists|o2:Order| o2.is_sandwich() && o1.get_cheese() == o2.get_cheese() by
                         {
                             // ensures(exists(|o2: Order| matches!((o1, o2), (Order::Appetizer { cheese: c1, .. }, Order::Sanwhich { cheese: c2, .. }) if c1 == c2)))
 
@@ -558,7 +558,7 @@ fn e13_pass() {
                 },
         ),
     ];
-    let result = verify_files_vstd(files, "test.rs".to_string(), true, &[]);
+    let result = verify_files_vstd("e13_pass", files, "test.rs".to_string(), true, &[]);
     assert!(result.is_ok());
 }
 
@@ -1004,22 +1004,22 @@ test_verify_one_file! {
                     forall|i:int| 0 <= i < low ==> haystack[i] < needle,
                     forall|i:int| high <= i < haystack.len() ==> needle <= haystack[i],
             {
-                let decreases: Ghost<int> = ghost(high - low);
+                let ghost decreases = high - low;
                 let mid = low + (high - low) / 2;
                 if *haystack.index(mid) < needle {
-                    let old_low: Ghost<usize> = ghost(low);
+                    let ghost old_low = low;
                     low = mid + 1;
                     assert forall|i: int| 0 <= i < low implies haystack[i] < needle by {
                         assert(view_u64(haystack.view())[i] <= view_u64(haystack.view())[mid as int]);
                     }
                 } else {
-                    let old_high: Ghost<usize> = ghost(high);
+                    let ghost old_high = high;
                     high = mid;
                     assert forall|i: int| high < i < haystack.len() implies needle <= haystack[i] by {
                         assert(view_u64(haystack.view())[mid as int] <= view_u64(haystack.view())[i]);
                     }
                 }
-                assert(high - low < decreases@); // Termination check
+                assert(high - low < decreases); // Termination check
             }
             low
         }

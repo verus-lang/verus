@@ -22,7 +22,7 @@ To run Verus on this code, change to the `source` directory and type the followi
 or the following in Windows:
 
 ```
-../rust/install/bin/rust_verify.exe --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/builtin_macros.dll --edition=2018 rust_verify/example/guide/getting_started.rs
+.\target-verus\release\verus.exe rust_verify\example\guide\getting_started.rs
 ```
 
 You should see the following output:
@@ -65,17 +65,14 @@ such as preconditions, postconditions, assertions, `forall`, `exists`, etc.
 Therefore, each file in a crate will typically contain the following declarations:
 
 ```rust
-#[allow(unused_imports)]
-use builtin_macros::*;
-#[allow(unused_imports)]
-use builtin::*;
+use vstd::prelude::*;
 
 verus! {
 ```
 
 In the remainder of this guide, we will omit these declarations from the examples to avoid clutter.
 However, remember that any example code should be placed inside the `verus! { ... }` block,
-and that the file should use `builtin_macros::*;` and `builtin::*;`.
+and that the file should use `vstd::prelude::*;`.
 
 ## Compilation
 

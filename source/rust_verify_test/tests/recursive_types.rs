@@ -87,7 +87,7 @@ test_verify_one_file! {
             E(Box<E1>),
             F(List<Box<E1>>),
         }
-    } => Err(err) => assert_error_msg(err, "in a non-positive polarity")
+    } => Err(err) => assert_vir_error_msg(err, "in a non-positive polarity")
 }
 
 test_verify_one_file! {
@@ -125,7 +125,7 @@ test_verify_one_file! {
             N(),
             E(Box<E1>),
         }
-    } => Err(err) => assert_error_msg(err, "in a non-positive polarity")
+    } => Err(err) => assert_vir_error_msg(err, "in a non-positive polarity")
 }
 
 test_verify_one_file! {
@@ -163,7 +163,7 @@ test_verify_one_file! {
             E(Box<E1>),
             F(List<Box<E1>>),
         }
-    } => Err(err) => assert_error_msg(err, "in a non-positive polarity")
+    } => Err(err) => assert_vir_error_msg(err, "in a non-positive polarity")
 }
 
 test_verify_one_file! {
@@ -187,7 +187,7 @@ test_verify_one_file! {
         struct Map<#[verifier(maybe_negative)] /* vattr */ K, V> {
             dummy: std::marker::PhantomData<(K, V)>,
         }
-    } => Err(err) => assert_error_msg(err, "in external_body datatype, each type parameter must be either #[verifier(maybe_negative)] or #[verifier(strictly_positive)]")
+    } => Err(err) => assert_vir_error_msg(err, "in external_body datatype, each type parameter must be either #[verifier(maybe_negative)] or #[verifier(strictly_positive)]")
 }
 
 test_verify_one_file! {
@@ -202,7 +202,7 @@ test_verify_one_file! {
             a: Map<A, int>,
             b: Map<int, B>,
         }
-    } => Err(err) => assert_error_msg(err, "Type parameter A must be declared #[verifier(maybe_negative)] to be used in a non-positive position")
+    } => Err(err) => assert_vir_error_msg(err, "Type parameter A must be declared #[verifier(maybe_negative)] to be used in a non-positive position")
 }
 
 test_verify_one_file! {
@@ -217,7 +217,7 @@ test_verify_one_file! {
             a: Map<A, int>,
             b: Map<int, B>,
         }
-    } => Err(err) => assert_error_msg(err, "in a non-positive polarity")
+    } => Err(err) => assert_vir_error_msg(err, "in a non-positive polarity")
 }
 
 test_verify_one_file! {
@@ -234,5 +234,17 @@ test_verify_one_file! {
         struct S {
             f: FnSpec(S) -> int,
         }
-    } => Err(err) => assert_error_msg(err, "in a non-positive polarity")
+    } => Err(err) => assert_vir_error_msg(err, "in a non-positive polarity")
+}
+
+test_verify_one_file! {
+    #[test] type_argument_in_nested_negative_position verus_code! {
+        #[verifier(external_body)]
+        pub struct Set<#[verifier(maybe_negative)] A> {
+            dummy: std::marker::PhantomData<A>,
+        }
+        struct X<A>(A);
+        struct Y<A>(Set<X<A>>);
+        struct Z(Y<Z>);
+    } => Err(err) => assert_vir_error_msg(err, "Type parameter A must be declared #[verifier(maybe_negative)] to be used in a non-positive position")
 }

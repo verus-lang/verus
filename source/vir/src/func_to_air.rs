@@ -8,7 +8,7 @@ use crate::def::{
     new_internal_qid, prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_pre_var,
     prefix_recursive_fun, prefix_requires, suffix_global_id, suffix_local_stmt_id,
     suffix_typ_param_id, unique_local, CommandsWithContext, SnapPos, Spanned, FUEL_BOOL,
-    FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE, SUCC, ZERO,
+    FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE, SUCC, THIS_PRE_FAILED, ZERO,
 };
 use crate::sst::{BndX, Exp, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst_to_air::{
@@ -424,7 +424,7 @@ pub fn func_name_to_air(
 
 pub(crate) fn param_to_par(param: &Param, allow_is_mut: bool) -> Par {
     param.map_x(|p| {
-        let ParamX { name, typ, mode, is_mut } = p;
+        let ParamX { name, typ, mode, is_mut, unwrapped_info: _ } = p;
         if *is_mut && !allow_is_mut {
             panic!("mut unexpected here");
         }
@@ -484,7 +484,7 @@ pub fn func_decl_to_air(
             (_, Some(_)) => None,
             // Standard message
             (Mode::Spec, None) => Some("recommendation not met".to_string()),
-            (_, None) => Some("failed precondition".to_string()),
+            (_, None) => Some(THIS_PRE_FAILED.to_string()),
         };
         let req_params = params_to_pre_post_pars(&function.x.params, true);
         let _ = req_ens_to_air(
@@ -712,12 +712,14 @@ pub fn func_def_to_air(
                 // Inherit requires/ensures from trait method declaration
                 let self_typ =
                     Arc::new(TypX::Datatype(datatype.clone(), datatype_typ_args.clone()));
+                let self_typ = Arc::new(TypX::Boxed(self_typ.clone()));
                 let mut trait_typ_substs: HashMap<Ident, Typ> = HashMap::new();
                 trait_typ_substs.insert(crate::def::trait_self_type_param(), self_typ);
                 let tr = &ctx.trait_map[trait_path];
                 assert!(tr.x.typ_params.len() == trait_typ_args.len());
                 for ((x, _, _), t) in tr.x.typ_params.iter().zip(trait_typ_args.iter()) {
-                    trait_typ_substs.insert(x.clone(), t.clone());
+                    let t = crate::poly::coerce_typ_to_poly(ctx, t);
+                    trait_typ_substs.insert(x.clone(), t);
                 }
                 (trait_typ_substs, &ctx.func_map[method])
             } else {

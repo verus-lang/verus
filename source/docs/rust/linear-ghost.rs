@@ -1,4 +1,4 @@
-// mod pervasive; #[allow(unused_imports)] use { builtin_macros::*, builtin::*, pervasive::*, option::*, seq::*, vec::*, cell::*, modes::*, cell::*}; #[allow(unused_imports)] use pervasive::option::Option::*;
+// mod pervasive; #[allow(unused_imports)] use { builtin_macros::*, builtin::*, pervasive::*, option::*, seq::*, vec::*, cell::*, modes::*, cell::*}; #[allow(unused_imports)] use vstd::option::Option::*;
 
 // Further experimentation at https://gist.github.com/utaal/aba64ad723c65068247af00c63756e10
 

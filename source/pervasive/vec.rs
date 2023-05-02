@@ -4,16 +4,11 @@ use builtin::*;
 use builtin_macros::*;
 #[allow(unused_imports)]
 use crate::pervasive::*;
-#[cfg(not(vstd_build_todo))]
-#[allow(unused_imports)]
-use crate::pervasive::seq::*;
-#[cfg(vstd_build_todo)]
-#[allow(unused_imports)]
 use crate::seq::*;
 extern crate alloc;
 use alloc::vec;
 #[allow(unused_imports)]
-use crate::pervasive::slice::*;
+use crate::slice::*;
 
 verus! {
 
@@ -89,7 +84,6 @@ impl<A> Vec<A> {
     }
 
     #[verifier(external_body)]
-    #[verifier(autoview)]
     pub fn index(&self, i: usize) -> (r: &A)
         requires
             i < self.len(),
@@ -120,6 +114,27 @@ impl<A> Vec<A> {
         core::mem::swap(&mut self.vec[i], a);
     }
 
+    #[verifier(external_body)]
+    pub fn insert(&mut self, i: usize, a: A)
+        requires
+            i <= old(self).len(),
+        ensures
+            self@ == old(self)@.insert(i as int, a),
+    {
+        self.vec.insert(i, a);
+    }
+
+    #[verifier(external_body)]
+    pub fn remove(&mut self, i: usize) -> (r: A)
+        requires
+            i < old(self).len(),
+        ensures
+            r == old(self)[i as int],
+            self@ == old(self)@.remove(i as int),
+    {
+        self.vec.remove(i)
+    }
+
     pub spec fn spec_len(&self) -> usize;
 
     #[verifier(external_body)]
@@ -136,6 +151,13 @@ impl<A> Vec<A> {
         ensures slice@ == self@
     {
         self.vec.as_slice()
+    }
+
+    #[verifier(external_body)]
+    pub fn clear(&mut self)
+        ensures self.view() == Seq::<A>::empty(),
+    {
+        self.vec.clear();
     }
 }
 

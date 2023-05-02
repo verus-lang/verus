@@ -7,7 +7,7 @@ pub fn attribute_is_variant(
     let ast = &s.ast();
     match ast.data {
         syn::Data::Enum(_) => {}
-        _ => panic!("#[is_variant] is only allowed on enums"),
+        _ => return quote! { compile_error!("#[is_variant] is only allowed on enums"); },
     }
     let struct_name = &s.ast().ident;
     let is_impls = s
@@ -30,9 +30,9 @@ pub fn attribute_is_variant(
                         );
 
                         quote! {
-                            #[verifier::spec]
                             #[allow(non_snake_case)]
-                            #[verifier(get_variant(#variant_ident, #field_ident))] /* vattr */
+                            #[verus::internal(get_variant(#variant_ident, #field_ident))]
+                            #[verus::internal(spec)]
                             pub fn #get_ident(self) -> #field_ty {
                                 unimplemented!()
                             }
@@ -54,9 +54,9 @@ pub fn attribute_is_variant(
                         );
 
                         quote! {
-                            #[verifier::spec]
                             #[allow(non_snake_case)]
-                            #[verifier(get_variant(#variant_ident_str, #field_lit))] /* vattr */
+                            #[verus::internal(get_variant(#variant_ident_str, #field_lit))]
+                            #[verus::internal(spec)]
                             pub fn #get_ident(self) -> #field_ty {
                                 unimplemented!()
                             }
@@ -67,22 +67,25 @@ pub fn attribute_is_variant(
             };
 
             quote! {
-                #[verifier::spec]
-                #[verifier(is_variant(#variant_ident_str))] /* vattr */
-                #[allow(non_snake_case)]
-                pub fn #fun_ident(&self) -> bool { unimplemented!() }
+                verus! {
+                    #[verus::internal(is_variant(#variant_ident_str))]
+                    #[allow(non_snake_case)]
+                    #[verus::internal(spec)]
+                    pub fn #fun_ident(&self) -> bool { unimplemented!() }
 
-                #get_fns
+                    #get_fns
+                }
             }
         })
         .collect::<proc_macro2::TokenStream>();
 
     let generics = &ast.generics;
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     quote! {
         #ast
 
         #[automatically_derived]
-        impl#generics #struct_name#generics {
+        impl #impl_generics #struct_name #ty_generics #where_clause {
             #is_impls
         }
     }

@@ -391,6 +391,15 @@ pub trait Visit<'ast> {
     fn visit_invariant_ensures(&mut self, i: &'ast InvariantEnsures) {
         visit_invariant_ensures(self, i);
     }
+    fn visit_invariant_name_set(&mut self, i: &'ast InvariantNameSet) {
+        visit_invariant_name_set(self, i);
+    }
+    fn visit_invariant_name_set_any(&mut self, i: &'ast InvariantNameSetAny) {
+        visit_invariant_name_set_any(self, i);
+    }
+    fn visit_invariant_name_set_none(&mut self, i: &'ast InvariantNameSetNone) {
+        visit_invariant_name_set_none(self, i);
+    }
     #[cfg(feature = "full")]
     fn visit_item(&mut self, i: &'ast Item) {
         visit_item(self, i);
@@ -683,6 +692,9 @@ pub trait Visit<'ast> {
     }
     fn visit_signature_decreases(&mut self, i: &'ast SignatureDecreases) {
         visit_signature_decreases(self, i);
+    }
+    fn visit_signature_invariants(&mut self, i: &'ast SignatureInvariants) {
+        visit_signature_invariants(self, i);
     }
     fn visit_span(&mut self, i: &Span) {
         visit_span(self, i);
@@ -1607,6 +1619,12 @@ where
     }
     tokens_helper(v, &node.or2_token.spans);
     v.visit_return_type(&node.output);
+    if let Some(it) = &node.requires {
+        v.visit_requires(it);
+    }
+    if let Some(it) = &node.ensures {
+        v.visit_ensures(it);
+    }
     for it in &node.inner_attrs {
         v.visit_attribute(it);
     }
@@ -2437,6 +2455,34 @@ where
 {
     tokens_helper(v, &node.token.span);
     v.visit_specification(&node.exprs);
+}
+pub fn visit_invariant_name_set<'ast, V>(v: &mut V, node: &'ast InvariantNameSet)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    match node {
+        InvariantNameSet::Any(_binding_0) => {
+            v.visit_invariant_name_set_any(_binding_0);
+        }
+        InvariantNameSet::None(_binding_0) => {
+            v.visit_invariant_name_set_none(_binding_0);
+        }
+    }
+}
+pub fn visit_invariant_name_set_any<'ast, V>(v: &mut V, node: &'ast InvariantNameSetAny)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.token.span);
+}
+pub fn visit_invariant_name_set_none<'ast, V>(
+    v: &mut V,
+    node: &'ast InvariantNameSetNone,
+)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.token.span);
 }
 #[cfg(feature = "full")]
 pub fn visit_item<'ast, V>(v: &mut V, node: &'ast Item)
@@ -3625,6 +3671,9 @@ where
     if let Some(it) = &node.decreases {
         v.visit_signature_decreases(it);
     }
+    if let Some(it) = &node.invariants {
+        v.visit_signature_invariants(it);
+    }
 }
 pub fn visit_signature_decreases<'ast, V>(v: &mut V, node: &'ast SignatureDecreases)
 where
@@ -3639,6 +3688,13 @@ where
         tokens_helper(v, &(it).0.span);
         v.visit_expr(&(it).1);
     }
+}
+pub fn visit_signature_invariants<'ast, V>(v: &mut V, node: &'ast SignatureInvariants)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.token.span);
+    v.visit_invariant_name_set(&node.set);
 }
 pub fn visit_span<'ast, V>(v: &mut V, node: &Span)
 where
@@ -4104,12 +4160,6 @@ where
             tokens_helper(v, &_binding_0.spans);
         }
         UnOp::Proof(_binding_0) => {
-            tokens_helper(v, &_binding_0.span);
-        }
-        UnOp::Ghost(_binding_0) => {
-            tokens_helper(v, &_binding_0.span);
-        }
-        UnOp::Tracked(_binding_0) => {
             tokens_helper(v, &_binding_0.span);
         }
         UnOp::Forall(_binding_0) => {

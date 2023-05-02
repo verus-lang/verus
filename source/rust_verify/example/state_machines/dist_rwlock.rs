@@ -1,19 +1,18 @@
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-mod pervasive;
-use pervasive::*;
-use pervasive::vec::*;
-use pervasive::modes::*;
-use pervasive::multiset::*;
-use pervasive::map::*;
-use pervasive::seq::*;
-use pervasive::option::*;
-use pervasive::atomic_ghost::*;
+use vstd::{*, pervasive::*};
+use vstd::vec::*;
+use vstd::modes::*;
+use vstd::multiset::*;
+use vstd::map::*;
+use vstd::seq::*;
+use vstd::option::*;
+use vstd::atomic_ghost::*;
 
 use state_machines_macros::tokenized_state_machine;
 
-verus_old_todo_no_ghost_blocks!{
+verus!{
 
 tokenized_state_machine!{
     DistRwLock<T> {
@@ -291,7 +290,7 @@ tokenized_state_machine!{
 
 struct_with_invariants!{
     struct RwLock<T> {
-        #[verifier::proof] inst: DistRwLock::Instance<T>,
+        inst: Tracked<DistRwLock::Instance<T>>,
         exc_locked: AtomicBool<_, DistRwLock::exc_locked<T>, _>,
         ref_counts: Vec<AtomicU64<_, DistRwLock::ref_counts<T>, _>>,
     }
@@ -299,7 +298,7 @@ struct_with_invariants!{
     spec fn wf(&self) -> bool {
 
         predicate {
-            &&& self.inst.rc_width() == self.ref_counts@.len()
+            &&& self.inst@.rc_width() == self.ref_counts@.len()
 
             &&& forall |i: int| (0 <= i && i < self.ref_counts@.len()) ==>
                 self.ref_counts@.index(i).well_formed()
@@ -307,7 +306,8 @@ struct_with_invariants!{
         }
 
         invariant on exc_locked with (inst) is (b: bool, g: DistRwLock::exc_locked<T>) {
-            g@ === DistRwLock::token![ inst => exc_locked => b ]
+            g@.instance == inst@
+            && g@.value == b
         }
 
         invariant on ref_counts with (inst)
@@ -316,31 +316,34 @@ struct_with_invariants!{
             specifically (self.ref_counts@[i])
             is (v: u64, g: DistRwLock::ref_counts<T>)
         {
-            g@ === DistRwLock::token![ inst => ref_counts => i => v as int ]
+            g@.instance == inst@
+            && g@.key == i
+            && g@.value == v as int
         }
     }
 }
 
 impl<T> RwLock<T> {
     #[verifier(spinoff_prover)] 
-    fn new(rc_width: usize, t: T) -> Self {
-        requires(0 < rc_width);
-        ensures(|s: Self| s.wf());
-        
-        #[verifier::proof] let inst;
-        #[verifier::proof] let exc_locked_token;
-        #[verifier::proof] let mut ref_counts_tokens;
+    fn new(rc_width: usize, t: T) -> (s: Self)
+        requires 0 < rc_width,
+        ensures s.wf(),
+    {
+        let tracked inst;
+        let tracked exc_locked_token;
+        let tracked mut ref_counts_tokens;
         proof {
-            #[verifier::proof] let (Trk(inst0), Trk(exc_locked_token0), Trk(ref_counts_tokens0), _, _, _, _) =
+            let tracked (Tracked(inst0), Tracked(exc_locked_token0), Tracked(ref_counts_tokens0), _, _, _, _) =
                 DistRwLock::Instance::initialize(rc_width as int, t, Option::Some(t));
             inst = inst0;
             exc_locked_token = exc_locked_token0;
             ref_counts_tokens = ref_counts_tokens0;
         }
 
-        let exc_locked_atomic = AtomicBool::new(inst, false, exc_locked_token);
+        let tracked_inst: Tracked<DistRwLock::Instance<T>> = Tracked(inst.clone());
+        let exc_locked_atomic = AtomicBool::new(Ghost(tracked_inst), false, Tracked(exc_locked_token));
 
-        let mut v: Vec<AtomicU64<(DistRwLock::Instance<T>, int), DistRwLock::ref_counts<T>, _>>
+        let mut v: Vec<AtomicU64<(Tracked<DistRwLock::Instance<T>>, int), DistRwLock::ref_counts<T>, _>>
             = Vec::new();
         let mut i: usize = 0;
 
@@ -371,10 +374,10 @@ impl<T> RwLock<T> {
             invariant
                 i <= rc_width,
                 v@.len() == i as int,
-                forall(|j: int| 0 <= j && j < i ==>
+                forall|j: int| 0 <= j && j < i ==>
                     v@.index(j).well_formed()
-                      && equal(v@.index(j).constant(), (inst, j))
-                ),
+                      && equal(v@.index(j).constant(), (tracked_inst, j)),
+                tracked_inst@ == inst,
                 forall |j: int|
                     #![trigger( ref_counts_tokens.dom().contains(j) )]
                     #![trigger( ref_counts_tokens.index(j) )]
@@ -387,12 +390,9 @@ impl<T> RwLock<T> {
         {
             assert(ref_counts_tokens.dom().contains(i as int));
 
-            #[verifier::proof] let ref_count_token;
-            proof {
-                ref_count_token = ref_counts_tokens.tracked_remove(i as int);
-            }
+            let tracked ref_count_token = ref_counts_tokens.tracked_remove(i as int);
 
-            let rc_atomic = AtomicU64::new((inst, spec_cast_integer::<_, int>(i)), 0, ref_count_token);
+            let rc_atomic = AtomicU64::new(Ghost((tracked_inst, i as int)), 0, Tracked(ref_count_token));
             v.push(rc_atomic);
 
             i = i + 1;
@@ -412,12 +412,12 @@ impl<T> RwLock<T> {
         }
 
         let s = RwLock {
-            inst,
+            inst: Tracked(inst),
             exc_locked: exc_locked_atomic,
             ref_counts: v,
         };
 
-        assert(s.inst.rc_width() == s.ref_counts@.len());
+        assert(s.inst@.rc_width() == s.ref_counts@.len());
 
         s
     }

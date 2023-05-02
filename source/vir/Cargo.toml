@@ -15,6 +15,7 @@ num-traits= "0.2.15"
 im = "15.1.0"
 sha2 = "0.10.2"
 serde = { version = "1", features = ["derive", "rc"] }
+indexmap = { version = "1" }
 
 [features]
 singular = ["air/singular"]

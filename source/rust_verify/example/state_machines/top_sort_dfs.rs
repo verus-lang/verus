@@ -1,21 +1,20 @@
 #![allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-mod pervasive;
-use pervasive::*;
-use pervasive::set::*;
-use pervasive::vec::*;
-use pervasive::slice::*;
-use pervasive::option::*;
-use pervasive::seq::*;
-use pervasive::map::*;
-use pervasive::modes::*;
+use vstd::{*, pervasive::*};
+use vstd::set::*;
+use vstd::vec::*;
+use vstd::slice::*;
+use vstd::option::*;
+use vstd::seq::*;
+use vstd::map::*;
+use vstd::modes::*;
 use state_machines_macros::tokenized_state_machine;
 
 use option::Option::Some;
 use option::Option::None;
 
-verus_old_todo_no_ghost_blocks!{
+verus!{
 
 pub struct DirectedGraph<#[verifier(maybe_negative)] V> {
     pub edges: Set<(V, V)>,
@@ -43,7 +42,7 @@ impl<V> DirectedGraph<V> {
 }
 
 tokenized_state_machine!{
-    TopSort<#[verifier(maybe_negative)] /* vattr */ V> {
+    TopSort<#[verifier::maybe_negative] /* vattr */ V> {
         fields {
             #[sharding(constant)]
             pub graph: DirectedGraph<V>,
@@ -171,12 +170,12 @@ struct NodeState {
     visited: bool,
     in_stack: bool,
 
-    #[verifier::proof] token: NodeToken,
+    token: Tracked<NodeToken>,
 }
 
 impl NodeState {
     spec fn well_formed(&self, i: int, inst: TopSort::Instance<usize>) -> bool {
-        match self.token {
+        match self.token@ {
             NodeToken::Unvisited(token) => {
                 &&& !self.visited
                 &&& !self.in_stack
@@ -204,8 +203,8 @@ struct DfsState {
 
     node_states: Vec<NodeState>,
 
-    #[verifier::proof] top_sort_token: TopSort::top_sort<usize>,
-    #[verifier::proof] instance: TopSort::Instance<usize>,
+    top_sort_token: Tracked<TopSort::top_sort<usize>>,
+    instance: Tracked<TopSort::Instance<usize>>,
 }
 
 spec fn valid_stack_i(cur_stack: Seq<usize>, graph: DirectedGraph<usize>, i: int) -> bool {
@@ -222,10 +221,10 @@ impl DfsState {
         &&& graph.well_formed()
         &&& self.node_states@.len() == graph.edges@.len()
         &&& (forall |i| 0 <= i < self.node_states@.len() ==>
-            self.node_states@[i].well_formed(i, self.instance))
-        &&& self.top_sort_token@
-            === TopSort::token![ self.instance => top_sort => self.top_sort@ ]
-        &&& self.instance.graph() === graph@
+            self.node_states@[i].well_formed(i, self.instance@))
+        &&& self.top_sort_token@@.instance === self.instance@
+        &&& self.top_sort_token@@.value === self.top_sort@
+        &&& self.instance@.graph() === graph@
         &&& valid_stack(self.cur_stack@, graph@)
         &&& (forall |i: usize| 0 <= i < self.node_states@.len() ==>
            (self.node_states@[i as int].in_stack <==> self.cur_stack@.contains(i)))
@@ -296,7 +295,7 @@ fn visit(
     graph: &ConcreteDirectedGraph,
     dfs_state: &mut DfsState,
     v: usize,
-) -> (res: (bool, Trk<Option<TopSort::visited<usize>>>))
+) -> (res: (bool, Tracked<Option<TopSort::visited<usize>>>))
     requires
         0 <= v && v < graph.edges@.len(),
         old(dfs_state).well_formed(graph),
@@ -305,47 +304,45 @@ fn visit(
     ensures
         res.0 ==> dfs_state.well_formed(graph),
         res.0 ==> equal(dfs_state.cur_stack@, old(dfs_state).cur_stack@),
-        res.0 ==> res.1.0.is_Some() &&
-            equal(res.1.0.get_Some_0()@,
-                TopSort::token![ dfs_state.instance => visited => v ]
-            ),
+        res.0 ==> res.1@.is_Some() &&
+            res.1@.get_Some_0()@.instance == dfs_state.instance@ &&
+            res.1@.get_Some_0()@.key == v,
         !res.0 ==> graph@.is_cycle(dfs_state.cycle@),
         equal(dfs_state.instance, old(dfs_state).instance),
 {
-    if dfs_state.node_states.index(v as usize).in_stack {
+    let node_state = dfs_state.node_states.index(v as usize);
+    if node_state.in_stack {
         find_cycle(graph, dfs_state, v);
-        return (false, Trk(None));
+        return (false, Tracked(None));
     }
 
-    if dfs_state.node_states.index(v as usize).visited {
-        #[verifier::proof] let tok = match &dfs_state.node_states.index(v as usize).token {
+    if node_state.visited {
+        let tracked tok = match node_state.token.borrow() {
             NodeToken::Visited(tok) => tok.clone(),
             _ => proof_from_false(),
         };
-        return (true, Trk(Some(tok)));
+        return (true, Tracked(Some(tok)));
     }
 
     let mut node_state_tmp = NodeState {
         in_stack: true,
         visited: true,
-        token: NodeToken::InProgress,
+        token: Tracked(NodeToken::InProgress),
     };
     dfs_state.node_states.swap(v as usize, &mut node_state_tmp);
-    #[verifier::proof] let unvisited = match node_state_tmp.token {
+    let tracked unvisited = match node_state_tmp.token.get() {
         NodeToken::Unvisited(unvisited) => unvisited,
         _ => proof_from_false(),
     };
 
     dfs_state.cur_stack.push(v);
 
-    #[verifier::spec] let v_spec = v;
     assert(dfs_state.well_formed(graph)) by {
-        assert(forall(|i: int| 0 <= i && i < dfs_state.cur_stack@.len() as int - 2 ==>
+        assert(forall |i: int| 0 <= i && i < dfs_state.cur_stack@.len() as int - 2 ==>
             valid_stack_i(old(dfs_state).cur_stack@, graph@, i) ==>
-            #[trigger] valid_stack_i(dfs_state.cur_stack@, graph@, i)));
+            #[trigger] valid_stack_i(dfs_state.cur_stack@, graph@, i));
         assert(valid_stack(dfs_state.cur_stack@, graph@));
 
-        #[verifier::spec] let v = v_spec;
         assert forall |i: usize|
             0 <= i && i < dfs_state.node_states@.len() implies
                 dfs_state.node_states@.index(i as int).in_stack == dfs_state.cur_stack@.contains(i)
@@ -355,11 +352,11 @@ fn visit(
                 assert(dfs_state.cur_stack@.contains(i));
             } else {
                 if old(dfs_state).cur_stack@.contains(i) {
-                    #[verifier::spec] let j = old(dfs_state).cur_stack@.index_of(i);
+                    let j = old(dfs_state).cur_stack@.index_of(i);
                     assert(dfs_state.cur_stack@.index(j) == i);
                 }
                 if dfs_state.cur_stack@.contains(i) {
-                    #[verifier::spec] let j = old(dfs_state).cur_stack@.index_of(i);
+                    let j = old(dfs_state).cur_stack@.index_of(i);
                     assert(old(dfs_state).cur_stack@.index(j) == i);
                 }
                 assert(dfs_state.cur_stack@.contains(i)
@@ -368,8 +365,8 @@ fn visit(
         }
     }
 
-    #[verifier::spec] let extended_cur_stack = dfs_state.cur_stack;
-    #[verifier::proof] let mut map_visited_deps: Map<usize, TopSort::visited<usize>> = Map::tracked_empty();
+    let ghost extended_cur_stack = dfs_state.cur_stack;
+    let tracked mut map_visited_deps: Map<usize, TopSort::visited<usize>> = Map::tracked_empty();
 
     let mut idx: usize = 0;
     while idx < graph.edges.index(v as usize).len()
@@ -382,9 +379,10 @@ fn visit(
             dfs_state.well_formed(graph),
             equal(dfs_state.cur_stack@, extended_cur_stack@),
             forall |idx0: int| 0 <= idx0 && idx0 < idx ==> {
-                #[verifier::spec] let w = #[trigger] graph.edges@.index(v as int)@.index(idx0);
+                let w = #[trigger] graph.edges@.index(v as int)@.index(idx0);
                 map_visited_deps.dom().contains(w)
-                    && equal(map_visited_deps.index(w)@, TopSort::token![ dfs_state.instance => visited => w ])
+                    && map_visited_deps.index(w)@.instance == dfs_state.instance@
+                    && map_visited_deps.index(w)@.key == w
             },
     {
 
@@ -395,25 +393,28 @@ fn visit(
         assert(graph.edges@.index(v as int)@.contains(w));
         assert(graph@.edges.contains((v, w)));
 
-        let (b, Trk(opt_visited)) = visit(graph, dfs_state, w);
+        let (b, Tracked(opt_visited)) = visit(graph, dfs_state, w);
         if !b {
-            return (false, Trk(None));
+            return (false, Tracked(None));
         }
 
-        #[verifier::spec] let old_map_visited_deps = map_visited_deps;
-        #[verifier::spec] let old_idx = idx;
+        let ghost old_map_visited_deps = map_visited_deps;
+        let ghost old_idx = idx;
 
-        #[verifier::proof] let visited = opt_visited.tracked_unwrap();
-        map_visited_deps.tracked_insert(w, visited);
+        proof {
+            let tracked visited = opt_visited.tracked_unwrap();
+            map_visited_deps.tracked_insert(w, visited);
+        }
 
         idx = idx + 1;
 
         assert forall |idx0: int|
             0 <= idx0 && idx0 < idx implies
             ({
-                #[verifier::spec] let w = #[trigger] graph.edges@.index(v as int)@.index(idx0);
+                let w = #[trigger] graph.edges@.index(v as int)@.index(idx0);
                 map_visited_deps.dom().contains(w)
-                    && equal(map_visited_deps.index(w)@, TopSort::token![ dfs_state.instance => visited => w ])
+                    && map_visited_deps.index(w)@.instance == dfs_state.instance@
+                    && map_visited_deps.index(w)@.key == w
             })
         by {
             assume(false);
@@ -422,45 +423,47 @@ fn visit(
 
     dfs_state.cur_stack.pop();
 
-    assert(equal(unvisited@.instance, dfs_state.instance));
-    #[verifier::proof] let visited = dfs_state.instance.push_into_top_sort(v,
+    assert(equal(unvisited@.instance, dfs_state.instance@));
+    let tracked visited = dfs_state.instance.borrow().push_into_top_sort(v,
         unvisited,
         &map_visited_deps,
-        &mut dfs_state.top_sort_token,
+        dfs_state.top_sort_token.borrow_mut(),
     );
     dfs_state.top_sort.push(v);
 
     let mut node_state_tmp = NodeState {
         in_stack: false, // TODO don't need to write this field again
         visited: true,
-        token: NodeToken::Visited(visited.clone()),
+        token: Tracked(NodeToken::Visited(visited.clone())),
     };
     dfs_state.node_states.swap(v as usize, &mut node_state_tmp);
 
-    assert_seqs_equal!(
-        dfs_state.cur_stack@,
-        old(dfs_state).cur_stack@);
+    proof {
+        assert_seqs_equal!(
+            dfs_state.cur_stack@,
+            old(dfs_state).cur_stack@);
+    }
 
-    assert_by(dfs_state.well_formed(graph), {
+    assert(dfs_state.well_formed(graph)) by {
         assert(valid_stack(dfs_state.cur_stack@, graph@));
-        assume(forall(|i: usize| 0 <= i && i < dfs_state.node_states@.len() ==>
-           (dfs_state.node_states@.index(i as int).in_stack == dfs_state.cur_stack@.contains(i))));
+        assume(forall |i: usize| 0 <= i && i < dfs_state.node_states@.len() ==>
+           (dfs_state.node_states@.index(i as int).in_stack == dfs_state.cur_stack@.contains(i)));
+    };
 
-    });
-
-    (true, Trk(Some(visited)))
+    (true, Tracked(Some(visited)))
 }
 
 fn init_node_states(
     n: usize,
-    #[verifier::proof] instance: TopSort::Instance<usize>,
-    #[verifier::proof] unv: Map<usize, TopSort::unvisited<usize>>,
+    Tracked(instance): Tracked<TopSort::Instance<usize>>,
+    Tracked(unv): Tracked<Map<usize, TopSort::unvisited<usize>>>,
 ) -> (node_states: Vec<NodeState>)
     requires
         forall |j: usize| 0 <= j && j < n ==>
             unv.dom().contains(j),
         forall |j: usize| 0 <= j && j < n ==>
-            unv.index(j)@ === TopSort::token![ instance => unvisited => j ]
+            unv.index(j)@.instance == instance
+            && unv.index(j)@.key == j
     ensures
         node_states@.len() == n as int,
         forall |j: int| 0 <= j && j < node_states@.len() ==>
@@ -471,37 +474,35 @@ fn init_node_states(
     let mut node_states = Vec::<NodeState>::new();
     let mut i: usize = 0;
 
-    #[verifier::proof] let mut unv = unv;
+    let tracked mut unv = unv;
 
     while i < n
         invariant
             0 <= i && i <= n,
             node_states@.len() == i as int,
-            forall(|j: int| 0 <= j && j < i ==>
-                node_states@.index(j).well_formed(j, instance)),
-            forall(|j: int| 0 <= j && j < i ==>
-                !node_states@.index(j).in_stack),
-            forall(|j: usize| i <= j && j < n ==>
-                #[trigger] unv.dom().contains(j)),
-            forall(|j: usize| i <= j && j < n ==>
-                equal(unv.index(j)@, TopSort::token![
-                    instance => unvisited => j
-                ])),
+            forall |j: int| 0 <= j && j < i ==>
+                node_states@.index(j).well_formed(j, instance),
+            forall |j: int| 0 <= j && j < i ==>
+                !node_states@.index(j).in_stack,
+            forall |j: usize| i <= j && j < n ==>
+                #[trigger] unv.dom().contains(j),
+            forall |j: usize| i <= j && j < n ==>
+                unv.index(j)@.instance == instance
+                && unv.index(j)@.key == j
     {
 
         assert(unv.dom().contains(i));
-        #[verifier::proof] let unv1 = unv.tracked_remove(i);
-        //#[verifier::spec] let old_node_states = node_states;
+        let tracked unv1 = unv.tracked_remove(i);
 
         node_states.push(NodeState {
             visited: false,
             in_stack: false,
-            token: NodeToken::Unvisited(unv1),
+            token: Tracked(NodeToken::Unvisited(unv1)),
         });
 
         i = i + 1;
 
-        /*#[verifier::spec] let i_spec = i;
+        /*let ghost i_spec = i;
         assert_forall_by(|j: int| {
             requires(0 <= j && j < i);
             ensures(node_states@.index(j).well_formed(j, instance));
@@ -523,34 +524,34 @@ enum TopSortResult {
     Cycle(Vec<usize>)
 }
 
-fn compute_top_sort(graph: &ConcreteDirectedGraph) -> TopSortResult
-{
-    requires(graph.well_formed());
-    ensures(|tsr: TopSortResult| {
+fn compute_top_sort(graph: &ConcreteDirectedGraph) -> (tsr: TopSortResult)
+    requires graph.well_formed(),
+    ensures (
         match tsr {
             TopSortResult::TopSort(top_sort) => is_complete_top_sort(&top_sort, graph),
             TopSortResult::Cycle(cycle) => graph@.is_cycle(cycle@),
         }
-    });
+    )
+{
 
-    #[verifier::proof] let (Trk(instance), Trk(unv), Trk(_), Trk(top_sort_token))
+    let tracked (Tracked(instance), Tracked(unv), _, Tracked(top_sort_token))
         = TopSort::Instance::<usize>::initialize(graph@);
 
     let mut dfs_state = DfsState {
         top_sort: Vec::new(),
         cur_stack: Vec::new(),
         cycle: Vec::new(),
-        node_states: init_node_states(graph.edges.len() as usize, instance.clone(), unv),
-        top_sort_token,
-        instance,
+        node_states: init_node_states(graph.edges.len() as usize, Tracked(instance.clone()), Tracked(unv)),
+        top_sort_token: Tracked(top_sort_token),
+        instance: Tracked(instance),
     };
 
-    #[verifier::proof] let mut map_visited_deps: Map<usize, TopSort::visited<usize>> = Map::tracked_empty();
+    let tracked mut map_visited_deps: Map<usize, TopSort::visited<usize>> = Map::tracked_empty();
 
-    assert_by(dfs_state.well_formed(graph), {
-        assert(forall(|i: usize| 0 <= i && i < dfs_state.node_states@.len() ==>
-           (dfs_state.node_states@.index(i as int).in_stack == dfs_state.cur_stack@.contains(i))));
-    });
+    assert(dfs_state.well_formed(graph)) by {
+        assert(forall |i: usize| 0 <= i && i < dfs_state.node_states@.len() ==>
+           (dfs_state.node_states@.index(i as int).in_stack == dfs_state.cur_stack@.contains(i)));
+    }
 
     let mut v: usize = 0;
     while v < graph.edges.len() as usize
@@ -560,40 +561,40 @@ fn compute_top_sort(graph: &ConcreteDirectedGraph) -> TopSortResult
             forall |w| 0 <= w && (w as int) < (v as int) ==>
                 map_visited_deps.dom().contains(w),
             forall |w| 0 <= w && (w as int) < (v as int) ==>
-                equal(map_visited_deps.index(w)@, TopSort::token![
-                    dfs_state.instance => visited => w
-                ]),
+                map_visited_deps.index(w)@.instance == dfs_state.instance@
+                && map_visited_deps.index(w)@.key == w,
             dfs_state.cur_stack@.len() == 0,
     {
 
-        let (b, Trk(opt_visited)) = visit(graph, &mut dfs_state, v);
+        let (b, Tracked(opt_visited)) = visit(graph, &mut dfs_state, v);
 
         if !b {
             return TopSortResult::Cycle(dfs_state.cycle);
         }
 
-        map_visited_deps.tracked_insert(v, opt_visited.tracked_unwrap());
+        proof {
+            map_visited_deps.tracked_insert(v, opt_visited.tracked_unwrap());
+        }
 
         v = v + 1;
     }
 
-    let DfsState { top_sort, top_sort_token, .. } = dfs_state;
+    let DfsState { top_sort, top_sort_token: Tracked(top_sort_token), .. } = dfs_state;
 
-    #[verifier::spec] let mut s;
     proof {
-        s = Set::new(|i: usize| 0 <= i && i < graph.edges@.len());
-    }
-    dfs_state.instance.done(
-        s,
-        &map_visited_deps,
-        &top_sort_token);
+        let ghost s = Set::new(|i: usize| 0 <= i && i < graph.edges@.len());
+        dfs_state.instance.borrow().done(
+            s,
+            &map_visited_deps,
+            &top_sort_token);
 
-    assert forall |i: usize| 0 <= i && i < graph.edges@.len()
-        implies top_sort@.contains(i)
-    by {
-        assert(s.contains(i));
+        assert forall |i: usize| 0 <= i && i < graph.edges@.len()
+            implies top_sort@.contains(i)
+        by {
+            assert(s.contains(i));
+        }
+        assert(is_complete_top_sort(&top_sort, graph));
     }
-    assert(is_complete_top_sort(&top_sort, graph));
 
     TopSortResult::TopSort(top_sort)
 }

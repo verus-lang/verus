@@ -60,7 +60,7 @@ test_verify_one_file! {
                 consume(x)
             }
         }
-    } => Err(err) => assert_error_msg(err, "expression has mode spec, expected mode proof")
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
 }
 
 test_verify_one_file! {
@@ -133,7 +133,7 @@ test_verify_one_file! {
             i + 1
         }
 
-        proof fn consume(#[verifier::proof] x: bool) {
+        proof fn consume(tracked x: bool) {
         }
 
         proof fn forallstmt_proof_var_disallowed(tracked x: bool) {
@@ -141,7 +141,7 @@ test_verify_one_file! {
                 consume(x);
             }
         }
-    } => Err(err) => assert_error_msg(err, "expression has mode spec, expected mode proof")
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
 }
 
 test_verify_one_file! {

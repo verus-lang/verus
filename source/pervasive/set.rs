@@ -6,10 +6,6 @@ use builtin::*;
 use builtin_macros::*;
 #[allow(unused_imports)]
 use crate::pervasive::*;
-#[cfg(not(vstd_build_todo))]
-#[allow(unused_imports)]
-use crate::pervasive::map::*;
-#[cfg(vstd_build_todo)]
 #[allow(unused_imports)]
 use crate::map::*;
 
@@ -32,7 +28,7 @@ verus! {
 ///    [`Set::difference`], [`Set::complement`], [`Set::filter`], [`Set::insert`],
 ///    or [`Set::remove`].
 ///
-/// To prove that two sequences are equal, it is usually easiest to use the [`assert_seqs_equal!`] macro.
+/// To prove that two sequences are equal, it is usually easiest to use the [`assert_sets_equal!`](crate::set_lib::assert_sets_equal) macro.
 
 #[verifier(external_body)]
 pub struct Set<#[verifier(maybe_negative)] A> {
@@ -63,7 +59,8 @@ impl<A> Set<A> {
     /// by [`axiom_set_ext_equal`].
     ///
     /// To prove that two sets are equal via extensionality, it is generally easier
-    /// to use the [`assert_sets_equal!`] macro, rather than using `ext_equal` directly.
+    /// to use the [`assert_sets_equal!`](crate::set_lib::assert_sets_equal) macro,
+    /// rather than using `ext_equal` directly.
 
     pub open spec fn ext_equal(self, s2: Set<A>) -> bool {
         forall|a: A| self.contains(a) == s2.contains(a)
@@ -133,7 +130,7 @@ impl<A> Set<A> {
         choose|a: A| self.contains(a)
     }
 
-    /// Creates a [`Map`](map::Map) whose domain is the given set.
+    /// Creates a [`Map`] whose domain is the given set.
     /// The values of the map are given by `f`, a function of the keys.
 
     pub spec fn mk_map<V, F: Fn(A) -> V>(self, f: F) -> Map<A, V>;
@@ -375,17 +372,6 @@ pub proof fn axiom_set_choose_len<A>(s: Set<A>)
 
 // Macros
 
-#[cfg(not(vstd_build_todo))]
-#[doc(hidden)]
-#[macro_export]
-macro_rules! set_internal {
-    [$($elem:expr),* $(,)?] => {
-        $crate::pervasive::set::Set::empty()
-            $(.insert($elem))*
-    };
-}
-
-#[cfg(vstd_build_todo)]
 #[doc(hidden)]
 #[macro_export]
 macro_rules! set_internal {
@@ -395,15 +381,6 @@ macro_rules! set_internal {
     };
 }
 
-#[cfg(not(vstd_build_todo))]
-#[macro_export]
-macro_rules! set {
-    [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::pervasive::set::set_internal!($($tail)*))
-    };
-}
-
-#[cfg(vstd_build_todo)]
 #[macro_export]
 macro_rules! set {
     [$($tail:tt)*] => {

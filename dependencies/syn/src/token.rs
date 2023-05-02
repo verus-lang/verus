@@ -715,6 +715,7 @@ define_keywords! {
     "recommends"  pub struct Recommends   /// `recommends`
     "ensures"     pub struct Ensures      /// `ensures`
     "decreases"   pub struct Decreases    /// `decreases`
+    "opens_invariants"   pub struct OpensInvariants    /// `opens_invariants`
     "invariant"   pub struct Invariant    /// `invariant`
     "invariant_ensures"   pub struct InvariantEnsures    /// `invariant_ensures`
     "assert"      pub struct Assert       /// `assert`
@@ -728,6 +729,8 @@ define_keywords! {
     "FnSpec"      pub struct FnSpec       /// `FnSpec`
     "via"         pub struct Via          /// `via`
     "when"        pub struct When         /// `when`
+    "any"         pub struct InvAny          /// `any`
+    "none"         pub struct InvNone          /// `none`
 }
 
 define_punctuation! {
@@ -919,6 +922,7 @@ macro_rules! export_token_macro {
             [recommends]  => { $crate::token::Recommends };
             [ensures]     => { $crate::token::Ensures };
             [decreases]   => { $crate::token::Decreases };
+            [opens_invariants]   => { $crate::token::OpensInvariants };
             [invariant]   => { $crate::token::Invariant };
             [invariant_ensures]   => { $crate::token::InvariantEnsures };
             [assert]      => { $crate::token::Assert };
@@ -926,6 +930,8 @@ macro_rules! export_token_macro {
             [implies]     => { $crate::token::Implies };
             [by]          => { $crate::token::By };
             [via]         => { $crate::token::Via };
+            [any]         => { $crate::token::InvAny };
+            [none]         => { $crate::token::InvNone };
             [when]        => { $crate::token::When };
             [forall]      => { $crate::token::Forall };
             [exists]      => { $crate::token::Exists };

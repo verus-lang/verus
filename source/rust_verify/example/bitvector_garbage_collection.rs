@@ -1,15 +1,5 @@
 #[allow(unused_imports)]
-use builtin::*;
-#[allow(unused_imports)]
-use builtin_macros::*;
-
-#[cfg(not(vstd_todo))]
-mod pervasive;
-#[cfg(not(vstd_todo))] #[allow(unused_imports)]
-use pervasive::seq::Seq;
-
-#[cfg(vstd_todo)] #[allow(unused_imports)]
-use vstd::seq::Seq;
+use vstd::prelude::*;
 
 macro_rules! get_bit_macro {
     ($a:expr, $b:expr) => {

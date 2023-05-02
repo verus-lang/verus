@@ -2,9 +2,8 @@
 
 use builtin::*;
 use builtin_macros::*;
-mod pervasive;
-use pervasive::*;
-use pervasive::seq::*;
+use vstd::{*, pervasive::*};
+use vstd::seq::*;
 
 use state_machines_macros::state_machine;
 

@@ -2,7 +2,7 @@ use crate::ast::{
     BinaryOp, Ident, IntegerTypeBoundKind, TriggerAnnotation, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
     VirErr,
 };
-use crate::ast_util::{err_str, err_string};
+use crate::ast_util::error;
 use crate::context::Ctx;
 use crate::sst::{BndX, Exp, ExpX, Trig, Trigs, UniqueIdent};
 use air::ast::Span;
@@ -48,9 +48,9 @@ fn check_trigger_expr(
             | ExpX::UnaryOpr(UnaryOpr::IsVariant { .. }, _)
             | ExpX::Unary(UnaryOp::Trigger(_), _) => {}
             // allow triggers for bitvector operators
-            ExpX::Binary(BinaryOp::Bitwise(_), _, _) | ExpX::Unary(UnaryOp::BitNot, _) => {}
+            ExpX::Binary(BinaryOp::Bitwise(_, _), _, _) | ExpX::Unary(UnaryOp::BitNot, _) => {}
             _ => {
-                return err_str(
+                return error(
                     &exp.span,
                     "trigger must be a function call, a field access, or a bitwise operator",
                 );
@@ -62,7 +62,7 @@ fn check_trigger_expr(
             | ExpX::Unary(UnaryOp::Clip { .. }, _)
             | ExpX::Binary(BinaryOp::Arith(..), _, _) => {}
             _ => {
-                return err_str(
+                return error(
                     &exp.span,
                     "trigger in forall_arith must be an integer arithmetic operator",
                 );
@@ -96,7 +96,7 @@ fn check_trigger_expr(
                 }
                 ExpX::Var(UniqueIdent { name: x, local: None }) => {
                     if lets.contains(x) {
-                        return err_str(
+                        return error(
                             &exp.span,
                             "let variables in triggers not supported, use #![trigger ...] instead",
                         );
@@ -117,7 +117,7 @@ fn check_trigger_expr(
                     | UnaryOp::CharToInt => Ok(()),
                     UnaryOp::CoerceMode { .. } => Ok(()),
                     UnaryOp::MustBeFinalized => Ok(()),
-                    UnaryOp::Not => err_str(&exp.span, "triggers cannot contain boolean operators"),
+                    UnaryOp::Not => error(&exp.span, "triggers cannot contain boolean operators"),
                 },
                 ExpX::UnaryOpr(op, _) => match op {
                     UnaryOpr::Box(_)
@@ -134,7 +134,7 @@ fn check_trigger_expr(
                     UnaryOpr::IntegerTypeBound(_, _) => {
                         // UnsignedMax and SignedMax both have arithmetic in them
                         // so they can't be triggers
-                        err_str(&exp.span, "triggers cannot contain this operator")
+                        error(&exp.span, "triggers cannot contain this operator")
                     }
                     UnaryOpr::HasType(_) => panic!("internal error: trigger on HasType"),
                 },
@@ -142,10 +142,10 @@ fn check_trigger_expr(
                     use BinaryOp::*;
                     match op {
                         And | Or | Xor | Implies | Eq(_) | Ne => {
-                            err_str(&exp.span, "triggers cannot contain boolean operators")
+                            error(&exp.span, "triggers cannot contain boolean operators")
                         }
                         Inequality(_) => Ok(()),
-                        Arith(..) => err_str(
+                        Arith(..) => error(
                             &exp.span,
                             "triggers cannot contain integer arithmetic\nuse forall_arith for quantifiers on integer arithmetic",
                         ),
@@ -153,12 +153,12 @@ fn check_trigger_expr(
                         StrGetChar => Ok(()),
                     }
                 }
-                ExpX::If(_, _, _) => err_str(&exp.span, "triggers cannot contain if/else"),
+                ExpX::If(_, _, _) => error(&exp.span, "triggers cannot contain if/else"),
                 ExpX::WithTriggers(..) => {
-                    err_str(&exp.span, "triggers cannot contain #![trigger ...]")
+                    error(&exp.span, "triggers cannot contain #![trigger ...]")
                 }
                 ExpX::Bind(_, _) => {
-                    err_str(&exp.span, "triggers cannot contain let/forall/exists/lambda/choose")
+                    error(&exp.span, "triggers cannot contain let/forall/exists/lambda/choose")
                 }
                 ExpX::Interp(_) => {
                     panic!("Found an interpreter expression {:?} outside the interpreter", exp)
@@ -171,7 +171,7 @@ fn check_trigger_expr(
                 ExpX::Const(_) | ExpX::Loc(..) | ExpX::VarLoc(..) => true,
                 ExpX::Var(UniqueIdent { name: x, local: None }) => {
                     if lets.contains(x) {
-                        return err_str(
+                        return error(
                             &exp.span,
                             "let variables in triggers not supported, use #![trigger ...] instead",
                         );
@@ -201,7 +201,7 @@ fn check_trigger_expr(
             } {
                 Ok(())
             } else {
-                err_str(&exp.span, "triggers in forall_arith can only contain arithmetic")
+                error(&exp.span, "triggers in forall_arith can only contain arithmetic")
             }
         })
     }
@@ -278,7 +278,7 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                 };
                 for x in bvars {
                     if map.contains_key(&x) {
-                        return err_str(&bnd.span, "variable shadowing not yet supported");
+                        return error(&bnd.span, "variable shadowing not yet supported");
                     }
                 }
                 if let BndX::Let(binders) = &bnd.x {
@@ -312,7 +312,7 @@ pub(crate) fn build_triggers(
     get_manual_triggers(&mut state, exp)?;
     if state.triggers.len() > 0 || allow_empty {
         if state.auto_trigger {
-            return err_str(
+            return error(
                 span,
                 "cannot use both manual triggers (#[trigger] or #![trigger ...]) and #![auto]",
             );
@@ -325,7 +325,7 @@ pub(crate) fn build_triggers(
                         None => "".to_string(),
                         Some(id) => format!(" group {}", id),
                     };
-                    return err_string(
+                    return error(
                         span,
                         format!(
                             "trigger{} does not cover variable {}",
@@ -341,6 +341,6 @@ pub(crate) fn build_triggers(
     } else if boxed_params {
         crate::triggers_auto::build_triggers(ctx, span, vars, exp, state.auto_trigger)
     } else {
-        return err_str(span, "manual trigger (#[trigger] or #![trigger ...]) is required");
+        return error(span, "manual trigger (#[trigger] or #![trigger ...]) is required");
     }
 }

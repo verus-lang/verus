@@ -142,7 +142,7 @@ test_verify_one_file! {
         proof fn typing(u: u64, i: int, n: nat) {
             let i4: int = add(u, 1); // implicit coercion disallowed
         }
-    } => Err(err) => assert_error_msg(err, "error[E0308]: mismatched types")
+    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
 }
 
 test_verify_one_file! {
@@ -150,7 +150,7 @@ test_verify_one_file! {
         proof fn typing(u: u64, i: int, n: nat) {
             let u3: u64 = i; // implicit coercion disallowed
         }
-    } => Err(err) => assert_error_msg(err, "error[E0308]: mismatched types")
+    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
 }
 
 test_verify_one_file! {
@@ -158,7 +158,7 @@ test_verify_one_file! {
         proof fn typing(u: u64, i: int, n: nat) {
             let n2: nat = i; // implicit coercion disallowed
         }
-    } => Err(err) => assert_error_msg(err, "error[E0308]: mismatched types")
+    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
 }
 
 test_verify_one_file! {

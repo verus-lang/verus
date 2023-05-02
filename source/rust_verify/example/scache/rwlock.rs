@@ -2,15 +2,14 @@
 #![allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-mod pervasive;
-use pervasive::*;
-use pervasive::vec::*;
-use pervasive::modes::*;
-use pervasive::multiset::*;
-use pervasive::map::*;
-use pervasive::seq::*;
-use pervasive::option::*;
-use pervasive::atomic_ghost::*;
+use vstd::{*, pervasive::*};
+use vstd::vec::*;
+use vstd::modes::*;
+use vstd::multiset::*;
+use vstd::map::*;
+use vstd::seq::*;
+use vstd::option::*;
+use vstd::atomic_ghost::*;
 
 use state_machines_macros::tokenized_state_machine;
 use option::Option::{Some, None};

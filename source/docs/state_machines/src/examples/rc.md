@@ -50,14 +50,14 @@ As usual, we'll start with an unverified implementation.
 
 The main challenge here is to figure out what structure the ghost code will take.
 
- * We need a "something" that will let us get the `&PermissionOpt` object that we need
+ * We need a "something" that will let us get the `&PointsTo` object that we need
     to dereference the pointer. This has to be a shared reference by necessity.
  * The "something" needs to be duplicateable somehow; we need to obtain a new one whenever
     we call `Rc::clone`.
      * The counter, somehow, needs to correspond to the number of "somethings" in existence.
        In other words, we should be able to get a new "something" when we increment
        the counter, and we should destroy a "something" when we decrement it.
- * We need a way to obtain ownership of the the `PermissionOpt` object for the `PCell`
+ * We need a way to obtain ownership of the the `PointsTo` object for the `PCell`
     storing the counter, so that we can write to it.
 
 Let's stop being coy and name the ghost components. The "something" is the driver of action
@@ -68,14 +68,14 @@ which we will do with a `LocalInvariant`.
 
 Therefore, an `Rc` ought to have:
 
- * A `ref` object, which will somehow let us obtain access a `&ptr::PermissionOpt<InnerRc>`.
- * A `LocalInvariant` storing both a `counter` and a `cell::PermissionOpt<u64>`.
+ * A `ref` object, which will somehow let us obtain access a `&ptr::PointsTo<InnerRc>`.
+ * A `LocalInvariant` storing both a `counter` and a `cell::PointsTo<u64>`.
 
 ![Graphic visualization of the ghost structure of the Rc](../graphics/rc-ghost-diagram.png)
 
 Now, with this rough plan in place, we can finally begin devising our `tokenized_state_machine`
 to define the `ref` and `counter` tokens along with the relationship between the
-`ref` token and the `ptr::PermissionOpt`.
+`ref` token and the `ptr::PointsTo`.
 
 ![Graphic visualization of the ghost structure of the Rc](../graphics/rc-ghost-diagram-ghost-only.png)
 

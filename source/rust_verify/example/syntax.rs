@@ -2,18 +2,10 @@
 use builtin_macros::*;
 #[allow(unused_imports)]
 use builtin::*;
-
-#[cfg(not(vstd_todo))]
-mod pervasive;
-#[cfg(not(vstd_todo))]
-#[allow(unused_imports)]
-use pervasive::{*, vec::*, seq::*, modes::*};
-
-#[cfg(vstd_todo)]
 #[allow(unused_imports)]
 use vstd::{*, vec::*, seq::*, modes::*};
 
-#[verifier(external)]
+#[verifier::external]
 fn main() {
 }
 
@@ -82,10 +74,11 @@ pub open(crate) spec fn my_pub_spec_fun2(x: u32, y: u32) -> u32 {
     x / 2 + y / 2
 }
 */
-pub(crate) open spec fn my_pub_spec_fun3(x: int, y: int) -> int {
-    // function and body visible to crate
-    x / 2 + y / 2
-}
+// TODO(main_new) pub(crate) is not being handled correctly
+// pub(crate) open spec fn my_pub_spec_fun3(x: int, y: int) -> int {
+//     // function and body visible to crate
+//     x / 2 + y / 2
+// }
 pub closed spec fn my_pub_spec_fun4(x: int, y: int) -> int {
     // function visible to all, body visible to module
     x / 2 + y / 2
@@ -183,7 +176,7 @@ fn test_my_funs2(
 
 /// assume and assert are treated as proof code even outside of proof blocks.
 /// "assert by" may be used to provide proof code that proves the assertion.
-#[verifier(opaque)]
+#[verifier::opaque]
 spec fn f1(i: int) -> int {
     i + 1
 }
@@ -382,7 +375,7 @@ tracked struct TrackedAndGhost<T, G>(
 );
 
 /// Proof code may manipulate tracked variables directly.
-/// Both declarations and uses of tracked variables must be explicitly marked as "tracked".
+/// Declarations of tracked variables must be explicitly marked as "tracked".
 proof fn consume(tracked x: int) {
 }
 
@@ -392,60 +385,121 @@ proof fn test_tracked(
     tracked y: int,
     z: int
 ) -> tracked TrackedAndGhost<(int, int), int> {
-    consume(tracked w);
-    let tracked tag: TrackedAndGhost<(int, int), int> = TrackedAndGhost((tracked x, tracked y), z);
-    let tracked TrackedAndGhost((a, b), c) = tracked tag;
-    TrackedAndGhost((tracked a, tracked b), c)
+    consume(w);
+    let tracked tag: TrackedAndGhost<(int, int), int> = TrackedAndGhost((x, y), z);
+    let tracked TrackedAndGhost((a, b), c) = tag;
+    TrackedAndGhost((a, b), c)
 }
 
-/// Variables in exec code are always exec; ghost and tracked variables are not available directly.
-/// Instead, the library types Ghost and Tracked are used to wrap ghost values and tracked values.
-/// Ghost and tracked expressions ghost(expr) and tracked(expr) create values of type Ghost<T>
-/// and Tracked<T>, where expr is treated as proof code whose value is wrapped inside Ghost or Tracked.
-/// The view x@ of a Ghost or Tracked x is the ghost or tracked value inside the Ghost or Tracked.
+/// Variables in exec code may be exec, ghost, or tracked.
 fn test_ghost(x: u32, y: u32)
     requires
         x < 100,
         y < 100,
 {
-    let u: Ghost<int> = ghost(my_spec_fun(x as int, y as int));
-    let mut v: Ghost<int> = ghost(u@ + 1);
-    assert(v@ == x + y + 1);
+    let ghost u: int = my_spec_fun(x as int, y as int);
+    let ghost mut v = u + 1;
+    assert(v == x + y + 1);
+    proof {
+        v = v + 1; // proof code may assign to ghost mut variables
+    }
+    let ghost w = {
+        let temp = v + 1;
+        temp + 1
+    };
+    assert(w == x + y + 4);
+}
+
+/// Variables in exec code may be exec, ghost, or tracked.
+/// However, exec function parameters and return values are always exec.
+/// In these places, the library types Ghost and Tracked are used
+/// to wrap ghost values and tracked values.
+/// Ghost and tracked expressions Ghost(expr) and Tracked(expr) create values of type Ghost<T>
+/// and Tracked<T>, where expr is treated as proof code whose value is wrapped inside Ghost or Tracked.
+/// The view x@ of a Ghost or Tracked x is the ghost or tracked value inside the Ghost or Tracked.
+fn test_ghost_wrappers(x: u32, y: Ghost<u32>)
+    requires
+        x < 100,
+        y@ < 100,
+{
+    // Ghost(...) expressions can create values of type Ghost<...>:
+    let u: Ghost<int> = Ghost(my_spec_fun(x as int, y@ as int));
+    let mut v: Ghost<int> = Ghost(u@ + 1);
+    assert(v@ == x + y@ + 1);
     proof {
         v@ = v@ + 1; // proof code may assign to the view of exec variables of type Ghost/Tracked
     }
-    let w: Ghost<int> = ghost({
+    let w: Ghost<int> = Ghost({
         // proof block that returns a ghost value
         let temp = v@ + 1;
         temp + 1
     });
-    assert(w@ == x + y + 4);
+    assert(w@ == x + y@ + 4);
 }
 
 fn test_consume(t: Tracked<int>)
     requires t@ <= 7
 {
     proof {
-        let tracked x = (tracked t).get();
+        let tracked x = t.get();
         assert(x <= 7);
-        consume(tracked x);
+        consume(x);
     }
 }
 
-/// Exec code can extract individual Ghost and Tracked values from Ghost and Tracked tuples
-/// with "let Ghost((...))" and "let Tracked((...))".
-/// The tuple pattern elements may further match on Trk and Gho from pervasives::modes.
-fn test_ghost_tuple_match(t: Tracked<(bool, bool, Gho<int>, Gho<int>)>) -> Tracked<bool> {
-    let g: Ghost<(int, int)> = ghost((10, 20));
+/// Ghost(...) and Tracked(...) patterns can unwrap Ghost<...> and Tracked<...> values:
+fn test_ghost_unwrap(x: u32, Ghost(y): Ghost<u32>) // unwrap so that y has typ u32, not Ghost<u32>
+    requires
+        x < 100,
+        y < 100,
+{
+    // Ghost(u) pattern unwraps Ghost<...> values and gives u and v type int:
+    let Ghost(u): Ghost<int> = Ghost(my_spec_fun(x as int, y as int));
+    let Ghost(mut v): Ghost<int> = Ghost(u + 1);
+    assert(v == x + y + 1);
+    proof {
+        v = v + 1; // assign directly to ghost mut v
+    }
+    let Ghost(w): Ghost<int> = Ghost({
+        // proof block that returns a ghost value
+        let temp = v + 1;
+        temp + 1
+    });
+    assert(w == x + y + 4);
+}
 
-    let Ghost((g1, g2)) = g; // g1 and g2 both have type Ghost<int>
-    assert(g1@ + g2@ == 30);
+struct S {}
 
-    let Ghost((g1, g2)): (Ghost<int>, Ghost<int>) = g;
-    assert(g1@ + g2@ == 30);
+/// Exec code can use "let ghost" and "let tracked" to create local ghost and tracked variables.
+/// Exec code can extract individual ghost and tracked values from Ghost and Tracked wrappers
+/// with "let ...Ghost(x)..." and "let ...Tracked(x)...".
+fn test_ghost_tuple_match(t: (Tracked<S>, Tracked<S>, Ghost<int>, Ghost<int>)) -> Tracked<S> {
+    let ghost g: (int, int) = (10, 20);
+    assert(g.0 + g.1 == 30);
 
-    let Tracked((b1, b2, Gho(g3), Gho(g4))) = t; // b1, b2: Tracked<bool> and g3, g4: Ghost<int>
-    b2
+    let ghost (g1, g2) = g;
+    assert(g1 + g2 == 30);
+
+    // b1, b2: Tracked<S> and g3, g4: Ghost<int>
+    let (Tracked(b1), Tracked(b2), Ghost(g3), Ghost(g4)) = t;
+    Tracked(b2)
+}
+
+/// Exec code can Ghost(...) or Tracked(...) unwrapped parameter
+/// to create a mutable ghost or tracked parameter:
+fn test_ghost_mut(Ghost(g): Ghost<&mut int>)
+    ensures
+        *g == *old(g) + 1,
+{
+    proof {
+        *g = *g + 1;
+    }
+}
+
+fn test_call_ghost_mut() {
+    let ghost mut g = 10int;
+    test_ghost_mut(Ghost(&mut g));
+    assert(g == 11);
 }
 
 /// Spec functions are not checked for correctness (although they are checked for termination).

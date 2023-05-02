@@ -5,9 +5,9 @@
 
 use builtin::*;
 use builtin_macros::*;
-use crate::pervasive::invariant::*;
-use crate::pervasive::atomic::*;
-use crate::pervasive::modes::*;
+use crate::invariant::*;
+use crate::atomic::*;
+use crate::modes::*;
 
 verus!{
 pub trait AtomicInvariantPredicate<K, V, G> {
@@ -17,23 +17,14 @@ pub trait AtomicInvariantPredicate<K, V, G> {
 
 macro_rules! declare_atomic_type {
     ($at_ident:ident, $patomic_ty:ident, $perm_ty:ty, $value_ty: ty, $atomic_pred_ty: ident) => {
+        verus!{
 
         pub struct $atomic_pred_ty<Pred> { p: Pred }
 
         impl<K, G, Pred> InvariantPredicate<(K, int), ($perm_ty, G)> for $atomic_pred_ty<Pred>
             where Pred: AtomicInvariantPredicate<K, $value_ty, G>
         {
-            #[cfg(verus_macro_erase_ghost)]
-            #[verifier(publish)]
-            #[spec]
-            fn inv(k_loc: (K, int), perm_g: ($perm_ty, G)) -> bool {
-                panic!()
-            }
-
-            #[cfg(not(verus_macro_erase_ghost))]
-            #[verifier(publish)] /* vattr */
-            #[verifier::spec]
-            fn inv(k_loc: (K, int), perm_g: ($perm_ty, G)) -> bool {
+            open spec fn inv(k_loc: (K, int), perm_g: ($perm_ty, G)) -> bool {
                 let (k, loc) = k_loc;
                 let (perm, g) = perm_g;
 
@@ -57,52 +48,35 @@ macro_rules! declare_atomic_type {
             pub patomic: $patomic_ty,
 
             #[doc(hidden)]
-            #[verifier::proof] pub atomic_inv: AtomicInvariant<(K, int), ($perm_ty, G), $atomic_pred_ty<Pred>>,
+            pub atomic_inv: Tracked<AtomicInvariant<(K, int), ($perm_ty, G), $atomic_pred_ty<Pred>>>,
         }
 
         impl<K, G, Pred> $at_ident<K, G, Pred>
             where Pred: AtomicInvariantPredicate<K, $value_ty, G>
         {
-            #[cfg(not(verus_macro_erase_ghost))]
-            #[verifier::spec] #[verifier(publish)] /* vattr */
-            pub fn well_formed(&self) -> bool {
-                self.atomic_inv.constant().1 == self.patomic.id()
+            pub open spec fn well_formed(&self) -> bool {
+                self.atomic_inv@.constant().1 == self.patomic.id()
             }
 
-            #[cfg(not(verus_macro_erase_ghost))]
-            #[verifier::spec] #[verifier(publish)] /* vattr */
-            pub fn constant(&self) -> K {
-                self.atomic_inv.constant().0
+            pub open spec fn constant(&self) -> K {
+                self.atomic_inv@.constant().0
             }
 
             #[inline(always)]
-            pub fn new(#[verifier::spec] k: K, u: $value_ty, #[verifier::proof] g: G) -> Self {
-                #[cfg(not(verus_macro_erase_ghost))]
-                requires(Pred::atomic_inv(k, u, g));
-                #[cfg(not(verus_macro_erase_ghost))]
-                ensures(|t: Self| t.well_formed() && equal(t.constant(), k));
+            pub fn new(Ghost(k): Ghost<K>, u: $value_ty, Tracked(g): Tracked<G>) -> (t: Self)
+                requires Pred::atomic_inv(k, u, g),
+                ensures t.well_formed() && t.constant() == k,
+            {
 
-                let (patomic, Proof(perm)) = $patomic_ty::new(u);
-                #[cfg(not(verus_macro_erase_ghost))]
-                {
-                    #[verifier::proof] let pair = (perm, g);
-                    #[verifier::proof] let atomic_inv = AtomicInvariant::new(
-                        (k, patomic.id()),
-                        pair,
-                        spec_literal_int("0"));
+                let (patomic, Tracked(perm)) = $patomic_ty::new(u);
 
-                    $at_ident {
-                        patomic,
-                        atomic_inv,
-                    }
-                }
-                #[cfg(verus_macro_erase_ghost)]
-                {
-                    let atomic_inv = AtomicInvariant::assume_new();
-                    $at_ident {
-                        patomic,
-                        atomic_inv,
-                    }
+                let tracked pair = (perm, g);
+                let tracked atomic_inv = AtomicInvariant::new(
+                    (k, patomic.id()), pair, 0);
+
+                $at_ident {
+                    patomic,
+                    atomic_inv: Tracked(atomic_inv),
                 }
             }
 
@@ -123,6 +97,8 @@ macro_rules! declare_atomic_type {
                 (v, g)
             }
             */
+        }
+
         }
     }
 }
@@ -259,7 +235,7 @@ macro_rules! atomic_with_ghost {
         // The helper is used to parse things using Verus syntax
         // The helper then calls atomic_with_ghost_inner, below:
         ::builtin_macros::atomic_with_ghost_helper!(
-            crate::pervasive::atomic_ghost::atomic_with_ghost_inner,
+            vstd::atomic_ghost::atomic_with_ghost_inner,
             $($tokens)*)
     }
 }
@@ -270,68 +246,68 @@ pub use atomic_with_ghost;
 #[macro_export]
 macro_rules! atomic_with_ghost_inner {
     (load, $e:expr, (), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        crate::pervasive::atomic_ghost::atomic_with_ghost_load!($e, $prev, $next, $ret, $g, $b)
+        vstd::atomic_ghost::atomic_with_ghost_load!($e, $prev, $next, $ret, $g, $b)
     };
     (store, $e:expr, ($operand:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        crate::pervasive::atomic_ghost::atomic_with_ghost_store!($e, $operand, $prev, $next, $ret, $g, $b)
+        vstd::atomic_ghost::atomic_with_ghost_store!($e, $operand, $prev, $next, $ret, $g, $b)
     };
     (swap, $e:expr, ($operand:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        crate::pervasive::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
+        vstd::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
             swap, $e, $operand, $prev, $next, $ret, $g, $b)
     };
 
     (fetch_or, $e:expr, ($operand:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        crate::pervasive::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
+        vstd::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
             fetch_or, $e, $operand, $prev, $next, $ret, $g, $b)
     };
     (fetch_and, $e:expr, ($operand:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        crate::pervasive::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
+        vstd::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
             fetch_and, $e, $operand, $prev, $next, $ret, $g, $b)
     };
     (fetch_xor, $e:expr, ($operand:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        crate::pervasive::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
+        vstd::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
             fetch_xor, $e, $operand, $prev, $next, $ret, $g, $b)
     };
     (fetch_nand, $e:expr, ($operand:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        crate::pervasive::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
+        vstd::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
             fetch_nand, $e, $operand, $prev, $next, $ret, $g, $b)
     };
     (fetch_max, $e:expr, ($operand:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        crate::pervasive::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
+        vstd::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
             fetch_max, $e, $operand, $prev, $next, $ret, $g, $b)
     };
     (fetch_min, $e:expr, ($operand:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        crate::pervasive::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
+        vstd::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
             fetch_min, $e, $operand, $prev, $next, $ret, $g, $b)
     };
     (fetch_add_wrapping, $e:expr, ($operand:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        crate::pervasive::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
+        vstd::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
             fetch_add_wrapping, $e, $operand, $prev, $next, $ret, $g, $b)
     };
     (fetch_sub_wrapping, $e:expr, ($operand:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        crate::pervasive::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
+        vstd::atomic_ghost::atomic_with_ghost_update_with_1_operand!(
             fetch_sub_wrapping, $e, $operand, $prev, $next, $ret, $g, $b)
     };
 
     (fetch_add, $e:expr, ($operand:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        crate::pervasive::atomic_ghost::atomic_with_ghost_update_fetch_add!(
+        vstd::atomic_ghost::atomic_with_ghost_update_fetch_add!(
             $e, $operand, $prev, $next, $ret, $g, $b)
     };
     (fetch_sub, $e:expr, ($operand:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        crate::pervasive::atomic_ghost::atomic_with_ghost_update_fetch_sub!(
+        vstd::atomic_ghost::atomic_with_ghost_update_fetch_sub!(
             $e, $operand, $prev, $next, $ret, $g, $b)
     };
 
     (compare_exchange, $e:expr, ($operand1:expr, $operand2:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        crate::pervasive::atomic_ghost::atomic_with_ghost_update_with_2_operand!(
+        vstd::atomic_ghost::atomic_with_ghost_update_with_2_operand!(
             compare_exchange, $e, $operand1, $operand2, $prev, $next, $ret, $g, $b)
     };
     (compare_exchange_weak, $e:expr, ($operand1:expr, $operand2:expr), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        crate::pervasive::atomic_ghost::atomic_with_ghost_update_with_2_operand!(
+        vstd::atomic_ghost::atomic_with_ghost_update_with_2_operand!(
             compare_exchange_weak, $e, $operand1, $operand2, $prev, $next, $ret, $g, $b)
     };
     (no_op, $e:expr, (), $prev:pat, $next:pat, $ret:pat, $g:ident, $b:block) => {
-        crate::pervasive::atomic_ghost::atomic_with_ghost_no_op!($e, $prev, $next, $ret, $g, $b)
+        vstd::atomic_ghost::atomic_with_ghost_no_op!($e, $prev, $next, $ret, $g, $b)
     };
 }
 
@@ -343,17 +319,17 @@ macro_rules! atomic_with_ghost_store {
     ($e:expr, $operand:expr, $prev:pat, $next:pat, $res:pat, $g:ident, $b:block) => {
         ::builtin_macros::verus_exec_expr!{ {
             let atomic = &($e);
-            crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
+            crate::open_atomic_invariant!(atomic.atomic_inv.borrow() => pair => {
                 #[allow(unused_mut)]
-                #[verifier::proof] let (mut perm, mut $g) = pair;
-                #[verifier::spec] let $prev = perm.view().value;
-                atomic.patomic.store(&mut perm, $operand);
-                #[verifier::spec] let $next = perm.view().value;
-                #[verifier::spec] let $res = ();
+                let tracked (mut perm, mut $g) = pair;
+                let ghost $prev = perm.view().value;
+                atomic.patomic.store(Tracked(&mut perm), $operand);
+                let ghost $next = perm.view().value;
+                let ghost $res = ();
 
                 proof { $b }
 
-                pair = (perm, $g);
+                proof { pair = (perm, $g); }
             });
         } }
     }
@@ -367,17 +343,17 @@ macro_rules! atomic_with_ghost_load {
         ::builtin_macros::verus_exec_expr!{ {
             let result;
             let atomic = &($e);
-            crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
+            crate::open_atomic_invariant!(atomic.atomic_inv.borrow() => pair => {
                 #[allow(unused_mut)]
-                #[verifier::proof] let (perm, mut $g) = pair;
-                result = atomic.patomic.load(&perm);
-                #[verifier::spec] let $res = result;
-                #[verifier::spec] let $prev = result;
-                #[verifier::spec] let $next = result;
+                let tracked (perm, mut $g) = pair;
+                result = atomic.patomic.load(Tracked(&perm));
+                let ghost $res = result;
+                let ghost $prev = result;
+                let ghost $next = result;
 
                 proof { $b }
 
-                pair = (perm, $g);
+                proof { pair = (perm, $g); }
             });
             result
         } }
@@ -392,16 +368,16 @@ macro_rules! atomic_with_ghost_no_op {
     ($e:expr, $prev:pat, $next: pat, $res: pat, $g:ident, $b:block) => {
         ::builtin_macros::verus_exec_expr!{ {
             let atomic = &($e);
-            crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
+            crate::open_atomic_invariant!(atomic.atomic_inv.borrow() => pair => {
                 #[allow(unused_mut)]
-                #[verifier::proof] let (perm, mut $g) = pair;
-                #[verifier::spec] let $res = result;
-                #[verifier::spec] let $prev = result;
-                #[verifier::spec] let $next = result;
+                let tracked (perm, mut $g) = pair;
+                let ghost $res = result;
+                let ghost $prev = result;
+                let ghost $next = result;
 
                 proof { $b }
 
-                pair = (perm, $g);
+                proof { pair = (perm, $g); }
             });
         } }
     }
@@ -417,17 +393,17 @@ macro_rules! atomic_with_ghost_update_with_1_operand {
             let result;
             let atomic = &($e);
             let operand = $operand;
-            crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
+            crate::open_atomic_invariant!(atomic.atomic_inv.borrow() => pair => {
                 #[allow(unused_mut)]
-                #[verifier::proof] let (mut perm, mut $g) = pair;
-                #[verifier::spec] let $prev = perm.view().value;
-                result = atomic.patomic.$name(&mut perm, operand);
-                #[verifier::spec] let $res = result;
-                #[verifier::spec] let $next = perm.view().value;
+                let tracked (mut perm, mut $g) = pair;
+                let ghost $prev = perm.view().value;
+                result = atomic.patomic.$name(Tracked(&mut perm), operand);
+                let ghost $res = result;
+                let ghost $next = perm.view().value;
 
                 proof { $b }
 
-                pair = (perm, $g);
+                proof { pair = (perm, $g); }
             });
             result
         } }
@@ -445,17 +421,17 @@ macro_rules! atomic_with_ghost_update_with_2_operand {
             let atomic = &($e);
             let operand1 = $operand1;
             let operand2 = $operand2;
-            crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
+            crate::open_atomic_invariant!(atomic.atomic_inv.borrow() => pair => {
                 #[allow(unused_mut)]
-                #[verifier::proof] let (mut perm, mut $g) = pair;
-                #[verifier::spec] let $prev = perm.view().value;
-                result = atomic.patomic.$name(&mut perm, operand1, operand2);
-                #[verifier::spec] let $res = result;
-                #[verifier::spec] let $next = perm.view().value;
+                let tracked (mut perm, mut $g) = pair;
+                let ghost $prev = perm.view().value;
+                result = atomic.patomic.$name(Tracked(&mut perm), operand1, operand2);
+                let ghost $res = result;
+                let ghost $next = perm.view().value;
 
                 proof { $b }
 
-                pair = (perm, $g);
+                proof { pair = (perm, $g); }
             });
             result
         } }
@@ -472,21 +448,21 @@ macro_rules! atomic_with_ghost_update_fetch_add {
             let result;
             let atomic = &($e);
             let operand = $operand;
-            crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
+            crate::open_atomic_invariant!(atomic.atomic_inv.borrow() => pair => {
                 #[allow(unused_mut)]
-                #[verifier::proof] let (mut perm, mut $g) = pair;
+                let tracked (mut perm, mut $g) = pair;
 
                 proof {
-                    #[verifier::spec] let $prev = perm.view().value as int;
-                    #[verifier::spec] let $res = perm.view().value as int;
-                    #[verifier::spec] let $next = perm.view().value as int + (operand as int);
+                    let $prev = perm.view().value as int;
+                    let $res = perm.view().value as int;
+                    let $next = perm.view().value as int + (operand as int);
 
                     { $b }
                 }
 
-                result = atomic.patomic.fetch_add(&mut perm, operand);
+                result = atomic.patomic.fetch_add(Tracked(&mut perm), operand);
 
-                pair = (perm, $g);
+                proof { pair = (perm, $g); }
             });
             result
         } ))
@@ -503,21 +479,21 @@ macro_rules! atomic_with_ghost_update_fetch_sub {
             let result;
             let atomic = &($e);
             let operand = $operand;
-            crate::open_atomic_invariant!(&atomic.atomic_inv => pair => {
+            crate::open_atomic_invariant!(atomic.atomic_inv.borrow() => pair => {
                 #[allow(unused_mut)]
-                #[verifier::proof] let (mut perm, mut $g) = pair;
+                let tracked (mut perm, mut $g) = pair;
 
                 proof {
-                    #[verifier::spec] let $prev = perm.view().value as int;
-                    #[verifier::spec] let $res = perm.view().value as int;
-                    #[verifier::spec] let $next = perm.view().value as int - (operand as int);
+                    let $prev = perm.view().value as int;
+                    let $res = perm.view().value as int;
+                    let $next = perm.view().value as int - (operand as int);
 
                     { $b }
                 }
 
-                result = atomic.patomic.fetch_sub(&mut perm, operand);
+                result = atomic.patomic.fetch_sub(Tracked(&mut perm), operand);
 
-                pair = (perm, $g);
+                proof { pair = (perm, $g); }
             });
             result
         } }

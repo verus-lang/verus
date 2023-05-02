@@ -2,15 +2,12 @@ use core::cell::UnsafeCell;
 use core::{mem, mem::MaybeUninit};
 use core::marker;
 
-#[allow(unused_imports)] use builtin::*;
-#[allow(unused_imports)] use builtin_macros::*;
+#[allow(unused_imports)] use crate::*;
 #[allow(unused_imports)] use crate::pervasive::*;
-#[allow(unused_imports)] use crate::pervasive::modes::*;
-#[allow(unused_imports)] use crate::pervasive::invariant::*;
-#[cfg(not(vstd_build_todo))]
-#[allow(unused_imports)] use crate::pervasive::set::*;
-#[cfg(vstd_build_todo)]
+#[allow(unused_imports)] use crate::modes::*;
+#[allow(unused_imports)] use crate::invariant::*;
 #[allow(unused_imports)] use crate::set::*;
+#[allow(unused_imports)] use crate::prelude::*;
 
 verus!{
 
@@ -32,7 +29,7 @@ verus!{
 ///
 /// `PCell` uses a _ghost permission token_ similar to [`ptr::PPtr`] -- see the [`ptr::PPtr`]
 /// documentation for the basics.
-/// For `PCell`, the associated type of the permission token is [`cell::PermissionOpt`].
+/// For `PCell`, the associated type of the permission token is [`cell::PointsTo`].
 ///
 /// ### Differences from `PPtr`.
 ///
@@ -47,8 +44,8 @@ verus!{
 /// has no concept of a "null ID",
 /// and has no runtime representation.
 ///
-/// Also note that the `PCell` might be dropped before the `PermissionOpt` token is dropped,
-/// although in that case it will no longer be possible to use the `PermissionOpt` in `exec` code
+/// Also note that the `PCell` might be dropped before the `PointsTo` token is dropped,
+/// although in that case it will no longer be possible to use the `PointsTo` in `exec` code
 /// to extract data from the cell.
 ///
 /// ### Example (TODO)
@@ -58,7 +55,7 @@ pub struct PCell<#[verifier(strictly_positive)] V> {
     ucell: UnsafeCell<MaybeUninit<V>>,
 }
 
-// PCell is always safe to Send/Sync. It's the PermissionOpt object where Send/Sync matters.
+// PCell is always safe to Send/Sync. It's the PointsTo object where Send/Sync matters.
 // (It doesn't matter if you move the bytes to another thread if you can't access them.)
 
 #[verifier(external)]
@@ -67,17 +64,17 @@ unsafe impl<T> Sync for PCell<T> {}
 #[verifier(external)]
 unsafe impl<T> Send for PCell<T> {}
 
-// PermissionOpt<V>, on the other hand, needs to inherit both Send and Sync from the V,
+// PointsTo<V>, on the other hand, needs to inherit both Send and Sync from the V,
 // which it does by default in the given definition.
 // (Note: this depends on the current behavior that #[verifier::spec] fields are still counted for marker traits)
 
 #[verifier(external_body)]
-pub tracked struct PermissionOpt<#[verifier(strictly_positive)] V> {
+pub tracked struct PointsTo<#[verifier(strictly_positive)] V> {
     phantom: marker::PhantomData<V>,
     no_copy: NoCopy,
 }
 
-pub ghost struct PermissionOptData<V> {
+pub ghost struct PointsToData<V> {
     pub pcell: CellId,
     pub value: option::Option<V>,
 }
@@ -86,7 +83,7 @@ pub ghost struct PermissionOptData<V> {
 #[macro_export]
 macro_rules! pcell_opt_internal {
     [$pcell:expr => $val:expr] => {
-        $crate::pervasive::cell::PermissionOptData {
+        $crate::cell::PointsToData {
             pcell: $pcell,
             value: $val,
         }
@@ -97,7 +94,7 @@ macro_rules! pcell_opt_internal {
 macro_rules! pcell_opt {
     [$($tail:tt)*] => {
         ::builtin_macros::verus_proof_macro_exprs!(
-            $crate::pervasive::cell::pcell_opt_internal!($($tail)*)
+            $crate::cell::pcell_opt_internal!($($tail)*)
         )
     }
 }
@@ -110,8 +107,8 @@ pub struct CellId {
     id: int,
 }
 
-impl<V> PermissionOpt<V> {
-    pub spec fn view(self) -> PermissionOptData<V>;
+impl<V> PointsTo<V> {
+    pub spec fn view(self) -> PointsToData<V>;
 }
 
 impl<V> PCell<V> {
@@ -123,7 +120,7 @@ impl<V> PCell<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn empty() -> (pt: (PCell<V>, Tracked<PermissionOpt<V>>))
+    pub fn empty() -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
         ensures pt.1@@ ===
             pcell_opt![ pt.0.id() => option::Option::None ],
     {
@@ -133,15 +130,15 @@ impl<V> PCell<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn put(&self, perm: &mut Tracked<PermissionOpt<V>>, v: V)
+    pub fn put(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, v: V)
         requires
-            old(perm)@@ ===
+            old(perm)@ ===
               pcell_opt![ self.id() => option::Option::None ],
         ensures
-            perm@@ ===
+            perm@ ===
               pcell_opt![ self.id() => option::Option::Some(v) ],
+        opens_invariants none
     {
-        opens_invariants_none();
 
         unsafe {
             *(self.ucell.get()) = MaybeUninit::new(v);
@@ -150,17 +147,16 @@ impl<V> PCell<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn take(&self, perm: &mut Tracked<PermissionOpt<V>>) -> (v: V)
+    pub fn take(&self, Tracked(perm): Tracked<&mut PointsTo<V>>) -> (v: V)
         requires
-            self.id() === old(perm)@@.pcell,
-            old(perm)@@.value.is_Some(),
+            self.id() === old(perm)@.pcell,
+            old(perm)@.value.is_Some(),
         ensures
-            perm@@.pcell === old(perm)@@.pcell,
-            perm@@.value === option::Option::None,
-            v === old(perm)@@.value.get_Some_0(),
+            perm@.pcell === old(perm)@.pcell,
+            perm@.value === option::Option::None,
+            v === old(perm)@.value.get_Some_0(),
+        opens_invariants none
     {
-        opens_invariants_none();
-
         unsafe {
             let mut m = MaybeUninit::uninit();
             mem::swap(&mut m, &mut *self.ucell.get());
@@ -170,17 +166,16 @@ impl<V> PCell<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn replace(&self, perm: &mut Tracked<PermissionOpt<V>>, in_v: V) -> (out_v: V)
+    pub fn replace(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V) -> (out_v: V)
         requires
-            self.id() === old(perm)@@.pcell,
-            old(perm)@@.value.is_Some(),
+            self.id() === old(perm)@.pcell,
+            old(perm)@.value.is_Some(),
         ensures
-            perm@@.pcell === old(perm)@@.pcell,
-            perm@@.value === option::Option::Some(in_v),
-            out_v === old(perm)@@.value.get_Some_0(),
+            perm@.pcell === old(perm)@.pcell,
+            perm@.value === option::Option::Some(in_v),
+            out_v === old(perm)@.value.get_Some_0(),
+        opens_invariants none
     {
-        opens_invariants_none();
-
         unsafe {
             let mut m = MaybeUninit::new(in_v);
             mem::swap(&mut m, &mut *self.ucell.get());
@@ -194,15 +189,14 @@ impl<V> PCell<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn borrow<'a>(&'a self, perm: &'a Tracked<PermissionOpt<V>>) -> (v: &'a V)
+    pub fn borrow<'a>(&'a self, Tracked(perm): Tracked<&'a PointsTo<V>>) -> (v: &'a V)
         requires
-            self.id() === perm@@.pcell,
-            perm@@.value.is_Some(),
+            self.id() === perm@.pcell,
+            perm@.value.is_Some(),
         ensures
-            *v === perm@@.value.get_Some_0(),
+            *v === perm@.value.get_Some_0(),
+        opens_invariants none
     {
-        opens_invariants_none();
-
         unsafe {
             (*self.ucell.get()).assume_init_ref()
         }
@@ -212,32 +206,47 @@ impl<V> PCell<V> {
     // Untrusted functions below here
 
     #[inline(always)]
-    pub fn into_inner(self, perm: Tracked<PermissionOpt<V>>) -> (v: V)
+    pub fn into_inner(self, Tracked(perm): Tracked<PointsTo<V>>) -> (v: V)
         requires
-            self.id() === perm@@.pcell,
-            perm@@.value.is_Some(),
+            self.id() === perm@.pcell,
+            perm@.value.is_Some(),
         ensures
-            v === perm@@.value.get_Some_0(),
+            v === perm@.value.get_Some_0(),
+        opens_invariants none
     {
-        opens_invariants_none();
-
-        let mut perm = perm;
-        self.take(&mut perm)
+        let tracked mut perm = perm;
+        self.take(Tracked(&mut perm))
     }
 
     #[inline(always)]
-    pub fn new(v: V) -> (pt: (PCell<V>, Tracked<PermissionOpt<V>>))
-        ensures (pt.1@@ === PermissionOptData{ pcell: pt.0.id(), value: option::Option::Some(v) }),
+    pub fn new(v: V) -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
+        ensures (pt.1@@ === PointsToData{ pcell: pt.0.id(), value: option::Option::Some(v) }),
     {
-        let (p, mut t) = Self::empty();
-        p.put(&mut t, v);
-        (p, t)
+        let (p, Tracked(mut t)) = Self::empty();
+        p.put(Tracked(&mut t), v);
+        (p, Tracked(t))
+    }
+}
+
+impl<V: Copy> PCell<V> {
+    #[inline(always)]
+    #[verifier(external_body)]
+    pub fn write(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V)
+        requires
+            self.id() === old(perm)@.pcell,
+            old(perm)@.value.is_Some(),
+        ensures
+            perm@.pcell === old(perm)@.pcell,
+            perm@.value === Some(in_v),
+        opens_invariants none
+    {
+        let _out = self.replace(Tracked(&mut *perm), in_v);
     }
 }
 
 struct InvCellPred { }
-impl<T> InvariantPredicate<(Set<T>, PCell<T>), PermissionOpt<T>> for InvCellPred {
-    spec fn inv(k: (Set<T>, PCell<T>), perm: PermissionOpt<T>) -> bool {
+impl<T> InvariantPredicate<(Set<T>, PCell<T>), PointsTo<T>> for InvCellPred {
+    spec fn inv(k: (Set<T>, PCell<T>), perm: PointsTo<T>) -> bool {
         let (possible_values, pcell) = k; {
           &&& perm@.value.is_Some()
           &&& possible_values.contains(perm@.value.get_Some_0())
@@ -249,12 +258,9 @@ impl<T> InvariantPredicate<(Set<T>, PCell<T>), PermissionOpt<T>> for InvCellPred
 pub struct InvCell<#[verifier(maybe_negative)] T> {
     possible_values: Ghost<Set<T>>,
     pcell: PCell<T>,
-    perm_inv: Tracked<LocalInvariant<(Set<T>, PCell<T>), PermissionOpt<T>, InvCellPred>>,
+    perm_inv: Tracked<LocalInvariant<(Set<T>, PCell<T>), PointsTo<T>, InvCellPred>>,
 }
 
-}
-
-verus!{
 impl<T> InvCell<T> {
     pub closed spec fn wf(&self) -> bool {
         &&& self.perm_inv@.constant() === (self.possible_values@, self.pcell)
@@ -264,58 +270,46 @@ impl<T> InvCell<T> {
         &&& self.possible_values@.contains(val)
     }
 
-    pub fn new(val: T, #[verifier::spec] f: Ghost<FnSpec(T) -> bool>) -> (cell: Self)
-        requires f@(val),
-        ensures cell.wf() && forall |v| f@(v) <==> cell.inv(v),
+    pub fn new(val: T, Ghost(f): Ghost<FnSpec(T) -> bool>) -> (cell: Self)
+        requires f(val),
+        ensures cell.wf() && forall |v| f(v) <==> cell.inv(v),
     {
-        let (pcell, perm) = PCell::new(val);
-        let possible_values = ghost(Set::new(f@));
-        let perm_inv = tracked(LocalInvariant::new(
-            (possible_values@, pcell),
-            perm.get(),
-            0));
+        let (pcell, Tracked(perm)) = PCell::new(val);
+        let ghost possible_values = Set::new(f);
+        let tracked perm_inv = LocalInvariant::new(
+            (possible_values, pcell), perm, 0);
         InvCell {
-            possible_values,
+            possible_values: Ghost(possible_values),
             pcell,
-            perm_inv,
+            perm_inv: Tracked(perm_inv),
         }
     }
 }
-}
 
 impl<T> InvCell<T> {
-    // note: can't use verus! for these right now because the invariants blocks
-    // do not yet support Tracked/Ghost
-
-    pub fn replace(&self, val: T) -> T
+    pub fn replace(&self, val: T) -> (old_val: T)
+        requires self.wf() && self.inv(val),
+        ensures self.inv(old_val),
     {
-        #[cfg(not(verus_macro_erase_ghost))]
-        requires(self.wf() && self.inv(val));
-        #[cfg(not(verus_macro_erase_ghost))]
-        ensures(|old_val| self.inv(old_val));
-
         let r;
         crate::open_local_invariant!(self.perm_inv.borrow() => perm => {
-            let mut t = tracked_exec(perm);
-            r = self.pcell.replace(&mut t, val);
-            perm = t.get();
+            r = self.pcell.replace(Tracked(&mut perm), val);
         });
         r
     }
 }
 
 impl<T: Copy> InvCell<T> {
-    pub fn get(&self) -> T
+    pub fn get(&self) -> (val: T)
+        requires self.wf(),
+        ensures self.inv(val),
     {
-        #[cfg(not(verus_macro_erase_ghost))]
-        requires(self.wf());
-        #[cfg(not(verus_macro_erase_ghost))]
-        ensures(|val| self.inv(val));
-
         let r;
         crate::open_local_invariant!(self.perm_inv.borrow() => perm => {
-            r = *self.pcell.borrow(tracked_exec_borrow(&perm));
+            r = *self.pcell.borrow(Tracked(&perm));
         });
         r
     }
+}
+
 }

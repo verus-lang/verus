@@ -1,5 +1,5 @@
 use crate::ast::{Fun, Function, FunctionKind, GenericBoundX, Krate, Path, VirErr};
-use crate::ast_util::err_string;
+use crate::ast_util::error;
 use crate::def::Spanned;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -18,7 +18,7 @@ pub fn demote_foreign_traits(krate: &Krate) -> Result<Krate, VirErr> {
             for trait_path in traits {
                 let our_trait = traits.contains(trait_path);
                 if !our_trait {
-                    return err_string(
+                    return error(
                         &function.span,
                         format!(
                             "cannot use trait {} from another crate as a bound",

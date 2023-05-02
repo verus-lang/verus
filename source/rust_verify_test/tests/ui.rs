@@ -28,6 +28,6 @@ test_verify_one_file! {
         }
     } => Err(e) => {
         assert!(e.errors.len() == 1);
-        assert!(!e.errors[0].iter().any(|x| x.test_span_line.contains("INCORRECT CONTEXT")));
+        assert!(!e.errors[0].spans.iter().any(|x| x.text[0].text.contains("INCORRECT CONTEXT")));
     }
 }

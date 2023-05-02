@@ -3,15 +3,18 @@ use crate::ast::{
     MaskSpec, Path, SpannedTyped, TypX, Typs, UnaryOp, UnaryOpr, VirErr,
 };
 use crate::ast_to_sst::expr_to_exp;
-use crate::ast_util::{err_str, QUANT_FORALL};
+use crate::ast_util::{error, msg_error, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{
-    check_decrease_int, decrease_at_entry, height, prefix_recursive_fun, suffix_rename,
-    unique_bound, unique_local, Spanned, FUEL_PARAM, FUEL_TYPE,
+    decrease_at_entry, prefix_recursive_fun, suffix_rename, unique_bound, unique_local, Spanned,
+    FUEL_PARAM, FUEL_TYPE,
 };
 use crate::func_to_air::{params_to_pars, SstMap};
 use crate::scc::Graph;
-use crate::sst::{BndX, Dest, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, StmX, UniqueIdent};
+use crate::sst::{
+    BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclX, Stm, StmX,
+    UniqueIdent,
+};
 use crate::sst_to_air::PostConditionKind;
 use crate::sst_visitor::{
     exp_rename_vars, exp_visitor_check, exp_visitor_dfs, map_exp_visitor, map_stm_visitor,
@@ -20,7 +23,7 @@ use crate::sst_visitor::{
 use crate::util::vec_map_result;
 use air::ast::{Binder, Commands, Span};
 use air::ast_util::{ident_binder, str_ident, str_typ};
-use air::messages::{error, Diagnostics};
+use air::messages::Diagnostics;
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -81,7 +84,7 @@ fn height_of_exp(ctxt: &Ctxt, exp: &Exp) -> Exp {
                 let argx = ExpX::UnaryOpr(op, exp.clone());
                 SpannedTyped::new(&exp.span, &exp.typ, argx)
             };
-            let call = ExpX::Call(height(), Arc::new(vec![]), Arc::new(vec![arg]));
+            let call = ExpX::UnaryOpr(UnaryOpr::Height, arg);
             SpannedTyped::new(&exp.span, &Arc::new(TypX::Int(IntRange::Int)), call)
         }
         // TODO: non-panic error message
@@ -104,7 +107,11 @@ fn check_decrease(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> Exp {
             SpannedTyped::new(&exp.span, &Arc::new(TypX::Int(IntRange::Int)), decreases_at_entryx);
         // 0 <= decreases_exp < decreases_at_entry
         let args = vec![height_of_exp(ctxt, exp), decreases_at_entry, dec_exp];
-        let call = ExpX::Call(check_decrease_int(), Arc::new(vec![]), Arc::new(args));
+        let call = ExpX::Call(
+            CallFun::InternalFun(InternalFun::CheckDecreaseInt),
+            Arc::new(vec![]),
+            Arc::new(args),
+        );
         dec_exp = SpannedTyped::new(&exp.span, &Arc::new(TypX::Bool), call);
     }
     dec_exp
@@ -177,12 +184,20 @@ fn terminates(
         | ExpX::Old(..)
         | ExpX::NullaryOpr(..) => Ok(bool_exp(ExpX::Const(Constant::Bool(true)))),
         ExpX::Loc(e) => r(e),
-        ExpX::Call(x, targs, args) => {
+        ExpX::Call(CallFun::Fun(x), targs, args) => {
             let mut e = if is_recursive_call(ctxt, x, targs) {
                 check_decrease_call(ctxt, diagnostics, fun_ssts, &exp.span, x, targs, args)?
             } else {
                 bool_exp(ExpX::Const(Constant::Bool(true)))
             };
+            for arg in args.iter().rev() {
+                let e_arg = r(arg)?;
+                e = bool_exp(ExpX::Binary(BinaryOp::And, e_arg, e));
+            }
+            Ok(e)
+        }
+        ExpX::Call(CallFun::InternalFun(_func), _tys, args) => {
+            let mut e = bool_exp(ExpX::Const(Constant::Bool(true)));
             for arg in args.iter().rev() {
                 let e_arg = r(arg)?;
                 e = bool_exp(ExpX::Binary(BinaryOp::And, e_arg, e));
@@ -278,7 +293,7 @@ pub(crate) fn is_recursive_exp(ctx: &Ctx, name: &Fun, body: &Exp) -> bool {
         let mut scope_map = ScopeMap::new();
         // Check for self-recursion, which SCC computation does not account for
         match exp_visitor_dfs(body, &mut scope_map, &mut |exp, _scope_map| match &exp.x {
-            ExpX::Call(x, targs, _) if is_self_call(ctx, x, targs, name) => {
+            ExpX::Call(CallFun::Fun(x), targs, _) if is_self_call(ctx, x, targs, name) => {
                 VisitorControlFlow::Stop(())
             }
             _ => VisitorControlFlow::Recurse,
@@ -339,8 +354,8 @@ fn mk_decreases_at_entry(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> (Vec<Loca
 fn disallow_recursion_exp(ctxt: &Ctxt, exp: &Exp) -> Result<(), VirErr> {
     let mut scope_map = ScopeMap::new();
     exp_visitor_check(exp, &mut scope_map, &mut |exp, _scope_map| match &exp.x {
-        ExpX::Call(x, targs, _) if is_recursive_call(ctxt, x, targs) => {
-            err_str(&exp.span, "recursion not allowed here")
+        ExpX::Call(CallFun::Fun(x), targs, _) if is_recursive_call(ctxt, x, targs) => {
+            error(&exp.span, "recursion not allowed here")
         }
         _ => Ok(()),
     })
@@ -361,7 +376,7 @@ pub(crate) fn check_termination_exp(
     }
     let num_decreases = function.x.decrease.len();
     if num_decreases == 0 {
-        return err_str(&function.span, "recursive function must have a decreases clause");
+        return error(&function.span, "recursive function must have a decreases clause");
     }
 
     let decreases_exps = vec_map_result(&function.x.decrease, |e| {
@@ -409,7 +424,7 @@ pub(crate) fn check_termination_exp(
 
     // New body: substitute rec%f(args, fuel) for f(args)
     let body = map_exp_visitor(&body, &mut |exp| match &exp.x {
-        ExpX::Call(x, typs, args)
+        ExpX::Call(CallFun::Fun(x), typs, args)
             if is_recursive_call(&ctxt, x, typs) && ctx.func_map[x].x.body.is_some() =>
         {
             let mut args = (**args).clone();
@@ -417,7 +432,7 @@ pub(crate) fn check_termination_exp(
             let var_typ = Arc::new(TypX::Air(str_typ(FUEL_TYPE)));
             args.push(SpannedTyped::new(&exp.span, &var_typ, varx));
             let rec_name = prefix_recursive_fun(&x);
-            let callx = ExpX::Call(rec_name, typs.clone(), Arc::new(args));
+            let callx = ExpX::Call(CallFun::Fun(rec_name), typs.clone(), Arc::new(args));
             SpannedTyped::new(&exp.span, &exp.typ, callx)
         }
         _ => exp.clone(),
@@ -438,7 +453,7 @@ pub(crate) fn check_termination_stm(
     }
     let num_decreases = function.x.decrease.len();
     if num_decreases == 0 {
-        return err_str(&function.span, "recursive function must have a decreases clause");
+        return error(&function.span, "recursive function must have a decreases clause");
     }
 
     let decreases_exps = vec_map_result(&function.x.decrease, |e| {
@@ -451,7 +466,7 @@ pub(crate) fn check_termination_stm(
         StmX::Call { fun, typ_args, args, .. } if is_recursive_call(&ctxt, fun, typ_args) => {
             let check =
                 check_decrease_call(&ctxt, diagnostics, fun_ssts, &s.span, fun, typ_args, args)?;
-            let error = error("could not prove termination", &s.span);
+            let error = msg_error("could not prove termination", &s.span);
             let stm_assert = Spanned::new(s.span.clone(), StmX::Assert(Some(error), check));
             let stm_block =
                 Spanned::new(s.span.clone(), StmX::Block(Arc::new(vec![stm_assert, s.clone()])));
@@ -534,7 +549,7 @@ pub(crate) fn expand_call_graph(
                                         Some(x)
                                     }
                                     _ => {
-                                        return err_str(&expr.span, "unsupported use of Self type");
+                                        return error(&expr.span, "unsupported use of Self type");
                                     }
                                 }
                             }
@@ -549,7 +564,15 @@ pub(crate) fn expand_call_graph(
                             }
                             TypX::Datatype(datatype, _) => {
                                 // f --> D.f2
-                                Some(&method_map[&(x.clone(), datatype.clone())])
+                                match method_map.get(&(x.clone(), datatype.clone())) {
+                                    Some(v) => Some(v),
+                                    None => {
+                                        return error(
+                                            &expr.span,
+                                            "(INTERNAL ERROR) method not found in method_map",
+                                        );
+                                    }
+                                }
                             }
                             _ => panic!("unexpected Self type instantiation"),
                         }
@@ -585,7 +608,7 @@ pub(crate) fn expand_call_graph(
                                         );
                                     }
                                     _ => {
-                                        return err_str(
+                                        return error(
                                             &expr.span,
                                             "not yet supported: type bounds on non-datatypes",
                                         );

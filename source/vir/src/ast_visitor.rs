@@ -3,7 +3,7 @@ use crate::ast::{
     FunctionX, GenericBound, GenericBoundX, Ident, MaskSpec, Param, ParamX, Pattern, PatternX,
     SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOpr, Variant, VirErr,
 };
-use crate::ast_util::err_str;
+use crate::ast_util::error;
 use crate::def::Spanned;
 use crate::util::vec_map_result;
 use crate::visitor::expr_visitor_control_flow;
@@ -713,7 +713,7 @@ where
         ExprX::Fuel(path, fuel) => ExprX::Fuel(path.clone(), *fuel),
         ExprX::RevealString(path) => ExprX::RevealString(path.clone()),
         ExprX::Header(_) => {
-            return err_str(&expr.span, "header expression not allowed here");
+            return error(&expr.span, "header expression not allowed here");
         }
         ExprX::AssertAssume { is_assume, expr: e1 } => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
@@ -789,7 +789,7 @@ where
         }
         ExprX::Ghost { alloc_wrapper, tracked, expr: e1 } => {
             let expr = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
-            ExprX::Ghost { alloc_wrapper: alloc_wrapper.clone(), tracked: *tracked, expr }
+            ExprX::Ghost { alloc_wrapper: *alloc_wrapper, tracked: *tracked, expr }
         }
         ExprX::Block(ss, e1) => {
             let mut stmts: Vec<Stmt> = Vec::new();
@@ -860,8 +860,13 @@ where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
     let typ = map_typ_visitor_env(&param.x.typ, env, ft)?;
-    let paramx =
-        ParamX { name: param.x.name.clone(), typ, mode: param.x.mode, is_mut: param.x.is_mut };
+    let paramx = ParamX {
+        name: param.x.name.clone(),
+        typ,
+        mode: param.x.mode,
+        is_mut: param.x.is_mut,
+        unwrapped_info: param.x.unwrapped_info.clone(),
+    };
     Ok(Spanned::new(param.span.clone(), paramx))
 }
 

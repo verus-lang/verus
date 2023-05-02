@@ -2,13 +2,6 @@
 use builtin::*;
 #[allow(unused_imports)]
 use builtin_macros::*;
-
-#[cfg(not(vstd_todo))]
-mod pervasive;
-#[cfg(not(vstd_todo))]
-use pervasive::prelude::*;
-
-#[cfg(vstd_todo)]
 use vstd::prelude::*;
 
 verus! {

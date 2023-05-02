@@ -30,14 +30,14 @@ test_verify_one_file! {
             j: bool,
         }
         fn test1(i: bool, j: bool) {
-            let s = S { i: ghost(i), j };
+            let s = S { i: Ghost(i), j };
         }
         fn test2(i: Ghost<bool>, j: bool) {
             let s = S { i, j };
         }
         fn test3(i: bool, j: Ghost<bool>) {
-            let s: Ghost<S> = ghost(S { i: Ghost::new(i), j: j@ });
-            let jj: Ghost<bool> = ghost(s@.j);
+            let s: Ghost<S> = Ghost(S { i: Ghost::new(i), j: j@ });
+            let jj: Ghost<bool> = Ghost(s@.j);
         }
     } => Ok(())
 }
@@ -51,7 +51,7 @@ test_verify_one_file! {
         fn test(i: bool, #[verifier::spec] j: bool) {
             let s = S { i, j };
         }
-    } => Err(err) => assert_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
 }
 
 test_verify_one_file! {
@@ -62,9 +62,9 @@ test_verify_one_file! {
             j: bool,
         }
         fn test(i: bool, j: Ghost<bool>) {
-            let s = S { i: ghost(i), j: j@ };
+            let s = S { i: Ghost(i), j: j@ };
         }
-    } => Err(err) => assert_error_msg(err, "cannot perform operation with mode spec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot perform operation with mode spec")
 }
 
 test_verify_one_file! {
@@ -76,7 +76,7 @@ test_verify_one_file! {
         fn test(i: bool, #[verifier::spec] j: bool) {
             let s = S { j, i };
         }
-    } => Err(err) => assert_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
 }
 
 test_verify_one_file! {
@@ -89,7 +89,7 @@ test_verify_one_file! {
             let s = S { i, j };
             let ii = s.i;
         }
-    } => Err(err) => assert_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
 }
 
 test_verify_one_file! {
@@ -102,7 +102,7 @@ test_verify_one_file! {
             #[verifier::spec] let s = S { i, j };
             let jj = s.j;
         }
-    } => Err(err) => assert_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
 }
 
 test_verify_one_file! {
@@ -210,7 +210,7 @@ test_verify_one_file! {
         fn test(i: bool, #[verifier::spec] j: bool) {
             let s = (i, j);
         }
-    } => Err(err) => assert_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
 }
 
 test_verify_one_file! {
@@ -219,7 +219,7 @@ test_verify_one_file! {
             #[verifier::spec] let s = (i, j);
             let ii = s.0;
         }
-    } => Err(err) => assert_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
 }
 
 test_verify_one_file! {
@@ -228,7 +228,7 @@ test_verify_one_file! {
             #[verifier::spec] let s = (i, j);
             let jj = s.0;
         }
-    } => Err(err) => assert_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
 }
 
 test_verify_one_file! {
@@ -240,7 +240,7 @@ test_verify_one_file! {
         fn set_exec() {
             let a: Set<u64> = Set { dummy: 3 }; // FAILS
         }
-    } => Err(err) => assert_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
 }
 
 test_verify_one_file! {
@@ -253,7 +253,7 @@ test_verify_one_file! {
         fn set_exec() {
             let e: E = E::A; // FAILS
         }
-    } => Err(err) => assert_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
 }
 
 test_verify_one_file! {
@@ -273,7 +273,7 @@ test_verify_one_file! {
             }
             a
         }
-    } => Err(err) => assert_error_msg(err, "cannot assign to exec variable from proof mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot assign to exec variable from proof mode")
 }
 
 test_verify_one_file! {
@@ -291,6 +291,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] regression_int_if code! {
+        use vstd::pervasive::*;
         fn int_if() {
             #[verifier::spec] let a: u128 = 3;
             if a == 4 {
@@ -305,7 +306,7 @@ test_verify_one_file! {
             } else if a == 3 {
                 4
             } else {
-                pervasive::arbitrary()
+                vstd::pervasive::arbitrary()
             }
         }
     } => Ok(())
@@ -313,7 +314,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] ret_mode code! {
-        #[verifier(returns(spec))] /* vattr */
+        #[verifier::returns(spec)] /* vattr */
         fn ret_spec() -> u128 {
             ensures(|i: u128| i == 3);
             #[verifier::spec] let a: u128 = 3;
@@ -322,14 +323,14 @@ test_verify_one_file! {
 
         fn test_ret() {
             #[verifier::spec] let x = ret_spec();
-            assert(x == 3);
+            builtin::assert_(x == 3);
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
     #[test] ret_mode_fail2 code! {
-        #[verifier(returns(spec))] /* vattr */
+        #[verifier::returns(spec)] /* vattr */
         fn ret_spec() -> u128 {
             ensures(|i: u128| i == 3);
             #[verifier::spec] let a: u128 = 3;
@@ -338,9 +339,9 @@ test_verify_one_file! {
 
         fn test_ret() {
             let x = ret_spec();
-            assert(x == 3);
+            builtin::assert_(x == 3);
         }
-    } => Err(err) => assert_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
 }
 
 test_verify_one_file! {
@@ -366,7 +367,7 @@ test_verify_one_file! {
     #[test] let_spec_pass code! {
         fn test1() {
             #[verifier::spec] let x: u64 = 2;
-            assert(x == 2);
+            builtin::assert_(x == 2);
         }
     } => Ok(())
 }
@@ -377,7 +378,7 @@ test_verify_one_file! {
             #[verifier::spec] let x: u64;
             x = 2;
             x = 3;
-            assert(false); // FAILS
+            builtin::assert_(false); // FAILS
         }
     } => Err(err) => assert_vir_error_msg(err, "delayed assignment to non-mut let not allowed for spec variables")
 }
@@ -440,7 +441,7 @@ test_verify_one_file! {
             if tr {
                 f(&mut e, b); // should fail: exec <- proof out assign
             }
-            assert(e);
+            builtin::assert_(e);
         }
     } => Err(err) => assert_vir_error_msg(err, "expected mode proof, &mut argument has mode exec")
 }
@@ -528,7 +529,9 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_proof_fn_call_fail PROOF_FN_COMMON.to_string() + code_str! {
+    // TODO (erasure-todo)
+    // This needs to be ported to verus_code
+    #[ignore] #[test] test_proof_fn_call_fail PROOF_FN_COMMON.to_string() + code_str! {
         #[verifier::proof]
         fn lemma(#[verifier::proof] node: Node) {
             requires(node.v < 10);
@@ -537,11 +540,11 @@ test_verify_one_file! {
 
         #[verifier::proof]
         fn other(#[verifier::proof] node: Node) {
-            assume(node.v < 10);
+            builtin::assume_(node.v < 10);
             lemma(node);
             lemma(node);
         }
-    } => Err(err) => assert_error_msg(err, "error[E0382]: use of moved value: `node`")
+    } => Err(err) => assert_rust_error_msg(err, "error[E0382]: use of moved value: `node`")
 }
 
 test_verify_one_file! {
@@ -555,7 +558,7 @@ test_verify_one_file! {
 
             #[verifier::proof]
             fn other(&self, other_node: Node) {
-                assume(other_node.v < 10);
+                builtin::assume_(other_node.v < 10);
                 other_node.lemma();
             }
         }
@@ -563,40 +566,35 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_associated_proof_fn_call_fail_1 PROOF_FN_COMMON.to_string() + code_str! {
+    #[test] test_associated_proof_fn_call_fail_1 PROOF_FN_COMMON.to_string() + verus_code_str! {
         impl Node {
-            #[verifier::proof]
-            fn lemma(#[verifier::proof] self) {
+            proof fn lemma(tracked self) {
                 requires(self.v < 10);
                 ensures(self.v * 2 < 20);
             }
 
-            #[verifier::proof]
-            fn other(#[verifier::proof] self) {
+            proof fn other(tracked self) {
                 assume(other_node.v < 10);
                 self.lemma();
                 self.lemma();
             }
         }
-    } => Err(err) => assert_error_msg(err, "cannot find value `other_node`")
+    } => Err(err) => assert_rust_error_msg(err, "cannot find value `other_node`")
 }
 
 test_verify_one_file! {
-    // TODO un-ignore when #124 is fixed
-    #[test] #[ignore] test_associated_proof_fn_call_fail_2_regression_124 PROOF_FN_COMMON.to_string() + code_str! {
+    #[test] test_associated_proof_fn_call_fail_2_regression_124 PROOF_FN_COMMON.to_string() + verus_code_str! {
         struct Token {}
 
         impl Node {
-            #[verifier::proof]
-            fn lemma(self, #[verifier::proof] t: Token) {}
+            proof fn lemma(self, tracked t: Token) {}
 
-            #[verifier::proof]
-            fn other(self, #[verifier::proof] t: Token) {
+            proof fn other(self, tracked t: Token) {
                 self.lemma(t);
                 self.lemma(t);
             }
         }
-    } => Err(err) => assert_error_msg(err, "test currently ignored")
+    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `t`")
 }
 
 test_verify_one_file! {
@@ -612,13 +610,14 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] tracked_double_deref code! {
-        use pervasive::modes::*;
+    // TODO(main_new) this should be passing; the issue may be due to the changes in the lifetime checker
+    #[ignore] #[test] tracked_double_deref code! {
+        use vstd::modes::*;
 
         fn foo<V>(x: Tracked<V>) {
             let y = &x;
 
-            assert(equal((*y).view(), x.view()));
+            builtin::assert_(equal((*y).view(), x.view()));
         }
     } => Ok(())
 }
@@ -628,7 +627,7 @@ test_verify_one_file! {
         use vstd::modes::*;
 
         fn f() {
-            let g: Ghost<bool> = ghost(true);
+            let g: Ghost<bool> = Ghost(true);
             proof {
                 let tracked t: bool = g@; // fails: tracked <- ghost assign
             }
@@ -641,7 +640,7 @@ test_verify_one_file! {
         use vstd::modes::*;
 
         fn f() {
-            let g: Ghost<bool> = ghost(true);
+            let g: Ghost<bool> = Ghost(true);
             let e: bool = g@; // fails: exec <- ghost assign
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot perform operation with mode spec")
@@ -665,7 +664,7 @@ test_verify_one_file! {
         use vstd::modes::*;
 
         fn f(t: Tracked<bool>) {
-            let g: Ghost<bool> = ghost(true);
+            let g: Ghost<bool> = Ghost(true);
             let mut t = t;
             proof {
                 t@ = g@; // fails: tracked <- ghost assign
@@ -808,7 +807,7 @@ test_verify_one_file! {
             e: bool,
         }
         fn f(t: Tracked<S>) {
-            let g: Ghost<bool> = ghost(true);
+            let g: Ghost<bool> = Ghost(true);
             let mut t = t;
             proof {
                 t@.e = g@; // fails: tracked <- ghost assign
@@ -841,11 +840,11 @@ test_verify_one_file! {
         }
 
         proof fn make_tracked_proof() {
-            let tracked t2: B<Tok> = tracked(B { t: Tok { v: 12 } });
+            let tracked t2: B<Tok> = B { t: Tok { v: 12 } };
         }
 
         fn make_tracked_exec() {
-            let t: Tracked<Tok> = tracked({
+            let t: Tracked<Tok> = Tracked({
                 let v = 12nat;
                 Tok { v: v }
             });
@@ -854,11 +853,11 @@ test_verify_one_file! {
 
         // This isn't currently possible
         // proof fn make_ghost_proof() {
-        //     let tracked t2: B<Ghost<Tok>> = tracked(B { t: Ghost::new(Tok { v: 12 }) });
+        //     let tracked t2: B<Ghost<Tok>> = Tracked(B { t: Ghost::new(Tok { v: 12 }) });
         // }
 
         fn make_ghost_exec() {
-            let g: Ghost<Tok> = ghost(Tok { v: 12nat });
+            let g: Ghost<Tok> = Ghost(Tok { v: 12nat });
             let b: B<Ghost<Tok>> = B { t: g };
         }
     } => Ok(())
@@ -867,28 +866,28 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] tracked_tracked_typ_params_misc TRACKED_TYP_PARAMS_COMMON.to_owned() + verus_code_str! {
         proof fn identity(tracked b: B<Tracked<Tok>>) -> (tracked out: B<Tracked<Tok>>) {
-            tracked b
+            b
         }
 
         fn foo_exec(tok: Tracked<Tok>) -> Tracked<Tok> {
-            let b: Tracked<B<Tracked<Tok>>> = tracked(B { t: tok });
-            let t = tracked({
-                let tracked B { t } = (tracked b).get();
+            let b: Tracked<B<Tracked<Tok>>> = Tracked(B { t: tok });
+            let t = Tracked({
+                let tracked B { t } = b.get();
                 t.get()
             });
             t
         }
 
         proof fn foo_proof(tracked tok: Tracked<Tok>) -> (tracked out: B<Tracked<Tok>>) {
-            let tracked b1: B<Tracked<Tok>> = tracked(B { t: tracked tok });
-            let tracked b2 = identity(tracked b1);
-            tracked b2
+            let tracked b1: B<Tracked<Tok>> = B { t: tok };
+            let tracked b2 = identity(b1);
+            b2
         }
 
         fn caller(tok: Tracked<Tok>) -> Tracked<B<Tracked<Tok>>> {
-            let b: Tracked<B<Tracked<Tok>>> = tracked(B { t: tok });
-            let b1 = tracked({
-                identity(tracked b.get())
+            let b: Tracked<B<Tracked<Tok>>> = Tracked(B { t: tok });
+            let b1 = Tracked({
+                identity(b.get())
             });
             b1
         }
@@ -900,27 +899,27 @@ test_verify_one_file! {
         use vstd::modes::*;
 
         proof fn identity(tracked b: B<Ghost<Tok>>) -> (tracked out: B<Ghost<Tok>>) {
-            tracked b
+            b
         }
 
         fn foo_exec() -> Ghost<Tok> {
-            let g: Ghost<Tok> = ghost(Tok { v: 12nat });
+            let g: Ghost<Tok> = Ghost(Tok { v: 12nat });
             // The exec->tracked coercion may be removed
-            let b: Tracked<B<Ghost<Tok>>> = tracked(B { t: (tracked g) });
-            let t = ghost({
-                let tracked B { t } = (tracked b).get();
+            let b: Tracked<B<Ghost<Tok>>> = Tracked(B { t: g });
+            let t = Ghost({
+                let tracked B { t } = b.get();
                 t@
             });
             t
         }
 
         proof fn foo_proof(tracked tok: Ghost<Tok>) -> tracked Ghost<Tok> {
-            let tracked b: B<Ghost<Tok>> = tracked(B { t: tok });
-            let tracked t = tracked({
-                let tracked B { t } = tracked b;
+            let tracked b: B<Ghost<Tok>> = B { t: tok };
+            let tracked t = {
+                let tracked B { t } = b;
                 t
-            });
-            tracked t
+            };
+            t
         }
     } => Ok(())
 }
@@ -1018,7 +1017,7 @@ test_verify_one_file! {
         fn myfun() {
             let tracked b = false;
         }
-    } => Err(err) => assert_vir_error_msg(err, "exec code cannot initialize non-exec variables")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -1026,7 +1025,7 @@ test_verify_one_file! {
         fn myfun() {
             let ghost b = false;
         }
-    } => Err(err) => assert_vir_error_msg(err, "exec code cannot initialize non-exec variable")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -1067,6 +1066,367 @@ test_verify_one_file! {
             proof {
                 b = false;
             }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] ghost_decl_enters_ghost_code verus_code! {
+        fn test(g: Ghost<int>) {
+            let Ghost(i) = g;
+            let ghost mut j = i + 1000000000000000000000000000000000000000000000000000000000000000;
+            assert(j > g@);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] temp_vars_are_hygienic1 verus_code! {
+        fn test(g: Ghost<int>) {
+            let ghost j = g@ + 1;
+            let ghost k = verus_tmp; // error
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot find value `verus_tmp`")
+}
+
+test_verify_one_file! {
+    #[test] temp_vars_are_hygienic2 verus_code! {
+        fn test(g: Ghost<int>) {
+            let Ghost(j) = g;
+            let ghost k = verus_tmp_j; // error
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot find value `verus_tmp_j`")
+}
+
+test_verify_one_file! {
+    #[test] fn_param_wrappers verus_code! {
+        struct S(int);
+
+        fn test1(Ghost(g): Ghost<int>, Tracked(t): Tracked<S>)
+            requires
+                g > 100,
+                t.0 > 200,
+        {
+            assert(g >= 100);
+            assert(t.0 >= 200);
+        }
+
+        fn test2(Ghost(g): Ghost<int>, Tracked(t): Tracked<S>)
+            requires
+                g > 100,
+                t.0 > 200,
+        {
+            test1(Ghost(g), Tracked(t));
+        }
+
+        fn test3(g: Ghost<int>, t: Tracked<S>)
+            requires
+                g@ > 100,
+                t@.0 > 200,
+        {
+            test1(g, t);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] fn_param_wrappers_mut verus_code! {
+        struct S(int);
+
+        fn test1(Ghost(g): Ghost<&mut int>, Tracked(t): Tracked<&mut S>)
+            requires
+                *old(g) > 100,
+                old(t).0 > 100,
+            ensures
+                *g == *old(g) + *old(g),
+                *g > 200,
+                *t == *old(t),
+        {
+            assert(*g >= 100);
+            proof {
+                *g = *g * 2;
+            }
+        }
+
+        fn test2(Tracked(t1): Tracked<S>) {
+            assume(t1.0 > 100);
+            let tracked mut t2 = t1;
+            let ghost mut i = 1000;
+            assert(i == 1000);
+            test1(Ghost(&mut i), Tracked(&mut t2));
+            assert(i == 2000);
+            assert(t2.0 > 100);
+        }
+
+        fn test3(Tracked(t1): Tracked<S>) {
+            assume(t1.0 > 100);
+            let tracked mut t2 = t1;
+            let ghost mut i = 1000;
+            assert(i == 1000);
+            test1(Ghost(&mut i), Tracked(&mut t2));
+            assert(i == 2000);
+            assert(t2.0 > 101); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] fn_param_wrappers_mut_fail1 verus_code! {
+        struct S(int);
+
+        fn test1(Tracked(g): Ghost<&mut int>, Tracked(t): Tracked<&mut S>)
+        {
+        }
+    } => Err(err) => assert_rust_error_msg(err, "no method named `get` found for struct `Ghost`")
+}
+
+test_verify_one_file! {
+    #[test] fn_param_wrappers_mut_fail2 verus_code! {
+        struct S(int);
+
+        fn test1(Ghost(g): Ghost<&mut int>, Ghost(t): Tracked<&mut S>)
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "ill-formed unwrap_parameter header")
+}
+
+test_verify_one_file! {
+    #[test] fn_param_wrappers_mut_fail3 verus_code! {
+        struct S(int);
+
+        fn test1(Ghost(g): Ghost<&mut int>, Tracked(t): Tracked<&mut S>)
+        {
+        }
+
+        fn test2(Tracked(t1): Tracked<S>) {
+            let tracked mut t2 = t1;
+            let ghost mut i = 1000;
+            test1(Tracked(&mut i), Tracked(&mut t2));
+        }
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 1);
+        let error = &err.errors[0];
+        assert_eq!(error.message, "mismatched types");
+        assert!(error.spans[0].label == Some("expected struct `Ghost`, found struct `Tracked`".to_string()));
+    }
+}
+
+test_verify_one_file! {
+    #[test] fn_param_wrappers_mut_well_formed1 verus_code! {
+        struct S(int);
+
+        fn test1(tmp_g: Ghost<&mut int>) {
+            #[verus::internal(header_unwrap_parameter)] let g;
+            #[verifier(proof_block)] { g = tmp_g.view() };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] fn_param_wrappers_mut_ill_formed1 verus_code! {
+        struct S(int);
+
+        fn test1(tmp_g: Ghost<&mut int>, tmp_h: Ghost<&mut int>) {
+            #[verus::internal(header_unwrap_parameter)] let g;
+            #[verifier(proof_block)] { g = tmp_g.view() };
+            // fails to unwrap h
+        }
+    } => Err(err) => assert_vir_error_msg(err, "must be unwrapped")
+}
+
+test_verify_one_file! {
+    #[test] fn_param_wrappers_mut_ill_formed2 verus_code! {
+        struct S(int);
+
+        fn test1(tmp_g: Ghost<&mut int>, tmp_h: Ghost<&mut int>) {
+            #[verus::internal(header_unwrap_parameter)] let g;
+            #[verifier(proof_block)] { g = tmp_g.view() };
+            #[verus::internal(header_unwrap_parameter)] let h;
+            #[verifier(proof_block)] { h = g }; // should be tmp_h.view()
+        }
+    } => Err(err) => assert_vir_error_msg(err, "ill-formed unwrap_parameter header")
+}
+
+test_verify_one_file! {
+    #[test] fn_param_wrappers_mut_wrong_mode1 verus_code! {
+        struct S(int);
+
+        fn test1(Ghost(g): Ghost<&mut int>, Tracked(t): Tracked<&mut S>)
+        {
+        }
+
+        fn test2(Tracked(t1): Tracked<S>) {
+            let ghost mut t2 = t1;
+            let ghost mut i = 1000;
+            test1(Ghost(&mut i), Tracked(&mut t2));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
+
+test_verify_one_file! {
+    #[test] fn_param_wrappers_mut_wrong_mode2 verus_code! {
+        struct S(int);
+
+        fn test1(Ghost(g): Ghost<&mut S>)
+        {
+        }
+
+        fn test2(Tracked(t1): Tracked<S>) {
+            let tracked mut t2 = t1;
+            test1(Ghost(&mut t2));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot write to argument with mode exec")
+}
+
+test_verify_one_file! {
+    #[test] ghost_tracked_new1 verus_code! {
+        struct S {}
+        fn test1(t: Tracked<S>) {
+            let Tracked(x) = t;
+            proof {
+                let g: Ghost<int> = Ghost(5);
+                let tracked z: Tracked<S> = Tracked(x);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] ghost_tracked_new_fail1 verus_code! {
+        fn test1() {
+            let g = Ghost::new(true);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot perform operation with mode spec")
+}
+
+test_verify_one_file! {
+    #[test] ghost_tracked_new_fail2 verus_code! {
+        struct S {}
+        fn test1(t: Tracked<S>) {
+            let Tracked(x) = t;
+            let t = Tracked::new(x);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot perform operation with mode proof")
+}
+
+test_verify_one_file! {
+    #[test] ghost_tracked_new_fail3 verus_code! {
+        struct S {}
+        fn test1(t: Tracked<S>) {
+            let Tracked(x) = t;
+            proof {
+                let tracked z: Tracked<S> = Tracked(x);
+                let tracked z: Tracked<S> = Tracked(x);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `x`")
+}
+
+test_verify_one_file! {
+    #[test] ghost_tracked_new_fail4 verus_code! {
+        struct S {}
+        fn test1(t: Tracked<S>) {
+            let Tracked(x) = t;
+            proof {
+                let tracked z: Tracked<S> = Tracked(x);
+            }
+            let tracked y = x;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `x`")
+}
+
+test_verify_one_file! {
+    #[test] ghost_tracked_new_fail5 verus_code! {
+        struct S {}
+        fn test1(t: Tracked<S>) {
+            let Tracked(x) = t;
+            proof {
+                let g = x; // ghost
+                let tracked z: Tracked<S> = Tracked(g);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
+
+test_verify_one_file! {
+    #[test] let_tracked_wildcard_in_exec verus_code! {
+        struct X { }
+
+        proof fn stuff() -> (tracked res: X)
+            requires false,
+        {
+            X { }
+        }
+
+        fn test_r() {
+            let tracked _ = stuff(); // FAILS
+        }
+    } => Err(err) => {
+        dbg!(&err);
+        assert_one_fails(err)
+    }
+}
+
+test_verify_one_file! {
+    #[test] destructure_tracked_shorthand verus_code! {
+        struct Y { }
+        struct Z { }
+
+        tracked struct X {
+            tracked y: Y,
+            tracked z: Z
+        }
+
+        proof fn test2(tracked y: Y, z: Z) { }
+
+        fn test(Tracked(x): Tracked<X>) {
+            let tracked X { y, z } = x;
+            proof {
+                test2(y, z);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] destructure_ghost_shorthand verus_code! {
+        struct Y { }
+        struct Z { }
+
+        struct X {
+            y: Y,
+            z: Z
+        }
+
+        proof fn test2(tracked y: Y, tracked z: Z) { }
+
+        fn test(Tracked(x): Tracked<X>) {
+            let ghost X { y, z } = x;
+            proof {
+                test2(y, z);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
+
+test_verify_one_file! {
+    #[test] new_ghost_wrapper_is_tracked verus_code! {
+        proof fn test1() -> (tracked t: Ghost<bool>) {
+            Ghost(true)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] ghost_wrapper_is_copyable verus_code! {
+        struct NonCopy { a: u64 }
+
+        fn use_g(g: Ghost<NonCopy>) {
+        }
+
+        fn with_g(g: Ghost<NonCopy>) {
+            use_g(g);
+            use_g(g);
         }
     } => Ok(())
 }

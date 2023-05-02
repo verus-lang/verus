@@ -82,8 +82,8 @@ test_verify_one_file! {
         }
 
         mod M2 {
-            #[verifier(external_body)] /* vattr */
-            #[verifier(broadcast_forall)] /* vattr */
+            #[verifier::external_body] /* vattr */
+            #[verifier::broadcast_forall] /* vattr */
             proof fn f_not_g<A: crate::M1::T>()
                 ensures exists|x: &A, y: &A| x.f() != y.f()
             {
@@ -99,7 +99,7 @@ test_verify_one_file! {
                 assert(false);
             }
         }
-    } => Err(err) => assert_error_msg(err, ": bounds on broadcast_forall function type parameters")
+    } => Err(err) => assert_vir_error_msg(err, ": bounds on broadcast_forall function type parameters")
 }
 
 test_verify_one_file! {
@@ -193,12 +193,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mode_matches_3 code! {
+    #[test] test_mode_matches_3 verus_code! {
         mod M1 {
             pub trait T1 {
-                fn f(#[verifier::spec] &self) {
-                    builtin::no_method_body()
-                }
+                fn f(#[verifier::spec] &self);
             }
         }
         mod M2 {
@@ -212,12 +210,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mode_matches_4 code! {
+    #[test] test_mode_matches_4 verus_code! {
         mod M1 {
             pub trait T1 {
-                fn f(&self) {
-                    builtin::no_method_body()
-                }
+                fn f(&self);
             }
         }
         mod M2 {
@@ -227,16 +223,14 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "self has mode spec, function has mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "parameter must have mode exec")
 }
 
 test_verify_one_file! {
-    #[test] test_mode_matches_5 code! {
+    #[test] test_mode_matches_5 verus_code! {
         mod M1 {
             pub trait T1 {
-                fn f(&self, #[verifier::spec] b: bool) {
-                    builtin::no_method_body()
-                }
+                fn f(&self, #[verifier::spec] b: bool);
             }
         }
         mod M2 {
@@ -250,12 +244,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mode_matches_6 code! {
+    #[test] test_mode_matches_6 verus_code! {
         mod M1 {
             pub trait T1 {
-                fn f(&self, b: bool) {
-                    builtin::no_method_body()
-                }
+                fn f(&self, b: bool);
             }
         }
         mod M2 {
@@ -272,7 +264,7 @@ test_verify_one_file! {
     #[test] test_mode_matches_7 verus_code! {
         mod M1 {
             pub trait T1 {
-                #[verifier(returns(spec))] /* vattr */
+                #[verifier::returns(spec)] /* vattr */
                 fn f(&self) -> bool;
             }
         }
@@ -288,18 +280,16 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mode_matches_8 code! {
+    #[test] test_mode_matches_8 verus_code! {
         mod M1 {
             pub trait T1 {
-                fn f(&self) -> bool {
-                    builtin::no_method_body()
-                }
+                fn f(&self) -> bool;
             }
         }
         mod M2 {
             struct S {}
             impl crate::M1::T1 for S {
-                #[verifier(returns(spec))] /* vattr */
+                #[verifier::returns(spec)] /* vattr */
                 fn f(&self) -> bool {
                     true
                 }
@@ -427,7 +417,11 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+        assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+    }
 }
 
 test_verify_one_file! {
@@ -446,7 +440,11 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+        assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+    }
 }
 
 test_verify_one_file! {
@@ -471,7 +469,11 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+        assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+    }
 }
 
 test_verify_one_file! {
@@ -490,7 +492,11 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+        assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+    }
 }
 
 test_verify_one_file! {
@@ -509,7 +515,11 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+        assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+    }
 }
 
 test_verify_one_file! {
@@ -638,7 +648,7 @@ test_verify_one_file! {
         mod M2 {
             pub struct S {}
             impl crate::M1::T for S {
-                #[verifier(publish)] /* vattr */
+                #[verifier::publish] /* vattr */
                 spec fn req(&self) -> bool { true }
                 fn f(&self) {}
             }
@@ -824,7 +834,7 @@ test_verify_one_file! {
         mod M3 {
             use builtin::*;
             impl<C> crate::M1::T<(C, u16)> for crate::M2::S<bool, C> {
-                #[verifier(publish)] /* vattr */
+                #[verifier::publish] /* vattr */
                 spec fn apple(&self, b: (C, u16)) -> bool {
                     b.1 > 10
                 }
@@ -858,7 +868,7 @@ test_verify_one_file! {
             pub struct S<A: Sized, B: Sized>(pub A, pub B);
 
             impl<C: Sized> crate::M1::T<(C, u16)> for S<bool, C> {
-                #[verifier(publish)] /* vattr */
+                #[verifier::publish] /* vattr */
                 spec fn apple(&self, b: (C, u16)) -> bool {
                     b.1 > 10
                 }
@@ -930,7 +940,7 @@ test_verify_one_file! {
             pub struct S<A, B>(pub A, pub B);
 
             impl crate::M1::T<u8> for S<u16, u32> {
-                #[verifier(publish)]
+                #[verifier::publish]
                 spec fn apple(&self, b: u8) -> bool {
                     b > 10
                 }
@@ -979,7 +989,7 @@ test_verify_one_file! {
 
         mod M4 {
             impl crate::M1::T for crate::M2::S<bool, bool> {
-                #[verifier(publish)] /* vattr */
+                #[verifier::publish] /* vattr */
                 spec fn apple(&self, b: bool) -> bool {
                     self.0 && self.1 && b
                 }

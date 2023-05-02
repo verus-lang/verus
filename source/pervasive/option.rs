@@ -101,3 +101,18 @@ impl<A> Option<A> {
 }
 
 } // verus!
+
+/// A poor-person's `?` operator, until Verus switches to the "real" Rust `Option`.
+#[macro_export]
+#[allow(unused_macros)]
+macro_rules! try_option {
+    ($x:expr) => {{
+        let x = $x;
+        match x {
+            $crate::option::Option::None => {
+                return $crate::option::Option::None;
+            }
+            $crate::option::Option::Some(x) => x,
+        }
+    }};
+}
