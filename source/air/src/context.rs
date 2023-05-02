@@ -46,6 +46,7 @@ pub(crate) enum ContextState {
     FoundResult,
     FoundInvalid(Vec<AssertionInfo>, Model),
     Canceled,
+    NoMoreQueriesAllowed,
 }
 
 pub struct QueryContext<'a, 'b: 'a> {
@@ -83,6 +84,7 @@ pub struct Context {
     pub(crate) time_smt_run: Duration,
     pub(crate) state: ContextState,
     pub(crate) expected_solver_version: Option<String>,
+    pub(crate) disable_incremental_solving: bool,
 }
 
 impl Context {
@@ -112,6 +114,7 @@ impl Context {
             time_smt_run: Duration::new(0, 0),
             state: ContextState::NotStarted,
             expected_solver_version: None,
+            disable_incremental_solving: false,
         };
         context.axiom_infos.push_scope(false);
         context.lambda_map.push_scope(false);
@@ -188,6 +191,13 @@ impl Context {
         self.air_final_log.log_set_option("rlimit", &rlimit.to_string());
     }
 
+    pub fn disable_incremental_solving(&mut self) {
+        self.disable_incremental_solving = true;
+        self.air_initial_log.log_set_option("disable_incremental_solving", "true");
+        self.air_middle_log.log_set_option("disable_incremental_solving", "true");
+        self.air_final_log.log_set_option("disable_incremental_solving", "true");
+    }
+
     // emit blank line into log files
     pub fn blank_line(&mut self) {
         self.air_initial_log.blank_line();
@@ -220,6 +230,11 @@ impl Context {
             self.set_z3_param_bool("smt.delay_units", true, true);
             self.set_z3_param_u32("smt.arith.solver", 2, true);
             self.set_z3_param_bool("smt.arith.nl", false, true);
+        } else if option == "disable_incremental_solving" && value {
+            self.disable_incremental_solving = true;
+            if write_to_logs {
+                self.disable_incremental_solving();
+            }
         } else {
             if write_to_logs {
                 self.log_set_z3_param(option, &value.to_string());
@@ -228,8 +243,11 @@ impl Context {
     }
 
     pub(crate) fn set_z3_param_u32(&mut self, option: &str, value: u32, write_to_logs: bool) {
-        if option == "rlimit" && write_to_logs {
-            self.set_rlimit(value);
+        if option == "rlimit" {
+            self.rlimit = value;
+            if write_to_logs {
+                self.set_rlimit(value);
+            }
         } else {
             if write_to_logs {
                 self.log_set_z3_param(option, &value.to_string());
@@ -301,6 +319,9 @@ impl Context {
                 self.state = ContextState::ReadyForQuery;
             }
             ContextState::ReadyForQuery => {}
+            ContextState::NoMoreQueriesAllowed => {
+                panic!("no more queries allowed after disabling incremental solving");
+            }
             _ => {
                 panic!("expected call to finish_query before next command");
             }
@@ -392,9 +413,13 @@ impl Context {
     }
 
     pub fn finish_query(&mut self) {
-        self.pop_name_scope();
-        self.smt_log.log_pop();
-        self.state = ContextState::ReadyForQuery;
+        if self.disable_incremental_solving {
+            self.state = ContextState::NoMoreQueriesAllowed;
+        } else {
+            self.pop_name_scope();
+            self.smt_log.log_pop();
+            self.state = ContextState::ReadyForQuery;
+        }
     }
 
     pub fn eval_expr(&mut self, expr: sise::Node) -> String {

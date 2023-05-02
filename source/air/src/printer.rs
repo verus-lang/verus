@@ -104,12 +104,9 @@ impl Printer {
     }
 
     pub(crate) fn bv_const_expr_to_node(&self, n: &Arc<String>, width: u32) -> Node {
-        let value = n.parse::<u128>().expect(&format!("could not parse option value {}", n));
-        if width <= 128 && value >> (width as u128) != 0 {
-            panic!("bitvector constant does not fit in width");
-        }
-        let hexwidth = ((width + 3) / 4) as usize;
-        Node::Atom(format!("#x{:0hexwidth$x}", value))
+        let bv_node = str_to_node(&format!("bv{}", n));
+        let width_node = str_to_node(&width.to_string());
+        node!((_ {bv_node} {width_node}))
     }
 
     pub fn expr_to_node(&self, expr: &Expr) -> Node {
@@ -145,7 +142,7 @@ impl Printer {
                     UnaryOp::BitNot => "bvnot",
                     UnaryOp::BitExtract(_, _) => "extract",
                 };
-                // ( (_extract numeral numeral) BitVec )
+                // ( (_ extract numeral numeral) BitVec )
                 match op {
                     UnaryOp::BitExtract(high, low) => {
                         let mut nodes: Vec<Node> = Vec::new();
