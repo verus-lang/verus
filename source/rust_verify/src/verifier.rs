@@ -997,7 +997,7 @@ impl Verifier {
                         )?;
                         // for bitvector, only one query, no push/pop
                         if *prover_choice == vir::def::ProverChoice::BitVector {
-                            spinoff_z3_context.set_disable_incremental_solving(true);
+                            spinoff_z3_context.disable_incremental_solving();
                         }
                         spinoff_context_counter += 1;
                         &mut spinoff_z3_context
