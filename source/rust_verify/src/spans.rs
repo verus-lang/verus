@@ -29,7 +29,7 @@ pub(crate) fn err_air_span(span: Span) -> air::ast::Span {
 #[derive(Debug, Clone)]
 enum ExternSourceInfo {
     Loaded { start_pos: BytePos, end_pos: BytePos },
-    Delayed { filename: std::path::PathBuf },
+    Delayed { filename: std::path::PathBuf, hash: Vec<u8> },
     None,
 }
 
@@ -117,9 +117,9 @@ impl SpanContextX {
             if !imported_crates.contains_key(imported_crate) {
                 imported_crates.insert(*imported_crate, CrateInfo { files: Vec::new() });
             }
-            for (_, original) in files.iter() {
+            for (hash, original) in files.iter() {
                 let info = if let Some(filename) = original.filename.clone() {
-                    ExternSourceInfo::Delayed { filename }
+                    ExternSourceInfo::Delayed { filename, hash: hash.clone() }
                 } else {
                     ExternSourceInfo::None
                 };
@@ -174,17 +174,19 @@ impl SpanContextX {
             // If rustc didn't originally load the file into the source_map,
             // we can try to request that it load the file on demand.
             let mut info = info.borrow_mut();
-            let filename = if let ExternSourceInfo::Delayed { filename } = &*info {
-                Some(filename.clone())
+            let filename = if let ExternSourceInfo::Delayed { filename, hash } = &*info {
+                Some((filename.clone(), hash.clone()))
             } else {
                 None
             };
-            if let Some(filename) = filename {
+            if let Some((filename, hash)) = filename {
                 *info = ExternSourceInfo::None;
                 if let Ok(source_file) = source_map.load_file(&filename) {
-                    let start_pos = source_file.start_pos;
-                    let end_pos = source_file.end_pos;
-                    *info = ExternSourceInfo::Loaded { start_pos, end_pos };
+                    if hash == source_file.src_hash.hash_bytes().to_vec() {
+                        let start_pos = source_file.start_pos;
+                        let end_pos = source_file.end_pos;
+                        *info = ExternSourceInfo::Loaded { start_pos, end_pos };
+                    }
                 }
             }
         }
