@@ -833,3 +833,170 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] resolve_ctors_for_struct_syntax verus_code!{
+        pub struct Animal {
+            num_legs: u8,
+        }
+
+        pub type Ani = Animal;
+
+        fn mk_animal() {
+            let y = Ani { num_legs: 3 };
+            let Ani { num_legs } = y;
+            assert(num_legs == 3);
+        }
+
+        impl Animal {
+            fn new() {
+                let y = Self { num_legs: 4 };
+                let Self { num_legs } = y;
+                assert(num_legs == 4);
+            }
+        }
+
+
+
+        pub enum Direction {
+          Left{},
+          Right{},
+        }
+
+        pub type Node = Direction;
+
+        fn mk_node() {
+            let y = Node::Left { };
+            match y {
+                Node::Left { } => {
+                }
+                Node::Right { } => {
+                    assert(false);
+                }
+            }
+        }
+
+        impl Direction {
+            fn new() {
+                let y = Self::Left { };
+                match y {
+                    Self::Left { } => {
+                    }
+                    Self::Right { } => {
+                        assert(false);
+                    }
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] resolve_ctors_for_function_syntax verus_code!{
+        pub struct Animal(u8);
+
+        pub type Ani = Animal;
+
+        fn mk_animal() {
+            // Looks like Rust doesn't support using a type alias `Ani` in this scenario
+            //let y = Ani(3);
+            //let Ani(num_legs) = y;
+            //assert(num_legs == 3);
+        }
+
+        impl Animal {
+            fn new() {
+                let y = Self(4);
+                let Self(num_legs) = y;
+                assert(num_legs == 4);
+            }
+        }
+
+        pub enum Direction {
+          Left(u8),
+          Right(u8),
+        }
+
+        pub type Node = Direction;
+
+        fn mk_node() {
+            let y = Node::Left(12);
+            match y {
+                Node::Left(z) => {
+                    assert(z == 12);
+                }
+                Node::Right(z) => {
+                    assert(false);
+                }
+            }
+        }
+
+        impl Direction {
+            fn new() {
+                let y = Self::Left(5);
+                match y {
+                    Self::Left(z) => {
+                        assert(z == 5);
+                    }
+                    Self::Right(z) => {
+                        assert(false);
+                    }
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] resolve_ctors_for_unit_syntax verus_code!{
+        pub struct Animal;
+
+        pub type Ani = Animal;
+
+        fn mk_animal() {
+            // Looks like Rust doesn't support using a type alias `Ani` in this scenario
+            //let y = Ani;
+            //let Ani = y;
+        }
+
+        impl Animal {
+            fn new() {
+                let y = Self;
+                let Self = y;
+                assert(false); // FAILS
+            }
+        }
+
+
+
+        pub enum Direction {
+          Left,
+          Right,
+        }
+
+        pub type Node = Direction;
+
+        fn mk_node() {
+            let y = Node::Left;
+            match y {
+                Node::Left => {
+                }
+                Node::Right => {
+                }
+            }
+        }
+
+        impl Direction {
+            fn new() {
+                let y = Self::Left;
+                match y {
+                    Self::Left => {
+                    }
+                    Self::Right => {
+                        assert(false);
+                    }
+                }
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
