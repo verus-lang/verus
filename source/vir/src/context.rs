@@ -21,6 +21,9 @@ use std::fs::File;
 use std::rc::Rc;
 use std::sync::Arc;
 
+// Use decorated types in addition to undecorated types (see sst_to_air::typ_to_id)
+pub(crate) const DECORATE: bool = true;
+
 pub type ChosenTrigger = Vec<(Span, String)>;
 #[derive(Debug, Clone)]
 pub struct ChosenTriggers {

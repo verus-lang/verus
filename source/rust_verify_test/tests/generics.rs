@@ -40,3 +40,13 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_fails(e, 2)
 }
+
+test_verify_one_file! {
+    #[test] test_decorated_types verus_code! {
+        spec fn sizeof<A>() -> nat;
+
+        proof fn test() {
+            assert(sizeof::<&u8>() == sizeof::<u8>()); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}

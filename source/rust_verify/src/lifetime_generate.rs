@@ -930,7 +930,7 @@ fn erase_expr<'tcx>(
                 true,
             )
             .expect("type");
-            let self_path = match &*rcvr_typ {
+            let self_path = match &*vir::ast_util::undecorate_typ(&rcvr_typ) {
                 vir::ast::TypX::Datatype(path, _) => Some(path.clone()),
                 _ => None,
             };

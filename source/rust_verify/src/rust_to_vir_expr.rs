@@ -37,8 +37,9 @@ use vir::ast::{
     IntegerTypeBoundKind, InvAtomicity, Mode, ModeCoercion, MultiOp, PatternX, Quant, SpannedTyped,
     StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
-use vir::ast_util::types_equal;
-use vir::ast_util::{const_int_from_string, ident_binder, path_as_rust_name};
+use vir::ast_util::{
+    const_int_from_string, ident_binder, path_as_rust_name, types_equal, undecorate_typ,
+};
 use vir::def::positional_field_ident;
 
 pub(crate) fn pat_to_mut_var<'tcx>(pat: &Pat) -> Result<(bool, String), VirErr> {
@@ -364,7 +365,7 @@ fn check_lit_int(
     typ: &Typ,
 ) -> Result<(), VirErr> {
     let i_bump = if in_negative_literal { 1 } else { 0 };
-    if let TypX::Int(range) = **typ {
+    if let TypX::Int(range) = *undecorate_typ(typ) {
         match range {
             IntRange::Int | IntRange::Nat => Ok(()),
             IntRange::U(n) if n == 128 || (n < 128 && i < (1u128 << n)) => Ok(()),
@@ -1264,7 +1265,7 @@ fn fn_call_to_vir<'tcx>(
     }
 
     let is_smt_unary = if is_spec_neg {
-        match *typ_of_node(bctx, args[0].span, &args[0].hir_id, false)? {
+        match *undecorate_typ(&typ_of_node(bctx, args[0].span, &args[0].hir_id, false)?) {
             TypX::Int(_) => true,
             _ => false,
         }
@@ -1277,6 +1278,10 @@ fn fn_call_to_vir<'tcx>(
     } else if is_spec_eq {
         let t1 = typ_of_node(bctx, args[0].span, &args[0].hir_id, true)?;
         let t2 = typ_of_node(bctx, args[1].span, &args[1].hir_id, true)?;
+        // REVIEW: there's some code that (harmlessly) uses == on types that are
+        // different in decoration; Rust would reject this, but we currently allow it:
+        let t1 = undecorate_typ(&t1);
+        let t2 = undecorate_typ(&t2);
         if types_equal(&t1, &t2)
             || is_smt_arith(bctx, args[0].span, args[1].span, &args[0].hir_id, &args[1].hir_id)?
         {
@@ -1349,9 +1354,9 @@ fn fn_call_to_vir<'tcx>(
     } else if is_spec_cast_integer {
         unsupported_err_unless!(len == 1, expr.span, "spec_cast_integer", args);
         let source_vir = vir_args[0].clone();
-        let source_ty = &source_vir.typ;
-        let to_ty = expr_typ()?;
-        match (&**source_ty, &*to_ty) {
+        let source_ty = undecorate_typ(&source_vir.typ);
+        let to_ty = undecorate_typ(&expr_typ()?);
+        match (&*source_ty, &*to_ty) {
             (TypX::Int(IntRange::U(_)), TypX::Int(IntRange::Nat)) => Ok(source_vir),
             (TypX::Int(IntRange::USize), TypX::Int(IntRange::Nat)) => Ok(source_vir),
             (TypX::Int(IntRange::Nat), TypX::Int(IntRange::Nat)) => Ok(source_vir),
@@ -1448,7 +1453,7 @@ fn fn_call_to_vir<'tcx>(
     } else if is_chained_value {
         unsupported_err_unless!(len == 1, expr.span, "spec_chained_value", &args);
         unsupported_err_unless!(
-            matches!(*vir_args[0].typ, TypX::Int(_)),
+            matches!(*undecorate_typ(&vir_args[0].typ), TypX::Int(_)),
             expr.span,
             "chained inequalities for non-integer types",
             &args
@@ -1465,7 +1470,7 @@ fn fn_call_to_vir<'tcx>(
             &args
         );
         unsupported_err_unless!(
-            matches!(*vir_args[1].typ, TypX::Int(_)),
+            matches!(*undecorate_typ(&vir_args[1].typ), TypX::Int(_)),
             expr.span,
             "chained inequalities for non-integer types",
             &args
@@ -2356,7 +2361,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let source_vir = &expr_to_vir(bctx, source, modifier)?;
             let source_ty = &source_vir.typ;
             let to_ty = expr_typ()?;
-            match (&**source_ty, &*to_ty) {
+            match (&*undecorate_typ(source_ty), &*undecorate_typ(&to_ty)) {
                 (TypX::Int(_), TypX::Int(_)) => {
                     Ok(mk_ty_clip(&to_ty, &source_vir, expr_vattrs.truncate))
                 }
@@ -2571,7 +2576,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         } else {
                             None
                         };
-                        match *expr_typ()? {
+                        match *undecorate_typ(&expr_typ()?) {
                             TypX::Int(_) => {}
                             _ => {
                                 unsupported_err!(expr.span, format!("non-int ConstParam {:?}", id))
@@ -2709,6 +2714,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 (datatype_path, variant_name, field_name)
             } else {
                 let lhs_typ = typ_of_node(bctx, lhs.span, &lhs.hir_id, false)?;
+                let lhs_typ = undecorate_typ(&lhs_typ);
                 if let TypX::Tuple(ts) = &*lhs_typ {
                     let field: usize =
                         str::parse(&name.as_str()).expect("integer index into tuple");
@@ -2904,7 +2910,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 bctx.types.node_type(receiver.hir_id),
                 true,
             )?;
-            let self_path = match &*receiver_typ {
+            let self_path = match &*undecorate_typ(&receiver_typ) {
                 TypX::Datatype(path, _) => Some(path.clone()),
                 _ => None,
             };
@@ -3007,7 +3013,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Closure(..) => closure_to_vir(bctx, expr, expr_typ()?, false, modifier),
         ExprKind::Index(tgt_expr, idx_expr) => {
             let tgt_vir = expr_to_vir(bctx, tgt_expr, modifier)?;
-            if let TypX::Datatype(path, _dt_typs) = &*tgt_vir.typ {
+            if let TypX::Datatype(path, _dt_typs) = &*undecorate_typ(&tgt_vir.typ) {
                 let tgt_index_path = {
                     let mut tp = path.clone();
                     Arc::make_mut(&mut Arc::make_mut(&mut tp).segments).push(str_ident("index"));

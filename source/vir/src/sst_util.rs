@@ -259,7 +259,7 @@ impl ExpX {
             Var(id) | VarLoc(id) => (format!("{}", id.name), 99),
             VarAt(id, _at) => (format!("old({})", id.name), 99),
             Loc(exp) => (format!("{}", exp), 99), // REVIEW: Additional decoration required?
-            Call(CallFun::Fun(fun), _, exps) => {
+            Call(CallFun::Fun(fun) | CallFun::CheckTermination(fun), _, exps) => {
                 let args = exps.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
                 (format!("{}({})", fun.path.segments.last().unwrap(), args), 90)
             }

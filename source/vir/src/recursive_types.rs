@@ -75,6 +75,7 @@ fn check_well_founded_typ(
             // the height of Foo<List> is unrelated to the height of List)
             check_well_founded(datatypes, datatypes_well_founded, path)
         }
+        TypX::Decorate(_, t) => check_well_founded_typ(datatypes, datatypes_well_founded, t),
         TypX::AnonymousClosure(..) => {
             unimplemented!();
         }
@@ -156,6 +157,7 @@ fn check_positive_uses(
             }
             Ok(())
         }
+        TypX::Decorate(_, t) => check_positive_uses(global, local, polarity, t),
         TypX::Boxed(t) => check_positive_uses(global, local, polarity, t),
         TypX::TypParam(x) => {
             let strictly_positive = local.tparams[x];

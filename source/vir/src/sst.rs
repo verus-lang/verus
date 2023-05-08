@@ -50,6 +50,7 @@ pub enum InternalFun {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CallFun {
     Fun(Fun),
+    CheckTermination(Fun),
     InternalFun(InternalFun),
 }
 
