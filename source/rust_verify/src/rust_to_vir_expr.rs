@@ -6,7 +6,7 @@ use crate::context::{BodyCtxt, Context};
 use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::rust_to_vir_base::{
     def_id_self_to_vir_path, def_id_self_to_vir_path_expect, def_id_to_vir_path, get_range,
-    hack_get_def_name, is_smt_arith, is_smt_equality, is_type_std_rc_or_arc, local_to_var,
+    hack_get_def_name, is_smt_arith, is_smt_equality, is_type_std_rc_or_arc_or_ref, local_to_var,
     mid_ty_simplify, mid_ty_to_vir, mid_ty_to_vir_datatype, mid_ty_to_vir_ghost, mk_range,
     typ_of_node, typ_of_node_expect_mut_ref,
 };
@@ -2929,8 +2929,15 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     let f_name = tcx.def_path_str(fn_def_id);
                     if f_name == "std::clone::Clone::clone" {
                         assert!(other_args.len() == 0);
-                        let arg_typ = bctx.types.node_type(receiver.hir_id);
-                        if is_type_std_rc_or_arc(bctx.ctxt.tcx, arg_typ) {
+                        let node_substs = bctx.types.node_substs(expr.hir_id);
+                        let arg_typ = match node_substs[0].unpack() {
+                            GenericArgKind::Type(ty) => ty,
+                            _ => {
+                                panic!("clone expected type argument");
+                            }
+                        };
+
+                        if is_type_std_rc_or_arc_or_ref(bctx.ctxt.tcx, arg_typ) {
                             let arg = expr_to_vir(bctx, &receiver, ExprModifier::REGULAR)?;
                             let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
                             erasure_info.resolved_calls.push((

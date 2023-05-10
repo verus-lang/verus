@@ -543,7 +543,7 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
     }
 }
 
-pub(crate) fn is_type_std_rc_or_arc<'tcx>(
+pub(crate) fn is_type_std_rc_or_arc_or_ref<'tcx>(
     tcx: TyCtxt<'tcx>,
     ty: rustc_middle::ty::Ty<'tcx>,
 ) -> bool {
@@ -554,6 +554,9 @@ pub(crate) fn is_type_std_rc_or_arc<'tcx>(
             if def_name == "alloc::rc::Rc" || def_name == "alloc::sync::Arc" {
                 return true;
             }
+        }
+        TyKind::Ref(_, _, Mutability::Not) => {
+            return true;
         }
         _ => {}
     }
