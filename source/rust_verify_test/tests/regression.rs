@@ -372,3 +372,25 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] parse_empty_requires_ensure_invariant verus_code! {
+        proof fn test()
+            requires
+        {
+        }
+
+        proof fn test2()
+            ensures
+        {
+        }
+
+        fn test3()
+        {
+            loop
+                invariant
+            {
+            }
+        }
+    } => Ok(())
+}

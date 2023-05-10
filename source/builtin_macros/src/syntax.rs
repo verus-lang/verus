@@ -286,22 +286,26 @@ impl Visitor {
         let opens_invariants = self.take_ghost(&mut sig.invariants);
         // TODO: wrap specs inside ghost blocks
         if let Some(Requires { token, mut exprs }) = requires {
-            for expr in exprs.exprs.iter_mut() {
-                self.visit_expr_mut(expr);
+            if exprs.exprs.len() > 0 {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                stmts.push(Stmt::Semi(
+                    Expr::Verbatim(quote_spanned!(token.span => ::builtin::requires([#exprs]))),
+                    Semi { spans: [token.span] },
+                ));
             }
-            stmts.push(Stmt::Semi(
-                Expr::Verbatim(quote_spanned!(token.span => ::builtin::requires([#exprs]))),
-                Semi { spans: [token.span] },
-            ));
         }
         if let Some(Recommends { token, mut exprs, via }) = recommends {
-            for expr in exprs.exprs.iter_mut() {
-                self.visit_expr_mut(expr);
+            if exprs.exprs.len() > 0 {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                stmts.push(Stmt::Semi(
+                    Expr::Verbatim(quote_spanned!(token.span => ::builtin::recommends([#exprs]))),
+                    Semi { spans: [token.span] },
+                ));
             }
-            stmts.push(Stmt::Semi(
-                Expr::Verbatim(quote_spanned!(token.span => ::builtin::recommends([#exprs]))),
-                Semi { spans: [token.span] },
-            ));
             if let Some((via_token, via_expr)) = via {
                 stmts.push(Stmt::Semi(
                     Expr::Verbatim(
@@ -312,21 +316,23 @@ impl Visitor {
             }
         }
         if let Some(Ensures { token, mut exprs }) = ensures {
-            for expr in exprs.exprs.iter_mut() {
-                self.visit_expr_mut(expr);
-            }
-            if let Some((p, ty)) = ret_pat {
-                stmts.push(Stmt::Semi(
-                    Expr::Verbatim(
-                        quote_spanned!(token.span => ::builtin::ensures(|#p: #ty| [#exprs])),
-                    ),
-                    Semi { spans: [token.span] },
-                ));
-            } else {
-                stmts.push(Stmt::Semi(
-                    Expr::Verbatim(quote_spanned!(token.span => ::builtin::ensures([#exprs]))),
-                    Semi { spans: [token.span] },
-                ));
+            if exprs.exprs.len() > 0 {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                if let Some((p, ty)) = ret_pat {
+                    stmts.push(Stmt::Semi(
+                        Expr::Verbatim(
+                            quote_spanned!(token.span => ::builtin::ensures(|#p: #ty| [#exprs])),
+                        ),
+                        Semi { spans: [token.span] },
+                    ));
+                } else {
+                    stmts.push(Stmt::Semi(
+                        Expr::Verbatim(quote_spanned!(token.span => ::builtin::ensures([#exprs]))),
+                        Semi { spans: [token.span] },
+                    ));
+                }
             }
         }
         if let Some(SignatureDecreases { decreases: Decreases { token, mut exprs }, when, via }) =
@@ -1004,22 +1010,28 @@ impl Visitor {
         // TODO: wrap specs inside ghost blocks
         self.inside_ghost += 1;
         if let Some(Invariant { token, mut exprs }) = invariants {
-            for expr in exprs.exprs.iter_mut() {
-                self.visit_expr_mut(expr);
+            if exprs.exprs.len() > 0 {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                stmts.push(stmt_with_semi!(token.span => ::builtin::invariant([#exprs])));
             }
-            stmts.push(stmt_with_semi!(token.span => ::builtin::invariant([#exprs])));
         }
         if let Some(InvariantEnsures { token, mut exprs }) = invariant_ensures {
-            for expr in exprs.exprs.iter_mut() {
-                self.visit_expr_mut(expr);
+            if exprs.exprs.len() > 0 {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                stmts.push(stmt_with_semi!(token.span => ::builtin::invariant_ensures([#exprs])));
             }
-            stmts.push(stmt_with_semi!(token.span => ::builtin::invariant_ensures([#exprs])));
         }
         if let Some(Ensures { token, mut exprs }) = ensures {
-            for expr in exprs.exprs.iter_mut() {
-                self.visit_expr_mut(expr);
+            if exprs.exprs.len() > 0 {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                stmts.push(stmt_with_semi!(token.span => ::builtin::ensures([#exprs])));
             }
-            stmts.push(stmt_with_semi!(token.span => ::builtin::ensures([#exprs])));
         }
         if let Some(Decreases { token, mut exprs }) = decreases {
             for expr in exprs.exprs.iter_mut() {
