@@ -148,7 +148,7 @@ fn pattern_to_exprs_rec(
 ) -> Result<Expr, VirErr> {
     let t_bool = Arc::new(TypX::Bool);
     match &pattern.x {
-        PatternX::Wildcard => {
+        PatternX::Wildcard(_) => {
             Ok(SpannedTyped::new(&pattern.span, &t_bool, ExprX::Const(Constant::Bool(true))))
         }
         PatternX::Var { name: x, mutable } => {
