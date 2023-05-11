@@ -1,3 +1,5 @@
+# Verus Retreat @ Secure Foundations Lab, CMU -- June 26-29 (30) 2023
+
 We are organizing a retreat for people involved in the Verus project.
 Bryan Parno (@parno) and the Secure Foundations Lab will be hosting the retreat at CMU on the Week of June 26th.
 
