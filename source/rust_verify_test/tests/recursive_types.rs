@@ -78,7 +78,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_fails verus_code! {
-        struct List<#[verifier::reject_recursive_types] /* vattr */ A> {
+        #[verifier::reject_recursive_types(A)]
+        struct List<A> {
             a: A,
         }
 
@@ -111,7 +112,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test2_fails verus_code! {
-        struct List<#[verifier::reject_recursive_types] /* vattr */ A> {
+        #[verifier::reject_recursive_types(A)]
+        struct List<A> {
             a: A,
         }
 
@@ -149,7 +151,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test3_fails verus_code! {
-        struct List<#[verifier::reject_recursive_types] /* vattr */ A> {
+        #[verifier::reject_recursive_types(A)]
+        struct List<A> {
             a: A,
         }
 
@@ -169,11 +172,14 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test5_ok verus_code! {
         #[verifier(external_body)] /* vattr */
-        struct Map<#[verifier::reject_recursive_types] /* vattr */ K, #[verifier::accept_recursive_types] /* vattr */ V> {
+        #[verifier::reject_recursive_types(K)]
+        #[verifier::accept_recursive_types(V)]
+        struct Map<K, V> {
             dummy: std::marker::PhantomData<(K, V)>,
         }
 
-        struct D<#[verifier::reject_recursive_types] /* vattr */ A, B> {
+        #[verifier::reject_recursive_types(A)]
+        struct D<A, B> {
             d: Map<int, D<A, B>>,
             a: Map<A, int>,
             b: Map<int, B>,
@@ -184,7 +190,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test5_fails1 verus_code! {
         #[verifier(external_body)] /* vattr */
-        struct Map<#[verifier::reject_recursive_types] /* vattr */ K, V> {
+        #[verifier::reject_recursive_types(K)]
+        struct Map<K, V> {
             dummy: std::marker::PhantomData<(K, V)>,
         }
     } => Err(err) => assert_vir_error_msg(err, "in external_body datatype, each type parameter must be one of: #[verifier::reject_recursive_types], #[verifier::reject_recursive_types_in_ground_variants], #[verifier::accept_recursive_types]")
@@ -193,7 +200,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test5_fails2 verus_code! {
         #[verifier(external_body)] /* vattr */
-        struct Map<#[verifier::reject_recursive_types] /* vattr */ K, #[verifier::accept_recursive_types] /* vattr */ V> {
+        #[verifier::reject_recursive_types(K)]
+        #[verifier::accept_recursive_types(V)]
+        struct Map<K, V> {
             dummy: std::marker::PhantomData<(K, V)>,
         }
 
@@ -208,11 +217,14 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test5_fails3 verus_code! {
         #[verifier(external_body)] /* vattr */
-        struct Map<#[verifier::reject_recursive_types] /* vattr */ K, #[verifier::accept_recursive_types] /* vattr */ V> {
+        #[verifier::reject_recursive_types(K)]
+        #[verifier::accept_recursive_types(V)]
+        struct Map<K, V> {
             dummy: std::marker::PhantomData<(K, V)>,
         }
 
-        struct D<#[verifier::reject_recursive_types] /* vattr */ A, B> {
+        #[verifier::reject_recursive_types(A)]
+        struct D<A, B> {
             d: Map<D<A, B>, int>,
             a: Map<A, int>,
             b: Map<int, B>,
@@ -240,7 +252,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] type_argument_in_nested_negative_position verus_code! {
         #[verifier(external_body)]
-        pub struct Set<#[verifier::reject_recursive_types] A> {
+        #[verifier::reject_recursive_types(A)]
+        pub struct Set<A> {
             dummy: std::marker::PhantomData<A>,
         }
         struct X<A>(A);
@@ -251,7 +264,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] no_ground_variant1 verus_code! {
-        struct DataWrapper<#[verifier::accept_recursive_types] A> { a: A } // error: no ground variant without A
+        #[verifier::accept_recursive_types(A)]
+        struct DataWrapper<A> { a: A } // error: no ground variant without A
     } => Err(err) => assert_vir_error_msg(err, "datatype must have at least one non-recursive variant")
 }
 
@@ -290,7 +304,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] no_ground_variant_via_generics2 verus_code! {
         // from https://github.com/verus-lang/verus/issues/538
-        struct I<#[verifier::accept_recursive_types] A>(A);
+        #[verifier::accept_recursive_types(A)]
+        struct I<A>(A);
         struct R(Box<I<R>>);
 
         proof fn bad(r: R)
@@ -308,4 +323,19 @@ test_verify_one_file! {
             bad(make_r())
         }
     } => Err(err) => assert_vir_error_msg(err, "datatype must have at least one non-recursive variant")
+}
+
+test_verify_one_file! {
+    #[test] reject_recursive_types_ill_formed1 verus_code! {
+        #[verifier::reject_recursive_types(D)]
+        struct X<A, B, C> { a: A, b: B, c: C, d: bool }
+    } => Err(err) => assert_vir_error_msg(err, "unused parameter attribute D")
+}
+
+test_verify_one_file! {
+    #[test] reject_recursive_types_ill_formed2 verus_code! {
+        #[verifier::reject_recursive_types(A)]
+        #[verifier::reject_recursive_types(A)]
+        struct X<A, B, C> { a: A, b: B, c: C, d: bool }
+    } => Err(err) => assert_vir_error_msg(err, "duplicate parameter attribute A")
 }

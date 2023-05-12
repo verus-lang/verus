@@ -403,7 +403,7 @@ fn check_item<'tcx>(
                 unsupported_err!(item.span, "trait generic bounds");
             }
             let generics_bnds =
-                check_generics_bounds(ctxt.tcx, trait_generics, false, trait_def_id)?;
+                check_generics_bounds(ctxt.tcx, trait_generics, false, trait_def_id, None)?;
             let trait_path = def_id_to_vir_path(ctxt.tcx, trait_def_id);
             let mut methods: Vec<vir::ast::Function> = Vec::new();
             let mut method_names: Vec<Fun> = Vec::new();
@@ -417,8 +417,13 @@ fn check_item<'tcx>(
                     span,
                     defaultness: _,
                 } = trait_item;
-                let generics_bnds =
-                    check_generics_bounds(ctxt.tcx, item_generics, false, owner_id.to_def_id())?;
+                let generics_bnds = check_generics_bounds(
+                    ctxt.tcx,
+                    item_generics,
+                    false,
+                    owner_id.to_def_id(),
+                    None,
+                )?;
                 unsupported_err_unless!(generics_bnds.len() == 0, *span, "trait generics");
                 match kind {
                     TraitItemKind::Fn(sig, fun) => {

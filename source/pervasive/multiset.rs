@@ -38,7 +38,8 @@ verus!{
 // since it might map an infinite number of elements to the same one).
 
 #[verifier(external_body)]
-pub struct Multiset<#[verifier::accept_recursive_types] V> {
+#[verifier::accept_recursive_types(V)]
+pub struct Multiset<V> {
     dummy: marker::PhantomData<V>,
 }
 

@@ -129,8 +129,13 @@ pub fn check_item_struct<'tcx>(
 
     let vattrs = get_verifier_attrs(attrs)?;
     let def_id = id.owner_id.to_def_id();
-    let typ_params =
-        Arc::new(check_generics_bounds(ctxt.tcx, generics, vattrs.external_body, def_id)?);
+    let typ_params = Arc::new(check_generics_bounds(
+        ctxt.tcx,
+        generics,
+        vattrs.external_body,
+        def_id,
+        Some(&vattrs),
+    )?);
     let name = hack_get_def_name(ctxt.tcx, def_id);
     let path = def_id_to_vir_path(ctxt.tcx, def_id);
 
@@ -187,8 +192,13 @@ pub fn check_item_enum<'tcx>(
 
     let vattrs = get_verifier_attrs(attrs)?;
     let def_id = id.owner_id.to_def_id();
-    let typ_params =
-        Arc::new(check_generics_bounds(ctxt.tcx, generics, vattrs.external_body, def_id)?);
+    let typ_params = Arc::new(check_generics_bounds(
+        ctxt.tcx,
+        generics,
+        vattrs.external_body,
+        def_id,
+        Some(&vattrs),
+    )?);
     let path = def_id_to_vir_path(ctxt.tcx, def_id);
     let (variants, one_field_private): (Vec<_>, Vec<_>) = enum_def
         .variants

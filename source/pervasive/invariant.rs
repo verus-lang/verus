@@ -119,7 +119,10 @@ pub trait InvariantPredicate<K, V> {
 
 #[verifier::proof]
 #[verifier::external_body] /* vattr */
-pub struct AtomicInvariant<#[verifier::accept_recursive_types] K, #[verifier::accept_recursive_types] V, #[verifier::accept_recursive_types] Pred> {
+#[verifier::accept_recursive_types(K)]
+#[verifier::accept_recursive_types(V)]
+#[verifier::accept_recursive_types(Pred)]
+pub struct AtomicInvariant<K, V, Pred> {
     dummy: builtin::SyncSendIfSend<V>,
     dummy1: core::marker::PhantomData<(K, Pred)>,
 }
@@ -168,7 +171,10 @@ impl<K, V, Pred> AtomicInvariant<K, V, Pred> {
 
 #[verifier::proof]
 #[verifier::external_body] /* vattr */
-pub struct LocalInvariant<#[verifier::accept_recursive_types] /* vattr */ K, #[verifier::accept_recursive_types] /* vattr */ V, #[verifier::accept_recursive_types] /* vattr */ Pred> {
+#[verifier::accept_recursive_types(K)]
+#[verifier::accept_recursive_types(V)]
+#[verifier::accept_recursive_types(Pred)]
+pub struct LocalInvariant<K, V, Pred> {
     dummy: builtin::SendIfSend<V>,
     dummy1: core::marker::PhantomData<(K, Pred)>, // TODO ignore Send/Sync here
 }

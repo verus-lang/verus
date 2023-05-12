@@ -19,7 +19,8 @@ use option::Option::None;
 
 verus!{
 
-pub struct DirectedGraph<#[verifier::reject_recursive_types] V> {
+#[verifier::reject_recursive_types(V)]
+pub struct DirectedGraph<V> {
     pub edges: Set<(V, V)>,
 }
 

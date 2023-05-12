@@ -31,7 +31,9 @@ verus! {
 /// To prove that two maps are equal, it is usually easiest to use the [`assert_maps_equal!`] macro.
 
 #[verifier(external_body)]
-pub tracked struct Map<#[verifier::reject_recursive_types] K, #[verifier::accept_recursive_types] V> {
+#[verifier::reject_recursive_types(K)]
+#[verifier::accept_recursive_types(V)]
+pub tracked struct Map<K, V> {
     dummy: marker::PhantomData<(K, V)>,
 }
 

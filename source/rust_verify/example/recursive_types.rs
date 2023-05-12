@@ -40,7 +40,8 @@ struct R { f: FnWrapper<R, int> }
 // To prevent this, Verus requires that type parameters used in negative positions (like A)
 // be annotated with #[verifier::reject_recursive_types]:
 /*
-struct FnWrapper<#[verifier::reject_recursive_types] A, B> { f: FnSpec(A) -> B } // ok
+#[verifier::reject_recursive_types(A)]
+struct FnWrapper<A, B> { f: FnSpec(A) -> B } // ok
 struct R { f: FnWrapper<R, int> } // error: R not allowed in negative position
 */
 // Based on this annotation on A, Verus knows that the recursive R in FnWrapper<R, int> should
@@ -90,11 +91,13 @@ enum UngroundedList<A> {
 // then DataWrapper must have a ground variant that is not built from A.
 // Because of this, Verus rejects the following:
 /*
-struct DataWrapper<#[verifier::accept_recursive_types] A> { a: A } // error: no ground variant without A
+#[verifier::accept_recursive_types(A)]
+struct DataWrapper<A> { a: A } // error: no ground variant without A
 */
 // However, by adding a ground variant, we can provide a correct wrapper,
 // making both DataOption and GroundedList properly grounded:
-enum DataOption<#[verifier::accept_recursive_types] A> { None, Some(A) } // ok
+#[verifier::accept_recursive_types(A)]
+enum DataOption<A> { None, Some(A) } // ok
 enum GroundedList<A> {
     Cons(A, Box<DataOption<GroundedList<A>>>), // ok
 }
@@ -108,7 +111,8 @@ enum GroundedList<A> {
 // that doesn't use the type parameter.
 
 // Typical example of reject_recursive_types:
-struct Set<#[verifier::reject_recursive_types] A> {
+#[verifier::reject_recursive_types(A)]
+struct Set<A> {
     f: FnSpec(A) -> bool,
 }
 
@@ -116,7 +120,8 @@ struct Set<#[verifier::reject_recursive_types] A> {
 struct Pair<A, B> { first: A, second: B }
 
 // Typical example of accept_recursive_types:
-enum Option<#[verifier::accept_recursive_types] A> {
+#[verifier::accept_recursive_types(A)]
+enum Option<A> {
     None,
     Some(A),
 }
