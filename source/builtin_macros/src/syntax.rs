@@ -1252,15 +1252,7 @@ impl VisitMut for Visitor {
             }
         } else if let Expr::Unary(unary) = expr {
             let span = unary.span();
-            let low_prec_op = match unary.op {
-                UnOp::BigAnd(..) => true,
-                UnOp::BigOr(..) => true,
-                _ => false,
-            };
-
-            if low_prec_op {
-                *expr = take_expr(&mut *unary.expr);
-            } else if let Some(mode_block) = mode_block {
+            if let Some(mode_block) = mode_block {
                 match (is_inside_ghost, mode_block, &*unary.expr) {
                     (false, (false, _), Expr::Block(..)) => {
                         // proof { ... }
@@ -1283,14 +1275,6 @@ impl VisitMut for Visitor {
         } else if let Expr::Binary(binary) = expr {
             let span = binary.span();
             let low_prec_op = match binary.op {
-                BinOp::BigAnd(syn_verus::token::BigAnd { spans }) => {
-                    let spans = [spans[0], spans[1]];
-                    Some(BinOp::And(syn_verus::token::AndAnd { spans }))
-                }
-                BinOp::BigOr(syn_verus::token::BigOr { spans }) => {
-                    let spans = [spans[0], spans[1]];
-                    Some(BinOp::Or(syn_verus::token::OrOr { spans }))
-                }
                 BinOp::Equiv(syn_verus::token::Equiv { spans }) => {
                     let spans = [spans[1], spans[2]];
                     Some(BinOp::Eq(syn_verus::token::EqEq { spans }))
@@ -1344,6 +1328,34 @@ impl VisitMut for Visitor {
                     *expr = Expr::Verbatim(quote_spanned!(span => ! #call));
                 }
             }
+        } else if let Expr::BigAnd(exprs) = expr {
+            let mut new_expr = take_expr(&mut exprs.exprs[0].1);
+            for i in 1..exprs.exprs.len() {
+                let span = exprs.exprs[i].0.span();
+                let spans = [span, span];
+                let right = take_expr(&mut exprs.exprs[i].1);
+                let left = Box::new(Expr::Verbatim(quote_spanned!(new_expr.span() => (#new_expr))));
+                let right = Box::new(Expr::Verbatim(quote_spanned!(right.span() => (#right))));
+                let attrs = Vec::new();
+                let op = BinOp::And(syn_verus::token::AndAnd { spans });
+                let bin = ExprBinary { attrs, op, left, right };
+                new_expr = Expr::Binary(bin);
+            }
+            *expr = new_expr;
+        } else if let Expr::BigOr(exprs) = expr {
+            let mut new_expr = take_expr(&mut exprs.exprs[0].1);
+            for i in 1..exprs.exprs.len() {
+                let span = exprs.exprs[i].0.span();
+                let spans = [span, span];
+                let right = take_expr(&mut exprs.exprs[i].1);
+                let left = Box::new(Expr::Verbatim(quote_spanned!(new_expr.span() => (#new_expr))));
+                let right = Box::new(Expr::Verbatim(quote_spanned!(right.span() => (#right))));
+                let attrs = Vec::new();
+                let op = BinOp::Or(syn_verus::token::OrOr { spans });
+                let bin = ExprBinary { attrs, op, left, right };
+                new_expr = Expr::Binary(bin);
+            }
+            *expr = new_expr;
         }
 
         let do_replace = match &expr {
