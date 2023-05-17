@@ -36,8 +36,8 @@ use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArmX, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, Constant, ExprX, FieldOpr, FunX,
-    HeaderExprX, InequalityOp, IntRange, InvAtomicity, Mode, PatternX, SpannedTyped, StmtX, Stmts,
-    Typ, TypX, UnaryOp, UnaryOpr, VariantCheck, VirErr,
+    HeaderExprX, ImplPath, InequalityOp, IntRange, InvAtomicity, Mode, PatternX, SpannedTyped,
+    StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VariantCheck, VirErr,
 };
 use vir::ast_util::{ident_binder, typ_to_diagnostic_str, types_equal, undecorate_typ};
 use vir::def::{field_ident_from_rust, positional_field_ident};
@@ -1427,8 +1427,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     let fun = FunX { path };
                     mk_expr(ExprX::StaticVar(Arc::new(fun)))
                 }
-                Res::Def(DefKind::Fn | DefKind::AssocFn, _) => {
-                    unsupported_err!(expr.span, "using functions as values");
+                Res::Def(DefKind::Fn, id) | Res::Def(DefKind::AssocFn, id) => {
+                    let path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, id);
+                    let fun = Arc::new(vir::ast::FunX { path });
+                    mk_expr(ExprX::ExecFnByName(fun))
                 }
                 Res::Def(DefKind::ConstParam, id) => {
                     let gparam = if let Some(local_id) = id.as_local() {
@@ -1810,7 +1812,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 Arc::new(fun),
                 typ_args,
                 // arbitrary impl_path
-                Arc::new(vec![vir::def::prefix_lambda_type(0)]),
+                // REVIEW: why is this needed?
+                Arc::new(vec![ImplPath::TraitImplPath(vir::def::prefix_lambda_type(0))]),
                 AutospecUsage::Final,
             );
             let args = Arc::new(vec![tgt_vir.clone(), idx_vir.clone()]);

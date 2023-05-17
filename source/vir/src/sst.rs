@@ -45,10 +45,12 @@ pub struct UniqueIdent {
     pub local: Option<u64>,
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum InternalFun {
     ClosureReq,
     ClosureEns,
+    StaticReq(Fun),
+    StaticEns(Fun),
     CheckDecreaseInt,
     CheckDecreaseHeight,
     HasType,
@@ -86,6 +88,7 @@ pub enum ExpX {
     If(Exp, Exp, Exp),
     WithTriggers(Trigs, Exp),
     Bind(Bnd, Exp),
+    ExecFnByName(Fun),
     // only used internally by the interpreter; should never be seen outside it
     Interp(InterpExp),
 }

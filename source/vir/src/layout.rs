@@ -27,6 +27,7 @@ pub fn layout_of_typ_supported(typ: &Typ, span: &Span) -> Result<(), VirErr> {
 
         crate::ast::TypX::Lambda(_, _)
         | crate::ast::TypX::AnonymousClosure(_, _, _)
+        | crate::ast::TypX::FnDef(..)
         | crate::ast::TypX::Decorate(_, _)
         | crate::ast::TypX::TypParam(_)
         | crate::ast::TypX::Projection { .. }

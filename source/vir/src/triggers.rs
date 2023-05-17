@@ -224,6 +224,7 @@ fn check_trigger_expr(
                 Ok(())
             }
             ExpX::Loc(..) | ExpX::VarLoc(..) => Ok(()),
+            ExpX::ExecFnByName(..) => Ok(()),
             ExpX::Call(_, typs, args) => {
                 for typ in typs.iter() {
                     crate::ast_visitor::map_typ_visitor_env(typ, free_vars, &ft).unwrap();

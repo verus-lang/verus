@@ -526,6 +526,7 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
             }
         }
         TyKind::Closure(..) => Box::new(TypX::Closure),
+        TyKind::FnDef(..) => Box::new(TypX::FnDef),
         _ => {
             dbg!(ty);
             panic!("unexpected type")
@@ -1093,6 +1094,15 @@ fn erase_expr<'tcx>(
                         // The function we emit to represent the static returns a
                         // &'static reference. So we need to deref here
                         mk_exp(ExpX::Deref(e))
+                    }
+                }
+                Res::Def(DefKind::Fn | DefKind::AssocFn, id) => {
+                    if expect_spec || ctxt.var_modes[&expr.hir_id] == Mode::Spec {
+                        None
+                    } else {
+                        let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
+                        let fun_name = Arc::new(FunX { path: vir_path });
+                        return mk_exp(ExpX::Var(state.fun_name(&fun_name)));
                     }
                 }
                 Res::Def(DefKind::ConstParam, id) => {

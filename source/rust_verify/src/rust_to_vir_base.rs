@@ -17,7 +17,9 @@ use rustc_span::Span;
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::HashMap;
 use std::sync::Arc;
-use vir::ast::{GenericBoundX, IntRange, Path, PathX, Primitive, Typ, TypX, Typs, VirErr};
+use vir::ast::{
+    GenericBoundX, ImplPath, IntRange, Path, PathX, Primitive, Typ, TypX, Typs, VirErr,
+};
 use vir::ast_util::{types_equal, undecorate_typ};
 use vir::def::unique_local_name;
 
@@ -247,13 +249,60 @@ pub(crate) fn get_impl_paths<'tcx>(
             if let Ok(impl_source) = candidate {
                 if let rustc_middle::traits::ImplSource::UserDefined(u) = impl_source {
                     let impl_path = def_id_to_vir_path(tcx, verus_items, u.impl_def_id);
-                    impl_paths.push(impl_path);
+                    impl_paths.push(ImplPath::TraitImplPath(impl_path));
 
                     let preds = tcx.predicates_of(u.impl_def_id);
                     for p in preds.instantiate(tcx, u.args).predicates {
                         if !predicate_worklist.contains(&p) {
                             predicate_worklist.push(p);
                         }
+                    }
+                } else if let rustc_middle::traits::ImplSource::Builtin(
+                    rustc_middle::traits::BuiltinImplSource::Misc,
+                    _,
+                ) = impl_source
+                {
+                    // When the needed trait bound is `FnDef(f) : FnOnce(...)`
+                    // The `impl_source` doesn't have the information we need,
+                    // so we have to special case this here.
+
+                    // REVIEW: need to see if there are other problematic cases here;
+                    // I think codegen_select_candidate lacks some information because
+                    // it's used for codegen
+
+                    match inst_pred_erased.skip_binder() {
+                        ClauseKind::Trait(TraitPredicate {
+                            trait_ref:
+                                rustc_middle::ty::TraitRef {
+                                    def_id: trait_def_id,
+                                    args: trait_args,
+                                    ..
+                                },
+                            polarity: ImplPolarity::Positive,
+                        }) => {
+                            if Some(trait_def_id) == tcx.lang_items().fn_trait()
+                                || Some(trait_def_id) == tcx.lang_items().fn_mut_trait()
+                                || Some(trait_def_id) == tcx.lang_items().fn_once_trait()
+                            {
+                                match trait_args.into_type_list(tcx)[0].kind() {
+                                    TyKind::FnDef(fn_def_id, fn_node_substs) => {
+                                        let fn_path =
+                                            def_id_to_vir_path(tcx, verus_items, *fn_def_id);
+                                        let fn_fun = Arc::new(vir::ast::FunX { path: fn_path });
+                                        impl_paths.push(ImplPath::FnDefImplPath(fn_fun));
+
+                                        let preds = tcx.predicates_of(fn_def_id);
+                                        for p in preds.instantiate(tcx, fn_node_substs).predicates {
+                                            if !predicate_worklist.contains(&p) {
+                                                predicate_worklist.push(p);
+                                            }
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -598,7 +647,49 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Alias(rustc_middle::ty::AliasKind::Weak, _) => {
             unsupported_err!(span, "opaque type")
         }
+        TyKind::FnDef(def_id, args) => {
+            let param_env = tcx.param_env(param_env_src);
+            let normalized_substs = tcx.normalize_erasing_regions(param_env, *args);
+            let inst =
+                rustc_middle::ty::Instance::resolve(tcx, param_env, *def_id, normalized_substs);
+            let mut resolved = None;
+            if let Ok(Some(inst)) = inst {
+                if let rustc_middle::ty::InstanceDef::Item(did) = inst.def {
+                    let path = def_id_to_vir_path(tcx, verus_items, did);
+                    let fun = Arc::new(vir::ast::FunX { path });
+                    resolved = Some(fun);
+                }
+            }
+
+            let mut typ_args: Vec<(Typ, bool)> = Vec::new();
+            for arg in args.iter() {
+                match arg.unpack() {
+                    rustc_middle::ty::GenericArgKind::Type(t) => {
+                        typ_args.push(mid_ty_to_vir_ghost(
+                            tcx,
+                            verus_items,
+                            param_env_src,
+                            span,
+                            &t,
+                            as_datatype,
+                            allow_mut_ref,
+                        )?);
+                    }
+                    rustc_middle::ty::GenericArgKind::Lifetime(_) => {}
+                    rustc_middle::ty::GenericArgKind::Const(cnst) => {
+                        typ_args.push((mid_ty_const_to_vir(tcx, Some(span), &cnst)?, false));
+                    }
+                }
+            }
+            let typ_args = typ_args.into_iter().map(|(t, _)| t).collect();
+            let path = def_id_to_vir_path(tcx, verus_items, *def_id);
+            let fun = Arc::new(vir::ast::FunX { path });
+
+            let typx = TypX::FnDef(fun, Arc::new(typ_args), resolved);
+            (Arc::new(typx), false)
+        }
         TyKind::Char => (Arc::new(TypX::Char), false),
+
         TyKind::Float(..) => unsupported_err!(span, "floating point types"),
         TyKind::Foreign(..) => unsupported_err!(span, "foreign types"),
         TyKind::Str => unsupported_err!(span, "str type"),
@@ -606,7 +697,6 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => {
             unsupported_err!(span, "&mut types, except in special cases")
         }
-        TyKind::FnDef(..) => unsupported_err!(span, "anonymous function types"),
         TyKind::FnPtr(..) => unsupported_err!(span, "function pointer types"),
         TyKind::Dynamic(..) => unsupported_err!(span, "dynamic types"),
         TyKind::Generator(..) => unsupported_err!(span, "generator types"),

@@ -456,7 +456,7 @@ pub fn func_name_to_air(
 
         // Check whether we need to declare the recursive version too
         if function.x.body.is_some() {
-            if crate::recursion::fun_is_recursive(ctx, &function.x.name) {
+            if crate::recursion::fun_is_recursive(ctx, &function) {
                 let rec_f =
                     suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&function.x.name)));
                 let mut rec_typs =
@@ -668,6 +668,55 @@ pub fn func_decl_to_air(
     )?;
     if has_ens_pred {
         ctx.funcs_with_ensure_predicate.insert(function.x.name.clone());
+    }
+
+    if ctx.fndef_type_set.contains(&function.x.name) {
+        let fndef_axioms = function
+            .x
+            .fndef_axioms
+            .as_ref()
+            .expect("expected FnDef axioms to have been generated in ast_simplify");
+        for fndef_axiom in fndef_axioms.iter() {
+            let mut state = crate::ast_to_sst::State::new(diagnostics);
+            let exp =
+                crate::ast_to_sst::expr_to_pure_exp_skip_checks(ctx, &mut state, fndef_axiom)?;
+            let exp = state.finalize_exp(ctx, &fun_ssts, &exp)?;
+            state.finalize();
+
+            // Add forall-binders for each type param
+            // The fndef_axiom shoudld already be a 'forall' statement
+            // so we can add them to the existing forall node
+
+            let mut binders: Vec<Binder<Typ>> = Vec::new();
+            for name in function.x.typ_params.iter() {
+                let typ = Arc::new(TypX::TypeId);
+                let bind = BinderX { name: name.clone(), a: typ };
+                binders.push(Arc::new(bind));
+            }
+
+            let exp = match &exp.x {
+                ExpX::Bind(bnd, e) => match &bnd.x {
+                    BndX::Quant(quant, qbinders, trigs) => {
+                        let mut qbinders = (&**qbinders).clone();
+                        qbinders.append(&mut binders);
+                        let bndx = BndX::Quant(*quant, Arc::new(qbinders), trigs.clone());
+                        let bnd = Spanned::new(bnd.span.clone(), bndx);
+                        let expx = ExpX::Bind(bnd, e.clone());
+                        SpannedTyped::new(&exp.span, &exp.typ, expx)
+                    }
+                    _ => {
+                        panic!("fndef_axiom should be forall");
+                    }
+                },
+                _ => {
+                    panic!("fndef_axiom should be forall");
+                }
+            };
+
+            let expr = exp_to_expr(ctx, &exp, &ExprCtxt::new_mode(ExprMode::Spec))?;
+            let axiom = Arc::new(DeclX::Axiom(expr));
+            decl_commands.push(Arc::new(CommandX::Global(axiom)));
+        }
     }
 
     Ok(Arc::new(decl_commands))

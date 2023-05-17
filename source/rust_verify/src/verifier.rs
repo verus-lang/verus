@@ -1624,7 +1624,7 @@ impl Verifier {
                 .report_now(&note_bare(format!("verifying {bucket_name}{functions_msg}")).to_any());
         }
 
-        let (pruned_krate, mono_abstract_datatypes, lambda_types, bound_traits) =
+        let (pruned_krate, mono_abstract_datatypes, lambda_types, bound_traits, fndef_types) =
             vir::prune::prune_krate_for_module(
                 &krate,
                 bucket_id.module(),
@@ -1638,6 +1638,7 @@ impl Verifier {
             mono_abstract_datatypes,
             lambda_types,
             bound_traits,
+            fndef_types,
             self.args.debugger,
         )?;
         let poly_krate = vir::poly::poly_krate_for_module(&mut ctx, &pruned_krate);

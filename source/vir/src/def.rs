@@ -52,6 +52,7 @@ const PREFIX_PRE_VAR: &str = "pre%";
 const PREFIX_BOX: &str = "Poly%";
 const PREFIX_UNBOX: &str = "%Poly%";
 const PREFIX_TYPE_ID: &str = "TYPE%";
+const PREFIX_FNDEF_TYPE_ID: &str = "FNDEF%";
 const PREFIX_TUPLE_TYPE: &str = "tuple%";
 const PREFIX_CLOSURE_TYPE: &str = "anonymous_closure%";
 const PREFIX_TUPLE_PARAM: &str = "T%";
@@ -85,6 +86,9 @@ pub const SUFFIX_SNAP_WHILE_BEGIN: &str = "_while_begin";
 pub const SUFFIX_SNAP_WHILE_END: &str = "_while_end";
 
 pub const CLOSURE_RETURN_VALUE_PREFIX: &str = "%closure_return";
+
+pub const FNDEF_TYPE: &str = "fndef";
+pub const FNDEF_SINGLETON: &str = "fndef_singleton";
 
 // List of constant strings that can appear in generated AIR code
 pub const FUEL_ID: &str = "FuelId";
@@ -120,10 +124,12 @@ pub const BOX_INT: &str = "I";
 pub const BOX_BOOL: &str = "B";
 pub const BOX_STRSLICE: &str = "S";
 pub const BOX_CHAR: &str = "C";
+pub const BOX_FNDEF: &str = "F";
 pub const UNBOX_INT: &str = "%I";
 pub const UNBOX_BOOL: &str = "%B";
 pub const UNBOX_STRSLICE: &str = "%S";
 pub const UNBOX_CHAR: &str = "%C";
+pub const UNBOX_FNDEF: &str = "%F";
 pub const TYPE: &str = "Type";
 pub const TYPE_ID_BOOL: &str = "BOOL";
 pub const TYPE_ID_INT: &str = "INT";
@@ -326,6 +332,10 @@ pub fn array_type() -> Path {
 
 pub fn prefix_type_id(path: &Path) -> Ident {
     Arc::new(PREFIX_TYPE_ID.to_string() + &path_to_string(path))
+}
+
+pub fn prefix_fndef_type_id(fun: &Fun) -> Ident {
+    Arc::new(PREFIX_FNDEF_TYPE_ID.to_string() + &fun_to_string(fun))
 }
 
 pub fn prefix_tuple_type(i: usize) -> Path {

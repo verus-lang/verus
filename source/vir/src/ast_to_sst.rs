@@ -552,7 +552,7 @@ fn expr_get_call(
                     },
                 )))
             }
-            CallTarget::BuiltinSpecFun(_, _) => {
+            CallTarget::BuiltinSpecFun(_, _, _) => {
                 panic!("internal error: CallTarget::BuiltinSpecFn");
             }
         },
@@ -1091,7 +1091,7 @@ pub(crate) fn expr_to_stm_opt(
             let call = ExpX::CallLambda(expr.typ.clone(), e0, Arc::new(arg_exps));
             Ok((check_stms, ReturnValue::Some(mk_exp(call))))
         }
-        ExprX::Call(CallTarget::BuiltinSpecFun(bsf, ts), args) => {
+        ExprX::Call(CallTarget::BuiltinSpecFun(bsf, ts, _impl_paths), args) => {
             let mut check_stms: Vec<Stm> = Vec::new();
             let mut arg_exps: Vec<Exp> = Vec::new();
             for arg in args.iter() {
@@ -1102,6 +1102,8 @@ pub(crate) fn expr_to_stm_opt(
             let f = match bsf {
                 BuiltinSpecFun::ClosureReq => InternalFun::ClosureReq,
                 BuiltinSpecFun::ClosureEns => InternalFun::ClosureEns,
+                BuiltinSpecFun::StaticReq(fun) => InternalFun::StaticReq(fun.clone()),
+                BuiltinSpecFun::StaticEns(fun) => InternalFun::StaticEns(fun.clone()),
             };
             Ok((
                 check_stms,
@@ -1525,6 +1527,10 @@ pub(crate) fn expr_to_stm_opt(
             }
 
             Ok((stms, ReturnValue::Some(v)))
+        }
+        ExprX::ExecFnByName(fun) => {
+            let v = mk_exp(ExpX::ExecFnByName(fun.clone()));
+            Ok((vec![], ReturnValue::Some(v)))
         }
         ExprX::Choose { params, cond, body } => {
             let mut check_stms = check_pure_expr_bind(ctx, state, params, cond)?;

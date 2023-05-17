@@ -1,6 +1,6 @@
 use crate::ast::{
-    AcceptRecursiveType, Datatype, FunctionKind, GenericBound, GenericBoundX, Ident, Idents, Krate,
-    Path, Trait, Typ, TypX, VirErr,
+    AcceptRecursiveType, Datatype, FunctionKind, GenericBound, GenericBoundX, Ident, Idents,
+    ImplPath, Krate, Path, Trait, Typ, TypX, VirErr,
 };
 use crate::ast_util::path_as_friendly_rust_name;
 use crate::context::GlobalCtx;
@@ -115,6 +115,14 @@ fn check_well_founded_typ(
             // and rely on type_graph to reject any cycles
             true
         }
+        TypX::FnDef(_fun, _type_args, _res_fun) => {
+            // I don't think there's any way to refer to explicitly refer to these types in
+            // Rust code, so it shouldn't be possible to use on in a struct definition
+            // or anything.
+            // Though this type is basically a named singleton type, so
+            // the correct result here would probably be `Ok(true)`
+            panic!("FnDef type is not expected in struct definitions");
+        }
         TypX::AnonymousClosure(..) => {
             unimplemented!();
         }
@@ -129,6 +137,8 @@ pub(crate) enum TypNode {
     // This is used to replace an X --> Y edge with X --> SpanInfo --> Y edges
     // to give more precise span information than X or Y alone provide
     SpanInfo { span_infos_index: usize, text: String },
+    TraitImpl(Path),
+    TraitImpl(ImplPath),
 }
 
 struct CheckPositiveGlobal {
@@ -241,6 +251,9 @@ fn check_positive_uses(
             }
             Ok(())
         }
+        TypX::FnDef(_fun, _type_args, _res_fun) => {
+            panic!("FnDef type is not expected in struct definitions");
+        }
         TypX::Boxed(t) => check_positive_uses(global, local, polarity, t),
         TypX::TypParam(x) => {
             let strictly_positive = local.tparams[x] != AcceptRecursiveType::Reject;
@@ -291,7 +304,7 @@ pub(crate) fn build_datatype_graph(krate: &Krate, span_infos: &mut Vec<Span>) ->
     }
 
     for a in &krate.assoc_type_impls {
-        let trait_impl_src = TypNode::TraitImpl(a.x.impl_path.clone());
+        let trait_impl_src = TypNode::TraitImpl(ImplPath::TraitImplPath(a.x.impl_path.clone()));
         let src = new_span_info_typ_node(
             span_infos,
             a.span.clone(),
@@ -440,7 +453,11 @@ fn type_scc_error(
                 }
             }
             TypNode::TraitImpl(impl_path) => {
-                if let Some(t) = krate.trait_impls.iter().find(|t| t.x.impl_path == *impl_path) {
+                if let Some(t) = krate
+                    .trait_impls
+                    .iter()
+                    .find(|t| ImplPath::TraitImplPath(t.x.impl_path.clone()) == *impl_path)
+                {
                     let span = t.span.clone();
                     push(node, span, ": implementation of trait for a type");
                 }
@@ -453,10 +470,31 @@ fn type_scc_error(
     err
 }
 
-fn scc_error(krate: &Krate, span_infos: &Vec<Span>, head: &Node, nodes: &Vec<Node>) -> VirErr {
-    let msg =
+fn scc_error(krate: &Krate, head: &Node, head: &Node, nodes: &Vec<Node>) -> VirErr {
+    // Special case this error message because it doesn't look like
+    // a 'trait' error to the user (even though we conceptualize it as a trait
+    // error in VIR)
+    let mut has_req_ens = false;
+    let mut is_only_req_ens = true;
+    for node in nodes.iter() {
+        match node {
+            Node::TraitImpl(ImplPath::FnDefImplPath(_)) => {
+                has_req_ens = true;
+            }
+            Node::Fun(_) => {}
+            _ => {
+                is_only_req_ens = false;
+            }
+        }
+    }
+    let do_req_ens_error = has_req_ens && is_only_req_ens;
+
+    let msg = if do_req_ens_error {
+        "cyclic dependency in the requires/ensures of function"
+    } else {
         "found a cyclic self-reference in a trait definition, which may result in nontermination"
-            .to_string();
+    };
+    let msg = msg.to_string();
     let mut err = crate::messages::error_bare(msg);
     for (i, node) in nodes.iter().enumerate() {
         let mut push = |node: &Node, span: Span, text: &str| {
@@ -472,7 +510,7 @@ fn scc_error(krate: &Krate, span_infos: &Vec<Span>, head: &Node, nodes: &Vec<Nod
             err = err.secondary_label(&span, msg);
         };
         match node {
-            Node::Fun(fun) => {
+            Node::Fun(fun) | Node::TraitImpl(ImplPath::FnDefImplPath(fun)) => {
                 if let Some(f) = krate.functions.iter().find(|f| f.x.name == *fun) {
                     let span = f.span.clone();
                     push(node, span, ": function definition, whose body may have dependencies");
@@ -490,8 +528,10 @@ fn scc_error(krate: &Krate, span_infos: &Vec<Span>, head: &Node, nodes: &Vec<Nod
                     push(node, span, ": declaration of trait");
                 }
             }
-            Node::TraitImpl(impl_path) => {
-                if let Some(t) = krate.trait_impls.iter().find(|t| t.x.impl_path == *impl_path) {
+            Node::TraitImpl(ImplPath::TraitImplPath(impl_path)) => {
+                if let Some(t) =
+                    krate.trait_impls.iter().find(|t| t.x.impl_path.clone() == *impl_path)
+                {
                     let span = t.span.clone();
                     push(node, span, ": implementation of trait for a type");
                 }
@@ -558,7 +598,7 @@ pub(crate) fn add_trait_impl_to_graph(
     //   impl T<t1...tn> for ... { ... }
     // Add necessary impl_T_for_* --> impl_Ui_for_* edges
     // This corresponds to instantiating the a: Dictionary_U<A> field in the comments below
-    let trait_impl_src_node = Node::TraitImpl(t.x.impl_path.clone());
+    let trait_impl_src_node = Node::TraitImpl(ImplPath::TraitImplPath(t.x.impl_path.clone()));
     let src_node = new_span_info_node(
         span_infos,
         t.x.trait_typ_arg_impls.span.clone(),
@@ -569,7 +609,7 @@ pub(crate) fn add_trait_impl_to_graph(
     );
     call_graph.add_edge(trait_impl_src_node, src_node.clone());
     for imp in t.x.trait_typ_arg_impls.x.iter() {
-        if &t.x.impl_path != imp {
+        if ImplPath::TraitImplPath(t.x.impl_path.clone()) != *imp {
             call_graph.add_edge(src_node.clone(), Node::TraitImpl(imp.clone()));
         }
     }

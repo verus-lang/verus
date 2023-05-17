@@ -29,7 +29,7 @@ use vir::def::trait_self_type_param;
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use vir::ast::{Fun, FunX, FunctionKind, Krate, KrateX, Path, Typ, VirErr};
+use vir::ast::{Fun, FunX, FunctionKind, ImplPath, Krate, KrateX, Path, Typ, VirErr};
 
 fn check_item<'tcx>(
     ctxt: &Context<'tcx>,
@@ -483,7 +483,7 @@ fn check_item<'tcx>(
                                                     &ctxt.verus_items,
                                                     u.impl_def_id,
                                                 );
-                                                impl_paths.push(impl_path);
+                                                impl_paths.push(ImplPath::TraitImplPath(impl_path));
                                             }
                                         }
                                     }
