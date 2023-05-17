@@ -100,11 +100,15 @@ Note that Verus is in active development. If a feature is unsupported, it might 
     <td>Not supported</td>
   </tr>
   <tr>
-    <td>loop, while</td>
+    <td><code>loop</code>, <code>while</code></td>
     <td><a href="while.html">Supported</a></td>
   </tr>
   <tr>
-    <td>for</td>
+    <td><code>for</code></td>
+    <td>Not supported</td>
+  </tr>
+  <tr>
+    <td><code>?</code></td>
     <td>Not supported</td>
   </tr>
   <tr>
@@ -317,7 +321,11 @@ Note that Verus is in active development. If a feature is unsupported, it might 
     <td>Not supported</td>
   </tr>
   <tr>
-    <td>Marker traits (<code>Clone</code>, <code>Copy</code>, <code>Send</code>, <code>Sync</code>)</td>
+    <td><code>Clone</code></td>
+    <td>Supported</td>
+  </tr>
+  <tr>
+    <td>Marker traits (<code>Copy</code>, <code>Send</code>, <code>Sync</code>)</td>
     <td>Supported</td>
   </tr>
   <tr>
