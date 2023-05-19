@@ -43,27 +43,26 @@ struct Ctxt<'a> {
     ctx: &'a Ctx,
 }
 
-fn get_callee(ctx: &Ctx, target: &Fun, targs: &Typs) -> Option<Fun> {
+fn get_callee(ctx: &Ctx, target: &Fun, resolved_method: &Option<(Fun, Typs)>) -> Option<Fun> {
     let fun = &ctx.func_map[target];
     if let FunctionKind::TraitMethodDecl { .. } = &fun.x.kind {
-        match &*targs[0] {
-            TypX::TypParam(_) => None,
-            TypX::Datatype(datatype, _) => {
-                Some(ctx.global.method_map[&(target.clone(), datatype.clone())].clone())
-            }
-            _ => panic!("unexpected Self type instantiation"),
-        }
+        resolved_method.clone().map(|(x, _)| x)
     } else {
         Some(target.clone())
     }
 }
 
-fn is_self_call(ctx: &Ctx, target: &Fun, targs: &Typs, name: &Fun) -> bool {
-    get_callee(ctx, target, targs) == Some(name.clone())
+fn is_self_call(
+    ctx: &Ctx,
+    target: &Fun,
+    resolved_method: &Option<(Fun, Typs)>,
+    name: &Fun,
+) -> bool {
+    get_callee(ctx, target, resolved_method) == Some(name.clone())
 }
 
-fn is_recursive_call(ctxt: &Ctxt, target: &Fun, targs: &Typs) -> bool {
-    if let Some(callee) = get_callee(ctxt.ctx, target, targs) {
+fn is_recursive_call(ctxt: &Ctxt, target: &Fun, resolved_method: &Option<(Fun, Typs)>) -> bool {
+    if let Some(callee) = get_callee(ctxt.ctx, target, resolved_method) {
         callee == ctxt.recursive_function_name
             || ctxt.ctx.global.func_call_graph.get_scc_rep(&Node::Fun(callee.clone()))
                 == ctxt.scc_rep
@@ -122,10 +121,10 @@ fn check_decrease_call(
     fun_ssts: &SstMap,
     span: &Span,
     target: &Fun,
-    targs: &Typs,
+    resolved_method: &Option<(Fun, Typs)>,
     args: &Exps,
 ) -> Result<Exp, VirErr> {
-    let name = if let Some(callee) = get_callee(ctxt.ctx, target, targs) {
+    let name = if let Some(callee) = get_callee(ctxt.ctx, target, resolved_method) {
         callee
     } else {
         return Ok(SpannedTyped::new(
@@ -183,9 +182,17 @@ fn terminates(
         | ExpX::Old(..)
         | ExpX::NullaryOpr(..) => Ok(bool_exp(ExpX::Const(Constant::Bool(true)))),
         ExpX::Loc(e) => r(e),
-        ExpX::Call(CallFun::Fun(x), targs, args) => {
-            let mut e = if is_recursive_call(ctxt, x, targs) {
-                check_decrease_call(ctxt, diagnostics, fun_ssts, &exp.span, x, targs, args)?
+        ExpX::Call(CallFun::Fun(x, resolved_method), _targs, args) => {
+            let mut e = if is_recursive_call(ctxt, x, resolved_method) {
+                check_decrease_call(
+                    ctxt,
+                    diagnostics,
+                    fun_ssts,
+                    &exp.span,
+                    x,
+                    resolved_method,
+                    args,
+                )?
             } else {
                 bool_exp(ExpX::Const(Constant::Bool(true)))
             };
@@ -295,7 +302,9 @@ pub(crate) fn is_recursive_exp(ctx: &Ctx, name: &Fun, body: &Exp) -> bool {
         let mut scope_map = ScopeMap::new();
         // Check for self-recursion, which SCC computation does not account for
         match exp_visitor_dfs(body, &mut scope_map, &mut |exp, _scope_map| match &exp.x {
-            ExpX::Call(CallFun::Fun(x), targs, _) if is_self_call(ctx, x, targs, name) => {
+            ExpX::Call(CallFun::Fun(x, resolved_method), _, _)
+                if is_self_call(ctx, x, resolved_method, name) =>
+            {
                 VisitorControlFlow::Stop(())
             }
             _ => VisitorControlFlow::Recurse,
@@ -313,7 +322,9 @@ pub(crate) fn is_recursive_stm(ctx: &Ctx, name: &Fun, body: &Stm) -> bool {
     } else {
         // Check for self-recursion, which SCC computation does not account for
         match stm_visitor_dfs(body, &mut |stm| match &stm.x {
-            StmX::Call { fun, typ_args, .. } if is_self_call(ctx, fun, typ_args, name) => {
+            StmX::Call { fun, resolved_method, .. }
+                if is_self_call(ctx, fun, resolved_method, name) =>
+            {
                 VisitorControlFlow::Stop(())
             }
             _ => VisitorControlFlow::Recurse,
@@ -356,7 +367,9 @@ fn mk_decreases_at_entry(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> (Vec<Loca
 fn disallow_recursion_exp(ctxt: &Ctxt, exp: &Exp) -> Result<(), VirErr> {
     let mut scope_map = ScopeMap::new();
     exp_visitor_check(exp, &mut scope_map, &mut |exp, _scope_map| match &exp.x {
-        ExpX::Call(CallFun::Fun(x), targs, _) if is_recursive_call(ctxt, x, targs) => {
+        ExpX::Call(CallFun::Fun(x, resolved_method), _targs, _)
+            if is_recursive_call(ctxt, x, resolved_method) =>
+        {
             error(&exp.span, "recursion not allowed here")
         }
         _ => Ok(()),
@@ -426,8 +439,8 @@ pub(crate) fn check_termination_exp(
 
     // New body: substitute rec%f(args, fuel) for f(args)
     let body = map_exp_visitor(&body, &mut |exp| match &exp.x {
-        ExpX::Call(CallFun::Fun(x), typs, args)
-            if is_recursive_call(&ctxt, x, typs) && ctx.func_map[x].x.body.is_some() =>
+        ExpX::Call(CallFun::Fun(x, resolved_method), typs, args)
+            if is_recursive_call(&ctxt, x, resolved_method) && ctx.func_map[x].x.body.is_some() =>
         {
             let mut args = (**args).clone();
             let varx = ExpX::Var(unique_local(&str_ident(FUEL_PARAM)));
@@ -465,9 +478,18 @@ pub(crate) fn check_termination_stm(
     let ctxt =
         Ctxt { recursive_function_name: function.x.name.clone(), num_decreases, scc_rep, ctx };
     let stm = map_stm_visitor(body, &mut |s| match &s.x {
-        StmX::Call { fun, typ_args, args, .. } if is_recursive_call(&ctxt, fun, typ_args) => {
-            let check =
-                check_decrease_call(&ctxt, diagnostics, fun_ssts, &s.span, fun, typ_args, args)?;
+        StmX::Call { fun, resolved_method, args, .. }
+            if is_recursive_call(&ctxt, fun, resolved_method) =>
+        {
+            let check = check_decrease_call(
+                &ctxt,
+                diagnostics,
+                fun_ssts,
+                &s.span,
+                fun,
+                resolved_method,
+                args,
+            )?;
             let error = msg_error("could not prove termination", &s.span);
             let stm_assert = Spanned::new(s.span.clone(), StmX::Assert(Some(error), check));
             let stm_block =
@@ -484,7 +506,6 @@ pub(crate) fn check_termination_stm(
 
 pub(crate) fn expand_call_graph(
     func_map: &HashMap<Fun, Function>,
-    method_map: &HashMap<(Fun, Path), Fun>,
     call_graph: &mut Graph<Node>,
     function: &Function,
 ) -> Result<(), VirErr> {
@@ -517,18 +538,21 @@ pub(crate) fn expand_call_graph(
     // Add T --> f2 if the requires/ensures of T's method declarations call f2
     crate::ast_visitor::function_visitor_check::<VirErr, _>(function, &mut |expr| {
         match &expr.x {
-            ExprX::Call(CallTarget::Static(x, ts), _) => {
+            ExprX::Call(CallTarget::Fun(kind, x, ts), _) => {
+                use crate::ast::CallTargetKind;
                 let f2 = &func_map[x];
                 assert!(f2.x.typ_bounds.len() == ts.len());
                 let mut t_param_args = f2.x.typ_bounds.iter().zip(ts.iter());
-
                 let callee =
                     if let FunctionKind::TraitMethodDecl { trait_path: trait_path2 } = &f2.x.kind {
                         let (tparam, t_self_arg) = t_param_args.next().expect("method Self type");
                         assert!(tparam.0 == crate::def::trait_self_type_param());
-                        match &**t_self_arg {
+                        match (kind, &**t_self_arg) {
+                            (CallTargetKind::Static, _) => panic!("expected Method"),
                             // If the Self type argument is a concrete type,
                             // then we should know concretely which function we're calling.
+                            // We rely on rustc to resolve this case to Method(Some(x)):
+                            (CallTargetKind::Method(Some((x, _))), _) => Some(x),
                             // By contrast, if the Self type argument is a type parameter,
                             // then we don't know concretely which function we're calling;
                             // conceptually, we're looking up the function dynamically in
@@ -536,11 +560,7 @@ pub(crate) fn expand_call_graph(
                             // (Note that the dictionary is passed in with the type parameter;
                             // if there's no type parameter, there's no dictionary,
                             // so we can only use the dictionary in the type parameter case.)
-
-                            // REVIEW: in the non-type-parameter case,
-                            // maybe we can get the concrete function directly from rustc,
-                            // rather than computing it here.
-                            TypX::TypParam(p) if p == &crate::def::trait_self_type_param() => {
+                            (_, TypX::TypParam(p)) if p == &crate::def::trait_self_type_param() => {
                                 match &function.x.kind {
                                     FunctionKind::TraitMethodDecl { trait_path: trait_path1 }
                                         if trait_path1 == trait_path2 =>
@@ -555,7 +575,7 @@ pub(crate) fn expand_call_graph(
                                     }
                                 }
                             }
-                            TypX::TypParam(p) => {
+                            (_, TypX::TypParam(p)) => {
                                 // no f --> f2 edge for calls via a type parameter A: T,
                                 // because we (conceptually) get f2 from the dictionary passed for A: T.
                                 let bound = function.x.typ_bounds.iter().find(|(q, _)| q == p);
@@ -564,21 +584,10 @@ pub(crate) fn expand_call_graph(
                                 assert!(ts.iter().any(|t| t == trait_path2));
                                 None
                             }
-                            TypX::Datatype(datatype, _) => {
-                                // f --> D.f2
-                                match method_map.get(&(x.clone(), datatype.clone())) {
-                                    Some(v) => Some(v),
-                                    None => {
-                                        return error(
-                                            &expr.span,
-                                            "(INTERNAL ERROR) method not found in method_map",
-                                        );
-                                    }
-                                }
-                            }
                             _ => panic!("unexpected Self type instantiation"),
                         }
                     } else {
+                        assert!(matches!(kind, CallTargetKind::Static));
                         Some(x)
                     };
 

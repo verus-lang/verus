@@ -2,8 +2,7 @@ use crate::attributes::{get_ghost_block_opt, get_mode, get_verifier_attrs, Ghost
 use crate::erase::{ErasureHints, ResolvedCall};
 use crate::lifetime_ast::*;
 use crate::rust_to_vir_base::{
-    def_id_self_to_vir_path, def_id_to_vir_path, local_to_var, mid_ty_const_to_vir,
-    mid_ty_to_vir_datatype,
+    def_id_to_vir_path, local_to_var, mid_ty_const_to_vir, mid_ty_to_vir_datatype,
 };
 use crate::rust_to_vir_expr::get_adt_res;
 use air::ast::AstId;
@@ -14,7 +13,7 @@ use rustc_hir::{
     AssocItemKind, BindingAnnotation, Block, BlockCheckMode, BodyId, Closure, Crate, Expr,
     ExprKind, FnSig, HirId, Impl, ImplItem, ImplItemKind, ItemKind, Let, MaybeOwner, Node,
     OpaqueTy, OpaqueTyOrigin, OwnerNode, Pat, PatKind, QPath, Stmt, StmtKind, TraitFn, TraitItem,
-    TraitItemKind, TraitItemRef, TraitRef, UnOp, Unsafety,
+    TraitItemKind, TraitItemRef, UnOp, Unsafety,
 };
 use rustc_middle::ty::subst::GenericArgKind;
 use rustc_middle::ty::{
@@ -75,7 +74,7 @@ pub(crate) struct State {
     rename_count: usize,
     reached: HashSet<(Option<Path>, DefId)>,
     datatype_worklist: Vec<DefId>,
-    imported_fun_worklist: Vec<(Option<Path>, DefId)>,
+    imported_fun_worklist: Vec<DefId>,
     id_to_name: HashMap<String, Id>,
     typ_param_to_name: HashMap<(String, Option<u32>), Id>,
     lifetime_to_name: HashMap<(String, Option<u32>), Id>,
@@ -200,7 +199,7 @@ impl State {
             let crate_name = ctxt.tcx.crate_name(ctxt.tcx.def_path(id).krate).to_string();
             if ctxt.crate_names.contains(&crate_name) {
                 self.reached.insert((self_path.clone(), id));
-                self.imported_fun_worklist.push((self_path, id));
+                self.imported_fun_worklist.push(id);
             }
         }
     }
@@ -834,7 +833,7 @@ fn erase_expr<'tcx>(
                     Res::Def(def_kind, id) => match def_kind {
                         DefKind::Const => {
                             let vir_path = def_id_to_vir_path(ctxt.tcx, id);
-                            let fun_name = Arc::new(FunX { path: vir_path, trait_path: None });
+                            let fun_name = Arc::new(FunX { path: vir_path });
                             return mk_exp(ExpX::Var(state.fun_name(&fun_name)));
                         }
                         DefKind::ConstParam => {
@@ -1257,7 +1256,7 @@ fn erase_const<'tcx>(
             return;
         }
     }
-    let fun_name = Arc::new(FunX { path, trait_path: None });
+    let fun_name = Arc::new(FunX { path });
     if let Some(f_vir) = &ctxt.functions[&fun_name] {
         if f_vir.x.mode == Mode::Spec && f_vir.x.ret.x.mode == Mode::Spec {
             return;
@@ -1416,11 +1415,9 @@ fn erase_fn_common<'tcx>(
     ctxt: &mut Context<'tcx>,
     state: &mut State,
     name_span: Span,
-    self_path: Option<Path>,
     id: DefId,
     sig: Option<&FnSig<'tcx>>,
     sig_span: Span,
-    trait_path: Option<Path>,
     impl_generics: Option<DefId>,
     empty_body: bool,
     external_body: bool,
@@ -1429,16 +1426,12 @@ fn erase_fn_common<'tcx>(
     if ctxt.ignored_functions.contains(&id) {
         return;
     }
-    let path = if let Some(self_path) = &self_path {
-        def_id_self_to_vir_path(ctxt.tcx, &Some(self_path.clone()), id).expect("fun name")
-    } else {
-        def_id_to_vir_path(ctxt.tcx, id)
-    };
+    let path = def_id_to_vir_path(ctxt.tcx, id);
     let is_verus_spec = path.segments.last().expect("segment.last").starts_with(VERUS_SPEC);
     if is_verus_spec {
         return;
     }
-    let fun_name = Arc::new(FunX { path: path.clone(), trait_path });
+    let fun_name = Arc::new(FunX { path: path.clone() });
     if let Some(f_vir) = &ctxt.functions[&fun_name] {
         if f_vir.x.mode == Mode::Spec {
             return;
@@ -1534,22 +1527,15 @@ fn erase_fn_common<'tcx>(
     }
 }
 
-fn import_fn<'tcx>(
-    ctxt: &mut Context<'tcx>,
-    state: &mut State,
-    self_path: Option<Path>,
-    id: DefId,
-) {
+fn import_fn<'tcx>(ctxt: &mut Context<'tcx>, state: &mut State, id: DefId) {
     erase_fn_common(
         None,
         ctxt,
         state,
         ctxt.tcx.def_ident_span(id).expect("function name span"),
-        self_path,
         id,
         None,
         ctxt.tcx.def_span(id),
-        None,
         ctxt.tcx.generics_of(id).parent,
         true,
         true,
@@ -1564,7 +1550,6 @@ fn erase_fn<'tcx>(
     name_span: Span,
     id: DefId,
     sig: &FnSig<'tcx>,
-    trait_path: Option<Path>,
     impl_generics: Option<DefId>,
     empty_body: bool,
     external_body: bool,
@@ -1575,11 +1560,9 @@ fn erase_fn<'tcx>(
         ctxt,
         state,
         name_span,
-        None,
         id,
         Some(sig),
         sig.span,
-        trait_path,
         impl_generics,
         empty_body,
         external_body,
@@ -1611,7 +1594,6 @@ fn erase_trait<'tcx>(
                     ident.span,
                     id,
                     sig,
-                    None,
                     Some(trait_id),
                     true,
                     false,
@@ -1630,11 +1612,6 @@ fn erase_impl<'tcx>(
     impl_id: DefId,
     impll: &Impl<'tcx>,
 ) {
-    let trait_path = if let Some(TraitRef { path, hir_ref_id: _ }) = impll.of_trait {
-        Some(def_id_to_vir_path(ctxt.tcx, path.res.def_id()))
-    } else {
-        None
-    };
     for impl_item_ref in impll.items {
         match impl_item_ref.kind {
             AssocItemKind::Fn { .. } => {
@@ -1658,7 +1635,6 @@ fn erase_impl<'tcx>(
                             ident.span,
                             id,
                             sig,
-                            trait_path.clone(),
                             Some(impl_id),
                             false,
                             vattrs.external_body,
@@ -1927,7 +1903,6 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                                 id,
                                 sig,
                                 None,
-                                None,
                                 false,
                                 vattrs.external_body,
                                 Some(body_id),
@@ -1968,8 +1943,8 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
             }
         }
     }
-    while let Some((self_path, id)) = state.imported_fun_worklist.pop() {
-        import_fn(&mut ctxt, &mut state, self_path, id);
+    while let Some(id) = state.imported_fun_worklist.pop() {
+        import_fn(&mut ctxt, &mut state, id);
     }
     while let Some(id) = state.datatype_worklist.pop() {
         erase_mir_datatype(&ctxt, &mut state, id);

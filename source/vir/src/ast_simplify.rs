@@ -228,13 +228,16 @@ fn pattern_to_exprs_rec(
 // then simplify_one_expr is called first on B and C, and then on A
 
 fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<Expr, VirErr> {
+    use crate::ast::CallTargetKind;
     match &expr.x {
         ExprX::ConstVar(x) => {
-            let call =
-                ExprX::Call(CallTarget::Static(x.clone(), Arc::new(vec![])), Arc::new(vec![]));
+            let call = ExprX::Call(
+                CallTarget::Fun(CallTargetKind::Static, x.clone(), Arc::new(vec![])),
+                Arc::new(vec![]),
+            );
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
-        ExprX::Call(CallTarget::Static(tgt, typs), args) => {
+        ExprX::Call(CallTarget::Fun(kind, tgt, typs), args) => {
             // Remove FnSpec type arguments
             let bounds = &ctx.fun_bounds[tgt];
             let typs: Vec<Typ> = typs
@@ -243,7 +246,8 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
                 .filter(|(_, bound)| keep_bound(bound))
                 .map(|(t, _)| t.clone())
                 .collect();
-            let args = if typs.len() == 0 && args.len() == 0 {
+            let is_trait_impl = matches!(kind, CallTargetKind::Method(..));
+            let args = if typs.len() == 0 && args.len() == 0 && !is_trait_impl {
                 // To simplify the AIR/SMT encoding, add a dummy argument to any function with 0 arguments
                 let typ = Arc::new(TypX::Int(IntRange::Int));
                 use num_traits::Zero;
@@ -253,7 +257,8 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
             } else {
                 args.clone()
             };
-            let call = ExprX::Call(CallTarget::Static(tgt.clone(), Arc::new(typs)), args);
+            let call =
+                ExprX::Call(CallTarget::Fun(kind.clone(), tgt.clone(), Arc::new(typs)), args);
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
         ExprX::Tuple(args) => {
@@ -771,7 +776,7 @@ fn mk_fun_decl(
     Spanned::new(
         span.clone(),
         FunctionX {
-            name: Arc::new(FunX { path: path.clone(), trait_path: None }),
+            name: Arc::new(FunX { path: path.clone() }),
             visibility: Visibility { owning_module: None, restricted_to: None },
             mode: Mode::Spec,
             fuel: 0,

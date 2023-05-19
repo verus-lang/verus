@@ -1,6 +1,6 @@
 use crate::ast::{
-    Datatype, Fun, Function, FunctionKind, GenericBound, Ident, InferMode, IntRange, Krate, Mode,
-    Path, Trait, TypX, Variants, VirErr,
+    Datatype, Fun, Function, GenericBound, Ident, InferMode, IntRange, Krate, Mode, Path, Trait,
+    TypX, Variants, VirErr,
 };
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
@@ -44,7 +44,6 @@ pub struct GlobalCtx {
     pub func_call_sccs: Vec<Node>,
     // Connects quantifier identifiers to the original expression
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
-    pub method_map: HashMap<(Fun, Path), Fun>,
     pub(crate) inferred_modes: HashMap<InferMode, Mode>,
     pub(crate) rlimit: u32,
     pub(crate) interpreter_log: Rc<RefCell<Option<File>>>,
@@ -188,14 +187,6 @@ impl GlobalCtx {
             assert!(!func_map.contains_key(&function.x.name));
             func_map.insert(function.x.name.clone(), function.clone());
         }
-        let mut method_map: HashMap<(Fun, Path), Fun> = HashMap::new();
-        for function in krate.functions.iter() {
-            if let FunctionKind::TraitMethodImpl { method, datatype, .. } = &function.x.kind {
-                let key = (method.clone(), datatype.clone());
-                assert!(!method_map.contains_key(&key));
-                method_map.insert(key, function.x.name.clone());
-            }
-        }
         let mut fun_bounds: HashMap<Fun, Vec<GenericBound>> = HashMap::new();
         let mut func_call_graph: Graph<Node> = Graph::new();
         for t in &krate.traits {
@@ -205,7 +196,7 @@ impl GlobalCtx {
             let bounds = vec_map(&f.x.typ_bounds, |(_, bound)| bound.clone());
             fun_bounds.insert(f.x.name.clone(), bounds);
             func_call_graph.add_node(Node::Fun(f.x.name.clone()));
-            crate::recursion::expand_call_graph(&func_map, &method_map, &mut func_call_graph, f)?;
+            crate::recursion::expand_call_graph(&func_map, &mut func_call_graph, f)?;
         }
 
         func_call_graph.compute_sccs();
@@ -236,7 +227,6 @@ impl GlobalCtx {
             func_call_graph,
             func_call_sccs,
             qid_map,
-            method_map,
             inferred_modes,
             rlimit,
             interpreter_log,

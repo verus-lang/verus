@@ -668,9 +668,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         (ExpX::Old(span, x), false) => {
             Arc::new(ExprX::Old(span.clone(), suffix_local_unique_id(x)))
         }
-        (ExpX::Call(f @ (CallFun::Fun(_) | CallFun::CheckTermination(_)), typs, args), false) => {
+        (ExpX::Call(f @ (CallFun::Fun(..) | CallFun::CheckTermination(_)), typs, args), false) => {
             let x_name = match f {
-                CallFun::Fun(x) => x.clone(),
+                CallFun::Fun(x, _) => x.clone(),
                 CallFun::CheckTermination(x) => crate::def::prefix_recursive_fun(&x),
                 _ => panic!(),
             };
@@ -1433,7 +1433,7 @@ fn assume_other_fields_unchanged_inner(
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, VirErr> {
     let expr_ctxt = &ExprCtxt::new();
     let result = match &stm.x {
-        StmX::Call { fun, mode, typ_args: typs, args, split, dest } => {
+        StmX::Call { fun, resolved_method: _, mode, typ_args: typs, args, split, dest } => {
             assert!(split.is_none());
             let mut stmts: Vec<Stmt> = Vec::new();
             let func = &ctx.func_map[fun];

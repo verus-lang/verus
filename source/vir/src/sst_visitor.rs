@@ -201,7 +201,15 @@ where
 {
     stm_visitor_dfs(stm, &mut |stm| {
         match &stm.x {
-            StmX::Call { fun: _, mode: _, typ_args: _, args, split: _, dest: _ } => {
+            StmX::Call {
+                fun: _,
+                resolved_method: _,
+                mode: _,
+                typ_args: _,
+                args,
+                split: _,
+                dest: _,
+            } => {
                 for exp in args.iter() {
                     expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f));
                 }
@@ -466,6 +474,15 @@ where
         ExpX::Loc(e1) => ok_exp(ExpX::Loc(fe(env, e1)?)),
         ExpX::Old(..) => Ok(exp.clone()),
         ExpX::Call(fun, typs, es) => {
+            use crate::sst::CallFun;
+            let fun = match fun {
+                CallFun::Fun(_, None) => fun.clone(),
+                CallFun::Fun(f, Some((r, ts))) => {
+                    let ts: Result<Vec<Typ>, VirErr> = ts.iter().map(|t| ft(env, t)).collect();
+                    CallFun::Fun(f.clone(), Some((r.clone(), Arc::new(ts?))))
+                }
+                CallFun::CheckTermination(..) | CallFun::InternalFun(..) => fun.clone(),
+            };
             let typs: Result<Vec<Typ>, VirErr> = typs.iter().map(|t| ft(env, t)).collect();
             ok_exp(ExpX::Call(fun.clone(), Arc::new(typs?), fs(env, es)?))
         }
@@ -698,12 +715,13 @@ where
     map_stm_visitor(stm, &mut |stm| {
         let span = stm.span.clone();
         let stm = match &stm.x {
-            StmX::Call { fun, mode, typ_args, args, split, dest } => {
+            StmX::Call { fun, resolved_method, mode, typ_args, args, split, dest } => {
                 let args = Arc::new(vec_map_result(args, fe)?);
                 Spanned::new(
                     span,
                     StmX::Call {
                         fun: fun.clone(),
+                        resolved_method: resolved_method.clone(),
                         mode: *mode,
                         typ_args: typ_args.clone(),
                         args,

@@ -186,6 +186,7 @@ macro_rules! declare_invariant_impl {
             pub spec fn constant(&self) -> K;
 
             /// Namespace the invariant was declared in.
+            #[rustc_diagnostic_item = concat!("vstd::invariant::", stringify!($invariant), "::namespace")]
             pub spec fn namespace(&self) -> int;
 
             /// Returns `true` if it is possible to store the value `v` into the `
@@ -194,6 +195,7 @@ macro_rules! declare_invariant_impl {
             ///
             /// This is equivalent to `Pred::inv(self.constant(), v)`.
 
+            #[rustc_diagnostic_item = concat!("vstd::invariant::", stringify!($invariant), "::inv")]
             pub open spec fn inv(&self, v: V) -> bool {
                 Pred::inv(self.constant(), v)
             }

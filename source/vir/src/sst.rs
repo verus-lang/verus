@@ -47,9 +47,10 @@ pub enum InternalFun {
     CheckDecreaseInt,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub enum CallFun {
-    Fun(Fun),
+    // static/method Fun, plus an optional resolved Fun for methods
+    Fun(Fun, Option<(Fun, Typs)>),
     CheckTermination(Fun),
     InternalFun(InternalFun),
 }
@@ -122,6 +123,7 @@ pub enum StmX {
     // call to exec/proof function (or spec function for checking_recommends)
     Call {
         fun: Fun,
+        resolved_method: Option<(Fun, Typs)>,
         mode: Mode,
         typ_args: Typs,
         args: Exps,

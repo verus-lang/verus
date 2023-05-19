@@ -78,7 +78,7 @@ fn check_one_expr(
         ExprX::ConstVar(x) => {
             check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
         }
-        ExprX::Call(CallTarget::Static(x, _), args) => {
+        ExprX::Call(CallTarget::Fun(_, x, _), args) => {
             let f = check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
             if f.x.attrs.is_decrease_by {
                 // a decreases_by function isn't a real function;

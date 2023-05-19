@@ -21,7 +21,7 @@ struct Ctxt {
     function_map: HashMap<Fun, Function>,
     datatype_map: HashMap<Path, Datatype>,
     // Map (D, T.f) -> D.f if D implements T.f:
-    method_map: HashMap<(Path, Fun), Fun>,
+    method_map: HashMap<(Path, Fun), Vec<Fun>>,
     all_functions_in_each_module: HashMap<Path, Vec<Fun>>,
     vstd_crate_name: Option<Ident>,
 }
@@ -87,8 +87,10 @@ where
     // add D.f
     let mut method_impls: Vec<Fun> = Vec::new();
     for (datatype, function) in iter {
-        if let Some(method_impl) = ctxt.method_map.get(&(datatype.clone(), function.clone())) {
-            method_impls.push(method_impl.clone());
+        if let Some(ms) = ctxt.method_map.get(&(datatype.clone(), function.clone())) {
+            for method_impl in ms {
+                method_impls.push(method_impl.clone());
+            }
         }
     }
     method_impls
@@ -131,8 +133,11 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             }
             let fe = |state: &mut State, _: &mut ScopeMap<Ident, Typ>, e: &Expr| {
                 match &e.x {
-                    ExprX::Call(CallTarget::Static(name, _), _) => {
-                        reach_function(ctxt, state, name)
+                    ExprX::Call(CallTarget::Fun(kind, name, _), _) => {
+                        reach_function(ctxt, state, name);
+                        if let crate::ast::CallTargetKind::Method(Some((resolved, _))) = kind {
+                            reach_function(ctxt, state, resolved);
+                        }
                     }
                     ExprX::Ctor(path, _, _, _) => reach_datatype(ctxt, state, path),
                     ExprX::OpenInvariant(_, _, _, atomicity) => {
@@ -283,12 +288,16 @@ pub fn prune_krate_for_module(
 
     let mut function_map: HashMap<Fun, Function> = HashMap::new();
     let mut datatype_map: HashMap<Path, Datatype> = HashMap::new();
-    let mut method_map: HashMap<(Path, Fun), Fun> = HashMap::new();
+    let mut method_map: HashMap<(Path, Fun), Vec<Fun>> = HashMap::new();
     let mut all_functions_in_each_module: HashMap<Path, Vec<Fun>> = HashMap::new();
     for f in &functions {
         function_map.insert(f.x.name.clone(), f.clone());
         if let FunctionKind::TraitMethodImpl { method, datatype, .. } = &f.x.kind {
-            method_map.insert((datatype.clone(), method.clone()), f.x.name.clone());
+            let key = (datatype.clone(), method.clone());
+            if !method_map.contains_key(&key) {
+                method_map.insert(key.clone(), Vec::new());
+            }
+            method_map.get_mut(&key).unwrap().push(f.x.name.clone());
         }
         let module = f.x.name.path.pop_segment();
         if !all_functions_in_each_module.contains_key(&module) {
