@@ -394,3 +394,19 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[ignore] #[test] const_name_in_lifetime_generate_regression_563 verus_code! {
+        pub spec const CONST_VALUE: nat = 32;
+        #[verifier(external_body)]
+        struct Data { }
+        impl Data {
+            proof fn foo(self) {
+                let value: nat = CONST_VALUE as nat;
+                if vstd::prelude::arbitrary::<nat>() >= value {
+                } else {
+                }
+            }
+        }
+    } => Ok(())
+}
