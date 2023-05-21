@@ -1344,6 +1344,16 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 StrGetChar => ok_e2(e2.clone()),
             }
         }
+        BinaryOpr(op, e1, e2) => {
+            let e1 = eval_expr_internal(ctx, state, e1)?;
+            let e2 = eval_expr_internal(ctx, state, e2)?;
+            match op {
+                crate::ast::BinaryOpr::ExtEq(..) => match e1.syntactic_eq(&e2) {
+                    None => exp_new(BinaryOpr(op.clone(), e1.clone(), e2.clone())),
+                    Some(b) => bool_new(b),
+                },
+            }
+        }
         If(e1, e2, e3) => {
             let e1 = eval_expr_internal(ctx, state, e1)?;
             match &e1.x {
@@ -1488,7 +1498,6 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             InterpExp::Closure(_, _) => ok,
         },
         // Ignored by the interpreter at present (i.e., treated as symbolic)
-        BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), _, _) => ok,
         VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | WithTriggers(..) => ok,
     };
     let res = r?;
