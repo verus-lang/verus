@@ -1105,7 +1105,7 @@ impl Verifier {
         vir::check_ast_flavor::check_krate(&krate);
 
         let interpreter_log_file =
-            Rc::new(RefCell::new(if self.args.log_all || self.args.log_vir_simple {
+            Rc::new(RefCell::new(if self.args.log_all || self.args.log_interpreter {
                 Some(self.create_log_file(None, None, crate::config::INTERPRETER_FILE_SUFFIX)?)
             } else {
                 None
