@@ -19,8 +19,15 @@ pub fn krate_add_builtins(no_span: &Span, krate: &mut KrateX) {
     let bound = Arc::new(GenericBoundX::Traits(vec![]));
     let is_strictly_positive = true;
     let typ_params = Arc::new(vec![(crate::def::slice_param(), bound, is_strictly_positive)]);
-    let datatypex =
-        DatatypeX { path, visibility, transparency, typ_params, variants, mode: Mode::Exec };
+    let datatypex = DatatypeX {
+        path,
+        visibility,
+        transparency,
+        typ_params,
+        variants,
+        mode: Mode::Exec,
+        ext_equal: false,
+    };
     krate.datatypes.push(Spanned::new(no_span.clone(), datatypex));
 }
 

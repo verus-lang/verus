@@ -49,6 +49,7 @@ fn check_trigger_expr(
             | ExpX::Unary(UnaryOp::Trigger(_), _) => {}
             // allow triggers for bitvector operators
             ExpX::Binary(BinaryOp::Bitwise(_, _), _, _) | ExpX::Unary(UnaryOp::BitNot, _) => {}
+            ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), _, _) => {}
             _ => {
                 return error(
                     &exp.span,
@@ -72,6 +73,13 @@ fn check_trigger_expr(
 
     let mut scope_map = ScopeMap::new();
     if state.boxed_params {
+        let ft = |free_vars: &mut HashSet<Ident>, t: &Typ| match &**t {
+            TypX::TypParam(x) => {
+                free_vars.insert(crate::def::suffix_typ_param_id(x));
+                Ok(t.clone())
+            }
+            _ => Ok(t.clone()),
+        };
         crate::sst_visitor::exp_visitor_check(
             exp,
             &mut scope_map,
@@ -83,13 +91,6 @@ fn check_trigger_expr(
                 | ExpX::VarLoc(..) => Ok(()),
                 ExpX::Call(_, typs, _) => {
                     for typ in typs.iter() {
-                        let ft = |free_vars: &mut HashSet<Ident>, t: &Typ| match &**t {
-                            TypX::TypParam(x) => {
-                                free_vars.insert(crate::def::suffix_typ_param_id(x));
-                                Ok(t.clone())
-                            }
-                            _ => Ok(t.clone()),
-                        };
                         crate::ast_visitor::map_typ_visitor_env(typ, free_vars, &ft).unwrap();
                     }
                     Ok(())
@@ -152,6 +153,10 @@ fn check_trigger_expr(
                         Bitwise(..) => Ok(()),
                         StrGetChar => Ok(()),
                     }
+                }
+                ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(_, typ), _, _) => {
+                    crate::ast_visitor::map_typ_visitor_env(typ, free_vars, &ft).unwrap();
+                    Ok(())
                 }
                 ExpX::If(_, _, _) => error(&exp.span, "triggers cannot contain if/else"),
                 ExpX::WithTriggers(..) => {

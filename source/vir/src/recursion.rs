@@ -235,7 +235,7 @@ fn terminates(
             let imply = bool_exp(ExpX::Binary(BinaryOp::Implies, not, t_e2));
             Ok(bool_exp(ExpX::Binary(BinaryOp::And, t_e1, imply)))
         }
-        ExpX::Binary(_, e1, e2) => {
+        ExpX::Binary(_, e1, e2) | ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), e1, e2) => {
             let e1 = r(e1)?;
             let e2 = r(e2)?;
             Ok(bool_exp(ExpX::Binary(BinaryOp::And, e1, e2)))

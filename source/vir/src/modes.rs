@@ -728,6 +728,11 @@ fn check_expr_handle_mut_arg(
             let mode2 = check_expr(typing, outer_mode, erasure_mode, e2)?;
             Ok(mode_join(op_mode, mode_join(mode1, mode2)))
         }
+        ExprX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), e1, e2) => {
+            check_expr_has_mode(typing, Mode::Spec, e1, Mode::Spec)?;
+            check_expr_has_mode(typing, Mode::Spec, e2, Mode::Spec)?;
+            Ok(Mode::Spec)
+        }
         ExprX::Multi(MultiOp::Chained(_), es) => {
             for e in es.iter() {
                 check_expr_has_mode(typing, Mode::Spec, e, Mode::Spec)?;

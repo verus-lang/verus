@@ -381,6 +381,11 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 _ => (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1, term2])))),
             }
         }
+        ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), e1, e2) => {
+            let (_, term1) = gather_terms(ctxt, ctx, e1, 0);
+            let (_, term2) = gather_terms(ctxt, ctx, e2, 0);
+            (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1, term2]))))
+        }
         ExpX::If(e1, e2, e3) => {
             let depth = 1;
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);

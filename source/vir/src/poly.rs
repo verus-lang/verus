@@ -419,6 +419,13 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 mk_expr(ExprX::Binary(*op, e1, e2))
             }
         }
+        ExprX::BinaryOpr(op @ crate::ast::BinaryOpr::ExtEq(..), e1, e2) => {
+            let e1 = poly_expr(ctx, state, e1);
+            let e2 = poly_expr(ctx, state, e2);
+            let e1 = coerce_expr_to_poly(ctx, &e1);
+            let e2 = coerce_expr_to_poly(ctx, &e2);
+            mk_expr(ExprX::BinaryOpr(op.clone(), e1, e2))
+        }
         ExprX::Multi(MultiOp::Chained(ops), es) => {
             let es =
                 es.iter().map(|e| coerce_expr_to_native(ctx, &poly_expr(ctx, state, e))).collect();

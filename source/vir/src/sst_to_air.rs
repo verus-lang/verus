@@ -279,6 +279,10 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
 }
 
+pub(crate) fn as_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Expr {
+    try_box(ctx, expr.clone(), typ).unwrap_or(expr)
+}
+
 fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
     let f_name = match &**typ {
         TypX::Bool => Some(str_ident(crate::def::UNBOX_BOOL)),
@@ -893,6 +897,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             };
             return Ok(Arc::new(ExprX::Binary(bop, lh, rh)));
         }
+        (ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), _, _), true) => {
+            return error(&exp.span, "error: cannot use extensional equality in bit vector proof");
+        }
         (ExpX::Binary(op, lhs, rhs), false) => {
             let has_const = match (&lhs.x, &rhs.x) {
                 (ExpX::Const(..), _) => true,
@@ -1005,6 +1012,13 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 }
             };
             Arc::new(expx)
+        }
+        (ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(deep, t), lhs, rhs), false) => {
+            let d = Arc::new(ExprX::Const(Constant::Bool(*deep)));
+            let ty = typ_to_id(t);
+            let lh = exp_to_expr(ctx, lhs, expr_ctxt)?;
+            let rh = exp_to_expr(ctx, rhs, expr_ctxt)?;
+            str_apply(crate::def::EXT_EQ, &vec![d, ty, lh, rh])
         }
         (ExpX::If(e1, e2, e3), _) => mk_ite(
             &exp_to_expr(ctx, e1, expr_ctxt)?,

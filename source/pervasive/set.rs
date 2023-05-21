@@ -31,6 +31,7 @@ verus! {
 /// To prove that two sequences are equal, it is usually easiest to use the [`assert_sets_equal!`](crate::set_lib::assert_sets_equal) macro.
 
 #[verifier(external_body)]
+#[verifier::ext_equal]
 pub struct Set<#[verifier(maybe_negative)] A> {
     dummy: marker::PhantomData<A>,
 }
@@ -54,16 +55,19 @@ impl<A> Set<A> {
 
     pub spec fn contains(self, a: A) -> bool;
 
+    /// DEPRECATED: use builtin::ext_equal or builtin::ext_equal_deep instead.
     /// Returns `true` if for every value `a: A`, it is either in both input sets or neither.
     /// This is equivalent to the sets being actually equal
     /// by [`axiom_set_ext_equal`].
     ///
-    /// To prove that two sets are equal via extensionality, it is generally easier
+    /// To prove that two sets are equal via extensionality, it may be easier
+    /// to use the general-purpose `builtin::ext_equal` or `builtin::ext_equal_deep` or
     /// to use the [`assert_sets_equal!`](crate::set_lib::assert_sets_equal) macro,
-    /// rather than using `ext_equal` directly.
+    /// rather than using `.ext_equal` directly.
 
+    #[deprecated = "use builtin::ext_equal or builtin::ext_equal_deep instead"]
     pub open spec fn ext_equal(self, s2: Set<A>) -> bool {
-        forall|a: A| self.contains(a) == s2.contains(a)
+        ext_equal(self, s2)
     }
 
     /// Returns `true` if the first argument is a subset of the second.
@@ -233,7 +237,15 @@ pub proof fn axiom_set_complement<A>(s: Set<A>, a: A)
 #[verifier(broadcast_forall)]
 pub proof fn axiom_set_ext_equal<A>(s1: Set<A>, s2: Set<A>)
     ensures
-        s1.ext_equal(s2) == (s1 == s2),
+        #[trigger] ext_equal(s1, s2) <==> (forall|a: A| s1.contains(a) == s2.contains(a)),
+{
+}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_set_ext_equal_deep<A>(s1: Set<A>, s2: Set<A>)
+    ensures
+        #[trigger] ext_equal_deep(s1, s2) == ext_equal(s1, s2),
 {
 }
 

@@ -57,6 +57,26 @@ fn field_to_par(span: &Span, f: &Field) -> Par {
     )
 }
 
+fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
+    match &**typ {
+        TypX::Int(_) => false,
+        TypX::Bool => false,
+        TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
+        TypX::Lambda(_, _) => true,
+        TypX::AnonymousClosure(..) => {
+            panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
+        }
+        TypX::Datatype(path, _) => ctx.datatype_map[path].x.ext_equal,
+        TypX::Boxed(typ) => uses_ext_equal(ctx, typ),
+        TypX::TypParam(_) => true,
+        TypX::TypeId => panic!("internal error: uses_ext_equal of TypeId"),
+        TypX::ConstInt(_) => false,
+        TypX::Air(_) => panic!("internal error: uses_ext_equal of Air"),
+        TypX::StrSlice => false,
+        TypX::Char => false,
+    }
+}
+
 fn datatype_or_fun_to_air_commands(
     ctx: &Ctx,
     field_commands: &mut Vec<Command>,
@@ -73,7 +93,9 @@ fn datatype_or_fun_to_air_commands(
     is_fun: bool,
     declare_box: bool,
     add_height: bool,
+    add_ext_equal: bool,
 ) {
+    use crate::def::QID_EXT_EQUAL;
     let x = str_ident("x");
     let x_var = ident_var(&suffix_local_stmt_id(&x));
     let apolytyp = str_typ(crate::def::POLY);
@@ -107,7 +129,7 @@ fn datatype_or_fun_to_air_commands(
     }
 
     // datatype axioms
-    let x_param = |typ: &Typ| {
+    let var_param = |x: Ident, typ: &Typ| {
         Spanned::new(
             span.clone(),
             ParX {
@@ -118,6 +140,7 @@ fn datatype_or_fun_to_air_commands(
             },
         )
     };
+    let x_param = |typ: &Typ| var_param(x.clone(), typ);
     let x_params = |typ: &Typ| Arc::new(vec![x_param(typ)]);
     let typ_args = Arc::new(vec_map(&tparams, |t| Arc::new(TypX::TypParam(t.clone()))));
     let datatyp = if let Some(datatyp) = &datatyp {
@@ -153,6 +176,9 @@ fn datatype_or_fun_to_air_commands(
     }
 
     // function axiom
+    let mut fun_args: Option<Arc<Vec<Expr>>> = None;
+    let mut fun_params: Option<Vec<Par>> = None;
+    let mut fun_has: Option<Expr> = None;
     if is_fun {
         let mut params: Vec<Par> = Vec::new();
         let mut args: Vec<Expr> = Vec::new();
@@ -172,8 +198,11 @@ fn datatype_or_fun_to_air_commands(
             };
             params.push(Spanned::new(span.clone(), parx));
         }
+        let args = Arc::new(args);
+        fun_args = Some(args.clone());
+        fun_params = Some(params.clone());
         let tparamret = typ_args.last().expect("return type").clone();
-        let app = Arc::new(ExprX::ApplyLambda(apolytyp.clone(), x_var.clone(), Arc::new(args)));
+        let app = Arc::new(ExprX::ApplyLambda(apolytyp.clone(), x_var.clone(), args));
         let has_app = typ_invariant(ctx, &tparamret, &app).expect("return invariant");
 
         // Lambda constructor axiom:
@@ -192,7 +221,9 @@ fn datatype_or_fun_to_air_commands(
             &inner_trigs,
             false,
         );
-        let inner_imply = mk_implies(&mk_and(&pre), &has_app);
+        let inner_pre = mk_and(&pre);
+        fun_has = Some(inner_pre.clone());
+        let inner_imply = mk_implies(&inner_pre, &has_app);
         let inner_forall = mk_bind_expr(&inner_bind, &inner_imply);
         let mk_fun = str_apply(crate::def::MK_FUN, &vec![x_var.clone()]);
         let box_mk_fun = ident_apply(&prefix_box(&dpath), &vec![mk_fun]);
@@ -344,6 +375,109 @@ fn datatype_or_fun_to_air_commands(
             }
         }
     }
+
+    // ext_equal axiom for datatypes
+    if add_ext_equal {
+        let deep = str_ident("deep");
+        let deep_var = ident_var(&suffix_local_stmt_id(&deep));
+        let deep_param = var_param(deep, &Arc::new(TypX::Bool));
+        let has_x = has;
+        let y = str_ident("y");
+        let y_var = ident_var(&suffix_local_stmt_id(&y));
+        let y_param = |typ: &Typ| var_param(y.clone(), typ);
+        let unbox_y = ident_apply(&prefix_unbox(&dpath), &vec![y_var.clone()]);
+        let has_y = expr_has_type(&id, &y_var);
+        let eq_command = |s_name: &str, pre: &Vec<Expr>| {
+            let params = Arc::new(vec![deep_param.clone(), x_param(&vpolytyp), y_param(&vpolytyp)]);
+            let name = format!("{}_{}", &s_name, QID_EXT_EQUAL);
+            let args = &vec![deep_var.clone(), id.clone(), x_var.clone(), y_var.clone()];
+            let ext_eq_xy = str_apply(crate::def::EXT_EQ, args);
+            let bind = func_bind(ctx, name, tparams, &params, &ext_eq_xy, false);
+            let imply = mk_implies(&mk_and(pre), &ext_eq_xy);
+            let forall = mk_bind_expr(&bind, &imply);
+            let axiom = Arc::new(DeclX::Axiom(forall));
+            Arc::new(CommandX::Global(axiom))
+        };
+        for variant in variants.iter() {
+            // per-variant ext_equal axiom:
+            //   forall typs, deep: bool, x: Poly, y: Poly.
+            //     has_x && has_y && veq && feq1 && ... && feqn ==> ext_eq(deep, typ, x, y)
+            //   trigger on ext_eq(deep, typ, x, y)
+            // where:
+            //   veq is true for variants.len() == 1 or:
+            //   - is_variant(x) && is_variant(y)
+            //   feqk is one of:
+            //   - x.fk == y.fk
+            //   - ext_eq(deep, typk, x.fk, y.fk)
+            let mut pre: Vec<Expr> = vec![has_x.clone(), has_y.clone()];
+            if variants.len() > 1 {
+                let vid = is_variant_ident(dpath, &*variant.name);
+                pre.push(ident_apply(&vid, &vec![unbox_x.clone()]));
+                pre.push(ident_apply(&vid, &vec![unbox_y.clone()]));
+            }
+            for field in variant.a.iter() {
+                let (typ, _, _) = &field.a;
+                let mut is_recursive = |t: &Typ| match &**t {
+                    TypX::Datatype(path, _)
+                        if ctx.global.datatype_graph.in_same_scc(path, dpath) =>
+                    {
+                        Err(())
+                    }
+                    _ => Ok(()),
+                };
+                let uses_ext = uses_ext_equal(ctx, typ)
+                    // to avoid trigger matching loops, use ==, not ext_equal, for recursive fields:
+                    && !crate::ast_visitor::typ_visitor_check(typ, &mut is_recursive).is_err();
+                let fid = variant_field_ident(&dpath, &variant.name, &field.name);
+                let xfield = ident_apply(&fid, &vec![unbox_x.clone()]);
+                let yfield = ident_apply(&fid, &vec![unbox_y.clone()]);
+                let eq = if uses_ext {
+                    let xfield = crate::sst_to_air::as_box(ctx, xfield, typ);
+                    let yfield = crate::sst_to_air::as_box(ctx, yfield, typ);
+                    let ftid = crate::sst_to_air::typ_to_id(typ);
+                    let args = &vec![deep_var.clone(), ftid, xfield, yfield];
+                    str_apply(crate::def::EXT_EQ, args)
+                } else {
+                    mk_eq(&xfield, &yfield)
+                };
+                pre.push(eq);
+            }
+            axiom_commands.push(eq_command(&variant_ident(&dpath, &variant.name), &pre));
+        }
+        if is_fun {
+            // lambda ext_equal axiom:
+            //   forall typ1 ... typn, tret, deep: bool, x: Poly, y: Poly.
+            //     has_typex && has_typey &&
+            //     (forall arg1: Poly ... argn: Poly.
+            //       has_type1 && ... && has_typen ==>
+            //       ext_eq(deep, t1, apply(x, args), apply(y, args))
+            //     ==> ext_eq(deep, t_lambda, x, y)
+            //   trigger on ext_eq(deep, t_lambda, x, y)
+            let mut pre: Vec<Expr> = vec![has_x.clone(), has_y.clone()];
+            let args = fun_args.unwrap();
+            let params = fun_params.unwrap();
+            let inner_has = fun_has.unwrap();
+            let xapp =
+                Arc::new(ExprX::ApplyLambda(apolytyp.clone(), unbox_x.clone(), args.clone()));
+            let yapp =
+                Arc::new(ExprX::ApplyLambda(apolytyp.clone(), unbox_y.clone(), args.clone()));
+            let tparamret = typ_args.last().expect("return type").clone();
+            let ret_id = crate::sst_to_air::typ_to_id(&tparamret);
+            let args = &vec![deep_var.clone(), ret_id, xapp, yapp];
+            let ext_eq = str_apply(crate::def::EXT_EQ, args);
+            let imply = mk_implies(&inner_has, &ext_eq);
+            let bind = func_bind_trig(
+                ctx,
+                format!("{}_inner_{}", path_as_rust_name(dpath), QID_EXT_EQUAL),
+                &Arc::new(vec![]),
+                &Arc::new(params.clone()),
+                &vec![ext_eq.clone()],
+                false,
+            );
+            pre.push(mk_bind_expr(&bind, &imply));
+            axiom_commands.push(eq_command(&path_as_rust_name(dpath), &pre));
+        }
+    }
 }
 
 pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Commands {
@@ -374,6 +508,7 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
             true,
             true,
             false,
+            true,
         );
     }
 
@@ -398,6 +533,7 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
             &Arc::new(vec![]),
             false,
             true,
+            false,
             false,
         );
     }
@@ -432,6 +568,7 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
             false,
             is_transparent,
             is_transparent,
+            is_transparent && datatype.x.ext_equal,
         );
     }
     let mut commands: Vec<Command> = Vec::new();

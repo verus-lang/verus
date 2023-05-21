@@ -492,6 +492,7 @@ fn hash_exp<H: Hasher>(state: &mut H, exp: &Exp) {
         Unary(op, e) => dohash!(9, op; hash_exp(e)),
         UnaryOpr(op, e) => dohash!(10, op; hash_exp(e)),
         Binary(op, e1, e2) => dohash!(11, op; hash_exp(e1), hash_exp(e2)),
+        BinaryOpr(op, e1, e2) => dohash!(111, op; hash_exp(e1), hash_exp(e2)),
         If(e1, e2, e3) => dohash!(12; hash_exp(e1), hash_exp(e2), hash_exp(e3)),
         WithTriggers(trigs, e) => dohash!(13; hash_trigs(trigs), hash_exp(e)),
         Bind(bnd, e) => dohash!(14; hash_bnd(bnd), hash_exp(e)),
@@ -1487,6 +1488,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             InterpExp::Closure(_, _) => ok,
         },
         // Ignored by the interpreter at present (i.e., treated as symbolic)
+        BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), _, _) => ok,
         VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | WithTriggers(..) => ok,
     };
     let res = r?;

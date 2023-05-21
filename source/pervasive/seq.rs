@@ -29,6 +29,7 @@ verus! {
 /// [`assert_seqs_equal!`](crate::seq_lib::assert_seqs_equal) macro.
 
 #[verifier(external_body)]
+#[verifier::ext_equal]
 pub struct Seq<#[verifier(strictly_positive)] A> {
     dummy: marker::PhantomData<A>,
 }
@@ -95,18 +96,20 @@ impl<A> Seq<A> {
     pub spec fn update(self, i: int, a: A) -> Seq<A>
         recommends 0 <= i < self.len();
 
+    /// DEPRECATED: use builtin::ext_equal or builtin::ext_equal_deep instead.
     /// Returns `true` if the two sequences are pointwise equal, i.e.,
     /// they have the same length and the corresponding values are equal
     /// at each index. This is equivalent to the sequences being actually equal
     /// by [`axiom_seq_ext_equal`].
     ///
-    /// To prove that two sequences are equal via extensionality, it is generally easier
+    /// To prove that two sequences are equal via extensionality, it may be easier
+    /// to use the general-purpose `builtin::ext_equal` or `builtin::ext_equal_deep` or
     /// to use the [`assert_seqs_equal!`](crate::seq_lib::assert_seqs_equal) macro,
-    /// rather than using `ext_equal` directly.
+    /// rather than using `.ext_equal` directly.
 
+    #[deprecated = "use builtin::ext_equal or builtin::ext_equal_deep instead"]
     pub open spec fn ext_equal(self, s2: Seq<A>) -> bool {
-        &&& self.len() == s2.len()
-        &&& forall|i: int| 0 <= i < self.len() ==> self[i] == s2[i]
+        ext_equal(self, s2)
     }
 
     /// Returns a sequence for the given subrange.
@@ -249,7 +252,21 @@ pub proof fn axiom_seq_update_different<A>(s: Seq<A>, i1: int, i2: int, a: A)
 #[verifier(broadcast_forall)]
 pub proof fn axiom_seq_ext_equal<A>(s1: Seq<A>, s2: Seq<A>)
     ensures
-        s1.ext_equal(s2) == (s1 == s2),
+        #[trigger] ext_equal(s1, s2) <==> {
+            &&& s1.len() == s2.len()
+            &&& forall|i: int| 0 <= i < s1.len() ==> s1[i] == s2[i]
+        },
+{
+}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_ext_equal_deep<A>(s1: Seq<A>, s2: Seq<A>)
+    ensures
+        #[trigger] ext_equal_deep(s1, s2) <==> {
+            &&& s1.len() == s2.len()
+            &&& forall|i: int| 0 <= i < s1.len() ==> ext_equal_deep(s1[i], s2[i])
+        },
 {
 }
 

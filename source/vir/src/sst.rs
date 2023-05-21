@@ -72,6 +72,7 @@ pub enum ExpX {
     Unary(UnaryOp, Exp),
     UnaryOpr(UnaryOpr, Exp),
     Binary(BinaryOp, Exp, Exp),
+    BinaryOpr(crate::ast::BinaryOpr, Exp, Exp),
     If(Exp, Exp, Exp),
     WithTriggers(Trigs, Exp),
     Bind(Bnd, Exp),

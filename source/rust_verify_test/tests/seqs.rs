@@ -116,7 +116,19 @@ test_verify_one_file! {
         use vstd::seq_lib::*;
 
         proof fn test() {
-            let s1 = seq![10, 20, 30, 45, 55, 70];
+            // TODO: seq! is currently defined via repeated pushes.
+            // This has sometimes led to Z3 timeouts, including in this test.
+            // It may be time for a more efficient definition of seq!
+            // (for example, via if/else, as shown below).
+            //let s1 = seq![10, 20, 30, 45, 55, 70];
+            let s1 = Seq::new(6, |i: int|
+                if i == 0 { 10 }
+                else if i == 1 { 20 }
+                else if i == 2 { 30 }
+                else if i == 3 { 45 }
+                else if i == 4 { 55 }
+                else { 70 }
+            );
             let s2 = s1.filter(|x: int| x < 40);
             let s3 = seq![90, 100];
             let s4 = s3.filter(|x: int| x < 40);

@@ -31,6 +31,7 @@ verus! {
 /// To prove that two maps are equal, it is usually easiest to use the [`assert_maps_equal!`] macro.
 
 #[verifier(external_body)]
+#[verifier::ext_equal]
 pub tracked struct Map<#[verifier(maybe_negative)] K, #[verifier(strictly_positive)] V> {
     dummy: marker::PhantomData<(K, V)>,
 }
@@ -86,17 +87,19 @@ impl<K, V> Map<K, V> {
 
     pub spec fn remove(self, key: K) -> Map<K, V>;
 
+    /// DEPRECATED: use builtin::ext_equal or builtin::ext_equal_deep instead.
     /// Returns true if the two maps are pointwise equal, i.e.,
     /// they have the same domains and the corresponding values are equal
     /// for each key. This is equivalent to the maps being actually equal
     /// by [`axiom_map_ext_equal`].
     ///
-    /// To prove that two maps are equal via extensionality, it is generally easier
-    /// to use the [`assert_maps_equal!`] macro, rather than using `ext_equal` directly.
+    /// To prove that two maps are equal via extensionality, it may be easier
+    /// to use the general-purpose `builtin::ext_equal` or `builtin::ext_equal_deep` or
+    /// to use the [`assert_maps_equal!`] macro, rather than using `.ext_equal` directly.
 
+    #[deprecated = "use builtin::ext_equal or builtin::ext_equal_deep instead"]
     pub open spec fn ext_equal(self, m2: Map<K, V>) -> bool {
-        &&& self.dom().ext_equal(m2.dom())
-        &&& forall|k: K| #![auto] self.dom().contains(k) ==> self[k] == m2[k]
+        ext_equal(self, m2)
     }
 
     /// Returns true if the key `k` is in the domain of `self`.
@@ -353,7 +356,21 @@ pub proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
     ensures
-        m1.ext_equal(m2) == (m1 == m2),
+        #[trigger] ext_equal(m1, m2) <==> {
+            &&& ext_equal(m1.dom(), m2.dom())
+            &&& forall|k: K| #![auto] m1.dom().contains(k) ==> m1[k] == m2[k]
+        },
+{
+}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_map_ext_equal_deep<K, V>(m1: Map<K, V>, m2: Map<K, V>)
+    ensures
+        #[trigger] ext_equal_deep(m1, m2) <==> {
+            &&& ext_equal_deep(m1.dom(), m2.dom())
+            &&& forall|k: K| #![auto] m1.dom().contains(k) ==> ext_equal_deep(m1[k], m2[k])
+        },
 {
 }
 
@@ -470,7 +487,7 @@ macro_rules! assert_maps_equal_internal {
                 ]);
                 { $bblock }
             });
-            ::builtin::assert_(m1.ext_equal(m2));
+            ::builtin::assert_(::builtin::ext_equal(m1, m2));
         });
     }
 }

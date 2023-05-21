@@ -91,6 +91,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let as_type = str_to_node(AS_TYPE);
     let mk_fun = str_to_node(MK_FUN);
     let const_int = str_to_node(CONST_INT);
+    let ext_eq = str_to_node(EXT_EQ);
 
     let uint_xor = str_to_node(UINT_XOR);
     let uint_and = str_to_node(UINT_AND);
@@ -274,6 +275,15 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :pattern ((has_type ([box_strslice] x) [type_id_strslice]))
             :qid prelude_has_type_strslice
             :skolemid skolem_prelude_has_type_strslice
+        )))
+
+        // Extensional equality
+        (declare-fun [ext_eq] (Bool [typ] [Poly] [Poly]) Bool)
+        (axiom (forall ((deep Bool) (t [typ]) (x [Poly]) (y [Poly])) (!
+            (= (= x y) ([ext_eq] deep t x y))
+            :pattern (([ext_eq] deep t x y))
+            :qid prelude_as_type
+            :skolemid skolem_prelude_as_type
         )))
 
         // Integers

@@ -300,6 +300,14 @@ pub enum BinaryOp {
     StrGetChar,
 }
 
+/// More complex unary operations (requires Clone rather than Copy)
+/// (Below, "boxed" refers to boxing types in the SMT encoding, not the Rust Box type)
+#[derive(Clone, Debug, Serialize, Deserialize, Hash, ToDebugSNode)]
+pub enum BinaryOpr {
+    /// extensional equality ext_equal (true ==> deep extensionality)
+    ExtEq(bool, Typ),
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum MultiOp {
     Chained(Arc<Vec<InequalityOp>>),
@@ -525,6 +533,8 @@ pub enum ExprX {
     UnaryOpr(UnaryOpr, Expr),
     /// Primitive binary operation
     Binary(BinaryOp, Expr, Expr),
+    /// Special binary operation
+    BinaryOpr(BinaryOpr, Expr, Expr),
     /// Primitive multi-operand operation
     Multi(MultiOp, Exprs),
     /// Quantifier (forall/exists), binding the variables in Binders, with body Expr
@@ -774,6 +784,8 @@ pub struct DatatypeX {
     pub typ_params: TypPositiveBounds,
     pub variants: Variants,
     pub mode: Mode,
+    /// Generate ext_equal lemmas for datatype
+    pub ext_equal: bool,
 }
 pub type Datatype = Arc<Spanned<DatatypeX>>;
 pub type Datatypes = Vec<Datatype>;
