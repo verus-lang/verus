@@ -400,7 +400,7 @@ proof fn seq_to_set_rec_contains<A>(seq: Seq<A>)
             seq_to_set_rec_contains(seq.drop_last());
         }
 
-        assert(ext_equal(seq, seq.drop_last().push(seq.last())));
+        assert(seq =~= seq.drop_last().push(seq.last()));
         assert forall |a| #[trigger] seq.contains(a) <==> seq_to_set_rec(seq).contains(a) by {
             if !seq.drop_last().contains(a) {
                 if a == seq.last() {
@@ -422,7 +422,7 @@ proof fn seq_to_set_equal_rec<A>(seq: Seq<A>)
         seq_to_set_rec_contains(seq);
     }
     assert(forall |n| #[trigger] seq.contains(n) <==> seq.to_set().contains(n));
-    assert(ext_equal(seq.to_set(), seq_to_set_rec(seq)));
+    assert(seq.to_set() =~= seq_to_set_rec(seq));
 }
 
 

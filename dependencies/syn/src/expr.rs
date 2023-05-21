@@ -1203,6 +1203,10 @@ pub(crate) mod parsing {
                 BinOp::Exply(_) => Precedence::Exply,
                 BinOp::BigEq(_) => Precedence::Compare,
                 BinOp::BigNe(_) => Precedence::Compare,
+                BinOp::ExtEq(_) => Precedence::Compare,
+                BinOp::ExtNe(_) => Precedence::Compare,
+                BinOp::ExtDeepEq(_) => Precedence::Compare,
+                BinOp::ExtDeepNe(_) => Precedence::Compare,
             }
         }
     }

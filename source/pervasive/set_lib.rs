@@ -19,12 +19,12 @@ impl<A> Set<A> {
             self.finite(),
         ensures
             b <==> self.finite() && self.len() == 0,
-            b <==> ext_equal(self, Set::empty()),
+            b <==> self =~= Set::empty(),
     {
         if self.finite() && self.len() == 0 {
             lemma_len0_is_empty::<A>(self);
         }
-        ext_equal(self, Set::empty())
+        self =~= Set::empty()
     }
 
     pub open spec fn map<B>(self, f: FnSpec(A) -> B) -> Set<B> {
@@ -59,7 +59,7 @@ pub proof fn lemma_len0_is_empty<A>(s: Set<A>)
         // derive contradiction:
         assert(s.remove(s.choose()).len() + 1 == 0);
     }
-    assert(ext_equal(s, Set::empty()));
+    assert(s =~= Set::empty());
 }
 
 pub proof fn lemma_len_union<A>(s1: Set<A>, s2: Set<A>)
@@ -72,13 +72,13 @@ pub proof fn lemma_len_union<A>(s1: Set<A>, s2: Set<A>)
         s1.len(),
 {
     if s1.is_empty() {
-        assert(ext_equal(s1.union(s2), s2));
+        assert(s1.union(s2) =~= s2);
     } else {
         let a = s1.choose();
         if s2.contains(a) {
-            assert(ext_equal(s1.union(s2), s1.remove(a).union(s2)));
+            assert(s1.union(s2) =~= s1.remove(a).union(s2));
         } else {
-            assert(ext_equal(s1.union(s2).remove(a), s1.remove(a).union(s2)));
+            assert(s1.union(s2).remove(a) =~= s1.remove(a).union(s2));
         }
         lemma_len_union::<A>(s1.remove(a), s2);
     }
@@ -93,10 +93,10 @@ pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
         s1.len(),
 {
     if s1.is_empty() {
-        assert(ext_equal(s1.intersect(s2), s1));
+        assert(s1.intersect(s2) =~= s1);
     } else {
         let a = s1.choose();
-        assert(ext_equal(s1.intersect(s2).remove(a), s1.remove(a).intersect(s2)));
+        assert(s1.intersect(s2).remove(a) =~= s1.remove(a).intersect(s2));
         lemma_len_intersect::<A>(s1.remove(a), s2);
     }
 }
@@ -110,7 +110,7 @@ pub proof fn lemma_len_subset<A>(s1: Set<A>, s2: Set<A>)
         s1.finite(),
 {
     lemma_len_intersect::<A>(s2, s1);
-    assert(ext_equal(s2.intersect(s1), s1));
+    assert(s2.intersect(s1) =~= s1);
 }
 
 pub proof fn lemma_len_difference<A>(s1: Set<A>, s2: Set<A>)
@@ -122,10 +122,10 @@ pub proof fn lemma_len_difference<A>(s1: Set<A>, s2: Set<A>)
         s1.len(),
 {
     if s1.is_empty() {
-        assert(ext_equal(s1.difference(s2), s1));
+        assert(s1.difference(s2) =~= s1);
     } else {
         let a = s1.choose();
-        assert(ext_equal(s1.difference(s2).remove(a), s1.remove(a).difference(s2)));
+        assert(s1.difference(s2).remove(a) =~= s1.remove(a).difference(s2));
         lemma_len_difference::<A>(s1.remove(a), s2);
     }
 }
@@ -156,10 +156,10 @@ pub proof fn lemma_int_range(lo: int, hi: int)
         hi - lo,
 {
     if lo == hi {
-        assert(ext_equal(set_int_range(lo, hi), Set::empty()));
+        assert(set_int_range(lo, hi) =~= Set::empty());
     } else {
         lemma_int_range(lo, hi - 1);
-        assert(ext_equal(set_int_range(lo, hi - 1).insert(hi - 1), set_int_range(lo, hi)));
+        assert(set_int_range(lo, hi - 1).insert(hi - 1) =~= set_int_range(lo, hi));
     }
 }
 

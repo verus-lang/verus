@@ -7,7 +7,7 @@ test_verify_one_file! {
     #[test] test_fn verus_code! {
         proof fn test(x: FnSpec(int, u8) -> int, y: FnSpec(int, u8) -> int) {
             assume(forall|i: int, j: u8| #[trigger] x(i, j) == y(i, j));
-            assert(ext_equal(x, y));
+            assert(x =~= y);
         }
     } => Ok(())
 }
@@ -15,7 +15,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_fn_fails verus_code! {
         proof fn test(x: FnSpec(int, u8) -> int, y: FnSpec(int, u8) -> int) {
-            assert(ext_equal(x, y)); // FAILS
+            assert(x =~= y); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -27,7 +27,7 @@ test_verify_one_file! {
             assume(s1.len() == 1);
             assume(s2.len() == 1);
             assume(s1[0] == s2[0]);
-            assert(ext_equal(s1, s2));
+            assert(s1 =~= s2);
         }
     } => Ok(())
 }
@@ -38,7 +38,7 @@ test_verify_one_file! {
         proof fn test(s1: Seq<u8>, s2: Seq<u8>) {
             assume(s1.len() == 1);
             assume(s1[0] == s2[0]);
-            assert(ext_equal(s1, s2)); // FAILS
+            assert(s1 =~= s2); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -49,7 +49,7 @@ test_verify_one_file! {
         proof fn test(s1: Seq<u8>, s2: Seq<u8>) {
             assume(s1.len() == 1);
             assume(s2.len() == 1);
-            assert(ext_equal(s1, s2)); // FAILS
+            assert(s1 =~= s2); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -62,7 +62,7 @@ test_verify_one_file! {
             assume(forall|i: u8| 1 <= i ==> !s2.contains(i));
             assume(s1.contains(0));
             assume(s2.contains(0));
-            assert(ext_equal(s1, s2));
+            assert(s1 =~= s2);
         }
     } => Ok(())
 }
@@ -74,7 +74,7 @@ test_verify_one_file! {
             assume(forall|i: u8| 1 <= i ==> !s1.contains(i));
             assume(s1.contains(0));
             assume(s2.contains(0));
-            assert(ext_equal(s1, s2)); // FAILS
+            assert(s1 =~= s2); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -86,7 +86,7 @@ test_verify_one_file! {
             assume(forall|i: u8| 1 <= i ==> !s1.contains(i));
             assume(forall|i: u8| 1 <= i ==> !s2.contains(i));
             assume(s2.contains(0));
-            assert(ext_equal(s1, s2)); // FAILS
+            assert(s1 =~= s2); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -100,7 +100,7 @@ test_verify_one_file! {
             assume(m1.dom().contains(0));
             assume(m2.dom().contains(0));
             assume(m1[0] == m2[0]);
-            assert(ext_equal(m1, m2));
+            assert(m1 =~= m2);
         }
     } => Ok(())
 }
@@ -113,7 +113,7 @@ test_verify_one_file! {
             assume(m1.dom().contains(0));
             assume(m2.dom().contains(0));
             assume(m1[0] == m2[0]);
-            assert(ext_equal(m1, m2)); // FAILS
+            assert(m1 =~= m2); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -126,7 +126,7 @@ test_verify_one_file! {
             assume(forall|i: u8| 1 <= i ==> !m2.dom().contains(i));
             assume(m1.dom().contains(0));
             assume(m2.dom().contains(0));
-            assert(ext_equal(m1, m2)); // FAILS
+            assert(m1 =~= m2); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -140,8 +140,8 @@ test_verify_one_file! {
             assume(s1[0].len() == 1);
             assume(s2[0].len() == 1);
             assume(s1[0][0] == s2[0][0]);
-            assert(ext_equal(s1[0], s2[0]));
-            assert(ext_equal(s1, s2));
+            assert(s1[0] =~= s2[0]);
+            assert(s1 =~= s2);
         }
     } => Ok(())
 }
@@ -155,7 +155,7 @@ test_verify_one_file! {
             assume(s1[0].len() == 1);
             assume(s2[0].len() == 1);
             assume(s1[0][0] == s2[0][0]);
-            assert(ext_equal(s1, s2)); // FAILS
+            assert(s1 =~= s2); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -169,7 +169,7 @@ test_verify_one_file! {
             assume(s1[0].len() == 1);
             assume(s2[0].len() == 1);
             assume(s1[0][0] == s2[0][0]);
-            assert(ext_equal_deep(s1, s2));
+            assert(s1 =~~= s2);
         }
     } => Ok(())
 }
@@ -182,7 +182,7 @@ test_verify_one_file! {
             assume(s1[0].len() == 1);
             assume(s2[0].len() == 1);
             assume(s1[0][0] == s2[0][0]);
-            assert(ext_equal_deep(s1, s2)); // FAILS
+            assert(s1 =~~= s2); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -195,7 +195,7 @@ test_verify_one_file! {
             assume(s2.len() == 1);
             assume(s1[0].len() == 1);
             assume(s1[0][0] == s2[0][0]);
-            assert(ext_equal_deep(s1, s2)); // FAILS
+            assert(s1 =~~= s2); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -208,7 +208,7 @@ test_verify_one_file! {
             assume(s2.len() == 1);
             assume(s1[0].len() == 1);
             assume(s2[0].len() == 1);
-            assert(ext_equal_deep(s1, s2)); // FAILS
+            assert(s1 =~~= s2); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -227,8 +227,8 @@ test_verify_one_file! {
             assume(s4.len() == 1);
             assume(s1[0] == s3[0]);
             assume(s2[0] == s4[0]);
-            assert(ext_equal(s2, s4));
-            assert(ext_equal(x, y));
+            assert(s2 =~= s4);
+            assert(x =~= y);
         }
     } => Ok(())
 }
@@ -247,9 +247,9 @@ test_verify_one_file! {
             assume(s4.len() == 1);
             assume(s1[0] == s3[0]);
             assume(s2[0] == s4[0]);
-            assert(ext_equal(s2, s4));
+            assert(s2 =~= s4);
             // fails without #[verifier::ext_equal]
-            assert(ext_equal(x, y)); // FAILS
+            assert(x =~= y); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -269,7 +269,7 @@ test_verify_one_file! {
             assume(s1[0] == s3[0]);
             assume(s2[0] == s4[0]);
             // to avoid trigger matching loops, ext_equal does not traverse recursive data structure fields:
-            assert(ext_equal(x, y)); // FAILS
+            assert(x =~= y); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -288,8 +288,8 @@ test_verify_one_file! {
             assume(s4.len() == 1);
             assume(s1[0] == s3[0]);
             assume(s2[0] == s4[0]);
-            assert(ext_equal_deep(s2, s4));
-            assert(ext_equal_deep(x, y));
+            assert(s2 =~~= s4);
+            assert(x =~~= y);
         }
     } => Ok(())
 }
@@ -309,7 +309,7 @@ test_verify_one_file! {
             assume(s1[0] == s3[0]);
             assume(s2[0] == s4[0]);
             // to avoid trigger matching loops, ext_equal does not traverse recursive data structure fields:
-            assert(ext_equal_deep(x, y)); // FAILS
+            assert(x =~~= y); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -335,7 +335,7 @@ const SEQ4: &str = verus_code_str! {
         // TODO: make this broadcast_forall
         pub proof fn lemma_ext_equal<A>(x: Seq4<A>, y: Seq4<A>)
             ensures
-                ext_equal(x, y) <==> (forall|i: int| 0 <= i < 4 ==> x[i] == y[i]),
+                x =~= y <==> (forall|i: int| 0 <= i < 4 ==> x[i] == y[i]),
         {
             if (forall|i: int| 0 <= i < 4 ==> x[i] == y[i]) {
                 assert(x[0] == y[0]);
@@ -347,7 +347,7 @@ const SEQ4: &str = verus_code_str! {
         // TODO: make this broadcast_forall
         pub proof fn lemma_ext_equal_deep<A>(x: Seq4<A>, y: Seq4<A>)
             ensures
-                ext_equal_deep(x, y) <==> (forall|i: int| 0 <= i < 4 ==> ext_equal_deep(x[i], y[i])),
+                x =~~= y <==> (forall|i: int| 0 <= i < 4 ==> x[i] =~~= y[i]),
         {
             lemma_ext_equal(x, y);
         }

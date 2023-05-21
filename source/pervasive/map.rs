@@ -87,19 +87,19 @@ impl<K, V> Map<K, V> {
 
     pub spec fn remove(self, key: K) -> Map<K, V>;
 
-    /// DEPRECATED: use builtin::ext_equal or builtin::ext_equal_deep instead.
+    /// DEPRECATED: use =~= or =~~= instead.
     /// Returns true if the two maps are pointwise equal, i.e.,
     /// they have the same domains and the corresponding values are equal
     /// for each key. This is equivalent to the maps being actually equal
     /// by [`axiom_map_ext_equal`].
     ///
     /// To prove that two maps are equal via extensionality, it may be easier
-    /// to use the general-purpose `builtin::ext_equal` or `builtin::ext_equal_deep` or
+    /// to use the general-purpose `=~=` or `=~~=` or
     /// to use the [`assert_maps_equal!`] macro, rather than using `.ext_equal` directly.
 
-    #[deprecated = "use builtin::ext_equal or builtin::ext_equal_deep instead"]
+    #[deprecated = "use =~= or =~~= instead"]
     pub open spec fn ext_equal(self, m2: Map<K, V>) -> bool {
-        ext_equal(self, m2)
+        self =~= m2
     }
 
     /// Returns true if the key `k` is in the domain of `self`.
@@ -356,8 +356,8 @@ pub proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
     ensures
-        #[trigger] ext_equal(m1, m2) <==> {
-            &&& ext_equal(m1.dom(), m2.dom())
+        #[trigger] (m1 =~= m2) <==> {
+            &&& m1.dom() =~= m2.dom()
             &&& forall|k: K| #![auto] m1.dom().contains(k) ==> m1[k] == m2[k]
         },
 {
@@ -367,9 +367,9 @@ pub proof fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_ext_equal_deep<K, V>(m1: Map<K, V>, m2: Map<K, V>)
     ensures
-        #[trigger] ext_equal_deep(m1, m2) <==> {
-            &&& ext_equal_deep(m1.dom(), m2.dom())
-            &&& forall|k: K| #![auto] m1.dom().contains(k) ==> ext_equal_deep(m1[k], m2[k])
+        #[trigger] (m1 =~~= m2) <==> {
+            &&& m1.dom() =~~= m2.dom()
+            &&& forall|k: K| #![auto] m1.dom().contains(k) ==> m1[k] =~~= m2[k]
         },
 {
 }

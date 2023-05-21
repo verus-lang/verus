@@ -523,6 +523,26 @@
           {
             "token": "NeEq"
           }
+        ],
+        "ExtEq": [
+          {
+            "token": "TildeEq"
+          }
+        ],
+        "ExtNe": [
+          {
+            "token": "TildeNe"
+          }
+        ],
+        "ExtDeepEq": [
+          {
+            "token": "TildeTildeEq"
+          }
+        ],
+        "ExtDeepNe": [
+          {
+            "token": "TildeTildeNe"
+          }
         ]
       }
     },
@@ -6526,6 +6546,10 @@
     "SubEq": "-=",
     "Super": "super",
     "Tilde": "~",
+    "TildeEq": "=~=",
+    "TildeNe": "!~=",
+    "TildeTildeEq": "=~~=",
+    "TildeTildeNe": "!~~=",
     "Tracked": "tracked",
     "Trait": "trait",
     "Try": "try",

@@ -200,7 +200,7 @@ test_verify_one_file! {
                             && imply(mm1.dom().contains(key) && mm2.dom().contains(key),
                                 equal(mm1.index(key), mm2.index(key)))
                         by { {} }
-                    assert(mm1.ext_equal(mm2));
+                    assert(mm1 =~= mm2);
                 }
 
                 assume(equal(union1, union2));

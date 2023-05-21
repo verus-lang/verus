@@ -242,7 +242,7 @@ proof fn next_refines_next_with_macro(pre: ShardedKVProtocol::State, post: Shard
             MapSpec::show::insert_op(interp(pre), interp(post), key, value);
         }
         query(idx, key, value) => {
-            //assert(interp(pre).map.ext_equal(interp(post).map));
+            //assert(interp(pre).map =~= interp(post).map);
             //assert(equal(interp(pre).map, interp(post).map));
 
             //assert(equal(Map::total(|key| pre.abstraction_one_key(key)).dom(),

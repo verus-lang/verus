@@ -6,7 +6,7 @@ use common::*;
 test_verify_one_file! {
     #[test] test_use_fun_ext verus_code! {
         proof fn test_use_fun_ext(f: FnSpec(int) -> int) {
-            assert(ext_equal(|i: int| i + 1, |i: int| 1 + i));
+            assert((|i: int| i + 1) =~= (|i: int| 1 + i));
         }
     } => Ok(())
 }
@@ -21,7 +21,7 @@ test_verify_one_file! {
         proof fn test_use_fun_ext2<A>(f: FnSpec(int) -> A, k1: nat, k2: nat)
             ensures drop(drop(f, k1), k2) === drop(f, k1 + k2)
         {
-            assert(ext_equal(drop(drop(f, k1), k2), drop(f, k1 + k2)));
+            assert(drop(drop(f, k1), k2) =~= drop(f, k1 + k2));
         }
     } => Ok(())
 }

@@ -14,7 +14,7 @@ test_verify_one_file! {
             assert(m1.index(2) == 20);
             let s2 = Set::<int>::empty().insert(1).insert(3).insert(2);
             let m2 = s2.mk_map(|k: int| 3 * k + 7 * k);
-            assert(m1.ext_equal(m2));
+            assert(m1 =~= m2);
             let m3 = map![10int => true ==> false, 20int => false ==> true];
             assert(!m3.index(10));
             assert(m3.index(20));
@@ -45,7 +45,7 @@ test_verify_one_file! {
             assert(m1.index(4) == 40); // FAILS
             let s2 = Set::<int>::empty().insert(1).insert(3).insert(2);
             let m2 = s2.mk_map(|k: int| 3 * k + 7 * k);
-            assert(m1.ext_equal(m2));
+            assert(m1 =~= m2);
         }
     } => Err(err) => assert_one_fails(err)
 }

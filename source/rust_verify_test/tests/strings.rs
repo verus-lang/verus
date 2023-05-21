@@ -90,8 +90,7 @@ test_verify_one_file! {
         use vstd::string::*;
         fn test_substring_passes<'a>() -> (ret: StrSlice<'a>)
             ensures
-                ret@.subrange(0,5).ext_equal(new_strlit("Hello")@)
-
+                ret@.subrange(0,5) =~= new_strlit("Hello")@
         {
             proof {
                 reveal_strlit("Hello");
@@ -103,7 +102,7 @@ test_verify_one_file! {
 
         fn test_substring_passes2<'a>() -> (ret: StrSlice<'a>)
             ensures
-                ret@.subrange(0,5).ext_equal(new_strlit("Hello")@)
+                ret@.subrange(0,5) =~= new_strlit("Hello")@
         {
             let x = new_strlit("Hello World");
 
@@ -122,7 +121,7 @@ test_verify_one_file! {
         use vstd::string::*;
         fn test_substring_fails<'a>() -> (ret: StrSlice<'a>)
             ensures
-                ret@.subrange(0,5).ext_equal(new_strlit("Hello")@) // FAILS
+                ret@.subrange(0,5) =~= new_strlit("Hello")@ // FAILS
         {
             proof {
                 reveal_strlit("Hello");
@@ -165,9 +164,9 @@ test_verify_one_file! {
             assert(a === a);
             assert(a0_clone === a0);
 
-            assert(a@.ext_equal(abc@.subrange(0,1)));
-            assert(b@.ext_equal(abc@.subrange(1,2)));
-            assert(c@.ext_equal(abc@.subrange(2,3)));
+            assert(a@ =~= abc@.subrange(0,1));
+            assert(b@ =~= abc@.subrange(1,2));
+            assert(c@ =~= abc@.subrange(2,3));
 
             assert(cba !== abc);
             assert(abc === abc_clone);
@@ -364,10 +363,10 @@ test_verify_one_file! {
             assert(x@.len() == 6);
 
             let x0 = x.substring_char(0,3);
-            assert(x0@.ext_equal(new_strlit("012")@));
+            assert(x0@ =~= new_strlit("012")@);
 
             let x1 = x.substring_char(3,6);
-            assert(x1@.ext_equal(new_strlit("34💩")@));
+            assert(x1@ =~= new_strlit("34💩")@);
 
         }
     } => Ok(())
@@ -396,7 +395,7 @@ test_verify_one_file! {
             proof {
                 reveal_strlit("B");
             }
-            assert(b@.ext_equal(new_strlit("B")@));
+            assert(b@ =~= new_strlit("B")@);
         }
     } => Ok(())
 }
@@ -414,7 +413,7 @@ test_verify_one_file! {
                 reveal_strlit("B");
                 reveal_strlit("C");
             }
-            assert(b@.ext_equal(new_strlit("C")@));
+            assert(b@ =~= new_strlit("C")@);
             assert(b@ === new_strlit("B")@); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
@@ -430,7 +429,7 @@ test_verify_one_file! {
             proof {
                 reveal_strlit("ABC");
             }
-            assert(a@.ext_equal(c@));
+            assert(a@ =~= c@);
             assert(a.is_ascii());
             assert(b.is_ascii());
             assert(c.is_ascii());
@@ -587,7 +586,7 @@ test_verify_one_file! {
 
             let mut s = new_strlit("hello ").to_string();
             s.append(new_strlit("world"));
-            assert(s@.ext_equal(new_strlit("hello world")@));
+            assert(s@ =~= new_strlit("hello world")@);
             s
         }
 
@@ -610,7 +609,7 @@ test_verify_one_file! {
 
             let mut s = new_strlit("hello ").to_string();
             s.append(new_strlit("world"));
-            assert(!s@.ext_equal(new_strlit("hello worlds")@));
+            assert(s@ !~= new_strlit("hello worlds")@);
             s
         }
 
@@ -633,7 +632,7 @@ test_verify_one_file! {
 
             let s1 = new_strlit("hello ").to_string();
             let s = s1.concat(new_strlit("world"));
-            assert(s@.ext_equal(new_strlit("hello world")@));
+            assert(s@ =~= new_strlit("hello world")@);
             s
         }
 
@@ -656,7 +655,7 @@ test_verify_one_file! {
 
             let s1 = new_strlit("hello ").to_string();
             let s = s1.concat(new_strlit("world"));
-            assert(!s@.ext_equal(new_strlit("hello worlds")@));
+            assert(s@ !~= new_strlit("hello worlds")@);
             s
         }
 

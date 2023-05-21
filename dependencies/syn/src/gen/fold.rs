@@ -1153,6 +1153,18 @@ where
         BinOp::BigNe(_binding_0) => {
             BinOp::BigNe(Token![!==](tokens_helper(f, &_binding_0.spans)))
         }
+        BinOp::ExtEq(_binding_0) => {
+            BinOp::ExtEq(Token![=~=](tokens_helper(f, &_binding_0.spans)))
+        }
+        BinOp::ExtNe(_binding_0) => {
+            BinOp::ExtNe(Token![!~=](tokens_helper(f, &_binding_0.spans)))
+        }
+        BinOp::ExtDeepEq(_binding_0) => {
+            BinOp::ExtDeepEq(Token![=~~=](tokens_helper(f, &_binding_0.spans)))
+        }
+        BinOp::ExtDeepNe(_binding_0) => {
+            BinOp::ExtDeepNe(Token![!~~=](tokens_helper(f, &_binding_0.spans)))
+        }
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]

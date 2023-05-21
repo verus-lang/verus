@@ -142,7 +142,7 @@ impl<V> DListXor<V> {
         self.head = self.tail;
 
         assert(0u64 ^ 0u64 == 0u64) by(bit_vector);
-        assert(self@.ext_equal(old(self)@.push(v)));
+        assert(self@ =~= old(self)@.push(v));
     }
 
     fn push_back(&mut self, v: V)
@@ -221,7 +221,7 @@ impl<V> DListXor<V> {
                 assert forall|i: int| 0 <= i < self.ptrs@.len() - 1 implies old(self)@[i] == self@[i] by {
                     assert(old(self).wf_perm(i as nat)); // trigger
                 };
-                assert(self@.ext_equal(old(self)@.push(v)));
+                assert(self@ =~= old(self)@.push(v));
             }
         }
     }
@@ -329,7 +329,7 @@ impl<V> DListXor<V> {
                 assert(old(self).wf_perm(i as nat)); // trigger
             }
 
-            assert(self@.ext_equal(old(self)@.drop_last()));
+            assert(self@ =~= old(self)@.drop_last());
         }
 
         v
@@ -438,7 +438,7 @@ impl<V> DListXor<V> {
                 assert(old(self).wf_perm(i as nat + 1)); // trigger
             }
 
-            assert(self@.ext_equal(old(self)@.subrange(1, old(self)@.len() as int)));
+            assert(self@ =~= old(self)@.subrange(1, old(self)@.len() as int));
         }
 
         v
@@ -461,7 +461,7 @@ impl<V> DListXor<V> {
             }
 
             self.push_empty_case(v);
-            assert(self@.ext_equal(seq![v].add(old(self)@)));
+            assert(self@ =~= seq![v].add(old(self)@));
         } else {
             assert(self.ptrs@.len() > 0);
             assert(self.wf_perm(0));
@@ -537,7 +537,7 @@ impl<V> DListXor<V> {
                 assert forall|i: int| 1 <= i <= self.ptrs@.len() - 1 implies old(self)@[i - 1] == self@[i] by {
                     assert(old(self).wf_perm((i - 1) as nat)); // trigger
                 };
-                assert(self@.ext_equal(seq![v].add(old(self)@)));
+                assert(self@ =~= seq![v].add(old(self)@));
             }
         }
     }

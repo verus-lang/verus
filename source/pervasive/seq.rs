@@ -96,20 +96,20 @@ impl<A> Seq<A> {
     pub spec fn update(self, i: int, a: A) -> Seq<A>
         recommends 0 <= i < self.len();
 
-    /// DEPRECATED: use builtin::ext_equal or builtin::ext_equal_deep instead.
+    /// DEPRECATED: use =~= or =~~= instead.
     /// Returns `true` if the two sequences are pointwise equal, i.e.,
     /// they have the same length and the corresponding values are equal
     /// at each index. This is equivalent to the sequences being actually equal
     /// by [`axiom_seq_ext_equal`].
     ///
     /// To prove that two sequences are equal via extensionality, it may be easier
-    /// to use the general-purpose `builtin::ext_equal` or `builtin::ext_equal_deep` or
+    /// to use the general-purpose `=~=` or `=~~=` or
     /// to use the [`assert_seqs_equal!`](crate::seq_lib::assert_seqs_equal) macro,
     /// rather than using `.ext_equal` directly.
 
-    #[deprecated = "use builtin::ext_equal or builtin::ext_equal_deep instead"]
+    #[deprecated = "use =~= or =~~= instead"]
     pub open spec fn ext_equal(self, s2: Seq<A>) -> bool {
-        ext_equal(self, s2)
+        self =~= s2
     }
 
     /// Returns a sequence for the given subrange.
@@ -252,7 +252,7 @@ pub proof fn axiom_seq_update_different<A>(s: Seq<A>, i1: int, i2: int, a: A)
 #[verifier(broadcast_forall)]
 pub proof fn axiom_seq_ext_equal<A>(s1: Seq<A>, s2: Seq<A>)
     ensures
-        #[trigger] ext_equal(s1, s2) <==> {
+        #[trigger] (s1 =~= s2) <==> {
             &&& s1.len() == s2.len()
             &&& forall|i: int| 0 <= i < s1.len() ==> s1[i] == s2[i]
         },
@@ -263,9 +263,9 @@ pub proof fn axiom_seq_ext_equal<A>(s1: Seq<A>, s2: Seq<A>)
 #[verifier(broadcast_forall)]
 pub proof fn axiom_seq_ext_equal_deep<A>(s1: Seq<A>, s2: Seq<A>)
     ensures
-        #[trigger] ext_equal_deep(s1, s2) <==> {
+        #[trigger] (s1 =~~= s2) <==> {
             &&& s1.len() == s2.len()
-            &&& forall|i: int| 0 <= i < s1.len() ==> ext_equal_deep(s1[i], s2[i])
+            &&& forall|i: int| 0 <= i < s1.len() ==> s1[i] =~~= s2[i]
         },
 {
 }

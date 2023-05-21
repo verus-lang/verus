@@ -115,7 +115,7 @@ test_verify_one_file! {
             ensures
                 a.add(b) === b.add(a),
         {
-            assert(a.add(b).ext_equal(b.add(a)));
+            assert(a.add(b) =~= b.add(a));
         }
 
         #[verifier(spinoff_prover)] /* vattr */
@@ -124,8 +124,8 @@ test_verify_one_file! {
                 a.add(b.add(c)) ===
                 a.add(b).add(c)
         {
-            assert(a.add(b.add(c)).ext_equal(
-                a.add(b).add(c)));
+            assert(a.add(b.add(c)) =~=
+                a.add(b).add(c));
         }
 
         #[verifier(spinoff_prover)] /* vattr */
@@ -135,8 +135,8 @@ test_verify_one_file! {
                 Multiset::empty().insert(b).insert(a)
         {
             assert(
-                Multiset::empty().insert(a).insert(b).ext_equal(
-                Multiset::empty().insert(b).insert(a)));
+                Multiset::empty().insert(a).insert(b) =~=
+                Multiset::empty().insert(b).insert(a));
         }
 
         #[verifier(spinoff_prover)] /* vattr */
@@ -154,7 +154,7 @@ test_verify_one_file! {
             ensures
                 a.add(b).sub(b) === a,
         {
-            assert(a.add(b).sub(b).ext_equal(a));
+            assert(a.add(b).sub(b) =~= a);
         }
 
         #[verifier(spinoff_prover)] /* vattr */
@@ -164,7 +164,7 @@ test_verify_one_file! {
             ensures
                 a.sub(b).add(b) === a
         {
-            assert(a.sub(b).add(b).ext_equal(a));
+            assert(a.sub(b).add(b) =~= a);
             assert(false) // FAILS
         }
 

@@ -68,6 +68,10 @@ ast_enum! {
         Exply(Token![<==]),
         BigEq(Token![===]),
         BigNe(Token![!==]),
+        ExtEq(Token![=~=]),
+        ExtNe(Token![!~=]),
+        ExtDeepEq(Token![=~~=]),
+        ExtDeepNe(Token![!~~=]),
     }
 }
 
@@ -109,6 +113,14 @@ pub mod parsing {
             input.parse().map(BinOp::BigEq)
         } else if input.peek(Token![!==]) {
             input.parse().map(BinOp::BigNe)
+        } else if input.peek(Token![=~=]) {
+            input.parse().map(BinOp::ExtEq)
+        } else if input.peek(Token![!~=]) {
+            input.parse().map(BinOp::ExtNe)
+        } else if input.peek(Token![=~~=]) {
+            input.parse().map(BinOp::ExtDeepEq)
+        } else if input.peek(Token![!~~=]) {
+            input.parse().map(BinOp::ExtDeepNe)
         } else if input.peek(Token![&&]) {
             input.parse().map(BinOp::And)
         } else if input.peek(Token![||]) {
@@ -255,6 +267,10 @@ mod printing {
                 BinOp::Exply(t) => t.to_tokens(tokens),
                 BinOp::BigEq(t) => t.to_tokens(tokens),
                 BinOp::BigNe(t) => t.to_tokens(tokens),
+                BinOp::ExtEq(t) => t.to_tokens(tokens),
+                BinOp::ExtNe(t) => t.to_tokens(tokens),
+                BinOp::ExtDeepEq(t) => t.to_tokens(tokens),
+                BinOp::ExtDeepNe(t) => t.to_tokens(tokens),
             }
         }
     }
