@@ -7,7 +7,7 @@
 
 // An invariant storing objects of type V needs to be able to have some kind of configurable
 // predicate `V -> bool`. However, doing this naively with a fully configurable
-// predicate function would result in V being maybe_negative,
+// predicate function would result in V being reject_recursive_types,
 // which is too limiting and prevents important use cases with recursive types.
 
 //
@@ -22,7 +22,7 @@
 //  * V - Type of the stored 'tracked' object 
 //  * Pred: InvariantPredicate - provides the predicate (K, V) -> bool
 //
-// With this setup, we can now let both K and V be strictly_positive.
+// With this setup, we can now declare both K and V without reject_recursive_types.
 // To be sure, note that the following, based on our trait formalism,
 // is well-formed CIC (Coq), without any type polarity issues:
 //
@@ -119,7 +119,10 @@ pub trait InvariantPredicate<K, V> {
 
 #[verifier::proof]
 #[verifier::external_body] /* vattr */
-pub struct AtomicInvariant<#[verifier::strictly_positive] /* vattr */ K, #[verifier::strictly_positive] /* vattr */ V, #[verifier::strictly_positive] /* vattr */ Pred> {
+#[verifier::accept_recursive_types(K)]
+#[verifier::accept_recursive_types(V)]
+#[verifier::accept_recursive_types(Pred)]
+pub struct AtomicInvariant<K, V, Pred> {
     dummy: builtin::SyncSendIfSend<V>,
     dummy1: core::marker::PhantomData<(K, Pred)>,
 }
@@ -168,7 +171,10 @@ impl<K, V, Pred> AtomicInvariant<K, V, Pred> {
 
 #[verifier::proof]
 #[verifier::external_body] /* vattr */
-pub struct LocalInvariant<#[verifier::strictly_positive] /* vattr */ K, #[verifier::strictly_positive] /* vattr */ V, #[verifier::strictly_positive] /* vattr */ Pred> {
+#[verifier::accept_recursive_types(K)]
+#[verifier::accept_recursive_types(V)]
+#[verifier::accept_recursive_types(Pred)]
+pub struct LocalInvariant<K, V, Pred> {
     dummy: builtin::SendIfSend<V>,
     dummy1: core::marker::PhantomData<(K, Pred)>, // TODO ignore Send/Sync here
 }

@@ -810,8 +810,9 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         let visibility = Visibility { owning_module: None, restricted_to: None };
         let transparency = DatatypeTransparency::Always;
         let bound = Arc::new(GenericBoundX::Traits(vec![]));
+        let acc = crate::ast::AcceptRecursiveType::RejectInGround;
         let typ_params =
-            Arc::new((0..arity).map(|i| (prefix_tuple_param(i), bound.clone(), true)).collect());
+            Arc::new((0..arity).map(|i| (prefix_tuple_param(i), bound.clone(), acc)).collect());
         let mut fields: Vec<Field> = Vec::new();
         for i in 0..arity {
             let typ = Arc::new(TypX::TypParam(prefix_tuple_param(i)));

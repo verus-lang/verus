@@ -649,8 +649,28 @@ pub enum GenericBoundX {
 }
 
 pub type TypBounds = Arc<Vec<(Ident, GenericBound)>>;
-/// Each type parameter is (name: Ident, bound: GenericBound, strictly_positive: bool)
-pub type TypPositiveBounds = Arc<Vec<(Ident, GenericBound, bool)>>;
+/// When instantiating type S<A> with A = T in a recursive type definition,
+/// is T allowed to include the one of recursively defined types?
+/// Example:
+///   enum Foo { Rec(S<Box<Foo>>), None }
+///   enum Bar { Rec(S<Box<Bar>>) }
+///   (instantiates A with recursive type Box<Foo> or Box<Bar>)
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy, PartialEq, Eq)]
+pub enum AcceptRecursiveType {
+    /// rejects the Foo example above
+    /// (because A may occur negatively in S)
+    Reject,
+    /// accepts the Foo example above because the occurrence is in Rec,
+    /// which is not the ground variant for Foo (None is the ground variant for Foo),
+    /// but rejects Bar because Rec is the ground variant for Bar (since there is no None variant)
+    /// (because A occurs only strictly positively in S, but may occur in S's ground variant)
+    RejectInGround,
+    /// accepts both Foo and Bar
+    /// (because A occurs only strictly positively in S, and does not occur in S's ground variant)
+    Accept,
+}
+/// Each type parameter is (name: Ident, GenericBound, AcceptRecursiveType)
+pub type TypPositiveBounds = Arc<Vec<(Ident, GenericBound, AcceptRecursiveType)>>;
 
 pub type FunctionAttrs = Arc<FunctionAttrsX>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Default, Clone)]

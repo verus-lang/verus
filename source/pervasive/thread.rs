@@ -14,7 +14,8 @@ verus! {
 /// See the documentation of [`spawn()`](spawn) for more details.
 
 #[verifier(external_body)]
-pub struct JoinHandle<#[verifier(maybe_negative)] Ret>
+#[verifier::reject_recursive_types(Ret)]
+pub struct JoinHandle<Ret>
 {
     handle: std::thread::JoinHandle<Ret>,
 }
@@ -192,7 +193,8 @@ pub proof fn ghost_thread_id() -> (tracked res: IsThread)
 /// access the underlying object.
 
 #[verifier(external_body)]
-tracked struct ThreadShareable<#[verifier(strictly_positive)] V> {
+#[verifier::accept_recursive_types(V)]
+tracked struct ThreadShareable<V> {
     phantom: marker::PhantomData<V>,
 }
 

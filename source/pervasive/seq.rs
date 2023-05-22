@@ -29,7 +29,8 @@ verus! {
 /// [`assert_seqs_equal!`](crate::seq_lib::assert_seqs_equal) macro.
 
 #[verifier(external_body)]
-pub struct Seq<#[verifier(strictly_positive)] A> {
+#[verifier::accept_recursive_types(A)]
+pub struct Seq<A> {
     dummy: marker::PhantomData<A>,
 }
 

@@ -11,7 +11,8 @@ use crate::map::*;
 use crate::option::*;
 
 #[verifier::external_body] /* vattr */
-pub struct SyncSendIfSyncSend<#[verifier::strictly_positive] /* vattr */ T> {
+#[verifier::accept_recursive_types(T)]
+pub struct SyncSendIfSyncSend<T> {
     _sync_send: builtin::SyncSendIfSyncSend<T>,
 }
 

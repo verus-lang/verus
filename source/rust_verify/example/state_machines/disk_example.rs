@@ -16,7 +16,7 @@ verus!{
 // Create the "authoritative-fragmentary" API for manipulating heap-like things
 // (In this case, a disk.)
 
-tokenized_state_machine!{ AuthFrag<#[verifier(maybe_negative)] K, V> {
+tokenized_state_machine!{ AuthFrag<#[verifier::reject_recursive_types] K, V> {
     fields {
         #[sharding(variable)]
         pub auth: Map<K, V>,
