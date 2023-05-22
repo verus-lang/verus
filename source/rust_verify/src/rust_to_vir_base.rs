@@ -17,7 +17,7 @@ use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{GenericBoundX, IntRange, Path, PathX, Typ, TypBounds, TypX, Typs, VirErr};
-use vir::ast_util::types_equal;
+use vir::ast_util::{types_equal, undecorate_typ};
 use vir::def::unique_local_name;
 
 // TODO: eventually, this should just always be true
@@ -291,7 +291,7 @@ pub(crate) fn mk_visibility<'tcx>(
 }
 
 pub(crate) fn get_range(typ: &Typ) -> IntRange {
-    match &**typ {
+    match &*undecorate_typ(typ) {
         TypX::Int(range) => *range,
         _ => panic!("get_range {:?}", typ),
     }
@@ -350,8 +350,6 @@ pub(crate) fn mid_ty_simplify<'tcx>(
     }
 }
 
-// TODO review and cosolidate type translation, e.g. with `ty_to_vir`, if possible
-
 // returns VIR Typ and whether Ghost/Tracked was erased from around the outside of the VIR Typ
 pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
     tcx: TyCtxt<'tcx>,
@@ -360,14 +358,17 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
     as_datatype: bool,
     allow_mut_ref: bool,
 ) -> Result<(Typ, bool), VirErr> {
+    use vir::ast::TypDecoration;
     let t = match ty.kind() {
         TyKind::Bool => (Arc::new(TypX::Bool), false),
         TyKind::Uint(_) | TyKind::Int(_) => (Arc::new(TypX::Int(mk_range(ty))), false),
         TyKind::Ref(_, tys, rustc_ast::Mutability::Not) => {
-            mid_ty_to_vir_ghost(tcx, span, tys, as_datatype, allow_mut_ref)?
+            let (t0, ghost) = mid_ty_to_vir_ghost(tcx, span, tys, as_datatype, allow_mut_ref)?;
+            (Arc::new(TypX::Decorate(TypDecoration::Ref, t0.clone())), ghost)
         }
         TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) if allow_mut_ref => {
-            mid_ty_to_vir_ghost(tcx, span, tys, as_datatype, allow_mut_ref)?
+            let (t0, ghost) = mid_ty_to_vir_ghost(tcx, span, tys, as_datatype, allow_mut_ref)?;
+            (Arc::new(TypX::Decorate(TypDecoration::MutRef, t0.clone())), ghost)
         }
         TyKind::Param(param) if param.name == kw::SelfUpper => {
             (Arc::new(TypX::TypParam(vir::def::trait_self_type_param())), false)
@@ -377,7 +378,8 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         }
         TyKind::Never => {
             // All types are inhabited in SMT; we pick an arbitrary inhabited type for Never
-            (Arc::new(TypX::Tuple(Arc::new(vec![]))), false)
+            let tuple0 = Arc::new(TypX::Tuple(Arc::new(vec![])));
+            (Arc::new(TypX::Decorate(TypDecoration::Never, tuple0)), false)
         }
         TyKind::Tuple(_) => {
             let mut typs: Vec<Typ> = Vec::new();
@@ -424,18 +426,22 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     }
                 }
                 if Some(did) == tcx.lang_items().owned_box() && typ_args.len() == 2 {
-                    return Ok(typ_args[0].clone());
+                    let (t0, ghost) = &typ_args[0];
+                    return Ok((Arc::new(TypX::Decorate(TypDecoration::Box, t0.clone())), *ghost));
                 }
                 let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(tcx, did));
-                if (def_name == "alloc::rc::Rc" || def_name == "alloc::sync::Arc")
-                    && typ_args.len() == 1
-                {
-                    return Ok(typ_args[0].clone());
-                }
-                if (def_name == "builtin::Ghost" || def_name == "builtin::Tracked")
-                    && typ_args.len() == 1
-                {
-                    return Ok((typ_args[0].0.clone(), true));
+                if typ_args.len() == 1 {
+                    let (t0, ghost) = &typ_args[0];
+                    let decorate = |d: TypDecoration, ghost: bool| {
+                        Ok((Arc::new(TypX::Decorate(d, t0.clone())), ghost))
+                    };
+                    match def_name.as_str() {
+                        "alloc::rc::Rc" => return decorate(TypDecoration::Rc, *ghost),
+                        "alloc::sync::Arc" => return decorate(TypDecoration::Arc, *ghost),
+                        "builtin::Ghost" => return decorate(TypDecoration::Ghost, true),
+                        "builtin::Tracked" => return decorate(TypDecoration::Tracked, true),
+                        _ => {}
+                    }
                 }
                 if def_name == "builtin::FnSpec" {
                     assert!(typ_args.len() == 2);
@@ -631,7 +637,7 @@ pub(crate) fn is_smt_equality<'tcx>(
     id2: &HirId,
 ) -> Result<bool, VirErr> {
     let (t1, t2) = (typ_of_node(bctx, span, id1, false)?, typ_of_node(bctx, span, id2, false)?);
-    match (&*t1, &*t2) {
+    match (&*undecorate_typ(&t1), &*undecorate_typ(&t2)) {
         (TypX::Bool, TypX::Bool) => Ok(true),
         (TypX::Int(_), TypX::Int(_)) => Ok(true),
         (TypX::Char, TypX::Char) => Ok(true),
@@ -652,7 +658,8 @@ pub(crate) fn is_smt_arith<'tcx>(
     id1: &HirId,
     id2: &HirId,
 ) -> Result<bool, VirErr> {
-    match (&*typ_of_node(bctx, span1, id1, false)?, &*typ_of_node(bctx, span2, id2, false)?) {
+    let (t1, t2) = (typ_of_node(bctx, span1, id1, false)?, typ_of_node(bctx, span2, id2, false)?);
+    match (&*undecorate_typ(&t1), &*undecorate_typ(&t2)) {
         (TypX::Bool, TypX::Bool) => Ok(true),
         (TypX::Int(_), TypX::Int(_)) => Ok(true),
         _ => Ok(false),

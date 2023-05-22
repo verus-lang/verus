@@ -7,12 +7,12 @@ use crate::context::Ctx;
 use crate::def::{
     new_internal_qid, prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_pre_var,
     prefix_recursive_fun, prefix_requires, suffix_global_id, suffix_local_stmt_id,
-    suffix_typ_param_id, unique_local, CommandsWithContext, SnapPos, Spanned, FUEL_BOOL,
-    FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE, SUCC, THIS_PRE_FAILED, ZERO,
+    suffix_typ_param_id, suffix_typ_param_ids, unique_local, CommandsWithContext, SnapPos, Spanned,
+    FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE, SUCC, THIS_PRE_FAILED, ZERO,
 };
 use crate::sst::{BndX, Exp, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst_to_air::{
-    exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, ExprCtxt, ExprMode,
+    exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, typ_to_ids, ExprCtxt, ExprMode,
 };
 use crate::update_cell::UpdateCell;
 use crate::util::vec_map;
@@ -51,10 +51,16 @@ pub(crate) fn func_bind_trig(
     params: &Pars,
     trig_exprs: &Vec<Expr>,
     add_fuel: bool,
+    decorated: bool,
 ) -> Bind {
     let mut binders: Vec<air::ast::Binder<air::ast::Typ>> = Vec::new();
     for typ_param in typ_params.iter() {
-        binders.push(ident_binder(&suffix_typ_param_id(&typ_param), &str_typ(crate::def::TYPE)));
+        let ids = if decorated {
+            suffix_typ_param_ids(&typ_param)
+        } else {
+            vec![suffix_typ_param_id(&typ_param)]
+        };
+        binders.extend(ids.iter().map(|x| ident_binder(x, &str_typ(crate::def::TYPE))));
     }
     for param in params.iter() {
         let name = if matches!(param.x.purpose, ParPurpose::MutPre) {
@@ -81,16 +87,14 @@ pub(crate) fn func_bind(
     params: &Pars,
     trig_expr: &Expr,
     add_fuel: bool,
+    decorated: bool,
 ) -> Bind {
-    func_bind_trig(ctx, name, typ_params, params, &vec![trig_expr.clone()], add_fuel)
+    func_bind_trig(ctx, name, typ_params, params, &vec![trig_expr.clone()], add_fuel, decorated)
 }
 
 // arguments for function call f(typ_args, params)
 pub(crate) fn func_def_typs_args(typ_args: &Typs, params: &Pars) -> Vec<Expr> {
-    let mut f_args: Vec<Expr> = Vec::new();
-    for typ_arg in typ_args.iter() {
-        f_args.push(crate::sst_to_air::typ_to_id(typ_arg));
-    }
+    let mut f_args: Vec<Expr> = typ_args.iter().map(typ_to_ids).flatten().collect();
     for param in params.iter() {
         let name = if matches!(param.x.purpose, ParPurpose::MutPre) {
             prefix_pre_var(&param.x.name)
@@ -122,7 +126,10 @@ fn func_def_quant(
     let f_app = string_apply(name, &Arc::new(f_args));
     let f_eq = Arc::new(ExprX::Binary(BinaryOp::Eq, f_app.clone(), body));
     let f_imply = mk_implies(&mk_and(pre), &f_eq);
-    Ok(mk_bind_expr(&func_bind(ctx, name.to_string(), typ_params, params, &f_app, false), &f_imply))
+    Ok(mk_bind_expr(
+        &func_bind(ctx, name.to_string(), typ_params, params, &f_app, false, true),
+        &f_imply,
+    ))
 }
 
 fn func_body_to_air(
@@ -291,9 +298,9 @@ fn func_body_to_air(
         let name_zero = format!("{}_fuel_to_zero", &fun_to_air_ident(&name));
         let name_body = format!("{}_fuel_to_body", &fun_to_air_ident(&name));
         let bind_zero =
-            func_bind(ctx, name_zero, &function.x.typ_params(), &pars, &rec_f_fuel, true);
+            func_bind(ctx, name_zero, &function.x.typ_params(), &pars, &rec_f_fuel, true, true);
         let bind_body =
-            func_bind(ctx, name_body, &function.x.typ_params(), &pars, &rec_f_succ, true);
+            func_bind(ctx, name_body, &function.x.typ_params(), &pars, &rec_f_succ, true, true);
         let implies_body = mk_implies(&mk_and(&decrease_by_reqs), &eq_body);
         let forall_zero = mk_bind_expr(&bind_zero, &eq_zero);
         let forall_body = mk_bind_expr(&bind_body, &implies_body);
@@ -337,7 +344,9 @@ pub fn req_ens_to_air(
     if specs.len() + typing_invs.len() > 0 {
         let mut all_typs = (**typs).clone();
         for _ in typ_params.iter() {
-            all_typs.insert(0, str_typ(crate::def::TYPE));
+            for x in crate::def::types() {
+                all_typs.insert(0, str_typ(x));
+            }
         }
         let decl = Arc::new(DeclX::Fun(name.clone(), Arc::new(all_typs), bool_typ()));
         commands.push(Arc::new(CommandX::Global(decl)));
@@ -387,7 +396,9 @@ pub fn func_name_to_air(
 
         let mut all_typs = vec_map(&function.x.params, |param| typ_to_air(ctx, &param.x.typ));
         for _ in function.x.typ_bounds.iter() {
-            all_typs.insert(0, str_typ(crate::def::TYPE));
+            for x in crate::def::types() {
+                all_typs.insert(0, str_typ(x));
+            }
         }
 
         // Declare the function symbol itself
@@ -411,7 +422,9 @@ pub fn func_name_to_air(
                 let mut rec_typs =
                     vec_map(&*function.x.params, |param| typ_to_air(ctx, &param.x.typ));
                 for _ in function.x.typ_bounds.iter() {
-                    rec_typs.insert(0, str_typ(crate::def::TYPE));
+                    for x in crate::def::types() {
+                        rec_typs.insert(0, str_typ(x));
+                    }
                 }
                 rec_typs.push(str_typ(FUEL_TYPE));
                 let rec_decl = Arc::new(DeclX::Fun(rec_f, Arc::new(rec_typs), typ));
@@ -474,7 +487,6 @@ pub fn func_decl_to_air(
     fun_ssts: &SstMap,
     function: &Function,
 ) -> Result<Commands, VirErr> {
-    // let typ_params: Vec<_> = funxtion.x.typ_bounds.iter().map(|_| str_typ(crate::def::TYPE)).collect();
     let req_typs: Arc<Vec<_>> =
         Arc::new(function.x.params.iter().map(|param| typ_to_air(ctx, &param.x.typ)).collect());
     let mut decl_commands: Vec<Command> = Vec::new();
@@ -554,7 +566,8 @@ pub fn func_axioms_to_air(
             let mut f_args: Vec<Expr> = Vec::new();
             let mut f_pre: Vec<Expr> = Vec::new();
             for typ_param in function.x.typ_params().iter() {
-                f_args.push(ident_var(&suffix_typ_param_id(&typ_param.clone())));
+                let ids = suffix_typ_param_ids(&typ_param);
+                f_args.extend(ids.iter().map(|x| ident_var(x)));
             }
             for param in function.x.params.iter() {
                 let arg = ident_var(&suffix_local_stmt_id(&param.x.name.clone()));
@@ -575,6 +588,7 @@ pub fn func_axioms_to_air(
                         &params_to_pars(&function.x.params, false),
                         &f_app,
                         false,
+                        true,
                     ),
                     &mk_implies(&mk_and(&f_pre), &post),
                 );
@@ -645,7 +659,7 @@ pub fn func_axioms_to_air(
                 for (name, bound) in function.x.typ_bounds.iter() {
                     match &**bound {
                         GenericBoundX::Traits(ts) if ts.len() == 0 => {
-                            vars.push(crate::def::suffix_typ_param_id(&name));
+                            vars.push(suffix_typ_param_id(&name));
                             let typ = Arc::new(TypX::TypeId);
                             let bind = BinderX { name: name.clone(), a: typ };
                             binders.push(Arc::new(bind));

@@ -6,8 +6,7 @@ use crate::ast_to_sst::expr_to_exp;
 use crate::ast_util::{error, msg_error, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{
-    decrease_at_entry, prefix_recursive_fun, suffix_rename, unique_bound, unique_local, Spanned,
-    FUEL_PARAM, FUEL_TYPE,
+    decrease_at_entry, suffix_rename, unique_bound, unique_local, Spanned, FUEL_PARAM, FUEL_TYPE,
 };
 use crate::func_to_air::{params_to_pars, SstMap};
 use crate::scc::Graph;
@@ -74,7 +73,7 @@ fn is_recursive_call(ctxt: &Ctxt, target: &Fun, targs: &Typs) -> bool {
 }
 
 fn height_of_exp(ctxt: &Ctxt, exp: &Exp) -> Exp {
-    match &*exp.typ {
+    match &*crate::ast_util::undecorate_typ(&exp.typ) {
         TypX::Int(_) => exp.clone(),
         TypX::Datatype(..) => {
             let arg = if crate::poly::typ_is_poly(ctxt.ctx, &exp.typ) {
@@ -195,6 +194,9 @@ fn terminates(
                 e = bool_exp(ExpX::Binary(BinaryOp::And, e_arg, e));
             }
             Ok(e)
+        }
+        ExpX::Call(CallFun::CheckTermination(_), _, _) => {
+            panic!("internal error: CheckTermination")
         }
         ExpX::Call(CallFun::InternalFun(_func), _tys, args) => {
             let mut e = bool_exp(ExpX::Const(Constant::Bool(true)));
@@ -431,8 +433,8 @@ pub(crate) fn check_termination_exp(
             let varx = ExpX::Var(unique_local(&str_ident(FUEL_PARAM)));
             let var_typ = Arc::new(TypX::Air(str_typ(FUEL_TYPE)));
             args.push(SpannedTyped::new(&exp.span, &var_typ, varx));
-            let rec_name = prefix_recursive_fun(&x);
-            let callx = ExpX::Call(CallFun::Fun(rec_name), typs.clone(), Arc::new(args));
+            let callx =
+                ExpX::Call(CallFun::CheckTermination(x.clone()), typs.clone(), Arc::new(args));
             SpannedTyped::new(&exp.span, &exp.typ, callx)
         }
         _ => exp.clone(),

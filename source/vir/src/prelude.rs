@@ -87,6 +87,14 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let type_id_uint = str_to_node(TYPE_ID_UINT);
     let type_id_sint = str_to_node(TYPE_ID_SINT);
     let type_id_const_int = str_to_node(TYPE_ID_CONST_INT);
+    let decorate_ref = str_to_node(DECORATE_REF);
+    let decorate_mut_ref = str_to_node(DECORATE_MUT_REF);
+    let decorate_box = str_to_node(DECORATE_BOX);
+    let decorate_rc = str_to_node(DECORATE_RC);
+    let decorate_arc = str_to_node(DECORATE_ARC);
+    let decorate_ghost = str_to_node(DECORATE_GHOST);
+    let decorate_tracked = str_to_node(DECORATE_TRACKED);
+    let decorate_never = str_to_node(DECORATE_NEVER);
     let has_type = str_to_node(HAS_TYPE);
     let as_type = str_to_node(AS_TYPE);
     let mk_fun = str_to_node(MK_FUN);
@@ -163,6 +171,14 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [type_id_uint] (Int) [typ])
         (declare-fun [type_id_sint] (Int) [typ])
         (declare-fun [type_id_const_int] (Int) [typ])
+        (declare-fun [decorate_ref] ([typ]) [typ])
+        (declare-fun [decorate_mut_ref] ([typ]) [typ])
+        (declare-fun [decorate_box] ([typ]) [typ])
+        (declare-fun [decorate_rc] ([typ]) [typ])
+        (declare-fun [decorate_arc] ([typ]) [typ])
+        (declare-fun [decorate_ghost] ([typ]) [typ])
+        (declare-fun [decorate_tracked] ([typ]) [typ])
+        (declare-fun [decorate_never] ([typ]) [typ])
         (declare-fun [has_type] ([Poly] [typ]) Bool)
         (declare-fun [as_type] ([Poly] [typ]) Poly)
         (declare-fun [mk_fun] (Fun) Fun)
@@ -528,8 +544,26 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         //  - param value (as tuple)
         //  - ret value (for closure_ens only)
 
-        (declare-fun [closure_req] (Type Type Poly Poly) Bool)
-        (declare-fun [closure_ens] (Type Type Poly Poly Poly) Bool)
+        (declare-fun [closure_req]
+            {
+                if crate::context::DECORATE {
+                    nodes!(Type Type Type Type Poly Poly)
+                } else {
+                    nodes!(Type Type Poly Poly)
+                }
+            }
+            Bool
+        )
+        (declare-fun [closure_ens]
+            {
+                if crate::context::DECORATE {
+                    nodes!(Type Type Type Type Poly Poly Poly)
+                } else {
+                    nodes!(Type Type Poly Poly Poly)
+                }
+            }
+            Bool
+        )
     )
 }
 

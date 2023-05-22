@@ -66,6 +66,9 @@ where
                         expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
                     }
                 }
+                TypX::Decorate(_, t) => {
+                    expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
+                }
                 TypX::Boxed(t) => {
                     expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
                 }
@@ -105,6 +108,10 @@ where
         TypX::Datatype(path, ts) => {
             let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
             ft(env, &Arc::new(TypX::Datatype(path.clone(), Arc::new(ts))))
+        }
+        TypX::Decorate(d, t) => {
+            let t = map_typ_visitor_env(t, env, ft)?;
+            ft(env, &Arc::new(TypX::Decorate(*d, t)))
         }
         TypX::Boxed(t) => {
             let t = map_typ_visitor_env(t, env, ft)?;
