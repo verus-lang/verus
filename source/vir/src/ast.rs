@@ -410,7 +410,8 @@ pub type Patterns = Arc<Vec<Pattern>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
 pub enum PatternX {
     /// _
-    Wildcard,
+    /// True if this is implicitly added from a ..
+    Wildcard(bool),
     /// x or mut x
     Var {
         name: Ident,

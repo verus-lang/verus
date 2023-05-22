@@ -6,7 +6,7 @@ use crate::context::{BodyCtxt, Context};
 use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::rust_to_vir_base::{
     def_id_self_to_vir_path, def_id_self_to_vir_path_expect, def_id_to_vir_path, get_range,
-    hack_get_def_name, is_smt_arith, is_smt_equality, is_type_std_rc_or_arc, local_to_var,
+    hack_get_def_name, is_smt_arith, is_smt_equality, is_type_std_rc_or_arc_or_ref, local_to_var,
     mid_ty_simplify, mid_ty_to_vir, mid_ty_to_vir_datatype, mid_ty_to_vir_ghost, mk_range,
     typ_of_node, typ_of_node_expect_mut_ref,
 };
@@ -1730,14 +1730,34 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     Ok(bctx.spanned_typed_new(expr.span, &expr_typ, exprx))
 }
 
+fn handle_dot_dot(
+    num_entries_in_pat: usize,
+    total_entries: usize,
+    dot_dot_pos: &rustc_hir::DotDotPos,
+) -> (usize, usize) {
+    match dot_dot_pos.as_opt_usize() {
+        None => {
+            assert!(num_entries_in_pat == total_entries);
+            (0, 0)
+        }
+        Some(pos) => {
+            assert!(pos <= num_entries_in_pat);
+            assert!(num_entries_in_pat <= total_entries);
+            let n_wildcards = total_entries - num_entries_in_pat;
+            (n_wildcards, pos)
+        }
+    }
+}
+
 pub(crate) fn pattern_to_vir_inner<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     pat: &Pat<'tcx>,
 ) -> Result<vir::ast::Pattern, VirErr> {
     let tcx = bctx.ctxt.tcx;
+    let pat_typ = typ_of_node(bctx, pat.span, &pat.hir_id, false)?;
     unsupported_err_unless!(pat.default_binding_modes, pat.span, "complex pattern");
     let pattern = match &pat.kind {
-        PatKind::Wild => PatternX::Wildcard,
+        PatKind::Wild => PatternX::Wildcard(false),
         PatKind::Binding(BindingAnnotation(_, Mutability::Not), canonical, x, None) => {
             PatternX::Var { name: Arc::new(local_to_var(x, canonical.local_id)), mutable: false }
         }
@@ -1751,25 +1771,74 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
             let vir_path = def_id_to_vir_path(bctx.ctxt.tcx, adt_def_id);
             PatternX::Constructor(vir_path, variant_name, Arc::new(vec![]))
         }
-        PatKind::Tuple(pats, dot_dot_pos) if dot_dot_pos.as_opt_usize().is_none() => {
+        PatKind::Tuple(pats, dot_dot_pos) => {
             let mut patterns: Vec<vir::ast::Pattern> = Vec::new();
+
+            let typs = match &*pat_typ {
+                TypX::Tuple(typs) => typs,
+                _ => {
+                    return err_span(pat.span, "Verus internal error: expected tuple type");
+                }
+            };
+            let (n_wildcards, pos_to_insert_wildcards) =
+                handle_dot_dot(pats.len(), typs.len(), &dot_dot_pos);
+
             for pat in pats.iter() {
                 patterns.push(pattern_to_vir(bctx, pat)?);
             }
+            patterns.splice(
+                pos_to_insert_wildcards..pos_to_insert_wildcards,
+                typs[pos_to_insert_wildcards..pos_to_insert_wildcards + n_wildcards]
+                    .iter()
+                    .map(|typ| bctx.spanned_typed_new(pat.span, &typ, PatternX::Wildcard(true))),
+            );
+
             PatternX::Tuple(Arc::new(patterns))
         }
-        PatKind::TupleStruct(qpath, pats, dot_dot_pos) if dot_dot_pos.as_opt_usize().is_none() => {
+        PatKind::TupleStruct(qpath, pats, dot_dot_pos) => {
             let res = bctx.types.qpath_res(qpath, pat.hir_id);
             let (adt_def_id, variant_def, _is_enum) = get_adt_res(tcx, res, pat.span)?;
             let variant_name = str_ident(&variant_def.ident(tcx).as_str());
             let vir_path = def_id_to_vir_path(bctx.ctxt.tcx, adt_def_id);
 
+            let (n_wildcards, pos_to_insert_wildcards) =
+                handle_dot_dot(pats.len(), variant_def.fields.len(), &dot_dot_pos);
+
             let mut binders: Vec<Binder<vir::ast::Pattern>> = Vec::new();
             for (i, pat) in pats.iter().enumerate() {
+                let actual_idx = if i < pos_to_insert_wildcards { i } else { i + n_wildcards };
+
                 let pattern = pattern_to_vir(bctx, pat)?;
-                let binder = ident_binder(&positional_field_ident(i), &pattern);
+                let binder = ident_binder(&positional_field_ident(actual_idx), &pattern);
                 binders.push(binder);
             }
+
+            if n_wildcards > 0 {
+                // Have to get the type for each wildcard to create the vir::Pattern
+                let substs = match bctx.types.node_type(pat.hir_id).kind() {
+                    TyKind::Adt(_, substs) => substs,
+                    _ => {
+                        return err_span(pat.span, "Verus internal error: expected Adt type");
+                    }
+                };
+                let mut wildcard_binders = vec![];
+                for i in 0..n_wildcards {
+                    let actual_idx = i + pos_to_insert_wildcards;
+                    let field_def = &variant_def.fields[actual_idx];
+                    let typ = field_def.ty(bctx.ctxt.tcx, substs);
+                    let vir_typ = mid_ty_to_vir(bctx.ctxt.tcx, pat.span, &typ, false)?;
+                    let pattern =
+                        bctx.spanned_typed_new(pat.span, &vir_typ, PatternX::Wildcard(true));
+                    wildcard_binders
+                        .push(ident_binder(&positional_field_ident(actual_idx), &pattern));
+                }
+
+                binders.splice(
+                    pos_to_insert_wildcards..pos_to_insert_wildcards,
+                    wildcard_binders.into_iter(),
+                );
+            }
+
             PatternX::Constructor(vir_path, variant_name, Arc::new(binders))
         }
         PatKind::Struct(qpath, pats, _) => {
@@ -1805,21 +1874,16 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
             let plast2 = pat_iter.next().unwrap();
             let mut pat_or = PatternX::Or(plast2, plast);
             while let Some(p) = pat_iter.next() {
-                let pat_typ = typ_of_node(bctx, pat.span, &pat.hir_id, false)?;
                 pat_or = PatternX::Or(p, bctx.spanned_typed_new(pat.span, &pat_typ, pat_or));
             }
             pat_or
         }
         PatKind::Binding(_, _, _, Some(_)) => return unsupported_err!(pat.span, "@ patterns", pat),
-        PatKind::Tuple(..) | PatKind::TupleStruct(..) => {
-            return unsupported_err!(pat.span, "complex tuple/struct patterns", pat);
-        }
         PatKind::Ref(..) => return unsupported_err!(pat.span, "ref patterns", pat),
         PatKind::Lit(..) => return unsupported_err!(pat.span, "literal patterns", pat),
         PatKind::Range(..) => return unsupported_err!(pat.span, "range patterns", pat),
         PatKind::Slice(..) => return unsupported_err!(pat.span, "slice patterns", pat),
     };
-    let pat_typ = typ_of_node(bctx, pat.span, &pat.hir_id, false)?;
     let pattern = bctx.spanned_typed_new(pat.span, &pat_typ, pattern);
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
     erasure_info.resolved_pats.push((pat.span.data(), pattern.clone()));
@@ -2763,7 +2827,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     {
                         let pat_typ = typ_of_node(bctx, pat.span, &pat.hir_id, false)?;
                         let pattern =
-                            bctx.spanned_typed_new(cond.span, &pat_typ, PatternX::Wildcard);
+                            bctx.spanned_typed_new(cond.span, &pat_typ, PatternX::Wildcard(false));
                         {
                             let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
                             erasure_info.hir_vir_ids.push((cond.hir_id, pattern.span.id));
@@ -2935,8 +2999,15 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     let f_name = tcx.def_path_str(fn_def_id);
                     if f_name == "std::clone::Clone::clone" {
                         assert!(other_args.len() == 0);
-                        let arg_typ = bctx.types.node_type(receiver.hir_id);
-                        if is_type_std_rc_or_arc(bctx.ctxt.tcx, arg_typ) {
+                        let node_substs = bctx.types.node_substs(expr.hir_id);
+                        let arg_typ = match node_substs[0].unpack() {
+                            GenericArgKind::Type(ty) => ty,
+                            _ => {
+                                panic!("clone expected type argument");
+                            }
+                        };
+
+                        if is_type_std_rc_or_arc_or_ref(bctx.ctxt.tcx, arg_typ) {
                             let arg = expr_to_vir(bctx, &receiver, ExprModifier::REGULAR)?;
                             let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
                             erasure_info.resolved_calls.push((

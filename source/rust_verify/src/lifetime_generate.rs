@@ -390,7 +390,7 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Patter
             let name = state.datatype_name(&vir_path);
             let variant =
                 if is_enum { Some(state.variant(variant_name.to_string())) } else { None };
-            mk_pat(PatternX::DatatypeTuple(name, variant, vec![]))
+            mk_pat(PatternX::DatatypeTuple(name, variant, vec![], None))
         }
         PatKind::Box(p) => mk_pat(PatternX::Box(erase_pat(ctxt, state, p))),
         PatKind::Or(pats) => {
@@ -400,14 +400,14 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Patter
             }
             mk_pat(PatternX::Or(patterns))
         }
-        PatKind::Tuple(pats, dot_dot_pos) if dot_dot_pos.as_opt_usize().is_none() => {
+        PatKind::Tuple(pats, dot_dot_pos) => {
             let mut patterns: Vec<Pattern> = Vec::new();
             for pat in pats.iter() {
                 patterns.push(erase_pat(ctxt, state, pat));
             }
-            mk_pat(PatternX::Tuple(patterns))
+            mk_pat(PatternX::Tuple(patterns, dot_dot_pos.as_opt_usize()))
         }
-        PatKind::TupleStruct(qpath, pats, dot_dot_pos) if dot_dot_pos.as_opt_usize().is_none() => {
+        PatKind::TupleStruct(qpath, pats, dot_dot_pos) => {
             let res = ctxt.types().qpath_res(qpath, pat.hir_id);
             let (adt_def_id, variant_def, is_enum) = get_adt_res(ctxt.tcx, res, pat.span).unwrap();
             let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
@@ -420,7 +420,7 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Patter
                 patterns.push(erase_pat(ctxt, state, pat));
             }
             let variant = if is_enum { Some(variant_name) } else { None };
-            mk_pat(PatternX::DatatypeTuple(name, variant, patterns))
+            mk_pat(PatternX::DatatypeTuple(name, variant, patterns, dot_dot_pos.as_opt_usize()))
         }
         PatKind::Struct(qpath, pats, has_omitted) => {
             let res = ctxt.types().qpath_res(qpath, pat.hir_id);

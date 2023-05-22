@@ -106,7 +106,7 @@ impl<A> Seq<A> {
 
     pub open spec fn ext_equal(self, s2: Seq<A>) -> bool {
         &&& self.len() == s2.len()
-        &&& (forall|i: int| 0 <= i < self.len() ==> self[i] == s2[i])
+        &&& forall|i: int| 0 <= i < self.len() ==> self[i] == s2[i]
     }
 
     /// Returns a sequence for the given subrange.

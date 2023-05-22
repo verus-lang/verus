@@ -307,6 +307,50 @@
       }
     },
     {
+      "ident": "BigAnd",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "exprs": {
+          "vec": {
+            "tuple": [
+              {
+                "token": "BigAnd"
+              },
+              {
+                "box": {
+                  "syn": "Expr"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "ident": "BigOr",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "exprs": {
+          "vec": {
+            "tuple": [
+              {
+                "token": "BigOr"
+              },
+              {
+                "box": {
+                  "syn": "Expr"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
       "ident": "BinOp",
       "features": {
         "any": [
@@ -453,16 +497,6 @@
         "ShrEq": [
           {
             "token": "ShrEq"
-          }
-        ],
-        "BigAnd": [
-          {
-            "token": "BigAnd"
-          }
-        ],
-        "BigOr": [
-          {
-            "token": "BigOr"
           }
         ],
         "Equiv": [
@@ -1027,6 +1061,16 @@
         "View": [
           {
             "syn": "View"
+          }
+        ],
+        "BigAnd": [
+          {
+            "syn": "BigAnd"
+          }
+        ],
+        "BigOr": [
+          {
+            "syn": "BigOr"
           }
         ]
       },
@@ -6013,16 +6057,6 @@
         "Neg": [
           {
             "token": "Sub"
-          }
-        ],
-        "BigAnd": [
-          {
-            "token": "BigAnd"
-          }
-        ],
-        "BigOr": [
-          {
-            "token": "BigOr"
           }
         ],
         "Proof": [

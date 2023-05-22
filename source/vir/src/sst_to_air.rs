@@ -26,7 +26,7 @@ use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
 use crate::sst::{
     BndInfo, BndX, CallFun, Dest, Exp, ExpX, InternalFun, LocalDecl, Stm, StmX, UniqueIdent,
 };
-use crate::sst_util::subst_exp;
+use crate::sst_util::{subst_exp, subst_stm};
 use crate::sst_vars::{get_loc_var, AssignMap};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
@@ -2284,6 +2284,11 @@ pub(crate) fn body_stm_to_air(
         let e = exp_to_expr(ctx, &ens, expr_ctxt)?;
         ens_exprs.push((ens.span.clone(), e));
     }
+
+    let ens_recommend_stms: Vec<_> = ens_recommend_stms
+        .iter()
+        .map(|ens_recommend_stm| subst_stm(&trait_typ_substs, &HashMap::new(), ens_recommend_stm))
+        .collect();
 
     let mask = mask_set_from_spec(mask_spec, mode);
 
