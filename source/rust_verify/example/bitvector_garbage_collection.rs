@@ -1,10 +1,5 @@
-// rust_verify/tests/example.rs ignore --- 2022-07-12 ignored as part of upgrade to z3 4.8.17, intended to be unignored again
-
 #[allow(unused_imports)]
-use builtin::*;
-#[allow(unused_imports)]
-use vstd::seq::*;
-use builtin_macros::*;
+use vstd::prelude::*;
 
 macro_rules! get_bit_macro {
     ($a:expr, $b:expr) => {

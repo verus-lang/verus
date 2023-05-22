@@ -98,7 +98,7 @@ impl<K, V> Map<K, V> {
 
     pub open spec fn ext_equal(self, m2: Map<K, V>) -> bool {
         &&& self.dom().ext_equal(m2.dom())
-        &&& (forall|k: K| #![auto] self.dom().contains(k) ==> self[k] == m2[k])
+        &&& forall|k: K| #![auto] self.dom().contains(k) ==> self[k] == m2[k]
     }
 
     /// Returns true if the key `k` is in the domain of `self`.

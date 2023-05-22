@@ -66,6 +66,9 @@ where
                         expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
                     }
                 }
+                TypX::Decorate(_, t) => {
+                    expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
+                }
                 TypX::Boxed(t) => {
                     expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
                 }
@@ -106,6 +109,10 @@ where
             let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
             ft(env, &Arc::new(TypX::Datatype(path.clone(), Arc::new(ts))))
         }
+        TypX::Decorate(d, t) => {
+            let t = map_typ_visitor_env(t, env, ft)?;
+            ft(env, &Arc::new(TypX::Decorate(*d, t)))
+        }
         TypX::Boxed(t) => {
             let t = map_typ_visitor_env(t, env, ft)?;
             ft(env, &Arc::new(TypX::Boxed(t)))
@@ -129,7 +136,7 @@ where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
     let patternx = match &pattern.x {
-        PatternX::Wildcard => PatternX::Wildcard,
+        PatternX::Wildcard(dd) => PatternX::Wildcard(*dd),
         PatternX::Var { name, mutable } => PatternX::Var { name: name.clone(), mutable: *mutable },
         PatternX::Tuple(ps) => {
             let ps = vec_map_result(&**ps, |p| map_pattern_visitor_env(p, env, ft))?;
@@ -152,7 +159,7 @@ where
 
 fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern) {
     match &pattern.x {
-        PatternX::Wildcard => {}
+        PatternX::Wildcard(_) => {}
         PatternX::Var { name, mutable: _ } => {
             let _ = map.insert(name.clone(), pattern.typ.clone());
         }

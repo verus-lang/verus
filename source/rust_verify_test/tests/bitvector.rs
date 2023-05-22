@@ -199,8 +199,8 @@ test_verify_one_file! {
     //https://github.com/verus-lang/verus/issues/191 (@matthias-brun)
     #[test] test10_fails verus_code! {
         #[verifier(bit_vector)]
-        proof fn f2() {
-            ensures(forall |i: u64| (1 << i) > 0); // FAILS: should not panic
+        proof fn f2() { // FAILS
+            ensures(forall |i: u64| (1 << i) > 0); // Although this line should be reported instead of the above line, since Z3 does not return model which we utilize for error reporting, just use the above line
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -389,5 +389,18 @@ test_verify_one_file! {
             let b: bool = true;
             assert(b ==> (0 | 1u8 == 1) == b) by(bit_vector);
         }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_issue415 verus_code! {
+        #[verifier(bit_vector)]
+        proof fn lemma_shift_right_u64_upper_bound(val: u64, amt: u64, upper_bound: u64)
+        requires
+            amt < 64u64,
+            val <= upper_bound,
+        ensures
+            (val >> amt) <= (upper_bound >> amt)
+        {}
     } => Ok(())
 }

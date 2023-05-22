@@ -1,6 +1,4 @@
-**NOTE: The Verus guide needs to be updated for the new version of Verus which does not rely on a fork of the rust compiler.**
-
-[![Quick Start](https://img.shields.io/badge/tutorial-quick%20start-informational)](https://verus-lang.github.io/verus/guide/getting_started.html) [![Library Documentation](https://img.shields.io/badge/docs-vstd-informational)](https://verus-lang.github.io/verus/verusdoc/lib/)
+[![Quick Start](https://img.shields.io/badge/tutorial-quick%20start-informational)](https://verus-lang.github.io/verus/guide/getting_started.html) [![Library Documentation](https://img.shields.io/badge/docs-vstd-informational)](https://verus-lang.github.io/verus/verusdoc/vstd/)
 
 Verus is a tool for verifying the correctness of code written in Rust.
 Developers write specifications of what their code should do,
@@ -29,7 +27,7 @@ with the [📖 Tutorial and reference](https://verus-lang.github.io/verus/guide/
 ## Documentation
 Our (work-in-progress) documentation resources include:
  * [📖 Tutorial and reference](https://verus-lang.github.io/verus/guide/)
- * [📖 API documentation for Verus's standard library](https://verus-lang.github.io/verus/verusdoc/lib/)
+ * [📖 API documentation for Verus's standard library](https://verus-lang.github.io/verus/verusdoc/vstd/)
  * [📖 Guide for verifying concurrent code](https://verus-lang.github.io/verus/state_machines/)
  * [Project Goals](../../wiki/Goals)
  * [Contributing to Verus](CONTRIBUTING.md)

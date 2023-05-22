@@ -286,22 +286,26 @@ impl Visitor {
         let opens_invariants = self.take_ghost(&mut sig.invariants);
         // TODO: wrap specs inside ghost blocks
         if let Some(Requires { token, mut exprs }) = requires {
-            for expr in exprs.exprs.iter_mut() {
-                self.visit_expr_mut(expr);
+            if exprs.exprs.len() > 0 {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                stmts.push(Stmt::Semi(
+                    Expr::Verbatim(quote_spanned!(token.span => ::builtin::requires([#exprs]))),
+                    Semi { spans: [token.span] },
+                ));
             }
-            stmts.push(Stmt::Semi(
-                Expr::Verbatim(quote_spanned!(token.span => ::builtin::requires([#exprs]))),
-                Semi { spans: [token.span] },
-            ));
         }
         if let Some(Recommends { token, mut exprs, via }) = recommends {
-            for expr in exprs.exprs.iter_mut() {
-                self.visit_expr_mut(expr);
+            if exprs.exprs.len() > 0 {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                stmts.push(Stmt::Semi(
+                    Expr::Verbatim(quote_spanned!(token.span => ::builtin::recommends([#exprs]))),
+                    Semi { spans: [token.span] },
+                ));
             }
-            stmts.push(Stmt::Semi(
-                Expr::Verbatim(quote_spanned!(token.span => ::builtin::recommends([#exprs]))),
-                Semi { spans: [token.span] },
-            ));
             if let Some((via_token, via_expr)) = via {
                 stmts.push(Stmt::Semi(
                     Expr::Verbatim(
@@ -312,21 +316,23 @@ impl Visitor {
             }
         }
         if let Some(Ensures { token, mut exprs }) = ensures {
-            for expr in exprs.exprs.iter_mut() {
-                self.visit_expr_mut(expr);
-            }
-            if let Some((p, ty)) = ret_pat {
-                stmts.push(Stmt::Semi(
-                    Expr::Verbatim(
-                        quote_spanned!(token.span => ::builtin::ensures(|#p: #ty| [#exprs])),
-                    ),
-                    Semi { spans: [token.span] },
-                ));
-            } else {
-                stmts.push(Stmt::Semi(
-                    Expr::Verbatim(quote_spanned!(token.span => ::builtin::ensures([#exprs]))),
-                    Semi { spans: [token.span] },
-                ));
+            if exprs.exprs.len() > 0 {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                if let Some((p, ty)) = ret_pat {
+                    stmts.push(Stmt::Semi(
+                        Expr::Verbatim(
+                            quote_spanned!(token.span => ::builtin::ensures(|#p: #ty| [#exprs])),
+                        ),
+                        Semi { spans: [token.span] },
+                    ));
+                } else {
+                    stmts.push(Stmt::Semi(
+                        Expr::Verbatim(quote_spanned!(token.span => ::builtin::ensures([#exprs]))),
+                        Semi { spans: [token.span] },
+                    ));
+                }
             }
         }
         if let Some(SignatureDecreases { decreases: Decreases { token, mut exprs }, when, via }) =
@@ -1004,22 +1010,28 @@ impl Visitor {
         // TODO: wrap specs inside ghost blocks
         self.inside_ghost += 1;
         if let Some(Invariant { token, mut exprs }) = invariants {
-            for expr in exprs.exprs.iter_mut() {
-                self.visit_expr_mut(expr);
+            if exprs.exprs.len() > 0 {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                stmts.push(stmt_with_semi!(token.span => ::builtin::invariant([#exprs])));
             }
-            stmts.push(stmt_with_semi!(token.span => ::builtin::invariant([#exprs])));
         }
         if let Some(InvariantEnsures { token, mut exprs }) = invariant_ensures {
-            for expr in exprs.exprs.iter_mut() {
-                self.visit_expr_mut(expr);
+            if exprs.exprs.len() > 0 {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                stmts.push(stmt_with_semi!(token.span => ::builtin::invariant_ensures([#exprs])));
             }
-            stmts.push(stmt_with_semi!(token.span => ::builtin::invariant_ensures([#exprs])));
         }
         if let Some(Ensures { token, mut exprs }) = ensures {
-            for expr in exprs.exprs.iter_mut() {
-                self.visit_expr_mut(expr);
+            if exprs.exprs.len() > 0 {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                stmts.push(stmt_with_semi!(token.span => ::builtin::ensures([#exprs])));
             }
-            stmts.push(stmt_with_semi!(token.span => ::builtin::ensures([#exprs])));
         }
         if let Some(Decreases { token, mut exprs }) = decreases {
             for expr in exprs.exprs.iter_mut() {
@@ -1240,15 +1252,7 @@ impl VisitMut for Visitor {
             }
         } else if let Expr::Unary(unary) = expr {
             let span = unary.span();
-            let low_prec_op = match unary.op {
-                UnOp::BigAnd(..) => true,
-                UnOp::BigOr(..) => true,
-                _ => false,
-            };
-
-            if low_prec_op {
-                *expr = take_expr(&mut *unary.expr);
-            } else if let Some(mode_block) = mode_block {
+            if let Some(mode_block) = mode_block {
                 match (is_inside_ghost, mode_block, &*unary.expr) {
                     (false, (false, _), Expr::Block(..)) => {
                         // proof { ... }
@@ -1271,14 +1275,6 @@ impl VisitMut for Visitor {
         } else if let Expr::Binary(binary) = expr {
             let span = binary.span();
             let low_prec_op = match binary.op {
-                BinOp::BigAnd(syn_verus::token::BigAnd { spans }) => {
-                    let spans = [spans[0], spans[1]];
-                    Some(BinOp::And(syn_verus::token::AndAnd { spans }))
-                }
-                BinOp::BigOr(syn_verus::token::BigOr { spans }) => {
-                    let spans = [spans[0], spans[1]];
-                    Some(BinOp::Or(syn_verus::token::OrOr { spans }))
-                }
                 BinOp::Equiv(syn_verus::token::Equiv { spans }) => {
                     let spans = [spans[1], spans[2]];
                     Some(BinOp::Eq(syn_verus::token::EqEq { spans }))
@@ -1332,6 +1328,34 @@ impl VisitMut for Visitor {
                     *expr = Expr::Verbatim(quote_spanned!(span => ! #call));
                 }
             }
+        } else if let Expr::BigAnd(exprs) = expr {
+            let mut new_expr = take_expr(&mut exprs.exprs[0].1);
+            for i in 1..exprs.exprs.len() {
+                let span = exprs.exprs[i].0.span();
+                let spans = [span, span];
+                let right = take_expr(&mut exprs.exprs[i].1);
+                let left = Box::new(Expr::Verbatim(quote_spanned!(new_expr.span() => (#new_expr))));
+                let right = Box::new(Expr::Verbatim(quote_spanned!(right.span() => (#right))));
+                let attrs = Vec::new();
+                let op = BinOp::And(syn_verus::token::AndAnd { spans });
+                let bin = ExprBinary { attrs, op, left, right };
+                new_expr = Expr::Binary(bin);
+            }
+            *expr = new_expr;
+        } else if let Expr::BigOr(exprs) = expr {
+            let mut new_expr = take_expr(&mut exprs.exprs[0].1);
+            for i in 1..exprs.exprs.len() {
+                let span = exprs.exprs[i].0.span();
+                let spans = [span, span];
+                let right = take_expr(&mut exprs.exprs[i].1);
+                let left = Box::new(Expr::Verbatim(quote_spanned!(new_expr.span() => (#new_expr))));
+                let right = Box::new(Expr::Verbatim(quote_spanned!(right.span() => (#right))));
+                let attrs = Vec::new();
+                let op = BinOp::Or(syn_verus::token::OrOr { spans });
+                let bin = ExprBinary { attrs, op, left, right };
+                new_expr = Expr::Binary(bin);
+            }
+            *expr = new_expr;
         }
 
         let do_replace = match &expr {
@@ -1540,87 +1564,75 @@ impl VisitMut for Visitor {
                     let span = assert.assert_token.span;
                     let arg = assert.expr;
                     let attrs = assert.attrs;
-                    match (assert.by_token, assert.prover, assert.requires, assert.body) {
-                        (None, None, None, None) => {
-                            *expr = quote_verbatim!(span, attrs => ::builtin::assert_(#arg));
+
+                    if let Some(prover) = assert.prover {
+                        let prover_id = prover.1.to_string();
+                        match prover_id.as_str() {
+                            "compute" => {
+                                if assert.body.is_some() {
+                                    *expr = quote_verbatim!(span, attrs => compile_error!("the 'compute' prover does not support a body"));
+                                } else if assert.requires.is_some() {
+                                    *expr = quote_verbatim!(span, attrs => compile_error!("the 'compute' prover does not support a 'requires' clause"));
+                                } else {
+                                    *expr = Expr::Verbatim(
+                                        quote_spanned!(span => ::builtin::assert_by_compute(#arg)),
+                                    );
+                                }
+                            }
+                            "compute_only" => {
+                                if assert.body.is_some() {
+                                    *expr = quote_verbatim!(span, attrs => compile_error!("the 'compute_only' prover does not support a body"));
+                                } else if assert.requires.is_some() {
+                                    *expr = quote_verbatim!(span, attrs => compile_error!("the 'compute_only' prover does not support a 'requires' clause"));
+                                } else {
+                                    *expr = Expr::Verbatim(
+                                        quote_spanned!(span => ::builtin::assert_by_compute_only(#arg)),
+                                    );
+                                }
+                            }
+                            "bit_vector" | "nonlinear_arith" => {
+                                let mut block = if let Some(box block) = assert.body {
+                                    block
+                                } else {
+                                    Block { brace_token: token::Brace { span }, stmts: vec![] }
+                                };
+                                let mut stmts: Vec<Stmt> = Vec::new();
+                                if let Some(Requires { token, exprs }) = assert.requires {
+                                    stmts.push(Stmt::Semi(
+                                        Expr::Verbatim(
+                                            quote_spanned!(token.span => ::builtin::requires([#exprs])),
+                                        ),
+                                        Semi { spans: [token.span] },
+                                    ));
+                                }
+                                stmts.push(Stmt::Semi(
+                                    Expr::Verbatim(
+                                        quote_spanned!(span => ::builtin::ensures(#arg)),
+                                    ),
+                                    Semi { spans: [span] },
+                                ));
+                                block.stmts.splice(0..0, stmts);
+                                let assert_x_by: Expr = if prover_id == "bit_vector" {
+                                    quote_verbatim!(span, attrs => ::builtin::assert_bitvector_by(#block))
+                                } else {
+                                    quote_verbatim!(span, attrs => ::builtin::assert_nonlinear_by(#block))
+                                };
+                                *expr = Expr::Verbatim(quote_spanned!(span => {#assert_x_by}));
+                            }
+                            _ => {
+                                *expr = quote_verbatim!(span, attrs => compile_error!("unknown prover name for assert-by (supported provers: 'compute_only', 'compute', 'bit_vector', and 'nonlinear_arith')"));
+                            }
                         }
-                        (None, _, _, _) => panic!("missing by token"),
-                        (Some(_), None, None, None) => panic!("extra by token"),
-                        (Some(_), None, None, Some(box block)) => {
+                    } else if let Some(box block) = assert.body {
+                        // assert-by
+                        if assert.requires.is_some() {
+                            *expr = quote_verbatim!(span, attrs => compile_error!("the 'requires' clause is only used with the 'bit_vector' and 'nonlinear_arith' solvers (use `by(bit_vector)` or `by(nonlinear_arith)"));
+                        } else {
                             *expr = quote_verbatim!(span, attrs => {::builtin::assert_by(#arg, #block);});
                         }
-                        (Some(_), Some((_, id)), None, None) if id.to_string() == "compute" => {
-                            *expr = Expr::Verbatim(
-                                quote_spanned!(span => ::builtin::assert_by_compute(#arg)),
-                            );
-                        }
-                        (Some(_), Some((_, id)), None, None)
-                            if id.to_string() == "compute_only" =>
-                        {
-                            *expr = Expr::Verbatim(
-                                quote_spanned!(span => ::builtin::assert_by_compute_only(#arg)),
-                            );
-                        }
-                        (Some(_), Some((_, id)), None, None) if id.to_string() == "bit_vector" => {
-                            *expr = quote_verbatim!(span, attrs => ::builtin::assert_bitvector_by({::builtin::ensures(#arg);}));
-                        }
-                        (Some(_), Some((_, id)), requires, block)
-                            if id.to_string() == "bit_vector" =>
-                        {
-                            let mut block = if let Some(box block) = block {
-                                block
-                            } else {
-                                Block { brace_token: token::Brace { span }, stmts: vec![] }
-                            };
-                            let mut stmts: Vec<Stmt> = Vec::new();
-                            if let Some(Requires { token, exprs }) = requires {
-                                stmts.push(Stmt::Semi(
-                                    Expr::Verbatim(
-                                        quote_spanned!(token.span => ::builtin::requires([#exprs])),
-                                    ),
-                                    Semi { spans: [token.span] },
-                                ));
-                            }
-                            stmts.push(Stmt::Semi(
-                                Expr::Verbatim(quote_spanned!(span => ::builtin::ensures(#arg))),
-                                Semi { spans: [span] },
-                            ));
-                            block.stmts.splice(0..0, stmts);
-                            let assert_bitvector_by: Expr = quote_verbatim!(span, attrs => ::builtin::assert_bitvector_by(#block));
-                            *expr = Expr::Verbatim(quote_spanned!(span => {#assert_bitvector_by}));
-                        }
-                        (Some(_), Some((_, id)), None, None)
-                            if id.to_string() == "nonlinear_arith" =>
-                        {
-                            *expr = quote_verbatim!(span, attrs => ::builtin::assert_nonlinear_by({::builtin::ensures(#arg);}));
-                        }
-                        (Some(_), Some((_, id)), requires, Some(box mut block))
-                            if id.to_string() == "nonlinear_arith" =>
-                        {
-                            let mut stmts: Vec<Stmt> = Vec::new();
-                            if let Some(Requires { token, exprs }) = requires {
-                                stmts.push(Stmt::Semi(
-                                    Expr::Verbatim(
-                                        quote_spanned!(token.span => ::builtin::requires([#exprs])),
-                                    ),
-                                    Semi { spans: [token.span] },
-                                ));
-                            }
-                            stmts.push(Stmt::Semi(
-                                Expr::Verbatim(quote_spanned!(span => ::builtin::ensures(#arg))),
-                                Semi { spans: [span] },
-                            ));
-                            block.stmts.splice(0..0, stmts);
-                            let assert_nonlinear_by: Expr = quote_verbatim!(span, attrs => ::builtin::assert_nonlinear_by(#block));
-                            *expr = Expr::Verbatim(quote_spanned!(span => {#assert_nonlinear_by}));
-                        }
-                        (Some(_), Some((_, id)), _, _) => {
-                            let span = id.span();
-                            *expr = quote_verbatim!(span, attrs => compile_error!("unknown prover name for assert-by (supported provers: 'compute_only', 'compute', 'bit_vector', and 'nonlinear_arith')"));
-                        }
-                        (Some(_), None, Some(_), _) => {
-                            *expr = quote_verbatim!(span, attrs => compile_error!("assert-by has 'requires' clause but no prover specified (supported provers: 'compute_only', 'compute', 'bit_vector', and 'nonlinear_arith')"));
-                        }
+                    } else {
+                        // Normal 'assert'
+                        *expr = quote_verbatim!(span, attrs => ::builtin::assert_(#arg));
                     }
                 }
                 Expr::AssertForall(assert) => {

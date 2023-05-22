@@ -116,6 +116,20 @@ impl Clone for BareFnArg {
         }
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for BigAnd {
+    fn clone(&self) -> Self {
+        BigAnd {
+            exprs: self.exprs.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for BigOr {
+    fn clone(&self) -> Self {
+        BigOr { exprs: self.exprs.clone() }
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
 impl Copy for BinOp {}
@@ -362,6 +376,10 @@ impl Clone for Expr {
             Expr::AssertForall(v0) => Expr::AssertForall(v0.clone()),
             #[cfg(feature = "full")]
             Expr::View(v0) => Expr::View(v0.clone()),
+            #[cfg(feature = "full")]
+            Expr::BigAnd(v0) => Expr::BigAnd(v0.clone()),
+            #[cfg(feature = "full")]
+            Expr::BigOr(v0) => Expr::BigOr(v0.clone()),
             #[cfg(any(syn_no_non_exhaustive, not(feature = "full")))]
             _ => unreachable!(),
         }

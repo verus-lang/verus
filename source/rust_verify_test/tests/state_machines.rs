@@ -5182,14 +5182,14 @@ test_verify_one_file! {
         }
 
         spec fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
-            &&& ((pre.c.dom().contains(5) && pre.c.index(5) == 9)
-            &&& (pre.c.dom().contains(12) && pre.c.index(12) == 15))
+            &&& (pre.c.dom().contains(5) && pre.c.index(5) == 9)
+            &&& (pre.c.dom().contains(12) && pre.c.index(12) == 15)
             &&& pre.c === post.c
         }
 
         spec fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
-            &&& ((pre.c.dom().contains(5) && pre.c.index(5) == 9)
-            &&& (pre.c.dom().contains(12) && pre.c.index(12) == 15))
+            &&& (pre.c.dom().contains(5) && pre.c.index(5) == 9)
+            &&& (pre.c.dom().contains(12) && pre.c.index(12) == 15)
             &&& pre.c === post.c
         }
 

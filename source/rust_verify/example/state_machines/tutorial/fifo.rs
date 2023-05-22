@@ -473,9 +473,9 @@ struct_with_invariants!{
         predicate {
             // The Cell IDs in the instance protocol match the cell IDs in the actual vector:
             &&& self.instance@.backing_cells().len() == self.buffer@.len()
-            &&& (forall|i: int| 0 <= i && i < self.buffer@.len() as int ==>
+            &&& forall|i: int| 0 <= i && i < self.buffer@.len() as int ==>
                 self.instance@.backing_cells().index(i) ===
-                    self.buffer@.index(i).id())
+                    self.buffer@.index(i).id()
         }
 
         invariant on head with (instance) is (v: u64, g: FifoQueue::head<T>) {

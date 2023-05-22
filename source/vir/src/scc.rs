@@ -1,7 +1,8 @@
 /*
  * Create a graph and then compute the strongly-connected components
  * of that graph.
- * Derived from code written by Travis Hance.
+ * Based on pseudocode from
+ * https://en.wikipedia.org/wiki/Tarjan%27s_strongly_connected_components_algorithm
  */
 use std::cmp::min;
 use std::collections::{HashMap, HashSet};

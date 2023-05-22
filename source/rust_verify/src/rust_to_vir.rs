@@ -21,7 +21,8 @@ use crate::{err_unless, unsupported_err, unsupported_err_unless};
 use rustc_ast::IsAuto;
 use rustc_hir::{
     AssocItemKind, ForeignItem, ForeignItemId, ForeignItemKind, ImplItemKind, Item, ItemId,
-    ItemKind, MaybeOwner, OwnerNode, QPath, TraitFn, TraitItem, TraitItemKind, TraitRef, Unsafety,
+    ItemKind, MaybeOwner, OpaqueTy, OpaqueTyOrigin, OwnerNode, QPath, TraitFn, TraitItem,
+    TraitItemKind, TraitRef, Unsafety,
 };
 
 use std::collections::HashMap;
@@ -472,6 +473,14 @@ fn check_item<'tcx>(
         ItemKind::GlobalAsm(..) =>
         //TODO(utaal): add a crate-level attribute to enable global_asm
         {
+            return Ok(());
+        }
+        ItemKind::OpaqueTy(OpaqueTy {
+            generics: _,
+            bounds: _,
+            origin: OpaqueTyOrigin::AsyncFn(_),
+            in_trait: _,
+        }) => {
             return Ok(());
         }
         _ => {

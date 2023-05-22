@@ -5,15 +5,16 @@ use crate::rust_to_vir_base::{
     def_id_self_to_vir_path, def_id_to_vir_path, local_to_var, mid_ty_const_to_vir,
     mid_ty_to_vir_datatype,
 };
-use crate::rust_to_vir_expr::{datatype_constructor_variant_of_res, datatype_variant_of_res};
+use crate::rust_to_vir_expr::get_adt_res;
 use air::ast::AstId;
+use air::ast_util::str_ident;
 use rustc_ast::{BorrowKind, IsAuto, Mutability};
 use rustc_hir::def::{CtorKind, DefKind, Res};
 use rustc_hir::{
     AssocItemKind, BindingAnnotation, Block, BlockCheckMode, BodyId, Closure, Crate, Expr,
     ExprKind, FnSig, HirId, Impl, ImplItem, ImplItemKind, ItemKind, Let, MaybeOwner, Node,
-    OwnerNode, Pat, PatKind, QPath, Stmt, StmtKind, TraitFn, TraitItem, TraitItemKind,
-    TraitItemRef, TraitRef, UnOp, Unsafety,
+    OpaqueTy, OpaqueTyOrigin, OwnerNode, Pat, PatKind, QPath, Stmt, StmtKind, TraitFn, TraitItem,
+    TraitItemKind, TraitItemRef, TraitRef, UnOp, Unsafety,
 };
 use rustc_middle::ty::subst::GenericArgKind;
 use rustc_middle::ty::{
@@ -49,8 +50,9 @@ struct Context<'tcx> {
     /// Map each datatype path to its VIR Datatype
     datatypes: HashMap<Path, vir::ast::Datatype>,
     ignored_functions: HashSet<DefId>,
-    /// Set of struct/enum that implement Copy
-    copy_types: HashSet<DefId>,
+    /// For each struct/enum that implements Copy,
+    /// for each GenericParam A say whether clone and copy require A: Clone and A: Copy
+    copy_types: HashMap<DefId, Vec<bool>>,
     calls: HashMap<HirId, ResolvedCall>,
     /// Mode of each if/else or match condition, used to decide how to erase if/else and match
     /// condition.  For example, in "if x < 10 { x + 1 } else { x + 2 }", this will record the span
@@ -212,7 +214,8 @@ fn span_dummy() -> Span {
     data.span()
 }
 
-fn add_copy_type(tcx: TyCtxt, id: DefId, copy_types: &mut HashSet<DefId>) {
+fn add_copy_type(ctxt: &mut Context, state: &mut State, id: DefId) {
+    let tcx = ctxt.tcx;
     let copy = tcx.lang_items().copy_trait();
     let sized = tcx.lang_items().sized_trait();
     // check for implementation of the form:
@@ -223,8 +226,11 @@ fn add_copy_type(tcx: TyCtxt, id: DefId, copy_types: &mut HashSet<DefId>) {
                 if let TyKind::Adt(AdtDef(adt_def_data), args) = ty.kind() {
                     let did = adt_def_data.did;
                     let generics = tcx.generics_of(id);
+                    let mut copy_bounds: Vec<(Id, bool)> = Vec::new();
                     if generics.params.len() == args.len() {
                         for (param, arg) in generics.params.iter().zip(args.iter()) {
+                            let name = state.typ_param(param.name.to_string(), Some(param.index));
+                            copy_bounds.push((name, false));
                             if let GenericArgKind::Type(arg_ty) = arg.unpack() {
                                 if let TyKind::Param(p) = arg_ty.kind() {
                                     if p.name == param.name {
@@ -234,6 +240,8 @@ fn add_copy_type(tcx: TyCtxt, id: DefId, copy_types: &mut HashSet<DefId>) {
                             }
                             return;
                         }
+                    } else {
+                        return;
                     }
                     for (pred, _) in tcx.predicates_of(id).predicates {
                         if let Some(PredicateKind::Clause(Clause::Trait(p))) =
@@ -241,7 +249,21 @@ fn add_copy_type(tcx: TyCtxt, id: DefId, copy_types: &mut HashSet<DefId>) {
                         {
                             let pid = p.trait_ref.def_id;
                             // For now, only allowed predicates are Copy and Sized
-                            if Some(pid) == copy || Some(pid) == sized {
+                            if Some(pid) == copy {
+                                let x = match *erase_ty(
+                                    ctxt,
+                                    state,
+                                    &p.trait_ref.substs[0].expect_ty(),
+                                ) {
+                                    TypX::TypParam(x) => x,
+                                    _ => panic!("PredicateKind::Trait"),
+                                };
+                                let x_ref = copy_bounds.iter_mut().find(|(name, _)| name == &x);
+                                let x_ref = x_ref.expect("generic param bound");
+                                x_ref.1 = true;
+                                continue;
+                            }
+                            if Some(pid) == sized {
                                 continue;
                             }
                         }
@@ -251,7 +273,9 @@ fn add_copy_type(tcx: TyCtxt, id: DefId, copy_types: &mut HashSet<DefId>) {
                         return;
                     }
                     // Found a matching Copy Impl
-                    copy_types.insert(did);
+                    assert!(!ctxt.copy_types.contains_key(&did));
+                    let copy_bounds = copy_bounds.into_iter().map(|(_, copy)| copy).collect();
+                    ctxt.copy_types.insert(did, copy_bounds);
                 }
             }
         }
@@ -357,11 +381,16 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Patter
             let BindingAnnotation(_, mutability) = ann;
             mk_pat(PatternX::Binding(id, mutability.to_owned()))
         }
-        PatKind::Path(QPath::Resolved(None, rustc_hir::Path { res, .. })) => {
-            let (vir_path, variant_name) = datatype_variant_of_res(ctxt.tcx, res, true);
+        PatKind::Path(qpath) => {
+            let res = ctxt.types().qpath_res(qpath, pat.hir_id);
+            let (adt_def_id, variant_def, is_enum) = get_adt_res(ctxt.tcx, res, pat.span).unwrap();
+            let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
+            let vir_path = def_id_to_vir_path(ctxt.tcx, adt_def_id);
+
             let name = state.datatype_name(&vir_path);
-            let variant = state.variant(variant_name.to_string());
-            mk_pat(PatternX::DatatypeTuple(name, Some(variant), vec![]))
+            let variant =
+                if is_enum { Some(state.variant(variant_name.to_string())) } else { None };
+            mk_pat(PatternX::DatatypeTuple(name, variant, vec![], None))
         }
         PatKind::Box(p) => mk_pat(PatternX::Box(erase_pat(ctxt, state, p))),
         PatKind::Or(pats) => {
@@ -371,54 +400,37 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Patter
             }
             mk_pat(PatternX::Or(patterns))
         }
-        PatKind::Tuple(pats, dot_dot_pos) if dot_dot_pos.as_opt_usize().is_none() => {
+        PatKind::Tuple(pats, dot_dot_pos) => {
             let mut patterns: Vec<Pattern> = Vec::new();
             for pat in pats.iter() {
                 patterns.push(erase_pat(ctxt, state, pat));
             }
-            mk_pat(PatternX::Tuple(patterns))
+            mk_pat(PatternX::Tuple(patterns, dot_dot_pos.as_opt_usize()))
         }
-        PatKind::TupleStruct(
-            QPath::Resolved(
-                None,
-                rustc_hir::Path { res: res @ Res::Def(DefKind::Ctor(ctor_of, _), _), .. },
-            ),
-            pats,
-            dot_dot_pos,
-        ) if dot_dot_pos.as_opt_usize().is_none() => {
-            let is_variant = *ctor_of == rustc_hir::def::CtorOf::Variant;
-            let (vir_path, variant_name) = datatype_variant_of_res(ctxt.tcx, res, is_variant);
+        PatKind::TupleStruct(qpath, pats, dot_dot_pos) => {
+            let res = ctxt.types().qpath_res(qpath, pat.hir_id);
+            let (adt_def_id, variant_def, is_enum) = get_adt_res(ctxt.tcx, res, pat.span).unwrap();
+            let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
+            let vir_path = def_id_to_vir_path(ctxt.tcx, adt_def_id);
+
             let name = state.datatype_name(&vir_path);
             let variant_name = state.variant(variant_name.to_string());
             let mut patterns: Vec<Pattern> = Vec::new();
             for pat in pats.iter() {
                 patterns.push(erase_pat(ctxt, state, pat));
             }
-            let variant = if is_variant { Some(variant_name) } else { None };
-            mk_pat(PatternX::DatatypeTuple(name, variant, patterns))
+            let variant = if is_enum { Some(variant_name) } else { None };
+            mk_pat(PatternX::DatatypeTuple(name, variant, patterns, dot_dot_pos.as_opt_usize()))
         }
-        PatKind::Struct(
-            QPath::Resolved(None, rustc_hir::Path { res: res @ Res::Def(DefKind::Variant, _), .. }),
-            pats,
-            has_omitted,
-        ) => {
-            let (vir_path, variant_name) = datatype_variant_of_res(ctxt.tcx, res, false);
-            let name = state.datatype_name(&vir_path);
-            let variant = state.variant(variant_name.to_string());
-            let mut binders: Vec<(Id, Pattern)> = Vec::new();
-            for pat in pats.iter() {
-                let field = state.local(pat.ident.to_string());
-                let pattern = erase_pat(ctxt, state, &pat.pat);
-                binders.push((field, pattern));
-            }
-            mk_pat(PatternX::DatatypeStruct(name, Some(variant), binders, *has_omitted))
-        }
-        PatKind::Struct(
-            QPath::Resolved(None, rustc_hir::Path { res: res @ Res::Def(DefKind::Struct, _), .. }),
-            pats,
-            has_omitted,
-        ) => {
-            let vir_path = def_id_to_vir_path(ctxt.tcx, res.def_id());
+        PatKind::Struct(qpath, pats, has_omitted) => {
+            let res = ctxt.types().qpath_res(qpath, pat.hir_id);
+            let (adt_def_id, variant_def, is_enum) = get_adt_res(ctxt.tcx, res, pat.span).unwrap();
+            let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
+            let vir_path = def_id_to_vir_path(ctxt.tcx, adt_def_id);
+
+            let variant_opt =
+                if is_enum { Some(state.variant(variant_name.to_string())) } else { None };
+
             let name = state.datatype_name(&vir_path);
             let mut binders: Vec<(Id, Pattern)> = Vec::new();
             for pat in pats.iter() {
@@ -426,7 +438,7 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Patter
                 let pattern = erase_pat(ctxt, state, &pat.pat);
                 binders.push((field, pattern));
             }
-            mk_pat(PatternX::DatatypeStruct(name, None, binders, *has_omitted))
+            mk_pat(PatternX::DatatypeStruct(name, variant_opt, binders, *has_omitted))
         }
         _ => {
             dbg!(pat);
@@ -779,73 +791,86 @@ fn erase_expr<'tcx>(
     let expr_typ = |state: &mut State| erase_ty(ctxt, state, &ctxt.types().node_type(expr.hir_id));
     let mk_exp1 = |e: ExpX| Box::new((expr.span, e));
     let mk_exp = |e: ExpX| Some(Box::new((expr.span, e)));
+
     match &expr.kind {
-        ExprKind::Path(QPath::Resolved(None, path)) => {
-            match path.res {
-                Res::Local(id) => match ctxt.tcx.hir().get(id) {
-                    Node::Pat(Pat { kind: PatKind::Binding(_ann, id, ident, _pat), .. }) => {
-                        if expect_spec || ctxt.var_modes[&expr.hir_id] == Mode::Spec {
-                            None
-                        } else {
-                            mk_exp(ExpX::Var(state.local(local_to_var(&ident, id.local_id))))
-                        }
-                    }
-                    _ => panic!("unsupported"),
-                },
-                Res::Def(def_kind, id) => match def_kind {
-                    DefKind::Const => {
-                        let vir_path = def_id_to_vir_path(ctxt.tcx, id);
-                        let fun_name = Arc::new(FunX { path: vir_path, trait_path: None });
-                        return mk_exp(ExpX::Var(state.fun_name(&fun_name)));
-                    }
-                    DefKind::Ctor(ctor_of, _ctor_kind) => {
-                        // 0-argument datatype constructor
-                        let is_variant = ctor_of == rustc_hir::def::CtorOf::Variant;
-                        let (vir_path, variant_name) =
-                            datatype_variant_of_res(ctxt.tcx, &path.res, is_variant);
-                        let variant = if is_variant {
-                            Some(state.variant(variant_name.to_string()))
-                        } else {
-                            None
-                        };
-                        let typ_args =
-                            mk_typ_args(ctxt, state, ctxt.types().node_substs(expr.hir_id));
-                        return mk_exp(ExpX::DatatypeTuple(
-                            state.datatype_name(&vir_path),
-                            variant,
-                            typ_args,
-                            vec![],
-                        ));
-                    }
-                    DefKind::ConstParam => {
-                        let local_id = id.as_local().expect("ConstParam local");
-                        let hir_id = ctxt.tcx.hir().local_def_id_to_hir_id(local_id);
-                        match ctxt.tcx.hir().get(hir_id) {
-                            Node::GenericParam(gp) => {
-                                let name = state.typ_param(gp.name.ident().to_string(), None);
-                                mk_exp(ExpX::Var(name))
+        ExprKind::Path(qpath) => {
+            let res = ctxt.types().qpath_res(qpath, expr.hir_id);
+
+            // Check if it's a 0-argument datatype constructor
+            match res {
+                Res::SelfCtor(_) | Res::Def(DefKind::Ctor(_, _), _) => {
+                    let (adt_def_id, variant_def, is_enum) =
+                        get_adt_res(ctxt.tcx, res, expr.span).unwrap();
+                    let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
+                    let vir_path = def_id_to_vir_path(ctxt.tcx, adt_def_id);
+
+                    let variant =
+                        if is_enum { Some(state.variant(variant_name.to_string())) } else { None };
+                    let typ_args = mk_typ_args(ctxt, state, ctxt.types().node_substs(expr.hir_id));
+                    return mk_exp(ExpX::DatatypeTuple(
+                        state.datatype_name(&vir_path),
+                        variant,
+                        typ_args,
+                        vec![],
+                    ));
+                }
+                _ => {}
+            }
+
+            match qpath {
+                QPath::Resolved(None, path) => match path.res {
+                    Res::Local(id) => match ctxt.tcx.hir().get(id) {
+                        Node::Pat(Pat {
+                            kind: PatKind::Binding(_ann, id, ident, _pat), ..
+                        }) => {
+                            if expect_spec || ctxt.var_modes[&expr.hir_id] == Mode::Spec {
+                                None
+                            } else {
+                                mk_exp(ExpX::Var(state.local(local_to_var(&ident, id.local_id))))
                             }
-                            _ => panic!("ConstParam"),
                         }
-                    }
+                        _ => panic!("unsupported"),
+                    },
+                    Res::Def(def_kind, id) => match def_kind {
+                        DefKind::Const => {
+                            let vir_path = def_id_to_vir_path(ctxt.tcx, id);
+                            let fun_name = Arc::new(FunX { path: vir_path, trait_path: None });
+                            return mk_exp(ExpX::Var(state.fun_name(&fun_name)));
+                        }
+                        DefKind::ConstParam => {
+                            let local_id = id.as_local().expect("ConstParam local");
+                            let hir_id = ctxt.tcx.hir().local_def_id_to_hir_id(local_id);
+                            match ctxt.tcx.hir().get(hir_id) {
+                                Node::GenericParam(gp) => {
+                                    let name = state.typ_param(gp.name.ident().to_string(), None);
+                                    mk_exp(ExpX::Var(name))
+                                }
+                                _ => panic!("ConstParam"),
+                            }
+                        }
+                        _ => {
+                            dbg!(expr);
+                            panic!("unsupported")
+                        }
+                    },
                     _ => {
                         dbg!(expr);
                         panic!("unsupported")
                     }
                 },
-                _ => {
-                    dbg!(expr);
-                    panic!("unsupported")
+                QPath::TypeRelative(_ty, _path_seg) => {
+                    if expect_spec {
+                        None
+                    } else {
+                        let typ = expr_typ(state);
+                        assert!(matches!(*typ, TypX::Primitive(_)));
+                        mk_exp(ExpX::Op(vec![], typ))
+                    }
                 }
-            }
-        }
-        ExprKind::Path(_qpath @ QPath::TypeRelative(_ty, _path_seg)) => {
-            if expect_spec {
-                None
-            } else {
-                let typ = expr_typ(state);
-                assert!(matches!(*typ, TypX::Primitive(_)));
-                mk_exp(ExpX::Op(vec![], typ))
+                _ => {
+                    dbg!(&expr);
+                    panic!()
+                }
             }
         }
         ExprKind::Lit(_lit) => {
@@ -857,14 +882,15 @@ fn erase_expr<'tcx>(
             }
         }
         ExprKind::Call(e0, es) => {
-            let is_variant = match e0.kind {
-                ExprKind::Path(QPath::Resolved(
-                    None,
-                    rustc_hir::Path {
-                        res: Res::Def(DefKind::Ctor(rustc_hir::def::CtorOf::Variant, _), _),
-                        ..
-                    },
-                )) => true,
+            let is_variant = match &e0.kind {
+                ExprKind::Path(qpath) => {
+                    let res = ctxt.types().qpath_res(qpath, e0.hir_id);
+                    match res {
+                        Res::Def(DefKind::Variant, _did) => true,
+                        Res::Def(DefKind::Ctor(rustc_hir::def::CtorOf::Variant, ..), _did) => true,
+                        _ => false,
+                    }
+                }
                 _ => false,
             };
             let (self_path, fn_def_id) = if let ExprKind::Path(qpath) = &e0.kind {
@@ -904,7 +930,7 @@ fn erase_expr<'tcx>(
                 true,
             )
             .expect("type");
-            let self_path = match &*rcvr_typ {
+            let self_path = match &*vir::ast_util::undecorate_typ(&rcvr_typ) {
                 vir::ast::TypX::Datatype(path, _) => Some(path.clone()),
                 _ => None,
             };
@@ -924,7 +950,7 @@ fn erase_expr<'tcx>(
                 false,
             )
         }
-        ExprKind::Struct(QPath::Resolved(_, path), fields, spread) => {
+        ExprKind::Struct(qpath, fields, spread) => {
             if expect_spec {
                 let mut exps: Vec<Option<Exp>> = Vec::new();
                 for f in fields.iter() {
@@ -932,9 +958,12 @@ fn erase_expr<'tcx>(
                 }
                 erase_spec_exps(ctxt, state, expr, exps)
             } else {
-                let pop_variant = matches!(path.res, Res::Def(DefKind::Variant, _));
-                let (vir_path, variant_name) =
-                    datatype_constructor_variant_of_res(ctxt.tcx, &path.res, pop_variant);
+                let res = ctxt.types().qpath_res(qpath, expr.hir_id);
+                let (adt_def_id, variant_def, is_enum) =
+                    get_adt_res(ctxt.tcx, res, expr.span).unwrap();
+                let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
+                let vir_path = def_id_to_vir_path(ctxt.tcx, adt_def_id);
+
                 let datatype = &ctxt.datatypes[&vir_path];
                 let variant = datatype.x.get_variant(&variant_name);
                 let mut fs: Vec<(Id, Exp)> = Vec::new();
@@ -950,7 +979,7 @@ fn erase_expr<'tcx>(
                     fs.push((name, e));
                 }
                 let variant_opt =
-                    if pop_variant { Some(state.variant(variant_name.to_string())) } else { None };
+                    if is_enum { Some(state.variant(variant_name.to_string())) } else { None };
                 let spread = spread.map(|e| erase_expr(ctxt, state, expect_spec, e).expect("expr"));
                 let typ_args = if let box TypX::Datatype(_, typ_args) = expr_typ(state) {
                     typ_args
@@ -1655,7 +1684,7 @@ fn erase_datatype<'tcx>(
     let datatype = Box::new(datatype);
     let path = def_id_to_vir_path(ctxt.tcx, id);
     let name = state.datatype_name(&path);
-    let implements_copy = ctxt.copy_types.contains(&id);
+    let implements_copy = ctxt.copy_types.get(&id).cloned();
     let mut lifetimes: Vec<GenericParam> = Vec::new();
     let mut typ_params: Vec<GenericParam> = Vec::new();
     erase_mir_generics(ctxt, state, id, false, &mut lifetimes, &mut typ_params);
@@ -1774,7 +1803,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
         functions: HashMap::new(),
         datatypes: HashMap::new(),
         ignored_functions: HashSet::new(),
-        copy_types: HashSet::new(),
+        copy_types: HashMap::new(),
         calls: HashMap::new(),
         condition_modes: HashMap::new(),
         var_modes: HashMap::new(),
@@ -1830,7 +1859,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
     if let Some(copy) = tcx.lang_items().copy_trait() {
         for c in tcx.crates(()) {
             for (copy_impl, _) in tcx.implementations_of_trait((*c, copy)) {
-                add_copy_type(tcx, *copy_impl, &mut ctxt.copy_types);
+                add_copy_type(&mut ctxt, &mut state, *copy_impl);
             }
         }
     }
@@ -1840,7 +1869,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                 OwnerNode::Item(item) => match &item.kind {
                     ItemKind::Impl(Impl { of_trait: Some(trait_ref), .. }) => {
                         if Some(trait_ref.path.res.def_id()) == tcx.lang_items().copy_trait() {
-                            add_copy_type(tcx, item.owner_id.to_def_id(), &mut ctxt.copy_types);
+                            add_copy_type(&mut ctxt, &mut state, item.owner_id.to_def_id());
                         }
                     }
                     _ => {}
@@ -1915,6 +1944,14 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         }
                         ItemKind::Impl(impll) => {
                             erase_impl(krate, &mut ctxt, &mut state, id, impll);
+                        }
+                        ItemKind::OpaqueTy(OpaqueTy {
+                            generics: _,
+                            bounds: _,
+                            origin: OpaqueTyOrigin::AsyncFn(_),
+                            in_trait: _,
+                        }) => {
+                            continue;
                         }
                         _ => {
                             dbg!(item);

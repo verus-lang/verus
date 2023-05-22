@@ -377,27 +377,6 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 AttrTree::Fun(_, arg, None) if arg == "invariant_block" => {
                     v.push(Attr::InvariantBlock)
                 }
-                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
-                    if arg == "is_variant" =>
-                {
-                    v.push(Attr::IsVariant(ident.clone()))
-                }
-                AttrTree::Fun(
-                    _,
-                    arg,
-                    Some(
-                        box [
-                            AttrTree::Fun(_, variant_ident, None),
-                            AttrTree::Fun(_, field_ident, None),
-                        ],
-                    ),
-                ) if arg == "get_variant" => {
-                    let field_ident = match field_ident.parse::<usize>().ok() {
-                        Some(i) => GetVariantField::Unnamed(i),
-                        None => GetVariantField::Named(field_ident.clone()),
-                    };
-                    v.push(Attr::GetVariant(variant_ident.clone(), field_ident))
-                }
                 AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, msg, None)]))
                     if arg == "custom_req_err" =>
                 {
@@ -504,6 +483,27 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                             "integer_ring" => v.push(Attr::IntegerRing),
                             _ => return err_span(span, "invalid prover"),
                         }
+                    }
+                    AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
+                        if arg == "is_variant" =>
+                    {
+                        v.push(Attr::IsVariant(ident.clone()))
+                    }
+                    AttrTree::Fun(
+                        _,
+                        arg,
+                        Some(
+                            box [
+                                AttrTree::Fun(_, variant_ident, None),
+                                AttrTree::Fun(_, field_ident, None),
+                            ],
+                        ),
+                    ) if arg == "get_variant" => {
+                        let field_ident = match field_ident.parse::<usize>().ok() {
+                            Some(i) => GetVariantField::Unnamed(i),
+                            None => GetVariantField::Named(field_ident.clone()),
+                        };
+                        v.push(Attr::GetVariant(variant_ident.clone(), field_ident))
                     }
                     AttrTree::Fun(_, arg, None) if arg == "via" => v.push(Attr::DecreasesBy),
                     _ => {

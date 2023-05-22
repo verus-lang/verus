@@ -36,6 +36,7 @@ const SUFFIX_GLOBAL: &str = "?";
 const SUFFIX_LOCAL_STMT: &str = "@";
 const SUFFIX_LOCAL_EXPR: &str = "$";
 const SUFFIX_TYPE_PARAM: &str = "&";
+const SUFFIX_DECORATE_TYPE_PARAM: &str = "&.";
 const SUFFIX_RENAME: &str = "!";
 const SUFFIX_PATH: &str = ".";
 const PREFIX_FUEL_ID: &str = "fuel%";
@@ -124,6 +125,14 @@ pub const TYPE_ID_NAT: &str = "NAT";
 pub const TYPE_ID_UINT: &str = "UINT";
 pub const TYPE_ID_SINT: &str = "SINT";
 pub const TYPE_ID_CONST_INT: &str = "CONST_INT";
+pub const DECORATE_REF: &str = "REF";
+pub const DECORATE_MUT_REF: &str = "MUT_REF";
+pub const DECORATE_BOX: &str = "BOX";
+pub const DECORATE_RC: &str = "RC";
+pub const DECORATE_ARC: &str = "ARC";
+pub const DECORATE_GHOST: &str = "GHOST";
+pub const DECORATE_TRACKED: &str = "TRACKED";
+pub const DECORATE_NEVER: &str = "NEVER";
 pub const HAS_TYPE: &str = "has_type";
 pub const AS_TYPE: &str = "as_type";
 pub const MK_FUN: &str = "mk_fun";
@@ -259,6 +268,22 @@ pub fn subst_rename_ident(x: &Ident, n: u64) -> Ident {
 
 pub fn suffix_typ_param_id(ident: &Ident) -> Ident {
     Arc::new(ident.to_string() + SUFFIX_TYPE_PARAM)
+}
+
+pub fn suffix_decorate_typ_param_id(ident: &Ident) -> Ident {
+    Arc::new(ident.to_string() + SUFFIX_DECORATE_TYPE_PARAM)
+}
+
+pub fn suffix_typ_param_ids(ident: &Ident) -> Vec<Ident> {
+    let mut ids = vec![suffix_typ_param_id(ident)];
+    if crate::context::DECORATE {
+        ids.push(suffix_decorate_typ_param_id(ident));
+    }
+    ids
+}
+
+pub(crate) fn types() -> Vec<&'static str> {
+    if crate::context::DECORATE { vec![TYPE, TYPE] } else { vec![TYPE] }
 }
 
 pub fn suffix_rename(ident: &Ident) -> Ident {
@@ -500,6 +525,7 @@ impl<X: Debug> Debug for Spanned<X> {
 pub enum ProverChoice {
     DefaultProver,
     Spinoff,
+    BitVector,
     Singular,
 }
 

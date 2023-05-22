@@ -17,16 +17,14 @@ esac
 
 if [ `uname` == "Darwin" ]; then
     DYN_LIB_EXT=dylib
-    LIB_PATH="DYLD_LIBRARY_PATH=../rust/install/lib/rustlib/${ARCH}-apple-darwin/lib"
 elif [ `uname` == "Linux" ]; then
     DYN_LIB_EXT=so
-    LIB_PATH="LD_LIBRARY_PATH=../rust/install/lib/rustlib/${ARCH}-unknown-linux-gnu/lib"
 fi
 
 cargo build -p verusdoc
 
 echo "Running rustdoc..."
-RUSTC_BOOTSTRAP=1 eval ""VERUSDOC=1 VERUS_Z3_PATH="$(pwd)/z3" $LIB_PATH rustdoc \
+RUSTC_BOOTSTRAP=1 eval ""VERUSDOC=1 VERUS_Z3_PATH="$(pwd)/z3" rustdoc \
   --extern builtin=target-verus/debug/libbuiltin.rlib \
   --extern builtin_macros=target-verus/debug/libbuiltin_macros.$DYN_LIB_EXT \
   --extern state_machines_macros=target-verus/debug/libstate_machines_macros.$DYN_LIB_EXT \

@@ -120,6 +120,22 @@ impl Debug for BareFnArg {
         formatter.finish()
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for BigAnd {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("BigAnd");
+        formatter.field("exprs", &self.exprs);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for BigOr {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("BigOr");
+        formatter.field("exprs", &self.exprs);
+        formatter.finish()
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for BinOp {
@@ -262,16 +278,6 @@ impl Debug for BinOp {
             }
             BinOp::ShrEq(v0) => {
                 let mut formatter = formatter.debug_tuple("ShrEq");
-                formatter.field(v0);
-                formatter.finish()
-            }
-            BinOp::BigAnd(v0) => {
-                let mut formatter = formatter.debug_tuple("BigAnd");
-                formatter.field(v0);
-                formatter.finish()
-            }
-            BinOp::BigOr(v0) => {
-                let mut formatter = formatter.debug_tuple("BigOr");
                 formatter.field(v0);
                 formatter.finish()
             }
@@ -736,6 +742,18 @@ impl Debug for Expr {
             #[cfg(feature = "full")]
             Expr::View(v0) => {
                 let mut formatter = formatter.debug_tuple("View");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            #[cfg(feature = "full")]
+            Expr::BigAnd(v0) => {
+                let mut formatter = formatter.debug_tuple("BigAnd");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            #[cfg(feature = "full")]
+            Expr::BigOr(v0) => {
+                let mut formatter = formatter.debug_tuple("BigOr");
                 formatter.field(v0);
                 formatter.finish()
             }
@@ -3294,16 +3312,6 @@ impl Debug for UnOp {
             }
             UnOp::Neg(v0) => {
                 let mut formatter = formatter.debug_tuple("Neg");
-                formatter.field(v0);
-                formatter.finish()
-            }
-            UnOp::BigAnd(v0) => {
-                let mut formatter = formatter.debug_tuple("BigAnd");
-                formatter.field(v0);
-                formatter.finish()
-            }
-            UnOp::BigOr(v0) => {
-                let mut formatter = formatter.debug_tuple("BigOr");
                 formatter.field(v0);
                 formatter.finish()
             }

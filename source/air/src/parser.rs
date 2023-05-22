@@ -35,6 +35,16 @@ fn is_bitvec(nodes: &Vec<Node>) -> Option<u32> {
     None
 }
 
+fn underscore_atom_atom_expr(s1: &str, s2: &str) -> Option<Constant> {
+    if s1.starts_with("bv") {
+        let value = Arc::new(s1["bv".len()..].to_string());
+        if let Ok(width) = s2.parse::<u32>() {
+            return Some(Constant::BitVec(value, width));
+        }
+    }
+    None
+}
+
 fn map_nodes_to_vec<A, F>(nodes: &[Node], f: &F) -> Result<Arc<Vec<A>>, String>
 where
     F: Fn(&Node) -> Result<A, String>,
@@ -156,6 +166,13 @@ impl Parser {
                             QuantOrChooseOrLambda::Choose(self.node_to_expr(e2)?);
                         return self.node_to_quant_or_lambda_expr(quantchooselambda, binders, e1);
                     }
+                    [Node::Atom(s), Node::Atom(s1), Node::Atom(s2)]
+                        if s.to_string() == "_" && underscore_atom_atom_expr(s1, s2).is_some() =>
+                    {
+                        return Ok(Arc::new(ExprX::Const(
+                            underscore_atom_atom_expr(s1, s2).unwrap(),
+                        )));
+                    }
                     _ => {}
                 }
                 match &nodes[0] {
@@ -170,6 +187,22 @@ impl Parser {
                 let args = self.nodes_to_exprs(&nodes[1..])?;
                 let uop = match &nodes[0] {
                     Node::Atom(s) if s.to_string() == "not" => Some(UnaryOp::Not),
+                    Node::Atom(s) if s.to_string() == "bvnot" => Some(UnaryOp::BitNot),
+                    Node::List(nodes)
+                        if nodes.len() == 4
+                            && nodes[0] == Node::Atom("_".to_string())
+                            && nodes[1] == Node::Atom("extract".to_string()) =>
+                    {
+                        match (&nodes[2], &nodes[3]) {
+                            (Node::Atom(s2), Node::Atom(s3)) => {
+                                match (s2.parse::<u32>(), s3.parse::<u32>()) {
+                                    (Ok(hi), Ok(lo)) => Some(UnaryOp::BitExtract(hi, lo)),
+                                    _ => None,
+                                }
+                            }
+                            _ => None,
+                        }
+                    }
                     _ => None,
                 };
                 let bop = match &nodes[0] {
@@ -181,6 +214,21 @@ impl Parser {
                     Node::Atom(s) if s.to_string() == ">" => Some(BinaryOp::Gt),
                     Node::Atom(s) if s.to_string() == "div" => Some(BinaryOp::EuclideanDiv),
                     Node::Atom(s) if s.to_string() == "mod" => Some(BinaryOp::EuclideanMod),
+                    Node::Atom(s) if s.to_string() == "bvxor" => Some(BinaryOp::BitXor),
+                    Node::Atom(s) if s.to_string() == "bvand" => Some(BinaryOp::BitAnd),
+                    Node::Atom(s) if s.to_string() == "bvor" => Some(BinaryOp::BitOr),
+                    Node::Atom(s) if s.to_string() == "bvadd" => Some(BinaryOp::BitAdd),
+                    Node::Atom(s) if s.to_string() == "bvsub" => Some(BinaryOp::BitSub),
+                    Node::Atom(s) if s.to_string() == "bvmul" => Some(BinaryOp::BitMul),
+                    Node::Atom(s) if s.to_string() == "bvudiv" => Some(BinaryOp::BitUDiv),
+                    Node::Atom(s) if s.to_string() == "bvurem" => Some(BinaryOp::BitUMod),
+                    Node::Atom(s) if s.to_string() == "bvult" => Some(BinaryOp::BitULt),
+                    Node::Atom(s) if s.to_string() == "bvugt" => Some(BinaryOp::BitUGt),
+                    Node::Atom(s) if s.to_string() == "bvule" => Some(BinaryOp::BitULe),
+                    Node::Atom(s) if s.to_string() == "bvuge" => Some(BinaryOp::BitUGe),
+                    Node::Atom(s) if s.to_string() == "bvlshr" => Some(BinaryOp::LShr),
+                    Node::Atom(s) if s.to_string() == "bvshl" => Some(BinaryOp::Shl),
+                    Node::Atom(s) if s.to_string() == "concat" => Some(BinaryOp::BitConcat),
                     _ => None,
                 };
                 let lop = match &nodes[0] {

@@ -13,6 +13,10 @@ const PERVASIVE_PATH: &str = "pervasive";
 // name of generated veruslib.vir in target
 const VSTD_VIR: &str = "vstd.vir";
 
+fn log_command(cmd: &std::process::Command) {
+    eprintln!("{}", yansi::Paint::magenta(format!("vstd_build running: {:?}", cmd)));
+}
+
 fn main() {
     if std::env::var("VERUS_IN_VARGO").is_err() {
         panic!("not running in vargo, read the README for instructions");
@@ -22,11 +26,21 @@ fn main() {
     args.next().expect("executable name");
     let verus_target_path =
         std::path::PathBuf::from(args.next().expect("missing verus target path"));
-    let release = match args.next().as_ref().map(|x| x.as_str()) {
-        Some("--release") => true,
-        Some(_) => panic!("unexpected profile argument"),
-        None => false,
-    };
+
+    let mut release = false;
+    let mut no_verify = false;
+    let mut verbose = false;
+    for arg in args {
+        if arg == "--release" {
+            release = true;
+        } else if arg == "--no-verify" {
+            no_verify = true;
+        } else if arg == "--verbose" {
+            verbose = true;
+        } else {
+            panic!("unexpected argument: {:}", arg)
+        }
+    }
 
     #[cfg(target_os = "macos")]
     let (pre, dl) = ("lib", "dylib");
@@ -57,6 +71,7 @@ fn main() {
         PERVASIVE_PATH.to_string(),
         VSTD_VIR.to_string(),
         verus_target_path.to_str().expect("invalid path").to_string(),
+        (if no_verify { "no-verify" } else { "verify" }).to_string(),
         "--extern".to_string(),
         format!("builtin={lib_builtin_path}"),
         "--extern".to_string(),
@@ -77,10 +92,14 @@ fn main() {
     child_args.push(VSTD_RS_PATH.to_string());
 
     let cmd = verus_target_path.join("rust_verify");
-    let mut child = std::process::Command::new(cmd)
-        .args(&child_args[..])
-        .spawn()
-        .expect("could not execute lifetime rustc process");
+    let mut child = std::process::Command::new(cmd);
+    child.args(&child_args[..]);
+
+    if verbose {
+        log_command(&child);
+    }
+
+    let mut child = child.spawn().expect("could not execute lifetime rustc process");
     let result = child.wait().expect("vstd verus wait failed");
     if !result.success() {
         let code = result.code();

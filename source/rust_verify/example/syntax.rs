@@ -299,8 +299,10 @@ fn test_auto_trigger2() {
     assume(forall|x: int, y: int| #![auto] f1(x) < 100 && f1(y) < 100 ==> my_spec_fun(3, y) >= 3);
 }
 
-/// &&& and ||| are like && and ||, but have low precedence (lower than all other binary operators).
+/// &&& and ||| are like && and ||, but have low precedence (lower than all other binary operators,
+/// and lower than forall/exists/choose).
 /// &&& must appear before each conjunct, rather than between the conjuncts (similarly for |||).
+/// &&& must appear directly inside a block or at the end of a block.
 spec fn simple_conjuncts(x: int, y: int) -> bool {
     &&& 1 < x
     &&& y > 9 ==> x + y < 50

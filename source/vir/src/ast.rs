@@ -89,9 +89,30 @@ pub enum IntRange {
     ISize,
 }
 
+/// Type information relevant to Rust but generally not relevant to the SMT encoding.
+/// This information is relevant for resolving traits.
+#[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode, Clone, Copy, PartialEq, Eq)]
+pub enum TypDecoration {
+    /// &T
+    Ref,
+    /// &mut T
+    MutRef,
+    /// Box<T>
+    Box,
+    /// Rc<T>
+    Rc,
+    /// Arc<T>
+    Arc,
+    /// Ghost<T>
+    Ghost,
+    /// Tracked<T>
+    Tracked,
+    /// !, represented as Never<()>
+    Never,
+}
+
 /// Rust type, but without Box, Rc, Arc, etc.
 pub type Typ = Arc<TypX>;
-
 pub type Typs = Arc<Vec<Typ>>;
 // Deliberately not marked Eq -- use explicit match instead, so we know where types are compared
 #[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode)]
@@ -108,6 +129,9 @@ pub enum TypX {
     AnonymousClosure(Typs, Typ, usize),
     /// Datatype (concrete or abstract) applied to type arguments
     Datatype(Path, Typs),
+    /// Wrap type with extra information relevant to Rust but usually irrelevant to SMT encoding
+    /// (though needed sometimes to encode trait resolution)
+    Decorate(TypDecoration, Typ),
     /// Boxed for SMT encoding (unrelated to Rust Box type), can be unboxed:
     Boxed(Typ),
     /// Type parameter (inherently SMT-boxed, and cannot be unboxed)
@@ -386,7 +410,8 @@ pub type Patterns = Arc<Vec<Pattern>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
 pub enum PatternX {
     /// _
-    Wildcard,
+    /// True if this is implicitly added from a ..
+    Wildcard(bool),
     /// x or mut x
     Var {
         name: Ident,

@@ -64,16 +64,18 @@ fn reach<A: std::hash::Hash + std::cmp::Eq + Clone>(
 fn reach_function(ctxt: &Ctxt, state: &mut State, name: &Fun) {
     if ctxt.function_map.contains_key(name) {
         reach(&mut state.reached_functions, &mut state.worklist_functions, name);
-        let module_path = name.path.pop_segment();
-        reach(&mut state.reached_modules, &mut state.worklist_modules, &module_path);
+        if let Some(module_path) = &ctxt.function_map[name].x.visibility.owning_module {
+            reach(&mut state.reached_modules, &mut state.worklist_modules, module_path);
+        }
     }
 }
 
 fn reach_datatype(ctxt: &Ctxt, state: &mut State, path: &Path) {
     if ctxt.datatype_map.contains_key(path) {
         reach(&mut state.reached_datatypes, &mut state.worklist_datatypes, path);
-        let module_path = path.pop_segment();
-        reach(&mut state.reached_modules, &mut state.worklist_modules, &module_path);
+        if let Some(module_path) = &ctxt.datatype_map[path].x.visibility.owning_module {
+            reach(&mut state.reached_modules, &mut state.worklist_modules, module_path);
+        }
     }
 }
 
@@ -290,7 +292,7 @@ pub fn prune_krate_for_module(
         if let FunctionKind::TraitMethodImpl { method, datatype, .. } = &f.x.kind {
             method_map.insert((datatype.clone(), method.clone()), f.x.name.clone());
         }
-        let module = f.x.name.path.pop_segment();
+        let module = f.x.visibility.owning_module.clone().expect("owning_module");
         if !all_functions_in_each_module.contains_key(&module) {
             all_functions_in_each_module.insert(module.clone(), Vec::new());
         }

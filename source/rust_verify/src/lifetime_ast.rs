@@ -29,7 +29,7 @@ impl Id {
 }
 
 pub(crate) type Typ = Box<TypX>;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) enum TypX {
     Primitive(String),
     TypParam(Id),
@@ -49,8 +49,8 @@ pub(crate) enum PatternX {
     Binding(Id, Mutability),
     Box(Pattern),
     Or(Vec<Pattern>),
-    Tuple(Vec<Pattern>),
-    DatatypeTuple(Id, Option<Id>, Vec<Pattern>),
+    Tuple(Vec<Pattern>, Option<usize>),
+    DatatypeTuple(Id, Option<Id>, Vec<Pattern>, Option<usize>),
     DatatypeStruct(Id, Option<Id>, Vec<(Id, Pattern)>, bool),
 }
 
@@ -117,14 +117,15 @@ pub(crate) enum ClosureKind {
     FnOnce,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) enum Bound {
     Copy,
+    Clone,
     Id(Id),
     Fn(ClosureKind, Typ, Typ),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct GenericParam {
     pub(crate) name: Id,
     pub(crate) const_typ: Option<Typ>,
@@ -136,7 +137,8 @@ pub(crate) struct DatatypeDecl {
     pub(crate) name: Id,
     pub(crate) span: Span,
     // Does the type implement the Copy trait? (e.g. impl<A: Copy> Copy for S<A> {})
-    pub(crate) implements_copy: bool,
+    // If so, for each GenericParam A say whether clone and copy require A: Clone and A: Copy
+    pub(crate) implements_copy: Option<Vec<bool>>,
     pub(crate) generics: Vec<GenericParam>,
     pub(crate) datatype: Box<Datatype>,
 }

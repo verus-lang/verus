@@ -118,9 +118,13 @@ fn subst_exp_rec(
             &|(substs, free_vars), e| Ok(subst_exp_rec(typ_substs, substs, free_vars, e)),
         )
         .expect("map_shallow_exp for subst_exp_rec"),
-        ExpX::Var(x) | ExpX::VarLoc(x) => match substs.get(x) {
+        ExpX::Var(x) => match substs.get(x) {
             None => mk_exp(ExpX::Var(x.clone())),
             Some(e) => e.clone(),
+        },
+        ExpX::VarLoc(x) => match substs.get(x) {
+            None => mk_exp(ExpX::VarLoc(x.clone())),
+            Some(_) => panic!("cannot substitute for VarLoc"),
         },
         ExpX::VarAt(x, a) => match substs.get(x) {
             None => mk_exp(ExpX::VarAt(x.clone(), *a)),
@@ -213,6 +217,19 @@ pub(crate) fn subst_exp(
     e
 }
 
+pub(crate) fn subst_stm(
+    typ_substs: &HashMap<Ident, Typ>,
+    substs: &HashMap<UniqueIdent, Exp>,
+    stm: &Stm,
+) -> Stm {
+    let stm = crate::sst_visitor::map_stm_visitor(&stm, &mut |stm| {
+        crate::sst_visitor::map_shallow_stm_typ(&stm, &|typ| Ok(subst_typ(typ_substs, typ)))
+    })
+    .unwrap();
+    crate::sst_visitor::map_stm_exp_visitor(&stm, &|exp| Ok(subst_exp(typ_substs, substs, exp)))
+        .unwrap()
+}
+
 ///////////////////////////////////////
 // Printing for SST expressions
 ///////////////////////////////////////
@@ -259,7 +276,7 @@ impl ExpX {
             Var(id) | VarLoc(id) => (format!("{}", id.name), 99),
             VarAt(id, _at) => (format!("old({})", id.name), 99),
             Loc(exp) => (format!("{}", exp), 99), // REVIEW: Additional decoration required?
-            Call(CallFun::Fun(fun), _, exps) => {
+            Call(CallFun::Fun(fun) | CallFun::CheckTermination(fun), _, exps) => {
                 let args = exps.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
                 (format!("{}({})", fun.path.segments.last().unwrap(), args), 90)
             }

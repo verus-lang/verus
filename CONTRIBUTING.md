@@ -35,7 +35,7 @@ that [`rustdoc`](https://doc.rust-lang.org/rustdoc/what-is-rustdoc.html) can
 automatically extract into HTML documentation.
 
 The rustdoc (verusdoc) for `main` is automatically published
-[📖 here](https://verus-lang.github.io/verus/verusdoc/lib/) (if the build succeeds).
+[📖 here](https://verus-lang.github.io/verus/verusdoc/vstd/) (if the build succeeds).
 
 You can compile the current documentation by running (in the `verify` directory)
 ```
@@ -81,3 +81,16 @@ VERUS_EXTRA_ARGS="--log-all" vargo test -p rust_verify_test --test refs -- --noc
 
 This will output the log files in `rust_verify_test/.verus-log`. Only run one test at
 a time when using this flag, so that the logs are not overwritten by other tests.
+
+## Other tips
+
+You can use `--vstd-no-verify` to skip verification of the `vstd` library. This is pretty useful if you're building or running tests a lot. Note that it will still _build_ `vstd`—it just skips the SMT step. For example:
+
+```
+# for building
+vargo build --vstd-no-verify
+# for tests
+vargo test --vstd-no-verify -p rust_verify_test --test <test file> <test name>
+```
+
+

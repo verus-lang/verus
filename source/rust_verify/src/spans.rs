@@ -154,14 +154,15 @@ impl SpanContextX {
         pos: BytePos,
     ) -> Option<ExternSourceFile> {
         if let Some(crate_info) = self.imported_crates.get(&imported_crate) {
-            let i = crate_info.files.binary_search_by_key(&pos.0, |f| f.original_start_pos.0);
+            let i = crate_info.files.binary_search_by_key(&pos, |f| f.original_start_pos);
             let i = match i {
                 Ok(i) => i,
                 Err(i) if i == 0 => return None,
                 Err(i) => i - 1,
             };
             let f = crate_info.files[i].clone();
-            if pos.0 <= f.end_pos.0 {
+            assert!(f.original_start_pos <= pos);
+            if pos <= f.original_end_pos {
                 return Some(f);
             }
         }

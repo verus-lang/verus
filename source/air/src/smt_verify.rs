@@ -257,6 +257,12 @@ pub(crate) fn smt_check_assertion<'ctx>(
                 } else if line.starts_with("(:reason-unknown \"(incomplete") {
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Incomplete);
+                } else if line
+                    == "(:reason-unknown \"smt tactic failed to show goal to be sat/unsat (incomplete quantifiers)\")"
+                {
+                    // longer message shows up when there's no push/pop around the query
+                    assert!(reason == None);
+                    reason = Some(SmtReasonUnknown::Incomplete);
                 } else if context.ignore_unexpected_smt {
                     diagnostics
                         .report(&warning_bare(format!("warning: unexpected SMT output: {}", line)));
@@ -280,8 +286,17 @@ pub(crate) fn smt_check_assertion<'ctx>(
         ValidityResult::Valid
     } else {
         context.smt_log.log_word("get-model");
+
         let smt_data = context.smt_log.take_pipe_data();
         let smt_output = context.get_smt_process().send_commands(smt_data);
+
+        if smt_output.iter().any(|line| line.contains("model is not available")) {
+            // when model not available, cancel to avoid rerun
+            // when we don't use incremental solving, sometime the model is not available when the z3 result is unknown
+            context.state = ContextState::Canceled;
+            return ValidityResult::Canceled;
+        };
+
         let model = crate::parser::Parser::new().lines_to_model(&smt_output);
         let mut model_defs: HashMap<Ident, ModelDef> = HashMap::new();
         for def in model.iter() {
@@ -335,8 +350,10 @@ pub(crate) fn smt_check_query<'ctx>(
     air_model: Model,
     report_long_running: Option<&mut ReportLongRunning>,
 ) -> ValidityResult {
-    context.smt_log.log_push();
-    context.push_name_scope();
+    if !context.disable_incremental_solving {
+        context.smt_log.log_push();
+        context.push_name_scope();
+    }
 
     // add query-local declarations
     for decl in query.local.iter() {
