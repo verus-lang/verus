@@ -7,6 +7,7 @@ use crate::pervasive::*;
 verus! {
 
 #[is_variant]
+#[verifier::accept_recursive_types(A)]
 pub enum Option<A> {
     None,
     Some(A)

@@ -3,28 +3,24 @@ use crate::ast::{
     IntRange, IntegerTypeBoundKind, InvAtomicity, MaskSpec, Mode, Params, Path, PathX,
     SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr, Visibility,
 };
-use crate::ast_util::bitwidth_from_int_range;
-use crate::ast_util::IntegerTypeBitwidth;
 use crate::ast_util::{
-    allowed_bitvector_type, bitwidth_from_type, error, fun_as_rust_dbg, get_field, get_variant,
-    is_integer_type, msg_error,
+    allowed_bitvector_type, bitwidth_from_int_range, bitwidth_from_type, error, fun_as_rust_dbg,
+    get_field, get_variant, is_integer_type, msg_error, undecorate_typ, IntegerTypeBitwidth,
 };
 use crate::context::Ctx;
 use crate::def::{
-    fn_inv_name, fn_namespace_name, new_user_qid_name, CHAR_FROM_UNICODE, CHAR_TO_UNICODE,
-    STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT,
+    fn_inv_name, fn_namespace_name, fun_to_string, is_variant_ident, new_internal_qid,
+    new_user_qid_name, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id,
+    prefix_lambda_type, prefix_pre_var, prefix_requires, prefix_unbox, snapshot_ident,
+    suffix_decorate_typ_param_id, suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id,
+    suffix_local_unique_id, suffix_typ_param_id, suffix_typ_param_ids, unique_local,
+    variant_field_ident, variant_ident, CommandsWithContext, CommandsWithContextX, ProverChoice,
+    SnapPos, SpanKind, Spanned, ARCH_SIZE, CHAR_FROM_UNICODE, CHAR_TO_UNICODE, FUEL_BOOL,
+    FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY,
+    SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII,
+    STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
+    SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
 };
-use crate::def::{
-    fun_to_string, is_variant_ident, new_internal_qid, path_to_string, prefix_box, prefix_ensures,
-    prefix_fuel_id, prefix_lambda_type, prefix_pre_var, prefix_requires, prefix_unbox,
-    snapshot_ident, suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id,
-    suffix_local_unique_id, suffix_typ_param_id, unique_local, variant_field_ident, variant_ident,
-    ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT,
-    FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_ASSIGN,
-    SNAPSHOT_CALL, SNAPSHOT_PRE, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN,
-    SUFFIX_SNAP_WHILE_END, U_HI,
-};
-use crate::def::{CommandsWithContext, CommandsWithContextX};
 use crate::inv_masks::MaskSet;
 use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
 use crate::sst::{
@@ -112,6 +108,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
                 }
             }
         }
+        TypX::Decorate(_, t) => typ_to_air(ctx, t),
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
         TypX::TypeId => str_typ(crate::def::TYPE),
@@ -153,20 +150,53 @@ fn big_int_to_expr(i: &BigInt) -> Expr {
 }
 
 // SMT-level type identifiers.
-// We currently rely on these type identifiers for:
+// We currently rely on *undecorated* type identifiers for:
 // 1) Axioms about unboxing integer refinement types (nat, u8, etc.)
 // 2) The box(unbox(x)) == x axiom
-pub fn typ_to_id(typ: &Typ) -> Expr {
+// Furthermore, we rely on *decorated* type identifiers for:
+// 3) functions that return different results for T, &T, Rc<T>, etc., such as size_of
+// 4) trait resolution
+// Because we need both undecorated and decorated types for different purposes,
+// we generally use both side by side, passing each one as a separate argument
+// to polymorphic functions.
+// By keeping them separate, we avoid the SMT overhead of manipulating the more verbose
+// decorated types when reasoning about boxing and unboxing.
+// REVIEW: in cases where decorated and undecorated types are the same,
+// we could try to optimize away the decorated type.
+// For example, we could perform an analysis to see, for each type parameter,
+// if the type parameter will never be instantiated with a type that contains TypX::Decorate,
+// and in this case only use the undecorated type.
+pub fn typ_to_id(typ: &Typ, decorated: bool) -> Expr {
     match &**typ {
         TypX::Int(range) => range_to_id(range),
         TypX::Bool => str_var(crate::def::TYPE_ID_BOOL),
         TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
-        TypX::Lambda(typs, typ) => fun_id(typs, typ),
+        TypX::Lambda(typs, typ) => fun_id(typs, typ, decorated),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
         }
-        TypX::Datatype(path, typs) => datatype_id(path, typs),
-        TypX::Boxed(typ) => typ_to_id(typ),
+        TypX::Datatype(path, typs) => datatype_id(path, typs, decorated),
+        TypX::Decorate(d, typ) => {
+            let undecorated = typ_to_id(typ, decorated);
+            if decorated {
+                use crate::ast::TypDecoration;
+                let f = match d {
+                    TypDecoration::Ref => crate::def::DECORATE_REF,
+                    TypDecoration::MutRef => crate::def::DECORATE_MUT_REF,
+                    TypDecoration::Box => crate::def::DECORATE_BOX,
+                    TypDecoration::Rc => crate::def::DECORATE_RC,
+                    TypDecoration::Arc => crate::def::DECORATE_ARC,
+                    TypDecoration::Ghost => crate::def::DECORATE_GHOST,
+                    TypDecoration::Tracked => crate::def::DECORATE_TRACKED,
+                    TypDecoration::Never => crate::def::DECORATE_NEVER,
+                };
+                str_apply(f, &vec![undecorated])
+            } else {
+                undecorated
+            }
+        }
+        TypX::Boxed(typ) => typ_to_id(typ, decorated),
+        TypX::TypParam(x) if decorated => ident_var(&suffix_decorate_typ_param_id(x)),
         TypX::TypParam(x) => ident_var(&suffix_typ_param_id(x)),
         TypX::TypeId => panic!("internal error: typ_to_id of TypeId"),
         TypX::ConstInt(c) => str_apply(crate::def::TYPE_ID_CONST_INT, &vec![big_int_to_expr(c)]),
@@ -176,20 +206,31 @@ pub fn typ_to_id(typ: &Typ) -> Expr {
     }
 }
 
-pub(crate) fn fun_id(typs: &Typs, typ: &Typ) -> Expr {
+pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
+    let mut exprs: Vec<Expr> = vec![typ_to_id(typ, false)];
+    if crate::context::DECORATE {
+        exprs.push(typ_to_id(typ, true));
+    }
+    exprs
+}
+
+pub(crate) fn fun_id(typs: &Typs, typ: &Typ, decorated: bool) -> Expr {
     let f_name = crate::def::prefix_type_id_fun(typs.len());
-    let mut typids: Vec<Expr> = vec_map(&**typs, typ_to_id);
-    typids.push(typ_to_id(typ));
+    let mut typids: Vec<Expr> = vec_map(&**typs, |t| typ_to_id(t, decorated));
+    typids.push(typ_to_id(typ, decorated));
     air::ast_util::ident_apply_or_var(&f_name, &Arc::new(typids))
 }
 
-pub(crate) fn datatype_id(path: &Path, typs: &Typs) -> Expr {
+pub(crate) fn datatype_id(path: &Path, typs: &Typs, decorated: bool) -> Expr {
     let f_name = crate::def::prefix_type_id(path);
-    air::ast_util::ident_apply_or_var(&f_name, &Arc::new(vec_map(&**typs, typ_to_id)))
+    air::ast_util::ident_apply_or_var(
+        &f_name,
+        &Arc::new(vec_map(&**typs, |t| typ_to_id(t, decorated))),
+    )
 }
 
 pub(crate) fn datatype_has_type(path: &Path, typs: &Typs, expr: &Expr) -> Expr {
-    str_apply(crate::def::HAS_TYPE, &vec![expr.clone(), datatype_id(path, typs)])
+    str_apply(crate::def::HAS_TYPE, &vec![expr.clone(), datatype_id(path, typs, false)])
 }
 
 pub(crate) fn expr_has_type(id: &Expr, expr: &Expr) -> Expr {
@@ -221,7 +262,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         }
         TypX::Lambda(..) => Some(str_apply(
             crate::def::HAS_TYPE,
-            &vec![try_box(ctx, expr.clone(), typ).expect("try_box lambda"), typ_to_id(typ)],
+            &vec![try_box(ctx, expr.clone(), typ).expect("try_box lambda"), typ_to_id(typ, false)],
         )),
         TypX::Datatype(path, typs) => {
             if ctx.datatype_is_transparent[path] {
@@ -239,7 +280,10 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
                 }
             }
         }
-        TypX::Boxed(t) => Some(str_apply(crate::def::HAS_TYPE, &vec![expr.clone(), typ_to_id(t)])),
+        TypX::Decorate(_, t) => typ_invariant(ctx, t, expr),
+        TypX::Boxed(t) => {
+            Some(str_apply(crate::def::HAS_TYPE, &vec![expr.clone(), typ_to_id(t, false)]))
+        }
         TypX::TypParam(x) => Some(str_apply(
             crate::def::HAS_TYPE,
             &vec![expr.clone(), ident_var(&suffix_typ_param_id(&x))],
@@ -268,6 +312,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
                 }
             }
         }
+        TypX::Decorate(_, t) => return try_box(ctx, expr, t),
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
         TypX::TypeId => None,
@@ -298,6 +343,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Tuple(_) => None,
         TypX::Lambda(typs, _) => Some(prefix_unbox(&prefix_lambda_type(typs.len()))),
         TypX::AnonymousClosure(..) => unimplemented!(),
+        TypX::Decorate(_, t) => return try_unbox(ctx, expr, t),
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
         TypX::TypeId => None,
@@ -312,7 +358,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
 fn get_inv_typ_args(typ: &Typ) -> Typs {
     match &**typ {
         TypX::Datatype(_, typs) => typs.clone(),
-        TypX::Boxed(typ) => get_inv_typ_args(typ),
+        TypX::Decorate(_, typ) | TypX::Boxed(typ) => get_inv_typ_args(typ),
         _ => {
             panic!("get_inv_typ_args failed, expected some Invariant type");
         }
@@ -331,7 +377,7 @@ fn call_inv(
         suffix_global_id(&fun_to_air_ident(&fn_inv_name(&ctx.global.vstd_crate_name, atomicity)));
     let boxed_inner = try_box(ctx, inner.clone(), typ).unwrap_or(inner);
 
-    let mut args: Vec<Expr> = typ_args.iter().map(|t| typ_to_id(t)).collect();
+    let mut args: Vec<Expr> = typ_args.iter().map(typ_to_ids).flatten().collect();
     args.push(outer);
     args.push(boxed_inner);
     ident_apply(&inv_fn_ident, &args)
@@ -343,7 +389,7 @@ fn call_namespace(ctx: &Ctx, arg: Expr, typ_args: &Typs, atomicity: InvAtomicity
         atomicity,
     )));
 
-    let mut args: Vec<Expr> = typ_args.iter().map(|t| typ_to_id(t)).collect();
+    let mut args: Vec<Expr> = typ_args.iter().map(typ_to_ids).flatten().collect();
     args.push(arg);
     ident_apply(&inv_fn_ident, &args)
 }
@@ -457,13 +503,14 @@ pub(crate) fn bv_typ_to_air(typ: &Typ) -> Option<air::ast::Typ> {
     match &**typ {
         TypX::Int(IntRange::U(size) | IntRange::I(size)) => Some(bv_typ(*size)),
         TypX::Bool => Some(bool_typ()),
+        TypX::Decorate(_, t) => bv_typ_to_air(t),
         TypX::Boxed(t) => bv_typ_to_air(t),
         _ => None,
     }
 }
 
 fn clip_bitwise_result(bit_expr: ExprX, exp: &Exp) -> Result<Expr, VirErr> {
-    if let TypX::Int(range) = &*exp.typ {
+    if let TypX::Int(range) = &*undecorate_typ(&exp.typ) {
         match range {
             IntRange::I(_) | IntRange::ISize => {
                 return Ok(apply_range_fun(&crate::def::I_CLIP, &range, vec![Arc::new(bit_expr)]));
@@ -482,7 +529,7 @@ fn clip_bitwise_result(bit_expr: ExprX, exp: &Exp) -> Result<Expr, VirErr> {
 }
 
 fn check_unsigned(exp: &Exp) -> Result<(), VirErr> {
-    if let TypX::Int(range) = &*exp.typ {
+    if let TypX::Int(range) = &*undecorate_typ(&exp.typ) {
         match range {
             IntRange::I(_) | IntRange::ISize => {
                 return error(
@@ -568,7 +615,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
     let expr_ctxt = &expr_ctxt.set_bit_vector_typ_hint(None);
     let result = match (&exp.x, expr_ctxt.is_bit_vector) {
         (ExpX::Const(crate::ast::Constant::Int(i)), true) => {
-            let typ = match (&*exp.typ, bit_vector_typ_hint) {
+            let typ = match (&*undecorate_typ(&exp.typ), bit_vector_typ_hint) {
                 (TypX::Int(IntRange::Int | IntRange::Nat), Some(hint))
                     if crate::ast_util::fixed_integer_const(&i.to_string(), hint) =>
                 {
@@ -621,16 +668,21 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         (ExpX::Old(span, x), false) => {
             Arc::new(ExprX::Old(span.clone(), suffix_local_unique_id(x)))
         }
-        (ExpX::Call(CallFun::Fun(x), typs, args), false) => {
-            let name = suffix_global_id(&fun_to_air_ident(&x));
-            let mut exprs: Vec<Expr> = vec_map(typs, typ_to_id);
+        (ExpX::Call(f @ (CallFun::Fun(_) | CallFun::CheckTermination(_)), typs, args), false) => {
+            let x_name = match f {
+                CallFun::Fun(x) => x.clone(),
+                CallFun::CheckTermination(x) => crate::def::prefix_recursive_fun(&x),
+                _ => panic!(),
+            };
+            let name = suffix_global_id(&fun_to_air_ident(&x_name));
+            let mut exprs: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
             for arg in args.iter() {
                 exprs.push(exp_to_expr(ctx, arg, expr_ctxt)?);
             }
             ident_apply(&name, &exprs)
         }
         (ExpX::Call(CallFun::InternalFun(func), typs, args), false) => {
-            let mut exprs: Vec<Expr> = vec_map(typs, typ_to_id);
+            let mut exprs: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
             for arg in args.iter() {
                 exprs.push(exp_to_expr(ctx, arg, expr_ctxt)?);
             }
@@ -656,7 +708,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             Arc::new(ExprX::Apply(variant, Arc::new(args)))
         }
         (ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(c)), false) => {
-            str_apply(crate::def::CONST_INT, &vec![typ_to_id(c)])
+            str_apply(crate::def::CONST_INT, &vec![typ_to_id(c, false)])
         }
         (ExpX::Unary(op, arg), true) => {
             if !allowed_bitvector_type(&arg.typ) {
@@ -849,11 +901,13 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 BinaryOp::Eq(..)
                 | BinaryOp::Ne
                 | BinaryOp::Inequality(..)
-                | BinaryOp::Arith(..) => match (&*lhs.typ, &*rhs.typ) {
-                    (TypX::Int(IntRange::U(..) | IntRange::I(..)), _) => Some(lhs.typ.clone()),
-                    (_, TypX::Int(IntRange::U(..) | IntRange::I(..))) => Some(rhs.typ.clone()),
-                    _ => None,
-                },
+                | BinaryOp::Arith(..) => {
+                    match (&*undecorate_typ(&lhs.typ), &*undecorate_typ(&rhs.typ)) {
+                        (TypX::Int(IntRange::U(..) | IntRange::I(..)), _) => Some(lhs.typ.clone()),
+                        (_, TypX::Int(IntRange::U(..) | IntRange::I(..))) => Some(rhs.typ.clone()),
+                        _ => None,
+                    }
+                }
                 _ => None,
             };
             let expr_ctxt = &expr_ctxt.set_bit_vector_typ_hint(hint);
@@ -1044,31 +1098,34 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     Quant::Forall => mk_implies(&inv, &expr),
                     Quant::Exists => mk_and(&vec![inv, expr]),
                 };
-                let binders = vec_map_result(&*binders, |b| {
-                    let name = match &*b.a {
+                let mut bs: Vec<Binder<air::ast::Typ>> = Vec::new();
+                for binder in binders.iter() {
+                    let names = match &*binder.a {
                         // allow quantifiers over type parameters, generated for broadcast_forall
-                        TypX::TypeId => suffix_typ_param_id(&b.name),
-                        _ => suffix_local_expr_id(&b.name),
+                        TypX::TypeId => suffix_typ_param_ids(&binder.name),
+                        _ => vec![suffix_local_expr_id(&binder.name)],
                     };
                     let typ = if expr_ctxt.is_bit_vector {
-                        let bv_typ_option = bv_typ_to_air(&b.a);
+                        let bv_typ_option = bv_typ_to_air(&binder.a);
                         if bv_typ_option.is_none() {
                             return error(
                                 &exp.span,
-                                format!("unsupported type in bitvector {:?}", &b.a),
+                                format!("unsupported type in bitvector {:?}", &binder.a),
                             );
                         };
                         bv_typ_option.unwrap()
                     } else {
-                        typ_to_air(ctx, &b.a)
+                        typ_to_air(ctx, &binder.a)
                     };
-                    Ok(Arc::new(BinderX { name, a: typ }))
-                })?;
+                    for name in names {
+                        bs.push(Arc::new(BinderX { name, a: typ.clone() }));
+                    }
+                }
                 let triggers = vec_map_result(&*trigs, |trig| {
                     vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt)).map(|v| Arc::new(v))
                 })?;
                 let qid = new_user_qid(ctx, &exp);
-                air::ast_util::mk_quantifier(quant.quant, &binders, &triggers, qid, &expr)
+                air::ast_util::mk_quantifier(quant.quant, &bs, &triggers, qid, &expr)
             }
             (BndX::Lambda(binders, trigs), false) => {
                 let expr = exp_to_expr(ctx, e, expr_ctxt)?;
@@ -1111,7 +1168,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     Some(_) => {
                         // use as_type to coerce expression to some value of the requested type,
                         // even if the choose expression is unsatisfiable
-                        let id = typ_to_id(typ);
+                        let id = typ_to_id(typ, false);
                         choose_expr = str_apply(crate::def::AS_TYPE, &vec![choose_expr, id]);
                     }
                     _ => {}
@@ -1384,7 +1441,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 && (!ctx.checking_recommends_for_non_spec() || *mode == Mode::Spec)
             {
                 let f_req = prefix_requires(&fun_to_air_ident(&func.x.name));
-                let mut req_args = vec_map(typs, typ_to_id);
+                let mut req_args: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
                 for arg in args.iter() {
                     req_args.push(exp_to_expr(ctx, arg, expr_ctxt)?);
                 }
@@ -1403,7 +1460,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 callee_mask_set.assert_is_contained_in(&state.mask, &stm.span, &mut stmts);
             }
 
-            let typ_args: Vec<Expr> = vec_map(typs, typ_to_id);
+            let typ_args: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
             if func.x.params.iter().any(|p| p.x.is_mut) && ctx.debug {
                 unimplemented!("&mut args are unsupported in debugger mode");
             }
@@ -2176,8 +2233,10 @@ pub(crate) fn body_stm_to_air(
     let mut local_bv_shared: Vec<Decl> = Vec::new();
 
     for x in typ_params.iter() {
-        local_shared
-            .push(Arc::new(DeclX::Const(suffix_typ_param_id(&x), str_typ(crate::def::TYPE))));
+        let ids = suffix_typ_param_ids(&x);
+        local_shared.extend(
+            ids.iter().map(|x| Arc::new(DeclX::Const(x.clone(), str_typ(crate::def::TYPE)))),
+        );
     }
     for decl in local_decls {
         local_shared.push(if decl.mutable {

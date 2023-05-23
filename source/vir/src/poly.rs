@@ -114,6 +114,7 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
             }
             Some(Arc::new(MonoTypX::Datatype(path.clone(), Arc::new(monotyps))))
         }
+        TypX::Decorate(_, t) => typ_as_mono(t),
         _ => None,
     }
 }
@@ -144,6 +145,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
                 typ_as_mono(typ).is_none()
             }
         }
+        TypX::Decorate(_, t) => typ_is_poly(ctx, t),
         TypX::Boxed(_) | TypX::TypParam(_) => true,
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
@@ -169,6 +171,7 @@ fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
                 }
             }
         }
+        TypX::Decorate(d, t) => Arc::new(TypX::Decorate(*d, coerce_typ_to_native(ctx, t))),
         TypX::Boxed(_) | TypX::TypParam(_) => typ.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
@@ -186,6 +189,7 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
         }
         TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
         TypX::Datatype(..) => Arc::new(TypX::Boxed(typ.clone())),
+        TypX::Decorate(d, t) => Arc::new(TypX::Decorate(*d, coerce_typ_to_poly(_ctx, t))),
         TypX::Boxed(_) | TypX::TypParam(_) => typ.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
@@ -194,7 +198,7 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
 }
 
 pub(crate) fn coerce_expr_to_native(ctx: &Ctx, expr: &Expr) -> Expr {
-    match &*expr.typ {
+    match &*crate::ast_util::undecorate_typ(&expr.typ) {
         TypX::Bool
         | TypX::Int(_)
         | TypX::Lambda(..)
@@ -205,6 +209,9 @@ pub(crate) fn coerce_expr_to_native(ctx: &Ctx, expr: &Expr) -> Expr {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
         TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
+        TypX::Decorate(..) => {
+            panic!("internal error: Decorate should be removed by undecorate_typ")
+        }
         TypX::Boxed(typ) => {
             if typ_is_poly(ctx, typ) {
                 expr.clone()
@@ -222,7 +229,7 @@ pub(crate) fn coerce_expr_to_native(ctx: &Ctx, expr: &Expr) -> Expr {
 }
 
 fn coerce_expr_to_poly(ctx: &Ctx, expr: &Expr) -> Expr {
-    match &*expr.typ {
+    match &*crate::ast_util::undecorate_typ(&expr.typ) {
         TypX::Datatype(path, _)
             if !ctx.datatype_is_transparent[path] && typ_as_mono(&expr.typ).is_none() =>
         {
@@ -243,6 +250,9 @@ fn coerce_expr_to_poly(ctx: &Ctx, expr: &Expr) -> Expr {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
         TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
+        TypX::Decorate(..) => {
+            panic!("internal error: Decorate should be removed by undecorate_typ")
+        }
         TypX::Boxed(_) | TypX::TypParam(_) => expr.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),

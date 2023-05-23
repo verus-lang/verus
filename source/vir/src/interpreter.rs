@@ -9,7 +9,7 @@ use crate::ast::{
     ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Fun, FunX, Idents, InequalityOp, IntRange,
     IntegerTypeBoundKind, PathX, SpannedTyped, Typ, TypX, UnaryOp, VirErr,
 };
-use crate::ast_util::{error, path_as_vstd_name};
+use crate::ast_util::{error, path_as_vstd_name, undecorate_typ};
 use crate::func_to_air::{SstInfo, SstMap};
 use crate::prelude::ArchWordBits;
 use crate::sst::{Bnd, BndX, CallFun, Exp, ExpX, Exps, Trigs, UniqueIdent};
@@ -247,7 +247,7 @@ impl<T: Clone + SyntacticEquality> SyntacticEquality for Vector<T> {
 impl SyntacticEquality for Typ {
     fn syntactic_eq(&self, other: &Self) -> Option<bool> {
         use TypX::*;
-        match (self.as_ref(), other.as_ref()) {
+        match (undecorate_typ(self).as_ref(), undecorate_typ(other).as_ref()) {
             (Bool, Bool) => Some(true),
             (Int(l), Int(r)) => Some(l == r),
             (Tuple(typs_l), Tuple(typs_r)) => typs_l.syntactic_eq(typs_r),
@@ -938,7 +938,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     match op {
                         BitNot => {
                             use IntRange::*;
-                            let r = match *e.typ {
+                            let r = match *undecorate_typ(&e.typ) {
                                 TypX::Int(U(n)) => {
                                     let i = i.to_u128().unwrap();
                                     Some(u128_to_fixed_width(!i, n))
@@ -1272,7 +1272,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 None => ok_e2(e2),
                                 Some(shift) => {
                                     use IntRange::*;
-                                    let r = match *exp.typ {
+                                    let r = match *undecorate_typ(&exp.typ) {
                                         TypX::Int(U(n)) => {
                                             let i1 = i1.to_u128().unwrap();
                                             let res = if matches!(op, Shr) {
@@ -1409,6 +1409,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 }
             }
         }
+        Call(CallFun::CheckTermination(_), _, _) => ok,
         Call(fun @ CallFun::InternalFun(_), typs, args) => {
             let new_args: Result<Vec<Exp>, VirErr> =
                 args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();

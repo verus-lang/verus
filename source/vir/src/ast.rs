@@ -89,9 +89,30 @@ pub enum IntRange {
     ISize,
 }
 
+/// Type information relevant to Rust but generally not relevant to the SMT encoding.
+/// This information is relevant for resolving traits.
+#[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode, Clone, Copy, PartialEq, Eq)]
+pub enum TypDecoration {
+    /// &T
+    Ref,
+    /// &mut T
+    MutRef,
+    /// Box<T>
+    Box,
+    /// Rc<T>
+    Rc,
+    /// Arc<T>
+    Arc,
+    /// Ghost<T>
+    Ghost,
+    /// Tracked<T>
+    Tracked,
+    /// !, represented as Never<()>
+    Never,
+}
+
 /// Rust type, but without Box, Rc, Arc, etc.
 pub type Typ = Arc<TypX>;
-
 pub type Typs = Arc<Vec<Typ>>;
 // Deliberately not marked Eq -- use explicit match instead, so we know where types are compared
 #[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode)]
@@ -108,6 +129,9 @@ pub enum TypX {
     AnonymousClosure(Typs, Typ, usize),
     /// Datatype (concrete or abstract) applied to type arguments
     Datatype(Path, Typs),
+    /// Wrap type with extra information relevant to Rust but usually irrelevant to SMT encoding
+    /// (though needed sometimes to encode trait resolution)
+    Decorate(TypDecoration, Typ),
     /// Boxed for SMT encoding (unrelated to Rust Box type), can be unboxed:
     Boxed(Typ),
     /// Type parameter (inherently SMT-boxed, and cannot be unboxed)
@@ -625,8 +649,28 @@ pub enum GenericBoundX {
 }
 
 pub type TypBounds = Arc<Vec<(Ident, GenericBound)>>;
-/// Each type parameter is (name: Ident, bound: GenericBound, strictly_positive: bool)
-pub type TypPositiveBounds = Arc<Vec<(Ident, GenericBound, bool)>>;
+/// When instantiating type S<A> with A = T in a recursive type definition,
+/// is T allowed to include the one of recursively defined types?
+/// Example:
+///   enum Foo { Rec(S<Box<Foo>>), None }
+///   enum Bar { Rec(S<Box<Bar>>) }
+///   (instantiates A with recursive type Box<Foo> or Box<Bar>)
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy, PartialEq, Eq)]
+pub enum AcceptRecursiveType {
+    /// rejects the Foo example above
+    /// (because A may occur negatively in S)
+    Reject,
+    /// accepts the Foo example above because the occurrence is in Rec,
+    /// which is not the ground variant for Foo (None is the ground variant for Foo),
+    /// but rejects Bar because Rec is the ground variant for Bar (since there is no None variant)
+    /// (because A occurs only strictly positively in S, but may occur in S's ground variant)
+    RejectInGround,
+    /// accepts both Foo and Bar
+    /// (because A occurs only strictly positively in S, and does not occur in S's ground variant)
+    Accept,
+}
+/// Each type parameter is (name: Ident, GenericBound, AcceptRecursiveType)
+pub type TypPositiveBounds = Arc<Vec<(Ident, GenericBound, AcceptRecursiveType)>>;
 
 pub type FunctionAttrs = Arc<FunctionAttrsX>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Default, Clone)]

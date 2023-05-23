@@ -64,6 +64,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Datatype(p1, typs1), TypX::Datatype(p2, typs2)) => {
             p1 == p2 && n_types_equal(typs1, typs2)
         }
+        (TypX::Decorate(d1, t1), TypX::Decorate(d2, t2)) => d1 == d2 && types_equal(t1, t2),
         (TypX::Boxed(t1), TypX::Boxed(t2)) => types_equal(t1, t2),
         (TypX::TypParam(x1), TypX::TypParam(x2)) => x1 == x2,
         (TypX::ConstInt(c1), TypX::ConstInt(c2)) => c1 == c2,
@@ -107,8 +108,12 @@ pub fn generic_bounds_equal(b1: &GenericBound, b2: &GenericBound) -> bool {
     }
 }
 
+pub fn undecorate_typ(typ: &Typ) -> Typ {
+    if let TypX::Decorate(_, t) = &**typ { undecorate_typ(t) } else { typ.clone() }
+}
+
 pub fn allowed_bitvector_type(typ: &Typ) -> bool {
-    match &**typ {
+    match &*undecorate_typ(typ) {
         TypX::Bool => true,
         TypX::Int(IntRange::U(_) | IntRange::I(_) | IntRange::USize | IntRange::ISize) => true,
         TypX::Boxed(typ) => allowed_bitvector_type(typ),
@@ -117,7 +122,7 @@ pub fn allowed_bitvector_type(typ: &Typ) -> bool {
 }
 
 pub fn is_integer_type(typ: &Typ) -> bool {
-    match &**typ {
+    match &*undecorate_typ(typ) {
         TypX::Int(_) => true,
         TypX::Boxed(typ) => is_integer_type(typ),
         _ => false,
@@ -158,7 +163,7 @@ pub fn bitwidth_from_int_range(int_range: &IntRange) -> Option<IntegerTypeBitwid
 }
 
 pub fn bitwidth_from_type(et: &Typ) -> Option<IntegerTypeBitwidth> {
-    match &**et {
+    match &*undecorate_typ(et) {
         TypX::Int(int_range) => bitwidth_from_int_range(int_range),
         TypX::Boxed(in_et) => bitwidth_from_type(&*in_et),
         _ => None,
@@ -166,12 +171,13 @@ pub fn bitwidth_from_type(et: &Typ) -> Option<IntegerTypeBitwidth> {
 }
 
 pub(crate) fn fixed_integer_const(n: &String, typ: &Typ) -> bool {
-    if let TypX::Int(IntRange::U(bits)) = &**typ {
+    let typ = undecorate_typ(typ);
+    if let TypX::Int(IntRange::U(bits)) = &*typ {
         if let Ok(u) = n.parse::<u128>() {
             return *bits == 128 || u < 2u128 << bits;
         }
     }
-    if let TypX::Int(IntRange::I(bits)) = &**typ {
+    if let TypX::Int(IntRange::I(bits)) = &*typ {
         if let Ok(i) = n.parse::<i128>() {
             return *bits == 128
                 || -((2u128 << (bits - 1)) as i128) <= i && i < (2u128 << (bits - 1)) as i128;

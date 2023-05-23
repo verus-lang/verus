@@ -484,6 +484,7 @@ fn check_function(
 
     #[cfg(feature = "singular")]
     if function.x.attrs.integer_ring {
+        use crate::ast_util::undecorate_typ;
         let _ = match std::env::var("VERUS_SINGULAR_PATH") {
             Ok(_) => {}
             Err(_) => {
@@ -509,7 +510,7 @@ fn check_function(
             })?;
         }
         for p in function.x.params.iter() {
-            match *p.x.typ {
+            match *undecorate_typ(&p.x.typ) {
                 TypX::Int(crate::ast::IntRange::Int) => {}
                 TypX::Boxed(_) => {}
                 _ => {
@@ -554,7 +555,7 @@ fn check_function(
         }
         for req in function.x.require.iter() {
             crate::ast_visitor::expr_visitor_check(req, &mut |_scope_map, expr| {
-                match *expr.typ {
+                match *undecorate_typ(&expr.typ) {
                     TypX::Int(crate::ast::IntRange::Int) => {}
                     TypX::Bool => {}
                     TypX::Boxed(_) => {}
@@ -570,7 +571,7 @@ fn check_function(
         }
         for ens in function.x.ensure.iter() {
             crate::ast_visitor::expr_visitor_check(ens, &mut |_scope_map, expr| {
-                match *expr.typ {
+                match *undecorate_typ(&expr.typ) {
                     TypX::Int(crate::ast::IntRange::Int) => {}
                     TypX::Bool => {}
                     TypX::Boxed(_) => {}

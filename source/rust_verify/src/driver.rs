@@ -253,10 +253,10 @@ where
 {
     if !build_test_mode {
         if let Some(VerusRoot { path: verusroot, in_vargo }) = find_verusroot() {
-            verifier
-                .args
-                .import
-                .push((format!("vstd"), verusroot.join("vstd.vir").to_str().unwrap().to_string()));
+            if !verifier.args.no_vstd {
+                let vstd = verusroot.join("vstd.vir").to_str().unwrap().to_string();
+                verifier.args.import.push((format!("vstd"), vstd));
+            }
             rustc_args.push(format!("--edition"));
             rustc_args.push(format!("2018"));
             let externs = VerusExterns { path: &verusroot, has_vstd: !verifier.args.no_vstd };
