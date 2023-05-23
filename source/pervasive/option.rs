@@ -7,6 +7,7 @@ use crate::pervasive::*;
 verus! {
 
 #[is_variant]
+#[verifier::ext_equal]
 pub enum Option<A> {
     None,
     Some(A)
