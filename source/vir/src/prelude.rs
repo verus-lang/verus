@@ -108,7 +108,8 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let uint_not = str_to_node(UINT_NOT);
 
     let strslice = str_to_node(STRSLICE);
-    let char_ = str_to_node(CHAR);
+    #[allow(non_snake_case)]
+    let Char = str_to_node(CHAR);
 
     let strslice_is_ascii = str_to_node(STRSLICE_IS_ASCII);
     let strslice_len = str_to_node(STRSLICE_LEN);
@@ -139,15 +140,15 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         ))
 
         // Chars
-        (declare-sort [char_] 0)
-        (declare-fun [from_unicode] (Int) [char_])
-        (declare-fun [to_unicode] ([char_]) Int)
+        (declare-sort [Char] 0)
+        (declare-fun [from_unicode] (Int) [Char])
+        (declare-fun [to_unicode] ([Char]) Int)
 
         // Strings
         (declare-sort [strslice] 0)
         (declare-fun [strslice_is_ascii] ([strslice]) Bool)
         (declare-fun [strslice_len] ([strslice]) Int)
-        (declare-fun [strslice_get_char] ([strslice] Int) [char_])
+        (declare-fun [strslice_get_char] ([strslice] Int) [Char])
         (declare-fun [new_strlit] (Int) [strslice])
 
         (declare-fun [from_strlit] ([strslice]) Int)
@@ -160,8 +161,8 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [unbox_bool] ([Poly]) Bool)
         (declare-fun [box_strslice] ([strslice]) [Poly])
         (declare-fun [unbox_strslice] ([Poly]) [strslice])
-        (declare-fun [box_char] ([char_]) [Poly])
-        (declare-fun [unbox_char] ([Poly]) [char_])
+        (declare-fun [box_char] ([Char]) [Poly])
+        (declare-fun [unbox_char] ([Poly]) [Char])
         (declare-sort [typ] 0)
         (declare-const [type_id_bool] [typ])
         (declare-const [type_id_int] [typ])
@@ -180,7 +181,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [decorate_tracked] ([typ]) [typ])
         (declare-fun [decorate_never] ([typ]) [typ])
         (declare-fun [has_type] ([Poly] [typ]) Bool)
-        (declare-fun [as_type] ([Poly] [typ]) Poly)
+        (declare-fun [as_type] ([Poly] [typ]) [Poly])
         (declare-fun [mk_fun] (Fun) Fun)
         (declare-fun [const_int] ([typ]) Int)
         (axiom (forall ((i Int)) (= i ([const_int] ([type_id_const_int] i)))))
@@ -410,7 +411,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :qid prelude_has_type_sint
             :skolemid skolem_prelude_has_type_sint
         )))
-        (axiom (forall ((x Poly)) (!
+        (axiom (forall ((x [Poly])) (!
             (=>
                 ([has_type] x [type_id_nat])
                 (<= 0 ([unbox_int] x))
@@ -419,7 +420,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :qid prelude_unbox_int
             :skolemid skolem_prelude_unbox_int
         )))
-        (axiom (forall ((bits Int) (x Poly)) (!
+        (axiom (forall ((bits Int) (x [Poly])) (!
             (=>
                 ([has_type] x ([type_id_uint] bits))
                 ([u_inv] bits ([unbox_int] x))
@@ -428,7 +429,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :qid prelude_unbox_uint
             :skolemid skolem_prelude_unbox_uint
         )))
-        (axiom (forall ((bits Int) (x Poly)) (!
+        (axiom (forall ((bits Int) (x [Poly])) (!
             (=>
                 ([has_type] x ([type_id_sint] bits))
                 ([i_inv] bits ([unbox_int] x))
@@ -473,13 +474,13 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :qid prelude_box_unbox_char
             :skolemid skolem_prelude_box_unbox_char
         )))
-        (axiom (forall ((x [char_])) (!
+        (axiom (forall ((x [Char])) (!
             (= x ([unbox_char] ([box_char] x)))
             :pattern (([box_char] x))
             :qid prelude_unbox_box_char
             :skolemid skolem_prelude_unbox_box_char
         )))
-        (axiom (forall ((x [char_])) (!
+        (axiom (forall ((x [Char])) (!
             ([has_type] ([box_char] x) [type_id_char])
             :pattern ((has_type ([box_char] x) [type_id_char]))
             :qid prelude_has_type_char
@@ -491,7 +492,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :qid prelude_char_injective
             :skolemid skolem_prelude_char_injective
         )))
-        (axiom (forall ((c Char)) (!
+        (axiom (forall ((c [Char])) (!
             (and
                 (<= 0 ([to_unicode] c))
                 (< ([to_unicode] c) ([u_hi] 32))
@@ -515,8 +516,8 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :qid prelude_check_decreases
             :skolemid skolem_prelude_check_decreases
         )))
-        (declare-fun [height] (Poly) Int)
-        (axiom (forall ((x Poly)) (!
+        (declare-fun [height] ([Poly]) Int)
+        (axiom (forall ((x [Poly])) (!
             (<= 0 ([height] x))
             :pattern (([height] x))
             :qid prelude_height
@@ -524,12 +525,12 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         )))
 
         // uninterpreted integer versions for bitvector Ops. first argument is bit-width
-        (declare-fun [uint_xor] (Int Poly Poly) Int)
-        (declare-fun [uint_and] (Int Poly Poly) Int)
-        (declare-fun [uint_or]  (Int Poly Poly) Int)
-        (declare-fun [uint_shr] (Int Poly Poly) Int)
-        (declare-fun [uint_shl] (Int Poly Poly) Int)
-        (declare-fun [uint_not] (Int Poly) Int)
+        (declare-fun [uint_xor] (Int [Poly] [Poly]) Int)
+        (declare-fun [uint_and] (Int [Poly] [Poly]) Int)
+        (declare-fun [uint_or]  (Int [Poly] [Poly]) Int)
+        (declare-fun [uint_shr] (Int [Poly] [Poly]) Int)
+        (declare-fun [uint_shl] (Int [Poly] [Poly]) Int)
+        (declare-fun [uint_not] (Int [Poly]) Int)
 
         // closure-related
 
@@ -547,9 +548,9 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [closure_req]
             {
                 if crate::context::DECORATE {
-                    nodes!(Type Type Type Type Poly Poly)
+                    nodes!([typ] [typ] [typ] [typ] [Poly] [Poly])
                 } else {
-                    nodes!(Type Type Poly Poly)
+                    nodes!([typ] [typ] [Poly] [Poly])
                 }
             }
             Bool
@@ -557,9 +558,9 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [closure_ens]
             {
                 if crate::context::DECORATE {
-                    nodes!(Type Type Type Type Poly Poly Poly)
+                    nodes!([typ] [typ] [typ] [typ] [Poly] [Poly] [Poly])
                 } else {
-                    nodes!(Type Type Poly Poly Poly)
+                    nodes!([typ] [typ] [Poly] [Poly] [Poly])
                 }
             }
             Bool
