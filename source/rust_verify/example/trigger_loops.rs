@@ -17,7 +17,7 @@ proof fn quantifier_example()
     requires forall|x| g(x)
     ensures exists|y| g(y)
 {
-    let w = choose(|z| g(z));
+    let w = choose |z| g(z);
     assert(g(w));
 }
 
