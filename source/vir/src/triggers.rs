@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, Ident, IntegerTypeBoundKind, TriggerAnnotation, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
-    VirErr,
+    BinaryOp, Ident, IntegerTypeBoundKind, SpannedTyped, TriggerAnnotation, Typ, TypX, UnaryOp,
+    UnaryOpr, VarAt, VirErr,
 };
 use crate::ast_util::error;
 use crate::context::Ctx;
@@ -25,10 +25,20 @@ struct State {
     coverage: HashMap<Option<u64>, HashSet<Ident>>,
 }
 
-fn remove_boxing(exp: &Exp) -> Exp {
+fn preprocess_exp(exp: &Exp) -> Exp {
     match &exp.x {
         ExpX::UnaryOpr(UnaryOpr::Box(_), e) | ExpX::UnaryOpr(UnaryOpr::Unbox(_), e) => {
-            remove_boxing(e)
+            preprocess_exp(e)
+        }
+        ExpX::Binary(BinaryOp::HeightCompare(_), e1, _) => {
+            // We don't let users use the "height" function or Height type directly.
+            // However, when using HeightCompare, it's useful to trigger on "height",
+            // and it's not useful to trigger on HeightCompare,
+            // which is essentially a "<" operator on heights.
+            // Therefore, we replace HeightCompare triggers with height triggers.
+            // (Or rather, HeightCompare is the interface by which users write height triggers.)
+            let typ = Arc::new(TypX::Bool); // arbitrary type for trigger
+            SpannedTyped::new(&exp.span, &typ, ExpX::Unary(UnaryOp::HeightTrigger, e1.clone()))
         }
         _ => exp.clone(),
     }
@@ -46,7 +56,7 @@ fn check_trigger_expr(
             | ExpX::CallLambda(..)
             | ExpX::UnaryOpr(UnaryOpr::Field { .. }, _)
             | ExpX::UnaryOpr(UnaryOpr::IsVariant { .. }, _)
-            | ExpX::Unary(UnaryOp::Trigger(_), _) => {}
+            | ExpX::Unary(UnaryOp::Trigger(_) | UnaryOp::HeightTrigger, _) => {}
             // allow triggers for bitvector operators
             ExpX::Binary(BinaryOp::Bitwise(_, _), _, _) | ExpX::Unary(UnaryOp::BitNot, _) => {}
             _ => {
@@ -112,6 +122,7 @@ fn check_trigger_expr(
                     UnaryOp::Trigger(_)
                     | UnaryOp::Clip { .. }
                     | UnaryOp::BitNot
+                    | UnaryOp::HeightTrigger
                     | UnaryOp::StrLen
                     | UnaryOp::StrIsAscii
                     | UnaryOp::CharToInt => Ok(()),
@@ -125,7 +136,6 @@ fn check_trigger_expr(
                     | UnaryOpr::IsVariant { .. }
                     | UnaryOpr::TupleField { .. }
                     | UnaryOpr::Field { .. }
-                    | UnaryOpr::Height
                     | UnaryOpr::CustomErr(_)
                     | UnaryOpr::IntegerTypeBound(
                         IntegerTypeBoundKind::SignedMin | IntegerTypeBoundKind::ArchWordBits,
@@ -144,6 +154,10 @@ fn check_trigger_expr(
                         And | Or | Xor | Implies | Eq(_) | Ne => {
                             error(&exp.span, "triggers cannot contain boolean operators")
                         }
+                        HeightCompare(_) => error(
+                            &exp.span,
+                            "triggers cannot contain interior is_smaller_than expressions",
+                        ),
                         Inequality(_) => Ok(()),
                         Arith(..) => error(
                             &exp.span,
@@ -188,6 +202,7 @@ fn check_trigger_expr(
                     | UnaryOp::CoerceMode { .. }
                     | UnaryOp::CharToInt => true,
                     UnaryOp::MustBeFinalized => true,
+                    UnaryOp::HeightTrigger => false,
                     UnaryOp::Not | UnaryOp::BitNot | UnaryOp::StrLen | UnaryOp::StrIsAscii => false,
                 },
                 ExpX::Binary(op, _, _) => {
@@ -225,7 +240,7 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
             }
             ExpX::Unary(UnaryOp::Trigger(TriggerAnnotation::Trigger(group)), e1) => {
                 let mut free_vars: HashSet<Ident> = HashSet::new();
-                let e1 = remove_boxing(&e1);
+                let e1 = preprocess_exp(&e1);
                 check_trigger_expr(state, &e1, &mut free_vars, &lets)?;
                 for x in &free_vars {
                     if map.get(x) == Some(&true) && !state.trigger_vars.contains(x) {
@@ -251,7 +266,7 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                     for (n, trigger) in triggers.iter().enumerate() {
                         let group = Some(n as u64);
                         let mut coverage: HashSet<Ident> = HashSet::new();
-                        let es: Vec<Exp> = trigger.iter().map(remove_boxing).collect();
+                        let es: Vec<Exp> = trigger.iter().map(preprocess_exp).collect();
                         for e in &es {
                             let mut free_vars: HashSet<Ident> = HashSet::new();
                             check_trigger_expr(state, e, &mut free_vars, &lets)?;

@@ -1045,6 +1045,14 @@ pub fn arch_word_bits() -> nat {
     unimplemented!();
 }
 
-pub fn height<A>(_a: A) -> nat {
+// is_smaller_than(a, b) means that height(a) < height(b), so that b can decrease to a
+// in decreases clauses.
+// Notes:
+// - you can use is_smaller_than((a1, ..., an), (b1, ..., bn)) to compare lexicographically
+//   ordered values, which can be useful when making assertions about decreases clauses
+// - when is_smaller_than(a, b) is used as a trigger, it actually triggers on height(a)
+//   (in the SMT encoding, height is a function call and is a useful trigger,
+//   while is_smaller_than is not a function call and is not a useful trigger.)
+pub fn is_smaller_than<A, B>(_: A, _: B) -> bool {
     unimplemented!();
 }

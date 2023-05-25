@@ -158,6 +158,18 @@ impl Printer {
                     _ => Node::List(vec![str_to_node(sop), self.expr_to_node(expr)]),
                 }
             }
+            ExprX::Binary(BinaryOp::Relation(relation, n), lhs, rhs) => {
+                use crate::ast::Relation;
+                let s = match relation {
+                    Relation::PartialOrder => "partial-order",
+                    Relation::LinearOrder => "linear-order",
+                    Relation::TreeOrder => "tree-order",
+                    Relation::PiecewiseLinearOrder => "piecewise-linear-order",
+                };
+                let op =
+                    Node::List(vec![str_to_node("_"), str_to_node(s), Node::Atom(n.to_string())]);
+                Node::List(vec![op, self.expr_to_node(lhs), self.expr_to_node(rhs)])
+            }
             ExprX::Binary(op, lhs, rhs) => {
                 let sop = match op {
                     BinaryOp::Implies => "=>",
@@ -168,7 +180,7 @@ impl Printer {
                     BinaryOp::Gt => ">",
                     BinaryOp::EuclideanDiv => "div",
                     BinaryOp::EuclideanMod => "mod",
-
+                    BinaryOp::Relation(..) => unreachable!(),
                     BinaryOp::BitXor => "bvxor",
                     BinaryOp::BitAnd => "bvand",
                     BinaryOp::BitOr => "bvor",

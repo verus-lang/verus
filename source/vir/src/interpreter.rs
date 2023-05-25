@@ -923,6 +923,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         Not => bool_new(!b),
                         BitNot
                         | Clip { .. }
+                        | HeightTrigger
                         | Trigger(_)
                         | CoerceMode { .. }
                         | StrLen
@@ -1028,9 +1029,13 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         MustBeFinalized => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
                         }
-                        Not | Trigger(_) | CoerceMode { .. } | StrLen | StrIsAscii | CharToInt => {
-                            ok
-                        }
+                        Not
+                        | HeightTrigger
+                        | Trigger(_)
+                        | CoerceMode { .. }
+                        | StrLen
+                        | StrIsAscii
+                        | CharToInt => ok,
                     }
                 }
                 // !(!(e_inner)) == e_inner
@@ -1097,7 +1102,6 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         _ => ok,
                     }
                 }
-                Height => ok,
                 CustomErr(_) => Ok(e),
             }
         }
@@ -1340,7 +1344,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         }
                     }
                 }
-                StrGetChar => ok_e2(e2.clone()),
+                HeightCompare(_) | StrGetChar => ok_e2(e2.clone()),
             }
         }
         If(e1, e2, e3) => {

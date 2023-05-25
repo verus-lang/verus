@@ -37,9 +37,9 @@ where
         VisitorControlFlow::Recurse => {
             match &**typ {
                 TypX::Bool
+                | TypX::Int(_)
                 | TypX::StrSlice
                 | TypX::Char
-                | TypX::Int(_)
                 | TypX::TypParam(_)
                 | TypX::TypeId
                 | TypX::ConstInt(_)
@@ -84,9 +84,9 @@ where
 {
     match &**typ {
         TypX::Bool
+        | TypX::Int(_)
         | TypX::StrSlice
         | TypX::Char
-        | TypX::Int(_)
         | TypX::TypParam(_)
         | TypX::TypeId
         | TypX::ConstInt(_)
@@ -609,7 +609,6 @@ where
                 UnaryOpr::TupleField { .. } => op.clone(),
                 UnaryOpr::Field { .. } => op.clone(),
                 UnaryOpr::IntegerTypeBound(_kind, _) => op.clone(),
-                UnaryOpr::Height => op.clone(),
                 UnaryOpr::CustomErr(_) => op.clone(),
             };
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;

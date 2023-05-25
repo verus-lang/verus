@@ -1,6 +1,6 @@
 use crate::ast::{
     BinaryOp, CallTarget, Constant, ExprX, Fun, Function, FunctionKind, GenericBoundX, IntRange,
-    MaskSpec, Path, SpannedTyped, TypX, Typs, UnaryOp, UnaryOpr, VirErr,
+    MaskSpec, Path, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VirErr,
 };
 use crate::ast_to_sst::expr_to_exp;
 use crate::ast_util::{error, msg_error, QUANT_FORALL};
@@ -72,19 +72,37 @@ fn is_recursive_call(ctxt: &Ctxt, target: &Fun, targs: &Typs) -> bool {
     }
 }
 
-fn height_of_exp(ctxt: &Ctxt, exp: &Exp) -> Exp {
+pub fn height_is_int(typ: &Typ) -> bool {
+    match &*crate::ast_util::undecorate_typ(typ) {
+        TypX::Int(_) => true,
+        _ => false,
+    }
+}
+
+fn height_typ(ctxt: &Ctxt, exp: &Exp) -> Typ {
+    if height_is_int(&exp.typ) {
+        Arc::new(TypX::Int(IntRange::Int))
+    } else {
+        if crate::poly::typ_is_poly(ctxt.ctx, &exp.typ) {
+            exp.typ.clone()
+        } else {
+            Arc::new(TypX::Boxed(exp.typ.clone()))
+        }
+    }
+}
+
+fn exp_for_decrease(ctxt: &Ctxt, exp: &Exp) -> Exp {
     match &*crate::ast_util::undecorate_typ(&exp.typ) {
         TypX::Int(_) => exp.clone(),
         TypX::Datatype(..) => {
-            let arg = if crate::poly::typ_is_poly(ctxt.ctx, &exp.typ) {
+            if crate::poly::typ_is_poly(ctxt.ctx, &exp.typ) {
                 exp.clone()
             } else {
                 let op = UnaryOpr::Box(exp.typ.clone());
                 let argx = ExpX::UnaryOpr(op, exp.clone());
-                SpannedTyped::new(&exp.span, &exp.typ, argx)
-            };
-            let call = ExpX::UnaryOpr(UnaryOpr::Height, arg);
-            SpannedTyped::new(&exp.span, &Arc::new(TypX::Int(IntRange::Int)), call)
+                let typ = Arc::new(TypX::Boxed(exp.typ.clone()));
+                SpannedTyped::new(&exp.span, &typ, argx)
+            }
         }
         // TODO: non-panic error message
         _ => panic!("internal error: unsupported type for decreases {:?}", exp.typ),
@@ -103,11 +121,15 @@ fn check_decrease(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> Exp {
     for (i, exp) in (0..ctxt.num_decreases).zip(exps.iter()).rev() {
         let decreases_at_entryx = ExpX::Var(unique_local(&decrease_at_entry(i)));
         let decreases_at_entry =
-            SpannedTyped::new(&exp.span, &Arc::new(TypX::Int(IntRange::Int)), decreases_at_entryx);
+            SpannedTyped::new(&exp.span, &height_typ(ctxt, exp), decreases_at_entryx);
         // 0 <= decreases_exp < decreases_at_entry
-        let args = vec![height_of_exp(ctxt, exp), decreases_at_entry, dec_exp];
+        let args = vec![exp_for_decrease(ctxt, exp), decreases_at_entry, dec_exp];
         let call = ExpX::Call(
-            CallFun::InternalFun(InternalFun::CheckDecreaseInt),
+            if height_is_int(&exp.typ) {
+                CallFun::InternalFun(InternalFun::CheckDecreaseInt)
+            } else {
+                CallFun::InternalFun(InternalFun::CheckDecreaseHeight)
+            },
             Arc::new(vec![]),
             Arc::new(args),
         );
@@ -328,7 +350,7 @@ fn mk_decreases_at_entry(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> (Vec<Loca
     let mut decls: Vec<LocalDecl> = Vec::new();
     let mut stm_assigns: Vec<Stm> = Vec::new();
     for (i, exp) in exps.iter().enumerate() {
-        let typ = Arc::new(TypX::Int(IntRange::Int));
+        let typ = height_typ(ctxt, exp);
         let decl = Arc::new(LocalDeclX {
             ident: unique_local(&decrease_at_entry(i)),
             typ: typ.clone(),
@@ -342,7 +364,7 @@ fn mk_decreases_at_entry(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> (Vec<Loca
                     dest: crate::ast_to_sst::var_loc_exp(&span, &typ, uniq_ident),
                     is_init: true,
                 },
-                rhs: height_of_exp(ctxt, exp),
+                rhs: exp_for_decrease(ctxt, exp),
             },
         );
         decls.push(decl);

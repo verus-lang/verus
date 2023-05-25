@@ -1827,7 +1827,13 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
         ctxt.ignored_functions.insert(*id);
     }
     for (hir_id, span, call) in &erasure_hints.resolved_calls {
-        ctxt.calls.insert(*hir_id, call.clone()).map(|_| panic!("{:?}", span));
+        if ctxt.calls.contains_key(hir_id) {
+            if &ctxt.calls[hir_id] != call {
+                panic!("inconsistent resolved_calls: {:?}", span);
+            }
+        } else {
+            ctxt.calls.insert(*hir_id, call.clone());
+        }
     }
     for (span, mode) in &erasure_hints.erasure_modes.condition_modes {
         if crate::spans::from_raw_span(&span.raw_span).is_none() {
@@ -1838,7 +1844,13 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
             panic!("missing id_to_hir");
         }
         for hir_id in &id_to_hir[&span.id] {
-            ctxt.condition_modes.insert(*hir_id, *mode).map(|_| panic!("{:?}", span));
+            if ctxt.condition_modes.contains_key(hir_id) {
+                if &ctxt.condition_modes[hir_id] != mode {
+                    panic!("inconsistent condition_modes: {:?}", span);
+                }
+            } else {
+                ctxt.condition_modes.insert(*hir_id, *mode);
+            }
         }
     }
     for (span, mode) in &erasure_hints.erasure_modes.var_modes {
@@ -1850,7 +1862,13 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
             panic!("missing id_to_hir");
         }
         for hir_id in &id_to_hir[&span.id] {
-            ctxt.var_modes.insert(*hir_id, *mode).map(|v| panic!("{:?} {:?}", span, v));
+            if ctxt.var_modes.contains_key(hir_id) {
+                if &ctxt.var_modes[hir_id] != mode {
+                    panic!("inconsistent var_modes: {:?}", span);
+                }
+            } else {
+                ctxt.var_modes.insert(*hir_id, *mode);
+            }
         }
     }
     for (hir_id, mode) in &erasure_hints.direct_var_modes {

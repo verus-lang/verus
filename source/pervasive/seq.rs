@@ -162,6 +162,16 @@ impl<A> Seq<A> {
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
+pub proof fn axiom_seq_index_height<A>(s: Seq<A>, i: int)
+    requires
+        0 <= i < s.len(),
+    ensures
+        #[trigger] is_smaller_than(s[i], s),
+{
+}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
 pub proof fn axiom_seq_empty<A>()
     ensures
         #[trigger] Seq::<A>::empty().len() == 0,

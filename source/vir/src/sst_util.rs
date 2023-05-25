@@ -246,6 +246,7 @@ impl BinaryOp {
             Or => (6, 6, 7),
             Xor => (22, 22, 23), // Rust doesn't have a logical XOR, so this is consistent with BitXor
             Implies => (3, 4, 3),
+            HeightCompare(_) => (90, 5, 5),
             Eq(_) | Ne => (10, 11, 11),
             Inequality(_) => (10, 10, 10),
             Arith(o, _) => match o {
@@ -290,6 +291,7 @@ impl ExpX {
             Unary(op, exp) => match op {
                 UnaryOp::Not | UnaryOp::BitNot => (format!("!{}", exp.x.to_string_prec(99)), 90),
                 UnaryOp::Clip { .. } => (format!("clip({})", exp), 99),
+                UnaryOp::HeightTrigger => (format!("height_trigger({})", exp), 99),
                 UnaryOp::StrLen => (format!("{}.len()", exp.x.to_string_prec(99)), 90),
                 UnaryOp::StrIsAscii => (format!("{}.is_ascii()", exp.x.to_string_prec(99)), 90),
                 UnaryOp::CharToInt => (format!("{} as char", exp.x.to_string_prec(99)), 90),
@@ -302,7 +304,6 @@ impl ExpX {
                 match op {
                     Box(_) => (format!("box({})", exp), 99),
                     Unbox(_) => (format!("unbox({})", exp), 99),
-                    Height => (format!("height({})", exp), 99),
                     HasType(t) => (format!("{}.has_type({:?})", exp, t), 99),
                     IntegerTypeBound(kind, mode) => {
                         (format!("{:?}.{:?}({:?})", kind, mode, exp), 99)
@@ -328,6 +329,7 @@ impl ExpX {
                     Or => "||",
                     Xor => "^",
                     Implies => "==>",
+                    HeightCompare(_) => "",
                     Eq(_) => "==",
                     Ne => "!=",
                     Inequality(o) => match o {
@@ -354,6 +356,8 @@ impl ExpX {
                 };
                 if let BinaryOp::StrGetChar = op {
                     (format!("{}.get_char({})", left, e2), prec_exp)
+                } else if let HeightCompare(_) = op {
+                    (format!("height_compare({left}, {right})"), prec_exp)
                 } else {
                     (format!("{} {} {}", left, op_str, right), prec_exp)
                 }

@@ -299,6 +299,16 @@ impl<K, V> Map<K, V> {
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
+pub proof fn axiom_map_index_height<K, V>(m: Map<K, V>, key: K)
+    requires
+        m.dom().contains(key),
+    ensures
+        #[trigger] is_smaller_than(m[key], m),
+{
+}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
 pub proof fn axiom_map_empty<K, V>()
     ensures
         #[trigger] Map::<K, V>::empty().dom() == Set::<K>::empty(),

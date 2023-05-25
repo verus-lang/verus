@@ -45,6 +45,7 @@ pub enum InternalFun {
     ClosureReq,
     ClosureEns,
     CheckDecreaseInt,
+    CheckDecreaseHeight,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

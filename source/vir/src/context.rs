@@ -42,6 +42,7 @@ pub struct GlobalCtx {
     pub(crate) no_span: Span,
     pub func_call_graph: Graph<Node>,
     pub func_call_sccs: Vec<Node>,
+    pub datatype_graph: Graph<Path>,
     // Connects quantifier identifiers to the original expression
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
     pub method_map: HashMap<(Fun, Path), Fun>,
@@ -228,6 +229,8 @@ impl GlobalCtx {
         }
         let qid_map = RefCell::new(HashMap::new());
 
+        let datatype_graph = crate::recursive_types::build_datatype_graph(krate);
+
         Ok(GlobalCtx {
             chosen_triggers,
             datatypes,
@@ -235,6 +238,7 @@ impl GlobalCtx {
             no_span,
             func_call_graph,
             func_call_sccs,
+            datatype_graph,
             qid_map,
             method_map,
             inferred_modes,

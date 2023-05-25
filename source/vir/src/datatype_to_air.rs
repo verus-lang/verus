@@ -338,33 +338,37 @@ fn datatype_or_fun_to_air_commands(
         for variant in variants.iter() {
             for field in variant.a.iter() {
                 let typ = &field.a.0;
-                match &*crate::ast_util::undecorate_typ(typ) {
-                    TypX::Datatype(path, _) if ctx.datatype_is_transparent[path] => {
-                        let node = crate::prelude::datatype_height_axiom(
-                            &dpath,
-                            Some(&path),
-                            &is_variant_ident(dpath, &*variant.name),
-                            &variant_field_ident(&dpath, &variant.name, &field.name),
-                        );
-                        let axiom = air::parser::Parser::new()
-                            .node_to_command(&node)
-                            .expect("internal error: malformed datatype axiom");
-                        axiom_commands.push(axiom);
+                let mut recursion_or_tparam = |t: &Typ| match &**t {
+                    TypX::Datatype(path, _)
+                        if ctx.global.datatype_graph.in_same_scc(path, dpath) =>
+                    {
+                        Err(())
                     }
-                    TypX::TypParam(_) => {
-                        let node = crate::prelude::datatype_height_axiom(
-                            &dpath,
-                            None,
-                            &is_variant_ident(dpath, &*variant.name),
-                            &variant_field_ident(&dpath, &variant.name, &field.name),
-                        );
-                        let axiom = air::parser::Parser::new()
-                            .node_to_command(&node)
-                            .expect("internal error: malformed datatype axiom");
-                        axiom_commands.push(axiom);
-                    }
-                    _ => {}
+                    TypX::TypParam(_) => Err(()),
+                    _ => Ok(()),
+                };
+                let has_recursion_or_tparam =
+                    crate::ast_visitor::typ_visitor_check(typ, &mut recursion_or_tparam).is_err();
+                if !has_recursion_or_tparam {
+                    continue;
                 }
+                let typ = crate::ast_util::undecorate_typ(typ);
+                let field_box_path = match &*typ {
+                    TypX::Lambda(typs, _) => Some(prefix_lambda_type(typs.len())),
+                    TypX::Datatype(..) => crate::sst_to_air::datatype_box_prefix(ctx, &typ),
+                    TypX::TypParam(_) => None,
+                    _ => continue,
+                };
+                let node = crate::prelude::datatype_height_axiom(
+                    &dpath,
+                    field_box_path,
+                    &is_variant_ident(dpath, &*variant.name),
+                    &variant_field_ident(&dpath, &variant.name, &field.name),
+                );
+                let axiom = air::parser::Parser::new()
+                    .node_to_command(&node)
+                    .expect("internal error: malformed datatype axiom");
+                axiom_commands.push(axiom);
             }
         }
     }

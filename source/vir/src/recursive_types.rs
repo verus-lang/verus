@@ -160,10 +160,7 @@ fn check_positive_uses(
         }
         TypX::Datatype(path, ts) => {
             // Check path
-            if path == &local.my_datatype
-                || global.type_graph.get_scc_rep(&path)
-                    == global.type_graph.get_scc_rep(&local.my_datatype)
-            {
+            if global.type_graph.in_same_scc(path, &local.my_datatype) {
                 match polarity {
                     Some(true) => {}
                     _ => {
@@ -209,14 +206,11 @@ fn check_positive_uses(
     }
 }
 
-pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
+pub(crate) fn build_datatype_graph(krate: &Krate) -> Graph<Path> {
     let mut type_graph: Graph<Path> = Graph::new();
-    let mut datatypes: HashMap<Path, Datatype> = HashMap::new();
-    let mut datatypes_well_founded: HashSet<Path> = HashSet::new();
 
     // If datatype D1 has a field whose type mentions datatype D2, create a graph edge D1 --> D2
     for datatype in &krate.datatypes {
-        datatypes.insert(datatype.x.path.clone(), datatype.clone());
         type_graph.add_node(datatype.x.path.clone());
         for variant in datatype.x.variants.iter() {
             for field in variant.a.iter() {
@@ -234,6 +228,18 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
     }
 
     type_graph.compute_sccs();
+    return type_graph;
+}
+
+pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
+    let type_graph = build_datatype_graph(krate);
+    let mut datatypes: HashMap<Path, Datatype> = HashMap::new();
+    let mut datatypes_well_founded: HashSet<Path> = HashSet::new();
+
+    for datatype in &krate.datatypes {
+        datatypes.insert(datatype.x.path.clone(), datatype.clone());
+    }
+
     let global = CheckPositiveGlobal { datatypes, type_graph };
 
     for function in &krate.functions {

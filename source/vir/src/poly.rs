@@ -359,6 +359,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                     let e1 = coerce_expr_to_native(ctx, &e1);
                     mk_expr(ExprX::Unary(*op, e1))
                 }
+                UnaryOp::HeightTrigger => panic!("direct access to 'height' is not allowed"),
                 UnaryOp::Trigger(_) | UnaryOp::CoerceMode { .. } => {
                     mk_expr_typ(&e1.typ, ExprX::Unary(*op, e1.clone()))
                 }
@@ -376,10 +377,6 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 }
                 UnaryOpr::IsVariant { .. } | UnaryOpr::IntegerTypeBound(..) => {
                     let e1 = coerce_expr_to_native(ctx, &e1);
-                    mk_expr(ExprX::UnaryOpr(op.clone(), e1))
-                }
-                UnaryOpr::Height => {
-                    let e1 = coerce_expr_to_poly(ctx, &e1);
                     mk_expr(ExprX::UnaryOpr(op.clone(), e1))
                 }
                 UnaryOpr::CustomErr(_) => {
@@ -413,16 +410,21 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let e1 = poly_expr(ctx, state, e1);
             let e2 = poly_expr(ctx, state, e2);
             use BinaryOp::*;
-            let native = match op {
-                And | Or | Xor | Implies | Inequality(_) => true,
-                Arith(..) => true,
-                Eq(_) | Ne => false,
-                Bitwise(..) => true,
-                StrGetChar { .. } => true,
+            let (native, poly) = match op {
+                And | Or | Xor | Implies | Inequality(_) => (true, false),
+                HeightCompare(_) => (false, true),
+                Arith(..) => (true, false),
+                Eq(_) | Ne => (false, false),
+                Bitwise(..) => (true, false),
+                StrGetChar { .. } => (true, false),
             };
             if native {
                 let e1 = coerce_expr_to_native(ctx, &e1);
                 let e2 = coerce_expr_to_native(ctx, &e2);
+                mk_expr(ExprX::Binary(*op, e1, e2))
+            } else if poly {
+                let e1 = coerce_expr_to_poly(ctx, &e1);
+                let e2 = coerce_expr_to_poly(ctx, &e2);
                 mk_expr(ExprX::Binary(*op, e1, e2))
             } else {
                 let (e1, e2) = coerce_exprs_to_agree(ctx, &e1, &e2);

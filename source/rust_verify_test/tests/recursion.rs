@@ -382,7 +382,9 @@ test_verify_one_file! {
             decreases i
         {
             if 0 < i {
+                assert(is_smaller_than(i - 1, i));
                 dec1((i - 1) as nat);
+                assert(is_smaller_than((i, 100 * i), i));
                 dec2(i, 100 * i);
             }
         }
@@ -391,10 +393,13 @@ test_verify_one_file! {
             decreases j, k
         {
             if 0 < k {
+                assert(is_smaller_than((j, k - 1), (j, k)));
                 dec2(j, (k - 1) as nat);
             }
             if 0 < j {
+                assert(is_smaller_than((j - 1, 100 * j + k), (j, k)));
                 dec2((j - 1) as nat, 100 * j + k);
+                assert(is_smaller_than(j - 1, (j, k)));
                 dec1((j - 1) as nat);
             }
         }
@@ -417,6 +422,31 @@ test_verify_one_file! {
         {
             if 0 < k {
                 dec2(j, k); // FAILS
+            }
+            if 0 < j {
+                dec2((j - 1) as nat, 100 * j + k);
+                dec1((j - 1) as nat);
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] multidecrease1_fail1_assert verus_code! {
+        proof fn dec1(i: nat)
+            decreases i
+        {
+            if 0 < i {
+                assert(is_smaller_than(i, i)); // FAILS
+                dec2(i, 100 * i);
+            }
+        }
+
+        proof fn dec2(j: nat, k: nat)
+            decreases j, k
+        {
+            if 0 < k {
+                assert(is_smaller_than((j, k), (j, k))); // FAILS
             }
             if 0 < j {
                 dec2((j - 1) as nat, 100 * j + k);
@@ -452,6 +482,31 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] multidecrease1_fail2_assert verus_code! {
+        proof fn dec1(i: nat)
+            decreases i
+        {
+            if 0 < i {
+                dec1((i - 1) as nat);
+                assert(is_smaller_than((i + 1, 100 * i), i)); // FAILS
+            }
+        }
+
+        proof fn dec2(j: nat, k: nat)
+            decreases j, k
+        {
+            if 0 < k {
+                dec2(j, (k - 1) as nat);
+            }
+            if 0 < j {
+                assert(is_smaller_than((j, 100 * j + k), (j, k))); // FAILS
+                dec1((j - 1) as nat);
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
     #[test] multidecrease1_fail3 verus_code! {
         proof fn dec1(i: nat)
             decreases i
@@ -471,6 +526,31 @@ test_verify_one_file! {
             if 0 < j {
                 dec2((j - 1) as nat, 100 * j + k);
                 dec1(j); // FAILS
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] multidecrease1_fail3_assert verus_code! {
+        proof fn dec1(i: nat)
+            decreases i
+        {
+            if 0 < i {
+                dec1((i - 1) as nat);
+                dec2(i, 100 * i);
+            }
+        }
+
+        proof fn dec2(j: nat, k: nat)
+            decreases j, k
+        {
+            if 0 < k {
+                dec2(j, (k - 1) as nat);
+            }
+            if 0 < j {
+                dec2((j - 1) as nat, 100 * j + k);
+                assert(is_smaller_than(j, (j, k))); // FAILS
             }
         }
     } => Err(err) => assert_one_fails(err)
@@ -1284,6 +1364,76 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] decrease_through_seq verus_code! {
+        use vstd::prelude::*;
+
+        struct S {
+            x: Seq<Box<S>>,
+        }
+
+        spec fn f(s: S) -> int
+            decreases s
+        {
+            if s.x.len() > 0 {
+                f(*s.x[0])
+            } else {
+                0
+            }
+        }
+
+        proof fn p(s: S)
+            decreases s
+        {
+            if s.x.len() > 0 {
+                p(*s.x[0]);
+                assert(false); // FAILS
+            }
+        }
+
+        proof fn q(s: S)
+            decreases s
+        {
+            q(*s.x[0]); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file! {
+    #[test] decrease_through_map verus_code! {
+        use vstd::prelude::*;
+
+        struct S {
+            x: Map<int, Box<S>>,
+        }
+
+        spec fn f(s: S) -> int
+            decreases s
+        {
+            if s.x.dom().contains(3) {
+                f(*s.x[3])
+            } else {
+                0
+            }
+        }
+
+        proof fn p(s: S)
+            decreases s
+        {
+            if s.x.dom().contains(3) {
+                p(*s.x[3]);
+                assert(false); // FAILS
+            }
+        }
+
+        proof fn q(s: S)
+            decreases s
+        {
+            q(*s.x[3]); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file! {
     #[test] height_intrinsic verus_code! {
         #[is_variant]
         enum Tree {
@@ -1297,25 +1447,23 @@ test_verify_one_file! {
             assert(l == *x.get_Node_0());
             assert(r == *x.get_Node_1());
 
-            assert(height(x) > height(l));
-            assert(height(x) > height(r));
-            assert(height(x) > height(x.get_Node_0()));
-
-            assert(height(l) >= 0);
+            assert(is_smaller_than(l, x));
+            assert(is_smaller_than(r, x));
+            assert(is_smaller_than(x.get_Node_0(), x));
         }
 
         proof fn testing_fail(l: Tree, r: Tree) {
-            assert(height(l) > height(r)); // FAILS
+            assert(is_smaller_than(r, l)); // FAILS
         }
 
         proof fn testing_fail2(x: Tree) {
-            assert(height(x.get_Node_0()) < height(x)); // FAILS
+            assert(is_smaller_than(x.get_Node_0(), x)); // FAILS
         }
 
         proof fn testing3(x: Tree)
             requires x.is_Node(),
         {
-            assert(height(x.get_Node_0()) < height(x));
+            assert(is_smaller_than(x.get_Node_0(), x));
         }
     } => Err(e) => assert_fails(e, 2)
 }
@@ -1329,9 +1477,9 @@ test_verify_one_file! {
         }
 
         fn test(tree: Tree) {
-            let x = height(tree);
+            let x = is_smaller_than(tree, tree);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot test 'height' in exec mode")
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
 }
 
 test_verify_one_file! {

@@ -63,11 +63,16 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     #[allow(non_snake_case)]
     let EucMod = str_to_node(EUC_MOD);
     let check_decrease_int = str_to_node(CHECK_DECREASE_INT);
+    let check_decrease_height = str_to_node(CHECK_DECREASE_HEIGHT);
     let height = str_to_node(HEIGHT);
+    let height_le = nodes!(_ partial-order 0);
+    let height_lt = str_to_node(HEIGHT_LT);
     let closure_req = str_to_node(CLOSURE_REQ);
     let closure_ens = str_to_node(CLOSURE_ENS);
     #[allow(non_snake_case)]
     let Poly = str_to_node(POLY);
+    #[allow(non_snake_case)]
+    let Height = str_to_node(T_HEIGHT);
     let box_int = str_to_node(BOX_INT);
     let box_bool = str_to_node(BOX_BOOL);
     let unbox_int = str_to_node(UNBOX_INT);
@@ -150,11 +155,11 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [strslice_len] ([strslice]) Int)
         (declare-fun [strslice_get_char] ([strslice] Int) [Char])
         (declare-fun [new_strlit] (Int) [strslice])
-
         (declare-fun [from_strlit] ([strslice]) Int)
 
         // Polymorphism
         (declare-sort [Poly] 0)
+        (declare-sort [Height] 0)
         (declare-fun [box_int] (Int) [Poly])
         (declare-fun [box_bool] (Bool) [Poly])
         (declare-fun [unbox_int] ([Poly]) Int)
@@ -502,8 +507,15 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :skolemid skolem_prelude_to_unicode_bounds
         )))
 
-
         // Decreases
+        (declare-fun [height] ([Poly]) [Height])
+        (declare-fun [height_lt] ([Height] [Height]) Bool)
+        (axiom (forall ((x [Height]) (y [Height])) (!
+            (= ([height_lt] x y) (and ([height_le] x y) (not (= x y))))
+            :pattern (([height_lt] x y))
+            :qid prelude_height_lt
+            :skolemid skolem_prelude_height_lt
+        )))
         (declare-fun [check_decrease_int] (Int Int Bool) Bool)
         (axiom (forall ((cur Int) (prev Int) (otherwise Bool)) (!
             (= ([check_decrease_int] cur prev otherwise)
@@ -513,15 +525,20 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
                 )
             )
             :pattern (([check_decrease_int] cur prev otherwise))
-            :qid prelude_check_decreases
-            :skolemid skolem_prelude_check_decreases
+            :qid prelude_check_decrease_int
+            :skolemid skolem_prelude_check_decrease_int
         )))
-        (declare-fun [height] ([Poly]) Int)
-        (axiom (forall ((x [Poly])) (!
-            (<= 0 ([height] x))
-            :pattern (([height] x))
-            :qid prelude_height
-            :skolemid skolem_prelude_height
+        (declare-fun [check_decrease_height] ([Poly] [Poly] Bool) Bool)
+        (axiom (forall ((cur [Poly]) (prev [Poly]) (otherwise Bool)) (!
+            (= ([check_decrease_height] cur prev otherwise)
+                (or
+                    ([height_lt] ([height] cur) ([height] prev))
+                    (and (= ([height] cur) ([height] prev)) otherwise)
+                )
+            )
+            :pattern (([check_decrease_height] cur prev otherwise))
+            :qid prelude_check_decrease_height
+            :skolemid skolem_prelude_check_decrease_height
         )))
 
         // uninterpreted integer versions for bitvector Ops. first argument is bit-width
@@ -570,18 +587,19 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
 
 pub(crate) fn datatype_height_axiom(
     typ_name1: &Path,
-    typ_name2: Option<&Path>,
+    typ_name2: Option<Path>,
     is_variant_ident: &Ident,
     field: &Ident,
 ) -> Node {
     let height = str_to_node(HEIGHT);
+    let height_lt = str_to_node(HEIGHT_LT);
     let field = str_to_node(field.as_str());
     let is_variant = str_to_node(is_variant_ident.as_str());
     let typ1 = str_to_node(path_to_air_ident(typ_name1).as_str());
     let box_t1 = str_to_node(prefix_box(typ_name1).as_str());
     let field_of_x = match typ_name2 {
         Some(typ2) => {
-            let box_t2 = str_to_node(prefix_box(typ2).as_str());
+            let box_t2 = str_to_node(prefix_box(&typ2).as_str());
             node!(([box_t2] ([field] x)))
         }
         // for a field with generic type, [field]'s return type is already "Poly"
@@ -591,7 +609,7 @@ pub(crate) fn datatype_height_axiom(
         (axiom (forall ((x [typ1])) (!
             (=>
                 ([is_variant] x)
-                (<
+                ([height_lt]
                     ([height] [field_of_x])
                     ([height] ([box_t1] x))
                 )

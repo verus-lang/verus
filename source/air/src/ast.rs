@@ -50,6 +50,14 @@ pub enum UnaryOp {
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum Relation {
+    PartialOrder,
+    LinearOrder,
+    TreeOrder,
+    PiecewiseLinearOrder,
+}
+
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum BinaryOp {
     Implies,
     Eq,
@@ -59,7 +67,7 @@ pub enum BinaryOp {
     Gt,
     EuclideanDiv,
     EuclideanMod,
-
+    Relation(Relation, u64),
     BitXor,
     BitAnd,
     BitOr,

@@ -107,6 +107,7 @@ pub const EUC_MOD: &str = "EucMod";
 pub const SNAPSHOT_CALL: &str = "CALL";
 pub const SNAPSHOT_PRE: &str = "PRE";
 pub const SNAPSHOT_ASSIGN: &str = "ASSIGN";
+pub const T_HEIGHT: &str = "Height";
 pub const POLY: &str = "Poly";
 pub const BOX_INT: &str = "I";
 pub const BOX_BOOL: &str = "B";
@@ -139,7 +140,9 @@ pub const MK_FUN: &str = "mk_fun";
 pub const CONST_INT: &str = "const_int";
 pub const DUMMY_PARAM: &str = "no%param";
 pub const CHECK_DECREASE_INT: &str = "check_decrease_int";
+pub const CHECK_DECREASE_HEIGHT: &str = "check_decrease_height";
 pub const HEIGHT: &str = "height";
+pub const HEIGHT_LT: &str = "height_lt";
 pub const CLOSURE_REQ: &str = "closure_req";
 pub const CLOSURE_ENS: &str = "closure_ens";
 

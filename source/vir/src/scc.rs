@@ -195,6 +195,10 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> Graph<T> {
         self.nodes[self.sccs[*id].rep()].t.clone()
     }
 
+    pub fn in_same_scc(&self, t1: &T, t2: &T) -> bool {
+        t1 == t2 || self.get_scc_rep(t1) == self.get_scc_rep(t2)
+    }
+
     pub fn get_scc_nodes(&self, t: &T) -> Vec<T> {
         assert!(self.has_run);
         assert!(self.mapping.contains_key(&t));

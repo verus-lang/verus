@@ -6,7 +6,7 @@ use rustc_span::SpanData;
 use vir::ast::{Fun, Krate, Mode, Path, Pattern};
 use vir::modes::ErasureModes;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CompilableOperator {
     IntIntrinsic,
     Implies,
@@ -25,7 +25,7 @@ pub enum CompilableOperator {
 }
 
 /// Information about each call in the AST (each ExprKind::Call).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ResolvedCall {
     /// The call is to a spec or proof function, and should be erased
     Spec,
