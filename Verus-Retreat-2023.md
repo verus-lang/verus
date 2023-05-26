@@ -23,7 +23,11 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 
 - What's working well
 - What isn't working
+
+*User experience improvements (2 hours in the afternoon)*
+
 - Setting up CI that includes other Verus projects (a-la crater)
+- [...]
 
 ### Tuesday, June 27th
 
@@ -38,5 +42,9 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 - Writing specifications for Rust's standard library (2 hours in the afternoon)
 
 ### Thursday, June 29th (till 12pm)
+
+*Community building (1-2 hours in the morning)*
+
+- Discuss moving to an open chat channel (Zulip?)
 
 ### Friday, June 30th (optional)
