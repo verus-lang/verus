@@ -159,6 +159,7 @@ pub const QID_UNBOX_AXIOM: &str = "unbox_axiom";
 pub const QID_CONSTRUCTOR_INNER: &str = "constructor_inner";
 pub const QID_CONSTRUCTOR: &str = "constructor";
 pub const QID_APPLY: &str = "apply";
+pub const QID_HEIGHT_APPLY: &str = "height_apply";
 pub const QID_ACCESSOR: &str = "accessor";
 pub const QID_INVARIANT: &str = "invariant";
 pub const QID_HAS_TYPE_ALWAYS: &str = "has_type_always";

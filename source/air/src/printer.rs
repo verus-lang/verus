@@ -452,7 +452,7 @@ impl NodeWriter {
                         {
                             brk = true;
                         }
-                        Node::Atom(a) if a == ":pattern" => {
+                        Node::Atom(a) if a == ":pattern" || a == ":qid" || a == ":skolemid" => {
                             was_pattern = true;
                         }
                         _ => {}

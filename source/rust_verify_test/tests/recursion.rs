@@ -1434,6 +1434,127 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] decrease_through_function verus_code! {
+        enum E {
+            Nil,
+            F(FnSpec(int) -> E),
+        }
+
+        proof fn p(e: E)
+            decreases e
+        {
+            if let E::F(f) = e {
+                p(f(0));
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] decrease_through_function_fails verus_code! {
+        enum E {
+            Nil,
+            F(FnSpec(int) -> E),
+        }
+
+        proof fn p(e: E)
+            decreases e
+        {
+            if let E::F(f) = e {
+                p(f(0));
+                assert(false); // FAILS
+            }
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] decrease_through_function_bad verus_code! {
+        struct S {
+            x: FnSpec(int) -> S,
+        }
+
+        proof fn p(s: S)
+            ensures false
+            decreases s
+        {
+            p((s.x)(0));
+        }
+    } => Err(e) => assert_vir_error_msg(e, "datatype must have at least one non-recursive variant")
+}
+
+test_verify_one_file! {
+    #[test] decrease_through_abstract_type verus_code! {
+        mod m1 {
+            use builtin::*;
+            pub struct S<A, B>(A, B);
+            impl<A, B> S<A, B> {
+                pub closed spec fn get0(self) -> A { self.0 }
+                pub closed spec fn get1(self) -> B { self.1 }
+            }
+            // TODO: broadcast_forall
+            pub proof fn lemma_height_s<A, B>(s: S<A, B>)
+                ensures
+                    is_smaller_than(s.get0(), s),
+                    is_smaller_than(s.get1(), s),
+            {
+            }
+        }
+
+        mod m2 {
+            use builtin::*;
+            use crate::m1::*;
+            enum Q {
+                Nil,
+                Cons(S<u8, Box<Q>>),
+            }
+            proof fn test(q: Q)
+                decreases q,
+            {
+                if let Q::Cons(s) = q {
+                    lemma_height_s(s);
+                    test(*s.get1());
+                }
+            }
+        }
+
+        mod m3 {
+            use builtin::*;
+            use crate::m1::*;
+            enum Q {
+                Nil,
+                Cons(S<u8, Box<Q>>),
+            }
+            proof fn test(q: Q)
+                decreases q,
+            {
+                if let Q::Cons(s) = q {
+                    test(*s.get1()); // FAILS
+                }
+            }
+        }
+
+        mod m4 {
+            use builtin::*;
+            use crate::m1::*;
+            enum Q {
+                Nil,
+                Cons(S<u8, Box<Q>>),
+            }
+            proof fn test(q: Q)
+                decreases q,
+            {
+                if let Q::Cons(s) = q {
+                    lemma_height_s(s);
+                    test(*s.get1());
+                    assert(false); // FAILS
+                }
+            }
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file! {
     #[test] height_intrinsic verus_code! {
         #[is_variant]
         enum Tree {

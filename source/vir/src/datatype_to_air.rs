@@ -222,10 +222,27 @@ fn datatype_or_fun_to_air_commands(
         // trigger on apply(x, args), has_type_f
         params.push(x_param(&datatyp));
         pre.insert(0, has_box.clone());
-        let trigs = vec![app, has_box.clone()];
+        let trigs = vec![app.clone(), has_box.clone()];
         let name = format!("{}_{}", path_as_rust_name(dpath), QID_APPLY);
-        let bind = func_bind_trig(ctx, name, tparams, &Arc::new(params), &trigs, false, false);
+        let aparams = Arc::new(params.clone());
+        let bind = func_bind_trig(ctx, name, tparams, &aparams, &trigs, false, false);
         let imply = mk_implies(&mk_and(&pre), &has_app);
+        let forall = mk_bind_expr(&bind, &imply);
+        let axiom = Arc::new(DeclX::Axiom(forall));
+        axiom_commands.push(Arc::new(CommandX::Global(axiom)));
+
+        // Lambda height axiom:
+        // forall typ1 ... typn, tret, arg1: Poly ... argn: Poly, x: Fun.
+        //   has_type_f && has_type1 && ... && has_typen ==>
+        //     height_lt(height(apply(x, args)), height(box(mk_fun(x))))
+        // trigger on height(apply(x, args)), has_type_f
+        let height_app = str_apply(crate::def::HEIGHT, &vec![app]);
+        let height_box = str_apply(crate::def::HEIGHT, &vec![box_mk_fun]);
+        let height_lt = str_apply(crate::def::HEIGHT_LT, &vec![height_app.clone(), height_box]);
+        let trigs = vec![height_app, has_box.clone()];
+        let name = format!("{}_{}", path_as_rust_name(dpath), crate::def::QID_HEIGHT_APPLY);
+        let bind = func_bind_trig(ctx, name, tparams, &aparams, &trigs, false, false);
+        let imply = mk_implies(&mk_and(&pre), &height_lt);
         let forall = mk_bind_expr(&bind, &imply);
         let axiom = Arc::new(DeclX::Axiom(forall));
         axiom_commands.push(Arc::new(CommandX::Global(axiom)));
