@@ -17,7 +17,6 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 - Traits
 - Prophecy variables
 - State machines
-- Proof actions
 
 *Experience reports building systems in Verus (2 hours in the afternoon)*
 
@@ -27,6 +26,7 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 *User experience improvements (2 hours in the afternoon)*
 
 - Setting up CI that includes other Verus projects (a-la crater)
+- Proof actions
 - [...]
 
 ### Tuesday, June 27th
@@ -38,13 +38,20 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 ### Wednesday, June 28th
 
 - Brainstorming next big steps for Verus (1-2 hours in the morning)
-- Benchmarking suite for Verus (1-2 hours in the morning)
 - Writing specifications for Rust's standard library (2 hours in the afternoon)
 
 ### Thursday, June 29th (till 12pm)
 
+- Benchmarking suite for Verus (1-2 hours in the morning)
+
 *Community building (1-2 hours in the morning)*
 
 - Discuss moving to an open chat channel (Zulip?)
+- [...]
+
+
+*Afternoon: Informal meetings and hacking*
 
 ### Friday, June 30th (optional)
+
+*Informal meetings and hacking*
