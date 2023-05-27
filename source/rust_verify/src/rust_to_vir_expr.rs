@@ -2302,7 +2302,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     let vir_args = vec_map_result(&args, |arg| expr_to_vir(bctx, arg, modifier))?;
                     let expr_typ = typ_of_node(bctx, expr.span, &expr.hir_id, false)?;
 
-                    let is_spec_fn = match &*vir_fun.typ {
+                    let is_spec_fn = match &*undecorate_typ(&vir_fun.typ) {
                         TypX::Lambda(..) => true,
                         _ => false,
                     };

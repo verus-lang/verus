@@ -1,6 +1,6 @@
 use crate::ast::{
     BinaryOp, CallTarget, Constant, ExprX, Fun, Function, FunctionKind, GenericBoundX, IntRange,
-    MaskSpec, Path, SpannedTyped, TypX, Typs, UnaryOp, UnaryOpr, VirErr,
+    MaskSpec, Path, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VirErr,
 };
 use crate::ast_to_sst::expr_to_exp;
 use crate::ast_util::{error, msg_error, QUANT_FORALL};
@@ -32,7 +32,7 @@ pub enum Node {
     Fun(Fun),
     Trait(Path),
     Datatype(Path),
-    DatatypeTraitBound { datatype: Path, trait_path: Path },
+    DatatypeTraitBound { self_typ: Typ, trait_path: Path },
 }
 
 #[derive(Clone)]
@@ -513,9 +513,9 @@ pub(crate) fn expand_call_graph(
     let f_node = Node::Fun(function.x.name.clone());
 
     // Add D: T --> f and D: T --> T where f is one of D's methods that implements T
-    if let FunctionKind::TraitMethodImpl { trait_path, datatype, .. } = function.x.kind.clone() {
+    if let FunctionKind::TraitMethodImpl { trait_path, self_typ, .. } = function.x.kind.clone() {
         let t_node = Node::Trait(trait_path.clone());
-        let dt_node = Node::DatatypeTraitBound { datatype, trait_path };
+        let dt_node = Node::DatatypeTraitBound { self_typ, trait_path };
         call_graph.add_edge(dt_node.clone(), t_node);
         call_graph.add_edge(dt_node, f_node.clone());
     }
@@ -608,20 +608,14 @@ pub(crate) fn expand_call_graph(
                                         // We already have the dictionaries for type parameters,
                                         // so nothing else needs to happen here.
                                     }
-                                    TypX::Datatype(datatype, _) => {
+                                    _ => {
                                         // f --> D: T
                                         call_graph.add_edge(
                                             f_node.clone(),
                                             Node::DatatypeTraitBound {
-                                                datatype: datatype.clone(),
+                                                self_typ: targ.clone(),
                                                 trait_path: tr.clone(),
                                             },
-                                        );
-                                    }
-                                    _ => {
-                                        return error(
-                                            &expr.span,
-                                            "not yet supported: type bounds on non-datatypes",
                                         );
                                     }
                                 }
