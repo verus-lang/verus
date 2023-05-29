@@ -39,6 +39,7 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 
 - Brainstorming next big steps for Verus (1-2 hours in the morning)
 - Writing specifications for Rust's standard library (2 hours in the afternoon)
+- IronFleet hackathon (afternoon)
 
 ### Thursday, June 29th (till 12pm)
 
