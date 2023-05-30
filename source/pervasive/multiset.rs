@@ -26,7 +26,7 @@ verus!{
 /// [`assert_multisets_equal!`] macro.
 
 // We could in principle implement the Multiset via an inductive datatype
-// and so we can mark its type argument as strictly_positive.
+// and so we can mark its type argument as accept_recursive_types.
 
 // Note: Multiset is finite (in contrast to Set, Map, which are infinite) because it
 // isn't entirely obvious how to represent an infinite multiset in the case where
@@ -38,7 +38,8 @@ verus!{
 // since it might map an infinite number of elements to the same one).
 
 #[verifier(external_body)]
-pub struct Multiset<#[verifier(strictly_positive)] V> {
+#[verifier::accept_recursive_types(V)]
+pub struct Multiset<V> {
     dummy: marker::PhantomData<V>,
 }
 

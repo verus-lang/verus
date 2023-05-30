@@ -29,7 +29,8 @@ verus! {
 /// [`assert_seqs_equal!`](crate::seq_lib::assert_seqs_equal) macro.
 
 #[verifier(external_body)]
-pub struct Seq<#[verifier(strictly_positive)] A> {
+#[verifier::accept_recursive_types(A)]
+pub struct Seq<A> {
     dummy: marker::PhantomData<A>,
 }
 
@@ -113,7 +114,7 @@ impl<A> Seq<A> {
     #[rustc_diagnostic_item = "vstd::seq::Seq::ext_equal"]
     pub open spec fn ext_equal(self, s2: Seq<A>) -> bool {
         &&& self.len() == s2.len()
-        &&& (forall|i: int| 0 <= i < self.len() ==> self[i] == s2[i])
+        &&& forall|i: int| 0 <= i < self.len() ==> self[i] == s2[i]
     }
 
     /// Returns a sequence for the given subrange.

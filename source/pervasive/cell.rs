@@ -51,7 +51,8 @@ verus!{
 /// ### Example (TODO)
 
 #[verifier(external_body)]
-pub struct PCell<#[verifier(strictly_positive)] V> {
+#[verifier::accept_recursive_types(V)]
+pub struct PCell<V> {
     ucell: UnsafeCell<MaybeUninit<V>>,
 }
 
@@ -69,7 +70,8 @@ unsafe impl<T> Send for PCell<T> {}
 // (Note: this depends on the current behavior that #[verifier::spec] fields are still counted for marker traits)
 
 #[verifier(external_body)]
-pub tracked struct PointsTo<#[verifier(strictly_positive)] V> {
+#[verifier::reject_recursive_types_in_ground_variants(V)]
+pub tracked struct PointsTo<V> {
     phantom: marker::PhantomData<V>,
     no_copy: NoCopy,
 }
@@ -255,7 +257,8 @@ impl<T> InvariantPredicate<(Set<T>, PCell<T>), PointsTo<T>> for InvCellPred {
     }
 }
 
-pub struct InvCell<#[verifier(maybe_negative)] T> {
+#[verifier::reject_recursive_types(T)]
+pub struct InvCell<T> {
     possible_values: Ghost<Set<T>>,
     pcell: PCell<T>,
     perm_inv: Tracked<LocalInvariant<(Set<T>, PCell<T>), PointsTo<T>, InvCellPred>>,

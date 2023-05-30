@@ -6,7 +6,8 @@ use common::*;
 test_verify_one_file! {
     #[test] const_generic verus_code! {
         #[verifier(external_body)]
-        struct Array<#[verifier(strictly_positive)] A, const N: usize>([A; N]);
+        #[verifier::accept_recursive_types(A)]
+        struct Array<A, const N: usize>([A; N]);
 
         #[verifier(external_body)]
         fn array_index<'a, A, const N: usize>(arr: &'a Array<A, N>, i: usize) -> &'a A {

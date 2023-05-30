@@ -708,6 +708,94 @@ where
     }
 }
 
+/// Maps all the Typs in the Stm, doesn't recurse into any Stms
+pub(crate) fn map_shallow_stm_typ<F>(stm: &Stm, ft: &F) -> Result<Stm, VirErr>
+where
+    F: Fn(&Typ) -> Result<Typ, VirErr>,
+{
+    match &stm.x {
+        StmX::Assert(_, _)
+        | StmX::AssertBitVector { requires: _, ensures: _ }
+        | StmX::Assume(_)
+        | StmX::Assign { lhs: _, rhs: _ }
+        | StmX::Fuel(_, _)
+        | StmX::RevealString(_)
+        | StmX::DeadEnd(_)
+        | StmX::Return { base_error: _, ret_exp: _, inside_body: _ }
+        | StmX::BreakOrContinue { label: _, is_break: _ }
+        | StmX::If(_, _, _)
+        | StmX::Block(_) => Ok(stm.clone()),
+        StmX::Call { fun, resolved_method, mode, typ_args, args, split, dest } => {
+            let typ_args = typ_args.iter().map(ft).collect::<Result<Vec<Typ>, _>>()?;
+            let resolved_method = if let Some((f, ts)) = resolved_method {
+                Some((f.clone(), Arc::new(vec_map_result(ts, ft)?)))
+            } else {
+                None
+            };
+            Ok(Spanned::new(
+                stm.span.clone(),
+                StmX::Call {
+                    fun: fun.clone(),
+                    resolved_method,
+                    mode: mode.clone(),
+                    typ_args: Arc::new(typ_args),
+                    args: args.clone(),
+                    split: split.clone(),
+                    dest: dest.clone(),
+                },
+            ))
+        }
+        StmX::Loop { label, cond, body, invs, typ_inv_vars, modified_vars } => {
+            let mut typ_inv_vars2 = vec![];
+            for (uid, typ) in typ_inv_vars.iter() {
+                typ_inv_vars2.push((uid.clone(), ft(typ)?));
+            }
+            Ok(Spanned::new(
+                stm.span.clone(),
+                StmX::Loop {
+                    label: label.clone(),
+                    cond: cond.clone(),
+                    body: body.clone(),
+                    invs: invs.clone(),
+                    typ_inv_vars: Arc::new(typ_inv_vars2),
+                    modified_vars: modified_vars.clone(),
+                },
+            ))
+        }
+        StmX::OpenInvariant(exp, uid, typ, stm, ato) => {
+            let typ = ft(typ)?;
+            Ok(Spanned::new(
+                stm.span.clone(),
+                StmX::OpenInvariant(exp.clone(), uid.clone(), typ, stm.clone(), ato.clone()),
+            ))
+        }
+        StmX::ClosureInner { body, typ_inv_vars } => {
+            let mut typ_inv_vars2 = vec![];
+            for (uid, typ) in typ_inv_vars.iter() {
+                typ_inv_vars2.push((uid.clone(), ft(typ)?));
+            }
+            Ok(Spanned::new(
+                stm.span.clone(),
+                StmX::ClosureInner { body: body.clone(), typ_inv_vars: Arc::new(typ_inv_vars2) },
+            ))
+        }
+        StmX::AssertQuery { mode, typ_inv_vars, body } => {
+            let mut typ_inv_vars2 = vec![];
+            for (uid, typ) in typ_inv_vars.iter() {
+                typ_inv_vars2.push((uid.clone(), ft(typ)?));
+            }
+            Ok(Spanned::new(
+                stm.span.clone(),
+                StmX::AssertQuery {
+                    mode: mode.clone(),
+                    typ_inv_vars: Arc::new(typ_inv_vars2),
+                    body: body.clone(),
+                },
+            ))
+        }
+    }
+}
+
 pub(crate) fn map_stm_exp_visitor<F>(stm: &Stm, fe: &F) -> Result<Stm, VirErr>
 where
     F: Fn(&Exp) -> Result<Exp, VirErr>,

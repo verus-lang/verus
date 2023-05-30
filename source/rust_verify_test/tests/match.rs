@@ -771,3 +771,50 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] dot_dot_patterns verus_code! {
+        #[derive(Clone, Copy)]
+        struct R { }
+
+        fn test_tuple() {
+            let tup = (1, false, 3, R { });
+
+            let (x, .., y) = tup;
+            assert(x == 1);
+            assert(y == R { });
+
+            let (w, ..) = tup;
+            assert(w == 1);
+
+            let (.., b, c, d) = tup;
+            assert(b == false);
+            assert(c == 3);
+            assert(d == R { });
+
+            let (..) = tup;
+        }
+
+        enum Foo {
+            Bar(u8, bool, u8, R),
+        }
+
+        fn test_tuple_ctor() {
+            let tup = Foo::Bar(1, false, 3, R { });
+
+            let Foo::Bar(x, .., y) = tup;
+            assert(x == 1);
+            assert(y == R { });
+
+            let Foo::Bar(w, ..) = tup;
+            assert(w == 1);
+
+            let Foo::Bar(.., b, c, d) = tup;
+            assert(b == false);
+            assert(c == 3);
+            assert(d == R { });
+
+            let Foo::Bar(..) = tup;
+        }
+    } => Ok(())
+}

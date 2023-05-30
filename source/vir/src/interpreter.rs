@@ -1549,9 +1549,33 @@ fn eval_expr_launch(
             // Send partial result to Z3
             ComputeMode::Z3 => {
                 // Restore the free variables we hid during interpretation
+                // and any sequence expressions we partially simplified during interpretation
                 let res = crate::sst_visitor::map_exp_visitor_result(&res, &mut |e| match &e.x {
                     ExpX::Interp(InterpExp::FreeVar(v)) => {
                         Ok(SpannedTyped::new(&e.span, &e.typ, ExpX::Var(v.clone())))
+                    }
+                    ExpX::Interp(InterpExp::Seq(v)) => {
+                        match &*e.typ {
+                            TypX::Datatype(_, typs) => {
+                                // Grab the type the sequence holds
+                                let inner_type = typs[0].clone();
+                                let s = seq_to_sst(&e.span, inner_type.clone(), v);
+                                // Wrap the sequence construction in unwrap to account for the Poly
+                                // type of the sequence functions
+                                let unbox_opr = crate::ast::UnaryOpr::Unbox(e.typ.clone());
+                                let unboxed_expx = crate::sst::ExpX::UnaryOpr(unbox_opr, s);
+                                let unboxed_e =
+                                    SpannedTyped::new(&e.span, &e.typ.clone(), unboxed_expx);
+                                Ok(unboxed_e)
+                            }
+                            _ => error(
+                                &e.span,
+                                format!(
+                                    "Internal error: Expected to find a sequence type but found: {:?}",
+                                    e.typ
+                                ),
+                            ),
+                        }
                     }
                     ExpX::Interp(InterpExp::Closure(..)) => error(
                         &e.span,

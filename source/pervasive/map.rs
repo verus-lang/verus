@@ -31,7 +31,9 @@ verus! {
 /// To prove that two maps are equal, it is usually easiest to use the [`assert_maps_equal!`] macro.
 
 #[verifier(external_body)]
-pub tracked struct Map<#[verifier(maybe_negative)] K, #[verifier(strictly_positive)] V> {
+#[verifier::reject_recursive_types(K)]
+#[verifier::accept_recursive_types(V)]
+pub tracked struct Map<K, V> {
     dummy: marker::PhantomData<(K, V)>,
 }
 
@@ -96,7 +98,7 @@ impl<K, V> Map<K, V> {
 
     pub open spec fn ext_equal(self, m2: Map<K, V>) -> bool {
         &&& self.dom().ext_equal(m2.dom())
-        &&& (forall|k: K| #![auto] self.dom().contains(k) ==> self[k] == m2[k])
+        &&& forall|k: K| #![auto] self.dom().contains(k) ==> self[k] == m2[k]
     }
 
     /// Returns true if the key `k` is in the domain of `self`.

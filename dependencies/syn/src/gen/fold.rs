@@ -65,6 +65,12 @@ pub trait Fold {
     fn fold_bare_fn_arg(&mut self, i: BareFnArg) -> BareFnArg {
         fold_bare_fn_arg(self, i)
     }
+    fn fold_big_and(&mut self, i: BigAnd) -> BigAnd {
+        fold_big_and(self, i)
+    }
+    fn fold_big_or(&mut self, i: BigOr) -> BigOr {
+        fold_big_or(self, i)
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn fold_bin_op(&mut self, i: BinOp) -> BinOp {
         fold_bin_op(self, i)
@@ -1014,6 +1020,34 @@ where
         ty: f.fold_type(node.ty),
     }
 }
+pub fn fold_big_and<F>(f: &mut F, node: BigAnd) -> BigAnd
+where
+    F: Fold + ?Sized,
+{
+    BigAnd {
+        exprs: FoldHelper::lift(
+            node.exprs,
+            |it| (
+                Token![&&&](tokens_helper(f, &(it).0.spans)),
+                Box::new(f.fold_expr(*(it).1)),
+            ),
+        ),
+    }
+}
+pub fn fold_big_or<F>(f: &mut F, node: BigOr) -> BigOr
+where
+    F: Fold + ?Sized,
+{
+    BigOr {
+        exprs: FoldHelper::lift(
+            node.exprs,
+            |it| (
+                Token![|||](tokens_helper(f, &(it).0.spans)),
+                Box::new(f.fold_expr(*(it).1)),
+            ),
+        ),
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn fold_bin_op<F>(f: &mut F, node: BinOp) -> BinOp
 where
@@ -1103,12 +1137,6 @@ where
         }
         BinOp::ShrEq(_binding_0) => {
             BinOp::ShrEq(Token![>>=](tokens_helper(f, &_binding_0.spans)))
-        }
-        BinOp::BigAnd(_binding_0) => {
-            BinOp::BigAnd(Token![&&&](tokens_helper(f, &_binding_0.spans)))
-        }
-        BinOp::BigOr(_binding_0) => {
-            BinOp::BigOr(Token![|||](tokens_helper(f, &_binding_0.spans)))
         }
         BinOp::Equiv(_binding_0) => {
             BinOp::Equiv(Token![<==>](tokens_helper(f, &_binding_0.spans)))
@@ -1348,6 +1376,8 @@ where
             Expr::AssertForall(f.fold_assert_forall(_binding_0))
         }
         Expr::View(_binding_0) => Expr::View(f.fold_view(_binding_0)),
+        Expr::BigAnd(_binding_0) => Expr::BigAnd(f.fold_big_and(_binding_0)),
+        Expr::BigOr(_binding_0) => Expr::BigOr(f.fold_big_or(_binding_0)),
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
     }
@@ -3683,12 +3713,6 @@ where
         }
         UnOp::Neg(_binding_0) => {
             UnOp::Neg(Token![-](tokens_helper(f, &_binding_0.spans)))
-        }
-        UnOp::BigAnd(_binding_0) => {
-            UnOp::BigAnd(Token![&&&](tokens_helper(f, &_binding_0.spans)))
-        }
-        UnOp::BigOr(_binding_0) => {
-            UnOp::BigOr(Token![|||](tokens_helper(f, &_binding_0.spans)))
         }
         UnOp::Proof(_binding_0) => {
             UnOp::Proof(Token![proof](tokens_helper(f, &_binding_0.span)))

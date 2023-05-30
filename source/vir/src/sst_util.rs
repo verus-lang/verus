@@ -118,9 +118,13 @@ fn subst_exp_rec(
             &|(substs, free_vars), e| Ok(subst_exp_rec(typ_substs, substs, free_vars, e)),
         )
         .expect("map_shallow_exp for subst_exp_rec"),
-        ExpX::Var(x) | ExpX::VarLoc(x) => match substs.get(x) {
+        ExpX::Var(x) => match substs.get(x) {
             None => mk_exp(ExpX::Var(x.clone())),
             Some(e) => e.clone(),
+        },
+        ExpX::VarLoc(x) => match substs.get(x) {
+            None => mk_exp(ExpX::VarLoc(x.clone())),
+            Some(_) => panic!("cannot substitute for VarLoc"),
         },
         ExpX::VarAt(x, a) => match substs.get(x) {
             None => mk_exp(ExpX::VarAt(x.clone(), *a)),
@@ -211,6 +215,19 @@ pub(crate) fn subst_exp(
     assert_eq!(scope_substs.num_scopes(), 0);
     assert_eq!(free_vars.num_scopes(), 0);
     e
+}
+
+pub(crate) fn subst_stm(
+    typ_substs: &HashMap<Ident, Typ>,
+    substs: &HashMap<UniqueIdent, Exp>,
+    stm: &Stm,
+) -> Stm {
+    let stm = crate::sst_visitor::map_stm_visitor(&stm, &mut |stm| {
+        crate::sst_visitor::map_shallow_stm_typ(&stm, &|typ| Ok(subst_typ(typ_substs, typ)))
+    })
+    .unwrap();
+    crate::sst_visitor::map_stm_exp_visitor(&stm, &|exp| Ok(subst_exp(typ_substs, substs, exp)))
+        .unwrap()
 }
 
 ///////////////////////////////////////

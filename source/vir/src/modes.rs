@@ -256,12 +256,14 @@ fn add_pattern_rec(
     in_or: bool,
 ) -> Result<(), VirErr> {
     // Testing this condition prevents us from adding duplicate spans into var_modes
-    if !(in_or && matches!(&pattern.x, PatternX::Or(..))) {
+    if !(in_or && matches!(&pattern.x, PatternX::Or(..)))
+        && !matches!(&pattern.x, PatternX::Wildcard(true))
+    {
         typing.erasure_modes.var_modes.push((pattern.span.clone(), mode));
     }
 
     match &pattern.x {
-        PatternX::Wildcard => Ok(()),
+        PatternX::Wildcard(_dd) => Ok(()),
         PatternX::Var { name: x, mutable } => {
             decls.push(PatternBoundDecl {
                 span: pattern.span.clone(),

@@ -226,10 +226,15 @@ fn un_mut_pattern(pat: &Pattern) -> Pattern {
         PatternX::Binding(x, _) => PatternX::Binding(x.clone(), Mutability::Not),
         PatternX::Box(p) => PatternX::Box(un_mut_pattern(p)),
         PatternX::Or(ps) => PatternX::Or(ps.iter().map(un_mut_pattern).collect()),
-        PatternX::Tuple(ps) => PatternX::Tuple(ps.iter().map(un_mut_pattern).collect()),
-        PatternX::DatatypeTuple(x, y, ps) => {
-            PatternX::DatatypeTuple(x.clone(), y.clone(), ps.iter().map(un_mut_pattern).collect())
+        PatternX::Tuple(ps, dotdot) => {
+            PatternX::Tuple(ps.iter().map(un_mut_pattern).collect(), *dotdot)
         }
+        PatternX::DatatypeTuple(x, y, ps, dotdot) => PatternX::DatatypeTuple(
+            x.clone(),
+            y.clone(),
+            ps.iter().map(un_mut_pattern).collect(),
+            *dotdot,
+        ),
         PatternX::DatatypeStruct(x, y, ps, omit) => {
             let ps = ps.iter().map(|(z, p)| (z.clone(), un_mut_pattern(p))).collect();
             PatternX::DatatypeStruct(x.clone(), y.clone(), ps, *omit)
@@ -265,24 +270,36 @@ pub(crate) fn emit_pattern(state: &mut EmitState, pat: &Pattern) {
             }
             state.write(")");
         }
-        PatternX::Tuple(ps) => {
+        PatternX::Tuple(ps, dotdot) => {
             state.write("(");
-            for p in ps {
+            for (i, p) in ps.iter().enumerate() {
+                if *dotdot == Some(i) {
+                    state.write(".. ,");
+                }
                 emit_pattern(state, p);
                 state.write(", ");
             }
+            if *dotdot == Some(ps.len()) {
+                state.write("..");
+            }
             state.write(")");
         }
-        PatternX::DatatypeTuple(x, v, ps) => {
+        PatternX::DatatypeTuple(x, v, ps, dotdot) => {
             state.write(x.to_string());
             if let Some(v) = v {
                 state.write("::");
                 state.write(v.to_string());
             }
             state.write("(");
-            for p in ps {
+            for (i, p) in ps.iter().enumerate() {
+                if *dotdot == Some(i) {
+                    state.write(".. ,");
+                }
                 emit_pattern(state, p);
                 state.write(", ");
+            }
+            if *dotdot == Some(ps.len()) {
+                state.write("..");
             }
             state.write(")");
         }

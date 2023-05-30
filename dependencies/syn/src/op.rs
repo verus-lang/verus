@@ -63,8 +63,6 @@ ast_enum! {
         ShrEq(Token![>>=]),
 
         // verus
-        BigAnd(Token![&&&]),
-        BigOr(Token![|||]),
         Equiv(Token![<==>]),
         Imply(Token![==>]),
         Exply(Token![<==]),
@@ -88,8 +86,6 @@ ast_enum! {
         Neg(Token![-]),
 
         // verus
-        BigAnd(Token![&&&]),
-        BigOr(Token![|||]),
         Proof(Token![proof]),
         Forall(Token![forall]),
         Exists(Token![exists]),
@@ -103,11 +99,7 @@ pub mod parsing {
     use crate::parse::{Parse, ParseStream, Result};
 
     fn parse_binop(input: ParseStream) -> Result<BinOp> {
-        if input.peek(Token![&&&]) {
-            input.parse().map(BinOp::BigAnd)
-        } else if input.peek(Token![|||]) {
-            input.parse().map(BinOp::BigOr)
-        } else if input.peek(Token![<==>]) {
+        if input.peek(Token![<==>]) {
             input.parse().map(BinOp::Equiv)
         } else if input.peek(Token![==>]) {
             input.parse().map(BinOp::Imply)
@@ -258,8 +250,6 @@ mod printing {
                 BinOp::ShrEq(t) => t.to_tokens(tokens),
 
                 // verus
-                BinOp::BigAnd(t) => t.to_tokens(tokens),
-                BinOp::BigOr(t) => t.to_tokens(tokens),
                 BinOp::Equiv(t) => t.to_tokens(tokens),
                 BinOp::Imply(t) => t.to_tokens(tokens),
                 BinOp::Exply(t) => t.to_tokens(tokens),
@@ -278,8 +268,6 @@ mod printing {
                 UnOp::Neg(t) => t.to_tokens(tokens),
 
                 // verus
-                UnOp::BigAnd(t) => t.to_tokens(tokens),
-                UnOp::BigOr(t) => t.to_tokens(tokens),
                 UnOp::Proof(t) => t.to_tokens(tokens),
                 UnOp::Forall(t) => t.to_tokens(tokens),
                 UnOp::Exists(t) => t.to_tokens(tokens),

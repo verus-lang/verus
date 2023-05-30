@@ -243,11 +243,8 @@ impl Context {
     }
 
     pub(crate) fn set_z3_param_u32(&mut self, option: &str, value: u32, write_to_logs: bool) {
-        if option == "rlimit" {
-            self.rlimit = value;
-            if write_to_logs {
-                self.set_rlimit(value);
-            }
+        if option == "rlimit" && write_to_logs {
+            self.set_rlimit(value);
         } else {
             if write_to_logs {
                 self.log_set_z3_param(option, &value.to_string());
