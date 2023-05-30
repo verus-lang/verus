@@ -14,6 +14,7 @@ use rustc_hir::{
     MutTy, Param, PrimTy, QPath, Ty, TyKind, Unsafety,
 };
 use rustc_middle::ty::TyCtxt;
+use rustc_span::def_id::DefId;
 use rustc_span::symbol::{Ident, Symbol};
 use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
@@ -35,6 +36,7 @@ pub(crate) fn autospec_fun(path: &vir::ast::Path, method_name: String) -> vir::a
 
 pub(crate) fn body_to_vir<'tcx>(
     ctxt: &Context<'tcx>,
+    fun_id: DefId,
     id: &BodyId,
     body: &Body<'tcx>,
     mode: Mode,
@@ -42,8 +44,14 @@ pub(crate) fn body_to_vir<'tcx>(
 ) -> Result<vir::ast::Expr, VirErr> {
     let def = rustc_middle::ty::WithOptConstParam::unknown(id.hir_id.owner.def_id);
     let types = ctxt.tcx.typeck_opt_const_arg(def);
-    let bctx =
-        BodyCtxt { ctxt: ctxt.clone(), types, mode, external_body, in_ghost: mode != Mode::Exec };
+    let bctx = BodyCtxt {
+        ctxt: ctxt.clone(),
+        types,
+        fun_id,
+        mode,
+        external_body,
+        in_ghost: mode != Mode::Exec,
+    };
     expr_to_vir(&bctx, &body.value, ExprModifier::REGULAR)
 }
 
@@ -151,19 +159,18 @@ pub enum CheckItemFnEither<A, B> {
 pub(crate) fn check_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
     functions: &mut Vec<vir::ast::Function>,
-    id: rustc_span::def_id::DefId,
+    id: DefId,
     kind: FunctionKind,
     visibility: vir::ast::Visibility,
     attrs: &[Attribute],
     sig: &'tcx FnSig<'tcx>,
-    trait_path: Option<vir::ast::Path>,
     // (impl generics, impl def_id)
-    self_generics: Option<(&'tcx Generics, rustc_span::def_id::DefId)>,
+    self_generics: Option<(&'tcx Generics, DefId)>,
     generics: &'tcx Generics,
     body_id: CheckItemFnEither<&BodyId, &[Ident]>,
 ) -> Result<Option<Fun>, VirErr> {
     let path = def_id_to_vir_path(ctxt.tcx, id);
-    let name = Arc::new(FunX { path: path.clone(), trait_path: trait_path.clone() });
+    let name = Arc::new(FunX { path: path.clone() });
 
     let vattrs = get_verifier_attrs(attrs)?;
 
@@ -246,7 +253,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 }
                 ps.push((name, *span, Some(*hir_id)));
             }
-            let mut vir_body = body_to_vir(ctxt, body_id, body, mode, vattrs.external_body)?;
+            let mut vir_body = body_to_vir(ctxt, id, body_id, body, mode, vattrs.external_body)?;
             let header = vir::headers::read_header(&mut vir_body)?;
             (Some(vir_body), header, ps)
         }
@@ -420,7 +427,7 @@ pub(crate) fn check_item_fn<'tcx>(
     let publish = get_publish(&vattrs);
     let autospec = vattrs.autospec.map(|method_name| {
         let path = autospec_fun(&path, method_name.clone());
-        Arc::new(FunX { path, trait_path: trait_path.clone() })
+        Arc::new(FunX { path })
     });
 
     if vattrs.nonlinear && vattrs.spinoff_prover {
@@ -523,14 +530,14 @@ pub(crate) fn check_item_const<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut KrateX,
     span: Span,
-    id: rustc_span::def_id::DefId,
+    id: DefId,
     visibility: vir::ast::Visibility,
     attrs: &[Attribute],
     typ: &Typ,
     body_id: &BodyId,
 ) -> Result<(), VirErr> {
     let path = def_id_to_vir_path(ctxt.tcx, id);
-    let name = Arc::new(FunX { path, trait_path: None });
+    let name = Arc::new(FunX { path });
     let mode = get_mode(Mode::Exec, attrs);
     let vattrs = get_verifier_attrs(attrs)?;
     let fuel = get_fuel(&vattrs);
@@ -540,7 +547,7 @@ pub(crate) fn check_item_const<'tcx>(
         return Ok(());
     }
     let body = find_body(ctxt, body_id);
-    let vir_body = body_to_vir(ctxt, body_id, body, mode, vattrs.external_body)?;
+    let vir_body = body_to_vir(ctxt, id, body_id, body, mode, vattrs.external_body)?;
 
     let ret_name = Arc::new(RETURN_VALUE.to_string());
     let ret = ctxt.spanned_new(
@@ -577,7 +584,7 @@ pub(crate) fn check_item_const<'tcx>(
 pub(crate) fn check_foreign_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut KrateX,
-    id: rustc_span::def_id::DefId,
+    id: DefId,
     span: Span,
     visibility: vir::ast::Visibility,
     attrs: &[Attribute],
@@ -612,7 +619,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         vir_params.push(vir_param);
     }
     let path = def_id_to_vir_path(ctxt.tcx, id);
-    let name = Arc::new(FunX { path, trait_path: None });
+    let name = Arc::new(FunX { path });
     let params = Arc::new(vir_params);
     let (ret_typ, ret_mode) = match ret_typ_mode {
         None => (Arc::new(TypX::Tuple(Arc::new(vec![]))), mode),

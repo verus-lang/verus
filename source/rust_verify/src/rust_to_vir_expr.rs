@@ -441,14 +441,13 @@ fn get_fn_path<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<vir::as
     match &expr.kind {
         ExprKind::Path(qpath) => {
             let id = bctx.types.qpath_res(qpath, expr.hir_id).def_id();
-            let self_path = call_self_path(bctx.ctxt.tcx, &bctx.types, qpath);
             if let Some(_) =
                 bctx.ctxt.tcx.impl_of_method(id).and_then(|ii| bctx.ctxt.tcx.trait_id_of_impl(ii))
             {
                 unsupported_err!(expr.span, format!("Fn {:?}", id))
             } else {
-                let path = def_id_self_to_vir_path_expect(bctx.ctxt.tcx, &self_path, id);
-                Ok(Arc::new(FunX { path, trait_path: None }))
+                let path = def_id_self_to_vir_path_expect(bctx.ctxt.tcx, id);
+                Ok(Arc::new(FunX { path }))
             }
         }
         _ => unsupported_err!(expr.span, format!("{:?}", expr)),
@@ -464,7 +463,7 @@ fn fn_call_to_vir<'tcx>(
     expr: &Expr<'tcx>,
     self_path: Option<vir::ast::Path>,
     f: DefId,
-    node_substs: &[rustc_middle::ty::subst::GenericArg<'tcx>],
+    node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::subst::GenericArg<'tcx>>,
     fn_span: Span,
     args: Vec<&'tcx Expr<'tcx>>,
     defined_locally: bool,
@@ -728,13 +727,7 @@ fn fn_call_to_vir<'tcx>(
     let needs_name = !(is_spec_no_proof_args
         || is_spec_allow_proof_args_pre
         || is_compilable_operator.is_some());
-    let path = if !needs_name {
-        None
-    } else if let Some(self_path) = &self_path {
-        def_id_self_to_vir_path(tcx, &Some(self_path.clone()), f)
-    } else {
-        Some(def_id_to_vir_path(tcx, f))
-    };
+    let path = if !needs_name { None } else { Some(def_id_to_vir_path(tcx, f)) };
 
     let (is_get_variant, autospec) = {
         let fn_attrs = if f.as_local().is_some() {
@@ -771,11 +764,8 @@ fn fn_call_to_vir<'tcx>(
     };
 
     let path = if let Some(method_name) = autospec { Some(method_name) } else { path };
-    let name = if let Some(path) = &path {
-        Some(Arc::new(FunX { path: path.clone(), trait_path: None }))
-    } else {
-        None
-    };
+    let name =
+        if let Some(path) = &path { Some(Arc::new(FunX { path: path.clone() })) } else { None };
 
     let is_spec_allow_proof_args = is_spec_allow_proof_args_pre || is_get_variant.is_some();
     record_fun(
@@ -1228,13 +1218,6 @@ fn fn_call_to_vir<'tcx>(
             }
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let self_path = if let Some(mut self_path) = path.clone() {
-        let self_path_mut = Arc::make_mut(&mut self_path);
-        Arc::make_mut(&mut self_path_mut.segments).pop();
-        Some(self_path)
-    } else {
-        None
-    };
 
     match is_get_variant {
         Some((variant_name, None)) => {
@@ -1606,23 +1589,46 @@ fn fn_call_to_vir<'tcx>(
             }
         }
         // type arguments
-        let mut typ_args: Vec<Typ> = Vec::new();
-        for typ_arg in node_substs {
-            match typ_arg.unpack() {
-                GenericArgKind::Type(ty) => {
-                    typ_args.push(mid_ty_to_vir(tcx, expr.span, &ty, false)?);
-                }
-                GenericArgKind::Lifetime(_) => {}
-                GenericArgKind::Const(cnst) => {
-                    typ_args.push(crate::rust_to_vir_base::mid_ty_const_to_vir(
-                        tcx,
-                        Some(expr.span),
-                        &cnst,
-                    )?);
+        let mk_typ_args = |substs: &rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>| -> Result<_, VirErr> {
+            let mut typ_args: Vec<Typ> = Vec::new();
+            for typ_arg in substs {
+                match typ_arg.unpack() {
+                    GenericArgKind::Type(ty) => {
+                        typ_args.push(mid_ty_to_vir(tcx, expr.span, &ty, false)?);
+                    }
+                    GenericArgKind::Lifetime(_) => {}
+                    GenericArgKind::Const(cnst) => {
+                        typ_args.push(crate::rust_to_vir_base::mid_ty_const_to_vir(
+                            tcx,
+                            Some(expr.span),
+                            &cnst,
+                        )?);
+                    }
                 }
             }
-        }
-        let target = CallTarget::Static(name, Arc::new(typ_args));
+            Ok(Arc::new(typ_args))
+        };
+        let typ_args = mk_typ_args(node_substs)?;
+        let kind = if tcx.trait_of_item(f).is_none() {
+            vir::ast::CallTargetKind::Static
+        } else {
+            let mut resolved = None;
+            let param_env = tcx.param_env(bctx.fun_id);
+            let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
+            let inst = rustc_middle::ty::Instance::resolve(tcx, param_env, f, normalized_substs);
+            if let Ok(Some(inst)) = inst {
+                if let rustc_middle::ty::InstanceDef::Item(item) = inst.def {
+                    if let rustc_middle::ty::WithOptConstParam { did, const_param_did: None } = item
+                    {
+                        let typs = mk_typ_args(&inst.substs)?;
+                        let f = Arc::new(FunX { path: def_id_to_vir_path(tcx, did) });
+                        resolved = Some((f, typs));
+                    }
+                }
+            }
+            vir::ast::CallTargetKind::Method(resolved)
+        };
+        let target = CallTarget::Fun(kind, name, typ_args);
         Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, ExprX::Call(target, Arc::new(vir_args))))
     }
 }
@@ -2190,7 +2196,7 @@ pub(crate) fn call_self_path(
         QPath::LangItem(_, _, _) => None,
         QPath::TypeRelative(ty, _) => match &ty.kind {
             rustc_hir::TyKind::Path(qpath) => match types.qpath_res(&qpath, ty.hir_id) {
-                rustc_hir::def::Res::Def(_, def_id) => def_id_self_to_vir_path(tcx, &None, def_id),
+                rustc_hir::def::Res::Def(_, def_id) => def_id_self_to_vir_path(tcx, def_id),
                 _ => None,
             },
             _ => {
@@ -2377,7 +2383,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         let typ_args =
                             Arc::new(vec![tup.typ.clone(), ret_typ, vir_fun.typ.clone()]);
                         (
-                            CallTarget::Static(fun, typ_args),
+                            CallTarget::Fun(vir::ast::CallTargetKind::Static, fun, typ_args),
                             vec![vir_fun, tup],
                             ResolvedCall::NonStaticExec,
                         )
@@ -2611,7 +2617,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 match def_kind {
                     DefKind::Const => {
                         let path = def_id_to_vir_path(tcx, id);
-                        let fun = FunX { path, trait_path: None };
+                        let fun = FunX { path };
                         mk_expr(ExprX::ConstVar(Arc::new(fun)))
                     }
                     DefKind::Fn => {
@@ -3090,16 +3096,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     Arc::make_mut(&mut Arc::make_mut(&mut tp).segments).push(str_ident("index"));
                     tp
                 };
-                let trait_def_id = bctx
-                    .ctxt
-                    .tcx
-                    .lang_items()
-                    .index_trait()
-                    .expect("Index trait lang item should be defined");
-                let trait_path = def_id_to_vir_path(bctx.ctxt.tcx, trait_def_id);
                 let idx_vir = expr_to_vir(bctx, idx_expr, modifier)?;
-                let target = CallTarget::Static(
-                    Arc::new(FunX { path: tgt_index_path, trait_path: Some(trait_path) }),
+                let target = CallTarget::Fun(
+                    vir::ast::CallTargetKind::Static,
+                    Arc::new(FunX { path: tgt_index_path }),
                     Arc::new(vec![]),
                 );
                 mk_expr(ExprX::Call(target, Arc::new(vec![tgt_vir, idx_vir])))

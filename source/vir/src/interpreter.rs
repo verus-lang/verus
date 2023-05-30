@@ -341,7 +341,7 @@ impl SyntacticEquality for Exp {
             (Old(id_l, unique_id_l), Old(id_r, unique_id_r)) => {
                 def_eq(id_l == id_r && unique_id_l == unique_id_r)
             }
-            (Call(f_l, _, exps_l), Call(f_r, _, exps_r)) => {
+            (Call(CallFun::Fun(f_l, _), _, exps_l), Call(CallFun::Fun(f_r, _), _, exps_r)) => {
                 if f_l == f_r && exps_l.len() == exps_r.len() {
                     def_eq(exps_l.syntactic_eq(exps_r)?)
                 } else {
@@ -687,12 +687,12 @@ fn seq_to_sst(span: &Span, typ: Typ, s: &Vector<Exp>) -> Exp {
         krate: Some(Arc::new("vstd".to_string())),
         segments: strs_to_idents(vec!["seq", "Seq", "push"]),
     });
-    let fun_empty = Arc::new(FunX { path: path_empty, trait_path: None });
-    let fun_push = Arc::new(FunX { path: path_push, trait_path: None });
-    let empty = exp_new(ExpX::Call(CallFun::Fun(fun_empty), typs.clone(), Arc::new(vec![])));
+    let fun_empty = Arc::new(FunX { path: path_empty });
+    let fun_push = Arc::new(FunX { path: path_push });
+    let empty = exp_new(ExpX::Call(CallFun::Fun(fun_empty, None), typs.clone(), Arc::new(vec![])));
     let seq = s.iter().fold(empty, |acc, e| {
         let args = Arc::new(vec![acc, e.clone()]);
-        exp_new(ExpX::Call(CallFun::Fun(fun_push.clone()), typs.clone(), args))
+        exp_new(ExpX::Call(CallFun::Fun(fun_push.clone(), None), typs.clone(), args))
     });
     seq
 }
@@ -1356,7 +1356,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 _ => exp_new(If(e1, e2.clone(), e3.clone())),
             }
         }
-        Call(CallFun::Fun(fun), typs, args) => {
+        Call(CallFun::Fun(fun, resolved_method), typs, args) => {
             if state.perf {
                 // Record the call for later performance analysis
                 match state.fun_calls.get_mut(fun) {
@@ -1380,7 +1380,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     match ctx.fun_ssts.get(fun) {
                         None => {
                             // We don't have the body for this function, so we can't simplify further
-                            exp_new(Call(CallFun::Fun(fun.clone()), typs.clone(), new_args.clone()))
+                            exp_new(Call(
+                                CallFun::Fun(fun.clone(), resolved_method.clone()),
+                                typs.clone(),
+                                new_args.clone(),
+                            ))
                         }
                         Some(SstInfo { params, body, memoize, .. }) => {
                             match state.lookup_call(&fun, &new_args, *memoize) {

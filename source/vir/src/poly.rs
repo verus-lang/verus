@@ -283,7 +283,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         }
         ExprX::ConstVar(..) => panic!("ConstVar should already be removed"),
         ExprX::Call(target, exprs) => match target {
-            CallTarget::Static(name, _) => {
+            CallTarget::Fun(_, name, _) => {
                 let function = &ctx.func_map[name].x;
                 let is_spec = function.mode == Mode::Spec;
                 let is_trait = !matches!(function.kind, FunctionKind::Static);

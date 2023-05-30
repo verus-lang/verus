@@ -37,14 +37,17 @@ pub struct Seq<A> {
 impl<A> Seq<A> {
     /// An empty sequence (i.e., a sequence of length 0).
 
+    #[rustc_diagnostic_item = "vstd::seq::Seq::empty"]
     pub spec fn empty() -> Seq<A>;
 
     /// Construct a sequence `s` of length `len` where entry `s[i]` is given by `f(i)`.
 
+    #[rustc_diagnostic_item = "vstd::seq::Seq::new"]
     pub spec fn new(len: nat, f: impl Fn(int) -> A) -> Seq<A>;
 
     /// The length of a sequence.
 
+    #[rustc_diagnostic_item = "vstd::seq::Seq::len"]
     pub spec fn len(self) -> nat;
 
     /// Gets the value at the given index `i`.
@@ -52,6 +55,7 @@ impl<A> Seq<A> {
     /// If `i` is not in the range `[0, self.len())`, then the resulting value
     /// is meaningless and arbitrary.
 
+    #[rustc_diagnostic_item = "vstd::seq::Seq::index"]
     pub spec fn index(self, i: int) -> A
         recommends 0 <= i < self.len();
 
@@ -78,6 +82,7 @@ impl<A> Seq<A> {
     /// }
     /// ```
 
+    #[rustc_diagnostic_item = "vstd::seq::Seq::push"]
     pub spec fn push(self, a: A) -> Seq<A>;
 
     /// Updates the sequence at the given index, replacing the element with the given
@@ -93,6 +98,7 @@ impl<A> Seq<A> {
     /// }
     /// ```
 
+    #[rustc_diagnostic_item = "vstd::seq::Seq::update"]
     pub spec fn update(self, i: int, a: A) -> Seq<A>
         recommends 0 <= i < self.len();
 
@@ -105,6 +111,7 @@ impl<A> Seq<A> {
     /// to use the [`assert_seqs_equal!`](crate::seq_lib::assert_seqs_equal) macro,
     /// rather than using `ext_equal` directly.
 
+    #[rustc_diagnostic_item = "vstd::seq::Seq::ext_equal"]
     pub open spec fn ext_equal(self, s2: Seq<A>) -> bool {
         &&& self.len() == s2.len()
         &&& forall|i: int| 0 <= i < self.len() ==> self[i] == s2[i]
@@ -124,6 +131,7 @@ impl<A> Seq<A> {
     /// }
     /// ```
 
+    #[rustc_diagnostic_item = "vstd::seq::Seq::subrange"]
     pub spec fn subrange(self, start_inclusive: int, end_exclusive: int) -> Seq<A>
         recommends 0 <= start_inclusive <= end_exclusive <= self.len();
 
@@ -140,6 +148,7 @@ impl<A> Seq<A> {
     /// }
     /// ```
 
+    #[rustc_diagnostic_item = "vstd::seq::Seq::add"]
     pub spec fn add(self, rhs: Seq<A>) -> Seq<A>;
 
     /// `+` operator, synonymous with `add`
@@ -151,6 +160,7 @@ impl<A> Seq<A> {
 
     /// Returns the last element of the sequence.
 
+    #[rustc_diagnostic_item = "vstd::seq::Seq::last"]
     pub open spec fn last(self) -> A
         recommends 0 < self.len()
     {

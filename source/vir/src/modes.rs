@@ -502,7 +502,7 @@ fn check_expr_handle_mut_arg(
             typing.erasure_modes.var_modes.push((expr.span.clone(), mode));
             Ok(mode)
         }
-        ExprX::Call(CallTarget::Static(x, _), es) => {
+        ExprX::Call(CallTarget::Fun(_, x, _), es) => {
             let function = match typing.funs.get(x) {
                 None => {
                     let name = crate::ast_util::path_as_rust_name(&x.path);

@@ -64,7 +64,6 @@ fn check_item<'tcx>(
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 sig,
                 None,
-                None,
                 generics,
                 CheckItemFnEither::BodyId(body_id),
             )?;
@@ -313,7 +312,7 @@ fn check_item<'tcx>(
                                         let ident = Arc::new(ident);
                                         let path =
                                             typ_path_and_ident_to_vir_path(&trait_path, ident);
-                                        let fun = FunX { path, trait_path: None };
+                                        let fun = FunX { path };
                                         let method = Arc::new(fun);
                                         let datatype = self_path.clone();
                                         let datatype_typ_args = datatype_typ_args.clone();
@@ -335,7 +334,6 @@ fn check_item<'tcx>(
                                         impl_item_visibility,
                                         fn_attrs,
                                         sig,
-                                        trait_path_typ_args.clone().map(|(p, _)| p),
                                         Some((&impll.generics, impl_def_id)),
                                         &impl_item.generics,
                                         CheckItemFnEither::BodyId(body_id),
@@ -443,7 +441,6 @@ fn check_item<'tcx>(
                             visibility(),
                             attrs,
                             sig,
-                            None,
                             Some((trait_generics, trait_def_id)),
                             item_generics,
                             body_id,

@@ -459,10 +459,6 @@ pub type Fun = Arc<FunX>;
 pub struct FunX {
     /// Path of function
     pub path: Path,
-    /// Path of the trait that defines the function, if any.
-    /// This disambiguates between impls for the same type of multiple traits that define functions
-    /// with the same name.
-    pub trait_path: Option<Path>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, ToDebugSNode)]
@@ -472,9 +468,17 @@ pub enum BuiltinSpecFun {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub enum CallTargetKind {
+    /// Statically known function
+    Static,
+    /// Dynamically dispatched method.  Optionally specify the statically resolved target if known.
+    Method(Option<(Fun, Typs)>),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum CallTarget {
-    /// Call a statically known function, passing some type arguments
-    Static(Fun, Typs),
+    /// Regular function, passing some type arguments
+    Fun(CallTargetKind, Fun, Typs),
     /// Call a dynamically computed FnSpec (no type arguments allowed),
     /// where the function type is specified by the GenericBound of typ_param.
     FnSpec(Expr),

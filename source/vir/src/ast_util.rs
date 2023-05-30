@@ -212,14 +212,8 @@ pub fn path_as_vstd_name(path: &Path) -> Option<String> {
 }
 
 pub fn fun_as_rust_dbg(fun: &Fun) -> String {
-    let FunX { path, trait_path } = &**fun;
-    let path_str = path_as_rust_name(path);
-    if let Some(trait_path) = trait_path {
-        let trait_path_str = path_as_rust_name(trait_path);
-        format!("{}<{}>", path_str, trait_path_str)
-    } else {
-        path_str
-    }
+    let FunX { path } = &**fun;
+    path_as_rust_name(path)
 }
 
 pub fn fun_name_crate_relative(module: &Path, fun: &Fun) -> String {
@@ -342,6 +336,15 @@ pub fn params_to_binders(params: &Params) -> Binders<Typ> {
 
 pub fn pars_to_binders(pars: &Pars) -> Binders<Typ> {
     Arc::new(vec_map(&**pars, par_to_binder))
+}
+
+impl crate::ast::CallTargetKind {
+    pub(crate) fn resolved(&self) -> Option<(Fun, Typs)> {
+        match self {
+            crate::ast::CallTargetKind::Static => None,
+            crate::ast::CallTargetKind::Method(resolved) => resolved.clone(),
+        }
+    }
 }
 
 impl FunctionX {

@@ -40,28 +40,26 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_8 verus_code! {
+    #[test] test_supported_8 verus_code! {
         trait T<A> {
             fn f(&self, a: &A);
         }
         struct S<A> { a: A }
-        // not yet supported: multiple implementations of same trait for single datatype:
         impl T<u8> for S<u8> {
             fn f(&self, a: &u8) {}
         }
         impl T<bool> for S<bool> {
             fn f(&self, a: &bool) {}
         }
-    } => Err(err) => assert_vir_error_msg(err, ": multiple definitions of same function")
+    } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_9 verus_code! {
+    #[test] test_supported_9 verus_code! {
         trait T<A> {
             fn f(&self, a: A) -> A;
         }
         struct S {}
-        // not yet supported: multiple implementations of same trait for single datatype:
         impl T<bool> for S {
             fn f(&self, a: bool) -> bool { !a }
         }
@@ -73,7 +71,7 @@ test_verify_one_file! {
             s.f(true);
             s.f(10);
         }
-    } => Err(err) => assert_vir_error_msg(err, ": multiple definitions of same function")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -1466,6 +1464,174 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot move out of `*other` which is behind a shared reference")
+}
+
+test_verify_one_file! {
+    #[test] test_specialize1 verus_code! {
+        trait T { spec fn f(&self) -> bool; }
+        struct S<A> { a: A }
+        impl T for S<u8> { spec fn f(&self) -> bool { true } }
+        impl T for S<bool> { spec fn f(&self) -> bool { false } }
+        proof fn test(x: S<u8>, y: S<bool>) {
+            assert(x.f());
+            assert(!y.f());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_specialize1_fails verus_code! {
+        trait T { spec fn f(&self) -> bool; }
+        struct S<A> { a: A }
+        impl T for S<u8> { spec fn f(&self) -> bool { true } }
+        impl T for S<bool> { spec fn f(&self) -> bool { false } }
+        proof fn test(x: S<u8>, y: S<bool>) {
+            assert(x.f() == y.f()); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_specialize2 verus_code! {
+        trait T { spec fn f() -> bool; }
+        struct S<A> { a: A }
+        impl T for S<u8> { spec fn f() -> bool { true } }
+        impl T for S<bool> { spec fn f() -> bool { false } }
+        proof fn test() {
+            assert(S::<u8>::f());
+            assert(!S::<bool>::f());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_specialize2_fails verus_code! {
+        trait T { spec fn f() -> bool; }
+        struct S<A> { a: A }
+        impl T for S<u8> { spec fn f() -> bool { true } }
+        impl T for S<bool> { spec fn f() -> bool { false } }
+        proof fn test() {
+            assert(S::<u8>::f() == S::<bool>::f()); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_specialize2_decorated_fails verus_code! {
+        trait T { spec fn f() -> bool; }
+        struct S<A> { a: A }
+        impl T for S<u8> { spec fn f() -> bool { true } }
+        impl T for S<&u8> { spec fn f() -> bool { false } }
+        proof fn test() {
+            assert(S::<u8>::f() == S::<&u8>::f()); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_specialize3 verus_code! {
+        trait T<A> { spec fn f(&self, a: A) -> bool; }
+        struct S {}
+        impl T<u8> for S { spec fn f(&self, a: u8) -> bool { true } }
+        impl T<u16> for S { spec fn f(&self, a: u16) -> bool { false } }
+        proof fn test(x: S) {
+            assert(x.f(1u8));
+            assert(!x.f(1u16));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_specialize3_fails verus_code! {
+        trait T<A> { spec fn f(&self, a: A) -> bool; }
+        struct S {}
+        impl T<u8> for S { spec fn f(&self, a: u8) -> bool { true } }
+        impl T<u16> for S { spec fn f(&self, a: u16) -> bool { false } }
+        proof fn test(x: S) {
+            assert(x.f(1u8) == x.f(1u16)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_specialize4 verus_code! {
+        trait T<A> { spec fn f(a: A) -> bool; }
+        struct S {}
+        impl T<u8> for S { spec fn f(a: u8) -> bool { true } }
+        impl T<u16> for S { spec fn f(a: u16) -> bool { false } }
+        proof fn test() {
+            assert(S::f(1u8));
+            assert(!S::f(1u16));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_specialize4_fails verus_code! {
+        trait T<A> { spec fn f(a: A) -> bool; }
+        struct S {}
+        impl T<u8> for S { spec fn f(a: u8) -> bool { true } }
+        impl T<u16> for S { spec fn f(a: u16) -> bool { false } }
+        proof fn test() {
+            assert(S::f(1u8) == S::f(1u16)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_specialize4_decorated_fails verus_code! {
+        trait T<A> { spec fn f(a: A) -> bool; }
+        struct S {}
+        impl T<u8> for S { spec fn f(a: u8) -> bool { true } }
+        impl T<&u8> for S { spec fn f(a: &u8) -> bool { false } }
+        proof fn test() {
+            assert(S::f(1u8) == S::f(&1u8)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_trait_inline verus_code! {
+        pub trait T<A> { spec fn f(&self) -> int; }
+        struct S { }
+        impl T<u16> for S {
+            #[verifier::inline]
+            open spec fn f(&self) -> int { 7 }
+        }
+        proof fn test(x: &S) {
+            assert(x.f() == 7);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_trait_inline_fails verus_code! {
+        pub trait T<A> { spec fn f(&self) -> int; }
+        struct S { }
+        impl T<u16> for S {
+            #[verifier::inline]
+            open spec fn f(&self) -> int { 7 }
+        }
+        proof fn test(x: &S) {
+            assert(x.f() == 8); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_trait_inline2 verus_code! {
+        struct S<A> { a: A }
+        trait T<A> { spec fn f(&self, i: int) -> A; }
+        spec fn arbitrary<A>() -> A;
+        impl<B> T<(B, bool)> for S<B> {
+            #[verifier(inline)]
+            spec fn f(&self, i: int) -> (B, bool) { arbitrary() }
+        }
+        proof fn foo(x: S<u64>)
+            requires x.f(33) == (19u64, true),
+        {
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {
