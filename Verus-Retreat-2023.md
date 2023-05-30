@@ -27,7 +27,7 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 
 - Setting up CI that includes other Verus projects (a-la crater)
 - Proof actions
-- [...]
+- State machine syntax
 
 ### Tuesday, June 27th
 
