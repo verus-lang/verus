@@ -49,11 +49,19 @@ pub enum UnaryOp {
     BitExtract(u32, u32),
 }
 
+/// These are Z3 special relations x <= y that are documented at
+/// https://microsoft.github.io/z3guide/docs/theories/Special%20Relations/
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum Relation {
+    /// reflexive, transitive, antisymmetric
     PartialOrder,
+    /// reflexive, transitive, antisymmetric, and for all x, y. (x <= y or y <= x)
     LinearOrder,
+    /// reflexive, transitive, antisymmetric, and for all x, y, z. (y <= x and z <= x) ==> (y <= z or z <= y)
     TreeOrder,
+    /// reflexive, transitive, antisymmetric, and:
+    /// - for all x, y, z. (x <= y and x <= z) ==> (y <= z or z <= y)
+    /// - for all x, y, z. (y <= x and z <= x) ==> (y <= z or z <= y)
     PiecewiseLinearOrder,
 }
 
@@ -67,6 +75,11 @@ pub enum BinaryOp {
     Gt,
     EuclideanDiv,
     EuclideanMod,
+    /// Z3 special relations (see Relation above)
+    /// The u64 is the Z3 unique name ("index") for each relation that the user wants
+    /// ("To create a different relation that is also a partial order use a different index,
+    /// such as (_ partial-order 1)", according to
+    /// https://microsoft.github.io/z3guide/docs/theories/Special%20Relations/ .)
     Relation(Relation, u64),
     BitXor,
     BitAnd,

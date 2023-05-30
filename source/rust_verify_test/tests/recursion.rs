@@ -384,7 +384,7 @@ test_verify_one_file! {
             if 0 < i {
                 assert(is_smaller_than(i - 1, i));
                 dec1((i - 1) as nat);
-                assert(is_smaller_than((i, 100 * i), i));
+                assert(is_smaller_than_lexicographic((i, 100 * i), (i,)));
                 dec2(i, 100 * i);
             }
         }
@@ -393,13 +393,13 @@ test_verify_one_file! {
             decreases j, k
         {
             if 0 < k {
-                assert(is_smaller_than((j, k - 1), (j, k)));
+                assert(is_smaller_than_lexicographic((j, k - 1), (j, k)));
                 dec2(j, (k - 1) as nat);
             }
             if 0 < j {
-                assert(is_smaller_than((j - 1, 100 * j + k), (j, k)));
+                assert(is_smaller_than_lexicographic((j - 1, 100 * j + k), (j, k)));
                 dec2((j - 1) as nat, 100 * j + k);
-                assert(is_smaller_than(j - 1, (j, k)));
+                assert(is_smaller_than_lexicographic((j - 1,), (j, k)));
                 dec1((j - 1) as nat);
             }
         }
@@ -446,7 +446,7 @@ test_verify_one_file! {
             decreases j, k
         {
             if 0 < k {
-                assert(is_smaller_than((j, k), (j, k))); // FAILS
+                assert(is_smaller_than_lexicographic((j, k), (j, k))); // FAILS
             }
             if 0 < j {
                 dec2((j - 1) as nat, 100 * j + k);
@@ -488,7 +488,7 @@ test_verify_one_file! {
         {
             if 0 < i {
                 dec1((i - 1) as nat);
-                assert(is_smaller_than((i + 1, 100 * i), i)); // FAILS
+                assert(is_smaller_than_lexicographic((i + 1, 100 * i), (i,))); // FAILS
             }
         }
 
@@ -499,7 +499,7 @@ test_verify_one_file! {
                 dec2(j, (k - 1) as nat);
             }
             if 0 < j {
-                assert(is_smaller_than((j, 100 * j + k), (j, k))); // FAILS
+                assert(is_smaller_than_lexicographic((j, 100 * j + k), (j, k))); // FAILS
                 dec1((j - 1) as nat);
             }
         }
@@ -550,7 +550,7 @@ test_verify_one_file! {
             }
             if 0 < j {
                 dec2((j - 1) as nat, 100 * j + k);
-                assert(is_smaller_than(j, (j, k))); // FAILS
+                assert(is_smaller_than_lexicographic((j,), (j, k))); // FAILS
             }
         }
     } => Err(err) => assert_one_fails(err)
