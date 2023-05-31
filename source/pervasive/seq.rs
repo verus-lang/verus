@@ -162,11 +162,11 @@ impl<A> Seq<A> {
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub proof fn axiom_seq_index_height<A>(s: Seq<A>, i: int)
+pub proof fn axiom_seq_index_decreases<A>(s: Seq<A>, i: int)
     requires
         0 <= i < s.len(),
     ensures
-        #[trigger] is_smaller_than(s[i], s),
+        #[trigger](decreases_to!(s => s[i])),
 {
 }
 

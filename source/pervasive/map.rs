@@ -299,11 +299,11 @@ impl<K, V> Map<K, V> {
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub proof fn axiom_map_index_height<K, V>(m: Map<K, V>, key: K)
+pub proof fn axiom_map_index_decreases<K, V>(m: Map<K, V>, key: K)
     requires
         m.dom().contains(key),
     ensures
-        #[trigger] is_smaller_than(m[key], m),
+        #[trigger](decreases_to!(m => m[key])),
 {
 }
 
