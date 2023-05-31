@@ -99,21 +99,19 @@ pub fn main() {
     let mut args = if build_test_mode { internal_args } else { std::env::args() };
     let program = if build_test_mode { internal_program } else { args.next().unwrap() };
 
-    let mut imports = Vec::new();
+    let mut vstd = None;
     let verus_root = if !build_test_mode {
         let verus_root = rust_verify::driver::find_verusroot();
         if let Some(rust_verify::driver::VerusRoot { path: verusroot, .. }) = &verus_root {
-            if !verifier.args.no_vstd {
-                let vstd = verusroot.join("vstd.vir").to_str().unwrap().to_string();
-                imports.push((format!("vstd"), vstd));
-            }
+            let vstd_path = verusroot.join("vstd.vir").to_str().unwrap().to_string();
+            vstd = Some((format!("vstd"), vstd_path));
         }
         verus_root
     } else {
         None
     };
 
-    let (our_args, rustc_args) = rust_verify::config::parse_args_with_imports(&program, args, imports);
+    let (our_args, rustc_args) = rust_verify::config::parse_args_with_imports(&program, args, vstd);
     let pervasive_path = our_args.pervasive_path.clone();
 
     std::env::set_var("RUSTC_BOOTSTRAP", "1");

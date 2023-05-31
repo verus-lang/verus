@@ -114,10 +114,10 @@ pub fn enable_default_features_and_verus_attr(
 }
 
 pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args, Vec<String>) {
-    parse_args_with_imports(program, args, vec![])
+    parse_args_with_imports(program, args, None)
 }
 
-pub fn parse_args_with_imports(program: &String, args: impl Iterator<Item = String>, arg_imports: Vec<(String, String)>) -> (Args, Vec<String>) {
+pub fn parse_args_with_imports(program: &String, args: impl Iterator<Item = String>, vstd: Option<(String, String)>) -> (Args, Vec<String>) {
     const OPT_PERVASIVE_PATH: &str = "pervasive-path";
     const OPT_EXPORT: &str = "export";
     const OPT_IMPORT: &str = "import";
@@ -291,8 +291,14 @@ pub fn parse_args_with_imports(program: &String, args: impl Iterator<Item = Stri
         }
     };
 
+    let no_vstd = matches.opt_present(OPT_NO_VSTD);
+
     let mut import = matches.opt_strs(OPT_IMPORT).iter().map(split_pair_eq).collect::<Vec<(String, String)>>();
-    import.extend(arg_imports);
+    if let Some(vstd) = vstd {
+        if !no_vstd {
+            import.push(vstd);
+        }
+    }
 
     let args = ArgsX {
         pervasive_path: matches.opt_str(OPT_PERVASIVE_PATH),
@@ -382,7 +388,7 @@ pub fn parse_args_with_imports(program: &String, args: impl Iterator<Item = Stri
         profile: matches.opt_present(OPT_PROFILE),
         profile_all: matches.opt_present(OPT_PROFILE_ALL),
         compile: matches.opt_present(OPT_COMPILE),
-        no_vstd: matches.opt_present(OPT_NO_VSTD),
+        no_vstd,
         solver_version_check: !matches.opt_present(OPT_NO_SOLVER_VERSION_CHECK),
         num_threads: matches.opt_get::<usize>(OPT_NUM_THREADS)
             .unwrap_or_else(|_| error("expected integer after num_threads".to_string()))
