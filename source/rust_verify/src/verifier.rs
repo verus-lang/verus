@@ -1,6 +1,6 @@
 use crate::config::{Args, ShowTriggers};
 use crate::context::{ArchContextX, ContextX, ErasureInfo};
-// use crate::debugger::Debugger;
+use crate::debugger::Debugger;
 use crate::spans::{SpanContext, SpanContextX};
 use crate::util::error;
 use air::ast::{Command, CommandX, Commands};
@@ -15,7 +15,7 @@ use num_format::{Locale, ToFormattedString};
 use rustc_error_messages::MultiSpan;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
-// use rustc_span::source_map::SourceMap;
+use rustc_span::source_map::SourceMap;
 use vir::context::GlobalCtx;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::File;
@@ -383,10 +383,11 @@ impl Verifier {
         module_path: &vir::ast::Path,
         reporter: &impl Diagnostics,
         _spans: &SpanContext,
+        source_map: Option<&SourceMap>,
         level: MessageLevel,
         air_context: &mut air::context::Context,
-        _assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<std::string::String>>>,
-        _snap_map: &Vec<(air::ast::Span, SnapPos)>,
+        assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<std::string::String>>>,
+        snap_map: &Vec<(air::ast::Span, SnapPos)>,
         qid_map: &HashMap<String, vir::sst::BndInfo>,
         command: &Command,
         context: &(&air::ast::Span, &str),
@@ -477,7 +478,7 @@ impl Verifier {
                         reporter.report_as(&error, level);
                         break;
                     }
-                    // let air_model = air_model.unwrap();
+                    let air_model = air_model.unwrap();
 
                     if is_first_check && level == MessageLevel::Error {
                         self.count_errors += 1;
@@ -494,14 +495,21 @@ impl Verifier {
                         }
 
                         if self.args.debug {
-                            panic!("TODO: re-enable debugger not support");
-                            // let mut debugger = Debugger::new(
-                            //     air_model,
-                            //     assign_map,
-                            //     snap_map,
-                            //     compiler.session().source_map(),
-                            // );
-                            // debugger.start_shell(air_context);
+                            if let Some(source_map) = source_map {
+                                let mut debugger = Debugger::new(
+                                    air_model,
+                                    assign_map,
+                                    snap_map,
+                                    source_map,
+                                );
+                                debugger.start_shell(air_context);
+                            } else {
+                                reporter.report(&message(
+                                    MessageLevel::Warning,
+                                    "no source map available for debugger. Try running single threaded.",
+                                    &context.0,
+                                ));
+                            }
                         }
                     }
 
@@ -578,6 +586,7 @@ impl Verifier {
         &mut self,
         reporter: &impl Diagnostics,
         spans: &SpanContext,
+        source_map: Option<&SourceMap>,
         level: MessageLevel,
         air_context: &mut air::context::Context,
         commands_with_context: CommandsWithContext,
@@ -612,6 +621,7 @@ impl Verifier {
                 module,
                 reporter,
                 spans,
+                source_map,
                 level,
                 air_context,
                 assign_map,
@@ -780,6 +790,7 @@ impl Verifier {
         reporter: &impl Diagnostics,
         krate: &Krate,
         spans: &SpanContext,
+        source_map: Option<&SourceMap>,
         module: &vir::ast::Path,
         ctx: &mut vir::context::Ctx,
     ) -> Result<(Duration, Duration), VirErr> {
@@ -952,6 +963,7 @@ impl Verifier {
                 let invalidity = self.run_commands_queries(
                     reporter,
                     spans,
+                    source_map,
                     MessageLevel::Error,
                     &mut air_context,
                     Arc::new(CommandsWithContextX {
@@ -990,6 +1002,7 @@ impl Verifier {
                         self.run_commands_queries(
                             reporter,
                             spans,
+                            source_map,
                             level,
                             &mut air_context,
                             command.clone(),
@@ -1116,6 +1129,7 @@ impl Verifier {
                     let command_invalidity = self.run_commands_queries(
                         reporter,
                         spans,
+                        source_map,
                         level,
                         query_air_context,
                         command.clone(),
@@ -1158,6 +1172,7 @@ impl Verifier {
         reporter: &impl Diagnostics,
         krate: &Krate,
         spans: &SpanContext,
+        source_map: Option<&SourceMap>,
         module: &vir::ast::Path,
         mut global_ctx: vir::context::GlobalCtx,
     ) -> Result<vir::context::GlobalCtx, VirErr> {
@@ -1190,7 +1205,7 @@ impl Verifier {
         }
 
         let (time_smt_init, time_smt_run) =
-            self.verify_module(reporter, &poly_krate, spans, module, &mut ctx)?;
+            self.verify_module(reporter, &poly_krate, spans, source_map, module, &mut ctx)?;
 
         global_ctx = ctx.free();
 
@@ -1316,6 +1331,7 @@ impl Verifier {
         let time_verify_sequential_end = Instant::now();
         self.time_verify_crate_sequential = time_verify_sequential_end - time_verify_sequential_start;
 
+        let source_map = compiler.session().source_map();
 
         self.num_threads = std::cmp::min(self.args.num_threads, module_ids_to_verify.len());
         if self.num_threads  > 1  {
@@ -1344,6 +1360,7 @@ impl Verifier {
             // protect the taskq with a mutex
             let taskq = std::sync::Arc::new(std::sync::Mutex::new(tasks));
 
+
             // create the worker threads
             let mut workers = Vec::new();
             for _tid in 0..self.num_threads  {
@@ -1361,7 +1378,7 @@ impl Verifier {
                         let elm = tq.pop_front();
                         drop(tq);
                         if let Some((module, task, reporter)) = elm {
-                            let res = thread_verifier.verify_module_outer(&reporter, &thread_krate, &thread_span, &module, task);
+                            let res = thread_verifier.verify_module_outer(&reporter, &thread_krate, &thread_span, None, &module, task);
                             reporter.done(); // we've verified the module, send the done message
                             match res {
                                 Ok(res) => {
@@ -1471,7 +1488,7 @@ impl Verifier {
             }
         } else {
             for module in &module_ids_to_verify {
-                global_ctx = self.verify_module_outer(&reporter, &krate, spans, module, global_ctx)?;
+                global_ctx = self.verify_module_outer(&reporter, &krate, spans, Some(source_map), module, global_ctx)?;
             }
         }
 
