@@ -5,8 +5,8 @@
 /// 3) Also compute names for abstract datatype sorts for the module,
 ///    since we're traversing the module-visible datatypes anyway.
 use crate::ast::{
-    CallTarget, Datatype, Expr, ExprX, Fun, Function, FunctionKind, Ident, Krate, KrateX, Mode,
-    Path, Stmt, Typ, TypX,
+    AutospecUsage, CallTarget, Datatype, Expr, ExprX, Fun, Function, FunctionKind, Ident, Krate,
+    KrateX, Mode, Path, Stmt, Typ, TypX,
 };
 use crate::ast_util::{is_visible_to, is_visible_to_of_owner};
 use crate::datatype_to_air::is_datatype_transparent;
@@ -135,7 +135,8 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             }
             let fe = |state: &mut State, _: &mut ScopeMap<Ident, Typ>, e: &Expr| {
                 match &e.x {
-                    ExprX::Call(CallTarget::Fun(kind, name, _), _) => {
+                    ExprX::Call(CallTarget::Fun(kind, name, _, autospec), _) => {
+                        assert!(*autospec == AutospecUsage::Final);
                         reach_function(ctxt, state, name);
                         if let crate::ast::CallTargetKind::Method(Some((resolved, _))) = kind {
                             reach_function(ctxt, state, resolved);

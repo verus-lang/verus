@@ -1402,6 +1402,7 @@ impl Verifier {
             }
         }
         check_crate_result?;
+        let vir_crate = vir::autospec::resolve_autospec(&vir_crate)?;
         let (erasure_modes, inferred_modes) = vir::modes::check_crate(&vir_crate, true)?;
         let vir_crate = vir::traits::demote_foreign_traits(&vir_crate)?;
 

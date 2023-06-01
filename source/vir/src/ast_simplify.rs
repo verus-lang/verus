@@ -3,10 +3,10 @@
 use crate::ast::Quant;
 use crate::ast::Typs;
 use crate::ast::{
-    BinaryOp, Binder, BuiltinSpecFun, CallTarget, Constant, Datatype, DatatypeTransparency,
-    DatatypeX, Expr, ExprX, Exprs, Field, FieldOpr, Function, FunctionKind, GenericBound,
-    GenericBoundX, Ident, IntRange, Krate, KrateX, Mode, MultiOp, Path, Pattern, PatternX,
-    SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
+    AutospecUsage, BinaryOp, Binder, BuiltinSpecFun, CallTarget, Constant, Datatype,
+    DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Field, FieldOpr, Function, FunctionKind,
+    GenericBound, GenericBoundX, Ident, IntRange, Krate, KrateX, Mode, MultiOp, Path, Pattern,
+    PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
 };
 use crate::ast_util::{conjoin, disjoin, if_then_else};
 use crate::ast_util::{error, wrap_in_trigger};
@@ -232,12 +232,19 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
     match &expr.x {
         ExprX::ConstVar(x) => {
             let call = ExprX::Call(
-                CallTarget::Fun(CallTargetKind::Static, x.clone(), Arc::new(vec![])),
+                CallTarget::Fun(
+                    CallTargetKind::Static,
+                    x.clone(),
+                    Arc::new(vec![]),
+                    AutospecUsage::Final,
+                ),
                 Arc::new(vec![]),
             );
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
-        ExprX::Call(CallTarget::Fun(kind, tgt, typs), args) => {
+        ExprX::Call(CallTarget::Fun(kind, tgt, typs, autospec_usage), args) => {
+            assert!(*autospec_usage == AutospecUsage::Final);
+
             // Remove FnSpec type arguments
             let bounds = &ctx.fun_bounds[tgt];
             let typs: Vec<Typ> = typs
@@ -257,8 +264,10 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
             } else {
                 args.clone()
             };
-            let call =
-                ExprX::Call(CallTarget::Fun(kind.clone(), tgt.clone(), Arc::new(typs)), args);
+            let call = ExprX::Call(
+                CallTarget::Fun(kind.clone(), tgt.clone(), Arc::new(typs), *autospec_usage),
+                args,
+            );
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
         ExprX::Tuple(args) => {

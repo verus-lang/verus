@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, CallTarget, Constant, ExprX, Fun, Function, FunctionKind, GenericBoundX, IntRange,
-    MaskSpec, Path, SpannedTyped, TypX, Typs, UnaryOp, UnaryOpr, VirErr,
+    AutospecUsage, BinaryOp, CallTarget, Constant, ExprX, Fun, Function, FunctionKind,
+    GenericBoundX, IntRange, MaskSpec, Path, SpannedTyped, TypX, Typs, UnaryOp, UnaryOpr, VirErr,
 };
 use crate::ast_to_sst::expr_to_exp;
 use crate::ast_util::{error, msg_error, QUANT_FORALL};
@@ -538,7 +538,9 @@ pub(crate) fn expand_call_graph(
     // Add T --> f2 if the requires/ensures of T's method declarations call f2
     crate::ast_visitor::function_visitor_check::<VirErr, _>(function, &mut |expr| {
         match &expr.x {
-            ExprX::Call(CallTarget::Fun(kind, x, ts), _) => {
+            ExprX::Call(CallTarget::Fun(kind, x, ts, autospec), _) => {
+                assert!(*autospec == AutospecUsage::Final);
+
                 use crate::ast::CallTargetKind;
                 let f2 = &func_map[x];
                 assert!(f2.x.typ_bounds.len() == ts.len());

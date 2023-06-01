@@ -23,6 +23,10 @@ pub fn error<A, S: Into<String>>(span: &Span, msg: S) -> Result<A, VirErr> {
     Err(msg_error(msg, span))
 }
 
+pub fn internal_error<A, S: Into<String>>(span: &Span, msg: S) -> Result<A, VirErr> {
+    Err(air::messages::internal_error(msg, span))
+}
+
 pub fn error_with_help<A, S: Into<String>, H: Into<String>>(
     span: &Span,
     msg: S,
