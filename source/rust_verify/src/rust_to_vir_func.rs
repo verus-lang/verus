@@ -234,13 +234,6 @@ pub(crate) fn handle_external_fn<'tcx>(
         return err_span(sig.span, "`external_fn_specification` not supported for trait functions");
     }
 
-    if ctxt.tcx.impl_of_method(external_id).is_some() {
-        return err_span(
-            sig.span,
-            "`external_fn_specification` not yet supported for associated methods",
-        );
-    }
-
     if external_path.krate == Some(Arc::new("builtin".to_string())) {
         return err_span(
             sig.span,
@@ -730,11 +723,27 @@ fn predicates_match<'tcx>(
     if preds1.len() != preds2.len() {
         return false;
     }
-    // TODO should allow this to work if the predicates are in a different order
-    for (p1, p2) in preds1.iter().zip(preds2.iter()) {
-        let p1 = tcx.anonymize_bound_vars(p1.kind());
-        let p2 = tcx.anonymize_bound_vars(p2.kind());
-        if p1 != p2 {
+
+    // Note: it might actually be impossible for the below check to fail?
+    // Since we already passed Rust's typechecking, one of the predicate lists
+    // has to be a subset of the other. But we just checked they're the same size.
+    // So they have to be equal.
+    //
+    // Regardless, it makes sense to keep this as a sanity check.
+
+    let preds1 = preds1.iter().map(|p| tcx.anonymize_bound_vars(p.kind()));
+    let mut preds2: Vec<_> = preds2.iter().map(|p| tcx.anonymize_bound_vars(p.kind())).collect();
+
+    for p1 in preds1 {
+        let mut found = false;
+        for i in 0..preds2.len() {
+            if p1 == preds2[i] {
+                preds2.remove(i);
+                found = true;
+                break;
+            }
+        }
+        if !found {
             return false;
         }
     }
@@ -743,12 +752,10 @@ fn predicates_match<'tcx>(
 
 fn all_predicates<'tcx>(
     tcx: TyCtxt<'tcx>,
-    id1: rustc_span::def_id::DefId,
+    id: rustc_span::def_id::DefId,
     substs: SubstsRef<'tcx>,
 ) -> Vec<Predicate<'tcx>> {
-    let preds = tcx.predicates_of(id1);
-    // TODO need to fix this when external_fn_specification handles associated methods / member functions
-    assert!(preds.parent.is_none());
+    let preds = tcx.predicates_of(id);
     let preds = preds.instantiate(tcx, substs);
     preds.predicates
 }
@@ -777,7 +784,6 @@ pub(crate) fn get_external_def_id<'tcx>(
         _ => &body.value,
     };
 
-    // TODO handle MethodCall
     match &expr.kind {
         ExprKind::Call(fun, _args) => match &fun.kind {
             ExprKind::Path(qpath) => {
@@ -798,6 +804,12 @@ pub(crate) fn get_external_def_id<'tcx>(
                 return err();
             }
         },
+        ExprKind::MethodCall(_name_and_generics, _receiver, _other_args, _fn_span) => {
+            let types = body_id_to_types(tcx, body_id);
+            let def_id =
+                types.type_dependent_def_id(expr.hir_id).expect("def id of the method definition");
+            Ok(def_id)
+        }
         _ => {
             return err();
         }

@@ -654,26 +654,6 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "`external_fn_specification` not supported for trait functions")
 }
 
-// Associated functions
-
-test_verify_one_file! {
-    #[test] apply_to_assoc_fn_not_supported verus_code! {
-        struct X { }
-
-        impl X {
-            #[verifier(external)]
-            fn f() { }
-        }
-
-        // This shouldn't be hard to support
-
-        #[verifier(external_fn_specification)]
-        fn ex_f() {
-            X::f()
-        }
-    } => Err(err) => assert_vir_error_msg(err, "`external_fn_specification` not yet supported for associated methods")
-}
-
 // Other
 
 test_verify_one_file! {
@@ -707,4 +687,180 @@ test_verify_one_file! {
             admit()
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot apply `external_fn_specification` to Verus builtin functions")
+}
+
+// Associated functions
+
+test_verify_one_file! {
+    #[test] assoc_function verus_code! {
+        struct X { a: u8 }
+
+        impl X {
+            #[verifier::external]
+            fn new(a: u8) -> Self {
+                X { a: a }
+            }
+        }
+
+        #[verifier::external_fn_specification]
+        fn ex_X(a: u8) -> (res: X)
+            ensures res.a == a,
+        {
+            X::new(a)
+        }
+
+        fn test() {
+            let x = X::new(5);
+            assert(x.a == 5);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] assoc_function_traits verus_code! {
+        trait Tr1 { }
+        trait Tr2 { }
+
+        struct X<T> { a: T }
+
+        impl<T: Tr2> X<T> {
+            #[verifier::external]
+            fn new(a: T) -> Self
+                where T: Tr1
+            {
+                X { a: a }
+            }
+        }
+
+        #[verifier::external_fn_specification]
+        fn ex_X_new<T: Tr1 + Tr2>(a: T) -> (res: X<T>)
+            ensures res.a == a,
+        {
+            X::<T>::new(a)
+        }
+
+        struct Foo(u8);
+        impl Tr1 for Foo { }
+        impl Tr2 for Foo { }
+
+        fn test() {
+            let x = X::<Foo>::new(Foo(5));
+            assert(x.a == Foo(5));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] assoc_function_traits_fail verus_code! {
+        trait Tr1 { }
+        trait Tr2 { }
+
+        struct X<T> { a: T }
+
+        impl<T> X<T> {
+            #[verifier::external]
+            fn new(a: T) -> Self
+                where T: Tr1
+            {
+                X { a: a }
+            }
+        }
+
+        #[verifier::external_fn_specification]
+        fn ex_X_new<T: Tr1 + Tr2>(a: T) -> (res: X<T>)
+            ensures res.a == a,
+        {
+            X::<T>::new(a)
+        }
+    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification requires function type signature to match exactly (trait bound mismatch)")
+}
+
+// Methods
+
+test_verify_one_file! {
+    #[test] method verus_code! {
+        struct X { a: u8, b: u8 }
+
+        impl X {
+            #[verifier::external]
+            fn swap(&self) -> X
+            {
+                X { a: self.b, b: self.a }
+            }
+        }
+
+        #[verifier::external_fn_specification]
+        fn ex_X_swap(x: &X) -> (res: X)
+              ensures res.a == x.b && res.b == x.a
+        {
+            x.swap()
+        }
+
+        fn test() {
+            let z = X { a: 5, b: 7 };
+            let w = z.swap();
+
+            assert(w == X { a: 7, b: 5 });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] method_traits verus_code! {
+        trait Tr1 { }
+        trait Tr2 { }
+
+        struct X<T> { a: T, b: T }
+
+        impl<T: Tr2> X<T> {
+            #[verifier::external]
+            fn swap(self) -> X<T>
+                where T: Tr1
+            {
+                X { a: self.b, b: self.a }
+            }
+        }
+
+        #[verifier::external_fn_specification]
+        fn ex_X_swap<T: Tr1 + Tr2>(x: X<T>) -> (res: X<T>)
+              ensures res.a == x.b && res.b == x.a
+        {
+            x.swap()
+        }
+
+        struct Foo(u8);
+        impl Tr1 for Foo { }
+        impl Tr2 for Foo { }
+
+        fn test() {
+            let z = X::<Foo> { a: Foo(5), b: Foo(7) };
+            let w = z.swap();
+
+            assert(w == X { a: Foo(7), b: Foo(5) });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] method_traits_fail verus_code! {
+        trait Tr1 { }
+        trait Tr2 { }
+
+        struct X<T> { a: T, b: T }
+
+        impl<T: Tr2> X<T> {
+            #[verifier::external]
+            fn swap(self) -> X<T>
+            {
+                X { a: self.b, b: self.a }
+            }
+        }
+
+        #[verifier::external_fn_specification]
+        fn ex_X_swap<T: Tr1 + Tr2>(x: X<T>) -> (res: X<T>)
+              ensures res.a == x.b && res.b == x.a
+        {
+            x.swap()
+        }
+    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification requires function type signature to match exactly (trait bound mismatch)")
 }
