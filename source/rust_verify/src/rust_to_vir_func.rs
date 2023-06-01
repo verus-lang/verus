@@ -209,13 +209,6 @@ pub(crate) fn handle_external_fn<'tcx>(
         }
     }
 
-    if vattrs.autospec.is_some() {
-        return err_span(
-            sig.span,
-            "`external_fn_specification` attribute not yet supported with `when_used_as_spec`",
-        );
-    }
-
     let body_id = match body_id {
         CheckItemFnEither::BodyId(body_id) => body_id,
         _ => {

@@ -478,7 +478,7 @@ pub enum CallTargetKind {
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum CallTarget {
     /// Regular function, passing some type arguments
-    Fun(CallTargetKind, Fun, Typs),
+    Fun(CallTargetKind, Fun, Typs, AutospecUsage),
     /// Call a dynamically computed FnSpec (no type arguments allowed),
     /// where the function type is specified by the GenericBound of typ_param.
     FnSpec(Expr),
@@ -516,6 +516,16 @@ pub enum ComputeMode {
     Z3,
     /// Asserted expression must simplify all the way to True
     ComputeOnly,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum AutospecUsage {
+    /// This function should be lowered by autospec iff the
+    /// target function has an autospec attribute.
+    IfMarked,
+    /// Do not apply autospec. (This might be because we already applied it during lowering,
+    /// or because it doesn't apply to this function.)
+    Final,
 }
 
 /// Expression, similar to rustc_hir::Expr

@@ -139,3 +139,17 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] visibility verus_code! {
+        mod X {
+            spec fn spec_not(x: bool) -> bool { !x }
+
+            #[verifier::when_used_as_spec(spec_not)]
+            pub fn exec_not(x: bool) -> (res: bool)
+            {
+                !x
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "when_used_as_spec refers to function which is more private")
+}

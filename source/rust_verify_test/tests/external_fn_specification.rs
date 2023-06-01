@@ -875,3 +875,85 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "external_fn_specification requires function type signature to match exactly (trait bound mismatch)")
 }
+
+// when_used_as_spec
+
+test_verify_one_file! {
+    #[test] test_when_used_as_spec verus_code! {
+        #[verifier::external]
+        fn foo(x: bool) -> bool { !x }
+
+        spec fn spec_not(x: bool) -> bool { !x }
+
+        #[verifier::when_used_as_spec(spec_not)]
+        #[verifier::external_fn_specification]
+        fn exec_foo(x: bool) -> (res: bool)
+        {
+            foo(x)
+        }
+
+        proof fn test() {
+            let a = foo(true);
+            assert(a == false);
+        }
+
+        fn test2() {
+            let a = foo(true);
+            assert(a == false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_when_used_as_spec_call_proxy verus_code! {
+        #[verifier::external]
+        fn foo(x: bool) -> bool { !x }
+
+        spec fn spec_not(x: bool) -> bool { !x }
+
+        #[verifier::when_used_as_spec(spec_not)]
+        #[verifier::external_fn_specification]
+        fn exec_foo(x: bool) -> (res: bool)
+        {
+            foo(x)
+        }
+
+        proof fn test() {
+            let a = exec_foo(true);
+            assert(a == false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function marked `external_fn_specification` directly")
+}
+
+test_verify_one_file! {
+    #[test] when_used_as_spec_attribute_refers_to_proxy verus_code! {
+        #[verifier::external]
+        fn foo(x: bool) -> bool { !x }
+
+        #[verifier::external_fn_specification]
+        fn exec_foo(x: bool) -> (res: bool)
+        {
+            foo(x)
+        }
+
+        #[verifier::when_used_as_spec(exec_foo)]
+        fn test(x: bool) -> (res: bool)
+        {
+            !x
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot find function referred to in when_used_as_spec")
+}
+
+test_verify_one_file! {
+    #[test] when_used_as_spec_more_private verus_code! {
+        spec fn stuff() {
+        }
+
+        #[verifier::when_used_as_spec(stuff)]
+        pub fn ex_likely(x: bool) -> (res: bool)
+            ensures res == x
+        {
+            std::intrinsics::likely(x)
+        }
+    } => Err(err) => assert_vir_error_msg(err, "when_used_as_spec refers to function which is more private")
+}

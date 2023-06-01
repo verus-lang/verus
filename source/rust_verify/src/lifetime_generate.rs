@@ -25,7 +25,7 @@ use rustc_span::symbol::kw;
 use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use vir::ast::{Fun, FunX, Function, Mode, Path};
+use vir::ast::{AutospecUsage, Fun, FunX, Function, Mode, Path};
 use vir::ast_util::get_field;
 use vir::def::VERUS_SPEC;
 
@@ -597,7 +597,7 @@ fn erase_call<'tcx>(
                 erase_spec_exps(ctxt, state, expr, exps)
             }
         }
-        ResolvedCall::Call(f_name) => {
+        ResolvedCall::Call(f_name, autospec_usage) => {
             if !ctxt.functions.contains_key(f_name) {
                 panic!("internal error: function call to {:?} not found {:?}", f_name, expr.span);
             }
@@ -607,6 +607,23 @@ fn erase_call<'tcx>(
             } else {
                 panic!("internal error: call to external function {:?} {:?}", f_name, expr.span);
             };
+
+            let (f_name, f) = match (autospec_usage, &f.x.attrs.autospec) {
+                (AutospecUsage::IfMarked, Some(new_f_name)) => {
+                    let f = &ctxt.functions[new_f_name];
+                    let f = if let Some(f) = f {
+                        f
+                    } else {
+                        panic!(
+                            "internal error: call to external function {:?} {:?}",
+                            f_name, expr.span
+                        );
+                    };
+                    (new_f_name.clone(), f.clone())
+                }
+                _ => (f_name.clone(), f.clone()),
+            };
+
             if f.x.mode == Mode::Spec {
                 return None;
             }
@@ -654,7 +671,7 @@ fn erase_call<'tcx>(
             if expect_spec && !is_some {
                 None
             } else {
-                let name = state.fun_name(f_name);
+                let name = state.fun_name(&f_name);
                 let target = Box::new((fn_span, ExpX::Var(name)));
                 mk_exp(ExpX::Call(target, typ_args, exps))
             }

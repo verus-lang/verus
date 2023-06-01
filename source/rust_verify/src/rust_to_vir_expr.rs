@@ -10,7 +10,6 @@ use crate::rust_to_vir_base::{
     mid_ty_to_vir, mid_ty_to_vir_datatype, mid_ty_to_vir_ghost, mk_range, typ_of_node,
     typ_of_node_expect_mut_ref,
 };
-use crate::rust_to_vir_func::autospec_fun;
 use crate::util::{err_span, slice_vec_map_result, unsupported_err_span, vec_map, vec_map_result};
 use crate::{unsupported_err, unsupported_err_unless};
 use air::ast::{Binder, BinderX};
@@ -32,10 +31,10 @@ use rustc_span::symbol::Symbol;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, ArmX, AssertQueryMode, BinaryOp, BitwiseOp, BuiltinSpecFun, CallTarget, ComputeMode,
-    Constant, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, Ident, InequalityOp, IntRange,
-    IntegerTypeBoundKind, InvAtomicity, Mode, ModeCoercion, MultiOp, PatternX, Quant, SpannedTyped,
-    StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
+    ArithOp, ArmX, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, BuiltinSpecFun, CallTarget,
+    ComputeMode, Constant, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, Ident, InequalityOp,
+    IntRange, IntegerTypeBoundKind, InvAtomicity, Mode, ModeCoercion, MultiOp, PatternX, Quant,
+    SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use vir::ast_util::{
     const_int_from_string, ident_binder, path_as_rust_name, types_equal, undecorate_typ,
@@ -421,6 +420,7 @@ fn record_fun(
     is_spec: bool,
     is_spec_allow_proof_args: bool,
     is_compilable_operator: Option<CompilableOperator>,
+    autospec_usage: AutospecUsage,
 ) {
     let mut erasure_info = ctxt.erasure_info.borrow_mut();
     let resolved_call = if is_spec {
@@ -430,7 +430,7 @@ fn record_fun(
     } else if let Some(op) = is_compilable_operator {
         ResolvedCall::CompilableOperator(op)
     } else if let Some(name) = name {
-        ResolvedCall::Call(name.clone())
+        ResolvedCall::Call(name.clone(), autospec_usage)
     } else {
         panic!("internal error: failed to record function {}", f_name);
     };
@@ -729,7 +729,7 @@ fn fn_call_to_vir<'tcx>(
         || is_compilable_operator.is_some());
     let path = if !needs_name { None } else { Some(def_id_to_vir_path(tcx, f)) };
 
-    let (is_get_variant, autospec) = {
+    let is_get_variant = {
         let fn_attrs = if f.as_local().is_some() {
             if let Some(rustc_hir::Node::ImplItem(
                 impl_item @ rustc_hir::ImplItem { kind: rustc_hir::ImplItemKind::Fn(..), .. },
@@ -751,23 +751,17 @@ fn fn_call_to_vir<'tcx>(
             } else {
                 None
             };
-            let autospec = match (bctx.in_ghost, fn_vattrs.autospec) {
-                (true, Some(method_name)) => {
-                    Some(autospec_fun(path.as_ref().expect("autospec"), method_name))
-                }
-                _ => None,
-            };
-            (is_get_variant, autospec)
+            is_get_variant
         } else {
-            (None, None)
+            None
         }
     };
 
-    let path = if let Some(method_name) = autospec { Some(method_name) } else { path };
     let name =
         if let Some(path) = &path { Some(Arc::new(FunX { path: path.clone() })) } else { None };
 
     let is_spec_allow_proof_args = is_spec_allow_proof_args_pre || is_get_variant.is_some();
+    let autospec_usage = if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
     record_fun(
         &bctx.ctxt,
         expr.hir_id,
@@ -777,6 +771,7 @@ fn fn_call_to_vir<'tcx>(
         is_spec_no_proof_args,
         is_spec_allow_proof_args,
         is_compilable_operator,
+        autospec_usage,
     );
 
     let len = args.len();
@@ -1628,7 +1623,7 @@ fn fn_call_to_vir<'tcx>(
             }
             vir::ast::CallTargetKind::Method(resolved)
         };
-        let target = CallTarget::Fun(kind, name, typ_args);
+        let target = CallTarget::Fun(kind, name, typ_args, autospec_usage);
         Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, ExprX::Call(target, Arc::new(vir_args))))
     }
 }
@@ -2383,7 +2378,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         let typ_args =
                             Arc::new(vec![tup.typ.clone(), ret_typ, vir_fun.typ.clone()]);
                         (
-                            CallTarget::Fun(vir::ast::CallTargetKind::Static, fun, typ_args),
+                            CallTarget::Fun(
+                                vir::ast::CallTargetKind::Static,
+                                fun,
+                                typ_args,
+                                AutospecUsage::Final,
+                            ),
                             vec![vir_fun, tup],
                             ResolvedCall::NonStaticExec,
                         )
@@ -3072,6 +3072,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     vir::ast::CallTargetKind::Static,
                     Arc::new(FunX { path: tgt_index_path }),
                     Arc::new(vec![]),
+                    AutospecUsage::Final,
                 );
                 mk_expr(ExprX::Call(target, Arc::new(vec![tgt_vir, idx_vir])))
             } else {

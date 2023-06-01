@@ -121,7 +121,7 @@ fn check_one_expr(
         ExprX::ConstVar(x) => {
             check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
         }
-        ExprX::Call(CallTarget::Fun(_, x, _), args) => {
+        ExprX::Call(CallTarget::Fun(_, x, _, _), args) => {
             let f = check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
             if f.x.attrs.is_decrease_by {
                 // a decreases_by function isn't a real function;
@@ -901,6 +901,15 @@ pub fn check_crate(
                 )
                 .secondary_span(&function.span));
             }
+
+            if !is_visible_to_opt(&spec_function.x.visibility, &function.x.visibility.restricted_to)
+            {
+                return error(
+                    &function.span,
+                    "when_used_as_spec refers to function which is more private",
+                );
+            }
+
             check_functions_match(
                 "when_used_as_spec",
                 false,

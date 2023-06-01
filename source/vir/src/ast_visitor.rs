@@ -218,7 +218,7 @@ where
                 }
                 ExprX::Call(target, es) => {
                     match target {
-                        CallTarget::Fun(_, _, _) => (),
+                        CallTarget::Fun(_, _, _, _) => (),
                         CallTarget::BuiltinSpecFun(_, _) => (),
                         CallTarget::FnSpec(fun) => {
                             expr_visitor_control_flow!(expr_visitor_dfs(fun, map, mf));
@@ -556,7 +556,7 @@ where
         ExprX::Loc(e) => ExprX::Loc(map_expr_visitor_env(e, map, env, fe, fs, ft)?),
         ExprX::Call(target, es) => {
             let target = match target {
-                CallTarget::Fun(kind, x, typs) => {
+                CallTarget::Fun(kind, x, typs, autospec_usage) => {
                     use crate::ast::CallTargetKind;
                     let kind = match kind {
                         CallTargetKind::Static | CallTargetKind::Method(None) => kind.clone(),
@@ -566,7 +566,7 @@ where
                         }
                     };
                     let typs = vec_map_result(&**typs, |t| (map_typ_visitor_env(t, env, ft)))?;
-                    CallTarget::Fun(kind.clone(), x.clone(), Arc::new(typs))
+                    CallTarget::Fun(kind.clone(), x.clone(), Arc::new(typs), *autospec_usage)
                 }
                 CallTarget::BuiltinSpecFun(x, typs) => {
                     let typs = vec_map_result(&**typs, |t| (map_typ_visitor_env(t, env, ft)))?;

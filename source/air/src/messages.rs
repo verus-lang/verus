@@ -137,6 +137,13 @@ pub fn error<S: Into<String>>(note: S, span: &Span) -> Message {
     message(MessageLevel::Error, note, span)
 }
 
+/// Prepend the error with "Verus Internal Error"
+/// Helpful for distinguishing user errors from Verus bugs.
+pub fn internal_error<S: Into<String>>(note: S, span: &Span) -> Message {
+    let msg = format!("Verus Internal Error: {:}", note.into());
+    message(MessageLevel::Error, msg, span)
+}
+
 /// Error message with a span to be highlighted with ^^^^^^, and a label for that span
 pub fn error_with_label<S: Into<String>, T: Into<String>>(
     note: S,
