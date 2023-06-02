@@ -226,10 +226,19 @@ pub(crate) fn get_range(typ: &Typ) -> IntRange {
     }
 }
 
-pub(crate) fn mk_range<'tcx>(ty: &rustc_middle::ty::Ty<'tcx>) -> IntRange {
+pub(crate) fn mk_range<'tcx>(tcx: TyCtxt<'tcx>, ty: &rustc_middle::ty::Ty<'tcx>) -> IntRange {
     match ty.kind() {
-        TyKind::Adt(_, _) if ty.to_string() == crate::def::BUILTIN_INT => IntRange::Int,
-        TyKind::Adt(_, _) if ty.to_string() == crate::def::BUILTIN_NAT => IntRange::Nat,
+        TyKind::Adt(AdtDef(adt_def_data), _) => {
+            let did = adt_def_data.did;
+            let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(tcx, did));
+            if def_name == crate::def::BUILTIN_INT {
+                IntRange::Int
+            } else if def_name == crate::def::BUILTIN_NAT {
+                IntRange::Nat
+            } else {
+                panic!("mk_range {:?}", ty)
+            }
+        }
         TyKind::Uint(rustc_middle::ty::UintTy::U8) => IntRange::U(8),
         TyKind::Uint(rustc_middle::ty::UintTy::U16) => IntRange::U(16),
         TyKind::Uint(rustc_middle::ty::UintTy::U32) => IntRange::U(32),
@@ -290,7 +299,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
     use vir::ast::TypDecoration;
     let t = match ty.kind() {
         TyKind::Bool => (Arc::new(TypX::Bool), false),
-        TyKind::Uint(_) | TyKind::Int(_) => (Arc::new(TypX::Int(mk_range(ty))), false),
+        TyKind::Uint(_) | TyKind::Int(_) => (Arc::new(TypX::Int(mk_range(tcx, ty))), false),
         TyKind::Ref(_, tys, rustc_ast::Mutability::Not) => {
             let (t0, ghost) = mid_ty_to_vir_ghost(tcx, span, tys, as_datatype, allow_mut_ref)?;
             (Arc::new(TypX::Decorate(TypDecoration::Ref, t0.clone())), ghost)
@@ -324,16 +333,16 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         }
         TyKind::Adt(AdtDef(adt_def_data), args) => {
             let did = adt_def_data.did;
-            let s = ty.to_string();
             let is_strslice =
                 tcx.is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice"), did);
             if is_strslice && !as_datatype {
                 return Ok((Arc::new(TypX::StrSlice), false));
             }
             // TODO use lang items instead of string comparisons
-            if s == crate::def::BUILTIN_INT {
+            let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(tcx, did));
+            if def_name == crate::def::BUILTIN_INT {
                 (Arc::new(TypX::Int(IntRange::Int)), false)
-            } else if s == crate::def::BUILTIN_NAT {
+            } else if def_name == crate::def::BUILTIN_NAT {
                 (Arc::new(TypX::Int(IntRange::Nat)), false)
             } else {
                 let mut typ_args: Vec<(Typ, bool)> = Vec::new();
@@ -358,7 +367,6 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     let (t0, ghost) = &typ_args[0];
                     return Ok((Arc::new(TypX::Decorate(TypDecoration::Box, t0.clone())), *ghost));
                 }
-                let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(tcx, did));
                 if typ_args.len() == 1 {
                     let (t0, ghost) = &typ_args[0];
                     let decorate = |d: TypDecoration, ghost: bool| {

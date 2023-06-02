@@ -313,8 +313,18 @@ pub const USE_PRELUDE: &str = crate::common::code_str! {
 
 #[allow(dead_code)]
 pub fn verify_one_file(name: &str, code: String, options: &[&str]) -> Result<(), TestErr> {
+    let o: Vec<&str>;
+    let (no_prelude, options) = if options.contains(&"no-auto-import-builtin") {
+        o = options.iter().filter(|opt| **opt != "no-auto-import-builtin").map(|x| *x).collect();
+        (true, &o[..])
+    } else {
+        (false, options)
+    };
+
     let vstd = code.contains("vstd::") || code.contains("pervasive::") || options.contains(&"vstd");
-    let files = vec![("test.rs".to_string(), format!("{}\n{}", USE_PRELUDE, code.as_str()))];
+    let code = if no_prelude { code } else { format!("{}\n{}", USE_PRELUDE, code.as_str()) };
+
+    let files = vec![("test.rs".to_string(), code)];
     verify_files_vstd(name, files, "test.rs".to_string(), vstd, options)
 }
 

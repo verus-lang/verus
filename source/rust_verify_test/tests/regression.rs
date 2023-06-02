@@ -410,3 +410,15 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] nat_no_use_builtin_issue575 ["no-auto-import-builtin"] => code! {
+        use vstd::prelude::*;
+
+        pub struct MyType {
+            x: nat,
+        }
+
+        fn main() { }
+    } => Ok(())
+}

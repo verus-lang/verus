@@ -2578,7 +2578,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     Ok(mk_ty_clip(&expr_typ()?, &e, true))
                 }
                 BinOpKind::Div | BinOpKind::Rem => {
-                    match mk_range(&tc.node_type(expr.hir_id)) {
+                    match mk_range(tcx, &tc.node_type(expr.hir_id)) {
                         IntRange::Int | IntRange::Nat | IntRange::U(_) | IntRange::USize => {
                             // Euclidean division
                             Ok(mk_ty_clip(&expr_typ()?, &e, true))
