@@ -12,7 +12,7 @@ use rustc_hir::def::{CtorKind, DefKind, Res};
 use rustc_hir::{
     AssocItemKind, BindingAnnotation, Block, BlockCheckMode, BodyId, Closure, Crate, Expr,
     ExprKind, FnSig, HirId, Impl, ImplItem, ImplItemKind, ItemKind, Let, MaybeOwner, Node,
-    OpaqueTy, OpaqueTyOrigin, OwnerNode, Pat, PatKind, QPath, Stmt, StmtKind, TraitFn, TraitItem,
+    OpaqueTy, OpaqueTyOrigin, OwnerNode, Pat, PatKind, Stmt, StmtKind, TraitFn, TraitItem,
     TraitItemKind, TraitItemRef, UnOp, Unsafety,
 };
 use rustc_middle::ty::subst::GenericArgKind;
@@ -792,8 +792,17 @@ fn erase_expr<'tcx>(
         ExprKind::Path(qpath) => {
             let res = ctxt.types().qpath_res(qpath, expr.hir_id);
 
-            // Check if it's a 0-argument datatype constructor
             match res {
+                Res::Local(id) => match ctxt.tcx.hir().get(id) {
+                    Node::Pat(Pat { kind: PatKind::Binding(_ann, id, ident, _pat), .. }) => {
+                        if expect_spec || ctxt.var_modes[&expr.hir_id] == Mode::Spec {
+                            None
+                        } else {
+                            mk_exp(ExpX::Var(state.local(local_to_var(&ident, id.local_id))))
+                        }
+                    }
+                    _ => panic!("unsupported"),
+                },
                 Res::SelfCtor(_) | Res::Def(DefKind::Ctor(_, _), _) => {
                     let (adt_def_id, variant_def, is_enum) =
                         get_adt_res(ctxt.tcx, res, expr.span).unwrap();
@@ -810,51 +819,7 @@ fn erase_expr<'tcx>(
                         vec![],
                     ));
                 }
-                _ => {}
-            }
-
-            match qpath {
-                QPath::Resolved(None, path) => match path.res {
-                    Res::Local(id) => match ctxt.tcx.hir().get(id) {
-                        Node::Pat(Pat {
-                            kind: PatKind::Binding(_ann, id, ident, _pat), ..
-                        }) => {
-                            if expect_spec || ctxt.var_modes[&expr.hir_id] == Mode::Spec {
-                                None
-                            } else {
-                                mk_exp(ExpX::Var(state.local(local_to_var(&ident, id.local_id))))
-                            }
-                        }
-                        _ => panic!("unsupported"),
-                    },
-                    Res::Def(def_kind, id) => match def_kind {
-                        DefKind::Const => {
-                            let vir_path = def_id_to_vir_path(ctxt.tcx, id);
-                            let fun_name = Arc::new(FunX { path: vir_path });
-                            return mk_exp(ExpX::Var(state.fun_name(&fun_name)));
-                        }
-                        DefKind::ConstParam => {
-                            let local_id = id.as_local().expect("ConstParam local");
-                            let hir_id = ctxt.tcx.hir().local_def_id_to_hir_id(local_id);
-                            match ctxt.tcx.hir().get(hir_id) {
-                                Node::GenericParam(gp) => {
-                                    let name = state.typ_param(gp.name.ident().to_string(), None);
-                                    mk_exp(ExpX::Var(name))
-                                }
-                                _ => panic!("ConstParam"),
-                            }
-                        }
-                        _ => {
-                            dbg!(expr);
-                            panic!("unsupported")
-                        }
-                    },
-                    _ => {
-                        dbg!(expr);
-                        panic!("unsupported")
-                    }
-                },
-                QPath::TypeRelative(_ty, _path_seg) => {
+                Res::Def(DefKind::AssocConst, _id) => {
                     if expect_spec {
                         None
                     } else {
@@ -863,9 +828,24 @@ fn erase_expr<'tcx>(
                         mk_exp(ExpX::Op(vec![], typ))
                     }
                 }
+                Res::Def(DefKind::Const, id) => {
+                    let vir_path = def_id_to_vir_path(ctxt.tcx, id);
+                    let fun_name = Arc::new(FunX { path: vir_path });
+                    return mk_exp(ExpX::Var(state.fun_name(&fun_name)));
+                }
+                Res::Def(DefKind::ConstParam, id) => {
+                    let local_id = id.as_local().expect("ConstParam local");
+                    let hir_id = ctxt.tcx.hir().local_def_id_to_hir_id(local_id);
+                    match ctxt.tcx.hir().get(hir_id) {
+                        Node::GenericParam(gp) => {
+                            let name = state.typ_param(gp.name.ident().to_string(), None);
+                            mk_exp(ExpX::Var(name))
+                        }
+                        _ => panic!("ConstParam"),
+                    }
+                }
                 _ => {
-                    dbg!(&expr);
-                    panic!()
+                    panic!("unsupported")
                 }
             }
         }
