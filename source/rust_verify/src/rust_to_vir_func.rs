@@ -341,12 +341,12 @@ pub(crate) fn check_item_fn<'tcx>(
         let (external_path, external_item_visibility) =
             handle_external_fn(ctxt, id, visibility, sig, self_generics, &body_id, mode, &vattrs)?;
 
-        let proxy = (*ctxt.spanned_new(sig.span, this_path)).clone();
+        let proxy = (*ctxt.spanned_new(sig.span, this_path.clone())).clone();
 
         (external_path, Some(proxy), external_item_visibility)
     } else {
         // No proxy.
-        (this_path, None, visibility)
+        (this_path.clone(), None, visibility)
     };
 
     let name = Arc::new(FunX { path: path.clone() });
@@ -600,7 +600,7 @@ pub(crate) fn check_item_fn<'tcx>(
     };
     let publish = get_publish(&vattrs);
     let autospec = vattrs.autospec.map(|method_name| {
-        let path = autospec_fun(&path, method_name.clone());
+        let path = autospec_fun(&this_path, method_name.clone());
         Arc::new(FunX { path })
     });
 
@@ -713,6 +713,7 @@ fn predicates_match<'tcx>(
 ) -> bool {
     let preds1 = all_predicates(tcx, id1, substs);
     let preds2 = all_predicates(tcx, id2, substs);
+
     if preds1.len() != preds2.len() {
         return false;
     }

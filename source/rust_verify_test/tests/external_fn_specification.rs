@@ -905,6 +905,38 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_when_used_as_spec_modules verus_code! {
+        mod ExternalMod {
+            #[verifier::external]
+            pub fn foo(x: bool) -> bool { !x }
+        }
+
+        mod OtherMod {
+            use super::ExternalMod;
+
+            pub open spec fn spec_not(x: bool) -> bool { !x }
+
+            #[verifier::when_used_as_spec(spec_not)]
+            #[verifier::external_fn_specification]
+            pub fn exec_foo(x: bool) -> (res: bool)
+            {
+                ExternalMod::foo(x)
+            }
+
+            pub proof fn test() {
+                let a = ExternalMod::foo(true);
+                assert(a == false);
+            }
+
+            pub fn test2() {
+                let a = ExternalMod::foo(true);
+                assert(a == false); // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
     #[test] test_when_used_as_spec_call_proxy verus_code! {
         #[verifier::external]
         fn foo(x: bool) -> bool { !x }
