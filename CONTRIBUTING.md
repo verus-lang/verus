@@ -55,12 +55,6 @@ RUSTC_BOOTSTRAP=1 cargo doc
 ```
 which will produce documentation files, e.g., `./target/doc/rust_verify/index.html`
 
-## Contributing to the Guide
-
-A work-in-progress tutorial and reference document is automatically published
-[📖 here](https://verus-lang.github.io/verus/guide/) from the sources in
-[`source/docs/guide`](./source/docs/guide).
-
 ## Running tests for the Rust to VIR translation, and inspecting the resulting vir/air/smt
 
 `vargo test` will run the tests for `rust_verify_test`,
