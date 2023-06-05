@@ -231,7 +231,7 @@ pub(crate) fn handle_external_fn<'tcx>(
     let external_path = def_id_to_vir_path(ctxt.tcx, external_id);
 
     if ctxt.tcx.trait_of_item(external_id).is_some() {
-        return err_span(sig.span, "`external_fn_specification` not supported for trait functions");
+        return err_span(sig.span, "external_fn_specification not supported for trait functions");
     }
 
     if external_path.krate == Some(Arc::new("builtin".to_string())) {

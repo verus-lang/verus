@@ -651,7 +651,18 @@ test_verify_one_file! {
         fn ex_f() {
             X::f()
         }
-    } => Err(err) => assert_vir_error_msg(err, "`external_fn_specification` not supported for trait functions")
+    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification not supported for trait functions")
+}
+
+test_verify_one_file! {
+    #[test] apply_to_trait_fn_not_supported2 verus_code! {
+        trait Tr { fn f(); }
+
+        #[verifier(external_fn_specification)]
+        fn ex_f<T: Tr>() {
+            T::f()
+        }
+    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification not supported for trait functions")
 }
 
 // Other
