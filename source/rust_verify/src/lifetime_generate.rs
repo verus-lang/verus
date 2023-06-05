@@ -547,7 +547,7 @@ fn erase_call<'tcx>(
     self_path: Option<Path>,
     expr_fun: Option<&Expr<'tcx>>,
     fn_def_id: Option<DefId>,
-    node_substs: &[rustc_middle::ty::subst::GenericArg<'tcx>],
+    node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::subst::GenericArg<'tcx>>,
     fn_span: Span,
     receiver: Option<&Expr<'tcx>>,
     args_slice: &'tcx [Expr<'tcx>],
@@ -627,7 +627,32 @@ fn erase_call<'tcx>(
             if f.x.mode == Mode::Spec {
                 return None;
             }
-            state.reach_fun(self_path, fn_def_id.expect("call id"));
+
+            // Maybe resolve from trait function to a specific implementation
+
+            let mut node_substs = node_substs;
+            let mut fn_def_id = fn_def_id.expect("call id");
+
+            let param_env = ctxt.tcx.param_env(fn_def_id);
+            let normalized_substs = ctxt.tcx.normalize_erasing_regions(param_env, node_substs);
+            let inst = rustc_middle::ty::Instance::resolve(
+                ctxt.tcx,
+                param_env,
+                fn_def_id,
+                normalized_substs,
+            );
+            if let Ok(Some(inst)) = inst {
+                if let rustc_middle::ty::InstanceDef::Item(item) = inst.def {
+                    if let rustc_middle::ty::WithOptConstParam { did, const_param_did: None } = item
+                    {
+                        node_substs = &inst.substs;
+                        fn_def_id = did;
+                    }
+                }
+            }
+
+            state.reach_fun(self_path, fn_def_id);
+
             let typ_args = mk_typ_args(ctxt, state, node_substs);
             let mut exps: Vec<Exp> = Vec::new();
             let mut is_first: bool = true;
@@ -1904,8 +1929,8 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                                 );
                             } else {
                                 let body = ctxt.tcx.hir().body(*body_id);
-                                let def_id = crate::rust_to_vir_func::get_external_def_id(
-                                    ctxt.tcx, body_id, body, sig,
+                                let (def_id, _) = crate::rust_to_vir_func::get_external_def_id(
+                                    ctxt.tcx, id, body_id, body, sig,
                                 )
                                 .unwrap();
 
