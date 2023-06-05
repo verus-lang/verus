@@ -98,6 +98,7 @@ pub fn enable_default_features_and_verus_attr(
         "unboxed_closures",
         "register_tool",
         "tuple_trait",
+        "allocator_api",
     ] {
         rustc_args.push("-Z".to_string());
         rustc_args.push(format!("crate-attr=feature({})", feature));
