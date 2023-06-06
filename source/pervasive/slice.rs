@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
+use crate::view::*;
 use crate::seq::*;
 use crate::vec::*;
 

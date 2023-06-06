@@ -146,15 +146,22 @@ impl Typing {
         self.vars.insert(x.clone(), (mutable, mode)).expect("internal error: Typing insert");
     }
 
-    fn typ_mode(&self, typ: &Typ) -> Mode {
+    // REVIEW: the purpose of this is to extract datatype.x.mode,
+    // which I think ultimately derives from https://github.com/verus-lang/verus/pull/6 ,
+    // which was an early trick to try to use the Index trait from spec mode.
+    // But we don't use this trick anymore, so maybe we should reconsider this.
+    fn trait_impl_self_typ_mode(&self, span: &Span, typ: &Typ) -> Result<Mode, VirErr> {
         match &**typ {
-            TypX::Bool | TypX::Int(_) | TypX::Char | TypX::StrSlice => Mode::Exec,
-            TypX::TypParam(_) => Mode::Exec,
-            TypX::Lambda(_, _) => Mode::Spec,
-            TypX::Datatype(datatype, _typ_args) => self.datatypes[datatype].x.mode,
-            TypX::Decorate(_, t) | TypX::Boxed(t) => self.typ_mode(t),
-            TypX::Tuple(..) | TypX::AnonymousClosure(..) => panic!("unknown mode for type"),
-            TypX::TypeId | TypX::ConstInt(..) | TypX::Air(..) => panic!("unknown mode for type"),
+            TypX::Bool | TypX::Int(_) | TypX::Char | TypX::StrSlice => Ok(Mode::Exec),
+            TypX::TypParam(_) => Ok(Mode::Exec),
+            TypX::Lambda(_, _) => Ok(Mode::Spec),
+            TypX::Datatype(datatype, _typ_args) => Ok(self.datatypes[datatype].x.mode),
+            TypX::Decorate(_, t) | TypX::Boxed(t) => self.trait_impl_self_typ_mode(span, t),
+            TypX::Projection { .. } => {
+                error(span, "trait implemention self type cannot be a projection")
+            }
+            TypX::Tuple(..) | TypX::AnonymousClosure(..) => Ok(Mode::Exec),
+            TypX::TypeId | TypX::ConstInt(..) | TypX::Air(..) => Ok(Mode::Exec),
         }
     }
 }
@@ -1212,7 +1219,7 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
     typing.vars.push_scope(true);
 
     if let FunctionKind::TraitMethodImpl { method, trait_path, self_typ, .. } = &function.x.kind {
-        let self_typ_mode = typing.typ_mode(&self_typ);
+        let self_typ_mode = typing.trait_impl_self_typ_mode(&function.span, &self_typ)?;
         let our_trait = typing.traits.contains(trait_path);
         let (expected_params, expected_ret_mode): (Vec<Mode>, Mode) = if our_trait {
             let trait_method = &typing.funs[method];

@@ -1,9 +1,5 @@
 #[allow(unused_imports)]
-use builtin_macros::*;
-#[allow(unused_imports)]
-use builtin::*;
-#[allow(unused_imports)]
-use vstd::{*, vec::*, seq::*, modes::*};
+use vstd::{*, prelude::*, vec::*, seq::*, modes::*};
 
 #[verifier::external]
 fn main() {

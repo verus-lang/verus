@@ -1,7 +1,5 @@
 #[allow(unused_imports)]
-use builtin::*;
-use builtin_macros::*;
-use vstd::{seq::*, seq_lib::*, vec::*};
+use vstd::{prelude::*, seq::*, seq_lib::*, vec::*};
 
 macro_rules! get_bit64_macro {
     ($a:expr, $b:expr) => {

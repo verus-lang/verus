@@ -44,7 +44,7 @@ pub struct SstInfo {
 pub type SstMap = UpdateCell<HashMap<Fun, SstInfo>>;
 
 // binder for forall (typ_params params)
-pub(crate) fn func_bind_trig(
+pub(crate) fn func_bind_trig_dec(
     ctx: &Ctx,
     name: String,
     typ_params: &Idents,
@@ -52,11 +52,14 @@ pub(crate) fn func_bind_trig(
     trig_exprs: &Vec<Expr>,
     add_fuel: bool,
     decorated: bool,
+    decorated_single: bool,
 ) -> Bind {
     let mut binders: Vec<air::ast::Binder<air::ast::Typ>> = Vec::new();
     for typ_param in typ_params.iter() {
-        let ids = if decorated {
+        let ids = if decorated && !decorated_single {
             suffix_typ_param_ids(&typ_param)
+        } else if decorated && crate::context::DECORATE {
+            vec![crate::def::suffix_decorate_typ_param_id(&typ_param)]
         } else {
             vec![suffix_typ_param_id(&typ_param)]
         };
@@ -77,6 +80,19 @@ pub(crate) fn func_bind_trig(
     let triggers: Triggers = Arc::new(vec![trigger]);
     let qid = new_internal_qid(name);
     Arc::new(BindX::Quant(Quant::Forall, Arc::new(binders), triggers, qid))
+}
+
+// binder for forall (typ_params params)
+pub(crate) fn func_bind_trig(
+    ctx: &Ctx,
+    name: String,
+    typ_params: &Idents,
+    params: &Pars,
+    trig_exprs: &Vec<Expr>,
+    add_fuel: bool,
+    decorated: bool,
+) -> Bind {
+    func_bind_trig_dec(ctx, name, typ_params, params, trig_exprs, add_fuel, decorated, false)
 }
 
 // binder for forall (typ_params params)

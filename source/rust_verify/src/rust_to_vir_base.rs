@@ -385,6 +385,45 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let id = def.as_local().unwrap().local_def_index.index();
             (Arc::new(TypX::AnonymousClosure(args, ret, id)), false)
         }
+        TyKind::Alias(rustc_middle::ty::AliasKind::Projection, t) => {
+            // Note: we could allow more uses of projection types by trying to normalize the type
+            // to a non-projection type.  Here's sketch of how this could work:
+            //   use crate::rustc_trait_selection::infer::TyCtxtInferExt;
+            //   use crate::rustc_trait_selection::traits::NormalizeExt;
+            //   let infcx = ctxt.tcx.infer_ctxt().ignoring_regions().build();
+            //   let cause = rustc_infer::traits::ObligationCause::dummy();
+            //   let at = infcx.at(&cause, rustc_middle::ty::ParamEnv::empty()); // or tcx.param_env
+            //   let norm = at.normalize(ty);
+            let assoc_item = tcx.associated_item(t.def_id);
+            let name = Arc::new(assoc_item.name.to_string());
+            // Note: this looks like it would work, but trait_item_def_id is sometimes None:
+            //   use crate::rustc_middle::ty::DefIdTree;
+            //   let trait_def = tcx.parent(assoc_item.trait_item_def_id.expect("..."));
+            let trait_def = tcx.generics_of(t.def_id).parent;
+            match (trait_def, t.substs.try_as_type_list()) {
+                (Some(trait_def), Some(typs)) if typs.len() >= 1 => {
+                    let trait_path = def_id_to_vir_path(tcx, trait_def);
+                    // In rustc, see create_substs_for_ast_path and create_substs_for_generic_args
+                    let mut typs_iter = typs.iter();
+                    let self_ty = typs_iter.next().unwrap();
+                    let self_typ = mid_ty_to_vir_ghost(tcx, span, &self_ty, false, false)?.0;
+                    let mut trait_typ_args = Vec::new();
+                    for ty in typs_iter {
+                        let t = mid_ty_to_vir_ghost(tcx, span, &ty, false, false)?.0;
+                        trait_typ_args.push(t);
+                    }
+                    let trait_typ_args = Arc::new(trait_typ_args);
+                    let proj = TypX::Projection { self_typ, trait_typ_args, trait_path, name };
+                    return Ok((Arc::new(proj), false));
+                }
+                _ => {
+                    unsupported_err!(span, "projection type")
+                }
+            }
+        }
+        TyKind::Alias(rustc_middle::ty::AliasKind::Opaque, _) => {
+            unsupported_err!(span, "opaque type")
+        }
         TyKind::Char => (Arc::new(TypX::Char), false),
         TyKind::Float(..) => unsupported_err!(span, "floating point types"),
         TyKind::Foreign(..) => unsupported_err!(span, "foreign types"),
@@ -399,7 +438,6 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Dynamic(..) => unsupported_err!(span, "dynamic types"),
         TyKind::Generator(..) => unsupported_err!(span, "generator types"),
         TyKind::GeneratorWitness(..) => unsupported_err!(span, "generator witness types"),
-        TyKind::Alias(..) => unsupported_err!(span, "projection or opaque type"),
         TyKind::Bound(..) => unsupported_err!(span, "for<'a> types"),
         TyKind::Placeholder(..) => unsupported_err!(span, "type inference placeholder types"),
         TyKind::Infer(..) => unsupported_err!(span, "type inference placeholder types"),

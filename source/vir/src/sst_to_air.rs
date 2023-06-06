@@ -111,6 +111,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::Decorate(_, t) => typ_to_air(ctx, t),
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
+        TypX::Projection { .. } => str_typ(POLY),
         TypX::TypeId => str_typ(crate::def::TYPE),
         TypX::ConstInt(_) => panic!("const integer cannot be used as an expression type"),
         TypX::Air(t) => t.clone(),
@@ -198,6 +199,14 @@ pub fn typ_to_id(typ: &Typ, decorated: bool) -> Expr {
         TypX::Boxed(typ) => typ_to_id(typ, decorated),
         TypX::TypParam(x) if decorated => ident_var(&suffix_decorate_typ_param_id(x)),
         TypX::TypParam(x) => ident_var(&suffix_typ_param_id(x)),
+        TypX::Projection { self_typ, trait_typ_args, trait_path, name } => {
+            let mut args = Vec::new();
+            args.extend(typ_to_ids_if_undecorated(decorated, self_typ));
+            for typ_arg in trait_typ_args.iter() {
+                args.extend(typ_to_ids_if_undecorated(decorated, typ_arg));
+            }
+            ident_apply(&crate::def::projection(decorated, trait_path, name), &args)
+        }
         TypX::TypeId => panic!("internal error: typ_to_id of TypeId"),
         TypX::ConstInt(c) => str_apply(crate::def::TYPE_ID_CONST_INT, &vec![big_int_to_expr(c)]),
         TypX::Air(_) => panic!("internal error: typ_to_id of Air"),
@@ -212,6 +221,10 @@ pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
         exprs.push(typ_to_id(typ, true));
     }
     exprs
+}
+
+pub fn typ_to_ids_if_undecorated(decorated: bool, typ: &Typ) -> Vec<Expr> {
+    if decorated { vec![typ_to_id(typ, decorated)] } else { typ_to_ids(typ) }
 }
 
 pub(crate) fn fun_id(typs: &Typs, typ: &Typ, decorated: bool) -> Expr {
@@ -288,6 +301,9 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
             crate::def::HAS_TYPE,
             &vec![expr.clone(), ident_var(&suffix_typ_param_id(&x))],
         )),
+        TypX::Projection { .. } => {
+            Some(str_apply(crate::def::HAS_TYPE, &vec![expr.clone(), typ_to_id(typ, false)]))
+        }
         // REVIEW: we could also try to add an IntRange type invariant for TypX::ConstInt
         _ => None,
     }
@@ -315,6 +331,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Decorate(_, t) => return try_box(ctx, expr, t),
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
+        TypX::Projection { .. } => None,
         TypX::TypeId => None,
         TypX::ConstInt(_) => None,
         TypX::Air(_) => None,
@@ -346,6 +363,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Decorate(_, t) => return try_unbox(ctx, expr, t),
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
+        TypX::Projection { .. } => None,
         TypX::TypeId => None,
         TypX::ConstInt(_) => None,
         TypX::Air(_) => None,

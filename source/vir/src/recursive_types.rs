@@ -8,6 +8,17 @@ use crate::scc::Graph;
 use air::ast::Span;
 use std::collections::HashMap;
 
+// true means that the type is derived from a TypParam,
+// which, for a datatype, means that the type can't be the datatype itself.
+// (Example: in D<A> { ... x: A::X::Y, ... }, A::X::Y can't be D<...>.)
+pub(crate) fn rooted_in_typ_param(typ: &Typ) -> bool {
+    match &**typ {
+        TypX::TypParam(_) => true,
+        TypX::Projection { self_typ, .. } => rooted_in_typ_param(self_typ),
+        _ => false,
+    }
+}
+
 // To enable decreases clauses on datatypes while treating the datatypes as inhabited in specs,
 // we need to make sure that the datatypes have base cases, not just inductive cases.
 // This also checks that there is at least one variant, so that spec matches are safe.
@@ -76,6 +87,8 @@ fn check_well_founded_typ(
             check_well_founded(datatypes, datatypes_well_founded, path)
         }
         TypX::Decorate(_, t) => check_well_founded_typ(datatypes, datatypes_well_founded, t),
+        TypX::Projection { .. } if rooted_in_typ_param(typ) => Ok(true),
+        TypX::Projection { .. } => Ok(false),
         TypX::AnonymousClosure(..) => {
             unimplemented!();
         }
@@ -171,6 +184,21 @@ fn check_positive_uses(
                         x
                     ),
                 ),
+            }
+        }
+        TypX::Projection { .. } => {
+            // If rooted_in_typ_param(typ), conservatively treat this like a type parameter
+            // that isn't allowed in a non-positive position.
+            // Otherwise, conservatively assume that the projection could be our own datatype,
+            // which isn't allowed in a non-positive position.
+            match polarity {
+                Some(true) => Ok(()),
+                _ => {
+                    return error(
+                        &local.span,
+                        "Cannot use a projection type in a non-positive position",
+                    );
+                }
             }
         }
         TypX::TypeId => Ok(()),
@@ -284,12 +312,6 @@ fn scc_error(krate: &Krate, head: &Node, nodes: &Vec<Node>) -> VirErr {
             Node::Trait(trait_path) => {
                 if let Some(t) = krate.traits.iter().find(|t| t.x.name == *trait_path) {
                     let span = t.span.clone();
-                    push(node, span);
-                }
-            }
-            Node::Datatype(datatype) => {
-                if let Some(d) = krate.datatypes.iter().find(|d| d.x.path == *datatype) {
-                    let span = d.span.clone();
                     push(node, span);
                 }
             }
