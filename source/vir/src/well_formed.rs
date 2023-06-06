@@ -100,8 +100,10 @@ fn check_path_and_get_function<'a>(
         }
     };
 
-    if let Some((source_module, msg)) = disallow_private_access {
+    if let Some((source_module, reason)) = disallow_private_access {
         if !is_visible_to_opt(&f.x.visibility, source_module) {
+            let kind = if f.x.is_const { "const" } else { "function" };
+            let msg = format!("in {reason:}, cannot refer to private {kind:}");
             return error(&span, msg);
         }
     }
@@ -192,7 +194,10 @@ fn check_one_expr(
                     (None, _) => {}
                     (Some((source_module, _)), Some(field_vis))
                         if is_visible_to_opt(&field_vis, source_module) => {}
-                    (Some((_, msg)), _) => {
+                    (Some((_, reason)), _) => {
+                        let msg = format!(
+                            "in {reason:}, cannot use constructor of private datatype or datatype whose fields are private"
+                        );
                         return error(&expr.span, msg);
                     }
                 }
@@ -230,10 +235,13 @@ fn check_one_expr(
                         ));
                     }
                 }
-                if let Some((source_module, msg)) = disallow_private_access {
+                if let Some((source_module, reason)) = disallow_private_access {
                     let variant = dt.x.get_variant(variant);
                     let (_, _, vis) = &crate::ast_util::get_field(&variant.a, &field).a;
                     if !is_visible_to_opt(vis, source_module) {
+                        let msg = format!(
+                            "in {reason:}, cannot access any field of a datatype where one or more fields are private"
+                        );
                         return error(&expr.span, msg);
                     }
                 }
@@ -656,7 +664,7 @@ fn check_function(
     }
 
     for req in function.x.require.iter() {
-        let msg = "public function requires cannot refer to private items";
+        let msg = "'requires' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
         check_expr(ctxt, function, req, disallow_private_access)?;
         crate::ast_visitor::expr_visitor_check(req, &mut |_scope_map, expr| {
@@ -677,17 +685,17 @@ fn check_function(
         })?;
     }
     for ens in function.x.ensure.iter() {
-        let msg = "public function ensures cannot refer to private items";
+        let msg = "'ensures' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
         check_expr(ctxt, function, ens, disallow_private_access)?;
     }
     for expr in function.x.decrease.iter() {
-        let msg = "public function decreases cannot refer to private items";
+        let msg = "'decreases' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
         check_expr(ctxt, function, expr, disallow_private_access)?;
     }
     if let Some(expr) = &function.x.decrease_when {
-        let msg = "public function decreases_when cannot refer to private items";
+        let msg = "'when' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
         if function.x.mode != Mode::Spec {
             return error(
@@ -716,7 +724,7 @@ fn check_function(
         // Check that public, non-abstract spec function bodies don't refer to private items:
         let disallow_private_access = match (&function.x.publish, function.x.mode) {
             (Some(_), Mode::Spec) => {
-                let msg = "public spec function cannot refer to private items, if it is marked #[verifier(publish)]";
+                let msg = "pub open spec function";
                 Some((&function.x.visibility.restricted_to, msg))
             }
             _ => None,

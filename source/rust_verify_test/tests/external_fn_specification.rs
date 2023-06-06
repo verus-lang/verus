@@ -295,7 +295,7 @@ test_verify_one_file! {
                 !b
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "public function requires cannot refer to private items")
+    } => Err(err) => assert_vir_error_msg(err, "in 'requires' clause of public function, cannot refer to private function")
 }
 
 test_verify_one_file! {
