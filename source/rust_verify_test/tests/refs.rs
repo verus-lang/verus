@@ -297,7 +297,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_mut_ref_old_trigger verus_code! {
-        use vstd::vec::*;
+        use vstd::prelude::*;
 
         fn add1(v: &mut Vec<u64>)
             requires

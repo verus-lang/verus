@@ -3,7 +3,6 @@
 use builtin::*;
 use builtin_macros::*;
 use crate::pervasive::*;
-use crate::result::*;
 use core::marker;
 
 verus! {
@@ -37,8 +36,8 @@ impl<Ret> JoinHandle<Ret> {
     {
         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             match self.handle.join() {
-                Ok(r) => Result::Ok(r),
-                Err(_) => Result::Err(()),
+                Ok(v) => Ok(v),
+                Err(_) => Err(()),
             }
         }));
         match res {

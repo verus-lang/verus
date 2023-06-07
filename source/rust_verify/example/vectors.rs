@@ -1,4 +1,4 @@
-use vstd::{prelude::*, vec::*};
+use vstd::{prelude::*};
 
 verus! {
 
@@ -21,7 +21,7 @@ fn binary_search(v: &Vec<u64>, k: u64) -> (r: usize)
         let ghost d = i2 - i1;
 
         let ix = i1 + (i2 - i1) / 2;
-        if *v.index(ix) < k {
+        if *v.get(ix) < k {
             i1 = ix + 1;
         } else {
             i2 = ix;
@@ -47,8 +47,8 @@ fn reverse(v: &mut Vec<u64>)
             forall|i: int| 0 <= i < n ==> v1[i] == v[length - i - 1],
             forall|i: int| n <= i && i + n < length ==> #[trigger] v[i] == v1[i],
     {
-        let x = *v.index(n);
-        let y = *v.index(length - 1 - n);
+        let x = *v.get(n);
+        let y = *v.get(length - 1 - n);
         v.set(n, y);
         v.set(length - 1 - n, x);
 
@@ -82,7 +82,7 @@ fn pop_test(t: Vec<u64>)
         forall|i: int| #![auto] 0 <= i < t.len() ==> uninterp_fn(t[i]),
 {
     let mut t = t;
-    let x = t.pop();
+    let x = t.pop().unwrap();
 
     assert(uninterp_fn(x));
     assert(forall|i: int| #![auto] 0 <= i < t.len() ==> uninterp_fn(t[i]));
@@ -103,16 +103,16 @@ fn pust_test(t: Vec<u64>, y: u64)
 
 #[verifier(external)]
 fn main() {
-    let mut v = Vec{vec: vec![0, 10, 20, 30, 40, 50, 60, 70, 80, 90]};
+    let mut v = vec![0, 10, 20, 30, 40, 50, 60, 70, 80, 90];
     println!("{}", binary_search(&v, 70));
     println!();
     reverse(&mut v);
-    for x in v.vec {
+    for x in v {
         println!("{}", x);
     }
 
     println!("Pushed 5 values:");
-    for x in pusher().vec {
+    for x in pusher() {
         println!("{}", x);
     }
 }

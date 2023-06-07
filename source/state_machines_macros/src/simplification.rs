@@ -625,7 +625,7 @@ fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
             MonoidElt::OptionSome(e) => {
                 let ty = get_opt_type(stype);
                 Expr::Verbatim(quote! {
-                    ::vstd::option::Option::<#ty>::Some(#e)
+                    ::core::option::Option::<#ty>::Some(#e)
                 })
             }
             MonoidElt::SingletonMultiset(_) => {
@@ -664,7 +664,7 @@ fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
             MonoidElt::OptionSome(Some(e)) => {
                 let ty = get_opt_type(stype);
                 Expr::Verbatim(quote! {
-                    ::vstd::option::Option::<#ty>::Some(#e)
+                    ::core::option::Option::<#ty>::Some(#e)
                 })
             }
             MonoidElt::OptionSome(None) => {
@@ -750,7 +750,7 @@ fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt, pat_opt: &Option<
             Expr::Verbatim(quote! {
                 ::builtin::equal(
                     #cur,
-                    ::vstd::option::Option::<#ty>::Some(#e)
+                    ::core::option::Option::<#ty>::Some(#e)
                 )
             })
         }
@@ -824,7 +824,7 @@ fn expr_remove(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
         MonoidElt::OptionSome(_e) => {
             let ty = get_opt_type(stype);
             Expr::Verbatim(quote! {
-                ::vstd::option::Option::<#ty>::None
+                ::core::option::Option::<#ty>::None
             })
         }
         MonoidElt::SingletonKV(key, _val) => Expr::Verbatim(quote! {

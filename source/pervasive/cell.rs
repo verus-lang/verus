@@ -78,7 +78,7 @@ pub tracked struct PointsTo<V> {
 
 pub ghost struct PointsToData<V> {
     pub pcell: CellId,
-    pub value: option::Option<V>,
+    pub value: Option<V>,
 }
 
 #[doc(hidden)]
@@ -124,7 +124,7 @@ impl<V> PCell<V> {
     #[verifier(external_body)]
     pub fn empty() -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
         ensures pt.1@@ ===
-            pcell_opt![ pt.0.id() => option::Option::None ],
+            pcell_opt![ pt.0.id() => Option::None ],
     {
         let p = PCell { ucell: UnsafeCell::new(MaybeUninit::uninit()) };
         (p, Tracked::assume_new())
@@ -135,10 +135,10 @@ impl<V> PCell<V> {
     pub fn put(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, v: V)
         requires
             old(perm)@ ===
-              pcell_opt![ self.id() => option::Option::None ],
+              pcell_opt![ self.id() => Option::None ],
         ensures
             perm@ ===
-              pcell_opt![ self.id() => option::Option::Some(v) ],
+              pcell_opt![ self.id() => Option::Some(v) ],
         opens_invariants none
     {
 
@@ -155,7 +155,7 @@ impl<V> PCell<V> {
             old(perm)@.value.is_Some(),
         ensures
             perm@.pcell === old(perm)@.pcell,
-            perm@.value === option::Option::None,
+            perm@.value === Option::None,
             v === old(perm)@.value.get_Some_0(),
         opens_invariants none
     {
@@ -174,7 +174,7 @@ impl<V> PCell<V> {
             old(perm)@.value.is_Some(),
         ensures
             perm@.pcell === old(perm)@.pcell,
-            perm@.value === option::Option::Some(in_v),
+            perm@.value === Option::Some(in_v),
             out_v === old(perm)@.value.get_Some_0(),
         opens_invariants none
     {
@@ -222,7 +222,7 @@ impl<V> PCell<V> {
 
     #[inline(always)]
     pub fn new(v: V) -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
-        ensures (pt.1@@ === PointsToData{ pcell: pt.0.id(), value: option::Option::Some(v) }),
+        ensures (pt.1@@ === PointsToData{ pcell: pt.0.id(), value: Option::Some(v) }),
     {
         let (p, Tracked(mut t)) = Self::empty();
         p.put(Tracked(&mut t), v);

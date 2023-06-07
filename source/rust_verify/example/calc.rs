@@ -4,7 +4,7 @@ use builtin::*;
 use builtin_macros::*;
 
 #[allow(unused_imports)]
-use vstd::{option::Option, seq::*, calc_macro::*, seq_lib::*};
+use vstd::{prelude, seq::*, calc_macro::*, seq_lib::*};
 
 verus! {
 

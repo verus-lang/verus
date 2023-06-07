@@ -6,10 +6,10 @@ use alloc::string;
 use crate::view::*;
 #[allow(unused_imports)]
 use super::seq::Seq;
-use super::vec::Vec;
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::verus;
+use crate::prelude::*;
 
 verus! {
 

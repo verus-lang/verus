@@ -10,7 +10,6 @@ use builtin::*;
 use builtin_macros::*;
 use crate::pervasive::*;
 use crate::modes::*;
-use crate::result::*;
 
 macro_rules! make_unsigned_integer_atomic {
     ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident) => {

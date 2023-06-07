@@ -3,8 +3,7 @@ use builtin::*;
 use builtin_macros::*;
 use vstd::{*, pervasive::*};
 use vstd::{atomic_ghost::*};
-use vstd::option::*;
-use vstd::result::*;
+use vstd::prelude::*;
 
 verus!{
 

@@ -197,5 +197,12 @@ pub fn ex_vec_clear<T, A: Allocator>(vec: &mut Vec<T, A>)
     vec.clear()
 }
 
+#[verifier::external_fn_specification]
+pub fn ex_vec_as_slice<T, A: Allocator>(vec: &Vec<T, A>) -> (slice: &[T])
+    ensures slice@ == vec@
+{
+    vec.as_slice()
+}
+
 
 }

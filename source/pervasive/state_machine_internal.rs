@@ -8,7 +8,7 @@ use builtin_macros::*;
 use crate::pervasive::*;
 use crate::seq::*;
 use crate::map::*;
-use crate::option::*;
+use crate::prelude::*;
 
 #[verifier::external_body] /* vattr */
 #[verifier::accept_recursive_types(T)]
