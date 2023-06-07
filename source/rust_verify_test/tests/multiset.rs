@@ -58,6 +58,24 @@ test_verify_one_file! {
             assert(a.sub(b).add(b) =~= a);
         }
 
+        pub proof fn choose_count<V>(m: Multiset<V>)
+            requires
+                m.len() != 0,
+        {
+            assert(m.count(m.choose()) > 0);
+        }
+
+        pub proof fn len_is_zero_if_count_for_each_value_is_zero<V>(m: Multiset<V>)
+            requires
+                forall |v| m.count(v) == 0,
+            ensures
+                m.len() == 0,
+        {
+            if m.len() != 0 {
+                assert(m.count(m.choose()) > 0);
+            }
+        }
+
     } => Ok(())
 }
 
@@ -93,6 +111,18 @@ test_verify_one_file! {
         {
             // Missing the condition `b.le(a)`
             assert(a.sub(b).add(b) =~= a); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] multiset_fail4 verus_code! {
+        use vstd::multiset::*;
+
+        pub proof fn choose_count<V>(m: Multiset<V>)
+        {
+            // Missing the precondition `m.len() != 0`
+            assert(m.count(m.choose()) > 0); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }

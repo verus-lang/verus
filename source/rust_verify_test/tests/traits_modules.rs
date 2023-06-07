@@ -17,7 +17,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_8 verus_code! {
+    #[test] test_supported_8 verus_code! {
         mod M1 {
             pub trait T<A> {
                 fn f(&self, a: &A);
@@ -25,7 +25,6 @@ test_verify_one_file! {
         }
         mod M2 {
             pub struct S<A> { a: A }
-            // not yet supported: multiple implementations of same trait for single datatype:
         }
         mod M3 {
             impl crate::M1::T<u8> for crate::M2::S<u8> {
@@ -37,11 +36,11 @@ test_verify_one_file! {
                 fn f(&self, a: &bool) {}
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, ": multiple definitions of same function")
+    } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_9 verus_code! {
+    #[test] test_supported_9 verus_code! {
         mod M1 {
             pub trait T<A> {
                 fn f(&self, a: A) -> A;
@@ -49,7 +48,6 @@ test_verify_one_file! {
         }
         mod M2 {
             pub struct S {}
-            // not yet supported: multiple implementations of same trait for single datatype:
             impl crate::M1::T<bool> for S {
                 fn f(&self, a: bool) -> bool { !a }
             }
@@ -67,7 +65,7 @@ test_verify_one_file! {
                 s.f(10);
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, ": multiple definitions of same function")
+    } => Ok(())
 }
 
 test_verify_one_file! {

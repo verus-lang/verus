@@ -32,7 +32,8 @@ verus! {
 
 #[verifier(external_body)]
 #[verifier::ext_equal]
-pub struct Set<#[verifier(maybe_negative)] A> {
+#[verifier::reject_recursive_types(A)]
+pub struct Set<A> {
     dummy: marker::PhantomData<A>,
 }
 

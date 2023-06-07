@@ -26,7 +26,7 @@ verus!{
 /// [`assert_multisets_equal!`] macro.
 
 // We could in principle implement the Multiset via an inductive datatype
-// and so we can mark its type argument as strictly_positive.
+// and so we can mark its type argument as accept_recursive_types.
 
 // Note: Multiset is finite (in contrast to Set, Map, which are infinite) because it
 // isn't entirely obvious how to represent an infinite multiset in the case where
@@ -39,7 +39,8 @@ verus!{
 
 #[verifier(external_body)]
 #[verifier::ext_equal]
-pub struct Multiset<#[verifier(strictly_positive)] V> {
+#[verifier::accept_recursive_types(V)]
+pub struct Multiset<V> {
     dummy: marker::PhantomData<V>,
 }
 
@@ -111,6 +112,17 @@ impl<V> Multiset<V> {
 
     // TODO define this in terms of a more general constructor?
     pub spec fn filter(self, f: impl Fn(V) -> bool) -> Self;
+
+    /// Chooses an arbitrary value of the multiset.
+    ///
+    /// This is often useful for proofs by induction.
+    ///
+    /// (Note that, although the result is arbitrary, it is still a _deterministic_ function
+    /// like any other `spec` function.)
+
+    pub open spec fn choose(self) -> V {
+        choose|v: V| self.count(v) > 0
+    }
 }
 
 // Specification of `empty`
@@ -207,6 +219,17 @@ pub proof fn axiom_count_le_len<V>(m: Multiset<V>, v: V)
 pub proof fn axiom_filter_count<V>(m: Multiset<V>, f: FnSpec(V) -> bool, v: V)
     ensures (#[trigger] m.filter(f).count(v)) ==
         if f(v) { m.count(v) } else { 0 }
+{}
+
+// Specification of `choose`
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_choose_count<V>(m: Multiset<V>)
+    requires
+        #[trigger] m.len() != 0,
+    ensures
+        #[trigger] m.count(m.choose()) > 0,
 {}
 
 #[macro_export]

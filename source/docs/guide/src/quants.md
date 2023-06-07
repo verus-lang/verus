@@ -2,7 +2,7 @@
 
 Suppose that we want to specify that all the elements of a sequence are even.
 If the sequence has a small, fixed size,
-we could write a specification for every element element separately:
+we could write a specification for every element separately:
 
 ```rust
 {{#include ../../../rust_verify/example/guide/quants.rs:quants_finite}}

@@ -9,7 +9,7 @@ use crate::ast::{
     ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Fun, FunX, Idents, InequalityOp, IntRange,
     IntegerTypeBoundKind, PathX, SpannedTyped, Typ, TypX, UnaryOp, VirErr,
 };
-use crate::ast_util::{error, path_as_vstd_name};
+use crate::ast_util::{error, path_as_vstd_name, undecorate_typ};
 use crate::func_to_air::{SstInfo, SstMap};
 use crate::prelude::ArchWordBits;
 use crate::sst::{Bnd, BndX, CallFun, Exp, ExpX, Exps, Trigs, UniqueIdent};
@@ -247,7 +247,7 @@ impl<T: Clone + SyntacticEquality> SyntacticEquality for Vector<T> {
 impl SyntacticEquality for Typ {
     fn syntactic_eq(&self, other: &Self) -> Option<bool> {
         use TypX::*;
-        match (self.as_ref(), other.as_ref()) {
+        match (undecorate_typ(self).as_ref(), undecorate_typ(other).as_ref()) {
             (Bool, Bool) => Some(true),
             (Int(l), Int(r)) => Some(l == r),
             (Tuple(typs_l), Tuple(typs_r)) => typs_l.syntactic_eq(typs_r),
@@ -341,7 +341,7 @@ impl SyntacticEquality for Exp {
             (Old(id_l, unique_id_l), Old(id_r, unique_id_r)) => {
                 def_eq(id_l == id_r && unique_id_l == unique_id_r)
             }
-            (Call(f_l, _, exps_l), Call(f_r, _, exps_r)) => {
+            (Call(CallFun::Fun(f_l, _), _, exps_l), Call(CallFun::Fun(f_r, _), _, exps_r)) => {
                 if f_l == f_r && exps_l.len() == exps_r.len() {
                     def_eq(exps_l.syntactic_eq(exps_r)?)
                 } else {
@@ -688,12 +688,12 @@ fn seq_to_sst(span: &Span, typ: Typ, s: &Vector<Exp>) -> Exp {
         krate: Some(Arc::new("vstd".to_string())),
         segments: strs_to_idents(vec!["seq", "Seq", "push"]),
     });
-    let fun_empty = Arc::new(FunX { path: path_empty, trait_path: None });
-    let fun_push = Arc::new(FunX { path: path_push, trait_path: None });
-    let empty = exp_new(ExpX::Call(CallFun::Fun(fun_empty), typs.clone(), Arc::new(vec![])));
+    let fun_empty = Arc::new(FunX { path: path_empty });
+    let fun_push = Arc::new(FunX { path: path_push });
+    let empty = exp_new(ExpX::Call(CallFun::Fun(fun_empty, None), typs.clone(), Arc::new(vec![])));
     let seq = s.iter().fold(empty, |acc, e| {
         let args = Arc::new(vec![acc, e.clone()]);
-        exp_new(ExpX::Call(CallFun::Fun(fun_push.clone()), typs.clone(), args))
+        exp_new(ExpX::Call(CallFun::Fun(fun_push.clone(), None), typs.clone(), args))
     });
     seq
 }
@@ -939,7 +939,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     match op {
                         BitNot => {
                             use IntRange::*;
-                            let r = match *e.typ {
+                            let r = match *undecorate_typ(&e.typ) {
                                 TypX::Int(U(n)) => {
                                     let i = i.to_u128().unwrap();
                                     Some(u128_to_fixed_width(!i, n))
@@ -1273,7 +1273,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 None => ok_e2(e2),
                                 Some(shift) => {
                                     use IntRange::*;
-                                    let r = match *exp.typ {
+                                    let r = match *undecorate_typ(&exp.typ) {
                                         TypX::Int(U(n)) => {
                                             let i1 = i1.to_u128().unwrap();
                                             let res = if matches!(op, Shr) {
@@ -1367,7 +1367,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 _ => exp_new(If(e1, e2.clone(), e3.clone())),
             }
         }
-        Call(CallFun::Fun(fun), typs, args) => {
+        Call(CallFun::Fun(fun, resolved_method), typs, args) => {
             if state.perf {
                 // Record the call for later performance analysis
                 match state.fun_calls.get_mut(fun) {
@@ -1391,7 +1391,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     match ctx.fun_ssts.get(fun) {
                         None => {
                             // We don't have the body for this function, so we can't simplify further
-                            exp_new(Call(CallFun::Fun(fun.clone()), typs.clone(), new_args.clone()))
+                            exp_new(Call(
+                                CallFun::Fun(fun.clone(), resolved_method.clone()),
+                                typs.clone(),
+                                new_args.clone(),
+                            ))
                         }
                         Some(SstInfo { params, body, memoize, .. }) => {
                             match state.lookup_call(&fun, &new_args, *memoize) {
@@ -1420,6 +1424,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 }
             }
         }
+        Call(CallFun::CheckTermination(_), _, _) => ok,
         Call(fun @ CallFun::InternalFun(_), typs, args) => {
             let new_args: Result<Vec<Exp>, VirErr> =
                 args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
@@ -1555,9 +1560,33 @@ fn eval_expr_launch(
             // Send partial result to Z3
             ComputeMode::Z3 => {
                 // Restore the free variables we hid during interpretation
+                // and any sequence expressions we partially simplified during interpretation
                 let res = crate::sst_visitor::map_exp_visitor_result(&res, &mut |e| match &e.x {
                     ExpX::Interp(InterpExp::FreeVar(v)) => {
                         Ok(SpannedTyped::new(&e.span, &e.typ, ExpX::Var(v.clone())))
+                    }
+                    ExpX::Interp(InterpExp::Seq(v)) => {
+                        match &*e.typ {
+                            TypX::Datatype(_, typs) => {
+                                // Grab the type the sequence holds
+                                let inner_type = typs[0].clone();
+                                let s = seq_to_sst(&e.span, inner_type.clone(), v);
+                                // Wrap the sequence construction in unwrap to account for the Poly
+                                // type of the sequence functions
+                                let unbox_opr = crate::ast::UnaryOpr::Unbox(e.typ.clone());
+                                let unboxed_expx = crate::sst::ExpX::UnaryOpr(unbox_opr, s);
+                                let unboxed_e =
+                                    SpannedTyped::new(&e.span, &e.typ.clone(), unboxed_expx);
+                                Ok(unboxed_e)
+                            }
+                            _ => error(
+                                &e.span,
+                                format!(
+                                    "Internal error: Expected to find a sequence type but found: {:?}",
+                                    e.typ
+                                ),
+                            ),
+                        }
                     }
                     ExpX::Interp(InterpExp::Closure(..)) => error(
                         &e.span,

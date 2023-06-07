@@ -117,7 +117,8 @@ verus!{
 // TODO implement: borrow_mut; figure out Drop, see if we can avoid leaking?
 
 #[verifier(external_body)]
-pub struct PPtr<#[verifier(strictly_positive)] V> {
+#[verifier::accept_recursive_types(V)]
+pub struct PPtr<V> {
     uptr: *mut MaybeUninit<V>,
 }
 
@@ -141,7 +142,8 @@ unsafe impl<T> Send for PPtr<T> {}
 /// See the [`PPtr`] documentation for more details.
 
 #[verifier(external_body)]
-pub tracked struct PointsTo<#[verifier(strictly_positive)] V> {
+#[verifier::reject_recursive_types_in_ground_variants(V)]
+pub tracked struct PointsTo<V> {
     phantom: marker::PhantomData<V>,
     no_copy: NoCopy,
 }

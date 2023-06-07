@@ -36,11 +36,16 @@ const RLIMIT_PER_SECOND: u32 = 3000000;
 pub(crate) struct Reporter<'tcx> {
     spans: SpanContext,
     compiler_diagnostics: &'tcx rustc_errors::Handler,
+    source_map: &'tcx rustc_span::source_map::SourceMap,
 }
 
 impl<'tcx> Reporter<'tcx> {
     pub(crate) fn new(spans: &SpanContext, compiler: &'tcx Compiler) -> Self {
-        Reporter { spans: spans.clone(), compiler_diagnostics: compiler.session().diagnostic() }
+        Reporter {
+            spans: spans.clone(),
+            compiler_diagnostics: compiler.session().diagnostic(),
+            source_map: compiler.session().source_map(),
+        }
     }
 }
 
@@ -51,7 +56,7 @@ impl Diagnostics for Reporter<'_> {
     fn report_as(&self, msg: &Message, level: MessageLevel) {
         let mut v: Vec<Span> = Vec::new();
         for sp in &msg.spans {
-            if let Some(span) = self.spans.from_air_span(&sp) {
+            if let Some(span) = self.spans.from_air_span(&sp, Some(self.source_map)) {
                 v.push(span);
             }
         }
@@ -63,7 +68,7 @@ impl Diagnostics for Reporter<'_> {
         let mut multispan = MultiSpan::from_spans(v);
 
         for MessageLabel { note, span: sp } in &msg.labels {
-            if let Some(span) = self.spans.from_air_span(&sp) {
+            if let Some(span) = self.spans.from_air_span(&sp, Some(self.source_map)) {
                 multispan.push_span_label(span, note.clone());
             } else {
                 dbg!(&note, &sp.as_string);
@@ -1105,7 +1110,7 @@ impl Verifier {
         vir::check_ast_flavor::check_krate(&krate);
 
         let interpreter_log_file =
-            Rc::new(RefCell::new(if self.args.log_all || self.args.log_vir_simple {
+            Rc::new(RefCell::new(if self.args.log_all || self.args.log_interpreter {
                 Some(self.create_log_file(None, None, crate::config::INTERPRETER_FILE_SUFFIX)?)
             } else {
                 None
@@ -1397,6 +1402,7 @@ impl Verifier {
             }
         }
         check_crate_result?;
+        let vir_crate = vir::autospec::resolve_autospec(&vir_crate)?;
         let (erasure_modes, inferred_modes) = vir::modes::check_crate(&vir_crate, true)?;
         let vir_crate = vir::traits::demote_foreign_traits(&vir_crate)?;
 

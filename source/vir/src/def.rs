@@ -36,6 +36,7 @@ const SUFFIX_GLOBAL: &str = "?";
 const SUFFIX_LOCAL_STMT: &str = "@";
 const SUFFIX_LOCAL_EXPR: &str = "$";
 const SUFFIX_TYPE_PARAM: &str = "&";
+const SUFFIX_DECORATE_TYPE_PARAM: &str = "&.";
 const SUFFIX_RENAME: &str = "!";
 const SUFFIX_PATH: &str = ".";
 const PREFIX_FUEL_ID: &str = "fuel%";
@@ -54,6 +55,7 @@ const PREFIX_CLOSURE_TYPE: &str = "anonymous_closure%";
 const PREFIX_TUPLE_PARAM: &str = "T%";
 const PREFIX_TUPLE_FIELD: &str = "field%";
 const PREFIX_LAMBDA_TYPE: &str = "fun%";
+const PREFIX_IMPL_IDENT: &str = "impl&%";
 const SLICE_TYPE: &str = "slice%";
 const SLICE_PARAM: &str = "sliceT%";
 const PREFIX_SNAPSHOT: &str = "snap%";
@@ -65,8 +67,6 @@ const PATHS_SEPARATOR: &str = "/";
 const VARIANT_SEPARATOR: &str = "/";
 const VARIANT_FIELD_SEPARATOR: &str = "/";
 const VARIANT_FIELD_INTERNAL_SEPARATOR: &str = "/?";
-const FUN_TRAIT_DEF_BEGIN: &str = "<";
-const FUN_TRAIT_DEF_END: &str = ">";
 const MONOTYPE_APP_BEGIN: &str = "<";
 const MONOTYPE_APP_END: &str = ">";
 const DECREASE_AT_ENTRY: &str = "decrease%init";
@@ -124,6 +124,14 @@ pub const TYPE_ID_NAT: &str = "NAT";
 pub const TYPE_ID_UINT: &str = "UINT";
 pub const TYPE_ID_SINT: &str = "SINT";
 pub const TYPE_ID_CONST_INT: &str = "CONST_INT";
+pub const DECORATE_REF: &str = "REF";
+pub const DECORATE_MUT_REF: &str = "MUT_REF";
+pub const DECORATE_BOX: &str = "BOX";
+pub const DECORATE_RC: &str = "RC";
+pub const DECORATE_ARC: &str = "ARC";
+pub const DECORATE_GHOST: &str = "GHOST";
+pub const DECORATE_TRACKED: &str = "TRACKED";
+pub const DECORATE_NEVER: &str = "NEVER";
 pub const HAS_TYPE: &str = "has_type";
 pub const AS_TYPE: &str = "as_type";
 pub const MK_FUN: &str = "mk_fun";
@@ -193,13 +201,8 @@ pub fn path_to_string(path: &Path) -> String {
 }
 
 pub fn fun_to_string(fun: &Fun) -> String {
-    let FunX { path, trait_path } = &(**fun);
-    let s = path_to_string(path);
-    if let Some(trait_path) = trait_path {
-        s + FUN_TRAIT_DEF_BEGIN + &path_to_string(trait_path) + FUN_TRAIT_DEF_END
-    } else {
-        s
-    }
+    let FunX { path } = &(**fun);
+    path_to_string(path)
 }
 
 pub fn decrease_at_entry(n: usize) -> Ident {
@@ -263,6 +266,22 @@ pub fn suffix_typ_param_id(ident: &Ident) -> Ident {
     Arc::new(ident.to_string() + SUFFIX_TYPE_PARAM)
 }
 
+pub fn suffix_decorate_typ_param_id(ident: &Ident) -> Ident {
+    Arc::new(ident.to_string() + SUFFIX_DECORATE_TYPE_PARAM)
+}
+
+pub fn suffix_typ_param_ids(ident: &Ident) -> Vec<Ident> {
+    let mut ids = vec![suffix_typ_param_id(ident)];
+    if crate::context::DECORATE {
+        ids.push(suffix_decorate_typ_param_id(ident));
+    }
+    ids
+}
+
+pub(crate) fn types() -> Vec<&'static str> {
+    if crate::context::DECORATE { vec![TYPE, TYPE] } else { vec![TYPE] }
+}
+
 pub fn suffix_rename(ident: &Ident) -> Ident {
     Arc::new(ident.to_string() + SUFFIX_RENAME)
 }
@@ -307,6 +326,10 @@ pub fn prefix_lambda_type(i: usize) -> Path {
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
 }
 
+pub fn impl_ident(disambiguator: u32) -> Ident {
+    Arc::new(format!("{}{}", PREFIX_IMPL_IDENT, disambiguator))
+}
+
 pub fn prefix_type_id_fun(i: usize) -> Ident {
     prefix_type_id(&prefix_lambda_type(i))
 }
@@ -348,9 +371,9 @@ fn prefix_recursive(path: &Path) -> Path {
 }
 
 pub fn prefix_recursive_fun(fun: &Fun) -> Fun {
-    let FunX { path, trait_path } = &(**fun);
+    let FunX { path } = &(**fun);
     let path = prefix_recursive(path);
-    Arc::new(FunX { path, trait_path: trait_path.clone() })
+    Arc::new(FunX { path })
 }
 
 pub fn prefix_temp_var(n: u64) -> Ident {
@@ -476,7 +499,7 @@ pub struct SnapPos {
     pub kind: SpanKind,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Spanned<X> {
     pub span: Span,
     pub x: X,
@@ -575,7 +598,6 @@ pub fn fn_inv_name(vstd_crate_name: &Option<Ident>, atomicity: InvAtomicity) -> 
                 ]
             }),
         }),
-        trait_path: None,
     })
 }
 
@@ -598,7 +620,6 @@ pub fn fn_namespace_name(vstd_crate_name: &Option<Ident>, atomicity: InvAtomicit
                 ]
             }),
         }),
-        trait_path: None,
     })
 }
 
@@ -638,7 +659,7 @@ pub fn unique_local_name(user_given_name: String, uniq_id: usize) -> String {
 }
 
 pub fn exec_nonstatic_call_fun(vstd_crate_name: &Option<Ident>) -> Fun {
-    Arc::new(FunX { path: exec_nonstatic_call_path(vstd_crate_name), trait_path: None })
+    Arc::new(FunX { path: exec_nonstatic_call_path(vstd_crate_name) })
 }
 
 pub fn exec_nonstatic_call_path(vstd_crate_name: &Option<Ident>) -> Path {

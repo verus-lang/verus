@@ -78,7 +78,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_fails verus_code! {
-        struct List<#[verifier(maybe_negative)] /* vattr */ A> {
+        #[verifier::reject_recursive_types(A)]
+        struct List<A> {
             a: A,
         }
 
@@ -87,7 +88,7 @@ test_verify_one_file! {
             E(Box<E1>),
             F(List<Box<E1>>),
         }
-    } => Err(err) => assert_vir_error_msg(err, "in a non-positive polarity")
+    } => Err(err) => assert_vir_error_msg(err, "in a non-positive position")
 }
 
 test_verify_one_file! {
@@ -111,7 +112,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test2_fails verus_code! {
-        struct List<#[verifier(maybe_negative)] /* vattr */ A> {
+        #[verifier::reject_recursive_types(A)]
+        struct List<A> {
             a: A,
         }
 
@@ -125,7 +127,7 @@ test_verify_one_file! {
             N(),
             E(Box<E1>),
         }
-    } => Err(err) => assert_vir_error_msg(err, "in a non-positive polarity")
+    } => Err(err) => assert_vir_error_msg(err, "in a non-positive position")
 }
 
 test_verify_one_file! {
@@ -149,7 +151,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test3_fails verus_code! {
-        struct List<#[verifier(maybe_negative)] /* vattr */ A> {
+        #[verifier::reject_recursive_types(A)]
+        struct List<A> {
             a: A,
         }
 
@@ -163,17 +166,20 @@ test_verify_one_file! {
             E(Box<E1>),
             F(List<Box<E1>>),
         }
-    } => Err(err) => assert_vir_error_msg(err, "in a non-positive polarity")
+    } => Err(err) => assert_vir_error_msg(err, "in a non-positive position")
 }
 
 test_verify_one_file! {
     #[test] test5_ok verus_code! {
         #[verifier(external_body)] /* vattr */
-        struct Map<#[verifier(maybe_negative)] /* vattr */ K, #[verifier(strictly_positive)] /* vattr */ V> {
+        #[verifier::reject_recursive_types(K)]
+        #[verifier::accept_recursive_types(V)]
+        struct Map<K, V> {
             dummy: std::marker::PhantomData<(K, V)>,
         }
 
-        struct D<#[verifier(maybe_negative)] /* vattr */ A, B> {
+        #[verifier::reject_recursive_types(A)]
+        struct D<A, B> {
             d: Map<int, D<A, B>>,
             a: Map<A, int>,
             b: Map<int, B>,
@@ -184,16 +190,19 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test5_fails1 verus_code! {
         #[verifier(external_body)] /* vattr */
-        struct Map<#[verifier(maybe_negative)] /* vattr */ K, V> {
+        #[verifier::reject_recursive_types(K)]
+        struct Map<K, V> {
             dummy: std::marker::PhantomData<(K, V)>,
         }
-    } => Err(err) => assert_vir_error_msg(err, "in external_body datatype, each type parameter must be either #[verifier(maybe_negative)] or #[verifier(strictly_positive)]")
+    } => Err(err) => assert_vir_error_msg(err, "in external_body datatype, each type parameter must be one of: #[verifier::reject_recursive_types], #[verifier::reject_recursive_types_in_ground_variants], #[verifier::accept_recursive_types]")
 }
 
 test_verify_one_file! {
     #[test] test5_fails2 verus_code! {
         #[verifier(external_body)] /* vattr */
-        struct Map<#[verifier(maybe_negative)] /* vattr */ K, #[verifier(strictly_positive)] /* vattr */ V> {
+        #[verifier::reject_recursive_types(K)]
+        #[verifier::accept_recursive_types(V)]
+        struct Map<K, V> {
             dummy: std::marker::PhantomData<(K, V)>,
         }
 
@@ -202,22 +211,25 @@ test_verify_one_file! {
             a: Map<A, int>,
             b: Map<int, B>,
         }
-    } => Err(err) => assert_vir_error_msg(err, "Type parameter A must be declared #[verifier(maybe_negative)] to be used in a non-positive position")
+    } => Err(err) => assert_vir_error_msg(err, "Type parameter A must be declared #[verifier::reject_recursive_types] to be used in a non-positive position")
 }
 
 test_verify_one_file! {
     #[test] test5_fails3 verus_code! {
         #[verifier(external_body)] /* vattr */
-        struct Map<#[verifier(maybe_negative)] /* vattr */ K, #[verifier(strictly_positive)] /* vattr */ V> {
+        #[verifier::reject_recursive_types(K)]
+        #[verifier::accept_recursive_types(V)]
+        struct Map<K, V> {
             dummy: std::marker::PhantomData<(K, V)>,
         }
 
-        struct D<#[verifier(maybe_negative)] /* vattr */ A, B> {
+        #[verifier::reject_recursive_types(A)]
+        struct D<A, B> {
             d: Map<D<A, B>, int>,
             a: Map<A, int>,
             b: Map<int, B>,
         }
-    } => Err(err) => assert_vir_error_msg(err, "in a non-positive polarity")
+    } => Err(err) => assert_vir_error_msg(err, "in a non-positive position")
 }
 
 test_verify_one_file! {
@@ -234,17 +246,96 @@ test_verify_one_file! {
         struct S {
             f: FnSpec(S) -> int,
         }
-    } => Err(err) => assert_vir_error_msg(err, "in a non-positive polarity")
+    } => Err(err) => assert_vir_error_msg(err, "in a non-positive position")
 }
 
 test_verify_one_file! {
     #[test] type_argument_in_nested_negative_position verus_code! {
         #[verifier(external_body)]
-        pub struct Set<#[verifier(maybe_negative)] A> {
+        #[verifier::reject_recursive_types(A)]
+        pub struct Set<A> {
             dummy: std::marker::PhantomData<A>,
         }
         struct X<A>(A);
         struct Y<A>(Set<X<A>>);
         struct Z(Y<Z>);
-    } => Err(err) => assert_vir_error_msg(err, "Type parameter A must be declared #[verifier(maybe_negative)] to be used in a non-positive position")
+    } => Err(err) => assert_vir_error_msg(err, "Type parameter A must be declared #[verifier::reject_recursive_types] to be used in a non-positive position")
+}
+
+test_verify_one_file! {
+    #[test] no_ground_variant1 verus_code! {
+        #[verifier::accept_recursive_types(A)]
+        struct DataWrapper<A> { a: A } // error: no ground variant without A
+    } => Err(err) => assert_vir_error_msg(err, "datatype must have at least one non-recursive variant")
+}
+
+test_verify_one_file! {
+    #[test] no_ground_variant2 verus_code! {
+        enum UngroundedList<A> {
+            // error: no ground variant; the only variant is Cons, which recursively uses UngroundedList
+            Cons(A, Box<UngroundedList<A>>),
+        }
+    } => Err(err) => assert_vir_error_msg(err, "datatype must have at least one non-recursive variant")
+}
+
+test_verify_one_file! {
+    #[test] no_ground_variant_via_generics1 verus_code! {
+        // from https://github.com/verus-lang/verus/issues/538
+        struct I<A>(A);
+        struct R(Box<I<R>>);
+
+        proof fn bad(r: R)
+            ensures false
+            decreases r
+        {
+            bad(r.0.0);
+        }
+
+        spec fn make_r() -> R;
+
+        proof fn test()
+            ensures false
+        {
+            bad(make_r())
+        }
+    } => Err(err) => assert_vir_error_msg(err, "datatype must have at least one non-recursive variant")
+}
+
+test_verify_one_file! {
+    #[test] no_ground_variant_via_generics2 verus_code! {
+        // from https://github.com/verus-lang/verus/issues/538
+        #[verifier::accept_recursive_types(A)]
+        struct I<A>(A);
+        struct R(Box<I<R>>);
+
+        proof fn bad(r: R)
+            ensures false
+            decreases r
+        {
+            bad(r.0.0);
+        }
+
+        spec fn make_r() -> R;
+
+        proof fn test()
+            ensures false
+        {
+            bad(make_r())
+        }
+    } => Err(err) => assert_vir_error_msg(err, "datatype must have at least one non-recursive variant")
+}
+
+test_verify_one_file! {
+    #[test] reject_recursive_types_ill_formed1 verus_code! {
+        #[verifier::reject_recursive_types(D)]
+        struct X<A, B, C> { a: A, b: B, c: C, d: bool }
+    } => Err(err) => assert_vir_error_msg(err, "unused parameter attribute D")
+}
+
+test_verify_one_file! {
+    #[test] reject_recursive_types_ill_formed2 verus_code! {
+        #[verifier::reject_recursive_types(A)]
+        #[verifier::reject_recursive_types(A)]
+        struct X<A, B, C> { a: A, b: B, c: C, d: bool }
+    } => Err(err) => assert_vir_error_msg(err, "duplicate parameter attribute A")
 }

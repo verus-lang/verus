@@ -52,7 +52,7 @@ test_verify_one_file! {
                 Bike { hard_tail: true }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "public function ensures cannot refer to private items")
+    } => Err(err) => assert_vir_error_msg(err, "in 'ensures' clause of public function, cannot access any field of a datatype where one or more fields are private")
 }
 
 test_verify_one_file! {

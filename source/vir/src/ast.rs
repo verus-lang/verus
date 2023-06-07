@@ -89,9 +89,30 @@ pub enum IntRange {
     ISize,
 }
 
+/// Type information relevant to Rust but generally not relevant to the SMT encoding.
+/// This information is relevant for resolving traits.
+#[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode, Clone, Copy, PartialEq, Eq)]
+pub enum TypDecoration {
+    /// &T
+    Ref,
+    /// &mut T
+    MutRef,
+    /// Box<T>
+    Box,
+    /// Rc<T>
+    Rc,
+    /// Arc<T>
+    Arc,
+    /// Ghost<T>
+    Ghost,
+    /// Tracked<T>
+    Tracked,
+    /// !, represented as Never<()>
+    Never,
+}
+
 /// Rust type, but without Box, Rc, Arc, etc.
 pub type Typ = Arc<TypX>;
-
 pub type Typs = Arc<Vec<Typ>>;
 // Deliberately not marked Eq -- use explicit match instead, so we know where types are compared
 #[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode)]
@@ -108,6 +129,9 @@ pub enum TypX {
     AnonymousClosure(Typs, Typ, usize),
     /// Datatype (concrete or abstract) applied to type arguments
     Datatype(Path, Typs),
+    /// Wrap type with extra information relevant to Rust but usually irrelevant to SMT encoding
+    /// (though needed sometimes to encode trait resolution)
+    Decorate(TypDecoration, Typ),
     /// Boxed for SMT encoding (unrelated to Rust Box type), can be unboxed:
     Boxed(Typ),
     /// Type parameter (inherently SMT-boxed, and cannot be unboxed)
@@ -443,10 +467,6 @@ pub type Fun = Arc<FunX>;
 pub struct FunX {
     /// Path of function
     pub path: Path,
-    /// Path of the trait that defines the function, if any.
-    /// This disambiguates between impls for the same type of multiple traits that define functions
-    /// with the same name.
-    pub trait_path: Option<Path>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, ToDebugSNode)]
@@ -456,9 +476,17 @@ pub enum BuiltinSpecFun {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub enum CallTargetKind {
+    /// Statically known function
+    Static,
+    /// Dynamically dispatched method.  Optionally specify the statically resolved target if known.
+    Method(Option<(Fun, Typs)>),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum CallTarget {
-    /// Call a statically known function, passing some type arguments
-    Static(Fun, Typs),
+    /// Regular function, passing some type arguments
+    Fun(CallTargetKind, Fun, Typs, AutospecUsage),
     /// Call a dynamically computed FnSpec (no type arguments allowed),
     /// where the function type is specified by the GenericBound of typ_param.
     FnSpec(Expr),
@@ -496,6 +524,16 @@ pub enum ComputeMode {
     Z3,
     /// Asserted expression must simplify all the way to True
     ComputeOnly,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum AutospecUsage {
+    /// This function should be lowered by autospec iff the
+    /// target function has an autospec attribute.
+    IfMarked,
+    /// Do not apply autospec. (This might be because we already applied it during lowering,
+    /// or because it doesn't apply to this function.)
+    Final,
 }
 
 /// Expression, similar to rustc_hir::Expr
@@ -635,8 +673,28 @@ pub enum GenericBoundX {
 }
 
 pub type TypBounds = Arc<Vec<(Ident, GenericBound)>>;
-/// Each type parameter is (name: Ident, bound: GenericBound, strictly_positive: bool)
-pub type TypPositiveBounds = Arc<Vec<(Ident, GenericBound, bool)>>;
+/// When instantiating type S<A> with A = T in a recursive type definition,
+/// is T allowed to include the one of recursively defined types?
+/// Example:
+///   enum Foo { Rec(S<Box<Foo>>), None }
+///   enum Bar { Rec(S<Box<Bar>>) }
+///   (instantiates A with recursive type Box<Foo> or Box<Bar>)
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy, PartialEq, Eq)]
+pub enum AcceptRecursiveType {
+    /// rejects the Foo example above
+    /// (because A may occur negatively in S)
+    Reject,
+    /// accepts the Foo example above because the occurrence is in Rec,
+    /// which is not the ground variant for Foo (None is the ground variant for Foo),
+    /// but rejects Bar because Rec is the ground variant for Bar (since there is no None variant)
+    /// (because A occurs only strictly positively in S, but may occur in S's ground variant)
+    RejectInGround,
+    /// accepts both Foo and Bar
+    /// (because A occurs only strictly positively in S, and does not occur in S's ground variant)
+    Accept,
+}
+/// Each type parameter is (name: Ident, GenericBound, AcceptRecursiveType)
+pub type TypPositiveBounds = Arc<Vec<(Ident, GenericBound, AcceptRecursiveType)>>;
 
 pub type FunctionAttrs = Arc<FunctionAttrsX>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Default, Clone)]
@@ -705,6 +763,9 @@ pub type Function = Arc<Spanned<FunctionX>>;
 pub struct FunctionX {
     /// Name of function
     pub name: Fun,
+    /// Proxy used to declare the spec of this function
+    /// (e.g., some function marked `external_fn_specification`)
+    pub proxy: Option<Spanned<Path>>,
     /// Kind (translation to AIR is different for each different kind)
     pub kind: FunctionKind,
     /// Access control (public/private)
@@ -810,4 +871,6 @@ pub struct KrateX {
     pub traits: Vec<Trait>,
     /// List of all modules in the crate
     pub module_ids: Vec<Path>,
+    /// List of all 'external' functions in the crate (only useful for diagnostics)
+    pub external_fns: Vec<Fun>,
 }

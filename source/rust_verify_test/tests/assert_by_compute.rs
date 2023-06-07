@@ -427,6 +427,11 @@ test_verify_one_file! {
                 y.ext_equal(z) &&
                 z.ext_equal(y)
             }) by (compute);
+            assert({
+                let z = seq![4int, 5int, 6int];
+                y == z &&
+                z == y
+            }) by (compute);
         }
     } => Ok(())
 }

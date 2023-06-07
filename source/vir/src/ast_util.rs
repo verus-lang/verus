@@ -23,6 +23,10 @@ pub fn error<A, S: Into<String>>(span: &Span, msg: S) -> Result<A, VirErr> {
     Err(msg_error(msg, span))
 }
 
+pub fn internal_error<A, S: Into<String>>(span: &Span, msg: S) -> Result<A, VirErr> {
+    Err(air::messages::internal_error(msg, span))
+}
+
 pub fn error_with_help<A, S: Into<String>, H: Into<String>>(
     span: &Span,
     msg: S,
@@ -36,6 +40,13 @@ impl PathX {
         let mut segments = (*self.segments).clone();
         segments.pop();
         Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
+    }
+
+    pub fn is_rust_std_path(&self) -> bool {
+        match &self.krate {
+            Some(k) if &**k == "std" || &**k == "alloc" || &**k == "core" => true,
+            _ => false,
+        }
     }
 }
 
@@ -64,6 +75,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Datatype(p1, typs1), TypX::Datatype(p2, typs2)) => {
             p1 == p2 && n_types_equal(typs1, typs2)
         }
+        (TypX::Decorate(d1, t1), TypX::Decorate(d2, t2)) => d1 == d2 && types_equal(t1, t2),
         (TypX::Boxed(t1), TypX::Boxed(t2)) => types_equal(t1, t2),
         (TypX::TypParam(x1), TypX::TypParam(x2)) => x1 == x2,
         (TypX::ConstInt(c1), TypX::ConstInt(c2)) => c1 == c2,
@@ -107,8 +119,12 @@ pub fn generic_bounds_equal(b1: &GenericBound, b2: &GenericBound) -> bool {
     }
 }
 
+pub fn undecorate_typ(typ: &Typ) -> Typ {
+    if let TypX::Decorate(_, t) = &**typ { undecorate_typ(t) } else { typ.clone() }
+}
+
 pub fn allowed_bitvector_type(typ: &Typ) -> bool {
-    match &**typ {
+    match &*undecorate_typ(typ) {
         TypX::Bool => true,
         TypX::Int(IntRange::U(_) | IntRange::I(_) | IntRange::USize | IntRange::ISize) => true,
         TypX::Boxed(typ) => allowed_bitvector_type(typ),
@@ -117,7 +133,7 @@ pub fn allowed_bitvector_type(typ: &Typ) -> bool {
 }
 
 pub fn is_integer_type(typ: &Typ) -> bool {
-    match &**typ {
+    match &*undecorate_typ(typ) {
         TypX::Int(_) => true,
         TypX::Boxed(typ) => is_integer_type(typ),
         _ => false,
@@ -158,7 +174,7 @@ pub fn bitwidth_from_int_range(int_range: &IntRange) -> Option<IntegerTypeBitwid
 }
 
 pub fn bitwidth_from_type(et: &Typ) -> Option<IntegerTypeBitwidth> {
-    match &**et {
+    match &*undecorate_typ(et) {
         TypX::Int(int_range) => bitwidth_from_int_range(int_range),
         TypX::Boxed(in_et) => bitwidth_from_type(&*in_et),
         _ => None,
@@ -166,12 +182,13 @@ pub fn bitwidth_from_type(et: &Typ) -> Option<IntegerTypeBitwidth> {
 }
 
 pub(crate) fn fixed_integer_const(n: &String, typ: &Typ) -> bool {
-    if let TypX::Int(IntRange::U(bits)) = &**typ {
+    let typ = undecorate_typ(typ);
+    if let TypX::Int(IntRange::U(bits)) = &*typ {
         if let Ok(u) = n.parse::<u128>() {
             return *bits == 128 || u < 2u128 << bits;
         }
     }
-    if let TypX::Int(IntRange::I(bits)) = &**typ {
+    if let TypX::Int(IntRange::I(bits)) = &*typ {
         if let Ok(i) = n.parse::<i128>() {
             return *bits == 128
                 || -((2u128 << (bits - 1)) as i128) <= i && i < (2u128 << (bits - 1)) as i128;
@@ -206,14 +223,8 @@ pub fn path_as_vstd_name(path: &Path) -> Option<String> {
 }
 
 pub fn fun_as_rust_dbg(fun: &Fun) -> String {
-    let FunX { path, trait_path } = &**fun;
-    let path_str = path_as_rust_name(path);
-    if let Some(trait_path) = trait_path {
-        let trait_path_str = path_as_rust_name(trait_path);
-        format!("{}<{}>", path_str, trait_path_str)
-    } else {
-        path_str
-    }
+    let FunX { path } = &**fun;
+    path_as_rust_name(path)
 }
 
 pub fn fun_name_crate_relative(module: &Path, fun: &Fun) -> String {
@@ -245,6 +256,8 @@ pub fn is_visible_to(target_visibility: &Visibility, source_module: &Path) -> bo
     is_visible_to_of_owner(&target_visibility.restricted_to, source_module)
 }
 
+/// Is the target visible to the module?
+/// (If source_module is None, then the target needs to be visible everywhere)
 pub fn is_visible_to_opt(target_visibility: &Visibility, source_module: &Option<Path>) -> bool {
     match (&target_visibility.restricted_to, source_module) {
         (None, None) => true,
@@ -336,6 +349,15 @@ pub fn params_to_binders(params: &Params) -> Binders<Typ> {
 
 pub fn pars_to_binders(pars: &Pars) -> Binders<Typ> {
     Arc::new(vec_map(&**pars, par_to_binder))
+}
+
+impl crate::ast::CallTargetKind {
+    pub(crate) fn resolved(&self) -> Option<(Fun, Typs)> {
+        match self {
+            crate::ast::CallTargetKind::Static => None,
+            crate::ast::CallTargetKind::Method(resolved) => resolved.clone(),
+        }
+    }
 }
 
 impl FunctionX {

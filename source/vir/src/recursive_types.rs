@@ -1,79 +1,109 @@
 use crate::ast::{
-    Datatype, FunctionKind, GenericBoundX, Ident, Krate, Path, Trait, Typ, TypX, VirErr,
+    AcceptRecursiveType, Datatype, FunctionKind, GenericBoundX, Ident, Krate, Path, Trait, Typ,
+    TypX, VirErr,
 };
 use crate::ast_util::{error, path_as_rust_name};
 use crate::context::GlobalCtx;
 use crate::recursion::Node;
 use crate::scc::Graph;
 use air::ast::Span;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 // To enable decreases clauses on datatypes while treating the datatypes as inhabited in specs,
 // we need to make sure that the datatypes have base cases, not just inductive cases.
 // This also checks that there is at least one variant, so that spec matches are safe.
+// It also makes sure that (in the formal semantics) we can construct default values for
+// datatypes that aren't just "bottom", so that the values can be pattern matched (see
+// the OOPSLA 2023 paper and corresponding arXiv paper).
 fn check_well_founded(
     datatypes: &HashMap<Path, Datatype>,
-    datatypes_well_founded: &mut HashMap<Path, bool>,
+    datatypes_well_founded: &mut HashSet<Path>,
     path: &Path,
-) -> Result<bool, VirErr> {
-    if let Some(well_founded) = datatypes_well_founded.get(path) {
-        // return true ==> definitely well founded
-        // return false ==> not yet known to be well founded; still in process
-        return Ok(*well_founded);
+) -> bool {
+    if datatypes_well_founded.contains(path) {
+        return true;
     }
-    datatypes_well_founded.insert(path.clone(), false);
     if !datatypes.contains_key(path) {
         panic!("{:?}", path);
     }
     let datatype = &datatypes[path];
+    let mut typ_param_accept: HashMap<Ident, AcceptRecursiveType> = HashMap::new();
+    for (x, _, accept_rec) in datatype.x.typ_params.iter() {
+        typ_param_accept.insert(x.clone(), *accept_rec);
+    }
     'variants: for variant in datatype.x.variants.iter() {
         for field in variant.a.iter() {
             let (typ, _, _) = &field.a;
-            if !check_well_founded_typ(datatypes, datatypes_well_founded, typ)? {
+            if !check_well_founded_typ(datatypes, datatypes_well_founded, &typ_param_accept, typ) {
                 // inductive case
                 continue 'variants;
             }
         }
         // Found a base case variant
-        datatypes_well_founded.insert(path.clone(), true);
-        return Ok(true);
+        datatypes_well_founded.insert(path.clone());
+        return true;
     }
     // No base cases found, only inductive cases
-    error(&datatype.span, "datatype must have at least one non-recursive variant")
+    return false;
 }
 
 fn check_well_founded_typ(
     datatypes: &HashMap<Path, Datatype>,
-    datatypes_well_founded: &mut HashMap<Path, bool>,
+    datatypes_well_founded: &mut HashSet<Path>,
+    typ_param_accept: &HashMap<Ident, AcceptRecursiveType>,
     typ: &Typ,
-) -> Result<bool, VirErr> {
+) -> bool {
     match &**typ {
-        TypX::Bool
-        | TypX::Int(_)
-        | TypX::TypParam(_)
-        | TypX::Lambda(..)
-        | TypX::ConstInt(_)
-        | TypX::StrSlice
-        | TypX::Char => Ok(true),
+        TypX::Bool | TypX::Int(_) | TypX::ConstInt(_) | TypX::StrSlice | TypX::Char => true,
         TypX::Boxed(_) | TypX::TypeId | TypX::Air(_) => {
             panic!("internal error: unexpected type in check_well_founded_typ")
+        }
+        TypX::TypParam(x) => match typ_param_accept[x] {
+            AcceptRecursiveType::Reject => true,
+            AcceptRecursiveType::RejectInGround => true,
+            AcceptRecursiveType::Accept => false,
+        },
+        TypX::Lambda(_, ret) => {
+            // This supports decreases on fields of function type (e.g. for infinite maps)
+            check_well_founded_typ(datatypes, datatypes_well_founded, typ_param_accept, ret)
         }
         TypX::Tuple(typs) => {
             // tuples are just datatypes and therefore have a height in decreases clauses,
             // so we need to include them in the well foundedness checks
             for typ in typs.iter() {
-                if !check_well_founded_typ(datatypes, datatypes_well_founded, typ)? {
-                    return Ok(false);
+                if !check_well_founded_typ(datatypes, datatypes_well_founded, typ_param_accept, typ)
+                {
+                    return false;
                 }
             }
-            Ok(true)
+            true
         }
-        TypX::Datatype(path, _) => {
-            // note: we don't care about the type arguments here,
-            // because datatype heights in decreases clauses are oblivious to the type arguments.
-            // (e.g. in enum List { Cons(Foo<List>) }, Cons is considered a base case because
-            // the height of Foo<List> is unrelated to the height of List)
-            check_well_founded(datatypes, datatypes_well_founded, path)
+        TypX::Datatype(path, targs) => {
+            if !datatypes_well_founded.contains(path) {
+                return false;
+            }
+            // For each targ:
+            // - if the corresponding type parameter is Accept, accept the targ unconditionally
+            // - otherwise, recurse on targ
+            let tparams = &datatypes[path].x.typ_params;
+            assert!(targs.len() == tparams.len());
+            for (tparam, targ) in tparams.iter().zip(targs.iter()) {
+                let (_, _, accept_rec) = tparam;
+                if *accept_rec != AcceptRecursiveType::Accept {
+                    if !check_well_founded_typ(
+                        datatypes,
+                        datatypes_well_founded,
+                        typ_param_accept,
+                        targ,
+                    ) {
+                        return false;
+                    }
+                }
+            }
+            true
+        }
+        TypX::Decorate(_, t) => {
+            check_well_founded_typ(datatypes, datatypes_well_founded, typ_param_accept, t)
         }
         TypX::AnonymousClosure(..) => {
             unimplemented!();
@@ -89,7 +119,7 @@ struct CheckPositiveGlobal {
 struct CheckPositiveLocal {
     span: Span,
     my_datatype: Path,
-    tparams: HashMap<Ident, bool>,
+    tparams: HashMap<Ident, AcceptRecursiveType>,
 }
 
 // polarity = Some(true) for positive, Some(false) for negative, None for neither
@@ -137,7 +167,7 @@ fn check_positive_uses(
                         return error(
                             &local.span,
                             format!(
-                                "Type {} recursively uses type {} in a non-positive polarity",
+                                "Type {} recursively uses type {} in a non-positive position",
                                 path_as_rust_name(&local.my_datatype),
                                 path_as_rust_name(path)
                             ),
@@ -146,23 +176,25 @@ fn check_positive_uses(
                 }
             }
             let typ_params = &global.datatypes[path].x.typ_params;
-            for ((_, _, strictly_positive), t) in typ_params.iter().zip(ts.iter()) {
+            for ((_, _, accept_rec), t) in typ_params.iter().zip(ts.iter()) {
+                let strictly_positive = *accept_rec != AcceptRecursiveType::Reject;
                 let t_polarity =
-                    if *strictly_positive && polarity == Some(true) { Some(true) } else { None };
+                    if strictly_positive && polarity == Some(true) { Some(true) } else { None };
                 check_positive_uses(global, local, t_polarity, t)?;
             }
             Ok(())
         }
+        TypX::Decorate(_, t) => check_positive_uses(global, local, polarity, t),
         TypX::Boxed(t) => check_positive_uses(global, local, polarity, t),
         TypX::TypParam(x) => {
-            let strictly_positive = local.tparams[x];
+            let strictly_positive = local.tparams[x] != AcceptRecursiveType::Reject;
             match (strictly_positive, polarity) {
                 (false, _) => Ok(()),
                 (true, Some(true)) => Ok(()),
                 (true, _) => error(
                     &local.span,
                     format!(
-                        "Type parameter {} must be declared #[verifier(maybe_negative)] to be used in a non-positive position",
+                        "Type parameter {} must be declared #[verifier::reject_recursive_types] to be used in a non-positive position",
                         x
                     ),
                 ),
@@ -179,6 +211,7 @@ pub(crate) fn build_datatype_graph(krate: &Krate) -> Graph<Path> {
 
     // If datatype D1 has a field whose type mentions datatype D2, create a graph edge D1 --> D2
     for datatype in &krate.datatypes {
+        type_graph.add_node(datatype.x.path.clone());
         for variant in datatype.x.variants.iter() {
             for field in variant.a.iter() {
                 let (typ, _, _) = &field.a;
@@ -201,7 +234,7 @@ pub(crate) fn build_datatype_graph(krate: &Krate) -> Graph<Path> {
 pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
     let type_graph = build_datatype_graph(krate);
     let mut datatypes: HashMap<Path, Datatype> = HashMap::new();
-    let mut datatypes_well_founded: HashMap<Path, bool> = HashMap::new();
+    let mut datatypes_well_founded: HashSet<Path> = HashSet::new();
 
     for datatype in &krate.datatypes {
         datatypes.insert(datatype.x.path.clone(), datatype.clone());
@@ -238,26 +271,43 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
     }
 
     for datatype in &krate.datatypes {
-        let mut tparams: HashMap<Ident, bool> = HashMap::new();
-        for (name, bound, positive) in datatype.x.typ_params.iter() {
+        let mut tparams: HashMap<Ident, AcceptRecursiveType> = HashMap::new();
+        for (name, bound, accept_rec) in datatype.x.typ_params.iter() {
             match &**bound {
                 GenericBoundX::Traits(_) => {}
             }
-            tparams.insert(name.clone(), *positive);
+            tparams.insert(name.clone(), *accept_rec);
         }
         let local = CheckPositiveLocal {
             span: datatype.span.clone(),
             my_datatype: datatype.x.path.clone(),
             tparams,
         };
-        let _ =
-            check_well_founded(&global.datatypes, &mut datatypes_well_founded, &datatype.x.path)?;
         for variant in datatype.x.variants.iter() {
             for field in variant.a.iter() {
                 // Check that field type only uses SCC siblings in positive positions
                 let (typ, _, _) = &field.a;
                 check_positive_uses(&global, &local, Some(true), typ)?;
             }
+        }
+    }
+
+    let type_sccs = global.type_graph.sort_sccs();
+    for scc in &type_sccs {
+        let mut converged = false;
+        loop {
+            let count = datatypes_well_founded.len();
+            for path in &global.type_graph.get_scc_nodes(scc) {
+                let wf = check_well_founded(&global.datatypes, &mut datatypes_well_founded, path);
+                if converged && !wf {
+                    let span = &global.datatypes[path].span;
+                    return error(span, "datatype must have at least one non-recursive variant");
+                }
+            }
+            if converged {
+                break;
+            }
+            converged = count == datatypes_well_founded.len();
         }
     }
 

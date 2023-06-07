@@ -32,7 +32,9 @@ verus! {
 
 #[verifier(external_body)]
 #[verifier::ext_equal]
-pub tracked struct Map<#[verifier(maybe_negative)] K, #[verifier(strictly_positive)] V> {
+#[verifier::reject_recursive_types(K)]
+#[verifier::accept_recursive_types(V)]
+pub tracked struct Map<K, V> {
     dummy: marker::PhantomData<(K, V)>,
 }
 

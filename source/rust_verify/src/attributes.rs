@@ -4,7 +4,7 @@ use rustc_ast::token::{Token, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
 use rustc_ast::{AttrKind, Attribute};
 use rustc_span::Span;
-use vir::ast::{Mode, TriggerAnnotation, VirErr};
+use vir::ast::{AcceptRecursiveType, Mode, TriggerAnnotation, VirErr};
 
 #[derive(Debug)]
 pub(crate) enum AttrTree {
@@ -220,9 +220,12 @@ pub(crate) enum Attr {
     // Header to unwrap Tracked<T> and Ghost<T> parameters
     UnwrapParameter,
     // type parameter is not necessarily used in strictly positive positions
-    MaybeNegative,
+    RejectRecursiveTypes(Option<String>),
     // type parameter is used in strictly positive positions
-    StrictlyPositive,
+    RejectGroundRecursiveTypes(Option<String>),
+    // type parameter is used in strictly positive positions
+    // and is not used by the ground variant
+    AcceptRecursiveTypes(Option<String>),
     // export function's require/ensure as global forall
     BroadcastForall,
     // accept the trigger chosen by triggers_auto without printing any diagnostics
@@ -261,6 +264,8 @@ pub(crate) enum Attr {
     Memoize,
     // Suppress the recommends check for narrowing casts that may truncate
     Truncate,
+    // In order to apply a specification to a method externally
+    ExternalFnSpecification,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -331,11 +336,36 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 AttrTree::Fun(_, arg, None) if arg == "ghost_wrapper" => {
                     v.push(Attr::GhostBlock(GhostBlockAttr::Wrapper))
                 }
-                AttrTree::Fun(_, arg, None) if arg == "maybe_negative" => {
-                    v.push(Attr::MaybeNegative)
+                // TODO: remove maybe_negative, strictly_positive
+                AttrTree::Fun(_, arg, None)
+                    if arg == "maybe_negative" || arg == "reject_recursive_types" =>
+                {
+                    v.push(Attr::RejectRecursiveTypes(None))
                 }
-                AttrTree::Fun(_, arg, None) if arg == "strictly_positive" => {
-                    v.push(Attr::StrictlyPositive)
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
+                    if arg == "reject_recursive_types" =>
+                {
+                    v.push(Attr::RejectRecursiveTypes(Some(ident.clone())))
+                }
+                AttrTree::Fun(_, arg, None)
+                    if arg == "reject_recursive_types_in_ground_variants" =>
+                {
+                    v.push(Attr::RejectGroundRecursiveTypes(None))
+                }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
+                    if arg == "reject_recursive_types_in_ground_variants" =>
+                {
+                    v.push(Attr::RejectGroundRecursiveTypes(Some(ident.clone())))
+                }
+                AttrTree::Fun(_, arg, None)
+                    if arg == "strictly_positive" || arg == "accept_recursive_types" =>
+                {
+                    v.push(Attr::AcceptRecursiveTypes(None))
+                }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
+                    if arg == "accept_recursive_types" =>
+                {
+                    v.push(Attr::AcceptRecursiveTypes(Some(ident.clone())))
                 }
                 AttrTree::Fun(_, arg, None) if arg == "broadcast_forall" => {
                     v.push(Attr::BroadcastForall)
@@ -388,6 +418,9 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 }
                 AttrTree::Fun(_, arg, None) if arg == "memoize" => v.push(Attr::Memoize),
                 AttrTree::Fun(_, arg, None) if arg == "truncate" => v.push(Attr::Truncate),
+                AttrTree::Fun(_, arg, None) if arg == "external_fn_specification" => {
+                    v.push(Attr::ExternalFnSpecification)
+                }
                 _ => return err_span(span, "unrecognized verifier attribute"),
             },
             AttrPrefix::Verus(verus_prefix) => match verus_prefix {
@@ -586,8 +619,11 @@ pub(crate) struct VerifierAttrs {
     pub(crate) opaque_outside_module: bool,
     pub(crate) inline: bool,
     pub(crate) ext_equal: bool,
-    pub(crate) strictly_positive: bool,
-    pub(crate) maybe_negative: bool,
+    // TODO: get rid of *_recursive_types: bool
+    pub(crate) reject_recursive_types_in_ground_variants: bool,
+    pub(crate) reject_recursive_types: bool,
+    pub(crate) accept_recursive_types: bool,
+    pub(crate) accept_recursive_type_list: Vec<(String, AcceptRecursiveType)>,
     pub(crate) broadcast_forall: bool,
     pub(crate) no_auto_trigger: bool,
     pub(crate) autospec: Option<String>,
@@ -603,6 +639,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) spinoff_prover: bool,
     pub(crate) memoize: bool,
     pub(crate) truncate: bool,
+    pub(crate) external_fn_specification: bool,
 }
 
 pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, VirErr> {
@@ -615,8 +652,10 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         opaque_outside_module: false,
         inline: false,
         ext_equal: false,
-        maybe_negative: false,
-        strictly_positive: false,
+        reject_recursive_types: false,
+        reject_recursive_types_in_ground_variants: false,
+        accept_recursive_types: false,
+        accept_recursive_type_list: vec![],
         broadcast_forall: false,
         no_auto_trigger: false,
         autospec: None,
@@ -632,19 +671,33 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         spinoff_prover: false,
         memoize: false,
         truncate: false,
+        external_fn_specification: false,
     };
     for attr in parse_attrs(attrs)? {
         match attr {
             Attr::VerusMacro => vs.verus_macro = true,
             Attr::ExternalBody => vs.external_body = true,
             Attr::External => vs.external = true,
+            Attr::ExternalFnSpecification => vs.external_fn_specification = true,
             Attr::Opaque => vs.opaque = true,
             Attr::Publish => vs.publish = true,
             Attr::OpaqueOutsideModule => vs.opaque_outside_module = true,
             Attr::Inline => vs.inline = true,
             Attr::ExtEqual => vs.ext_equal = true,
-            Attr::MaybeNegative => vs.maybe_negative = true,
-            Attr::StrictlyPositive => vs.strictly_positive = true,
+            Attr::RejectRecursiveTypes(None) => vs.reject_recursive_types = true,
+            Attr::RejectRecursiveTypes(Some(s)) => {
+                vs.accept_recursive_type_list.push((s, AcceptRecursiveType::Reject))
+            }
+            Attr::RejectGroundRecursiveTypes(None) => {
+                vs.reject_recursive_types_in_ground_variants = true
+            }
+            Attr::RejectGroundRecursiveTypes(Some(s)) => {
+                vs.accept_recursive_type_list.push((s, AcceptRecursiveType::RejectInGround))
+            }
+            Attr::AcceptRecursiveTypes(None) => vs.accept_recursive_types = true,
+            Attr::AcceptRecursiveTypes(Some(s)) => {
+                vs.accept_recursive_type_list.push((s, AcceptRecursiveType::Accept))
+            }
             Attr::BroadcastForall => vs.broadcast_forall = true,
             Attr::NoAutoTrigger => vs.no_auto_trigger = true,
             Attr::Autospec(method_ident) => vs.autospec = Some(method_ident),

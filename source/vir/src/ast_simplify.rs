@@ -3,10 +3,10 @@
 use crate::ast::Quant;
 use crate::ast::Typs;
 use crate::ast::{
-    BinaryOp, Binder, BuiltinSpecFun, CallTarget, Constant, Datatype, DatatypeTransparency,
-    DatatypeX, Expr, ExprX, Exprs, Field, FieldOpr, Function, FunctionKind, GenericBound,
-    GenericBoundX, Ident, IntRange, Krate, KrateX, Mode, MultiOp, Path, Pattern, PatternX,
-    SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
+    AutospecUsage, BinaryOp, Binder, BuiltinSpecFun, CallTarget, Constant, Datatype,
+    DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Field, FieldOpr, Function, FunctionKind,
+    GenericBound, GenericBoundX, Ident, IntRange, Krate, KrateX, Mode, MultiOp, Path, Pattern,
+    PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
 };
 use crate::ast_util::{conjoin, disjoin, if_then_else};
 use crate::ast_util::{error, wrap_in_trigger};
@@ -228,13 +228,23 @@ fn pattern_to_exprs_rec(
 // then simplify_one_expr is called first on B and C, and then on A
 
 fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<Expr, VirErr> {
+    use crate::ast::CallTargetKind;
     match &expr.x {
         ExprX::ConstVar(x) => {
-            let call =
-                ExprX::Call(CallTarget::Static(x.clone(), Arc::new(vec![])), Arc::new(vec![]));
+            let call = ExprX::Call(
+                CallTarget::Fun(
+                    CallTargetKind::Static,
+                    x.clone(),
+                    Arc::new(vec![]),
+                    AutospecUsage::Final,
+                ),
+                Arc::new(vec![]),
+            );
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
-        ExprX::Call(CallTarget::Static(tgt, typs), args) => {
+        ExprX::Call(CallTarget::Fun(kind, tgt, typs, autospec_usage), args) => {
+            assert!(*autospec_usage == AutospecUsage::Final);
+
             // Remove FnSpec type arguments
             let bounds = &ctx.fun_bounds[tgt];
             let typs: Vec<Typ> = typs
@@ -243,7 +253,8 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
                 .filter(|(_, bound)| keep_bound(bound))
                 .map(|(t, _)| t.clone())
                 .collect();
-            let args = if typs.len() == 0 && args.len() == 0 {
+            let is_trait_impl = matches!(kind, CallTargetKind::Method(..));
+            let args = if typs.len() == 0 && args.len() == 0 && !is_trait_impl {
                 // To simplify the AIR/SMT encoding, add a dummy argument to any function with 0 arguments
                 let typ = Arc::new(TypX::Int(IntRange::Int));
                 use num_traits::Zero;
@@ -253,7 +264,10 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
             } else {
                 args.clone()
             };
-            let call = ExprX::Call(CallTarget::Static(tgt.clone(), Arc::new(typs)), args);
+            let call = ExprX::Call(
+                CallTarget::Fun(kind.clone(), tgt.clone(), Arc::new(typs), *autospec_usage),
+                args,
+            );
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
         ExprX::Tuple(args) => {
@@ -771,7 +785,7 @@ fn mk_fun_decl(
     Spanned::new(
         span.clone(),
         FunctionX {
-            name: Arc::new(FunX { path: path.clone(), trait_path: None }),
+            name: Arc::new(FunX { path: path.clone() }),
             visibility: Visibility { owning_module: None, restricted_to: None },
             mode: Mode::Spec,
             fuel: 0,
@@ -793,7 +807,7 @@ fn mk_fun_decl(
 */
 
 pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirErr> {
-    let KrateX { functions, datatypes, traits, module_ids } = &**krate;
+    let KrateX { functions, datatypes, traits, module_ids, external_fns } = &**krate;
     let mut state = State::new();
 
     // Pre-emptively add this because unit values might be added later.
@@ -810,8 +824,9 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         let visibility = Visibility { owning_module: None, restricted_to: None };
         let transparency = DatatypeTransparency::Always;
         let bound = Arc::new(GenericBoundX::Traits(vec![]));
+        let acc = crate::ast::AcceptRecursiveType::RejectInGround;
         let typ_params =
-            Arc::new((0..arity).map(|i| (prefix_tuple_param(i), bound.clone(), true)).collect());
+            Arc::new((0..arity).map(|i| (prefix_tuple_param(i), bound.clone(), acc)).collect());
         let mut fields: Vec<Field> = Vec::new();
         for i in 0..arity {
             let typ = Arc::new(TypX::TypParam(prefix_tuple_param(i)));
@@ -883,7 +898,8 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
 
     let traits = traits.clone();
     let module_ids = module_ids.clone();
-    let krate = Arc::new(KrateX { functions, datatypes, traits, module_ids });
+    let external_fns = external_fns.clone();
+    let krate = Arc::new(KrateX { functions, datatypes, traits, module_ids, external_fns });
     *ctx = crate::context::GlobalCtx::new(
         &krate,
         ctx.no_span.clone(),
@@ -902,12 +918,14 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
         datatypes: Vec::new(),
         traits: Vec::new(),
         module_ids: Vec::new(),
+        external_fns: Vec::new(),
     };
     for k in krates.into_iter() {
         kratex.functions.extend(k.functions.clone());
         kratex.datatypes.extend(k.datatypes.clone());
         kratex.traits.extend(k.traits.clone());
         kratex.module_ids.extend(k.module_ids.clone());
+        kratex.external_fns.extend(k.external_fns.clone());
     }
     Ok(Arc::new(kratex))
 }

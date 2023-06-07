@@ -277,7 +277,7 @@ impl ExpX {
             Var(id) | VarLoc(id) => (format!("{}", id.name), 99),
             VarAt(id, _at) => (format!("old({})", id.name), 99),
             Loc(exp) => (format!("{}", exp), 99), // REVIEW: Additional decoration required?
-            Call(CallFun::Fun(fun), _, exps) => {
+            Call(CallFun::Fun(fun, _) | CallFun::CheckTermination(fun), _, exps) => {
                 let args = exps.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
                 (format!("{}({})", fun.path.segments.last().unwrap(), args), 90)
             }
@@ -305,9 +305,7 @@ impl ExpX {
                     Unbox(_) => (format!("unbox({})", exp), 99),
                     Height => (format!("height({})", exp), 99),
                     HasType(t) => (format!("{}.has_type({:?})", exp, t), 99),
-                    IntegerTypeBound(kind, mode) => {
-                        (format!("{:?}.{:?}({:?})", kind, mode, exp), 99)
-                    }
+                    IntegerTypeBound(kind, mode) => (format!("{:?}.{:?}({})", kind, mode, exp), 99),
                     IsVariant { datatype: _, variant } => {
                         (format!("{}.is_type({})", exp, variant), 99)
                     }

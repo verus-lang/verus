@@ -278,12 +278,13 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             }
             all_terms.extend(terms);
             match x {
-                CallFun::Fun(x) => match ctx.func_map.get(x) {
+                CallFun::Fun(x, _) => match ctx.func_map.get(x) {
                     Some(f) if f.x.attrs.no_auto_trigger => {
                         (false, Arc::new(TermX::App(ctxt.other(), Arc::new(all_terms))))
                     }
                     _ => (is_pure, Arc::new(TermX::App(App::Call(x.clone()), Arc::new(all_terms)))),
                 },
+                CallFun::CheckTermination(_) => panic!("internal error: CheckTermination"),
                 CallFun::InternalFun(_) => {
                     (is_pure, Arc::new(TermX::App(ctxt.other(), Arc::new(all_terms))))
                 }

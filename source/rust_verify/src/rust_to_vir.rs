@@ -52,6 +52,12 @@ fn check_item<'tcx>(
         }
     };
 
+    let attrs = ctxt.tcx.hir().attrs(item.hir_id());
+    let vattrs = get_verifier_attrs(attrs)?;
+    if vattrs.external_fn_specification && !matches!(&item.kind, ItemKind::Fn(..)) {
+        return err_span(item.span, "`external_fn_specification` attribute not supported here");
+    }
+
     let visibility = || mk_visibility(ctxt, &Some(module_path()), item.owner_id.to_def_id());
     match &item.kind {
         ItemKind::Fn(sig, generics, body_id) => {
@@ -63,7 +69,6 @@ fn check_item<'tcx>(
                 visibility(),
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 sig,
-                None,
                 None,
                 generics,
                 CheckItemFnEither::BodyId(body_id),
@@ -83,8 +88,6 @@ fn check_item<'tcx>(
             // rustc_middle; in fact, we still rely on attributes which we can only
             // get from the HIR data.
 
-            let attrs = ctxt.tcx.hir().attrs(item.hir_id());
-            let vattrs = get_verifier_attrs(attrs)?;
             if vattrs.external {
                 return Ok(());
             }
@@ -124,8 +127,6 @@ fn check_item<'tcx>(
             )?;
         }
         ItemKind::Impl(impll) => {
-            let attrs = ctxt.tcx.hir().attrs(item.hir_id());
-            let vattrs = get_verifier_attrs(attrs)?;
             let impl_def_id = item.owner_id.to_def_id();
 
             if vattrs.external {
@@ -313,7 +314,7 @@ fn check_item<'tcx>(
                                         let ident = Arc::new(ident);
                                         let path =
                                             typ_path_and_ident_to_vir_path(&trait_path, ident);
-                                        let fun = FunX { path, trait_path: None };
+                                        let fun = FunX { path };
                                         let method = Arc::new(fun);
                                         let datatype = self_path.clone();
                                         let datatype_typ_args = datatype_typ_args.clone();
@@ -335,7 +336,6 @@ fn check_item<'tcx>(
                                         impl_item_visibility,
                                         fn_attrs,
                                         sig,
-                                        trait_path_typ_args.clone().map(|(p, _)| p),
                                         Some((&impll.generics, impl_def_id)),
                                         &impl_item.generics,
                                         CheckItemFnEither::BodyId(body_id),
@@ -404,7 +404,7 @@ fn check_item<'tcx>(
                 unsupported_err!(item.span, "trait generic bounds");
             }
             let generics_bnds =
-                check_generics_bounds(ctxt.tcx, trait_generics, false, trait_def_id)?;
+                check_generics_bounds(ctxt.tcx, trait_generics, false, trait_def_id, None)?;
             let trait_path = def_id_to_vir_path(ctxt.tcx, trait_def_id);
             let mut methods: Vec<vir::ast::Function> = Vec::new();
             let mut method_names: Vec<Fun> = Vec::new();
@@ -418,8 +418,13 @@ fn check_item<'tcx>(
                     span,
                     defaultness: _,
                 } = trait_item;
-                let generics_bnds =
-                    check_generics_bounds(ctxt.tcx, item_generics, false, owner_id.to_def_id())?;
+                let generics_bnds = check_generics_bounds(
+                    ctxt.tcx,
+                    item_generics,
+                    false,
+                    owner_id.to_def_id(),
+                    None,
+                )?;
                 unsupported_err_unless!(generics_bnds.len() == 0, *span, "trait generics");
                 match kind {
                     TraitItemKind::Fn(sig, fun) => {
@@ -438,7 +443,6 @@ fn check_item<'tcx>(
                             visibility(),
                             attrs,
                             sig,
-                            None,
                             Some((trait_generics, trait_def_id)),
                             item_generics,
                             body_id,
@@ -612,5 +616,8 @@ pub(crate) fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> 
             }
         }
     }
+
+    let erasure_info = ctxt.erasure_info.borrow();
+    vir.external_fns = erasure_info.external_functions.clone();
     Ok(Arc::new(vir))
 }

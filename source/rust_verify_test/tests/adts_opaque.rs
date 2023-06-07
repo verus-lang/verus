@@ -18,7 +18,7 @@ test_verify_one_file! {
                 c.passengers
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "public spec function cannot refer to private items")
+    } => Err(err) => assert_vir_error_msg(err, "in pub open spec function, cannot access any field of a datatype where one or more fields are private")
 }
 
 test_verify_one_file! {
@@ -36,7 +36,7 @@ test_verify_one_file! {
                 Car { passengers: 0, four_doors: true }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "public spec function cannot refer to private items")
+    } => Err(err) => assert_vir_error_msg(err, "in pub open spec function, cannot use constructor of private datatype or datatype whose fields are private")
 }
 
 test_verify_one_file! {
@@ -53,7 +53,7 @@ test_verify_one_file! {
                 true
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "public spec function cannot refer to private items")
+    } => Err(err) => assert_vir_error_msg(err, "in pub open spec function, cannot use constructor of private datatype or datatype whose fields are private")
 }
 
 const M1: &str = verus_code_str! {

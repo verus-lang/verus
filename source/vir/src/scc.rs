@@ -235,3 +235,31 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> Graph<T> {
         }
     }
 }
+
+impl<T: std::cmp::Eq + std::hash::Hash + Clone + std::fmt::Debug> std::fmt::Debug for Graph<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Graph:\n")?;
+        for node in self.nodes.iter() {
+            write!(f, "    {:?}\n", node.t)?;
+            for idx in node.edges.iter() {
+                let succ_t = &self.nodes[*idx].t;
+                write!(f, "     -> {:?}\n", succ_t)?;
+            }
+        }
+        if self.has_run {
+            write!(f, "SCCs:\n")?;
+            let scc_reps = self.sort_sccs();
+            for scc_rep in scc_reps.iter() {
+                let nodes = self.get_scc_nodes(scc_rep);
+                write!(f, "{{\n")?;
+                for node in nodes {
+                    write!(f, "    {:?}\n", node)?;
+                }
+                write!(f, "}}\n")?;
+            }
+        } else {
+            write!(f, "SCC not yet run")?;
+        }
+        Ok(())
+    }
+}
