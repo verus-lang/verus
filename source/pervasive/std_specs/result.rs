@@ -9,9 +9,9 @@ use core::result::Result;
 use core::result::Result::Ok;
 use core::result::Result::Err;
 
-////// Add is_variant-style spec functions
-
 verus!{
+
+////// Add is_variant-style spec functions
 
 mod getters {
     #[verus::internal(is_variant("Ok"))]
