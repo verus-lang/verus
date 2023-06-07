@@ -23,9 +23,10 @@ use rustc_middle::ty::{
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::kw;
 use rustc_span::Span;
+use rustc_span::Symbol;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use vir::ast::{AutospecUsage, Fun, FunX, Function, Mode, Path};
+use vir::ast::{AutospecUsage, DatatypeTransparency, Fun, FunX, Function, Mode, Path};
 use vir::ast_util::get_field;
 use vir::def::VERUS_SPEC;
 
@@ -1888,14 +1889,14 @@ fn erase_abstract_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, span: 
 
 fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) {
     let span = ctxt.tcx.def_span(id);
+
     let attrs = if let Some(rustc_hir::Node::Item(d_hir)) = ctxt.tcx.hir().get_if_local(id) {
         ctxt.tcx.hir().attrs(d_hir.hir_id())
     } else {
         ctxt.tcx.item_attrs(id)
     };
     let vattrs = get_verifier_attrs(attrs).expect("get_verifier_attrs");
-    if vattrs.external_body {
-        erase_abstract_datatype(ctxt, state, span, id);
+    if vattrs.external_type_specification {
         return;
     }
 
@@ -1903,9 +1904,36 @@ fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) 
     if is_box {
         return;
     }
-    let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(ctxt.tcx, id));
+
+    let path = def_id_to_vir_path(ctxt.tcx, id);
+    let def_name = vir::ast_util::path_as_rust_name(&path);
+
     let is_smart_ptr = def_name == "alloc::rc::Rc" || def_name == "alloc::sync::Arc";
     if is_smart_ptr {
+        return;
+    }
+
+    if ctxt.tcx.is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice"), id) {
+        erase_abstract_datatype(ctxt, state, span, id);
+        return;
+    }
+
+    // Check if the struct is 'external_body'
+    // (Recall that the 'external_body' label may have been applied by a proxy type,
+    // so we can't check the vattrs of the datatype definition directly.
+    // Need to check the VIR instead.)
+    let is_external_body = match ctxt.datatypes.get(&path) {
+        Some(dt) => match dt.x.transparency {
+            DatatypeTransparency::Never => true,
+            DatatypeTransparency::WhenVisible(_) => false,
+        },
+        None => {
+            dbg!(id);
+            panic!("erase_mir_datatype: unrecognized datatype");
+        }
+    };
+    if is_external_body {
+        erase_abstract_datatype(ctxt, state, span, id);
         return;
     }
 
