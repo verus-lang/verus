@@ -492,6 +492,7 @@ fn hash_exp<H: Hasher>(state: &mut H, exp: &Exp) {
         Unary(op, e) => dohash!(9, op; hash_exp(e)),
         UnaryOpr(op, e) => dohash!(10, op; hash_exp(e)),
         Binary(op, e1, e2) => dohash!(11, op; hash_exp(e1), hash_exp(e2)),
+        BinaryOpr(op, e1, e2) => dohash!(111, op; hash_exp(e1), hash_exp(e2)),
         If(e1, e2, e3) => dohash!(12; hash_exp(e1), hash_exp(e2), hash_exp(e3)),
         WithTriggers(trigs, e) => dohash!(13; hash_trigs(trigs), hash_exp(e)),
         Bind(bnd, e) => dohash!(14; hash_bnd(bnd), hash_exp(e)),
@@ -1341,6 +1342,16 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     }
                 }
                 StrGetChar => ok_e2(e2.clone()),
+            }
+        }
+        BinaryOpr(op, e1, e2) => {
+            let e1 = eval_expr_internal(ctx, state, e1)?;
+            let e2 = eval_expr_internal(ctx, state, e2)?;
+            match op {
+                crate::ast::BinaryOpr::ExtEq(..) => match e1.syntactic_eq(&e2) {
+                    None => exp_new(BinaryOpr(op.clone(), e1.clone(), e2.clone())),
+                    Some(b) => bool_new(b),
+                },
             }
         }
         If(e1, e2, e3) => {

@@ -64,12 +64,12 @@ fn pusher() -> Vec<u64> {
     v.push(3);
     v.push(4);
     let ghost goal = Seq::new(5, |i: int| i as u64);
-    assert(v@.ext_equal(goal));
+    assert(v@ =~= goal);
     assert(v[2] == 2);
 
     v.pop();
     v.push(4);
-    assert(v@.ext_equal(goal));
+    assert(v@ =~= goal);
 
     v
 }

@@ -38,6 +38,7 @@ verus!{
 // since it might map an infinite number of elements to the same one).
 
 #[verifier(external_body)]
+#[verifier::ext_equal]
 #[verifier::accept_recursive_types(V)]
 pub struct Multiset<V> {
     dummy: marker::PhantomData<V>,
@@ -94,16 +95,19 @@ impl<V> Multiset<V> {
         forall |v: V| self.count(v) <= m2.count(v)
     }
 
+    /// DEPRECATED: use =~= or =~~= instead.
     /// Returns true if the two multisets are pointwise equal, i.e.,
     /// for every value `v: V`, the counts are the same in each multiset.
     /// This is equivalent to the multisets actually being equal
     /// by [`axiom_multiset_ext_equal`].
     ///
-    /// To prove that two maps are equal via extensionality, it is generally easier
+    /// To prove that two maps are equal via extensionality, it may be easier
+    /// to use the general-purpose `=~=` or `=~~=` or
     /// to use the [`assert_multisets_equal!`] macro, rather than using `ext_equal` directly.
 
+    #[deprecated = "use =~= or =~~= instead"]
     pub open spec fn ext_equal(self, m2: Self) -> bool {
-        forall |v: V| self.count(v) == m2.count(v)
+        self =~= m2
     }
 
     // TODO define this in terms of a more general constructor?
@@ -165,7 +169,13 @@ pub proof fn axiom_multiset_sub<V>(m1: Multiset<V>, m2: Multiset<V>, v: V)
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_multiset_ext_equal<V>(m1: Multiset<V>, m2: Multiset<V>)
-    ensures m1.ext_equal(m2) == equal(m1, m2),
+    ensures #[trigger] (m1 =~= m2) <==> (forall |v: V| m1.count(v) == m2.count(v)),
+{ }
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_multiset_ext_equal_deep<V>(m1: Multiset<V>, m2: Multiset<V>)
+    ensures #[trigger] (m1 =~~= m2) <==> m1 =~= m2,
 { }
 
 // Specification of `len`

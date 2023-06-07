@@ -65,7 +65,7 @@ proof fn bit_or_64_view_proof(u1: u64, u2: u64, bv_new:u64)
     requires
         bv_new == u1 | u2,
     ensures
-        u64_view(bv_new).ext_equal(Seq::new(64, |i: int| u64_view(u1).index(i) || u64_view(u2).index(i))),
+        u64_view(bv_new) =~= Seq::new(64, |i: int| u64_view(u1).index(i) || u64_view(u2).index(i)),
     
 {
     bit_or_64_proof(u1,u2, bv_new);
@@ -73,7 +73,7 @@ proof fn bit_or_64_view_proof(u1: u64, u2: u64, bv_new:u64)
 
 
 spec fn or_u64_relation(u1:u64, u2:u64, or_int:u64) -> bool {
-    u64_view(or_int).ext_equal(Seq::new(64, |i: int| u64_view(u1).index(i) || u64_view(u2).index(i)))
+    u64_view(or_int) =~= Seq::new(64, |i: int| u64_view(u1).index(i) || u64_view(u2).index(i))
 }
 
 

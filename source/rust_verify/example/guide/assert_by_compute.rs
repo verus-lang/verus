@@ -43,7 +43,7 @@ proof fn let_passes() {
 
 // ANCHOR: seq_example
 proof fn seq_example(a: Seq<int>, b: Seq<int>, c: Seq<int>, d: Seq<int>) {
-    assert(seq![a, b, c, d].ext_equal(seq![a, b].add(seq![c, d]))) by (compute_only);
+    assert(seq![a, b, c, d] =~= seq![a, b].add(seq![c, d])) by (compute_only);
 }
 // ANCHOR_END: seq_example
 

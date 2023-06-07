@@ -493,6 +493,8 @@ fn fn_call_to_vir<'tcx>(
     let is_choose_tuple = f_name == "builtin::choose_tuple";
     let is_with_triggers = f_name == "builtin::with_triggers";
     let is_equal = f_name == "builtin::equal";
+    let is_ext_equal = f_name == "builtin::ext_equal";
+    let is_ext_equal_deep = f_name == "builtin::ext_equal_deep";
     let is_chained_value = f_name == "builtin::spec_chained_value";
     let is_chained_le = f_name == "builtin::spec_chained_le";
     let is_chained_lt = f_name == "builtin::spec_chained_lt";
@@ -598,8 +600,8 @@ fn fn_call_to_vir<'tcx>(
     let is_cmp = is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
     let is_arith_binary =
         is_builtin_add || is_builtin_sub || is_builtin_mul || is_add || is_sub || is_mul;
-    let is_spec_cmp =
-        is_equal || is_spec_eq || is_spec_le || is_spec_ge || is_spec_lt || is_spec_gt;
+    let is_equality = is_equal || is_spec_eq || is_ext_equal || is_ext_equal_deep;
+    let is_spec_cmp = is_equality || is_spec_le || is_spec_ge || is_spec_lt || is_spec_gt;
     let is_spec_arith_binary =
         is_spec_add || is_spec_sub || is_spec_mul || is_spec_euclidean_div || is_spec_euclidean_mod;
     let is_spec_bitwise_binary =
@@ -1251,7 +1253,7 @@ fn fn_call_to_vir<'tcx>(
         false
     };
 
-    let is_smt_binary = if is_equal {
+    let is_smt_binary = if is_equal || is_ext_equal || is_ext_equal_deep {
         true
     } else if is_spec_eq {
         let t1 = typ_of_node(bctx, args[0].span, &args[0].hir_id, true)?;
@@ -1373,6 +1375,15 @@ fn fn_call_to_vir<'tcx>(
         unsupported_err_unless!(len == 2, expr.span, "expected binary op", args);
         let lhs = vir_args[0].clone();
         let rhs = vir_args[1].clone();
+        if is_ext_equal || is_ext_equal_deep {
+            assert!(node_substs.len() == 1);
+            let t = match node_substs[0].unpack() {
+                GenericArgKind::Type(ty) => mid_ty_to_vir(tcx, expr.span, &ty, false)?,
+                _ => panic!("unexpected ext_equal type argument"),
+            };
+            let vop = vir::ast::BinaryOpr::ExtEq(is_ext_equal_deep, t);
+            return Ok(mk_expr(ExprX::BinaryOpr(vop, lhs, rhs))?);
+        }
         let vop = if is_equal || is_spec_eq {
             BinaryOp::Eq(Mode::Spec)
         } else if is_eq {

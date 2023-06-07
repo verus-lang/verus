@@ -213,6 +213,8 @@ pub(crate) enum Attr {
     OpaqueOutsideModule,
     // inline spec function in SMT query
     Inline,
+    // generate ext_equal lemmas for datatype
+    ExtEqual,
     // Rust ghost block
     GhostBlock(GhostBlockAttr),
     // Header to unwrap Tracked<T> and Ghost<T> parameters
@@ -318,6 +320,7 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                     v.push(Attr::OpaqueOutsideModule)
                 }
                 AttrTree::Fun(_, arg, None) if arg == "inline" => v.push(Attr::Inline),
+                AttrTree::Fun(_, arg, None) if arg == "ext_equal" => v.push(Attr::ExtEqual),
                 AttrTree::Fun(_, arg, None) if arg == "proof_block" => {
                     v.push(Attr::GhostBlock(GhostBlockAttr::Proof))
                 }
@@ -615,6 +618,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) publish: bool,
     pub(crate) opaque_outside_module: bool,
     pub(crate) inline: bool,
+    pub(crate) ext_equal: bool,
     // TODO: get rid of *_recursive_types: bool
     pub(crate) reject_recursive_types_in_ground_variants: bool,
     pub(crate) reject_recursive_types: bool,
@@ -647,6 +651,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         publish: false,
         opaque_outside_module: false,
         inline: false,
+        ext_equal: false,
         reject_recursive_types: false,
         reject_recursive_types_in_ground_variants: false,
         accept_recursive_types: false,
@@ -678,6 +683,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::Publish => vs.publish = true,
             Attr::OpaqueOutsideModule => vs.opaque_outside_module = true,
             Attr::Inline => vs.inline = true,
+            Attr::ExtEqual => vs.ext_equal = true,
             Attr::RejectRecursiveTypes(None) => vs.reject_recursive_types = true,
             Attr::RejectRecursiveTypes(Some(s)) => {
                 vs.accept_recursive_type_list.push((s, AcceptRecursiveType::Reject))

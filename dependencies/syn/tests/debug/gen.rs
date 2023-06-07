@@ -406,6 +406,22 @@ impl Debug for Lite<syn::BinOp> {
                 formatter.write_str("BigNe")?;
                 Ok(())
             }
+            syn::BinOp::ExtEq(_val) => {
+                formatter.write_str("ExtEq")?;
+                Ok(())
+            }
+            syn::BinOp::ExtNe(_val) => {
+                formatter.write_str("ExtNe")?;
+                Ok(())
+            }
+            syn::BinOp::ExtDeepEq(_val) => {
+                formatter.write_str("ExtDeepEq")?;
+                Ok(())
+            }
+            syn::BinOp::ExtDeepNe(_val) => {
+                formatter.write_str("ExtDeepNe")?;
+                Ok(())
+            }
         }
     }
 }

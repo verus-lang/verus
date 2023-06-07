@@ -1085,6 +1085,10 @@ impl Printer {
             BinOp::Exply(_) => "<==",
             BinOp::BigEq(_) => "===",
             BinOp::BigNe(_) => "!==",
+            BinOp::ExtEq(_) => "=~=",
+            BinOp::ExtNe(_) => "!~=",
+            BinOp::ExtDeepEq(_) => "=~~=",
+            BinOp::ExtDeepNe(_) => "!~~=",
         });
     }
 

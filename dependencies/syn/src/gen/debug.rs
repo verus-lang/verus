@@ -306,6 +306,26 @@ impl Debug for BinOp {
                 formatter.field(v0);
                 formatter.finish()
             }
+            BinOp::ExtEq(v0) => {
+                let mut formatter = formatter.debug_tuple("ExtEq");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            BinOp::ExtNe(v0) => {
+                let mut formatter = formatter.debug_tuple("ExtNe");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            BinOp::ExtDeepEq(v0) => {
+                let mut formatter = formatter.debug_tuple("ExtDeepEq");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            BinOp::ExtDeepNe(v0) => {
+                let mut formatter = formatter.debug_tuple("ExtDeepNe");
+                formatter.field(v0);
+                formatter.finish()
+            }
         }
     }
 }

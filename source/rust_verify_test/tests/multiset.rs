@@ -11,7 +11,7 @@ test_verify_one_file! {
             ensures
                 a.add(b) === b.add(a),
         {
-            assert(a.add(b).ext_equal(b.add(a)));
+            assert(a.add(b) =~= b.add(a));
         }
 
         pub proof fn associative<V>(a: Multiset<V>, b: Multiset<V>, c: Multiset<V>)
@@ -19,8 +19,8 @@ test_verify_one_file! {
                 a.add(b.add(c)) ===
                 a.add(b).add(c),
         {
-            assert(a.add(b.add(c)).ext_equal(
-                a.add(b).add(c)));
+            assert(a.add(b.add(c)) =~=
+                a.add(b).add(c));
         }
 
         pub proof fn insert2<V>(a: V, b: V)
@@ -29,8 +29,8 @@ test_verify_one_file! {
                 Multiset::empty().insert(b).insert(a),
         {
             assert(
-                Multiset::empty().insert(a).insert(b).ext_equal(
-                Multiset::empty().insert(b).insert(a)));
+                Multiset::empty().insert(a).insert(b) =~=
+                Multiset::empty().insert(b).insert(a));
         }
 
         pub proof fn insert2_count<V>(a: V, b: V, c: V)
@@ -46,7 +46,7 @@ test_verify_one_file! {
             ensures
                 a.add(b).sub(b) === a,
         {
-            assert(a.add(b).sub(b).ext_equal(a));
+            assert(a.add(b).sub(b) =~= a);
         }
 
         pub proof fn sub_add_cancel<V>(a: Multiset<V>, b: Multiset<V>)
@@ -55,7 +55,7 @@ test_verify_one_file! {
             ensures
                 a.sub(b).add(b) === a,
         {
-            assert(a.sub(b).add(b).ext_equal(a));
+            assert(a.sub(b).add(b) =~= a);
         }
 
         pub proof fn choose_count<V>(m: Multiset<V>)
@@ -97,7 +97,7 @@ test_verify_one_file! {
         pub proof fn add_fail<V>(a: Multiset<V>, b: Multiset<V>)
             ensures equal(a.add(b), a.add(a))
         {
-            assert(a.add(b).ext_equal(a.add(a))); // FAILS
+            assert(a.add(b) =~= a.add(a)); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -110,7 +110,7 @@ test_verify_one_file! {
             ensures equal(a.sub(b).add(b), a)
         {
             // Missing the condition `b.le(a)`
-            assert(a.sub(b).add(b).ext_equal(a)); // FAILS
+            assert(a.sub(b).add(b) =~= a); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }

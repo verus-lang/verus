@@ -1247,6 +1247,15 @@ fn expr_to_stm_opt(
                 }
             }
         }
+        ExprX::BinaryOpr(op, e1, e2) => {
+            let (mut stms1, e1) = expr_to_stm_opt(ctx, state, e1)?;
+            let (mut stms2, e2) = expr_to_stm_opt(ctx, state, e2)?;
+            let e1 = unwrap_or_return_never!(e1, stms1);
+            stms1.append(&mut stms2);
+            let e2 = unwrap_or_return_never!(e2, stms1);
+            let bin = mk_exp(ExpX::BinaryOpr(op.clone(), e1, e2));
+            Ok((stms1, ReturnValue::Some(bin)))
+        }
         ExprX::Multi(..) => {
             panic!("internal error: Multi should have been simplified by ast_simplify")
         }

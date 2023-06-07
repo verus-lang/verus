@@ -1146,6 +1146,18 @@ where
         BinOp::BigNe(_binding_0) => {
             tokens_helper(v, &_binding_0.spans);
         }
+        BinOp::ExtEq(_binding_0) => {
+            tokens_helper(v, &_binding_0.spans);
+        }
+        BinOp::ExtNe(_binding_0) => {
+            tokens_helper(v, &_binding_0.spans);
+        }
+        BinOp::ExtDeepEq(_binding_0) => {
+            tokens_helper(v, &_binding_0.spans);
+        }
+        BinOp::ExtDeepNe(_binding_0) => {
+            tokens_helper(v, &_binding_0.spans);
+        }
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]

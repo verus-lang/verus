@@ -99,6 +99,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let as_type = str_to_node(AS_TYPE);
     let mk_fun = str_to_node(MK_FUN);
     let const_int = str_to_node(CONST_INT);
+    let ext_eq = str_to_node(EXT_EQ);
 
     let uint_xor = str_to_node(UINT_XOR);
     let uint_and = str_to_node(UINT_AND);
@@ -292,6 +293,36 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :qid prelude_has_type_strslice
             :skolemid skolem_prelude_has_type_strslice
         )))
+
+        // Extensional equality
+        {
+            if crate::context::DECORATE {
+                nodes!(declare-fun [ext_eq] (Bool [typ] [typ] [Poly] [Poly]) Bool)
+            } else {
+                nodes!(declare-fun [ext_eq] (Bool [typ] [Poly] [Poly]) Bool)
+            }
+        }
+        {
+            if crate::context::DECORATE {
+                nodes!(
+                    axiom (forall ((deep Bool) (t [typ]) (td [typ]) (x [Poly]) (y [Poly])) (!
+                        (= (= x y) ([ext_eq] deep t td x y))
+                        :pattern (([ext_eq] deep t td x y))
+                        :qid prelude_ext_eq
+                        :skolemid skolem_prelude_ext_eq
+                    ))
+                )
+            } else {
+                nodes!(
+                    axiom (forall ((deep Bool) (t [typ]) (x [Poly]) (y [Poly])) (!
+                        (= (= x y) ([ext_eq] deep t x y))
+                        :pattern (([ext_eq] deep t x y))
+                        :qid prelude_ext_eq
+                        :skolemid skolem_prelude_ext_eq
+                    ))
+                )
+            }
+        }
 
         // Integers
         // TODO: make this more configurable via options or HeaderExpr directives
