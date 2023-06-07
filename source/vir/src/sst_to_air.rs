@@ -1403,6 +1403,19 @@ fn assume_other_fields_unchanged_inner(
             let datatype_fields = &get_variant(&ctx.global.datatypes[datatype], variant).a;
             let dt =
                 vec_map_result(&**datatype_fields, |field: &Binder<(Typ, Mode, Visibility)>| {
+                    let base_exp = if let TypX::Boxed(base_typ) = &*undecorate_typ(&base.typ) {
+                        // TODO this replicates logic from poly, but factoring it out is currently tricky
+                        // because we don't have a representation for a variable used as a location in VIR
+                        if crate::poly::typ_is_poly(ctx, base_typ) {
+                            base.clone()
+                        } else {
+                            let op = UnaryOpr::Unbox(base_typ.clone());
+                            let exprx = ExpX::UnaryOpr(op, base.clone());
+                            SpannedTyped::new(&base.span, base_typ, exprx)
+                        }
+                    } else {
+                        base.clone()
+                    };
                     let field_exp = SpannedTyped::new(
                         stm_span,
                         &field.a.0,
@@ -1413,7 +1426,7 @@ fn assume_other_fields_unchanged_inner(
                                 field: field.name.clone(),
                                 get_variant: false,
                             }),
-                            base.clone(),
+                            base_exp,
                         ),
                     );
                     if let Some(further_updates) = updated_fields.get(&field.name) {
