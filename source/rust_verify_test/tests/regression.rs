@@ -452,3 +452,18 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] def_id_names_for_builtins_regression_588 ["no-auto-import-builtin"] => code! {
+        use vstd::{prelude::*, seq::*};
+
+        verus! {
+
+        spec fn pred(a: nat, s: Seq<int>) -> bool
+        {
+            a < s.len()
+        }
+
+        } // verus!
+    } => Ok(())
+}
