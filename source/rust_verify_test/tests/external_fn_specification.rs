@@ -1088,6 +1088,68 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] foreign_trait6 verus_code! {
+        pub enum Foo<T> {
+            One(T),
+            Two,
+        }
+
+        #[verifier::external]
+        impl<T> Default for Foo<T> {
+            fn default() -> Foo<T> {
+                Foo::Two
+            }
+        }
+
+        #[verifier(external_fn_specification)]
+        pub fn ex_foo_default<T>() -> (res: Foo<T>)
+            ensures res == Foo::<T>::Two
+        {
+            Foo::<T>::default()
+        }
+
+        fn test() {
+            let x = Foo::<u8>::default();
+            assert(x == Foo::<u8>::Two);
+        }
+
+        fn test2<T>() {
+            let x = Foo::<T>::default();
+            assert(x == Foo::<T>::Two);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] foreign_trait7 verus_code! {
+        pub enum Foo<T, U> {
+            One(T),
+            Two,
+            Three(U),
+        }
+
+        #[verifier::external]
+        impl<T, U> Default for Foo<T, U> {
+            fn default() -> Foo<T, U> {
+                Foo::Two
+            }
+        }
+
+        #[verifier(external_fn_specification)]
+        pub fn ex_foo_default<T, U>() -> (res: Foo<T, U>)
+            ensures res == Foo::<T, U>::Two
+        {
+            Foo::<T, U>::default()
+        }
+
+        fn test<T>() {
+            let x = Foo::<T, u8>::default();
+            assert(x == Foo::<T, u8>::Two);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] foreign_trait_use_self_1 verus_code! {
         #[verifier::external]
         trait Tr {
