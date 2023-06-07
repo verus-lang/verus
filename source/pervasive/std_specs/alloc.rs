@@ -36,6 +36,50 @@ impl<T, A: Allocator> VecAdditionalSpecFns<T> for Vec<T, A> {
     }
 }
 
+#[verifier::external]
+pub trait VecAdditionalExecFns<T> {
+    fn get(&self, i: usize) -> &T;
+    fn set(&mut self, i: usize, value: T);
+    fn set_and_swap(&mut self, i: usize, value: &mut T);
+}
+
+impl<T, A: Allocator> VecAdditionalExecFns<T> for Vec<T, A> {
+    /// Replacement for `self.index(i)` (which Verus does not support for technical reasons)
+
+    #[verifier::external_body]
+    fn get(&self, i: usize) -> (element: &T)
+        requires i < self.view().len(),
+        ensures *element == self.view().index(i as int)
+    {
+        &self[i]
+    }
+
+    /// Replacement for `self[i] = value;` (which Verus does not support for technical reasons)
+
+    #[verifier::external_body]
+    fn set(&mut self, i: usize, value: T)
+        requires
+            i < old(self).len(),
+        ensures
+            self@ == old(self)@.update(i as int, value),
+    {
+        self[i] = value;
+    }
+
+    /// Replacement for `swap(&mut self[i], &mut value)` (which Verus does not support for technical reasons)
+
+    #[verifier::external_body]
+    fn set_and_swap(&mut self, i: usize, value: &mut T)
+        requires
+            i < old(self).len(),
+        ensures
+            self@ == old(self)@.update(i as int, *old(value)),
+            *value == old(self)@.index(i as int)
+    {
+        core::mem::swap(&mut self[i], value);
+    }
+}
+
 ////// Len (with autospec)
 
 pub open spec fn spec_vec_len<T, A: Allocator>(v: &Vec<T, A>) -> usize;
@@ -108,16 +152,50 @@ pub fn ex_vec_pop<T, A: Allocator>(vec: &mut Vec<T, A>) -> (value: Option<T>)
 }
 
 /*
+// TODO find a way to support this
+// This is difficult because of the SliceIndex trait
+use std::ops::Index;
+
 #[verifier::external_fn_specification]
-pub fn index<T, A: Allocator>(vec: &Vec<T>, i: usize) -> (r: &A)
+pub fn index<T, A: Allocator>(vec: &Vec<T>, i: usize) -> (r: &T)
     requires
         i < vec.len(),
     ensures
         *r == vec[i as int],
 {
+
     vec.index(i)
 }
 */
+
+
+#[verifier::external_fn_specification]
+pub fn ex_vec_insert<T, A: Allocator>(vec: &mut Vec<T, A>, i: usize, element: T)
+    requires
+        i <= old(vec).len(),
+    ensures
+        vec@ == old(vec)@.insert(i as int, element),
+{
+    vec.insert(i, element)
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_vec_remove<T, A: Allocator>(vec: &mut Vec<T, A>, i: usize) -> (element: T)
+    requires
+        i < old(vec).len(),
+    ensures
+        element == old(vec)[i as int],
+        vec@ == old(vec)@.remove(i as int),
+{
+    vec.remove(i)
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_vec_clear<T, A: Allocator>(vec: &mut Vec<T, A>)
+    ensures vec.view() == Seq::<T>::empty(),
+{
+    vec.clear()
+}
 
 
 }
