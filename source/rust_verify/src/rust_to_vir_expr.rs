@@ -470,7 +470,15 @@ fn fn_call_to_vir<'tcx>(
     outer_modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
-    let f_name = tcx.def_path_str(f);
+    let f_name = {
+        let mut path_str = tcx.def_path_str(f);
+        // TODO REVIEW HACK this is a temporary hack to address https://github.com/verus-lang/verus/issues/588
+        // @utaal is working on a more long term solution that doesn't rely on string matching
+        if path_str.starts_with("vstd::prelude") {
+            path_str = path_str.replace("vstd::prelude", "builtin");
+        }
+        path_str
+    };
 
     let is_admit = f_name == "builtin::admit";
     let is_no_method_body = f_name == "builtin::no_method_body";
