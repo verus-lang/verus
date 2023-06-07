@@ -6,6 +6,7 @@ use builtin_macros::*;
 
 verus! {
 
+#[deprecated(note="Use std::result::Result instead")]
 #[is_variant]
 pub enum Result<T, E> {
     Ok(T),
