@@ -123,6 +123,12 @@ impl<V> Multiset<V> {
     pub open spec fn choose(self) -> V {
         choose|v: V| self.count(v) > 0
     }
+
+    /// Predicate indicating if the multiset contains the given value.
+
+    pub open spec fn contains(self, v: V) -> bool {
+        self.count(v) > 0
+    }
 }
 
 // Specification of `empty`
