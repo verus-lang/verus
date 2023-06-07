@@ -277,6 +277,25 @@ pub(crate) fn mk_range<'tcx>(tcx: TyCtxt<'tcx>, ty: &rustc_middle::ty::Ty<'tcx>)
     }
 }
 
+pub(crate) fn ty_is_global_allocator<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    ty: &rustc_middle::ty::Ty<'tcx>,
+) -> bool {
+    match ty.kind() {
+        TyKind::Adt(AdtDef(adt_def_data), args) => {
+            let did = adt_def_data.did;
+            let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(tcx, did));
+            if def_name == "alloc::alloc::Global" {
+                assert!(args.len() == 0);
+                true
+            } else {
+                false
+            }
+        }
+        _ => false,
+    }
+}
+
 pub(crate) fn mid_ty_simplify<'tcx>(
     tcx: TyCtxt<'tcx>,
     ty: &rustc_middle::ty::Ty<'tcx>,
@@ -387,6 +406,16 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                 }
                 if Some(did) == tcx.lang_items().owned_box() && typ_args.len() == 2 {
                     let (t0, ghost) = &typ_args[0];
+
+                    let allocator_arg = match args[1].unpack() {
+                        rustc_middle::ty::subst::GenericArgKind::Type(t) => t,
+                        _ => {
+                            panic!("Box expected type arg");
+                        }
+                    };
+                    if !ty_is_global_allocator(tcx, &allocator_arg) {
+                        unsupported_err!(span, "Box with allocator other than Global")
+                    }
                     return Ok((Arc::new(TypX::Decorate(TypDecoration::Box, t0.clone())), *ghost));
                 }
                 if typ_args.len() == 1 {

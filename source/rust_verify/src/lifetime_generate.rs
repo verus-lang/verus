@@ -332,10 +332,21 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
             let did = adt_def_data.did;
             state.reach_datatype(ctxt, did);
             let path = def_id_to_vir_path(ctxt.tcx, did);
-            let is_box = Some(did) == ctxt.tcx.lang_items().owned_box() && args.len() == 2;
+
+            let is_box = Some(did) == ctxt.tcx.lang_items().owned_box();
             let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(ctxt.tcx, did));
             let is_smart_ptr = def_name == "alloc::rc::Rc" || def_name == "alloc::sync::Arc";
             let mut typ_args: Vec<Typ> = Vec::new();
+
+            let args = if is_box {
+                // For Box, skip the second argument (the Allocator)
+                // which is currently restricted to always be `Global`.
+                assert!(args.len() == 2);
+                &args[0..1]
+            } else {
+                &args
+            };
+
             for arg in args.iter() {
                 match arg.unpack() {
                     rustc_middle::ty::subst::GenericArgKind::Type(t) => {
@@ -362,9 +373,6 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
                 }
             }
             let datatype_name = if is_box || is_smart_ptr {
-                if is_box {
-                    typ_args.pop();
-                }
                 assert!(typ_args.len() == 1);
                 let name = path.segments.last().expect("builtin").to_string();
                 Id::new(IdKind::Builtin, 0, name)
@@ -1928,13 +1936,6 @@ fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) 
             DatatypeTransparency::WhenVisible(_) => false,
         },
         None => {
-            if def_name == "alloc::alloc::Global" {
-                // vstd marks `Global` as an external_body type.
-                // However, even for --no-vstd cases, Global can appear if the user
-                // uses Box. Special case this.
-                return;
-            }
-
             dbg!(id);
             panic!("erase_mir_datatype: unrecognized datatype");
         }
