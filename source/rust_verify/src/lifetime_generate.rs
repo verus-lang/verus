@@ -84,6 +84,7 @@ pub(crate) struct State {
     pub(crate) datatype_decls: Vec<DatatypeDecl>,
     pub(crate) const_decls: Vec<ConstDecl>,
     pub(crate) fun_decls: Vec<FunDecl>,
+    enclosing_fun_id: Option<DefId>,
 }
 
 impl State {
@@ -102,6 +103,7 @@ impl State {
             datatype_decls: Vec::new(),
             const_decls: Vec::new(),
             fun_decls: Vec::new(),
+            enclosing_fun_id: None,
         }
     }
 
@@ -633,7 +635,7 @@ fn erase_call<'tcx>(
             let mut node_substs = node_substs;
             let mut fn_def_id = fn_def_id.expect("call id");
 
-            let param_env = ctxt.tcx.param_env(fn_def_id);
+            let param_env = ctxt.tcx.param_env(state.enclosing_fun_id.unwrap());
             let normalized_substs = ctxt.tcx.normalize_erasing_regions(param_env, node_substs);
             let inst = rustc_middle::ty::Instance::resolve(
                 ctxt.tcx,
@@ -1472,7 +1474,9 @@ fn erase_fn_common<'tcx>(
             force_block(Some(Box::new((sig_span, ExpX::Panic))), sig_span)
         } else {
             let body = &body.expect("body");
+            state.enclosing_fun_id = Some(id);
             let body_exp = erase_expr(ctxt, state, expect_spec, &body.value);
+            state.enclosing_fun_id = None;
             if empty_body {
                 if let Some(_) = body_exp {
                     panic!("expected empty method body")

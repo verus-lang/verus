@@ -1250,3 +1250,51 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_foreign_trait_and_trait_bound verus_code! {
+        struct Ve<A, B> { a: A, b: B }
+        struct Gl { }
+
+        #[verifier::external]
+        trait Al { }
+
+        impl Al for Gl { }
+
+        #[verifier::external]
+        pub trait SomeTr<T> {
+            fn gget(&self, i: usize) -> &T;
+            fn set(&mut self, i: usize, value: T);
+            fn set_and_swap(&mut self, i: usize, value: &mut T);
+        }
+
+        impl<T, A: Al> SomeTr<T> for Ve<T, A> {
+            #[verifier::external_body]
+            fn gget(&self, i: usize) -> (element: &T)
+                requires i == 0
+            {
+                unimplemented!();
+            }
+
+            #[verifier::external_body]
+            fn set(&mut self, i: usize, value: T)
+            {
+                unimplemented!();
+            }
+
+            #[verifier::external_body]
+            fn set_and_swap(&mut self, i: usize, value: &mut T)
+            {
+                unimplemented!();
+            }
+        }
+
+        fn test<T>(v: Ve<T, Gl>) {
+            let x = v.gget(0);
+        }
+
+        fn test2<T>(v: Ve<T, Gl>) {
+            let x = v.gget(1); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
