@@ -7,8 +7,7 @@ use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::rust_to_vir_base::{
     def_id_self_to_vir_path, def_id_self_to_vir_path_expect, def_id_to_vir_path, get_range,
     is_smt_arith, is_smt_equality, is_type_std_rc_or_arc_or_ref, local_to_var, mid_ty_simplify,
-    mid_ty_to_vir, mid_ty_to_vir_datatype, mid_ty_to_vir_ghost, mk_range, typ_of_node,
-    typ_of_node_expect_mut_ref,
+    mid_ty_to_vir, mid_ty_to_vir_ghost, mk_range, typ_of_node, typ_of_node_expect_mut_ref,
 };
 use crate::util::{err_span, slice_vec_map_result, unsupported_err_span, vec_map, vec_map_result};
 use crate::{unsupported_err, unsupported_err_unless};
@@ -461,7 +460,6 @@ const BUILTIN_INV_END: &str = "invariant::open_invariant_end";
 fn fn_call_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
-    self_path: Option<vir::ast::Path>,
     f: DefId,
     node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::subst::GenericArg<'tcx>>,
     fn_span: Span,
@@ -740,13 +738,16 @@ fn fn_call_to_vir<'tcx>(
 
     let is_get_variant = {
         let fn_attrs = if f.as_local().is_some() {
-            if let Some(rustc_hir::Node::ImplItem(
-                impl_item @ rustc_hir::ImplItem { kind: rustc_hir::ImplItemKind::Fn(..), .. },
-            )) = tcx.hir().get_if_local(f)
-            {
-                Some(bctx.ctxt.tcx.hir().attrs(impl_item.hir_id()))
-            } else {
-                None
+            match tcx.hir().get_if_local(f) {
+                Some(rustc_hir::Node::ImplItem(
+                    impl_item @ rustc_hir::ImplItem {
+                        kind: rustc_hir::ImplItemKind::Fn(..), ..
+                    },
+                )) => Some(bctx.ctxt.tcx.hir().attrs(impl_item.hir_id())),
+                Some(rustc_hir::Node::Item(
+                    item @ rustc_hir::Item { kind: rustc_hir::ItemKind::Fn(..), .. },
+                )) => Some(bctx.ctxt.tcx.hir().attrs(item.hir_id())),
+                _ => None,
             }
         } else {
             Some(bctx.ctxt.tcx.item_attrs(f))
@@ -1282,7 +1283,7 @@ fn fn_call_to_vir<'tcx>(
         Some((variant_name, None)) => {
             return mk_expr(ExprX::UnaryOpr(
                 UnaryOpr::IsVariant {
-                    datatype: self_path.expect("not builtin"),
+                    datatype: variant_fn_get_datatype(tcx, f, expr.span)?,
                     variant: str_ident(&variant_name),
                 },
                 vir_args.into_iter().next().expect("missing arg for is_variant"),
@@ -1292,7 +1293,7 @@ fn fn_call_to_vir<'tcx>(
             let variant_name_ident = str_ident(&variant_name);
             return mk_expr(ExprX::UnaryOpr(
                 UnaryOpr::Field(FieldOpr {
-                    datatype: self_path.clone().expect("not builtin"),
+                    datatype: variant_fn_get_datatype(tcx, f, expr.span)?,
                     variant: variant_name_ident.clone(),
                     field: match variant_field {
                         GetVariantField::Named(n) => str_ident(&n),
@@ -1650,6 +1651,31 @@ fn fn_call_to_vir<'tcx>(
         let target = CallTarget::Fun(target_kind, name, typ_args, autospec_usage);
         Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, ExprX::Call(target, Arc::new(vir_args))))
     }
+}
+
+fn variant_fn_get_datatype<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    f: DefId,
+    span: Span,
+) -> Result<vir::ast::Path, VirErr> {
+    let fn_sig = tcx.fn_sig(f);
+    let fn_sig = fn_sig.skip_binder();
+    let inputs = fn_sig.inputs();
+    if inputs.len() == 1 {
+        let vir_ty = &*mid_ty_to_vir(tcx, span, &inputs[0], false)?;
+        let vir_ty = match &*vir_ty {
+            TypX::Decorate(_, ty) => ty,
+            _ => vir_ty,
+        };
+        match &*vir_ty {
+            TypX::Datatype(path, _typs) => {
+                return Ok(path.clone());
+            }
+            _ => {}
+        }
+    }
+
+    return err_span(span, "invalid is_variant call (possibly a bug with is_variant macro)");
 }
 
 /// Gets the DefId of the AdtDef for this Res and the Variant
@@ -2329,7 +2355,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 )),
                 ExprKind::Path(qpath) => {
                     let res = bctx.types.qpath_res(&qpath, fun.hir_id);
-                    let self_path = call_self_path(bctx.ctxt.tcx, &bctx.types, qpath);
                     match res {
                         // A datatype constructor
                         rustc_hir::def::Res::Def(DefKind::Ctor(_, _), _)
@@ -2349,7 +2374,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             Some(fn_call_to_vir(
                                 bctx,
                                 expr,
-                                self_path,
                                 def_id,
                                 bctx.types.node_substs(fun.hir_id),
                                 fun.span,
@@ -2968,16 +2992,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             mk_expr(ExprX::Ctor(path, variant_name, vir_fields, update))
         }
         ExprKind::MethodCall(_name_and_generics, receiver, other_args, fn_span) => {
-            let receiver_typ = mid_ty_to_vir_datatype(
-                bctx.ctxt.tcx,
-                receiver.span,
-                bctx.types.node_type(receiver.hir_id),
-                true,
-            )?;
-            let self_path = match &*undecorate_typ(&receiver_typ) {
-                TypX::Datatype(path, _) => Some(path.clone()),
-                _ => None,
-            };
             let fn_def_id = bctx
                 .types
                 .type_dependent_def_id(expr.hir_id)
@@ -3070,7 +3084,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             fn_call_to_vir(
                 bctx,
                 expr,
-                self_path,
                 fn_def_id,
                 bctx.types.node_substs(expr.hir_id),
                 *fn_span,

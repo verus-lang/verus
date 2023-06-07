@@ -11,13 +11,15 @@ use crate::context::Context;
 use crate::def::{get_variant_fn_name, is_variant_fn_name};
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
 use crate::rust_to_vir_base::{
-    check_generic_bound, check_generics_bounds, def_id_to_vir_path, fn_item_hir_id_to_self_def_id,
-    hack_get_def_name, mid_ty_to_vir, mk_visibility, typ_path_and_ident_to_vir_path,
+    check_generic_bound, check_generics_bounds, def_id_to_vir_path, hack_get_def_name,
+    mid_ty_to_vir, mk_visibility, typ_path_and_ident_to_vir_path,
 };
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn, CheckItemFnEither};
 use crate::util::{err_span, unsupported_err_span};
 use crate::{err_unless, unsupported_err, unsupported_err_unless};
+use rustc_ast::Attribute;
 
+use crate::attributes::VerifierAttrs;
 use rustc_ast::IsAuto;
 use rustc_hir::{
     AssocItemKind, ForeignItem, ForeignItemId, ForeignItemKind, ImplItemKind, Item, ItemId,
@@ -74,19 +76,30 @@ fn check_item<'tcx>(
     let visibility = || mk_visibility(ctxt, item.owner_id.to_def_id());
     match &item.kind {
         ItemKind::Fn(sig, generics, body_id) => {
-            check_item_fn(
-                ctxt,
-                &mut vir.functions,
-                item.owner_id.to_def_id(),
-                FunctionKind::Static,
-                visibility(),
-                &module_path(),
-                ctxt.tcx.hir().attrs(item.hir_id()),
-                sig,
-                None,
-                generics,
-                CheckItemFnEither::BodyId(body_id),
-            )?;
+            if vattrs.is_variant.is_some() || vattrs.get_variant.is_some() {
+                check_fn_variant(
+                    ctxt,
+                    attrs,
+                    &vattrs,
+                    item.owner_id.to_def_id(),
+                    item.ident.as_str(),
+                    sig.span,
+                )?;
+            } else {
+                check_item_fn(
+                    ctxt,
+                    &mut vir.functions,
+                    item.owner_id.to_def_id(),
+                    FunctionKind::Static,
+                    visibility(),
+                    &module_path(),
+                    ctxt.tcx.hir().attrs(item.hir_id()),
+                    sig,
+                    None,
+                    generics,
+                    CheckItemFnEither::BodyId(body_id),
+                )?;
+            }
         }
         ItemKind::Use { .. } => {}
         ItemKind::ExternCrate { .. } => {}
@@ -274,48 +287,14 @@ fn check_item<'tcx>(
                                 let fn_vattrs = get_verifier_attrs(fn_attrs)?;
                                 if fn_vattrs.is_variant.is_some() || fn_vattrs.get_variant.is_some()
                                 {
-                                    let find_variant = |variant_name: &str| {
-                                        fn_item_hir_id_to_self_def_id(ctxt.tcx, impl_item.hir_id())
-                                            .map(|self_def_id| ctxt.tcx.adt_def(self_def_id))
-                                            .and_then(|adt| {
-                                                adt.variants().iter().find(|v| {
-                                                    v.ident(ctxt.tcx).as_str() == variant_name
-                                                })
-                                            })
-                                    };
-                                    let valid = if let Some(variant_name) = fn_vattrs.is_variant {
-                                        find_variant(&variant_name).is_some()
-                                            && impl_item.ident.as_str()
-                                                == is_variant_fn_name(&variant_name)
-                                    } else if let Some((variant_name, field_name)) =
-                                        fn_vattrs.get_variant
-                                    {
-                                        let field_name_str = match field_name {
-                                            GetVariantField::Unnamed(i) => format!("{}", i),
-                                            GetVariantField::Named(n) => n,
-                                        };
-                                        find_variant(&variant_name)
-                                            .and_then(|variant| {
-                                                variant.fields.iter().find(|f| {
-                                                    f.ident(ctxt.tcx).as_str()
-                                                        == field_name_str.as_str()
-                                                })
-                                            })
-                                            .is_some()
-                                            && impl_item.ident.as_str()
-                                                == get_variant_fn_name(
-                                                    &variant_name,
-                                                    &field_name_str,
-                                                )
-                                    } else {
-                                        unreachable!()
-                                    };
-                                    if !valid || get_mode(Mode::Exec, fn_attrs) != Mode::Spec {
-                                        return err_span(
-                                            sig.span,
-                                            "invalid is_variant function, do not use #[verifier(is_variant)] directly, use the #[is_variant] macro instead",
-                                        );
-                                    }
+                                    check_fn_variant(
+                                        ctxt,
+                                        fn_attrs,
+                                        &fn_vattrs,
+                                        impl_item.owner_id.to_def_id(),
+                                        impl_item.ident.as_str(),
+                                        sig.span,
+                                    )?;
                                 } else {
                                     let kind = if let Some((trait_path, trait_typ_args)) =
                                         trait_path_typ_args.clone()
@@ -553,6 +532,63 @@ fn check_item<'tcx>(
             unsupported_err!(item.span, "unsupported item", item);
         }
     }
+    Ok(())
+}
+
+fn check_fn_variant<'tcx>(
+    ctxt: &Context<'tcx>,
+    fn_attrs: &[Attribute],
+    fn_vattrs: &VerifierAttrs,
+    item_id: rustc_hir::def_id::DefId,
+    item_ident: &str,
+    span: rustc_span::Span,
+) -> Result<(), VirErr> {
+    let find_variant = |variant_name: &str| {
+        let fn_sig = ctxt.tcx.fn_sig(item_id);
+        let fn_sig = fn_sig.skip_binder();
+        let inputs = fn_sig.inputs();
+        if inputs.len() != 1 {
+            None
+        } else {
+            let ty = inputs[0];
+            let ty = match ty.kind() {
+                rustc_middle::ty::TyKind::Ref(_, t, rustc_ast::Mutability::Not) => t,
+                _ => &ty,
+            };
+            match ty.kind() {
+                rustc_middle::ty::TyKind::Adt(adt, _) => {
+                    adt.variants().iter().find(|v| v.ident(ctxt.tcx).as_str() == variant_name)
+                }
+                _ => None,
+            }
+        }
+    };
+    let valid = if let Some(variant_name) = &fn_vattrs.is_variant {
+        find_variant(&variant_name).is_some() && item_ident == is_variant_fn_name(&variant_name)
+    } else if let Some((variant_name, field_name)) = &fn_vattrs.get_variant {
+        let field_name_str = match field_name {
+            GetVariantField::Unnamed(i) => format!("{}", i),
+            GetVariantField::Named(n) => n.to_string(),
+        };
+        find_variant(&variant_name)
+            .and_then(|variant| {
+                variant
+                    .fields
+                    .iter()
+                    .find(|f| f.ident(ctxt.tcx).as_str() == field_name_str.as_str())
+            })
+            .is_some()
+            && item_ident == get_variant_fn_name(&variant_name, &field_name_str)
+    } else {
+        unreachable!()
+    };
+    if !valid || get_mode(Mode::Exec, fn_attrs) != Mode::Spec {
+        return err_span(
+            span,
+            "invalid is_variant function, do not use #[verifier(is_variant)] directly, use the #[is_variant] macro instead",
+        );
+    }
+
     Ok(())
 }
 
