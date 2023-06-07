@@ -873,4 +873,6 @@ pub struct KrateX {
     pub module_ids: Vec<Path>,
     /// List of all 'external' functions in the crate (only useful for diagnostics)
     pub external_fns: Vec<Fun>,
+    /// Map rustc-based internal paths to friendlier names for error messages
+    pub path_as_rust_names: Vec<(Path, String)>,
 }

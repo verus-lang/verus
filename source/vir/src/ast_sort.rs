@@ -17,7 +17,8 @@ pub fn sort_krate(krate: &Krate) -> Krate {
     // - otherwise, modules are ordered as they appear in the crate
     // - all items from a module are grouped together
 
-    let KrateX { functions, datatypes, traits, module_ids, external_fns } = &**krate;
+    let KrateX { functions, datatypes, traits, module_ids, external_fns, path_as_rust_names } =
+        &**krate;
     let mut functions = functions.clone();
     let mut datatypes = datatypes.clone();
     let traits = traits.clone();
@@ -46,5 +47,12 @@ pub fn sort_krate(krate: &Krate) -> Krate {
             .cmp(&module_order.get(&i2.x.visibility.owning_module))
     });
 
-    Arc::new(KrateX { functions, datatypes, traits, module_ids, external_fns })
+    Arc::new(KrateX {
+        functions,
+        datatypes,
+        traits,
+        module_ids,
+        external_fns,
+        path_as_rust_names: path_as_rust_names.clone(),
+    })
 }
