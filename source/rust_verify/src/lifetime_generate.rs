@@ -1928,6 +1928,13 @@ fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) 
             DatatypeTransparency::WhenVisible(_) => false,
         },
         None => {
+            if def_name == "alloc::alloc::Global" {
+                // vstd marks `Global` as an external_body type.
+                // However, even for --no-vstd cases, Global can appear if the user
+                // uses Box. Special case this.
+                return;
+            }
+
             dbg!(id);
             panic!("erase_mir_datatype: unrecognized datatype");
         }
