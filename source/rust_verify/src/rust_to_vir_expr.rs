@@ -3078,25 +3078,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             )
         }
         ExprKind::Closure(..) => closure_to_vir(bctx, expr, expr_typ()?, false, modifier),
-        ExprKind::Index(tgt_expr, idx_expr) => {
-            let tgt_vir = expr_to_vir(bctx, tgt_expr, modifier)?;
-            if let TypX::Datatype(path, _dt_typs) = &*undecorate_typ(&tgt_vir.typ) {
-                let tgt_index_path = {
-                    let mut tp = path.clone();
-                    Arc::make_mut(&mut Arc::make_mut(&mut tp).segments).push(str_ident("index"));
-                    tp
-                };
-                let idx_vir = expr_to_vir(bctx, idx_expr, modifier)?;
-                let target = CallTarget::Fun(
-                    vir::ast::CallTargetKind::Static,
-                    Arc::new(FunX { path: tgt_index_path }),
-                    Arc::new(vec![]),
-                    AutospecUsage::Final,
-                );
-                mk_expr(ExprX::Call(target, Arc::new(vec![tgt_vir, idx_vir])))
-            } else {
-                unsupported_err!(expr.span, format!("Index on non-datatype"), expr)
-            }
+        ExprKind::Index(_tgt_expr, _idx_expr) => {
+            unsupported_err!(
+                expr.span,
+                "index operator (except in ghost code, via the verus! macro"
+            )
         }
         ExprKind::AddrOf(..) => {
             unsupported_err!(expr.span, format!("complex address-of expressions"))
