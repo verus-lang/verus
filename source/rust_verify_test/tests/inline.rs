@@ -173,3 +173,18 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] inline_poly verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::inline]
+        spec fn all_contains<A>(s1: Set<A>) -> bool {
+            forall|a: A| s1.contains(a)
+        }
+
+        proof fn failing_proof(s: Set<int>) {
+            assert(all_contains(s)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

@@ -226,6 +226,7 @@ impl<'a> State<'a> {
                         assert!(typ_bounds.len() == typs.len());
                         for ((name, _), typ) in typ_bounds.iter().zip(typs.iter()) {
                             assert!(!typ_substs.contains_key(name));
+                            let typ = crate::poly::coerce_typ_to_poly(ctx, typ);
                             typ_substs.insert(name.clone(), typ.clone());
                         }
                         assert!(params.len() == args.len());
