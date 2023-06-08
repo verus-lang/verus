@@ -1,0 +1,14 @@
+[workspace]
+members = [
+]
+
+[package]
+name = "error_report"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+toml = "0.4.2"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
