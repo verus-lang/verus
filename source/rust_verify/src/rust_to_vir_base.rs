@@ -106,23 +106,27 @@ pub(crate) fn fn_item_hir_id_to_self_def_id<'tcx>(
     }
 }
 
-fn get_function_def_impl_item_node<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    hir_id: rustc_hir::HirId,
-) -> Option<(&'tcx rustc_hir::FnSig<'tcx>, &'tcx rustc_hir::BodyId)> {
+// Register an alternative "friendly" paths for printing better error messages
+// or for the command-line --verify-function arguments.
+fn register_friendly_path_as_rust_name<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId, path: &Path) {
+    let hir_id = if let Some(local_id) = def_id.as_local() {
+        tcx.hir().local_def_id_to_hir_id(local_id)
+    } else {
+        return;
+    };
     let node = tcx.hir().get(hir_id);
-    match node {
+    let is_impl_item_fn = matches!(
+        node,
         rustc_hir::Node::ImplItem(rustc_hir::ImplItem {
-            kind: rustc_hir::ImplItemKind::Fn(fn_sig, body_id),
+            kind: rustc_hir::ImplItemKind::Fn(..),
             ..
-        }) => Some((fn_sig, body_id)),
-        _ => None,
+        })
+    );
+    if !is_impl_item_fn {
+        return;
     }
-}
-
-fn fn_item_hir_id_to_self_path<'tcx>(tcx: TyCtxt<'tcx>, hir_id: HirId) -> Option<Path> {
     let parent_node = tcx.hir().get_parent(hir_id);
-    match parent_node {
+    let friendly_self_ty = match parent_node {
         rustc_hir::Node::Item(rustc_hir::Item {
             kind: rustc_hir::ItemKind::Impl(impll),
             owner_id,
@@ -141,7 +145,7 @@ fn fn_item_hir_id_to_self_path<'tcx>(tcx: TyCtxt<'tcx>, hir_id: HirId) -> Option
                 let vir_ty = if let Ok(t) = vir_ty {
                     t
                 } else {
-                    return None;
+                    return;
                 };
                 match &*vir_ty.0 {
                     TypX::Datatype(p, _typ_args) => Some(p.clone()),
@@ -150,6 +154,11 @@ fn fn_item_hir_id_to_self_path<'tcx>(tcx: TyCtxt<'tcx>, hir_id: HirId) -> Option
             }
         },
         _ => None,
+    };
+    if let Some(ty_path) = friendly_self_ty {
+        let friendly_path =
+            typ_path_and_ident_to_vir_path(&ty_path, def_to_path_ident(tcx, def_id));
+        vir::ast_util::set_path_as_rust_name(path, &friendly_path);
     }
 }
 
@@ -176,16 +185,7 @@ pub(crate) fn def_id_self_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) ->
     }
     let path = def_path_to_vir_path(tcx, tcx.def_path(def_id));
     if let Some(path) = &path {
-        if let Some(local_id) = def_id.as_local() {
-            let hir = tcx.hir().local_def_id_to_hir_id(local_id);
-            if get_function_def_impl_item_node(tcx, hir).is_some() {
-                if let Some(ty_path) = fn_item_hir_id_to_self_path(tcx, hir) {
-                    let friendly_path =
-                        typ_path_and_ident_to_vir_path(&ty_path, def_to_path_ident(tcx, def_id));
-                    vir::ast_util::set_path_as_rust_name(path, &friendly_path);
-                }
-            }
-        }
+        register_friendly_path_as_rust_name(tcx, def_id, path);
     }
     path
 }
