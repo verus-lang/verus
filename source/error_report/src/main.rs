@@ -86,8 +86,18 @@ fn main() {
 
     // TODO: see above
     // probably change to file name?
-    let mut file = File::create("error_report.toml").expect("Unable to create file");
+    write_toml(msg1, msg2);
 
+    let d_file_name = create_zip(file_path);
+
+    // TODO: delete .d file and .toml file
+    clean_up(d_file_name);
+}
+
+fn write_toml(msg1: std::process::Output, msg2: std::process::Output)
+{
+    let mut file = File::create("error_report.toml").expect("Unable to create file");
+    
     write!(file, "{}", "Z3 version output:\n").unwrap();
     file.write(&msg1.stdout).unwrap();
 
@@ -96,18 +106,28 @@ fn main() {
 
     write!(file, "{}", "\nverus stderr:\n").unwrap();
     file.write(&msg2.stderr).unwrap();
+}
+
+pub fn create_zip(file_path: String) -> String
+{
+    // LATER
+    // zip might need to be a higher level rust implementation that is platform independent
+    // maybe this library? https://crates.io/crates/zip
+
+    // file path  blabla/bar.rs -> blabla/bar.d
+    // let cur_dir = env::current_dir().expect("invalid directory");
 
     let file_name_path = Path::new(&file_path);
 
     // dep_file_path.truncate(dep_file_path.len() - 3);
-    // v "main.rs"
+      // v "main.rs"
     let temp_file_name = &file_name_path.file_name().unwrap().to_string_lossy();
-
     let mut d_file_name = String::new();
     d_file_name.push_str(&temp_file_name.to_string()[..]);
-    d_file_name = d_file_name[..d_file_name.len() - 2].to_string();
-    d_file_name.push('d');
+    d_file_name = d_file_name[..d_file_name.len()-2].to_string();
+    d_file_name.push_str("d");
 
+    println!("{}", d_file_name);
     let mut deps = d_to_vec(d_file_name.to_string());
     deps.push("error_report.toml".to_string());
 
@@ -116,18 +136,13 @@ fn main() {
     // accessed by the #[path = ""] attribute
     // let path = env::current_dir().expect("invalid directory");
 
-    // LATER
-    // zip might need to be a higher level rust implementation that is platform independent
-    // maybe this library? https://crates.io/crates/zip
-
     Command::new("zip")
-        .arg("errorReport.zip")
-        .args(deps)
-        .output()
-        .expect("failed to execute process");
+                .arg("errorReport.zip")
+                .args(deps)
+                .output()
+                .expect("failed to execute process");
 
-    // TODO: delete .d file and .toml file
-    clean_up(d_file_name);
+    d_file_name
 }
 
 fn clean_up(d_file_name: String) {
