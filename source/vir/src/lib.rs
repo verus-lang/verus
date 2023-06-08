@@ -43,7 +43,7 @@ pub mod def;
 mod early_exit_cf;
 pub mod func_to_air;
 pub mod headers;
-mod interpreter;
+pub mod interpreter;
 mod inv_masks;
 pub mod modes;
 pub mod poly;

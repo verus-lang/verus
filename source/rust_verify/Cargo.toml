@@ -15,6 +15,7 @@ sise = "0.6.0"
 num-bigint = "0.4.3"
 num-format = "0.4.0"
 getopts = { git = "https://github.com/utaal/getopts.git", branch = "parse-partial" }
+regex = "1"
 
 verus_rustc_driver = { path = "../../dependencies/rustc_driver" }
 verus_rustc_interface = { path = "../../dependencies/rustc_interface" }
@@ -24,7 +25,6 @@ win32job = "1"
 
 [dev-dependencies]
 rust_verify_test_macros = { path = "../rust_verify_test_macros" }
-regex = "1"
 
 [features]
 singular = ["vir/singular", "air/singular"]

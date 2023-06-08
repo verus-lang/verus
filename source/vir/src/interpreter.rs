@@ -637,7 +637,8 @@ fn display_perf_stats(state: &State) {
  * Special handling for interpreting sequences *
  ***********************************************/
 
-enum SeqFn {
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
+pub enum SeqFn {
     Empty,
     New,
     Push,

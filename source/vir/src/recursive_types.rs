@@ -2,7 +2,7 @@ use crate::ast::{
     AcceptRecursiveType, Datatype, FunctionKind, GenericBoundX, Ident, Krate, Path, Trait, Typ,
     TypX, VirErr,
 };
-use crate::ast_util::{error, path_as_rust_name};
+use crate::ast_util::{error, path_as_friendly_rust_name};
 use crate::context::GlobalCtx;
 use crate::recursion::Node;
 use crate::scc::Graph;
@@ -181,8 +181,8 @@ fn check_positive_uses(
                             &local.span,
                             format!(
                                 "Type {} recursively uses type {} in a non-positive position",
-                                path_as_rust_name(&local.my_datatype),
-                                path_as_rust_name(path)
+                                path_as_friendly_rust_name(&local.my_datatype),
+                                path_as_friendly_rust_name(path)
                             ),
                         );
                     }

@@ -27,7 +27,7 @@ pub fn demote_foreign_traits(krate: &Krate) -> Result<Krate, VirErr> {
                         &function.span,
                         format!(
                             "cannot use trait {} from another crate as a bound",
-                            crate::ast_util::path_as_rust_name(trait_path)
+                            crate::ast_util::path_as_friendly_rust_name(trait_path)
                         ),
                     );
                 }

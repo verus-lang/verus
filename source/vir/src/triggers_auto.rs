@@ -2,7 +2,7 @@ use crate::ast::{
     BinaryOp, BitwiseOp, Constant, FieldOpr, Fun, Ident, Path, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
     VirErr,
 };
-use crate::ast_util::{error, path_as_rust_name};
+use crate::ast_util::{error, path_as_friendly_rust_name};
 use crate::context::{ChosenTriggers, Ctx, FunctionCtx};
 use crate::sst::{CallFun, Exp, ExpX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map;
@@ -69,9 +69,9 @@ impl std::fmt::Debug for TermX {
             TermX::App(App::Field(_, x, y), es) => write!(f, "{:?}.{}/{}", es[0], x, y),
             TermX::App(c @ (App::Call(_) | App::Ctor(_, _)), es) => {
                 match c {
-                    App::Call(x) => write!(f, "{}(", path_as_rust_name(&x.path))?,
+                    App::Call(x) => write!(f, "{}(", path_as_friendly_rust_name(&x.path))?,
                     App::Ctor(path, variant) => {
-                        write!(f, "{}::{}(", path_as_rust_name(path), variant)?
+                        write!(f, "{}::{}(", path_as_friendly_rust_name(path), variant)?
                     }
                     _ => unreachable!(),
                 }
