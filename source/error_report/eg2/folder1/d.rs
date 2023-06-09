@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 
 verus! {
-    pub open spec fn b() -> bool {
+    pub open spec fn d() -> bool {
         true
     }
 }
