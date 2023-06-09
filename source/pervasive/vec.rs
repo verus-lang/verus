@@ -164,7 +164,7 @@ impl<A> Vec<A> {
     #[verifier(external_body)]
     pub fn append(&mut self, other: &mut Vec<A>)
         ensures
-            self@ == old(self)@ + other@,
+            self@ == old(self)@ + old(other)@,
             other@ == Seq::<A>::empty()
     {
         self.vec.append(&mut other.vec);
