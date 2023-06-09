@@ -155,6 +155,10 @@ impl PartialEq for BinOp {
             (BinOp::Exply(_), BinOp::Exply(_)) => true,
             (BinOp::BigEq(_), BinOp::BigEq(_)) => true,
             (BinOp::BigNe(_), BinOp::BigNe(_)) => true,
+            (BinOp::ExtEq(_), BinOp::ExtEq(_)) => true,
+            (BinOp::ExtNe(_), BinOp::ExtNe(_)) => true,
+            (BinOp::ExtDeepEq(_), BinOp::ExtDeepEq(_)) => true,
+            (BinOp::ExtDeepNe(_), BinOp::ExtDeepNe(_)) => true,
             _ => false,
         }
     }

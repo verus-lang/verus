@@ -1,6 +1,11 @@
-use crate::ast::{Fun, Function, FunctionKind, GenericBoundX, Krate, Path, VirErr};
+use crate::ast::{
+    CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, GenericBoundX, Ident,
+    Krate, Mode, Path, Typ, VirErr,
+};
 use crate::ast_util::error;
 use crate::def::Spanned;
+use air::ast::Span;
+use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -38,11 +43,82 @@ pub fn demote_foreign_traits(krate: &Krate) -> Result<Krate, VirErr> {
                 retx.name = decl.x.ret.x.name.clone();
                 functionx.ret = Spanned::new(functionx.ret.span.clone(), retx);
             } else {
+                check_modes(function, &function.span)?;
                 functionx.kind = FunctionKind::Static;
             }
             *function = Spanned::new(function.span.clone(), functionx);
         }
+
+        if let FunctionKind::ForeignTraitMethodImpl(trait_path) = &function.x.kind {
+            let our_trait = traits.contains(trait_path);
+            let mut functionx = function.x.clone();
+            if our_trait {
+                return error(
+                    &function.x.proxy.as_ref().unwrap().span,
+                    "external_fn_specification can only be used on trait functions when the trait itself is external",
+                );
+            } else {
+                check_modes(function, &function.x.proxy.as_ref().unwrap().span)?;
+                functionx.kind = FunctionKind::Static;
+            }
+            *function = Spanned::new(function.span.clone(), functionx);
+        }
+
+        let mut map: ScopeMap<Ident, Typ> = ScopeMap::new();
+        *function = crate::ast_visitor::map_function_visitor_env(
+            &function,
+            &mut map,
+            &mut (),
+            &|_state, _, expr| demote_one_expr(&traits, expr),
+            &|_state, _, stmt| Ok(vec![stmt.clone()]),
+            &|_state, typ| Ok(typ.clone()),
+        )?;
     }
 
     Ok(Arc::new(kratex))
+}
+
+fn check_modes(function: &Function, span: &Span) -> Result<(), VirErr> {
+    if function.x.mode != Mode::Exec {
+        return error(span, "function for external trait must have mode 'exec'");
+    }
+    for param in function.x.params.iter() {
+        if param.x.mode != Mode::Exec {
+            return error(
+                span,
+                "function for external trait must have all parameters have mode 'exec'",
+            );
+        }
+    }
+    if function.x.ret.x.mode != Mode::Exec {
+        return error(
+            span,
+            "function for external trait must have all parameters have mode 'exec'",
+        );
+    }
+    Ok(())
+}
+
+fn get_trait(fun: &Fun) -> Path {
+    fun.path.pop_segment()
+}
+
+fn demote_one_expr(traits: &HashSet<Path>, expr: &Expr) -> Result<Expr, VirErr> {
+    match &expr.x {
+        ExprX::Call(
+            CallTarget::Fun(
+                CallTargetKind::Method(Some((resolved_fun, resolved_typs))),
+                fun,
+                _typs,
+                autospec_usage,
+            ),
+            args,
+        ) if !traits.contains(&get_trait(fun)) => {
+            let kind = CallTargetKind::Static;
+            let ct =
+                CallTarget::Fun(kind, resolved_fun.clone(), resolved_typs.clone(), *autospec_usage);
+            Ok(expr.new_x(ExprX::Call(ct, args.clone())))
+        }
+        _ => Ok(expr.clone()),
+    }
 }

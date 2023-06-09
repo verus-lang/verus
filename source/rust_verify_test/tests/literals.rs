@@ -11,7 +11,7 @@ test_verify_one_file! {
         proof fn sl() {
             let s1: Set<int> = set![];
             let s2: Set<int> = set![];
-            assert(s1.ext_equal(s2));
+            assert(s1 =~= s2);
         }
     } => Ok(())
 }
@@ -24,7 +24,7 @@ test_verify_one_file! {
         proof fn sl() {
             let s1 = set![2int];
             let s2 = set![2int];
-            assert(s1.ext_equal(s2));
+            assert(s1 =~= s2);
         }
     } => Ok(())
 }
@@ -37,13 +37,13 @@ test_verify_one_file! {
         proof fn sl() {
             let s1: Set<int> = set![2, 4];
             let s2: Set<int> = set![4, 2];
-            assert(s1.ext_equal(s2));
+            assert(s1 =~= s2);
         }
 
         proof fn comma_at_end() {
             let s1: Set<int> = set![2, 4,];
             let s2: Set<int> = set![4, 2,];
-            assert(s1.ext_equal(s2));
+            assert(s1 =~= s2);
         }
     } => Ok(())
 }

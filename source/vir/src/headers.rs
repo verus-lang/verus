@@ -244,6 +244,7 @@ impl Header {
 fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function, VirErr> {
     let FunctionX {
         name: _,
+        proxy: _,
         kind: _,
         visibility: _,
         mode: _,

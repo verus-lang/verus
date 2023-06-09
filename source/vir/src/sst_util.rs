@@ -110,6 +110,7 @@ fn subst_exp_rec(
         | ExpX::Unary(..)
         | ExpX::UnaryOpr(..)
         | ExpX::Binary(..)
+        | ExpX::BinaryOpr(..)
         | ExpX::If(..)
         | ExpX::WithTriggers(..) => crate::sst_visitor::map_shallow_exp(
             exp,
@@ -277,7 +278,7 @@ impl ExpX {
             Var(id) | VarLoc(id) => (format!("{}", id.name), 99),
             VarAt(id, _at) => (format!("old({})", id.name), 99),
             Loc(exp) => (format!("{}", exp), 99), // REVIEW: Additional decoration required?
-            Call(CallFun::Fun(fun) | CallFun::CheckTermination(fun), _, exps) => {
+            Call(CallFun::Fun(fun, _) | CallFun::CheckTermination(fun), _, exps) => {
                 let args = exps.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
                 (format!("{}({})", fun.path.segments.last().unwrap(), args), 90)
             }
@@ -305,9 +306,7 @@ impl ExpX {
                     Box(_) => (format!("box({})", exp), 99),
                     Unbox(_) => (format!("unbox({})", exp), 99),
                     HasType(t) => (format!("{}.has_type({:?})", exp, t), 99),
-                    IntegerTypeBound(kind, mode) => {
-                        (format!("{:?}.{:?}({:?})", kind, mode, exp), 99)
-                    }
+                    IntegerTypeBound(kind, mode) => (format!("{:?}.{:?}({})", kind, mode, exp), 99),
                     IsVariant { datatype: _, variant } => {
                         (format!("{}.is_type({})", exp, variant), 99)
                     }
@@ -361,6 +360,9 @@ impl ExpX {
                 } else {
                     (format!("{} {} {}", left, op_str, right), prec_exp)
                 }
+            }
+            BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), e1, e2) => {
+                (format!("ext_eq({}, {})", e1.x.to_string(), e2.x.to_string()), 99)
             }
             If(e1, e2, e3) => (format!("if {} {{ {} }} else {{ {} }}", e1, e2, e3), 99),
             Bind(bnd, exp) => {

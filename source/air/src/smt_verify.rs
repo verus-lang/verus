@@ -4,7 +4,7 @@ use crate::ast::{
 use crate::ast_util::{ident_var, mk_and, mk_implies, mk_not, str_ident, str_var};
 use crate::context::{AssertionInfo, AxiomInfo, Context, ContextState, ValidityResult};
 use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL, QUERY};
-use crate::messages::{warning_bare, Diagnostics, Message, MessageLabel};
+use crate::messages::{error_bare, warning_bare, Diagnostics, Message, MessageLabel};
 pub use crate::model::{Model, ModelDef};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -155,6 +155,10 @@ pub(crate) fn smt_check_assertion<'ctx>(
                 let value: &str = &line[GET_VERSION_RESPONSE_PREFIX.len()..line.len() - 1];
                 let version = value.trim_matches(&[' ', '"'][..]);
                 if version != expected_version.as_str() {
+                    diagnostics.report(&error_bare(
+                        format!("The verifier expects z3 version \"{expected_version}\", found version \"{version}\""))
+                        .help("update z3 using tools/get-z3.(sh|ps1) and re-build verus")
+                    );
                     panic!(
                         "The verifier expects z3 version \"{}\", found version \"{}\"",
                         expected_version, version

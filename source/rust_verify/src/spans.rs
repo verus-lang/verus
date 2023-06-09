@@ -1,7 +1,7 @@
 use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::StableCrateId;
 use rustc_span::source_map::SourceMap;
-use rustc_span::{BytePos, ExternalSource, Span, SpanData};
+use rustc_span::{BytePos, ExternalSource, FileName, RealFileName, Span, SpanData};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -27,11 +27,17 @@ pub(crate) fn err_air_span(span: Span) -> air::ast::Span {
 }
 
 #[derive(Debug, Clone)]
+enum ExternSourceInfo {
+    Loaded { start_pos: BytePos, end_pos: BytePos },
+    Delayed { filename: std::path::PathBuf, hash: Vec<u8> },
+    None,
+}
+
+#[derive(Debug, Clone)]
 struct ExternSourceFile {
     original_start_pos: BytePos,
     original_end_pos: BytePos,
-    start_pos: BytePos,
-    end_pos: BytePos,
+    info: Arc<std::cell::RefCell<ExternSourceInfo>>,
 }
 
 #[derive(Debug)]
@@ -39,50 +45,15 @@ struct CrateInfo {
     files: Vec<ExternSourceFile>,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct FileStartEndPos {
-    start_pos: BytePos,
-    end_pos: BytePos,
-}
-
-impl Serialize for FileStartEndPos {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::SerializeSeq;
-        let mut seq = serializer.serialize_seq(Some(2))?;
-        seq.serialize_element(&self.start_pos.0)?;
-        seq.serialize_element(&self.end_pos.0)?;
-        seq.end()
-    }
-}
-
-impl<'a> Deserialize<'a> for FileStartEndPos {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'a>,
-    {
-        use serde::de::Error;
-        struct FileStartEndPosVisitor;
-        impl<'de> serde::de::Visitor<'de> for FileStartEndPosVisitor {
-            type Value = FileStartEndPos;
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("a sequence of two u32s")
-            }
-            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-            where
-                A: serde::de::SeqAccess<'de>,
-            {
-                let start_pos =
-                    BytePos(seq.next_element()?.ok_or_else(|| A::Error::invalid_length(0, &self))?);
-                let end_pos =
-                    BytePos(seq.next_element()?.ok_or_else(|| A::Error::invalid_length(1, &self))?);
-                Ok(FileStartEndPos { start_pos, end_pos })
-            }
-        }
-        deserializer.deserialize_seq(FileStartEndPosVisitor)
-    }
+    // In case SourceMap doesn't load the file itself,
+    // as a backup we can try to ask SourceMap to load from filename
+    // (this is optional; it's ok if the filename is None):
+    filename: Option<std::path::PathBuf>,
+    // positions taken from BytePos:
+    start_pos: u32,
+    end_pos: u32,
 }
 
 pub(crate) type SpanContext = Arc<SpanContextX>;
@@ -103,13 +74,19 @@ impl SpanContextX {
     ) -> SpanContext {
         let mut imported_crates = HashMap::new();
         let mut local_files = HashMap::new();
+        let mut remaining_crate_files = original_crate_files.clone();
 
         for source_file in source_map.files().iter() {
             match *source_file.external_src.borrow() {
                 ExternalSource::Unneeded => {
+                    let filename = match &source_file.name {
+                        FileName::Real(RealFileName::LocalPath(path)) => path.canonicalize().ok(),
+                        _ => None,
+                    };
                     let pos = FileStartEndPos {
-                        start_pos: source_file.start_pos,
-                        end_pos: source_file.end_pos,
+                        filename,
+                        start_pos: source_file.start_pos.0,
+                        end_pos: source_file.end_pos.0,
                     };
                     local_files.insert(source_file.src_hash.hash_bytes().to_vec(), pos);
                 }
@@ -117,26 +94,41 @@ impl SpanContextX {
                     let imported_crate = tcx.stable_crate_id(source_file.cnum).to_u64();
                     let start_pos = source_file.start_pos;
                     let end_pos = source_file.end_pos;
-                    if let Some(original) = original_crate_files
-                        .get(&imported_crate)
-                        .and_then(|x| x.get(&source_file.src_hash.hash_bytes().to_vec()))
+                    let hash = source_file.src_hash.hash_bytes().to_vec();
+                    if let Some(original) =
+                        original_crate_files.get(&imported_crate).and_then(|x| x.get(&hash))
                     {
-                        let extern_source_file = ExternSourceFile {
-                            original_start_pos: original.start_pos,
-                            original_end_pos: original.end_pos,
-                            start_pos,
-                            end_pos,
+                        remaining_crate_files.get_mut(&imported_crate).unwrap().remove(&hash);
+                        let info = ExternSourceInfo::Loaded { start_pos, end_pos };
+                        let file = ExternSourceFile {
+                            original_start_pos: BytePos(original.start_pos),
+                            original_end_pos: BytePos(original.end_pos),
+                            info: Arc::new(std::cell::RefCell::new(info)),
                         };
                         if !imported_crates.contains_key(&imported_crate) {
                             imported_crates.insert(imported_crate, CrateInfo { files: Vec::new() });
                         }
-                        imported_crates
-                            .get_mut(&imported_crate)
-                            .unwrap()
-                            .files
-                            .push(extern_source_file);
+                        imported_crates.get_mut(&imported_crate).unwrap().files.push(file);
                     }
                 }
+            }
+        }
+        for (imported_crate, files) in remaining_crate_files.iter() {
+            if !imported_crates.contains_key(imported_crate) {
+                imported_crates.insert(*imported_crate, CrateInfo { files: Vec::new() });
+            }
+            for (hash, original) in files.iter() {
+                let info = if let Some(filename) = original.filename.clone() {
+                    ExternSourceInfo::Delayed { filename, hash: hash.clone() }
+                } else {
+                    ExternSourceInfo::None
+                };
+                let file = ExternSourceFile {
+                    original_start_pos: BytePos(original.start_pos),
+                    original_end_pos: BytePos(original.end_pos),
+                    info: Arc::new(std::cell::RefCell::new(info)),
+                };
+                imported_crates.get_mut(&imported_crate).unwrap().files.push(file);
             }
         }
 
@@ -169,6 +161,44 @@ impl SpanContextX {
         None
     }
 
+    fn pos_to_extern_source_file_resolve(
+        &self,
+        imported_crate: u64,
+        pos: BytePos,
+        source_map: Option<&SourceMap>,
+    ) -> Option<(BytePos, BytePos, BytePos, BytePos)> {
+        let ExternSourceFile { original_start_pos, original_end_pos, info } = self
+            .pos_to_extern_source_file(imported_crate, pos)
+            .expect("span source file not found");
+        if let Some(source_map) = source_map {
+            // If rustc didn't originally load the file into the source_map,
+            // we can try to request that it load the file on demand.
+            let mut info = info.borrow_mut();
+            let filename = if let ExternSourceInfo::Delayed { filename, hash } = &*info {
+                Some((filename.clone(), hash.clone()))
+            } else {
+                None
+            };
+            if let Some((filename, hash)) = filename {
+                *info = ExternSourceInfo::None;
+                if let Ok(source_file) = source_map.load_file(&filename) {
+                    if hash == source_file.src_hash.hash_bytes().to_vec() {
+                        let start_pos = source_file.start_pos;
+                        let end_pos = source_file.end_pos;
+                        *info = ExternSourceInfo::Loaded { start_pos, end_pos };
+                    }
+                }
+            }
+        }
+        let locs = match &*info.borrow() {
+            ExternSourceInfo::Loaded { start_pos, end_pos } => {
+                Some((original_start_pos, original_end_pos, *start_pos, *end_pos))
+            }
+            _ => None,
+        };
+        locs
+    }
+
     fn pack_span(&self, span: Span) -> Vec<u64> {
         // Encode as [StableCrateId, lo_hi]
         let span_data = span.data();
@@ -176,22 +206,24 @@ impl SpanContextX {
         return vec![self.local_crate.to_u64(), lo_hi];
     }
 
-    fn unpack_span(&self, packed: &Vec<u64>) -> Span {
+    fn unpack_span(&self, packed: &Vec<u64>, source_map: Option<&SourceMap>) -> Option<Span> {
         // Encode as [StableCrateId, lo_hi]
         let crate_id = packed[0];
         let original_lo = BytePos((packed[1] >> 32) as u32);
         let original_hi = BytePos(packed[1] as u32);
-        let ExternSourceFile { original_start_pos, original_end_pos, start_pos, end_pos } = self
-            .pos_to_extern_source_file(crate_id, original_lo)
-            .expect("span source file not found");
-
+        let locs = self.pos_to_extern_source_file_resolve(crate_id, original_lo, source_map);
+        let (original_start_pos, original_end_pos, start_pos, end_pos) = if let Some(locs) = locs {
+            locs
+        } else {
+            return None;
+        };
         assert!(original_start_pos <= original_lo);
         assert!(original_hi <= original_end_pos);
         let lo = original_lo - original_start_pos + start_pos;
         let hi = original_hi - original_start_pos + start_pos;
         assert!(lo <= hi);
         assert!(hi <= end_pos);
-        SpanData { lo, hi, ctxt: rustc_span::SyntaxContext::root(), parent: None }.span()
+        Some(SpanData { lo, hi, ctxt: rustc_span::SyntaxContext::root(), parent: None }.span())
     }
 
     pub(crate) fn to_air_span(&self, span: Span) -> air::ast::Span {
@@ -203,12 +235,15 @@ impl SpanContextX {
         air::ast::Span { raw_span, id, data, as_string }
     }
 
-    // TODO(main_new) this does not need to return Option
-    pub(crate) fn from_air_span(&self, air_span: &air::ast::Span) -> Option<Span> {
+    pub(crate) fn from_air_span(
+        &self,
+        air_span: &air::ast::Span,
+        source_map: Option<&SourceMap>,
+    ) -> Option<Span> {
         if let Some(span) = from_raw_span(&air_span.raw_span) {
             Some(span)
         } else {
-            Some(self.unpack_span(&air_span.data))
+            self.unpack_span(&air_span.data, source_map)
         }
     }
 

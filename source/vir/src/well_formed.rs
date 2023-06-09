@@ -8,6 +8,7 @@ use crate::ast_util::{
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::user_local_name;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
+use air::messages::Message;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -16,6 +17,7 @@ struct Ctxt {
     pub(crate) crate_names: Vec<String>,
     pub(crate) funs: HashMap<Fun, Function>,
     pub(crate) dts: HashMap<Path, Datatype>,
+    pub(crate) krate: Krate,
 }
 
 #[warn(unused_must_use)]
@@ -46,21 +48,62 @@ fn check_path_and_get_function<'a>(
     disallow_private_access: Option<(&Option<Path>, &str)>,
     span: &air::ast::Span,
 ) -> Result<&'a Function, VirErr> {
+    fn is_proxy<'a>(ctxt: &'a Ctxt, path: &Path) -> Option<&'a Path> {
+        // Linear scan, but this only happens if this uncommon error message triggers
+        for function in &ctxt.krate.functions {
+            match &function.x.proxy {
+                Some(proxy) => {
+                    if &proxy.x == path {
+                        return Some(&function.x.name.path);
+                    }
+                }
+                None => {}
+            }
+        }
+        return None;
+    }
+
+    fn is_external(ctxt: &Ctxt, fun: &Fun) -> bool {
+        ctxt.krate.external_fns.contains(fun)
+    }
+
     let f = match ctxt.funs.get(x) {
         Some(f) => f,
         None => {
-            let path = path_as_rust_name(&x.path);
-            return error(
-                span,
-                &format!(
-                    "`{path:}` is not supported (note: currently Verus does not support definitions external to the crate, including most features in std)"
-                ),
-            );
+            if let Some(actual_path) = is_proxy(ctxt, &x.path) {
+                return error(
+                    span,
+                    &format!(
+                        "cannot call function marked `external_fn_specification` directly; call `{:}` instead",
+                        path_as_rust_name(actual_path),
+                    ),
+                );
+            } else if is_external(ctxt, &x) {
+                return error(
+                    span,
+                    "cannot call function marked `external`; try marking it `external_body` instead, or add a Verus specification via `external_fn_specification`?",
+                );
+            } else {
+                let path = path_as_rust_name(&x.path);
+                return error(
+                    span,
+                    &format!(
+                        "`{path:}` is not supported (note: you may be able to add a Verus specification to this function with the `external_fn_specification` attribute){:}",
+                        if x.path.is_rust_std_path() {
+                            " (note: the vstd library provides some specification for the Rust std library, but it is currently limited)"
+                        } else {
+                            ""
+                        },
+                    ),
+                );
+            }
         }
     };
 
-    if let Some((source_module, msg)) = disallow_private_access {
+    if let Some((source_module, reason)) = disallow_private_access {
         if !is_visible_to_opt(&f.x.visibility, source_module) {
+            let kind = if f.x.is_const { "const" } else { "function" };
+            let msg = format!("in {reason:}, cannot refer to private {kind:}");
             return error(&span, msg);
         }
     }
@@ -78,7 +121,7 @@ fn check_one_expr(
         ExprX::ConstVar(x) => {
             check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
         }
-        ExprX::Call(CallTarget::Static(x, _), args) => {
+        ExprX::Call(CallTarget::Fun(_, x, _, _), args) => {
             let f = check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
             if f.x.attrs.is_decrease_by {
                 // a decreases_by function isn't a real function;
@@ -151,7 +194,10 @@ fn check_one_expr(
                     (None, _) => {}
                     (Some((source_module, _)), Some(field_vis))
                         if is_visible_to_opt(&field_vis, source_module) => {}
-                    (Some((_, msg)), _) => {
+                    (Some((_, reason)), _) => {
+                        let msg = format!(
+                            "in {reason:}, cannot use constructor of private datatype or datatype whose fields are private"
+                        );
                         return error(&expr.span, msg);
                     }
                 }
@@ -189,10 +235,13 @@ fn check_one_expr(
                         ));
                     }
                 }
-                if let Some((source_module, msg)) = disallow_private_access {
+                if let Some((source_module, reason)) = disallow_private_access {
                     let variant = dt.x.get_variant(variant);
                     let (_, _, vis) = &crate::ast_util::get_field(&variant.a, &field).a;
                     if !is_visible_to_opt(vis, source_module) {
+                        let msg = format!(
+                            "in {reason:}, cannot access any field of a datatype where one or more fields are private"
+                        );
                         return error(&expr.span, msg);
                     }
                 }
@@ -323,7 +372,9 @@ fn check_function(
     if function.x.attrs.is_decrease_by {
         match function.x.kind {
             FunctionKind::Static => {}
-            FunctionKind::TraitMethodDecl { .. } | FunctionKind::TraitMethodImpl { .. } => {
+            FunctionKind::TraitMethodDecl { .. }
+            | FunctionKind::TraitMethodImpl { .. }
+            | FunctionKind::ForeignTraitMethodImpl(_) => {
                 return error(
                     &function.span,
                     "decreases_by/recommends_by function cannot be a trait method",
@@ -615,7 +666,7 @@ fn check_function(
     }
 
     for req in function.x.require.iter() {
-        let msg = "public function requires cannot refer to private items";
+        let msg = "'requires' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
         check_expr(ctxt, function, req, disallow_private_access)?;
         crate::ast_visitor::expr_visitor_check(req, &mut |_scope_map, expr| {
@@ -636,17 +687,17 @@ fn check_function(
         })?;
     }
     for ens in function.x.ensure.iter() {
-        let msg = "public function ensures cannot refer to private items";
+        let msg = "'ensures' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
         check_expr(ctxt, function, ens, disallow_private_access)?;
     }
     for expr in function.x.decrease.iter() {
-        let msg = "public function decreases cannot refer to private items";
+        let msg = "'decreases' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
         check_expr(ctxt, function, expr, disallow_private_access)?;
     }
     if let Some(expr) = &function.x.decrease_when {
-        let msg = "public function decreases_when cannot refer to private items";
+        let msg = "'when' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
         if function.x.mode != Mode::Spec {
             return error(
@@ -675,7 +726,7 @@ fn check_function(
         // Check that public, non-abstract spec function bodies don't refer to private items:
         let disallow_private_access = match (&function.x.publish, function.x.mode) {
             (Some(_), Mode::Spec) => {
-                let msg = "public spec function cannot refer to private items, if it is marked #[verifier(publish)]";
+                let msg = "pub open spec function";
                 Some((&function.x.visibility.restricted_to, msg))
             }
             _ => None,
@@ -748,6 +799,28 @@ fn check_functions_match(
     Ok(())
 }
 
+/// Construct an error message for when our Krate has two functions of the same name.
+/// If this happen it's probably either:
+///  (i) an issue with our conversion from rust paths to VIR paths not being injective
+///  (ii) the user's use of `external_fn_specification` resulting in overlap
+///  (iii) an existing issue related to traits
+fn func_conflict_error(function1: &Function, function2: &Function) -> Message {
+    let add_label = |err: Message, function: &Function| match &function.x.proxy {
+        Some(proxy) => {
+            err.primary_label(&proxy.span, "specification declared via `external_fn_specification`")
+        }
+        None => err.primary_label(&function.span, "declared here (and not marked as `external`)"),
+    };
+
+    let err = air::messages::error_bare(format!(
+        "duplicate specification for `{:}`",
+        crate::ast_util::path_as_rust_name(&function1.x.name.path)
+    ));
+    let err = add_label(err, function1);
+    let err = add_label(err, function2);
+    err
+}
+
 pub fn check_crate(
     krate: &Krate,
     mut crate_names: Vec<String>,
@@ -756,12 +829,11 @@ pub fn check_crate(
     crate_names.push("builtin".to_string());
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     for function in krate.functions.iter() {
-        if funs.contains_key(&function.x.name) {
-            return Err(air::messages::error(
-                "not supported: multiple definitions of same function",
-                &function.span,
-            )
-            .secondary_span(&funs[&function.x.name].span));
+        match funs.get(&function.x.name) {
+            Some(other_function) => {
+                return Err(func_conflict_error(function, other_function));
+            }
+            None => {}
         }
         funs.insert(function.x.name.clone(), function.clone());
     }
@@ -831,6 +903,15 @@ pub fn check_crate(
                 )
                 .secondary_span(&function.span));
             }
+
+            if !is_visible_to_opt(&spec_function.x.visibility, &function.x.visibility.restricted_to)
+            {
+                return error(
+                    &function.span,
+                    "when_used_as_spec refers to function which is more private",
+                );
+            }
+
             check_functions_match(
                 "when_used_as_spec",
                 false,
@@ -852,7 +933,7 @@ pub fn check_crate(
         }
     }
 
-    let ctxt = Ctxt { crate_names, funs, dts };
+    let ctxt = Ctxt { crate_names, funs, dts, krate: krate.clone() };
     for function in krate.functions.iter() {
         check_function(&ctxt, function, diags)?;
     }

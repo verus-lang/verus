@@ -26,19 +26,14 @@ thread_local! {
         std::sync::atomic::AtomicBool::new(false);
 }
 
-pub(crate) fn def_path_to_vir_path<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    self_path: &Option<Path>,
-    def_path: DefPath,
-) -> Option<Path> {
+fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Path> {
     let multi_crate = MULTI_CRATE.with(|m| m.load(std::sync::atomic::Ordering::Relaxed));
-    let mut krate = if def_path.krate == LOCAL_CRATE && !multi_crate {
+    let krate = if def_path.krate == LOCAL_CRATE && !multi_crate {
         None
     } else {
         Some(Arc::new(tcx.crate_name(def_path.krate).to_string()))
     };
     let mut segments: Vec<vir::ast::Ident> = Vec::new();
-    let mut already_impl: bool = false;
     for d in def_path.data.iter() {
         use rustc_hir::definitions::DefPathData;
         match &d.data {
@@ -48,13 +43,11 @@ pub(crate) fn def_path_to_vir_path<'tcx>(
             DefPathData::Ctor => {
                 segments.push(Arc::new(vir::def::RUST_DEF_CTOR.to_string()));
             }
-            DefPathData::Impl if self_path.is_some() => {
-                if already_impl {
-                    panic!("more than one Impl in the name {:?}", &def_path);
-                }
-                already_impl = true;
-                krate = self_path.as_ref().unwrap().krate.clone();
-                segments = (*self_path.as_ref().unwrap().segments).clone();
+            DefPathData::Impl => {
+                segments.push(vir::def::impl_ident(d.disambiguator));
+            }
+            DefPathData::ForeignMod => {
+                // this segment can be ignored
             }
             _ => return None,
         }
@@ -62,40 +55,29 @@ pub(crate) fn def_path_to_vir_path<'tcx>(
     Some(Arc::new(PathX { krate, segments: Arc::new(segments) }))
 }
 
-fn get_function_def_impl_item_node<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    hir_id: rustc_hir::HirId,
-) -> Option<(&'tcx rustc_hir::FnSig<'tcx>, &'tcx rustc_hir::BodyId)> {
-    let node = tcx.hir().get(hir_id);
-    match node {
-        rustc_hir::Node::ImplItem(rustc_hir::ImplItem {
-            kind: rustc_hir::ImplItemKind::Fn(fn_sig, body_id),
-            ..
-        }) => Some((fn_sig, body_id)),
-        _ => None,
+pub(crate) fn def_path_to_vir_module<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Path {
+    let multi_crate = MULTI_CRATE.with(|m| m.load(std::sync::atomic::Ordering::Relaxed));
+    let krate = if def_path.krate == LOCAL_CRATE && !multi_crate {
+        None
+    } else {
+        Some(Arc::new(tcx.crate_name(def_path.krate).to_string()))
+    };
+    let mut segments: Vec<vir::ast::Ident> = Vec::new();
+    for d in def_path.data.iter() {
+        use rustc_hir::definitions::DefPathData;
+        match &d.data {
+            DefPathData::ValueNs(symbol) | DefPathData::TypeNs(symbol) => {
+                segments.push(Arc::new(symbol.to_string()));
+            }
+            _ => { /* ignore */ }
+        }
     }
+    Arc::new(PathX { krate, segments: Arc::new(segments) })
 }
 
-/*
-pub(crate) fn get_function_def<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    hir_id: rustc_hir::HirId,
-) -> (&'tcx rustc_hir::FnSig<'tcx>, &'tcx rustc_hir::BodyId) {
-    get_function_def_impl_item_node(tcx, hir_id)
-        .or_else(|| match tcx.hir().get(hir_id) {
-            rustc_hir::Node::Item(item) => match &item.kind {
-                ItemKind::Fn(fn_sig, _, body_id) => Some((fn_sig, body_id)),
-                _ => None,
-            },
-            rustc_hir::Node::TraitItem(item) => match &item.kind {
-                TraitItemKind::Fn(fn_sig, TraitFn::Provided(body_id)) => Some((fn_sig, body_id)),
-                _ => None,
-            },
-            node => unsupported!("extern functions, or other function Node", node),
-        })
-        .expect("function expected")
+pub(crate) fn def_id_to_vir_module<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Path {
+    def_path_to_vir_module(tcx, tcx.def_path(def_id))
 }
-*/
 
 pub(crate) fn typ_path_and_ident_to_vir_path<'tcx>(path: &Path, ident: vir::ast::Ident) -> Path {
     let mut path = (**path).clone();
@@ -124,70 +106,25 @@ pub(crate) fn fn_item_hir_id_to_self_def_id<'tcx>(
     }
 }
 
-pub(crate) fn fn_item_hir_id_to_self_path<'tcx>(tcx: TyCtxt<'tcx>, hir_id: HirId) -> Option<Path> {
-    let parent_node = tcx.hir().get_parent(hir_id);
-    match parent_node {
-        rustc_hir::Node::Item(rustc_hir::Item {
-            kind: rustc_hir::ItemKind::Impl(impll),
-            owner_id,
-            ..
-        }) => match &impll.self_ty.kind {
-            rustc_hir::TyKind::Path(QPath::Resolved(
-                None,
-                rustc_hir::Path { res: rustc_hir::def::Res::Def(_, self_def_id), .. },
-            )) => def_path_to_vir_path(tcx, &None, tcx.def_path(*self_def_id)),
-            _ => {
-                // To handle cases like [T] which are not syntactically datatypes
-                // but converted into VIR datatypes.
-
-                let self_ty = tcx.type_of(owner_id.to_def_id());
-                let vir_ty = mid_ty_to_vir_ghost(tcx, impll.self_ty.span, &self_ty, true, false);
-                let vir_ty = if let Ok(t) = vir_ty {
-                    t
-                } else {
-                    return None;
-                };
-                match &*vir_ty.0 {
-                    TypX::Datatype(p, _typ_args) => Some(p.clone()),
-                    _ => panic!("{:?} {}", impll.self_ty.span, "impl type is not given by a path"),
-                }
-            }
-        },
-        _ => None,
-    }
-}
-
-pub(crate) fn def_id_self_to_vir_path<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    self_path: &Option<Path>,
-    def_id: DefId,
-) -> Option<Path> {
-    // The path that rustc gives a DefId might be given in terms of an 'impl' path
-    // However, it makes for a better path name to use the path to the *type*.
-    // So first, we check if the given DefId is the definition of a fn inside an impl.
-    // If so, we construct a VIR path based on the VIR path for the type.
-    if let Some(local_id) = def_id.as_local() {
-        let hir = tcx.hir().local_def_id_to_hir_id(local_id);
-        if get_function_def_impl_item_node(tcx, hir).is_some() {
-            if let Some(ty_path) = fn_item_hir_id_to_self_path(tcx, hir) {
-                return Some(typ_path_and_ident_to_vir_path(
-                    &ty_path,
-                    def_to_path_ident(tcx, def_id),
-                ));
-            }
+pub(crate) fn def_id_self_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Path> {
+    if let Some(symbol) = tcx.get_diagnostic_name(def_id) {
+        // interpreter.rs and def.rs refer directly to some impl methods,
+        // so make sure we use the diagnostic_name names
+        // to avoid having impl_ident(...) in the name:
+        let s = symbol.to_string();
+        if s.starts_with("vstd::") {
+            let s = &s["vstd::".len()..];
+            let segments = s.split("::").map(|x| Arc::new(x.to_string())).collect();
+            let krate = Some(Arc::new("vstd".to_string()));
+            return Some(Arc::new(PathX { krate, segments: Arc::new(segments) }));
         }
     }
-    // Otherwise build a path based on the segments rustc gives us
-    // without doing anything fancy.
-    def_path_to_vir_path(tcx, self_path, tcx.def_path(def_id))
+
+    def_path_to_vir_path(tcx, tcx.def_path(def_id))
 }
 
-pub(crate) fn def_id_self_to_vir_path_expect<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    self_path: &Option<Path>,
-    def_id: DefId,
-) -> Path {
-    if let Some(path) = def_id_self_to_vir_path(tcx, self_path, def_id) {
+pub(crate) fn def_id_self_to_vir_path_expect<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Path {
+    if let Some(path) = def_id_self_to_vir_path(tcx, def_id) {
         path
     } else {
         panic!("unhandled name {:?}", def_id)
@@ -195,15 +132,7 @@ pub(crate) fn def_id_self_to_vir_path_expect<'tcx>(
 }
 
 pub(crate) fn def_id_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Path {
-    def_id_self_to_vir_path_expect(tcx, &None, def_id)
-}
-
-pub(crate) fn def_to_path_ident<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> vir::ast::Ident {
-    let def_path = tcx.def_path(def_id);
-    match def_path.data.last().expect("unexpected empty impl path").data {
-        rustc_hir::definitions::DefPathData::ValueNs(name) => Arc::new(name.to_string()),
-        _ => panic!("unexpected name of impl"),
-    }
+    def_id_self_to_vir_path_expect(tcx, def_id)
 }
 
 pub(crate) fn def_id_to_datatype<'tcx, 'hir>(
@@ -297,10 +226,19 @@ pub(crate) fn get_range(typ: &Typ) -> IntRange {
     }
 }
 
-pub(crate) fn mk_range<'tcx>(ty: &rustc_middle::ty::Ty<'tcx>) -> IntRange {
+pub(crate) fn mk_range<'tcx>(tcx: TyCtxt<'tcx>, ty: &rustc_middle::ty::Ty<'tcx>) -> IntRange {
     match ty.kind() {
-        TyKind::Adt(_, _) if ty.to_string() == crate::def::BUILTIN_INT => IntRange::Int,
-        TyKind::Adt(_, _) if ty.to_string() == crate::def::BUILTIN_NAT => IntRange::Nat,
+        TyKind::Adt(AdtDef(adt_def_data), _) => {
+            let did = adt_def_data.did;
+            let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(tcx, did));
+            if def_name == crate::def::BUILTIN_INT {
+                IntRange::Int
+            } else if def_name == crate::def::BUILTIN_NAT {
+                IntRange::Nat
+            } else {
+                panic!("mk_range {:?}", ty)
+            }
+        }
         TyKind::Uint(rustc_middle::ty::UintTy::U8) => IntRange::U(8),
         TyKind::Uint(rustc_middle::ty::UintTy::U16) => IntRange::U(16),
         TyKind::Uint(rustc_middle::ty::UintTy::U32) => IntRange::U(32),
@@ -361,7 +299,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
     use vir::ast::TypDecoration;
     let t = match ty.kind() {
         TyKind::Bool => (Arc::new(TypX::Bool), false),
-        TyKind::Uint(_) | TyKind::Int(_) => (Arc::new(TypX::Int(mk_range(ty))), false),
+        TyKind::Uint(_) | TyKind::Int(_) => (Arc::new(TypX::Int(mk_range(tcx, ty))), false),
         TyKind::Ref(_, tys, rustc_ast::Mutability::Not) => {
             let (t0, ghost) = mid_ty_to_vir_ghost(tcx, span, tys, as_datatype, allow_mut_ref)?;
             (Arc::new(TypX::Decorate(TypDecoration::Ref, t0.clone())), ghost)
@@ -395,16 +333,16 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         }
         TyKind::Adt(AdtDef(adt_def_data), args) => {
             let did = adt_def_data.did;
-            let s = ty.to_string();
             let is_strslice =
                 tcx.is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice"), did);
             if is_strslice && !as_datatype {
                 return Ok((Arc::new(TypX::StrSlice), false));
             }
             // TODO use lang items instead of string comparisons
-            if s == crate::def::BUILTIN_INT {
+            let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(tcx, did));
+            if def_name == crate::def::BUILTIN_INT {
                 (Arc::new(TypX::Int(IntRange::Int)), false)
-            } else if s == crate::def::BUILTIN_NAT {
+            } else if def_name == crate::def::BUILTIN_NAT {
                 (Arc::new(TypX::Int(IntRange::Nat)), false)
             } else {
                 let mut typ_args: Vec<(Typ, bool)> = Vec::new();
@@ -429,7 +367,6 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     let (t0, ghost) = &typ_args[0];
                     return Ok((Arc::new(TypX::Decorate(TypDecoration::Box, t0.clone())), *ghost));
                 }
-                let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(tcx, did));
                 if typ_args.len() == 1 {
                     let (t0, ghost) = &typ_args[0];
                     let decorate = |d: TypDecoration, ghost: bool| {

@@ -150,7 +150,7 @@ test_verify_one_file! {
                 crate::M1::g();
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "public function requires cannot refer to private items")
+    } => Err(err) => assert_vir_error_msg(err, "in 'requires' clause of public function, cannot refer to private function")
 }
 
 test_verify_one_file! {
@@ -208,5 +208,5 @@ test_verify_one_file! {
                 A::f() == 1
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "public spec function cannot refer to private items")
+    } => Err(err) => assert_vir_error_msg(err, "in pub open spec function, cannot refer to private const")
 }

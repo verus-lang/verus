@@ -213,6 +213,8 @@ pub(crate) enum Attr {
     OpaqueOutsideModule,
     // inline spec function in SMT query
     Inline,
+    // generate ext_equal lemmas for datatype
+    ExtEqual,
     // Rust ghost block
     GhostBlock(GhostBlockAttr),
     // Header to unwrap Tracked<T> and Ghost<T> parameters
@@ -262,6 +264,8 @@ pub(crate) enum Attr {
     Memoize,
     // Suppress the recommends check for narrowing casts that may truncate
     Truncate,
+    // In order to apply a specification to a method externally
+    ExternalFnSpecification,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -316,6 +320,7 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                     v.push(Attr::OpaqueOutsideModule)
                 }
                 AttrTree::Fun(_, arg, None) if arg == "inline" => v.push(Attr::Inline),
+                AttrTree::Fun(_, arg, None) if arg == "ext_equal" => v.push(Attr::ExtEqual),
                 AttrTree::Fun(_, arg, None) if arg == "proof_block" => {
                     v.push(Attr::GhostBlock(GhostBlockAttr::Proof))
                 }
@@ -413,6 +418,9 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 }
                 AttrTree::Fun(_, arg, None) if arg == "memoize" => v.push(Attr::Memoize),
                 AttrTree::Fun(_, arg, None) if arg == "truncate" => v.push(Attr::Truncate),
+                AttrTree::Fun(_, arg, None) if arg == "external_fn_specification" => {
+                    v.push(Attr::ExternalFnSpecification)
+                }
                 _ => return err_span(span, "unrecognized verifier attribute"),
             },
             AttrPrefix::Verus(verus_prefix) => match verus_prefix {
@@ -610,6 +618,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) publish: bool,
     pub(crate) opaque_outside_module: bool,
     pub(crate) inline: bool,
+    pub(crate) ext_equal: bool,
     // TODO: get rid of *_recursive_types: bool
     pub(crate) reject_recursive_types_in_ground_variants: bool,
     pub(crate) reject_recursive_types: bool,
@@ -630,6 +639,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) spinoff_prover: bool,
     pub(crate) memoize: bool,
     pub(crate) truncate: bool,
+    pub(crate) external_fn_specification: bool,
 }
 
 pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, VirErr> {
@@ -641,6 +651,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         publish: false,
         opaque_outside_module: false,
         inline: false,
+        ext_equal: false,
         reject_recursive_types: false,
         reject_recursive_types_in_ground_variants: false,
         accept_recursive_types: false,
@@ -660,16 +671,19 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         spinoff_prover: false,
         memoize: false,
         truncate: false,
+        external_fn_specification: false,
     };
     for attr in parse_attrs(attrs)? {
         match attr {
             Attr::VerusMacro => vs.verus_macro = true,
             Attr::ExternalBody => vs.external_body = true,
             Attr::External => vs.external = true,
+            Attr::ExternalFnSpecification => vs.external_fn_specification = true,
             Attr::Opaque => vs.opaque = true,
             Attr::Publish => vs.publish = true,
             Attr::OpaqueOutsideModule => vs.opaque_outside_module = true,
             Attr::Inline => vs.inline = true,
+            Attr::ExtEqual => vs.ext_equal = true,
             Attr::RejectRecursiveTypes(None) => vs.reject_recursive_types = true,
             Attr::RejectRecursiveTypes(Some(s)) => {
                 vs.accept_recursive_type_list.push((s, AcceptRecursiveType::Reject))

@@ -2,6 +2,7 @@ use crate::erase::ResolvedCall;
 use air::ast::AstId;
 use rustc_hir::{Crate, HirId};
 use rustc_middle::ty::{TyCtxt, TypeckResults};
+use rustc_span::def_id::DefId;
 use rustc_span::SpanData;
 use std::sync::Arc;
 use vir::ast::{Expr, Ident, InferMode, Mode, Pattern};
@@ -27,7 +28,6 @@ pub type Context<'tcx> = Arc<ContextX<'tcx>>;
 pub struct ContextX<'tcx> {
     pub(crate) tcx: TyCtxt<'tcx>,
     pub(crate) krate: &'tcx Crate<'tcx>,
-    pub(crate) crate_names: Vec<String>,
     pub(crate) erasure_info: ErasureInfoRef,
     pub(crate) unique_id: std::cell::Cell<u64>,
     pub(crate) spans: crate::spans::SpanContext,
@@ -39,6 +39,7 @@ pub struct ContextX<'tcx> {
 pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) ctxt: Context<'tcx>,
     pub(crate) types: &'tcx TypeckResults<'tcx>,
+    pub(crate) fun_id: DefId,
     pub(crate) mode: Mode,
     pub(crate) external_body: bool,
     pub(crate) in_ghost: bool,

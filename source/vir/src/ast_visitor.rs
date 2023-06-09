@@ -218,7 +218,7 @@ where
                 }
                 ExprX::Call(target, es) => {
                     match target {
-                        CallTarget::Static(_, _) => (),
+                        CallTarget::Fun(_, _, _, _) => (),
                         CallTarget::BuiltinSpecFun(_, _) => (),
                         CallTarget::FnSpec(fun) => {
                             expr_visitor_control_flow!(expr_visitor_dfs(fun, map, mf));
@@ -251,7 +251,7 @@ where
                 ExprX::UnaryOpr(_op, e1) => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
                 }
-                ExprX::Binary(_op, e1, e2) => {
+                ExprX::Binary(_, e1, e2) | ExprX::BinaryOpr(_, e1, e2) => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
                     expr_visitor_control_flow!(expr_visitor_dfs(e2, map, mf));
                 }
@@ -457,6 +457,7 @@ where
 {
     let FunctionX {
         name: _,
+        proxy: _,
         kind: _,
         visibility: _,
         mode: _,
@@ -555,9 +556,17 @@ where
         ExprX::Loc(e) => ExprX::Loc(map_expr_visitor_env(e, map, env, fe, fs, ft)?),
         ExprX::Call(target, es) => {
             let target = match target {
-                CallTarget::Static(x, typs) => {
+                CallTarget::Fun(kind, x, typs, autospec_usage) => {
+                    use crate::ast::CallTargetKind;
+                    let kind = match kind {
+                        CallTargetKind::Static | CallTargetKind::Method(None) => kind.clone(),
+                        CallTargetKind::Method(Some((f, ts))) => {
+                            let ts = vec_map_result(&**ts, |t| (map_typ_visitor_env(t, env, ft)))?;
+                            CallTargetKind::Method(Some((f.clone(), Arc::new(ts))))
+                        }
+                    };
                     let typs = vec_map_result(&**typs, |t| (map_typ_visitor_env(t, env, ft)))?;
-                    CallTarget::Static(x.clone(), Arc::new(typs))
+                    CallTarget::Fun(kind.clone(), x.clone(), Arc::new(typs), *autospec_usage)
                 }
                 CallTarget::BuiltinSpecFun(x, typs) => {
                     let typs = vec_map_result(&**typs, |t| (map_typ_visitor_env(t, env, ft)))?;
@@ -618,6 +627,12 @@ where
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             let expr2 = map_expr_visitor_env(e2, map, env, fe, fs, ft)?;
             ExprX::Binary(*op, expr1, expr2)
+        }
+        ExprX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(deep, t), e1, e2) => {
+            let t = map_typ_visitor_env(t, env, ft)?;
+            let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
+            let expr2 = map_expr_visitor_env(e2, map, env, fe, fs, ft)?;
+            ExprX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(*deep, t), expr1, expr2)
         }
         ExprX::Multi(op, es) => {
             let mut exprs: Vec<Expr> = Vec::new();
@@ -904,6 +919,7 @@ where
 {
     let FunctionX {
         name,
+        proxy,
         kind,
         visibility,
         mode,
@@ -925,8 +941,11 @@ where
         extra_dependencies,
     } = &function.x;
     let name = name.clone();
+    let proxy = proxy.clone();
     let kind = match kind {
-        FunctionKind::Static | FunctionKind::TraitMethodDecl { trait_path: _ } => kind.clone(),
+        FunctionKind::Static
+        | FunctionKind::TraitMethodDecl { trait_path: _ }
+        | FunctionKind::ForeignTraitMethodImpl(_) => kind.clone(),
         FunctionKind::TraitMethodImpl {
             method,
             trait_path,
@@ -1015,6 +1034,7 @@ where
 
     let functionx = FunctionX {
         name,
+        proxy,
         kind,
         visibility,
         mode,

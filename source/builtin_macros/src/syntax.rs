@@ -1286,10 +1286,14 @@ impl VisitMut for Visitor {
                 BinOp::Exply(_) => Some(false),
                 _ => None,
             };
-            let big_eq = match binary.op {
-                BinOp::BigEq(_) => Some(true),
-                BinOp::BigNe(_) => Some(false),
-                _ => None,
+            let verus_eq = match binary.op {
+                BinOp::BigEq(_) => true,
+                BinOp::BigNe(_) => true,
+                BinOp::ExtEq(_) => true,
+                BinOp::ExtNe(_) => true,
+                BinOp::ExtDeepEq(_) => true,
+                BinOp::ExtDeepNe(_) => true,
+                _ => false,
             };
             if let Some(op) = low_prec_op {
                 let attrs = std::mem::take(&mut binary.attrs);
@@ -1314,9 +1318,25 @@ impl VisitMut for Visitor {
                     args.push(take_expr(&mut *binary.left));
                 }
                 *expr = Expr::Call(ExprCall { attrs, func, paren_token, args });
-            } else if let Some(eq) = big_eq {
+            } else if verus_eq {
                 let attrs = std::mem::take(&mut binary.attrs);
-                let func = Box::new(Expr::Verbatim(quote_spanned!(span => ::builtin::equal)));
+                let func = match binary.op {
+                    BinOp::BigEq(_) | BinOp::BigNe(_) => {
+                        Box::new(Expr::Verbatim(quote_spanned!(span => ::builtin::equal)))
+                    }
+                    BinOp::ExtEq(_) | BinOp::ExtNe(_) => {
+                        Box::new(Expr::Verbatim(quote_spanned!(span => ::builtin::ext_equal)))
+                    }
+                    BinOp::ExtDeepEq(_) | BinOp::ExtDeepNe(_) => {
+                        Box::new(Expr::Verbatim(quote_spanned!(span => ::builtin::ext_equal_deep)))
+                    }
+                    _ => unreachable!(),
+                };
+                let eq = match binary.op {
+                    BinOp::BigEq(_) | BinOp::ExtEq(_) | BinOp::ExtDeepEq(_) => true,
+                    BinOp::BigNe(_) | BinOp::ExtNe(_) | BinOp::ExtDeepNe(_) => false,
+                    _ => unreachable!(),
+                };
                 let paren_token = Paren { span };
                 let mut args = Punctuated::new();
                 args.push(take_expr(&mut *binary.left));

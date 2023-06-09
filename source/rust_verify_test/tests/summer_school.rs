@@ -132,7 +132,7 @@ test_verify_one_file! {
         proof fn try_out_some_set_literals(x: int, y: int) {
             let set138: Set<int> = set![1, 3, 8];
             let set813: Set<int> = set![8, 1, 3];
-            assert(set138.ext_equal(set813));
+            assert(set138 =~= set813);
 
             let set7 = set![7];
             let set765 = set![7, 6, 5];
@@ -185,7 +185,7 @@ test_verify_one_file! {
 
             assert(has_four_five_six(happySet));
 
-            assert(happySet.difference(set![4, 5, 6]).ext_equal(set![1, 2, 7]));
+            assert(happySet.difference(set![4, 5, 6]) =~= set![1, 2, 7]);
 
             assert(has_four_five_six(set![4, 6].union(set![5])));
 
@@ -227,15 +227,15 @@ test_verify_one_file! {
 
             assert(fibo[7] == 21);
 
-            assert(fibo.subrange(2, 4).ext_equal(seq![2, 3]));
+            assert(fibo.subrange(2, 4) =~= seq![2, 3]);
 
-            assert(fibo.subrange(0, 3).ext_equal(seq![1, 1, 2]));
+            assert(fibo.subrange(0, 3) =~= seq![1, 1, 2]);
 
-            assert(fibo.subrange(7, fibo.len() as int).ext_equal(seq![21, 34]));
+            assert(fibo.subrange(7, fibo.len() as int) =~= seq![21, 34]);
 
             assert(fibo.subrange(2, 5).len() == 3);
 
-            assert(fibo.subrange(5, 6).ext_equal(seq![8]));
+            assert(fibo.subrange(5, 6) =~= seq![8]);
 
             let copy: Seq<int> = fibo;
 
@@ -578,11 +578,11 @@ test_verify_one_file! {
 
         proof fn set_comprehension() {
             let modest_evens = Set::new(|x: int| 0 <= x < 10 && is_even(x));
-            assert(modest_evens.ext_equal(set![0, 2, 4, 6, 8]));
+            assert(modest_evens =~= set![0, 2, 4, 6, 8]);
 
             /* This is beyond summer school, but shows a verus-preferred style */
             let equivalent_evens = set_int_range(0, 10).filter(|x: int| is_even(x));
-            assert(modest_evens.ext_equal(equivalent_evens));
+            assert(modest_evens =~= equivalent_evens);
         }
 
         proof fn maps() {
@@ -597,7 +597,7 @@ test_verify_one_file! {
 
             /* This is beyond summer school, but shows a verus-preferred style */
             let equivalent_double_map = set_int_range(1, 5).mk_map(|x: int| x * 2);
-            assert(equivalent_double_map.ext_equal(double_map));
+            assert(equivalent_double_map =~= double_map);
         }
 
         proof fn map_comprehension() {
@@ -609,7 +609,7 @@ test_verify_one_file! {
         proof fn seq_comprehension() {
             let evens_in_order = Seq::new(5, |i: int| i * 2);
             assert(evens_in_order[2] == 4);
-            assert(evens_in_order.ext_equal(seq![0, 2, 4, 6, 8]));
+            assert(evens_in_order =~= seq![0, 2, 4, 6, 8]);
         }
     } => Ok(())
 }
@@ -627,7 +627,7 @@ test_verify_one_file! {
 
         proof fn set_comprehension() {
             let modest_evens = Set::new(|x: int| 0 <= x < 10 && is_even(x));
-            assert(modest_evens.ext_equal(set![0, 2, 4, 8]));   // FAILS
+            assert(modest_evens =~= set![0, 2, 4, 8]);   // FAILS
         }
 
         proof fn maps() {
@@ -650,7 +650,7 @@ test_verify_one_file! {
         proof fn seq_comprehension() {
             let evens_in_order = Seq::new(5, |i: int| i * 2);
             assert(evens_in_order[2] == 4);
-            assert(evens_in_order.ext_equal(seq![8, 6, 4, 2, 0]));  // FAILS
+            assert(evens_in_order =~= seq![8, 6, 4, 2, 0]);  // FAILS
         }
     } => Err(err) => assert_fails(err, 4)
 }

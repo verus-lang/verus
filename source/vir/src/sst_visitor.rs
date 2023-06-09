@@ -73,7 +73,7 @@ where
                 ExpX::UnaryOpr(_op, e1) => {
                     expr_visitor_control_flow!(exp_visitor_dfs(e1, map, f));
                 }
-                ExpX::Binary(_op, e1, e2) => {
+                ExpX::Binary(_, e1, e2) | ExpX::BinaryOpr(_, e1, e2) => {
                     expr_visitor_control_flow!(exp_visitor_dfs(e1, map, f));
                     expr_visitor_control_flow!(exp_visitor_dfs(e2, map, f));
                 }
@@ -201,7 +201,15 @@ where
 {
     stm_visitor_dfs(stm, &mut |stm| {
         match &stm.x {
-            StmX::Call { fun: _, mode: _, typ_args: _, args, split: _, dest: _ } => {
+            StmX::Call {
+                fun: _,
+                resolved_method: _,
+                mode: _,
+                typ_args: _,
+                args,
+                split: _,
+                dest: _,
+            } => {
                 for exp in args.iter() {
                     expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f));
                 }
@@ -310,6 +318,12 @@ where
             let expr1 = map_exp_visitor_bind(e1, map, f)?;
             let expr2 = map_exp_visitor_bind(e2, map, f)?;
             let exp = exp_new(ExpX::Binary(*op, expr1, expr2));
+            f(&exp, map)
+        }
+        ExpX::BinaryOpr(op, e1, e2) => {
+            let expr1 = map_exp_visitor_bind(e1, map, f)?;
+            let expr2 = map_exp_visitor_bind(e2, map, f)?;
+            let exp = exp_new(ExpX::BinaryOpr(op.clone(), expr1, expr2));
             f(&exp, map)
         }
         ExpX::If(e1, e2, e3) => {
@@ -466,6 +480,15 @@ where
         ExpX::Loc(e1) => ok_exp(ExpX::Loc(fe(env, e1)?)),
         ExpX::Old(..) => Ok(exp.clone()),
         ExpX::Call(fun, typs, es) => {
+            use crate::sst::CallFun;
+            let fun = match fun {
+                CallFun::Fun(_, None) => fun.clone(),
+                CallFun::Fun(f, Some((r, ts))) => {
+                    let ts: Result<Vec<Typ>, VirErr> = ts.iter().map(|t| ft(env, t)).collect();
+                    CallFun::Fun(f.clone(), Some((r.clone(), Arc::new(ts?))))
+                }
+                CallFun::CheckTermination(..) | CallFun::InternalFun(..) => fun.clone(),
+            };
             let typs: Result<Vec<Typ>, VirErr> = typs.iter().map(|t| ft(env, t)).collect();
             ok_exp(ExpX::Call(fun.clone(), Arc::new(typs?), fs(env, es)?))
         }
@@ -498,6 +521,10 @@ where
             ok_exp(ExpX::UnaryOpr(op.clone(), fe(env, e1)?))
         }
         ExpX::Binary(op, e1, e2) => ok_exp(ExpX::Binary(*op, fe(env, e1)?, fe(env, e2)?)),
+        ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(deep, t), e1, e2) => {
+            let op = crate::ast::BinaryOpr::ExtEq(*deep, ft(env, t)?);
+            ok_exp(ExpX::BinaryOpr(op, fe(env, e1)?, fe(env, e2)?))
+        }
         ExpX::If(e0, e1, e2) => ok_exp(ExpX::If(fe(env, e0)?, fe(env, e1)?, fe(env, e2)?)),
         ExpX::WithTriggers(ts, body) => {
             ok_exp(ExpX::WithTriggers(ftrigs(env, ts)?, fe(env, body)?))
@@ -707,12 +734,18 @@ where
         | StmX::BreakOrContinue { label: _, is_break: _ }
         | StmX::If(_, _, _)
         | StmX::Block(_) => Ok(stm.clone()),
-        StmX::Call { fun, mode, typ_args, args, split, dest } => {
+        StmX::Call { fun, resolved_method, mode, typ_args, args, split, dest } => {
             let typ_args = typ_args.iter().map(ft).collect::<Result<Vec<Typ>, _>>()?;
+            let resolved_method = if let Some((f, ts)) = resolved_method {
+                Some((f.clone(), Arc::new(vec_map_result(ts, ft)?)))
+            } else {
+                None
+            };
             Ok(Spanned::new(
                 stm.span.clone(),
                 StmX::Call {
                     fun: fun.clone(),
+                    resolved_method,
                     mode: mode.clone(),
                     typ_args: Arc::new(typ_args),
                     args: args.clone(),
@@ -779,12 +812,13 @@ where
     map_stm_visitor(stm, &mut |stm| {
         let span = stm.span.clone();
         let stm = match &stm.x {
-            StmX::Call { fun, mode, typ_args, args, split, dest } => {
+            StmX::Call { fun, resolved_method, mode, typ_args, args, split, dest } => {
                 let args = Arc::new(vec_map_result(args, fe)?);
                 Spanned::new(
                     span,
                     StmX::Call {
                         fun: fun.clone(),
+                        resolved_method: resolved_method.clone(),
                         mode: *mode,
                         typ_args: typ_args.clone(),
                         args,

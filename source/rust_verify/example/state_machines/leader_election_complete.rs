@@ -116,7 +116,7 @@ state_machine!(
                     // maybe this chord just sprung into existence
                     if post.highest_heard.index(end) == pre.highest_heard.index(end) {
                       // no change -- 
-                      assert(pre.highest_heard.ext_equal(post.highest_heard));
+                      assert(pre.highest_heard =~= post.highest_heard);
                       assert(equal(pre.highest_heard, post.highest_heard));
                       assert(equal(pre, post));
                       assert(post.highest_heard.index(node) > post.ids.index(node));

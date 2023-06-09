@@ -3,7 +3,7 @@ use air::ast::AstId;
 use rustc_hir::HirId;
 use rustc_span::SpanData;
 
-use vir::ast::{Fun, Krate, Mode, Path, Pattern};
+use vir::ast::{AutospecUsage, Fun, Krate, Mode, Path, Pattern};
 use vir::modes::ErasureModes;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -34,7 +34,7 @@ pub enum ResolvedCall {
     /// The call is to an operator like == or + that should be compiled.
     CompilableOperator(CompilableOperator),
     /// The call is to a function, and we record the resolved name of the function here.
-    Call(Fun),
+    Call(Fun, AutospecUsage),
     /// Path and variant of datatype constructor
     Ctor(Path, vir::ast::Ident),
     /// The call is to a dynamically computed function, and is exec

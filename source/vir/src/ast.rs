@@ -329,6 +329,14 @@ pub enum BinaryOp {
     StrGetChar,
 }
 
+/// More complex unary operations (requires Clone rather than Copy)
+/// (Below, "boxed" refers to boxing types in the SMT encoding, not the Rust Box type)
+#[derive(Clone, Debug, Serialize, Deserialize, Hash, ToDebugSNode)]
+pub enum BinaryOpr {
+    /// extensional equality ext_equal (true ==> deep extensionality)
+    ExtEq(bool, Typ),
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum MultiOp {
     Chained(Arc<Vec<InequalityOp>>),
@@ -464,10 +472,6 @@ pub type Fun = Arc<FunX>;
 pub struct FunX {
     /// Path of function
     pub path: Path,
-    /// Path of the trait that defines the function, if any.
-    /// This disambiguates between impls for the same type of multiple traits that define functions
-    /// with the same name.
-    pub trait_path: Option<Path>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, ToDebugSNode)]
@@ -477,9 +481,17 @@ pub enum BuiltinSpecFun {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub enum CallTargetKind {
+    /// Statically known function
+    Static,
+    /// Dynamically dispatched method.  Optionally specify the statically resolved target if known.
+    Method(Option<(Fun, Typs)>),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum CallTarget {
-    /// Call a statically known function, passing some type arguments
-    Static(Fun, Typs),
+    /// Regular function, passing some type arguments
+    Fun(CallTargetKind, Fun, Typs, AutospecUsage),
     /// Call a dynamically computed FnSpec (no type arguments allowed),
     /// where the function type is specified by the GenericBound of typ_param.
     FnSpec(Expr),
@@ -519,6 +531,16 @@ pub enum ComputeMode {
     ComputeOnly,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum AutospecUsage {
+    /// This function should be lowered by autospec iff the
+    /// target function has an autospec attribute.
+    IfMarked,
+    /// Do not apply autospec. (This might be because we already applied it during lowering,
+    /// or because it doesn't apply to this function.)
+    Final,
+}
+
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
@@ -554,6 +576,8 @@ pub enum ExprX {
     UnaryOpr(UnaryOpr, Expr),
     /// Primitive binary operation
     Binary(BinaryOp, Expr, Expr),
+    /// Special binary operation
+    BinaryOpr(BinaryOpr, Expr, Expr),
     /// Primitive multi-operand operation
     Multi(MultiOp, Exprs),
     /// Quantifier (forall/exists), binding the variables in Binders, with body Expr
@@ -735,6 +759,9 @@ pub enum FunctionKind {
         datatype: Path,
         datatype_typ_args: Typs,
     },
+    /// These should get demoted into Static functions in `demote_foreign_traits`.
+    /// This really only exists so that we can check the trait really is foreign.
+    ForeignTraitMethodImpl(Path),
 }
 
 /// Function, including signature and body
@@ -744,6 +771,9 @@ pub type Function = Arc<Spanned<FunctionX>>;
 pub struct FunctionX {
     /// Name of function
     pub name: Fun,
+    /// Proxy used to declare the spec of this function
+    /// (e.g., some function marked `external_fn_specification`)
+    pub proxy: Option<Spanned<Path>>,
     /// Kind (translation to AIR is different for each different kind)
     pub kind: FunctionKind,
     /// Access control (public/private)
@@ -823,6 +853,8 @@ pub struct DatatypeX {
     pub typ_params: TypPositiveBounds,
     pub variants: Variants,
     pub mode: Mode,
+    /// Generate ext_equal lemmas for datatype
+    pub ext_equal: bool,
 }
 pub type Datatype = Arc<Spanned<DatatypeX>>;
 pub type Datatypes = Vec<Datatype>;
@@ -847,4 +879,6 @@ pub struct KrateX {
     pub traits: Vec<Trait>,
     /// List of all modules in the crate
     pub module_ids: Vec<Path>,
+    /// List of all 'external' functions in the crate (only useful for diagnostics)
+    pub external_fns: Vec<Fun>,
 }

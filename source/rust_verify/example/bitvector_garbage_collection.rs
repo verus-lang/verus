@@ -87,9 +87,9 @@ fn set_two_bit_exec(bv: u32, low_loc: u32, high: bool, low: bool) -> (ret: u32)
 fn set_color(bucket: u32, high: bool, low: bool, i: u32, ghost_bucket: Seq<Color>) -> (new_bucket: u32)
     requires
         i < 16,
-        bucket_view(bucket).ext_equal(ghost_bucket)
+        bucket_view(bucket) =~= ghost_bucket
     ensures
-        bucket_view(new_bucket).ext_equal(ghost_bucket.update(i as int, color_view(high, low))),
+        bucket_view(new_bucket) =~= ghost_bucket.update(i as int, color_view(high, low)),
 {
     let new_bucket = set_two_bit_exec(bucket, 2 * i, high, low);
     assert(color_view(high, low) == color_view(get_bit!(new_bucket, add(mul(2, i), 1)), get_bit!(new_bucket, mul(2, i))));

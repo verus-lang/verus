@@ -243,6 +243,18 @@ impl Hash for BinOp {
             BinOp::BigNe(_) => {
                 state.write_u8(32u8);
             }
+            BinOp::ExtEq(_) => {
+                state.write_u8(33u8);
+            }
+            BinOp::ExtNe(_) => {
+                state.write_u8(34u8);
+            }
+            BinOp::ExtDeepEq(_) => {
+                state.write_u8(35u8);
+            }
+            BinOp::ExtDeepNe(_) => {
+                state.write_u8(36u8);
+            }
         }
     }
 }

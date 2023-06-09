@@ -32,6 +32,7 @@ pub mod ast_sort;
 mod ast_to_sst;
 pub mod ast_util;
 mod ast_visitor;
+pub mod autospec;
 pub mod builtins;
 pub mod check_ast_flavor;
 mod closures;

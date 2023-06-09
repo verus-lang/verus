@@ -283,7 +283,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         }
         ExprX::ConstVar(..) => panic!("ConstVar should already be removed"),
         ExprX::Call(target, exprs) => match target {
-            CallTarget::Static(name, _) => {
+            CallTarget::Fun(_, name, _, _) => {
                 let function = &ctx.func_map[name].x;
                 let is_spec = function.mode == Mode::Spec;
                 let is_trait = !matches!(function.kind, FunctionKind::Static);
@@ -430,6 +430,13 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 let (e1, e2) = coerce_exprs_to_agree(ctx, &e1, &e2);
                 mk_expr(ExprX::Binary(*op, e1, e2))
             }
+        }
+        ExprX::BinaryOpr(op @ crate::ast::BinaryOpr::ExtEq(..), e1, e2) => {
+            let e1 = poly_expr(ctx, state, e1);
+            let e2 = poly_expr(ctx, state, e2);
+            let e1 = coerce_expr_to_poly(ctx, &e1);
+            let e2 = coerce_expr_to_poly(ctx, &e2);
+            mk_expr(ExprX::BinaryOpr(op.clone(), e1, e2))
         }
         ExprX::Multi(MultiOp::Chained(ops), es) => {
             let es =
@@ -687,6 +694,7 @@ fn poly_stmt(ctx: &Ctx, state: &mut State, stmt: &Stmt) -> Stmt {
 fn poly_function(ctx: &Ctx, function: &Function) -> Function {
     let FunctionX {
         name,
+        proxy,
         kind,
         visibility,
         mode: mut function_mode,
@@ -824,6 +832,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
 
     let functionx = FunctionX {
         name: name.clone(),
+        proxy: proxy.clone(),
         kind: kind.clone(),
         visibility: visibility.clone(),
         mode: function_mode,
@@ -861,12 +870,13 @@ fn poly_datatype(ctx: &Ctx, datatype: &Datatype) -> Datatype {
 }
 
 pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &Krate) -> Krate {
-    let KrateX { functions, datatypes, traits, module_ids } = &**krate;
+    let KrateX { functions, datatypes, traits, module_ids, external_fns } = &**krate;
     let kratex = KrateX {
         functions: functions.iter().map(|f| poly_function(ctx, f)).collect(),
         datatypes: datatypes.iter().map(|d| poly_datatype(ctx, d)).collect(),
         traits: traits.clone(),
         module_ids: module_ids.clone(),
+        external_fns: external_fns.clone(),
     };
     ctx.func_map = HashMap::new();
     for function in kratex.functions.iter() {

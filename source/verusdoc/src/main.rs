@@ -314,7 +314,11 @@ fn update_mode_info(docblock_elem: &NodeRef, info: &DocModeInfo) {
 
     let mut splices: Vec<(usize, String)> = vec![];
 
-    let fn_idx = full_text.find("fn").unwrap();
+    let fn_idx = if let Some(fn_idx) = full_text.find("fn") {
+        fn_idx
+    } else {
+        return;
+    };
     let fn_mode = format!("{:} ", info.fn_mode);
     splices.push((fn_idx, fn_mode.clone()));
 

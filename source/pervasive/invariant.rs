@@ -127,16 +127,6 @@ pub struct AtomicInvariant<K, V, Pred> {
     dummy1: core::marker::PhantomData<(K, Pred)>,
 }
 
-impl<K, V, Pred> AtomicInvariant<K, V, Pred> {
-    #[cfg(verus_macro_erase_ghost)]
-    pub(crate) fn assume_new() -> AtomicInvariant<K, V, Pred> {
-        AtomicInvariant {
-            dummy: SyncSendIfSend::assume_new(),
-            dummy1: core::marker::PhantomData,
-        }
-    }
-}
-
 /// A `LocalInvariant` is a ghost object that provides "interior mutability"
 /// for ghost objects, specifically, for `tracked` ghost objects.
 /// A reference `&LocalInvariant` may be shared between clients.
@@ -192,6 +182,7 @@ macro_rules! declare_invariant_impl {
             pub spec fn constant(&self) -> K;
 
             /// Namespace the invariant was declared in.
+            #[rustc_diagnostic_item = concat!("vstd::invariant::", stringify!($invariant), "::namespace")]
             pub spec fn namespace(&self) -> int;
 
             /// Returns `true` if it is possible to store the value `v` into the `
@@ -200,6 +191,7 @@ macro_rules! declare_invariant_impl {
             ///
             /// This is equivalent to `Pred::inv(self.constant(), v)`.
 
+            #[rustc_diagnostic_item = concat!("vstd::invariant::", stringify!($invariant), "::inv")]
             pub open spec fn inv(&self, v: V) -> bool {
                 Pred::inv(self.constant(), v)
             }

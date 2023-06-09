@@ -179,6 +179,16 @@ pub fn equal<A>(_: A, _: A) -> bool {
 }
 
 #[verifier::spec]
+pub fn ext_equal<A>(_: A, _: A) -> bool {
+    unimplemented!()
+}
+
+#[verifier::spec]
+pub fn ext_equal_deep<A>(_: A, _: A) -> bool {
+    unimplemented!()
+}
+
+#[verifier::spec]
 pub fn old<A>(_: A) -> A {
     unimplemented!();
 }

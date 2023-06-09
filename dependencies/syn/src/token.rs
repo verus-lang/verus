@@ -789,6 +789,10 @@ define_punctuation! {
     "<=="         pub struct Exply/3      /// `<==`
     "==="         pub struct EqEqEq/3     /// `===`
     "!=="         pub struct NeEq/3       /// `!==`
+    "=~="         pub struct TildeEq/3    /// `=~=`
+    "!~="         pub struct TildeNe/3    /// `!~=`
+    "=~~="        pub struct TildeTildeEq/4 /// `=~~=`
+    "!~~="        pub struct TildeTildeNe/4 /// `!~~=`
 }
 
 define_delimiters! {
@@ -945,6 +949,10 @@ macro_rules! export_token_macro {
             [<==]         => { $crate::token::Exply };
             [===]         => { $crate::token::EqEqEq };
             [!==]         => { $crate::token::NeEq };
+            [=~=]         => { $crate::token::TildeEq };
+            [!~=]         => { $crate::token::TildeNe };
+            [=~~=]        => { $crate::token::TildeTildeEq };
+            [!~~=]        => { $crate::token::TildeTildeNe };
         }
     };
 }

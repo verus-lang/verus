@@ -55,7 +55,7 @@ fn expr_get_early_exits_rec(
             | ExprX::VarAt(..)
             | ExprX::ConstVar(..)
             | ExprX::Loc(..)
-            | ExprX::Call(CallTarget::Static(..), _)
+            | ExprX::Call(CallTarget::Fun(..), _)
             | ExprX::Call(CallTarget::FnSpec(..), _)
             | ExprX::Call(CallTarget::BuiltinSpecFun(..), _)
             | ExprX::Tuple(..)
@@ -64,6 +64,7 @@ fn expr_get_early_exits_rec(
             | ExprX::Unary(..)
             | ExprX::UnaryOpr(..)
             | ExprX::Binary(..)
+            | ExprX::BinaryOpr(..)
             | ExprX::Multi(..)
             | ExprX::Assign { .. }
             | ExprX::If(..)

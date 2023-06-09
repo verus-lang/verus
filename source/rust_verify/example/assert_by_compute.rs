@@ -139,10 +139,10 @@ mod sequences {
 
     fn compute_seq_symbolic<T>(a: T, b: T, c: T, d: T) {
         assert(seq![a, b, c, d].len() == 4) by(compute_only);
-        assert(seq![a, b, c, d].ext_equal(seq![a, b].add(seq![c, d]))) by(compute_only);
-        assert(seq![a, b, c, d].ext_equal(seq![a, b].push(c).push(d))) by(compute_only);
-        assert(seq![a, b, c, d].subrange(1, 3).ext_equal(seq![b].push(c))) by(compute_only);
-        assert(seq![a, b, c, d].ext_equal(reverse(seq![d, c, b, a]))) by(compute_only);
+        assert(seq![a, b, c, d] =~= seq![a, b].add(seq![c, d])) by(compute_only);
+        assert(seq![a, b, c, d] =~= seq![a, b].push(c).push(d)) by(compute_only);
+        assert(seq![a, b, c, d].subrange(1, 3) =~= seq![b].push(c)) by(compute_only);
+        assert(seq![a, b, c, d] =~= reverse(seq![d, c, b, a])) by(compute_only);
     }
 
 }
@@ -314,7 +314,7 @@ mod veribetrkv_example_original {
     fn crc_compute() {
         assert(
             bits_of_int(lut.index(v - 1) as nat, 64)
-                .ext_equal(pow_mod_crc(2 * 64 * v as nat).add(pow_mod_crc(64 * v as nat)))
+                 =~= pow_mod_crc(2 * 64 * v as nat).add(pow_mod_crc(64 * v as nat))
         ) by(compute);
     }
 }
@@ -380,7 +380,7 @@ mod veribetrkv_example_list_comprehension {
     fn crc_compute() {
         assert(
             bits_of_int(lut.index(v - 1) as nat, 64)
-                .ext_equal(pow_mod_crc(2 * 64 * v as nat).add(pow_mod_crc(64 * v as nat)))
+                 =~= pow_mod_crc(2 * 64 * v as nat).add(pow_mod_crc(64 * v as nat))
         ) by(compute_only);
     }
 }

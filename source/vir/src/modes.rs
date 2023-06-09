@@ -1,7 +1,7 @@
 use crate::ast::{
-    BinaryOp, CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, Ident,
-    InferMode, InvAtomicity, Krate, Mode, ModeCoercion, MultiOp, Path, Pattern, PatternX, Stmt,
-    StmtX, UnaryOp, UnaryOpr, VirErr,
+    AutospecUsage, BinaryOp, CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, Function,
+    FunctionKind, Ident, InferMode, InvAtomicity, Krate, Mode, ModeCoercion, MultiOp, Path,
+    Pattern, PatternX, Stmt, StmtX, UnaryOp, UnaryOpr, VirErr,
 };
 use crate::ast_util::{error, error_with_help, get_field, msg_error, path_as_vstd_name};
 use crate::def::user_local_name;
@@ -502,7 +502,10 @@ fn check_expr_handle_mut_arg(
             typing.erasure_modes.var_modes.push((expr.span.clone(), mode));
             Ok(mode)
         }
-        ExprX::Call(CallTarget::Static(x, _), es) => {
+        ExprX::Call(CallTarget::Fun(_, x, _, autospec_usage), es) => {
+            assert!(*autospec_usage == AutospecUsage::Final);
+
+            let x = x;
             let function = match typing.funs.get(x) {
                 None => {
                     let name = crate::ast_util::path_as_rust_name(&x.path);
@@ -510,6 +513,7 @@ fn check_expr_handle_mut_arg(
                 }
                 Some(f) => f.clone(),
             };
+
             if function.x.mode == Mode::Exec {
                 match &mut typing.atomic_insts {
                     None => {}
@@ -725,6 +729,11 @@ fn check_expr_handle_mut_arg(
             let mode1 = check_expr(typing, outer_mode, erasure_mode, e1)?;
             let mode2 = check_expr(typing, outer_mode, erasure_mode, e2)?;
             Ok(mode_join(op_mode, mode_join(mode1, mode2)))
+        }
+        ExprX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), e1, e2) => {
+            check_expr_has_mode(typing, Mode::Spec, e1, Mode::Spec)?;
+            check_expr_has_mode(typing, Mode::Spec, e2, Mode::Spec)?;
+            Ok(Mode::Spec)
         }
         ExprX::Multi(MultiOp::Chained(_), es) => {
             for e in es.iter() {

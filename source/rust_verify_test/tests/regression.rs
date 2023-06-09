@@ -410,3 +410,60 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] nat_no_use_builtin_issue575 ["no-auto-import-builtin"] => code! {
+        use vstd::prelude::*;
+
+        pub struct MyType {
+            x: nat,
+        }
+
+        fn main() { }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] poly_invalid_air_regression_577 verus_code! {
+        use vstd::{prelude::*, vec::*};
+
+        pub trait Foo {
+            fn do_something(&mut self, val: u8);
+        }
+
+        pub struct Bar {
+            vec: Vec<u8>,
+            field0: u8
+        }
+
+        impl Bar {
+            fn new() -> Self {
+                Self {
+                    vec: Vec::with_capacity(2),
+                    field0: 0,
+                }
+            }
+        }
+
+        impl Foo for Bar {
+            fn do_something(&mut self, val: u8) {
+                self.field0 = val;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] def_id_names_for_builtins_regression_588 ["no-auto-import-builtin"] => code! {
+        use vstd::{prelude::*, seq::*};
+
+        verus! {
+
+        spec fn pred(a: nat, s: Seq<int>) -> bool
+        {
+            a < s.len()
+        }
+
+        } // verus!
+    } => Ok(())
+}

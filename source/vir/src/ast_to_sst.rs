@@ -1,10 +1,10 @@
 use crate::ast::{
-    ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, CallTarget, ComputeMode, Constant, Expr, ExprX,
-    Fun, Function, Ident, LoopInvariantKind, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX,
-    Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
+    ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ComputeMode,
+    Constant, Expr, ExprX, Fun, Function, Ident, LoopInvariantKind, Mode, PatternX, SpannedTyped,
+    Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
-use crate::ast_util::{error, types_equal, QUANT_FORALL};
+use crate::ast_util::{error, internal_error, types_equal, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{unique_bound, unique_local, Spanned};
 use crate::func_to_air::{SstInfo, SstMap};
@@ -213,7 +213,9 @@ impl<'a> State<'a> {
             _ => exp.clone(),
         });
         let exp = crate::sst_visitor::map_exp_visitor_result(&exp, &mut |exp| match &exp.x {
-            ExpX::Call(CallFun::Fun(fun), typs, args) => {
+            ExpX::Call(CallFun::Fun(fun, resolved_method), typs, args) => {
+                let (fun, typs) =
+                    if let Some((f, ts)) = resolved_method { (f, ts) } else { (fun, typs) };
                 if let Some(SstInfo { inline, params, memoize: _, body }) =
                     fun_ssts.borrow().get(fun)
                 {
@@ -224,6 +226,7 @@ impl<'a> State<'a> {
                         assert!(typ_bounds.len() == typs.len());
                         for ((name, _), typ) in typ_bounds.iter().zip(typs.iter()) {
                             assert!(!typ_substs.contains_key(name));
+                            let typ = crate::poly::coerce_typ_to_poly(ctx, typ);
                             typ_substs.insert(name.clone(), typ.clone());
                         }
                         assert!(params.len() == args.len());
@@ -450,7 +453,13 @@ pub fn can_control_flow_reach_after_loop(expr: &Expr) -> bool {
 }
 
 enum ReturnedCall {
-    Call { fun: Fun, typs: Typs, has_return: bool, args: Exps },
+    Call {
+        fun: Fun,
+        resolved_method: Option<(Fun, Typs)>,
+        typs: Typs,
+        has_return: bool,
+        args: Exps,
+    },
     Never,
 }
 
@@ -464,7 +473,10 @@ fn expr_get_call(
             CallTarget::FnSpec(..) => {
                 panic!("internal error: CallTarget::FnSpec");
             }
-            CallTarget::Static(x, typs) => {
+            CallTarget::Fun(kind, x, typs, autospec_usage) => {
+                if *autospec_usage != AutospecUsage::Final {
+                    return internal_error(&expr.span, "autospec not discharged");
+                }
                 let mut stms: Vec<Stm> = Vec::new();
                 let mut exps: Vec<Exp> = Vec::new();
                 for arg in args.iter() {
@@ -483,6 +495,7 @@ fn expr_get_call(
                     stms,
                     ReturnedCall::Call {
                         fun: x.clone(),
+                        resolved_method: kind.resolved(),
                         typs: typs.clone(),
                         has_return: has_ret,
                         args: Arc::new(exps),
@@ -504,7 +517,9 @@ fn expr_must_be_call_stm(
     expr: &Expr,
 ) -> Result<Option<(Vec<Stm>, ReturnedCall)>, VirErr> {
     match &expr.x {
-        ExprX::Call(CallTarget::Static(x, _), _) if !function_can_be_exp(ctx, state, expr, x)? => {
+        ExprX::Call(CallTarget::Fun(_, x, _, _), _)
+            if !function_can_be_exp(ctx, state, expr, x)? =>
+        {
             expr_get_call(ctx, state, expr)
         }
         _ => Ok(None),
@@ -749,6 +764,7 @@ fn stm_call(
     state: &mut State,
     span: &Span,
     name: Fun,
+    resolved_method: Option<(Fun, Typs)>,
     typs: Typs,
     args: Exps,
     dest: Option<Dest>,
@@ -759,6 +775,7 @@ fn stm_call(
         let error = air::messages::error(crate::def::SPLIT_PRE_FAILURE.to_string(), span);
         let call = StmX::Call {
             fun: name.clone(),
+            resolved_method: resolved_method.clone(),
             mode: fun.x.mode,
             typ_args: typs.clone(),
             args: args.clone(),
@@ -783,6 +800,7 @@ fn stm_call(
     }
     let call = StmX::Call {
         fun: name,
+        resolved_method,
         mode: fun.x.mode,
         typ_args: typs,
         args: Arc::new(small_args),
@@ -921,7 +939,10 @@ fn expr_to_stm_opt(
                     stms.extend(stms2.into_iter());
                     Ok((stms, ReturnValue::Never))
                 }
-                Some((stms2, ReturnedCall::Call { fun, typs, has_return: _, args })) => {
+                Some((
+                    stms2,
+                    ReturnedCall::Call { fun, resolved_method, typs, has_return: _, args },
+                )) => {
                     // make a Call
                     stms.extend(stms2.into_iter());
                     let (dest, assign) = if matches!(lhs_exp.x, ExpX::VarLoc(_)) {
@@ -945,7 +966,16 @@ fn expr_to_stm_opt(
                             Some(assign),
                         )
                     };
-                    stms.push(stm_call(ctx, state, &expr.span, fun, typs, args, Some(dest))?);
+                    stms.push(stm_call(
+                        ctx,
+                        state,
+                        &expr.span,
+                        fun,
+                        resolved_method,
+                        typs,
+                        args,
+                        Some(dest),
+                    )?);
                     stms.extend(assign.into_iter());
                     Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
                 }
@@ -986,13 +1016,20 @@ fn expr_to_stm_opt(
                 ReturnValue::Some(mk_exp(ExpX::Call(CallFun::InternalFun(f), ts.clone(), args))),
             ))
         }
-        ExprX::Call(CallTarget::Static(..), _) => {
+        ExprX::Call(CallTarget::Fun(..), _) => {
             match expr_get_call(ctx, state, expr)?.expect("Call") {
                 (stms, ReturnedCall::Never) => Ok((stms, ReturnValue::Never)),
-                (mut stms, ReturnedCall::Call { fun: x, typs, has_return: ret, args }) => {
+                (
+                    mut stms,
+                    ReturnedCall::Call { fun: x, resolved_method, typs, has_return: ret, args },
+                ) => {
                     if function_can_be_exp(ctx, state, expr, &x)? {
                         // ExpX::Call
-                        let call = ExpX::Call(CallFun::Fun(x.clone()), typs.clone(), args);
+                        let call = ExpX::Call(
+                            CallFun::Fun(x.clone(), resolved_method.clone()),
+                            typs.clone(),
+                            args,
+                        );
                         Ok((stms, ReturnValue::Some(mk_exp(call))))
                     } else if ret {
                         let (temp, temp_var) = state.next_temp(&expr.span, &expr.typ);
@@ -1007,6 +1044,7 @@ fn expr_to_stm_opt(
                             state,
                             &expr.span,
                             x.clone(),
+                            resolved_method.clone(),
                             typs.clone(),
                             args.clone(),
                             Some(dest),
@@ -1016,7 +1054,11 @@ fn expr_to_stm_opt(
                             if fun.x.mode == Mode::Spec {
                                 // for recommends, we need a StmX::Call for the recommends
                                 // and an ExpX::Call for the value.
-                                let call = ExpX::Call(CallFun::Fun(x.clone()), typs.clone(), args);
+                                let call = ExpX::Call(
+                                    CallFun::Fun(x.clone(), resolved_method.clone()),
+                                    typs.clone(),
+                                    args,
+                                );
                                 let call = SpannedTyped::new(&expr.span, &expr.typ, call);
                                 stms.push(init_var(&expr.span, &temp_ident, &call));
                             }
@@ -1030,6 +1072,7 @@ fn expr_to_stm_opt(
                             state,
                             &expr.span,
                             x.clone(),
+                            resolved_method,
                             typs.clone(),
                             args,
                             None,
@@ -1204,6 +1247,15 @@ fn expr_to_stm_opt(
                     Ok((stms1, ReturnValue::Some(bin)))
                 }
             }
+        }
+        ExprX::BinaryOpr(op, e1, e2) => {
+            let (mut stms1, e1) = expr_to_stm_opt(ctx, state, e1)?;
+            let (mut stms2, e2) = expr_to_stm_opt(ctx, state, e2)?;
+            let e1 = unwrap_or_return_never!(e1, stms1);
+            stms1.append(&mut stms2);
+            let e2 = unwrap_or_return_never!(e2, stms1);
+            let bin = mk_exp(ExpX::BinaryOpr(op.clone(), e1, e2));
+            Ok((stms1, ReturnValue::Some(bin)))
         }
         ExprX::Multi(..) => {
             panic!("internal error: Multi should have been simplified by ast_simplify")
@@ -1898,14 +1950,26 @@ fn stmt_to_stm(
                     Some((stms, ReturnedCall::Never)) => {
                         return Ok((stms, ReturnValue::Never, None));
                     }
-                    Some((mut stms, ReturnedCall::Call { fun, typs, has_return: _, args })) => {
+                    Some((
+                        mut stms,
+                        ReturnedCall::Call { fun, resolved_method, typs, has_return: _, args },
+                    )) => {
                         // Special case: convert to a Call
                         // It can't be pure in this case, so don't return a Bnd.
                         let dest = Dest {
                             dest: var_loc_exp(&pattern.span, &typ, decl.ident.clone()),
                             is_init: true,
                         };
-                        stms.push(stm_call(ctx, state, &init.span, fun, typs, args, Some(dest))?);
+                        stms.push(stm_call(
+                            ctx,
+                            state,
+                            &init.span,
+                            fun,
+                            resolved_method,
+                            typs,
+                            args,
+                            Some(dest),
+                        )?);
                         let ret = ReturnValue::ImplicitUnit(stmt.span.clone());
                         return Ok((stms, ret, Some((decl, None))));
                     }

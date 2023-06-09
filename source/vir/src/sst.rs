@@ -48,9 +48,10 @@ pub enum InternalFun {
     CheckDecreaseHeight,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub enum CallFun {
-    Fun(Fun),
+    // static/method Fun, plus an optional resolved Fun for methods
+    Fun(Fun, Option<(Fun, Typs)>),
     CheckTermination(Fun),
     InternalFun(InternalFun),
 }
@@ -74,6 +75,7 @@ pub enum ExpX {
     Unary(UnaryOp, Exp),
     UnaryOpr(UnaryOpr, Exp),
     Binary(BinaryOp, Exp, Exp),
+    BinaryOpr(crate::ast::BinaryOpr, Exp, Exp),
     If(Exp, Exp, Exp),
     WithTriggers(Trigs, Exp),
     Bind(Bnd, Exp),
@@ -123,6 +125,7 @@ pub enum StmX {
     // call to exec/proof function (or spec function for checking_recommends)
     Call {
         fun: Fun,
+        resolved_method: Option<(Fun, Typs)>,
         mode: Mode,
         typ_args: Typs,
         args: Exps,
