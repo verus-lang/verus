@@ -1,6 +1,6 @@
 #![feature(rustc_private)]
 
-use rust_verify::util::{verus_build_profile, VerusBuildProfile};
+use rust_verify::util::{verus_build_profile, VerusBuildProfile, print_commit_info};
 
 extern crate rustc_driver; // TODO(main_new) can we remove this?
 
@@ -27,6 +27,12 @@ pub fn main() {
     let internal_program = internal_args.next().unwrap();
     let build_test_mode = if let Some(first_arg) = internal_args.next() {
         match first_arg.as_str() {
+            "--version" => {
+                println!("Verus");
+                println!("platform: {}_{}", std::env::consts::OS, std::env::consts::ARCH);
+                print_commit_info();
+                return;
+            }
             rust_verify::lifetime::LIFETIME_DRIVER_ARG => {
                 let mut internal_args: Vec<_> = internal_args.collect();
                 internal_args.insert(0, internal_program);
