@@ -754,6 +754,9 @@ pub enum FunctionKind {
         datatype: Path,
         datatype_typ_args: Typs,
     },
+    /// These should get demoted into Static functions in `demote_foreign_traits`.
+    /// This really only exists so that we can check the trait really is foreign.
+    ForeignTraitMethodImpl(Path),
 }
 
 /// Function, including signature and body

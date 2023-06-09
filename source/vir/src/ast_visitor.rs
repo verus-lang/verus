@@ -944,7 +944,9 @@ where
     let name = name.clone();
     let proxy = proxy.clone();
     let kind = match kind {
-        FunctionKind::Static | FunctionKind::TraitMethodDecl { trait_path: _ } => kind.clone(),
+        FunctionKind::Static
+        | FunctionKind::TraitMethodDecl { trait_path: _ }
+        | FunctionKind::ForeignTraitMethodImpl(_) => kind.clone(),
         FunctionKind::TraitMethodImpl {
             method,
             trait_path,

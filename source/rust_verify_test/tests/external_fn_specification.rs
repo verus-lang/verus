@@ -637,24 +637,6 @@ test_verify_one_file! {
 // Check that you can't apply it to a trait function
 
 test_verify_one_file! {
-    #[test] apply_to_trait_fn_not_supported verus_code! {
-        struct X { }
-
-        trait Tr { fn f(); }
-
-        #[verifier(external)]
-        impl Tr for X {
-            fn f() { }
-        }
-
-        #[verifier(external_fn_specification)]
-        fn ex_f() {
-            X::f()
-        }
-    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification not supported for trait functions")
-}
-
-test_verify_one_file! {
     #[test] apply_to_trait_fn_not_supported2 verus_code! {
         trait Tr { fn f(); }
 
@@ -662,7 +644,7 @@ test_verify_one_file! {
         fn ex_f<T: Tr>() {
             T::f()
         }
-    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification not supported for trait functions")
+    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification not supported for unresolved trait functions")
 }
 
 // Other
@@ -988,4 +970,331 @@ test_verify_one_file! {
             std::intrinsics::likely(x)
         }
     } => Err(err) => assert_vir_error_msg(err, "when_used_as_spec refers to function which is more private")
+}
+
+// Specifying impls of foreign traits
+
+test_verify_one_file! {
+    #[test] foregin_trait1 verus_code! {
+        #[verifier(external_fn_specification)]
+        pub fn ex_u8_default() -> (res: u8)
+            ensures res == 0
+        {
+            u8::default()
+        }
+
+        fn test() {
+            let x = u8::default();
+            assert(x == 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] foreign_trait2 verus_code! {
+        trait Tr {
+            fn f(t: u8);
+        }
+
+        #[verifier::external]
+        impl Tr for X {
+            fn f(t: u8) { }
+        }
+
+        struct X { }
+
+        #[verifier(external_fn_specification)]
+        pub fn ex_f_default(t: u8)
+        {
+            X::f(t)
+        }
+    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification can only be used on trait functions when the trait itself is external")
+}
+
+test_verify_one_file! {
+    #[test] foreign_trait3 verus_code! {
+        #[verifier::external]
+        trait Tr {
+            fn f(t: u8);
+        }
+
+        impl Tr for X {
+            fn f(t: u8) { }
+        }
+
+        struct X { }
+
+        #[verifier(external_fn_specification)]
+        pub fn ex_f_default(t: u8)
+            requires t == 5,
+        {
+            X::f(t)
+        }
+    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for `crate::impl&%0::f`")
+}
+
+test_verify_one_file! {
+    #[test] foreign_trait4 verus_code! {
+        trait Tr {
+            fn f(t: u8);
+        }
+
+        impl Tr for X {
+            fn f(t: u8) { }
+        }
+
+        struct X { }
+
+        #[verifier(external_fn_specification)]
+        pub fn ex_f_default(t: u8)
+            requires t == 5,
+        {
+            X::f(t)
+        }
+
+        // note: kind of a crummy error message
+    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification can only be used on trait functions when the trait itself is external")
+}
+
+test_verify_one_file! {
+    #[test] foreign_trait5 verus_code! {
+        #[verifier::external]
+        trait Tr {
+            fn f(t: u8);
+        }
+
+        #[verifier::external]
+        impl Tr for X {
+            fn f(t: u8) { }
+        }
+
+        struct X { }
+
+        #[verifier(external_fn_specification)]
+        pub fn ex_f_default(t: u8)
+            requires t == 5,
+        {
+            X::f(t)
+        }
+
+        fn test() {
+            X::f(5);
+        }
+
+        fn test2() {
+            X::f(6); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] foreign_trait6 verus_code! {
+        pub enum Foo<T> {
+            One(T),
+            Two,
+        }
+
+        #[verifier::external]
+        impl<T> Default for Foo<T> {
+            fn default() -> Foo<T> {
+                Foo::Two
+            }
+        }
+
+        #[verifier(external_fn_specification)]
+        pub fn ex_foo_default<T>() -> (res: Foo<T>)
+            ensures res == Foo::<T>::Two
+        {
+            Foo::<T>::default()
+        }
+
+        fn test() {
+            let x = Foo::<u8>::default();
+            assert(x == Foo::<u8>::Two);
+        }
+
+        fn test2<T>() {
+            let x = Foo::<T>::default();
+            assert(x == Foo::<T>::Two);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] foreign_trait7 verus_code! {
+        pub enum Foo<T, U> {
+            One(T),
+            Two,
+            Three(U),
+        }
+
+        #[verifier::external]
+        impl<T, U> Default for Foo<T, U> {
+            fn default() -> Foo<T, U> {
+                Foo::Two
+            }
+        }
+
+        #[verifier(external_fn_specification)]
+        pub fn ex_foo_default<T, U>() -> (res: Foo<T, U>)
+            ensures res == Foo::<T, U>::Two
+        {
+            Foo::<T, U>::default()
+        }
+
+        fn test<T>() {
+            let x = Foo::<T, u8>::default();
+            assert(x == Foo::<T, u8>::Two);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] foreign_trait_use_self_1 verus_code! {
+        #[verifier::external]
+        trait Tr {
+            fn f(&self) -> bool;
+        }
+
+        #[verifier::external]
+        impl Tr for X {
+            fn f(&self) -> bool { true }
+        }
+
+        pub struct X { a: u8 }
+
+        #[verifier(external_fn_specification)]
+        pub fn ex_x_f(x: &X) -> bool
+            requires x.a == 5,
+        {
+            x.f()
+        }
+
+        fn test() {
+            let x = X { a: 5 };
+            let b = x.f();
+        }
+
+        fn test2() {
+            let x = X { a: 6 };
+            let b = x.f(); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+// I think the reason this test doesn't work is because Ord has a default
+// implementation of 'max', which 'u8' uses. Thus our attempts to statically resolve
+// the trait function don't work.
+
+test_verify_one_file! {
+    #[ignore] #[test] foreign_trait_use_self_2 verus_code! {
+        #[verifier(external_fn_specification)]
+        pub fn ex_u8_max(a: u8, b: u8) -> (res: u8)
+            ensures res == if a > b { a } else { b },
+        {
+            a.max(b)
+        }
+
+        fn test() {
+            let a: u8 = 5;
+            let b: u8 = 12;
+            let x = a.max(b);
+            assert(x == 12);
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] foreign_trait_use_self_3 verus_code! {
+        use std::ops::Not;
+
+        #[verifier(external_fn_specification)]
+        pub fn ex_u8_not(a: u8) -> (res: u8)
+            ensures res == !a
+        {
+            a.not()
+        }
+
+        fn test() {
+            let a: u8 = 5;
+            let x = a.not();
+            assert(x == !5u8);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] foreign_trait_with_autospec verus_code! {
+        use std::ops::Not;
+
+        pub open spec fn wrong_not(a: u8) -> u8 { (255 - a) as u8 }
+
+        #[verifier(external_fn_specification)]
+        #[verifier::when_used_as_spec(wrong_not)]
+        pub fn ex_u8_not(a: u8) -> (res: u8)
+            ensures res == !a
+        {
+            a.not()
+        }
+
+        fn test() {
+            let a: u8 = 5;
+            let x = a.not();
+            assert(x == !5u8);
+        }
+
+        proof fn test2() {
+            let a: u8 = 5;
+            let x = a.not();
+            assert(x == 250);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_foreign_trait_and_trait_bound verus_code! {
+        struct Ve<A, B> { a: A, b: B }
+        struct Gl { }
+
+        #[verifier::external]
+        trait Al { }
+
+        impl Al for Gl { }
+
+        #[verifier::external]
+        pub trait SomeTr<T> {
+            fn gget(&self, i: usize) -> &T;
+            fn set(&mut self, i: usize, value: T);
+            fn set_and_swap(&mut self, i: usize, value: &mut T);
+        }
+
+        impl<T, A: Al> SomeTr<T> for Ve<T, A> {
+            #[verifier::external_body]
+            fn gget(&self, i: usize) -> (element: &T)
+                requires i == 0
+            {
+                unimplemented!();
+            }
+
+            #[verifier::external_body]
+            fn set(&mut self, i: usize, value: T)
+            {
+                unimplemented!();
+            }
+
+            #[verifier::external_body]
+            fn set_and_swap(&mut self, i: usize, value: &mut T)
+            {
+                unimplemented!();
+            }
+        }
+
+        fn test<T>(v: Ve<T, Gl>) {
+            let x = v.gget(0);
+        }
+
+        fn test2<T>(v: Ve<T, Gl>) {
+            let x = v.gget(1); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
 }
