@@ -1,14 +1,14 @@
 use std::env;
-use std::fs::File;
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::{Command, Stdio};
-use toml::{map::Map, Value};
 use std::str;
+use toml::{map::Map, Value};
 // use toml::ser;
 // use toml::Value;
- // 0.5.1
+// 0.5.1
 
 // TODO
 // use toml::{map::Map, Value};
@@ -53,7 +53,8 @@ fn main() {
     let z3_path = exe_dir.join(REL_Z3_PATH);
     // exe_dir.push(REL_Z3_PATH);
 
-    let z3_version_output = Command::new(z3_path).arg("--version").output().expect("failed to execute process");
+    let z3_version_output =
+        Command::new(z3_path).arg("--version").output().expect("failed to execute process");
 
     let msg: &str = file_path.trim();
 
@@ -68,7 +69,8 @@ fn main() {
         .spawn()
         .expect("failed to execute process");
 
-    let verus_output: std::process::Output = child.wait_with_output().expect("Failed to read stdout");
+    let verus_output: std::process::Output =
+        child.wait_with_output().expect("Failed to read stdout");
 
     // no color information now (because we are writing in the file)
     println!("{}", String::from_utf8_lossy(&verus_output.stderr));
@@ -84,55 +86,54 @@ fn main() {
 }
 
 fn create_toml(z3_version: String, verus_version: String, stdout: String, stderr: String) -> Value {
-
     let mut versions = Map::new();
     versions.insert("z3-version".to_string(), Value::String(z3_version));
     versions.insert("verus-version".to_string(), Value::String(verus_version));
 
-    
     let mut output = Map::new();
     output.insert("stdout".to_string(), Value::String(stdout));
-    output.insert("stderr".to_string(),Value::String(stderr));
+    output.insert("stderr".to_string(), Value::String(stderr));
 
     let mut map = Map::new();
-    map.insert("title".to_string(), Value::String("Error report file - details and dependencies".to_string()));
+    map.insert(
+        "title".to_string(),
+        Value::String("Error report file - details and dependencies".to_string()),
+    );
     map.insert("Versions".into(), Value::Table(versions));
     map.insert("Verus-output".into(), Value::Table(output));
 
     Value::Table(map)
 }
 
-fn write_toml(z3_version_output: std::process::Output, verus_output: std::process::Output)
-{
-    let mut file = File::create("error_report.toml").expect("Unable to create file");
-    
+fn write_toml(z3_version_output: std::process::Output, verus_output: std::process::Output) {
+    //let mut file = File::create("error_report.toml").expect("Unable to create file");
+
     let mut z3_version = String::new();
     z3_version.push_str(match str::from_utf8(&z3_version_output.stdout) {
         Ok(val) => val,
         Err(_) => panic!("got non UTF-8 data from git"),
     });
 
-    let mut verus_version = "TODO".to_string();
+    let verus_version = "TODO".to_string();
 
     let mut stdout = String::new();
     stdout.push_str(match str::from_utf8(&verus_output.stdout) {
         Ok(val) => val,
         Err(_) => panic!("got non UTF-8 data from git"),
     });
-    
+
     let mut stderr = String::new();
     stderr.push_str(match str::from_utf8(&verus_output.stderr) {
         Ok(val) => val,
         Err(_) => panic!("got non UTF-8 data from git"),
     });
 
-    let toml_string = toml::to_string(&create_toml(z3_version, verus_version, stdout, stderr)).expect("Could not encode TOML value");
+    let toml_string = toml::to_string(&create_toml(z3_version, verus_version, stdout, stderr))
+        .expect("Could not encode TOML value");
     fs::write("error_report.toml", toml_string).expect("Could not write to file!");
-
 }
 
-pub fn create_zip(file_path: String) -> String
-{
+pub fn create_zip(file_path: String) -> String {
     // LATER
     // zip might need to be a higher level rust implementation that is platform independent
     // maybe this library? https://crates.io/crates/zip
@@ -143,12 +144,12 @@ pub fn create_zip(file_path: String) -> String
     let file_name_path = Path::new(&file_path);
 
     // dep_file_path.truncate(dep_file_path.len() - 3);
-      // v "main.rs"
+    // v "main.rs"
     let temp_file_name = &file_name_path.file_name().unwrap().to_string_lossy();
     let mut d_file_name = String::new();
     d_file_name.push_str(&temp_file_name.to_string()[..]);
-    d_file_name = d_file_name[..d_file_name.len()-2].to_string();
-    d_file_name.push_str("d");
+    d_file_name = d_file_name[..d_file_name.len() - 2].to_string();
+    d_file_name.push('d');
 
     println!("{}", d_file_name);
     let mut deps = d_to_vec(d_file_name.to_string());
@@ -160,10 +161,10 @@ pub fn create_zip(file_path: String) -> String
     // let path = env::current_dir().expect("invalid directory");
 
     Command::new("zip")
-                .arg("errorReport.zip")
-                .args(deps)
-                .output()
-                .expect("failed to execute process");
+        .arg("errorReport.zip")
+        .args(deps)
+        .output()
+        .expect("failed to execute process");
 
     d_file_name
 }
