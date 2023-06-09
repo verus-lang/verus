@@ -657,7 +657,7 @@ impl<T> Producer<T> {
 
                 // Write the element t into the buffer, updating the cell
                 // from uninitialized to initialized (to the value t).
-                queue.buffer.get(self.tail).put(Tracked(&mut cell_perm), t);
+                queue.buffer[self.tail].put(Tracked(&mut cell_perm), t);
 
                 // Store the updated tail to the shared `tail` atomic,
                 // while performing the `produce_end` transition.
@@ -710,7 +710,7 @@ impl<T> Consumer<T> {
                     Option::Some(cp) => cp,
                     Option::None => { assert(false); proof_from_false() }
                 };
-                let t = queue.buffer.get(self.head).take(Tracked(&mut cell_perm));
+                let t = queue.buffer[self.head].take(Tracked(&mut cell_perm));
 
                 atomic_with_ghost!(&queue.head => store(next_head as u64); ghost head_token => {
                     queue.instance.borrow().consume_end(cell_perm,

@@ -3092,11 +3092,89 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             )
         }
         ExprKind::Closure(..) => closure_to_vir(bctx, expr, expr_typ()?, false, modifier),
-        ExprKind::Index(_tgt_expr, _idx_expr) => {
-            unsupported_err!(
-                expr.span,
-                "index operator (except in ghost code, via the verus! macro)"
-            )
+        ExprKind::Index(tgt_expr, idx_expr) => {
+            // Determine if this is Index or IndexMut
+            // Based on ./rustc_mir_build/src/thir/cx/expr.rs in rustc
+            // this is apparently determined by the (adjusted) type of the receiver
+            let tgt_ty = bctx.types.expr_ty_adjusted(tgt_expr);
+            let is_index_mut = match tgt_ty.kind() {
+                TyKind::Ref(_, _, Mutability::Not) => false,
+                TyKind::Ref(_, _, Mutability::Mut) => true,
+                _ => {
+                    return err_span(
+                        expr.span,
+                        "Verus internal error: index operator expected & or &mut",
+                    );
+                }
+            };
+            if is_index_mut || current_modifier != ExprModifier::REGULAR {
+                unsupported_err!(expr.span, "index for &mut not supported")
+            }
+
+            // Account for the case where `a[b]` where the unadjusted type of `a`
+            // is `&mut T` but we're calling Index.
+            let adjust_mut_ref = {
+                let tgt_ty = bctx.types.expr_ty(tgt_expr);
+                let unadjusted_mutbl = match tgt_ty.kind() {
+                    TyKind::Ref(_, _, Mutability::Mut) => true,
+                    _ => false,
+                };
+                unadjusted_mutbl
+            };
+            let tgt_modifier = if adjust_mut_ref { ExprModifier::DEREF_MUT } else { modifier };
+
+            let tgt_vir = expr_to_vir(bctx, tgt_expr, tgt_modifier)?;
+            let idx_vir = expr_to_vir(bctx, idx_expr, ExprModifier::REGULAR)?;
+
+            // We only support for the special case of (Vec, usize) arguments
+            let t1 = &tgt_vir.typ;
+            let t1 = match &**t1 {
+                TypX::Decorate(_, t) => t,
+                _ => t1,
+            };
+            let typ_args = match &**t1 {
+                TypX::Datatype(p, typ_args)
+                    if p == &Arc::new(vir::ast::PathX {
+                        krate: Some(Arc::new("alloc".to_string())),
+                        segments: Arc::new(vec![
+                            Arc::new("vec".to_string()),
+                            Arc::new("Vec".to_string()),
+                        ]),
+                    }) =>
+                {
+                    typ_args.clone()
+                }
+                _ => {
+                    return err_span(
+                        expr.span,
+                        "in exec code, Verus only supports the index operator for vector",
+                    );
+                }
+            };
+            if !matches!(&*idx_vir.typ, TypX::Int(IntRange::USize)) {
+                return err_span(
+                    expr.span,
+                    "in exec code, Verus only supports the index operator for usize index",
+                );
+            }
+
+            let call_target = CallTarget::Fun(
+                vir::ast::CallTargetKind::Static,
+                Arc::new(vir::ast::FunX {
+                    path: Arc::new(vir::ast::PathX {
+                        krate: Some(Arc::new("vstd".to_string())),
+                        segments: Arc::new(vec![
+                            Arc::new("std_specs".to_string()),
+                            Arc::new("alloc".to_string()),
+                            Arc::new("vec_index".to_string()),
+                        ]),
+                    }),
+                }),
+                typ_args,
+                AutospecUsage::Final,
+            );
+            let args = Arc::new(vec![tgt_vir.clone(), idx_vir.clone()]);
+            mk_expr(ExprX::Call(call_target, args))
         }
         ExprKind::AddrOf(..) => {
             unsupported_err!(expr.span, format!("complex address-of expressions"))

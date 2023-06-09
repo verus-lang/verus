@@ -470,7 +470,7 @@ fn binary_search(v: &Vec<u64>, k: u64) -> (r: usize)
             forall|i: int, j: int| 0 <= i <= j < v.len() ==> v[i] <= v[j],
     {
         let ix = i1 + (i2 - i1) / 2;
-        if *v.get(ix) < k {
+        if v[ix] < k {
             i1 = ix + 1;
         } else {
             i2 = ix;

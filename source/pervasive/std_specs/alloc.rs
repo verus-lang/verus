@@ -38,22 +38,11 @@ impl<T, A: Allocator> VecAdditionalSpecFns<T> for Vec<T, A> {
 
 #[verifier::external]
 pub trait VecAdditionalExecFns<T> {
-    fn get(&self, i: usize) -> &T;
     fn set(&mut self, i: usize, value: T);
     fn set_and_swap(&mut self, i: usize, value: &mut T);
 }
 
 impl<T, A: Allocator> VecAdditionalExecFns<T> for Vec<T, A> {
-    /// Replacement for `self.index(i)` (which Verus does not support for technical reasons)
-
-    #[verifier::external_body]
-    fn get(&self, i: usize) -> (element: &T)
-        requires i < self.view().len(),
-        ensures *element == self.view().index(i as int)
-    {
-        &self[i]
-    }
-
     /// Replacement for `self[i] = value;` (which Verus does not support for technical reasons)
 
     #[verifier::external_body]
@@ -78,6 +67,21 @@ impl<T, A: Allocator> VecAdditionalExecFns<T> for Vec<T, A> {
     {
         core::mem::swap(&mut self[i], value);
     }
+}
+
+// TODO this should really be a 'external_fn_specification' function
+// but it's difficult to handle vec.index right now because
+// it uses more trait polymorphism than we can handle right now.
+// And `index` is too important that I don't want do
+// So this is a bit of a hack, but I'm just manually redirecting
+// `vec.index` to this function here from rust_to_vir_expr.
+
+#[verifier::external_body]
+pub fn vec_index<T, A: Allocator>(vec: &Vec<T, A>, i: usize) -> (element: &T)
+    requires i < vec.view().len(),
+    ensures *element == vec.view().index(i as int)
+{
+    &vec[i]
 }
 
 ////// Len (with autospec)

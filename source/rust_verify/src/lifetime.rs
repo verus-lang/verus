@@ -186,6 +186,7 @@ struct InvariantBlockGuard;
 fn open_atomic_invariant_begin<'a, X, V>(_inv: &'a X) -> (&'a InvariantBlockGuard, V) { panic!(); }
 fn open_local_invariant_begin<'a, X, V>(_inv: &'a X) -> (&'a InvariantBlockGuard, V) { panic!(); }
 fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) { panic!() }
+fn index<'a, V, Idx, Output>(v: &'a V, index: Idx) -> &'a Output { panic!() }
 ";
 
 fn emit_check_tracked_lifetimes<'tcx>(

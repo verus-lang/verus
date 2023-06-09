@@ -591,6 +591,15 @@ pub(crate) fn emit_exp(state: &mut EmitState, exp: &Exp) {
             state.newline_unindent();
             state.write("}");
         }
+        ExpX::Index(result_typ, e1, e2) => {
+            state.write("(*index::<_, _, ");
+            state.write(result_typ.to_string());
+            state.write(">(&(");
+            emit_exp(state, e1);
+            state.write("), ");
+            emit_exp(state, e2);
+            state.write("))");
+        }
     }
     state.end_span(*span);
 }

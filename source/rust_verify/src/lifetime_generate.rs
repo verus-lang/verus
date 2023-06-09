@@ -1107,7 +1107,12 @@ fn erase_expr<'tcx>(
         ExprKind::Index(e1, e2) => {
             let exp1 = erase_expr(ctxt, state, expect_spec, e1);
             let exp2 = erase_expr(ctxt, state, expect_spec, e2);
-            erase_spec_exps(ctxt, state, expr, vec![exp1, exp2])
+            if expect_spec {
+                erase_spec_exps(ctxt, state, expr, vec![exp1, exp2])
+            } else {
+                let ty = erase_ty(ctxt, state, &ctxt.types().node_type(expr.hir_id));
+                mk_exp(ExpX::Index(ty, exp1.expect("expr"), exp2.expect("expr")))
+            }
         }
         ExprKind::Field(e1, field) => {
             let exp1 = erase_expr(ctxt, state, expect_spec, e1);

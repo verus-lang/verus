@@ -21,7 +21,7 @@ fn binary_search(v: &Vec<u64>, k: u64) -> (r: usize)
         let ghost d = i2 - i1;
 
         let ix = i1 + (i2 - i1) / 2;
-        if *v.get(ix) < k {
+        if v[ix] < k {
             i1 = ix + 1;
         } else {
             i2 = ix;
@@ -47,8 +47,8 @@ fn reverse(v: &mut Vec<u64>)
             forall|i: int| 0 <= i < n ==> v1[i] == v[length - i - 1],
             forall|i: int| n <= i && i + n < length ==> #[trigger] v[i] == v1[i],
     {
-        let x = *v.get(n);
-        let y = *v.get(length - 1 - n);
+        let x = v[n];
+        let y = v[length - 1 - n];
         v.set(n, y);
         v.set(length - 1 - n, x);
 

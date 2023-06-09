@@ -248,7 +248,7 @@ fn vec_find(
             0 <= idx < v@.len(),
             forall |j| 0 <= j < idx ==> v@[j] != needle,
     {
-        if *v.get(idx) == needle {
+        if v[idx] == needle {
             return idx;
         }
         assert(idx + 1 < v.len());
@@ -313,7 +313,7 @@ fn visit(
         !res.0 ==> graph@.is_cycle(dfs_state.cycle@),
         equal(dfs_state.instance, old(dfs_state).instance),
 {
-    let node_state = dfs_state.node_states.get(v as usize);
+    let node_state = &dfs_state.node_states[v as usize];
     if node_state.in_stack {
         find_cycle(graph, dfs_state, v);
         return (false, Tracked(None));
@@ -372,7 +372,7 @@ fn visit(
     let tracked mut map_visited_deps: Map<usize, TopSort::visited<usize>> = Map::tracked_empty();
 
     let mut idx: usize = 0;
-    while idx < graph.edges.get(v as usize).len()
+    while idx < graph.edges[v as usize].len()
         invariant
             equal(dfs_state.instance, old(dfs_state).instance),
             dfs_state.cur_stack@.len() > 0,
@@ -389,7 +389,7 @@ fn visit(
             },
     {
 
-        let w = *graph.edges.get(v as usize).get(idx);
+        let w = graph.edges[v as usize][idx];
 
         assert((v as usize) as int == v as int);
         assert(graph.edges@.index(v as int)@.index(idx as int) == w);
