@@ -52,13 +52,16 @@ fn main() {
 
     let z3_path = exe_dir.join(REL_Z3_PATH);
     // exe_dir.push(REL_Z3_PATH);
+    let verus_path = exe_dir.join(REL_VERUS_PATH);
 
     let z3_version_output =
         Command::new(z3_path).arg("--version").output().expect("failed to execute process");
+    
+    let verus_version_output = 
+    Command::new(&verus_path).arg("--version").output().expect("failed to execute process");
 
     let msg: &str = file_path.trim();
 
-    let verus_path = exe_dir.join(REL_VERUS_PATH);
     let child = Command::new(verus_path)
         .stdin(Stdio::null())
         .arg(msg)
@@ -78,7 +81,7 @@ fn main() {
 
     // TODO: see above
     // probably change to file name?
-    write_toml(z3_version_output, verus_output);
+    write_toml(z3_version_output, verus_version_output, verus_output);
 
     let d_file_name = create_zip(file_path);
 
@@ -105,7 +108,7 @@ fn create_toml(z3_version: String, verus_version: String, stdout: String, stderr
     Value::Table(map)
 }
 
-fn write_toml(z3_version_output: std::process::Output, verus_output: std::process::Output) {
+fn write_toml(z3_version_output: std::process::Output, verus_version_output: std::process::Output, verus_output: std::process::Output) {
     //let mut file = File::create("error_report.toml").expect("Unable to create file");
 
     let mut z3_version = String::new();
@@ -114,7 +117,11 @@ fn write_toml(z3_version_output: std::process::Output, verus_output: std::proces
         Err(_) => panic!("got non UTF-8 data from git"),
     });
 
-    let verus_version = "TODO".to_string();
+    let mut verus_version = String::new();
+    verus_version.push_str(match str::from_utf8(&verus_version_output.stdout) {
+        Ok(val) => val,
+        Err(_) => panic!("got non UTF-8 data from git"),
+    });
 
     let mut stdout = String::new();
     stdout.push_str(match str::from_utf8(&verus_output.stdout) {
@@ -151,7 +158,6 @@ pub fn create_zip(file_path: String) -> String {
     d_file_name = d_file_name[..d_file_name.len() - 2].to_string();
     d_file_name.push('d');
 
-    println!("{}", d_file_name);
     let mut deps = d_to_vec(d_file_name.to_string());
     deps.push("error_report.toml".to_string());
 
