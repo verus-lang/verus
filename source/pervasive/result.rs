@@ -1,3 +1,5 @@
+#![deprecated(note="Use std::result instead")]
+
 #[allow(unused_imports)]
 use crate::pervasive::*;
 #[allow(unused_imports)]
@@ -6,7 +8,6 @@ use builtin_macros::*;
 
 verus! {
 
-#[deprecated(note="Use std::result::Result instead")]
 #[is_variant]
 pub enum Result<T, E> {
     Ok(T),

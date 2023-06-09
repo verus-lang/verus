@@ -1,3 +1,5 @@
+#![deprecated(note="Use std::vec instead")]
+
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
@@ -13,7 +15,6 @@ use crate::slice::*;
 
 verus! {
 
-#[deprecated(note="Use std::vec::Vec instead")]
 #[verifier(external_body)]
 #[verifier::accept_recursive_types(A)]
 pub struct Vec<A> {

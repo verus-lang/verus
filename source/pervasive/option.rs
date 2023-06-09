@@ -1,3 +1,5 @@
+#![deprecated(note="Use std::option instead")]
+
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
@@ -6,7 +8,6 @@ use crate::pervasive::*;
 
 verus! {
 
-#[deprecated(note="Use std::option::Option instead")]
 #[is_variant]
 #[verifier::ext_equal]
 #[verifier::accept_recursive_types(A)]
