@@ -171,7 +171,7 @@ pub(crate) fn handle_external_fn<'tcx>(
     body_id: &CheckItemFnEither<&BodyId, &[Ident]>,
     mode: Mode,
     vattrs: &VerifierAttrs,
-) -> Result<(vir::ast::Path, vir::ast::Visibility), VirErr> {
+) -> Result<(vir::ast::Path, vir::ast::Visibility, FunctionKind), VirErr> {
     // This function is the proxy, and we need to look up the actual path.
 
     if mode != Mode::Exec {
@@ -200,15 +200,6 @@ pub(crate) fn handle_external_fn<'tcx>(
         return err_span(sig.span, "`external_fn_specification` attribute not supported here");
     }
 
-    if let Some(impl_def_id) = ctxt.tcx.impl_of_method(id) {
-        if ctxt.tcx.impl_trait_ref(impl_def_id).is_some() {
-            return err_span(
-                sig.span,
-                "external_fn_specification not supported for trait functions",
-            );
-        }
-    }
-
     let body_id = match body_id {
         CheckItemFnEither::BodyId(body_id) => body_id,
         _ => {
@@ -220,12 +211,8 @@ pub(crate) fn handle_external_fn<'tcx>(
     };
 
     let body = find_body(ctxt, body_id);
-    let external_id = get_external_def_id(ctxt.tcx, body_id, body, sig)?;
+    let (external_id, kind) = get_external_def_id(ctxt.tcx, id, body_id, body, sig)?;
     let external_path = def_id_to_vir_path(ctxt.tcx, external_id);
-
-    if ctxt.tcx.trait_of_item(external_id).is_some() {
-        return err_span(sig.span, "external_fn_specification not supported for trait functions");
-    }
 
     if external_path.krate == Some(Arc::new("builtin".to_string())) {
         return err_span(
@@ -293,7 +280,7 @@ pub(crate) fn handle_external_fn<'tcx>(
         );
     }
 
-    Ok((external_path, external_item_visibility))
+    Ok((external_path, external_item_visibility, kind))
 }
 
 pub enum CheckItemFnEither<A, B> {
@@ -323,7 +310,7 @@ pub(crate) fn check_item_fn<'tcx>(
     let vattrs = get_verifier_attrs(attrs)?;
     let mode = get_mode(Mode::Exec, attrs);
 
-    let (path, proxy, visibility) = if vattrs.external_fn_specification {
+    let (path, proxy, visibility, kind) = if vattrs.external_fn_specification {
         if is_verus_spec {
             return err_span(
                 sig.span,
@@ -338,15 +325,15 @@ pub(crate) fn check_item_fn<'tcx>(
             );
         }
 
-        let (external_path, external_item_visibility) =
+        let (external_path, external_item_visibility, kind) =
             handle_external_fn(ctxt, id, visibility, sig, self_generics, &body_id, mode, &vattrs)?;
 
         let proxy = (*ctxt.spanned_new(sig.span, this_path.clone())).clone();
 
-        (external_path, Some(proxy), external_item_visibility)
+        (external_path, Some(proxy), external_item_visibility, kind)
     } else {
         // No proxy.
-        (this_path.clone(), None, visibility)
+        (this_path.clone(), None, visibility, kind)
     };
 
     let name = Arc::new(FunX { path: path.clone() });
@@ -756,10 +743,11 @@ fn all_predicates<'tcx>(
 
 pub(crate) fn get_external_def_id<'tcx>(
     tcx: TyCtxt<'tcx>,
+    proxy_fun_id: DefId,
     body_id: &BodyId,
     body: &Body<'tcx>,
     sig: &'tcx FnSig<'tcx>,
-) -> Result<rustc_span::def_id::DefId, VirErr> {
+) -> Result<(rustc_span::def_id::DefId, FunctionKind), VirErr> {
     let err = || {
         err_span(
             sig.span,
@@ -778,16 +766,18 @@ pub(crate) fn get_external_def_id<'tcx>(
         _ => &body.value,
     };
 
-    match &expr.kind {
+    let types = body_id_to_types(tcx, body_id);
+
+    let (external_id, hir_id) = match &expr.kind {
         ExprKind::Call(fun, _args) => match &fun.kind {
             ExprKind::Path(qpath) => {
-                let types = body_id_to_types(tcx, body_id);
                 let def = types.qpath_res(&qpath, fun.hir_id);
                 match def {
                     rustc_hir::def::Res::Def(_, def_id) => {
                         // We don't need to check the args match or anything,
-                        // the type signature check done by the caller is sufficient.
-                        Ok(def_id)
+                        // the type signature check done by the handle_external_fn
+                        // is sufficient.
+                        (def_id, fun.hir_id)
                     }
                     _ => {
                         return err();
@@ -799,14 +789,40 @@ pub(crate) fn get_external_def_id<'tcx>(
             }
         },
         ExprKind::MethodCall(_name_and_generics, _receiver, _other_args, _fn_span) => {
-            let types = body_id_to_types(tcx, body_id);
             let def_id =
                 types.type_dependent_def_id(expr.hir_id).expect("def id of the method definition");
-            Ok(def_id)
+            (def_id, expr.hir_id)
         }
         _ => {
             return err();
         }
+    };
+
+    if let Some(trait_def_id) = tcx.trait_of_item(external_id) {
+        // If this is a trait function, then the DefId we have right now points to
+        // function definition in the trait definition.
+        // We want to resolve to a specific definition in a trait implementation.
+        let node_substs = types.node_substs(hir_id);
+        let param_env = tcx.param_env(proxy_fun_id);
+        let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
+        let inst =
+            rustc_middle::ty::Instance::resolve(tcx, param_env, external_id, normalized_substs);
+        if let Ok(Some(inst)) = inst {
+            if let rustc_middle::ty::InstanceDef::Item(item) = inst.def {
+                if let rustc_middle::ty::WithOptConstParam { did, const_param_did: None } = item {
+                    let trait_path = def_id_to_vir_path(tcx, trait_def_id);
+                    let kind = FunctionKind::ForeignTraitMethodImpl(trait_path);
+                    return Ok((did, kind));
+                }
+            }
+        }
+
+        return err_span(
+            sig.span,
+            "external_fn_specification not supported for unresolved trait functions",
+        );
+    } else {
+        Ok((external_id, FunctionKind::Static))
     }
 }
 

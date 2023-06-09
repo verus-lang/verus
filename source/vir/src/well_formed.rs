@@ -372,7 +372,9 @@ fn check_function(
     if function.x.attrs.is_decrease_by {
         match function.x.kind {
             FunctionKind::Static => {}
-            FunctionKind::TraitMethodDecl { .. } | FunctionKind::TraitMethodImpl { .. } => {
+            FunctionKind::TraitMethodDecl { .. }
+            | FunctionKind::TraitMethodImpl { .. }
+            | FunctionKind::ForeignTraitMethodImpl(_) => {
                 return error(
                     &function.span,
                     "decreases_by/recommends_by function cannot be a trait method",

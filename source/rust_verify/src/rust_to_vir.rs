@@ -390,6 +390,10 @@ fn check_item<'tcx>(
         }
         ItemKind::Macro(_, _) => {}
         ItemKind::Trait(IsAuto::No, Unsafety::Normal, trait_generics, bounds, trait_items) => {
+            if vattrs.external {
+                return Ok(());
+            }
+
             let trait_def_id = item.owner_id.to_def_id();
             for bound in bounds.iter() {
                 if let Some(r) = bound.trait_ref() {
