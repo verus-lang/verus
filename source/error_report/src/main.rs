@@ -5,7 +5,8 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::str;
-use toml::{map::Map, Value};
+use toml::value::Value;
+use toml::{map::Map};
 // use toml::ser;
 // use toml::Value;
 // 0.5.1
@@ -47,7 +48,7 @@ fn main() {
     } else {
         println!("Usage: error_report <file_name>");
     }
-
+    println!("{:?}", args);
     println!();
 
     let z3_path = exe_dir.join(REL_Z3_PATH);
@@ -66,7 +67,6 @@ fn main() {
         .stdin(Stdio::null())
         .arg(msg)
         .arg("--emit=dep-info")
-        // .arg("--color=always") // this preserves color when piped
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -75,21 +75,22 @@ fn main() {
     let verus_output: std::process::Output =
         child.wait_with_output().expect("Failed to read stdout");
 
-    // no color information now (because we are writing in the file)
     println!("{}", String::from_utf8_lossy(&verus_output.stderr));
     println!("{}", String::from_utf8_lossy(&verus_output.stdout));
 
-    // TODO: see above
-    // probably change to file name?
-    write_toml(z3_version_output, verus_version_output, verus_output);
+    write_toml(args, z3_version_output, verus_version_output, verus_output);
 
     let d_file_name = create_zip(file_path);
 
     clean_up(d_file_name);
 }
 
-fn create_toml(z3_version: String, verus_version: String, stdout: String, stderr: String) -> Value {
-    let mut versions = Map::new();
+fn create_toml(args: Vec<String>, z3_version: String, verus_version: String, stdout: String, stderr: String) -> Value {
+    
+   let mut command_line_arguments = Map::new();
+   command_line_arguments.insert("args".to_string(), Value::String(args.join(" ")));
+   
+   let mut versions = Map::new();
     versions.insert("z3-version".to_string(), Value::String(z3_version));
     versions.insert("verus-version".to_string(), Value::String(verus_version));
 
@@ -102,13 +103,16 @@ fn create_toml(z3_version: String, verus_version: String, stdout: String, stderr
         "title".to_string(),
         Value::String("Error report file - details and dependencies".to_string()),
     );
+    map.insert("Command-Line-Arguments".into(), Value::Table(command_line_arguments));
     map.insert("Versions".into(), Value::Table(versions));
     map.insert("Verus-output".into(), Value::Table(output));
 
     Value::Table(map)
 }
 
-fn write_toml(z3_version_output: std::process::Output, verus_version_output: std::process::Output, verus_output: std::process::Output) {
+fn write_toml(args: Vec<String>, z3_version_output: std::process::Output, 
+    verus_version_output: std::process::Output, 
+    verus_output: std::process::Output) {
     //let mut file = File::create("error_report.toml").expect("Unable to create file");
 
     let mut z3_version = String::new();
@@ -135,23 +139,15 @@ fn write_toml(z3_version_output: std::process::Output, verus_version_output: std
         Err(_) => panic!("got non UTF-8 data from git"),
     });
 
-    let toml_string = toml::to_string(&create_toml(z3_version, verus_version, stdout, stderr))
+    let toml_string = toml::to_string(&create_toml(args, z3_version, verus_version, stdout, stderr))
         .expect("Could not encode TOML value");
     fs::write("error_report.toml", toml_string).expect("Could not write to file!");
 }
 
 pub fn create_zip(file_path: String) -> String {
-    // LATER
-    // zip might need to be a higher level rust implementation that is platform independent
-    // maybe this library? https://crates.io/crates/zip
-
-    // file path  blabla/bar.rs -> blabla/bar.d
-    // let cur_dir = env::current_dir().expect("invalid directory");
 
     let file_name_path = Path::new(&file_path);
 
-    // dep_file_path.truncate(dep_file_path.len() - 3);
-    // v "main.rs"
     let temp_file_name = &file_name_path.file_name().unwrap().to_string_lossy();
     let mut d_file_name = String::new();
     d_file_name.push_str(&temp_file_name.to_string()[..]);
