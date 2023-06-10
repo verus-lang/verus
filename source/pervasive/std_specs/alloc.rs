@@ -155,6 +155,15 @@ pub fn ex_vec_pop<T, A: Allocator>(vec: &mut Vec<T, A>) -> (value: Option<T>)
     vec.pop()
 }
 
+#[verifier::external_fn_specification]
+pub fn ex_append<T, A: Allocator>(vec: &mut Vec<T, A>, other: &mut Vec<T, A>)
+    ensures
+        vec@ == old(vec)@ + old(other)@,
+        other@ == Seq::<T>::empty()
+{
+    vec.append(other)
+}
+
 /*
 // TODO find a way to support this
 // This is difficult because of the SliceIndex trait

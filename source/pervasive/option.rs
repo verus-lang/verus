@@ -16,6 +16,9 @@ pub enum Option<A> {
     Some(A)
 }
 
+pub use crate::option::Option::None;
+pub use crate::option::Option::Some;
+
 // TODO this currently doesn't work without `external`,
 // because of some temporary Verus trait limitations,
 // but we need to implement Copy.

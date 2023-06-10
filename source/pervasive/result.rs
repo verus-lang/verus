@@ -14,6 +14,9 @@ pub enum Result<T, E> {
     Err(E)
 }
 
+pub use crate::result::Result::Ok;
+pub use crate::result::Result::Err;
+
 impl<T, E> Result<T, E> {
     #[inline(always)]
     pub const fn is_ok(&self) -> (res: bool)
