@@ -66,3 +66,60 @@ pub fn mtime_recursive(path: &Path) -> Result<FileTime, String> {
         .unwrap_or_else(|| FileTime::from_last_modification_time(&meta));
     Ok(max_meta)
 }
+
+pub fn store_commit_info() {
+    // assumes the verus executable gets the .git file for verus repo
+    let mut exe_dir = std::env::current_exe().expect("invalid directory");
+    exe_dir.pop();
+
+    let sha = std::process::Command::new("git")
+        .current_dir(&exe_dir)
+        .args(&["rev-parse", "HEAD"])
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("failed to execute git rev-parse HEAD");
+
+    let mut sha_msg = sha
+        .wait_with_output()
+        .expect("failed to execute git rev-parse HEAD")
+        .stdout;
+    sha_msg.pop();
+
+    std::env::set_var(
+        "VERUS_BUILD_SHA",
+        String::from_utf8(sha_msg.clone()).unwrap(),
+    );
+
+    let child = std::process::Command::new("git")
+        .current_dir(&exe_dir)
+        .args(&["diff", "--exit-code", "HEAD"])
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .expect("failed to execute git diff --exit-code HEAD");
+
+    let status = child
+        .wait_with_output()
+        .expect("failed to execute git diff --exit-code HEAD")
+        .status;
+
+    if status.success() {
+        std::env::set_var("VERUS_BUILD_DIRTY", "false");
+    } else {
+        std::env::set_var("VERUS_BUILD_DIRTY", "true");
+    }
+
+    let date_info = std::process::Command::new("git")
+        .current_dir(&exe_dir)
+        .args(&["show", "-s", "--format=%ci", "HEAD"])
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("failed to execute git show -s --format=%ci HEAD");
+
+    let mut date_msg = date_info
+        .wait_with_output()
+        .expect("failed to execute git show -s --format=%ci HEAD")
+        .stdout;
+    date_msg.pop();
+
+    std::env::set_var("VERUS_BUILD_DATE", String::from_utf8(date_msg).unwrap());
+}

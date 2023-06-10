@@ -139,7 +139,10 @@ const Z3_FILE_NAME: &str = if cfg!(target_os = "windows") {
     "./z3"
 };
 
+
 fn run() -> Result<(), String> {
+    util::store_commit_info();
+
     let _vargo_nest = {
         let vargo_nest = std::env::var("VARGO_NEST")
             .ok()
