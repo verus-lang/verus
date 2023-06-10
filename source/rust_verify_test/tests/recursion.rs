@@ -1349,3 +1349,67 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_fails(e, 1)
 }
+
+test_verify_one_file! {
+    // this test won't work until https://github.com/verus-lang/verus/issues/563 is fixed
+    #[ignore] #[test] mutual_recursion_result_incompleteness_regression_564 verus_code! {
+        use vstd::prelude::*;
+
+        pub spec const NUM_LAYERS: nat = 4;
+        pub spec const NUM_ENTRIES: nat = 32;
+
+        pub enum Entry {
+            Directory(Directory),
+            Page(nat),
+        }
+
+        pub struct Directory {
+            entries: Seq<Entry>,
+        }
+
+        #[verifier(external_body)]
+        pub struct Data { }
+
+        impl Data {
+
+            pub open spec fn fn_one(self, layer: nat) -> Directory
+                decreases NUM_LAYERS - layer, NUM_ENTRIES, 2nat
+            {
+                Directory { entries: self.fn_three(layer, seq![]) }
+            }
+
+            pub open spec fn fn_two(self, layer: nat, idx: nat) -> Entry
+                decreases NUM_LAYERS - layer, NUM_ENTRIES - idx, 0nat
+            {
+                if layer + 1 <= NUM_LAYERS {
+                    Entry::Directory(self.fn_one(layer + 1))
+                } else {
+                    arbitrary()
+                }
+            }
+
+            pub open spec fn fn_three(self, layer: nat, init: Seq<Entry>) -> Seq<Entry>
+                decreases NUM_LAYERS - layer, NUM_ENTRIES - init.len(), 1nat
+                via Self::termination_fn_three
+            {
+                if init.len() >= NUM_ENTRIES {
+                    init
+                } else {
+                    let entry = self.fn_two(layer, init.len());
+                    self.fn_three(layer, init.add(seq![entry]))
+                }
+            }
+
+            #[verifier(decreases_by)]
+            proof fn termination_fn_three(self, layer: nat, init: Seq<Entry>) {
+                let num_entries: nat = NUM_ENTRIES as nat;
+                if init.len() >= num_entries {
+                    assume(false);
+                } else {
+                    // let entry = self.fn_two(layer, init.len());
+                    // self.fn_three(layer, init.add(seq![entry]))
+                }
+            }
+        }
+    } => Ok(())
+}

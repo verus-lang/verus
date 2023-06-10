@@ -331,6 +331,14 @@ pub enum BinaryOp {
     StrGetChar,
 }
 
+/// More complex unary operations (requires Clone rather than Copy)
+/// (Below, "boxed" refers to boxing types in the SMT encoding, not the Rust Box type)
+#[derive(Clone, Debug, Serialize, Deserialize, Hash, ToDebugSNode)]
+pub enum BinaryOpr {
+    /// extensional equality ext_equal (true ==> deep extensionality)
+    ExtEq(bool, Typ),
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum MultiOp {
     Chained(Arc<Vec<InequalityOp>>),
@@ -417,7 +425,8 @@ pub type Patterns = Arc<Vec<Pattern>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
 pub enum PatternX {
     /// _
-    Wildcard,
+    /// True if this is implicitly added from a ..
+    Wildcard(bool),
     /// x or mut x
     Var {
         name: Ident,
@@ -476,7 +485,7 @@ pub enum CallTargetKind {
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum CallTarget {
     /// Regular function, passing some type arguments
-    Fun(CallTargetKind, Fun, Typs),
+    Fun(CallTargetKind, Fun, Typs, AutospecUsage),
     /// Call a dynamically computed FnSpec (no type arguments allowed),
     /// where the function type is specified by the GenericBound of typ_param.
     FnSpec(Expr),
@@ -516,6 +525,16 @@ pub enum ComputeMode {
     ComputeOnly,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum AutospecUsage {
+    /// This function should be lowered by autospec iff the
+    /// target function has an autospec attribute.
+    IfMarked,
+    /// Do not apply autospec. (This might be because we already applied it during lowering,
+    /// or because it doesn't apply to this function.)
+    Final,
+}
+
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
@@ -551,6 +570,8 @@ pub enum ExprX {
     UnaryOpr(UnaryOpr, Expr),
     /// Primitive binary operation
     Binary(BinaryOp, Expr, Expr),
+    /// Special binary operation
+    BinaryOpr(BinaryOpr, Expr, Expr),
     /// Primitive multi-operand operation
     Multi(MultiOp, Exprs),
     /// Quantifier (forall/exists), binding the variables in Binders, with body Expr
@@ -651,8 +672,28 @@ pub enum GenericBoundX {
 }
 
 pub type TypBounds = Arc<Vec<(Ident, GenericBound)>>;
-/// Each type parameter is (name: Ident, bound: GenericBound, strictly_positive: bool)
-pub type TypPositiveBounds = Arc<Vec<(Ident, GenericBound, bool)>>;
+/// When instantiating type S<A> with A = T in a recursive type definition,
+/// is T allowed to include the one of recursively defined types?
+/// Example:
+///   enum Foo { Rec(S<Box<Foo>>), None }
+///   enum Bar { Rec(S<Box<Bar>>) }
+///   (instantiates A with recursive type Box<Foo> or Box<Bar>)
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy, PartialEq, Eq)]
+pub enum AcceptRecursiveType {
+    /// rejects the Foo example above
+    /// (because A may occur negatively in S)
+    Reject,
+    /// accepts the Foo example above because the occurrence is in Rec,
+    /// which is not the ground variant for Foo (None is the ground variant for Foo),
+    /// but rejects Bar because Rec is the ground variant for Bar (since there is no None variant)
+    /// (because A occurs only strictly positively in S, but may occur in S's ground variant)
+    RejectInGround,
+    /// accepts both Foo and Bar
+    /// (because A occurs only strictly positively in S, and does not occur in S's ground variant)
+    Accept,
+}
+/// Each type parameter is (name: Ident, GenericBound, AcceptRecursiveType)
+pub type TypPositiveBounds = Arc<Vec<(Ident, GenericBound, AcceptRecursiveType)>>;
 
 pub type FunctionAttrs = Arc<FunctionAttrsX>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Default, Clone)]
@@ -720,6 +761,9 @@ pub type Function = Arc<Spanned<FunctionX>>;
 pub struct FunctionX {
     /// Name of function
     pub name: Fun,
+    /// Proxy used to declare the spec of this function
+    /// (e.g., some function marked `external_fn_specification`)
+    pub proxy: Option<Spanned<Path>>,
     /// Kind (translation to AIR is different for each different kind)
     pub kind: FunctionKind,
     /// Access control (public/private)
@@ -799,6 +843,8 @@ pub struct DatatypeX {
     pub typ_params: TypPositiveBounds,
     pub variants: Variants,
     pub mode: Mode,
+    /// Generate ext_equal lemmas for datatype
+    pub ext_equal: bool,
 }
 pub type Datatype = Arc<Spanned<DatatypeX>>;
 pub type Datatypes = Vec<Datatype>;
@@ -823,4 +869,6 @@ pub struct KrateX {
     pub traits: Vec<Trait>,
     /// List of all modules in the crate
     pub module_ids: Vec<Path>,
+    /// List of all 'external' functions in the crate (only useful for diagnostics)
+    pub external_fns: Vec<Fun>,
 }

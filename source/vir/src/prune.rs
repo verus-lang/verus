@@ -5,8 +5,8 @@
 /// 3) Also compute names for abstract datatype sorts for the module,
 ///    since we're traversing the module-visible datatypes anyway.
 use crate::ast::{
-    CallTarget, Datatype, Expr, ExprX, Fun, Function, FunctionKind, Ident, Krate, KrateX, Mode,
-    Path, Stmt, Typ, TypX,
+    AutospecUsage, CallTarget, Datatype, Expr, ExprX, Fun, Function, FunctionKind, Ident, Krate,
+    KrateX, Mode, Path, Stmt, Typ, TypX,
 };
 use crate::ast_util::{is_visible_to, is_visible_to_of_owner};
 use crate::datatype_to_air::is_datatype_transparent;
@@ -149,16 +149,18 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             Ok(t.clone())
         };
         if let Some(f) = state.worklist_functions.pop() {
-            let module_path = f.path.pop_segment();
-            reach(&mut state.reached_modules, &mut state.worklist_modules, &module_path);
             let function = &ctxt.function_map[&f];
+            if let Some(module_path) = &function.x.visibility.owning_module {
+                reach(&mut state.reached_modules, &mut state.worklist_modules, module_path);
+            }
             if let FunctionKind::TraitMethodImpl { method, .. } = &function.x.kind {
                 reach_function(ctxt, state, method);
             }
             let fe = |state: &mut State, _: &mut ScopeMap<Ident, Typ>, e: &Expr| {
                 // note: the visitor automatically reaches e.typ
                 match &e.x {
-                    ExprX::Call(CallTarget::Fun(kind, name, _), _) => {
+                    ExprX::Call(CallTarget::Fun(kind, name, _, autospec), _) => {
+                        assert!(*autospec == AutospecUsage::Final);
                         reach_function(ctxt, state, name);
                         if let crate::ast::CallTargetKind::Method(Some((resolved, _))) = kind {
                             reach_function(ctxt, state, resolved);
@@ -193,9 +195,10 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
         if let Some(t) = state.worklist_types.pop() {
             match &t {
                 ReachedType::Datatype(path) => {
-                    let module_path = path.pop_segment();
-                    reach(&mut state.reached_modules, &mut state.worklist_modules, &module_path);
                     let datatype = &ctxt.datatype_map[path];
+                    if let Some(module_path) = &datatype.x.visibility.owning_module {
+                        reach(&mut state.reached_modules, &mut state.worklist_modules, module_path);
+                    }
                     crate::ast_visitor::map_datatype_visitor_env(&datatype, state, &ft).unwrap();
                 }
                 ReachedType::Lambda(arity) => {
@@ -339,7 +342,7 @@ pub fn prune_krate_for_module(
             }
             method_map.get_mut(&key).unwrap().push(f.x.name.clone());
         }
-        let module = f.x.name.path.pop_segment();
+        let module = f.x.visibility.owning_module.clone().expect("owning_module");
         if !all_functions_in_each_module.contains_key(&module) {
             all_functions_in_each_module.insert(module.clone(), Vec::new());
         }
@@ -369,6 +372,7 @@ pub fn prune_krate_for_module(
             .collect(),
         traits: krate.traits.clone(),
         module_ids: krate.module_ids.clone(),
+        external_fns: krate.external_fns.clone(),
     };
     let mut lambda_types: Vec<usize> = state.lambda_types.into_iter().collect();
     lambda_types.sort();

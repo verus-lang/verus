@@ -12,7 +12,7 @@ use rustc_hir::def::{CtorKind, DefKind, Res};
 use rustc_hir::{
     AssocItemKind, BindingAnnotation, Block, BlockCheckMode, BodyId, Closure, Crate, Expr,
     ExprKind, FnSig, HirId, Impl, ImplItem, ImplItemKind, ItemKind, Let, MaybeOwner, Node,
-    OpaqueTy, OpaqueTyOrigin, OwnerNode, Pat, PatKind, QPath, Stmt, StmtKind, TraitFn, TraitItem,
+    OpaqueTy, OpaqueTyOrigin, OwnerNode, Pat, PatKind, Stmt, StmtKind, TraitFn, TraitItem,
     TraitItemKind, TraitItemRef, UnOp, Unsafety,
 };
 use rustc_middle::ty::subst::GenericArgKind;
@@ -25,7 +25,7 @@ use rustc_span::symbol::kw;
 use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use vir::ast::{Fun, FunX, Function, Mode, Path};
+use vir::ast::{AutospecUsage, Fun, FunX, Function, Mode, Path};
 use vir::ast_util::get_field;
 use vir::def::VERUS_SPEC;
 
@@ -194,13 +194,10 @@ impl State {
         }
     }
 
-    fn reach_fun(&mut self, ctxt: &Context, self_path: Option<Path>, id: DefId) {
+    fn reach_fun(&mut self, self_path: Option<Path>, id: DefId) {
         if id.as_local().is_none() && !self.reached.contains(&(self_path.clone(), id)) {
-            let crate_name = ctxt.tcx.crate_name(ctxt.tcx.def_path(id).krate).to_string();
-            if ctxt.crate_names.contains(&crate_name) {
-                self.reached.insert((self_path.clone(), id));
-                self.imported_fun_worklist.push(id);
-            }
+            self.reached.insert((self_path.clone(), id));
+            self.imported_fun_worklist.push(id);
         }
     }
 }
@@ -389,7 +386,7 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Patter
             let name = state.datatype_name(&vir_path);
             let variant =
                 if is_enum { Some(state.variant(variant_name.to_string())) } else { None };
-            mk_pat(PatternX::DatatypeTuple(name, variant, vec![]))
+            mk_pat(PatternX::DatatypeTuple(name, variant, vec![], None))
         }
         PatKind::Box(p) => mk_pat(PatternX::Box(erase_pat(ctxt, state, p))),
         PatKind::Or(pats) => {
@@ -399,14 +396,14 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Patter
             }
             mk_pat(PatternX::Or(patterns))
         }
-        PatKind::Tuple(pats, dot_dot_pos) if dot_dot_pos.as_opt_usize().is_none() => {
+        PatKind::Tuple(pats, dot_dot_pos) => {
             let mut patterns: Vec<Pattern> = Vec::new();
             for pat in pats.iter() {
                 patterns.push(erase_pat(ctxt, state, pat));
             }
-            mk_pat(PatternX::Tuple(patterns))
+            mk_pat(PatternX::Tuple(patterns, dot_dot_pos.as_opt_usize()))
         }
-        PatKind::TupleStruct(qpath, pats, dot_dot_pos) if dot_dot_pos.as_opt_usize().is_none() => {
+        PatKind::TupleStruct(qpath, pats, dot_dot_pos) => {
             let res = ctxt.types().qpath_res(qpath, pat.hir_id);
             let (adt_def_id, variant_def, is_enum) = get_adt_res(ctxt.tcx, res, pat.span).unwrap();
             let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
@@ -419,7 +416,7 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Patter
                 patterns.push(erase_pat(ctxt, state, pat));
             }
             let variant = if is_enum { Some(variant_name) } else { None };
-            mk_pat(PatternX::DatatypeTuple(name, variant, patterns))
+            mk_pat(PatternX::DatatypeTuple(name, variant, patterns, dot_dot_pos.as_opt_usize()))
         }
         PatKind::Struct(qpath, pats, has_omitted) => {
             let res = ctxt.types().qpath_res(qpath, pat.hir_id);
@@ -600,7 +597,7 @@ fn erase_call<'tcx>(
                 erase_spec_exps(ctxt, state, expr, exps)
             }
         }
-        ResolvedCall::Call(f_name) => {
+        ResolvedCall::Call(f_name, autospec_usage) => {
             if !ctxt.functions.contains_key(f_name) {
                 panic!("internal error: function call to {:?} not found {:?}", f_name, expr.span);
             }
@@ -610,10 +607,27 @@ fn erase_call<'tcx>(
             } else {
                 panic!("internal error: call to external function {:?} {:?}", f_name, expr.span);
             };
+
+            let (f_name, f) = match (autospec_usage, &f.x.attrs.autospec) {
+                (AutospecUsage::IfMarked, Some(new_f_name)) => {
+                    let f = &ctxt.functions[new_f_name];
+                    let f = if let Some(f) = f {
+                        f
+                    } else {
+                        panic!(
+                            "internal error: call to external function {:?} {:?}",
+                            f_name, expr.span
+                        );
+                    };
+                    (new_f_name.clone(), f.clone())
+                }
+                _ => (f_name.clone(), f.clone()),
+            };
+
             if f.x.mode == Mode::Spec {
                 return None;
             }
-            state.reach_fun(ctxt, self_path, fn_def_id.expect("call id"));
+            state.reach_fun(self_path, fn_def_id.expect("call id"));
             let typ_args = mk_typ_args(ctxt, state, node_substs);
             let mut exps: Vec<Exp> = Vec::new();
             let mut is_first: bool = true;
@@ -657,7 +671,7 @@ fn erase_call<'tcx>(
             if expect_spec && !is_some {
                 None
             } else {
-                let name = state.fun_name(f_name);
+                let name = state.fun_name(&f_name);
                 let target = Box::new((fn_span, ExpX::Var(name)));
                 mk_exp(ExpX::Call(target, typ_args, exps))
             }
@@ -795,8 +809,17 @@ fn erase_expr<'tcx>(
         ExprKind::Path(qpath) => {
             let res = ctxt.types().qpath_res(qpath, expr.hir_id);
 
-            // Check if it's a 0-argument datatype constructor
             match res {
+                Res::Local(id) => match ctxt.tcx.hir().get(id) {
+                    Node::Pat(Pat { kind: PatKind::Binding(_ann, id, ident, _pat), .. }) => {
+                        if expect_spec || ctxt.var_modes[&expr.hir_id] == Mode::Spec {
+                            None
+                        } else {
+                            mk_exp(ExpX::Var(state.local(local_to_var(&ident, id.local_id))))
+                        }
+                    }
+                    _ => panic!("unsupported"),
+                },
                 Res::SelfCtor(_) | Res::Def(DefKind::Ctor(_, _), _) => {
                     let (adt_def_id, variant_def, is_enum) =
                         get_adt_res(ctxt.tcx, res, expr.span).unwrap();
@@ -813,51 +836,7 @@ fn erase_expr<'tcx>(
                         vec![],
                     ));
                 }
-                _ => {}
-            }
-
-            match qpath {
-                QPath::Resolved(None, path) => match path.res {
-                    Res::Local(id) => match ctxt.tcx.hir().get(id) {
-                        Node::Pat(Pat {
-                            kind: PatKind::Binding(_ann, id, ident, _pat), ..
-                        }) => {
-                            if expect_spec || ctxt.var_modes[&expr.hir_id] == Mode::Spec {
-                                None
-                            } else {
-                                mk_exp(ExpX::Var(state.local(local_to_var(&ident, id.local_id))))
-                            }
-                        }
-                        _ => panic!("unsupported"),
-                    },
-                    Res::Def(def_kind, id) => match def_kind {
-                        DefKind::Const => {
-                            let vir_path = def_id_to_vir_path(ctxt.tcx, id);
-                            let fun_name = Arc::new(FunX { path: vir_path });
-                            return mk_exp(ExpX::Var(state.fun_name(&fun_name)));
-                        }
-                        DefKind::ConstParam => {
-                            let local_id = id.as_local().expect("ConstParam local");
-                            let hir_id = ctxt.tcx.hir().local_def_id_to_hir_id(local_id);
-                            match ctxt.tcx.hir().get(hir_id) {
-                                Node::GenericParam(gp) => {
-                                    let name = state.typ_param(gp.name.ident().to_string(), None);
-                                    mk_exp(ExpX::Var(name))
-                                }
-                                _ => panic!("ConstParam"),
-                            }
-                        }
-                        _ => {
-                            dbg!(expr);
-                            panic!("unsupported")
-                        }
-                    },
-                    _ => {
-                        dbg!(expr);
-                        panic!("unsupported")
-                    }
-                },
-                QPath::TypeRelative(_ty, _path_seg) => {
+                Res::Def(DefKind::AssocConst, _id) => {
                     if expect_spec {
                         None
                     } else {
@@ -866,9 +845,24 @@ fn erase_expr<'tcx>(
                         mk_exp(ExpX::Op(vec![], typ))
                     }
                 }
+                Res::Def(DefKind::Const, id) => {
+                    let vir_path = def_id_to_vir_path(ctxt.tcx, id);
+                    let fun_name = Arc::new(FunX { path: vir_path });
+                    return mk_exp(ExpX::Var(state.fun_name(&fun_name)));
+                }
+                Res::Def(DefKind::ConstParam, id) => {
+                    let local_id = id.as_local().expect("ConstParam local");
+                    let hir_id = ctxt.tcx.hir().local_def_id_to_hir_id(local_id);
+                    match ctxt.tcx.hir().get(hir_id) {
+                        Node::GenericParam(gp) => {
+                            let name = state.typ_param(gp.name.ident().to_string(), None);
+                            mk_exp(ExpX::Var(name))
+                        }
+                        _ => panic!("ConstParam"),
+                    }
+                }
                 _ => {
-                    dbg!(&expr);
-                    panic!()
+                    panic!("unsupported")
                 }
             }
         }
@@ -1895,18 +1889,32 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             );
                         }
                         ItemKind::Fn(sig, _generics, body_id) => {
-                            erase_fn(
-                                krate,
-                                &mut ctxt,
-                                &mut state,
-                                item.ident.span,
-                                id,
-                                sig,
-                                None,
-                                false,
-                                vattrs.external_body,
-                                Some(body_id),
-                            );
+                            if !vattrs.external_fn_specification {
+                                erase_fn(
+                                    krate,
+                                    &mut ctxt,
+                                    &mut state,
+                                    item.ident.span,
+                                    id,
+                                    sig,
+                                    None,
+                                    false,
+                                    vattrs.external_body,
+                                    Some(body_id),
+                                );
+                            } else {
+                                let body = ctxt.tcx.hir().body(*body_id);
+                                let def_id = crate::rust_to_vir_func::get_external_def_id(
+                                    ctxt.tcx, body_id, body, sig,
+                                )
+                                .unwrap();
+
+                                // Case where the external function is local - it doesn't
+                                // end up in the 'imported_fun_worklist' in this case
+                                if def_id.as_local().is_some() {
+                                    import_fn(&mut ctxt, &mut state, def_id);
+                                }
+                            }
                         }
                         ItemKind::Trait(
                             IsAuto::No,

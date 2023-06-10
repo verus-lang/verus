@@ -1,7 +1,8 @@
 /*
  * Create a graph and then compute the strongly-connected components
  * of that graph.
- * Derived from code written by Travis Hance.
+ * Based on pseudocode from
+ * https://en.wikipedia.org/wiki/Tarjan%27s_strongly_connected_components_algorithm
  */
 use std::cmp::min;
 use std::collections::{HashMap, HashSet};
@@ -194,6 +195,10 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> Graph<T> {
         self.nodes[self.sccs[*id].rep()].t.clone()
     }
 
+    pub fn in_same_scc(&self, t1: &T, t2: &T) -> bool {
+        t1 == t2 || self.get_scc_rep(t1) == self.get_scc_rep(t2)
+    }
+
     pub fn get_scc_nodes(&self, t: &T) -> Vec<T> {
         assert!(self.has_run);
         assert!(self.mapping.contains_key(&t));
@@ -228,5 +233,33 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> Graph<T> {
             depth += 1;
             at_depth = at_next_depth;
         }
+    }
+}
+
+impl<T: std::cmp::Eq + std::hash::Hash + Clone + std::fmt::Debug> std::fmt::Debug for Graph<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Graph:\n")?;
+        for node in self.nodes.iter() {
+            write!(f, "    {:?}\n", node.t)?;
+            for idx in node.edges.iter() {
+                let succ_t = &self.nodes[*idx].t;
+                write!(f, "     -> {:?}\n", succ_t)?;
+            }
+        }
+        if self.has_run {
+            write!(f, "SCCs:\n")?;
+            let scc_reps = self.sort_sccs();
+            for scc_rep in scc_reps.iter() {
+                let nodes = self.get_scc_nodes(scc_rep);
+                write!(f, "{{\n")?;
+                for node in nodes {
+                    write!(f, "    {:?}\n", node)?;
+                }
+                write!(f, "}}\n")?;
+            }
+        } else {
+            write!(f, "SCC not yet run")?;
+        }
+        Ok(())
     }
 }

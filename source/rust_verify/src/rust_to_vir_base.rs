@@ -46,10 +46,37 @@ fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Pa
             DefPathData::Impl => {
                 segments.push(vir::def::impl_ident(d.disambiguator));
             }
+            DefPathData::ForeignMod => {
+                // this segment can be ignored
+            }
             _ => return None,
         }
     }
     Some(Arc::new(PathX { krate, segments: Arc::new(segments) }))
+}
+
+pub(crate) fn def_path_to_vir_module<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Path {
+    let multi_crate = MULTI_CRATE.with(|m| m.load(std::sync::atomic::Ordering::Relaxed));
+    let krate = if def_path.krate == LOCAL_CRATE && !multi_crate {
+        None
+    } else {
+        Some(Arc::new(tcx.crate_name(def_path.krate).to_string()))
+    };
+    let mut segments: Vec<vir::ast::Ident> = Vec::new();
+    for d in def_path.data.iter() {
+        use rustc_hir::definitions::DefPathData;
+        match &d.data {
+            DefPathData::ValueNs(symbol) | DefPathData::TypeNs(symbol) => {
+                segments.push(Arc::new(symbol.to_string()));
+            }
+            _ => { /* ignore */ }
+        }
+    }
+    Arc::new(PathX { krate, segments: Arc::new(segments) })
+}
+
+pub(crate) fn def_id_to_vir_module<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Path {
+    def_path_to_vir_module(tcx, tcx.def_path(def_id))
 }
 
 pub(crate) fn typ_path_and_ident_to_vir_path<'tcx>(path: &Path, ident: vir::ast::Ident) -> Path {
@@ -199,10 +226,19 @@ pub(crate) fn get_range(typ: &Typ) -> IntRange {
     }
 }
 
-pub(crate) fn mk_range<'tcx>(ty: &rustc_middle::ty::Ty<'tcx>) -> IntRange {
+pub(crate) fn mk_range<'tcx>(tcx: TyCtxt<'tcx>, ty: &rustc_middle::ty::Ty<'tcx>) -> IntRange {
     match ty.kind() {
-        TyKind::Adt(_, _) if ty.to_string() == crate::def::BUILTIN_INT => IntRange::Int,
-        TyKind::Adt(_, _) if ty.to_string() == crate::def::BUILTIN_NAT => IntRange::Nat,
+        TyKind::Adt(AdtDef(adt_def_data), _) => {
+            let did = adt_def_data.did;
+            let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(tcx, did));
+            if def_name == crate::def::BUILTIN_INT {
+                IntRange::Int
+            } else if def_name == crate::def::BUILTIN_NAT {
+                IntRange::Nat
+            } else {
+                panic!("mk_range {:?}", ty)
+            }
+        }
         TyKind::Uint(rustc_middle::ty::UintTy::U8) => IntRange::U(8),
         TyKind::Uint(rustc_middle::ty::UintTy::U16) => IntRange::U(16),
         TyKind::Uint(rustc_middle::ty::UintTy::U32) => IntRange::U(32),
@@ -263,7 +299,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
     use vir::ast::TypDecoration;
     let t = match ty.kind() {
         TyKind::Bool => (Arc::new(TypX::Bool), false),
-        TyKind::Uint(_) | TyKind::Int(_) => (Arc::new(TypX::Int(mk_range(ty))), false),
+        TyKind::Uint(_) | TyKind::Int(_) => (Arc::new(TypX::Int(mk_range(tcx, ty))), false),
         TyKind::Ref(_, tys, rustc_ast::Mutability::Not) => {
             let (t0, ghost) = mid_ty_to_vir_ghost(tcx, span, tys, as_datatype, allow_mut_ref)?;
             (Arc::new(TypX::Decorate(TypDecoration::Ref, t0.clone())), ghost)
@@ -297,16 +333,16 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         }
         TyKind::Adt(AdtDef(adt_def_data), args) => {
             let did = adt_def_data.did;
-            let s = ty.to_string();
             let is_strslice =
                 tcx.is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice"), did);
             if is_strslice && !as_datatype {
                 return Ok((Arc::new(TypX::StrSlice), false));
             }
             // TODO use lang items instead of string comparisons
-            if s == crate::def::BUILTIN_INT {
+            let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(tcx, did));
+            if def_name == crate::def::BUILTIN_INT {
                 (Arc::new(TypX::Int(IntRange::Int)), false)
-            } else if s == crate::def::BUILTIN_NAT {
+            } else if def_name == crate::def::BUILTIN_NAT {
                 (Arc::new(TypX::Int(IntRange::Nat)), false)
             } else {
                 let mut typ_args: Vec<(Typ, bool)> = Vec::new();
@@ -331,7 +367,6 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     let (t0, ghost) = &typ_args[0];
                     return Ok((Arc::new(TypX::Decorate(TypDecoration::Box, t0.clone())), *ghost));
                 }
-                let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(tcx, did));
                 if typ_args.len() == 1 {
                     let (t0, ghost) = &typ_args[0];
                     let decorate = |d: TypDecoration, ghost: bool| {
@@ -451,7 +486,7 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
     }
 }
 
-pub(crate) fn is_type_std_rc_or_arc<'tcx>(
+pub(crate) fn is_type_std_rc_or_arc_or_ref<'tcx>(
     tcx: TyCtxt<'tcx>,
     ty: rustc_middle::ty::Ty<'tcx>,
 ) -> bool {
@@ -462,6 +497,9 @@ pub(crate) fn is_type_std_rc_or_arc<'tcx>(
             if def_name == "alloc::rc::Rc" || def_name == "alloc::sync::Arc" {
                 return true;
             }
+        }
+        TyKind::Ref(_, _, Mutability::Not) => {
+            return true;
         }
         _ => {}
     }
@@ -632,7 +670,8 @@ pub(crate) fn check_generics_bounds<'tcx>(
     hir_generics: &'tcx Generics<'tcx>,
     check_that_external_body_datatype_declares_positivity: bool,
     def_id: DefId,
-) -> Result<Vec<(vir::ast::Ident, vir::ast::GenericBound, bool)>, VirErr> {
+    vattrs: Option<&crate::attributes::VerifierAttrs>,
+) -> Result<Vec<(vir::ast::Ident, vir::ast::GenericBound, vir::ast::AcceptRecursiveType)>, VirErr> {
     // TODO the 'predicates' object contains the parent def_id; we can use that
     // to handle all the params and bounds from the impl at once,
     // so then we can handle the case where a method adds extra bounds to an impl
@@ -643,7 +682,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
         has_where_clause_predicates: _,
         predicates: _,
         where_clause_span: _,
-        span: _,
+        span: generics_span,
     } = hir_generics;
     let generics = tcx.generics_of(def_id);
 
@@ -788,7 +827,11 @@ pub(crate) fn check_generics_bounds<'tcx>(
         }
     }
 
-    let mut typ_params: Vec<(vir::ast::Ident, vir::ast::GenericBound, bool)> = Vec::new();
+    let mut typ_params: Vec<(
+        vir::ast::Ident,
+        vir::ast::GenericBound,
+        vir::ast::AcceptRecursiveType,
+    )> = Vec::new();
 
     // In traits, the first type param is Self. This is handled specially,
     // so we skip it here.
@@ -797,6 +840,17 @@ pub(crate) fn check_generics_bounds<'tcx>(
     let skip_n = if first_param_is_self { 1 } else { 0 };
 
     assert!(hir_params.len() + skip_n == mid_params.len());
+
+    use vir::ast::AcceptRecursiveType;
+    let mut accept_recs: HashMap<String, AcceptRecursiveType> = HashMap::new();
+    if let Some(vattrs) = vattrs {
+        for (x, acc) in &vattrs.accept_recursive_type_list {
+            if accept_recs.contains_key(x) {
+                return err_span(*generics_span, format!("duplicate parameter attribute {x}"));
+            }
+            accept_recs.insert(x.clone(), *acc);
+        }
+    }
 
     for (idx, mid_param) in mid_params.iter().skip(skip_n).enumerate() {
         match mid_param.kind {
@@ -810,15 +864,31 @@ pub(crate) fn check_generics_bounds<'tcx>(
         let hir_param = &hir_params[idx];
 
         let vattrs = get_verifier_attrs(tcx.hir().attrs(hir_param.hir_id))?;
-        let neg = vattrs.maybe_negative;
-        let pos = vattrs.strictly_positive;
-        if neg && pos {
-            return err_span(
-                hir_param.span,
-                "type parameter cannot be both maybe_negative and strictly_positive",
-            );
+        let mut neg = vattrs.reject_recursive_types;
+        let mut pos_some = vattrs.reject_recursive_types_in_ground_variants;
+        let mut pos_all = vattrs.accept_recursive_types;
+        let param_name = generic_param_def_to_vir_name(mid_param);
+        match accept_recs.get(&param_name) {
+            None => {}
+            Some(AcceptRecursiveType::Reject) => neg = true,
+            Some(AcceptRecursiveType::RejectInGround) => pos_some = true,
+            Some(AcceptRecursiveType::Accept) => pos_all = true,
         }
-        let strictly_positive = !neg; // strictly_positive is the default
+        if accept_recs.contains_key(&param_name) {
+            accept_recs.remove(&param_name);
+        }
+        let accept_rec = match (neg, pos_some, pos_all) {
+            (true, false, false) => AcceptRecursiveType::Reject,
+            // RejectInGround is the default
+            (false, true, false) | (false, false, false) => AcceptRecursiveType::RejectInGround,
+            (false, false, true) => AcceptRecursiveType::Accept,
+            _ => {
+                return err_span(
+                    hir_param.span,
+                    "type parameter can only have one of reject_recursive_types, reject_recursive_types_in_ground_variants, accept_recursive_types",
+                );
+            }
+        };
         let GenericParam {
             hir_id: _,
             name: _,
@@ -832,10 +902,14 @@ pub(crate) fn check_generics_bounds<'tcx>(
         unsupported_err_unless!(!pure_wrt_drop, *span, "generic pure_wrt_drop");
 
         if let GenericParamKind::Type { .. } = kind {
-            if check_that_external_body_datatype_declares_positivity && !neg && !pos {
+            if check_that_external_body_datatype_declares_positivity
+                && !neg
+                && !pos_some
+                && !pos_all
+            {
                 return err_span(
                     *span,
-                    "in external_body datatype, each type parameter must be either #[verifier(maybe_negative)] or #[verifier(strictly_positive)] (maybe_negative is always safe to use)",
+                    "in external_body datatype, each type parameter must be one of: #[verifier::reject_recursive_types], #[verifier::reject_recursive_types_in_ground_variants], #[verifier::accept_recursive_types] (reject_recursive_types is always safe to use)",
                 );
             }
         } else if let GenericParamKind::Const { .. } = kind {
@@ -847,7 +921,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
             GenericParamDefKind::Const { .. }
             | GenericParamDefKind::Type { has_default: false, synthetic: true | false } => {
                 // trait/function bounds
-                let ident = Arc::new(generic_param_def_to_vir_name(mid_param));
+                let ident = Arc::new(param_name);
 
                 let mut trait_bounds: Vec<Path> = Vec::new();
                 for vir_bound in typ_param_bounds.remove(&*ident).unwrap().into_iter() {
@@ -858,12 +932,15 @@ pub(crate) fn check_generics_bounds<'tcx>(
                     }
                 }
                 let bound = Arc::new(GenericBoundX::Traits(trait_bounds));
-                typ_params.push((ident, bound, strictly_positive));
+                typ_params.push((ident, bound, accept_rec));
             }
             _ => {
                 panic!("shouldn't get here");
             }
         }
+    }
+    for x in accept_recs.keys() {
+        return err_span(*generics_span, format!("unused parameter attribute {x}"));
     }
     Ok(typ_params)
 }
@@ -874,7 +951,7 @@ pub(crate) fn check_generics_bounds_fun<'tcx>(
     def_id: DefId,
 ) -> Result<TypBounds, VirErr> {
     Ok(Arc::new(
-        check_generics_bounds(tcx, generics, false, def_id)?
+        check_generics_bounds(tcx, generics, false, def_id, None)?
             .into_iter()
             .map(|(a, b, _)| (a, b))
             .collect(),

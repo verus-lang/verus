@@ -118,6 +118,24 @@ impl Hash for BareFnArg {
         self.ty.hash(state);
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for BigAnd {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.exprs.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for BigOr {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.exprs.hash(state);
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for BinOp {
@@ -210,26 +228,32 @@ impl Hash for BinOp {
             BinOp::ShrEq(_) => {
                 state.write_u8(27u8);
             }
-            BinOp::BigAnd(_) => {
+            BinOp::Equiv(_) => {
                 state.write_u8(28u8);
             }
-            BinOp::BigOr(_) => {
+            BinOp::Imply(_) => {
                 state.write_u8(29u8);
             }
-            BinOp::Equiv(_) => {
+            BinOp::Exply(_) => {
                 state.write_u8(30u8);
             }
-            BinOp::Imply(_) => {
+            BinOp::BigEq(_) => {
                 state.write_u8(31u8);
             }
-            BinOp::Exply(_) => {
+            BinOp::BigNe(_) => {
                 state.write_u8(32u8);
             }
-            BinOp::BigEq(_) => {
+            BinOp::ExtEq(_) => {
                 state.write_u8(33u8);
             }
-            BinOp::BigNe(_) => {
+            BinOp::ExtNe(_) => {
                 state.write_u8(34u8);
+            }
+            BinOp::ExtDeepEq(_) => {
+                state.write_u8(35u8);
+            }
+            BinOp::ExtDeepNe(_) => {
+                state.write_u8(36u8);
             }
         }
     }
@@ -625,6 +649,16 @@ impl Hash for Expr {
             #[cfg(feature = "full")]
             Expr::View(v0) => {
                 state.write_u8(43u8);
+                v0.hash(state);
+            }
+            #[cfg(feature = "full")]
+            Expr::BigAnd(v0) => {
+                state.write_u8(44u8);
+                v0.hash(state);
+            }
+            #[cfg(feature = "full")]
+            Expr::BigOr(v0) => {
+                state.write_u8(45u8);
                 v0.hash(state);
             }
             #[cfg(any(syn_no_non_exhaustive, not(feature = "full")))]
@@ -3100,23 +3134,17 @@ impl Hash for UnOp {
             UnOp::Neg(_) => {
                 state.write_u8(2u8);
             }
-            UnOp::BigAnd(_) => {
+            UnOp::Proof(_) => {
                 state.write_u8(3u8);
             }
-            UnOp::BigOr(_) => {
+            UnOp::Forall(_) => {
                 state.write_u8(4u8);
             }
-            UnOp::Proof(_) => {
+            UnOp::Exists(_) => {
                 state.write_u8(5u8);
             }
-            UnOp::Forall(_) => {
-                state.write_u8(6u8);
-            }
-            UnOp::Exists(_) => {
-                state.write_u8(7u8);
-            }
             UnOp::Choose(_) => {
-                state.write_u8(8u8);
+                state.write_u8(6u8);
             }
         }
     }

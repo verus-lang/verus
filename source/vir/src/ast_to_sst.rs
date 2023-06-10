@@ -1,10 +1,10 @@
 use crate::ast::{
-    ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, CallTarget, ComputeMode, Constant, Expr, ExprX,
-    Fun, Function, Ident, LoopInvariantKind, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX,
-    Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
+    ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ComputeMode,
+    Constant, Expr, ExprX, Fun, Function, Ident, LoopInvariantKind, Mode, PatternX, SpannedTyped,
+    Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
-use crate::ast_util::{error, types_equal, QUANT_FORALL};
+use crate::ast_util::{error, internal_error, types_equal, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{unique_bound, unique_local, Spanned};
 use crate::func_to_air::{SstInfo, SstMap};
@@ -472,7 +472,10 @@ fn expr_get_call(
             CallTarget::FnSpec(..) => {
                 panic!("internal error: CallTarget::FnSpec");
             }
-            CallTarget::Fun(kind, x, typs) => {
+            CallTarget::Fun(kind, x, typs, autospec_usage) => {
+                if *autospec_usage != AutospecUsage::Final {
+                    return internal_error(&expr.span, "autospec not discharged");
+                }
                 let mut stms: Vec<Stm> = Vec::new();
                 let mut exps: Vec<Exp> = Vec::new();
                 for arg in args.iter() {
@@ -513,7 +516,9 @@ fn expr_must_be_call_stm(
     expr: &Expr,
 ) -> Result<Option<(Vec<Stm>, ReturnedCall)>, VirErr> {
     match &expr.x {
-        ExprX::Call(CallTarget::Fun(_, x, _), _) if !function_can_be_exp(ctx, state, expr, x)? => {
+        ExprX::Call(CallTarget::Fun(_, x, _, _), _)
+            if !function_can_be_exp(ctx, state, expr, x)? =>
+        {
             expr_get_call(ctx, state, expr)
         }
         _ => Ok(None),
@@ -1241,6 +1246,15 @@ fn expr_to_stm_opt(
                     Ok((stms1, ReturnValue::Some(bin)))
                 }
             }
+        }
+        ExprX::BinaryOpr(op, e1, e2) => {
+            let (mut stms1, e1) = expr_to_stm_opt(ctx, state, e1)?;
+            let (mut stms2, e2) = expr_to_stm_opt(ctx, state, e2)?;
+            let e1 = unwrap_or_return_never!(e1, stms1);
+            stms1.append(&mut stms2);
+            let e2 = unwrap_or_return_never!(e2, stms1);
+            let bin = mk_exp(ExpX::BinaryOpr(op.clone(), e1, e2));
+            Ok((stms1, ReturnValue::Some(bin)))
         }
         ExprX::Multi(..) => {
             panic!("internal error: Multi should have been simplified by ast_simplify")

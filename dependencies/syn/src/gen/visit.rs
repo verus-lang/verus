@@ -67,6 +67,12 @@ pub trait Visit<'ast> {
     fn visit_bare_fn_arg(&mut self, i: &'ast BareFnArg) {
         visit_bare_fn_arg(self, i);
     }
+    fn visit_big_and(&mut self, i: &'ast BigAnd) {
+        visit_big_and(self, i);
+    }
+    fn visit_big_or(&mut self, i: &'ast BigOr) {
+        visit_big_or(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_bin_op(&mut self, i: &'ast BinOp) {
         visit_bin_op(self, i);
@@ -1017,6 +1023,24 @@ where
     }
     v.visit_type(&node.ty);
 }
+pub fn visit_big_and<'ast, V>(v: &mut V, node: &'ast BigAnd)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.exprs {
+        tokens_helper(v, &(it).0.spans);
+        v.visit_expr(&*(it).1);
+    }
+}
+pub fn visit_big_or<'ast, V>(v: &mut V, node: &'ast BigOr)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.exprs {
+        tokens_helper(v, &(it).0.spans);
+        v.visit_expr(&*(it).1);
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_bin_op<'ast, V>(v: &mut V, node: &'ast BinOp)
 where
@@ -1107,12 +1131,6 @@ where
         BinOp::ShrEq(_binding_0) => {
             tokens_helper(v, &_binding_0.spans);
         }
-        BinOp::BigAnd(_binding_0) => {
-            tokens_helper(v, &_binding_0.spans);
-        }
-        BinOp::BigOr(_binding_0) => {
-            tokens_helper(v, &_binding_0.spans);
-        }
         BinOp::Equiv(_binding_0) => {
             tokens_helper(v, &_binding_0.spans);
         }
@@ -1126,6 +1144,18 @@ where
             tokens_helper(v, &_binding_0.spans);
         }
         BinOp::BigNe(_binding_0) => {
+            tokens_helper(v, &_binding_0.spans);
+        }
+        BinOp::ExtEq(_binding_0) => {
+            tokens_helper(v, &_binding_0.spans);
+        }
+        BinOp::ExtNe(_binding_0) => {
+            tokens_helper(v, &_binding_0.spans);
+        }
+        BinOp::ExtDeepEq(_binding_0) => {
+            tokens_helper(v, &_binding_0.spans);
+        }
+        BinOp::ExtDeepNe(_binding_0) => {
             tokens_helper(v, &_binding_0.spans);
         }
     }
@@ -1438,6 +1468,12 @@ where
         }
         Expr::View(_binding_0) => {
             v.visit_view(_binding_0);
+        }
+        Expr::BigAnd(_binding_0) => {
+            v.visit_big_and(_binding_0);
+        }
+        Expr::BigOr(_binding_0) => {
+            v.visit_big_or(_binding_0);
         }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
@@ -4151,12 +4187,6 @@ where
             tokens_helper(v, &_binding_0.spans);
         }
         UnOp::Neg(_binding_0) => {
-            tokens_helper(v, &_binding_0.spans);
-        }
-        UnOp::BigAnd(_binding_0) => {
-            tokens_helper(v, &_binding_0.spans);
-        }
-        UnOp::BigOr(_binding_0) => {
             tokens_helper(v, &_binding_0.spans);
         }
         UnOp::Proof(_binding_0) => {

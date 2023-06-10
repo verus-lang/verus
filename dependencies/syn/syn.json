@@ -307,6 +307,50 @@
       }
     },
     {
+      "ident": "BigAnd",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "exprs": {
+          "vec": {
+            "tuple": [
+              {
+                "token": "BigAnd"
+              },
+              {
+                "box": {
+                  "syn": "Expr"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "ident": "BigOr",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "exprs": {
+          "vec": {
+            "tuple": [
+              {
+                "token": "BigOr"
+              },
+              {
+                "box": {
+                  "syn": "Expr"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
       "ident": "BinOp",
       "features": {
         "any": [
@@ -455,16 +499,6 @@
             "token": "ShrEq"
           }
         ],
-        "BigAnd": [
-          {
-            "token": "BigAnd"
-          }
-        ],
-        "BigOr": [
-          {
-            "token": "BigOr"
-          }
-        ],
         "Equiv": [
           {
             "token": "Equiv"
@@ -488,6 +522,26 @@
         "BigNe": [
           {
             "token": "NeEq"
+          }
+        ],
+        "ExtEq": [
+          {
+            "token": "TildeEq"
+          }
+        ],
+        "ExtNe": [
+          {
+            "token": "TildeNe"
+          }
+        ],
+        "ExtDeepEq": [
+          {
+            "token": "TildeTildeEq"
+          }
+        ],
+        "ExtDeepNe": [
+          {
+            "token": "TildeTildeNe"
           }
         ]
       }
@@ -1027,6 +1081,16 @@
         "View": [
           {
             "syn": "View"
+          }
+        ],
+        "BigAnd": [
+          {
+            "syn": "BigAnd"
+          }
+        ],
+        "BigOr": [
+          {
+            "syn": "BigOr"
           }
         ]
       },
@@ -6015,16 +6079,6 @@
             "token": "Sub"
           }
         ],
-        "BigAnd": [
-          {
-            "token": "BigAnd"
-          }
-        ],
-        "BigOr": [
-          {
-            "token": "BigOr"
-          }
-        ],
         "Proof": [
           {
             "token": "Proof"
@@ -6492,6 +6546,10 @@
     "SubEq": "-=",
     "Super": "super",
     "Tilde": "~",
+    "TildeEq": "=~=",
+    "TildeNe": "!~=",
+    "TildeTildeEq": "=~~=",
+    "TildeTildeNe": "!~~=",
     "Tracked": "tracked",
     "Trait": "trait",
     "Try": "try",

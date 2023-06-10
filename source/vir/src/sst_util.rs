@@ -110,6 +110,7 @@ fn subst_exp_rec(
         | ExpX::Unary(..)
         | ExpX::UnaryOpr(..)
         | ExpX::Binary(..)
+        | ExpX::BinaryOpr(..)
         | ExpX::If(..)
         | ExpX::WithTriggers(..) => crate::sst_visitor::map_shallow_exp(
             exp,
@@ -118,9 +119,13 @@ fn subst_exp_rec(
             &|(substs, free_vars), e| Ok(subst_exp_rec(typ_substs, substs, free_vars, e)),
         )
         .expect("map_shallow_exp for subst_exp_rec"),
-        ExpX::Var(x) | ExpX::VarLoc(x) => match substs.get(x) {
+        ExpX::Var(x) => match substs.get(x) {
             None => mk_exp(ExpX::Var(x.clone())),
             Some(e) => e.clone(),
+        },
+        ExpX::VarLoc(x) => match substs.get(x) {
+            None => mk_exp(ExpX::VarLoc(x.clone())),
+            Some(_) => panic!("cannot substitute for VarLoc"),
         },
         ExpX::VarAt(x, a) => match substs.get(x) {
             None => mk_exp(ExpX::VarAt(x.clone(), *a)),
@@ -213,6 +218,19 @@ pub(crate) fn subst_exp(
     e
 }
 
+pub(crate) fn subst_stm(
+    typ_substs: &HashMap<Ident, Typ>,
+    substs: &HashMap<UniqueIdent, Exp>,
+    stm: &Stm,
+) -> Stm {
+    let stm = crate::sst_visitor::map_stm_visitor(&stm, &mut |stm| {
+        crate::sst_visitor::map_shallow_stm_typ(&stm, &|typ| Ok(subst_typ(typ_substs, typ)))
+    })
+    .unwrap();
+    crate::sst_visitor::map_stm_exp_visitor(&stm, &|exp| Ok(subst_exp(typ_substs, substs, exp)))
+        .unwrap()
+}
+
 ///////////////////////////////////////
 // Printing for SST expressions
 ///////////////////////////////////////
@@ -287,9 +305,7 @@ impl ExpX {
                     Unbox(_) => (format!("unbox({})", exp), 99),
                     Height => (format!("height({})", exp), 99),
                     HasType(t) => (format!("{}.has_type({:?})", exp, t), 99),
-                    IntegerTypeBound(kind, mode) => {
-                        (format!("{:?}.{:?}({:?})", kind, mode, exp), 99)
-                    }
+                    IntegerTypeBound(kind, mode) => (format!("{:?}.{:?}({})", kind, mode, exp), 99),
                     IsVariant { datatype: _, variant } => {
                         (format!("{}.is_type({})", exp, variant), 99)
                     }
@@ -340,6 +356,9 @@ impl ExpX {
                 } else {
                     (format!("{} {} {}", left, op_str, right), prec_exp)
                 }
+            }
+            BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), e1, e2) => {
+                (format!("ext_eq({}, {})", e1.x.to_string(), e2.x.to_string()), 99)
             }
             If(e1, e2, e3) => (format!("if {} {{ {} }} else {{ {} }}", e1, e2, e3), 99),
             Bind(bnd, exp) => {

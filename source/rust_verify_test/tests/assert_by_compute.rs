@@ -377,13 +377,13 @@ test_verify_one_file! {
             assert(seq![1int, 2, 3].update(1, 5).index(1) == 5) by (compute_only);
             assert(seq![1int, 2, 3].update(1, 5).index(2) == 3) by (compute_only);
             assert(seq![1int, 2, 3].add(seq![4, 5]).len() == 5) by (compute_only);
-            assert(seq![1int, 2, 3].ext_equal(seq![1].add(seq![2, 3]))) by (compute_only);
-            assert(seq![1int, 2].subrange(1, 2).ext_equal(seq![2])) by (compute_only);
-            assert(seq![1int, 2, 3, 4, 5].subrange(2, 4).ext_equal(seq![3, 4])) by (compute_only);
+            assert(seq![1int, 2, 3] =~= seq![1].add(seq![2, 3])) by (compute_only);
+            assert(seq![1int, 2].subrange(1, 2) =~= seq![2]) by (compute_only);
+            assert(seq![1int, 2, 3, 4, 5].subrange(2, 4) =~= seq![3, 4]) by (compute_only);
             assert(Seq::new(5, |x: int| x).index(3) == 3) by (compute_only);
             assert(Seq::new(5, |x: int| x + x).index(3) == 6) by (compute_only);
             assert(Seq::new(5, |x: int| x + x).last() == 8) by (compute_only);
-            assert(Seq::new(5, |x: int| x + x).subrange(1,4).ext_equal(seq![2, 4, 6])) by (compute_only);
+            assert(Seq::new(5, |x: int| x + x).subrange(1,4) =~= seq![2, 4, 6]) by (compute_only);
         }
 
         spec fn use_seq(s: &Seq<u32>) -> (u32, u32) {
@@ -423,8 +423,14 @@ test_verify_one_file! {
             }) by (compute);
             assert({
                 let z = seq![4, 5, 6];
+                // TODO: see https://github.com/verus-lang/verus/issues/294
                 y.ext_equal(z) &&
                 z.ext_equal(y)
+            }) by (compute);
+            assert({
+                let z = seq![4int, 5int, 6int];
+                y == z &&
+                z == y
             }) by (compute);
         }
     } => Ok(())

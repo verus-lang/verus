@@ -141,6 +141,7 @@ pub const CHECK_DECREASE_INT: &str = "check_decrease_int";
 pub const HEIGHT: &str = "height";
 pub const CLOSURE_REQ: &str = "closure_req";
 pub const CLOSURE_ENS: &str = "closure_ens";
+pub const EXT_EQ: &str = "ext_eq";
 
 pub const UINT_XOR: &str = "uintxor";
 pub const UINT_AND: &str = "uintand";
@@ -154,6 +155,7 @@ pub const QID_BOX_AXIOM: &str = "box_axiom";
 pub const QID_UNBOX_AXIOM: &str = "unbox_axiom";
 pub const QID_CONSTRUCTOR_INNER: &str = "constructor_inner";
 pub const QID_CONSTRUCTOR: &str = "constructor";
+pub const QID_EXT_EQUAL: &str = "ext_equal";
 pub const QID_APPLY: &str = "apply";
 pub const QID_ACCESSOR: &str = "accessor";
 pub const QID_INVARIANT: &str = "invariant";
@@ -497,7 +499,7 @@ pub struct SnapPos {
     pub kind: SpanKind,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Spanned<X> {
     pub span: Span,
     pub x: X,

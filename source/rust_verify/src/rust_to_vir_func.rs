@@ -1,7 +1,8 @@
 use crate::attributes::{
-    get_fuel, get_mode, get_publish, get_ret_mode, get_var_mode, get_verifier_attrs,
+    get_fuel, get_mode, get_publish, get_ret_mode, get_var_mode, get_verifier_attrs, VerifierAttrs,
 };
 use crate::context::{BodyCtxt, Context};
+use crate::rust_to_vir_base::mk_visibility;
 use crate::rust_to_vir_base::{
     check_generics_bounds_fun, def_id_to_vir_path, foreign_param_to_var, mid_ty_to_vir,
 };
@@ -10,9 +11,11 @@ use crate::util::{err_span, unsupported_err_span};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{
-    def::Res, Body, BodyId, Crate, FnDecl, FnHeader, FnRetTy, FnSig, Generics, HirId, MaybeOwner,
-    MutTy, Param, PrimTy, QPath, Ty, TyKind, Unsafety,
+    def::Res, Body, BodyId, Crate, ExprKind, FnDecl, FnHeader, FnRetTy, FnSig, Generics, HirId,
+    MaybeOwner, MutTy, Param, PrimTy, QPath, Ty, TyKind, Unsafety,
 };
+use rustc_middle::ty::Predicate;
+use rustc_middle::ty::SubstsRef;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::{Ident, Symbol};
@@ -34,6 +37,14 @@ pub(crate) fn autospec_fun(path: &vir::ast::Path, method_name: String) -> vir::a
     Arc::new(pathx)
 }
 
+fn body_id_to_types<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    id: &BodyId,
+) -> &'tcx rustc_middle::ty::TypeckResults<'tcx> {
+    let def = rustc_middle::ty::WithOptConstParam::unknown(id.hir_id.owner.def_id);
+    tcx.typeck_opt_const_arg(def)
+}
+
 pub(crate) fn body_to_vir<'tcx>(
     ctxt: &Context<'tcx>,
     fun_id: DefId,
@@ -42,8 +53,7 @@ pub(crate) fn body_to_vir<'tcx>(
     mode: Mode,
     external_body: bool,
 ) -> Result<vir::ast::Expr, VirErr> {
-    let def = rustc_middle::ty::WithOptConstParam::unknown(id.hir_id.owner.def_id);
-    let types = ctxt.tcx.typeck_opt_const_arg(def);
+    let types = body_id_to_types(ctxt.tcx, id);
     let bctx = BodyCtxt {
         ctxt: ctxt.clone(),
         types,
@@ -151,6 +161,141 @@ fn check_new_strlit<'tcx>(ctx: &Context<'tcx>, sig: &'tcx FnSig<'tcx>) -> Result
     Ok(())
 }
 
+pub(crate) fn handle_external_fn<'tcx>(
+    ctxt: &Context<'tcx>,
+    id: DefId,
+    visibility: vir::ast::Visibility,
+    sig: &'tcx FnSig<'tcx>,
+    // (impl generics, impl def_id)
+    self_generics: Option<(&'tcx Generics, DefId)>,
+    body_id: &CheckItemFnEither<&BodyId, &[Ident]>,
+    mode: Mode,
+    vattrs: &VerifierAttrs,
+) -> Result<(vir::ast::Path, vir::ast::Visibility), VirErr> {
+    // This function is the proxy, and we need to look up the actual path.
+
+    if mode != Mode::Exec {
+        return err_span(
+            sig.span,
+            format!("a function marked `external_fn_specification` cannot be marked `{mode:}`",),
+        );
+    }
+
+    if vattrs.external {
+        return err_span(
+            sig.span,
+            format!("a function cannot be marked both `external_fn_specification` and `external`",),
+        );
+    }
+    if vattrs.external_body {
+        return err_span(
+            sig.span,
+            format!(
+                "a function cannot be marked both `external_fn_specification` and `external_body`",
+            ),
+        );
+    }
+
+    if self_generics.is_some() {
+        return err_span(sig.span, "`external_fn_specification` attribute not supported here");
+    }
+
+    if let Some(impl_def_id) = ctxt.tcx.impl_of_method(id) {
+        if ctxt.tcx.impl_trait_ref(impl_def_id).is_some() {
+            return err_span(
+                sig.span,
+                "external_fn_specification not supported for trait functions",
+            );
+        }
+    }
+
+    let body_id = match body_id {
+        CheckItemFnEither::BodyId(body_id) => body_id,
+        _ => {
+            return err_span(
+                sig.span,
+                "external_fn_specification not supported for trait functions",
+            );
+        }
+    };
+
+    let body = find_body(ctxt, body_id);
+    let external_id = get_external_def_id(ctxt.tcx, body_id, body, sig)?;
+    let external_path = def_id_to_vir_path(ctxt.tcx, external_id);
+
+    if ctxt.tcx.trait_of_item(external_id).is_some() {
+        return err_span(sig.span, "external_fn_specification not supported for trait functions");
+    }
+
+    if external_path.krate == Some(Arc::new("builtin".to_string())) {
+        return err_span(
+            sig.span,
+            "cannot apply `external_fn_specification` to Verus builtin functions",
+        );
+    }
+
+    let ty1 = ctxt.tcx.type_of(id);
+    let ty2 = ctxt.tcx.type_of(external_id);
+    use rustc_middle::ty::FnDef;
+    let (poly_sig1, poly_sig2, substs1) = match (ty1.kind(), ty2.kind()) {
+        (FnDef(def_id1, substs1), FnDef(def_id2, substs2)) if substs1.len() == substs2.len() => {
+            // Note we substitute `substs1` in both cases
+            // This is to ensure that we are comparing the type signatures with
+            // the same type params even if the user inputs different generic params
+            // note: rustc 1.69.0 has replaced bound_fn_sig with just fn_sig I think
+            let poly_sig1 = ctxt.tcx.bound_fn_sig(*def_id1).subst(ctxt.tcx, substs1);
+            let poly_sig2 = ctxt.tcx.bound_fn_sig(*def_id2).subst(ctxt.tcx, substs1);
+            (poly_sig1, poly_sig2, substs1)
+        }
+        _ => {
+            return err_span(
+                sig.span,
+                format!(
+                    "external_fn_specification requires function type signature to match exactly (got `{ty1:#?}` and `{ty2:#?}`)"
+                ),
+            );
+        }
+    };
+
+    // Make sure names of (lifetime) binders don't influence equality check
+    let sig1_anon = ctxt.tcx.anonymize_bound_vars(poly_sig1);
+    let sig2_anon = ctxt.tcx.anonymize_bound_vars(poly_sig2);
+
+    if sig1_anon != sig2_anon {
+        return err_span(
+            sig.span,
+            format!(
+                "external_fn_specification requires function type signature to match exactly (got `{ty1:#?}` and `{ty2:#?}`)"
+            ),
+        );
+    }
+    // trait bounds aren't part of the type signature - we have to check those separately
+    if !predicates_match(ctxt.tcx, id, external_id, substs1) {
+        return err_span(
+            sig.span,
+            format!(
+                "external_fn_specification requires function type signature to match exactly (trait bound mismatch)"
+            ),
+        );
+    }
+
+    let owning_module_of_external_item =
+        crate::rust_to_vir_base::def_id_to_vir_module(ctxt.tcx, external_id);
+    let external_item_visibility = mk_visibility(
+        ctxt,
+        &Some(owning_module_of_external_item), // REVIEW should this ever be None? what's owning module None mean?
+        external_id,
+    );
+    if !vir::ast_util::is_visible_to_opt(&visibility, &external_item_visibility.restricted_to) {
+        return err_span(
+            sig.span,
+            "a function marked `external_fn_specification` must be visible to the function it provides a spec for",
+        );
+    }
+
+    Ok((external_path, external_item_visibility))
+}
+
 pub enum CheckItemFnEither<A, B> {
     BodyId(A),
     ParamNames(B),
@@ -169,22 +314,48 @@ pub(crate) fn check_item_fn<'tcx>(
     generics: &'tcx Generics,
     body_id: CheckItemFnEither<&BodyId, &[Ident]>,
 ) -> Result<Option<Fun>, VirErr> {
-    let path = def_id_to_vir_path(ctxt.tcx, id);
-    let name = Arc::new(FunX { path: path.clone() });
+    let this_path = def_id_to_vir_path(ctxt.tcx, id);
+
+    let is_verus_spec = this_path.segments.last().expect("segment.last").starts_with(VERUS_SPEC);
+    let is_new_strlit =
+        ctxt.tcx.is_diagnostic_item(Symbol::intern("pervasive::string::new_strlit"), id);
 
     let vattrs = get_verifier_attrs(attrs)?;
+    let mode = get_mode(Mode::Exec, attrs);
+
+    let (path, proxy, visibility) = if vattrs.external_fn_specification {
+        if is_verus_spec {
+            return err_span(
+                sig.span,
+                "`external_fn_specification` attribute not supported with VERUS_SPEC",
+            );
+        }
+
+        if is_new_strlit {
+            return err_span(
+                sig.span,
+                "`external_fn_specification` attribute not supported with new_strlit",
+            );
+        }
+
+        let (external_path, external_item_visibility) =
+            handle_external_fn(ctxt, id, visibility, sig, self_generics, &body_id, mode, &vattrs)?;
+
+        let proxy = (*ctxt.spanned_new(sig.span, this_path.clone())).clone();
+
+        (external_path, Some(proxy), external_item_visibility)
+    } else {
+        // No proxy.
+        (this_path.clone(), None, visibility)
+    };
+
+    let name = Arc::new(FunX { path: path.clone() });
 
     if vattrs.external {
         let mut erasure_info = ctxt.erasure_info.borrow_mut();
         erasure_info.external_functions.push(name);
         return Ok(None);
     }
-
-    let is_verus_spec = path.segments.last().expect("segment.last").starts_with(VERUS_SPEC);
-    let is_new_strlit =
-        ctxt.tcx.is_diagnostic_item(Symbol::intern("pervasive::string::new_strlit"), id);
-
-    let mode = get_mode(Mode::Exec, attrs);
 
     let self_typ_params = if let Some((cg, impl_def_id)) = self_generics {
         Some(check_generics_bounds_fun(ctxt.tcx, cg, impl_def_id)?)
@@ -332,6 +503,9 @@ pub(crate) fn check_item_fn<'tcx>(
     if mode != Mode::Spec && header.recommend.len() > 0 {
         return err_span(sig.span, "non-spec functions cannot have recommends");
     }
+    if mode != Mode::Exec && vattrs.external_fn_specification {
+        return err_span(sig.span, "external_fn_specification should be 'exec'");
+    }
     if header.ensure.len() > 0 {
         match (&header.ensure_id_typ, ret_typ_mode.as_ref()) {
             (None, None) => {}
@@ -426,7 +600,7 @@ pub(crate) fn check_item_fn<'tcx>(
     };
     let publish = get_publish(&vattrs);
     let autospec = vattrs.autospec.map(|method_name| {
-        let path = autospec_fun(&path, method_name.clone());
+        let path = autospec_fun(&this_path, method_name.clone());
         Arc::new(FunX { path })
     });
 
@@ -470,6 +644,7 @@ pub(crate) fn check_item_fn<'tcx>(
 
     let func = FunctionX {
         name: name.clone(),
+        proxy,
         kind,
         visibility,
         mode,
@@ -487,7 +662,11 @@ pub(crate) fn check_item_fn<'tcx>(
         is_const: false,
         publish,
         attrs: Arc::new(fattrs),
-        body: if vattrs.external_body || header.no_method_body { None } else { vir_body },
+        body: if vattrs.external_body || vattrs.external_fn_specification || header.no_method_body {
+            None
+        } else {
+            vir_body
+        },
         extra_dependencies: header.extra_dependencies,
     };
 
@@ -526,6 +705,111 @@ fn is_mut_ty<'tcx>(
     }
 }
 
+fn predicates_match<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    id1: rustc_span::def_id::DefId,
+    id2: rustc_span::def_id::DefId,
+    substs: SubstsRef<'tcx>,
+) -> bool {
+    let preds1 = all_predicates(tcx, id1, substs);
+    let preds2 = all_predicates(tcx, id2, substs);
+
+    if preds1.len() != preds2.len() {
+        return false;
+    }
+
+    // Note: it might actually be impossible for the below check to fail?
+    // Since we already passed Rust's typechecking, one of the predicate lists
+    // has to be a subset of the other. But we just checked they're the same size.
+    // So they have to be equal.
+    //
+    // Regardless, it makes sense to keep this as a sanity check.
+
+    let preds1 = preds1.iter().map(|p| tcx.anonymize_bound_vars(p.kind()));
+    let mut preds2: Vec<_> = preds2.iter().map(|p| tcx.anonymize_bound_vars(p.kind())).collect();
+
+    for p1 in preds1 {
+        let mut found = false;
+        for i in 0..preds2.len() {
+            if p1 == preds2[i] {
+                preds2.remove(i);
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn all_predicates<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    id: rustc_span::def_id::DefId,
+    substs: SubstsRef<'tcx>,
+) -> Vec<Predicate<'tcx>> {
+    let preds = tcx.predicates_of(id);
+    let preds = preds.instantiate(tcx, substs);
+    preds.predicates
+}
+
+pub(crate) fn get_external_def_id<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    body_id: &BodyId,
+    body: &Body<'tcx>,
+    sig: &'tcx FnSig<'tcx>,
+) -> Result<rustc_span::def_id::DefId, VirErr> {
+    let err = || {
+        err_span(
+            sig.span,
+            format!("external_fn_specification encoding error: body should end in call expression"),
+        )
+    };
+
+    // Get the 'body' of this function (skipping over header if necessary)
+    let expr = match &body.value.kind {
+        ExprKind::Block(block_body, _) => match &block_body.expr {
+            Some(body_value) => body_value,
+            None => {
+                return err();
+            }
+        },
+        _ => &body.value,
+    };
+
+    match &expr.kind {
+        ExprKind::Call(fun, _args) => match &fun.kind {
+            ExprKind::Path(qpath) => {
+                let types = body_id_to_types(tcx, body_id);
+                let def = types.qpath_res(&qpath, fun.hir_id);
+                match def {
+                    rustc_hir::def::Res::Def(_, def_id) => {
+                        // We don't need to check the args match or anything,
+                        // the type signature check done by the caller is sufficient.
+                        Ok(def_id)
+                    }
+                    _ => {
+                        return err();
+                    }
+                }
+            }
+            _ => {
+                return err();
+            }
+        },
+        ExprKind::MethodCall(_name_and_generics, _receiver, _other_args, _fn_span) => {
+            let types = body_id_to_types(tcx, body_id);
+            let def_id =
+                types.type_dependent_def_id(expr.hir_id).expect("def id of the method definition");
+            Ok(def_id)
+        }
+        _ => {
+            return err();
+        }
+    }
+}
+
 pub(crate) fn check_item_const<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut KrateX,
@@ -540,6 +824,11 @@ pub(crate) fn check_item_const<'tcx>(
     let name = Arc::new(FunX { path });
     let mode = get_mode(Mode::Exec, attrs);
     let vattrs = get_verifier_attrs(attrs)?;
+
+    if vattrs.external_fn_specification {
+        return err_span(span, "`external_fn_specification` attribute not yet supported for const");
+    }
+
     let fuel = get_fuel(&vattrs);
     if vattrs.external {
         let mut erasure_info = ctxt.erasure_info.borrow_mut();
@@ -556,6 +845,7 @@ pub(crate) fn check_item_const<'tcx>(
     );
     let func = FunctionX {
         name,
+        proxy: None,
         kind: FunctionKind::Static,
         visibility,
         mode: Mode::Spec, // the function has mode spec; the mode attribute goes into ret.x.mode
@@ -605,6 +895,13 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let fuel = get_fuel(&vattrs);
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
 
+    if vattrs.external_fn_specification {
+        return err_span(
+            span,
+            "`external_fn_specification` attribute not supported on foreign items",
+        );
+    }
+
     assert!(idents.len() == inputs.len());
     for (param, input) in idents.iter().zip(inputs.iter()) {
         let name = Arc::new(foreign_param_to_var(param));
@@ -635,6 +932,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let ret = ctxt.spanned_new(span, ret_param);
     let func = FunctionX {
         name,
+        proxy: None,
         kind: FunctionKind::Static,
         visibility,
         fuel,

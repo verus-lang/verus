@@ -492,6 +492,7 @@ fn hash_exp<H: Hasher>(state: &mut H, exp: &Exp) {
         Unary(op, e) => dohash!(9, op; hash_exp(e)),
         UnaryOpr(op, e) => dohash!(10, op; hash_exp(e)),
         Binary(op, e1, e2) => dohash!(11, op; hash_exp(e1), hash_exp(e2)),
+        BinaryOpr(op, e1, e2) => dohash!(111, op; hash_exp(e1), hash_exp(e2)),
         If(e1, e2, e3) => dohash!(12; hash_exp(e1), hash_exp(e2), hash_exp(e3)),
         WithTriggers(trigs, e) => dohash!(13; hash_trigs(trigs), hash_exp(e)),
         Bind(bnd, e) => dohash!(14; hash_bnd(bnd), hash_exp(e)),
@@ -1343,6 +1344,16 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 StrGetChar => ok_e2(e2.clone()),
             }
         }
+        BinaryOpr(op, e1, e2) => {
+            let e1 = eval_expr_internal(ctx, state, e1)?;
+            let e2 = eval_expr_internal(ctx, state, e2)?;
+            match op {
+                crate::ast::BinaryOpr::ExtEq(..) => match e1.syntactic_eq(&e2) {
+                    None => exp_new(BinaryOpr(op.clone(), e1.clone(), e2.clone())),
+                    Some(b) => bool_new(b),
+                },
+            }
+        }
         If(e1, e2, e3) => {
             let e1 = eval_expr_internal(ctx, state, e1)?;
             match &e1.x {
@@ -1549,9 +1560,33 @@ fn eval_expr_launch(
             // Send partial result to Z3
             ComputeMode::Z3 => {
                 // Restore the free variables we hid during interpretation
+                // and any sequence expressions we partially simplified during interpretation
                 let res = crate::sst_visitor::map_exp_visitor_result(&res, &mut |e| match &e.x {
                     ExpX::Interp(InterpExp::FreeVar(v)) => {
                         Ok(SpannedTyped::new(&e.span, &e.typ, ExpX::Var(v.clone())))
+                    }
+                    ExpX::Interp(InterpExp::Seq(v)) => {
+                        match &*e.typ {
+                            TypX::Datatype(_, typs) => {
+                                // Grab the type the sequence holds
+                                let inner_type = typs[0].clone();
+                                let s = seq_to_sst(&e.span, inner_type.clone(), v);
+                                // Wrap the sequence construction in unwrap to account for the Poly
+                                // type of the sequence functions
+                                let unbox_opr = crate::ast::UnaryOpr::Unbox(e.typ.clone());
+                                let unboxed_expx = crate::sst::ExpX::UnaryOpr(unbox_opr, s);
+                                let unboxed_e =
+                                    SpannedTyped::new(&e.span, &e.typ.clone(), unboxed_expx);
+                                Ok(unboxed_e)
+                            }
+                            _ => error(
+                                &e.span,
+                                format!(
+                                    "Internal error: Expected to find a sequence type but found: {:?}",
+                                    e.typ
+                                ),
+                            ),
+                        }
                     }
                     ExpX::Interp(InterpExp::Closure(..)) => error(
                         &e.span,

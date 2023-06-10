@@ -28,26 +28,32 @@ To automatically apply these suggestions to the source code, type:
 vargo fmt
 ```
 
-## Code Documentation
+## User-facing documentation
+
+The CI publishes some user facing documentation, including the ["verusdoc" (modified rustdoc) of `vstd`](https://verus-lang.github.io/verus/verusdoc/vstd/), as well as a [tutorial guide](https://verus-lang.github.io/verus/guide/).
+
+To manually build the `vstd` documentation, run,
+
+```
+cd source
+./tools/docs.sh
+```
+
+The output of the command will tell you where the HTML is generated.
+
+Meanwhile, the tutorial guide can be found in `source/docs/guide/`. From that directory, run `mdbook serve` to run a local webserver to render the guide as HTML.
+
+## Internal Code Documentation
 
 Commenting the code is strongly encouraged.  Use `///` to create comments
 that [`rustdoc`](https://doc.rust-lang.org/rustdoc/what-is-rustdoc.html) can
 automatically extract into HTML documentation.
 
-The rustdoc (verusdoc) for `main` is automatically published
-[📖 here](https://verus-lang.github.io/verus/verusdoc/vstd/) (if the build succeeds).
-
-You can compile the current documentation by running (in the `verify` directory)
+You can compile the current documentation by running (in the `source` directory)
 ```
-RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc ../rust/install/bin/cargo doc 
+RUSTC_BOOTSTRAP=1 cargo doc 
 ```
 which will produce documentation files, e.g., `./target/doc/rust_verify/index.html`
-
-## Contributing to the Guide
-
-A work-in-progress tutorial and reference document is automatically published
-[📖 here](https://verus-lang.github.io/verus/guide/) from the sources in
-[`source/docs/guide`](./source/docs/guide).
 
 ## Running tests for the Rust to VIR translation, and inspecting the resulting vir/air/smt
 
@@ -81,3 +87,16 @@ VERUS_EXTRA_ARGS="--log-all" vargo test -p rust_verify_test --test refs -- --noc
 
 This will output the log files in `rust_verify_test/.verus-log`. Only run one test at
 a time when using this flag, so that the logs are not overwritten by other tests.
+
+## Other tips
+
+You can use `--vstd-no-verify` to skip verification of the `vstd` library. This is pretty useful if you're building or running tests a lot. Note that it will still _build_ `vstd`—it just skips the SMT step. For example:
+
+```
+# for building
+vargo build --vstd-no-verify
+# for tests
+vargo test --vstd-no-verify -p rust_verify_test --test <test file> <test name>
+```
+
+

@@ -49,8 +49,8 @@ pub(crate) enum PatternX {
     Binding(Id, Mutability),
     Box(Pattern),
     Or(Vec<Pattern>),
-    Tuple(Vec<Pattern>),
-    DatatypeTuple(Id, Option<Id>, Vec<Pattern>),
+    Tuple(Vec<Pattern>, Option<usize>),
+    DatatypeTuple(Id, Option<Id>, Vec<Pattern>, Option<usize>),
     DatatypeStruct(Id, Option<Id>, Vec<(Id, Pattern)>, bool),
 }
 

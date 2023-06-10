@@ -2857,13 +2857,13 @@ test_verify_one_file! {
     #[test] type_recursion_fail_negative IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
-                // this should fail because Map has a maybe_negative first param
+                // this should fail because Map has a reject_recursive_types first param
 
                 #[sharding(variable)]
                 pub t: Map<X::Instance, int>
             }
         }}
-    } => Err(e) => assert_vir_error_msg(e, "non-positive polarity")
+    } => Err(e) => assert_vir_error_msg(e, "non-positive position")
 }
 
 test_verify_one_file! {
@@ -5182,14 +5182,14 @@ test_verify_one_file! {
         }
 
         spec fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
-            &&& ((pre.c.dom().contains(5) && pre.c.index(5) == 9)
-            &&& (pre.c.dom().contains(12) && pre.c.index(12) == 15))
+            &&& (pre.c.dom().contains(5) && pre.c.index(5) == 9)
+            &&& (pre.c.dom().contains(12) && pre.c.index(12) == 15)
             &&& pre.c === post.c
         }
 
         spec fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
-            &&& ((pre.c.dom().contains(5) && pre.c.index(5) == 9)
-            &&& (pre.c.dom().contains(12) && pre.c.index(12) == 15))
+            &&& (pre.c.dom().contains(5) && pre.c.index(5) == 9)
+            &&& (pre.c.dom().contains(12) && pre.c.index(12) == 15)
             &&& pre.c === post.c
         }
 

@@ -1664,3 +1664,25 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] recommends_in_ensures_issue370 verus_code! {
+        trait Foo  {
+            spec fn specfoo(&self)->bool
+              recommends true;
+
+            exec fn execfoo(&self)
+              ensures self.specfoo(); // FAILS
+        }
+
+        struct Bar;
+        impl Foo for Bar {
+            spec fn specfoo(&self) -> bool {
+                false // Just to trigger a verif failure
+            }
+
+            exec fn execfoo(&self) {
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}

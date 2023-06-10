@@ -16,7 +16,8 @@ use option::Option::None;
 
 verus!{
 
-pub struct DirectedGraph<#[verifier(maybe_negative)] V> {
+#[verifier::reject_recursive_types(V)]
+pub struct DirectedGraph<V> {
     pub edges: Set<(V, V)>,
 }
 
@@ -42,7 +43,7 @@ impl<V> DirectedGraph<V> {
 }
 
 tokenized_state_machine!{
-    TopSort<#[verifier::maybe_negative] /* vattr */ V> {
+    TopSort<#[verifier::reject_recursive_types] /* vattr */ V> {
         fields {
             #[sharding(constant)]
             pub graph: DirectedGraph<V>,
@@ -220,14 +221,14 @@ impl DfsState {
     spec fn well_formed(&self, graph: &ConcreteDirectedGraph) -> bool {
         &&& graph.well_formed()
         &&& self.node_states@.len() == graph.edges@.len()
-        &&& (forall |i| 0 <= i < self.node_states@.len() ==>
-            self.node_states@[i].well_formed(i, self.instance@))
+        &&& forall |i| 0 <= i < self.node_states@.len() ==>
+            self.node_states@[i].well_formed(i, self.instance@)
         &&& self.top_sort_token@@.instance === self.instance@
         &&& self.top_sort_token@@.value === self.top_sort@
         &&& self.instance@.graph() === graph@
         &&& valid_stack(self.cur_stack@, graph@)
-        &&& (forall |i: usize| 0 <= i < self.node_states@.len() ==>
-           (self.node_states@[i as int].in_stack <==> self.cur_stack@.contains(i)))
+        &&& forall |i: usize| 0 <= i < self.node_states@.len() ==>
+            (self.node_states@[i as int].in_stack <==> self.cur_stack@.contains(i))
     }
 }
 

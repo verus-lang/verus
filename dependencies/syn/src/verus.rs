@@ -237,6 +237,20 @@ ast_struct! {
     }
 }
 
+ast_struct! {
+    pub struct BigAnd {
+        /// exprs.len() must be >= 1
+        pub exprs: Vec<(Token![&&&], Box<Expr>)>,
+    }
+}
+
+ast_struct! {
+    pub struct BigOr {
+        /// exprs.len() must be >= 1
+        pub exprs: Vec<(Token![|||], Box<Expr>)>,
+    }
+}
+
 #[cfg(feature = "parsing")]
 pub mod parsing {
     use super::*;
@@ -986,6 +1000,26 @@ mod printing {
             self.output.to_tokens(tokens);
         }
     }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for BigAnd {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            for (prefix, expr) in &self.exprs {
+                prefix.to_tokens(tokens);
+                expr.to_tokens(tokens);
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for BigOr {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            for (prefix, expr) in &self.exprs {
+                prefix.to_tokens(tokens);
+                expr.to_tokens(tokens);
+            }
+        }
+    }
 }
 
 pub(crate) fn disallow_prefix_binop(input: crate::parse::ParseStream) -> crate::parse::Result<()> {
@@ -1005,25 +1039,27 @@ pub(crate) fn disallow_prefix_binop(input: crate::parse::ParseStream) -> crate::
 pub(crate) fn parse_prefix_binop(
     input: crate::parse::ParseStream,
     attrs: &Vec<Attribute>,
-) -> Result<Option<(crate::op::UnOp, crate::op::BinOp)>> {
+) -> Result<Option<Expr>> {
     if input.peek(Token![&&&]) {
         if attrs.len() != 0 {
             return Err(input.error("`&&&` cannot have attributes"));
         }
-        let token: Token![&&&] = input.parse().expect("&&&");
-        Ok(Some((
-            crate::op::UnOp::BigAnd(token),
-            crate::op::BinOp::BigAnd(token),
-        )))
+        let mut exprs: Vec<(Token![&&&], Box<Expr>)> = Vec::new();
+        while let Ok(token) = input.parse() {
+            let expr: Expr = input.parse()?;
+            exprs.push((token, Box::new(expr)));
+        }
+        Ok(Some(Expr::BigAnd(BigAnd { exprs })))
     } else if input.peek(Token![|||]) {
         if attrs.len() != 0 {
             return Err(input.error("`|||` cannot have attributes"));
         }
-        let token: Token![|||] = input.parse().expect("|||");
-        Ok(Some((
-            crate::op::UnOp::BigOr(token),
-            crate::op::BinOp::BigOr(token),
-        )))
+        let mut exprs: Vec<(Token![|||], Box<Expr>)> = Vec::new();
+        while let Ok(token) = input.parse() {
+            let expr: Expr = input.parse()?;
+            exprs.push((token, Box::new(expr)));
+        }
+        Ok(Some(Expr::BigOr(BigOr { exprs })))
     } else {
         Ok(None)
     }

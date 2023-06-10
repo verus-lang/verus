@@ -61,5 +61,5 @@ test_verify_one_file! {
             field: Box<[ Map<Foo, int> ]>,
         }
 
-    } => Err(err) => assert_vir_error_msg(err, "non-positive polarity")
+    } => Err(err) => assert_vir_error_msg(err, "non-positive position")
 }

@@ -239,6 +239,20 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_requires_no_block verus_code! {
+        proof fn test6(a1: int, a2: int) {
+            let (b1, b2) = if a1 <= a2 {
+                (a1, a2)
+            } else {
+                (a2, a1)
+            };
+            assert(b1 <= b2) by(nonlinear_arith)
+                requires b1 <= b2;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_new_vars verus_code! {
         proof fn test6(x: int)
             requires x == 5

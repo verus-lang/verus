@@ -388,3 +388,44 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_big_and verus_code! {
+        proof fn test() {
+            assert({ &&& true &&& true });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_big_and_fail verus_code! {
+        proof fn test() {
+            assert({ &&& true &&& false }); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_big_or verus_code! {
+        proof fn test() {
+            assert({ ||| true ||| false });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_big_or_fail verus_code! {
+        proof fn test() {
+            assert({ ||| fails ||| false }); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_big_and_syntax_vs_forall verus_code! {
+        spec fn test() -> bool {
+            &&& forall|i: int| true
+            &&& i == 0
+        }
+    } => Err(e) => assert_rust_error_msg(e, "cannot find value `i`")
+}

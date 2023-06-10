@@ -250,6 +250,26 @@ impl Debug for Lite<syn::BareFnArg> {
         formatter.finish()
     }
 }
+impl Debug for Lite<syn::BigAnd> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("BigAnd");
+        if !_val.exprs.is_empty() {
+            formatter.field("exprs", Lite(&_val.exprs));
+        }
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::BigOr> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("BigOr");
+        if !_val.exprs.is_empty() {
+            formatter.field("exprs", Lite(&_val.exprs));
+        }
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::BinOp> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
@@ -366,14 +386,6 @@ impl Debug for Lite<syn::BinOp> {
                 formatter.write_str("ShrEq")?;
                 Ok(())
             }
-            syn::BinOp::BigAnd(_val) => {
-                formatter.write_str("BigAnd")?;
-                Ok(())
-            }
-            syn::BinOp::BigOr(_val) => {
-                formatter.write_str("BigOr")?;
-                Ok(())
-            }
             syn::BinOp::Equiv(_val) => {
                 formatter.write_str("Equiv")?;
                 Ok(())
@@ -392,6 +404,22 @@ impl Debug for Lite<syn::BinOp> {
             }
             syn::BinOp::BigNe(_val) => {
                 formatter.write_str("BigNe")?;
+                Ok(())
+            }
+            syn::BinOp::ExtEq(_val) => {
+                formatter.write_str("ExtEq")?;
+                Ok(())
+            }
+            syn::BinOp::ExtNe(_val) => {
+                formatter.write_str("ExtNe")?;
+                Ok(())
+            }
+            syn::BinOp::ExtDeepEq(_val) => {
+                formatter.write_str("ExtDeepEq")?;
+                Ok(())
+            }
+            syn::BinOp::ExtDeepNe(_val) => {
+                formatter.write_str("ExtDeepNe")?;
                 Ok(())
             }
         }
@@ -1472,6 +1500,20 @@ impl Debug for Lite<syn::Expr> {
             }
             syn::Expr::View(_val) => {
                 formatter.write_str("View")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
+            syn::Expr::BigAnd(_val) => {
+                formatter.write_str("BigAnd")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
+            syn::Expr::BigOr(_val) => {
+                formatter.write_str("BigOr")?;
                 formatter.write_str("(")?;
                 Debug::fmt(Lite(_val), formatter)?;
                 formatter.write_str(")")?;
@@ -6516,14 +6558,6 @@ impl Debug for Lite<syn::UnOp> {
             }
             syn::UnOp::Neg(_val) => {
                 formatter.write_str("Neg")?;
-                Ok(())
-            }
-            syn::UnOp::BigAnd(_val) => {
-                formatter.write_str("BigAnd")?;
-                Ok(())
-            }
-            syn::UnOp::BigOr(_val) => {
-                formatter.write_str("BigOr")?;
                 Ok(())
             }
             syn::UnOp::Proof(_val) => {

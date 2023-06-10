@@ -57,8 +57,8 @@ so that, for example, `a ==> b && c` means `a ==> (b && c)`:
 | ==>                      | right                 |
 | <==                      | left                  |
 | <==>                     | requires parentheses  |
-| &&&                      | left                  |
-| &#124;&#124;&#124;       | left                  |
 | ..                       | left                  |
 | =                        | right                 |
 | closures, forall, exists | right                 |
+| &&&                      | left                  |
+| &#124;&#124;&#124;       | left                  |

@@ -63,13 +63,15 @@ ast_enum! {
         ShrEq(Token![>>=]),
 
         // verus
-        BigAnd(Token![&&&]),
-        BigOr(Token![|||]),
         Equiv(Token![<==>]),
         Imply(Token![==>]),
         Exply(Token![<==]),
         BigEq(Token![===]),
         BigNe(Token![!==]),
+        ExtEq(Token![=~=]),
+        ExtNe(Token![!~=]),
+        ExtDeepEq(Token![=~~=]),
+        ExtDeepNe(Token![!~~=]),
     }
 }
 
@@ -88,8 +90,6 @@ ast_enum! {
         Neg(Token![-]),
 
         // verus
-        BigAnd(Token![&&&]),
-        BigOr(Token![|||]),
         Proof(Token![proof]),
         Forall(Token![forall]),
         Exists(Token![exists]),
@@ -103,11 +103,7 @@ pub mod parsing {
     use crate::parse::{Parse, ParseStream, Result};
 
     fn parse_binop(input: ParseStream) -> Result<BinOp> {
-        if input.peek(Token![&&&]) {
-            input.parse().map(BinOp::BigAnd)
-        } else if input.peek(Token![|||]) {
-            input.parse().map(BinOp::BigOr)
-        } else if input.peek(Token![<==>]) {
+        if input.peek(Token![<==>]) {
             input.parse().map(BinOp::Equiv)
         } else if input.peek(Token![==>]) {
             input.parse().map(BinOp::Imply)
@@ -117,6 +113,14 @@ pub mod parsing {
             input.parse().map(BinOp::BigEq)
         } else if input.peek(Token![!==]) {
             input.parse().map(BinOp::BigNe)
+        } else if input.peek(Token![=~=]) {
+            input.parse().map(BinOp::ExtEq)
+        } else if input.peek(Token![!~=]) {
+            input.parse().map(BinOp::ExtNe)
+        } else if input.peek(Token![=~~=]) {
+            input.parse().map(BinOp::ExtDeepEq)
+        } else if input.peek(Token![!~~=]) {
+            input.parse().map(BinOp::ExtDeepNe)
         } else if input.peek(Token![&&]) {
             input.parse().map(BinOp::And)
         } else if input.peek(Token![||]) {
@@ -258,13 +262,15 @@ mod printing {
                 BinOp::ShrEq(t) => t.to_tokens(tokens),
 
                 // verus
-                BinOp::BigAnd(t) => t.to_tokens(tokens),
-                BinOp::BigOr(t) => t.to_tokens(tokens),
                 BinOp::Equiv(t) => t.to_tokens(tokens),
                 BinOp::Imply(t) => t.to_tokens(tokens),
                 BinOp::Exply(t) => t.to_tokens(tokens),
                 BinOp::BigEq(t) => t.to_tokens(tokens),
                 BinOp::BigNe(t) => t.to_tokens(tokens),
+                BinOp::ExtEq(t) => t.to_tokens(tokens),
+                BinOp::ExtNe(t) => t.to_tokens(tokens),
+                BinOp::ExtDeepEq(t) => t.to_tokens(tokens),
+                BinOp::ExtDeepNe(t) => t.to_tokens(tokens),
             }
         }
     }
@@ -278,8 +284,6 @@ mod printing {
                 UnOp::Neg(t) => t.to_tokens(tokens),
 
                 // verus
-                UnOp::BigAnd(t) => t.to_tokens(tokens),
-                UnOp::BigOr(t) => t.to_tokens(tokens),
                 UnOp::Proof(t) => t.to_tokens(tokens),
                 UnOp::Forall(t) => t.to_tokens(tokens),
                 UnOp::Exists(t) => t.to_tokens(tokens),

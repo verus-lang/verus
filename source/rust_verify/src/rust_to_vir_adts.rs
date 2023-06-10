@@ -5,6 +5,7 @@ use crate::rust_to_vir_base::{
     mid_ty_to_vir, mk_visibility,
 };
 use crate::unsupported_err_unless;
+use crate::util::err_span;
 use crate::util::unsupported_err_span;
 use air::ast_util::str_ident;
 use rustc_ast::Attribute;
@@ -128,9 +129,19 @@ pub fn check_item_struct<'tcx>(
     }
 
     let vattrs = get_verifier_attrs(attrs)?;
+
+    if vattrs.external_fn_specification {
+        return err_span(span, "`external_fn_specification` attribute not supported here");
+    }
+
     let def_id = id.owner_id.to_def_id();
-    let typ_params =
-        Arc::new(check_generics_bounds(ctxt.tcx, generics, vattrs.external_body, def_id)?);
+    let typ_params = Arc::new(check_generics_bounds(
+        ctxt.tcx,
+        generics,
+        vattrs.external_body,
+        def_id,
+        Some(&vattrs),
+    )?);
     let name = hack_get_def_name(ctxt.tcx, def_id);
     let path = def_id_to_vir_path(ctxt.tcx, def_id);
 
@@ -148,9 +159,15 @@ pub fn check_item_struct<'tcx>(
     } else {
         DatatypeTransparency::Always
     };
-    let variants = Arc::new(vec![variant]);
-    let mode = get_mode(Mode::Exec, attrs);
-    let datatype = DatatypeX { path, visibility, transparency, typ_params, variants, mode };
+    let datatype = DatatypeX {
+        path,
+        visibility,
+        transparency,
+        typ_params,
+        variants: Arc::new(vec![variant]),
+        mode: get_mode(Mode::Exec, attrs),
+        ext_equal: vattrs.ext_equal,
+    };
     vir.datatypes.push(ctxt.spanned_new(span, datatype));
     Ok(())
 }
@@ -186,9 +203,19 @@ pub fn check_item_enum<'tcx>(
     assert!(adt_def.is_enum());
 
     let vattrs = get_verifier_attrs(attrs)?;
+
+    if vattrs.external_fn_specification {
+        return err_span(span, "`external_fn_specification` attribute not supported here");
+    }
+
     let def_id = id.owner_id.to_def_id();
-    let typ_params =
-        Arc::new(check_generics_bounds(ctxt.tcx, generics, vattrs.external_body, def_id)?);
+    let typ_params = Arc::new(check_generics_bounds(
+        ctxt.tcx,
+        generics,
+        vattrs.external_body,
+        def_id,
+        Some(&vattrs),
+    )?);
     let path = def_id_to_vir_path(ctxt.tcx, def_id);
     let (variants, one_field_private): (Vec<_>, Vec<_>) = enum_def
         .variants
@@ -218,7 +245,6 @@ pub fn check_item_enum<'tcx>(
     } else {
         DatatypeTransparency::Always
     };
-    let mode = get_mode(Mode::Exec, attrs);
     vir.datatypes.push(ctxt.spanned_new(
         span,
         DatatypeX {
@@ -227,7 +253,8 @@ pub fn check_item_enum<'tcx>(
             transparency,
             typ_params,
             variants: Arc::new(variants),
-            mode,
+            mode: get_mode(Mode::Exec, attrs),
+            ext_equal: vattrs.ext_equal,
         },
     ));
     Ok(())

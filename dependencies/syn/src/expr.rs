@@ -230,6 +230,8 @@ ast_enum_of_structs! {
         Assert(Assert),
         AssertForall(AssertForall),
         View(View),
+        BigAnd(BigAnd),
+        BigOr(BigOr),
 
         // Not public API.
         //
@@ -855,6 +857,8 @@ impl Expr {
             | Expr::View(View { attrs, .. })
             | Expr::Yield(ExprYield { attrs, .. }) => mem::replace(attrs, new),
             Expr::Verbatim(_) => Vec::new(),
+            Expr::BigAnd(_) => Vec::new(),
+            Expr::BigOr(_) => Vec::new(),
 
             #[cfg(syn_no_non_exhaustive)]
             _ => unreachable!(),
@@ -1143,8 +1147,6 @@ pub(crate) mod parsing {
         Any,
         Assign,
         Range,
-        BigOr,
-        BigAnd,
         Equiv,
         Exply,
         Imply,
@@ -1196,13 +1198,15 @@ pub(crate) mod parsing {
                 | BinOp::ShrEq(_) => Precedence::Assign,
 
                 // verus
-                BinOp::BigAnd(_) => Precedence::BigAnd,
-                BinOp::BigOr(_) => Precedence::BigOr,
                 BinOp::Equiv(_) => Precedence::Equiv,
                 BinOp::Imply(_) => Precedence::Imply,
                 BinOp::Exply(_) => Precedence::Exply,
                 BinOp::BigEq(_) => Precedence::Compare,
                 BinOp::BigNe(_) => Precedence::Compare,
+                BinOp::ExtEq(_) => Precedence::Compare,
+                BinOp::ExtNe(_) => Precedence::Compare,
+                BinOp::ExtDeepEq(_) => Precedence::Compare,
+                BinOp::ExtDeepNe(_) => Precedence::Compare,
             }
         }
     }
@@ -1214,8 +1218,6 @@ pub(crate) mod parsing {
                 Precedence::Equiv => Associativity::None,
                 Precedence::Any
                 | Precedence::Range
-                | Precedence::BigOr
-                | Precedence::BigAnd
                 | Precedence::Exply
                 | Precedence::Or
                 | Precedence::And
@@ -1364,6 +1366,9 @@ pub(crate) mod parsing {
         base: Precedence,
     ) -> Result<Expr> {
         loop {
+            if input.peek(Token![&&&]) || input.peek(Token![|||]) {
+                break;
+            }
             if input
                 .fork()
                 .parse::<BinOp>()
@@ -1488,6 +1493,9 @@ pub(crate) mod parsing {
         base: Precedence,
     ) -> Result<Expr> {
         loop {
+            if input.peek(Token![&&&]) || input.peek(Token![|||]) {
+                break;
+            }
             if input
                 .fork()
                 .parse::<BinOp>()
@@ -1538,6 +1546,9 @@ pub(crate) mod parsing {
     }
 
     fn peek_precedence(input: ParseStream) -> Precedence {
+        if input.peek(Token![&&&]) || input.peek(Token![|||]) {
+            return Precedence::Any;
+        }
         if let Ok(op) = input.fork().parse() {
             Precedence::of(&op)
         } else if input.peek(Token![=]) && !input.peek(Token![=>]) {
@@ -2162,12 +2173,8 @@ pub(crate) mod parsing {
     pub(crate) fn expr_early_block(input: ParseStream) -> Result<Expr> {
         let attrs = input.call(expr_attrs)?;
         let prefix_binop = verus::parse_prefix_binop(input, &attrs)?;
-        if let Some((op, binop)) = prefix_binop {
-            let allow_struct = AllowStruct(true);
-            let expr = unary_expr(input, allow_struct)?;
-            let expr = parse_expr(input, expr, allow_struct, Precedence::of(&binop))?;
-            let expr = Box::new(expr);
-            return Ok(Expr::Unary(ExprUnary { attrs, expr, op }));
+        if let Some(expr) = prefix_binop {
+            return Ok(expr);
         }
         if input.peek(Token![proof]) && input.peek2(token::Brace) {
             let token: Token![proof] = input.parse()?;

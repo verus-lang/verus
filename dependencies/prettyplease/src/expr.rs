@@ -63,6 +63,12 @@ impl Printer {
             // (note: for now, not supporting assert, assume, etc., since we're
             // only using this for spec expressions at the moment)
             Expr::View(v) => self.expr_view(v),
+            Expr::BigAnd(expr) => {
+                self.expr_big_op(&expr.exprs.iter().map(|(_, e)| e).collect(), false)
+            }
+            Expr::BigOr(expr) => {
+                self.expr_big_op(&expr.exprs.iter().map(|(_, e)| e).collect(), true)
+            }
 
             #[cfg_attr(all(test, exhaustive), deny(non_exhaustive_omitted_patterns))]
             _ => unimplemented!("unknown Expr"),
@@ -74,6 +80,16 @@ impl Printer {
         self.outer_attrs(&expr.attrs);
         self.expr_beginning_of_line(&expr.expr, false);
         self.word("@");
+    }
+
+    pub fn expr_big_op(&mut self, exprs: &Vec<&Box<Expr>>, is_or: bool) {
+        for expr in exprs {
+            self.ibox(0);
+            self.word(if is_or { "||| " } else { "&&& " });
+            self.expr(expr);
+            self.end();
+            self.hardbreak();
+        }
     }
 
     pub fn expr_beginning_of_line(&mut self, expr: &Expr, beginning_of_line: bool) {
@@ -1064,13 +1080,15 @@ impl Printer {
             BinOp::BitOrEq(_) => "|=",
             BinOp::ShlEq(_) => "<<=",
             BinOp::ShrEq(_) => ">>=",
-            BinOp::BigAnd(_) => "&&&",
-            BinOp::BigOr(_) => "|||",
             BinOp::Equiv(_) => "<==>",
             BinOp::Imply(_) => "==>",
             BinOp::Exply(_) => "<==",
             BinOp::BigEq(_) => "===",
             BinOp::BigNe(_) => "!==",
+            BinOp::ExtEq(_) => "=~=",
+            BinOp::ExtNe(_) => "!~=",
+            BinOp::ExtDeepEq(_) => "=~~=",
+            BinOp::ExtDeepNe(_) => "!~~=",
         });
     }
 
@@ -1079,8 +1097,6 @@ impl Printer {
             UnOp::Deref(_) => "*",
             UnOp::Not(_) => "!",
             UnOp::Neg(_) => "-",
-            UnOp::BigAnd(_) => "&&& ",
-            UnOp::BigOr(_) => "||| ",
             UnOp::Proof(_) => "proof ",
             UnOp::Forall(_) => "forall ",
             UnOp::Exists(_) => "exists ",

@@ -73,7 +73,7 @@ where
                 ExpX::UnaryOpr(_op, e1) => {
                     expr_visitor_control_flow!(exp_visitor_dfs(e1, map, f));
                 }
-                ExpX::Binary(_op, e1, e2) => {
+                ExpX::Binary(_, e1, e2) | ExpX::BinaryOpr(_, e1, e2) => {
                     expr_visitor_control_flow!(exp_visitor_dfs(e1, map, f));
                     expr_visitor_control_flow!(exp_visitor_dfs(e2, map, f));
                 }
@@ -320,6 +320,12 @@ where
             let exp = exp_new(ExpX::Binary(*op, expr1, expr2));
             f(&exp, map)
         }
+        ExpX::BinaryOpr(op, e1, e2) => {
+            let expr1 = map_exp_visitor_bind(e1, map, f)?;
+            let expr2 = map_exp_visitor_bind(e2, map, f)?;
+            let exp = exp_new(ExpX::BinaryOpr(op.clone(), expr1, expr2));
+            f(&exp, map)
+        }
         ExpX::If(e1, e2, e3) => {
             let expr1 = map_exp_visitor_bind(e1, map, f)?;
             let expr2 = map_exp_visitor_bind(e2, map, f)?;
@@ -516,6 +522,10 @@ where
             ok_exp(ExpX::UnaryOpr(op.clone(), fe(env, e1)?))
         }
         ExpX::Binary(op, e1, e2) => ok_exp(ExpX::Binary(*op, fe(env, e1)?, fe(env, e2)?)),
+        ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(deep, t), e1, e2) => {
+            let op = crate::ast::BinaryOpr::ExtEq(*deep, ft(env, t)?);
+            ok_exp(ExpX::BinaryOpr(op, fe(env, e1)?, fe(env, e2)?))
+        }
         ExpX::If(e0, e1, e2) => ok_exp(ExpX::If(fe(env, e0)?, fe(env, e1)?, fe(env, e2)?)),
         ExpX::WithTriggers(ts, body) => {
             ok_exp(ExpX::WithTriggers(ftrigs(env, ts)?, fe(env, body)?))
@@ -704,6 +714,94 @@ where
                 stms.push(fs(s)?);
             }
             Ok(Spanned::new(stm.span.clone(), StmX::Block(Arc::new(stms))))
+        }
+    }
+}
+
+/// Maps all the Typs in the Stm, doesn't recurse into any Stms
+pub(crate) fn map_shallow_stm_typ<F>(stm: &Stm, ft: &F) -> Result<Stm, VirErr>
+where
+    F: Fn(&Typ) -> Result<Typ, VirErr>,
+{
+    match &stm.x {
+        StmX::Assert(_, _)
+        | StmX::AssertBitVector { requires: _, ensures: _ }
+        | StmX::Assume(_)
+        | StmX::Assign { lhs: _, rhs: _ }
+        | StmX::Fuel(_, _)
+        | StmX::RevealString(_)
+        | StmX::DeadEnd(_)
+        | StmX::Return { base_error: _, ret_exp: _, inside_body: _ }
+        | StmX::BreakOrContinue { label: _, is_break: _ }
+        | StmX::If(_, _, _)
+        | StmX::Block(_) => Ok(stm.clone()),
+        StmX::Call { fun, resolved_method, mode, typ_args, args, split, dest } => {
+            let typ_args = typ_args.iter().map(ft).collect::<Result<Vec<Typ>, _>>()?;
+            let resolved_method = if let Some((f, ts)) = resolved_method {
+                Some((f.clone(), Arc::new(vec_map_result(ts, ft)?)))
+            } else {
+                None
+            };
+            Ok(Spanned::new(
+                stm.span.clone(),
+                StmX::Call {
+                    fun: fun.clone(),
+                    resolved_method,
+                    mode: mode.clone(),
+                    typ_args: Arc::new(typ_args),
+                    args: args.clone(),
+                    split: split.clone(),
+                    dest: dest.clone(),
+                },
+            ))
+        }
+        StmX::Loop { label, cond, body, invs, typ_inv_vars, modified_vars } => {
+            let mut typ_inv_vars2 = vec![];
+            for (uid, typ) in typ_inv_vars.iter() {
+                typ_inv_vars2.push((uid.clone(), ft(typ)?));
+            }
+            Ok(Spanned::new(
+                stm.span.clone(),
+                StmX::Loop {
+                    label: label.clone(),
+                    cond: cond.clone(),
+                    body: body.clone(),
+                    invs: invs.clone(),
+                    typ_inv_vars: Arc::new(typ_inv_vars2),
+                    modified_vars: modified_vars.clone(),
+                },
+            ))
+        }
+        StmX::OpenInvariant(exp, uid, typ, stm, ato) => {
+            let typ = ft(typ)?;
+            Ok(Spanned::new(
+                stm.span.clone(),
+                StmX::OpenInvariant(exp.clone(), uid.clone(), typ, stm.clone(), ato.clone()),
+            ))
+        }
+        StmX::ClosureInner { body, typ_inv_vars } => {
+            let mut typ_inv_vars2 = vec![];
+            for (uid, typ) in typ_inv_vars.iter() {
+                typ_inv_vars2.push((uid.clone(), ft(typ)?));
+            }
+            Ok(Spanned::new(
+                stm.span.clone(),
+                StmX::ClosureInner { body: body.clone(), typ_inv_vars: Arc::new(typ_inv_vars2) },
+            ))
+        }
+        StmX::AssertQuery { mode, typ_inv_vars, body } => {
+            let mut typ_inv_vars2 = vec![];
+            for (uid, typ) in typ_inv_vars.iter() {
+                typ_inv_vars2.push((uid.clone(), ft(typ)?));
+            }
+            Ok(Spanned::new(
+                stm.span.clone(),
+                StmX::AssertQuery {
+                    mode: mode.clone(),
+                    typ_inv_vars: Arc::new(typ_inv_vars2),
+                    body: body.clone(),
+                },
+            ))
         }
     }
 }

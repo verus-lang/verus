@@ -100,6 +100,7 @@ pub fn print_u64(i: u64) {
     println!("{}", i);
 }
 
+/// deprecated, use core::mem::swap or std::mem::swap directly instead (TODO remove this)
 #[verifier(external_body)]
 pub fn swap<A>(x: &mut A, y: &mut A)
     ensures

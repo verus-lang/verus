@@ -68,6 +68,12 @@ pub trait VisitMut {
     fn visit_bare_fn_arg_mut(&mut self, i: &mut BareFnArg) {
         visit_bare_fn_arg_mut(self, i);
     }
+    fn visit_big_and_mut(&mut self, i: &mut BigAnd) {
+        visit_big_and_mut(self, i);
+    }
+    fn visit_big_or_mut(&mut self, i: &mut BigOr) {
+        visit_big_or_mut(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_bin_op_mut(&mut self, i: &mut BinOp) {
         visit_bin_op_mut(self, i);
@@ -1018,6 +1024,24 @@ where
     }
     v.visit_type_mut(&mut node.ty);
 }
+pub fn visit_big_and_mut<V>(v: &mut V, node: &mut BigAnd)
+where
+    V: VisitMut + ?Sized,
+{
+    for it in &mut node.exprs {
+        tokens_helper(v, &mut (it).0.spans);
+        v.visit_expr_mut(&mut *(it).1);
+    }
+}
+pub fn visit_big_or_mut<V>(v: &mut V, node: &mut BigOr)
+where
+    V: VisitMut + ?Sized,
+{
+    for it in &mut node.exprs {
+        tokens_helper(v, &mut (it).0.spans);
+        v.visit_expr_mut(&mut *(it).1);
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_bin_op_mut<V>(v: &mut V, node: &mut BinOp)
 where
@@ -1108,12 +1132,6 @@ where
         BinOp::ShrEq(_binding_0) => {
             tokens_helper(v, &mut _binding_0.spans);
         }
-        BinOp::BigAnd(_binding_0) => {
-            tokens_helper(v, &mut _binding_0.spans);
-        }
-        BinOp::BigOr(_binding_0) => {
-            tokens_helper(v, &mut _binding_0.spans);
-        }
         BinOp::Equiv(_binding_0) => {
             tokens_helper(v, &mut _binding_0.spans);
         }
@@ -1127,6 +1145,18 @@ where
             tokens_helper(v, &mut _binding_0.spans);
         }
         BinOp::BigNe(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.spans);
+        }
+        BinOp::ExtEq(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.spans);
+        }
+        BinOp::ExtNe(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.spans);
+        }
+        BinOp::ExtDeepEq(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.spans);
+        }
+        BinOp::ExtDeepNe(_binding_0) => {
             tokens_helper(v, &mut _binding_0.spans);
         }
     }
@@ -1439,6 +1469,12 @@ where
         }
         Expr::View(_binding_0) => {
             v.visit_view_mut(_binding_0);
+        }
+        Expr::BigAnd(_binding_0) => {
+            v.visit_big_and_mut(_binding_0);
+        }
+        Expr::BigOr(_binding_0) => {
+            v.visit_big_or_mut(_binding_0);
         }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
@@ -4148,12 +4184,6 @@ where
             tokens_helper(v, &mut _binding_0.spans);
         }
         UnOp::Neg(_binding_0) => {
-            tokens_helper(v, &mut _binding_0.spans);
-        }
-        UnOp::BigAnd(_binding_0) => {
-            tokens_helper(v, &mut _binding_0.spans);
-        }
-        UnOp::BigOr(_binding_0) => {
             tokens_helper(v, &mut _binding_0.spans);
         }
         UnOp::Proof(_binding_0) => {

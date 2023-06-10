@@ -26,7 +26,7 @@ use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
 use crate::sst::{
     BndInfo, BndX, CallFun, Dest, Exp, ExpX, InternalFun, LocalDecl, Stm, StmX, UniqueIdent,
 };
-use crate::sst_util::subst_exp;
+use crate::sst_util::{subst_exp, subst_stm};
 use crate::sst_vars::{get_loc_var, AssignMap};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
@@ -322,6 +322,10 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Char => Some(str_ident(crate::def::BOX_CHAR)),
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
+}
+
+pub(crate) fn as_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Expr {
+    try_box(ctx, expr.clone(), typ).unwrap_or(expr)
 }
 
 fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
@@ -947,6 +951,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             };
             return Ok(Arc::new(ExprX::Binary(bop, lh, rh)));
         }
+        (ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), _, _), true) => {
+            return error(&exp.span, "error: cannot use extensional equality in bit vector proof");
+        }
         (ExpX::Binary(op, lhs, rhs), false) => {
             let has_const = match (&lhs.x, &rhs.x) {
                 (ExpX::Const(..), _) => true,
@@ -1059,6 +1066,13 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 }
             };
             Arc::new(expx)
+        }
+        (ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(deep, t), lhs, rhs), false) => {
+            let mut args = vec![Arc::new(ExprX::Const(Constant::Bool(*deep)))];
+            args.extend(typ_to_ids(t));
+            args.push(exp_to_expr(ctx, lhs, expr_ctxt)?);
+            args.push(exp_to_expr(ctx, rhs, expr_ctxt)?);
+            str_apply(crate::def::EXT_EQ, &args)
         }
         (ExpX::If(e1, e2, e3), _) => mk_ite(
             &exp_to_expr(ctx, e1, expr_ctxt)?,
@@ -1389,6 +1403,19 @@ fn assume_other_fields_unchanged_inner(
             let datatype_fields = &get_variant(&ctx.global.datatypes[datatype], variant).a;
             let dt =
                 vec_map_result(&**datatype_fields, |field: &Binder<(Typ, Mode, Visibility)>| {
+                    let base_exp = if let TypX::Boxed(base_typ) = &*undecorate_typ(&base.typ) {
+                        // TODO this replicates logic from poly, but factoring it out is currently tricky
+                        // because we don't have a representation for a variable used as a location in VIR
+                        if crate::poly::typ_is_poly(ctx, base_typ) {
+                            base.clone()
+                        } else {
+                            let op = UnaryOpr::Unbox(base_typ.clone());
+                            let exprx = ExpX::UnaryOpr(op, base.clone());
+                            SpannedTyped::new(&base.span, base_typ, exprx)
+                        }
+                    } else {
+                        base.clone()
+                    };
                     let field_exp = SpannedTyped::new(
                         stm_span,
                         &field.a.0,
@@ -1399,7 +1426,7 @@ fn assume_other_fields_unchanged_inner(
                                 field: field.name.clone(),
                                 get_variant: false,
                             }),
-                            base.clone(),
+                            base_exp,
                         ),
                     );
                     if let Some(further_updates) = updated_fields.get(&field.name) {
@@ -2284,6 +2311,11 @@ pub(crate) fn body_stm_to_air(
         let e = exp_to_expr(ctx, &ens, expr_ctxt)?;
         ens_exprs.push((ens.span.clone(), e));
     }
+
+    let ens_recommend_stms: Vec<_> = ens_recommend_stms
+        .iter()
+        .map(|ens_recommend_stm| subst_stm(&trait_typ_substs, &HashMap::new(), ens_recommend_stm))
+        .collect();
 
     let mask = mask_set_from_spec(mask_spec, mode);
 
