@@ -65,28 +65,11 @@ pub fn type_is_bool(typ: &Typ) -> bool {
 }
 
 pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
-    match (&**typ1, &**typ2) {
-        (TypX::Bool, TypX::Bool) => true,
-        (TypX::Int(range1), TypX::Int(range2)) => range1 == range2,
-        (TypX::Tuple(typs1), TypX::Tuple(typs2)) => n_types_equal(typs1, typs2),
-        (TypX::Lambda(typs1, rtyp1), TypX::Lambda(typs2, rtyp2)) => {
-            n_types_equal(typs1, typs2) && types_equal(rtyp1, rtyp2)
-        }
-        (TypX::Datatype(p1, typs1), TypX::Datatype(p2, typs2)) => {
-            p1 == p2 && n_types_equal(typs1, typs2)
-        }
-        (TypX::Decorate(d1, t1), TypX::Decorate(d2, t2)) => d1 == d2 && types_equal(t1, t2),
-        (TypX::Boxed(t1), TypX::Boxed(t2)) => types_equal(t1, t2),
-        (TypX::TypParam(x1), TypX::TypParam(x2)) => x1 == x2,
-        (TypX::ConstInt(c1), TypX::ConstInt(c2)) => c1 == c2,
-        (TypX::StrSlice, TypX::StrSlice) => true,
-        (TypX::Char, TypX::Char) => true,
-        _ => false,
-    }
+    typ1 == typ2
 }
 
 pub fn n_types_equal(typs1: &Typs, typs2: &Typs) -> bool {
-    typs1.len() == typs2.len() && typs1.iter().zip(typs2.iter()).all(|(t1, t2)| types_equal(t1, t2))
+    typs1 == typs2
 }
 
 pub const QUANT_FORALL: Quant = Quant { quant: air::ast::Quant::Forall, boxed_params: true };

@@ -16,12 +16,27 @@ use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+#[derive(Debug, Hash, Clone, PartialEq, Eq)]
+// Overapproximation of TypX, used to overapproximate the reached types
+// (it's ok if we fail to prune away some types)
+// For example, if we reach Datatype("D"), and D is generic,
+// we reach D applied to all possible type arguments.
+enum ReachedType {
+    None,
+    Bool,
+    Int(crate::ast::IntRange),
+    Lambda(usize),
+    Datatype(Path),
+    StrSlice,
+    Char,
+}
+
 struct Ctxt {
     module: Path,
     function_map: HashMap<Fun, Function>,
     datatype_map: HashMap<Path, Datatype>,
     // Map (D, T.f) -> D.f if D implements T.f:
-    method_map: HashMap<(Path, Fun), Vec<Fun>>,
+    method_map: HashMap<(ReachedType, Fun), Vec<Fun>>,
     all_functions_in_each_module: HashMap<Path, Vec<Fun>>,
     vstd_crate_name: Option<Ident>,
 }
@@ -29,13 +44,32 @@ struct Ctxt {
 #[derive(Default)]
 struct State {
     reached_functions: HashSet<Fun>,
-    reached_datatypes: HashSet<Path>,
+    reached_types: HashSet<ReachedType>,
     reached_modules: HashSet<Path>,
     worklist_functions: Vec<Fun>,
-    worklist_datatypes: Vec<Path>,
+    worklist_types: Vec<ReachedType>,
     worklist_modules: Vec<Path>,
     mono_abstract_datatypes: HashSet<MonoTyp>,
     lambda_types: HashSet<usize>,
+}
+
+fn typ_to_reached_type(typ: &Typ) -> ReachedType {
+    match &**typ {
+        TypX::Bool => ReachedType::Bool,
+        TypX::Int(range) => ReachedType::Int(*range),
+        TypX::Tuple(_) => panic!("unexpected TypX::Tuple"),
+        TypX::Lambda(ts, _) => ReachedType::Lambda(ts.len()),
+        TypX::AnonymousClosure(..) => panic!("unexpected TypX::AnonymousClosure"),
+        TypX::Datatype(path, _) => ReachedType::Datatype(path.clone()),
+        TypX::Decorate(_, t) => typ_to_reached_type(t),
+        TypX::Boxed(t) => typ_to_reached_type(t),
+        TypX::TypParam(_) => ReachedType::None,
+        TypX::TypeId => ReachedType::None,
+        TypX::ConstInt(_) => ReachedType::None,
+        TypX::Air(_) => panic!("unexpected TypX::Air"),
+        TypX::StrSlice => ReachedType::StrSlice,
+        TypX::Char => ReachedType::Char,
+    }
 }
 
 fn record_datatype(ctxt: &Ctxt, state: &mut State, typ: &Typ, path: &Path) {
@@ -64,32 +98,33 @@ fn reach<A: std::hash::Hash + std::cmp::Eq + Clone>(
 fn reach_function(ctxt: &Ctxt, state: &mut State, name: &Fun) {
     if ctxt.function_map.contains_key(name) {
         reach(&mut state.reached_functions, &mut state.worklist_functions, name);
-        if let Some(module_path) = &ctxt.function_map[name].x.visibility.owning_module {
-            reach(&mut state.reached_modules, &mut state.worklist_modules, module_path);
-        }
     }
 }
 
-fn reach_datatype(ctxt: &Ctxt, state: &mut State, path: &Path) {
-    if ctxt.datatype_map.contains_key(path) {
-        reach(&mut state.reached_datatypes, &mut state.worklist_datatypes, path);
-        if let Some(module_path) = &ctxt.datatype_map[path].x.visibility.owning_module {
-            reach(&mut state.reached_modules, &mut state.worklist_modules, module_path);
+fn reach_type(ctxt: &Ctxt, state: &mut State, typ: &ReachedType) {
+    match typ {
+        ReachedType::Datatype(path) => {
+            if ctxt.datatype_map.contains_key(path) {
+                reach(&mut state.reached_types, &mut state.worklist_types, typ);
+            }
+        }
+        _ => {
+            reach(&mut state.reached_types, &mut state.worklist_types, typ);
         }
     }
 }
 
 fn reached_methods<'a, 'b, I>(ctxt: &Ctxt, iter: I) -> Vec<Fun>
 where
-    I: Iterator<Item = (&'a Path, &'b Fun)>,
+    I: Iterator<Item = (&'a ReachedType, &'b Fun)>,
 {
     // If:
     // - we reach both D and T.f
     // - and D implements T.f with D.f
     // add D.f
     let mut method_impls: Vec<Fun> = Vec::new();
-    for (datatype, function) in iter {
-        if let Some(ms) = ctxt.method_map.get(&(datatype.clone(), function.clone())) {
+    for (self_typ, function) in iter {
+        if let Some(ms) = ctxt.method_map.get(&(self_typ.clone(), function.clone())) {
             for method_impl in ms {
                 method_impls.push(method_impl.clone());
             }
@@ -107,33 +142,22 @@ fn reach_methods(ctxt: &Ctxt, state: &mut State, method_impls: Vec<Fun>) {
 fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
     loop {
         let ft = |state: &mut State, t: &Typ| {
-            match &**t {
-                // This is temporary until we support adding specification for std.
-                TypX::StrSlice => {
-                    let path = crate::def::strslice_defn_path(&ctxt.vstd_crate_name);
-                    reach(
-                        &mut state.reached_modules,
-                        &mut state.worklist_modules,
-                        &path.pop_segment(),
-                    );
-                }
-                TypX::Datatype(path, _) => {
-                    record_datatype(ctxt, state, t, path);
-                    reach_datatype(ctxt, state, path);
-                }
-                TypX::Lambda(typs, _) => {
-                    state.lambda_types.insert(typs.len());
-                }
-                _ => {}
+            reach_type(ctxt, state, &typ_to_reached_type(t));
+            if let TypX::Datatype(path, _) = &**t {
+                record_datatype(ctxt, state, t, path);
             }
             Ok(t.clone())
         };
         if let Some(f) = state.worklist_functions.pop() {
             let function = &ctxt.function_map[&f];
+            if let Some(module_path) = &function.x.visibility.owning_module {
+                reach(&mut state.reached_modules, &mut state.worklist_modules, module_path);
+            }
             if let FunctionKind::TraitMethodImpl { method, .. } = &function.x.kind {
                 reach_function(ctxt, state, method);
             }
             let fe = |state: &mut State, _: &mut ScopeMap<Ident, Typ>, e: &Expr| {
+                // note: the visitor automatically reaches e.typ
                 match &e.x {
                     ExprX::Call(CallTarget::Fun(kind, name, _, autospec), _) => {
                         assert!(*autospec == AutospecUsage::Final);
@@ -142,7 +166,6 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                             reach_function(ctxt, state, resolved);
                         }
                     }
-                    ExprX::Ctor(path, _, _, _) => reach_datatype(ctxt, state, path),
                     ExprX::OpenInvariant(_, _, _, atomicity) => {
                         // SST -> AIR conversion for OpenInvariant may introduce
                         // references to these particular names.
@@ -165,14 +188,30 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             let mut map: ScopeMap<Ident, Typ> = ScopeMap::new();
             crate::ast_visitor::map_function_visitor_env(&function, &mut map, state, &fe, &fs, &ft)
                 .unwrap();
-            let methods = reached_methods(ctxt, state.reached_datatypes.iter().map(|d| (d, &f)));
+            let methods = reached_methods(ctxt, state.reached_types.iter().map(|t| (t, &f)));
             reach_methods(ctxt, state, methods);
             continue;
         }
-        if let Some(d) = state.worklist_datatypes.pop() {
-            let datatype = &ctxt.datatype_map[&d];
-            crate::ast_visitor::map_datatype_visitor_env(&datatype, state, &ft).unwrap();
-            let methods = reached_methods(ctxt, state.reached_functions.iter().map(|f| (&d, f)));
+        if let Some(t) = state.worklist_types.pop() {
+            match &t {
+                ReachedType::Datatype(path) => {
+                    let datatype = &ctxt.datatype_map[path];
+                    if let Some(module_path) = &datatype.x.visibility.owning_module {
+                        reach(&mut state.reached_modules, &mut state.worklist_modules, module_path);
+                    }
+                    crate::ast_visitor::map_datatype_visitor_env(&datatype, state, &ft).unwrap();
+                }
+                ReachedType::Lambda(arity) => {
+                    state.lambda_types.insert(*arity);
+                }
+                ReachedType::StrSlice => {
+                    let path = crate::def::strslice_defn_path(&ctxt.vstd_crate_name);
+                    let module_path = path.pop_segment();
+                    reach(&mut state.reached_modules, &mut state.worklist_modules, &module_path);
+                }
+                _ => {}
+            }
+            let methods = reached_methods(ctxt, state.reached_functions.iter().map(|f| (&t, f)));
             reach_methods(ctxt, state, methods);
             continue;
         }
@@ -271,8 +310,9 @@ pub fn prune_krate_for_module(
         match &d.x.visibility.owning_module {
             Some(path) if path == module => {
                 // our datatype
-                state.reached_datatypes.insert(d.x.path.clone());
-                state.worklist_datatypes.push(d.x.path.clone());
+                let t = ReachedType::Datatype(d.x.path.clone());
+                state.reached_types.insert(t.clone());
+                state.worklist_types.push(t);
             }
             _ => {}
         }
@@ -291,12 +331,12 @@ pub fn prune_krate_for_module(
 
     let mut function_map: HashMap<Fun, Function> = HashMap::new();
     let mut datatype_map: HashMap<Path, Datatype> = HashMap::new();
-    let mut method_map: HashMap<(Path, Fun), Vec<Fun>> = HashMap::new();
+    let mut method_map: HashMap<(ReachedType, Fun), Vec<Fun>> = HashMap::new();
     let mut all_functions_in_each_module: HashMap<Path, Vec<Fun>> = HashMap::new();
     for f in &functions {
         function_map.insert(f.x.name.clone(), f.clone());
-        if let FunctionKind::TraitMethodImpl { method, datatype, .. } = &f.x.kind {
-            let key = (datatype.clone(), method.clone());
+        if let FunctionKind::TraitMethodImpl { method, self_typ, .. } = &f.x.kind {
+            let key = (typ_to_reached_type(self_typ), method.clone());
             if !method_map.contains_key(&key) {
                 method_map.insert(key.clone(), Vec::new());
             }
@@ -328,7 +368,7 @@ pub fn prune_krate_for_module(
             .collect(),
         datatypes: datatypes
             .into_iter()
-            .filter(|d| state.reached_datatypes.contains(&d.x.path))
+            .filter(|d| state.reached_types.contains(&ReachedType::Datatype(d.x.path.clone())))
             .collect(),
         traits: krate.traits.clone(),
         module_ids: krate.module_ids.clone(),

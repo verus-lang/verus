@@ -28,7 +28,7 @@ use rustc_hir::{
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::Typ;
-use vir::ast::{Fun, FunX, FunctionKind, GenericBoundX, Krate, KrateX, Mode, Path, TypX, VirErr};
+use vir::ast::{Fun, FunX, FunctionKind, GenericBoundX, Krate, KrateX, Mode, Path, VirErr};
 use vir::ast_util::path_as_rust_name;
 
 fn check_item<'tcx>(
@@ -214,21 +214,6 @@ fn check_item<'tcx>(
             let self_ty = ctxt.tcx.type_of(item.owner_id.to_def_id());
             let self_typ = mid_ty_to_vir(ctxt.tcx, item.span, &self_ty, false)?;
 
-            let (self_path, datatype_typ_args) = match &*self_typ {
-                TypX::Datatype(p, typ_args) => (p.clone(), typ_args.clone()),
-                TypX::StrSlice => {
-                    let path = vir::def::strslice_defn_path(&ctxt.vstd_crate_name);
-                    let typ_args = Arc::new(vec![Arc::new(TypX::StrSlice)]);
-                    (path, typ_args)
-                }
-                _ => {
-                    return err_span(
-                        item.span.clone(),
-                        "Verus does not yet support trait implementations for this type",
-                    );
-                }
-            };
-
             let trait_path_typ_args = if let Some(TraitRef { path, .. }) = &impll.of_trait {
                 let trait_ref =
                     ctxt.tcx.impl_trait_ref(item.owner_id.to_def_id()).expect("impl_trait_ref");
@@ -316,14 +301,11 @@ fn check_item<'tcx>(
                                             typ_path_and_ident_to_vir_path(&trait_path, ident);
                                         let fun = FunX { path };
                                         let method = Arc::new(fun);
-                                        let datatype = self_path.clone();
-                                        let datatype_typ_args = datatype_typ_args.clone();
                                         FunctionKind::TraitMethodImpl {
                                             method,
                                             trait_path,
                                             trait_typ_args,
-                                            datatype,
-                                            datatype_typ_args,
+                                            self_typ: self_typ.clone(),
                                         }
                                     } else {
                                         FunctionKind::Static
