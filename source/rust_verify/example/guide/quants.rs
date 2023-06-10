@@ -1,9 +1,5 @@
 #[allow(unused_imports)]
-use builtin_macros::*;
-#[allow(unused_imports)]
-use builtin::*;
-#[allow(unused_imports)]
-use vstd::{seq::*, vec::*};
+use vstd::{prelude::*, seq::*, vec::*};
 
 verus! {
 

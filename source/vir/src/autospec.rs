@@ -46,7 +46,8 @@ fn simplify_function(
 }
 
 pub fn resolve_autospec(krate: &Krate) -> Result<Krate, VirErr> {
-    let KrateX { functions, datatypes, traits, module_ids, external_fns } = &**krate;
+    let KrateX { functions, datatypes, traits, assoc_type_impls, module_ids, external_fns } =
+        &**krate;
 
     let mut func_map: HashMap<Fun, Function> = HashMap::new();
     for function in functions.iter() {
@@ -59,7 +60,14 @@ pub fn resolve_autospec(krate: &Krate) -> Result<Krate, VirErr> {
     let traits = traits.clone();
     let module_ids = module_ids.clone();
     let external_fns = external_fns.clone();
-    let krate = Arc::new(KrateX { functions, datatypes, traits, module_ids, external_fns });
+    let krate = Arc::new(KrateX {
+        functions,
+        datatypes,
+        traits,
+        assoc_type_impls: assoc_type_impls.clone(),
+        module_ids,
+        external_fns,
+    });
 
     Ok(krate)
 }

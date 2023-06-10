@@ -1,7 +1,7 @@
 use crate::ast::{
-    Arm, ArmX, CallTarget, Datatype, DatatypeX, Expr, ExprX, Field, Function, FunctionKind,
-    FunctionX, GenericBound, GenericBoundX, Ident, MaskSpec, Param, ParamX, Pattern, PatternX,
-    SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOpr, Variant, VirErr,
+    Arm, ArmX, AssocTypeImpl, AssocTypeImplX, CallTarget, Datatype, DatatypeX, Expr, ExprX, Field,
+    Function, FunctionKind, FunctionX, GenericBound, GenericBoundX, Ident, MaskSpec, Param, ParamX,
+    Pattern, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOpr, Variant, VirErr,
 };
 use crate::ast_util::error;
 use crate::def::Spanned;
@@ -66,6 +66,12 @@ where
                         expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
                     }
                 }
+                TypX::Projection { self_typ, trait_typ_args, trait_path: _, name: _ } => {
+                    expr_visitor_control_flow!(typ_visitor_dfs(self_typ, ft));
+                    for t in trait_typ_args.iter() {
+                        expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
+                    }
+                }
                 TypX::Decorate(_, t) => {
                     expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
                 }
@@ -108,6 +114,14 @@ where
         TypX::Datatype(path, ts) => {
             let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
             ft(env, &Arc::new(TypX::Datatype(path.clone(), Arc::new(ts))))
+        }
+        TypX::Projection { self_typ, trait_typ_args, trait_path, name } => {
+            let self_typ = map_typ_visitor_env(self_typ, env, ft)?;
+            let trait_typ_args =
+                Arc::new(vec_map_result(&**trait_typ_args, |t| map_typ_visitor_env(t, env, ft))?);
+            let trait_path = trait_path.clone();
+            let name = name.clone();
+            ft(env, &Arc::new(TypX::Projection { self_typ, trait_typ_args, trait_path, name }))
         }
         TypX::Decorate(d, t) => {
             let t = map_typ_visitor_env(t, env, ft)?;
@@ -1070,4 +1084,27 @@ where
     }
     let variants = Arc::new(variants);
     Ok(Spanned::new(datatype.span.clone(), DatatypeX { variants, ..datatypex }))
+}
+
+pub(crate) fn map_assoc_type_impl_visitor_env<E, FT>(
+    assoc: &AssocTypeImpl,
+    env: &mut E,
+    ft: &FT,
+) -> Result<AssocTypeImpl, VirErr>
+where
+    FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
+{
+    let AssocTypeImplX { name, typ_params, self_typ, trait_path, trait_typ_args, typ } = &assoc.x;
+    let self_typ = map_typ_visitor_env(self_typ, env, ft)?;
+    let trait_typ_args = vec_map_result(&**trait_typ_args, |t| map_typ_visitor_env(t, env, ft))?;
+    let typ = map_typ_visitor_env(typ, env, ft)?;
+    let assocx = AssocTypeImplX {
+        name: name.clone(),
+        typ_params: typ_params.clone(),
+        self_typ,
+        trait_path: trait_path.clone(),
+        trait_typ_args: Arc::new(trait_typ_args),
+        typ,
+    };
+    Ok(Spanned::new(assoc.span.clone(), assocx))
 }

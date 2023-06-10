@@ -6,6 +6,7 @@ use builtin::*;
 use builtin_macros::*;
 
 use crate::pervasive::*;
+use crate::view::*;
 use crate::seq::*;
 use crate::seq_lib::*;
 use crate::slice::*;

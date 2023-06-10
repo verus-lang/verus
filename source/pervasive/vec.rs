@@ -4,6 +4,7 @@ use builtin::*;
 use builtin_macros::*;
 #[allow(unused_imports)]
 use crate::pervasive::*;
+use crate::view::*;
 use crate::seq::*;
 extern crate alloc;
 use alloc::vec;
@@ -18,9 +19,20 @@ pub struct Vec<A> {
     pub vec: vec::Vec<A>,
 }
 
-impl<A> Vec<A> {
-    pub spec fn view(&self) -> Seq<A>;
+/* TODO: We may want to move to this, but it will break some existing code:
 
+impl<A: View> View for Vec<A> {
+    type V = Seq<A::V>;
+    spec fn view(&self) -> Seq<A::V>;
+}
+*/
+
+impl<A> View for Vec<A> {
+    type V = Seq<A>;
+    spec fn view(&self) -> Seq<A>;
+}
+
+impl<A> Vec<A> {
     #[verifier(external_body)]
     pub fn new() -> (v: Self)
         ensures

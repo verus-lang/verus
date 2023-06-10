@@ -332,8 +332,52 @@ fn check_item<'tcx>(
                         }
                     }
                     AssocItemKind::Type => {
-                        let _impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
-                        // the type system handles this for Trait impls
+                        let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
+                        if impl_item.generics.params.len() != 0
+                            || impl_item.generics.predicates.len() != 0
+                            || impl_item.generics.has_where_clause_predicates
+                        {
+                            unsupported_err!(
+                                item.span,
+                                "unsupported generics on associated type",
+                                impl_item_ref
+                            );
+                        }
+                        if let ImplItemKind::Type(_ty) = impl_item.kind {
+                            let name = Arc::new(impl_item.ident.to_string());
+                            let ty = ctxt.tcx.type_of(impl_item.owner_id.to_def_id());
+                            let typ = mid_ty_to_vir(ctxt.tcx, impl_item.span, &ty, false)?;
+                            if let Some((trait_path, trait_typ_args)) = trait_path_typ_args.clone()
+                            {
+                                let typ_params =
+                                    crate::rust_to_vir_base::check_generics_bounds_fun(
+                                        ctxt.tcx,
+                                        impll.generics,
+                                        impl_def_id,
+                                    )?;
+                                let assocx = vir::ast::AssocTypeImplX {
+                                    name,
+                                    typ_params,
+                                    self_typ: self_typ.clone(),
+                                    trait_path,
+                                    trait_typ_args,
+                                    typ,
+                                };
+                                vir.assoc_type_impls.push(ctxt.spanned_new(item.span, assocx));
+                            } else {
+                                unsupported_err!(
+                                    item.span,
+                                    "unsupported item ref in impl",
+                                    impl_item_ref
+                                );
+                            }
+                        } else {
+                            unsupported_err!(
+                                item.span,
+                                "unsupported item ref in impl",
+                                impl_item_ref
+                            );
+                        }
                     }
                     _ => unsupported_err!(item.span, "unsupported item ref in impl", impl_item_ref),
                 }
@@ -392,12 +436,13 @@ fn check_item<'tcx>(
             let generics_bnds =
                 check_generics_bounds(ctxt.tcx, trait_generics, false, trait_def_id, None)?;
             let trait_path = def_id_to_vir_path(ctxt.tcx, trait_def_id);
+            let mut assoc_typs: Vec<vir::ast::Ident> = Vec::new();
             let mut methods: Vec<vir::ast::Function> = Vec::new();
             let mut method_names: Vec<Fun> = Vec::new();
             for trait_item_ref in *trait_items {
                 let trait_item = ctxt.tcx.hir().trait_item(trait_item_ref.id);
                 let TraitItem {
-                    ident: _,
+                    ident,
                     owner_id,
                     generics: item_generics,
                     kind,
@@ -437,6 +482,9 @@ fn check_item<'tcx>(
                             method_names.push(fun);
                         }
                     }
+                    TraitItemKind::Type([], None) => {
+                        assoc_typs.push(Arc::new(ident.to_string()));
+                    }
                     _ => {
                         unsupported_err!(item.span, "unsupported item", item);
                     }
@@ -447,6 +495,7 @@ fn check_item<'tcx>(
             let traitx = vir::ast::TraitX {
                 name: trait_path,
                 methods: Arc::new(method_names),
+                assoc_typs: Arc::new(assoc_typs),
                 typ_params: Arc::new(generics_bnds),
             };
             vir.traits.push(ctxt.spanned_new(item.span, traitx));

@@ -70,6 +70,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Decorate(_, t) => uses_ext_equal(ctx, t),
         TypX::Boxed(typ) => uses_ext_equal(ctx, typ),
         TypX::TypParam(_) => true,
+        TypX::Projection { .. } => true,
         TypX::TypeId => panic!("internal error: uses_ext_equal of TypeId"),
         TypX::ConstInt(_) => false,
         TypX::Air(_) => panic!("internal error: uses_ext_equal of Air"),

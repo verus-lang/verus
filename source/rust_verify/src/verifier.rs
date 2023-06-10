@@ -622,7 +622,9 @@ impl Verifier {
         diagnostics: &impl Diagnostics,
         module_path: &vir::ast::Path,
         function_path: &vir::ast::Path,
-        datatype_commands: Arc<Vec<Arc<CommandX>>>,
+        datatype_commands: Commands,
+        assoc_type_decl_commands: Commands,
+        assoc_type_impl_commands: Commands,
         function_decl_commands: Arc<Vec<(Commands, String)>>,
         function_spec_commands: Arc<Vec<(Commands, String)>>,
         function_axiom_commands: Arc<Vec<(Commands, String)>>,
@@ -657,6 +659,18 @@ impl Verifier {
             &mut air_context,
             &datatype_commands,
             &("Datatypes".to_string()),
+        );
+        self.run_commands(
+            diagnostics,
+            &mut air_context,
+            &assoc_type_decl_commands,
+            &("Associated-Type-Decls".to_string()),
+        );
+        self.run_commands(
+            diagnostics,
+            &mut air_context,
+            &assoc_type_impl_commands,
+            &("Associated-Type-Impls".to_string()),
         );
         for commands in &*function_decl_commands {
             self.run_commands(diagnostics, &mut air_context, &commands.0, &commands.1);
@@ -720,6 +734,24 @@ impl Verifier {
             &mut air_context,
             &datatype_commands,
             &("Datatypes".to_string()),
+        );
+
+        let assoc_type_decl_commands =
+            vir::assoc_types_to_air::assoc_type_decls_to_air(ctx, &krate.traits);
+        self.run_commands(
+            &reporter,
+            &mut air_context,
+            &assoc_type_decl_commands,
+            &("Associated-Type-Decls".to_string()),
+        );
+
+        let assoc_type_impl_commands =
+            vir::assoc_types_to_air::assoc_type_impls_to_air(ctx, &krate.assoc_type_impls);
+        self.run_commands(
+            &reporter,
+            &mut air_context,
+            &assoc_type_impl_commands,
+            &("Associated-Type-Impls".to_string()),
         );
 
         let mk_fun_ctx = |f: &Function, checking_recommends: bool| {
@@ -993,6 +1025,8 @@ impl Verifier {
                             module,
                             &(function.x.name).path,
                             datatype_commands.clone(),
+                            assoc_type_decl_commands.clone(),
+                            assoc_type_impl_commands.clone(),
                             function_decl_commands.clone(),
                             function_spec_commands.clone(),
                             function_axiom_commands.clone(),

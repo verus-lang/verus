@@ -3,7 +3,7 @@
 use crate::ast::Quant;
 use crate::ast::Typs;
 use crate::ast::{
-    AutospecUsage, BinaryOp, Binder, BuiltinSpecFun, CallTarget, Constant, Datatype,
+    AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BuiltinSpecFun, CallTarget, Constant, Datatype,
     DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Field, FieldOpr, Function, FunctionKind,
     GenericBound, GenericBoundX, Ident, IntRange, Krate, KrateX, Mode, MultiOp, Path, Pattern,
     PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
@@ -772,6 +772,21 @@ fn simplify_datatype(state: &mut State, datatype: &Datatype) -> Result<Datatype,
     })
 }
 
+fn simplify_assoc_type_impl(
+    state: &mut State,
+    assoc: &AssocTypeImpl,
+) -> Result<AssocTypeImpl, VirErr> {
+    let mut local =
+        LocalCtxt { span: assoc.span.clone(), typ_params: Vec::new(), bounds: HashMap::new() };
+    for (x, bound) in assoc.x.typ_params.iter() {
+        local.typ_params.push(x.clone());
+        local.bounds.insert(x.clone(), bound.clone());
+    }
+    crate::ast_visitor::map_assoc_type_impl_visitor_env(assoc, state, &|state, typ| {
+        simplify_one_typ(&local, state, typ)
+    })
+}
+
 /*
 fn mk_fun_decl(
     span: &Span,
@@ -807,7 +822,8 @@ fn mk_fun_decl(
 */
 
 pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirErr> {
-    let KrateX { functions, datatypes, traits, module_ids, external_fns } = &**krate;
+    let KrateX { functions, datatypes, traits, assoc_type_impls, module_ids, external_fns } =
+        &**krate;
     let mut state = State::new();
 
     // Pre-emptively add this because unit values might be added later.
@@ -815,6 +831,8 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
 
     let functions = vec_map_result(functions, |f| simplify_function(ctx, &mut state, f))?;
     let mut datatypes = vec_map_result(&datatypes, |d| simplify_datatype(&mut state, d))?;
+    let assoc_type_impls =
+        vec_map_result(&assoc_type_impls, |a| simplify_assoc_type_impl(&mut state, a))?;
 
     // Add a generic datatype to represent each tuple arity
     // Iterate in sorted order to get consistent output
@@ -899,7 +917,14 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     let traits = traits.clone();
     let module_ids = module_ids.clone();
     let external_fns = external_fns.clone();
-    let krate = Arc::new(KrateX { functions, datatypes, traits, module_ids, external_fns });
+    let krate = Arc::new(KrateX {
+        functions,
+        datatypes,
+        traits,
+        assoc_type_impls,
+        module_ids,
+        external_fns,
+    });
     *ctx = crate::context::GlobalCtx::new(
         &krate,
         ctx.no_span.clone(),
@@ -917,6 +942,7 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
         functions: Vec::new(),
         datatypes: Vec::new(),
         traits: Vec::new(),
+        assoc_type_impls: Vec::new(),
         module_ids: Vec::new(),
         external_fns: Vec::new(),
     };
@@ -924,6 +950,7 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
         kratex.functions.extend(k.functions.clone());
         kratex.datatypes.extend(k.datatypes.clone());
         kratex.traits.extend(k.traits.clone());
+        kratex.assoc_type_impls.extend(k.assoc_type_impls.clone());
         kratex.module_ids.extend(k.module_ids.clone());
         kratex.external_fns.extend(k.external_fns.clone());
     }

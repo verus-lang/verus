@@ -334,7 +334,8 @@ impl ToDebugSNode for Path {
 pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToDebugSNodeOpts) {
     let mut nw = NodeWriter::new_vir();
 
-    let KrateX { datatypes, functions, traits, module_ids, external_fns } = &**vir_crate;
+    let KrateX { datatypes, functions, traits, assoc_type_impls, module_ids, external_fns } =
+        &**vir_crate;
     for datatype in datatypes.iter() {
         if opts.no_span {
             writeln!(&mut write, ";; {}", &datatype.span.as_string)
@@ -354,6 +355,14 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
     for t in traits.iter() {
         let t = nodes!(trait {path_to_node(&t.x.name)});
         writeln!(&mut write, "{}\n", nw.node_to_string(&t)).expect("cannot write to vir write");
+    }
+    for assoc in assoc_type_impls.iter() {
+        if opts.no_span {
+            writeln!(&mut write, ";; {}", &assoc.span.as_string)
+                .expect("cannot write to vir write");
+        }
+        writeln!(&mut write, "{}\n", nw.node_to_string(&assoc.to_node(opts)))
+            .expect("cannot write to vir write");
     }
     for module_id in module_ids.iter() {
         let module_id_node = nodes!(module_id {path_to_node(module_id)});

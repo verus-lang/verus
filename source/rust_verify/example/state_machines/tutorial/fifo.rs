@@ -4,9 +4,7 @@
 // https://github.com/vmware-labs/verified-betrfs/tree/concurrency-experiments/concurrency/spsc-queue
 
 // ANCHOR:full
-use builtin::*;
-use builtin_macros::*;
-use vstd::{*, pervasive::*};
+use vstd::{*, prelude::*, pervasive::*};
 use vstd::multiset::*;
 use vstd::vec::*;
 use vstd::option::*;

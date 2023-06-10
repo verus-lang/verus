@@ -5,8 +5,8 @@
 /// 3) Also compute names for abstract datatype sorts for the module,
 ///    since we're traversing the module-visible datatypes anyway.
 use crate::ast::{
-    AutospecUsage, CallTarget, Datatype, Expr, ExprX, Fun, Function, FunctionKind, Ident, Krate,
-    KrateX, Mode, Path, Stmt, Typ, TypX,
+    AssocTypeImpl, AssocTypeImplX, AutospecUsage, CallTarget, Datatype, Expr, ExprX, Fun, Function,
+    FunctionKind, Ident, Krate, KrateX, Mode, Path, Stmt, Trait, TraitX, Typ, TypX,
 };
 use crate::ast_util::{is_visible_to, is_visible_to_of_owner};
 use crate::datatype_to_air::is_datatype_transparent;
@@ -31,10 +31,14 @@ enum ReachedType {
     Char,
 }
 
+// Group all AssocTypeImpls with the same (ReachedType(self_typ), (trait_path, name)):
+type AssocTypeGroup = (ReachedType, (Path, Ident));
+
 struct Ctxt {
     module: Path,
     function_map: HashMap<Fun, Function>,
     datatype_map: HashMap<Path, Datatype>,
+    assoc_type_impl_map: HashMap<AssocTypeGroup, Vec<AssocTypeImpl>>,
     // Map (D, T.f) -> D.f if D implements T.f:
     method_map: HashMap<(ReachedType, Fun), Vec<Fun>>,
     all_functions_in_each_module: HashMap<Path, Vec<Fun>>,
@@ -45,9 +49,13 @@ struct Ctxt {
 struct State {
     reached_functions: HashSet<Fun>,
     reached_types: HashSet<ReachedType>,
+    reached_assoc_type_decls: HashSet<(Path, Ident)>,
+    reached_assoc_type_impls: HashSet<AssocTypeGroup>,
     reached_modules: HashSet<Path>,
     worklist_functions: Vec<Fun>,
     worklist_types: Vec<ReachedType>,
+    worklist_assoc_type_decls: Vec<(Path, Ident)>,
+    worklist_assoc_type_impls: Vec<AssocTypeGroup>,
     worklist_modules: Vec<Path>,
     mono_abstract_datatypes: HashSet<MonoTyp>,
     lambda_types: HashSet<usize>,
@@ -64,6 +72,7 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::Decorate(_, t) => typ_to_reached_type(t),
         TypX::Boxed(t) => typ_to_reached_type(t),
         TypX::TypParam(_) => ReachedType::None,
+        TypX::Projection { self_typ, .. } => typ_to_reached_type(self_typ),
         TypX::TypeId => ReachedType::None,
         TypX::ConstInt(_) => ReachedType::None,
         TypX::Air(_) => panic!("unexpected TypX::Air"),
@@ -101,6 +110,16 @@ fn reach_function(ctxt: &Ctxt, state: &mut State, name: &Fun) {
     }
 }
 
+fn reach_assoc_type_decl(_ctxt: &Ctxt, state: &mut State, name: &(Path, Ident)) {
+    reach(&mut state.reached_assoc_type_decls, &mut state.worklist_assoc_type_decls, name);
+}
+
+fn reach_assoc_type_impl(ctxt: &Ctxt, state: &mut State, name: &AssocTypeGroup) {
+    if ctxt.assoc_type_impl_map.contains_key(name) {
+        reach(&mut state.reached_assoc_type_impls, &mut state.worklist_assoc_type_impls, name);
+    }
+}
+
 fn reach_type(ctxt: &Ctxt, state: &mut State, typ: &ReachedType) {
     match typ {
         ReachedType::Datatype(path) => {
@@ -110,6 +129,29 @@ fn reach_type(ctxt: &Ctxt, state: &mut State, typ: &ReachedType) {
         }
         _ => {
             reach(&mut state.reached_types, &mut state.worklist_types, typ);
+        }
+    }
+}
+
+// shallowly reach typ (the AST visitor takes care of recursing through typ)
+fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
+    match &**typ {
+        TypX::Bool
+        | TypX::Int(_)
+        | TypX::Lambda(..)
+        | TypX::Datatype(..)
+        | TypX::StrSlice
+        | TypX::Char => {
+            reach_type(ctxt, state, &typ_to_reached_type(typ));
+        }
+        TypX::Tuple(_) | TypX::AnonymousClosure(..) | TypX::Air(_) => {
+            panic!("unexpected TypX")
+        }
+        TypX::Decorate(_, _t) | TypX::Boxed(_t) => {} // let visitor handle _t
+        TypX::TypParam(_) | TypX::TypeId | TypX::ConstInt(_) => {}
+        TypX::Projection { self_typ: _, trait_typ_args: _, trait_path, name, .. } => {
+            reach_assoc_type_decl(ctxt, state, &(trait_path.clone(), name.clone()));
+            // let visitor handle self_typ, trait_typ_args
         }
     }
 }
@@ -142,7 +184,7 @@ fn reach_methods(ctxt: &Ctxt, state: &mut State, method_impls: Vec<Fun>) {
 fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
     loop {
         let ft = |state: &mut State, t: &Typ| {
-            reach_type(ctxt, state, &typ_to_reached_type(t));
+            reach_typ(ctxt, state, t);
             if let TypX::Datatype(path, _) = &**t {
                 record_datatype(ctxt, state, t, path);
             }
@@ -213,6 +255,27 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             }
             let methods = reached_methods(ctxt, state.reached_functions.iter().map(|f| (&t, f)));
             reach_methods(ctxt, state, methods);
+            let assoc_decls: Vec<(Path, Ident)> =
+                state.reached_assoc_type_decls.iter().cloned().collect();
+            for a in assoc_decls {
+                reach_assoc_type_impl(ctxt, state, &(t.clone(), a.clone()));
+            }
+            continue;
+        }
+        if let Some(a) = state.worklist_assoc_type_decls.pop() {
+            let typs: Vec<ReachedType> = state.reached_types.iter().cloned().collect();
+            for t in typs {
+                reach_assoc_type_impl(ctxt, state, &(t.clone(), a.clone()));
+            }
+            continue;
+        }
+        if let Some(assoc_group) = state.worklist_assoc_type_impls.pop() {
+            if let Some(assoc_impls) = ctxt.assoc_type_impl_map.get(&assoc_group) {
+                for assoc_impl in assoc_impls {
+                    crate::ast_visitor::map_assoc_type_impl_visitor_env(&assoc_impl, state, &ft)
+                        .unwrap();
+                }
+            }
             continue;
         }
         if let Some(m) = state.worklist_modules.pop() {
@@ -228,6 +291,18 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             continue;
         }
         break;
+    }
+}
+
+impl TraitX {
+    fn prune_name(&self, name: &Ident) -> (Path, Ident) {
+        (self.name.clone(), name.clone())
+    }
+}
+
+impl AssocTypeImplX {
+    fn prune_name(&self) -> AssocTypeGroup {
+        (typ_to_reached_type(&self.self_typ), (self.trait_path.clone(), self.name.clone()))
     }
 }
 
@@ -267,6 +342,7 @@ pub fn prune_krate_for_module(
     // pruning all bodies and variants that are not visible to our module
     let mut functions: Vec<Function> = Vec::new();
     let mut datatypes: Vec<Datatype> = Vec::new();
+    let mut traits: Vec<Trait> = Vec::new();
     for f in &krate.functions {
         match &f.x.visibility.owning_module {
             Some(path) if path == module => {
@@ -331,6 +407,7 @@ pub fn prune_krate_for_module(
 
     let mut function_map: HashMap<Fun, Function> = HashMap::new();
     let mut datatype_map: HashMap<Path, Datatype> = HashMap::new();
+    let mut assoc_type_impl_map: HashMap<AssocTypeGroup, Vec<AssocTypeImpl>> = HashMap::new();
     let mut method_map: HashMap<(ReachedType, Fun), Vec<Fun>> = HashMap::new();
     let mut all_functions_in_each_module: HashMap<Path, Vec<Fun>> = HashMap::new();
     for f in &functions {
@@ -351,15 +428,36 @@ pub fn prune_krate_for_module(
     for d in &datatypes {
         datatype_map.insert(d.x.path.clone(), d.clone());
     }
+
+    for a in &krate.assoc_type_impls {
+        let key = a.x.prune_name();
+        if !assoc_type_impl_map.contains_key(&key) {
+            assoc_type_impl_map.insert(key.clone(), Vec::new());
+        }
+        assoc_type_impl_map.get_mut(&key).unwrap().push(a.clone());
+    }
     let ctxt = Ctxt {
         module: module.clone(),
         function_map,
         datatype_map,
+        assoc_type_impl_map,
         method_map,
         all_functions_in_each_module,
         vstd_crate_name: vstd_crate_name.clone(),
     };
     traverse_reachable(&ctxt, &mut state);
+
+    for tr in krate.traits.iter() {
+        let traitx = tr.x.clone();
+        let assoc_typs = traitx
+            .assoc_typs
+            .iter()
+            .filter(|a| state.reached_assoc_type_decls.contains(&traitx.prune_name(a)))
+            .cloned()
+            .collect();
+        let assoc_typs = Arc::new(assoc_typs);
+        traits.push(Spanned::new(tr.span.clone(), TraitX { assoc_typs, ..traitx }));
+    }
 
     let kratex = KrateX {
         functions: functions
@@ -370,7 +468,13 @@ pub fn prune_krate_for_module(
             .into_iter()
             .filter(|d| state.reached_types.contains(&ReachedType::Datatype(d.x.path.clone())))
             .collect(),
-        traits: krate.traits.clone(),
+        assoc_type_impls: krate
+            .assoc_type_impls
+            .iter()
+            .filter(|a| state.reached_assoc_type_impls.contains(&a.x.prune_name()))
+            .cloned()
+            .collect(),
+        traits,
         module_ids: krate.module_ids.clone(),
         external_fns: krate.external_fns.clone(),
     };

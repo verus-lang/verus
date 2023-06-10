@@ -3,6 +3,7 @@
 extern crate alloc;
 use alloc::string;
 
+use crate::view::*;
 #[allow(unused_imports)]
 use super::seq::Seq;
 use super::vec::Vec;
