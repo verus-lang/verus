@@ -196,58 +196,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_ops_trait_impl verus_code! {
-        #[derive(PartialEq, Eq)]
-        ghost struct V {
-            one: nat,
-            two: nat,
-        }
-
-        impl V {
-            spec fn get_one(self) -> nat {
-                self.one
-            }
-        }
-
-        impl V {
-            spec fn spec_index(self, idx: int) -> nat {
-                if idx == 0 {
-                    self.one
-                } else if idx == 1 {
-                    self.two
-                } else {
-                    vstd::pervasive::arbitrary()
-                }
-            }
-        }
-
-        impl std::ops::Index<int> for V {
-            type Output = nat;
-
-            // TODO: this index-via-ghost-struct feature is probably obsolete now;
-            // we should consider removing it
-            spec fn index(&self, idx: int) -> &nat {
-                if idx == 0 {
-                    &self.one
-                } else if idx == 1 {
-                    &self.two
-                } else {
-                    vstd::pervasive::arbitrary()
-                }
-            }
-        }
-
-        // this actually uses spec_index, not index:
-        fn test(v: V)
-            requires
-                v[0] == 3,
-        {
-            assert(v[0] + 1 == 4);
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
     #[test] test_illegal_trait_impl verus_code! {
         #[derive(PartialEq, Eq)]
         struct V {
@@ -265,7 +213,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "parameter must have mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "function for external trait must have mode 'exec'")
 }
 
 test_verify_one_file! {
@@ -277,7 +225,7 @@ test_verify_one_file! {
             type Output = bool;
             fn index(&self, #[verifier::spec]idx: usize) -> &bool { &true }
         }
-    } => Err(err) => assert_vir_error_msg(err, "parameter must have mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "function for external trait must have all parameters have mode 'exec'")
 }
 
 test_verify_one_file! {

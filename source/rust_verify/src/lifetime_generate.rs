@@ -84,6 +84,7 @@ pub(crate) struct State {
     pub(crate) datatype_decls: Vec<DatatypeDecl>,
     pub(crate) const_decls: Vec<ConstDecl>,
     pub(crate) fun_decls: Vec<FunDecl>,
+    enclosing_fun_id: Option<DefId>,
 }
 
 impl State {
@@ -102,6 +103,7 @@ impl State {
             datatype_decls: Vec::new(),
             const_decls: Vec::new(),
             fun_decls: Vec::new(),
+            enclosing_fun_id: None,
         }
     }
 
@@ -547,7 +549,7 @@ fn erase_call<'tcx>(
     self_path: Option<Path>,
     expr_fun: Option<&Expr<'tcx>>,
     fn_def_id: Option<DefId>,
-    node_substs: &[rustc_middle::ty::subst::GenericArg<'tcx>],
+    node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::subst::GenericArg<'tcx>>,
     fn_span: Span,
     receiver: Option<&Expr<'tcx>>,
     args_slice: &'tcx [Expr<'tcx>],
@@ -627,7 +629,32 @@ fn erase_call<'tcx>(
             if f.x.mode == Mode::Spec {
                 return None;
             }
-            state.reach_fun(self_path, fn_def_id.expect("call id"));
+
+            // Maybe resolve from trait function to a specific implementation
+
+            let mut node_substs = node_substs;
+            let mut fn_def_id = fn_def_id.expect("call id");
+
+            let param_env = ctxt.tcx.param_env(state.enclosing_fun_id.unwrap());
+            let normalized_substs = ctxt.tcx.normalize_erasing_regions(param_env, node_substs);
+            let inst = rustc_middle::ty::Instance::resolve(
+                ctxt.tcx,
+                param_env,
+                fn_def_id,
+                normalized_substs,
+            );
+            if let Ok(Some(inst)) = inst {
+                if let rustc_middle::ty::InstanceDef::Item(item) = inst.def {
+                    if let rustc_middle::ty::WithOptConstParam { did, const_param_did: None } = item
+                    {
+                        node_substs = &inst.substs;
+                        fn_def_id = did;
+                    }
+                }
+            }
+
+            state.reach_fun(self_path, fn_def_id);
+
             let typ_args = mk_typ_args(ctxt, state, node_substs);
             let mut exps: Vec<Exp> = Vec::new();
             let mut is_first: bool = true;
@@ -1447,7 +1474,9 @@ fn erase_fn_common<'tcx>(
             force_block(Some(Box::new((sig_span, ExpX::Panic))), sig_span)
         } else {
             let body = &body.expect("body");
+            state.enclosing_fun_id = Some(id);
             let body_exp = erase_expr(ctxt, state, expect_spec, &body.value);
+            state.enclosing_fun_id = None;
             if empty_body {
                 if let Some(_) = body_exp {
                     panic!("expected empty method body")
@@ -1904,8 +1933,8 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                                 );
                             } else {
                                 let body = ctxt.tcx.hir().body(*body_id);
-                                let def_id = crate::rust_to_vir_func::get_external_def_id(
-                                    ctxt.tcx, body_id, body, sig,
+                                let (def_id, _) = crate::rust_to_vir_func::get_external_def_id(
+                                    ctxt.tcx, id, body_id, body, sig,
                                 )
                                 .unwrap();
 

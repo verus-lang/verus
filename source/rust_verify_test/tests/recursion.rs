@@ -1413,3 +1413,27 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] decreases_inside_closure verus_code! {
+        spec fn f1(n: int) -> FnSpec(int) -> int
+            decreases n
+        {
+            if n > 0 {
+                |i: int| f1(n - 1)(i)
+            } else {
+                |i: int| i
+            }
+        }
+
+        spec fn f2(n: int) -> FnSpec(int) -> int
+            decreases n
+        {
+            if n > 0 {
+                |i: int| f2(n + 1)(i) // FAILS
+            } else {
+                |i: int| i
+            }
+        }
+    } => Err(e) => assert_one_fails(e)
+}

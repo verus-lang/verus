@@ -75,6 +75,7 @@ fn is_bool_type(t: &Typ) -> bool {
 // 1) inline a function body at a call site
 // 2) inline a function's requires expression at a call site
 fn inline_expression(
+    ctx: &Ctx,
     args: &Exps,
     typs: &Typs,
     params: &Params,
@@ -87,6 +88,7 @@ fn inline_expression(
     assert!(typ_bounds.len() == typs.len());
     for ((name, _), typ) in typ_bounds.iter().zip(typs.iter()) {
         assert!(!typ_substs.contains_key(name));
+        let typ = crate::poly::coerce_typ_to_poly(ctx, typ);
         typ_substs.insert(name.clone(), typ.clone());
     }
     assert!(params.len() == args.len());
@@ -194,7 +196,7 @@ fn tr_inline_function(
         let fun = &fun_to_inline.x.name;
         let fun_ssts = &state.fun_ssts;
         if let Some(SstInfo { inline, params, body, .. }) = fun_ssts.borrow().get(fun) {
-            return inline_expression(args, typs, params, &inline.typ_bounds, body);
+            return inline_expression(ctx, args, typs, params, &inline.typ_bounds, body);
         } else {
             return Err((fun_to_inline.span.clone(), format!("Note: not found on SstMap")));
         }
@@ -538,7 +540,7 @@ fn split_call(
             _ => e.clone(),
         };
         let exp = crate::sst_visitor::map_exp_visitor(&exp, &mut f_var_at);
-        let exp_subsituted = inline_expression(args, typs, params, typ_bounds, &exp);
+        let exp_subsituted = inline_expression(ctx, args, typs, params, typ_bounds, &exp);
         if exp_subsituted.is_err() {
             continue;
         }

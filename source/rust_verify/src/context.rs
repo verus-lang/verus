@@ -28,7 +28,6 @@ pub type Context<'tcx> = Arc<ContextX<'tcx>>;
 pub struct ContextX<'tcx> {
     pub(crate) tcx: TyCtxt<'tcx>,
     pub(crate) krate: &'tcx Crate<'tcx>,
-    pub(crate) crate_names: Vec<String>,
     pub(crate) erasure_info: ErasureInfoRef,
     pub(crate) unique_id: std::cell::Cell<u64>,
     pub(crate) spans: crate::spans::SpanContext,

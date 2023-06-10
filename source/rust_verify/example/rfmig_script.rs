@@ -1,6 +1,8 @@
 // #![allow(unused_imports, unused_macros, non_camel_case_types)] #![feature(fmt_internals)]
-
 use vstd::prelude::*;
+
+fn main() {}
+
 
 verus! {
 
@@ -97,7 +99,7 @@ pub fn transfer(orig: &mut Account, dest: &mut Account, amount: u64)
 //-     transfer(&mut account, &mut account, 100);
 //- }
 
-// SKIP ## C2(e) -- C2-linearity.rs
+// ## C2(e) -- C2-linearity.rs
 
 use vstd::vec::*;
 
@@ -172,15 +174,12 @@ proof fn p(tracked s1: State1) {
 //+ let tracked s2 = exchange(s1);
 
     exercise1(&s1);
-//+ exercise(tracked &s2);
+//+ exercise(&s2);
 }
 
 // F1 -- F-linear-proof
 mod F1 {
-
-#[allow(unused_imports)]
-use vstd::prelude::*;
-use vstd::ptr::*;
+use vstd::{prelude::*, ptr::*};
 
 #[verifier(external_body)]
 fn send_pointer(ptr: PPtr<u64>) { todo!() }
@@ -200,10 +199,10 @@ fn increment(
         perm@.pptr == old(perm)@.pptr,
         perm@.value == Some((old(perm)@.value.get_Some_0() + 1) as u64)
 {
-    // pub fn borrow<'a>(&self, Tracked(perm): Tracked<&'a PointsTo<V>>) -> (v: &'a V)
+    // pub fn borrow<'a>(&self, perm: &'a Tracked<PointsTo<V>>) -> (v: &'a V)
     let cur_i: u64 = *counter.borrow(Tracked(&*perm));
 
-    // pub fn replace(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V) -> (out_v: V)
+    // pub fn replace(&self, perm: &mut Tracked<PointsTo<V>>, in_v: V) -> (out_v: V)
     counter.replace(Tracked(perm), cur_i + 1);
 }
 
@@ -215,7 +214,7 @@ fn start_thread(counter: PPtr<u64>, Tracked(perm): Tracked<PointsTo<u64>>)
 
     let tracked mut perm: PointsTo<u64> = perm;
 
-    // pub fn put(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, v: V)
+    // pub fn put(&self, perm: &mut Tracked<PointsTo<V>>, v: V)
     counter.put(Tracked(&mut perm), 5);
 
     assert(perm@.value === Some(5));
@@ -226,7 +225,5 @@ fn start_thread(counter: PPtr<u64>, Tracked(perm): Tracked<PointsTo<u64>>)
 }
 
 } // F1
-
-fn main() {}
 
 } // verus!
