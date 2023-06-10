@@ -1,8 +1,9 @@
-use crate::ast::{Arm, SimplStmt, SplitKind, TransitionStmt};
-use proc_macro2::Span;
-use proc_macro2::TokenStream;
+use crate::ast::{Arm, SimplStmt, SplitKind};
+use indexmap::IndexSet;
+use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, quote_spanned};
 use syn_verus::spanned::Spanned;
+use syn_verus::visit::Visit;
 use syn_verus::{Expr, Lit, LitStr};
 
 /// Converts a transition description into a relation between `pre` and `post`.
@@ -42,36 +43,237 @@ use syn_verus::{Expr, Lit, LitStr};
 /// Thus, subject to the invariant, the weak & strong versions will actually be equivalent.
 
 pub fn to_relation(sops: &Vec<SimplStmt>, weak: bool) -> TokenStream {
-    match to_relation_vec(sops, None, weak) {
+    let x = if weak {
+        let sops = crate::simplify_asserts::simplify_asserts(sops);
+        let sops = annotate_extractions(&sops);
+        simpl_conjunct_vec(&sops, None)
+    } else {
+        // Leave the assertions is; they will be included as normal conjuncts
+        let sops = annotate_extractions(&sops);
+        simpl_conjunct_vec(&sops, None)
+    };
+
+    match x {
         Some(e) => e,
         None => quote! { true },
     }
 }
 
-// Recursive traversal, post-order.
+/// Mark each scope-creating node with the assign-vars that need to be extracted
+/// Also, remove any 'assign' that isn't used.
 
-fn to_relation_vec(
-    sops: &Vec<SimplStmt>,
-    p: Option<TokenStream>,
-    weak: bool,
-) -> Option<TokenStream> {
+fn annotate_extractions(sops: &Vec<SimplStmt>) -> Vec<SimplStmt> {
+    let mut all_assign_vars = IndexSet::new();
+    for sop in sops {
+        get_all_assigns(sop, &mut all_assign_vars);
+    }
+
+    let mut used_ids = IndexSet::new();
+    let mut sops = sops.clone();
+    annotate_extractions_vec(&mut sops, &mut used_ids);
+
+    // Sanity check. In a well-formed transition, no variable should be used
+    // without being assigned first. That means the 'use' set at the beginning
+    // should be empty (i.e., there should not be a variable which has is used,
+    // and for which we are still looking for the assign).
+    for var in all_assign_vars {
+        assert!(!used_ids.contains(&var));
+    }
+
+    sops
+}
+
+fn get_all_assigns(sop: &SimplStmt, assigned: &mut IndexSet<String>) {
+    match sop {
+        SimplStmt::Let(_span, _pat, _ty, _e, inner, _) => {
+            for op in inner {
+                get_all_assigns(op, assigned);
+            }
+        }
+        SimplStmt::Split(_span, _split_kind, inners, _) => {
+            for inner in inners.iter() {
+                for op in inner.1.iter() {
+                    get_all_assigns(op, assigned);
+                }
+            }
+        }
+        SimplStmt::Require(..) => {}
+        SimplStmt::PostCondition(..) => {}
+        SimplStmt::Assert(..) => {}
+        SimplStmt::Assign(_span, id, _ty, _e, _prequel) => {
+            assigned.insert(id.to_string());
+        }
+    }
+}
+
+fn add_used_ids_from_expr(used_ids: &mut IndexSet<String>, e: &Expr) {
+    let mut u = UseGetter { used_ids };
+    u.visit_expr(e);
+}
+
+struct UseGetter<'a> {
+    used_ids: &'a mut IndexSet<String>,
+}
+
+impl<'ast> Visit<'ast> for UseGetter<'ast> {
+    fn visit_ident(&mut self, node: &'ast Ident) {
+        self.used_ids.insert(node.to_string());
+    }
+
+    fn visit_expr(&mut self, node: &'ast Expr) {
+        syn_verus::visit::visit_expr(self, node);
+
+        match node {
+            Expr::Verbatim(stream) => {
+                self.visit_stream(stream.clone());
+            }
+            _ => {}
+        }
+    }
+}
+
+impl<'ast> UseGetter<'ast> {
+    fn visit_stream(&mut self, stream: TokenStream) {
+        for token_tree in stream.into_iter() {
+            match token_tree {
+                proc_macro2::TokenTree::Group(group) => {
+                    self.visit_stream(group.stream());
+                }
+                proc_macro2::TokenTree::Ident(ident) => {
+                    self.used_ids.insert(ident.to_string());
+                }
+                proc_macro2::TokenTree::Punct(_) => {}
+                proc_macro2::TokenTree::Literal(_) => {}
+            }
+        }
+    }
+}
+
+fn annotate_extractions_vec(sops: &mut Vec<SimplStmt>, used_ids: &mut IndexSet<String>) {
+    let mut old_sops: Vec<SimplStmt> = Vec::new();
+    core::mem::swap(&mut old_sops, sops);
+    for mut sop in old_sops.into_iter().rev() {
+        let stmt_creates_scope = match &sop {
+            SimplStmt::Let(..) => true,
+            SimplStmt::Split(..) => true,
+            SimplStmt::Require(..) => false,
+            SimplStmt::PostCondition(..) => false,
+            SimplStmt::Assert(..) => false,
+            SimplStmt::Assign(..) => false,
+        };
+
+        if stmt_creates_scope {
+            let mut get_assigns = IndexSet::new();
+            get_all_assigns(&sop, &mut get_assigns);
+
+            let span = sop.get_span();
+            let intersection: Vec<Ident> =
+                get_assigns.intersection(&*used_ids).map(|s| Ident::new(&s, span)).collect();
+
+            match &mut sop {
+                SimplStmt::Let(_, _, _, _, _, extractions) => {
+                    *extractions = intersection;
+                }
+                SimplStmt::Split(_, _, _, extractions) => {
+                    *extractions = intersection;
+                }
+                _ => {
+                    panic!("stmt_creates_scope");
+                }
+            }
+        }
+
+        if let SimplStmt::Assign(_span, ident, _ty, e, _prequel) = &sop {
+            // Remove the variable name from the 'use' set.
+            // In doing so, we check if it was already there;
+            // if the variable isn't used, then we can skip this step entirely.
+            let is_used = used_ids.remove(&ident.to_string());
+            if is_used {
+                add_used_ids_from_expr(used_ids, e);
+                sops.push(sop);
+            }
+        } else {
+            annotate_extractions_stmt(&mut sop, used_ids);
+            sops.push(sop);
+        }
+    }
+    sops.reverse();
+}
+
+fn annotate_extractions_stmt(sop: &mut SimplStmt, used_ids: &mut IndexSet<String>) {
+    match sop {
+        SimplStmt::Let(_span, _pat, _ty, e, inner, _) => {
+            annotate_extractions_vec(inner, used_ids);
+            add_used_ids_from_expr(used_ids, e);
+        }
+        SimplStmt::Split(_span, SplitKind::If(cond), inners, _) => {
+            let mut union = IndexSet::<String>::new();
+            for inner in inners.iter_mut() {
+                let mut inner_used_ids: IndexSet<String> = used_ids.clone();
+                annotate_extractions_vec(&mut inner.1, &mut inner_used_ids);
+
+                set_union(&mut union, inner_used_ids);
+            }
+            *used_ids = union;
+            add_used_ids_from_expr(used_ids, cond);
+        }
+        SimplStmt::Split(_span, SplitKind::Match(m, arms), inners, _) => {
+            let mut union = IndexSet::<String>::new();
+            for (i, inner) in inners.iter_mut().enumerate() {
+                let mut inner_used_ids: IndexSet<String> = used_ids.clone();
+                annotate_extractions_vec(&mut inner.1, &mut inner_used_ids);
+
+                if let Some(g) = &arms[i].guard {
+                    add_used_ids_from_expr(&mut inner_used_ids, &*g.1);
+                }
+
+                set_union(&mut union, inner_used_ids);
+            }
+            *used_ids = union;
+            add_used_ids_from_expr(used_ids, m);
+        }
+        SimplStmt::Split(..) => {
+            panic!("unexpected SplitKind here");
+        }
+        SimplStmt::Require(_span, e) => {
+            add_used_ids_from_expr(used_ids, e);
+        }
+        SimplStmt::PostCondition(_span, e, _reason) => {
+            add_used_ids_from_expr(used_ids, e);
+        }
+        SimplStmt::Assert(_span, e, _pf) => {
+            add_used_ids_from_expr(used_ids, e);
+        }
+        SimplStmt::Assign(..) => {
+            // should be handled as separate case by the caller
+            panic!("simply_assigns_stmt doesn't handle Assign");
+        }
+    }
+}
+
+/// Collect all conjuncts
+
+fn simpl_conjunct_vec(sops: &Vec<SimplStmt>, p: Option<TokenStream>) -> Option<TokenStream> {
     let let_skip_brace = sops.len() == 1;
     let mut p = p;
     for e in sops.iter().rev() {
-        p = to_relation_stmt(e, p, weak, let_skip_brace);
+        p = simpl_conjunct_stmt(e, p, let_skip_brace);
     }
     p
 }
 
-fn to_relation_stmt(
+fn simpl_conjunct_stmt(
     sop: &SimplStmt,
     p: Option<TokenStream>,
-    weak: bool,
     let_skip_brace: bool,
 ) -> Option<TokenStream> {
     match sop {
-        SimplStmt::Let(_span, pat, ty, e, child) => {
-            let x = to_relation_vec(child, None, weak);
+        SimplStmt::Assign(_span, ident, ty, e, _prelude) => match p {
+            None => None,
+            Some(r) => Some(quote! { { let #ident : #ty = #e; #r } }),
+        },
+        SimplStmt::Let(span, pat, ty, e, child, _) => {
+            let x = simpl_conjunct_vec(child, None);
             let ty_tokens = match ty {
                 None => TokenStream::new(),
                 Some(ty) => quote! { : #ty },
@@ -86,33 +288,27 @@ fn to_relation_stmt(
                     }
                 }
             };
-            // note this strategy is going to be quadratic in nesting depth or something
-            if weak {
-                conjunct_opt(t, impl_opt(asserts_to_single_predicate_simpl(sop), p))
-            } else {
-                conjunct_opt(t, p)
-            }
+
+            let l = get_extraction_decl_stmt(sop);
+            conjunct_opt(t, prepend_let_stmt(*span, l, p))
         }
-        SimplStmt::Split(_span, SplitKind::If(cond), es) => {
+        SimplStmt::Split(span, SplitKind::If(cond), es, _) => {
             assert!(es.len() == 2);
-            let x1 = to_relation_vec(&es[0].1, None, weak);
-            let x2 = to_relation_vec(&es[1].1, None, weak);
+            let x1 = simpl_conjunct_vec(&es[0].1, None);
+            let x2 = simpl_conjunct_vec(&es[1].1, None);
             let t = match (x1, x2) {
                 (None, None) => None,
                 (Some(e1), None) => Some(quote! { ::builtin::imply(#cond, #e1) }),
                 (None, Some(e2)) => Some(quote! { ::builtin::imply(!(#cond), #e2) }),
                 (Some(e1), Some(e2)) => Some(quote! { if #cond { #e1 } else { #e2 } }),
             };
-            // note this strategy is going to be quadratic in nesting depth or something
-            if weak {
-                conjunct_opt(t, impl_opt(asserts_to_single_predicate_simpl(sop), p))
-            } else {
-                conjunct_opt(t, p)
-            }
+
+            let l = get_extraction_decl_stmt(sop);
+            conjunct_opt(t, prepend_let_stmt(*span, l, p))
         }
-        SimplStmt::Split(span, SplitKind::Match(match_e, arms), es) => {
+        SimplStmt::Split(span, SplitKind::Match(match_e, arms), es, _) => {
             let opts: Vec<Option<TokenStream>> =
-                es.iter().map(|e| to_relation_vec(&e.1, None, weak)).collect();
+                es.iter().map(|e| simpl_conjunct_vec(&e.1, None)).collect();
             let t = if opts.iter().any(|o| o.is_some()) {
                 let cases: Vec<Expr> = opts
                     .into_iter()
@@ -127,11 +323,8 @@ fn to_relation_stmt(
                 None
             };
 
-            if weak {
-                conjunct_opt(t, impl_opt(asserts_to_single_predicate_simpl(sop), p))
-            } else {
-                conjunct_opt(t, p)
-            }
+            let l = get_extraction_decl_stmt(sop);
+            conjunct_opt(t, prepend_let_stmt(*span, l, p))
         }
         SimplStmt::Split(..) => {
             panic!("this SplitKind should have been translated out");
@@ -139,21 +332,110 @@ fn to_relation_stmt(
         SimplStmt::PostCondition(_span, e, reason) => prepend_conjunct(e, p, &reason.to_err_msg()),
         SimplStmt::Require(_span, e) => prepend_conjunct(e, p, "cannot prove this condition holds"),
         SimplStmt::Assert(_span, e, _) => {
-            if weak {
-                match p {
-                    None => None,
-                    Some(r) => Some(quote! { ::builtin::imply(#e, #r) }),
-                }
-            } else {
-                match p {
-                    None => Some(quote_spanned! { e.span() => (#e) }),
-                    Some(r) => Some(quote_spanned! { e.span() => ((#e) && (#r)) }),
+            prepend_conjunct(e, p, "cannot prove this 'assert' holds")
+        }
+    }
+}
+
+/// Extract assignments that were done within scopes
+
+fn get_extraction_decl_stmt(sop: &SimplStmt) -> Option<TokenStream> {
+    match sop {
+        SimplStmt::Let(span, pat, ty, e, child, extractions) => {
+            if extractions.len() == 0 {
+                return None;
+            }
+            let extup = get_extup(extractions);
+
+            let c = extr_vec(child);
+
+            let ty_tokens = match ty {
+                None => TokenStream::new(),
+                Some(ty) => quote! { : #ty },
+            };
+            Some(quote_spanned! { *span =>
+                let #extup = ({
+                    let #pat #ty_tokens = #e;
+                    #c
+                    #extup
+                });
+            })
+        }
+        SimplStmt::Split(span, SplitKind::If(cond), es, extractions) => {
+            if extractions.len() == 0 {
+                return None;
+            }
+            let extup = get_extup(extractions);
+
+            assert!(es.len() == 2);
+            let c1 = extr_vec(&es[0].1);
+            let c2 = extr_vec(&es[1].1);
+
+            Some(quote_spanned! { *span =>
+                let #extup = (if (#cond) {
+                    #c1 #extup
+                } else {
+                    #c2 #extup
+                });
+            })
+        }
+        SimplStmt::Split(span, SplitKind::Match(match_e, arms), es, extractions) => {
+            if extractions.len() == 0 {
+                return None;
+            }
+            let extup = get_extup(extractions);
+
+            let cases = es
+                .iter()
+                .map(|e| {
+                    let c = extr_vec(&e.1);
+                    Expr::Verbatim(quote_spanned! { *span => #c #extup })
+                })
+                .collect();
+
+            let m = emit_match(*span, match_e, arms, &cases);
+
+            Some(quote_spanned! { *span =>
+                let #extup = (#m);
+            })
+        }
+        _ => {
+            panic!("get_extraction_decl_stmt got unexpected stmt");
+        }
+    }
+}
+
+fn extr_vec(sops: &Vec<SimplStmt>) -> TokenStream {
+    let mut res = TokenStream::new();
+    for sop in sops {
+        match sop {
+            SimplStmt::Let(..) | SimplStmt::Split(..) => {
+                if let Some(ts) = get_extraction_decl_stmt(sop) {
+                    res.extend(ts)
                 }
             }
+            SimplStmt::Require(..) | SimplStmt::PostCondition(..) | SimplStmt::Assert(..) => {}
+            SimplStmt::Assign(span, ident, ty, expr, _prelude) => {
+                res.extend(quote_spanned! { *span =>
+                    let #ident : #ty = (#expr);
+                })
+            }
         }
-        SimplStmt::Assign(..) => {
-            panic!("Assign should have been removed in pre-processing step");
-        }
+    }
+    res
+}
+
+// Utils
+
+fn prepend_let_stmt(
+    span: Span,
+    l: Option<TokenStream>,
+    p: Option<TokenStream>,
+) -> Option<TokenStream> {
+    match (l, p) {
+        (_, None) => None,
+        (None, Some(q)) => Some(q),
+        (Some(l), Some(q)) => Some(quote_spanned! { span => { #l #q } }),
     }
 }
 
@@ -168,138 +450,23 @@ fn prepend_conjunct(e: &Expr, p: Option<TokenStream>, msg: &str) -> Option<Token
     }
 }
 
-fn conjunct_opt(a: Option<TokenStream>, b: Option<TokenStream>) -> Option<TokenStream> {
+pub fn conjunct_opt(a: Option<TokenStream>, b: Option<TokenStream>) -> Option<TokenStream> {
     match a {
         None => b,
         Some(x) => match b {
             None => Some(x),
-            Some(y) => Some(quote! { (#x && #y) }),
+            Some(y) => Some(quote! { ((#x) && (#y)) }),
         },
     }
 }
 
-fn impl_opt(a: Option<TokenStream>, b: Option<TokenStream>) -> Option<TokenStream> {
-    match a {
-        None => b,
-        Some(x) => match b {
-            None => None,
-            Some(y) => Some(quote! { ::builtin::imply(#x, #y) }),
-        },
-    }
-}
-
-pub fn asserts_to_single_predicate_simpl_vec(sops: &Vec<SimplStmt>) -> Option<TokenStream> {
-    let mut o = None;
-    for t in sops {
-        o = conjunct_opt(o, asserts_to_single_predicate_simpl(t));
-    }
-    o
-}
-
-pub fn asserts_to_single_predicate_simpl(sop: &SimplStmt) -> Option<TokenStream> {
-    match sop {
-        SimplStmt::Let(_span, pat, ty, e, child) => {
-            let ty_tokens = match ty {
-                None => TokenStream::new(),
-                Some(ty) => quote! { : #ty },
-            };
-            match asserts_to_single_predicate_simpl_vec(child) {
-                None => None,
-                Some(r) => Some(quote! { { let #pat #ty_tokens = #e; #r } }),
-            }
-        }
-        SimplStmt::Split(_span, SplitKind::If(cond), es) => {
-            assert!(es.len() == 2);
-            let x1 = asserts_to_single_predicate_simpl_vec(&es[0].1);
-            let x2 = asserts_to_single_predicate_simpl_vec(&es[1].1);
-            match (x1, x2) {
-                (None, None) => None,
-                (Some(e1), None) => Some(quote! { ::builtin::imply(#cond, #e1) }),
-                (None, Some(e2)) => Some(quote! { ::builtin::imply(!(#cond), #e2) }),
-                (Some(e1), Some(e2)) => Some(quote! { if #cond { #e1 } else { #e2 } }),
-            }
-        }
-        SimplStmt::Split(span, SplitKind::Match(match_e, arms), es) => {
-            let opts: Vec<Option<TokenStream>> =
-                es.iter().map(|e| asserts_to_single_predicate_simpl_vec(&e.1)).collect();
-            if opts.iter().any(|o| o.is_some()) {
-                let cases = opts
-                    .into_iter()
-                    .map(|opt_t| Expr::Verbatim(opt_t.unwrap_or(quote! {true})))
-                    .collect();
-                let m = emit_match(*span, match_e, arms, &cases);
-                Some(quote! {#m})
-            } else {
-                None
-            }
-        }
-        SimplStmt::Split(..) => {
-            panic!("other 'split' kinds should have been translated out");
-        }
-        SimplStmt::Assert(_span, e, _) => Some(quote_spanned! { e.span() => (#e) }),
-        SimplStmt::Require(..) => None,
-        SimplStmt::PostCondition(..) => None,
-        SimplStmt::Assign(..) => {
-            panic!("Assign should have been removed");
-        }
-    }
-}
-
-pub fn asserts_to_single_predicate(ts: &TransitionStmt) -> Option<TokenStream> {
-    match ts {
-        TransitionStmt::Block(_span, v) => {
-            let mut o = None;
-            for t in v {
-                o = conjunct_opt(o, asserts_to_single_predicate(t));
-            }
-            o
-        }
-        TransitionStmt::Split(_span, SplitKind::Let(pat, ty, _, e), es) => {
-            let ty_tokens = match ty {
-                None => TokenStream::new(),
-                Some(ty) => quote! { : #ty },
-            };
-            assert!(es.len() == 1);
-            let child = &es[0];
-            match asserts_to_single_predicate(child) {
-                None => None,
-                Some(r) => Some(quote! { { let #pat #ty_tokens = #e; #r } }),
-            }
-        }
-        TransitionStmt::Split(_span, SplitKind::If(cond), es) => {
-            assert!(es.len() == 2);
-            let x1 = asserts_to_single_predicate(&es[0]);
-            let x2 = asserts_to_single_predicate(&es[1]);
-            match (x1, x2) {
-                (None, None) => None,
-                (Some(e1), None) => Some(quote! { ::builtin::imply(#cond, #e1) }),
-                (None, Some(e2)) => Some(quote! { ::builtin::imply(!(#cond), #e2) }),
-                (Some(e1), Some(e2)) => Some(quote! { if #cond { #e1 } else { #e2 } }),
-            }
-        }
-        TransitionStmt::Split(span, SplitKind::Match(match_e, arms), es) => {
-            let opts: Vec<Option<TokenStream>> =
-                es.iter().map(|e| asserts_to_single_predicate(e)).collect();
-            if opts.iter().any(|o| o.is_some()) {
-                let cases = opts
-                    .into_iter()
-                    .map(|opt_t| Expr::Verbatim(opt_t.unwrap_or(quote! {true})))
-                    .collect();
-                let m = emit_match(*span, match_e, arms, &cases);
-                Some(quote! {#m})
-            } else {
-                None
-            }
-        }
-        TransitionStmt::Split(_span, SplitKind::Special(..), _es) => {
-            panic!("Special should have been translated out");
-        }
-        TransitionStmt::Assert(_span, e, _) => Some(quote_spanned! { e.span() => (#e) }),
-        TransitionStmt::PostCondition(..)
-        | TransitionStmt::Require(..)
-        | TransitionStmt::Initialize(..)
-        | TransitionStmt::Update(..)
-        | TransitionStmt::SubUpdate(..) => None,
+fn get_extup(a: &Vec<Ident>) -> TokenStream {
+    assert!(a.len() > 0);
+    if a.len() == 1 {
+        let x = &a[0];
+        quote! { #x }
+    } else {
+        quote! { (#(#a),*) }
     }
 }
 
@@ -327,4 +494,10 @@ pub fn emit_match<T: quote::ToTokens>(
             #( #cases )*
         }
     })
+}
+
+fn set_union(s: &mut IndexSet<String>, t: IndexSet<String>) {
+    for x in t.into_iter() {
+        s.insert(x);
+    }
 }
