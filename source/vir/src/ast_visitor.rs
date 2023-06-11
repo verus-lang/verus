@@ -946,24 +946,14 @@ where
         FunctionKind::Static
         | FunctionKind::TraitMethodDecl { trait_path: _ }
         | FunctionKind::ForeignTraitMethodImpl(_) => kind.clone(),
-        FunctionKind::TraitMethodImpl {
-            method,
-            trait_path,
-            trait_typ_args,
-            datatype,
-            datatype_typ_args,
-        } => {
+        FunctionKind::TraitMethodImpl { method, trait_path, trait_typ_args, self_typ } => {
             let trait_typ_args =
                 Arc::new(vec_map_result(&**trait_typ_args, |t| map_typ_visitor_env(t, env, ft))?);
-            let datatype_typ_args = Arc::new(vec_map_result(&**datatype_typ_args, |t| {
-                map_typ_visitor_env(t, env, ft)
-            })?);
             FunctionKind::TraitMethodImpl {
                 method: method.clone(),
                 trait_path: trait_path.clone(),
                 trait_typ_args,
-                datatype: datatype.clone(),
-                datatype_typ_args,
+                self_typ: map_typ_visitor_env(self_typ, env, ft)?,
             }
         }
     };

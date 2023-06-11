@@ -1467,6 +1467,37 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_specialize_self_types verus_code! {
+        trait T { spec fn f(&self) -> int; }
+        struct S {}
+        impl T for S { spec fn f(&self) -> int { 1 } }
+        impl T for int { spec fn f(&self) -> int { 2 + *self } }
+        impl T for FnSpec(int) -> int { spec fn f(&self) -> int { (*self)(3) } }
+
+        proof fn test(x: int, y: FnSpec(int) -> int) {
+            assert(x.f() == x + 2);
+            assert(y.f() == y(3));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_specialize_self_types_fail verus_code! {
+        trait T { spec fn f(&self) -> int; }
+        struct S {}
+        impl T for S { spec fn f(&self) -> int { 1 } }
+        impl T for int { spec fn f(&self) -> int { 2 + *self } }
+        impl T for FnSpec(int) -> int { spec fn f(&self) -> int { (*self)(3) } }
+
+        proof fn test(x: int, y: FnSpec(int) -> int) {
+            assert(x.f() == x + 2);
+            assert(y.f() == y(3));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] test_specialize1 verus_code! {
         trait T { spec fn f(&self) -> bool; }
         struct S<A> { a: A }

@@ -33,17 +33,17 @@ pub struct ChosenTriggers {
     pub low_confidence: bool,
 }
 
-// Context for across all modules
+/// Context for across all modules
 pub struct GlobalCtx {
     pub(crate) chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>>, // diagnostics
     pub(crate) datatypes: HashMap<Path, Variants>,
     pub(crate) fun_bounds: HashMap<Fun, Vec<GenericBound>>,
-    // Used for synthesized AST nodes that have no relation to any location in the original code:
+    /// Used for synthesized AST nodes that have no relation to any location in the original code:
     pub(crate) no_span: Span,
     pub func_call_graph: Graph<Node>,
     pub func_call_sccs: Vec<Node>,
     pub datatype_graph: Graph<Path>,
-    // Connects quantifier identifiers to the original expression
+    /// Connects quantifier identifiers to the original expression
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
     pub(crate) inferred_modes: HashMap<InferMode, Mode>,
     pub(crate) rlimit: u32,

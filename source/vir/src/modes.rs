@@ -1,7 +1,8 @@
+use crate::ast::TypX;
 use crate::ast::{
     AutospecUsage, BinaryOp, CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, Function,
     FunctionKind, Ident, InferMode, InvAtomicity, Krate, Mode, ModeCoercion, MultiOp, Path,
-    Pattern, PatternX, Stmt, StmtX, UnaryOp, UnaryOpr, VirErr,
+    Pattern, PatternX, Stmt, StmtX, Typ, UnaryOp, UnaryOpr, VirErr,
 };
 use crate::ast_util::{error, error_with_help, get_field, msg_error, path_as_vstd_name};
 use crate::def::user_local_name;
@@ -143,6 +144,18 @@ impl Typing {
 
     fn insert(&mut self, _span: &Span, x: &Ident, mutable: bool, mode: Mode) {
         self.vars.insert(x.clone(), (mutable, mode)).expect("internal error: Typing insert");
+    }
+
+    fn typ_mode(&self, typ: &Typ) -> Mode {
+        match &**typ {
+            TypX::Bool | TypX::Int(_) | TypX::Char | TypX::StrSlice => Mode::Exec,
+            TypX::TypParam(_) => Mode::Exec,
+            TypX::Lambda(_, _) => Mode::Spec,
+            TypX::Datatype(datatype, _typ_args) => self.datatypes[datatype].x.mode,
+            TypX::Decorate(_, t) | TypX::Boxed(t) => self.typ_mode(t),
+            TypX::Tuple(..) | TypX::AnonymousClosure(..) => panic!("unknown mode for type"),
+            TypX::TypeId | TypX::ConstInt(..) | TypX::Air(..) => panic!("unknown mode for type"),
+        }
     }
 }
 
@@ -505,7 +518,6 @@ fn check_expr_handle_mut_arg(
         ExprX::Call(CallTarget::Fun(_, x, _, autospec_usage), es) => {
             assert!(*autospec_usage == AutospecUsage::Final);
 
-            let x = x;
             let function = match typing.funs.get(x) {
                 None => {
                     let name = crate::ast_util::path_as_rust_name(&x.path);
@@ -1207,12 +1219,12 @@ fn check_stmt(
 fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr> {
     typing.vars.push_scope(true);
 
-    if let FunctionKind::TraitMethodImpl { method, trait_path, datatype, .. } = &function.x.kind {
-        let datatype_mode = typing.datatypes[datatype].x.mode;
+    if let FunctionKind::TraitMethodImpl { method, trait_path, self_typ, .. } = &function.x.kind {
+        let self_typ_mode = typing.typ_mode(&self_typ);
         let our_trait = typing.traits.contains(trait_path);
         let (expected_params, expected_ret_mode): (Vec<Mode>, Mode) = if our_trait {
             let trait_method = &typing.funs[method];
-            let expect_mode = mode_join(trait_method.x.mode, datatype_mode);
+            let expect_mode = mode_join(trait_method.x.mode, self_typ_mode);
             if function.x.mode != expect_mode {
                 return error(&function.span, format!("function must have mode {}", expect_mode));
             }
@@ -1222,12 +1234,12 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
         };
         assert!(expected_params.len() == function.x.params.len());
         for (param, expect) in function.x.params.iter().zip(expected_params.iter()) {
-            let expect_mode = mode_join(*expect, datatype_mode);
+            let expect_mode = mode_join(*expect, self_typ_mode);
             if param.x.mode != expect_mode {
                 return error(&param.span, format!("parameter must have mode {}", expect_mode));
             }
         }
-        if function.x.ret.x.mode != mode_join(expected_ret_mode, datatype_mode) {
+        if function.x.ret.x.mode != mode_join(expected_ret_mode, self_typ_mode) {
             return error(
                 &function.span,
                 format!("function return value must have mode {}", expected_ret_mode),

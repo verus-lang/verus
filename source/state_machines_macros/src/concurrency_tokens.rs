@@ -11,7 +11,7 @@ use crate::ast::{
 };
 use crate::field_access_visitor::{find_all_accesses, visit_field_accesses};
 use crate::parse_token_stream::SMBundle;
-use crate::to_relation::{asserts_to_single_predicate, emit_match};
+use crate::to_relation::{conjunct_opt, emit_match};
 use crate::to_token_stream::{
     get_self_ty, get_self_ty_turbofish, impl_decl_stream, name_with_type_args,
     name_with_type_args_turbofish, shardable_type_to_type,
@@ -2768,5 +2768,63 @@ fn get_post_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field) 
         TransitionStmt::Require(..)
         | TransitionStmt::Assert(..)
         | TransitionStmt::PostCondition(..) => None,
+    }
+}
+
+fn asserts_to_single_predicate(ts: &TransitionStmt) -> Option<TokenStream> {
+    match ts {
+        TransitionStmt::Block(_span, v) => {
+            let mut o = None;
+            for t in v {
+                o = conjunct_opt(o, asserts_to_single_predicate(t));
+            }
+            o
+        }
+        TransitionStmt::Split(_span, SplitKind::Let(pat, ty, _, e), es) => {
+            let ty_tokens = match ty {
+                None => TokenStream::new(),
+                Some(ty) => quote! { : #ty },
+            };
+            assert!(es.len() == 1);
+            let child = &es[0];
+            match asserts_to_single_predicate(child) {
+                None => None,
+                Some(r) => Some(quote! { { let #pat #ty_tokens = #e; #r } }),
+            }
+        }
+        TransitionStmt::Split(_span, SplitKind::If(cond), es) => {
+            assert!(es.len() == 2);
+            let x1 = asserts_to_single_predicate(&es[0]);
+            let x2 = asserts_to_single_predicate(&es[1]);
+            match (x1, x2) {
+                (None, None) => None,
+                (Some(e1), None) => Some(quote! { ::builtin::imply(#cond, #e1) }),
+                (None, Some(e2)) => Some(quote! { ::builtin::imply(!(#cond), #e2) }),
+                (Some(e1), Some(e2)) => Some(quote! { if #cond { #e1 } else { #e2 } }),
+            }
+        }
+        TransitionStmt::Split(span, SplitKind::Match(match_e, arms), es) => {
+            let opts: Vec<Option<TokenStream>> =
+                es.iter().map(|e| asserts_to_single_predicate(e)).collect();
+            if opts.iter().any(|o| o.is_some()) {
+                let cases = opts
+                    .into_iter()
+                    .map(|opt_t| Expr::Verbatim(opt_t.unwrap_or(quote! {true})))
+                    .collect();
+                let m = emit_match(*span, match_e, arms, &cases);
+                Some(quote! {#m})
+            } else {
+                None
+            }
+        }
+        TransitionStmt::Split(_span, SplitKind::Special(..), _es) => {
+            panic!("Special should have been translated out");
+        }
+        TransitionStmt::Assert(_span, e, _) => Some(quote_spanned! { e.span() => (#e) }),
+        TransitionStmt::PostCondition(..)
+        | TransitionStmt::Require(..)
+        | TransitionStmt::Initialize(..)
+        | TransitionStmt::Update(..)
+        | TransitionStmt::SubUpdate(..) => None,
     }
 }

@@ -35,6 +35,14 @@ pub struct PathX {
     pub segments: Idents,
 }
 
+/// Static function identifier
+pub type Fun = Arc<FunX>;
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash)]
+pub struct FunX {
+    /// Path of function
+    pub path: Path,
+}
+
 /// Describes what access other modules have to a function, datatype, etc.
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct Visibility {
@@ -114,8 +122,7 @@ pub enum TypDecoration {
 /// Rust type, but without Box, Rc, Arc, etc.
 pub type Typ = Arc<TypX>;
 pub type Typs = Arc<Vec<Typ>>;
-// Deliberately not marked Eq -- use explicit match instead, so we know where types are compared
-#[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum TypX {
     /// Bool, Int, Datatype are translated directly into corresponding SMT types (they are not SMT-boxed)
     Bool,
@@ -466,14 +473,6 @@ pub struct LoopInvariant {
     pub inv: Expr,
 }
 
-/// Static function identifier
-pub type Fun = Arc<FunX>;
-#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash)]
-pub struct FunX {
-    /// Path of function
-    pub path: Path,
-}
-
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum BuiltinSpecFun {
     ClosureReq,
@@ -756,8 +755,7 @@ pub enum FunctionKind {
         method: Fun,
         trait_path: Path,
         trait_typ_args: Typs,
-        datatype: Path,
-        datatype_typ_args: Typs,
+        self_typ: Typ,
     },
     /// These should get demoted into Static functions in `demote_foreign_traits`.
     /// This really only exists so that we can check the trait really is foreign.

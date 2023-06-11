@@ -273,8 +273,10 @@ pub enum PostConditionReason {
 
 #[derive(Clone, Debug)]
 pub enum SimplStmt {
-    Let(Span, Pat, Option<Type>, Expr, Vec<SimplStmt>),
-    Split(Span, SplitKind, Vec<(Span, Vec<SimplStmt>)>), // only for If, Match
+    // The Vec<Ident> are variables assigned inside the block that are used later
+    // (This is filled in and used internally in to_relation.rs)
+    Let(Span, Pat, Option<Type>, Expr, Vec<SimplStmt>, Vec<Ident>),
+    Split(Span, SplitKind, Vec<(Span, Vec<SimplStmt>)>, Vec<Ident>), // only for If, Match
 
     Require(Span, Expr),
     PostCondition(Span, Expr, PostConditionReason),
@@ -576,6 +578,19 @@ impl PostConditionReason {
             PostConditionReasonField::NoUpdateTopLevel => {
                 format!("cannot prove that the field `{field_name}` is preserved")
             }
+        }
+    }
+}
+
+impl SimplStmt {
+    pub fn get_span(&self) -> Span {
+        match self {
+            SimplStmt::Let(span, ..) => *span,
+            SimplStmt::Split(span, ..) => *span,
+            SimplStmt::Require(span, ..) => *span,
+            SimplStmt::PostCondition(span, ..) => *span,
+            SimplStmt::Assert(span, ..) => *span,
+            SimplStmt::Assign(span, ..) => *span,
         }
     }
 }

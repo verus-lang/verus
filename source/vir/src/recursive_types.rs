@@ -341,10 +341,18 @@ fn scc_error(krate: &Krate, head: &Node, nodes: &Vec<Node>) -> VirErr {
                     push(node, span);
                 }
             }
-            Node::Datatype(datatype) | Node::DatatypeTraitBound { datatype, .. } => {
+            Node::Datatype(datatype) => {
                 if let Some(d) = krate.datatypes.iter().find(|d| d.x.path == *datatype) {
                     let span = d.span.clone();
                     push(node, span);
+                }
+            }
+            Node::DatatypeTraitBound { self_typ, .. } => {
+                if let TypX::Datatype(dt_path, _) = &**self_typ {
+                    if let Some(d) = krate.datatypes.iter().find(|d| d.x.path == *dt_path) {
+                        let span = d.span.clone();
+                        push(node, span);
+                    }
                 }
             }
         }
