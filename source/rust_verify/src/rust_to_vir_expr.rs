@@ -382,6 +382,64 @@ fn check_lit_int(
     }
 }
 
+fn mk_is_smaller_than<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    args0: Vec<&'tcx Expr>,
+    args1: Vec<&'tcx Expr>,
+) -> Result<vir::ast::Expr, VirErr> {
+    // convert is_smaller_than((x0, y0, z0), (x1, y1, z1)) into
+    // x0 < x1 || (x0 == x1 && (y0 < y1 || (y0 == y1 && z0 < z1)))
+    // see also check_decrease in recursion.rs
+    let tbool = Arc::new(TypX::Bool);
+    let tint = Arc::new(TypX::Int(IntRange::Int));
+    let when_equalx = ExprX::Const(Constant::Bool(args1.len() < args0.len()));
+    let when_equal = bctx.spanned_typed_new(span, &tbool, when_equalx);
+    let mut dec_exp: vir::ast::Expr = when_equal;
+    for (i, (exp0, exp1)) in args0.iter().zip(args1.iter()).rev().enumerate() {
+        let mk_bop = |op: BinaryOp, e1: vir::ast::Expr, e2: vir::ast::Expr| {
+            bctx.spanned_typed_new(span, &tbool, ExprX::Binary(op, e1, e2))
+        };
+        let mk_cmp = |lt: bool| -> Result<vir::ast::Expr, VirErr> {
+            let e0 = expr_to_vir(bctx, exp0, ExprModifier::REGULAR)?;
+            let e1 = expr_to_vir(bctx, exp1, ExprModifier::REGULAR)?;
+            if vir::recursion::height_is_int(&e0.typ) {
+                if lt {
+                    // 0 <= x < y
+                    let zerox = ExprX::Const(vir::ast_util::const_int_from_u128(0));
+                    let zero = bctx.spanned_typed_new(span, &tint, zerox);
+                    let op0 = BinaryOp::Inequality(InequalityOp::Le);
+                    let cmp0 = mk_bop(op0, zero, e0);
+                    let op1 = BinaryOp::Inequality(InequalityOp::Lt);
+                    let e0 = expr_to_vir(bctx, exp0, ExprModifier::REGULAR)?;
+                    let cmp1 = mk_bop(op1, e0, e1);
+                    Ok(mk_bop(BinaryOp::And, cmp0, cmp1))
+                } else {
+                    Ok(mk_bop(BinaryOp::Eq(Mode::Spec), e0, e1))
+                }
+            } else {
+                Ok(mk_bop(BinaryOp::HeightCompare(lt), e0, e1))
+            }
+        };
+        if i == 0 {
+            // i == 0 means last shared exp0/exp1, which we visit first
+            if args1.len() < args0.len() {
+                // if z0 == z1, we can ignore the extra args0:
+                // z0 < z1 || z0 == z1
+                dec_exp = mk_bop(BinaryOp::Or, mk_cmp(true)?, mk_cmp(false)?);
+            } else {
+                // z0 < z1
+                dec_exp = mk_cmp(true)?;
+            }
+        } else {
+            // x0 < x1 || (x0 == x1 && dec_exp)
+            let and = mk_bop(BinaryOp::And, mk_cmp(false)?, dec_exp);
+            dec_exp = mk_bop(BinaryOp::Or, mk_cmp(true)?, and);
+        }
+    }
+    return Ok(dec_exp);
+}
+
 pub(crate) fn expr_to_vir_inner<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
@@ -1176,56 +1234,7 @@ fn fn_call_to_vir<'tcx>(
         } else {
             (vec![args[0]], vec![args[1]])
         };
-        // convert is_smaller_than((x0, y0, z0), (x1, y1, z1)) into
-        // x0 < x1 || (x0 == x1 && (y0 < y1 || (y0 == y1 && z0 < z1)))
-        // see also check_decrease in recursion.rs
-        let tbool = Arc::new(TypX::Bool);
-        let tint = Arc::new(TypX::Int(IntRange::Int));
-        let when_equalx = ExprX::Const(Constant::Bool(args1.len() < args0.len()));
-        let when_equal = bctx.spanned_typed_new(expr.span, &tbool, when_equalx);
-        let mut dec_exp: vir::ast::Expr = when_equal;
-        for (i, (exp0, exp1)) in args0.iter().zip(args1.iter()).rev().enumerate() {
-            let mk_bop = |op: BinaryOp, e1: vir::ast::Expr, e2: vir::ast::Expr| {
-                bctx.spanned_typed_new(expr.span, &tbool, ExprX::Binary(op, e1, e2))
-            };
-            let mk_cmp = |lt: bool| -> Result<vir::ast::Expr, VirErr> {
-                let e0 = expr_to_vir(bctx, exp0, ExprModifier::REGULAR)?;
-                let e1 = expr_to_vir(bctx, exp1, ExprModifier::REGULAR)?;
-                if vir::recursion::height_is_int(&e0.typ) {
-                    if lt {
-                        // 0 <= x < y
-                        let zerox = ExprX::Const(vir::ast_util::const_int_from_u128(0));
-                        let zero = bctx.spanned_typed_new(expr.span, &tint, zerox);
-                        let op0 = BinaryOp::Inequality(InequalityOp::Le);
-                        let cmp0 = mk_bop(op0, zero, e0);
-                        let op1 = BinaryOp::Inequality(InequalityOp::Lt);
-                        let e0 = expr_to_vir(bctx, exp0, ExprModifier::REGULAR)?;
-                        let cmp1 = mk_bop(op1, e0, e1);
-                        Ok(mk_bop(BinaryOp::And, cmp0, cmp1))
-                    } else {
-                        Ok(mk_bop(BinaryOp::Eq(Mode::Spec), e0, e1))
-                    }
-                } else {
-                    Ok(mk_bop(BinaryOp::HeightCompare(lt), e0, e1))
-                }
-            };
-            if i == 0 {
-                // i == 0 means last shared exp0/exp1, which we visit first
-                if args1.len() < args0.len() {
-                    // if z0 == z1, we can ignore the extra args0:
-                    // z0 < z1 || z0 == z1
-                    dec_exp = mk_bop(BinaryOp::Or, mk_cmp(true)?, mk_cmp(false)?);
-                } else {
-                    // z0 < z1
-                    dec_exp = mk_cmp(true)?;
-                }
-            } else {
-                // x0 < x1 || (x0 == x1 && dec_exp)
-                let and = mk_bop(BinaryOp::And, mk_cmp(false)?, dec_exp);
-                dec_exp = mk_bop(BinaryOp::Or, mk_cmp(true)?, and);
-            }
-        }
-        return Ok(dec_exp);
+        return mk_is_smaller_than(bctx, expr.span, args0, args1);
     }
 
     if is_smartptr_new {
