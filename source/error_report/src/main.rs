@@ -50,10 +50,8 @@ fn main() {
     } else {
         println!("Usage: error_report <file_name>");
     }
-    println!("{:?}", args);
-    println!();
 
-    let z3_path = exe_dir.join(REL_Z3_PATH);
+   let z3_path = exe_dir.join(REL_Z3_PATH);
     // exe_dir.push(REL_Z3_PATH);
     let verus_path = exe_dir.join(REL_VERUS_PATH);
 

@@ -1,7 +1,6 @@
 #![feature(rustc_private)]
 
-use rust_verify::util::{verus_build_profile, VerusBuildProfile, print_commit_info};
-use std::process::Command;
+use rust_verify::util::{print_commit_info, verus_build_profile, VerusBuildProfile};
 
 extern crate rustc_driver; // TODO(main_new) can we remove this?
 
@@ -109,17 +108,16 @@ pub fn main() {
 
     if our_args.error_report {
         // it is printing some wierd things
-        
-        let mut args = std::env::args();
-        args.next();
-        
-        // let hi = "main.rs";
-        let hi = args.filter(|x| x != "--error-report");
-        // println!("hi: {:?}", args.filter(|x| x != "--error-report"));
+
+        let mut args: Vec<String> = std::env::args().collect();
+        args.remove(0);
+
+        let index = args.iter().position(|x| *x == "--error-report").unwrap();
+        args.remove(index);
 
         // why i need a child process here
-        let mut res = Command::new("error_report")
-            .args( hi )
+        let mut res = std::process::Command::new("error_report")
+            .args(args)
             .spawn()
             .expect("error_report failed to start");
 

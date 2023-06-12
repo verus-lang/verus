@@ -238,7 +238,11 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     opts.optflag("", OPT_COMPILE, "Run Rustc compiler after verification");
     opts.optflag("", OPT_NO_SOLVER_VERSION_CHECK, "Skip the check that the solver has the expected version (useful to experiment with different versions of z3)");
     opts.optflag("h", "help", "print this help menu");
-    opts.optflag("", OPT_ERROR_REPORT, "create zip file to reproduce verus error (with version info)");
+    opts.optflag(
+        "",
+        OPT_ERROR_REPORT,
+        "create zip file to reproduce verus error (with version info)",
+    );
 
     let print_usage = || {
         let brief = format!("Usage: {} INPUT [options]", program);
