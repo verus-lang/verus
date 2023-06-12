@@ -87,6 +87,17 @@ fn main() {
     clean_up(d_file_name);
 }
 
+/* Creates a toml file and writes relevant information to this file, including
+ * the command-line arguments, versions, and output.
+ * 
+ * @params args: The command line arguments given to call the input file
+ *         z3_version: Information regarding the user's current z3 version
+ *         verus_version: Information regarding the user's current verus version
+ *         stdout: The resulting output from the input file to stdout
+ *         stderr: The resulting output from the input file to stderr
+ * 
+ * @returns A Table data structure used to write a toml file
+ */
 fn create_toml(args: Vec<String>, z3_version: String, verus_version: String, stdout: String, stderr: String) -> Value {
     
    let mut command_line_arguments = Map::new();
@@ -112,6 +123,14 @@ fn create_toml(args: Vec<String>, z3_version: String, verus_version: String, std
     Value::Table(map)
 }
 
+/* Transforms data from the input file into the proper data structure for
+ * toml creation, and then calls a function to write the toml
+ * 
+ * @params args: The command line arguments given to call the input file
+ *         z3_version_output: Information regarding the user's current z3 version
+ *         verus_version_output: Information regarding the user's current verus version
+ *         verus_output: The resulting output from the input file
+ */
 fn toml_setup_and_write(args: Vec<String>, z3_version_output: std::process::Output, 
     verus_version_output: std::process::Output, 
     verus_output: std::process::Output) {
@@ -146,6 +165,13 @@ fn toml_setup_and_write(args: Vec<String>, z3_version_output: std::process::Outp
     fs::write("error_report.toml", toml_string).expect("Could not write to file!");
 }
 
+/* Uses the user input file to find the .d file, parse the dependencies,
+ * and write each dependency to the zip file.
+ *
+ * @param file_path: a String representation of the path to the input file
+ * 
+ * @returns the name of the .d file for book-keeping purposes
+ */
 pub fn zip_setup(file_path: String) -> String {
 
     let file_name_path = Path::new(&file_path);
@@ -164,8 +190,13 @@ pub fn zip_setup(file_path: String) -> String {
     d_file_name
 }
 
-/* 
- *
+/* Turns the .d file that lists each of the input files' dependencies
+ * and turns them into a vector of Strings for easier data manipulation
+ * 
+ * @param file_name: The name of the previously generated .d file
+ * 
+ * @returns: a vector containing each dependency of the input file
+ *      as an individual string
  */
 fn d_to_vec(file_name: String) -> Vec<String> {
     let file = File::open(file_name).expect("Couldn't open file!");
@@ -195,6 +226,11 @@ fn clean_up(d_file_name: String) {
     fs::remove_file(d_file_name).expect("failed to delete .d file\n");
 }
 
+/* Creates a zip file from a given list of files to compress
+ *
+ * @params deps: A vector of strings representing files to be compressed 
+ *               (in this context, each file is a dependency of the input)
+ */
 fn write_zip_archive(deps: Vec<String>)
 {
     let path = std::path::Path::new("error-report.zip");
@@ -219,6 +255,8 @@ fn write_zip_archive(deps: Vec<String>)
     zip.finish().expect("Could not finish up zip file");
 }
 
+/* Turns a file path into a string
+ */
 fn read_file_string(filepath: &str) -> Result<String, Box<dyn std::error::Error>> {
     let data = fs::read_to_string(filepath)?;
     Ok(data)
