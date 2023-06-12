@@ -1074,3 +1074,20 @@ pub(crate) fn check_generics_bounds_fun<'tcx>(
     let typ_params = typ_params.iter().map(|(x, _)| x.clone()).collect();
     Ok((Arc::new(typ_params), typ_bounds))
 }
+
+pub(crate) fn auto_deref_supported_for_ty<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    ty: &rustc_middle::ty::Ty<'tcx>,
+) -> bool {
+    match ty.kind() {
+        TyKind::Adt(AdtDef(adt_def_data), _args) => {
+            let did = adt_def_data.did;
+            if Some(did) == tcx.lang_items().owned_box() {
+                return true;
+            }
+            let rust_item = verus_items::get_rust_item(tcx, did);
+            return matches!(rust_item, Some(RustItem::Box | RustItem::Rc | RustItem::Arc));
+        }
+        _ => false,
+    }
+}
