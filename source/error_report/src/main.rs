@@ -7,6 +7,8 @@ use std::process::{Command, Stdio};
 use std::str;
 use toml::value::Value;
 use toml::{map::Map};
+use std::io::prelude::*;
+use zip::write::FileOptions;
 // use toml::ser;
 // use toml::Value;
 // 0.5.1
@@ -78,9 +80,9 @@ fn main() {
     println!("{}", String::from_utf8_lossy(&verus_output.stderr));
     println!("{}", String::from_utf8_lossy(&verus_output.stdout));
 
-    write_toml(args, z3_version_output, verus_version_output, verus_output);
+    toml_setup_and_write(args, z3_version_output, verus_version_output, verus_output);
 
-    let d_file_name = create_zip(file_path);
+    let d_file_name = zip_setup(file_path);
 
     clean_up(d_file_name);
 }
@@ -110,7 +112,7 @@ fn create_toml(args: Vec<String>, z3_version: String, verus_version: String, std
     Value::Table(map)
 }
 
-fn write_toml(args: Vec<String>, z3_version_output: std::process::Output, 
+fn toml_setup_and_write(args: Vec<String>, z3_version_output: std::process::Output, 
     verus_version_output: std::process::Output, 
     verus_output: std::process::Output) {
     //let mut file = File::create("error_report.toml").expect("Unable to create file");
@@ -144,7 +146,7 @@ fn write_toml(args: Vec<String>, z3_version_output: std::process::Output,
     fs::write("error_report.toml", toml_string).expect("Could not write to file!");
 }
 
-pub fn create_zip(file_path: String) -> String {
+pub fn zip_setup(file_path: String) -> String {
 
     let file_name_path = Path::new(&file_path);
 
@@ -157,20 +159,14 @@ pub fn create_zip(file_path: String) -> String {
     let mut deps = d_to_vec(d_file_name.to_string());
     deps.push("error_report.toml".to_string());
 
-    // LATER: might append current directory to the deps
-    // this might only happens when their are related files in parent directories
-    // accessed by the #[path = ""] attribute
-    // let path = env::current_dir().expect("invalid directory");
-
-    Command::new("zip")
-        .arg("errorReport.zip")
-        .args(deps)
-        .output()
-        .expect("failed to execute process");
+    write_zip_archive(deps);
 
     d_file_name
 }
 
+/* 
+ *
+ */
 fn d_to_vec(file_name: String) -> Vec<String> {
     let file = File::open(file_name).expect("Couldn't open file!");
     let mut reader = BufReader::new(file);
@@ -178,16 +174,52 @@ fn d_to_vec(file_name: String) -> Vec<String> {
     reader.read_line(&mut dependencies).expect("Could not read the first line");
 
     let mut deps = Vec::new();
+    let mut ctr = 0;
     for dep in dependencies.split_whitespace() {
-        if dep.ends_with(".d") {
-            continue;
+        if ctr >0
+        {
+            deps.push(dep.to_string());
         }
-        deps.push(dep.to_string());
+        ctr+= 1;
     }
     deps
 }
 
+/* Deletes the generated toml file and .d file so as to not clutter the user's directory
+ *
+ * @param d_file_name: The name of the .d file that was created by this process
+        and needs to be deleted.
+ */
 fn clean_up(d_file_name: String) {
     fs::remove_file("error_report.toml").expect("failed to delete toml file\n");
     fs::remove_file(d_file_name).expect("failed to delete .d file\n");
+}
+
+fn write_zip_archive(deps: Vec<String>)
+{
+    let path = std::path::Path::new("error-report.zip");
+    let file = std::fs::File::create(path).unwrap();
+    //let deps = vec!["folder/a.rs", "src/b.rs", "src/c.rs", "src/main.rs"];
+    let mut zip = zip::ZipWriter::new(file);
+
+    let options = FileOptions::default()
+        .compression_method(zip::CompressionMethod::Stored)
+        .unix_permissions(0o755);
+
+    for file in deps
+    {
+        let path = file;
+        let binding = read_file_string(&path).expect("Could not read file");
+        let content = binding.as_bytes();
+        
+        zip.start_file(path, options).expect("Could not start file");
+        zip.write_all(content).expect("Could not write file contents to zip");
+    }
+
+    zip.finish().expect("Could not finish up zip file");
+}
+
+fn read_file_string(filepath: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let data = fs::read_to_string(filepath)?;
+    Ok(data)
 }
