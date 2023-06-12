@@ -807,7 +807,8 @@ fn mk_fun_decl(
 */
 
 pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirErr> {
-    let KrateX { functions, datatypes, traits, module_ids, external_fns } = &**krate;
+    let KrateX { functions, datatypes, traits, module_ids, external_fns, external_types } =
+        &**krate;
     let mut state = State::new();
 
     // Pre-emptively add this because unit values might be added later.
@@ -821,8 +822,8 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     let mut tuples: Vec<_> = state.tuple_typs.into_iter().collect();
     tuples.sort_by_key(|kv| kv.0);
     for (arity, path) in tuples {
-        let visibility = Visibility { owning_module: None, restricted_to: None };
-        let transparency = DatatypeTransparency::Always;
+        let visibility = Visibility { restricted_to: None };
+        let transparency = DatatypeTransparency::WhenVisible(visibility.clone());
         let bound = Arc::new(GenericBoundX::Traits(vec![]));
         let acc = crate::ast::AcceptRecursiveType::RejectInGround;
         let typ_params =
@@ -830,7 +831,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         let mut fields: Vec<Field> = Vec::new();
         for i in 0..arity {
             let typ = Arc::new(TypX::TypParam(prefix_tuple_param(i)));
-            let vis = Visibility { owning_module: None, restricted_to: None };
+            let vis = Visibility { restricted_to: None };
             // Note: the mode is irrelevant at this stage, so we arbitrarily use Mode::Exec
             fields.push(ident_binder(&prefix_tuple_field(i), &(typ, Mode::Exec, vis)));
         }
@@ -838,7 +839,9 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         let variants = Arc::new(vec![variant]);
         let datatypex = DatatypeX {
             path,
+            proxy: None,
             visibility,
+            owning_module: None,
             transparency,
             typ_params,
             variants,
@@ -878,7 +881,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         // since they are arguments to the 'requires' and 'ensures' predicates, but thanks
         // to Rust's restrictions, we don't have to do any additional checks.)
 
-        let visibility = Visibility { owning_module: None, restricted_to: None };
+        let visibility = Visibility { restricted_to: None };
         let transparency = DatatypeTransparency::Never;
 
         let typ_params = Arc::new(vec![]);
@@ -886,7 +889,9 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
 
         let datatypex = DatatypeX {
             path,
+            proxy: None,
             visibility,
+            owning_module: None,
             transparency,
             typ_params,
             variants,
@@ -899,7 +904,9 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     let traits = traits.clone();
     let module_ids = module_ids.clone();
     let external_fns = external_fns.clone();
-    let krate = Arc::new(KrateX { functions, datatypes, traits, module_ids, external_fns });
+    let external_types = external_types.clone();
+    let krate =
+        Arc::new(KrateX { functions, datatypes, traits, module_ids, external_fns, external_types });
     *ctx = crate::context::GlobalCtx::new(
         &krate,
         ctx.no_span.clone(),
@@ -919,6 +926,7 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
         traits: Vec::new(),
         module_ids: Vec::new(),
         external_fns: Vec::new(),
+        external_types: Vec::new(),
     };
     for k in krates.into_iter() {
         kratex.functions.extend(k.functions.clone());
@@ -926,6 +934,7 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
         kratex.traits.extend(k.traits.clone());
         kratex.module_ids.extend(k.module_ids.clone());
         kratex.external_fns.extend(k.external_fns.clone());
+        kratex.external_types.extend(k.external_types.clone());
     }
     Ok(Arc::new(kratex))
 }

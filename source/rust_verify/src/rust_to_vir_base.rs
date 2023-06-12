@@ -55,30 +55,6 @@ fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Pa
     Some(Arc::new(PathX { krate, segments: Arc::new(segments) }))
 }
 
-pub(crate) fn def_path_to_vir_module<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Path {
-    let multi_crate = MULTI_CRATE.with(|m| m.load(std::sync::atomic::Ordering::Relaxed));
-    let krate = if def_path.krate == LOCAL_CRATE && !multi_crate {
-        None
-    } else {
-        Some(Arc::new(tcx.crate_name(def_path.krate).to_string()))
-    };
-    let mut segments: Vec<vir::ast::Ident> = Vec::new();
-    for d in def_path.data.iter() {
-        use rustc_hir::definitions::DefPathData;
-        match &d.data {
-            DefPathData::ValueNs(symbol) | DefPathData::TypeNs(symbol) => {
-                segments.push(Arc::new(symbol.to_string()));
-            }
-            _ => { /* ignore */ }
-        }
-    }
-    Arc::new(PathX { krate, segments: Arc::new(segments) })
-}
-
-pub(crate) fn def_id_to_vir_module<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Path {
-    def_path_to_vir_module(tcx, tcx.def_path(def_id))
-}
-
 pub(crate) fn typ_path_and_ident_to_vir_path<'tcx>(path: &Path, ident: vir::ast::Ident) -> Path {
     let mut path = (**path).clone();
     Arc::make_mut(&mut path.segments).push(ident);
@@ -183,40 +159,19 @@ pub(crate) fn qpath_to_ident<'tcx>(
     }
 }
 
-pub(crate) fn is_visibility_private<'tcx>(
-    ctxt: &Context<'tcx>,
-    span: Span,
-    owning_module: &Option<Path>,
-    def_id: DefId,
-) -> Result<bool, VirErr> {
-    let vis = ctxt.tcx.visibility(def_id);
-    match vis {
-        Visibility::Public => Ok(false),
-        Visibility::Restricted(id) => {
-            let restricted_to = def_id_to_vir_path(ctxt.tcx, id);
-            if restricted_to.segments.len() == 0 {
-                // pub(crate)
-                Ok(false)
-            } else if &Some(restricted_to) == owning_module {
-                // private
-                Ok(true)
-            } else {
-                unsupported_err!(span, "restricted visibility")
-            }
-        }
-    }
+pub(crate) fn mk_visibility<'tcx>(ctxt: &Context<'tcx>, def_id: DefId) -> vir::ast::Visibility {
+    mk_visibility_from_vis(ctxt, ctxt.tcx.visibility(def_id))
 }
 
-pub(crate) fn mk_visibility<'tcx>(
+pub(crate) fn mk_visibility_from_vis<'tcx>(
     ctxt: &Context<'tcx>,
-    owning_module: &Option<Path>,
-    def_id: DefId,
+    visibility: rustc_middle::ty::Visibility<DefId>,
 ) -> vir::ast::Visibility {
-    let restricted_to = match ctxt.tcx.visibility(def_id) {
+    let restricted_to = match visibility {
         Visibility::Public => None,
         Visibility::Restricted(id) => Some(def_id_to_vir_path(ctxt.tcx, id)),
     };
-    vir::ast::Visibility { owning_module: owning_module.clone(), restricted_to }
+    vir::ast::Visibility { restricted_to }
 }
 
 pub(crate) fn get_range(typ: &Typ) -> IntRange {

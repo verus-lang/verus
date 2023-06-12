@@ -157,11 +157,11 @@ fn tr_inline_function(
     if fuel == 0 || (!found_local_fuel && hidden) {
         return opaque_err;
     } else {
-        if fun_to_inline.x.visibility.owning_module.is_none() {
+        if fun_to_inline.x.owning_module.is_none() {
             return foreign_module_err;
         } else {
             use crate::ast_util::is_visible_to_of_owner;
-            if !is_visible_to_of_owner(&fun_to_inline.x.visibility.owning_module, &ctx.module) {
+            if !is_visible_to_of_owner(&fun_to_inline.x.owning_module, &ctx.module) {
                 // if the target inline function is outside this module, track `open` `closed` at module boundaries
                 match fun_to_inline.x.publish {
                     Some(b) => {
