@@ -25,6 +25,6 @@ pub use super::std_specs::option::OptionAdditionalFns;
 pub use super::std_specs::result::ResultAdditionalSpecFns;
 
 #[cfg(not(feature = "no_global_allocator"))] 
-pub use super::std_specs::alloc::VecAdditionalSpecFns;
+pub use super::std_specs::vec::VecAdditionalSpecFns;
 #[cfg(not(feature = "no_global_allocator"))] 
-pub use super::std_specs::alloc::VecAdditionalExecFns;
+pub use super::std_specs::vec::VecAdditionalExecFns;

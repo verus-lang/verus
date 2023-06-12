@@ -4,7 +4,7 @@ use builtin_macros::*;
 use crate::view::*;
 use crate::seq::*;
 
-pub use super::std_specs::alloc::VecAdditionalSpecFns;
+pub use super::std_specs::vec::VecAdditionalSpecFns;
 
 verus!{
 

@@ -3165,7 +3165,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         krate: Some(Arc::new("vstd".to_string())),
                         segments: Arc::new(vec![
                             Arc::new("std_specs".to_string()),
-                            Arc::new("alloc".to_string()),
+                            Arc::new("vec".to_string()),
                             Arc::new("vec_index".to_string()),
                         ]),
                     }),
