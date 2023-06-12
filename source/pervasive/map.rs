@@ -300,6 +300,7 @@ impl<K, V> Map<K, V> {
 
 // Trusted axioms
 
+/* REVIEW: this is simpler than the two separate axioms below -- would this be ok?
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_index_decreases<K, V>(m: Map<K, V>, key: K)
@@ -307,6 +308,30 @@ pub proof fn axiom_map_index_decreases<K, V>(m: Map<K, V>, key: K)
         m.dom().contains(key),
     ensures
         #[trigger](decreases_to!(m => m[key])),
+{
+}
+*/
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_map_index_decreases_finite<K, V>(m: Map<K, V>, key: K)
+    requires
+        m.dom().finite(),
+        m.dom().contains(key),
+    ensures
+        #[trigger](decreases_to!(m => m[key])),
+{
+}
+
+// REVIEW: this is currently a special case that is hard-wired into the verifier
+// It implements a version of https://github.com/FStarLang/FStar/pull/2954 .
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_map_index_decreases_infinite<K, V>(m: Map<K, V>, key: K)
+    requires
+        m.dom().contains(key),
+    ensures
+        #[trigger] is_smaller_than_recursive_function_field(m[key], m),
 {
 }
 

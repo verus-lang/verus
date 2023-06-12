@@ -907,7 +907,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     format!("error: cannot use bit-vector arithmetic on type {:?}", exp.typ),
                 );
             }
-            if let BinaryOp::HeightCompare(_) = op {
+            if let BinaryOp::HeightCompare { .. } = op {
                 return error(
                     &exp.span,
                     format!("error: cannot use bit-vector arithmetic on is_smaller_than"),
@@ -948,7 +948,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 _ => (),
             };
             let bop = match op {
-                BinaryOp::HeightCompare(_) => unreachable!(),
+                BinaryOp::HeightCompare { .. } => unreachable!(),
                 BinaryOp::Eq(_) => air::ast::BinaryOp::Eq,
                 BinaryOp::Ne => unreachable!(),
                 BinaryOp::Arith(ArithOp::Add, _) => air::ast::BinaryOp::BitAdd,
@@ -997,10 +997,15 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 BinaryOp::Implies => {
                     return Ok(mk_implies(&lh, &rh));
                 }
-                BinaryOp::HeightCompare(lt) => {
+                BinaryOp::HeightCompare { strictly_lt, recursive_function_field } => {
                     let lhh = str_apply(crate::def::HEIGHT, &vec![lh]);
+                    let rh = if *recursive_function_field {
+                        str_apply(crate::def::HEIGHT_REC_FUN, &vec![rh])
+                    } else {
+                        rh
+                    };
                     let rhh = str_apply(crate::def::HEIGHT, &vec![rh]);
-                    if *lt {
+                    if *strictly_lt {
                         return Ok(str_apply(crate::def::HEIGHT_LT, &vec![lhh, rhh]));
                     } else {
                         return Ok(mk_eq(&lhh, &rhh));
@@ -1075,7 +1080,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         BinaryOp::Or => unreachable!(),
                         BinaryOp::Xor => unreachable!(),
                         BinaryOp::Implies => unreachable!(),
-                        BinaryOp::HeightCompare(_) => unreachable!(),
+                        BinaryOp::HeightCompare { .. } => unreachable!(),
                         BinaryOp::Eq(_) => air::ast::BinaryOp::Eq,
                         BinaryOp::Ne => unreachable!(),
                         BinaryOp::Inequality(InequalityOp::Le) => air::ast::BinaryOp::Le,

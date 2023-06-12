@@ -387,6 +387,7 @@ fn mk_is_smaller_than<'tcx>(
     span: Span,
     args0: Vec<&'tcx Expr>,
     args1: Vec<&'tcx Expr>,
+    recursive_function_field: bool,
 ) -> Result<vir::ast::Expr, VirErr> {
     // convert is_smaller_than((x0, y0, z0), (x1, y1, z1)) into
     // x0 < x1 || (x0 == x1 && (y0 < y1 || (y0 == y1 && z0 < z1)))
@@ -418,7 +419,8 @@ fn mk_is_smaller_than<'tcx>(
                     Ok(mk_bop(BinaryOp::Eq(Mode::Spec), e0, e1))
                 }
             } else {
-                Ok(mk_bop(BinaryOp::HeightCompare(lt), e0, e1))
+                let cmp = BinaryOp::HeightCompare { strictly_lt: lt, recursive_function_field };
+                Ok(mk_bop(cmp, e0, e1))
             }
         };
         if i == 0 {
@@ -636,6 +638,7 @@ fn fn_call_to_vir<'tcx>(
     let is_arch_word_bits = f_name == "builtin::arch_word_bits";
     let is_smaller_than = f_name == "builtin::is_smaller_than";
     let is_smaller_than_lex = f_name == "builtin::is_smaller_than_lexicographic";
+    let is_smaller_than_rec_fun = f_name == "builtin::is_smaller_than_recursive_function_field";
 
     let is_reveal_strlit = tcx.is_diagnostic_item(Symbol::intern("builtin::reveal_strlit"), f);
     let is_strslice_len = tcx.is_diagnostic_item(Symbol::intern("builtin::strslice_len"), f);
@@ -770,7 +773,8 @@ fn fn_call_to_vir<'tcx>(
         || is_closure_to_fn_spec
         || is_arch_word_bits
         || is_smaller_than
-        || is_smaller_than_lex;
+        || is_smaller_than_lex
+        || is_smaller_than_rec_fun;
     let is_spec_allow_proof_args_pre = is_spec_op
         || is_builtin_add
         || is_builtin_sub
@@ -1219,7 +1223,7 @@ fn fn_call_to_vir<'tcx>(
         return mk_expr(ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind, Mode::Spec), arg));
     }
 
-    if is_smaller_than || is_smaller_than_lex {
+    if is_smaller_than || is_smaller_than_lex || is_smaller_than_rec_fun {
         assert!(args.len() == 2);
         let (args0, args1) = if is_smaller_than_lex {
             match (&args[0].kind, &args[1].kind) {
@@ -1234,7 +1238,7 @@ fn fn_call_to_vir<'tcx>(
         } else {
             (vec![args[0]], vec![args[1]])
         };
-        return mk_is_smaller_than(bctx, expr.span, args0, args1);
+        return mk_is_smaller_than(bctx, expr.span, args0, args1, is_smaller_than_rec_fun);
     }
 
     if is_smartptr_new {

@@ -362,7 +362,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             use BinaryOp::*;
             let depth = match op {
                 And | Or | Xor | Implies | Eq(_) => 0,
-                HeightCompare(_) => 1,
+                HeightCompare { .. } => 1,
                 Ne | Inequality(_) | Arith(..) => 1,
                 Bitwise(..) => 1,
                 StrGetChar => fail_on_strop(),

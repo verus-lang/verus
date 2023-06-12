@@ -269,8 +269,9 @@ fn datatype_or_fun_to_air_commands(
         //     height_lt(height(apply(x, args)), height(box(mk_fun(x))))
         // trigger on height(apply(x, args)), has_type_f
         let height_app = str_apply(crate::def::HEIGHT, &vec![app]);
-        let height_box = str_apply(crate::def::HEIGHT, &vec![box_mk_fun]);
-        let height_lt = str_apply(crate::def::HEIGHT_LT, &vec![height_app.clone(), height_box]);
+        let from_rec_fun = str_apply(crate::def::HEIGHT_REC_FUN, &vec![box_mk_fun]);
+        let height_fun = str_apply(crate::def::HEIGHT, &vec![from_rec_fun]);
+        let height_lt = str_apply(crate::def::HEIGHT_LT, &vec![height_app.clone(), height_fun]);
         let trigs = vec![height_app, has_box.clone()];
         let name = format!("{}_{}", path_as_rust_name(dpath), crate::def::QID_HEIGHT_APPLY);
         let bind = func_bind_trig(ctx, name, tparams, &aparams, &trigs, false, false);
@@ -405,19 +406,73 @@ fn datatype_or_fun_to_air_commands(
                 let field_box_path = match &*typ {
                     TypX::Lambda(typs, _) => Some(prefix_lambda_type(typs.len())),
                     TypX::Datatype(..) => crate::sst_to_air::datatype_box_prefix(ctx, &typ),
+                    TypX::Boxed(_) => None,
                     TypX::TypParam(_) => None,
                     _ => continue,
                 };
-                let node = crate::prelude::datatype_height_axiom(
+                let unboxed = if let TypX::Boxed(t) = &*typ { t } else { &*typ };
+                let fun_or_map_ret = {
+                    match unboxed {
+                        TypX::Lambda(_, ret) => Some(ret),
+                        TypX::Datatype(d, targs)
+                            if crate::ast_util::path_as_vstd_name(d)
+                                == Some("map::Map".to_string())
+                                && targs.len() == 2 =>
+                        {
+                            // HACK special case for the infinite map::Map type,
+                            // which is like a FnSpec type
+                            Some(&targs[1])
+                        }
+                        _ => None,
+                    }
+                };
+                let recursive_function_field = if let Some(ret) = fun_or_map_ret {
+                    // REVIEW: this is inspired by https://github.com/FStarLang/FStar/pull/2954 ,
+                    // which restricts decreases on FnSpec applications or Map lookups
+                    // to the case where the FnSpec or Map is a field of a recursive datatype
+                    // and the application or lookup returns a value of the recursive datatype.
+                    // It's not clear that we need this restriction, since we don't have F*'s
+                    // universes, but let's err on the side of cautious for now.
+                    // We define recursive_function_field to be true when all of these hold:
+                    // 1) the field is a FnSpec or Map type
+                    // 2) the only use of type parameters in the FnSpec/Map return type
+                    //    is to instantiate the datatype with exactly its original parameters
+                    // For example, recursive_function_field is true for field f here:
+                    //   struct S<A, B> { a: A, b: B, f: FnSpec(int) -> Option<S<A, B>> }
+                    // but is false for field f here:
+                    //   struct S<A, B> { a: A, b: B, f: FnSpec(int) -> Option<(A, B)> }
+                    // because A and B appear in the return type, but not as part of S<A, B>
+                    // This suppresses decreases for a wrapper around a FnSpec or infinite Map:
+                    //   struct MyFun<A, B>(FnSpec(A) -> B);
+                    // TODO: allow recursive_function_field across mutually recursive datatypes
+                    // that have type parameters (e.g. by inlining the recursive types).
+                    let our_typ = Arc::new(TypX::Datatype(dpath.clone(), typ_args.clone()));
+                    use crate::visitor::VisitorControlFlow;
+                    let mut visitor = |t: &Typ| -> VisitorControlFlow<()> {
+                        if crate::ast_util::types_equal(t, &our_typ) {
+                            VisitorControlFlow::Return
+                        } else if let TypX::TypParam(_) = &**t {
+                            VisitorControlFlow::Stop(())
+                        } else {
+                            VisitorControlFlow::Recurse
+                        }
+                    };
+                    let visit = crate::ast_visitor::typ_visitor_dfs(ret, &mut visitor);
+                    visit == VisitorControlFlow::Recurse
+                } else {
+                    false
+                };
+                let nodes = crate::prelude::datatype_height_axioms(
                     &dpath,
-                    field_box_path,
+                    &field_box_path,
                     &is_variant_ident(dpath, &*variant.name),
                     &variant_field_ident(&dpath, &variant.name, &field.name),
+                    recursive_function_field,
                 );
-                let axiom = air::parser::Parser::new()
-                    .node_to_command(&node)
+                let axioms = air::parser::Parser::new()
+                    .nodes_to_commands(&nodes)
                     .expect("internal error: malformed datatype axiom");
-                axiom_commands.push(axiom);
+                axiom_commands.extend(axioms.iter().cloned());
             }
         }
     }

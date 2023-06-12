@@ -317,7 +317,7 @@ pub enum BinaryOp {
     /// boolean implies (short-circuiting: right side is evaluated only if left side is true)
     Implies,
     /// the is_smaller_than builtin, used for decreases (true for <, false for ==)
-    HeightCompare(bool),
+    HeightCompare { strictly_lt: bool, recursive_function_field: bool },
     /// SMT equality for any type -- two expressions are exactly the same value
     /// Some types support compilable equality (Mode == Exec); others only support spec equality (Mode == Spec)
     Eq(Mode),

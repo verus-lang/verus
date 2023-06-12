@@ -1345,7 +1345,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         }
                     }
                 }
-                HeightCompare(_) | StrGetChar => ok_e2(e2.clone()),
+                HeightCompare { .. } | StrGetChar => ok_e2(e2.clone()),
             }
         }
         BinaryOpr(op, e1, e2) => {

@@ -412,7 +412,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             use BinaryOp::*;
             let (native, poly) = match op {
                 And | Or | Xor | Implies | Inequality(_) => (true, false),
-                HeightCompare(_) => (false, true),
+                HeightCompare { .. } => (false, true),
                 Arith(..) => (true, false),
                 Eq(_) | Ne => (false, false),
                 Bitwise(..) => (true, false),

@@ -722,7 +722,7 @@ fn check_expr_handle_mut_arg(
         ExprX::Binary(op, e1, e2) => {
             let op_mode = match op {
                 BinaryOp::Eq(mode) => *mode,
-                BinaryOp::HeightCompare(_) => Mode::Spec,
+                BinaryOp::HeightCompare { .. } => Mode::Spec,
                 _ => Mode::Exec,
             };
             match op {
@@ -735,7 +735,7 @@ fn check_expr_handle_mut_arg(
             let outer_mode = match op {
                 // because Implies isn't compiled, make it spec-only
                 BinaryOp::Implies => Mode::Spec,
-                BinaryOp::HeightCompare(_) => Mode::Spec,
+                BinaryOp::HeightCompare { .. } => Mode::Spec,
                 _ => outer_mode,
             };
             let mode1 = check_expr(typing, outer_mode, erasure_mode, e1)?;

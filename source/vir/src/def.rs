@@ -142,6 +142,7 @@ pub const CHECK_DECREASE_INT: &str = "check_decrease_int";
 pub const CHECK_DECREASE_HEIGHT: &str = "check_decrease_height";
 pub const HEIGHT: &str = "height";
 pub const HEIGHT_LT: &str = "height_lt";
+pub const HEIGHT_REC_FUN: &str = "fun_from_recursive_field";
 pub const CLOSURE_REQ: &str = "closure_req";
 pub const CLOSURE_ENS: &str = "closure_ens";
 pub const EXT_EQ: &str = "ext_eq";

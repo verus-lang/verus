@@ -1063,6 +1063,10 @@ pub fn is_smaller_than_lexicographic<A, B>(_: A, _: B) -> bool {
     unimplemented!();
 }
 
+pub fn is_smaller_than_recursive_function_field<A, B>(_: A, _: B) -> bool {
+    unimplemented!();
+}
+
 #[macro_export]
 macro_rules! decreases_to_internal {
     ($($x:expr),* $(,)? => $($y:expr),* $(,)?) => {

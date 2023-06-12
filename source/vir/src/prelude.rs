@@ -67,6 +67,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let height = str_to_node(HEIGHT);
     let height_le = nodes!(_ partial-order 0);
     let height_lt = str_to_node(HEIGHT_LT);
+    let height_rec_fun = str_to_node(HEIGHT_REC_FUN);
     let closure_req = str_to_node(CLOSURE_REQ);
     let closure_ens = str_to_node(CLOSURE_ENS);
     #[allow(non_snake_case)]
@@ -547,6 +548,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :qid prelude_height_lt
             :skolemid skolem_prelude_height_lt
         )))
+        (declare-fun [height_rec_fun] ([Poly]) [Poly])
         (declare-fun [check_decrease_int] (Int Int Bool) Bool)
         (axiom (forall ((cur Int) (prev Int) (otherwise Bool)) (!
             (= ([check_decrease_int] cur prev otherwise)
@@ -618,12 +620,14 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
 
 pub(crate) fn datatype_height_axiom(
     typ_name1: &Path,
-    typ_name2: Option<Path>,
+    typ_name2: &Option<Path>,
     is_variant_ident: &Ident,
     field: &Ident,
+    recursive_function_field: bool,
 ) -> Node {
     let height = str_to_node(HEIGHT);
     let height_lt = str_to_node(HEIGHT_LT);
+    let height_rec_fun = str_to_node(HEIGHT_REC_FUN);
     let field = str_to_node(field.as_str());
     let is_variant = str_to_node(is_variant_ident.as_str());
     let typ1 = str_to_node(path_to_air_ident(typ_name1).as_str());
@@ -636,6 +640,8 @@ pub(crate) fn datatype_height_axiom(
         // for a field with generic type, [field]'s return type is already "Poly"
         None => node!(([field] x)),
     };
+    let field_of_x =
+        if recursive_function_field { node!(([height_rec_fun][field_of_x])) } else { field_of_x };
     node!(
         (axiom (forall ((x [typ1])) (!
             (=>
@@ -650,4 +656,20 @@ pub(crate) fn datatype_height_axiom(
             :skolemid skolem_prelude_datatype_height
         )))
     )
+}
+
+pub(crate) fn datatype_height_axioms(
+    typ_name1: &Path,
+    typ_name2: &Option<Path>,
+    is_variant_ident: &Ident,
+    field: &Ident,
+    recursive_function_field: bool,
+) -> Vec<Node> {
+    let axiom1 = datatype_height_axiom(typ_name1, typ_name2, is_variant_ident, field, false);
+    if recursive_function_field {
+        let axiom2 = datatype_height_axiom(typ_name1, typ_name2, is_variant_ident, field, true);
+        vec![axiom1, axiom2]
+    } else {
+        vec![axiom1]
+    }
 }

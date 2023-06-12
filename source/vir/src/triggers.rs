@@ -30,7 +30,7 @@ fn preprocess_exp(exp: &Exp) -> Exp {
         ExpX::UnaryOpr(UnaryOpr::Box(_), e) | ExpX::UnaryOpr(UnaryOpr::Unbox(_), e) => {
             preprocess_exp(e)
         }
-        ExpX::Binary(BinaryOp::HeightCompare(_), e1, _) => {
+        ExpX::Binary(BinaryOp::HeightCompare { .. }, e1, _) => {
             // We don't let users use the "height" function or Height type directly.
             // However, when using HeightCompare, it's useful to trigger on "height",
             // and it's not useful to trigger on HeightCompare,
@@ -155,7 +155,7 @@ fn check_trigger_expr(
                         And | Or | Xor | Implies | Eq(_) | Ne => {
                             error(&exp.span, "triggers cannot contain boolean operators")
                         }
-                        HeightCompare(_) => error(
+                        HeightCompare { .. } => error(
                             &exp.span,
                             "triggers cannot contain interior is_smaller_than expressions",
                         ),
