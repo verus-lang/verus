@@ -74,7 +74,7 @@ pub fn store_commit_info() {
 
     let sha = std::process::Command::new("git")
         .current_dir(&exe_dir)
-        .args(&["rev-parse", "HEAD"])
+        .args(&["rev-parse", "--short", "HEAD"])
         .stdout(std::process::Stdio::piped())
         .spawn()
         .expect("failed to execute git rev-parse HEAD");
@@ -85,10 +85,21 @@ pub fn store_commit_info() {
         .stdout;
     sha_msg.pop();
 
-    std::env::set_var(
-        "VERUS_BUILD_SHA",
-        String::from_utf8(sha_msg.clone()).unwrap(),
-    );
+    let date_info = std::process::Command::new("git")
+        .current_dir(&exe_dir)
+        .args(&["show", "-s", "--format=%ci", "HEAD"])
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("failed to execute git show -s --format=%ci HEAD");
+
+    let date_msg = date_info
+        .wait_with_output()
+        .expect("failed to execute git show -s --format=%ci HEAD")
+        .stdout;
+
+    let year = String::from_utf8(date_msg[0..4].to_vec()).unwrap();
+    let month = String::from_utf8(date_msg[5..7].to_vec()).unwrap();
+    let day = String::from_utf8(date_msg[8..10].to_vec()).unwrap();
 
     let child = std::process::Command::new("git")
         .current_dir(&exe_dir)
@@ -103,23 +114,10 @@ pub fn store_commit_info() {
         .status;
 
     if status.success() {
-        std::env::set_var("VERUS_BUILD_DIRTY", "false");
+        let msg = format!("0.{}.{}.{}-{}", year, month, day, String::from_utf8(sha_msg).unwrap());
+        std::env::set_var("VERUS_BUILD_VERSION", msg);
     } else {
-        std::env::set_var("VERUS_BUILD_DIRTY", "true");
+        let msg = format!("0.{}.{}.{}-{} (dirty)", year, month, day, String::from_utf8(sha_msg).unwrap());
+        std::env::set_var("VERUS_BUILD_VERSION", msg);
     }
-
-    let date_info = std::process::Command::new("git")
-        .current_dir(&exe_dir)
-        .args(&["show", "-s", "--format=%ci", "HEAD"])
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .expect("failed to execute git show -s --format=%ci HEAD");
-
-    let mut date_msg = date_info
-        .wait_with_output()
-        .expect("failed to execute git show -s --format=%ci HEAD")
-        .stdout;
-    date_msg.pop();
-
-    std::env::set_var("VERUS_BUILD_DATE", String::from_utf8(date_msg).unwrap());
 }

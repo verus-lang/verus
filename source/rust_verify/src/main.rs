@@ -29,19 +29,11 @@ pub fn main() {
         match first_arg.as_str() {
             "--version" => {
                 println!("Verus");
-                println!("platform: {}_{}", std::env::consts::OS, std::env::consts::ARCH);
+                println!("  Platform: {}_{}", std::env::consts::OS, std::env::consts::ARCH);
 
-                let date = option_env!("VERUS_BUILD_DATE").unwrap_or_default();
-                println!("date: {}", date);
+                let date = option_env!("VERUS_BUILD_VERSION").unwrap_or_default();
+                println!("  Version: {}", date);
 
-                let sha = option_env!("VERUS_BUILD_SHA").unwrap_or_default();
-
-                let dirty = option_env!("VERUS_BUILD_DIRTY").unwrap_or_default();
-                if dirty == "true" {
-                    println!("commit: {} (dirty)", sha);
-                } else {
-                    println!("commit: {}", sha);
-                }
                 return;
             }
             rust_verify::lifetime::LIFETIME_DRIVER_ARG => {
