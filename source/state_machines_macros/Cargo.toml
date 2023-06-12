@@ -9,6 +9,7 @@ edition = "2018"
 syn_verus = { path="../../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
 quote = "1.0"
 proc-macro2 = "1.0"
+indexmap = { version = "1" }
 
 [lib]
 proc-macro = true

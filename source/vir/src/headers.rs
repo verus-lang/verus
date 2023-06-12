@@ -247,6 +247,7 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         proxy: _,
         kind: _,
         visibility: _,
+        owning_module: _,
         mode: _,
         fuel,
         typ_bounds,

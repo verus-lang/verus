@@ -192,7 +192,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
         };
         if let Some(f) = state.worklist_functions.pop() {
             let function = &ctxt.function_map[&f];
-            if let Some(module_path) = &function.x.visibility.owning_module {
+            if let Some(module_path) = &function.x.owning_module {
                 reach(&mut state.reached_modules, &mut state.worklist_modules, module_path);
             }
             if let FunctionKind::TraitMethodImpl { method, .. } = &function.x.kind {
@@ -238,7 +238,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             match &t {
                 ReachedType::Datatype(path) => {
                     let datatype = &ctxt.datatype_map[path];
-                    if let Some(module_path) = &datatype.x.visibility.owning_module {
+                    if let Some(module_path) = &datatype.x.owning_module {
                         reach(&mut state.reached_modules, &mut state.worklist_modules, module_path);
                     }
                     crate::ast_visitor::map_datatype_visitor_env(&datatype, state, &ft).unwrap();
@@ -318,7 +318,7 @@ pub fn prune_krate_for_module(
     // Collect all functions that our module reveals:
     let mut revealed_functions: HashSet<Fun> = HashSet::new();
     for f in &krate.functions {
-        match (&f.x.visibility.owning_module, &f.x.body) {
+        match (&f.x.owning_module, &f.x.body) {
             (Some(path), Some(body)) if path == module => {
                 crate::ast_visitor::expr_visitor_check::<(), _>(
                     body,
@@ -344,7 +344,7 @@ pub fn prune_krate_for_module(
     let mut datatypes: Vec<Datatype> = Vec::new();
     let mut traits: Vec<Trait> = Vec::new();
     for f in &krate.functions {
-        match &f.x.visibility.owning_module {
+        match &f.x.owning_module {
             Some(path) if path == module => {
                 // our function
                 functions.push(f.clone());
@@ -361,7 +361,7 @@ pub fn prune_krate_for_module(
         // - function is exec or proof
         let vis = f.x.visibility.clone();
         let is_vis = is_visible_to(&vis, module);
-        let within_module = is_visible_to_of_owner(&vis.owning_module, module);
+        let within_module = is_visible_to_of_owner(&f.x.owning_module, module);
         let is_non_opaque =
             if within_module { f.x.fuel > 0 } else { f.x.fuel > 0 && f.x.publish == Some(true) };
         let is_revealed = is_non_opaque || revealed_functions.contains(&f.x.name);
@@ -383,7 +383,7 @@ pub fn prune_krate_for_module(
         }
     }
     for d in &krate.datatypes {
-        match &d.x.visibility.owning_module {
+        match &d.x.owning_module {
             Some(path) if path == module => {
                 // our datatype
                 let t = ReachedType::Datatype(d.x.path.clone());
@@ -419,7 +419,7 @@ pub fn prune_krate_for_module(
             }
             method_map.get_mut(&key).unwrap().push(f.x.name.clone());
         }
-        let module = f.x.visibility.owning_module.clone().expect("owning_module");
+        let module = f.x.owning_module.clone().expect("owning_module");
         if !all_functions_in_each_module.contains_key(&module) {
             all_functions_in_each_module.insert(module.clone(), Vec::new());
         }
@@ -477,6 +477,7 @@ pub fn prune_krate_for_module(
         traits,
         module_ids: krate.module_ids.clone(),
         external_fns: krate.external_fns.clone(),
+        external_types: krate.external_types.clone(),
     };
     let mut lambda_types: Vec<usize> = state.lambda_types.into_iter().collect();
     lambda_types.sort();

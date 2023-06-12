@@ -1,6 +1,6 @@
 use crate::ast::{
-    CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec,
-    Mode, MultiOp, Path, PathX, TypX, UnaryOp, UnaryOpr, VirErr, VirErrAs,
+    CallTarget, Datatype, DatatypeTransparency, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind,
+    Krate, MaskSpec, Mode, MultiOp, Path, TypX, UnaryOp, UnaryOpr, VirErr, VirErrAs,
 };
 use crate::ast_util::{
     error, is_visible_to_opt, msg_error, path_as_rust_name, referenced_vars_expr,
@@ -14,7 +14,6 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 struct Ctxt {
-    pub(crate) crate_names: Vec<String>,
     pub(crate) funs: HashMap<Fun, Function>,
     pub(crate) dts: HashMap<Path, Datatype>,
     pub(crate) krate: Krate,
@@ -24,18 +23,8 @@ struct Ctxt {
 fn check_typ(ctxt: &Ctxt, typ: &Arc<TypX>, span: &air::ast::Span) -> Result<(), VirErr> {
     crate::ast_visitor::typ_visitor_check(typ, &mut |t| {
         if let TypX::Datatype(path, _) = &**t {
-            let PathX { krate, segments: _ } = &**path;
-            match krate {
-                None => Ok(()),
-                Some(krate_name) if ctxt.crate_names.contains(&krate_name) => Ok(()),
-                Some(_) => error(
-                    span,
-                    &format!(
-                        "type `{:}` is not supported (note: currently Verus does not support definitions external to the crate, including most features in std)",
-                        path_as_rust_name(path)
-                    ),
-                ),
-            }
+            check_path_and_get_datatype(ctxt, path, span)?;
+            Ok(())
         } else if let TypX::Projection { .. } = &**t {
             if crate::recursive_types::rooted_in_typ_param(t) {
                 // Types rooted in type parameters are handled with type Poly.
@@ -51,6 +40,64 @@ fn check_typ(ctxt: &Ctxt, typ: &Arc<TypX>, span: &air::ast::Span) -> Result<(), 
             Ok(())
         }
     })
+}
+
+#[warn(unused_must_use)]
+fn check_path_and_get_datatype<'a>(
+    ctxt: &'a Ctxt,
+    path: &Path,
+    span: &air::ast::Span,
+) -> Result<&'a Datatype, VirErr> {
+    fn is_proxy<'a>(ctxt: &'a Ctxt, path: &Path) -> Option<&'a Path> {
+        for dt in &ctxt.krate.datatypes {
+            match &dt.x.proxy {
+                Some(proxy) => {
+                    if &proxy.x == path {
+                        return Some(&dt.x.path);
+                    }
+                }
+                None => {}
+            }
+        }
+        return None;
+    }
+
+    fn is_external(ctxt: &Ctxt, path: &Path) -> bool {
+        ctxt.krate.external_types.contains(path)
+    }
+
+    match ctxt.dts.get(path) {
+        Some(dt) => Ok(dt),
+        None => {
+            if let Some(actual_path) = is_proxy(ctxt, path) {
+                return error(
+                    span,
+                    &format!(
+                        "cannot use type marked `external_type_specification` directly; use `{:}` instead",
+                        path_as_rust_name(actual_path),
+                    ),
+                );
+            } else if is_external(ctxt, path) {
+                return error(
+                    span,
+                    "cannot use type marked `external`; try marking it `external_body` instead?",
+                );
+            } else {
+                let rpath = path_as_rust_name(path);
+                return error(
+                    span,
+                    &format!(
+                        "`{rpath:}` is not supported (note: you may be able to add a Verus specification to this function with the `external_type_specification` attribute){:}",
+                        if path.is_rust_std_path() {
+                            " (note: the vstd library provides some specification for the Rust std library, but it is currently limited)"
+                        } else {
+                            ""
+                        },
+                    ),
+                );
+            }
+        }
+    }
 }
 
 fn check_path_and_get_function<'a>(
@@ -180,46 +227,32 @@ fn check_one_expr(
             }
         }
         ExprX::Ctor(path, _variant, _fields, _update) => {
-            if let Some(dt) = ctxt.dts.get(path) {
-                if let Some(module) = &function.x.visibility.owning_module {
-                    if !is_datatype_transparent(&module, dt) {
-                        return Err(msg_error(
-                            "constructor of datatype with inaccessible fields",
-                            &expr.span,
-                        ).secondary_label(
-                            &dt.span,
-                            "a datatype is treated as opaque whenever at least one field is not visible"
-                        ));
-                    }
+            let dt = check_path_and_get_datatype(ctxt, path, &expr.span)?;
+            if let Some(module) = &function.x.owning_module {
+                if !is_datatype_transparent(&module, dt) {
+                    return Err(msg_error(
+                        "constructor of datatype with inaccessible fields",
+                        &expr.span,
+                    ).secondary_label(
+                        &dt.span,
+                        "a datatype is treated as opaque whenever at least one field is not visible"
+                    ));
                 }
-                use crate::ast::{DatatypeTransparency, Visibility};
-                let field_vis = match dt.x.transparency {
-                    DatatypeTransparency::Never => None,
-                    DatatypeTransparency::WithinModule => {
-                        let own = &dt.x.visibility.owning_module;
-                        Some(Visibility { restricted_to: own.clone(), owning_module: own.clone() })
-                    }
-                    DatatypeTransparency::Always => Some(dt.x.visibility.clone()),
-                };
-                match (disallow_private_access, field_vis) {
-                    (None, _) => {}
-                    (Some((source_module, _)), Some(field_vis))
-                        if is_visible_to_opt(&field_vis, source_module) => {}
-                    (Some((_, reason)), _) => {
-                        let msg = format!(
-                            "in {reason:}, cannot use constructor of private datatype or datatype whose fields are private"
-                        );
-                        return error(&expr.span, msg);
-                    }
+            }
+            let field_vis = match &dt.x.transparency {
+                DatatypeTransparency::Never => None,
+                DatatypeTransparency::WhenVisible(vis) => Some(vis.clone()),
+            };
+            match (disallow_private_access, field_vis) {
+                (None, _) => {}
+                (Some((source_module, _)), Some(field_vis))
+                    if is_visible_to_opt(&field_vis, source_module) => {}
+                (Some((_, reason)), _) => {
+                    let msg = format!(
+                        "in {reason:}, cannot use constructor of private datatype or datatype whose fields are private"
+                    );
+                    return error(&expr.span, msg);
                 }
-            } else {
-                return error(
-                    &expr.span,
-                    &format!(
-                        "`{:}` is not supported (note: currently Verus does not support definitions external to the crate, including most features in std)",
-                        path_as_rust_name(path)
-                    ),
-                );
             }
         }
         ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e) => {
@@ -235,7 +268,7 @@ fn check_one_expr(
             _,
         ) => {
             if let Some(dt) = ctxt.dts.get(path) {
-                if let Some(module) = &function.x.visibility.owning_module {
+                if let Some(module) = &function.x.owning_module {
                     if !is_datatype_transparent(&module, dt) {
                         return Err(msg_error(
                             "field access of datatype with inaccessible fields",
@@ -306,7 +339,12 @@ fn check_one_expr(
                 VisitorControlFlow::Stop(e) => Err(e),
             }?;
         }
-        ExprX::ExecClosure { .. } => {
+        ExprX::ExecClosure { params, ret, .. } => {
+            for p in params.iter() {
+                check_typ(ctxt, &p.a, &expr.span)?;
+            }
+            check_typ(ctxt, &ret.a, &expr.span)?;
+
             crate::closures::check_closure_well_formed(expr)?;
         }
         ExprX::Fuel(f, fuel) => {
@@ -437,13 +475,16 @@ fn check_function(
             return error(&p.span, "parameter name cannot be the same as the return value name");
         }
     }
+    check_typ(ctxt, &function.x.ret.x.typ, &function.x.ret.span)?;
 
     if function.x.attrs.inline {
         if function.x.mode != Mode::Spec {
             return error(&function.span, "'inline' is only allowed for 'spec' functions");
         }
         // make sure we don't leak private bodies by inlining
-        if !function.x.visibility.is_private() && function.x.publish != Some(true) {
+        if !function.x.visibility.is_private_to(&function.x.owning_module)
+            && function.x.publish != Some(true)
+        {
             return error(
                 &function.span,
                 "'inline' is only allowed for private or 'open spec' functions",
@@ -669,7 +710,9 @@ fn check_function(
         return error(&function.span, "`main` function should be #[verifier::exec]");
     }
 
-    if function.x.publish.is_some() && function.x.visibility.is_private() {
+    if function.x.publish.is_some()
+        && function.x.visibility.is_private_to(&function.x.owning_module)
+    {
         return error(
             &function.span,
             "function is marked #[verifier(publish)] but not marked `pub`; for the body of a function to be visible, the function symbol must also be visible",
@@ -832,12 +875,24 @@ fn func_conflict_error(function1: &Function, function2: &Function) -> Message {
     err
 }
 
-pub fn check_crate(
-    krate: &Krate,
-    mut crate_names: Vec<String>,
-    diags: &mut Vec<VirErrAs>,
-) -> Result<(), VirErr> {
-    crate_names.push("builtin".to_string());
+/// Similar to above, for datatypes
+fn datatype_conflict_error(dt1: &Datatype, dt2: &Datatype) -> Message {
+    let add_label = |err: Message, dt: &Datatype| match &dt.x.proxy {
+        Some(proxy) => err
+            .primary_label(&proxy.span, "specification declared via `external_type_specification`"),
+        None => err.primary_label(&dt.span, "declared here (and not marked as `external`)"),
+    };
+
+    let err = air::messages::error_bare(format!(
+        "duplicate specification for `{:}`",
+        crate::ast_util::path_as_rust_name(&dt1.x.path)
+    ));
+    let err = add_label(err, dt1);
+    let err = add_label(err, dt2);
+    err
+}
+
+pub fn check_crate(krate: &Krate, diags: &mut Vec<VirErrAs>) -> Result<(), VirErr> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     for function in krate.functions.iter() {
         match funs.get(&function.x.name) {
@@ -848,11 +903,16 @@ pub fn check_crate(
         }
         funs.insert(function.x.name.clone(), function.clone());
     }
-    let dts = krate
-        .datatypes
-        .iter()
-        .map(|datatype| (datatype.x.path.clone(), datatype.clone()))
-        .collect();
+    let mut dts: HashMap<Path, Datatype> = HashMap::new();
+    for datatype in krate.datatypes.iter() {
+        match dts.get(&datatype.x.path) {
+            Some(other_datatype) => {
+                return Err(datatype_conflict_error(datatype, other_datatype));
+            }
+            None => {}
+        }
+        dts.insert(datatype.x.path.clone(), datatype.clone());
+    }
 
     // Check connections between decreases_by specs and proofs
     let mut decreases_by_proof_to_spec: HashMap<Fun, Fun> = HashMap::new();
@@ -944,7 +1004,7 @@ pub fn check_crate(
         }
     }
 
-    let ctxt = Ctxt { crate_names, funs, dts, krate: krate.clone() };
+    let ctxt = Ctxt { funs, dts, krate: krate.clone() };
     for function in krate.functions.iter() {
         check_function(&ctxt, function, diags)?;
     }

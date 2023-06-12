@@ -44,10 +44,8 @@ pub struct FunX {
 }
 
 /// Describes what access other modules have to a function, datatype, etc.
-#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq)]
 pub struct Visibility {
-    /// Module that owns this item, or None for a foreign module
-    pub owning_module: Option<Path>,
     /// None for pub
     /// Some(path) means visible to path and path's descendents
     pub restricted_to: Option<Path>,
@@ -778,6 +776,8 @@ pub struct FunctionX {
     pub kind: FunctionKind,
     /// Access control (public/private)
     pub visibility: Visibility,
+    /// Owning module
+    pub owning_module: Option<Path>,
     /// exec functions are compiled, proof/spec are erased
     /// exec/proof functions can have requires/ensures, spec cannot
     /// spec functions can be used in requires/ensures, proof/exec cannot
@@ -840,14 +840,15 @@ pub type Variants = Binders<Fields>;
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum DatatypeTransparency {
     Never,
-    WithinModule,
-    Always,
+    WhenVisible(Visibility),
 }
 
 /// struct or enum
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct DatatypeX {
     pub path: Path,
+    pub proxy: Option<Spanned<Path>>,
+    pub owning_module: Option<Path>,
     pub visibility: Visibility,
     pub transparency: DatatypeTransparency,
     pub typ_params: TypPositiveBounds,
@@ -896,4 +897,6 @@ pub struct KrateX {
     pub module_ids: Vec<Path>,
     /// List of all 'external' functions in the crate (only useful for diagnostics)
     pub external_fns: Vec<Fun>,
+    /// List of all 'external' types in the crate (only useful for diagnostics)
+    pub external_types: Vec<Path>,
 }

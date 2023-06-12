@@ -16,7 +16,7 @@ mod parse_transition;
 mod safety_conditions;
 mod self_type_visitor;
 mod simplification;
-mod simplify_assigns;
+mod simplify_asserts;
 mod to_relation;
 mod to_token_stream;
 mod token_transition_checks;

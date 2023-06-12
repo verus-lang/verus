@@ -32,6 +32,7 @@ pub fn check_krate_simplified(krate: &Krate) {
         assoc_type_impls: _,
         module_ids: _,
         external_fns: _,
+        external_types: _,
     } = &**krate;
 
     for function in functions {
@@ -109,6 +110,7 @@ pub fn check_krate(krate: &Krate) {
         assoc_type_impls: _,
         module_ids: _,
         external_fns: _,
+        external_types: _,
     } = &**krate;
 
     for function in functions {

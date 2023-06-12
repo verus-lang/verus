@@ -758,7 +758,7 @@ impl Verifier {
             Some(vir::context::FunctionCtx {
                 checking_recommends,
                 checking_recommends_for_non_spec: checking_recommends && f.x.mode != Mode::Spec,
-                module_for_chosen_triggers: f.x.visibility.owning_module.clone(),
+                module_for_chosen_triggers: f.x.owning_module.clone(),
                 current_fun: f.x.name.clone(),
             })
         };
@@ -790,7 +790,7 @@ impl Verifier {
             }
             let restricted_to = if function.x.publish.is_none() {
                 // private to owning_module
-                vis.owning_module.clone()
+                function.x.owning_module.clone()
             } else {
                 // public
                 None
@@ -803,7 +803,7 @@ impl Verifier {
             let module_funs = funs
                 .iter()
                 .map(|(_, (f, _))| f)
-                .filter(|f| Some(module.clone()) == f.x.visibility.owning_module);
+                .filter(|f| Some(module.clone()) == f.x.owning_module);
             let mut module_fun_names: Vec<String> =
                 module_funs.map(|f| fun_name_crate_relative(&module, &f.x.name)).collect();
             if !module_fun_names.iter().any(|f| f == verify_function) {
@@ -860,8 +860,7 @@ impl Verifier {
                 let (function, vis_abs) = &funs[f];
 
                 ctx.fun = mk_fun_ctx(&function, false);
-                let not_verifying_owning_module =
-                    Some(module) != function.x.visibility.owning_module.as_ref();
+                let not_verifying_owning_module = Some(module) != function.x.owning_module.as_ref();
                 let (decl_commands, check_commands, new_fun_ssts) =
                     vir::func_to_air::func_axioms_to_air(
                         ctx,
@@ -956,7 +955,7 @@ impl Verifier {
         let expand_errors_check = self.args.expand_errors;
         self.expand_targets = vec![];
         for function in &krate.functions {
-            if Some(module.clone()) != function.x.visibility.owning_module {
+            if Some(module.clone()) != function.x.owning_module {
                 continue;
             }
             let check_validity = &mut |recommends_rerun: bool,
@@ -1426,8 +1425,7 @@ impl Verifier {
         let mut check_crate_diags = vec![];
 
         let vir_crate = vir::traits::demote_foreign_traits(&vir_crate)?;
-        let check_crate_result =
-            vir::well_formed::check_crate(&vir_crate, crate_names.clone(), &mut check_crate_diags);
+        let check_crate_result = vir::well_formed::check_crate(&vir_crate, &mut check_crate_diags);
         for diag in check_crate_diags {
             match diag {
                 vir::ast::VirErrAs::Warning(err) => {
@@ -1557,7 +1555,6 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     crate::lifetime::check_tracked_lifetimes(
                         tcx,
                         &spans,
-                        self.verifier.crate_names.clone().expect("crate_names"),
                         self.verifier.erasure_hints.as_ref().expect("erasure_hints"),
                         lifetime_log_file,
                     )

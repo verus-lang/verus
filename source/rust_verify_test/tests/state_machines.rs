@@ -190,7 +190,7 @@ test_verify_one_file! {
                 #[sharding(storage_option)] pub so: Option<int>
             }
 
-            property!{
+            transition!{
                 tr() {
                     if 0 == 0 {
                         withdraw so -= Some(let x);
@@ -6732,4 +6732,239 @@ test_verify_one_file! {
         }
 
     } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file! {
+    #[test] assert_in_if IMPORTS.to_string() + verus_code_str! {
+        state_machine!{ X {
+
+            fields {
+                pub m: Map<int, int>,
+
+                pub a: int,
+                pub b: int,
+            }
+
+            transition!{
+                tr(x: bool, y: bool, z: bool) {
+                    if x {
+                        assert y;   // FAILS
+                    }
+
+                    require x;
+                }
+            }
+        }}
+
+        proof fn test(s: X::State, s1: X::State, x: bool, y: bool, z: bool)
+            ensures X::State::tr(s, s1, x, y, z) <==> (
+                (x ==> y) ==> (x && s1 == s)
+            )
+        { }
+
+        proof fn test2(s: X::State, s1: X::State, x: bool, y: bool, z: bool)
+            ensures X::State::tr_strong(s, s1, x, y, z) <==> (
+                (x ==> y) && x && s1 == s
+            )
+        { }
+    } => Err(e) => assert_fails(e, 1)
+}
+
+test_verify_one_file! {
+    #[test] double_scoped_updates_if IMPORTS.to_string() + verus_code_str! {
+      state_machine!{ X {
+
+            fields {
+                pub m: Map<int, int>,
+
+                pub a: int,
+                pub b: int,
+            }
+
+            transition!{
+                tr(x: bool, y: bool, z: bool, w: bool, v: bool) {
+                    if x {
+                        require w;
+                        update m[0] = 10;
+                    } else {
+                        assert y by { assume(false); };
+                        update a = 99;
+                    }
+
+                    assert z by { assume(false); };
+
+                    if v {
+                        update b = 11;
+                    } else {
+                        update m[1] = 11;
+                    }
+                }
+            }
+        }}
+
+        spec fn tr_weak(pre: X::State, post: X::State, x: bool, y: bool, z: bool, w: bool, v: bool) -> bool {
+            (x ==> w)
+              && ((!x ==> y) ==> (
+                  // TODO this should probably be under the `z ==>`
+                  (x ==> post.a == pre.a) && (!x ==> post.a == 99)
+
+                  && (z ==> (
+                        (v ==> post.b == 11) && (!v ==> post.b == pre.b)
+                        && (if x {
+                            if v {
+                                post.m =~= pre.m.insert(0, 10)
+                            } else {
+                                post.m =~= pre.m.insert(0, 10).insert(1, 11)
+                            }
+                        } else {
+                            if v {
+                                post.m =~= pre.m
+                            } else {
+                                post.m =~= pre.m.insert(1, 11)
+                            }
+                        })
+                  ))
+              ))
+        }
+
+        proof fn test(pre: X::State, post: X::State, x: bool, y: bool, z: bool, w: bool, v: bool)
+            ensures X::State::tr(pre, post, x, y, z, w, v) <==> tr_weak(pre, post, x, y, z, w, v)
+        { }
+
+        spec fn tr_strong(pre: X::State, post: X::State, x: bool, y: bool, z: bool, w: bool, v: bool) -> bool {
+            (x ==> w) && (!x ==> y)
+                && z
+
+                && (x ==> post.a == pre.a) && (!x ==> post.a == 99)
+                && (v ==> post.b == 11) && (!v ==> post.b == pre.b)
+                && (if x {
+                    if v {
+                        post.m =~= pre.m.insert(0, 10)
+                    } else {
+                        post.m =~= pre.m.insert(0, 10).insert(1, 11)
+                    }
+                } else {
+                    if v {
+                        post.m =~= pre.m
+                    } else {
+                        post.m =~= pre.m.insert(1, 11)
+                    }
+                })
+        }
+
+        proof fn test2(pre: X::State, post: X::State, x: bool, y: bool, z: bool, w: bool, v: bool)
+            ensures X::State::tr_strong(pre, post, x, y, z, w, v) <==> tr_strong(pre, post, x, y, z, w, v)
+        {
+            if X::State::tr_strong(pre, post, x, y, z, w, v) {
+                assert(tr_strong(pre, post, x, y, z, w, v));
+            }
+
+            if tr_strong(pre, post, x, y, z, w, v) {
+                assert(X::State::tr_strong(pre, post, x, y, z, w, v));
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] double_scoped_updates_match IMPORTS.to_string() + verus_code_str! {
+
+        state_machine!{ X {
+
+            fields {
+                pub m: Map<int, int>,
+
+                pub a: int,
+                pub b: int,
+            }
+
+            transition!{
+                tr(x: Option<int>, y: bool, z: bool, w: bool, v: Option<int>) {
+                    match x {
+                        Option::Some(x1) => {
+                            require w;
+                            update m[0] = x1;
+                        }
+                        Option::None => {
+                            assert y by { assume(false); };
+                            update a = 99;
+                        }
+                    }
+
+                    assert z by { assume(false); };
+
+                    match v {
+                        Option::Some(v1) => {
+                            update b = v1;
+                        }
+                        Option::None => {
+                            update m[1] = 11;
+                        }
+                    }
+                }
+            }
+        }}
+
+        spec fn tr_weak(pre: X::State, post: X::State, x: Option<int>, y: bool, z: bool, w: bool, v: Option<int>) -> bool {
+            (x.is_Some() ==> w)
+              && ((!x.is_Some() ==> y) ==> (
+                  // TODO this should probably be under the `z ==>`
+                  (x.is_Some() ==> post.a == pre.a) && (!x.is_Some() ==> post.a == 99)
+
+                  && (z ==> (
+                        (v.is_Some() ==> post.b == v.get_Some_0()) && (!v.is_Some() ==> post.b == pre.b)
+                        && (if x.is_Some() {
+                            if v.is_Some() {
+                                post.m =~= pre.m.insert(0, x.get_Some_0())
+                            } else {
+                                post.m =~= pre.m.insert(0, x.get_Some_0()).insert(1, 11)
+                            }
+                        } else {
+                            if v.is_Some() {
+                                post.m =~= pre.m
+                            } else {
+                                post.m =~= pre.m.insert(1, 11)
+                            }
+                        })
+                  ))
+              ))
+        }
+
+        proof fn test(pre: X::State, post: X::State, x: Option<int>, y: bool, z: bool, w: bool, v: Option<int>)
+            ensures X::State::tr(pre, post, x, y, z, w, v) <==> tr_weak(pre, post, x, y, z, w, v)
+        { }
+
+        spec fn tr_strong(pre: X::State, post: X::State, x: Option<int>, y: bool, z: bool, w: bool, v: Option<int>) -> bool {
+            (x.is_Some() ==> w) && (!x.is_Some() ==> y)
+                && z
+
+                && (x.is_Some() ==> post.a == pre.a) && (!x.is_Some() ==> post.a == 99)
+                && (v.is_Some() ==> post.b == v.get_Some_0()) && (!v.is_Some() ==> post.b == pre.b)
+                && (if x.is_Some() {
+                    if v.is_Some() {
+                        post.m =~= pre.m.insert(0, x.get_Some_0())
+                    } else {
+                        post.m =~= pre.m.insert(0, x.get_Some_0()).insert(1, 11)
+                    }
+                } else {
+                    if v.is_Some() {
+                        post.m =~= pre.m
+                    } else {
+                        post.m =~= pre.m.insert(1, 11)
+                    }
+                })
+        }
+
+        proof fn test2(pre: X::State, post: X::State, x: Option<int>, y: bool, z: bool, w: bool, v: Option<int>)
+            ensures X::State::tr_strong(pre, post, x, y, z, w, v) <==> tr_strong(pre, post, x, y, z, w, v)
+        {
+            if X::State::tr_strong(pre, post, x, y, z, w, v) {
+                assert(tr_strong(pre, post, x, y, z, w, v));
+            }
+
+            if tr_strong(pre, post, x, y, z, w, v) {
+                assert(X::State::tr_strong(pre, post, x, y, z, w, v));
+            }
+        }
+    } => Ok(())
 }

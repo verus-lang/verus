@@ -41,7 +41,7 @@ pub fn safety_condition_body_simpl_vec(sops: &Vec<SimplStmt>) -> Option<Expr> {
 
 pub fn safety_condition_body_simpl(sop: &SimplStmt, let_skip_brace: bool) -> Option<Expr> {
     match sop {
-        SimplStmt::Let(span, pat, None, v, child) => {
+        SimplStmt::Let(span, pat, None, v, child, _) => {
             let t = safety_condition_body_simpl_vec(child);
             if let_skip_brace {
                 Some(Expr::Verbatim(quote_spanned! {*span =>
@@ -53,7 +53,7 @@ pub fn safety_condition_body_simpl(sop: &SimplStmt, let_skip_brace: bool) -> Opt
                 }))
             }
         }
-        SimplStmt::Let(span, pat, Some(ty), v, child) => {
+        SimplStmt::Let(span, pat, Some(ty), v, child, _) => {
             let t = safety_condition_body_simpl_vec(child);
             if let_skip_brace {
                 Some(Expr::Verbatim(quote_spanned! {*span =>
@@ -65,7 +65,7 @@ pub fn safety_condition_body_simpl(sop: &SimplStmt, let_skip_brace: bool) -> Opt
                 }))
             }
         }
-        SimplStmt::Split(span, SplitKind::If(cond), es) => {
+        SimplStmt::Split(span, SplitKind::If(cond), es, _) => {
             assert!(es.len() == 2);
             let t1 = safety_condition_body_simpl_vec(&es[0].1);
             let t2 = safety_condition_body_simpl_vec(&es[1].1);
@@ -91,7 +91,7 @@ pub fn safety_condition_body_simpl(sop: &SimplStmt, let_skip_brace: bool) -> Opt
                 })),
             }
         }
-        SimplStmt::Split(span, SplitKind::Match(match_e, arms), es) => {
+        SimplStmt::Split(span, SplitKind::Match(match_e, arms), es, _) => {
             let cases: Vec<Option<Expr>> =
                 es.iter().map(|e| safety_condition_body_simpl_vec(&e.1)).collect();
             if cases.iter().any(|c| c.is_some()) {
@@ -124,9 +124,16 @@ pub fn safety_condition_body_simpl(sop: &SimplStmt, let_skip_brace: bool) -> Opt
                 };
             }))
         }
-        SimplStmt::Assign(..) => {
-            // note: this would actually be pretty easy to emit in this context, though
-            panic!("Assign should have been removed at earlier processing stage");
+        SimplStmt::Assign(span, iden, ty, e, _prelude) => {
+            // TODO need to handle scoped assigns
+            // (not a problem right now because assigns are only used for
+            //  - outputs
+            //  - special ops
+            // But we don't care about outputs, and special ops can't be scoped right now
+
+            Some(Expr::Verbatim(quote_spanned! {*span =>
+                let #iden: #ty = #e;
+            }))
         }
     }
 }
@@ -144,8 +151,8 @@ pub fn has_any_assert_simpl_vec(sops: &Vec<SimplStmt>) -> bool {
 
 pub fn has_any_assert_simpl(sop: &SimplStmt) -> bool {
     match sop {
-        SimplStmt::Let(_, _, _, _, child) => has_any_assert_simpl_vec(child),
-        SimplStmt::Split(_span, _cond, es) => {
+        SimplStmt::Let(_, _, _, _, child, _) => has_any_assert_simpl_vec(child),
+        SimplStmt::Split(_span, _cond, es, _) => {
             for e in es {
                 if has_any_assert_simpl_vec(&e.1) {
                     return true;

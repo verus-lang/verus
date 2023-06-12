@@ -31,8 +31,7 @@ use syn_verus::{Expr, Ident, Pat, Type};
 //  2. Add PostCondition statements that relate the final values of the tmp variables
 //     to the post.{field} values.
 //
-//  3. A transformation pass to remove 'assign' statements, turning them into 'let' statements.
-//     This makes it easier to turn the statement into a pure expression.
+//  3. A transformation pass to handle 'assert' statements (simplify_asserts.rs)
 //
 // So for example if we have fields {a, b, c} and a transition declared as
 //
@@ -94,8 +93,7 @@ pub fn simplify_ops(sm: &SM, ts: &TransitionStmt, kind: TransitionKind) -> Vec<S
     // Phase 2: Add PostCondition statements
     let sops = add_postconditions(sm, sops);
 
-    // Phase 3: Simplify out all 'assign' statements
-    crate::simplify_assigns::simplify_assigns(&sm, &sops)
+    sops
 }
 
 // Phase 2. Adding the PostCondition operations.
@@ -161,10 +159,10 @@ fn add_postconditions_vec(sops: &mut Vec<SimplStmt>, found: &mut Vec<Ident>) {
         // Recurse.
 
         match sop {
-            SimplStmt::Let(_, _, _, _, v) => {
+            SimplStmt::Let(_, _, _, _, v, _) => {
                 add_postconditions_vec(v, found);
             }
-            SimplStmt::Split(_span, _, es) => {
+            SimplStmt::Split(_span, _, es, _) => {
                 let idx = found.len();
                 let mut found_inner = vec![found.clone(); es.len()];
 
@@ -321,13 +319,13 @@ fn simplify_ops_rec(ts: &TransitionStmt, sm: &SM) -> Vec<SimplStmt> {
                     new_es.push((*e.get_span(), new_e1));
                 }
 
-                vec![SimplStmt::Split(*span, split_kind.clone(), new_es)]
+                vec![SimplStmt::Split(*span, split_kind.clone(), new_es, vec![])]
             }
             SplitKind::Let(pat, ty, _lk, e) => {
                 assert!(es.len() == 1);
                 let child = es.into_iter().next().expect("child");
                 let new_child = simplify_ops_rec(child, sm);
-                vec![SimplStmt::Let(*span, pat.clone(), ty.clone(), e.clone(), new_child)]
+                vec![SimplStmt::Let(*span, pat.clone(), ty.clone(), e.clone(), new_child, vec![])]
             }
             SplitKind::Special(f, op, proof, pat_opt) => {
                 let field = get_field(&sm.fields, f);
@@ -357,7 +355,14 @@ fn simplify_ops_rec(ts: &TransitionStmt, sm: &SM) -> Vec<SimplStmt> {
 
                         let mut res = cond_ops;
                         if let Some((pat1, init1)) = opt {
-                            res.push(SimplStmt::Let(*span, pat1, None, init1, all_children));
+                            res.push(SimplStmt::Let(
+                                *span,
+                                pat1,
+                                None,
+                                init1,
+                                all_children,
+                                vec![],
+                            ));
                         } else {
                             res.append(&mut all_children);
                         }
