@@ -72,9 +72,12 @@ impl<T, A: Allocator> VecAdditionalExecFns<T> for Vec<T, A> {
 // TODO this should really be a 'external_fn_specification' function
 // but it's difficult to handle vec.index right now because
 // it uses more trait polymorphism than we can handle right now.
-// And `index` is too important that I don't want do
+//
 // So this is a bit of a hack, but I'm just manually redirecting
-// `vec.index` to this function here from rust_to_vir_expr.
+// `vec[i]` to this function here from rust_to_vir_expr.
+//
+// It's not ideal, but I think it's better than the alternative, which would
+// be to have users call some function with a nonstandard name to perform indexing.
 
 #[verifier::external_body]
 pub fn vec_index<T, A: Allocator>(vec: &Vec<T, A>, i: usize) -> (element: &T)

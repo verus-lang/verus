@@ -1,12 +1,11 @@
 #![feature(rustc_attrs)]
+#![allow(unused_imports)]
 
 extern crate alloc;
 use alloc::string;
 
 use crate::view::*;
-#[allow(unused_imports)]
 use super::seq::Seq;
-#[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::verus;
 use crate::prelude::*;
