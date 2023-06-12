@@ -139,7 +139,6 @@ const Z3_FILE_NAME: &str = if cfg!(target_os = "windows") {
     "./z3"
 };
 
-
 fn run() -> Result<(), String> {
     util::store_commit_info();
 

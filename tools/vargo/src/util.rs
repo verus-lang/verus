@@ -69,15 +69,20 @@ pub fn mtime_recursive(path: &Path) -> Result<FileTime, String> {
 
 pub fn store_commit_info() {
     // assumes the verus executable gets the .git file for verus repo
-    let mut exe_dir = std::env::current_exe().expect("invalid directory");
+    let mut exe_dir = std::env::current_exe().unwrap();
     exe_dir.pop();
 
-    let sha = std::process::Command::new("git")
+    let sha = match std::process::Command::new("git")
         .current_dir(&exe_dir)
         .args(&["rev-parse", "--short", "HEAD"])
         .stdout(std::process::Stdio::piped())
         .spawn()
-        .expect("failed to execute git rev-parse HEAD");
+    {
+        Ok(sha) => sha,
+        Err(_) => {
+            return;
+        }
+    };
 
     let mut sha_msg = sha
         .wait_with_output()
@@ -85,12 +90,17 @@ pub fn store_commit_info() {
         .stdout;
     sha_msg.pop();
 
-    let date_info = std::process::Command::new("git")
+    let date_info = match std::process::Command::new("git")
         .current_dir(&exe_dir)
         .args(&["show", "-s", "--format=%ci", "HEAD"])
         .stdout(std::process::Stdio::piped())
         .spawn()
-        .expect("failed to execute git show -s --format=%ci HEAD");
+    {
+        Ok(date_info) => date_info,
+        Err(_) => {
+            return;
+        }
+    };
 
     let date_msg = date_info
         .wait_with_output()
@@ -101,12 +111,17 @@ pub fn store_commit_info() {
     let month = String::from_utf8(date_msg[5..7].to_vec()).unwrap();
     let day = String::from_utf8(date_msg[8..10].to_vec()).unwrap();
 
-    let child = std::process::Command::new("git")
+    let child = match std::process::Command::new("git")
         .current_dir(&exe_dir)
         .args(&["diff", "--exit-code", "HEAD"])
         .stdout(std::process::Stdio::null())
         .spawn()
-        .expect("failed to execute git diff --exit-code HEAD");
+    {
+        Ok(child) => child,
+        Err(_) => {
+            return;
+        }
+    };
 
     let status = child
         .wait_with_output()
@@ -114,10 +129,22 @@ pub fn store_commit_info() {
         .status;
 
     if status.success() {
-        let msg = format!("0.{}.{}.{}-{}", year, month, day, String::from_utf8(sha_msg).unwrap());
+        let msg = format!(
+            "0.{}.{}.{}-{}",
+            year,
+            month,
+            day,
+            String::from_utf8(sha_msg).unwrap()
+        );
         std::env::set_var("VERUS_BUILD_VERSION", msg);
     } else {
-        let msg = format!("0.{}.{}.{}-{} (dirty)", year, month, day, String::from_utf8(sha_msg).unwrap());
+        let msg = format!(
+            "0.{}.{}.{}-{} (dirty)",
+            year,
+            month,
+            day,
+            String::from_utf8(sha_msg).unwrap()
+        );
         std::env::set_var("VERUS_BUILD_VERSION", msg);
     }
 }

@@ -31,7 +31,7 @@ pub fn main() {
                 println!("Verus");
                 println!("  Platform: {}_{}", std::env::consts::OS, std::env::consts::ARCH);
 
-                let date = option_env!("VERUS_BUILD_VERSION").unwrap_or_default();
+                let date = option_env!("VERUS_BUILD_VERSION").unwrap_or("Unknown");
                 println!("  Version: {}", date);
 
                 return;
