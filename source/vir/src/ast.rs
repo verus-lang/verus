@@ -840,6 +840,12 @@ pub enum DatatypeTransparency {
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct DatatypeX {
     pub path: Path,
+    /// Similar to FunctionX proxy field.
+    /// If this datatype is declared via a proxy (a type labeled external_type_specification)
+    /// then this points to the proxy.
+    /// e.g., we might have,
+    ///   path = core::option::Option
+    ///   proxy = vstd::std_specs::core::ExOption
     pub proxy: Option<Spanned<Path>>,
     pub owning_module: Option<Path>,
     pub visibility: Visibility,
