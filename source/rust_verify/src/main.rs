@@ -1,6 +1,7 @@
 #![feature(rustc_private)]
 
 use rust_verify::util::{verus_build_profile, VerusBuildProfile, print_commit_info};
+use std::process::Command;
 
 extern crate rustc_driver; // TODO(main_new) can we remove this?
 
@@ -105,6 +106,27 @@ pub fn main() {
     let program = if build_test_mode { internal_program } else { args.next().unwrap() };
     let (our_args, rustc_args) = rust_verify::config::parse_args(&program, args);
     let pervasive_path = our_args.pervasive_path.clone();
+
+    if our_args.error_report {
+        // it is printing some wierd things
+        
+        let mut args = std::env::args();
+        args.next();
+        
+        // let hi = "main.rs";
+        let hi = args.filter(|x| x != "--error-report");
+        // println!("hi: {:?}", args.filter(|x| x != "--error-report"));
+
+        // why i need a child process here
+        let mut res = Command::new("error_report")
+            .args( hi )
+            .spawn()
+            .expect("error_report failed to start");
+
+        res.wait().expect("error_report failed to run");
+
+        return;
+    }
 
     std::env::set_var("RUSTC_BOOTSTRAP", "1");
 

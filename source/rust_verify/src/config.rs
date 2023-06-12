@@ -69,6 +69,7 @@ pub struct Args {
     pub no_vstd: bool,
     pub compile: bool,
     pub solver_version_check: bool,
+    pub error_report: bool,
 }
 
 pub fn enable_default_features_and_verus_attr(
@@ -152,6 +153,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_COMPILE: &str = "compile";
     const OPT_NO_SOLVER_VERSION_CHECK: &str = "no-solver-version-check";
     const OPT_VERSION: &str = "version";
+    const OPT_ERROR_REPORT: &str = "error-report";
 
     let mut opts = Options::new();
     opts.optflag("", OPT_VERSION, "print version information");
@@ -236,6 +238,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     opts.optflag("", OPT_COMPILE, "Run Rustc compiler after verification");
     opts.optflag("", OPT_NO_SOLVER_VERSION_CHECK, "Skip the check that the solver has the expected version (useful to experiment with different versions of z3)");
     opts.optflag("h", "help", "print this help menu");
+    opts.optflag("", OPT_ERROR_REPORT, "create zip file to reproduce verus error (with version info)");
 
     let print_usage = || {
         let brief = format!("Usage: {} INPUT [options]", program);
@@ -362,6 +365,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         compile: matches.opt_present(OPT_COMPILE),
         no_vstd: matches.opt_present(OPT_NO_VSTD),
         solver_version_check: !matches.opt_present(OPT_NO_SOLVER_VERSION_CHECK),
+        error_report: matches.opt_present(OPT_ERROR_REPORT),
     };
 
     (args, unmatched)
