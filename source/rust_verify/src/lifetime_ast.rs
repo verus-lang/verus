@@ -144,14 +144,6 @@ pub(crate) struct DatatypeDecl {
 }
 
 #[derive(Debug)]
-pub(crate) struct ConstDecl {
-    pub(crate) span: Span,
-    pub(crate) name: Id,
-    pub(crate) typ: Typ,
-    pub(crate) body: Exp,
-}
-
-#[derive(Debug)]
 pub(crate) struct FunDecl {
     pub(crate) sig_span: Span,
     pub(crate) name_span: Span,

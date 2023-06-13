@@ -203,9 +203,6 @@ fn emit_check_tracked_lifetimes<'tcx>(
     for d in gen_state.datatype_decls.iter() {
         emit_datatype_decl(emit_state, d);
     }
-    for f in gen_state.const_decls.iter() {
-        emit_const_decl(emit_state, f);
-    }
     for f in gen_state.fun_decls.iter() {
         emit_fun_decl(emit_state, f);
     }

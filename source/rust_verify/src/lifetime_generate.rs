@@ -81,7 +81,6 @@ pub(crate) struct State {
     datatype_to_name: HashMap<Path, Id>,
     variant_to_name: HashMap<String, Id>,
     pub(crate) datatype_decls: Vec<DatatypeDecl>,
-    pub(crate) const_decls: Vec<ConstDecl>,
     pub(crate) fun_decls: Vec<FunDecl>,
     enclosing_fun_id: Option<DefId>,
 }
@@ -100,7 +99,6 @@ impl State {
             datatype_to_name: HashMap::new(),
             variant_to_name: HashMap::new(),
             datatype_decls: Vec::new(),
-            const_decls: Vec::new(),
             fun_decls: Vec::new(),
             enclosing_fun_id: None,
         }
@@ -872,9 +870,14 @@ fn erase_expr<'tcx>(
                     }
                 }
                 Res::Def(DefKind::Const, id) => {
-                    let vir_path = def_id_to_vir_path(ctxt.tcx, id);
-                    let fun_name = Arc::new(FunX { path: vir_path });
-                    return mk_exp(ExpX::Var(state.fun_name(&fun_name)));
+                    if expect_spec || ctxt.var_modes[&expr.hir_id] == Mode::Spec {
+                        None
+                    } else {
+                        let vir_path = def_id_to_vir_path(ctxt.tcx, id);
+                        let fun_name = Arc::new(FunX { path: vir_path });
+                        let fun_exp = mk_exp1(ExpX::Var(state.fun_name(&fun_name)));
+                        return mk_exp(ExpX::Call(fun_exp, vec![], vec![]));
+                    }
                 }
                 Res::Def(DefKind::ConstParam, id) => {
                     let local_id = id.as_local().expect("ConstParam local");
@@ -1295,8 +1298,17 @@ fn erase_const<'tcx>(
         } else {
             erase_expr(ctxt, state, false, &body.value).expect("const body")
         };
-        let decl = ConstDecl { span, name, typ, body: body_exp };
-        state.const_decls.push(decl);
+        // Turn const decl into fn decl so we can use the non-const ExpX::Op in the body:
+        let decl = FunDecl {
+            sig_span: span,
+            name_span: span,
+            name,
+            generics: vec![],
+            params: vec![],
+            ret: Some((None, typ)),
+            body: Box::new((body.value.span, ExpX::Block(vec![], Some(body_exp)))),
+        };
+        state.fun_decls.push(decl);
         ctxt.types_opt = None;
         ctxt.ret_spec = None;
     }

@@ -396,7 +396,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] const_name_in_lifetime_generate_regression_563 verus_code! {
+    #[test] const_name_in_lifetime_generate_regression_563 verus_code! {
         pub spec const CONST_VALUE: nat = 32;
         #[verifier(external_body)]
         struct Data { }
