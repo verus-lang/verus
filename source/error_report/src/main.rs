@@ -53,6 +53,35 @@ fn main() {
     clean_up(d_file_name);
 }
 
+/// Transforms data from the input file into the proper data structure for
+/// toml creation, and then calls a function to write the toml
+///
+/// Parameters: args: The command line arguments given to call the input file
+///             z3_version_output: Information regarding the user's current z3 version
+///             verus_version_output: Information regarding the user's current verus version
+///             verus_output: The resulting output from the input file
+fn toml_setup_and_write(
+    args: Vec<String>,
+    z3_version_output: std::process::Output,
+    verus_version_output: std::process::Output,
+    verus_output: std::process::Output,
+) {
+    let z3_version =
+        str::from_utf8(&z3_version_output.stdout).expect("got non UTF-8 data from git").to_string();
+    let verus_version = str::from_utf8(&verus_version_output.stdout)
+        .expect("got non UTF-8 data from git")
+        .to_string();
+    let stdout =
+        str::from_utf8(&verus_output.stdout).expect("got non UTF-8 data from git").to_string();
+    let stderr =
+        str::from_utf8(&verus_output.stderr).expect("got non UTF-8 data from git").to_string();
+
+    let toml_string =
+        toml::to_string(&create_toml(args, z3_version, verus_version, stdout, stderr))
+            .expect("Could not encode TOML value");
+    fs::write("error_report.toml", toml_string).expect("Could not write to file!");
+}
+
 /// Creates a toml file and writes relevant information to this file, including
 /// the command-line arguments, versions, and output.
 ///
@@ -90,46 +119,6 @@ fn create_toml(
     Value::Table(map)
 }
 
-/// Transforms data from the input file into the proper data structure for
-/// toml creation, and then calls a function to write the toml
-///
-/// Parameters: args: The command line arguments given to call the input file
-///             z3_version_output: Information regarding the user's current z3 version
-///             verus_version_output: Information regarding the user's current verus version
-///             verus_output: The resulting output from the input file
-fn toml_setup_and_write(
-    args: Vec<String>,
-    z3_version_output: std::process::Output,
-    verus_version_output: std::process::Output,
-    verus_output: std::process::Output,
-) {
-    //let mut file = File::create("error_report.toml").expect("Unable to create file");
-    let mut z3_version = String::new();
-    z3_version.push_str(match str::from_utf8(&z3_version_output.stdout) {
-        Ok(val) => val,
-        Err(_) => panic!("got non UTF-8 data from git"),
-    });
-    let mut verus_version = String::new();
-    verus_version.push_str(match str::from_utf8(&verus_version_output.stdout) {
-        Ok(val) => val,
-        Err(_) => panic!("got non UTF-8 data from git"),
-    });
-    let mut stdout = String::new();
-    stdout.push_str(match str::from_utf8(&verus_output.stdout) {
-        Ok(val) => val,
-        Err(_) => panic!("got non UTF-8 data from git"),
-    });
-    let mut stderr = String::new();
-    stderr.push_str(match str::from_utf8(&verus_output.stderr) {
-        Ok(val) => val,
-        Err(_) => panic!("got non UTF-8 data from git"),
-    });
-    let toml_string =
-        toml::to_string(&create_toml(args, z3_version, verus_version, stdout, stderr))
-            .expect("Could not encode TOML value");
-    fs::write("error_report.toml", toml_string).expect("Could not write to file!");
-}
-
 /// Uses the user input file to find the .d file, parse the dependencies,
 /// and write each dependency to the zip file.
 ///
@@ -138,11 +127,13 @@ fn toml_setup_and_write(
 /// Returns:    the names of the .d file and zip file for book-keeping purposes
 pub fn zip_setup(file_path: String) -> (String, String) {
     let file_name_path = Path::new(&file_path);
-    let temp_file_name = &file_name_path.file_name().unwrap().to_string_lossy();
+    let temp_file_name =
+        &file_name_path.with_extension(".d").file_name().unwrap().to_string_lossy().to_string();
     let mut d_file_name = String::new();
     d_file_name.push_str(&temp_file_name.to_string()[..]);
     d_file_name = d_file_name[..d_file_name.len() - 2].to_string();
     d_file_name.push('d');
+    println!("{}", d_file_name);
     let mut deps = d_to_vec(d_file_name.to_string());
     deps.push("error_report.toml".to_string());
     let zip_file_name = write_zip_archive(deps);
