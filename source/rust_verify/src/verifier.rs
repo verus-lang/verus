@@ -109,7 +109,7 @@ impl Diagnostics for Reporter<'_> {
 
 /// A reporter message that is being collected by the main thread
 pub(crate) enum ReporterMessage{
-    Message(usize, Message, MessageLevel),
+    Message(usize, Message, MessageLevel, bool),
     // Debugger(),
     Done(usize)
 }
@@ -134,7 +134,12 @@ impl QueuedReporter {
 
 impl Diagnostics for QueuedReporter {
     fn report_as(&self, msg: &Message, level: MessageLevel) {
-        self.queue.send(ReporterMessage::Message(self.module_id, msg.clone(), level))
+        self.queue.send(ReporterMessage::Message(self.module_id, msg.clone(), level, false))
+            .expect("could not send the message!");
+    }
+
+    fn report_as_now(&self, msg: &Message, level: MessageLevel) {
+        self.queue.send(ReporterMessage::Message(self.module_id, msg.clone(), level, true))
             .expect("could not send the message!");
     }
 }
@@ -398,13 +403,12 @@ impl Verifier {
             let report_fn: Box<dyn FnMut(std::time::Duration) -> ()> = Box::new(move |elapsed| {
                 let msg =
                     format!("{} has been running for {} seconds", context.1, elapsed.as_secs());
-                // TODO(multithreading): mark the message as periodic here so it shows up
-                //                       early in the output.
-                if counter % 5 == 0 {
-                    reporter.report(&note(msg, &context.0));
+                let msg = if counter % 5 == 0 {
+                    note(msg, &context.0)
                 } else {
-                    reporter.report(&note_bare(msg));
-                }
+                    note_bare(msg)
+                };
+                reporter.report_now(&msg);
                 counter += 1;
             });
             (std::time::Duration::from_secs(2), report_fn)
@@ -1403,7 +1407,14 @@ impl Verifier {
             loop {
                 let msg = receiver.recv().expect("receiving message failed");
                 match msg {
-                    ReporterMessage::Message(id, msg, level) => {
+                    ReporterMessage::Message(id, msg, level, now) => {
+                        if now {
+                            // if the message should be reported immediately, do so
+                            // this is used for printing notices for long running queries
+                            reporter.report_as(&msg, level);
+                            continue;
+                        }
+
                         if let Some(m) = active_module {
                             // if it's the active module, print the message
                             if id == m {
