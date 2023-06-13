@@ -69,6 +69,7 @@ pub struct Args {
     pub no_vstd: bool,
     pub compile: bool,
     pub solver_version_check: bool,
+    pub version: bool,
 }
 
 pub fn enable_default_features_and_verus_attr(
@@ -253,9 +254,9 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
                 print_usage();
                 std::process::exit(0);
             }
-            if m.free.len() == 0 {
-                print_usage();
-                std::process::exit(-1);
+            if m.free.len() == 0 && !m.opt_present("version") {
+            print_usage();
+            std::process::exit(-1);
             }
             unmatched.insert(0, program.clone());
             (m, unmatched)
@@ -361,6 +362,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         compile: matches.opt_present(OPT_COMPILE),
         no_vstd: matches.opt_present(OPT_NO_VSTD),
         solver_version_check: !matches.opt_present(OPT_NO_SOLVER_VERSION_CHECK),
+        version: matches.opt_present(OPT_VERSION),
     };
 
     (args, unmatched)

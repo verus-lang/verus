@@ -27,15 +27,6 @@ pub fn main() {
     let internal_program = internal_args.next().unwrap();
     let build_test_mode = if let Some(first_arg) = internal_args.next() {
         match first_arg.as_str() {
-            "--version" => {
-                println!("Verus");
-                println!("  Platform: {}_{}", std::env::consts::OS, std::env::consts::ARCH);
-
-                let date = option_env!("VERUS_BUILD_VERSION").unwrap_or("Unknown");
-                println!("  Version: {}", date);
-
-                return;
-            }
             rust_verify::lifetime::LIFETIME_DRIVER_ARG => {
                 let mut internal_args: Vec<_> = internal_args.collect();
                 internal_args.insert(0, internal_program);
@@ -108,6 +99,16 @@ pub fn main() {
     let program = if build_test_mode { internal_program } else { args.next().unwrap() };
     let (our_args, rustc_args) = rust_verify::config::parse_args(&program, args);
     let pervasive_path = our_args.pervasive_path.clone();
+    
+    if our_args.version {
+        println!("Verus");
+        println!("  Platform: {}_{}", std::env::consts::OS, std::env::consts::ARCH);
+
+        let date = option_env!("VERUS_BUILD_VERSION").unwrap_or("Unknown");
+        println!("  Version: {}", date);
+
+        return;
+    }
 
     std::env::set_var("RUSTC_BOOTSTRAP", "1");
 
