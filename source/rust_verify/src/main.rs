@@ -99,13 +99,13 @@ pub fn main() {
     let program = if build_test_mode { internal_program } else { args.next().unwrap() };
     let (our_args, rustc_args) = rust_verify::config::parse_args(&program, args);
     let pervasive_path = our_args.pervasive_path.clone();
-    
+
     if our_args.version {
         println!("Verus");
         println!("  Platform: {}_{}", std::env::consts::OS, std::env::consts::ARCH);
 
-        let date = option_env!("VERUS_BUILD_VERSION").unwrap_or("Unknown");
-        println!("  Version: {}", date);
+        let version = option_env!("VERUS_BUILD_VERSION").unwrap_or("Unknown");
+        println!("  Version: {}", version);
 
         return;
     }

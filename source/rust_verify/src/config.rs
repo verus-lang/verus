@@ -255,8 +255,8 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
                 std::process::exit(0);
             }
             if m.free.len() == 0 && !m.opt_present("version") {
-            print_usage();
-            std::process::exit(-1);
+                print_usage();
+                std::process::exit(-1);
             }
             unmatched.insert(0, program.clone());
             (m, unmatched)

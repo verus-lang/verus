@@ -67,7 +67,7 @@ pub fn mtime_recursive(path: &Path) -> Result<FileTime, String> {
     Ok(max_meta)
 }
 
-pub fn commit_info() -> Result<String, std::io::Error> {
+pub fn version_info() -> Option<String> {
     // assumes the verus executable gets the .git file for verus repo
     let mut exe_dir = std::env::current_exe().unwrap();
     exe_dir.pop();
@@ -76,7 +76,8 @@ pub fn commit_info() -> Result<String, std::io::Error> {
         .current_dir(&exe_dir)
         .args(&["rev-parse", "--short", "HEAD"])
         .stdout(std::process::Stdio::piped())
-        .spawn()?;
+        .spawn()
+        .ok()?;
 
     let mut sha_msg = sha
         .wait_with_output()
@@ -88,7 +89,8 @@ pub fn commit_info() -> Result<String, std::io::Error> {
         .current_dir(&exe_dir)
         .args(&["show", "-s", "--format=%ci", "HEAD"])
         .stdout(std::process::Stdio::piped())
-        .spawn()?;
+        .spawn()
+        .ok()?;
 
     let date_msg = date_info
         .wait_with_output()
@@ -103,28 +105,14 @@ pub fn commit_info() -> Result<String, std::io::Error> {
         .current_dir(&exe_dir)
         .args(&["diff", "--exit-code", "HEAD"])
         .stdout(std::process::Stdio::null())
-        .spawn()?;
+        .spawn()
+        .ok()?;
 
     let status = child
         .wait_with_output()
         .expect("failed to execute git diff --exit-code HEAD")
         .status;
 
-    if status.success() {
-        Ok(format!(
-            "0.{}.{}.{}-{}",
-            year,
-            month,
-            day,
-            String::from_utf8(sha_msg).unwrap()
-        ))
-    } else {
-        Ok(format!(
-            "0.{}.{}.{}-{} (dirty)",
-            year,
-            month,
-            day,
-            String::from_utf8(sha_msg).unwrap()
-        ))
-    }
+    let dirty = if status.success() { "" } else { ".dirty" };
+    Some(format!("0.{year}.{month}.{day}{dirty}"))
 }
