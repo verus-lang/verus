@@ -17,6 +17,7 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 - Traits
 - Prophecy variables
 - State machines
+- Steps towards a framework for getting started with concurrency
 
 *Experience reports building systems in Verus (2 hours in the afternoon)*
 
