@@ -6966,7 +6966,27 @@ test_verify_one_file! {
                 assert(X::State::tr_strong(pre, post, x, y, z, w, v));
             }
         }
-    } => Ok(())
+
+        spec fn tr_enabled(pre: X::State, x: Option<int>, y: bool, z: bool, w: bool, v: Option<int>) -> bool {
+            x.is_Some() ==> w
+        }
+
+        proof fn test3(pre: X::State, x: Option<int>, y: bool, z: bool, w: bool, v: Option<int>)
+            ensures X::State::tr_enabled(pre, x, y, z, w, v) <==> tr_enabled(pre, x, y, z, w, v)
+        { }
+
+        proof fn test_take_step(pre: X::State, x: Option<int>, y: bool, z: bool, w: bool, v: Option<int>)
+            requires x.is_Some() ==> w,
+        {
+            let post = X::take_step::tr(pre, x, y, z, w, v);
+            assert(X::State::tr(pre, post, x, y, z, w, v));
+        }
+
+        proof fn test_take_step2(pre: X::State, x: Option<int>, y: bool, z: bool, w: bool, v: Option<int>)
+        {
+            let post = X::take_step::tr(pre, x, y, z, w, v); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
 }
 
 test_verify_one_file! {
@@ -7015,5 +7035,6 @@ test_verify_one_file! {
             ensures X::State::tr_strong(pre, post, x, y, z, b) <==> tr_strong(pre, post, x, y, z, b)
         {
         }
+
     } => Ok(())
 }
