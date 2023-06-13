@@ -883,4 +883,6 @@ pub struct KrateX {
     pub external_fns: Vec<Fun>,
     /// List of all 'external' types in the crate (only useful for diagnostics)
     pub external_types: Vec<Path>,
+    /// Map rustc-based internal paths to friendlier names for error messages
+    pub path_as_rust_names: Vec<(Path, String)>,
 }

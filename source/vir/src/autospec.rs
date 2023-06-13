@@ -46,8 +46,15 @@ fn simplify_function(
 }
 
 pub fn resolve_autospec(krate: &Krate) -> Result<Krate, VirErr> {
-    let KrateX { functions, datatypes, traits, module_ids, external_fns, external_types } =
-        &**krate;
+    let KrateX {
+        functions,
+        datatypes,
+        traits,
+        module_ids,
+        external_fns,
+        external_types,
+        path_as_rust_names,
+    } = &**krate;
 
     let mut func_map: HashMap<Fun, Function> = HashMap::new();
     for function in functions.iter() {
@@ -61,8 +68,15 @@ pub fn resolve_autospec(krate: &Krate) -> Result<Krate, VirErr> {
     let module_ids = module_ids.clone();
     let external_fns = external_fns.clone();
     let external_types = external_types.clone();
-    let krate =
-        Arc::new(KrateX { functions, datatypes, traits, module_ids, external_fns, external_types });
+    let krate = Arc::new(KrateX {
+        functions,
+        datatypes,
+        traits,
+        module_ids,
+        external_fns,
+        external_types,
+        path_as_rust_names: path_as_rust_names.clone(),
+    });
 
     Ok(krate)
 }
