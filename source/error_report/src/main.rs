@@ -113,6 +113,7 @@ fn create_toml(
         "title".to_string(),
         Value::String("Error report file - details and dependencies".to_string()),
     );
+    map.insert("report-schema-version".into(), Value::String("1".to_string()));
     map.insert("command-line-arguments".into(), Value::Table(command_line_arguments));
     map.insert("versions".into(), Value::Table(versions));
     map.insert("verus-output".into(), Value::Table(output));
@@ -133,7 +134,6 @@ pub fn zip_setup(file_path: String) -> (String, String) {
     d_file_name.push_str(&temp_file_name.to_string()[..]);
     d_file_name = d_file_name[..d_file_name.len() - 2].to_string();
     d_file_name.push('d');
-    println!("{}", d_file_name);
     let mut deps = d_to_vec(d_file_name.to_string());
     deps.push("error_report.toml".to_string());
     let zip_file_name = write_zip_archive(deps);
@@ -185,7 +185,7 @@ fn write_zip_archive(deps: Vec<String>) -> String {
     let mut zip = zip::ZipWriter::new(file);
     let options = FileOptions::default()
         .compression_method(zip::CompressionMethod::Stored)
-        .unix_permissions(0o755);
+        .unix_permissions(0o644);
     for file in deps {
         let path = file;
         let binding = read_file_string(&path).expect("Could not read file");
