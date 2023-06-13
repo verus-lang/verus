@@ -11,16 +11,21 @@ use std::{
 use toml::{map::Map, value::Value};
 use zip::write::FileOptions;
 
+// TODO: should this be platform independent
 const REL_Z3_PATH: &str = "../../../target-verus/release/z3";
 const REL_VERUS_PATH: &str = "../../../target-verus/release/verus";
 fn main() {
     //Collects the command line arguments:
     let mut exe_dir = env::current_exe().expect("invalid directory");
     exe_dir.pop();
+
     let mut file_path = String::new();
+    let mut our_args = Vec::new();
+
     let args: Vec<String> = env::args().collect();
     if args.len() > 1 {
         file_path = args[1].clone();
+        our_args = args[1..].to_vec();
     } else {
         println!("Usage: error_report <file_name>");
     }
@@ -32,10 +37,10 @@ fn main() {
         Command::new(z3_path).arg("--version").output().expect("failed to execute process");
     let verus_version_output =
         Command::new(&verus_path).arg("--version").output().expect("failed to execute process");
-    let msg: &str = file_path.trim();
+
     let child = Command::new(verus_path)
         .stdin(Stdio::null())
-        .arg(msg)
+        .args(our_args)
         .arg("--emit=dep-info")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
