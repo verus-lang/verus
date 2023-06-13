@@ -33,7 +33,7 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 
 - Documentation write-a-thon  (2-3 hours in the morning)
 - Issue/feature request triage (1-2 hours in the morning)
-- Verus internals Q&A (afternoon)
+- Verus internals overview + Q&A (afternoon)
 - Bug fix hack-a-thon (afternoon)
 
 ### Wednesday, June 28th
