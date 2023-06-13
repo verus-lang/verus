@@ -114,5 +114,8 @@ pub fn version_info() -> Option<String> {
         .status;
 
     let dirty = if status.success() { "" } else { ".dirty" };
-    Some(format!("0.{year}.{month}.{day}{dirty}"))
+    Some(format!(
+        "0.{year}.{month}.{day}.{}{dirty}",
+        String::from_utf8(sha_msg).unwrap()
+    ))
 }
