@@ -1,41 +1,14 @@
-use std::env;
-use std::fs;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
-use std::path::Path;
-use std::process::{Command, Stdio};
-use std::str;
-use toml::value::Value;
-use toml::{map::Map};
-use std::io::prelude::*;
+use std::{env, fs::{self, File}, io::{BufRead, BufReader}, 
+    path::Path, process::{Command, Stdio}, str, io::prelude::*};
+use toml::{map::Map, value::Value};
 use zip::write::FileOptions;
-use chrono::prelude::*;
-use chrono::DateTime;
+use chrono::{prelude::*, DateTime};
 
-// use toml::ser;
-// use toml::Value;
-// 0.5.1
-// TODO
-// use toml::{map::Map, Value};
-// https://stackoverflow.com/questions/38405620/how-to-create-a-toml-file-from-rust
-// probably only 2/3 fields are necessary, leave for later
-// TODO: report the verus version by `git rev-parse HEAD`
-// add a --version flag, which replicates F* behavior
-// F* version
-// > fstar.exe
-// F* 0.9.7.9-alpha1
-// platform=Linux_x86_64          (use uname)
-// compiler=OCaml ...             (jsut use git hash)
-// git-hash=""
-// LATER: if someone is having an error, you may want to pass a message
-//        to the developer
-// LATER: deal with flags of a verus command
-//
-// TODO: needs to be updated when there's a released binary of error_report
 const REL_Z3_PATH: &str = "../../../target-verus/release/z3";
 const REL_VERUS_PATH: &str = "../../../target-verus/release/verus";
 fn main() {
-    // path where this piece of code is (then you can talk abt the rel path to z3/verus)
+
+    //Collects the command line arguments:
     let mut exe_dir = env::current_exe().expect("invalid directory");
     exe_dir.pop();
     let mut file_path = String::new();
@@ -45,16 +18,16 @@ fn main() {
     } else {
         println!("Usage: error_report <file_name>");
     }
-    println!("{:?}", args);
-    println!();
+    
+    //Collects information about the given file and environment:
     let z3_path = exe_dir.join(REL_Z3_PATH);
-    // exe_dir.push(REL_Z3_PATH);
     let verus_path = exe_dir.join(REL_VERUS_PATH);
     let z3_version_output =
-        Command::new(z3_path).arg("--version").output().expect("failed to execute process");
-    
+        Command::new(z3_path).arg("--version")
+        .output().expect("failed to execute process");
     let verus_version_output = 
-    Command::new(&verus_path).arg("--version").output().expect("failed to execute process");
+        Command::new(&verus_path).arg("--version")
+        .output().expect("failed to execute process");
     let msg: &str = file_path.trim();
     let child = Command::new(verus_path)
         .stdin(Stdio::null())
@@ -67,23 +40,25 @@ fn main() {
     let verus_output: std::process::Output =
         child.wait_with_output().expect("Failed to read stdout");
     
+    // The following method calls do the actual work of writing a toml file
+    // with relevant information and saving the toml file and relevant files
+    // to a zip file
     toml_setup_and_write(args, z3_version_output, verus_version_output, verus_output);
     let (d_file_name, zip_file_name) = zip_setup(file_path);
     println!("Stored error report to {}\n", zip_file_name);
     clean_up(d_file_name);
 }
 
-/* Creates a toml file and writes relevant information to this file, including
- * the command-line arguments, versions, and output.
- * 
- * @params args: The command line arguments given to call the input file
- *         z3_version: Information regarding the user's current z3 version
- *         verus_version: Information regarding the user's current verus version
- *         stdout: The resulting output from the input file to stdout
- *         stderr: The resulting output from the input file to stderr
- * 
- * @returns A Table data structure used to write a toml file
- */
+/// Creates a toml file and writes relevant information to this file, including
+/// the command-line arguments, versions, and output.
+///
+/// Parameters: args: The command line arguments given to call the input file
+///             z3_version: Information regarding the user's current z3 version
+///             verus_version: Information regarding the user's current verus version
+///             stdout: The resulting output from the input file to stdout
+///             stderr: The resulting output from the input file to stderr
+///  
+/// Returns:    A Table data structure used to write a toml file
 fn create_toml(args: Vec<String>, z3_version: String, verus_version: String, stdout: String, stderr: String) -> Value {
 
    let mut command_line_arguments = Map::new();
@@ -106,14 +81,13 @@ fn create_toml(args: Vec<String>, z3_version: String, verus_version: String, std
     Value::Table(map)
 }
 
-/* Transforms data from the input file into the proper data structure for
- * toml creation, and then calls a function to write the toml
- * 
- * @params args: The command line arguments given to call the input file
- *         z3_version_output: Information regarding the user's current z3 version
- *         verus_version_output: Information regarding the user's current verus version
- *         verus_output: The resulting output from the input file
- */
+/// Transforms data from the input file into the proper data structure for
+/// toml creation, and then calls a function to write the toml
+/// 
+/// Parameters: args: The command line arguments given to call the input file
+///             z3_version_output: Information regarding the user's current z3 version
+///             verus_version_output: Information regarding the user's current verus version
+///             verus_output: The resulting output from the input file
 fn toml_setup_and_write(args: Vec<String>, z3_version_output: std::process::Output, 
     verus_version_output: std::process::Output, 
     verus_output: std::process::Output) {
@@ -143,13 +117,12 @@ fn toml_setup_and_write(args: Vec<String>, z3_version_output: std::process::Outp
     fs::write("error_report.toml", toml_string).expect("Could not write to file!");
 }
 
-/* Uses the user input file to find the .d file, parse the dependencies,
- * and write each dependency to the zip file.
- *
- * @param file_path: a String representation of the path to the input file
- * 
- * @returns the name of the .d file for book-keeping purposes
- */
+/// Uses the user input file to find the .d file, parse the dependencies,
+/// and write each dependency to the zip file.
+///
+/// Parameters: file_path: a String representation of the path to the input file
+/// 
+/// Returns:    the names of the .d file and zip file for book-keeping purposes
 pub fn zip_setup(file_path: String) -> (String,String) {
 
     let file_name_path = Path::new(&file_path);
@@ -164,14 +137,13 @@ pub fn zip_setup(file_path: String) -> (String,String) {
     (d_file_name, zip_file_name)
 }
 
-/* Turns the .d file that lists each of the input files' dependencies
- * and turns them into a vector of Strings for easier data manipulation
- * 
- * @param file_name: The name of the previously generated .d file
- * 
- * @returns: a vector containing each dependency of the input file
- *      as an individual string
- */
+/// Turns the .d file that lists each of the input files' dependencies
+/// and turns them into a vector of Strings for easier data manipulation
+/// 
+/// Parameters: file_name: The name of the previously generated .d file
+/// 
+/// Returns:    a vector containing each dependency of the input file as an
+///             individual string
 fn d_to_vec(file_name: String) -> Vec<String> {
     let file = File::open(file_name).expect("Couldn't open file!");
     let mut reader = BufReader::new(file);
@@ -187,21 +159,23 @@ fn d_to_vec(file_name: String) -> Vec<String> {
     }
     deps
 }
-/* Deletes the generated toml file and .d file so as to not clutter the user's directory
- *
- * @param d_file_name: The name of the .d file that was created by this process
-        and needs to be deleted.
- */
+
+/// Deletes the generated toml file and .d file so as to not clutter 
+/// the user's directory
+///
+/// Parameters: d_file_name: The name of the .d file that was created by 
+///                          this process and needs to be deleted
 fn clean_up(d_file_name: String) {
     fs::remove_file("error_report.toml").expect("failed to delete toml file\n");
     fs::remove_file(d_file_name).expect("failed to delete .d file\n");
 }
 
-/* Creates a zip file from a given list of files to compress
- *
- * @params deps: A vector of strings representing files to be compressed 
- *               (in this context, each file is a dependency of the input)
- */
+/// Creates a zip file from a given list of files to compress
+///
+/// Parameters: deps: A vector of strings representing files to be compressed 
+///                    (in this context, each file is a dependency of the input)
+/// 
+/// Returns:    The name of the created zip file
 fn write_zip_archive(deps: Vec<String>) ->String
 {
     let local: DateTime<Local> = Local::now();
@@ -230,8 +204,7 @@ fn write_zip_archive(deps: Vec<String>) ->String
     zip_file_name
 }
 
-/* Turns a file path into a string
- */
+///Turns a file path into a string
 fn read_file_string(filepath: &str) -> Result<String, Box<dyn std::error::Error>> {
     let data = fs::read_to_string(filepath)?;
     Ok(data)
