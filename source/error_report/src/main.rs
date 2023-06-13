@@ -100,9 +100,9 @@ fn create_toml(args: Vec<String>, z3_version: String, verus_version: String, std
         "title".to_string(),
         Value::String("Error report file - details and dependencies".to_string()),
     );
-    map.insert("Command-Line-Arguments".into(), Value::Table(command_line_arguments));
-    map.insert("Versions".into(), Value::Table(versions));
-    map.insert("Verus-output".into(), Value::Table(output));
+    map.insert("command-line-arguments".into(), Value::Table(command_line_arguments));
+    map.insert("versions".into(), Value::Table(versions));
+    map.insert("verus-output".into(), Value::Table(output));
     Value::Table(map)
 }
 
