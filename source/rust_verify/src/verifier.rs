@@ -387,7 +387,6 @@ impl Verifier {
         &mut self,
         module_path: &vir::ast::Path,
         reporter: &impl Diagnostics,
-        _spans: &SpanContext,
         source_map: Option<&SourceMap>,
         level: MessageLevel,
         air_context: &mut air::context::Context,
@@ -589,7 +588,6 @@ impl Verifier {
     fn run_commands_queries(
         &mut self,
         reporter: &impl Diagnostics,
-        spans: &SpanContext,
         source_map: Option<&SourceMap>,
         level: MessageLevel,
         air_context: &mut air::context::Context,
@@ -624,7 +622,6 @@ impl Verifier {
             let result_invalidity = self.check_result_validity(
                 module,
                 reporter,
-                spans,
                 source_map,
                 level,
                 air_context,
@@ -793,7 +790,6 @@ impl Verifier {
         &mut self,
         reporter: &impl Diagnostics,
         krate: &Krate,
-        spans: &SpanContext,
         source_map: Option<&SourceMap>,
         module: &vir::ast::Path,
         ctx: &mut vir::context::Ctx,
@@ -966,7 +962,6 @@ impl Verifier {
                 }
                 let invalidity = self.run_commands_queries(
                     reporter,
-                    spans,
                     source_map,
                     MessageLevel::Error,
                     &mut air_context,
@@ -1005,7 +1000,6 @@ impl Verifier {
                     for command in commands.iter().map(|x| &*x) {
                         self.run_commands_queries(
                             reporter,
-                            spans,
                             source_map,
                             level,
                             &mut air_context,
@@ -1132,7 +1126,6 @@ impl Verifier {
                     let desc_prefix = recommends_rerun.then(|| "recommends check: ");
                     let command_invalidity = self.run_commands_queries(
                         reporter,
-                        spans,
                         source_map,
                         level,
                         query_air_context,
@@ -1175,7 +1168,6 @@ impl Verifier {
         &mut self,
         reporter: &impl Diagnostics,
         krate: &Krate,
-        spans: &SpanContext,
         source_map: Option<&SourceMap>,
         module: &vir::ast::Path,
         mut global_ctx: vir::context::GlobalCtx,
@@ -1209,7 +1201,7 @@ impl Verifier {
         }
 
         let (time_smt_init, time_smt_run) =
-            self.verify_module(reporter, &poly_krate, spans, source_map, module, &mut ctx)?;
+            self.verify_module(reporter, &poly_krate, source_map, module, &mut ctx)?;
 
         global_ctx = ctx.free();
 
@@ -1372,7 +1364,6 @@ impl Verifier {
                 // copy as we modify fields in the verifier struct. later, we merge the results
                 let mut thread_verifier = self.from_self();
                 let thread_taskq = taskq.clone();
-                let thread_span = spans.clone();  // is an Arc<T>
                 let thread_krate = krate.clone(); // is an Arc<T>
 
                 let worker = std::thread::spawn(move || {
@@ -1382,7 +1373,7 @@ impl Verifier {
                         let elm = tq.pop_front();
                         drop(tq);
                         if let Some((module, task, reporter)) = elm {
-                            let res = thread_verifier.verify_module_outer(&reporter, &thread_krate, &thread_span, None, &module, task);
+                            let res = thread_verifier.verify_module_outer(&reporter, &thread_krate, None, &module, task);
                             reporter.done(); // we've verified the module, send the done message
                             match res {
                                 Ok(res) => {
@@ -1499,7 +1490,7 @@ impl Verifier {
             }
         } else {
             for module in &module_ids_to_verify {
-                global_ctx = self.verify_module_outer(&reporter, &krate, spans, Some(source_map), module, global_ctx)?;
+                global_ctx = self.verify_module_outer(&reporter, &krate, Some(source_map), module, global_ctx)?;
             }
         }
 
