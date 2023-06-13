@@ -136,7 +136,7 @@ fn datatypes_invs(
             let container_path = &datatype.x.path;
             for variant in datatype.x.variants.iter() {
                 for field in variant.a.iter() {
-                    match &*field.a.0 {
+                    match &*crate::ast_util::undecorate_typ(&field.a.0) {
                         // Should be kept in sync with vir::sst_to_air::typ_invariant
                         TypX::Int(IntRange::Int) => {}
                         TypX::Int(_) | TypX::TypParam(_) => {
@@ -157,7 +157,12 @@ fn datatypes_invs(
                                 }
                             }
                         }
-                        _ => {}
+                        TypX::Decorate(..) => unreachable!("TypX::Decorate"),
+                        TypX::Boxed(_) => {}
+                        TypX::TypeId => {}
+                        TypX::Bool | TypX::StrSlice | TypX::Char | TypX::AnonymousClosure(..) => {}
+                        TypX::Tuple(_) | TypX::Air(_) => panic!("datatypes_invs"),
+                        TypX::ConstInt(_) => {}
                     }
                 }
             }
