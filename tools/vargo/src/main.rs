@@ -140,12 +140,12 @@ const Z3_FILE_NAME: &str = if cfg!(target_os = "windows") {
 };
 
 fn run() -> Result<(), String> {
-    let msg = match util::commit_info() {
+    let version_info = match util::commit_info() {
         Ok(info) => info,
         Err(_) => format!("could not get commit info"),
     };
 
-    std::env::set_var("VERUS_BUILD_VERSION", msg);
+    std::env::set_var("VERUS_BUILD_VERSION", version_info);
 
     let _vargo_nest = {
         let vargo_nest = std::env::var("VARGO_NEST")
