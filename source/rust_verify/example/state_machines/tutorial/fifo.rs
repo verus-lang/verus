@@ -6,8 +6,7 @@
 // ANCHOR:full
 use vstd::{*, prelude::*, pervasive::*};
 use vstd::multiset::*;
-use vstd::vec::*;
-use vstd::option::*;
+use vstd::prelude::*;
 use vstd::map::*;
 use vstd::ptr::*;
 use vstd::seq::*;
@@ -533,7 +532,7 @@ pub fn new_queue<T>(len: usize) -> (pc: (Producer<T>, Consumer<T>))
         pc.1.wf(),
 {
     // Initialize the vector to store the cells
-    let mut backing_cells_vec = Vec::<PCell<T>>::empty();
+    let mut backing_cells_vec = Vec::<PCell<T>>::new();
 
     // Initialize map for the permissions to the cells
     // (keyed by the indices into the vector)
@@ -658,7 +657,7 @@ impl<T> Producer<T> {
 
                 // Write the element t into the buffer, updating the cell
                 // from uninitialized to initialized (to the value t).
-                queue.buffer.index(self.tail).put(Tracked(&mut cell_perm), t);
+                queue.buffer[self.tail].put(Tracked(&mut cell_perm), t);
 
                 // Store the updated tail to the shared `tail` atomic,
                 // while performing the `produce_end` transition.
@@ -711,7 +710,7 @@ impl<T> Consumer<T> {
                     Option::Some(cp) => cp,
                     Option::None => { assert(false); proof_from_false() }
                 };
-                let t = queue.buffer.index(self.head).take(Tracked(&mut cell_perm));
+                let t = queue.buffer[self.head].take(Tracked(&mut cell_perm));
 
                 atomic_with_ghost!(&queue.head => store(next_head as u64); ghost head_token => {
                     queue.instance.borrow().consume_end(cell_perm,

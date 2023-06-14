@@ -7,7 +7,7 @@ const IMPORTS: &str = code_str! {
     use vstd::pervasive::*;
     use vstd::{atomic::*};
     use vstd::{modes::*};
-    use vstd::result::*;
+    use vstd::prelude::*;
 };
 
 /// With contradiction_smoke_test, add a final `assert(false)` that is expected to fail at the end

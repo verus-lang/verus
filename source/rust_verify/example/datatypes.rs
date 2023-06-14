@@ -1,6 +1,7 @@
-extern crate builtin;
-#[allow(unused_imports)]
-use vstd::{prelude::*, vec::*, seq::*, modes::*};
+#![allow(unused_imports)]
+use builtin::*;
+use builtin_macros::*;
+use vstd::{*, prelude::*, seq::*, modes::*};
 
 verus! {
 

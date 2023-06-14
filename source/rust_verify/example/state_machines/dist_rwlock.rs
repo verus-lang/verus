@@ -1,11 +1,12 @@
 #[allow(unused_imports)]
-use vstd::{*, prelude::*, pervasive::*};
-use vstd::vec::*;
+use builtin::*;
+use builtin_macros::*;
+use vstd::{*, pervasive::*};
 use vstd::modes::*;
 use vstd::multiset::*;
 use vstd::map::*;
 use vstd::seq::*;
-use vstd::option::*;
+use vstd::prelude::*;
 use vstd::atomic_ghost::*;
 
 use state_machines_macros::tokenized_state_machine;

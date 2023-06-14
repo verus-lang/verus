@@ -5,7 +5,7 @@ use vstd::prelude::*;
 use seq::*;
 use set::*;
 #[allow(unused_imports)]
-use vec::*;
+use prelude::*;
 use multiset::*;
 
 verus! {

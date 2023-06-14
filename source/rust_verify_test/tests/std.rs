@@ -67,3 +67,106 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+// Indexing into vec
+
+test_verify_one_file! {
+    #[test] index_vec_out_of_bounds verus_code! {
+        use vstd::*;
+
+        fn stuff<T>(v: Vec<T>) {
+            let x = &v[0]; // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] index_vec_out_of_bounds2 verus_code! {
+        use vstd::*;
+
+        fn stuff<T>(v: &Vec<T>) {
+            let x = &v[0]; // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] index_vec_out_of_bounds3 verus_code! {
+        use vstd::*;
+
+        fn stuff<T>(v: &Vec<T>) {
+            let x = v[0]; // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] index_vec_in_bounds verus_code! {
+        use vstd::*;
+
+        fn stuff(v: &Vec<u8>)
+            requires v.len() > 0,
+        {
+            let a = v[0] < v[0];
+            assert(a == false);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] index_vec_in_bounds2 verus_code! {
+        use vstd::prelude::*;
+
+        fn stuff(v: &mut Vec<u8>)
+            requires old(v).len() > 0,
+        {
+            let a = v[0];
+            assert(a == v.view().index(0));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] index_vec_in_bounds3 verus_code! {
+        use vstd::prelude::*;
+
+        fn stuff(v: &mut Vec<u8>)
+            requires old(v).len() > 0,
+        {
+            let a = &v[0];
+            assert(*a == v.view().index(0));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] index_vec_move_error verus_code! {
+        use vstd::*;
+
+        fn stuff<T>(v: Vec<T>) {
+            let x = v[0];
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot move out of index of `std::vec::Vec<T>`")
+}
+
+test_verify_one_file! {
+    #[test] index_vec_move_error2 verus_code! {
+        use vstd::*;
+
+        fn stuff<T>(v: &mut Vec<T>) {
+            let x = v[0];
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot move out of index of `std::vec::Vec<T>`")
+}
+
+test_verify_one_file! {
+    #[test] index_vec_mut_error verus_code! {
+        use vstd::*;
+
+        fn foo(t: &mut u8) { }
+
+        fn stuff(v: Vec<u8>) {
+            foo(&mut v[0]);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "index for &mut not supported")
+}

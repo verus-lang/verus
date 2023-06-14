@@ -101,7 +101,7 @@ pub fn transfer(orig: &mut Account, dest: &mut Account, amount: u64)
 
 // ## C2(e) -- C2-linearity.rs
 
-use vstd::vec::*;
+use vstd::prelude::*;
 
 //-  exec fn f(v: Vec<u64>) -> (Vec<u64>, Vec<u64>) {
 //-      let v1 = v;

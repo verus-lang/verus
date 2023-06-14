@@ -529,7 +529,7 @@ test_verify_one_file! {
     #[test] test_strslice_as_bytes_passes verus_code! {
         use vstd::view::*;
         use vstd::string::*;
-        use vstd::vec::*;
+        use vstd::prelude::*;
         fn test_strslice_as_bytes<'a>(x: StrSlice<'a>) -> (ret: Vec<u8>)
             requires
                 x.is_ascii(),
@@ -546,7 +546,7 @@ test_verify_one_file! {
     #[test] test_strslice_as_bytes_fails verus_code! {
         use vstd::view::*;
         use vstd::string::*;
-        use vstd::vec::*;
+        use vstd::prelude::*;
 
         fn test_strslice_as_bytes_fails<'a>(x: StrSlice<'a>) -> (ret: Vec<u8>)
             requires
@@ -564,7 +564,7 @@ test_verify_one_file! {
     #[test] test_int_as_char_spec verus_code! {
         use vstd::view::*;
         use vstd::string::*;
-        use vstd::vec::*;
+        use vstd::prelude::*;
 
         spec fn test(a: int) -> char {
             a as char
@@ -577,7 +577,7 @@ test_verify_one_file! {
     #[test] test_append_1 verus_code! {
         use vstd::view::*;
         use vstd::string::*;
-        use vstd::vec::*;
+        use vstd::prelude::*;
 
         fn foo() -> (ret: String)
             ensures ret@ === new_strlit("hello world")@
@@ -601,7 +601,7 @@ test_verify_one_file! {
     #[test] test_append_2 verus_code! {
         use vstd::view::*;
         use vstd::string::*;
-        use vstd::vec::*;
+        use vstd::prelude::*;
 
         fn foo() -> (ret: String)
             ensures ret@ !== new_strlit("hello worlds")@
@@ -625,7 +625,7 @@ test_verify_one_file! {
     #[test] test_concat_1 verus_code! {
         use vstd::view::*;
         use vstd::string::*;
-        use vstd::vec::*;
+        use vstd::prelude::*;
 
         fn foo() -> (ret: String)
             ensures ret@ === new_strlit("hello world")@
@@ -649,7 +649,7 @@ test_verify_one_file! {
     #[test] test_concat_2 verus_code! {
         use vstd::view::*;
         use vstd::string::*;
-        use vstd::vec::*;
+        use vstd::prelude::*;
 
         fn foo() -> (ret: String)
             ensures ret@ !== new_strlit("hello worlds")@

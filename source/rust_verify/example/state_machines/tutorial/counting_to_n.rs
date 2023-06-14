@@ -5,9 +5,8 @@ use vstd::{*, prelude::*, pervasive::*};
 use vstd::{atomic_ghost::*};
 use vstd::{modes::*};
 use vstd::{thread::*};
-use vstd::{vec::*};
 use state_machines_macros::tokenized_state_machine;
-use vstd::result::*;
+use vstd::prelude::*;
 use std::sync::Arc;
 
 verus!{
@@ -200,7 +199,7 @@ fn do_count(num_threads: u32) {
             (*global_arc).instance@ === instance,
     {
 
-        let join_handle = join_handles.pop();
+        let join_handle = join_handles.pop().unwrap();
 
         match join_handle.join() {
             Result::Ok(token) => {

@@ -119,7 +119,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] vec_len_regression_issue212 verus_code! {
-        use vstd::vec::*;
+        use vstd::prelude::*;
 
         struct S {
             pub vec: Vec<()>,

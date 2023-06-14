@@ -1,4 +1,7 @@
-use vstd::{prelude::*, seq::*, set::*, map::*, vec::*};
+#![allow(unused_imports)]
+use builtin_macros::*;
+use builtin::*;
+use vstd::{seq::*, set::*, map::*, prelude::*};
 
 verus! {
 

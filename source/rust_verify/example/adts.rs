@@ -1,7 +1,7 @@
 use builtin_macros::*;
 use builtin::*;
 #[allow(unused_imports)]
-use vstd::{*, option::Option, result::Result};
+use vstd::prelude::*;
 
 verus! {
 

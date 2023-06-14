@@ -4,7 +4,7 @@ use vstd::prelude::*;
 #[allow(unused_imports)]
 use seq::*;
 #[allow(unused_imports)]
-use vec::*;
+use prelude::*;
 
 verus! {
 

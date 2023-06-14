@@ -1122,7 +1122,7 @@ fn get_init_param_input_type(_sm: &SM, field: &Field) -> Option<Type> {
         ShardableType::PersistentBool => None,
         ShardableType::Count => None,
         ShardableType::StorageOption(ty) => Some(Type::Verbatim(quote! {
-            ::vstd::option::Option<#ty>
+            ::core::option::Option<#ty>
         })),
         ShardableType::StorageMap(key, val) => Some(Type::Verbatim(quote! {
             ::vstd::map::Map<#key, #val>
@@ -1277,10 +1277,10 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             let token_ty = field_token_type(sm, field);
             let inst_ty = inst_type(sm);
             let option_token_ty = Type::Verbatim(quote! {
-                ::vstd::option::Option<#token_ty>
+                ::core::option::Option<#token_ty>
             });
             let option_normal_ty = Type::Verbatim(quote! {
-                ::vstd::option::Option<#ty>
+                ::core::option::Option<#ty>
             });
 
             // Predicate to check the option values agree:
@@ -1375,7 +1375,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             let token_ty = field_token_type(sm, field);
             let inst_ty = inst_type(sm);
             let option_token_ty = Type::Verbatim(quote! {
-                ::vstd::option::Option<#token_ty>
+                ::core::option::Option<#token_ty>
             });
 
             // Predicate to check the option values agree:
@@ -1973,7 +1973,7 @@ fn field_token_collection_type(sm: &SM, field: &Field) -> Type {
         ShardableType::Option(_)
         | ShardableType::PersistentOption(_)
         | ShardableType::Bool
-        | ShardableType::PersistentBool => Type::Verbatim(quote! { ::vstd::option::Option<#ty> }),
+        | ShardableType::PersistentBool => Type::Verbatim(quote! { ::core::option::Option<#ty> }),
 
         ShardableType::Map(key, _) | ShardableType::PersistentMap(key, _) => {
             Type::Verbatim(quote! { ::vstd::map::Map<#key, #ty> })

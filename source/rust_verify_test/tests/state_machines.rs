@@ -6,8 +6,7 @@ use common::*;
 const IMPORTS: &str = code_str! {
     #[allow(unused_imports)] use vstd::{atomic::*};
     #[allow(unused_imports)] use vstd::{modes::*};
-    #[allow(unused_imports)] use vstd::result::*;
-    #[allow(unused_imports)] use vstd::option::*;
+    #[allow(unused_imports)] use vstd::prelude::*;
     #[allow(unused_imports)] use vstd::map::*;
     #[allow(unused_imports)] use vstd::set::*;
     #[allow(unused_imports)] use vstd::multiset::*;
