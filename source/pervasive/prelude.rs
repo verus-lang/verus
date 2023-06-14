@@ -1,6 +1,7 @@
 pub use builtin::*;
 pub use builtin_macros::*;
 
+pub use super::view::*;
 pub use super::seq::Seq;
 pub use super::seq::seq;
 pub use super::set::Set;

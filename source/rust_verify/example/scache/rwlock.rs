@@ -1,8 +1,6 @@
 // rust_verify/tests/example.rs ignore
 #![allow(unused_imports)]
-use builtin::*;
-use builtin_macros::*;
-use vstd::{*, pervasive::*};
+use vstd::{*, prelude::*, pervasive::*};
 use vstd::vec::*;
 use vstd::modes::*;
 use vstd::multiset::*;

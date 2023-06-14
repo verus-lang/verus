@@ -200,8 +200,14 @@ fn emit_check_tracked_lifetimes<'tcx>(
         emit_state.writeln(line.replace("\r", ""));
     }
 
+    for t in gen_state.trait_decls.iter() {
+        emit_trait_decl(emit_state, t);
+    }
     for d in gen_state.datatype_decls.iter() {
         emit_datatype_decl(emit_state, d);
+    }
+    for a in gen_state.assoc_type_impls.iter() {
+        emit_assoc_type_impl(emit_state, a);
     }
     for f in gen_state.fun_decls.iter() {
         emit_fun_decl(emit_state, f);

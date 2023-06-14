@@ -845,6 +845,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] e19_pass verus_code! {
+        use vstd::view::*;
         use vstd::vec::*;
 
         // The summer school uses executable methods that work with nats & ints (here and above in
@@ -885,6 +886,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] e20_pass verus_code! {
+        use vstd::view::*;
         #[allow(unused_imports)]
         use vstd::seq::*;
         #[allow(unused_imports)]
@@ -925,6 +927,7 @@ test_verify_one_file! {
     #[test] e20_pass_with_ints verus_code! {
         // This version of e20 uses `Seq<int>` in `is_sorted`, which requires a manual conversion
 
+        use vstd::view::*;
         #[allow(unused_imports)]
         use vstd::seq::*;
         #[allow(unused_imports)]
@@ -970,6 +973,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] e21_pass verus_code! {
+        use vstd::view::*;
         #[allow(unused_imports)]
         use vstd::seq::*;
         #[allow(unused_imports)]

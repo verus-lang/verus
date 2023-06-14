@@ -527,6 +527,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_strslice_as_bytes_passes verus_code! {
+        use vstd::view::*;
         use vstd::string::*;
         use vstd::vec::*;
         fn test_strslice_as_bytes<'a>(x: StrSlice<'a>) -> (ret: Vec<u8>)
@@ -543,6 +544,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_strslice_as_bytes_fails verus_code! {
+        use vstd::view::*;
         use vstd::string::*;
         use vstd::vec::*;
 
@@ -560,6 +562,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_int_as_char_spec verus_code! {
+        use vstd::view::*;
         use vstd::string::*;
         use vstd::vec::*;
 
@@ -572,6 +575,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_append_1 verus_code! {
+        use vstd::view::*;
         use vstd::string::*;
         use vstd::vec::*;
 
@@ -595,6 +599,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_append_2 verus_code! {
+        use vstd::view::*;
         use vstd::string::*;
         use vstd::vec::*;
 
@@ -618,6 +623,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_concat_1 verus_code! {
+        use vstd::view::*;
         use vstd::string::*;
         use vstd::vec::*;
 
@@ -641,6 +647,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_concat_2 verus_code! {
+        use vstd::view::*;
         use vstd::string::*;
         use vstd::vec::*;
 

@@ -21,6 +21,7 @@ pub fn sort_krate(krate: &Krate) -> Krate {
         functions,
         datatypes,
         traits,
+        assoc_type_impls,
         module_ids,
         external_fns,
         external_types,
@@ -29,6 +30,7 @@ pub fn sort_krate(krate: &Krate) -> Krate {
     let mut functions = functions.clone();
     let mut datatypes = datatypes.clone();
     let traits = traits.clone();
+    let assoc_type_impls = assoc_type_impls.clone();
     let mut module_ids = module_ids.clone();
     let external_fns = external_fns.clone();
     let external_types = external_types.clone();
@@ -55,6 +57,7 @@ pub fn sort_krate(krate: &Krate) -> Krate {
         functions,
         datatypes,
         traits,
+        assoc_type_impls,
         module_ids,
         external_fns,
         external_types,

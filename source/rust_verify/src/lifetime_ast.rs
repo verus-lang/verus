@@ -3,6 +3,7 @@ use rustc_span::Span;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum IdKind {
+    Trait,
     Datatype,
     Variant,
     TypParam,
@@ -39,6 +40,12 @@ pub(crate) enum TypX {
     Slice(Typ),
     Tuple(Vec<Typ>),
     Datatype(Id, Vec<Typ>),
+    Projection {
+        self_typ: Typ,
+        // use Datatype(Id, Vec<Typ>) to represent (trait_path, trait_typ_args)
+        trait_as_datatype: Typ,
+        name: Id,
+    },
     Closure,
 }
 
@@ -122,6 +129,8 @@ pub(crate) enum Bound {
     Copy,
     Clone,
     Id(Id),
+    // use TypX::Datatype to represent Trait bound
+    Trait(Typ),
     Fn(ClosureKind, Typ, Typ),
 }
 
@@ -130,6 +139,23 @@ pub(crate) struct GenericParam {
     pub(crate) name: Id,
     pub(crate) const_typ: Option<Typ>,
     pub(crate) bounds: Vec<Bound>,
+}
+
+#[derive(Debug)]
+pub(crate) struct TraitDecl {
+    pub(crate) name: Id,
+    pub(crate) generics: Vec<GenericParam>,
+    pub(crate) assoc_typs: Vec<Id>,
+}
+
+#[derive(Debug)]
+pub(crate) struct AssocTypeImpl {
+    pub name: Id,
+    pub generics: Vec<GenericParam>,
+    pub self_typ: Typ,
+    // use Datatype(Id, Vec<Typ>) to represent (trait_path, trait_typ_args)
+    pub trait_as_datatype: Typ,
+    pub typ: Typ,
 }
 
 #[derive(Debug)]
