@@ -154,7 +154,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_VERSION: &str = "version";
 
     let mut opts = Options::new();
-    opts.optflag("", OPT_VERSION, "print version information");
+    opts.optflag("", OPT_VERSION, "Print version information");
     opts.optopt("", OPT_PERVASIVE_PATH, "Path of the pervasive module", "PATH");
     opts.optopt("", OPT_EXPORT, "Export Verus metadata for library crate", "CRATENAME=PATH");
     opts.optmulti("", OPT_IMPORT, "Import Verus metadata from library crate", "CRATENAME=PATH");
