@@ -686,5 +686,6 @@ pub(crate) fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> 
 
     let erasure_info = ctxt.erasure_info.borrow();
     vir.external_fns = erasure_info.external_functions.clone();
+    vir.path_as_rust_names = vir::ast_util::get_path_as_rust_names_for_krate(&ctxt.vstd_crate_name);
     Ok(Arc::new(vir))
 }

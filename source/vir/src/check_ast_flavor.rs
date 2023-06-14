@@ -33,6 +33,7 @@ pub fn check_krate_simplified(krate: &Krate) {
         module_ids: _,
         external_fns: _,
         external_types: _,
+        path_as_rust_names: _,
     } = &**krate;
 
     for function in functions {
@@ -111,6 +112,7 @@ pub fn check_krate(krate: &Krate) {
         module_ids: _,
         external_fns: _,
         external_types: _,
+        path_as_rust_names: _,
     } = &**krate;
 
     for function in functions {

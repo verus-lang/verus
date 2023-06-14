@@ -895,6 +895,7 @@ pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &Krate) -> Krate {
         module_ids,
         external_fns,
         external_types,
+        path_as_rust_names,
     } = &**krate;
     let kratex = KrateX {
         functions: functions.iter().map(|f| poly_function(ctx, f)).collect(),
@@ -904,6 +905,7 @@ pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &Krate) -> Krate {
         module_ids: module_ids.clone(),
         external_fns: external_fns.clone(),
         external_types: external_types.clone(),
+        path_as_rust_names: path_as_rust_names.clone(),
     };
     ctx.func_map = HashMap::new();
     for function in kratex.functions.iter() {

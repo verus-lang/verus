@@ -464,3 +464,17 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "use of moved value")
 }
+
+test_verify_one_file! {
+    #[test] lifetime_spec_const verus_code! {
+        // from https://github.com/verus-lang/verus/issues/563
+        pub spec const CONST_VALUE: u32 = 32;
+        #[verifier(external_body)]
+        struct Data { }
+        impl Data {
+            proof fn foo() {
+                let value: u32 = CONST_VALUE;
+            }
+        }
+    } => Ok(())
+}

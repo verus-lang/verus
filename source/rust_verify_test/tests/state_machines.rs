@@ -6966,5 +6966,75 @@ test_verify_one_file! {
                 assert(X::State::tr_strong(pre, post, x, y, z, w, v));
             }
         }
+
+        spec fn tr_enabled(pre: X::State, x: Option<int>, y: bool, z: bool, w: bool, v: Option<int>) -> bool {
+            x.is_Some() ==> w
+        }
+
+        proof fn test3(pre: X::State, x: Option<int>, y: bool, z: bool, w: bool, v: Option<int>)
+            ensures X::State::tr_enabled(pre, x, y, z, w, v) <==> tr_enabled(pre, x, y, z, w, v)
+        { }
+
+        proof fn test_take_step(pre: X::State, x: Option<int>, y: bool, z: bool, w: bool, v: Option<int>)
+            requires x.is_Some() ==> w,
+        {
+            let post = X::take_step::tr(pre, x, y, z, w, v);
+            assert(X::State::tr(pre, post, x, y, z, w, v));
+        }
+
+        proof fn test_take_step2(pre: X::State, x: Option<int>, y: bool, z: bool, w: bool, v: Option<int>)
+        {
+            let post = X::take_step::tr(pre, x, y, z, w, v); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] if_let_assert_with_no_else IMPORTS.to_string() + verus_code_str! {
+        pub struct Y {
+            pub a: int,
+            pub b: int,
+        }
+
+        state_machine!{ X {
+            fields {
+                pub m: Map<int, int>,
+            }
+
+            transition!{
+                tr(x: int, y: int, z: int, b: bool) {
+                    if b {
+                        let k: int = 9;
+                        assert(k == x) by { assume(false); };
+                        update m[y] = 12;
+                    }
+
+                    update m[z] = 13;
+                }
+            }
+        }}
+
+        spec fn tr_weak(pre: X::State, post: X::State, x: int, y: int, z: int, b: bool) -> bool {
+            (b ==> (x == 9)) ==> (
+                 (b ==> post.m =~= pre.m.insert(y, 12).insert(z, 13))
+              && (!b ==> post.m =~= pre.m.insert(z, 13))
+            )
+        }
+
+        proof fn test(pre: X::State, post: X::State, x: int, y: int, z: int, b: bool)
+            ensures X::State::tr(pre, post, x, y, z, b) <==> tr_weak(pre, post, x, y, z, b)
+        { }
+
+        spec fn tr_strong(pre: X::State, post: X::State, x: int, y: int, z: int, b: bool) -> bool {
+            (b ==> (x == 9))
+              && (b ==> post.m =~= pre.m.insert(y, 12).insert(z, 13))
+              && (!b ==> post.m =~= pre.m.insert(z, 13))
+        }
+
+        proof fn test2(pre: X::State, post: X::State, x: int, y: int, z: int, b: bool)
+            ensures X::State::tr_strong(pre, post, x, y, z, b) <==> tr_strong(pre, post, x, y, z, b)
+        {
+        }
+
     } => Ok(())
 }

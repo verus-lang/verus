@@ -1030,7 +1030,7 @@ test_verify_one_file! {
         {
             X::f(t)
         }
-    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for `crate::impl&%0::f`")
+    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for `crate::X::f`")
 }
 
 test_verify_one_file! {

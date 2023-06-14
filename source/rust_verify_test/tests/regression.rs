@@ -396,7 +396,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] const_name_in_lifetime_generate_regression_563 verus_code! {
+    #[test] const_name_in_lifetime_generate_regression_563 verus_code! {
         pub spec const CONST_VALUE: nat = 32;
         #[verifier(external_body)]
         struct Data { }
@@ -465,5 +465,28 @@ test_verify_one_file_with_options! {
         }
 
         } // verus!
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] typ_invariants_with_typ_decorations_issue604 verus_code!{
+        pub struct PageId {
+            pub i: nat,
+        }
+
+        struct PageIdContainer {
+            page_id: Ghost<PageId>,
+        }
+
+        spec fn a(page_id: PageId) -> bool;
+        spec fn b(page_id: PageId) -> bool;
+
+        proof fn test(pic: PageIdContainer) {
+            let page_id = pic.page_id@;
+
+            assume(a(page_id));
+            assume(forall |page_id| #[trigger] a(page_id) ==> b(page_id));
+            assert(b(page_id));
+        }
     } => Ok(())
 }

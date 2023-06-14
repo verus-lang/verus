@@ -674,20 +674,6 @@ fn emit_generic_params(state: &mut EmitState, generics: &Vec<GenericParam>) {
     }
 }
 
-pub(crate) fn emit_const_decl(state: &mut EmitState, f: &ConstDecl) {
-    state.newline();
-    state.newline();
-    state.begin_span(f.span);
-    state.write("const ");
-    state.write(f.name.to_string());
-    state.write(": ");
-    state.write(f.typ.to_string());
-    state.write(" = ");
-    emit_exp(state, &f.body);
-    state.write("; ");
-    state.end_span(f.span);
-}
-
 pub(crate) fn emit_fun_decl(state: &mut EmitState, f: &FunDecl) {
     state.newline();
     state.newline();

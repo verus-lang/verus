@@ -381,6 +381,7 @@ fn run() -> Result<(), String> {
                     vargo = vargo.arg("--vargo-verbose");
                 }
                 vargo = vargo.args(&cargo_forward_args);
+                vargo = vargo.args(&feature_args);
                 for e in exclude.iter() {
                     vargo = vargo.arg("--exclude").arg(e);
                 }

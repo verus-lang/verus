@@ -304,8 +304,13 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         TypX::Projection { .. } => {
             Some(str_apply(crate::def::HAS_TYPE, &vec![expr.clone(), typ_to_id(typ, false)]))
         }
+        TypX::Bool | TypX::StrSlice | TypX::Char | TypX::AnonymousClosure(..) | TypX::TypeId => {
+            None
+        }
+        TypX::Tuple(_) | TypX::Air(_) => panic!("typ_invariant"),
         // REVIEW: we could also try to add an IntRange type invariant for TypX::ConstInt
-        _ => None,
+        // (see also context.rs datatypes_invs)
+        TypX::ConstInt(_) => None,
     }
 }
 

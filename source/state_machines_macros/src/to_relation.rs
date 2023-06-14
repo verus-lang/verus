@@ -59,6 +59,11 @@ pub fn to_relation(sops: &Vec<SimplStmt>, weak: bool) -> TokenStream {
     }
 }
 
+pub fn to_is_enabled_condition_weak(sops: &Vec<SimplStmt>) -> TokenStream {
+    let sops = remove_post_conditions_vec(sops);
+    to_relation(&sops, true)
+}
+
 /// Mark each scope-creating node with the assign-vars that need to be extracted
 /// Also, remove any 'assign' that isn't used.
 
@@ -298,8 +303,8 @@ fn simpl_conjunct_stmt(
             let x2 = simpl_conjunct_vec(&es[1].1, None);
             let t = match (x1, x2) {
                 (None, None) => None,
-                (Some(e1), None) => Some(quote! { ::builtin::imply(#cond, #e1) }),
-                (None, Some(e2)) => Some(quote! { ::builtin::imply(!(#cond), #e2) }),
+                (Some(e1), None) => Some(quote! { ::builtin::imply(#cond, {#e1}) }),
+                (None, Some(e2)) => Some(quote! { ::builtin::imply(!(#cond), {#e2}) }),
                 (Some(e1), Some(e2)) => Some(quote! { if #cond { #e1 } else { #e2 } }),
             };
 
@@ -500,4 +505,37 @@ fn set_union(s: &mut IndexSet<String>, t: IndexSet<String>) {
     for x in t.into_iter() {
         s.insert(x);
     }
+}
+
+fn remove_post_conditions_vec(sops: &Vec<SimplStmt>) -> Vec<SimplStmt> {
+    let mut res = vec![];
+    for sop in sops.iter() {
+        match sop {
+            SimplStmt::Let(span, pat, ty, e, child, ex) => {
+                let op = SimplStmt::Let(
+                    *span,
+                    pat.clone(),
+                    ty.clone(),
+                    e.clone(),
+                    remove_post_conditions_vec(child),
+                    ex.clone(),
+                );
+                res.push(op);
+            }
+            SimplStmt::Split(span, sk, es, ex) => {
+                let mut es2 = vec![];
+                for (sp, child) in es {
+                    let child2 = remove_post_conditions_vec(child);
+                    es2.push((*sp, child2));
+                }
+                let op = SimplStmt::Split(*span, sk.clone(), es2, ex.clone());
+                res.push(op);
+            }
+            SimplStmt::PostCondition(..) => {}
+            SimplStmt::Require(..) | SimplStmt::Assert(..) | SimplStmt::Assign(..) => {
+                res.push(sop.clone());
+            }
+        }
+    }
+    res
 }

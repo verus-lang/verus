@@ -209,9 +209,6 @@ fn emit_check_tracked_lifetimes<'tcx>(
     for a in gen_state.assoc_type_impls.iter() {
         emit_assoc_type_impl(emit_state, a);
     }
-    for f in gen_state.const_decls.iter() {
-        emit_const_decl(emit_state, f);
-    }
     for f in gen_state.fun_decls.iter() {
         emit_fun_decl(emit_state, f);
     }

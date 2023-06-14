@@ -54,6 +54,7 @@ pub fn resolve_autospec(krate: &Krate) -> Result<Krate, VirErr> {
         assoc_type_impls,
         external_fns,
         external_types,
+        path_as_rust_names,
     } = &**krate;
 
     let mut func_map: HashMap<Fun, Function> = HashMap::new();
@@ -76,6 +77,7 @@ pub fn resolve_autospec(krate: &Krate) -> Result<Krate, VirErr> {
         module_ids,
         external_fns,
         external_types,
+        path_as_rust_names: path_as_rust_names.clone(),
     });
 
     Ok(krate)

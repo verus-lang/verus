@@ -43,6 +43,7 @@ pub fn builtin_krate(no_span: &Span) -> Krate {
         module_ids: Vec::new(),
         external_fns: Vec::new(),
         external_types: Vec::new(),
+        path_as_rust_names: Vec::new(),
     };
     krate_add_builtins(no_span, &mut kratex);
     Arc::new(kratex)

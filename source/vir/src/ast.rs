@@ -847,6 +847,12 @@ pub enum DatatypeTransparency {
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct DatatypeX {
     pub path: Path,
+    /// Similar to FunctionX proxy field.
+    /// If this datatype is declared via a proxy (a type labeled external_type_specification)
+    /// then this points to the proxy.
+    /// e.g., we might have,
+    ///   path = core::option::Option
+    ///   proxy = vstd::std_specs::core::ExOption
     pub proxy: Option<Spanned<Path>>,
     pub owning_module: Option<Path>,
     pub visibility: Visibility,
@@ -899,4 +905,6 @@ pub struct KrateX {
     pub external_fns: Vec<Fun>,
     /// List of all 'external' types in the crate (only useful for diagnostics)
     pub external_types: Vec<Path>,
+    /// Map rustc-based internal paths to friendlier names for error messages
+    pub path_as_rust_names: Vec<(Path, String)>,
 }

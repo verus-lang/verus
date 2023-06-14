@@ -830,6 +830,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         module_ids,
         external_fns,
         external_types,
+        path_as_rust_names,
     } = &**krate;
     let mut state = State::new();
 
@@ -937,6 +938,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         module_ids,
         external_fns,
         external_types,
+        path_as_rust_names: path_as_rust_names.clone(),
     });
     *ctx = crate::context::GlobalCtx::new(
         &krate,
@@ -959,6 +961,7 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
         module_ids: Vec::new(),
         external_fns: Vec::new(),
         external_types: Vec::new(),
+        path_as_rust_names: Vec::new(),
     };
     for k in krates.into_iter() {
         kratex.functions.extend(k.functions.clone());
@@ -968,6 +971,7 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
         kratex.module_ids.extend(k.module_ids.clone());
         kratex.external_fns.extend(k.external_fns.clone());
         kratex.external_types.extend(k.external_types.clone());
+        kratex.path_as_rust_names.extend(k.path_as_rust_names.clone());
     }
     Ok(Arc::new(kratex))
 }

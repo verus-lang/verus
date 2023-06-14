@@ -11,10 +11,10 @@ use air::ast::{Binder, BinderX, Binders, Span};
 pub use air::ast_util::{ident_binder, str_ident};
 pub use air::messages::error as msg_error;
 use num_bigint::{BigInt, Sign};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Construct an Error and wrap it in Err.
 /// For more complex Error objects, use the builder functions in air::errors
@@ -189,7 +189,7 @@ impl IntRange {
     }
 }
 
-pub fn path_as_rust_name(path: &Path) -> String {
+fn path_as_rust_name_inner(path: &Path) -> String {
     let krate = match &path.krate {
         None => "crate".to_string(),
         Some(krate) => krate.to_string(),
@@ -199,6 +199,48 @@ pub fn path_as_rust_name(path: &Path) -> String {
         strings.push(segment.to_string());
     }
     strings.join("::")
+}
+
+static PATH_AS_RUST_NAME_MAP: Mutex<Option<HashMap<Path, String>>> = Mutex::new(None);
+
+pub fn set_path_as_rust_name(path: &Path, friendly: &Path) {
+    if let Ok(mut guard) = PATH_AS_RUST_NAME_MAP.lock() {
+        let map_opt = &mut *guard;
+        if map_opt.is_none() {
+            *map_opt = Some(HashMap::new());
+        }
+        if map_opt.as_mut().unwrap().contains_key(path) {
+            return;
+        }
+        let name = path_as_rust_name_inner(friendly);
+        map_opt.as_mut().unwrap().insert(path.clone(), name);
+    }
+}
+
+pub fn get_path_as_rust_names_for_krate(krate: &Option<Ident>) -> Vec<(Path, String)> {
+    let mut v: Vec<(Path, String)> = Vec::new();
+    if let Ok(guard) = PATH_AS_RUST_NAME_MAP.lock() {
+        if let Some(map) = &*guard {
+            for (path, name) in map {
+                if &path.krate == krate {
+                    v.push((path.clone(), name.clone()));
+                }
+            }
+        }
+    }
+    v.sort();
+    v
+}
+
+pub fn path_as_rust_name(path: &Path) -> String {
+    if let Ok(guard) = PATH_AS_RUST_NAME_MAP.lock() {
+        if let Some(map) = &*guard {
+            if let Some(name) = map.get(path) {
+                return name.clone();
+            }
+        }
+    }
+    path_as_rust_name_inner(path)
 }
 
 pub fn path_as_vstd_name(path: &Path) -> Option<String> {
