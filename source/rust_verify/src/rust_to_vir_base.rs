@@ -55,30 +55,6 @@ fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Pa
     Some(Arc::new(PathX { krate, segments: Arc::new(segments) }))
 }
 
-pub(crate) fn def_path_to_vir_module<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Path {
-    let multi_crate = MULTI_CRATE.with(|m| m.load(std::sync::atomic::Ordering::Relaxed));
-    let krate = if def_path.krate == LOCAL_CRATE && !multi_crate {
-        None
-    } else {
-        Some(Arc::new(tcx.crate_name(def_path.krate).to_string()))
-    };
-    let mut segments: Vec<vir::ast::Ident> = Vec::new();
-    for d in def_path.data.iter() {
-        use rustc_hir::definitions::DefPathData;
-        match &d.data {
-            DefPathData::ValueNs(symbol) | DefPathData::TypeNs(symbol) => {
-                segments.push(Arc::new(symbol.to_string()));
-            }
-            _ => { /* ignore */ }
-        }
-    }
-    Arc::new(PathX { krate, segments: Arc::new(segments) })
-}
-
-pub(crate) fn def_id_to_vir_module<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Path {
-    def_path_to_vir_module(tcx, tcx.def_path(def_id))
-}
-
 pub(crate) fn typ_path_and_ident_to_vir_path<'tcx>(path: &Path, ident: vir::ast::Ident) -> Path {
     let mut path = (**path).clone();
     Arc::make_mut(&mut path.segments).push(ident);
@@ -106,6 +82,70 @@ pub(crate) fn fn_item_hir_id_to_self_def_id<'tcx>(
     }
 }
 
+// Register an alternative "friendly" paths for printing better error messages
+// or for the command-line --verify-function arguments.
+fn register_friendly_path_as_rust_name<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId, path: &Path) {
+    let hir_id = if let Some(local_id) = def_id.as_local() {
+        tcx.hir().local_def_id_to_hir_id(local_id)
+    } else {
+        return;
+    };
+    let node = tcx.hir().get(hir_id);
+    let is_impl_item_fn = matches!(
+        node,
+        rustc_hir::Node::ImplItem(rustc_hir::ImplItem {
+            kind: rustc_hir::ImplItemKind::Fn(..),
+            ..
+        })
+    );
+    if !is_impl_item_fn {
+        return;
+    }
+    let parent_node = tcx.hir().get_parent(hir_id);
+    let friendly_self_ty = match parent_node {
+        rustc_hir::Node::Item(rustc_hir::Item {
+            kind: rustc_hir::ItemKind::Impl(impll),
+            owner_id,
+            ..
+        }) => match &impll.self_ty.kind {
+            rustc_hir::TyKind::Path(QPath::Resolved(
+                None,
+                rustc_hir::Path { res: rustc_hir::def::Res::Def(_, self_def_id), .. },
+            )) => def_path_to_vir_path(tcx, tcx.def_path(*self_def_id)),
+            _ => {
+                // To handle cases like [T] which are not syntactically datatypes
+                // but converted into VIR datatypes.
+
+                let self_ty = tcx.type_of(owner_id.to_def_id());
+                let vir_ty = mid_ty_to_vir_ghost(tcx, impll.self_ty.span, &self_ty, true, false);
+                let vir_ty = if let Ok(t) = vir_ty {
+                    t
+                } else {
+                    return;
+                };
+                match &*vir_ty.0 {
+                    TypX::Datatype(p, _typ_args) => Some(p.clone()),
+                    _ => None,
+                }
+            }
+        },
+        _ => None,
+    };
+    if let Some(ty_path) = friendly_self_ty {
+        let friendly_path =
+            typ_path_and_ident_to_vir_path(&ty_path, def_to_path_ident(tcx, def_id));
+        vir::ast_util::set_path_as_rust_name(path, &friendly_path);
+    }
+}
+
+fn def_to_path_ident<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> vir::ast::Ident {
+    let def_path = tcx.def_path(def_id);
+    match def_path.data.last().expect("unexpected empty impl path").data {
+        rustc_hir::definitions::DefPathData::ValueNs(name) => Arc::new(name.to_string()),
+        _ => panic!("unexpected name of impl"),
+    }
+}
+
 pub(crate) fn def_id_self_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Path> {
     if let Some(symbol) = tcx.get_diagnostic_name(def_id) {
         // interpreter.rs and def.rs refer directly to some impl methods,
@@ -119,8 +159,11 @@ pub(crate) fn def_id_self_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) ->
             return Some(Arc::new(PathX { krate, segments: Arc::new(segments) }));
         }
     }
-
-    def_path_to_vir_path(tcx, tcx.def_path(def_id))
+    let path = def_path_to_vir_path(tcx, tcx.def_path(def_id));
+    if let Some(path) = &path {
+        register_friendly_path_as_rust_name(tcx, def_id, path);
+    }
+    path
 }
 
 pub(crate) fn def_id_self_to_vir_path_expect<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Path {
@@ -183,40 +226,19 @@ pub(crate) fn qpath_to_ident<'tcx>(
     }
 }
 
-pub(crate) fn is_visibility_private<'tcx>(
-    ctxt: &Context<'tcx>,
-    span: Span,
-    owning_module: &Option<Path>,
-    def_id: DefId,
-) -> Result<bool, VirErr> {
-    let vis = ctxt.tcx.visibility(def_id);
-    match vis {
-        Visibility::Public => Ok(false),
-        Visibility::Restricted(id) => {
-            let restricted_to = def_id_to_vir_path(ctxt.tcx, id);
-            if restricted_to.segments.len() == 0 {
-                // pub(crate)
-                Ok(false)
-            } else if &Some(restricted_to) == owning_module {
-                // private
-                Ok(true)
-            } else {
-                unsupported_err!(span, "restricted visibility")
-            }
-        }
-    }
+pub(crate) fn mk_visibility<'tcx>(ctxt: &Context<'tcx>, def_id: DefId) -> vir::ast::Visibility {
+    mk_visibility_from_vis(ctxt, ctxt.tcx.visibility(def_id))
 }
 
-pub(crate) fn mk_visibility<'tcx>(
+pub(crate) fn mk_visibility_from_vis<'tcx>(
     ctxt: &Context<'tcx>,
-    owning_module: &Option<Path>,
-    def_id: DefId,
+    visibility: rustc_middle::ty::Visibility<DefId>,
 ) -> vir::ast::Visibility {
-    let restricted_to = match ctxt.tcx.visibility(def_id) {
+    let restricted_to = match visibility {
         Visibility::Public => None,
         Visibility::Restricted(id) => Some(def_id_to_vir_path(ctxt.tcx, id)),
     };
-    vir::ast::Visibility { owning_module: owning_module.clone(), restricted_to }
+    vir::ast::Visibility { restricted_to }
 }
 
 pub(crate) fn get_range(typ: &Typ) -> IntRange {
@@ -420,6 +442,45 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let id = def.as_local().unwrap().local_def_index.index();
             (Arc::new(TypX::AnonymousClosure(args, ret, id)), false)
         }
+        TyKind::Alias(rustc_middle::ty::AliasKind::Projection, t) => {
+            // Note: we could allow more uses of projection types by trying to normalize the type
+            // to a non-projection type.  Here's sketch of how this could work:
+            //   use crate::rustc_trait_selection::infer::TyCtxtInferExt;
+            //   use crate::rustc_trait_selection::traits::NormalizeExt;
+            //   let infcx = ctxt.tcx.infer_ctxt().ignoring_regions().build();
+            //   let cause = rustc_infer::traits::ObligationCause::dummy();
+            //   let at = infcx.at(&cause, rustc_middle::ty::ParamEnv::empty()); // or tcx.param_env
+            //   let norm = at.normalize(ty);
+            let assoc_item = tcx.associated_item(t.def_id);
+            let name = Arc::new(assoc_item.name.to_string());
+            // Note: this looks like it would work, but trait_item_def_id is sometimes None:
+            //   use crate::rustc_middle::ty::DefIdTree;
+            //   let trait_def = tcx.parent(assoc_item.trait_item_def_id.expect("..."));
+            let trait_def = tcx.generics_of(t.def_id).parent;
+            match (trait_def, t.substs.try_as_type_list()) {
+                (Some(trait_def), Some(typs)) if typs.len() >= 1 => {
+                    let trait_path = def_id_to_vir_path(tcx, trait_def);
+                    // In rustc, see create_substs_for_ast_path and create_substs_for_generic_args
+                    let mut typs_iter = typs.iter();
+                    let self_ty = typs_iter.next().unwrap();
+                    let self_typ = mid_ty_to_vir_ghost(tcx, span, &self_ty, false, false)?.0;
+                    let mut trait_typ_args = Vec::new();
+                    for ty in typs_iter {
+                        let t = mid_ty_to_vir_ghost(tcx, span, &ty, false, false)?.0;
+                        trait_typ_args.push(t);
+                    }
+                    let trait_typ_args = Arc::new(trait_typ_args);
+                    let proj = TypX::Projection { self_typ, trait_typ_args, trait_path, name };
+                    return Ok((Arc::new(proj), false));
+                }
+                _ => {
+                    unsupported_err!(span, "projection type")
+                }
+            }
+        }
+        TyKind::Alias(rustc_middle::ty::AliasKind::Opaque, _) => {
+            unsupported_err!(span, "opaque type")
+        }
         TyKind::Char => (Arc::new(TypX::Char), false),
         TyKind::Float(..) => unsupported_err!(span, "floating point types"),
         TyKind::Foreign(..) => unsupported_err!(span, "foreign types"),
@@ -434,7 +495,6 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Dynamic(..) => unsupported_err!(span, "dynamic types"),
         TyKind::Generator(..) => unsupported_err!(span, "generator types"),
         TyKind::GeneratorWitness(..) => unsupported_err!(span, "generator witness types"),
-        TyKind::Alias(..) => unsupported_err!(span, "projection or opaque type"),
         TyKind::Bound(..) => unsupported_err!(span, "for<'a> types"),
         TyKind::Placeholder(..) => unsupported_err!(span, "type inference placeholder types"),
         TyKind::Infer(..) => unsupported_err!(span, "type inference placeholder types"),

@@ -1,7 +1,6 @@
 #[allow(unused_imports)]
-use builtin::*;
-use builtin_macros::*;
 use vstd::*;
+use vstd::prelude::*;
 #[allow(unused_imports)]
 use seq::*;
 #[allow(unused_imports)]

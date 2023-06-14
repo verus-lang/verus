@@ -36,12 +36,11 @@ fn datatype_to_air(ctx: &Ctx, datatype: &crate::ast::Datatype) -> air::ast::Data
 }
 
 pub fn is_datatype_transparent(source_module: &Path, datatype: &crate::ast::Datatype) -> bool {
-    match datatype.x.transparency {
+    match &datatype.x.transparency {
         DatatypeTransparency::Never => false,
-        DatatypeTransparency::WithinModule => {
-            is_visible_to_of_owner(&datatype.x.visibility.owning_module, source_module)
+        DatatypeTransparency::WhenVisible(vis) => {
+            is_visible_to_of_owner(&vis.restricted_to, source_module)
         }
-        DatatypeTransparency::Always => true,
     }
 }
 
@@ -70,6 +69,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Decorate(_, t) => uses_ext_equal(ctx, t),
         TypX::Boxed(typ) => uses_ext_equal(ctx, typ),
         TypX::TypParam(_) => true,
+        TypX::Projection { .. } => true,
         TypX::TypeId => panic!("internal error: uses_ext_equal of TypeId"),
         TypX::ConstInt(_) => false,
         TypX::Air(_) => panic!("internal error: uses_ext_equal of Air"),

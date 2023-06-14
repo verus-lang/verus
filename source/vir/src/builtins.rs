@@ -8,7 +8,8 @@ pub fn krate_add_builtins(no_span: &Span, krate: &mut KrateX) {
     // Add a datatype for 'slice'
 
     let path = crate::def::slice_type();
-    let visibility = Visibility { owning_module: None, restricted_to: None };
+    let visibility = Visibility { restricted_to: None };
+    let owning_module = None;
     let transparency = DatatypeTransparency::Never;
 
     // Create a fake variant; it shouldn't matter, since transparency is Never.
@@ -26,6 +27,8 @@ pub fn krate_add_builtins(no_span: &Span, krate: &mut KrateX) {
         typ_params,
         variants,
         mode: Mode::Exec,
+        owning_module,
+        proxy: None,
         ext_equal: false,
     };
     krate.datatypes.push(Spanned::new(no_span.clone(), datatypex));
@@ -36,8 +39,11 @@ pub fn builtin_krate(no_span: &Span) -> Krate {
         functions: Vec::new(),
         datatypes: Vec::new(),
         traits: Vec::new(),
+        assoc_type_impls: Vec::new(),
         module_ids: Vec::new(),
         external_fns: Vec::new(),
+        external_types: Vec::new(),
+        path_as_rust_names: Vec::new(),
     };
     krate_add_builtins(no_span, &mut kratex);
     Arc::new(kratex)

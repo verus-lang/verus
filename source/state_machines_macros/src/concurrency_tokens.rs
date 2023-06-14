@@ -1706,7 +1706,7 @@ fn mk_eq(lhs: &Expr, rhs: &Expr) -> Expr {
     })
 }
 
-fn get_extra_deps(
+pub fn get_extra_deps(
     bundle: &SMBundle,
     trans: &Transition,
     safety_condition_lemmas: &HashMap<String, Ident>,

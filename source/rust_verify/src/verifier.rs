@@ -622,7 +622,9 @@ impl Verifier {
         diagnostics: &impl Diagnostics,
         module_path: &vir::ast::Path,
         function_path: &vir::ast::Path,
-        datatype_commands: Arc<Vec<Arc<CommandX>>>,
+        datatype_commands: Commands,
+        assoc_type_decl_commands: Commands,
+        assoc_type_impl_commands: Commands,
         function_decl_commands: Arc<Vec<(Commands, String)>>,
         function_spec_commands: Arc<Vec<(Commands, String)>>,
         function_axiom_commands: Arc<Vec<(Commands, String)>>,
@@ -657,6 +659,18 @@ impl Verifier {
             &mut air_context,
             &datatype_commands,
             &("Datatypes".to_string()),
+        );
+        self.run_commands(
+            diagnostics,
+            &mut air_context,
+            &assoc_type_decl_commands,
+            &("Associated-Type-Decls".to_string()),
+        );
+        self.run_commands(
+            diagnostics,
+            &mut air_context,
+            &assoc_type_impl_commands,
+            &("Associated-Type-Impls".to_string()),
         );
         for commands in &*function_decl_commands {
             self.run_commands(diagnostics, &mut air_context, &commands.0, &commands.1);
@@ -722,11 +736,29 @@ impl Verifier {
             &("Datatypes".to_string()),
         );
 
+        let assoc_type_decl_commands =
+            vir::assoc_types_to_air::assoc_type_decls_to_air(ctx, &krate.traits);
+        self.run_commands(
+            &reporter,
+            &mut air_context,
+            &assoc_type_decl_commands,
+            &("Associated-Type-Decls".to_string()),
+        );
+
+        let assoc_type_impl_commands =
+            vir::assoc_types_to_air::assoc_type_impls_to_air(ctx, &krate.assoc_type_impls);
+        self.run_commands(
+            &reporter,
+            &mut air_context,
+            &assoc_type_impl_commands,
+            &("Associated-Type-Impls".to_string()),
+        );
+
         let mk_fun_ctx = |f: &Function, checking_recommends: bool| {
             Some(vir::context::FunctionCtx {
                 checking_recommends,
                 checking_recommends_for_non_spec: checking_recommends && f.x.mode != Mode::Spec,
-                module_for_chosen_triggers: f.x.visibility.owning_module.clone(),
+                module_for_chosen_triggers: f.x.owning_module.clone(),
                 current_fun: f.x.name.clone(),
             })
         };
@@ -758,7 +790,7 @@ impl Verifier {
             }
             let restricted_to = if function.x.publish.is_none() {
                 // private to owning_module
-                vis.owning_module.clone()
+                function.x.owning_module.clone()
             } else {
                 // public
                 None
@@ -771,7 +803,7 @@ impl Verifier {
             let module_funs = funs
                 .iter()
                 .map(|(_, (f, _))| f)
-                .filter(|f| Some(module.clone()) == f.x.visibility.owning_module);
+                .filter(|f| Some(module.clone()) == f.x.owning_module);
             let mut module_fun_names: Vec<String> =
                 module_funs.map(|f| fun_name_crate_relative(&module, &f.x.name)).collect();
             if !module_fun_names.iter().any(|f| f == verify_function) {
@@ -828,8 +860,7 @@ impl Verifier {
                 let (function, vis_abs) = &funs[f];
 
                 ctx.fun = mk_fun_ctx(&function, false);
-                let not_verifying_owning_module =
-                    Some(module) != function.x.visibility.owning_module.as_ref();
+                let not_verifying_owning_module = Some(module) != function.x.owning_module.as_ref();
                 let (decl_commands, check_commands, new_fun_ssts) =
                     vir::func_to_air::func_axioms_to_air(
                         ctx,
@@ -924,7 +955,7 @@ impl Verifier {
         let expand_errors_check = self.args.expand_errors;
         self.expand_targets = vec![];
         for function in &krate.functions {
-            if Some(module.clone()) != function.x.visibility.owning_module {
+            if Some(module.clone()) != function.x.owning_module {
                 continue;
             }
             let check_validity = &mut |recommends_rerun: bool,
@@ -993,6 +1024,8 @@ impl Verifier {
                             module,
                             &(function.x.name).path,
                             datatype_commands.clone(),
+                            assoc_type_decl_commands.clone(),
+                            assoc_type_impl_commands.clone(),
                             function_decl_commands.clone(),
                             function_spec_commands.clone(),
                             function_axiom_commands.clone(),
@@ -1392,8 +1425,7 @@ impl Verifier {
         let mut check_crate_diags = vec![];
 
         let vir_crate = vir::traits::demote_foreign_traits(&vir_crate)?;
-        let check_crate_result =
-            vir::well_formed::check_crate(&vir_crate, crate_names.clone(), &mut check_crate_diags);
+        let check_crate_result = vir::well_formed::check_crate(&vir_crate, &mut check_crate_diags);
         for diag in check_crate_diags {
             match diag {
                 vir::ast::VirErrAs::Warning(err) => {
@@ -1523,7 +1555,6 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     crate::lifetime::check_tracked_lifetimes(
                         tcx,
                         &spans,
-                        self.verifier.crate_names.clone().expect("crate_names"),
                         self.verifier.erasure_hints.as_ref().expect("erasure_hints"),
                         lifetime_log_file,
                     )

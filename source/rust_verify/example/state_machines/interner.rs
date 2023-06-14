@@ -1,8 +1,6 @@
 #![allow(unused_imports)]
 
-use builtin::*;
-use builtin_macros::*;
-use vstd::{*, pervasive::*};
+use vstd::{*, prelude::*, pervasive::*};
 use vstd::multiset::*;
 use vstd::option::*;
 use vstd::ptr::*;

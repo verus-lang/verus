@@ -44,10 +44,8 @@ pub struct FunX {
 }
 
 /// Describes what access other modules have to a function, datatype, etc.
-#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq)]
 pub struct Visibility {
-    /// Module that owns this item, or None for a foreign module
-    pub owning_module: Option<Path>,
     /// None for pub
     /// Some(path) means visible to path and path's descendents
     pub restricted_to: Option<Path>,
@@ -143,6 +141,13 @@ pub enum TypX {
     Boxed(Typ),
     /// Type parameter (inherently SMT-boxed, and cannot be unboxed)
     TypParam(Ident),
+    /// Projection such as <D as T<S>>::X or <A as T>::X (SMT-boxed, and can sometimes be unboxed)
+    Projection {
+        self_typ: Typ,
+        trait_typ_args: Typs,
+        trait_path: Path,
+        name: Ident,
+    },
     /// Type of type identifiers
     TypeId,
     /// Const integer type argument (e.g. for array sizes)
@@ -776,6 +781,8 @@ pub struct FunctionX {
     pub kind: FunctionKind,
     /// Access control (public/private)
     pub visibility: Visibility,
+    /// Owning module
+    pub owning_module: Option<Path>,
     /// exec functions are compiled, proof/spec are erased
     /// exec/proof functions can have requires/ensures, spec cannot
     /// spec functions can be used in requires/ensures, proof/exec cannot
@@ -838,14 +845,21 @@ pub type Variants = Binders<Fields>;
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum DatatypeTransparency {
     Never,
-    WithinModule,
-    Always,
+    WhenVisible(Visibility),
 }
 
 /// struct or enum
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct DatatypeX {
     pub path: Path,
+    /// Similar to FunctionX proxy field.
+    /// If this datatype is declared via a proxy (a type labeled external_type_specification)
+    /// then this points to the proxy.
+    /// e.g., we might have,
+    ///   path = core::option::Option
+    ///   proxy = vstd::std_specs::core::ExOption
+    pub proxy: Option<Spanned<Path>>,
+    pub owning_module: Option<Path>,
     pub visibility: Visibility,
     pub transparency: DatatypeTransparency,
     pub typ_params: TypPositiveBounds,
@@ -862,7 +876,20 @@ pub type Trait = Arc<Spanned<TraitX>>;
 pub struct TraitX {
     pub name: Path,
     pub typ_params: TypPositiveBounds,
+    pub assoc_typs: Arc<Vec<Ident>>,
     pub methods: Arc<Vec<Fun>>,
+}
+
+/// impl<typ_params> trait_name<trait_args> for self_typ { type name = typ; }
+pub type AssocTypeImpl = Arc<Spanned<AssocTypeImplX>>;
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub struct AssocTypeImplX {
+    pub name: Ident,
+    pub typ_params: TypBounds,
+    pub self_typ: Typ,
+    pub trait_path: Path,
+    pub trait_typ_args: Arc<Vec<Typ>>,
+    pub typ: Typ,
 }
 
 /// An entire crate
@@ -875,8 +902,14 @@ pub struct KrateX {
     pub datatypes: Vec<Datatype>,
     /// All traits in the crate
     pub traits: Vec<Trait>,
+    /// All associated type impls in the crate
+    pub assoc_type_impls: Vec<AssocTypeImpl>,
     /// List of all modules in the crate
     pub module_ids: Vec<Path>,
     /// List of all 'external' functions in the crate (only useful for diagnostics)
     pub external_fns: Vec<Fun>,
+    /// List of all 'external' types in the crate (only useful for diagnostics)
+    pub external_types: Vec<Path>,
+    /// Map rustc-based internal paths to friendlier names for error messages
+    pub path_as_rust_names: Vec<(Path, String)>,
 }

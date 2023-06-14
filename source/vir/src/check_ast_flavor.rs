@@ -25,7 +25,16 @@ fn check_typ_simplified(typ: &Typ) -> Result<(), ()> {
 pub fn check_krate_simplified(krate: &Krate) {
     check_krate(krate);
 
-    let KrateX { functions, datatypes, traits: _, module_ids: _, external_fns: _ } = &**krate;
+    let KrateX {
+        functions,
+        datatypes,
+        traits: _,
+        assoc_type_impls: _,
+        module_ids: _,
+        external_fns: _,
+        external_types: _,
+        path_as_rust_names: _,
+    } = &**krate;
 
     for function in functions {
         let FunctionX { require, ensure, decrease, body, typ_bounds, params, ret, .. } =
@@ -95,7 +104,16 @@ fn expr_no_loc_in_spec(
 
 /// Panics if the ast uses nodes that should have been removed by ast_simplify
 pub fn check_krate(krate: &Krate) {
-    let KrateX { functions, datatypes: _, traits: _, module_ids: _, external_fns: _ } = &**krate;
+    let KrateX {
+        functions,
+        datatypes: _,
+        traits: _,
+        assoc_type_impls: _,
+        module_ids: _,
+        external_fns: _,
+        external_types: _,
+        path_as_rust_names: _,
+    } = &**krate;
 
     for function in functions {
         let FunctionX { require, ensure, decrease, body, .. } = &function.x;

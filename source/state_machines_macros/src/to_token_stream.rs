@@ -36,8 +36,7 @@ pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> parse::Result<
 
     let self_ty = get_self_ty(&bundle.sm);
 
-    let safety_condition_lemmas =
-        output_primary_stuff(&mut root_stream, &mut impl_stream, &bundle.sm);
+    let safety_condition_lemmas = output_primary_stuff(&mut root_stream, &mut impl_stream, &bundle);
 
     if concurrent {
         output_token_types_and_fns(&mut root_stream, &bundle, &safety_condition_lemmas)?;
@@ -226,8 +225,9 @@ pub fn set_mode_proof(sig: &mut Signature, span: Span) {
 pub fn output_primary_stuff(
     root_stream: &mut TokenStream,
     impl_stream: &mut TokenStream,
-    sm: &SM,
+    bundle: &SMBundle,
 ) -> HashMap<String, Ident> {
+    let sm = &bundle.sm;
     let gen = match &sm.generics {
         Some(gen) => quote! { #gen },
         None => TokenStream::new(),
@@ -319,6 +319,26 @@ pub fn output_primary_stuff(
             impl_stream.extend(rel_fn);
         }
 
+        // Output the enabling condition (like 'weak' relation but without a 'post' argument)
+
+        if trans.kind != TransitionKind::Init && trans.kind != TransitionKind::Property {
+            let params = pre_params(&trans.params);
+            let name = Ident::new(&(trans.name.to_string() + "_enabled"), trans.name.span());
+
+            let f = crate::to_relation::to_is_enabled_condition_weak(&simplified_body);
+
+            let rel_fn = quote! {
+                #[cfg(not(verus_macro_erase_ghost))]
+                #[verus::internal(verus_macro)]
+                #[verifier::spec]
+                #[verifier::publish] /* vattr */
+                pub fn #name (#params) -> ::core::primitive::bool {
+                    ::builtin_macros::verus_proof_expr!({ #f })
+                }
+            };
+            impl_stream.extend(rel_fn);
+        }
+
         // If necessary, output a lemma with proof obligations for the safety conditions.
         // Note that we specifically check for asserts on the _simplified_ transition AST,
         // not the original, because 'assert' statements may have been introduced in
@@ -361,7 +381,69 @@ pub fn output_primary_stuff(
         }
     });
 
+    let mut take_step_stream = TokenStream::new();
+    output_take_step_fns(&mut take_step_stream, bundle, &safety_condition_lemmas);
+    root_stream.extend(quote! {
+        pub mod take_step {
+            use super::*;
+            #take_step_stream
+        }
+    });
+
     safety_condition_lemmas
+}
+
+fn output_take_step_fns(
+    stream: &mut TokenStream,
+    bundle: &SMBundle,
+    safety_condition_lemmas: &HashMap<String, Ident>,
+) {
+    let sm = &bundle.sm;
+    if sm.transition_label.is_some() {
+        return; // TODO
+    }
+
+    for trans in &sm.transitions {
+        if matches!(trans.kind, TransitionKind::Transition | TransitionKind::ReadonlyTransition) {
+            let self_ty = get_self_ty(sm);
+            let super_self_ty = Type::Verbatim(quote! { super::#self_ty });
+            let params = pre_assoc_params(&super_self_ty, &trans.params);
+            let args = pre_args(&trans.params);
+            let args2 = pre_post_args(&trans.params);
+
+            let (gen1, gen2) = generic_components_for_fn(&sm.generics);
+            let tr_name = &trans.name;
+
+            let tr_name_enabled =
+                Ident::new(&(trans.name.to_string() + "_enabled"), trans.name.span());
+            let tr_name_strong =
+                Ident::new(&(trans.name.to_string() + "_strong"), trans.name.span());
+
+            let extra_deps =
+                crate::concurrency_tokens::get_extra_deps(bundle, trans, safety_condition_lemmas);
+
+            //let step_args = just_args(&trans.params);
+            stream.extend(quote! {
+                #[cfg(not(verus_macro_erase_ghost))]
+                #[verus::internal(verus_macro)]
+                #[verifier::external_body] /* vattr */
+                #[verifier::proof]
+                pub fn #tr_name#gen1(#params) -> #super_self_ty #gen2 {
+                    ::builtin::requires(
+                        super::State::#tr_name_enabled(#args) && pre.invariant()
+                    );
+                    ::builtin::ensures(|post: #super_self_ty|
+                        super::State::#tr_name_strong(#args2) && post.invariant()
+                    );
+                    #extra_deps
+                    loop { }
+                }
+
+                #[cfg(verus_macro_erase_ghost)]
+                use bool as #tr_name;
+            });
+        }
+    }
 }
 
 fn output_step_datatype(
@@ -614,6 +696,22 @@ fn pre_post_params(params: &Vec<TransitionParam>) -> TokenStream {
     };
 }
 
+/// pre: Self, post: Self, params...
+fn pre_params(params: &Vec<TransitionParam>) -> TokenStream {
+    let params: Vec<TokenStream> = params
+        .iter()
+        .map(|param| {
+            let ident = &param.name;
+            let ty = &param.ty;
+            quote! { #ident: #ty }
+        })
+        .collect();
+    return quote! {
+        pre: Self,
+        #(#params),*
+    };
+}
+
 fn expect_first_param_is_label(sm: &SM, tr: &Transition) -> bool {
     match tr.kind {
         TransitionKind::Property => false,
@@ -704,6 +802,21 @@ fn post_params(params: &Vec<TransitionParam>) -> TokenStream {
     return quote! {
         post: Self,
         #(#params),*
+    };
+}
+
+// pre, args...
+fn pre_args(params: &Vec<TransitionParam>) -> TokenStream {
+    let args: Vec<TokenStream> = params
+        .iter()
+        .map(|param| {
+            let ident = &param.name;
+            quote! { #ident }
+        })
+        .collect();
+    return quote! {
+        pre,
+        #(#args),*
     };
 }
 

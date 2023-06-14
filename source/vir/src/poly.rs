@@ -70,9 +70,9 @@ Therefore, the expression Unbox(Box(1)) explicitly introduces a superfluous Unbo
 */
 
 use crate::ast::{
-    BinaryOp, CallTarget, Datatype, DatatypeX, Expr, ExprX, Exprs, FieldOpr, Function,
-    FunctionKind, FunctionX, Ident, IntRange, Krate, KrateX, MaskSpec, Mode, MultiOp, Param,
-    ParamX, Path, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr,
+    AssocTypeImpl, BinaryOp, CallTarget, Datatype, DatatypeX, Expr, ExprX, Exprs, FieldOpr,
+    Function, FunctionKind, FunctionX, Ident, IntRange, Krate, KrateX, MaskSpec, Mode, MultiOp,
+    Param, ParamX, Path, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr,
 };
 use crate::context::Ctx;
 use crate::def::Spanned;
@@ -146,7 +146,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
             }
         }
         TypX::Decorate(_, t) => typ_is_poly(ctx, t),
-        TypX::Boxed(_) | TypX::TypParam(_) => true,
+        TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } => true,
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
@@ -173,6 +173,11 @@ fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
         }
         TypX::Decorate(d, t) => Arc::new(TypX::Decorate(*d, coerce_typ_to_native(ctx, t))),
         TypX::Boxed(_) | TypX::TypParam(_) => typ.clone(),
+        TypX::Projection { .. } => {
+            // In the non-rooted_in_typ_param case, we need typ to be normalized to a non-projection:
+            assert!(crate::recursive_types::rooted_in_typ_param(typ));
+            typ.clone()
+        }
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
@@ -190,7 +195,7 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
         TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
         TypX::Datatype(..) => Arc::new(TypX::Boxed(typ.clone())),
         TypX::Decorate(d, t) => Arc::new(TypX::Decorate(*d, coerce_typ_to_poly(_ctx, t))),
-        TypX::Boxed(_) | TypX::TypParam(_) => typ.clone(),
+        TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } => typ.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
@@ -222,6 +227,11 @@ pub(crate) fn coerce_expr_to_native(ctx: &Ctx, expr: &Expr) -> Expr {
             }
         }
         TypX::TypParam(_) => expr.clone(),
+        TypX::Projection { .. } => {
+            // In the non-rooted_in_typ_param case, we need typ to be normalized to a non-projection:
+            assert!(crate::recursive_types::rooted_in_typ_param(&expr.typ));
+            expr.clone()
+        }
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
@@ -253,7 +263,7 @@ fn coerce_expr_to_poly(ctx: &Ctx, expr: &Expr) -> Expr {
         TypX::Decorate(..) => {
             panic!("internal error: Decorate should be removed by undecorate_typ")
         }
-        TypX::Boxed(_) | TypX::TypParam(_) => expr.clone(),
+        TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } => expr.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
@@ -697,6 +707,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         proxy,
         kind,
         visibility,
+        owning_module,
         mode: mut function_mode,
         fuel,
         typ_bounds,
@@ -835,6 +846,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         proxy: proxy.clone(),
         kind: kind.clone(),
         visibility: visibility.clone(),
+        owning_module: owning_module.clone(),
         mode: function_mode,
         fuel: *fuel,
         typ_bounds: typ_bounds.clone(),
@@ -869,14 +881,33 @@ fn poly_datatype(ctx: &Ctx, datatype: &Datatype) -> Datatype {
     Spanned::new(datatype.span.clone(), datatypex)
 }
 
+fn poly_assoc_type_impl(ctx: &Ctx, assoc: &AssocTypeImpl) -> AssocTypeImpl {
+    crate::ast_visitor::map_assoc_type_impl_visitor_env(assoc, &mut (), &|(), t| {
+        Ok(coerce_typ_to_poly(ctx, t))
+    })
+    .expect("poly_assoc_type_impl")
+}
+
 pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &Krate) -> Krate {
-    let KrateX { functions, datatypes, traits, module_ids, external_fns } = &**krate;
+    let KrateX {
+        functions,
+        datatypes,
+        traits,
+        assoc_type_impls,
+        module_ids,
+        external_fns,
+        external_types,
+        path_as_rust_names,
+    } = &**krate;
     let kratex = KrateX {
         functions: functions.iter().map(|f| poly_function(ctx, f)).collect(),
         datatypes: datatypes.iter().map(|d| poly_datatype(ctx, d)).collect(),
         traits: traits.clone(),
+        assoc_type_impls: assoc_type_impls.iter().map(|a| poly_assoc_type_impl(ctx, a)).collect(),
         module_ids: module_ids.clone(),
         external_fns: external_fns.clone(),
+        external_types: external_types.clone(),
+        path_as_rust_names: path_as_rust_names.clone(),
     };
     ctx.func_map = HashMap::new();
     for function in kratex.functions.iter() {

@@ -192,24 +192,22 @@ fn emit_check_tracked_lifetimes<'tcx>(
     tcx: TyCtxt<'tcx>,
     krate: &'tcx Crate<'tcx>,
     emit_state: &mut EmitState,
-    crate_names: Vec<String>,
     erasure_hints: &ErasureHints,
 ) -> State {
-    let gen_state = crate::lifetime_generate::gen_check_tracked_lifetimes(
-        tcx,
-        krate,
-        crate_names,
-        erasure_hints,
-    );
+    let gen_state =
+        crate::lifetime_generate::gen_check_tracked_lifetimes(tcx, krate, erasure_hints);
     for line in PRELUDE.split('\n') {
         emit_state.writeln(line.replace("\r", ""));
     }
 
+    for t in gen_state.trait_decls.iter() {
+        emit_trait_decl(emit_state, t);
+    }
     for d in gen_state.datatype_decls.iter() {
         emit_datatype_decl(emit_state, d);
     }
-    for f in gen_state.const_decls.iter() {
-        emit_const_decl(emit_state, f);
+    for a in gen_state.assoc_type_impls.iter() {
+        emit_assoc_type_impl(emit_state, a);
     }
     for f in gen_state.fun_decls.iter() {
         emit_fun_decl(emit_state, f);
@@ -279,14 +277,12 @@ pub fn lifetime_rustc_driver(rustc_args: &[String], rust_code: String) {
 pub(crate) fn check_tracked_lifetimes<'tcx>(
     tcx: TyCtxt<'tcx>,
     spans: &SpanContext,
-    crate_names: Vec<String>,
     erasure_hints: &ErasureHints,
     lifetime_log_file: Option<File>,
 ) -> Result<Vec<Message>, VirErr> {
     let krate = tcx.hir().krate();
     let mut emit_state = EmitState::new();
-    let gen_state =
-        emit_check_tracked_lifetimes(tcx, krate, &mut emit_state, crate_names, erasure_hints);
+    let gen_state = emit_check_tracked_lifetimes(tcx, krate, &mut emit_state, erasure_hints);
     let mut rust_code: String = String::new();
     for line in &emit_state.lines {
         rust_code.push_str(&line.text);

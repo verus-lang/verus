@@ -56,7 +56,7 @@ test_verify_one_file! {
         fn foo(x: &X) {
             let y = x.clone();
         }
-    } => Err(err) => assert_vir_error_msg(err, "`crate::impl&%0::clone` is not supported")
+    } => Err(err) => assert_vir_error_msg(err, "`crate::X::clone` is not supported")
 }
 
 test_verify_one_file! {

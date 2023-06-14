@@ -33,6 +33,7 @@ pub mod ptr;
 pub mod string;
 #[cfg(not(feature = "no_global_allocator"))] 
 pub mod vec;
+pub mod view;
 pub mod std_specs;
 
 // Re-exports all pervasive types, traits, and functions that are commonly used or replace

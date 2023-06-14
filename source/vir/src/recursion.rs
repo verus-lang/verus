@@ -32,7 +32,6 @@ use std::sync::Arc;
 pub enum Node {
     Fun(Fun),
     Trait(Path),
-    Datatype(Path),
     DatatypeTraitBound { self_typ: Typ, trait_path: Path },
 }
 

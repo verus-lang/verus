@@ -1,9 +1,7 @@
 #![allow(unused_imports)]
 
 // ANCHOR: full
-use builtin::*;
-use builtin_macros::*;
-use vstd::{*, pervasive::*};
+use vstd::{*, prelude::*, pervasive::*};
 use vstd::{atomic_ghost::*};
 use vstd::{modes::*};
 use vstd::{thread::*};

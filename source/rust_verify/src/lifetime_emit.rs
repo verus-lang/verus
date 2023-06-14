@@ -4,6 +4,7 @@ use rustc_span::{BytePos, Span};
 
 pub(crate) fn encode_id(kind: IdKind, rename_count: usize, raw_id: &String) -> String {
     match kind {
+        IdKind::Trait => format!("T{}_{}", rename_count, raw_id),
         IdKind::Datatype => format!("D{}_{}", rename_count, raw_id),
         IdKind::Variant => format!("C{}_{}", rename_count, raw_id),
         IdKind::TypParam => format!("A{}_{}", rename_count, raw_id),
@@ -80,6 +81,9 @@ impl ToString for TypX {
                     buf.push('>');
                 }
                 buf
+            }
+            TypX::Projection { self_typ, trait_as_datatype: tr, name } => {
+                format!("<{} as {}>::{}", self_typ.to_string(), tr.to_string(), name.to_string())
             }
             TypX::Closure => "_".to_string(),
         }
@@ -641,6 +645,9 @@ fn emit_generic_param(param: &GenericParam) -> String {
             Bound::Id(x) => {
                 buf += &x.to_string();
             }
+            Bound::Trait(x) => {
+                buf += &x.to_string();
+            }
             Bound::Fn(kind, params, ret) => {
                 buf += match kind {
                     ClosureKind::Fn => "Fn",
@@ -665,20 +672,6 @@ fn emit_generic_params(state: &mut EmitState, generics: &Vec<GenericParam>) {
         }
         state.write(">");
     }
-}
-
-pub(crate) fn emit_const_decl(state: &mut EmitState, f: &ConstDecl) {
-    state.newline();
-    state.newline();
-    state.begin_span(f.span);
-    state.write("const ");
-    state.write(f.name.to_string());
-    state.write(": ");
-    state.write(f.typ.to_string());
-    state.write(" = ");
-    emit_exp(state, &f.body);
-    state.write("; ");
-    state.end_span(f.span);
 }
 
 pub(crate) fn emit_fun_decl(state: &mut EmitState, f: &FunDecl) {
@@ -781,6 +774,24 @@ fn emit_copy_clone(
     state.write(body);
 }
 
+pub(crate) fn emit_trait_decl(state: &mut EmitState, t: &TraitDecl) {
+    state.newline();
+    state.newline();
+    state.write("trait ");
+    state.write(&t.name.to_string());
+    emit_generic_params(state, &t.generics);
+    state.write(" {");
+    state.push_indent();
+    for a in &t.assoc_typs {
+        state.newline();
+        state.write("type ");
+        state.write(a.to_string());
+        state.write(";");
+    }
+    state.newline_unindent();
+    state.write("}");
+}
+
 pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
     state.newline();
     let d_keyword = match &*d.datatype {
@@ -813,4 +824,21 @@ pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
         emit_copy_clone(state, d, copy_bounds, &Bound::Clone, "Clone", clone_body);
         emit_copy_clone(state, d, copy_bounds, &Bound::Copy, "Copy", "{}");
     }
+}
+
+pub(crate) fn emit_assoc_type_impl(state: &mut EmitState, a: &AssocTypeImpl) {
+    let AssocTypeImpl { name, generics, self_typ, trait_as_datatype, typ } = a;
+    state.newline();
+    state.newline();
+    state.write("impl");
+    emit_generic_params(state, &generics);
+    state.write(" ");
+    state.write(&trait_as_datatype.to_string());
+    state.write(" for ");
+    state.write(&self_typ.to_string());
+    state.write(" { type ");
+    state.write(&name.to_string());
+    state.write(" = ");
+    state.write(&typ.to_string());
+    state.write("; }");
 }

@@ -10,6 +10,7 @@ macro_rules! println {
 }
 
 verus! {
+
 // TODO: remove this
 pub proof fn assume(b: bool)
     ensures b

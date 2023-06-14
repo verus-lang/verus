@@ -11,10 +11,10 @@ use air::ast::{Binder, BinderX, Binders, Span};
 pub use air::ast_util::{ident_binder, str_ident};
 pub use air::messages::error as msg_error;
 use num_bigint::{BigInt, Sign};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Construct an Error and wrap it in Err.
 /// For more complex Error objects, use the builder functions in air::errors
@@ -189,7 +189,7 @@ impl IntRange {
     }
 }
 
-pub fn path_as_rust_name(path: &Path) -> String {
+fn path_as_rust_name_inner(path: &Path) -> String {
     let krate = match &path.krate {
         None => "crate".to_string(),
         Some(krate) => krate.to_string(),
@@ -199,6 +199,48 @@ pub fn path_as_rust_name(path: &Path) -> String {
         strings.push(segment.to_string());
     }
     strings.join("::")
+}
+
+static PATH_AS_RUST_NAME_MAP: Mutex<Option<HashMap<Path, String>>> = Mutex::new(None);
+
+pub fn set_path_as_rust_name(path: &Path, friendly: &Path) {
+    if let Ok(mut guard) = PATH_AS_RUST_NAME_MAP.lock() {
+        let map_opt = &mut *guard;
+        if map_opt.is_none() {
+            *map_opt = Some(HashMap::new());
+        }
+        if map_opt.as_mut().unwrap().contains_key(path) {
+            return;
+        }
+        let name = path_as_rust_name_inner(friendly);
+        map_opt.as_mut().unwrap().insert(path.clone(), name);
+    }
+}
+
+pub fn get_path_as_rust_names_for_krate(krate: &Option<Ident>) -> Vec<(Path, String)> {
+    let mut v: Vec<(Path, String)> = Vec::new();
+    if let Ok(guard) = PATH_AS_RUST_NAME_MAP.lock() {
+        if let Some(map) = &*guard {
+            for (path, name) in map {
+                if &path.krate == krate {
+                    v.push((path.clone(), name.clone()));
+                }
+            }
+        }
+    }
+    v.sort();
+    v
+}
+
+pub fn path_as_rust_name(path: &Path) -> String {
+    if let Ok(guard) = PATH_AS_RUST_NAME_MAP.lock() {
+        if let Some(map) = &*guard {
+            if let Some(name) = map.get(path) {
+                return name.clone();
+            }
+        }
+    }
+    path_as_rust_name_inner(path)
 }
 
 pub fn path_as_vstd_name(path: &Path) -> Option<String> {
@@ -250,8 +292,27 @@ pub fn is_visible_to_opt(target_visibility: &Visibility, source_module: &Option<
 }
 
 impl Visibility {
-    pub(crate) fn is_private(&self) -> bool {
-        self.owning_module.is_some() && self.owning_module == self.restricted_to
+    pub(crate) fn is_private_to(&self, module: &Option<Path>) -> bool {
+        module.is_some() && module == &self.restricted_to
+    }
+
+    pub fn public() -> Self {
+        Visibility { restricted_to: None }
+    }
+
+    /// Return the more restrictive of the two. Panics if the two visibility descriptors
+    /// are incompatible.
+    pub fn join(&self, vis2: &Visibility) -> Visibility {
+        match (&self.restricted_to, &vis2.restricted_to) {
+            (None, _) => vis2.clone(),
+            (_, None) => self.clone(),
+            (Some(p1), Some(p2)) => {
+                assert!(p1.krate == p2.krate);
+                let m = std::cmp::min(p1.segments.len(), p2.segments.len());
+                assert!(&p1.segments[..m] == &p2.segments[..m]);
+                if p1.segments.len() < p2.segments.len() { vis2.clone() } else { self.clone() }
+            }
+        }
     }
 }
 

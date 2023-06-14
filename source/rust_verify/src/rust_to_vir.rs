@@ -57,8 +57,21 @@ fn check_item<'tcx>(
     if vattrs.external_fn_specification && !matches!(&item.kind, ItemKind::Fn(..)) {
         return err_span(item.span, "`external_fn_specification` attribute not supported here");
     }
+    if vattrs.external_type_specification && !matches!(&item.kind, ItemKind::Struct(..)) {
+        if matches!(&item.kind, ItemKind::Enum(..)) {
+            return err_span(
+                item.span,
+                "`external_type_specification` proxy type should use a struct with a single field to declare the external type (even if the external type is an enum)",
+            );
+        } else {
+            return err_span(
+                item.span,
+                "`external_type_specification` attribute not supported here",
+            );
+        }
+    }
 
-    let visibility = || mk_visibility(ctxt, &Some(module_path()), item.owner_id.to_def_id());
+    let visibility = || mk_visibility(ctxt, item.owner_id.to_def_id());
     match &item.kind {
         ItemKind::Fn(sig, generics, body_id) => {
             check_item_fn(
@@ -67,6 +80,7 @@ fn check_item<'tcx>(
                 item.owner_id.to_def_id(),
                 FunctionKind::Static,
                 visibility(),
+                &module_path(),
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 sig,
                 None,
@@ -89,6 +103,17 @@ fn check_item<'tcx>(
             // get from the HIR data.
 
             if vattrs.external {
+                if vattrs.external_type_specification {
+                    return err_span(
+                        item.span,
+                        "a type cannot be marked both `external_type_specification` and `external`",
+                    );
+                }
+
+                let def_id = id.owner_id.to_def_id();
+                let path = def_id_to_vir_path(ctxt.tcx, def_id);
+                vir.external_types.push(path);
+
                 return Ok(());
             }
 
@@ -105,10 +130,18 @@ fn check_item<'tcx>(
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 variant_data,
                 generics,
-                &adt_def,
+                adt_def,
             )?;
         }
         ItemKind::Enum(enum_def, generics) => {
+            if vattrs.external {
+                let def_id = id.owner_id.to_def_id();
+                let path = def_id_to_vir_path(ctxt.tcx, def_id);
+                vir.external_types.push(path);
+
+                return Ok(());
+            }
+
             let tyof = ctxt.tcx.type_of(item.owner_id.to_def_id());
             let adt_def = tyof.ty_adt_def().expect("adt_def");
 
@@ -233,11 +266,8 @@ fn check_item<'tcx>(
                 match impl_item_ref.kind {
                     AssocItemKind::Fn { has_self: true | false } => {
                         let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
-                        let mut impl_item_visibility = mk_visibility(
-                            &ctxt,
-                            &Some(module_path()),
-                            impl_item.owner_id.to_def_id(),
-                        ); // TODO(main_new) correct?
+                        let mut impl_item_visibility =
+                            mk_visibility(&ctxt, impl_item.owner_id.to_def_id()); // TODO(main_new) correct?
                         match &impl_item.kind {
                             ImplItemKind::Fn(sig, body_id) => {
                                 let fn_attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
@@ -292,7 +322,6 @@ fn check_item<'tcx>(
                                     {
                                         impl_item_visibility = mk_visibility(
                                             &ctxt,
-                                            &Some(module_path()),
                                             impl_item.owner_id.to_def_id(), // TODO(main_new) correct?
                                         );
                                         let ident = impl_item_ref.ident.to_string();
@@ -316,6 +345,7 @@ fn check_item<'tcx>(
                                         impl_item.owner_id.to_def_id(),
                                         kind,
                                         impl_item_visibility,
+                                        &module_path(),
                                         fn_attrs,
                                         sig,
                                         Some((&impll.generics, impl_def_id)),
@@ -332,8 +362,52 @@ fn check_item<'tcx>(
                         }
                     }
                     AssocItemKind::Type => {
-                        let _impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
-                        // the type system handles this for Trait impls
+                        let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
+                        if impl_item.generics.params.len() != 0
+                            || impl_item.generics.predicates.len() != 0
+                            || impl_item.generics.has_where_clause_predicates
+                        {
+                            unsupported_err!(
+                                item.span,
+                                "unsupported generics on associated type",
+                                impl_item_ref
+                            );
+                        }
+                        if let ImplItemKind::Type(_ty) = impl_item.kind {
+                            let name = Arc::new(impl_item.ident.to_string());
+                            let ty = ctxt.tcx.type_of(impl_item.owner_id.to_def_id());
+                            let typ = mid_ty_to_vir(ctxt.tcx, impl_item.span, &ty, false)?;
+                            if let Some((trait_path, trait_typ_args)) = trait_path_typ_args.clone()
+                            {
+                                let typ_params =
+                                    crate::rust_to_vir_base::check_generics_bounds_fun(
+                                        ctxt.tcx,
+                                        impll.generics,
+                                        impl_def_id,
+                                    )?;
+                                let assocx = vir::ast::AssocTypeImplX {
+                                    name,
+                                    typ_params,
+                                    self_typ: self_typ.clone(),
+                                    trait_path,
+                                    trait_typ_args,
+                                    typ,
+                                };
+                                vir.assoc_type_impls.push(ctxt.spanned_new(item.span, assocx));
+                            } else {
+                                unsupported_err!(
+                                    item.span,
+                                    "unsupported item ref in impl",
+                                    impl_item_ref
+                                );
+                            }
+                        } else {
+                            unsupported_err!(
+                                item.span,
+                                "unsupported item ref in impl",
+                                impl_item_ref
+                            );
+                        }
                     }
                     _ => unsupported_err!(item.span, "unsupported item ref in impl", impl_item_ref),
                 }
@@ -365,6 +439,7 @@ fn check_item<'tcx>(
                 item.span,
                 item.owner_id.to_def_id(),
                 visibility(),
+                &module_path(),
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 &vir_ty,
                 body_id,
@@ -392,12 +467,13 @@ fn check_item<'tcx>(
             let generics_bnds =
                 check_generics_bounds(ctxt.tcx, trait_generics, false, trait_def_id, None)?;
             let trait_path = def_id_to_vir_path(ctxt.tcx, trait_def_id);
+            let mut assoc_typs: Vec<vir::ast::Ident> = Vec::new();
             let mut methods: Vec<vir::ast::Function> = Vec::new();
             let mut method_names: Vec<Fun> = Vec::new();
             for trait_item_ref in *trait_items {
                 let trait_item = ctxt.tcx.hir().trait_item(trait_item_ref.id);
                 let TraitItem {
-                    ident: _,
+                    ident,
                     owner_id,
                     generics: item_generics,
                     kind,
@@ -427,6 +503,7 @@ fn check_item<'tcx>(
                             owner_id.to_def_id(),
                             FunctionKind::TraitMethodDecl { trait_path: trait_path.clone() },
                             visibility(),
+                            &module_path(),
                             attrs,
                             sig,
                             Some((trait_generics, trait_def_id)),
@@ -436,6 +513,9 @@ fn check_item<'tcx>(
                         if let Some(fun) = fun {
                             method_names.push(fun);
                         }
+                    }
+                    TraitItemKind::Type([], None) => {
+                        assoc_typs.push(Arc::new(ident.to_string()));
                     }
                     _ => {
                         unsupported_err!(item.span, "unsupported item", item);
@@ -447,6 +527,7 @@ fn check_item<'tcx>(
             let traitx = vir::ast::TraitX {
                 name: trait_path,
                 methods: Arc::new(method_names),
+                assoc_typs: Arc::new(assoc_typs),
                 typ_params: Arc::new(generics_bnds),
             };
             vir.traits.push(ctxt.spanned_new(item.span, traitx));
@@ -488,7 +569,7 @@ fn check_foreign_item<'tcx>(
                 vir,
                 item.owner_id.to_def_id(),
                 item.span,
-                mk_visibility(ctxt, &None, item.owner_id.to_def_id()),
+                mk_visibility(ctxt, item.owner_id.to_def_id()),
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 decl,
                 idents,
@@ -605,5 +686,6 @@ pub(crate) fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> 
 
     let erasure_info = ctxt.erasure_info.borrow();
     vir.external_fns = erasure_info.external_functions.clone();
+    vir.path_as_rust_names = vir::ast_util::get_path_as_rust_names_for_krate(&ctxt.vstd_crate_name);
     Ok(Arc::new(vir))
 }
