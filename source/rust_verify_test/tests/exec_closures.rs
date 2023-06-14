@@ -714,7 +714,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] callee_is_computed_expression_with_loop ["vstd"] => verus_code! {
-        use vstd::{pervasive::*, option::*};
+        use vstd::{pervasive::*, prelude::*};
 
         fn foo(b: bool) {
             let mut i: u64 = 0;

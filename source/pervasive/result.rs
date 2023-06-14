@@ -1,3 +1,5 @@
+#![deprecated(note="Use std::result instead")]
+
 #[allow(unused_imports)]
 use crate::pervasive::*;
 #[allow(unused_imports)]
@@ -11,6 +13,9 @@ pub enum Result<T, E> {
     Ok(T),
     Err(E)
 }
+
+pub use crate::result::Result::Ok;
+pub use crate::result::Result::Err;
 
 impl<T, E> Result<T, E> {
     #[inline(always)]

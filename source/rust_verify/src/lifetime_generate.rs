@@ -23,9 +23,10 @@ use rustc_middle::ty::{
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::kw;
 use rustc_span::Span;
+use rustc_span::Symbol;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use vir::ast::{AutospecUsage, Fun, FunX, Function, Mode, Path};
+use vir::ast::{AutospecUsage, DatatypeTransparency, Fun, FunX, Function, Mode, Path};
 use vir::ast_util::get_field;
 use vir::def::VERUS_SPEC;
 
@@ -331,10 +332,21 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
             let did = adt_def_data.did;
             state.reach_datatype(ctxt, did);
             let path = def_id_to_vir_path(ctxt.tcx, did);
-            let is_box = Some(did) == ctxt.tcx.lang_items().owned_box() && args.len() == 2;
+
+            let is_box = Some(did) == ctxt.tcx.lang_items().owned_box();
             let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(ctxt.tcx, did));
             let is_smart_ptr = def_name == "alloc::rc::Rc" || def_name == "alloc::sync::Arc";
             let mut typ_args: Vec<Typ> = Vec::new();
+
+            let args = if is_box {
+                // For Box, skip the second argument (the Allocator)
+                // which is currently restricted to always be `Global`.
+                assert!(args.len() == 2);
+                &args[0..1]
+            } else {
+                &args
+            };
+
             for arg in args.iter() {
                 match arg.unpack() {
                     rustc_middle::ty::subst::GenericArgKind::Type(t) => {
@@ -361,9 +373,6 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
                 }
             }
             let datatype_name = if is_box || is_smart_ptr {
-                if is_box {
-                    typ_args.pop();
-                }
                 assert!(typ_args.len() == 1);
                 let name = path.segments.last().expect("builtin").to_string();
                 Id::new(IdKind::Builtin, 0, name)
@@ -1098,7 +1107,12 @@ fn erase_expr<'tcx>(
         ExprKind::Index(e1, e2) => {
             let exp1 = erase_expr(ctxt, state, expect_spec, e1);
             let exp2 = erase_expr(ctxt, state, expect_spec, e2);
-            erase_spec_exps(ctxt, state, expr, vec![exp1, exp2])
+            if expect_spec {
+                erase_spec_exps(ctxt, state, expr, vec![exp1, exp2])
+            } else {
+                let ty = erase_ty(ctxt, state, &ctxt.types().node_type(expr.hir_id));
+                mk_exp(ExpX::Index(ty, exp1.expect("expr"), exp2.expect("expr")))
+            }
         }
         ExprKind::Field(e1, field) => {
             let exp1 = erase_expr(ctxt, state, expect_spec, e1);
@@ -1888,14 +1902,14 @@ fn erase_abstract_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, span: 
 
 fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) {
     let span = ctxt.tcx.def_span(id);
+
     let attrs = if let Some(rustc_hir::Node::Item(d_hir)) = ctxt.tcx.hir().get_if_local(id) {
         ctxt.tcx.hir().attrs(d_hir.hir_id())
     } else {
         ctxt.tcx.item_attrs(id)
     };
     let vattrs = get_verifier_attrs(attrs).expect("get_verifier_attrs");
-    if vattrs.external_body {
-        erase_abstract_datatype(ctxt, state, span, id);
+    if vattrs.external_type_specification {
         return;
     }
 
@@ -1903,9 +1917,36 @@ fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) 
     if is_box {
         return;
     }
-    let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(ctxt.tcx, id));
+
+    let path = def_id_to_vir_path(ctxt.tcx, id);
+    let def_name = vir::ast_util::path_as_rust_name(&path);
+
     let is_smart_ptr = def_name == "alloc::rc::Rc" || def_name == "alloc::sync::Arc";
     if is_smart_ptr {
+        return;
+    }
+
+    if ctxt.tcx.is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice"), id) {
+        erase_abstract_datatype(ctxt, state, span, id);
+        return;
+    }
+
+    // Check if the struct is 'external_body'
+    // (Recall that the 'external_body' label may have been applied by a proxy type,
+    // so we can't check the vattrs of the datatype definition directly.
+    // Need to check the VIR instead.)
+    let is_external_body = match ctxt.datatypes.get(&path) {
+        Some(dt) => match dt.x.transparency {
+            DatatypeTransparency::Never => true,
+            DatatypeTransparency::WhenVisible(_) => false,
+        },
+        None => {
+            dbg!(id);
+            panic!("erase_mir_datatype: unrecognized datatype");
+        }
+    };
+    if is_external_body {
+        erase_abstract_datatype(ctxt, state, span, id);
         return;
     }
 

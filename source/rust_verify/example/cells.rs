@@ -16,7 +16,7 @@ fn main() {
 
     pcell.put(Tracked(&mut token), x);
 
-    assert(token@.value === option::Option::Some(X { i : 5 }));
+    assert(token@.value === Some(X { i : 5 }));
 }
 
 }

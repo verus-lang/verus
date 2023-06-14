@@ -10,7 +10,6 @@ use crate::view::*;
 use crate::seq::*;
 use crate::seq_lib::*;
 use crate::slice::*;
-use crate::vec::*;
 
 verus! {
 
@@ -124,7 +123,7 @@ pub exec fn u64_from_le_bytes(s: &[u8]) -> (x:u64)
 pub exec fn u64_to_le_bytes(x: u64) -> (s: Vec<u8>)
   ensures s@ == spec_u64_to_le_bytes(x),
 {
-  Vec { vec: x.to_le_bytes().to_vec() }
+  x.to_le_bytes().to_vec()
 }
 
 

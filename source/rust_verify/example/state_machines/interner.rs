@@ -2,12 +2,11 @@
 
 use vstd::{*, prelude::*, pervasive::*};
 use vstd::multiset::*;
-use vstd::option::*;
 use vstd::ptr::*;
 use vstd::cell::*;
 use vstd::seq::*;
 use vstd::map::*;
-use vstd::vec::*;
+use vstd::prelude::*;
 use vstd::modes::*;
 use vstd::invariant::*;
 
@@ -187,7 +186,7 @@ impl<T> Interner<T> {
                 0 <= idx && idx <= self.store@.len(),
                 self.wf(inst),
         {
-            let eq = compute_eq(&val, self.store.index(idx));
+            let eq = compute_eq(&val, &self.store[idx]);
             if eq {
                 let tracked frag = self.inst.borrow().get_frag(idx as int, self.auth.borrow());
                 return Interned {
@@ -224,7 +223,7 @@ impl<T> Interner<T> {
         proof {
             self.inst.borrow().get_value(interned.id as int, self.auth.borrow(), interned.frag.borrow());
         }
-        self.store.index(interned.id)
+        &self.store[interned.id]
     }
 }
 

@@ -1,11 +1,14 @@
+#![allow(unused_imports)]
+
 use core::{marker, mem, mem::MaybeUninit};
 extern crate alloc;
 
-#[allow(unused_imports)] use builtin::*;
-#[allow(unused_imports)] use builtin_macros::*;
-#[allow(unused_imports)] use crate::*;
-#[allow(unused_imports)] use crate::pervasive::*;
-#[allow(unused_imports)] use crate::modes::*;
+use builtin::*;
+use builtin_macros::*;
+use crate::*;
+use crate::pervasive::*;
+use crate::modes::*;
+use crate::prelude::*;
 
 verus!{
 
@@ -159,7 +162,7 @@ pub ghost struct PointsToData<V> {
     /// Indicates that this token gives the ability to read a value `V` from memory.
     /// When `None`, it indicates that the memory is uninitialized.
 
-    pub value: option::Option<V>,
+    pub value: Option<V>,
 }
 
 impl<V> PointsTo<V> {
@@ -228,7 +231,7 @@ impl<V> PPtr<V> {
     #[inline(always)]
     #[verifier(external_body)]
     pub fn empty() -> (pt: (PPtr<V>, Tracked<PointsTo<V>>))
-        ensures pt.1@@ === (PointsToData{ pptr: pt.0.id(), value: option::Option::None }),
+        ensures pt.1@@ === (PointsToData{ pptr: pt.0.id(), value: Option::None }),
         opens_invariants none
     {
         let p = PPtr {
@@ -264,10 +267,10 @@ impl<V> PPtr<V> {
     pub fn put(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, v: V)
         requires
             self.id() === old(perm)@.pptr,
-            old(perm)@.value === option::Option::None,
+            old(perm)@.value === Option::None,
         ensures
             perm@.pptr === old(perm)@.pptr,
-            perm@.value === option::Option::Some(v),
+            perm@.value === Option::Some(v),
         opens_invariants none
     {
         unsafe {
@@ -291,7 +294,7 @@ impl<V> PPtr<V> {
             old(perm)@.value.is_Some(),
         ensures
             perm@.pptr === old(perm)@.pptr,
-            perm@.value === option::Option::None,
+            perm@.value === Option::None,
             v === old(perm)@.value.get_Some_0(),
         opens_invariants none
     {
@@ -313,7 +316,7 @@ impl<V> PPtr<V> {
             old(perm)@.value.is_Some(),
         ensures
             perm@.pptr === old(perm)@.pptr,
-            perm@.value === option::Option::Some(in_v),
+            perm@.value === Option::Some(in_v),
             out_v === old(perm)@.value.get_Some_0(),
         opens_invariants none
     {
@@ -354,7 +357,7 @@ impl<V> PPtr<V> {
     pub fn dispose(&self, Tracked(perm): Tracked<PointsTo<V>>)
         requires
             self.id() === perm@.pptr,
-            perm@.value === option::Option::None,
+            perm@.value === Option::None,
         opens_invariants none
     {
         unsafe {
@@ -392,7 +395,7 @@ impl<V> PPtr<V> {
     #[inline(always)]
     pub fn new(v: V) -> (pt: (PPtr<V>, Tracked<PointsTo<V>>))
         ensures
-            (pt.1@@ === PointsToData{ pptr: pt.0.id(), value: option::Option::Some(v) }),
+            (pt.1@@ === PointsToData{ pptr: pt.0.id(), value: Option::Some(v) }),
     {
         let (p, Tracked(mut t)) = Self::empty();
         p.put(Tracked(&mut t), v);

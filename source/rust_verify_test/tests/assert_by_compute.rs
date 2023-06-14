@@ -150,8 +150,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] datatype verus_code! {
-        #[allow(unused_imports)]
-        use vstd::option::Option;
+        use vstd::prelude::*;
 
         fn test(x: u64) {
             assert(match Option::Some(true) {

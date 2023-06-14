@@ -90,6 +90,7 @@ pub(crate) enum ExpX {
     OpenInvariant(vir::ast::InvAtomicity, Pattern, Exp, Typ, Vec<Stm>),
     ExtraParens(Exp),
     Block(Vec<Stm>, Option<Exp>),
+    Index(Typ, Exp, Exp),
 }
 
 pub(crate) type Stm = Box<(Span, StmX)>;

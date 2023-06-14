@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-use vstd::{cell::*, option::*};
+use vstd::{cell::*, prelude::*};
 
 //// InvCell
 

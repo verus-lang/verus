@@ -1,3 +1,5 @@
+#![deprecated(note="Use std::vec instead")]
+
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]

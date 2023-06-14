@@ -9,8 +9,7 @@ const IMPORTS: &str = code_str! {
     #[allow(unused_imports)] use vstd::{cell::*};
     #[allow(unused_imports)] use vstd::{ptr::*};
     #[allow(unused_imports)] use vstd::{modes::*};
-    #[allow(unused_imports)] use vstd::{option::*};
-    #[allow(unused_imports)] use vstd::result::*;
+    #[allow(unused_imports)] use vstd::prelude::*;
 };
 
 /// With contradiction_smoke_test, add a final `assert(false)` that is expected to fail at the end
@@ -26,15 +25,15 @@ fn test_body(tests: &str, contradiction_smoke_test: bool) -> String {
 const CELL_TEST: &str = code_str! {
     let (cell, Tracked(mut token)) = PCell::<u32>::empty();
     assert(equal(token.view().pcell, cell.id()));
-    assert(equal(token.view().value, option::Option::None));
+    assert(equal(token.view().value, Option::None));
 
     cell.put(Tracked(&mut token), 5);
     assert(equal(token.view().pcell, cell.id()));
-    assert(equal(token.view().value, option::Option::Some(5)));
+    assert(equal(token.view().value, Option::Some(5)));
 
     let x = cell.replace(Tracked(&mut token), 7);
     assert(equal(token.view().pcell, cell.id()));
-    assert(equal(token.view().value, option::Option::Some(7)));
+    assert(equal(token.view().value, Option::Some(7)));
     assert(equal(x, 5));
 
     let t = cell.borrow(Tracked(&token));
@@ -42,7 +41,7 @@ const CELL_TEST: &str = code_str! {
 
     let x = cell.take(Tracked(&mut token));
     assert(equal(token.view().pcell, cell.id()));
-    assert(equal(token.view().value, option::Option::None));
+    assert(equal(token.view().value, Option::None));
     assert(equal(x, 7));
 };
 
@@ -57,15 +56,15 @@ test_verify_one_file! {
 const PTR_TEST: &str = code_str! {
     let (ptr, Tracked(mut token)) = PPtr::<u32>::empty();
     assert(equal(token.view().pptr, ptr.id()));
-    assert(equal(token.view().value, option::Option::None));
+    assert(equal(token.view().value, Option::None));
 
     ptr.put(Tracked(&mut token), 5);
     assert(equal(token.view().pptr, ptr.id()));
-    assert(equal(token.view().value, option::Option::Some(5)));
+    assert(equal(token.view().value, Option::Some(5)));
 
     let x = ptr.replace(Tracked(&mut token), 7);
     assert(equal(token.view().pptr, ptr.id()));
-    assert(equal(token.view().value, option::Option::Some(7)));
+    assert(equal(token.view().value, Option::Some(7)));
     assert(equal(x, 5));
 
     let t = ptr.borrow(Tracked(&token));
@@ -73,7 +72,7 @@ const PTR_TEST: &str = code_str! {
 
     let x = ptr.take(Tracked(&mut token));
     assert(equal(token.view().pptr, ptr.id()));
-    assert(equal(token.view().value, option::Option::None));
+    assert(equal(token.view().value, Option::None));
     assert(equal(x, 7));
 
     ptr.dispose(Tracked(token));

@@ -406,7 +406,8 @@ pub(crate) fn check_item_fn<'tcx>(
                 }
                 ps.push((name, *span, Some(*hir_id)));
             }
-            let mut vir_body = body_to_vir(ctxt, id, body_id, body, mode, vattrs.external_body)?;
+            let external_body = vattrs.external_body || vattrs.external_fn_specification;
+            let mut vir_body = body_to_vir(ctxt, id, body_id, body, mode, external_body)?;
             let header = vir::headers::read_header(&mut vir_body)?;
             (Some(vir_body), header, ps)
         }

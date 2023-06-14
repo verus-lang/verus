@@ -8,7 +8,7 @@ use vstd::{atomic_ghost::*};
 use vstd::{modes::*};
 use vstd::{thread::*};
 use state_machines_macros::tokenized_state_machine;
-use vstd::result::*;
+use vstd::prelude::*;
 use std::sync::Arc;
 
 verus!{
