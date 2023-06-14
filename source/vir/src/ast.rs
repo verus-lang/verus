@@ -210,6 +210,12 @@ pub enum UnaryOp {
     /// Internal consistency check to make sure finalize_exp gets called
     /// (appears only briefly in SST before finalize_exp is called)
     MustBeFinalized,
+    /// We don't give users direct access to the "height" function and Height types.
+    /// However, it's useful to be able to trigger on the "height" function
+    /// when using HeightCompare.  We manage this by having triggers.rs convert
+    /// HeightCompare triggers into HeightTrigger, which is eventually translated
+    /// into direct calls to the "height" function in the triggers.
+    HeightTrigger,
     /// Used only for handling builtin::strslice_len
     StrLen,
     /// Used only for handling builtin::strslice_is_ascii
@@ -258,9 +264,6 @@ pub enum UnaryOpr {
     /// to hold the result.
     /// Mode is the minimum allowed mode (e.g., Spec for spec-only, Exec if allowed in exec).
     IntegerTypeBound(IntegerTypeBoundKind, Mode),
-    /// Height of a data structure for the purpose of decreases-checking.
-    /// Maps to the built-in intrinsic.
-    Height,
     /// Custom diagnostic message
     CustomErr(Arc<String>),
 }
@@ -318,12 +321,14 @@ pub enum BinaryOp {
     Xor,
     /// boolean implies (short-circuiting: right side is evaluated only if left side is true)
     Implies,
+    /// the is_smaller_than builtin, used for decreases (true for <, false for ==)
+    HeightCompare { strictly_lt: bool, recursive_function_field: bool },
     /// SMT equality for any type -- two expressions are exactly the same value
     /// Some types support compilable equality (Mode == Exec); others only support spec equality (Mode == Spec)
     Eq(Mode),
     /// not Eq
     Ne,
-    ///
+    /// arithmetic inequality
     Inequality(InequalityOp),
     /// IntRange operations that may require overflow or divide-by-zero checks
     /// (None for InferMode means always mode Spec)

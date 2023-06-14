@@ -1600,3 +1600,33 @@ fn no_choose5() {
         )
     )
 }
+
+#[test]
+fn yes_partial_order() {
+    yes!(
+        (declare-sort X 0)
+        (declare-const c1 X)
+        (declare-const c2 X)
+        (declare-const c3 X)
+        (check-valid
+            (axiom ((_ partial-order 77) c1 c2))
+            (axiom ((_ partial-order 77) c2 c3))
+            (assert ((_ partial-order 77) c1 c3))
+        )
+    )
+}
+
+#[test]
+fn no_partial_order() {
+    no!(
+        (declare-sort X 0)
+        (declare-const c1 X)
+        (declare-const c2 X)
+        (declare-const c3 X)
+        (check-valid
+            (axiom ((_ partial-order 77) c1 c2))
+            (axiom ((_ partial-order 76) c2 c3))
+            (assert ((_ partial-order 77) c1 c3))
+        )
+    )
+}

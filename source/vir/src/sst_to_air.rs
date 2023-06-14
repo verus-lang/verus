@@ -314,6 +314,23 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
     }
 }
 
+pub(crate) fn datatype_box_prefix(ctx: &Ctx, typ: &Typ) -> Option<Path> {
+    match &**typ {
+        TypX::Datatype(path, _) => {
+            if ctx.datatype_is_transparent[path] {
+                Some(path.clone())
+            } else {
+                if let Some(monotyp) = typ_as_mono(typ) {
+                    Some(crate::sst_to_air::monotyp_to_path(&monotyp))
+                } else {
+                    None
+                }
+            }
+        }
+        _ => None,
+    }
+}
+
 fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
     let f_name = match &**typ {
         TypX::Bool => Some(str_ident(crate::def::BOX_BOOL)),
@@ -321,16 +338,11 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Tuple(_) => None,
         TypX::Lambda(typs, _) => Some(prefix_box(&prefix_lambda_type(typs.len()))),
         TypX::AnonymousClosure(..) => unimplemented!(),
-        TypX::Datatype(path, _) => {
-            if ctx.datatype_is_transparent[path] {
-                Some(prefix_box(&path))
+        TypX::Datatype(..) => {
+            if let Some(prefix) = datatype_box_prefix(ctx, typ) {
+                Some(prefix_box(&prefix))
             } else {
-                if let Some(monotyp) = typ_as_mono(typ) {
-                    let dpath = crate::sst_to_air::monotyp_to_path(&monotyp);
-                    Some(prefix_box(&dpath))
-                } else {
-                    panic!("abstract datatype should be boxed")
-                }
+                panic!("abstract datatype should be boxed")
             }
         }
         TypX::Decorate(_, t) => return try_box(ctx, expr, t),
@@ -718,6 +730,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     InternalFun::ClosureReq => str_ident(crate::def::CLOSURE_REQ),
                     InternalFun::ClosureEns => str_ident(crate::def::CLOSURE_ENS),
                     InternalFun::CheckDecreaseInt => str_ident(crate::def::CHECK_DECREASE_INT),
+                    InternalFun::CheckDecreaseHeight => {
+                        str_ident(crate::def::CHECK_DECREASE_HEIGHT)
+                    }
                 },
                 Arc::new(exprs),
             ))
@@ -788,6 +803,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         return Ok(bv_e);
                     }
                 }
+                UnaryOp::HeightTrigger => panic!("internal error: unexpected HeightTrigger"),
                 UnaryOp::Trigger(_) => exp_to_expr(ctx, arg, expr_ctxt)?,
                 UnaryOp::CoerceMode { .. } => {
                     panic!("internal error: TupleField should have been removed before here")
@@ -820,6 +836,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     Arc::new(vec![width_exp, expr]),
                 );
                 clip_bitwise_result(bit_expr, exp)?
+            }
+            UnaryOp::HeightTrigger => {
+                str_apply(crate::def::HEIGHT, &vec![exp_to_expr(ctx, exp, expr_ctxt)?])
             }
             UnaryOp::Trigger(_) => exp_to_expr(ctx, exp, expr_ctxt)?,
             UnaryOp::Clip { range: IntRange::Int, .. } => exp_to_expr(ctx, exp, expr_ctxt)?,
@@ -890,10 +909,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 let name = Arc::new(ARCH_SIZE.to_string());
                 Arc::new(ExprX::Var(name))
             }
-            UnaryOpr::Height => Arc::new(ExprX::Apply(
-                str_ident(crate::def::HEIGHT),
-                Arc::new(vec![exp_to_expr(ctx, exp, expr_ctxt)?]),
-            )),
             UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _ }) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 Arc::new(ExprX::Apply(
@@ -913,6 +928,12 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 return error(
                     &exp.span,
                     format!("error: cannot use bit-vector arithmetic on type {:?}", exp.typ),
+                );
+            }
+            if let BinaryOp::HeightCompare { .. } = op {
+                return error(
+                    &exp.span,
+                    format!("error: cannot use bit-vector arithmetic on is_smaller_than"),
                 );
             }
             // disallow signed integer from bitvec reasoning. However, allow that for shift
@@ -950,6 +971,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 _ => (),
             };
             let bop = match op {
+                BinaryOp::HeightCompare { .. } => unreachable!(),
                 BinaryOp::Eq(_) => air::ast::BinaryOp::Eq,
                 BinaryOp::Ne => unreachable!(),
                 BinaryOp::Arith(ArithOp::Add, _) => air::ast::BinaryOp::BitAdd,
@@ -997,6 +1019,20 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 }
                 BinaryOp::Implies => {
                     return Ok(mk_implies(&lh, &rh));
+                }
+                BinaryOp::HeightCompare { strictly_lt, recursive_function_field } => {
+                    let lhh = str_apply(crate::def::HEIGHT, &vec![lh]);
+                    let rh = if *recursive_function_field {
+                        str_apply(crate::def::HEIGHT_REC_FUN, &vec![rh])
+                    } else {
+                        rh
+                    };
+                    let rhh = str_apply(crate::def::HEIGHT, &vec![rh]);
+                    if *strictly_lt {
+                        return Ok(str_apply(crate::def::HEIGHT_LT, &vec![lhh, rhh]));
+                    } else {
+                        return Ok(mk_eq(&lhh, &rhh));
+                    }
                 }
                 BinaryOp::Arith(ArithOp::Add, _) => {
                     ExprX::Multi(MultiOp::Add, Arc::new(vec![lh, rh]))
@@ -1067,6 +1103,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         BinaryOp::Or => unreachable!(),
                         BinaryOp::Xor => unreachable!(),
                         BinaryOp::Implies => unreachable!(),
+                        BinaryOp::HeightCompare { .. } => unreachable!(),
                         BinaryOp::Eq(_) => air::ast::BinaryOp::Eq,
                         BinaryOp::Ne => unreachable!(),
                         BinaryOp::Inequality(InequalityOp::Le) => air::ast::BinaryOp::Le,

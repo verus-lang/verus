@@ -455,7 +455,7 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
         ExprX::Binary(op, e1, e2) => {
             let (es, ts) = simplify_exprs_ref(ctxt, state, &vec![e1, e2]);
             let typ = match op {
-                BinaryOp::Implies | BinaryOp::Eq => Arc::new(TypX::Bool),
+                BinaryOp::Implies | BinaryOp::Eq | BinaryOp::Relation(..) => Arc::new(TypX::Bool),
                 BinaryOp::Le | BinaryOp::Ge | BinaryOp::Lt | BinaryOp::Gt => Arc::new(TypX::Bool),
                 BinaryOp::EuclideanDiv | BinaryOp::EuclideanMod => Arc::new(TypX::Int),
                 BinaryOp::BitUGt | BinaryOp::BitULt | BinaryOp::BitUGe | BinaryOp::BitULe => {

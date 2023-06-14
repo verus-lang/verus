@@ -316,6 +316,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 | UnaryOp::CoerceMode { .. }
                 | UnaryOp::MustBeFinalized
                 | UnaryOp::CharToInt => 0,
+                UnaryOp::HeightTrigger => 1,
                 UnaryOp::Trigger(_) | UnaryOp::Clip { .. } | UnaryOp::BitNot => 1,
                 UnaryOp::StrIsAscii | UnaryOp::StrLen => fail_on_strop(),
             };
@@ -330,7 +331,6 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         }
         ExpX::UnaryOpr(UnaryOpr::Box(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::UnaryOpr(UnaryOpr::Unbox(_), e1) => gather_terms(ctxt, ctx, e1, depth),
-        ExpX::UnaryOpr(UnaryOpr::Height, e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::UnaryOpr(UnaryOpr::CustomErr(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::UnaryOpr(UnaryOpr::HasType(_), _) => {
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![]))))
@@ -362,6 +362,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             use BinaryOp::*;
             let depth = match op {
                 And | Or | Xor | Implies | Eq(_) => 0,
+                HeightCompare { .. } => 1,
                 Ne | Inequality(_) | Arith(..) => 1,
                 Bitwise(..) => 1,
                 StrGetChar => fail_on_strop(),

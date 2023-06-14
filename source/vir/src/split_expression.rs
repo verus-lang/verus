@@ -405,7 +405,6 @@ fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> Trace
             }
             UnaryOpr::HasType(_)
             | UnaryOpr::IntegerTypeBound(..)
-            | UnaryOpr::Height
             | UnaryOpr::IsVariant { .. }
             | UnaryOpr::TupleField { .. }
             | UnaryOpr::Field(_) => {

@@ -1,1 +1,1 @@
-pub const EXPECTED_SOLVER_VERSION: &str = "4.10.1";
+pub const EXPECTED_SOLVER_VERSION: &str = "4.12.2";
