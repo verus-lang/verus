@@ -128,5 +128,5 @@ pub fn version_info(root: &std::path::PathBuf) -> Result<String, String> {
     } else {
         ".dirty"
     };
-    Ok(format!("0.{year}.{month}.{day}.{sha}{dirty}",))
+    Ok(format!("0.{year}.{month}.{day}.{sha}{dirty}"))
 }
