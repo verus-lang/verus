@@ -107,16 +107,13 @@ pub fn main() {
     let pervasive_path = our_args.pervasive_path.clone();
 
     if our_args.error_report {
-        // it is printing some wierd things
-
         let mut args: Vec<String> = std::env::args().collect();
         args.remove(0);
 
         let index = args.iter().position(|x| *x == "--error-report").unwrap();
         args.remove(index);
 
-        // why i need a child process here
-        let mut res = std::process::Command::new("error_report")
+        let mut res = std::process::Command::new("../error_report/target/release/error_report")
             .args(args)
             .spawn()
             .expect("error_report failed to start");

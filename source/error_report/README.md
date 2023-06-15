@@ -1,22 +1,19 @@
-## Usage
+# Error Reporting
 
-Warning: this is a super prototype that only restricts on Unix platforms.
+## Overview
 
-Run `cargo build`, which should generate the `error_report` executable in 
-`./target/debug/`. Then you can run error_report on any directory that you
-run `verus`. This should generate an `errorReport.zip` that contains the
-necessary files to replicate the error, and an `error_report.toml` file that has 
-the error message and version info.
-
-## Attempt for Error Reporting
-
-(mostly me playing around with rust)
-
-Goal:
+Warning: This is an experimental prototype.
 
 Error Reporting: Verus is still under development, so when you get into an error
-it can be quite frustrating to manually record the versions of your z3, rustc, rustup, 
+it can be quite frustrating to manually record the versions of your z3, verus,
 etc. This tool attempts to record this data automatically.
 
-Implementation plan:
-1. pack everything into a metadata file (toml)
+## Usage
+
+Run `cargo build --release`, which should generate the `error_report` executable in 
+`./target/release/`. Then you can run error_report on any directory that you
+run `verus`, or use the `--error-report` flag in verus. This should generate a
+zip file that contains necessary files to replicate the error  
+and an `error_report.toml` file that has 
+the error message and version info.
+
