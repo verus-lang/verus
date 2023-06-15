@@ -166,8 +166,8 @@ pub fn main() {
             }
             Some(times)
         } else {
-            println!("verus-build-profile: {}", build_info.profile.to_string());
-            println!("verus-build-version: {}", build_info.version.to_string());
+            println!("verus-build-profile: {}", build_info.profile);
+            println!("verus-build-version: {}", build_info.version);
             println!("total-time:      {:>10} ms", total_time.as_millis());
             println!("    rust-time:       {:>10} ms", rust.as_millis());
             println!("        init-and-types:  {:>10} ms", rust_init.as_millis());
