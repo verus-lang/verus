@@ -54,7 +54,12 @@ fn check_well_founded_typ(
     typ: &Typ,
 ) -> bool {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::ConstInt(_) | TypX::StrSlice | TypX::Char => true,
+        TypX::Bool
+        | TypX::Int(_)
+        | TypX::ConstInt(_)
+        | TypX::StrSlice
+        | TypX::Char
+        | TypX::Primitive(_, _) => true,
         TypX::Boxed(_) | TypX::TypeId | TypX::Air(_) => {
             panic!("internal error: unexpected type in check_well_founded_typ")
         }
@@ -208,6 +213,12 @@ fn check_positive_uses(
             Ok(())
         }
         TypX::Decorate(_, t) => check_positive_uses(global, local, polarity, t),
+        TypX::Primitive(_, ts) => {
+            for t in ts.iter() {
+                check_positive_uses(global, local, polarity, t)?;
+            }
+            Ok(())
+        }
         TypX::Boxed(t) => check_positive_uses(global, local, polarity, t),
         TypX::TypParam(x) => {
             let strictly_positive = local.tparams[x] != AcceptRecursiveType::Reject;

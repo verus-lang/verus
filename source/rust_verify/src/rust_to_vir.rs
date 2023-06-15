@@ -593,7 +593,7 @@ impl<'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'tcx> {
     }
 }
 
-pub(crate) fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
+pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
     let mut vir: KrateX = Default::default();
 
     // Map each item to the module that contains it, or None if the module is external

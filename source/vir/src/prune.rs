@@ -29,6 +29,7 @@ enum ReachedType {
     Datatype(Path),
     StrSlice,
     Char,
+    Primitive,
 }
 
 // Group all AssocTypeImpls with the same (ReachedType(self_typ), (trait_path, name)):
@@ -78,6 +79,7 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::Air(_) => panic!("unexpected TypX::Air"),
         TypX::StrSlice => ReachedType::StrSlice,
         TypX::Char => ReachedType::Char,
+        TypX::Primitive(_, _) => ReachedType::Primitive,
     }
 }
 
@@ -141,7 +143,8 @@ fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
         | TypX::Lambda(..)
         | TypX::Datatype(..)
         | TypX::StrSlice
-        | TypX::Char => {
+        | TypX::Char
+        | TypX::Primitive(..) => {
             reach_type(ctxt, state, &typ_to_reached_type(typ));
         }
         TypX::Tuple(_) | TypX::AnonymousClosure(..) | TypX::Air(_) => {
@@ -185,8 +188,14 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
     loop {
         let ft = |state: &mut State, t: &Typ| {
             reach_typ(ctxt, state, t);
-            if let TypX::Datatype(path, _, _) = &**t {
-                record_datatype(ctxt, state, t, path);
+            match &**t {
+                TypX::Datatype(path, _, _) => record_datatype(ctxt, state, t, path),
+                TypX::Primitive(_, _) => {
+                    if let Some(monotyp) = crate::poly::typ_as_mono(t) {
+                        state.mono_abstract_datatypes.insert(monotyp);
+                    }
+                }
+                _ => {}
             }
             Ok(t.clone())
         };

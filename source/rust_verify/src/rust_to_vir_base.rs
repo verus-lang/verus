@@ -17,7 +17,7 @@ use rustc_span::Span;
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::HashMap;
 use std::sync::Arc;
-use vir::ast::{GenericBoundX, IntRange, Path, PathX, Typ, TypX, Typs, VirErr};
+use vir::ast::{GenericBoundX, IntRange, Path, PathX, Primitive, Typ, TypX, Typs, VirErr};
 use vir::ast_util::{types_equal, undecorate_typ};
 use vir::def::unique_local_name;
 
@@ -380,7 +380,22 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Slice(ty) => {
             let typ = t_rec(ty)?.0;
             let typs = Arc::new(vec![typ]);
-            (Arc::new(TypX::Datatype(vir::def::slice_type(), typs, Arc::new(vec![]))), false)
+            (Arc::new(TypX::Primitive(Primitive::Slice, typs)), false)
+        }
+        TyKind::Array(ty, const_len) => {
+            let typ = mid_ty_to_vir_ghost(
+                tcx,
+                verus_items,
+                param_env_src,
+                span,
+                ty,
+                as_datatype,
+                allow_mut_ref,
+            )?
+            .0;
+            let len = mid_ty_const_to_vir(tcx, Some(span), const_len)?;
+            let typs = Arc::new(vec![typ, len]);
+            (Arc::new(TypX::Primitive(Primitive::Array, typs)), false)
         }
         TyKind::Adt(AdtDef(adt_def_data), args) => {
             let did = adt_def_data.did;
@@ -528,7 +543,6 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Float(..) => unsupported_err!(span, "floating point types"),
         TyKind::Foreign(..) => unsupported_err!(span, "foreign types"),
         TyKind::Str => unsupported_err!(span, "str type"),
-        TyKind::Array(..) => unsupported_err!(span, "array types"),
         TyKind::RawPtr(..) => unsupported_err!(span, "raw pointer types"),
         TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => {
             unsupported_err!(span, "&mut types, except in special cases")

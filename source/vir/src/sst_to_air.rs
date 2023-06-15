@@ -1,6 +1,6 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, FieldOpr, Fun, Ident, Idents, InequalityOp,
-    IntRange, IntegerTypeBoundKind, InvAtomicity, MaskSpec, Mode, Params, Path, PathX,
+    IntRange, IntegerTypeBoundKind, InvAtomicity, MaskSpec, Mode, Params, Path, PathX, Primitive,
     SpannedTyped, Typ, TypDecoration, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr, Visibility,
 };
 use crate::ast_util::{
@@ -69,6 +69,20 @@ pub(crate) fn apply_range_fun(name: &str, range: &IntRange, exprs: Vec<Expr>) ->
     str_apply(name, &args)
 }
 
+pub(crate) fn primitive_path(name: &Primitive) -> Path {
+    match name {
+        Primitive::Array => crate::def::array_type(),
+        Primitive::Slice => crate::def::slice_type(),
+    }
+}
+
+pub(crate) fn primitive_type_id(name: &Primitive) -> Ident {
+    str_ident(match name {
+        Primitive::Array => crate::def::TYPE_ID_ARRAY,
+        Primitive::Slice => crate::def::TYPE_ID_SLICE,
+    })
+}
+
 pub(crate) fn monotyp_to_path(typ: &MonoTyp) -> Path {
     let id = match &**typ {
         MonoTypX::Bool => str_ident("bool"),
@@ -83,6 +97,12 @@ pub(crate) fn monotyp_to_path(typ: &MonoTyp) -> Path {
         MonoTypX::Char => str_ident("char"),
         MonoTypX::Datatype(path, typs) => {
             return crate::def::monotyp_apply(path, &typs.iter().map(monotyp_to_path).collect());
+        }
+        MonoTypX::Primitive(name, typs) => {
+            return crate::def::monotyp_apply(
+                &primitive_path(name),
+                &typs.iter().map(monotyp_to_path).collect(),
+            );
         }
         MonoTypX::StrSlice => str_ident("StrSlice"),
         MonoTypX::Decorate(_, typ) => {
@@ -114,6 +134,10 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::Decorate(_, t) => typ_to_air(ctx, t),
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
+        TypX::Primitive(Primitive::Array | Primitive::Slice, _) => match typ_as_mono(typ) {
+            None => panic!("should be boxed"),
+            Some(monotyp) => ident_typ(&path_to_air_ident(&monotyp_to_path(&monotyp))),
+        },
         TypX::Projection { .. } => str_typ(POLY),
         TypX::TypeId => str_typ(crate::def::TYPE),
         TypX::ConstInt(_) => panic!("const integer cannot be used as an expression type"),
@@ -175,6 +199,14 @@ pub fn monotyp_to_id(typ: &MonoTyp) -> Vec<Expr> {
             vec![ds, ds_typ[1].clone()]
         }
         MonoTypX::Decorate(_, typ) => monotyp_to_id(typ),
+        MonoTypX::Primitive(name, typs) => {
+            let f_name = primitive_type_id(name);
+            let mut args: Vec<Expr> = Vec::new();
+            for t in typs.iter() {
+                args.extend(monotyp_to_id(t));
+            }
+            mk_id(air::ast_util::ident_apply_or_var(&f_name, &Arc::new(args)))
+        }
     }
 }
 
@@ -217,6 +249,7 @@ pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
         }
         TypX::Datatype(path, typs, _) => mk_id(datatype_id(path, typs)),
+        TypX::Primitive(name, typs) => mk_id(primitive_id(&name, typs)),
         TypX::Decorate(d, typ) if crate::context::DECORATE => {
             let ds_typ = typ_to_ids(typ);
             assert!(ds_typ.len() == 2);
@@ -259,6 +292,15 @@ pub(crate) fn fun_id(typs: &Typs, typ: &Typ) -> Expr {
 
 pub(crate) fn datatype_id(path: &Path, typs: &Typs) -> Expr {
     let f_name = crate::def::prefix_type_id(path);
+    let mut args: Vec<Expr> = Vec::new();
+    for t in typs.iter() {
+        args.extend(typ_to_ids(t));
+    }
+    air::ast_util::ident_apply_or_var(&f_name, &Arc::new(args))
+}
+
+pub(crate) fn primitive_id(name: &Primitive, typs: &Typs) -> Expr {
+    let f_name = primitive_type_id(name);
     let mut args: Vec<Expr> = Vec::new();
     for t in typs.iter() {
         args.extend(typ_to_ids(t));
@@ -327,6 +369,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         // REVIEW: we could also try to add an IntRange type invariant for TypX::ConstInt
         // (see also context.rs datatypes_invs)
         TypX::ConstInt(_) => None,
+        TypX::Primitive(_, _) => None,
     }
 }
 
@@ -347,6 +390,15 @@ pub(crate) fn datatype_box_prefix(ctx: &Ctx, typ: &Typ) -> Option<Path> {
     }
 }
 
+fn prefix_typ_as_mono<F: Fn(&Path) -> Ident>(f: F, typ: &Typ, item: &str) -> Option<Ident> {
+    if let Some(monotyp) = typ_as_mono(typ) {
+        let dpath = crate::sst_to_air::monotyp_to_path(&monotyp);
+        Some(f(&dpath))
+    } else {
+        panic!("{} should be boxed", item)
+    }
+}
+
 fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
     let f_name = match &**typ {
         TypX::Bool => Some(str_ident(crate::def::BOX_BOOL)),
@@ -358,9 +410,10 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
             if let Some(prefix) = datatype_box_prefix(ctx, typ) {
                 Some(prefix_box(&prefix))
             } else {
-                panic!("abstract datatype should be boxed")
+                prefix_typ_as_mono(prefix_box, typ, "abstract datatype")
             }
         }
+        TypX::Primitive(_, _) => prefix_typ_as_mono(prefix_box, typ, "primitive type"),
         TypX::Decorate(_, t) => return try_box(ctx, expr, t),
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
@@ -386,14 +439,10 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
             if ctx.datatype_is_transparent[path] {
                 Some(prefix_unbox(&path))
             } else {
-                if let Some(monotyp) = typ_as_mono(typ) {
-                    let dpath = crate::sst_to_air::monotyp_to_path(&monotyp);
-                    Some(prefix_unbox(&dpath))
-                } else {
-                    panic!("abstract datatype should stay boxed")
-                }
+                prefix_typ_as_mono(prefix_unbox, typ, "abstract datatype")
             }
         }
+        TypX::Primitive(_, _) => prefix_typ_as_mono(prefix_unbox, typ, "primitive type"),
         TypX::Tuple(_) => None,
         TypX::Lambda(typs, _) => Some(prefix_unbox(&prefix_lambda_type(typs.len()))),
         TypX::AnonymousClosure(..) => unimplemented!(),
