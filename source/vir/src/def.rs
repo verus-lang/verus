@@ -59,7 +59,7 @@ const PREFIX_IMPL_IDENT: &str = "impl&%";
 const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
 const SLICE_TYPE: &str = "slice%";
-const SLICE_PARAM: &str = "sliceT%";
+const ARRAY_TYPE: &str = "array%";
 const PREFIX_SNAPSHOT: &str = "snap%";
 const LOCAL_UNIQUE_ID_SEPARATOR: char = '~';
 const SUBST_RENAME_SEPARATOR: &str = "$$";
@@ -140,6 +140,8 @@ pub const DECORATE_ARC: &str = "ARC";
 pub const DECORATE_GHOST: &str = "GHOST";
 pub const DECORATE_TRACKED: &str = "TRACKED";
 pub const DECORATE_NEVER: &str = "NEVER";
+pub const TYPE_ID_ARRAY: &str = "ARRAY";
+pub const TYPE_ID_SLICE: &str = "SLICE";
 pub const HAS_TYPE: &str = "has_type";
 pub const AS_TYPE: &str = "as_type";
 pub const MK_FUN: &str = "mk_fun";
@@ -313,8 +315,9 @@ pub fn slice_type() -> Path {
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
 }
 
-pub fn slice_param() -> Ident {
-    Arc::new(SLICE_PARAM.to_string())
+pub fn array_type() -> Path {
+    let ident = Arc::new(ARRAY_TYPE.to_string());
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
 }
 
 pub fn prefix_type_id(path: &Path) -> Ident {

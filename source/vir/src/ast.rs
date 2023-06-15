@@ -129,6 +129,24 @@ pub enum TypDecoration {
     Never,
 }
 
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    ToDebugSNode,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize
+)]
+pub enum Primitive {
+    Array,
+    Slice,
+}
+
 /// Rust type, but without Box, Rc, Arc, etc.
 pub type Typ = Arc<TypX>;
 pub type Typs = Arc<Vec<Typ>>;
@@ -173,6 +191,8 @@ pub enum TypX {
     StrSlice,
     /// UTF-8 character type
     Char,
+    /// Other primitive type (applied to type arguments)
+    Primitive(Primitive, Typs),
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]

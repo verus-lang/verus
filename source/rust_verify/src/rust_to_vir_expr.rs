@@ -24,7 +24,9 @@ use rustc_hir::{
     BinOpKind, BindingAnnotation, Block, Closure, Destination, Expr, ExprKind, Guard, HirId, Let,
     Local, LoopSource, Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
 };
-use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow, AutoBorrowMutability};
+use rustc_middle::ty::adjustment::{
+    Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, PointerCast,
+};
 use rustc_middle::ty::subst::GenericArgKind;
 use rustc_middle::ty::DefIdTree;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind, VariantDef};
@@ -956,6 +958,16 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             unsupported_err!(
                 expr.span,
                 "dereferencing a pointer (here the dereference is implicit)"
+            )
+        }
+        Adjust::Pointer(PointerCast::Unsize) => {
+            // REVIEW Should we track the size of the array as a fact about the resulting slice?
+            expr_to_vir_with_adjustments(
+                bctx,
+                expr,
+                current_modifier,
+                adjustments,
+                adjustment_idx - 1,
             )
         }
         Adjust::Pointer(_cast) => {
