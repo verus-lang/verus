@@ -75,7 +75,7 @@ pub fn version_info(root: &std::path::PathBuf) -> Result<String, String> {
     // assumes the verus executable gets the .git file for verus repo
     let rev_parse_output = std::process::Command::new("git")
         .current_dir(&root)
-        .args(&["rev-parse", "HEAD"])
+        .args(&["rev-parse", "--short=7", "HEAD"])
         .stdout(std::process::Stdio::piped())
         .spawn()
         .map_err(io_err_to_string)?
