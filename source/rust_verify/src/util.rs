@@ -128,7 +128,10 @@ pub struct VerusBuildInfo {
 
 pub const fn verus_build_info() -> VerusBuildInfo {
     let profile = verus_build_profile();
-    let version = option_env!("VARGO_BUILD_VERSION").unwrap_or("Unknown");
+    let version = match option_env!("VARGO_BUILD_VERSION") {
+        Some(v) => v,
+        None => "Unknown",
+    };
     VerusBuildInfo { profile, version }
 }
 
