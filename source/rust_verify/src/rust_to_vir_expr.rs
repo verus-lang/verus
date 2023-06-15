@@ -2759,7 +2759,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     let fun = FunX { path };
                     mk_expr(ExprX::ConstVar(Arc::new(fun)))
                 }
-                Res::Def(DefKind::Fn, _) => {
+                Res::Def(DefKind::Fn | DefKind::AssocFn, _) => {
                     return unsupported_err!(expr.span, "using functions as values");
                 }
                 Res::Def(DefKind::ConstParam, id) => {
