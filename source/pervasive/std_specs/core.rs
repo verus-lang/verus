@@ -31,4 +31,10 @@ pub struct ExRange<Idx>(core::ops::Range<Idx>);
 #[verifier(external_body)]
 pub struct ExDuration(core::time::Duration);
 
+#[verifier(external_type_specification)]
+#[verifier(external_body)]
+#[verifier::reject_recursive_types_in_ground_variants(V)]
+pub struct ExPhantomData<V: ?Sized>(core::marker::PhantomData<V>);
+
+
 }
