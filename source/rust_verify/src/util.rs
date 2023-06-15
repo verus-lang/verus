@@ -105,7 +105,7 @@ impl std::fmt::Display for VerusBuildProfile {
     }
 }
 
-pub const fn verus_build_profile() -> VerusBuildProfile {
+const fn verus_build_profile() -> VerusBuildProfile {
     let profile = option_env!("VARGO_BUILD_PROFILE");
     match profile {
         Some(p) => {
@@ -119,6 +119,20 @@ pub const fn verus_build_profile() -> VerusBuildProfile {
         }
         None => VerusBuildProfile::Unknown,
     }
+}
+
+pub struct VerusBuildInfo {
+    pub profile: VerusBuildProfile,
+    pub version: &'static str,
+}
+
+pub const fn verus_build_info() -> VerusBuildInfo {
+    let profile = verus_build_profile();
+    let version = match option_env!("VARGO_BUILD_VERSION") {
+        Some(version) => version,
+        None => "Unknown",
+    };
+    VerusBuildInfo { profile, version }
 }
 
 // ==================================================================================================

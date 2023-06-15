@@ -67,55 +67,66 @@ pub fn mtime_recursive(path: &Path) -> Result<FileTime, String> {
     Ok(max_meta)
 }
 
-pub fn version_info() -> Option<String> {
+pub fn version_info(root: &std::path::PathBuf) -> Result<String, String> {
+    fn io_err_to_string(err: std::io::Error) -> String {
+        format!("cannot obtain version info from git ({})", err)
+    }
+
     // assumes the verus executable gets the .git file for verus repo
-    let mut exe_dir = std::env::current_exe().unwrap();
-    exe_dir.pop();
-
-    let sha = std::process::Command::new("git")
-        .current_dir(&exe_dir)
-        .args(&["rev-parse", "--short", "HEAD"])
+    let rev_parse_output = std::process::Command::new("git")
+        .current_dir(&root)
+        .args(&["rev-parse", "HEAD"])
         .stdout(std::process::Stdio::piped())
         .spawn()
-        .ok()?;
-
-    let mut sha_msg = sha
+        .map_err(io_err_to_string)?
         .wait_with_output()
-        .expect("failed to execute git rev-parse HEAD")
-        .stdout;
-    sha_msg.pop();
+        .map_err(io_err_to_string)?;
+    rev_parse_output
+        .status
+        .success()
+        .then(|| ())
+        .ok_or(format!("git returned error code"))?;
+    let sha = String::from_utf8(rev_parse_output.stdout)
+        .map_err(|x| format!("commit sha is invalid utf8, {}", x))?;
+    let sha = sha.trim();
 
-    let date_info = std::process::Command::new("git")
-        .current_dir(&exe_dir)
-        .args(&["show", "-s", "--format=%ci", "HEAD"])
+    let date_info_output = std::process::Command::new("git")
+        .current_dir(&root)
+        .args(&["show", "-s", "--format=%cs", "HEAD"])
         .stdout(std::process::Stdio::piped())
         .spawn()
-        .ok()?;
-
-    let date_msg = date_info
+        .map_err(io_err_to_string)?
         .wait_with_output()
-        .expect("failed to execute git show -s --format=%ci HEAD")
-        .stdout;
+        .map_err(io_err_to_string)?;
 
-    let year = String::from_utf8(date_msg[0..4].to_vec()).unwrap();
-    let month = String::from_utf8(date_msg[5..7].to_vec()).unwrap();
-    let day = String::from_utf8(date_msg[8..10].to_vec()).unwrap();
+    date_info_output
+        .status
+        .success()
+        .then(|| ())
+        .ok_or(format!("git returned error code"))?;
+    let date_str = String::from_utf8(date_info_output.stdout)
+        .map_err(|x| format!("commit date is invalid utf8, {}", x))?;
+    let date_re = regex::Regex::new(r"^(\d{4})-(\d{2})-(\d{2})$").unwrap();
+    let date_captures = date_re
+        .captures(date_str.trim())
+        .ok_or(format!("unexpected date string \"{}\"", date_str))?;
+    let year = &date_captures[1];
+    let month = &date_captures[2];
+    let day = &date_captures[3];
 
-    let child = std::process::Command::new("git")
-        .current_dir(&exe_dir)
+    let dirty_output = std::process::Command::new("git")
+        .current_dir(&root)
         .args(&["diff", "--exit-code", "HEAD"])
         .stdout(std::process::Stdio::null())
         .spawn()
-        .ok()?;
-
-    let status = child
+        .map_err(io_err_to_string)?
         .wait_with_output()
-        .expect("failed to execute git diff --exit-code HEAD")
-        .status;
+        .map_err(io_err_to_string)?;
 
-    let dirty = if status.success() { "" } else { ".dirty" };
-    Some(format!(
-        "0.{year}.{month}.{day}.{}{dirty}",
-        String::from_utf8(sha_msg).unwrap()
-    ))
+    let dirty = if dirty_output.status.success() {
+        ""
+    } else {
+        ".dirty"
+    };
+    Ok(format!("0.{year}.{month}.{day}.{sha}{dirty}",))
 }
