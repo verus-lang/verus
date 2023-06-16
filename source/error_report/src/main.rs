@@ -11,7 +11,6 @@ use std::{
 use toml::{map::Map, value::Value};
 use zip::write::FileOptions;
 
-// TODO: should this be platform independent
 const REL_Z3_PATH: &str = "../../../target-verus/release/z3";
 const REL_VERUS_PATH: &str = "../../../target-verus/release/verus";
 fn main() {
