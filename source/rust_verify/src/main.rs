@@ -1,6 +1,6 @@
 #![feature(rustc_private)]
 
-use rust_verify::util::{print_commit_info, verus_build_profile, VerusBuildProfile};
+use rust_verify::util::{verus_build_info, VerusBuildProfile};
 
 extern crate rustc_driver; // TODO(main_new) can we remove this?
 
@@ -27,12 +27,6 @@ pub fn main() {
     let internal_program = internal_args.next().unwrap();
     let build_test_mode = if let Some(first_arg) = internal_args.next() {
         match first_arg.as_str() {
-            "--version" => {
-                println!("Verus");
-                println!("platform: {}_{}", std::env::consts::OS, std::env::consts::ARCH);
-                print_commit_info();
-                return;
-            }
             rust_verify::lifetime::LIFETIME_DRIVER_ARG => {
                 let mut internal_args: Vec<_> = internal_args.collect();
                 internal_args.insert(0, internal_program);
@@ -82,10 +76,28 @@ pub fn main() {
         false
     };
 
-    let profile = verus_build_profile();
+    let build_info = verus_build_info();
+
+    let total_time_0 = std::time::Instant::now();
+
+    let _ = os_setup();
+    verus_rustc_driver::init_env_logger("RUSTVERIFY_LOG");
+
+    let mut args = if build_test_mode { internal_args } else { std::env::args() };
+    let program = if build_test_mode { internal_program } else { args.next().unwrap() };
+    let (our_args, rustc_args) = rust_verify::config::parse_args(&program, args);
+
+    if our_args.version {
+        println!("Verus");
+        println!("  Platform: {}_{}", std::env::consts::OS, std::env::consts::ARCH);
+        println!("  Version: {}", build_info.version);
+        println!("  Profile: {}", build_info.profile.to_string());
+
+        return;
+    }
 
     if !build_test_mode {
-        match profile {
+        match build_info.profile {
             VerusBuildProfile::Debug => eprintln!(
                 "warning: verus was compiled in debug mode, which will result in worse performance"
             ),
@@ -96,14 +108,6 @@ pub fn main() {
         }
     }
 
-    let total_time_0 = std::time::Instant::now();
-
-    let _ = os_setup();
-    verus_rustc_driver::init_env_logger("RUSTVERIFY_LOG");
-
-    let mut args = if build_test_mode { internal_args } else { std::env::args() };
-    let program = if build_test_mode { internal_program } else { args.next().unwrap() };
-    let (our_args, rustc_args) = rust_verify::config::parse_args(&program, args);
     let pervasive_path = our_args.pervasive_path.clone();
 
     if our_args.error_report {
@@ -179,7 +183,8 @@ pub fn main() {
             }
             Some(times)
         } else {
-            println!("verus-build-profile: {}", profile.to_string());
+            println!("verus-build-profile: {}", build_info.profile);
+            println!("verus-build-version: {}", build_info.version);
             println!("total-time:      {:>10} ms", total_time.as_millis());
             println!("    rust-time:       {:>10} ms", rust.as_millis());
             println!("        init-and-types:  {:>10} ms", rust_init.as_millis());
@@ -225,7 +230,11 @@ pub fn main() {
         }
         out.insert(
             "verus-build-profile".to_string(),
-            serde_json::Value::String(profile.to_string()),
+            serde_json::Value::String(build_info.profile.to_string()),
+        );
+        out.insert(
+            "verus-build-version".to_string(),
+            serde_json::Value::String(build_info.version.to_string()),
         );
         println!("{}", serde_json::ser::to_string_pretty(&out).expect("invalid json"));
     }

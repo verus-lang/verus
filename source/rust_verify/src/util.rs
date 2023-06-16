@@ -105,7 +105,7 @@ impl std::fmt::Display for VerusBuildProfile {
     }
 }
 
-pub const fn verus_build_profile() -> VerusBuildProfile {
+const fn verus_build_profile() -> VerusBuildProfile {
     let profile = option_env!("VARGO_BUILD_PROFILE");
     match profile {
         Some(p) => {
@@ -119,6 +119,20 @@ pub const fn verus_build_profile() -> VerusBuildProfile {
         }
         None => VerusBuildProfile::Unknown,
     }
+}
+
+pub struct VerusBuildInfo {
+    pub profile: VerusBuildProfile,
+    pub version: &'static str,
+}
+
+pub const fn verus_build_info() -> VerusBuildInfo {
+    let profile = verus_build_profile();
+    let version = match option_env!("VARGO_BUILD_VERSION") {
+        Some(v) => v,
+        None => "Unknown",
+    };
+    VerusBuildInfo { profile, version }
 }
 
 // ==================================================================================================
@@ -140,49 +154,3 @@ pub const fn const_str_equal(lhs: &str, rhs: &str) -> bool {
     true
 }
 // ==================================================================================================
-
-pub fn print_commit_info() {
-    // assumes the verus executable gets the .git file for verus repo
-    let mut exe_dir = std::env::current_exe().expect("invalid directory");
-    exe_dir.pop();
-
-    let sha = std::process::Command::new("git")
-        .current_dir(&exe_dir)
-        .args(&["rev-parse", "HEAD"])
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .expect("failed to execute git rev-parse HEAD");
-
-    let mut sha_msg = sha.wait_with_output().expect("failed to execute git rev-parse HEAD").stdout;
-    sha_msg.pop();
-
-    let child = std::process::Command::new("git")
-        .current_dir(&exe_dir)
-        .args(&["diff", "--exit-code", "HEAD"])
-        .stdout(std::process::Stdio::null())
-        .spawn()
-        .expect("failed to execute git diff --exit-code HEAD");
-
-    let status =
-        child.wait_with_output().expect("failed to execute git diff --exit-code HEAD").status;
-
-    if !status.success() {
-        println!("Verus commit: {} (dirty)", String::from_utf8(sha_msg).unwrap());
-    } else {
-        println!("Verus commit: {}", String::from_utf8(sha_msg).unwrap());
-    }
-
-    let date_info = std::process::Command::new("git")
-        .current_dir(&exe_dir)
-        .args(&["show", "-s", "--format=%ci", "HEAD"])
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .expect("failed to execute git show -s --format=%ci HEAD");
-
-    let mut date_msg = date_info
-        .wait_with_output()
-        .expect("failed to execute git show -s --format=%ci HEAD")
-        .stdout;
-    date_msg.pop();
-    println!("date: {}", String::from_utf8(date_msg).unwrap());
-}

@@ -170,17 +170,26 @@ fn run() -> Result<(), String> {
     let mut args_bucket = args.clone();
     let in_nextest = std::env::var("VARGO_IN_NEXTEST").is_ok();
 
-    let rust_toolchain_toml = toml::from_str::<toml::Value>(
-        &std::fs::read_to_string(std::path::Path::new("..").join("rust-toolchain.toml")).map_err(
-            |x| {
+    let (repo_root, rust_toolchain_toml) = {
+        let current_dir = std::env::current_dir()
+            .map_err(|x| format!("could not obtain the current directory ({})", x))?;
+        let repo_root = current_dir
+            .parent()
+            .ok_or(format!(
+                "current dir does not have a parent\nrun vargo in `source`"
+            ))?
+            .to_owned();
+        let rust_toolchain_toml = toml::from_str::<toml::Value>(
+            &std::fs::read_to_string(repo_root.join("rust-toolchain.toml")).map_err(|x| {
                 format!(
                     "could not read rust-toolchain.toml ({})\nrun vargo in `source`",
                     x
                 )
-            },
-        )?,
-    )
-    .map_err(|x| format!("could not parse Cargo.toml ({})\nrun vargo in `source`", x))?;
+            })?,
+        )
+        .map_err(|x| format!("could not parse Cargo.toml ({})\nrun vargo in `source`", x))?;
+        (repo_root, rust_toolchain_toml)
+    };
     let rust_toolchain_toml_channel = rust_toolchain_toml.get("toolchain").and_then(|t| t.get("channel"))
         .and_then(|t| if let toml::Value::String(s) = t { Some(s) } else { None })
         .ok_or(
@@ -287,6 +296,15 @@ fn run() -> Result<(), String> {
         .position(|x| x.as_str() == "--release" || x.as_str() == "-r")
         .map(|p| args_bucket.remove(p))
         .is_some();
+
+    match util::version_info(&repo_root) {
+        Ok(version_info) => std::env::set_var("VARGO_BUILD_VERSION", version_info),
+        Err(err) => {
+            warn(
+                format!("could not obtain version info from git, this will result in a binary with an unknown version: {}", err).as_str()
+            )
+        }
+    }
 
     std::env::set_var(
         "VARGO_BUILD_PROFILE",

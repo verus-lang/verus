@@ -70,6 +70,7 @@ pub struct Args {
     pub compile: bool,
     pub solver_version_check: bool,
     pub error_report: bool,
+    pub version: bool,
 }
 
 pub fn enable_default_features_and_verus_attr(
@@ -156,7 +157,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_ERROR_REPORT: &str = "error-report";
 
     let mut opts = Options::new();
-    opts.optflag("", OPT_VERSION, "print version information");
+    opts.optflag("", OPT_VERSION, "Print version information");
     opts.optopt("", OPT_PERVASIVE_PATH, "Path of the pervasive module", "PATH");
     opts.optopt("", OPT_EXPORT, "Export Verus metadata for library crate", "CRATENAME=PATH");
     opts.optmulti("", OPT_IMPORT, "Import Verus metadata from library crate", "CRATENAME=PATH");
@@ -241,7 +242,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     opts.optflag(
         "",
         OPT_ERROR_REPORT,
-        "create zip file to reproduce verus error (with version info)",
+        "Create zip file to reproduce verus error (with version info)",
     );
 
     let print_usage = || {
@@ -261,7 +262,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
                 print_usage();
                 std::process::exit(0);
             }
-            if m.free.len() == 0 {
+            if m.free.len() == 0 && !m.opt_present("version") {
                 print_usage();
                 std::process::exit(-1);
             }
@@ -370,6 +371,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         no_vstd: matches.opt_present(OPT_NO_VSTD),
         solver_version_check: !matches.opt_present(OPT_NO_SOLVER_VERSION_CHECK),
         error_report: matches.opt_present(OPT_ERROR_REPORT),
+        version: matches.opt_present(OPT_VERSION),
     };
 
     (args, unmatched)
