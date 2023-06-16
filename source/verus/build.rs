@@ -15,7 +15,7 @@ fn main() {
         panic!("rustup failed");
     }
     let active_toolchain_re =
-        Regex::new(r"^(([A-Za-z0-9.]+)-[A-Za-z0-9_]+-[A-Za-z0-9]+-[A-Za-z0-9-]+)").unwrap();
+        Regex::new(r"^(([A-Za-z0-9.-]+)-[A-Za-z0-9_]+-[A-Za-z0-9]+-[A-Za-z0-9-]+)").unwrap();
     let stdout = match std::str::from_utf8(&output.stdout)
         .map_err(|_| format!("rustup output is invalid utf8"))
     {
