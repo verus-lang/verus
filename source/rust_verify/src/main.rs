@@ -117,7 +117,11 @@ pub fn main() {
         let index = args.iter().position(|x| *x == "--error-report").unwrap();
         args.remove(index);
 
-        let mut res = std::process::Command::new("../error_report/target/release/error_report")
+        let verus_path = std::env::current_exe().unwrap();
+        let exe = verus_path.parent().unwrap().join("../../error_report/target/debug/error_report");
+
+        let mut res = std::process::Command::new(exe)
+            // .current_dir(std::env::current_dir().unwrap())
             .args(args)
             .spawn()
             .expect("error_report failed to start");
