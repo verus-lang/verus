@@ -23,8 +23,16 @@ fn main() {
 
     let args: Vec<String> = env::args().collect();
     if args.len() > 1 {
-        file_path = args[1].clone();
+        //file_path = args[1].clone();
+        for argument in &args
+        {
+            if argument.ends_with(".rs")
+            {
+                file_path = argument.clone();
+            }
+        }
         our_args = args[1..].to_vec();
+        
     } else {
         println!("Usage: error_report <file_name>");
     }
@@ -54,7 +62,9 @@ fn main() {
     toml_setup_and_write(args, z3_version_output, verus_version_output, verus_output);
     let (d_file_name, zip_file_name) = zip_setup(file_path);
     println!("Stored error report to {}\n", zip_file_name);
-    clean_up(d_file_name);
+    
+    fs::remove_file("error_report.toml").expect("failed to delete toml file\n");
+    fs::remove_file(d_file_name).expect("failed to delete .d file\n");
 }
 
 /// Transforms data from the input file into the proper data structure for
@@ -71,14 +81,14 @@ fn toml_setup_and_write(
     verus_output: std::process::Output,
 ) {
     let z3_version =
-        str::from_utf8(&z3_version_output.stdout).expect("got non UTF-8 data from git").to_string();
+        str::from_utf8(&z3_version_output.stdout).expect("got non UTF-8 data from z3 version output").to_string();
     let verus_version = str::from_utf8(&verus_version_output.stdout)
-        .expect("got non UTF-8 data from git")
+        .expect("got non UTF-8 data from verus version output")
         .to_string();
     let stdout =
-        str::from_utf8(&verus_output.stdout).expect("got non UTF-8 data from git").to_string();
+        str::from_utf8(&verus_output.stdout).expect("got non UTF-8 data from stdout").to_string();
     let stderr =
-        str::from_utf8(&verus_output.stderr).expect("got non UTF-8 data from git").to_string();
+        str::from_utf8(&verus_output.stderr).expect("got non UTF-8 data from stderr").to_string();
 
     let toml_string =
         toml::to_string(&create_toml(args, z3_version, verus_version, stdout, stderr))
@@ -179,20 +189,17 @@ fn write_zip_archive(deps: Vec<String>) -> String {
     let date = local.to_string();
     let mut zip_file_name = date[0..19].to_string();
     zip_file_name.push_str(".zip");
-    zip_file_name.replace_range(10..11, "-");
-    zip_file_name.replace_range(13..14, "-");
-    zip_file_name.replace_range(16..17, "-");
+    zip_file_name = zip_file_name.replace(" ","-");
 
     let path = std::path::Path::new(&zip_file_name);
     let file = std::fs::File::create(path).unwrap();
-    //let deps = vec!["folder/a.rs", "src/b.rs", "src/c.rs", "src/main.rs"];
     let mut zip = zip::ZipWriter::new(file);
     let options = FileOptions::default()
         .compression_method(zip::CompressionMethod::Bzip2)
         .unix_permissions(0o644);
     for file in deps {
         let path = file;
-        let binding = read_file_string(&path).expect("Could not read file");
+        let binding = fs::read_to_string(&path).expect("Could not read file");
         let content = binding.as_bytes();
 
         zip.start_file(path, options).expect("Could not start file");
@@ -202,18 +209,3 @@ fn write_zip_archive(deps: Vec<String>) -> String {
     zip_file_name
 }
 
-///Turns a file path into a string
-fn read_file_string(filepath: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let data = fs::read_to_string(filepath)?;
-    Ok(data)
-}
-
-/// Deletes the generated toml file and .d file so as to not clutter
-/// the user's directory
-///
-/// Parameters: d_file_name: The name of the .d file that was created by
-///                          this process and needs to be deleted
-fn clean_up(d_file_name: String) {
-    fs::remove_file("error_report.toml").expect("failed to delete toml file\n");
-    fs::remove_file(d_file_name).expect("failed to delete .d file\n");
-}
