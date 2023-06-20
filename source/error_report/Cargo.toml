@@ -1,7 +1,3 @@
-[workspace]
-members = [
-]
-
 [package]
 name = "error_report"
 version = "0.1.0"
