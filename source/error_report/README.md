@@ -12,8 +12,8 @@ etc. This tool attempts to record this data automatically.
 
 Run `cargo build --release`, which should generate the `error_report` executable in 
 `./target/release/`. Then you can run error_report on any directory that you
-run `verus`, or use the `--error-report` flag in verus. This should generate a
-zip file that contains necessary files to replicate the error  
-and an `error_report.toml` file that has 
-the error message and version info.
+run `verus`, or use the `--error-report` flag in verus. This generates a
+zip file that contains both the necessary files to replicate the error  
+and an `error_report.toml` file tracking other useful information,
+such as version info, and output from Verus.
 
