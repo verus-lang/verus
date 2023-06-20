@@ -188,7 +188,7 @@ fn write_zip_archive(deps: Vec<String>) -> String {
     //let deps = vec!["folder/a.rs", "src/b.rs", "src/c.rs", "src/main.rs"];
     let mut zip = zip::ZipWriter::new(file);
     let options = FileOptions::default()
-        .compression_method(zip::CompressionMethod::Stored)
+        .compression_method(zip::CompressionMethod::Bzip2)
         .unix_permissions(0o644);
     for file in deps {
         let path = file;
