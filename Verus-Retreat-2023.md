@@ -52,6 +52,7 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 
 - Benchmarking suite for Verus (1-2 hours in the morning) (Chris)
 - Ghost features for Rust (Andrea)
+- Paper writing (Bryan)
 
 *Community building (1-2 hours in the morning)*
 
