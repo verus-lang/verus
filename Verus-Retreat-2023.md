@@ -27,7 +27,7 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 
 *User experience improvements (2 hours in the afternoon)*
 
-- Setting up CI that includes other Verus projects (a-la crater)
+- Setting up CI that includes other Verus projects (a-la crater) (Andrea)
 - Proof actions (Chanhee)
 - State machine syntax (Travis)
 
@@ -50,11 +50,12 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 
 ### Thursday, June 29th (till 12pm)
 
-- Benchmarking suite for Verus (1-2 hours in the morning)
+- Benchmarking suite for Verus (1-2 hours in the morning) (Chris)
+- Ghost features for Rust (Andrea)
 
 *Community building (1-2 hours in the morning)*
 
-- Discuss moving to an open chat channel (Zulip?)
+- Discuss moving to an open chat channel (Zulip?) (Andrea)
 - [...]
 
 
