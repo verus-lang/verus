@@ -14,13 +14,14 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 
 *Overview of new/upcoming features (2-3 hours in the morning)*
 
-- Traits
-- Prophecy variables
-- State machines
-- Steps towards a framework for getting started with concurrency
+- Traits (Chris)
+- Prophecy variables (Andrea, Travis)
+- State machines (Travis)
+- Steps towards a framework for getting started with concurrency (Jay L)
 
 *Experience reports building systems in Verus (2 hours in the afternoon)*
 
+(Ask people for 10-minute presentations)
 - What's working well
 - What isn't working
 
@@ -28,7 +29,7 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 
 - Setting up CI that includes other Verus projects (a-la crater)
 - Proof actions
-- State machine syntax
+- State machine syntax (Travis)
 
 *6:00 PM -- Collaboration Dinner at [Union Grill](https://goo.gl/maps/FuDFyREMUxLjNWeC8)*
 
@@ -36,7 +37,7 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 
 - Documentation write-a-thon  (2-3 hours in the morning)
 - Issue/feature request triage (1-2 hours in the morning)
-- Verus internals overview + Q&A (afternoon)
+- Verus internals overview + Q&A (afternoon) (Chris, Andrea)
 - Bug fix hack-a-thon (afternoon)
 
 ### Wednesday, June 28th
@@ -44,7 +45,7 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 - Brainstorming next big steps for Verus (1-2 hours in the morning)
 - Telemetry design and brainstorming
 - Writing specifications for Rust's standard library (2 hours in the afternoon)
-- IronFleet hackathon (afternoon)
+- IronFleet hackathon (afternoon) (Jay L)
 
 ### Thursday, June 29th (till 12pm)
 
