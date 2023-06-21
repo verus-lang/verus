@@ -17,7 +17,7 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 - Traits (Chris)
 - Prophecy variables (Andrea, Travis)
 - State machines (Travis)
-- Steps towards a framework for getting started with concurrency (Jay L)
+- Simple crash consistency framework (Jay L)
 
 *Experience reports building systems in Verus (2 hours in the afternoon)*
 
