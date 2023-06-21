@@ -28,7 +28,7 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 *User experience improvements (2 hours in the afternoon)*
 
 - Setting up CI that includes other Verus projects (a-la crater)
-- Proof actions
+- Proof actions (Chanhee)
 - State machine syntax (Travis)
 
 *6:00 PM -- Collaboration Dinner at [Union Grill](https://goo.gl/maps/FuDFyREMUxLjNWeC8)*
@@ -38,13 +38,14 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 - Documentation write-a-thon  (2-3 hours in the morning)
 - Issue/feature request triage (1-2 hours in the morning)
 - Verus internals overview + Q&A (afternoon) (Chris, Andrea)
+- Math library (afternoon) (Liz and Alex)
 - Bug fix hack-a-thon (afternoon)
 
 ### Wednesday, June 28th
 
 - Brainstorming next big steps for Verus (1-2 hours in the morning)
-- Telemetry design and brainstorming
-- Writing specifications for Rust's standard library (2 hours in the afternoon)
+- Telemetry design and brainstorming (Liz and Alex)
+- Writing specifications for Rust's standard library (2 hours in the afternoon) (Travis, Andrea)
 - IronFleet hackathon (afternoon) (Jay L)
 
 ### Thursday, June 29th (till 12pm)
