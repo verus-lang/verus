@@ -30,6 +30,8 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 - Proof actions
 - State machine syntax
 
+*6:00 PM -- Collaboration Dinner at [Union Grill](https://goo.gl/maps/FuDFyREMUxLjNWeC8)*
+
 ### Tuesday, June 27th
 
 - Documentation write-a-thon  (2-3 hours in the morning)
