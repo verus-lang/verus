@@ -38,7 +38,7 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 - Documentation write-a-thon  (2-3 hours in the morning)
 - Issue/feature request triage (1-2 hours in the morning)
 - Verus internals overview + Q&A (afternoon) (Chris, Andrea)
-- Math library (afternoon) (Liz and Alex)
+- Math library / Verus standard library (afternoon) (Liz and Alex)
 - Bug fix hack-a-thon (afternoon)
 
 ### Wednesday, June 28th
