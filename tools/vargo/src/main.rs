@@ -621,6 +621,7 @@ fn run() -> Result<(), String> {
                 "state_machines_macros",
                 "vstd_build",
                 "verus",
+                "error_report",
             ];
 
             let build_vstd = {

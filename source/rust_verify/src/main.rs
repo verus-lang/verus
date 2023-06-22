@@ -118,10 +118,22 @@ pub fn main() {
         args.remove(index);
 
         let verus_path = std::env::current_exe().unwrap();
-        let exe = verus_path.parent().unwrap().join("../../error_report/target/debug/error_report");
+        let exe: std::path::PathBuf;
+        let release_exe = verus_path.parent().unwrap().join("../../target/release/error_report");
+        let debug_exe = verus_path.parent().unwrap().join("../../target/debug/error_report");
+        if release_exe.exists() {
+            exe = release_exe;
+        } else if debug_exe.exists() {
+            exe = debug_exe;
+        } else {
+            panic!(
+                "error_report not found, try running `cargo build --release` in source/error_report"
+            );
+        }
 
+        // verus path is the first argument, we assume z3 is under the same directory
         let mut res = std::process::Command::new(exe)
-            // .current_dir(std::env::current_dir().unwrap())
+            .arg(verus_path.parent().unwrap())
             .args(args)
             .spawn()
             .expect("error_report failed to start");

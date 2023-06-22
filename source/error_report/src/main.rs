@@ -11,35 +11,31 @@ use std::{
 use toml::{map::Map, value::Value};
 use zip::write::FileOptions;
 
-const REL_Z3_PATH: &str = "../../../target-verus/release/z3";
-const REL_VERUS_PATH: &str = "../../../target-verus/release/verus";
 fn main() {
     //Collects the command line arguments:
-    let mut exe_dir = env::current_exe().expect("invalid directory");
-    exe_dir.pop();
 
     let mut file_path = String::new();
+    #[allow(unused_assignments)]
     let mut our_args = Vec::new();
 
     let args: Vec<String> = env::args().collect();
     if args.len() > 1 {
-        //file_path = args[1].clone();
-        for argument in &args
-        {
-            if argument.ends_with(".rs")
-            {
+        for argument in &args {
+            if argument.ends_with(".rs") {
                 file_path = argument.clone();
             }
         }
-        our_args = args[1..].to_vec();
-        
+        our_args = args[2..].to_vec();
     } else {
         println!("Usage: error_report <file_name>");
+        return;
     }
 
-    //Collects information about the given file and environment:
-    let z3_path = exe_dir.join(REL_Z3_PATH);
-    let verus_path = exe_dir.join(REL_VERUS_PATH);
+    let program_dir = args[1].clone();
+
+    let z3_path = Path::new(&program_dir).join("z3");
+    let verus_path = Path::new(&program_dir).join("verus");
+
     let z3_version_output =
         Command::new(z3_path).arg("--version").output().expect("failed to execute process");
     let verus_version_output =
@@ -62,7 +58,7 @@ fn main() {
     toml_setup_and_write(args, z3_version_output, verus_version_output, verus_output);
     let (d_file_name, zip_file_name) = zip_setup(file_path);
     println!("Stored error report to {}\n", zip_file_name);
-    
+
     fs::remove_file("error_report.toml").expect("failed to delete toml file\n");
     fs::remove_file(d_file_name).expect("failed to delete .d file\n");
 }
@@ -80,8 +76,9 @@ fn toml_setup_and_write(
     verus_version_output: std::process::Output,
     verus_output: std::process::Output,
 ) {
-    let z3_version =
-        str::from_utf8(&z3_version_output.stdout).expect("got non UTF-8 data from z3 version output").to_string();
+    let z3_version = str::from_utf8(&z3_version_output.stdout)
+        .expect("got non UTF-8 data from z3 version output")
+        .to_string();
     let verus_version = str::from_utf8(&verus_version_output.stdout)
         .expect("got non UTF-8 data from verus version output")
         .to_string();
@@ -166,16 +163,7 @@ fn d_to_vec(file_name: String) -> Vec<String> {
     let mut reader = BufReader::new(file);
     let mut dependencies = String::new();
     reader.read_line(&mut dependencies).expect("Could not read the first line");
-    let mut deps = Vec::new();
-    let mut first = true;
-    for dep in dependencies.split_whitespace() {
-        if !first {
-            deps.push(dep.to_string());
-        } else {
-            first = false;
-        }
-    }
-    deps
+    dependencies.split_whitespace().skip(1).map(|x| x.to_string()).collect()
 }
 
 /// Creates a zip file from a given list of files to compress
@@ -189,7 +177,8 @@ fn write_zip_archive(deps: Vec<String>) -> String {
     let date = local.to_string();
     let mut zip_file_name = date[0..19].to_string();
     zip_file_name.push_str(".zip");
-    zip_file_name = zip_file_name.replace(" ","-");
+    zip_file_name = zip_file_name.replace(" ", "-");
+    zip_file_name = zip_file_name.replace(":", "-");
 
     let path = std::path::Path::new(&zip_file_name);
     let file = std::fs::File::create(path).unwrap();
@@ -208,4 +197,3 @@ fn write_zip_archive(deps: Vec<String>) -> String {
     zip.finish().expect("Could not finish up zip file");
     zip_file_name
 }
-
