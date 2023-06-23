@@ -1014,8 +1014,21 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         let tup = vir::ast_util::mk_tuple(&span, &Arc::new(vir_args));
                         let fun = vir::def::exec_nonstatic_call_fun(&bctx.ctxt.vstd_crate_name);
                         let ret_typ = expr_typ.clone();
-                        let typ_args =
-                            Arc::new(vec![tup.typ.clone(), ret_typ, vir_fun.typ.clone()]);
+
+                        // We need the tuple type to have the correct decoration:
+                        let mut arg_typs = vec![];
+                        for arg in args {
+                            arg_typs.push(mid_ty_to_vir(
+                                tcx,
+                                &bctx.ctxt.verus_items,
+                                arg.span,
+                                &bctx.types.expr_ty_adjusted(arg),
+                                false,
+                            )?);
+                        }
+                        let tup_typ = Arc::new(TypX::Tuple(Arc::new(arg_typs)));
+
+                        let typ_args = Arc::new(vec![tup_typ, ret_typ, vir_fun.typ.clone()]);
                         (
                             CallTarget::Fun(
                                 vir::ast::CallTargetKind::Static,
