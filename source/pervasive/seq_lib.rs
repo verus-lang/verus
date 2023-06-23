@@ -175,6 +175,32 @@ impl<A> Seq<A> {
 //        }
     }
 
+    /// Returns the maximum value in a non-empty sequence, given sorting function leq
+    pub open spec fn max(self, leq: FnSpec(A,A) ->bool) -> A
+       recommends self.len() > 0,
+       decreases self.len(),
+    {
+        if self.len() > 1 {
+            let subseq = self.subrange(1,self.len() as int);
+            let elt = subseq.max(leq);
+            if leq(self[0],elt) {elt}
+            else {self[0]}
+        } else {self[0]}
+    }
+
+    /// Returns the minimum value in a non-empty sequence, given sorting function leq
+    pub open spec fn min(self, leq: FnSpec(A,A) ->bool) -> A
+       recommends self.len() > 0,
+       decreases self.len(),
+    {
+        if self.len() > 1 {
+            let subseq = self.subrange(1,self.len() as int);
+            let elt = subseq.min(leq);
+            if leq(elt,self[0]) {elt}
+            else {self[0]}
+        } else {self[0]}
+    }
+
     // TODO is_sorted -- extract from summer_school e22
     pub open spec fn contains(self, needle: A) -> bool {
         exists|i: int| 0 <= i < self.len() && self[i] == needle
@@ -313,6 +339,20 @@ impl<A> Seq<A> {
             result.add(tail)
         }
     }
+
+    /// Zips two sequences of equal length into one sequence that consists of pairs.
+    /// If the two sequences are different lengths, returns an empty sequence
+    pub open spec fn zip_with<B>(self, other: Seq<B>) -> Seq<(A,B)>
+        recommends self.len() == other.len()
+        decreases self.len()
+    {
+        if self.len() != other.len() {Seq::empty()}
+        else if self.len() == 0 {Seq::empty()}
+        else{
+            self.drop_last().zip_with(other.drop_last()).push((self.last(),other.last()))
+        }
+    }
+        
 
     /// Folds the sequence to the left, applying `f` to perform the fold.
     ///
@@ -462,6 +502,47 @@ impl<A> Seq<A> {
             self.aux_lemma_fold_right_alt(f, b, 1);
         }
     }
+}
+
+//TODO: Should this be its own impl block, or somehow fit it into the previous one?
+impl<A,B> Seq<(A,B)>{
+
+    /// Unzips a sequence that contains pairs into two separate sequences.
+    pub open spec fn unzip(self) -> (Seq<A>, Seq<B>)
+        decreases self.len()
+    {
+        if self.len() == 0 {(Seq::empty(), Seq::empty())}
+        else{
+            let (a,b) = self.drop_last().unzip();
+            let (s0, s1) = self.last();
+            (a.push(s0),b.push(s1))
+        }
+    }
+
+}
+
+impl<A> Seq<Seq<A>>{
+
+    /// Flattens a sequence of sequences into a single sequence by concatenating 
+    ///  subsequences, starting from the first element. 
+    pub open spec fn flatten(self) -> Seq<A>
+        decreases self.len()
+    {
+        if self.len() == 0 {Seq::empty()}
+        else {
+            self[0].add(self.subrange(1,self.len() as int).flatten())
+        }
+    }
+
+    /// Flattens a sequence of sequences into a single sequence by concatenating 
+    /// subsequences in reverse order, i.e. starting from the last element.
+    pub open spec fn flatten_reverse(self) -> Seq<A>
+        decreases self.len()
+    {
+        if self.len() == 0 {Seq::empty()}
+        else {self.drop_last().flatten_reverse().add(self.last())}
+    }
+
 }
 
 /// The concatenation of two subsequences of a non-empty sequence, the first obtained 
