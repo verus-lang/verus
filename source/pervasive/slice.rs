@@ -46,4 +46,13 @@ pub exec fn slice_subrange<T, 'a>(slice: &'a [T], i: usize, j: usize) -> (out: &
     &slice[i .. j]
 }
 
+#[verifier(external_fn_specification)]
+pub exec fn slice_len<T>(slice: &[T]) -> (length: usize)
+    ensures 
+        length >=0,
+        length == slice@.len()
+{
+    slice.len()
+}
+
 }

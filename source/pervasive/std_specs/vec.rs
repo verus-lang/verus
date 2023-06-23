@@ -141,6 +141,7 @@ pub fn ex_vec_reserve<T, A: Allocator>(vec: &mut Vec<T, A>, additional: usize)
 pub fn ex_vec_push<T, A: Allocator>(vec: &mut Vec<T, A>, value: T)
     ensures
         vec@ == old(vec)@.push(value),
+        vec@.contains(value),
 {
     vec.push(value)
 }
@@ -162,7 +163,9 @@ pub fn ex_vec_pop<T, A: Allocator>(vec: &mut Vec<T, A>) -> (value: Option<T>)
 pub fn ex_append<T, A: Allocator>(vec: &mut Vec<T, A>, other: &mut Vec<T, A>)
     ensures
         vec@ == old(vec)@ + old(other)@,
-        other@ == Seq::<T>::empty()
+        other@ == Seq::<T>::empty(),
+        forall|x: T| old(other)@.contains(x) ==> vec@.contains(x),
+        forall|x: T| vec@.contains(x) <==> old(vec)@.contains(x) || old(other)@.contains(x),
 {
     vec.append(other)
 }
@@ -202,6 +205,8 @@ pub fn ex_vec_remove<T, A: Allocator>(vec: &mut Vec<T, A>, i: usize) -> (element
     ensures
         element == old(vec)[i as int],
         vec@ == old(vec)@.remove(i as int),
+        forall |i: int| 1<= i < old(vec)@.len() ==> old(vec)[i-1] == vec[i],
+
 {
     vec.remove(i)
 }
@@ -220,5 +225,22 @@ pub fn ex_vec_as_slice<T, A: Allocator>(vec: &Vec<T, A>) -> (slice: &[T])
     vec.as_slice()
 }
 
+#[verifier::external_fn_specification]
+pub fn ex_vec_split_off<T, A: Allocator+ std::clone::Clone>(vec: &mut Vec<T, A>, at: usize) -> (return_value: Vec<T, A>)
+    ensures
+        vec@ == old(vec)@.subrange(0,at as int),
+        return_value@ == old(vec)@.subrange(at as int, old(vec)@.len() as int),
+{
+    vec.split_off(at)
+}
+
+// #[verifier::external_fn_specification]
+// pub fn ex_vec_to_vec<T: std::clone::Clone, A: Allocator>(vec: &mut Vec<T, A>) -> (return_value: Vec<T, ExGlobal>)
+//     ensures
+//         vec@ == old(vec)@,
+//         return_value@ =~= old(vec)@,
+// {
+//     vec.to_vec()
+// }
 
 }

@@ -9,6 +9,11 @@ use crate::seq::*;
 #[allow(unused_imports)]
 use crate::set::Set;
 
+//TODO: need to prove the proofs myself or can I just use 
+//external body specification?
+
+
+
 verus! {
 
 impl<A> Seq<A> {
@@ -26,6 +31,19 @@ impl<A> Seq<A> {
     // TODO(verus): rename to map, because this is what everybody wants.
     pub open spec fn map_values<B>(self, f: FnSpec(A) -> B) -> Seq<B> {
         Seq::new(self.len(), |i: int| f(self[i]))
+    }
+
+    /// Is true if the calling sequence is a prefix of the given sequence 'other'.
+    pub open spec fn is_prefix_of(self, other: Self) ->bool
+    {
+        self.len() <= other.len() && self == other.subrange(0,self.len() as int)
+    }
+
+    /// Is true if the calling sequence is a suffix of the given sequence 'other'.
+    pub open spec fn is_suffix_of(self, other: Self) ->bool
+    {
+        self.len() <= other.len() && self == 
+            other.subrange((other.len() - self.len()) as int, other.len() as int)
     }
 
     #[verifier::opaque]
@@ -162,8 +180,62 @@ impl<A> Seq<A> {
         exists|i: int| 0 <= i < self.len() && self[i] == needle
     }
 
+    /// Returns some index if an element occurs at least once in a sequence
+    /// and occurs at index i. Otherwise returns an arbitrary value.
     pub open spec fn index_of(self, needle: A) -> int {
         choose|i: int| 0 <= i < self.len() && self[i] == needle
+    }
+
+    /// Returns Some(i), if an element occurs at least once in a sequence and
+    /// occurs at index i. Otherwise the return is None.
+    pub open spec fn index_of_option(self, needle: A) -> (result: Option<int>)
+    {
+        if (self.contains(needle)) {Some(self.index_of(needle))}
+        else {None}
+    }
+
+    /// For an element that occurs at least once in a sequence, the index of its
+    /// first occurence is returned. Otherwise, -1 is returned
+    pub open spec fn first_index_of(self, needle:A) -> int{
+        self.first_index_helper(needle,0)
+    }
+
+    /// Recursive helper function for first_index_of
+    pub closed spec fn first_index_helper(self, needle: A, index: int) -> int
+        decreases self.len(),
+    {   if self.len() <= 0 {-1}
+        else if self[0] == needle {index}
+        else {self.subrange(1,self.len() as int).first_index_helper(needle, index+1)}
+    }
+
+    /// For an element that occurs at least once in a sequence, if its first occurence
+    /// is at index i, Some(i) is returned. Otherwise, None is returned
+    pub open spec fn first_index_of_option(self, needle:A) -> Option<int> {
+        let val = self.first_index_of(needle);
+        if val >= 0 {Some(val)}
+        else {None}
+    }
+
+    /// For an element that occurs at least once in a sequence, the index of its
+    /// last occurence is returned. Otherwise, -1 is returned
+    pub open spec fn last_index_of(self, needle:A) -> int{
+        self.last_index_helper(needle,self.len()-1 as int)
+    }
+
+    /// Recursive helper function for last_index_of
+    pub closed spec fn last_index_helper(self, needle: A, index: int) -> int
+        decreases self.len(),
+    {   if self.len() <= 0 {-1}
+        else if self.last() == needle {index}
+        else {self.subrange(0,self.len()-1 as int).last_index_helper(needle, index-1)}
+    }
+
+    /// For an element that occurs at least once in a sequence, if its last occurence
+    /// is at index i, Some(i) is returned. Otherwise, None is returned
+    pub open spec fn last_index_of_option(self, needle:A) -> Option<int> {
+        let val = self.last_index_of(needle);
+        if val >= 0 {Some(val)}
+        else {None}
     }
 
     /// Drops the last element of a sequence and returns a sequence whose length is
@@ -183,6 +255,12 @@ impl<A> Seq<A> {
         (a+b).drop_last() == a+b.drop_last(),
     {
         assert_seqs_equal!((a+b).drop_last(), a+b.drop_last());
+    }
+
+    pub open spec fn drop_first(self) -> Seq<A>
+        recommends self.len() >= 1
+    {
+        self.subrange(1, self.len() as int)
     }
 
     /// returns `true` if the sequequence has no duplicate elements
@@ -213,6 +291,27 @@ impl<A> Seq<A> {
         recommends 0 <= i < self.len()
     {
         self.subrange(0, i) + self.subrange(i + 1, self.len() as int)
+    }
+
+    /// If a given element occurs at least once in a sequence, the sequence without
+    /// its first occurrence is returned. Otherwise the same sequence is returned.
+    pub open spec fn remove_value(self, val :A) -> Seq<A>
+    {
+        let index = self.first_index_of(val);
+        if index >= 0 {self.remove(index)}
+        else {self}
+    }
+
+    /// Returns the sequence that is in reverse order to a given sequence.
+    pub open spec fn reverse(self) -> Seq<A>
+        decreases self.len()
+    {
+        if self.len() == 0 {Seq::empty()}
+        else {
+            let mut result = Seq::empty().push(self[self.len()-1]);
+            let tail = self.subrange(0, self.len()-1 as int).reverse();
+            result.add(tail)
+        }
     }
 
     /// Folds the sequence to the left, applying `f` to perform the fold.
@@ -365,6 +464,112 @@ impl<A> Seq<A> {
     }
 }
 
+/// The concatenation of two subsequences of a non-empty sequence, the first obtained 
+/// from dropping the last element, the second consisting only of the last 
+/// element, is the original sequence.
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn lemma_add_last_back<A>(s: Seq<A>)
+    requires 
+        0 < #[trigger] s.len(),
+    ensures
+        #[trigger] s.drop_last().push(#[trigger] s.last()) == s,
+{}
+
+/// The last element of two concatenated sequences, the second one being non-empty, will be the 
+/// last element of the latter sequence.
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn lemma_append_last<A>(s1 :Seq<A>, s2 :Seq<A>)
+    requires
+        0 < s2.len(),
+    ensures
+        #[trigger] (s1 + s2).last() == s2.last(),
+{}
+
+/// The concatenation of sequences is associative
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn lemma_concat_associative<A>(s1 : Seq<A>, s2 :Seq<A>, s3 :Seq<A>)
+    ensures
+        #[trigger] s1.add(s2.add(s3)) == #[trigger] s1.add(s2).add(s3),
+{}
+
+/* could not figure out triggers for these two */
+// /// If a predicate is true at every index of a sequence,
+// /// it is true for every member of the sequence as a collection.
+// /// Useful for converting quantifiers between the two forms
+// /// to satisfy a precondition in the latter form.
+// #[verifier(external_body)]
+// #[verifier(broadcast_forall)]
+// pub proof fn lemma_indexing_implies_membership<A>(f: FnSpec(A)->bool, s: Seq<A>)
+//     requires
+//         forall |i: int| 0<= i < #[trigger] s.len() ==> #[trigger] f(#[trigger] s[i]),
+//     ensures
+//         forall |x: A| #[trigger] s.contains(x) ==> #[trigger] f(x),
+// {}
+
+// /// If a predicate is true for every member of a sequence as a collection,
+// /// it is true at every index of the sequence.
+// /// Useful for converting quantifiers between the two forms
+// /// to satisfy a precondition in the latter form.
+// #[verifier(external_body)]
+// #[verifier(broadcast_forall)]
+// pub proof fn lemma_membership_implies_indexing<A>(f: FnSpec(A)->bool, s: Seq<A>)
+//     requires
+//         forall |x: A| #[trigger] s.contains(x) ==> #[trigger] f(x),
+//     ensures
+//         forall |i: int| 0<= i < #[trigger] s.len() ==> #[trigger] f(s[i]),
+        
+// {}
+
+/// A sequence that is sliced at the pos-th element, concatenated 
+///  with that same sequence sliced from the pos-th element, is equal to the 
+///  original unsliced sequence.
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn lemma_split_at<A>(s: Seq<A>, pos: int)
+    requires pos < s.len(),
+    ensures #[trigger] s.subrange(0,pos) + #[trigger] s.subrange(pos,s.len() as int) == s
+{}
+
+/// Any element in a slice is included in the original sequence.
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn lemma_element_from_slice<A>(old: Seq<A>, new: Seq<A>, a: int, b:int, pos: int)
+    requires
+        0 <= a <= b <= #[trigger] old.len(),
+        new == #[trigger] old.subrange(a,b),
+        a <= pos < b
+    ensures
+        pos - a < #[trigger] new.len(),
+        new[pos-a] == #[trigger] new[pos],
+{}
+
+/// A slice (from s2..e2) of a slice (from s1..e1) of a sequence is equal to just a 
+/// slice (s1+s2..s1+e2) of the original sequence.
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn lemma_slice_of_slice<A>(original: Seq<A>, s1 :int, e1: int, s2: int, e2: int)
+    requires 
+        0 <= s1 <= e1 <= original.len(),
+        0 <= s2 <= e2 <= e1 - s1,
+    ensures
+        original.subrange(s1,e1).subrange(s2,e2) == original.subrange(s1+s2,s1+e2),
+{}
+
+/// Returns a constant sequence of a given length
+/// TODO: should this go in seq.rs since it is basically a constructor?
+spec fn repeat<A>(val: A, length: int) -> Seq<A>
+    decreases length
+{
+    if length <= 0 {Seq::empty()}
+    else {
+        let mut result = Seq::empty().push(val);
+        let tail = repeat(val,length-1);
+        result.add(tail)
+    }
+}
 
 /// recursive definition of seq to set conversion
 spec fn seq_to_set_rec<A>(seq: Seq<A>) -> Set<A>
@@ -462,6 +667,30 @@ pub proof fn unique_seq_to_set<A>(seq:Seq<A>)
     }
 }
 
+/// A sequence with cardinality equal to its set has no duplicates.
+/// Inverse of the above function unique_seq_to_set
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn lemma_no_dup_set_cardinality<A>(s: Seq<A>)
+    requires 
+        s.to_set().len() == #[trigger] s.len(),
+    ensures
+        #[trigger] s.no_duplicates()
+{}
+
+/// If sequences a and b don't have duplicates and there are no 
+/// elements in common between them, then the concatenated sequence 
+/// a + b will not contain duplicates either.
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn lemma_no_dup_in_concat<A>(a: Seq<A>, b: Seq<A>)
+    requires
+        a.no_duplicates(),
+        b.no_duplicates(),
+        forall |x: A| a.contains(x) ==> !b.contains(x),
+    ensures
+        #[trigger] (a+b).no_duplicates(),
+{}
 
 #[doc(hidden)]
 #[verifier(inline)]

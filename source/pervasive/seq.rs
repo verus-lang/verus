@@ -169,6 +169,15 @@ impl<A> Seq<A> {
     {
         self[self.len() as int - 1]
     }
+
+    /// Returns the first element of the sequence.
+    
+    #[rustc_diagnostic_item = "vstd::seq::Seq::first"]
+    pub open spec fn first(self) -> A
+        recommends 0 < self.len()
+    {
+        self[0]
+    }
 }
 
 // Trusted axioms
