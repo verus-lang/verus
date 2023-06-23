@@ -12,8 +12,6 @@ use toml::{map::Map, value::Value};
 use zip::write::FileOptions;
 
 fn main() {
-    //Collects the command line arguments:
-
     let mut file_path = String::new();
     #[allow(unused_assignments)]
     let mut our_args = Vec::new();
