@@ -161,7 +161,7 @@ pub fn parse_args_with_imports(program: &String, args: impl Iterator<Item = Stri
     const OPT_VERSION: &str = "version";
     const OPT_NUM_THREADS: &str = "num-threads";
 
-    let default_num_threads: usize = std::thread::available_parallelism().map(|x| x.into()).unwrap_or(1);
+    let default_num_threads: usize = std::thread::available_parallelism().map(|x| std::cmp::min(usize::from(x) - 1, 1)).unwrap_or(1);
 
     let mut opts = Options::new();
     opts.optflag("", OPT_VERSION, "Print version information");
