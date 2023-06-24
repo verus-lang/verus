@@ -129,8 +129,6 @@ impl QueuedReporter {
     pub(crate) fn done(&self) {
         self.queue.send(ReporterMessage::Done(self.module_id)).expect("could not send!");
     }
-
-    // pub(crate) fn debug()
 }
 
 impl Diagnostics for QueuedReporter {
