@@ -3,7 +3,6 @@ use getopts::Options;
 use vir::printer::ToDebugSNodeOpts as VirLogOption;
 
 pub const DEFAULT_RLIMIT_SECS: u32 = 10;
-pub const DEFAULT_NUM_THREADS: usize = 1;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ShowTriggers {
@@ -162,6 +161,8 @@ pub fn parse_args_with_imports(program: &String, args: impl Iterator<Item = Stri
     const OPT_VERSION: &str = "version";
     const OPT_NUM_THREADS: &str = "num-threads";
 
+    let default_num_threads: usize = std::thread::available_parallelism().map(|x| x.into()).unwrap_or(1);
+
     let mut opts = Options::new();
     opts.optflag("", OPT_VERSION, "Print version information");
     opts.optopt("", OPT_PERVASIVE_PATH, "Path of the pervasive module", "PATH");
@@ -195,7 +196,7 @@ pub fn parse_args_with_imports(program: &String, args: impl Iterator<Item = Stri
     opts.optopt(
         "",
         OPT_RLIMIT,
-        format!("Set SMT resource limit (roughly in seconds). Default: {}.", DEFAULT_RLIMIT_SECS)
+        format!("Set SMT resource limit (roughly in seconds). Default: {} (available parallelism on this system).", DEFAULT_RLIMIT_SECS)
             .as_str(),
         "INTEGER",
     );
@@ -248,7 +249,7 @@ pub fn parse_args_with_imports(program: &String, args: impl Iterator<Item = Stri
     opts.optopt(
         "",
         OPT_NUM_THREADS,
-        format!("Number of threads to use for verification. Default: {}.", DEFAULT_NUM_THREADS)
+        format!("Number of threads to use for verification. Default: {}.", default_num_threads)
             .as_str(),
         "INTEGER",
     );
@@ -393,7 +394,7 @@ pub fn parse_args_with_imports(program: &String, args: impl Iterator<Item = Stri
         version: matches.opt_present(OPT_VERSION),
         num_threads: matches.opt_get::<usize>(OPT_NUM_THREADS)
             .unwrap_or_else(|_| error("expected integer after num_threads".to_string()))
-            .unwrap_or(DEFAULT_NUM_THREADS),
+            .unwrap_or(default_num_threads),
     };
 
     (Arc::new(args), unmatched)
