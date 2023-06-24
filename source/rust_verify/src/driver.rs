@@ -303,8 +303,14 @@ where
         Box::new(file_loader.clone()),
         build_test_mode,
     );
-    let VerifierCallbacksEraseMacro { verifier, rust_start_time, rust_end_time, lifetime_start_time, lifetime_end_time, .. } =
-        verifier_callbacks;
+    let VerifierCallbacksEraseMacro {
+        verifier,
+        rust_start_time,
+        rust_end_time,
+        lifetime_start_time,
+        lifetime_end_time,
+        ..
+    } = verifier_callbacks;
     if !verifier.args.output_json && !verifier.encountered_vir_error {
         println!(
             "verification results:: verified: {} errors: {}{}",

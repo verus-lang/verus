@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use getopts::Options;
+use std::sync::Arc;
 use vir::printer::ToDebugSNodeOpts as VirLogOption;
 
 pub const DEFAULT_RLIMIT_SECS: u32 = 10;
@@ -114,7 +114,11 @@ pub fn enable_default_features_and_verus_attr(
     rustc_args.push("-Zcrate-attr=register_tool(verifier)".to_string());
 }
 
-pub fn parse_args_with_imports(program: &String, args: impl Iterator<Item = String>, vstd: Option<(String, String)>) -> (Args, Vec<String>) {
+pub fn parse_args_with_imports(
+    program: &String,
+    args: impl Iterator<Item = String>,
+    vstd: Option<(String, String)>,
+) -> (Args, Vec<String>) {
     const OPT_PERVASIVE_PATH: &str = "pervasive-path";
     const OPT_EXPORT: &str = "export";
     const OPT_IMPORT: &str = "import";
@@ -161,7 +165,9 @@ pub fn parse_args_with_imports(program: &String, args: impl Iterator<Item = Stri
     const OPT_VERSION: &str = "version";
     const OPT_NUM_THREADS: &str = "num-threads";
 
-    let default_num_threads: usize = std::thread::available_parallelism().map(|x| std::cmp::min(usize::from(x) - 1, 1)).unwrap_or(1);
+    let default_num_threads: usize = std::thread::available_parallelism()
+        .map(|x| std::cmp::min(usize::from(x) - 1, 1))
+        .unwrap_or(1);
 
     let mut opts = Options::new();
     opts.optflag("", OPT_VERSION, "Print version information");
@@ -294,7 +300,8 @@ pub fn parse_args_with_imports(program: &String, args: impl Iterator<Item = Stri
 
     let no_vstd = matches.opt_present(OPT_NO_VSTD);
 
-    let mut import = matches.opt_strs(OPT_IMPORT).iter().map(split_pair_eq).collect::<Vec<(String, String)>>();
+    let mut import =
+        matches.opt_strs(OPT_IMPORT).iter().map(split_pair_eq).collect::<Vec<(String, String)>>();
     if let Some(vstd) = vstd {
         if !no_vstd {
             import.push(vstd);
@@ -392,7 +399,8 @@ pub fn parse_args_with_imports(program: &String, args: impl Iterator<Item = Stri
         no_vstd,
         solver_version_check: !matches.opt_present(OPT_NO_SOLVER_VERSION_CHECK),
         version: matches.opt_present(OPT_VERSION),
-        num_threads: matches.opt_get::<usize>(OPT_NUM_THREADS)
+        num_threads: matches
+            .opt_get::<usize>(OPT_NUM_THREADS)
             .unwrap_or_else(|_| error("expected integer after num_threads".to_string()))
             .unwrap_or(default_num_threads),
     };

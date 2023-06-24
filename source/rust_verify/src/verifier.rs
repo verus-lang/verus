@@ -15,14 +15,14 @@ use verus_rustc_interface::interface::Compiler;
 use num_format::{Locale, ToFormattedString};
 use rustc_error_messages::MultiSpan;
 use rustc_middle::ty::TyCtxt;
-use rustc_span::Span;
 use rustc_span::source_map::SourceMap;
-use vir::context::GlobalCtx;
+use rustc_span::Span;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::Write;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use vir::context::GlobalCtx;
 
 use vir::ast::{Fun, Function, Ident, InferMode, Krate, Mode, VirErr, Visibility};
 use vir::ast_util::{friendly_fun_name_crate_relative, fun_as_friendly_rust_name, is_visible_to};
@@ -109,14 +109,14 @@ impl Diagnostics for Reporter<'_> {
 }
 
 /// A reporter message that is being collected by the main thread
-pub(crate) enum ReporterMessage{
+pub(crate) enum ReporterMessage {
     Message(usize, Message, MessageLevel, bool),
     // Debugger(),
-    Done(usize)
+    Done(usize),
 }
 
 /// A reporter that forwards messages on an mpsc channel
-pub (crate) struct QueuedReporter {
+pub(crate) struct QueuedReporter {
     module_id: usize,
     queue: std::sync::mpsc::Sender<ReporterMessage>,
 }
@@ -126,7 +126,7 @@ impl QueuedReporter {
         Self { module_id, queue }
     }
 
-    pub (crate) fn done(&self) {
+    pub(crate) fn done(&self) {
         self.queue.send(ReporterMessage::Done(self.module_id)).expect("could not send!");
     }
 
@@ -135,16 +135,17 @@ impl QueuedReporter {
 
 impl Diagnostics for QueuedReporter {
     fn report_as(&self, msg: &Message, level: MessageLevel) {
-        self.queue.send(ReporterMessage::Message(self.module_id, msg.clone(), level, false))
+        self.queue
+            .send(ReporterMessage::Message(self.module_id, msg.clone(), level, false))
             .expect("could not send the message!");
     }
 
     fn report_as_now(&self, msg: &Message, level: MessageLevel) {
-        self.queue.send(ReporterMessage::Message(self.module_id, msg.clone(), level, true))
+        self.queue
+            .send(ReporterMessage::Message(self.module_id, msg.clone(), level, true))
             .expect("could not send the message!");
     }
 }
-
 
 #[derive(Default)]
 pub struct ModuleStats {
@@ -224,7 +225,7 @@ impl Verifier {
             count_errors: 0,
             args,
             erasure_hints: None,
-            time_verify_crate:Duration::new(0, 0),
+            time_verify_crate: Duration::new(0, 0),
             time_verify_crate_sequential: Duration::new(0, 0),
             time_hir: Duration::new(0, 0),
             time_vir: Duration::new(0, 0),
@@ -253,7 +254,7 @@ impl Verifier {
             args: self.args.clone(),
             erasure_hints: self.erasure_hints.clone(),
 
-            time_verify_crate:Duration::new(0, 0),
+            time_verify_crate: Duration::new(0, 0),
             time_verify_crate_sequential: Duration::new(0, 0),
             time_hir: Duration::new(0, 0),
             time_vir: Duration::new(0, 0),
@@ -403,11 +404,7 @@ impl Verifier {
             let report_fn: Box<dyn FnMut(std::time::Duration) -> ()> = Box::new(move |elapsed| {
                 let msg =
                     format!("{} has been running for {} seconds", context.1, elapsed.as_secs());
-                let msg = if counter % 5 == 0 {
-                    note(msg, &context.0)
-                } else {
-                    note_bare(msg)
-                };
+                let msg = if counter % 5 == 0 { note(msg, &context.0) } else { note_bare(msg) };
                 reporter.report_now(&msg);
                 counter += 1;
             });
@@ -439,7 +436,7 @@ impl Verifier {
         );
 
         let time1 = Instant::now();
-        let  module_time = self.module_times.get_mut(module_path).expect("module time not found");
+        let module_time = self.module_times.get_mut(module_path).expect("module time not found");
         module_time.time_air += time1 - time0;
 
         let mut is_first_check = true;
@@ -500,12 +497,8 @@ impl Verifier {
 
                         if self.args.debug {
                             if let Some(source_map) = source_map {
-                                let mut debugger = Debugger::new(
-                                    air_model,
-                                    assign_map,
-                                    snap_map,
-                                    source_map,
-                                );
+                                let mut debugger =
+                                    Debugger::new(air_model, assign_map, snap_map, source_map);
                                 debugger.start_shell(air_context);
                             } else {
                                 reporter.report(&message(
@@ -536,7 +529,8 @@ impl Verifier {
                     );
                     let time1 = Instant::now();
 
-                    let module_time = self.module_times.get_mut(module_path).expect("module time not found");
+                    let module_time =
+                        self.module_times.get_mut(module_path).expect("module time not found");
                     module_time.time_air += time1 - time0;
                 }
                 ValidityResult::UnexpectedOutput(err) => {
@@ -580,7 +574,8 @@ impl Verifier {
             ));
             let time1 = Instant::now();
 
-            let module_time = self.module_times.get_mut(module_path).expect("module time not found");
+            let module_time =
+                self.module_times.get_mut(module_path).expect("module time not found");
             module_time.time_air += time1 - time0;
         }
     }
@@ -1261,7 +1256,6 @@ impl Verifier {
         time_module.time_smt_run = time_smt_run;
         time_module.time_verify = time_verify_end - time_verify_start;
 
-
         Ok(global_ctx)
     }
 
@@ -1271,7 +1265,6 @@ impl Verifier {
         compiler: &Compiler,
         spans: &SpanContext,
     ) -> Result<(), VirErr> {
-
         let time_verify_sequential_start = Instant::now();
 
         let reporter = Reporter::new(spans, compiler);
@@ -1374,41 +1367,50 @@ impl Verifier {
         };
 
         let time_verify_sequential_end = Instant::now();
-        self.time_verify_crate_sequential = time_verify_sequential_end - time_verify_sequential_start;
+        self.time_verify_crate_sequential =
+            time_verify_sequential_end - time_verify_sequential_start;
 
         let source_map = compiler.session().source_map();
 
         self.num_threads = std::cmp::min(self.args.num_threads, module_ids_to_verify.len());
-        if self.num_threads  > 1  {
+        if self.num_threads > 1 {
             // create the multiple producers, single consumer queue
             let (sender, receiver) = std::sync::mpsc::channel();
 
             // collect the modules and create the task queueu
             let mut tasks = VecDeque::with_capacity(module_ids_to_verify.len());
-            let mut messages : Vec<(bool, Vec<(Message, MessageLevel)>)> = Vec::new();
+            let mut messages: Vec<(bool, Vec<(Message, MessageLevel)>)> = Vec::new();
             for (i, module) in module_ids_to_verify.iter().enumerate() {
                 // give each module its own log file
-                let interpreter_log_file =
-                    Arc::new(std::sync::Mutex::new(if self.args.log_all || self.args.log_vir_simple {
-                        Some(self.create_log_file(Some(module), None, crate::config::INTERPRETER_FILE_SUFFIX)?)
+                let interpreter_log_file = Arc::new(std::sync::Mutex::new(
+                    if self.args.log_all || self.args.log_vir_simple {
+                        Some(self.create_log_file(
+                            Some(module),
+                            None,
+                            crate::config::INTERPRETER_FILE_SUFFIX,
+                        )?)
                     } else {
                         None
-                    }));
+                    },
+                ));
 
                 // give each task a queued reporter to identify the module that is sending messages
                 let reporter = QueuedReporter::new(i, sender.clone());
 
-                tasks.push_back((module.clone(), global_ctx.from_self_with_log(interpreter_log_file), reporter));
+                tasks.push_back((
+                    module.clone(),
+                    global_ctx.from_self_with_log(interpreter_log_file),
+                    reporter,
+                ));
                 messages.push((false, Vec::new()));
             }
 
             // protect the taskq with a mutex
             let taskq = std::sync::Arc::new(std::sync::Mutex::new(tasks));
 
-
             // create the worker threads
             let mut workers = Vec::new();
-            for _tid in 0..self.num_threads  {
+            for _tid in 0..self.num_threads {
                 // we create a clone of the verifier here to pass each thread its own local
                 // copy as we modify fields in the verifier struct. later, we merge the results
                 let mut thread_verifier = self.from_self();
@@ -1416,19 +1418,26 @@ impl Verifier {
                 let thread_krate = krate.clone(); // is an Arc<T>
 
                 let worker = std::thread::spawn(move || {
-                    let mut completed_tasks : Vec<GlobalCtx> = Vec::new();
+                    let mut completed_tasks: Vec<GlobalCtx> = Vec::new();
                     loop {
                         let mut tq = thread_taskq.lock().unwrap();
                         let elm = tq.pop_front();
                         drop(tq);
                         if let Some((module, task, reporter)) = elm {
-                            let res = thread_verifier.verify_module_outer(&reporter, &thread_krate, None, &module, task, true);
+                            let res = thread_verifier.verify_module_outer(
+                                &reporter,
+                                &thread_krate,
+                                None,
+                                &module,
+                                task,
+                                true,
+                            );
                             reporter.done(); // we've verified the module, send the done message
                             match res {
                                 Ok(res) => {
                                     completed_tasks.push(res);
-                                },
-                                Err(e) => return Err(e)
+                                }
+                                Err(e) => return Err(e),
                             }
                         } else {
                             break;
@@ -1469,7 +1478,7 @@ impl Verifier {
                             active_module = Some(id);
                             reporter.report_as(&msg, level);
                         }
-                    },
+                    }
                     ReporterMessage::Done(id) => {
                         // the done message is sent by the thread whenever it is done with verifying
                         // a module, we mark the module as done here.
@@ -1482,7 +1491,13 @@ impl Verifier {
                         // if it is the active module, mark it as done, and reset the active module
                         if let Some(m) = active_module {
                             if m == id {
-                                assert!(messages.get_mut(id).expect("message id out of range").1.is_empty());
+                                assert!(
+                                    messages
+                                        .get_mut(id)
+                                        .expect("message id out of range")
+                                        .1
+                                        .is_empty()
+                                );
                                 active_module = None;
                             }
                         }
@@ -1525,9 +1540,7 @@ impl Verifier {
                         }
                         self.merge(verifier);
                     }
-                    Err(e) => {
-                        return Err(e)
-                    }
+                    Err(e) => return Err(e),
                 }
             }
 
@@ -1539,7 +1552,14 @@ impl Verifier {
             }
         } else {
             for module in &module_ids_to_verify {
-                global_ctx = self.verify_module_outer(&reporter, &krate, Some(source_map), module, global_ctx, false)?;
+                global_ctx = self.verify_module_outer(
+                    &reporter,
+                    &krate,
+                    Some(source_map),
+                    module,
+                    global_ctx,
+                    false,
+                )?;
             }
         }
 
@@ -1622,7 +1642,6 @@ impl Verifier {
         diagnostics: &impl Diagnostics,
         crate_name: String,
     ) -> Result<bool, VirErr> {
-
         let time0 = Instant::now();
 
         match rustc_hir_analysis::check_crate(tcx) {
@@ -1812,7 +1831,6 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         compiler: &Compiler,
         queries: &'tcx verus_rustc_interface::Queries<'tcx>,
     ) -> verus_rustc_driver::Compilation {
-
         self.rust_end_time = Some(Instant::now());
 
         if !compiler.session().compile_status().is_ok() {

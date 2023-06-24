@@ -136,23 +136,37 @@ pub fn main() {
     let total_time = total_time_1 - total_time_0;
 
     let times_ms_json_data = if verifier.args.time {
-
-        let mut smt_init_times = verifier.module_times.iter().map(|(k, v)| (k, v.time_smt_init.as_millis())).collect::<Vec<_>>();
+        let mut smt_init_times = verifier
+            .module_times
+            .iter()
+            .map(|(k, v)| (k, v.time_smt_init.as_millis()))
+            .collect::<Vec<_>>();
         smt_init_times.sort_by(|(_, a), (_, b)| b.cmp(a));
-        let total_smt_init : u128 = smt_init_times.iter().map(|(_, v)| v).sum();
+        let total_smt_init: u128 = smt_init_times.iter().map(|(_, v)| v).sum();
 
-        let mut smt_run_times : Vec<(&std::sync::Arc<vir::ast::PathX>, u128)>= verifier.module_times.iter().map(|(k, v)| (k, v.time_smt_run.as_millis())).collect::<Vec<_>>();
+        let mut smt_run_times: Vec<(&std::sync::Arc<vir::ast::PathX>, u128)> = verifier
+            .module_times
+            .iter()
+            .map(|(k, v)| (k, v.time_smt_run.as_millis()))
+            .collect::<Vec<_>>();
         smt_run_times.sort_by(|(_, a), (_, b)| b.cmp(a));
-        let total_smt_run : u128 = smt_run_times.iter().map(|(_, v)| v).sum();
+        let total_smt_run: u128 = smt_run_times.iter().map(|(_, v)| v).sum();
 
-        let mut air_times = verifier.module_times.iter().map(|(k, v)| (k, (v.time_air - (v.time_smt_init + v.time_smt_run)).as_millis())).collect::<Vec<_>>();
+        let mut air_times = verifier
+            .module_times
+            .iter()
+            .map(|(k, v)| (k, (v.time_air - (v.time_smt_init + v.time_smt_run)).as_millis()))
+            .collect::<Vec<_>>();
         air_times.sort_by(|(_, a), (_, b)| b.cmp(a));
-        let total_air : u128 = air_times.iter().map(|(_, v)| v).sum();
+        let total_air: u128 = air_times.iter().map(|(_, v)| v).sum();
 
-        let mut verify_times = verifier.module_times.iter().map(|(k, v)| (k, (v.time_verify).as_millis())).collect::<Vec<_>>();
+        let mut verify_times = verifier
+            .module_times
+            .iter()
+            .map(|(k, v)| (k, (v.time_verify).as_millis()))
+            .collect::<Vec<_>>();
         verify_times.sort_by(|(_, a), (_, b)| b.cmp(a));
-        let total_verify : u128 = verify_times.iter().map(|(_, v)| v).sum();
-
+        let total_verify: u128 = verify_times.iter().map(|(_, v)| v).sum();
 
         // Rust time:
         let rust_init = stats.time_rustc;
@@ -161,7 +175,7 @@ pub fn main() {
         let rust = rust_init + lifetime + compile;
 
         // total verification time
-        let vir_rust_to_vir = verifier.time_vir_rust_to_vir;    // included in verifier.time_vir
+        let vir_rust_to_vir = verifier.time_vir_rust_to_vir; // included in verifier.time_vir
         let vir_vir_time = verifier.time_vir;
         let hir_time = verifier.time_hir;
         let vir_time = hir_time + vir_vir_time;
@@ -174,7 +188,10 @@ pub fn main() {
         let unaccounted = total_time - (rust + verify);
 
         let total_cpu_time = if verifier.num_threads > 1 {
-            (total_time.as_millis() + total_verify  + verifier.time_verify_crate_sequential.as_millis()) - verifier.time_verify_crate.as_millis()
+            (total_time.as_millis()
+                + total_verify
+                + verifier.time_verify_crate_sequential.as_millis())
+                - verifier.time_verify_crate.as_millis()
         } else {
             total_time.as_millis()
         };
@@ -263,30 +280,66 @@ pub fn main() {
             println!("    unaccounted-time:   {:>10} ms", unaccounted.as_millis());
 
             println!("\nverify-crate-time-breakdown");
-            println!("    total verify-time:     {:>10} ms   ({} threads)", total_verify, verifier.num_threads);
+            println!(
+                "    total verify-time:     {:>10} ms   ({} threads)",
+                total_verify, verifier.num_threads
+            );
             if verifier.args.time_expanded {
                 for (i, (m, t)) in verify_times.iter().take(3).enumerate() {
-                    println!("      {}. {:<40} {:>10} ms", i+1, rust_verify::verifier::module_name(m), t);
+                    println!(
+                        "      {}. {:<40} {:>10} ms",
+                        i + 1,
+                        rust_verify::verifier::module_name(m),
+                        t
+                    );
                 }
             }
-            println!("    total air-time:        {:>10} ms   ({} threads)", total_air, verifier.num_threads);
+            println!(
+                "    total air-time:        {:>10} ms   ({} threads)",
+                total_air, verifier.num_threads
+            );
             if verifier.args.time_expanded {
                 for (i, (m, t)) in air_times.iter().take(3).enumerate() {
-                    println!("      {}. {:<40} {:>10} ms", i+1, rust_verify::verifier::module_name(m), t);
+                    println!(
+                        "      {}. {:<40} {:>10} ms",
+                        i + 1,
+                        rust_verify::verifier::module_name(m),
+                        t
+                    );
                 }
             }
             if !verifier.encountered_vir_error {
-                println!("    total smt-time:        {:>10} ms   ({} threads)", (total_smt_init + total_smt_run), verifier.num_threads);
-                println!("        total smt-init:        {:>10} ms   ({} threads)", total_smt_init, verifier.num_threads);
+                println!(
+                    "    total smt-time:        {:>10} ms   ({} threads)",
+                    (total_smt_init + total_smt_run),
+                    verifier.num_threads
+                );
+                println!(
+                    "        total smt-init:        {:>10} ms   ({} threads)",
+                    total_smt_init, verifier.num_threads
+                );
                 if verifier.args.time_expanded {
                     for (i, (m, t)) in smt_init_times.iter().take(3).enumerate() {
-                        println!("            {}. {:<40} {:>10} ms", i+1, rust_verify::verifier::module_name(m), t);
+                        println!(
+                            "            {}. {:<40} {:>10} ms",
+                            i + 1,
+                            rust_verify::verifier::module_name(m),
+                            t
+                        );
                     }
                 }
-                println!("        total smt-run:         {:>10} ms   ({} threads)", total_smt_run, verifier.num_threads);
+                println!(
+                    "        total smt-run:         {:>10} ms   ({} threads)",
+                    total_smt_run, verifier.num_threads
+                );
                 if verifier.args.time_expanded {
                     for (i, (m, t)) in smt_run_times.iter().take(3).enumerate() {
-                        println!("            {}. {:<40} {:>10} ms", i+1, rust_verify::verifier::module_name(m), t);
+                        println!(
+                            "            {}. {:<40} {:>10} ms",
+                            i + 1,
+                            rust_verify::verifier::module_name(m),
+                            t
+                        );
                     }
                 }
             }

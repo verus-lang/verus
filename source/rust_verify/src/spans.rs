@@ -229,7 +229,7 @@ impl SpanContextX {
     pub(crate) fn to_air_span(&self, span: Span) -> air::ast::Span {
         let raw_span = to_raw_span(span);
 
-        let id = self.next_span_id.fetch_add(1,  std::sync::atomic::Ordering::SeqCst);
+        let id = self.next_span_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let data = self.pack_span(span);
         let as_string = format!("{:?}", span);
         air::ast::Span { raw_span, id, data, as_string }
