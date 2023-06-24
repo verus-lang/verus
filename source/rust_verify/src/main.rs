@@ -182,7 +182,7 @@ pub fn main() {
         if verifier.args.output_json {
             let mut times = serde_json::json!({
                 "verus-build-profile" : build_info.profile.to_string(),
-                "verus-num-threads": verifier.num_threads,
+                "num-threads": verifier.num_threads,
                 "total": total_time.as_millis(),
                 "estimated-cpu-time": if verifier.num_threads > 1 {total_cpu_time} else {total_time.as_millis()},
                 "rust": {
@@ -243,7 +243,7 @@ pub fn main() {
         } else {
             println!("verus-build-profile: {}", build_info.profile);
             println!("verus-build-version: {}", build_info.version);
-            println!("verus-num-threads: {}", verifier.num_threads);
+            println!("num-threads: {}", verifier.num_threads);
             print!("total-time:      {:>10} ms", total_time.as_millis());
             if verifier.num_threads > 1 {
                 println!("    (estimated total cpu time {} ms)", total_cpu_time);
