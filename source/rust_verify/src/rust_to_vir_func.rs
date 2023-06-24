@@ -256,6 +256,13 @@ pub(crate) fn handle_external_fn<'tcx>(
     let sig1_anon = ctxt.tcx.anonymize_bound_vars(poly_sig1);
     let sig2_anon = ctxt.tcx.anonymize_bound_vars(poly_sig2);
 
+    // Ignore abi for the sake of comparison
+    // Useful for rust-intrinsics
+    let sig1_anon = {
+        let mut fnsig = sig1_anon.skip_binder();
+        fnsig.abi = sig2_anon.abi();
+        sig1_anon.rebind(fnsig)
+    };
     if sig1_anon != sig2_anon {
         return err_span(
             sig.span,

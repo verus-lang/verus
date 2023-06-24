@@ -6,6 +6,8 @@
 #![allow(unused_parens)]
 #![allow(rustdoc::invalid_rust_codeblocks)]
 
+#![feature(core_intrinsics)]
+
 pub mod pervasive;
 pub mod bytes;
 pub mod calc_macro;
