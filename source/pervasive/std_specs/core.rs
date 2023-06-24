@@ -50,11 +50,4 @@ pub fn ex_intrinsics_unlikely(b: bool) -> (c: bool)
     core::intrinsics::unlikely(b)
 }
 
-#[verifier::external_fn_specification]
-pub fn ex_intrinsics_assume(b: bool)
-    requires b
-{
-    core::intrinsics::assume(b)
-}
-
 }
