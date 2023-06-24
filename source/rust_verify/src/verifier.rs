@@ -1211,6 +1211,7 @@ impl Verifier {
         source_map: Option<&SourceMap>,
         module: &vir::ast::Path,
         mut global_ctx: vir::context::GlobalCtx,
+        multithreaded: bool,
     ) -> Result<vir::context::GlobalCtx, VirErr> {
         let time_verify_start = Instant::now();
 
@@ -1220,7 +1221,15 @@ impl Verifier {
         if module.segments.len() == 0 {
             reporter.report(&note_bare("verifying root module"));
         } else {
-            reporter.report(&note_bare(&format!("verifying module {}", &module_name)));
+            reporter.report(&note_bare(&format!(
+                "{} {}",
+                if !multithreaded {
+                    "verifying module"
+                } else {
+                    "reporting diagnostics for module"
+                },
+                &module_name
+            )));
         }
 
         let (pruned_krate, mono_abstract_datatypes, lambda_types) =
@@ -1413,7 +1422,7 @@ impl Verifier {
                         let elm = tq.pop_front();
                         drop(tq);
                         if let Some((module, task, reporter)) = elm {
-                            let res = thread_verifier.verify_module_outer(&reporter, &thread_krate, None, &module, task);
+                            let res = thread_verifier.verify_module_outer(&reporter, &thread_krate, None, &module, task, true);
                             reporter.done(); // we've verified the module, send the done message
                             match res {
                                 Ok(res) => {
@@ -1530,7 +1539,7 @@ impl Verifier {
             }
         } else {
             for module in &module_ids_to_verify {
-                global_ctx = self.verify_module_outer(&reporter, &krate, Some(source_map), module, global_ctx)?;
+                global_ctx = self.verify_module_outer(&reporter, &krate, Some(source_map), module, global_ctx, false)?;
             }
         }
 
