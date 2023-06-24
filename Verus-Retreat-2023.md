@@ -6,6 +6,8 @@ Bryan Parno (@parno) and the Secure Foundations Lab will be hosting the retreat 
 We are planning 3.5 days of "official" semi-structured time (Monday 26th till Thursday 29th at lunchtime),
 followed by 1.5 days of "optional" informal meet-ups, discussion, and hacking.
 
+Sessions will begin at 9:30 AM.  We will be meeting in the [Collaborative Innovation Center (CIC)](https://www.cylab.cmu.edu/about/visiting.html), room 2100.
+
 ## Program
 
 This is a draft program. We plan to re-arrange items and re-allocate time based on interest and feedback from the participants.
@@ -29,7 +31,6 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 
 - Setting up CI that includes other Verus projects (a-la crater) (Andrea)
 - Proof actions (Chanhee)
-- State machine syntax (Travis)
 
 *6:00 PM -- Collaboration Dinner at [Union Grill](https://goo.gl/maps/FuDFyREMUxLjNWeC8)*
 
