@@ -1,14 +1,14 @@
 #![feature(rustc_attrs)]
+#![allow(unused_imports)]
 
 extern crate alloc;
 use alloc::string;
 
-#[allow(unused_imports)]
+use crate::view::*;
 use super::seq::Seq;
-use super::vec::Vec;
-#[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::verus;
+use crate::prelude::*;
 
 verus! {
 
@@ -17,14 +17,14 @@ pub struct String {
     inner: string::String,
 }
 
-#[rustc_diagnostic_item = "pervasive::string::StrSlice"]
+#[rustc_diagnostic_item = "verus::pervasive::string::StrSlice"]
 #[verifier(external_body)]
 pub struct StrSlice<'a> {
     inner: &'a str,
 }
 
 
-#[rustc_diagnostic_item = "pervasive::string::new_strlit"]
+#[rustc_diagnostic_item = "verus::pervasive::string::new_strlit"]
 #[verifier(external_body)]
 pub const fn new_strlit<'a>(s: &'a str) -> StrSlice<'a> {
     StrSlice { inner: s }

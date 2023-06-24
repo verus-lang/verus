@@ -853,7 +853,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] boxed_args_are_havoced_regression_340 verus_code! {
-        use vstd::vec::*;
+        use vstd::prelude::*;
 
         mod Mod {
             pub struct X<T> {

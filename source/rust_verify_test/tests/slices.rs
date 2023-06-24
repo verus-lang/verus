@@ -5,7 +5,7 @@ use common::*;
 
 test_verify_one_file! {
     #[test] test1 verus_code! {
-        use vstd::{slice::*, vec::*};
+        use vstd::{slice::*, prelude::*};
 
         fn foo(x: &[u64])
             requires x@.len() == 2, x[0] == 19,

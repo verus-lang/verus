@@ -1,8 +1,10 @@
 #![allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
+use crate::view::*;
 use crate::seq::*;
-use crate::vec::*;
+
+pub use super::std_specs::vec::VecAdditionalSpecFns;
 
 verus!{
 
@@ -28,11 +30,12 @@ pub exec fn slice_index_get<T>(slice: &[T], i: usize) -> (out: &T)
     &slice[i]
 }
 
+#[cfg(not(feature = "no_global_allocator"))] 
 #[verifier(external_body)]
 pub exec fn slice_to_vec<T: Copy>(slice: &[T]) -> (out: Vec<T>)
     ensures out@ == slice@
 {
-    Vec { vec: slice.to_vec() }
+    slice.to_vec()
 }
 
 #[verifier(external_body)]

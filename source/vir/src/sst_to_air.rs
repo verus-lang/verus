@@ -4,8 +4,9 @@ use crate::ast::{
     SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr, Visibility,
 };
 use crate::ast_util::{
-    allowed_bitvector_type, bitwidth_from_int_range, bitwidth_from_type, error, fun_as_rust_dbg,
-    get_field, get_variant, is_integer_type, msg_error, undecorate_typ, IntegerTypeBitwidth,
+    allowed_bitvector_type, bitwidth_from_int_range, bitwidth_from_type, error,
+    fun_as_friendly_rust_name, get_field, get_variant, is_integer_type, msg_error, undecorate_typ,
+    IntegerTypeBitwidth,
 };
 use crate::context::Ctx;
 use crate::def::{
@@ -111,6 +112,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::Decorate(_, t) => typ_to_air(ctx, t),
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
+        TypX::Projection { .. } => str_typ(POLY),
         TypX::TypeId => str_typ(crate::def::TYPE),
         TypX::ConstInt(_) => panic!("const integer cannot be used as an expression type"),
         TypX::Air(t) => t.clone(),
@@ -198,6 +200,14 @@ pub fn typ_to_id(typ: &Typ, decorated: bool) -> Expr {
         TypX::Boxed(typ) => typ_to_id(typ, decorated),
         TypX::TypParam(x) if decorated => ident_var(&suffix_decorate_typ_param_id(x)),
         TypX::TypParam(x) => ident_var(&suffix_typ_param_id(x)),
+        TypX::Projection { self_typ, trait_typ_args, trait_path, name } => {
+            let mut args = Vec::new();
+            args.extend(typ_to_ids_if_undecorated(decorated, self_typ));
+            for typ_arg in trait_typ_args.iter() {
+                args.extend(typ_to_ids_if_undecorated(decorated, typ_arg));
+            }
+            ident_apply(&crate::def::projection(decorated, trait_path, name), &args)
+        }
         TypX::TypeId => panic!("internal error: typ_to_id of TypeId"),
         TypX::ConstInt(c) => str_apply(crate::def::TYPE_ID_CONST_INT, &vec![big_int_to_expr(c)]),
         TypX::Air(_) => panic!("internal error: typ_to_id of Air"),
@@ -212,6 +222,10 @@ pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
         exprs.push(typ_to_id(typ, true));
     }
     exprs
+}
+
+pub fn typ_to_ids_if_undecorated(decorated: bool, typ: &Typ) -> Vec<Expr> {
+    if decorated { vec![typ_to_id(typ, decorated)] } else { typ_to_ids(typ) }
 }
 
 pub(crate) fn fun_id(typs: &Typs, typ: &Typ, decorated: bool) -> Expr {
@@ -288,6 +302,9 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
             crate::def::HAS_TYPE,
             &vec![expr.clone(), ident_var(&suffix_typ_param_id(&x))],
         )),
+        TypX::Projection { .. } => {
+            Some(str_apply(crate::def::HAS_TYPE, &vec![expr.clone(), typ_to_id(typ, false)]))
+        }
         TypX::Bool | TypX::StrSlice | TypX::Char | TypX::AnonymousClosure(..) | TypX::TypeId => {
             None
         }
@@ -298,6 +315,23 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
     }
 }
 
+pub(crate) fn datatype_box_prefix(ctx: &Ctx, typ: &Typ) -> Option<Path> {
+    match &**typ {
+        TypX::Datatype(path, _) => {
+            if ctx.datatype_is_transparent[path] {
+                Some(path.clone())
+            } else {
+                if let Some(monotyp) = typ_as_mono(typ) {
+                    Some(crate::sst_to_air::monotyp_to_path(&monotyp))
+                } else {
+                    None
+                }
+            }
+        }
+        _ => None,
+    }
+}
+
 fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
     let f_name = match &**typ {
         TypX::Bool => Some(str_ident(crate::def::BOX_BOOL)),
@@ -305,21 +339,17 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Tuple(_) => None,
         TypX::Lambda(typs, _) => Some(prefix_box(&prefix_lambda_type(typs.len()))),
         TypX::AnonymousClosure(..) => unimplemented!(),
-        TypX::Datatype(path, _) => {
-            if ctx.datatype_is_transparent[path] {
-                Some(prefix_box(&path))
+        TypX::Datatype(..) => {
+            if let Some(prefix) = datatype_box_prefix(ctx, typ) {
+                Some(prefix_box(&prefix))
             } else {
-                if let Some(monotyp) = typ_as_mono(typ) {
-                    let dpath = crate::sst_to_air::monotyp_to_path(&monotyp);
-                    Some(prefix_box(&dpath))
-                } else {
-                    panic!("abstract datatype should be boxed")
-                }
+                panic!("abstract datatype should be boxed")
             }
         }
         TypX::Decorate(_, t) => return try_box(ctx, expr, t),
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
+        TypX::Projection { .. } => None,
         TypX::TypeId => None,
         TypX::ConstInt(_) => None,
         TypX::Air(_) => None,
@@ -355,6 +385,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Decorate(_, t) => return try_unbox(ctx, expr, t),
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
+        TypX::Projection { .. } => None,
         TypX::TypeId => None,
         TypX::ConstInt(_) => None,
         TypX::Air(_) => None,
@@ -593,7 +624,7 @@ fn bitvector_expect_exact(
 
 // Generate a unique quantifier ID and map it to the quantifier's span
 fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
-    let fun_name = fun_as_rust_dbg(
+    let fun_name = fun_as_friendly_rust_name(
         &ctx.fun.as_ref().expect("Expressions are expected to be within a function").current_fun,
     );
     let qcount = ctx.quantifier_count.get();
@@ -700,6 +731,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     InternalFun::ClosureReq => str_ident(crate::def::CLOSURE_REQ),
                     InternalFun::ClosureEns => str_ident(crate::def::CLOSURE_ENS),
                     InternalFun::CheckDecreaseInt => str_ident(crate::def::CHECK_DECREASE_INT),
+                    InternalFun::CheckDecreaseHeight => {
+                        str_ident(crate::def::CHECK_DECREASE_HEIGHT)
+                    }
                 },
                 Arc::new(exprs),
             ))
@@ -770,6 +804,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         return Ok(bv_e);
                     }
                 }
+                UnaryOp::HeightTrigger => panic!("internal error: unexpected HeightTrigger"),
                 UnaryOp::Trigger(_) => exp_to_expr(ctx, arg, expr_ctxt)?,
                 UnaryOp::CoerceMode { .. } => {
                     panic!("internal error: TupleField should have been removed before here")
@@ -802,6 +837,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     Arc::new(vec![width_exp, expr]),
                 );
                 clip_bitwise_result(bit_expr, exp)?
+            }
+            UnaryOp::HeightTrigger => {
+                str_apply(crate::def::HEIGHT, &vec![exp_to_expr(ctx, exp, expr_ctxt)?])
             }
             UnaryOp::Trigger(_) => exp_to_expr(ctx, exp, expr_ctxt)?,
             UnaryOp::Clip { range: IntRange::Int, .. } => exp_to_expr(ctx, exp, expr_ctxt)?,
@@ -872,10 +910,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 let name = Arc::new(ARCH_SIZE.to_string());
                 Arc::new(ExprX::Var(name))
             }
-            UnaryOpr::Height => Arc::new(ExprX::Apply(
-                str_ident(crate::def::HEIGHT),
-                Arc::new(vec![exp_to_expr(ctx, exp, expr_ctxt)?]),
-            )),
             UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _ }) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 Arc::new(ExprX::Apply(
@@ -895,6 +929,12 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 return error(
                     &exp.span,
                     format!("error: cannot use bit-vector arithmetic on type {:?}", exp.typ),
+                );
+            }
+            if let BinaryOp::HeightCompare { .. } = op {
+                return error(
+                    &exp.span,
+                    format!("error: cannot use bit-vector arithmetic on is_smaller_than"),
                 );
             }
             // disallow signed integer from bitvec reasoning. However, allow that for shift
@@ -932,6 +972,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 _ => (),
             };
             let bop = match op {
+                BinaryOp::HeightCompare { .. } => unreachable!(),
                 BinaryOp::Eq(_) => air::ast::BinaryOp::Eq,
                 BinaryOp::Ne => unreachable!(),
                 BinaryOp::Arith(ArithOp::Add, _) => air::ast::BinaryOp::BitAdd,
@@ -979,6 +1020,20 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 }
                 BinaryOp::Implies => {
                     return Ok(mk_implies(&lh, &rh));
+                }
+                BinaryOp::HeightCompare { strictly_lt, recursive_function_field } => {
+                    let lhh = str_apply(crate::def::HEIGHT, &vec![lh]);
+                    let rh = if *recursive_function_field {
+                        str_apply(crate::def::HEIGHT_REC_FUN, &vec![rh])
+                    } else {
+                        rh
+                    };
+                    let rhh = str_apply(crate::def::HEIGHT, &vec![rh]);
+                    if *strictly_lt {
+                        return Ok(str_apply(crate::def::HEIGHT_LT, &vec![lhh, rhh]));
+                    } else {
+                        return Ok(mk_eq(&lhh, &rhh));
+                    }
                 }
                 BinaryOp::Arith(ArithOp::Add, _) => {
                     ExprX::Multi(MultiOp::Add, Arc::new(vec![lh, rh]))
@@ -1049,6 +1104,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         BinaryOp::Or => unreachable!(),
                         BinaryOp::Xor => unreachable!(),
                         BinaryOp::Implies => unreachable!(),
+                        BinaryOp::HeightCompare { .. } => unreachable!(),
                         BinaryOp::Eq(_) => air::ast::BinaryOp::Eq,
                         BinaryOp::Ne => unreachable!(),
                         BinaryOp::Inequality(InequalityOp::Le) => air::ast::BinaryOp::Le,
@@ -2226,7 +2282,7 @@ fn set_fuel(ctx: &Ctx, local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
         let triggers: Triggers = Arc::new(vec![trigger]);
         let binders: Binders<air::ast::Typ> = Arc::new(vec![ident_binder(&id, &str_typ(FUEL_ID))]);
 
-        let fun_name = fun_as_rust_dbg(
+        let fun_name = fun_as_friendly_rust_name(
             &ctx.fun.as_ref().expect("Missing a current function value").current_fun,
         );
         let qid = new_internal_qid(format!("{}_nondefault_fuel", fun_name));

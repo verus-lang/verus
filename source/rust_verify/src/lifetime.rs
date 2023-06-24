@@ -114,6 +114,7 @@ use crate::lifetime_emit::*;
 use crate::lifetime_generate::*;
 use crate::spans::SpanContext;
 use crate::util::error;
+use crate::verus_items::VerusItems;
 use air::messages::{message_bare, Message, MessageLevel};
 use rustc_hir::{AssocItemKind, Crate, ItemKind, MaybeOwner, OwnerNode};
 use rustc_middle::ty::TyCtxt;
@@ -186,25 +187,34 @@ struct InvariantBlockGuard;
 fn open_atomic_invariant_begin<'a, X, V>(_inv: &'a X) -> (&'a InvariantBlockGuard, V) { panic!(); }
 fn open_local_invariant_begin<'a, X, V>(_inv: &'a X) -> (&'a InvariantBlockGuard, V) { panic!(); }
 fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) { panic!() }
+fn index<'a, V, Idx, Output>(v: &'a V, index: Idx) -> &'a Output { panic!() }
 ";
 
 fn emit_check_tracked_lifetimes<'tcx>(
     tcx: TyCtxt<'tcx>,
+    verus_items: std::sync::Arc<VerusItems>,
     krate: &'tcx Crate<'tcx>,
     emit_state: &mut EmitState,
     erasure_hints: &ErasureHints,
 ) -> State {
-    let gen_state =
-        crate::lifetime_generate::gen_check_tracked_lifetimes(tcx, krate, erasure_hints);
+    let gen_state = crate::lifetime_generate::gen_check_tracked_lifetimes(
+        tcx,
+        verus_items,
+        krate,
+        erasure_hints,
+    );
     for line in PRELUDE.split('\n') {
         emit_state.writeln(line.replace("\r", ""));
     }
 
+    for t in gen_state.trait_decls.iter() {
+        emit_trait_decl(emit_state, t);
+    }
     for d in gen_state.datatype_decls.iter() {
         emit_datatype_decl(emit_state, d);
     }
-    for f in gen_state.const_decls.iter() {
-        emit_const_decl(emit_state, f);
+    for a in gen_state.assoc_type_impls.iter() {
+        emit_assoc_type_impl(emit_state, a);
     }
     for f in gen_state.fun_decls.iter() {
         emit_fun_decl(emit_state, f);
@@ -273,13 +283,15 @@ pub fn lifetime_rustc_driver(rustc_args: &[String], rust_code: String) {
 
 pub(crate) fn check_tracked_lifetimes<'tcx>(
     tcx: TyCtxt<'tcx>,
+    verus_items: std::sync::Arc<VerusItems>,
     spans: &SpanContext,
     erasure_hints: &ErasureHints,
     lifetime_log_file: Option<File>,
 ) -> Result<Vec<Message>, VirErr> {
     let krate = tcx.hir().krate();
     let mut emit_state = EmitState::new();
-    let gen_state = emit_check_tracked_lifetimes(tcx, krate, &mut emit_state, erasure_hints);
+    let gen_state =
+        emit_check_tracked_lifetimes(tcx, verus_items, krate, &mut emit_state, erasure_hints);
     let mut rust_code: String = String::new();
     for line in &emit_state.lines {
         rust_code.push_str(&line.text);

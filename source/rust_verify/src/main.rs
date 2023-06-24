@@ -1,6 +1,6 @@
 #![feature(rustc_private)]
 
-use rust_verify::util::{verus_build_profile, VerusBuildProfile};
+use rust_verify::util::{verus_build_info, VerusBuildProfile};
 
 extern crate rustc_driver; // TODO(main_new) can we remove this?
 
@@ -77,19 +77,7 @@ pub fn main() {
         false
     };
 
-    let profile = verus_build_profile();
-
-    if !build_test_mode {
-        match profile {
-            VerusBuildProfile::Debug => eprintln!(
-                "warning: verus was compiled in debug mode, which will result in worse performance"
-            ),
-            VerusBuildProfile::Unknown => eprintln!(
-                "warning: verus was compiled outside vargo, and we cannot determine whether it was built in debug mode, which will result in worse performance"
-            ),
-            VerusBuildProfile::Release => (),
-        }
-    }
+    let build_info = verus_build_info();
 
     let total_time_0 = std::time::Instant::now();
 
@@ -112,6 +100,28 @@ pub fn main() {
     };
 
     let (our_args, rustc_args) = rust_verify::config::parse_args_with_imports(&program, args, vstd);
+
+    if our_args.version {
+        println!("Verus");
+        println!("  Platform: {}_{}", std::env::consts::OS, std::env::consts::ARCH);
+        println!("  Version: {}", build_info.version);
+        println!("  Profile: {}", build_info.profile.to_string());
+
+        return;
+    }
+
+    if !build_test_mode {
+        match build_info.profile {
+            VerusBuildProfile::Debug => eprintln!(
+                "warning: verus was compiled in debug mode, which will result in worse performance"
+            ),
+            VerusBuildProfile::Unknown => eprintln!(
+                "warning: verus was compiled outside vargo, and we cannot determine whether it was built in debug mode, which will result in worse performance"
+            ),
+            VerusBuildProfile::Release => (),
+        }
+    }
+
     let pervasive_path = our_args.pervasive_path.clone();
 
     std::env::set_var("RUSTC_BOOTSTRAP", "1");
@@ -171,7 +181,7 @@ pub fn main() {
 
         if verifier.args.output_json {
             let mut times = serde_json::json!({
-                "verus-build-profile" : profile.to_string(),
+                "verus-build-profile" : build_info.profile.to_string(),
                 "verus-num-threads": verifier.num_threads,
                 "total": total_time.as_millis(),
                 "estimated-cpu-time": if verifier.num_threads > 1 {total_cpu_time} else {total_time.as_millis()},
@@ -231,7 +241,8 @@ pub fn main() {
 
             Some(times)
         } else {
-            println!("verus-build-profile: {}", profile.to_string());
+            println!("verus-build-profile: {}", build_info.profile);
+            println!("verus-build-version: {}", build_info.version);
             println!("verus-num-threads: {}", verifier.num_threads);
             print!("total-time:      {:>10} ms", total_time.as_millis());
             if verifier.num_threads > 1 {
@@ -311,7 +322,11 @@ pub fn main() {
         }
         out.insert(
             "verus-build-profile".to_string(),
-            serde_json::Value::String(profile.to_string()),
+            serde_json::Value::String(build_info.profile.to_string()),
+        );
+        out.insert(
+            "verus-build-version".to_string(),
+            serde_json::Value::String(build_info.version.to_string()),
         );
         println!("{}", serde_json::ser::to_string_pretty(&out).expect("invalid json"));
     }

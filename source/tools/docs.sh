@@ -34,6 +34,7 @@ RUSTC_BOOTSTRAP=1 eval ""VERUSDOC=1 VERUS_Z3_PATH="$(pwd)/z3" rustdoc \
   -Zcrate-attr=feature\\\(register_tool\\\) \
   -Zcrate-attr=feature\\\(rustc_attrs\\\) \
   -Zcrate-attr=feature\\\(unboxed_closures\\\) \
+  -Zcrate-attr=feature\\\(allocator_api\\\) \
   -Zcrate-attr=register_tool\\\(verus\\\) \
   -Zcrate-attr=register_tool\\\(verifier\\\) \
   pervasive/vstd.rs""

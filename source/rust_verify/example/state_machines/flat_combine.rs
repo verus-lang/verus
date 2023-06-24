@@ -5,7 +5,7 @@ use vstd::{*, pervasive::*};
 use vstd::multiset::*;
 use vstd::map::*;
 use vstd::seq::*;
-use vstd::option::*;
+use vstd::prelude::*;
 
 use state_machines_macros::tokenized_state_machine;
 

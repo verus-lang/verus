@@ -907,7 +907,7 @@ pub fn shardable_type_to_type(span: Span, stype: &ShardableType) -> Type {
         ShardableType::Option(ty)
         | ShardableType::PersistentOption(ty)
         | ShardableType::StorageOption(ty) => {
-            Type::Verbatim(quote_spanned! { span => ::vstd::option::Option<#ty> })
+            Type::Verbatim(quote_spanned! { span => ::core::option::Option<#ty> })
         }
         ShardableType::Set(ty) | ShardableType::PersistentSet(ty) => {
             Type::Verbatim(quote_spanned! { span => ::vstd::set::Set<#ty> })

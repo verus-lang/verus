@@ -714,7 +714,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] callee_is_computed_expression_with_loop ["vstd"] => verus_code! {
-        use vstd::{pervasive::*, option::*};
+        use vstd::{pervasive::*, prelude::*};
 
         fn foo(b: bool) {
             let mut i: u64 = 0;
@@ -1128,4 +1128,16 @@ test_verify_one_file! {
             let f = || -> X { loop { } };
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot use type marked `external`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] right_decorations_for_tuple_arg ["vstd"] => verus_code! {
+        fn test<T: Copy, F: std::clone::Clone>(s: &T, key: T, less: F)
+            where F: Fn(T, T) -> bool
+            requires
+                forall |x, y| #[trigger] less.requires((x, y)),
+        {
+            less(key, *s);
+        }
+    } => Ok(())
 }

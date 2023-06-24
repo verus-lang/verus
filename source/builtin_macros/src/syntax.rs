@@ -813,7 +813,9 @@ impl Visitor {
                         // Copy into separate spec method, then remove spec from original method
                         let mut spec_fun = fun.clone();
                         let x = &fun.sig.ident;
-                        spec_fun.sig.ident = Ident::new(&format!("{VERUS_SPEC}{x}"), x.span());
+                        let span = x.span();
+                        spec_fun.sig.ident = Ident::new(&format!("{VERUS_SPEC}{x}"), span);
+                        spec_fun.attrs.push(mk_rust_attr(span, "doc", quote! { hidden }));
                         fun.sig.erase_spec_fields();
                         spec_items.push(TraitItem::Method(spec_fun));
                     }
@@ -2534,7 +2536,21 @@ pub(crate) fn proof_macro_explicit_exprs(
     proc_macro::TokenStream::from(new_stream)
 }
 
-/// Constructs #[name tokens]
+/// Constructs #[name(tokens)]
+fn mk_rust_attr(span: Span, name: &str, tokens: TokenStream) -> Attribute {
+    let mut path_segments = Punctuated::new();
+    path_segments
+        .push(PathSegment { ident: Ident::new(name, span), arguments: PathArguments::None });
+    Attribute {
+        pound_token: token::Pound { spans: [span] },
+        style: AttrStyle::Outer,
+        bracket_token: token::Bracket { span },
+        path: Path { leading_colon: None, segments: path_segments },
+        tokens: quote! { (#tokens) },
+    }
+}
+
+/// Constructs #[verus::internal(tokens)]
 fn mk_verus_attr(span: Span, tokens: TokenStream) -> Attribute {
     let mut path_segments = Punctuated::new();
     path_segments

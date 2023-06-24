@@ -2,7 +2,7 @@ use crate::ast::{
     BinaryOp, BitwiseOp, Constant, FieldOpr, Fun, Ident, Path, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
     VirErr,
 };
-use crate::ast_util::{error, path_as_rust_name};
+use crate::ast_util::{error, path_as_friendly_rust_name};
 use crate::context::{ChosenTriggers, Ctx, FunctionCtx};
 use crate::sst::{CallFun, Exp, ExpX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map;
@@ -69,9 +69,9 @@ impl std::fmt::Debug for TermX {
             TermX::App(App::Field(_, x, y), es) => write!(f, "{:?}.{}/{}", es[0], x, y),
             TermX::App(c @ (App::Call(_) | App::Ctor(_, _)), es) => {
                 match c {
-                    App::Call(x) => write!(f, "{}(", path_as_rust_name(&x.path))?,
+                    App::Call(x) => write!(f, "{}(", path_as_friendly_rust_name(&x.path))?,
                     App::Ctor(path, variant) => {
-                        write!(f, "{}::{}(", path_as_rust_name(path), variant)?
+                        write!(f, "{}::{}(", path_as_friendly_rust_name(path), variant)?
                     }
                     _ => unreachable!(),
                 }
@@ -316,6 +316,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 | UnaryOp::CoerceMode { .. }
                 | UnaryOp::MustBeFinalized
                 | UnaryOp::CharToInt => 0,
+                UnaryOp::HeightTrigger => 1,
                 UnaryOp::Trigger(_) | UnaryOp::Clip { .. } | UnaryOp::BitNot => 1,
                 UnaryOp::StrIsAscii | UnaryOp::StrLen => fail_on_strop(),
             };
@@ -330,7 +331,6 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         }
         ExpX::UnaryOpr(UnaryOpr::Box(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::UnaryOpr(UnaryOpr::Unbox(_), e1) => gather_terms(ctxt, ctx, e1, depth),
-        ExpX::UnaryOpr(UnaryOpr::Height, e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::UnaryOpr(UnaryOpr::CustomErr(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::UnaryOpr(UnaryOpr::HasType(_), _) => {
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![]))))
@@ -362,6 +362,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             use BinaryOp::*;
             let depth = match op {
                 And | Or | Xor | Implies | Eq(_) => 0,
+                HeightCompare { .. } => 1,
                 Ne | Inequality(_) | Arith(..) => 1,
                 Bitwise(..) => 1,
                 StrGetChar => fail_on_strop(),

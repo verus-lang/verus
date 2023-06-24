@@ -56,6 +56,8 @@ const PREFIX_TUPLE_PARAM: &str = "T%";
 const PREFIX_TUPLE_FIELD: &str = "field%";
 const PREFIX_LAMBDA_TYPE: &str = "fun%";
 const PREFIX_IMPL_IDENT: &str = "impl&%";
+const PREFIX_PROJECT_UNDECORATED: &str = "proj%";
+const PREFIX_PROJECT_DECORATED: &str = "proj%%";
 const SLICE_TYPE: &str = "slice%";
 const SLICE_PARAM: &str = "sliceT%";
 const PREFIX_SNAPSHOT: &str = "snap%";
@@ -67,6 +69,7 @@ const PATHS_SEPARATOR: &str = "/";
 const VARIANT_SEPARATOR: &str = "/";
 const VARIANT_FIELD_SEPARATOR: &str = "/";
 const VARIANT_FIELD_INTERNAL_SEPARATOR: &str = "/?";
+const PROJECT_SEPARATOR: &str = "/";
 const MONOTYPE_APP_BEGIN: &str = "<";
 const MONOTYPE_APP_END: &str = ">";
 const DECREASE_AT_ENTRY: &str = "decrease%init";
@@ -106,6 +109,7 @@ pub const EUC_MOD: &str = "EucMod";
 pub const SNAPSHOT_CALL: &str = "CALL";
 pub const SNAPSHOT_PRE: &str = "PRE";
 pub const SNAPSHOT_ASSIGN: &str = "ASSIGN";
+pub const T_HEIGHT: &str = "Height";
 pub const POLY: &str = "Poly";
 pub const BOX_INT: &str = "I";
 pub const BOX_BOOL: &str = "B";
@@ -138,7 +142,10 @@ pub const MK_FUN: &str = "mk_fun";
 pub const CONST_INT: &str = "const_int";
 pub const DUMMY_PARAM: &str = "no%param";
 pub const CHECK_DECREASE_INT: &str = "check_decrease_int";
+pub const CHECK_DECREASE_HEIGHT: &str = "check_decrease_height";
 pub const HEIGHT: &str = "height";
+pub const HEIGHT_LT: &str = "height_lt";
+pub const HEIGHT_REC_FUN: &str = "fun_from_recursive_field";
 pub const CLOSURE_REQ: &str = "closure_req";
 pub const CLOSURE_ENS: &str = "closure_ens";
 pub const EXT_EQ: &str = "ext_eq";
@@ -157,9 +164,11 @@ pub const QID_CONSTRUCTOR_INNER: &str = "constructor_inner";
 pub const QID_CONSTRUCTOR: &str = "constructor";
 pub const QID_EXT_EQUAL: &str = "ext_equal";
 pub const QID_APPLY: &str = "apply";
+pub const QID_HEIGHT_APPLY: &str = "height_apply";
 pub const QID_ACCESSOR: &str = "accessor";
 pub const QID_INVARIANT: &str = "invariant";
 pub const QID_HAS_TYPE_ALWAYS: &str = "has_type_always";
+pub const QID_ASSOC_TYPE_IMPL: &str = "assoc_type_impl";
 
 pub const VERUS_SPEC: &str = "VERUS_SPEC__";
 
@@ -328,6 +337,21 @@ pub fn prefix_lambda_type(i: usize) -> Path {
 
 pub fn impl_ident(disambiguator: u32) -> Ident {
     Arc::new(format!("{}{}", PREFIX_IMPL_IDENT, disambiguator))
+}
+
+pub fn projection(decorated: bool, trait_path: &Path, name: &Ident) -> Ident {
+    let proj = if decorated && crate::context::DECORATE {
+        PREFIX_PROJECT_DECORATED
+    } else {
+        PREFIX_PROJECT_UNDECORATED
+    };
+    Arc::new(format!(
+        "{}{}{}{}",
+        proj,
+        path_to_string(trait_path),
+        PROJECT_SEPARATOR,
+        name.to_string()
+    ))
 }
 
 pub fn prefix_type_id_fun(i: usize) -> Ident {
@@ -564,20 +588,21 @@ fn atomicity_type_name(atomicity: InvAtomicity) -> Ident {
     }
 }
 
-pub fn datatype_invariant_path(vstd_crate_name: &Option<Ident>, atomicity: InvAtomicity) -> Path {
-    Arc::new(PathX {
-        krate: vstd_crate_name.clone(),
-        segments: Arc::new(if vstd_crate_name.is_some() {
-            vec![Arc::new("invariant".to_string()), atomicity_type_name(atomicity)]
-        } else {
-            vec![
-                Arc::new("pervasive".to_string()),
-                Arc::new("invariant".to_string()),
-                atomicity_type_name(atomicity),
-            ]
-        }),
-    })
-}
+// TODO unused?
+// TODO pub fn datatype_invariant_path(vstd_crate_name: &Option<Ident>, atomicity: InvAtomicity) -> Path {
+// TODO     Arc::new(PathX {
+// TODO         krate: vstd_crate_name.clone(),
+// TODO         segments: Arc::new(if vstd_crate_name.is_some() {
+// TODO             vec![Arc::new("invariant".to_string()), atomicity_type_name(atomicity)]
+// TODO         } else {
+// TODO             vec![
+// TODO                 Arc::new("pervasive".to_string()),
+// TODO                 Arc::new("invariant".to_string()),
+// TODO                 atomicity_type_name(atomicity),
+// TODO             ]
+// TODO         }),
+// TODO     })
+// TODO }
 
 pub fn fn_inv_name(vstd_crate_name: &Option<Ident>, atomicity: InvAtomicity) -> Fun {
     Arc::new(FunX {

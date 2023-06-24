@@ -1,8 +1,7 @@
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-#[allow(unused_imports)]
-use vstd::{pervasive::*, vec::*, seq::*, modes::*};
+use vstd::{prelude::*, pervasive::*, seq::*, modes::*};
 
 verus! {
 

@@ -72,6 +72,7 @@ pub struct ArgsX {
     pub no_vstd: bool,
     pub compile: bool,
     pub solver_version_check: bool,
+    pub version: bool,
     pub num_threads: usize,
 }
 
@@ -104,6 +105,7 @@ pub fn enable_default_features_and_verus_attr(
         "unboxed_closures",
         "register_tool",
         "tuple_trait",
+        "allocator_api",
     ] {
         rustc_args.push("-Z".to_string());
         rustc_args.push(format!("crate-attr=feature({})", feature));
@@ -111,10 +113,6 @@ pub fn enable_default_features_and_verus_attr(
 
     rustc_args.push("-Zcrate-attr=register_tool(verus)".to_string());
     rustc_args.push("-Zcrate-attr=register_tool(verifier)".to_string());
-}
-
-pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args, Vec<String>) {
-    parse_args_with_imports(program, args, None)
 }
 
 pub fn parse_args_with_imports(program: &String, args: impl Iterator<Item = String>, vstd: Option<(String, String)>) -> (Args, Vec<String>) {
@@ -161,9 +159,11 @@ pub fn parse_args_with_imports(program: &String, args: impl Iterator<Item = Stri
     const OPT_PROFILE_ALL: &str = "profile-all";
     const OPT_COMPILE: &str = "compile";
     const OPT_NO_SOLVER_VERSION_CHECK: &str = "no-solver-version-check";
+    const OPT_VERSION: &str = "version";
     const OPT_NUM_THREADS: &str = "num-threads";
 
     let mut opts = Options::new();
+    opts.optflag("", OPT_VERSION, "Print version information");
     opts.optopt("", OPT_PERVASIVE_PATH, "Path of the pervasive module", "PATH");
     opts.optopt("", OPT_EXPORT, "Export Verus metadata for library crate", "CRATENAME=PATH");
     opts.optmulti("", OPT_IMPORT, "Import Verus metadata from library crate", "CRATENAME=PATH");
@@ -272,7 +272,7 @@ pub fn parse_args_with_imports(program: &String, args: impl Iterator<Item = Stri
                 print_usage();
                 std::process::exit(0);
             }
-            if m.free.len() == 0 {
+            if m.free.len() == 0 && !m.opt_present("version") {
                 print_usage();
                 std::process::exit(-1);
             }
@@ -390,9 +390,10 @@ pub fn parse_args_with_imports(program: &String, args: impl Iterator<Item = Stri
         compile: matches.opt_present(OPT_COMPILE),
         no_vstd,
         solver_version_check: !matches.opt_present(OPT_NO_SOLVER_VERSION_CHECK),
+        version: matches.opt_present(OPT_VERSION),
         num_threads: matches.opt_get::<usize>(OPT_NUM_THREADS)
             .unwrap_or_else(|_| error("expected integer after num_threads".to_string()))
-            .unwrap_or(DEFAULT_NUM_THREADS)
+            .unwrap_or(DEFAULT_NUM_THREADS),
     };
 
     (Arc::new(args), unmatched)

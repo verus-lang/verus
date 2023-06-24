@@ -2,7 +2,7 @@
 use builtin::*;
 use vstd::{*, pervasive::*};
 use vstd::multiset::*;
-use vstd::option::*;
+use vstd::prelude::*;
 use vstd::ptr::*;
 use vstd::cell::*;
 

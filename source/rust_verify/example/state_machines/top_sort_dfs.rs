@@ -1,18 +1,12 @@
 #![allow(unused_imports)]
-use builtin::*;
-use builtin_macros::*;
-use vstd::{*, pervasive::*};
+use vstd::{*, prelude::*, pervasive::*};
 use vstd::set::*;
-use vstd::vec::*;
+use vstd::prelude::*;
 use vstd::slice::*;
-use vstd::option::*;
 use vstd::seq::*;
 use vstd::map::*;
 use vstd::modes::*;
 use state_machines_macros::tokenized_state_machine;
-
-use option::Option::Some;
-use option::Option::None;
 
 verus!{
 
@@ -254,10 +248,10 @@ fn vec_find(
             0 <= idx < v@.len(),
             forall |j| 0 <= j < idx ==> v@[j] != needle,
     {
-        if *v.index(idx) == needle {
+        if v[idx] == needle {
             return idx;
         }
-        assert(idx + 1 < v.spec_len());
+        assert(idx + 1 < v.len());
         idx = idx + 1;
     }
 }
@@ -280,9 +274,17 @@ fn find_cycle(
     let j = vec_find(&dfs_state.cur_stack, v);
     let len = dfs_state.cur_stack.len();
 
-    let cycle = slice_to_vec(slice_subrange(dfs_state.cur_stack.as_slice(), j, len));
+    let tmp1 = dfs_state.cur_stack.as_slice();
+    let tmp2 = slice_subrange(tmp1, j, len);
+    let cycle = slice_to_vec(tmp2);
 
     dfs_state.cycle = cycle;
+
+    assert(tmp1@.len() == dfs_state.cur_stack.len());
+    assert(tmp2@.len() + j == len);
+    assert(tmp2@ == cycle@);
+    assert(cycle.len() + j == len);
+    assert(j + dfs_state.cycle@.len() == len);
 
     assert(graph@.is_cycle(dfs_state.cycle@)) by {
         assert forall |i: int| 0 <= i < dfs_state.cycle@.len() - 1 implies graph@.is_cycle_i(dfs_state.cycle@, i)
@@ -311,7 +313,7 @@ fn visit(
         !res.0 ==> graph@.is_cycle(dfs_state.cycle@),
         equal(dfs_state.instance, old(dfs_state).instance),
 {
-    let node_state = dfs_state.node_states.index(v as usize);
+    let node_state = &dfs_state.node_states[v as usize];
     if node_state.in_stack {
         find_cycle(graph, dfs_state, v);
         return (false, Tracked(None));
@@ -330,7 +332,7 @@ fn visit(
         visited: true,
         token: Tracked(NodeToken::InProgress),
     };
-    dfs_state.node_states.swap(v as usize, &mut node_state_tmp);
+    dfs_state.node_states.set_and_swap(v as usize, &mut node_state_tmp);
     let tracked unvisited = match node_state_tmp.token.get() {
         NodeToken::Unvisited(unvisited) => unvisited,
         _ => proof_from_false(),
@@ -370,7 +372,7 @@ fn visit(
     let tracked mut map_visited_deps: Map<usize, TopSort::visited<usize>> = Map::tracked_empty();
 
     let mut idx: usize = 0;
-    while idx < graph.edges.index(v as usize).len()
+    while idx < graph.edges[v as usize].len()
         invariant
             equal(dfs_state.instance, old(dfs_state).instance),
             dfs_state.cur_stack@.len() > 0,
@@ -387,7 +389,7 @@ fn visit(
             },
     {
 
-        let w = *graph.edges.index(v as usize).index(idx);
+        let w = graph.edges[v as usize][idx];
 
         assert((v as usize) as int == v as int);
         assert(graph.edges@.index(v as int)@.index(idx as int) == w);
@@ -437,7 +439,7 @@ fn visit(
         visited: true,
         token: Tracked(NodeToken::Visited(visited.clone())),
     };
-    dfs_state.node_states.swap(v as usize, &mut node_state_tmp);
+    dfs_state.node_states.set_and_swap(v as usize, &mut node_state_tmp);
 
     proof {
         assert_seqs_equal!(

@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-use vstd::{seq::*, seq_lib::*, vec::*};
+use vstd::{seq::*, seq_lib::*, prelude::*};
 
 macro_rules! get_bit64_macro {
     ($a:expr, $b:expr) => {
@@ -103,7 +103,7 @@ impl BitMap {
         let seq_index:usize = (index/64) as usize;     
 
         let bit_index:u32 = index%64;
-        let bucket:u64 = *self.bits.index(seq_index);
+        let bucket:u64 = self.bits[seq_index];
         get_bit64_macro!(bucket, bit_index as u64)
     }
 
@@ -118,7 +118,7 @@ impl BitMap {
         let seq_index:usize = (index/64) as usize;
 
         let bit_index:u32 = index%64;
-        let bv_old:u64 = *self.bits.index(seq_index);
+        let bv_old:u64 = self.bits[seq_index];
         let bv_new:u64 = set_bit64_macro!(bv_old, bit_index as u64, bit);
         proof{
             set_bit64_proof(bv_new, bv_old, bit_index as u64, bit);
@@ -142,7 +142,7 @@ impl BitMap {
     {
         let n:usize = self.bits.len();
         let mut i:usize = 0;
-        let mut res_bits:Vec<u64> = Vec::empty();
+        let mut res_bits:Vec<u64> = Vec::new();
         let mut result = BitMap{bits:res_bits};
         while i < n 
             invariant
@@ -154,8 +154,8 @@ impl BitMap {
                 forall |k: int| 0 <= k < i*64 ==> result@[k] == (self@[k] || bm@[k]),
         {
             res_bits = result.bits;
-            let u1:u64 = *self.bits.index(i);
-            let u2:u64 = *bm.bits.index(i);
+            let u1:u64 = self.bits[i];
+            let u2:u64 = bm.bits[i];
             let or_int:u64 = u1 | u2;
             proof{
                 bit_or_64_view_proof(u1, u2, or_int);

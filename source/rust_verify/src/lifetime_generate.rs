@@ -1,10 +1,11 @@
 use crate::attributes::{get_ghost_block_opt, get_mode, get_verifier_attrs, GhostBlockAttr};
 use crate::erase::{ErasureHints, ResolvedCall};
-use crate::lifetime_ast::*;
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, local_to_var, mid_ty_const_to_vir, mid_ty_to_vir_datatype,
 };
 use crate::rust_to_vir_expr::get_adt_res;
+use crate::verus_items::{PervasiveItem, RustItem, VerusItem, VerusItems};
+use crate::{lifetime_ast::*, verus_items};
 use air::ast::AstId;
 use air::ast_util::str_ident;
 use rustc_ast::{BorrowKind, IsAuto, Mutability};
@@ -13,7 +14,7 @@ use rustc_hir::{
     AssocItemKind, BindingAnnotation, Block, BlockCheckMode, BodyId, Closure, Crate, Expr,
     ExprKind, FnSig, HirId, Impl, ImplItem, ImplItemKind, ItemKind, Let, MaybeOwner, Node,
     OpaqueTy, OpaqueTyOrigin, OwnerNode, Pat, PatKind, Stmt, StmtKind, TraitFn, TraitItem,
-    TraitItemKind, TraitItemRef, UnOp, Unsafety,
+    TraitItemKind, TraitItemRef, TraitRef, UnOp, Unsafety,
 };
 use rustc_middle::ty::subst::GenericArgKind;
 use rustc_middle::ty::{
@@ -25,7 +26,7 @@ use rustc_span::symbol::kw;
 use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use vir::ast::{AutospecUsage, Fun, FunX, Function, Mode, Path};
+use vir::ast::{AutospecUsage, DatatypeTransparency, Fun, FunX, Function, Mode, Path};
 use vir::ast_util::get_field;
 use vir::def::VERUS_SPEC;
 
@@ -41,6 +42,7 @@ impl TypX {
 
 struct Context<'tcx> {
     tcx: TyCtxt<'tcx>,
+    verus_items: Arc<VerusItems>,
     types_opt: Option<&'tcx TypeckResults<'tcx>>,
     /// Map each function path to its VIR Function, or to None if it is a #[verifier(external)]
     /// function
@@ -78,10 +80,13 @@ pub(crate) struct State {
     typ_param_to_name: HashMap<(String, Option<u32>), Id>,
     lifetime_to_name: HashMap<(String, Option<u32>), Id>,
     fun_to_name: HashMap<Fun, Id>,
+    trait_to_name: HashMap<Path, Id>,
     datatype_to_name: HashMap<Path, Id>,
     variant_to_name: HashMap<String, Id>,
+    pub(crate) trait_decl_set: HashSet<Path>,
+    pub(crate) trait_decls: Vec<TraitDecl>,
     pub(crate) datatype_decls: Vec<DatatypeDecl>,
-    pub(crate) const_decls: Vec<ConstDecl>,
+    pub(crate) assoc_type_impls: Vec<AssocTypeImpl>,
     pub(crate) fun_decls: Vec<FunDecl>,
     enclosing_fun_id: Option<DefId>,
 }
@@ -97,10 +102,13 @@ impl State {
             typ_param_to_name: HashMap::new(),
             lifetime_to_name: HashMap::new(),
             fun_to_name: HashMap::new(),
+            trait_to_name: HashMap::new(),
             datatype_to_name: HashMap::new(),
             variant_to_name: HashMap::new(),
+            trait_decl_set: HashSet::new(),
+            trait_decls: Vec::new(),
             datatype_decls: Vec::new(),
-            const_decls: Vec::new(),
+            assoc_type_impls: Vec::new(),
             fun_decls: Vec::new(),
             enclosing_fun_id: None,
         }
@@ -150,6 +158,11 @@ impl State {
     fn fun_name<'tcx>(&mut self, fun: &Fun) -> Id {
         let f = || fun.path.segments.last().expect("path").to_string();
         Self::id(&mut self.rename_count, &mut self.fun_to_name, IdKind::Fun, fun, f)
+    }
+
+    fn trait_name<'tcx>(&mut self, path: &Path) -> Id {
+        let f = || path.segments.last().expect("path").to_string();
+        Self::id(&mut self.rename_count, &mut self.trait_to_name, IdKind::Trait, path, f)
     }
 
     fn datatype_name<'tcx>(&mut self, path: &Path) -> Id {
@@ -319,11 +332,20 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
         TyKind::Adt(AdtDef(adt_def_data), args) => {
             let did = adt_def_data.did;
             state.reach_datatype(ctxt, did);
-            let path = def_id_to_vir_path(ctxt.tcx, did);
-            let is_box = Some(did) == ctxt.tcx.lang_items().owned_box() && args.len() == 2;
-            let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(ctxt.tcx, did));
-            let is_smart_ptr = def_name == "alloc::rc::Rc" || def_name == "alloc::sync::Arc";
+            let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, did);
+
+            let rust_item = verus_items::get_rust_item(ctxt.tcx, did);
             let mut typ_args: Vec<Typ> = Vec::new();
+
+            let args = if rust_item == Some(RustItem::Box) {
+                // For Box, skip the second argument (the Allocator)
+                // which is currently restricted to always be `Global`.
+                assert!(args.len() == 2);
+                &args[0..1]
+            } else {
+                &args
+            };
+
             for arg in args.iter() {
                 match arg.unpack() {
                     rustc_middle::ty::subst::GenericArgKind::Type(t) => {
@@ -349,17 +371,47 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
                     }
                 }
             }
-            let datatype_name = if is_box || is_smart_ptr {
-                if is_box {
-                    typ_args.pop();
+            let datatype_name = match rust_item {
+                Some(RustItem::Box) => {
+                    assert!(typ_args.len() == 1);
+                    Id::new(IdKind::Builtin, 0, "Box".to_owned())
                 }
-                assert!(typ_args.len() == 1);
-                let name = path.segments.last().expect("builtin").to_string();
-                Id::new(IdKind::Builtin, 0, name)
-            } else {
-                state.datatype_name(&path)
+                Some(RustItem::Rc) => {
+                    assert!(typ_args.len() == 1);
+                    Id::new(IdKind::Builtin, 0, "Rc".to_owned())
+                }
+                Some(RustItem::Arc) => {
+                    assert!(typ_args.len() == 1);
+                    Id::new(IdKind::Builtin, 0, "Arc".to_owned())
+                }
+                _ => state.datatype_name(&path),
             };
             Box::new(TypX::Datatype(datatype_name, typ_args))
+        }
+        TyKind::Alias(rustc_middle::ty::AliasKind::Projection, t) => {
+            // Note: even if rust_to_vir_base decides to normalize t,
+            // we don't have to normalize t here, since we're generating Rust code, not VIR.
+            let assoc_item = ctxt.tcx.associated_item(t.def_id);
+            let name = state.typ_param(assoc_item.name.to_string(), None);
+            let trait_def = ctxt.tcx.generics_of(t.def_id).parent;
+            match (trait_def, t.substs.try_as_type_list()) {
+                (Some(trait_def), Some(typs)) if typs.len() >= 1 => {
+                    let trait_path_vir = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, trait_def);
+                    assert!(state.trait_decl_set.contains(&trait_path_vir));
+                    let trait_path = state.trait_name(&trait_path_vir);
+                    let mut typs_iter = typs.iter();
+                    let self_ty = typs_iter.next().unwrap();
+                    let self_typ = erase_ty(ctxt, state, &self_ty);
+                    let mut trait_typ_args = Vec::new();
+                    for ty in typs_iter {
+                        let t = erase_ty(ctxt, state, &ty);
+                        trait_typ_args.push(t);
+                    }
+                    let trait_as_datatype = Box::new(TypX::Datatype(trait_path, trait_typ_args));
+                    Box::new(TypX::Projection { self_typ, trait_as_datatype, name })
+                }
+                _ => panic!("unexpected TyKind::Alias"),
+            }
         }
         TyKind::Closure(..) => Box::new(TypX::Closure),
         _ => {
@@ -382,7 +434,7 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Patter
             let res = ctxt.types().qpath_res(qpath, pat.hir_id);
             let (adt_def_id, variant_def, is_enum) = get_adt_res(ctxt.tcx, res, pat.span).unwrap();
             let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
-            let vir_path = def_id_to_vir_path(ctxt.tcx, adt_def_id);
+            let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
 
             let name = state.datatype_name(&vir_path);
             let variant =
@@ -408,7 +460,7 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Patter
             let res = ctxt.types().qpath_res(qpath, pat.hir_id);
             let (adt_def_id, variant_def, is_enum) = get_adt_res(ctxt.tcx, res, pat.span).unwrap();
             let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
-            let vir_path = def_id_to_vir_path(ctxt.tcx, adt_def_id);
+            let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
 
             let name = state.datatype_name(&vir_path);
             let variant_name = state.variant(variant_name.to_string());
@@ -423,7 +475,7 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Patter
             let res = ctxt.types().qpath_res(qpath, pat.hir_id);
             let (adt_def_id, variant_def, is_enum) = get_adt_res(ctxt.tcx, res, pat.span).unwrap();
             let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
-            let vir_path = def_id_to_vir_path(ctxt.tcx, adt_def_id);
+            let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
 
             let variant_opt =
                 if is_enum { Some(state.variant(variant_name.to_string())) } else { None };
@@ -811,7 +863,7 @@ fn erase_inv_block<'tcx>(
     let open_stmt = &body.stmts[0];
     let mid_stmt = &body.stmts[1];
     let (_guard_hir, _inner_hir, inner_pat, arg, atomicity) =
-        crate::rust_to_vir_expr::invariant_block_open(ctxt.tcx, open_stmt)
+        crate::rust_to_vir_expr::invariant_block_open(&ctxt.verus_items, open_stmt)
             .expect("invariant_block_open");
     let pat_typ = erase_ty(ctxt, state, &ctxt.types().node_type(inner_pat.hir_id));
     let inner_pat = erase_pat(ctxt, state, inner_pat);
@@ -850,7 +902,7 @@ fn erase_expr<'tcx>(
                     let (adt_def_id, variant_def, is_enum) =
                         get_adt_res(ctxt.tcx, res, expr.span).unwrap();
                     let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
-                    let vir_path = def_id_to_vir_path(ctxt.tcx, adt_def_id);
+                    let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
 
                     let variant =
                         if is_enum { Some(state.variant(variant_name.to_string())) } else { None };
@@ -872,9 +924,14 @@ fn erase_expr<'tcx>(
                     }
                 }
                 Res::Def(DefKind::Const, id) => {
-                    let vir_path = def_id_to_vir_path(ctxt.tcx, id);
-                    let fun_name = Arc::new(FunX { path: vir_path });
-                    return mk_exp(ExpX::Var(state.fun_name(&fun_name)));
+                    if expect_spec || ctxt.var_modes[&expr.hir_id] == Mode::Spec {
+                        None
+                    } else {
+                        let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
+                        let fun_name = Arc::new(FunX { path: vir_path });
+                        let fun_exp = mk_exp1(ExpX::Var(state.fun_name(&fun_name)));
+                        return mk_exp(ExpX::Call(fun_exp, vec![], vec![]));
+                    }
                 }
                 Res::Def(DefKind::ConstParam, id) => {
                     let local_id = id.as_local().expect("ConstParam local");
@@ -913,8 +970,12 @@ fn erase_expr<'tcx>(
                 _ => false,
             };
             let (self_path, fn_def_id) = if let ExprKind::Path(qpath) = &e0.kind {
-                let self_path =
-                    crate::rust_to_vir_expr::call_self_path(ctxt.tcx, ctxt.types(), qpath);
+                let self_path = crate::rust_to_vir_expr::call_self_path(
+                    ctxt.tcx,
+                    &ctxt.verus_items,
+                    ctxt.types(),
+                    qpath,
+                );
                 let def = ctxt.types().qpath_res(&qpath, e0.hir_id);
                 if let Res::Def(_, fn_def_id) = def {
                     (self_path, Some(fn_def_id))
@@ -944,6 +1005,7 @@ fn erase_expr<'tcx>(
             let fn_def_id = ctxt.types().type_dependent_def_id(expr.hir_id).expect("method id");
             let rcvr_typ = mid_ty_to_vir_datatype(
                 ctxt.tcx,
+                &ctxt.verus_items,
                 receiver.span,
                 ctxt.types().node_type(receiver.hir_id),
                 true,
@@ -981,7 +1043,7 @@ fn erase_expr<'tcx>(
                 let (adt_def_id, variant_def, is_enum) =
                     get_adt_res(ctxt.tcx, res, expr.span).unwrap();
                 let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
-                let vir_path = def_id_to_vir_path(ctxt.tcx, adt_def_id);
+                let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
 
                 let datatype = &ctxt.datatypes[&vir_path];
                 let variant = datatype.x.get_variant(&variant_name);
@@ -1057,7 +1119,12 @@ fn erase_expr<'tcx>(
         ExprKind::Index(e1, e2) => {
             let exp1 = erase_expr(ctxt, state, expect_spec, e1);
             let exp2 = erase_expr(ctxt, state, expect_spec, e2);
-            erase_spec_exps(ctxt, state, expr, vec![exp1, exp2])
+            if expect_spec {
+                erase_spec_exps(ctxt, state, expr, vec![exp1, exp2])
+            } else {
+                let ty = erase_ty(ctxt, state, &ctxt.types().node_type(expr.hir_id));
+                mk_exp(ExpX::Index(ty, exp1.expect("expr"), exp2.expect("expr")))
+            }
         }
         ExprKind::Field(e1, field) => {
             let exp1 = erase_expr(ctxt, state, expect_spec, e1);
@@ -1270,7 +1337,7 @@ fn erase_const<'tcx>(
     external_body: bool,
     body_id: &BodyId,
 ) {
-    let path = def_id_to_vir_path(ctxt.tcx, id);
+    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
     if let Some(s) = path.segments.last() {
         if s.to_string().starts_with("_DERIVE_builtin_Structural_FOR_") {
             return;
@@ -1295,8 +1362,17 @@ fn erase_const<'tcx>(
         } else {
             erase_expr(ctxt, state, false, &body.value).expect("const body")
         };
-        let decl = ConstDecl { span, name, typ, body: body_exp };
-        state.const_decls.push(decl);
+        // Turn const decl into fn decl so we can use the non-const ExpX::Op in the body:
+        let decl = FunDecl {
+            sig_span: span,
+            name_span: span,
+            name,
+            generics: vec![],
+            params: vec![],
+            ret: Some((None, typ)),
+            body: Box::new((body.value.span, ExpX::Block(vec![], Some(body_exp)))),
+        };
+        state.fun_decls.push(decl);
         ctxt.types_opt = None;
         ctxt.ret_spec = None;
     }
@@ -1373,8 +1449,16 @@ fn erase_mir_generics<'tcx>(
                     _ => panic!("PredicateKind::Trait"),
                 };
                 let id = pred.trait_ref.def_id;
+                let trait_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
                 let bound = if Some(id) == ctxt.tcx.lang_items().copy_trait() {
                     Some(Bound::Copy)
+                } else if state.trait_decl_set.contains(&trait_path) {
+                    let substs = pred.trait_ref.substs;
+                    let trait_typ_args =
+                        substs.types().skip(1).map(|ty| erase_ty(ctxt, state, &ty)).collect();
+                    let trait_path = state.trait_name(&trait_path);
+                    let datatype = Box::new(TypX::Datatype(trait_path, trait_typ_args));
+                    Some(Bound::Trait(datatype))
                 } else {
                     None
                 };
@@ -1446,7 +1530,7 @@ fn erase_fn_common<'tcx>(
     if ctxt.ignored_functions.contains(&id) {
         return;
     }
-    let path = def_id_to_vir_path(ctxt.tcx, id);
+    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
     let is_verus_spec = path.segments.last().expect("segment.last").starts_with(VERUS_SPEC);
     if is_verus_spec {
         return;
@@ -1593,6 +1677,39 @@ fn erase_fn<'tcx>(
 }
 
 fn erase_trait<'tcx>(
+    _krate: &'tcx Crate<'tcx>,
+    ctxt: &mut Context<'tcx>,
+    state: &mut State,
+    trait_id: DefId,
+    trait_items: &[TraitItemRef],
+) {
+    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, trait_id);
+    let name = state.trait_name(&path);
+    let mut lifetimes: Vec<GenericParam> = Vec::new();
+    let mut typ_params: Vec<GenericParam> = Vec::new();
+    erase_mir_generics(ctxt, state, trait_id, false, &mut lifetimes, &mut typ_params);
+    typ_params.remove(0); // remove Self type parameter
+    let generics = lifetimes.into_iter().chain(typ_params.into_iter()).collect();
+    let mut assoc_typs: Vec<Id> = Vec::new();
+    for trait_item_ref in trait_items {
+        let trait_item = ctxt.tcx.hir().trait_item(trait_item_ref.id);
+        let TraitItem { ident, kind, .. } = trait_item;
+        match kind {
+            TraitItemKind::Type([], None) => {
+                assoc_typs.push(state.typ_param(ident.to_string(), None));
+            }
+            _ => {}
+        }
+    }
+    // We only need traits with associated type declarations.
+    if assoc_typs.len() > 0 {
+        let decl = TraitDecl { name, generics, assoc_typs };
+        state.trait_decl_set.insert(path.clone());
+        state.trait_decls.push(decl);
+    }
+}
+
+fn erase_trait_methods<'tcx>(
     krate: &'tcx Crate<'tcx>,
     ctxt: &mut Context<'tcx>,
     state: &mut State,
@@ -1622,6 +1739,7 @@ fn erase_trait<'tcx>(
                     body_id,
                 );
             }
+            TraitItemKind::Type([], None) => {}
             _ => panic!("unexpected trait item"),
         }
     }
@@ -1666,7 +1784,45 @@ fn erase_impl<'tcx>(
                     _ => panic!(),
                 }
             }
-            AssocItemKind::Type => {}
+            AssocItemKind::Type => {
+                let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
+                if let (ImplItemKind::Type(_ty), Some(TraitRef { path, .. })) =
+                    (&impl_item.kind, &impll.of_trait)
+                {
+                    let trait_ref = ctxt.tcx.impl_trait_ref(impl_id).expect("impl_trait_ref");
+                    let name = state.typ_param(&impl_item.ident.to_string(), None);
+                    let trait_path_vir =
+                        def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, path.res.def_id());
+                    if !state.trait_decl_set.contains(&trait_path_vir) {
+                        continue;
+                    }
+                    let trait_path = state.trait_name(&trait_path_vir);
+                    // If we have `impl X for Z<A, B, C>` then the list of types is [X, A, B, C].
+                    // So to get the type args, we strip off the first element.
+                    let mut trait_typ_args: Vec<Typ> = Vec::new();
+                    for ty in trait_ref.0.substs.types().skip(1) {
+                        trait_typ_args.push(erase_ty(ctxt, state, &ty));
+                    }
+                    let mut lifetimes: Vec<GenericParam> = Vec::new();
+                    let mut typ_params: Vec<GenericParam> = Vec::new();
+                    erase_mir_generics(
+                        ctxt,
+                        state,
+                        impl_id,
+                        false,
+                        &mut lifetimes,
+                        &mut typ_params,
+                    );
+                    let generics = lifetimes.into_iter().chain(typ_params.into_iter()).collect();
+                    let self_ty = ctxt.tcx.type_of(impl_id);
+                    let self_typ = erase_ty(ctxt, state, &self_ty);
+                    let ty = ctxt.tcx.type_of(impl_item.owner_id.to_def_id());
+                    let typ = erase_ty(ctxt, state, &ty);
+                    let trait_as_datatype = Box::new(TypX::Datatype(trait_path, trait_typ_args));
+                    let assoc = AssocTypeImpl { name, generics, self_typ, trait_as_datatype, typ };
+                    state.assoc_type_impls.push(assoc);
+                }
+            }
             _ => panic!("unexpected impl"),
         }
     }
@@ -1680,7 +1836,7 @@ fn erase_datatype<'tcx>(
     datatype: Datatype,
 ) {
     let datatype = Box::new(datatype);
-    let path = def_id_to_vir_path(ctxt.tcx, id);
+    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
     let name = state.datatype_name(&path);
     let implements_copy = ctxt.copy_types.get(&id).cloned();
     let mut lifetimes: Vec<GenericParam> = Vec::new();
@@ -1759,24 +1915,50 @@ fn erase_abstract_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, span: 
 
 fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) {
     let span = ctxt.tcx.def_span(id);
+
     let attrs = if let Some(rustc_hir::Node::Item(d_hir)) = ctxt.tcx.hir().get_if_local(id) {
         ctxt.tcx.hir().attrs(d_hir.hir_id())
     } else {
         ctxt.tcx.item_attrs(id)
     };
     let vattrs = get_verifier_attrs(attrs).expect("get_verifier_attrs");
-    if vattrs.external_body {
+    if vattrs.external_type_specification {
+        return;
+    }
+
+    let rust_item = verus_items::get_rust_item(ctxt.tcx, id);
+
+    if let Some(RustItem::Box) = rust_item {
+        return;
+    }
+    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
+    if let Some(RustItem::Rc | RustItem::Arc) = rust_item {
+        return;
+    }
+
+    let verus_item = ctxt.verus_items.id_to_name.get(&id);
+
+    if let Some(VerusItem::Pervasive(PervasiveItem::StrSlice, _)) = verus_item {
         erase_abstract_datatype(ctxt, state, span, id);
         return;
     }
 
-    let is_box = Some(id) == ctxt.tcx.lang_items().owned_box();
-    if is_box {
-        return;
-    }
-    let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(ctxt.tcx, id));
-    let is_smart_ptr = def_name == "alloc::rc::Rc" || def_name == "alloc::sync::Arc";
-    if is_smart_ptr {
+    // Check if the struct is 'external_body'
+    // (Recall that the 'external_body' label may have been applied by a proxy type,
+    // so we can't check the vattrs of the datatype definition directly.
+    // Need to check the VIR instead.)
+    let is_external_body = match ctxt.datatypes.get(&path) {
+        Some(dt) => match dt.x.transparency {
+            DatatypeTransparency::Never => true,
+            DatatypeTransparency::WhenVisible(_) => false,
+        },
+        None => {
+            dbg!(id);
+            panic!("erase_mir_datatype: unrecognized datatype");
+        }
+    };
+    if is_external_body {
+        erase_abstract_datatype(ctxt, state, span, id);
         return;
     }
 
@@ -1801,11 +1983,13 @@ fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) 
 
 pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
     tcx: TyCtxt<'tcx>,
+    verus_items: Arc<VerusItems>,
     krate: &'tcx Crate<'tcx>,
     erasure_hints: &ErasureHints,
 ) -> State {
     let mut ctxt = Context {
         tcx,
+        verus_items,
         types_opt: None,
         functions: HashMap::new(),
         datatypes: HashMap::new(),
@@ -1834,7 +2018,13 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
         ctxt.ignored_functions.insert(*id);
     }
     for (hir_id, span, call) in &erasure_hints.resolved_calls {
-        ctxt.calls.insert(*hir_id, call.clone()).map(|_| panic!("{:?}", span));
+        if ctxt.calls.contains_key(hir_id) {
+            if &ctxt.calls[hir_id] != call {
+                panic!("inconsistent resolved_calls: {:?}", span);
+            }
+        } else {
+            ctxt.calls.insert(*hir_id, call.clone());
+        }
     }
     for (span, mode) in &erasure_hints.erasure_modes.condition_modes {
         if crate::spans::from_raw_span(&span.raw_span).is_none() {
@@ -1845,7 +2035,13 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
             panic!("missing id_to_hir");
         }
         for hir_id in &id_to_hir[&span.id] {
-            ctxt.condition_modes.insert(*hir_id, *mode).map(|_| panic!("{:?}", span));
+            if ctxt.condition_modes.contains_key(hir_id) {
+                if &ctxt.condition_modes[hir_id] != mode {
+                    panic!("inconsistent condition_modes: {:?}", span);
+                }
+            } else {
+                ctxt.condition_modes.insert(*hir_id, *mode);
+            }
         }
     }
     for (span, mode) in &erasure_hints.erasure_modes.var_modes {
@@ -1857,7 +2053,13 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
             panic!("missing id_to_hir");
         }
         for hir_id in &id_to_hir[&span.id] {
-            ctxt.var_modes.insert(*hir_id, *mode).map(|v| panic!("{:?} {:?}", span, v));
+            if ctxt.var_modes.contains_key(hir_id) {
+                if &ctxt.var_modes[hir_id] != mode {
+                    panic!("inconsistent var_modes: {:?}", span);
+                }
+            } else {
+                ctxt.var_modes.insert(*hir_id, *mode);
+            }
         }
     }
     for (hir_id, mode) in &erasure_hints.direct_var_modes {
@@ -1878,6 +2080,18 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         if Some(trait_ref.path.res.def_id()) == tcx.lang_items().copy_trait() {
                             add_copy_type(&mut ctxt, &mut state, item.owner_id.to_def_id());
                         }
+                    }
+                    ItemKind::Trait(
+                        IsAuto::No,
+                        Unsafety::Normal,
+                        _trait_generics,
+                        _bounds,
+                        trait_items,
+                    ) => {
+                        // We only need traits with associated type declarations.
+                        // Process traits early so we can see which traits we need.
+                        let id = item.owner_id.to_def_id();
+                        erase_trait(krate, &mut ctxt, &mut state, id, trait_items);
                     }
                     _ => {}
                 },
@@ -1942,7 +2156,12 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             } else {
                                 let body = ctxt.tcx.hir().body(*body_id);
                                 let (def_id, _) = crate::rust_to_vir_func::get_external_def_id(
-                                    ctxt.tcx, id, body_id, body, sig,
+                                    ctxt.tcx,
+                                    &ctxt.verus_items,
+                                    id,
+                                    body_id,
+                                    body,
+                                    sig,
                                 )
                                 .unwrap();
 
@@ -1960,7 +2179,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             _bounds,
                             trait_items,
                         ) => {
-                            erase_trait(krate, &mut ctxt, &mut state, id, trait_items);
+                            erase_trait_methods(krate, &mut ctxt, &mut state, id, trait_items);
                         }
                         ItemKind::Impl(impll) => {
                             erase_impl(krate, &mut ctxt, &mut state, id, impll);

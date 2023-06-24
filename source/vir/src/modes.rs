@@ -146,15 +146,22 @@ impl Typing {
         self.vars.insert(x.clone(), (mutable, mode)).expect("internal error: Typing insert");
     }
 
-    fn typ_mode(&self, typ: &Typ) -> Mode {
+    // REVIEW: the purpose of this is to extract datatype.x.mode,
+    // which I think ultimately derives from https://github.com/verus-lang/verus/pull/6 ,
+    // which was an early trick to try to use the Index trait from spec mode.
+    // But we don't use this trick anymore, so maybe we should reconsider this.
+    fn trait_impl_self_typ_mode(&self, span: &Span, typ: &Typ) -> Result<Mode, VirErr> {
         match &**typ {
-            TypX::Bool | TypX::Int(_) | TypX::Char | TypX::StrSlice => Mode::Exec,
-            TypX::TypParam(_) => Mode::Exec,
-            TypX::Lambda(_, _) => Mode::Spec,
-            TypX::Datatype(datatype, _typ_args) => self.datatypes[datatype].x.mode,
-            TypX::Decorate(_, t) | TypX::Boxed(t) => self.typ_mode(t),
-            TypX::Tuple(..) | TypX::AnonymousClosure(..) => panic!("unknown mode for type"),
-            TypX::TypeId | TypX::ConstInt(..) | TypX::Air(..) => panic!("unknown mode for type"),
+            TypX::Bool | TypX::Int(_) | TypX::Char | TypX::StrSlice => Ok(Mode::Exec),
+            TypX::TypParam(_) => Ok(Mode::Exec),
+            TypX::Lambda(_, _) => Ok(Mode::Spec),
+            TypX::Datatype(datatype, _typ_args) => Ok(self.datatypes[datatype].x.mode),
+            TypX::Decorate(_, t) | TypX::Boxed(t) => self.trait_impl_self_typ_mode(span, t),
+            TypX::Projection { .. } => {
+                error(span, "trait implemention self type cannot be a projection")
+            }
+            TypX::Tuple(..) | TypX::AnonymousClosure(..) => Ok(Mode::Exec),
+            TypX::TypeId | TypX::ConstInt(..) | TypX::Air(..) => Ok(Mode::Exec),
         }
     }
 }
@@ -501,7 +508,7 @@ fn check_expr_handle_mut_arg(
         ExprX::ConstVar(x) => {
             let function = match typing.funs.get(x) {
                 None => {
-                    let name = crate::ast_util::path_as_rust_name(&x.path);
+                    let name = crate::ast_util::path_as_friendly_rust_name(&x.path);
                     return error(&expr.span, format!("cannot find constant {}", name));
                 }
                 Some(f) => f.clone(),
@@ -520,7 +527,7 @@ fn check_expr_handle_mut_arg(
 
             let function = match typing.funs.get(x) {
                 None => {
-                    let name = crate::ast_util::path_as_rust_name(&x.path);
+                    let name = crate::ast_util::path_as_friendly_rust_name(&x.path);
                     return error(&expr.span, format!("cannot find function {}", name));
                 }
                 Some(f) => f.clone(),
@@ -672,6 +679,9 @@ fn check_expr_handle_mut_arg(
                 Ok(*to_mode)
             }
         }
+        ExprX::Unary(UnaryOp::HeightTrigger, _) => {
+            panic!("direct access to 'height' is not allowed")
+        }
         ExprX::Unary(_, e1) => check_expr(typing, outer_mode, erasure_mode, e1),
         ExprX::UnaryOpr(UnaryOpr::Box(_), e1) => check_expr(typing, outer_mode, erasure_mode, e1),
         ExprX::UnaryOpr(UnaryOpr::Unbox(_), e1) => check_expr(typing, outer_mode, erasure_mode, e1),
@@ -709,13 +719,6 @@ fn check_expr_handle_mut_arg(
             let mode = check_expr(typing, joined_mode, erasure_mode, e1)?;
             Ok(mode_join(*min_mode, mode))
         }
-        ExprX::UnaryOpr(UnaryOpr::Height, e1) => {
-            if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
-                return error(&expr.span, "cannot test 'height' in exec mode");
-            }
-            check_expr_has_mode(typing, Mode::Spec, e1, Mode::Spec)?;
-            Ok(Mode::Spec)
-        }
         ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e1) => {
             check_expr_has_mode(typing, Mode::Spec, e1, Mode::Spec)?;
             Ok(Mode::Spec)
@@ -726,6 +729,7 @@ fn check_expr_handle_mut_arg(
         ExprX::Binary(op, e1, e2) => {
             let op_mode = match op {
                 BinaryOp::Eq(mode) => *mode,
+                BinaryOp::HeightCompare { .. } => Mode::Spec,
                 _ => Mode::Exec,
             };
             match op {
@@ -737,7 +741,8 @@ fn check_expr_handle_mut_arg(
             }
             let outer_mode = match op {
                 // because Implies isn't compiled, make it spec-only
-                BinaryOp::Implies => mode_join(outer_mode, Mode::Spec),
+                BinaryOp::Implies => Mode::Spec,
+                BinaryOp::HeightCompare { .. } => Mode::Spec,
                 _ => outer_mode,
             };
             let mode1 = check_expr(typing, outer_mode, erasure_mode, e1)?;
@@ -1222,7 +1227,7 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
     typing.vars.push_scope(true);
 
     if let FunctionKind::TraitMethodImpl { method, trait_path, self_typ, .. } = &function.x.kind {
-        let self_typ_mode = typing.typ_mode(&self_typ);
+        let self_typ_mode = typing.trait_impl_self_typ_mode(&function.span, &self_typ)?;
         let our_trait = typing.traits.contains(trait_path);
         let (expected_params, expected_ret_mode): (Vec<Mode>, Mode) = if our_trait {
             let trait_method = &typing.funs[method];

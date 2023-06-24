@@ -66,3 +66,67 @@ pub fn mtime_recursive(path: &Path) -> Result<FileTime, String> {
         .unwrap_or_else(|| FileTime::from_last_modification_time(&meta));
     Ok(max_meta)
 }
+
+pub fn version_info(root: &std::path::PathBuf) -> Result<String, String> {
+    fn io_err_to_string(err: std::io::Error) -> String {
+        format!("cannot obtain version info from git ({})", err)
+    }
+
+    // assumes the verus executable gets the .git file for verus repo
+    let rev_parse_output = std::process::Command::new("git")
+        .current_dir(&root)
+        .args(&["rev-parse", "--short=7", "HEAD"])
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .map_err(io_err_to_string)?
+        .wait_with_output()
+        .map_err(io_err_to_string)?;
+    rev_parse_output
+        .status
+        .success()
+        .then(|| ())
+        .ok_or(format!("git returned error code"))?;
+    let sha = String::from_utf8(rev_parse_output.stdout)
+        .map_err(|x| format!("commit sha is invalid utf8, {}", x))?;
+    let sha = sha.trim();
+
+    let date_info_output = std::process::Command::new("git")
+        .current_dir(&root)
+        .args(&["show", "-s", "--format=%cs", "HEAD"])
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .map_err(io_err_to_string)?
+        .wait_with_output()
+        .map_err(io_err_to_string)?;
+
+    date_info_output
+        .status
+        .success()
+        .then(|| ())
+        .ok_or(format!("git returned error code"))?;
+    let date_str = String::from_utf8(date_info_output.stdout)
+        .map_err(|x| format!("commit date is invalid utf8, {}", x))?;
+    let date_re = regex::Regex::new(r"^(\d{4})-(\d{2})-(\d{2})$").unwrap();
+    let date_captures = date_re
+        .captures(date_str.trim())
+        .ok_or(format!("unexpected date string \"{}\"", date_str))?;
+    let year = &date_captures[1];
+    let month = &date_captures[2];
+    let day = &date_captures[3];
+
+    let dirty_output = std::process::Command::new("git")
+        .current_dir(&root)
+        .args(&["diff", "--exit-code", "HEAD"])
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .map_err(io_err_to_string)?
+        .wait_with_output()
+        .map_err(io_err_to_string)?;
+
+    let dirty = if dirty_output.status.success() {
+        ""
+    } else {
+        ".dirty"
+    };
+    Ok(format!("0.{year}.{month}.{day}.{sha}{dirty}"))
+}

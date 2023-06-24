@@ -1,11 +1,10 @@
 #[allow(unused_imports)]
-use builtin::*;
-use builtin_macros::*;
 use vstd::*;
+use vstd::prelude::*;
 #[allow(unused_imports)]
 use seq::*;
 #[allow(unused_imports)]
-use vec::*;
+use prelude::*;
 
 verus! {
 
@@ -137,9 +136,8 @@ fn check_is_sorted_tree(tree: &Tree) -> (ret: TreeSortedness)
 
             proof {
                 sorted_tree_means_sorted_sequence(**left);
+                sorted_tree_means_sorted_sequence(**right);
             }
-            // sorted_tree_means_sorted_sequence(**right); // TODO: why is only one of these calls
-            // necessary?
 
             // assert(equal(tree@, left@.add(seq![*value as int]).add(right@)));
             // assert(tree@.len() > 0);

@@ -1,5 +1,5 @@
 use crate::ast::{DatatypeTransparency, Field, Ident, Idents, Mode, Path, Typ, TypX, Variants};
-use crate::ast_util::{is_visible_to_of_owner, path_as_rust_name};
+use crate::ast_util::{is_visible_to_of_owner, path_as_friendly_rust_name};
 use crate::context::Ctx;
 use crate::def::{
     is_variant_ident, prefix_box, prefix_lambda_type, prefix_tuple_param, prefix_type_id,
@@ -69,6 +69,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Decorate(_, t) => uses_ext_equal(ctx, t),
         TypX::Boxed(typ) => uses_ext_equal(ctx, typ),
         TypX::TypParam(_) => true,
+        TypX::Projection { .. } => true,
         TypX::TypeId => panic!("internal error: uses_ext_equal of TypeId"),
         TypX::ConstInt(_) => false,
         TypX::Air(_) => panic!("internal error: uses_ext_equal of Air"),
@@ -162,7 +163,7 @@ fn datatype_or_fun_to_air_commands(
         // box axiom:
         //   forall x. x == unbox(box(x))
         // trigger on box(x)
-        let name = format!("{}_{}", path_as_rust_name(dpath), QID_BOX_AXIOM);
+        let name = format!("{}_{}", path_as_friendly_rust_name(dpath), QID_BOX_AXIOM);
         let bind =
             func_bind(ctx, name, &Arc::new(vec![]), &x_params(&datatyp), &box_x, false, false);
         let forall = mk_bind_expr(&bind, &mk_eq(&x_var, &unbox_box_x));
@@ -171,7 +172,7 @@ fn datatype_or_fun_to_air_commands(
         // unbox axiom:
         //   forall typs, x. has_type(x, T(typs)) => x == box(unbox(x))
         // trigger on has_type(x, T(typs))
-        let name = format!("{}_{}", path_as_rust_name(dpath), QID_UNBOX_AXIOM);
+        let name = format!("{}_{}", path_as_friendly_rust_name(dpath), QID_UNBOX_AXIOM);
         let bind = func_bind(ctx, name, tparams, &x_params(&vpolytyp), &has, false, false);
         let forall = mk_bind_expr(&bind, &mk_implies(&has, &mk_eq(&x_var, &box_unbox_x)));
         axiom_commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Axiom(forall)))));
@@ -214,7 +215,7 @@ fn datatype_or_fun_to_air_commands(
         //   has_type(box(mk_fun(x)), FUN(typ1...typn, tret))
         // trigger on has_type(box(mk_fun(x)), FUN(typ1...typn, tret))
         let inner_trigs = vec![has_app.clone()];
-        let name = format!("{}_{}", path_as_rust_name(dpath), QID_CONSTRUCTOR_INNER);
+        let name = format!("{}_{}", path_as_friendly_rust_name(dpath), QID_CONSTRUCTOR_INNER);
         let inner_bind = func_bind_trig(
             ctx,
             name,
@@ -232,7 +233,7 @@ fn datatype_or_fun_to_air_commands(
         let box_mk_fun = ident_apply(&prefix_box(&dpath), &vec![mk_fun]);
         let has_box_mk_fun = expr_has_type(&id, &box_mk_fun);
         let trigs = vec![has_box_mk_fun.clone()];
-        let name = format!("{}_{}", path_as_rust_name(dpath), QID_CONSTRUCTOR);
+        let name = format!("{}_{}", path_as_friendly_rust_name(dpath), QID_CONSTRUCTOR);
         let bind = func_bind_trig(
             ctx,
             name,
@@ -253,10 +254,29 @@ fn datatype_or_fun_to_air_commands(
         // trigger on apply(x, args), has_type_f
         params.push(x_param(&datatyp));
         pre.insert(0, has_box.clone());
-        let trigs = vec![app, has_box.clone()];
-        let name = format!("{}_{}", path_as_rust_name(dpath), QID_APPLY);
-        let bind = func_bind_trig(ctx, name, tparams, &Arc::new(params), &trigs, false, false);
+        let trigs = vec![app.clone(), has_box.clone()];
+        let name = format!("{}_{}", path_as_friendly_rust_name(dpath), QID_APPLY);
+        let aparams = Arc::new(params.clone());
+        let bind = func_bind_trig(ctx, name, tparams, &aparams, &trigs, false, false);
         let imply = mk_implies(&mk_and(&pre), &has_app);
+        let forall = mk_bind_expr(&bind, &imply);
+        let axiom = Arc::new(DeclX::Axiom(forall));
+        axiom_commands.push(Arc::new(CommandX::Global(axiom)));
+
+        // Lambda height axiom:
+        // forall typ1 ... typn, tret, arg1: Poly ... argn: Poly, x: Fun.
+        //   has_type_f && has_type1 && ... && has_typen ==>
+        //     height_lt(height(apply(x, args)), height(box(mk_fun(x))))
+        // trigger on height(apply(x, args)), has_type_f
+        let height_app = str_apply(crate::def::HEIGHT, &vec![app]);
+        let from_rec_fun = str_apply(crate::def::HEIGHT_REC_FUN, &vec![box_mk_fun]);
+        let height_fun = str_apply(crate::def::HEIGHT, &vec![from_rec_fun]);
+        let height_lt = str_apply(crate::def::HEIGHT_LT, &vec![height_app.clone(), height_fun]);
+        let trigs = vec![height_app, has_box.clone()];
+        let name =
+            format!("{}_{}", path_as_friendly_rust_name(dpath), crate::def::QID_HEIGHT_APPLY);
+        let bind = func_bind_trig(ctx, name, tparams, &aparams, &trigs, false, false);
+        let imply = mk_implies(&mk_and(&pre), &height_lt);
         let forall = mk_bind_expr(&bind, &imply);
         let axiom = Arc::new(DeclX::Axiom(forall));
         axiom_commands.push(Arc::new(CommandX::Global(axiom)));
@@ -357,7 +377,7 @@ fn datatype_or_fun_to_air_commands(
         // or type is completely abstract to us), then has_type always holds:
         //   forall typs, x. has_type(box(x), T(typs))
         // trigger on has_type(box(x), T(typs))
-        let name = format!("{}_{}", path_as_rust_name(dpath), QID_HAS_TYPE_ALWAYS);
+        let name = format!("{}_{}", path_as_friendly_rust_name(dpath), QID_HAS_TYPE_ALWAYS);
         let bind = func_bind(ctx, name, tparams, &x_params(&datatyp), &has_box, false, false);
         let forall = mk_bind_expr(&bind, &has_box);
         axiom_commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Axiom(forall)))));
@@ -369,33 +389,91 @@ fn datatype_or_fun_to_air_commands(
         for variant in variants.iter() {
             for field in variant.a.iter() {
                 let typ = &field.a.0;
-                match &*crate::ast_util::undecorate_typ(typ) {
-                    TypX::Datatype(path, _) if ctx.datatype_is_transparent[path] => {
-                        let node = crate::prelude::datatype_height_axiom(
-                            &dpath,
-                            Some(&path),
-                            &is_variant_ident(dpath, &*variant.name),
-                            &variant_field_ident(&dpath, &variant.name, &field.name),
-                        );
-                        let axiom = air::parser::Parser::new()
-                            .node_to_command(&node)
-                            .expect("internal error: malformed datatype axiom");
-                        axiom_commands.push(axiom);
+                let mut recursion_or_tparam = |t: &Typ| match &**t {
+                    TypX::Datatype(path, _)
+                        if ctx.global.datatype_graph.in_same_scc(path, dpath) =>
+                    {
+                        Err(())
                     }
-                    TypX::TypParam(_) => {
-                        let node = crate::prelude::datatype_height_axiom(
-                            &dpath,
-                            None,
-                            &is_variant_ident(dpath, &*variant.name),
-                            &variant_field_ident(&dpath, &variant.name, &field.name),
-                        );
-                        let axiom = air::parser::Parser::new()
-                            .node_to_command(&node)
-                            .expect("internal error: malformed datatype axiom");
-                        axiom_commands.push(axiom);
-                    }
-                    _ => {}
+                    TypX::TypParam(_) => Err(()),
+                    _ => Ok(()),
+                };
+                let has_recursion_or_tparam =
+                    crate::ast_visitor::typ_visitor_check(typ, &mut recursion_or_tparam).is_err();
+                if !has_recursion_or_tparam {
+                    continue;
                 }
+                let typ = crate::ast_util::undecorate_typ(typ);
+                let field_box_path = match &*typ {
+                    TypX::Lambda(typs, _) => Some(prefix_lambda_type(typs.len())),
+                    TypX::Datatype(..) => crate::sst_to_air::datatype_box_prefix(ctx, &typ),
+                    TypX::Boxed(_) => None,
+                    TypX::TypParam(_) => None,
+                    _ => continue,
+                };
+                let unboxed = if let TypX::Boxed(t) = &*typ { t } else { &*typ };
+                let fun_or_map_ret = {
+                    match unboxed {
+                        TypX::Lambda(_, ret) => Some(ret),
+                        TypX::Datatype(d, targs)
+                            if crate::ast_util::path_as_vstd_name(d)
+                                == Some("map::Map".to_string())
+                                && targs.len() == 2 =>
+                        {
+                            // HACK special case for the infinite map::Map type,
+                            // which is like a FnSpec type
+                            Some(&targs[1])
+                        }
+                        _ => None,
+                    }
+                };
+                let recursive_function_field = if let Some(ret) = fun_or_map_ret {
+                    // REVIEW: this is inspired by https://github.com/FStarLang/FStar/pull/2954 ,
+                    // which restricts decreases on FnSpec applications or Map lookups
+                    // to the case where the FnSpec or Map is a field of a recursive datatype
+                    // and the application or lookup returns a value of the recursive datatype.
+                    // It's not clear that we need this restriction, since we don't have F*'s
+                    // universes, but let's err on the side of cautious for now.
+                    // We define recursive_function_field to be true when all of these hold:
+                    // 1) the field is a FnSpec or Map type
+                    // 2) the only use of type parameters in the FnSpec/Map return type
+                    //    is to instantiate the datatype with exactly its original parameters
+                    // For example, recursive_function_field is true for field f here:
+                    //   struct S<A, B> { a: A, b: B, f: FnSpec(int) -> Option<S<A, B>> }
+                    // but is false for field f here:
+                    //   struct S<A, B> { a: A, b: B, f: FnSpec(int) -> Option<(A, B)> }
+                    // because A and B appear in the return type, but not as part of S<A, B>
+                    // This suppresses decreases for a wrapper around a FnSpec or infinite Map:
+                    //   struct MyFun<A, B>(FnSpec(A) -> B);
+                    // TODO: allow recursive_function_field across mutually recursive datatypes
+                    // that have type parameters (e.g. by inlining the recursive types).
+                    let our_typ = Arc::new(TypX::Datatype(dpath.clone(), typ_args.clone()));
+                    use crate::visitor::VisitorControlFlow;
+                    let mut visitor = |t: &Typ| -> VisitorControlFlow<()> {
+                        if crate::ast_util::types_equal(t, &our_typ) {
+                            VisitorControlFlow::Return
+                        } else if let TypX::TypParam(_) = &**t {
+                            VisitorControlFlow::Stop(())
+                        } else {
+                            VisitorControlFlow::Recurse
+                        }
+                    };
+                    let visit = crate::ast_visitor::typ_visitor_dfs(ret, &mut visitor);
+                    visit == VisitorControlFlow::Recurse
+                } else {
+                    false
+                };
+                let nodes = crate::prelude::datatype_height_axioms(
+                    &dpath,
+                    &field_box_path,
+                    &is_variant_ident(dpath, &*variant.name),
+                    &variant_field_ident(&dpath, &variant.name, &field.name),
+                    recursive_function_field,
+                );
+                let axioms = air::parser::Parser::new()
+                    .nodes_to_commands(&nodes)
+                    .expect("internal error: malformed datatype axiom");
+                axiom_commands.extend(axioms.iter().cloned());
             }
         }
     }
@@ -503,7 +581,7 @@ fn datatype_or_fun_to_air_commands(
             let imply = mk_implies(&inner_has, &ext_eq);
             let bind = func_bind_trig(
                 ctx,
-                format!("{}_inner_{}", path_as_rust_name(dpath), QID_EXT_EQUAL),
+                format!("{}_inner_{}", path_as_friendly_rust_name(dpath), QID_EXT_EQUAL),
                 &Arc::new(vec![]),
                 &Arc::new(params.clone()),
                 &vec![ext_eq.clone()],
@@ -511,7 +589,7 @@ fn datatype_or_fun_to_air_commands(
                 true,
             );
             pre.push(mk_bind_expr(&bind, &imply));
-            axiom_commands.push(eq_command(&path_as_rust_name(dpath), &pre));
+            axiom_commands.push(eq_command(&path_as_friendly_rust_name(dpath), &pre));
         }
     }
 }

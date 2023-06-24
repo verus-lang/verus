@@ -2,7 +2,7 @@ fn main() {}
 
 // ## 11 -- 10-program.rs
 
-#[allow(unused_imports)] use { builtin_macros::*, builtin::*, vstd::*, option::*, seq::*, vec::*, };
+#[allow(unused_imports)] use { builtin_macros::*, builtin::*, vstd::*, prelude::*, seq::* };
 
 verus! {
 

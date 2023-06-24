@@ -10,6 +10,7 @@ macro_rules! println {
 }
 
 verus! {
+
 // TODO: remove this
 pub proof fn assume(b: bool)
     ensures b
@@ -39,6 +40,7 @@ pub proof fn affirm(b: bool)
 #[verifier(custom_req_err("Call to non-static function fails to satisfy `callee.requires(args)`"))]
 #[doc(hidden)]
 #[verifier(external_body)]
+#[rustc_diagnostic_item = "verus::pervasive::pervasive::exec_nonstatic_call"]
 fn exec_nonstatic_call<Args: std::marker::Tuple, Output, F>(f: F, args: Args) -> (output: Output)
     where F: FnOnce<Args, Output=Output>
     requires f.requires(args)
@@ -100,8 +102,8 @@ pub fn print_u64(i: u64) {
     println!("{}", i);
 }
 
-/// deprecated, use core::mem::swap or std::mem::swap directly instead (TODO remove this)
 #[verifier(external_body)]
+#[deprecated(note="please use `std::mem::swap` instead")]
 pub fn swap<A>(x: &mut A, y: &mut A)
     ensures
         *x == *old(y),

@@ -1405,7 +1405,9 @@ fn expr_to_stm_opt(
         }
         ExprX::AssertAssume { is_assume: false, expr: e } => {
             if state.checking_recommends(ctx) {
-                let stms = check_pure_expr(ctx, state, &e)?;
+                let (mut stms, exp) = expr_to_stm_or_error(ctx, state, e)?;
+                let stm = Spanned::new(expr.span.clone(), StmX::Assume(exp));
+                stms.push(stm);
                 Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
             } else {
                 let mut stms: Vec<Stm> = Vec::new();

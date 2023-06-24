@@ -1,9 +1,7 @@
-#[allow(unused_imports)]
+#![allow(unused_imports)]
 use builtin_macros::*;
-#[allow(unused_imports)]
 use builtin::*;
-#[allow(unused_imports)]
-use vstd::{seq::*, vec::*};
+use vstd::{seq::*, prelude::*};
 
 verus! {
 
@@ -472,7 +470,7 @@ fn binary_search(v: &Vec<u64>, k: u64) -> (r: usize)
             forall|i: int, j: int| 0 <= i <= j < v.len() ==> v[i] <= v[j],
     {
         let ix = i1 + (i2 - i1) / 2;
-        if *v.index(ix) < k {
+        if v[ix] < k {
             i1 = ix + 1;
         } else {
             i2 = ix;

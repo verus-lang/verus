@@ -1,3 +1,5 @@
+#![deprecated(note="Use std::option instead")]
+
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
@@ -13,6 +15,9 @@ pub enum Option<A> {
     None,
     Some(A)
 }
+
+pub use crate::option::Option::None;
+pub use crate::option::Option::Some;
 
 // TODO this currently doesn't work without `external`,
 // because of some temporary Verus trait limitations,

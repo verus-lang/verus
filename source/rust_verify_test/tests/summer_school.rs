@@ -845,7 +845,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] e19_pass verus_code! {
-        use vstd::vec::*;
+        use vstd::view::*;
+        use vstd::prelude::*;
 
         // The summer school uses executable methods that work with nats & ints (here and above in
         // ex17). We dislike that feature of Dafny, because nobody actually wants it.
@@ -868,7 +869,7 @@ test_verify_one_file! {
                         0 <= prioridx < count ==>
                         int_vec[prioridx] <= int_vec[max_index as int],
             {
-                if int_vec.index(max_index) < int_vec.index(count) {
+                if int_vec[max_index] < int_vec[count] {
                     max_index = count;
                 }
                 count = count + 1;
@@ -885,10 +886,11 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] e20_pass verus_code! {
+        use vstd::view::*;
         #[allow(unused_imports)]
         use vstd::seq::*;
         #[allow(unused_imports)]
-        use vstd::vec::*;
+        use vstd::prelude::*;
 
         spec fn is_sorted(seq: Seq<u64>) -> bool {
             forall|i: int, j: int| 0 <= i < j < seq.len() ==> seq[i] <= seq[j]
@@ -911,7 +913,7 @@ test_verify_one_file! {
                     // because vec.len() == 0 then idx <= arbitrary()
                     forall|i: int, j: int| 0 <= i < j <= idx ==> vec[i] <= vec[j],
             {
-                if vec.index(idx) > vec.index(idx + 1) { // vec[idx]
+                if vec[idx] > vec[idx + 1] { // vec[idx]
                     return false;
                 }
                 idx = idx + 1;
@@ -925,10 +927,11 @@ test_verify_one_file! {
     #[test] e20_pass_with_ints verus_code! {
         // This version of e20 uses `Seq<int>` in `is_sorted`, which requires a manual conversion
 
+        use vstd::view::*;
         #[allow(unused_imports)]
         use vstd::seq::*;
         #[allow(unused_imports)]
-        use vstd::vec::*;
+        use vstd::prelude::*;
 
         spec fn is_sorted(intseq: Seq<int>) -> bool {
             forall|i: int, j: int| 0 <= i < j < intseq.len() ==> intseq[i] <= intseq[j]
@@ -952,7 +955,7 @@ test_verify_one_file! {
                         idx < intvec.len(),
                         forall|i: int, j: int| 0 <= i < j <= idx ==> intvec[i] <= intvec[j]
                 {
-                    if intvec.index(idx) > intvec.index(idx + 1) {
+                    if intvec[idx] > intvec[idx + 1] {
                         // TODO(chris): Maybe there's a way to not need this manual trigger.
                         // Pull this knowledge through the view/view_u64 so it'll trigger the
                         // exists (!forall) of !is_sorted.
@@ -970,10 +973,11 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] e21_pass verus_code! {
+        use vstd::view::*;
         #[allow(unused_imports)]
         use vstd::seq::*;
         #[allow(unused_imports)]
-        use vstd::vec::*;
+        use vstd::prelude::*;
         #[allow(unused_imports)]
         use vstd::modes::*;
 
@@ -1006,7 +1010,7 @@ test_verify_one_file! {
             {
                 let ghost decreases = high - low;
                 let mid = low + (high - low) / 2;
-                if *haystack.index(mid) < needle {
+                if haystack[mid] < needle {
                     let ghost old_low = low;
                     low = mid + 1;
                     assert forall|i: int| 0 <= i < low implies haystack[i] < needle by {

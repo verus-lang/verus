@@ -4,7 +4,7 @@ use builtin::*;
 use builtin_macros::*;
 use vstd::{pervasive::*, cell::*};
 use vstd::modes::*;
-use vstd::option::*;
+use vstd::prelude::*;
 
 verus!{
 

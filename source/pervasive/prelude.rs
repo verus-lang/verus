@@ -1,6 +1,7 @@
 pub use builtin::*;
 pub use builtin_macros::*;
 
+pub use super::view::*;
 pub use super::seq::Seq;
 pub use super::seq::seq;
 pub use super::set::Set;
@@ -8,8 +9,6 @@ pub use super::set::set;
 pub use super::map::Map;
 pub use super::map::map;
 
-pub use super::option::{Option, Option::*};
-pub use super::result::{Result, Result::*};
 pub use super::string::{String, StrSlice};
 
 pub use super::pervasive::{
@@ -19,3 +18,13 @@ pub use super::pervasive::{
     proof_from_false, 
     unreached,
 };
+
+
+pub use super::slice::SliceAdditionalSpecFns;
+pub use super::std_specs::option::OptionAdditionalFns;
+pub use super::std_specs::result::ResultAdditionalSpecFns;
+
+#[cfg(not(feature = "no_global_allocator"))] 
+pub use super::std_specs::vec::VecAdditionalSpecFns;
+#[cfg(not(feature = "no_global_allocator"))] 
+pub use super::std_specs::vec::VecAdditionalExecFns;

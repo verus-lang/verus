@@ -1,7 +1,7 @@
 use crate::ast::{
     BinaryOp, BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Constant, Decl, DeclX,
-    Decls, Expr, ExprX, Exprs, MultiOp, Qid, Quant, QueryX, Span, Stmt, StmtX, Stmts, Trigger,
-    Triggers, Typ, TypX, UnaryOp,
+    Decls, Expr, ExprX, Exprs, MultiOp, Qid, Quant, QueryX, Relation, Span, Stmt, StmtX, Stmts,
+    Trigger, Triggers, Typ, TypX, UnaryOp,
 };
 use crate::def::mk_skolem_id;
 use crate::messages::{error_from_labels, error_from_spans, MessageLabel, MessageLabels};
@@ -43,6 +43,27 @@ fn underscore_atom_atom_expr(s1: &str, s2: &str) -> Option<Constant> {
         }
     }
     None
+}
+
+fn relation_binary_op(n1: &Node, n2: &Node) -> Option<BinaryOp> {
+    match (n1, n2) {
+        (Node::Atom(s1), Node::Atom(s2)) => {
+            if let Ok(n) = s2.parse::<u64>() {
+                match s1.as_str() {
+                    "partial-order" => Some(BinaryOp::Relation(Relation::PartialOrder, n)),
+                    "linear-order" => Some(BinaryOp::Relation(Relation::LinearOrder, n)),
+                    "tree-order" => Some(BinaryOp::Relation(Relation::TreeOrder, n)),
+                    "piecewise-linear-order" => {
+                        Some(BinaryOp::Relation(Relation::PiecewiseLinearOrder, n))
+                    }
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
 }
 
 fn map_nodes_to_vec<A, F>(nodes: &[Node], f: &F) -> Result<Arc<Vec<A>>, String>
@@ -229,6 +250,13 @@ impl Parser {
                     Node::Atom(s) if s.to_string() == "bvlshr" => Some(BinaryOp::LShr),
                     Node::Atom(s) if s.to_string() == "bvshl" => Some(BinaryOp::Shl),
                     Node::Atom(s) if s.to_string() == "concat" => Some(BinaryOp::BitConcat),
+                    Node::List(nodes)
+                        if nodes.len() == 3
+                            && nodes[0] == Node::Atom("_".to_string())
+                            && relation_binary_op(&nodes[1], &nodes[2]).is_some() =>
+                    {
+                        relation_binary_op(&nodes[1], &nodes[2])
+                    }
                     _ => None,
                 };
                 let lop = match &nodes[0] {

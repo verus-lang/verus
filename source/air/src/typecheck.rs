@@ -225,14 +225,18 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         ExprX::Binary(BinaryOp::Implies, e1, e2) => {
             check_exprs(typing, "=>", &[bt(), bt()], &bt(), &[e1.clone(), e2.clone()])
         }
-        ExprX::Binary(BinaryOp::Eq, e1, e2) => {
+        ExprX::Binary(op @ (BinaryOp::Eq | BinaryOp::Relation(..)), e1, e2) => {
             let t1 = check_expr(typing, e1)?;
             let t2 = check_expr(typing, e2)?;
             if typ_eq(&t1, &t2) {
                 Ok(bt())
             } else {
                 Err(format!(
-                    "in equality, left expression has type {} and right expression has different type {}",
+                    "in {}, left expression has type {} and right expression has different type {}",
+                    match op {
+                        BinaryOp::Eq => "equality",
+                        _ => "relation",
+                    },
                     typ_name(&t1),
                     typ_name(&t2)
                 ))
