@@ -174,6 +174,7 @@ fn check_item<'tcx>(
         }
         ItemKind::Impl(impll) => {
             let impl_def_id = item.owner_id.to_def_id();
+            let impl_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, impl_def_id);
 
             if vattrs.external {
                 return Ok(());
@@ -277,6 +278,9 @@ fn check_item<'tcx>(
                     )?);
                 }
                 let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, path.res.def_id());
+                let trait_impl =
+                    vir::ast::TraitImplX { impl_path: impl_path.clone(), trait_path: path.clone() };
+                vir.trait_impls.push(ctxt.spanned_new(item.span, trait_impl));
                 Some((path, Arc::new(types)))
             } else {
                 None
@@ -318,6 +322,7 @@ fn check_item<'tcx>(
                                         let method = Arc::new(fun);
                                         FunctionKind::TraitMethodImpl {
                                             method,
+                                            impl_path: impl_path.clone(),
                                             trait_path,
                                             trait_typ_args,
                                             self_typ: self_typ.clone(),
@@ -380,6 +385,7 @@ fn check_item<'tcx>(
                                     )?;
                                 let assocx = vir::ast::AssocTypeImplX {
                                     name,
+                                    impl_path: impl_path.clone(),
                                     typ_params,
                                     self_typ: self_typ.clone(),
                                     trait_path,

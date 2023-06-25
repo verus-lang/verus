@@ -522,7 +522,7 @@ fn check_expr_handle_mut_arg(
             typing.erasure_modes.var_modes.push((expr.span.clone(), mode));
             Ok(mode)
         }
-        ExprX::Call(CallTarget::Fun(_, x, _, autospec_usage), es) => {
+        ExprX::Call(CallTarget::Fun(_, x, _, _, autospec_usage), es) => {
             assert!(*autospec_usage == AutospecUsage::Final);
 
             let function = match typing.funs.get(x) {

@@ -369,12 +369,10 @@ fn scc_error(krate: &Krate, head: &Node, nodes: &Vec<Node>) -> VirErr {
                     push(node, span);
                 }
             }
-            Node::DatatypeTraitBound { self_typ, .. } => {
-                if let TypX::Datatype(dt_path, _) = &**self_typ {
-                    if let Some(d) = krate.datatypes.iter().find(|d| d.x.path == *dt_path) {
-                        let span = d.span.clone();
-                        push(node, span);
-                    }
+            Node::TraitImpl(impl_path) => {
+                if let Some(t) = krate.trait_impls.iter().find(|t| t.x.impl_path == *impl_path) {
+                    let span = t.span.clone();
+                    push(node, span);
                 }
             }
         }
@@ -442,14 +440,14 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     //   3) Uses of datatype D to satisfy the trait bound T (in Rust notation, D: T).
 
     // We extend the call graph to represent trait declarations (T) and datatypes implementing
-    // traits (D: T) using Node::Trait(T) and Node::DatatypeTraitBound(D, T).
+    // traits (D: T) using Node::Trait(T) and Node::TraitImpl(impl for D: T).
     // We add the following edges to the call graph (see recursion::expand_call_graph):
     //   - T --> f if the requires/ensures of T's method declarations call f
     //   - f --> T for any function f<A: T> with type parameter A: T
     //   - D: T --> T
     //   - f --> D: T where one of f's expressions instantiates A: T with D: T.
     //   - D: T --> f where f is one of D's methods that implements T
-    // It is an error for Node::Trait(T) or Node::DatatypeTraitBound(D, T) to appear in a cycle in
+    // It is an error for Node::Trait(T) or Node::TraitImpl(impl for D: T) to appear in a cycle in
     // the call graph.
     // Note that we don't have nodes for datatypes D, because the datatype itself
     // does not carry its trait implementations -- the trait implementations D: T

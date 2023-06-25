@@ -51,8 +51,15 @@ pub fn assoc_type_decls_to_air(_ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
 pub fn assoc_type_impls_to_air(ctx: &Ctx, assocs: &Vec<AssocTypeImpl>) -> Commands {
     let mut commands: Vec<Command> = Vec::new();
     for assoc in assocs {
-        let AssocTypeImplX { name, typ_params, self_typ, trait_path, trait_typ_args, typ } =
-            &assoc.x;
+        let AssocTypeImplX {
+            name,
+            impl_path: _,
+            typ_params,
+            self_typ,
+            trait_path,
+            trait_typ_args,
+            typ,
+        } = &assoc.x;
         let typ_params = Arc::new(typ_params.iter().map(|(x, _)| x.clone()).collect());
         // forall typ_params. trait_path/name(decorate, self_typ, trait_typ_args) == typ
         // Note: we assume here that the typ_params appear in self_typ,

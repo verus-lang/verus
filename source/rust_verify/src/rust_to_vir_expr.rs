@@ -1034,6 +1034,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 vir::ast::CallTargetKind::Static,
                                 fun,
                                 typ_args,
+                                Arc::new(vec![]),
                                 AutospecUsage::Final,
                             ),
                             vec![vir_fun, tup],
@@ -1787,6 +1788,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     }),
                 }),
                 typ_args,
+                // arbitrary impl_path
+                Arc::new(vec![(Arc::new("A".to_string()), vir::def::prefix_lambda_type(0))]),
                 AutospecUsage::Final,
             );
             let args = Arc::new(vec![tgt_vir.clone(), idx_vir.clone()]);

@@ -765,7 +765,7 @@ fn generic_param_def_to_vir_name(gen: &rustc_middle::ty::GenericParamDef) -> Str
     }
 }
 
-fn param_ty_to_vir_name(param: &rustc_middle::ty::ParamTy) -> String {
+pub(crate) fn param_ty_to_vir_name(param: &rustc_middle::ty::ParamTy) -> String {
     let name = param.name.as_str();
     if name.starts_with("impl ") {
         vir::def::PREFIX_IMPL_TYPE_PARAM.to_string() + &param.index.to_string()

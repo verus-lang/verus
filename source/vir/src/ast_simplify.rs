@@ -236,13 +236,14 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
                     CallTargetKind::Static,
                     x.clone(),
                     Arc::new(vec![]),
+                    Arc::new(vec![]),
                     AutospecUsage::Final,
                 ),
                 Arc::new(vec![]),
             );
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
-        ExprX::Call(CallTarget::Fun(kind, tgt, typs, autospec_usage), args) => {
+        ExprX::Call(CallTarget::Fun(kind, tgt, typs, impl_paths, autospec_usage), args) => {
             assert!(*autospec_usage == AutospecUsage::Final);
 
             // Remove FnSpec type arguments
@@ -265,7 +266,13 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
                 args.clone()
             };
             let call = ExprX::Call(
-                CallTarget::Fun(kind.clone(), tgt.clone(), Arc::new(typs), *autospec_usage),
+                CallTarget::Fun(
+                    kind.clone(),
+                    tgt.clone(),
+                    Arc::new(typs),
+                    impl_paths.clone(),
+                    *autospec_usage,
+                ),
                 args,
             );
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
@@ -826,6 +833,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         functions,
         datatypes,
         traits,
+        trait_impls,
         assoc_type_impls,
         module_ids,
         external_fns,
@@ -934,6 +942,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         functions,
         datatypes,
         traits,
+        trait_impls: trait_impls.clone(),
         assoc_type_impls,
         module_ids,
         external_fns,
@@ -957,6 +966,7 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
         functions: Vec::new(),
         datatypes: Vec::new(),
         traits: Vec::new(),
+        trait_impls: Vec::new(),
         assoc_type_impls: Vec::new(),
         module_ids: Vec::new(),
         external_fns: Vec::new(),
@@ -967,6 +977,7 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
         kratex.functions.extend(k.functions.clone());
         kratex.datatypes.extend(k.datatypes.clone());
         kratex.traits.extend(k.traits.clone());
+        kratex.trait_impls.extend(k.trait_impls.clone());
         kratex.assoc_type_impls.extend(k.assoc_type_impls.clone());
         kratex.module_ids.extend(k.module_ids.clone());
         kratex.external_fns.extend(k.external_fns.clone());

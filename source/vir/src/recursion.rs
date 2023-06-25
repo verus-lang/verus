@@ -32,7 +32,7 @@ use std::sync::Arc;
 pub enum Node {
     Fun(Fun),
     Trait(Path),
-    DatatypeTraitBound { self_typ: Typ, trait_path: Path },
+    TraitImpl(Path),
 }
 
 #[derive(Clone)]
@@ -533,11 +533,11 @@ pub(crate) fn expand_call_graph(
     let f_node = Node::Fun(function.x.name.clone());
 
     // Add D: T --> f and D: T --> T where f is one of D's methods that implements T
-    if let FunctionKind::TraitMethodImpl { trait_path, self_typ, .. } = function.x.kind.clone() {
+    if let FunctionKind::TraitMethodImpl { trait_path, impl_path, .. } = function.x.kind.clone() {
         let t_node = Node::Trait(trait_path.clone());
-        let dt_node = Node::DatatypeTraitBound { self_typ, trait_path };
-        call_graph.add_edge(dt_node.clone(), t_node);
-        call_graph.add_edge(dt_node, f_node.clone());
+        let impl_node = Node::TraitImpl(impl_path.clone());
+        call_graph.add_edge(impl_node.clone(), t_node);
+        call_graph.add_edge(impl_node, f_node.clone());
     }
 
     // Add f --> T for any function f<A: T> with type parameter A: T
@@ -558,7 +558,7 @@ pub(crate) fn expand_call_graph(
     // Add T --> f2 if the requires/ensures of T's method declarations call f2
     crate::ast_visitor::function_visitor_check::<VirErr, _>(function, &mut |expr| {
         match &expr.x {
-            ExprX::Call(CallTarget::Fun(kind, x, ts, autospec), _) => {
+            ExprX::Call(CallTarget::Fun(kind, x, ts, impl_paths, autospec), _) => {
                 assert!(*autospec == AutospecUsage::Final);
 
                 use crate::ast::CallTargetKind;
@@ -574,7 +574,7 @@ pub(crate) fn expand_call_graph(
                             // If the Self type argument is a concrete type,
                             // then we should know concretely which function we're calling.
                             // We rely on rustc to resolve this case to Method(Some(x)):
-                            (CallTargetKind::Method(Some((x, _))), _) => Some(x),
+                            (CallTargetKind::Method(Some((x, _, _))), _) => Some(x),
                             // By contrast, if the Self type argument is a type parameter,
                             // then we don't know concretely which function we're calling;
                             // conceptually, we're looking up the function dynamically in
@@ -613,7 +613,18 @@ pub(crate) fn expand_call_graph(
                         Some(x)
                     };
 
-                for ((_, tbound), targ) in t_param_args {
+                for (tparam, _) in impl_paths.iter() {
+                    // See note about Self below.
+                    if tparam != &crate::def::trait_self_type_param() {
+                        if !f2.x.typ_bounds.iter().any(|(p, _)| p == tparam) {
+                            panic!(
+                                "missing typ param {} {:?} {:?} {:?}",
+                                tparam, &f2.x.typ_bounds, impl_paths, expr.span
+                            );
+                        }
+                    }
+                }
+                for ((tparam, tbound), targ) in t_param_args {
                     // For each instantiation of a callee type parameter,
                     // if the type parameter has a bound,
                     // we need to pass in the right dictionary.
@@ -626,19 +637,23 @@ pub(crate) fn expand_call_graph(
                         GenericBoundX::Traits(traits) => {
                             for tr in traits {
                                 match &**targ {
+                                    // REVIEW: TypX::Projection
                                     TypX::TypParam(..) => {
                                         // We already have the dictionaries for type parameters,
                                         // so nothing else needs to happen here.
                                     }
                                     _ => {
-                                        // f --> D: T
-                                        call_graph.add_edge(
-                                            f_node.clone(),
-                                            Node::DatatypeTraitBound {
-                                                self_typ: targ.clone(),
-                                                trait_path: tr.clone(),
-                                            },
-                                        );
+                                        let x_impl = impl_paths.iter().find(|(p, _)| p == tparam);
+                                        if let Some((_, impl_path)) = x_impl {
+                                            // f --> D: T
+                                            let impl_node = Node::TraitImpl(impl_path.clone());
+                                            call_graph.add_edge(f_node.clone(), impl_node);
+                                        } else {
+                                            panic!(
+                                                "missing impl for {} {:?} {:?} {:?}",
+                                                tparam, tr, expr.span, impl_paths
+                                            );
+                                        }
                                     }
                                 }
                             }

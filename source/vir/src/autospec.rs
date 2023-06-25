@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 fn simplify_one_expr(functions: &HashMap<Fun, Function>, expr: &Expr) -> Result<Expr, VirErr> {
     match &expr.x {
-        ExprX::Call(CallTarget::Fun(kind, tgt, typs, autospec_usage), args) => {
+        ExprX::Call(CallTarget::Fun(kind, tgt, typs, impl_paths, autospec_usage), args) => {
             let tgt = match *autospec_usage {
                 AutospecUsage::IfMarked => match &functions[tgt].x.attrs.autospec {
                     None => tgt,
@@ -21,7 +21,13 @@ fn simplify_one_expr(functions: &HashMap<Fun, Function>, expr: &Expr) -> Result<
             };
 
             let call = ExprX::Call(
-                CallTarget::Fun(kind.clone(), tgt.clone(), typs.clone(), AutospecUsage::Final),
+                CallTarget::Fun(
+                    kind.clone(),
+                    tgt.clone(),
+                    typs.clone(),
+                    impl_paths.clone(),
+                    AutospecUsage::Final,
+                ),
                 args.clone(),
             );
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
@@ -50,6 +56,7 @@ pub fn resolve_autospec(krate: &Krate) -> Result<Krate, VirErr> {
         functions,
         datatypes,
         traits,
+        trait_impls,
         module_ids,
         assoc_type_impls,
         external_fns,
@@ -73,6 +80,7 @@ pub fn resolve_autospec(krate: &Krate) -> Result<Krate, VirErr> {
         functions,
         datatypes,
         traits,
+        trait_impls: trait_impls.clone(),
         assoc_type_impls: assoc_type_impls.clone(),
         module_ids,
         external_fns,
