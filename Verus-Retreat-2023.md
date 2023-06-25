@@ -22,10 +22,17 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 - Simple crash consistency framework (Jay L)
 
 *Experience reports building systems in Verus (2 hours in the afternoon)*
+[We are likely to move this to Tuesday at 11ET to make it easier for remote folks to join.]
 
 (Ask people for 10-minute presentations)
 - What's working well
 - What isn't working
+
+* Reto (NR)
+* Matthias (Page Table)
+* Jialin / Tenzin (Verusplinter)
+* Jay L. / Jon (IronSHT)
+* Jay B. (Serialization)
 
 *User experience improvements (2 hours in the afternoon)*
 
