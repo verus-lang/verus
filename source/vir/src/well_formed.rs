@@ -3,7 +3,7 @@ use crate::ast::{
     Krate, MaskSpec, Mode, MultiOp, Path, TypX, UnaryOp, UnaryOpr, VirErr, VirErrAs,
 };
 use crate::ast_util::{
-    error, is_visible_to_opt, msg_error, path_as_rust_name, referenced_vars_expr,
+    error, is_visible_to_opt, msg_error, path_as_friendly_rust_name, referenced_vars_expr,
 };
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::user_local_name;
@@ -74,7 +74,7 @@ fn check_path_and_get_datatype<'a>(
                     span,
                     &format!(
                         "cannot use type marked `external_type_specification` directly; use `{:}` instead",
-                        path_as_rust_name(actual_path),
+                        path_as_friendly_rust_name(actual_path),
                     ),
                 );
             } else if is_external(ctxt, path) {
@@ -83,7 +83,7 @@ fn check_path_and_get_datatype<'a>(
                     "cannot use type marked `external`; try marking it `external_body` instead?",
                 );
             } else {
-                let rpath = path_as_rust_name(path);
+                let rpath = path_as_friendly_rust_name(path);
                 return error(
                     span,
                     &format!(
@@ -133,7 +133,7 @@ fn check_path_and_get_function<'a>(
                     span,
                     &format!(
                         "cannot call function marked `external_fn_specification` directly; call `{:}` instead",
-                        path_as_rust_name(actual_path),
+                        path_as_friendly_rust_name(actual_path),
                     ),
                 );
             } else if is_external(ctxt, &x) {
@@ -142,7 +142,7 @@ fn check_path_and_get_function<'a>(
                     "cannot call function marked `external`; try marking it `external_body` instead, or add a Verus specification via `external_fn_specification`?",
                 );
             } else {
-                let path = path_as_rust_name(&x.path);
+                let path = path_as_friendly_rust_name(&x.path);
                 return error(
                     span,
                     &format!(
@@ -179,7 +179,7 @@ fn check_one_expr(
         ExprX::ConstVar(x) => {
             check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
         }
-        ExprX::Call(CallTarget::Fun(_, x, _, _), args) => {
+        ExprX::Call(CallTarget::Fun(_, x, _, _, _), args) => {
             let f = check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
             if f.x.attrs.is_decrease_by {
                 // a decreases_by function isn't a real function;
@@ -868,7 +868,7 @@ fn func_conflict_error(function1: &Function, function2: &Function) -> Message {
 
     let err = air::messages::error_bare(format!(
         "duplicate specification for `{:}`",
-        crate::ast_util::path_as_rust_name(&function1.x.name.path)
+        crate::ast_util::path_as_friendly_rust_name(&function1.x.name.path)
     ));
     let err = add_label(err, function1);
     let err = add_label(err, function2);
@@ -885,7 +885,7 @@ fn datatype_conflict_error(dt1: &Datatype, dt2: &Datatype) -> Message {
 
     let err = air::messages::error_bare(format!(
         "duplicate specification for `{:}`",
-        crate::ast_util::path_as_rust_name(&dt1.x.path)
+        crate::ast_util::path_as_friendly_rust_name(&dt1.x.path)
     ));
     let err = add_label(err, dt1);
     let err = add_label(err, dt2);

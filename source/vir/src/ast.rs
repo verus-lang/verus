@@ -484,18 +484,24 @@ pub enum BuiltinSpecFun {
     ClosureEns,
 }
 
+/// Name of each type parameter and path of each impl that is used to satisfy
+/// a trait bound when instantiating the type parameter
+/// This is used to name the "dictionary" that is (conceptually) passed along with the
+/// type argument (see recursive_types.rs)
+pub type BoundImplPaths = Arc<Vec<(Ident, Path)>>;
+
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum CallTargetKind {
     /// Statically known function
     Static,
     /// Dynamically dispatched method.  Optionally specify the statically resolved target if known.
-    Method(Option<(Fun, Typs)>),
+    Method(Option<(Fun, Typs, BoundImplPaths)>),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum CallTarget {
     /// Regular function, passing some type arguments
-    Fun(CallTargetKind, Fun, Typs, AutospecUsage),
+    Fun(CallTargetKind, Fun, Typs, BoundImplPaths, AutospecUsage),
     /// Call a dynamically computed FnSpec (no type arguments allowed),
     /// where the function type is specified by the GenericBound of typ_param.
     FnSpec(Expr),
@@ -758,6 +764,8 @@ pub enum FunctionKind {
     /// Method implementation inside an impl, implementing a trait method for a trait for a datatype
     TraitMethodImpl {
         method: Fun,
+        /// Path of the impl (e.g. "impl2") that contains the method implementation
+        impl_path: Path,
         trait_path: Path,
         trait_typ_args: Typs,
         self_typ: Typ,
@@ -885,11 +893,21 @@ pub type AssocTypeImpl = Arc<Spanned<AssocTypeImplX>>;
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct AssocTypeImplX {
     pub name: Ident,
+    /// Path of the impl (e.g. "impl2") that contains "type name = typ;"
+    pub impl_path: Path,
     pub typ_params: TypBounds,
     pub self_typ: Typ,
     pub trait_path: Path,
     pub trait_typ_args: Arc<Vec<Typ>>,
     pub typ: Typ,
+}
+
+pub type TraitImpl = Arc<Spanned<TraitImplX>>;
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub struct TraitImplX {
+    /// Path of the impl (e.g. "impl2")
+    pub impl_path: Path,
+    pub trait_path: Path,
 }
 
 /// An entire crate
@@ -902,6 +920,8 @@ pub struct KrateX {
     pub datatypes: Vec<Datatype>,
     /// All traits in the crate
     pub traits: Vec<Trait>,
+    /// Every impl in the crate of a trait
+    pub trait_impls: Vec<TraitImpl>,
     /// All associated type impls in the crate
     pub assoc_type_impls: Vec<AssocTypeImpl>,
     /// List of all modules in the crate

@@ -27,7 +27,7 @@ pub fn demote_foreign_traits(krate: &Krate) -> Result<Krate, VirErr> {
                         &function.span,
                         format!(
                             "cannot use trait {} from another crate as a bound",
-                            crate::ast_util::path_as_rust_name(trait_path)
+                            crate::ast_util::path_as_friendly_rust_name(trait_path)
                         ),
                     );
                 }
@@ -107,16 +107,22 @@ fn demote_one_expr(traits: &HashSet<Path>, expr: &Expr) -> Result<Expr, VirErr> 
     match &expr.x {
         ExprX::Call(
             CallTarget::Fun(
-                CallTargetKind::Method(Some((resolved_fun, resolved_typs))),
+                CallTargetKind::Method(Some((resolved_fun, resolved_typs, impl_paths))),
                 fun,
                 _typs,
+                _impl_paths,
                 autospec_usage,
             ),
             args,
         ) if !traits.contains(&get_trait(fun)) => {
             let kind = CallTargetKind::Static;
-            let ct =
-                CallTarget::Fun(kind, resolved_fun.clone(), resolved_typs.clone(), *autospec_usage);
+            let ct = CallTarget::Fun(
+                kind,
+                resolved_fun.clone(),
+                resolved_typs.clone(),
+                impl_paths.clone(),
+                *autospec_usage,
+            );
             Ok(expr.new_x(ExprX::Call(ct, args.clone())))
         }
         _ => Ok(expr.clone()),

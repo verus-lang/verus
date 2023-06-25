@@ -1129,3 +1129,15 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot use type marked `external`")
 }
+
+test_verify_one_file_with_options! {
+    #[test] right_decorations_for_tuple_arg ["vstd"] => verus_code! {
+        fn test<T: Copy, F: std::clone::Clone>(s: &T, key: T, less: F)
+            where F: Fn(T, T) -> bool
+            requires
+                forall |x, y| #[trigger] less.requires((x, y)),
+        {
+            less(key, *s);
+        }
+    } => Ok(())
+}

@@ -18,7 +18,6 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
-use std::rc::Rc;
 use std::sync::Arc;
 
 // Use decorated types in addition to undecorated types (see sst_to_air::typ_to_id)
@@ -36,19 +35,19 @@ pub struct ChosenTriggers {
 /// Context for across all modules
 pub struct GlobalCtx {
     pub(crate) chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>>, // diagnostics
-    pub(crate) datatypes: HashMap<Path, Variants>,
-    pub(crate) fun_bounds: HashMap<Fun, Vec<GenericBound>>,
+    pub(crate) datatypes: Arc<HashMap<Path, Variants>>,
+    pub(crate) fun_bounds: Arc<HashMap<Fun, Vec<GenericBound>>>,
     /// Used for synthesized AST nodes that have no relation to any location in the original code:
     pub(crate) no_span: Span,
-    pub func_call_graph: Graph<Node>,
-    pub func_call_sccs: Vec<Node>,
-    pub datatype_graph: Graph<Path>,
+    pub func_call_graph: Arc<Graph<Node>>,
+    pub func_call_sccs: Arc<Vec<Node>>,
+    pub datatype_graph: Arc<Graph<Path>>,
     /// Connects quantifier identifiers to the original expression
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
-    pub(crate) inferred_modes: HashMap<InferMode, Mode>,
+    pub(crate) inferred_modes: Arc<HashMap<InferMode, Mode>>,
     pub(crate) rlimit: u32,
-    pub(crate) interpreter_log: Rc<RefCell<Option<File>>>,
-    pub(crate) vstd_crate_name: Option<Ident>,
+    pub(crate) interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
+    pub(crate) vstd_crate_name: Option<Ident>, // already an arc
     pub arch: ArchWordBits,
 }
 
@@ -180,12 +179,13 @@ impl GlobalCtx {
         no_span: Span,
         inferred_modes: HashMap<InferMode, Mode>,
         rlimit: u32,
-        interpreter_log: Rc<RefCell<Option<File>>>,
+        interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
         vstd_crate_name: Option<Ident>,
         arch: ArchWordBits,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
             std::cell::RefCell::new(Vec::new());
+
         let datatypes: HashMap<Path, Variants> =
             krate.datatypes.iter().map(|d| (d.x.path.clone(), d.x.variants.clone())).collect();
         let mut func_map: HashMap<Fun, Function> = HashMap::new();
@@ -229,19 +229,46 @@ impl GlobalCtx {
 
         Ok(GlobalCtx {
             chosen_triggers,
-            datatypes,
-            fun_bounds,
+            datatypes: Arc::new(datatypes),
+            fun_bounds: Arc::new(fun_bounds),
             no_span,
-            func_call_graph,
-            func_call_sccs,
-            datatype_graph,
+            func_call_graph: Arc::new(func_call_graph),
+            func_call_sccs: Arc::new(func_call_sccs),
+            datatype_graph: Arc::new(datatype_graph),
             qid_map,
-            inferred_modes,
+            inferred_modes: Arc::new(inferred_modes),
             rlimit,
             interpreter_log,
             vstd_crate_name,
             arch,
         })
+    }
+
+    pub fn from_self_with_log(&self, interpreter_log: Arc<std::sync::Mutex<Option<File>>>) -> Self {
+        let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
+            std::cell::RefCell::new(Vec::new());
+        let qid_map = RefCell::new(HashMap::new());
+
+        GlobalCtx {
+            chosen_triggers,
+            datatypes: self.datatypes.clone(),
+            fun_bounds: self.fun_bounds.clone(),
+            no_span: self.no_span.clone(),
+            func_call_graph: self.func_call_graph.clone(),
+            datatype_graph: self.datatype_graph.clone(),
+            func_call_sccs: self.func_call_sccs.clone(),
+            qid_map,
+            inferred_modes: self.inferred_modes.clone(),
+            rlimit: self.rlimit,
+            interpreter_log,
+            vstd_crate_name: self.vstd_crate_name.clone(),
+            arch: self.arch,
+        }
+    }
+
+    pub fn merge(&mut self, other: Self) {
+        self.qid_map.borrow_mut().extend(other.qid_map.into_inner());
+        self.chosen_triggers.borrow_mut().extend(other.chosen_triggers.into_inner());
     }
 
     // Report chosen triggers as strings for printing diagnostics

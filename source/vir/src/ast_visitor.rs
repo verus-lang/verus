@@ -232,7 +232,7 @@ where
                 }
                 ExprX::Call(target, es) => {
                     match target {
-                        CallTarget::Fun(_, _, _, _) => (),
+                        CallTarget::Fun(_, _, _, _, _) => (),
                         CallTarget::BuiltinSpecFun(_, _) => (),
                         CallTarget::FnSpec(fun) => {
                             expr_visitor_control_flow!(expr_visitor_dfs(fun, map, mf));
@@ -571,17 +571,23 @@ where
         ExprX::Loc(e) => ExprX::Loc(map_expr_visitor_env(e, map, env, fe, fs, ft)?),
         ExprX::Call(target, es) => {
             let target = match target {
-                CallTarget::Fun(kind, x, typs, autospec_usage) => {
+                CallTarget::Fun(kind, x, typs, impl_paths, autospec_usage) => {
                     use crate::ast::CallTargetKind;
                     let kind = match kind {
                         CallTargetKind::Static | CallTargetKind::Method(None) => kind.clone(),
-                        CallTargetKind::Method(Some((f, ts))) => {
+                        CallTargetKind::Method(Some((f, ts, ips))) => {
                             let ts = vec_map_result(&**ts, |t| (map_typ_visitor_env(t, env, ft)))?;
-                            CallTargetKind::Method(Some((f.clone(), Arc::new(ts))))
+                            CallTargetKind::Method(Some((f.clone(), Arc::new(ts), ips.clone())))
                         }
                     };
                     let typs = vec_map_result(&**typs, |t| (map_typ_visitor_env(t, env, ft)))?;
-                    CallTarget::Fun(kind.clone(), x.clone(), Arc::new(typs), *autospec_usage)
+                    CallTarget::Fun(
+                        kind.clone(),
+                        x.clone(),
+                        Arc::new(typs),
+                        impl_paths.clone(),
+                        *autospec_usage,
+                    )
                 }
                 CallTarget::BuiltinSpecFun(x, typs) => {
                     let typs = vec_map_result(&**typs, |t| (map_typ_visitor_env(t, env, ft)))?;
@@ -962,11 +968,18 @@ where
         FunctionKind::Static
         | FunctionKind::TraitMethodDecl { trait_path: _ }
         | FunctionKind::ForeignTraitMethodImpl(_) => kind.clone(),
-        FunctionKind::TraitMethodImpl { method, trait_path, trait_typ_args, self_typ } => {
+        FunctionKind::TraitMethodImpl {
+            method,
+            impl_path,
+            trait_path,
+            trait_typ_args,
+            self_typ,
+        } => {
             let trait_typ_args =
                 Arc::new(vec_map_result(&**trait_typ_args, |t| map_typ_visitor_env(t, env, ft))?);
             FunctionKind::TraitMethodImpl {
                 method: method.clone(),
+                impl_path: impl_path.clone(),
                 trait_path: trait_path.clone(),
                 trait_typ_args,
                 self_typ: map_typ_visitor_env(self_typ, env, ft)?,
@@ -1097,12 +1110,14 @@ pub(crate) fn map_assoc_type_impl_visitor_env<E, FT>(
 where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
-    let AssocTypeImplX { name, typ_params, self_typ, trait_path, trait_typ_args, typ } = &assoc.x;
+    let AssocTypeImplX { name, impl_path, typ_params, self_typ, trait_path, trait_typ_args, typ } =
+        &assoc.x;
     let self_typ = map_typ_visitor_env(self_typ, env, ft)?;
     let trait_typ_args = vec_map_result(&**trait_typ_args, |t| map_typ_visitor_env(t, env, ft))?;
     let typ = map_typ_visitor_env(typ, env, ft)?;
     let assocx = AssocTypeImplX {
         name: name.clone(),
+        impl_path: impl_path.clone(),
         typ_params: typ_params.clone(),
         self_typ,
         trait_path: trait_path.clone(),

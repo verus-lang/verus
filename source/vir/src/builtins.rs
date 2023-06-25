@@ -39,6 +39,7 @@ pub fn builtin_krate(no_span: &Span) -> Krate {
         functions: Vec::new(),
         datatypes: Vec::new(),
         traits: Vec::new(),
+        trait_impls: Vec::new(),
         assoc_type_impls: Vec::new(),
         module_ids: Vec::new(),
         external_fns: Vec::new(),

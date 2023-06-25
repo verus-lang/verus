@@ -293,7 +293,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         }
         ExprX::ConstVar(..) => panic!("ConstVar should already be removed"),
         ExprX::Call(target, exprs) => match target {
-            CallTarget::Fun(_, name, _, _) => {
+            CallTarget::Fun(_, name, _, _, _) => {
                 let function = &ctx.func_map[name].x;
                 let is_spec = function.mode == Mode::Spec;
                 let is_trait = !matches!(function.kind, FunctionKind::Static);
@@ -893,6 +893,7 @@ pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &Krate) -> Krate {
         functions,
         datatypes,
         traits,
+        trait_impls,
         assoc_type_impls,
         module_ids,
         external_fns,
@@ -903,6 +904,7 @@ pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &Krate) -> Krate {
         functions: functions.iter().map(|f| poly_function(ctx, f)).collect(),
         datatypes: datatypes.iter().map(|d| poly_datatype(ctx, d)).collect(),
         traits: traits.clone(),
+        trait_impls: trait_impls.clone(),
         assoc_type_impls: assoc_type_impls.iter().map(|a| poly_assoc_type_impl(ctx, a)).collect(),
         module_ids: module_ids.clone(),
         external_fns: external_fns.clone(),
