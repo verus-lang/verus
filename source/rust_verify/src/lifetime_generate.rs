@@ -586,7 +586,19 @@ fn mk_typ_args<'tcx>(
                 typ_args.push(erase_ty(ctxt, state, &ty));
             }
             GenericArgKind::Lifetime(_) => {}
-            _ => panic!("typ_arg"),
+            GenericArgKind::Const(cnst) => {
+                let t = match &*mid_ty_const_to_vir(ctxt.tcx, None, &cnst).expect("typ") {
+                    vir::ast::TypX::TypParam(x) => {
+                        Box::new(TypX::TypParam(state.typ_param(x.to_string(), None)))
+                    }
+                    vir::ast::TypX::ConstInt(i) => Box::new(TypX::Primitive(i.to_string())),
+                    _ => panic!("GenericArgKind::Const"),
+                };
+                typ_args.push(t);
+            }
+            _ => {
+                panic!("typ_arg")
+            }
         }
     }
     typ_args
