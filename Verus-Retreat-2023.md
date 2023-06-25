@@ -38,6 +38,7 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 
 - Setting up CI that includes other Verus projects (a-la crater) (Andrea)
 - Proof actions (Chanhee)
+- Axiom import sets (Andrea / Pranav)
 
 *6:00 PM -- Collaboration Dinner at [Union Grill](https://goo.gl/maps/FuDFyREMUxLjNWeC8)*
 
