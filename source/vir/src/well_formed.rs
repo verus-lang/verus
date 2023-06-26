@@ -663,6 +663,9 @@ fn check_function(
                     TypX::Bool => {}
                     TypX::Boxed(_) => {}
                     _ => {
+                        if let ExprX::Const(..) = &expr.x {
+                            return Ok(());
+                        }
                         return error(
                             &req.span,
                             "integer_ring mode's expressions should be int/bool type",
@@ -679,6 +682,10 @@ fn check_function(
                     TypX::Bool => {}
                     TypX::Boxed(_) => {}
                     _ => {
+                        if let ExprX::Const(..) = &expr.x {
+                            return Ok(());
+                        }
+
                         return error(
                             &ens.span,
                             "integer_ring mode's expressions should be int/bool type",
