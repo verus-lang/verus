@@ -43,7 +43,7 @@ test_verify_one_file! {
                 (p1_full - p1_lh) % BASE == 0,
                 (m0d * m0 - (BASE-1)) % BASE == 0,
                 (ui - p1_full * m0d) % BASE == 0,
-            ensures 
+            ensures
                 p2_full % BASE == 0
         {}
     } => Ok(())
@@ -62,7 +62,7 @@ test_verify_one_file! {
             p12: int, p13: int, p14: int, p15: int,
             x: int, x_0: int, x_1: int, x_2: int, x_3: int,
             y: int, y_0: int, y_1: int,y_2: int, y_3: int)
-        
+
             requires
                 x == x_0 + x_1 * B + x_2 * B * B + x_3 * B * B * B,
                 y == y_0 + y_1 * B + y_2 * B * B + y_3 * B * B * B,
@@ -118,8 +118,8 @@ test_verify_one_file! {
     test6 verus_code! {
         #[verifier::integer_ring]
         proof fn test6(x: int, y: int, z:int)
-            ensures 
-                (x+y+z)*(x+y+z) == x*x + y*y + z*z + 2*(x*y + y*z + z*x) 
+            ensures
+                (x+y+z)*(x+y+z) == x*x + y*y + z*z + 2*(x*y + y*z + z*x)
         {}
     } => Ok(())
 }
@@ -152,7 +152,7 @@ test_verify_one_file! {
             p12: int, p13: int, p14: int, p15: int,
             x: int, x_0: int, x_1: int, x_2: int, x_3: int,
             y: int, y_0: int, y_1: int,y_2: int, y_3: int)
-        
+
             requires
                 x == x_0 + x_1 * B + x_2 * B * B + x_3 * B * B * B,
                 y == y_0 + y_1 * B + y_2 * B * B + y_3 * B * B * B,
