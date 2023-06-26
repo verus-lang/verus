@@ -46,9 +46,11 @@ This is a tentative program.
 * Jay L. / Jon (IronSHT)
 * Jay B. (Serialization)
 
-- Verus internals overview + Q&A (afternoon) (Chris, Andrea)
-- Math library / Verus standard library (afternoon) (Liz and Alex)
-- Bug fix hack-a-thon (afternoon)
+* Afternoon sessions *
+
+- Verus internals overview + Q&A (Chris, Andrea)
+- Math library / Verus standard library (Liz and Alex)
+- Bug fix hack-a-thon
 
 ### Wednesday, June 28th
 
