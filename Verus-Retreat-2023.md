@@ -25,7 +25,6 @@ This is a tentative program.
 
 - Proof actions (Chanhee)
 - Setting up CI that includes other Verus projects (a-la crater) (Andrea)
-- Proof stability (discussion)
 
 *Issue/feature request triage (1-2 hours in the afternoon)*
 
@@ -52,6 +51,7 @@ This is a tentative program.
 - Verus internals overview + Q&A (Chris, Andrea)
 - Math library / Verus standard library (Liz and Alex)
 - Axiom import sets (Andrea / Pranav)
+- Proof stability (Yi) [candidate]
 - Bug fix hack-a-thon
 
 
