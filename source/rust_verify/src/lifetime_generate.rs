@@ -596,9 +596,6 @@ fn mk_typ_args<'tcx>(
                 };
                 typ_args.push(t);
             }
-            _ => {
-                panic!("typ_arg")
-            }
         }
     }
     typ_args
