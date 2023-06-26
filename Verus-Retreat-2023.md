@@ -24,7 +24,6 @@ This is a tentative program.
 *User experience improvements (2 hours in the afternoon)*
 
 - Proof actions (Chanhee)
-- Axiom import sets (Andrea / Pranav)
 - Setting up CI that includes other Verus projects (a-la crater) (Andrea)
 - Proof stability (discussion)
 
@@ -51,6 +50,7 @@ This is a tentative program.
 
 - Verus internals overview + Q&A (Chris, Andrea)
 - Math library / Verus standard library (Liz and Alex)
+- Axiom import sets (Andrea / Pranav)
 - Bug fix hack-a-thon
 
 
