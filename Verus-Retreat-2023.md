@@ -35,7 +35,7 @@ This is a tentative program.
 
 - Documentation write-a-thon  (2-3 hours in the morning)
 
-* (11am) Experience reports building systems in Verus (2 hours in the morning / afternoon) *
+*(11am) Experience reports building systems in Verus (2 hours in the morning / afternoon)*
 
 - What's working well
 - What isn't working
@@ -46,7 +46,7 @@ This is a tentative program.
 * Jay L. / Jon (IronSHT)
 * Jay B. (Serialization)
 
-* Afternoon sessions *
+*Afternoon sessions*
 
 - Verus internals overview + Q&A (Chris, Andrea)
 - Math library / Verus standard library (Liz and Alex)
