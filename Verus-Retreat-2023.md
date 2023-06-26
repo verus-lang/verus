@@ -62,6 +62,8 @@ This is a tentative program.
 - Writing specifications for Rust's standard library (2 hours in the afternoon) (Travis, Andrea)
 - IronFleet hackathon (afternoon) (Jay L)
 
+(Escape Room)
+
 ### Thursday, June 29th (till 12pm)
 
 - Benchmarking suite for Verus (1-2 hours in the morning) (Chris)
