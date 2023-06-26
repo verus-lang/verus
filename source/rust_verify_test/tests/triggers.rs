@@ -51,7 +51,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_illegal_arith_trigger verus_code! {
+    #[test] test_ok_arith_trigger verus_code! {
         spec fn some_fn(a: nat) -> nat;
         proof fn quant()
             ensures
@@ -59,7 +59,7 @@ test_verify_one_file! {
         {
             assume(false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "triggers cannot contain integer arithmetic")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -85,24 +85,62 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mul_distrib_forall_fail verus_code! {
+    #[test] test_mul_distrib_forall_ok verus_code! {
         #[verifier(nonlinear)]
         proof fn mul_distributive_auto()
             ensures
                 forall|a: nat, b: nat, c: nat| #[trigger] ((a + b) * c) == a * c + b * c
         {
+            assert forall|a: nat, b: nat, c: nat| #[trigger] ((a + b) * c) == a * c + b * c by {
+            }
         }
-    } => Err(err) => assert_vir_error_msg(err, "trigger must be a function call, a field access, or a bitwise operator")
+    } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_arith_and_ord_fail verus_code! {
+    #[test] test_mul_distrib_forall_ok2 verus_code! {
+        spec fn t(n: nat) -> bool { true }
+        #[verifier(nonlinear)]
+        proof fn mul_distributive_auto()
+            ensures
+                forall|a: nat, b: nat, c: nat| t(c) ==> #[trigger] ((a + b) * c) == a * c + b * c
+        {
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_mul_distrib_forall_fail1 verus_code! {
+        spec fn f(n: nat) -> nat { 0 }
+        #[verifier(nonlinear)]
+        proof fn mul_distributive_auto()
+            ensures
+                forall|a: nat, b: nat, c: nat| #[trigger] ((a + b + f(c)) * c) == a * c + b * c
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "variable c in trigger cannot appear in both arithmetic and non-arithmetic positions")
+}
+
+test_verify_one_file! {
+    #[test] test_mul_distrib_forall_fail2 verus_code! {
+        spec fn t(n: nat) -> bool { true }
+        #[verifier(nonlinear)]
+        proof fn mul_distributive_auto()
+            ensures
+                forall|a: nat, b: nat, c: nat| #[trigger] t(c) ==> #[trigger] ((a + b) * c) == a * c + b * c
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "variable c in trigger cannot appear in both arithmetic and non-arithmetic positions")
+}
+
+test_verify_one_file! {
+    #[test] test_arith_and_ord verus_code! {
         proof fn quant()
-            ensures forall_arith(|a: nat, b: nat, c: nat| #[trigger] a + b <= c)
+            ensures forall_arith(|a: nat, b: nat, c: nat| #[trigger] (a + b <= c))
         {
             assume(false)
         }
-    } => Err(err) => assert_vir_error_msg(err, "trigger in forall_arith must be an integer arithmetic operator")
+    } => Err(err) => assert_vir_error_msg(err, "trigger must be a function call, a field access, or arithmetic operator")
 }
 
 test_verify_one_file! {

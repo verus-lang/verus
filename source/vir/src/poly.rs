@@ -67,6 +67,12 @@ while the latter assumes that f's parameters are int (as is the case for datatyp
 Note that the latter two cases lead to triggers involving "Unbox(x)", not just x.
 This can lead to the completeness problems of (3).
 Therefore, the expression Unbox(Box(1)) explicitly introduces a superfluous Unbox to handle (3).
+
+Note: in some cases, we can also support int quantifier variables x,
+for the purpose of triggering on arithmetic expressions,
+as long as *all* the expressions in all the triggers use x for arithmetic.
+For example, #[trigger] g(f(x), x + 1) would not be allowed,
+because x is used both for f and for +.
 */
 
 use crate::ast::{
@@ -454,13 +460,15 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             mk_expr(ExprX::Multi(MultiOp::Chained(ops.clone()), Arc::new(es)))
         }
         ExprX::Quant(quant, binders, e1) => {
+            let natives = crate::triggers::predict_native_quant_vars(binders, e1);
             let mut bs: Vec<Binder<Typ>> = Vec::new();
             state.types.push_scope(true);
             for binder in binders.iter() {
-                let typ = if quant.boxed_params {
-                    coerce_typ_to_poly(ctx, &binder.a)
-                } else {
+                let native = natives.contains(&binder.name);
+                let typ = if native || !quant.boxed_params {
                     coerce_typ_to_native(ctx, &binder.a)
+                } else {
+                    coerce_typ_to_poly(ctx, &binder.a)
                 };
                 let _ = state.types.insert(binder.name.clone(), typ.clone());
                 bs.push(binder.new_a(typ));
@@ -570,7 +578,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let e1 = coerce_expr_to_native(ctx, &poly_expr(ctx, state, e1));
             mk_expr(ExprX::AssertAssume { is_assume: *is_assume, expr: e1 })
         }
-        ExprX::Forall { vars, require, ensure, proof } => {
+        ExprX::AssertBy { vars, require, ensure, proof, assumption } => {
             let mut bs: Vec<Binder<Typ>> = Vec::new();
             state.types.push_scope(true);
             for binder in vars.iter() {
@@ -582,8 +590,9 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let ensure = coerce_expr_to_native(ctx, &poly_expr(ctx, state, ensure));
             let proof = poly_expr(ctx, state, proof);
             state.types.pop_scope();
+            let assumption = coerce_expr_to_native(ctx, &poly_expr(ctx, state, assumption));
             let vars = Arc::new(bs);
-            mk_expr(ExprX::Forall { vars, require, ensure, proof })
+            mk_expr(ExprX::AssertBy { vars, require, ensure, proof, assumption })
         }
         ExprX::AssertQuery { requires, ensures, proof, mode } => {
             state.types.push_scope(true);

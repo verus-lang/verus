@@ -1,28 +1,39 @@
 use crate::ast::{
-    BinaryOp, Ident, IntegerTypeBoundKind, SpannedTyped, TriggerAnnotation, Typ, TypX, UnaryOp,
-    UnaryOpr, VarAt, VirErr,
+    BinaryOp, Ident, SpannedTyped, TriggerAnnotation, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use crate::ast_util::error;
 use crate::context::Ctx;
-use crate::sst::{BndX, Exp, ExpX, Trig, Trigs, UniqueIdent};
-use air::ast::Span;
+use crate::sst::{BndX, Exp, ExpX, Exps, Trig, Trigs, UniqueIdent};
+use air::ast::{Binders, Span};
 use air::scope_map::ScopeMap;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TriggerBoxing {
+    Poly,
+    Native,
+    TypeId,
+}
 
 // Manual triggers
 struct State {
     // use results from triggers_auto, no questions asked
     auto_trigger: bool,
-    // parameters boxed = true: enables triggers on functions
-    // parameters boxed = false: enables triggers on arithmetic
-    boxed_params: bool,
     // variables the triggers must cover
-    trigger_vars: HashSet<Ident>,
+    trigger_vars: HashMap<Ident, TriggerBoxing>,
     // user-specified triggers (for sortedness stability, use BTreeMap rather than HashMap)
     triggers: BTreeMap<Option<u64>, Vec<Exp>>,
     // trigger_vars covered by each trigger
     coverage: HashMap<Option<u64>, HashSet<Ident>>,
+}
+
+pub(crate) fn typ_boxing(ctx: &Ctx, typ: &Typ) -> TriggerBoxing {
+    match &**typ {
+        TypX::TypeId => TriggerBoxing::TypeId,
+        _ if crate::poly::typ_is_poly(ctx, typ) => TriggerBoxing::Poly,
+        _ => TriggerBoxing::Native,
+    }
 }
 
 fn preprocess_exp(exp: &Exp) -> Exp {
@@ -44,194 +55,250 @@ fn preprocess_exp(exp: &Exp) -> Exp {
     }
 }
 
+// REVIEW: it's awkward that poly.rs has to decide ahead of time
+// in AST which quantifier variables are Poly and which are native,
+// and only later in SST do we have all the information (e.g. inlining results)
+// to tell whether this decision was correct.
+pub(crate) fn predict_native_quant_vars(
+    bs: &Binders<Typ>,
+    body: &crate::ast::Expr,
+) -> HashSet<Ident> {
+    use crate::ast::ExprX;
+    let mut natives: HashSet<Ident> = HashSet::new();
+    let mut scope_map = crate::ast_visitor::VisitorScopeMap::new();
+    let mut fbody = |map: &mut crate::ast_visitor::VisitorScopeMap, expr: &crate::ast::Expr| {
+        let mut ftrig = |map: &mut crate::ast_visitor::VisitorScopeMap, expr: &crate::ast::Expr| {
+            let mut check_arg = |expr: &crate::ast::Expr| match &expr.x {
+                ExprX::Var(x) => {
+                    if bs.iter().any(|b| &b.name == x) && !map.contains_key(x) {
+                        natives.insert(x.clone());
+                    }
+                }
+                _ => {}
+            };
+            match &expr.x {
+                ExprX::Unary(op, arg) => match op {
+                    UnaryOp::Clip { .. } | UnaryOp::BitNot | UnaryOp::CharToInt => check_arg(arg),
+                    _ => {}
+                },
+                ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(..), arg) => check_arg(arg),
+                ExprX::Binary(op, arg1, arg2) => {
+                    use BinaryOp::*;
+                    match op {
+                        Inequality(_) | Arith(..) | Bitwise(..) => {
+                            check_arg(arg1);
+                            check_arg(arg2);
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+        };
+        match &expr.x {
+            ExprX::Unary(UnaryOp::Trigger(TriggerAnnotation::Trigger(_)), e) => {
+                crate::ast_visitor::expr_visitor_traverse(e, map, &mut ftrig);
+            }
+            ExprX::WithTriggers { triggers, body: _ } => {
+                for trigger in triggers.iter() {
+                    for t in trigger.iter() {
+                        crate::ast_visitor::expr_visitor_traverse(t, map, &mut ftrig);
+                    }
+                }
+            }
+            _ => {}
+        }
+    };
+    crate::ast_visitor::expr_visitor_traverse(body, &mut scope_map, &mut fbody);
+    natives
+}
+
+fn check_trigger_expr_arg(state: &State, expect_boxed: bool, arg: &Exp) -> Result<(), VirErr> {
+    match &arg.x {
+        ExpX::Var(x) => {
+            if let Some(boxing) = state.trigger_vars.get(&x.name) {
+                match (expect_boxed, boxing) {
+                    (false, TriggerBoxing::Native) => Ok(()),
+                    (true, TriggerBoxing::Poly) => Ok(()),
+                    (true, TriggerBoxing::TypeId) => Ok(()),
+                    _ => {
+                        // See poly.rs for an explanation
+                        error(
+                            &arg.span,
+                            format!(
+                                "variable {} in trigger cannot appear in both arithmetic and non-arithmetic positions",
+                                crate::def::user_local_name(&x.name)
+                            ),
+                        )
+                    }
+                }
+            } else {
+                Ok(())
+            }
+        }
+        ExpX::Unary(op, arg) => match op {
+            UnaryOp::Trigger(_)
+            | UnaryOp::HeightTrigger
+            | UnaryOp::CoerceMode { .. }
+            | UnaryOp::MustBeFinalized => {
+                // recurse inside coercions
+                check_trigger_expr_arg(state, expect_boxed, arg)
+            }
+            UnaryOp::Not
+            | UnaryOp::Clip { .. }
+            | UnaryOp::BitNot
+            | UnaryOp::StrLen
+            | UnaryOp::StrIsAscii
+            | UnaryOp::CharToInt => Ok(()),
+        },
+        ExpX::UnaryOpr(op, arg) => match op {
+            UnaryOpr::Box(_) | UnaryOpr::Unbox(_) | UnaryOpr::CustomErr(_) => {
+                // recurse inside coercions
+                check_trigger_expr_arg(state, expect_boxed, arg)
+            }
+            UnaryOpr::IsVariant { .. }
+            | UnaryOpr::TupleField { .. }
+            | UnaryOpr::Field { .. }
+            | UnaryOpr::IntegerTypeBound(..)
+            | UnaryOpr::HasType(_) => Ok(()),
+        },
+        _ => Ok(()),
+    }
+}
+
+fn check_trigger_expr_args(state: &State, expect_boxed: bool, args: &Exps) -> Result<(), VirErr> {
+    for arg in args.iter() {
+        check_trigger_expr_arg(state, expect_boxed, arg)?;
+    }
+    Ok(())
+}
+
 fn check_trigger_expr(
     state: &State,
     exp: &Exp,
     free_vars: &mut HashSet<Ident>,
     lets: &HashSet<Ident>,
 ) -> Result<(), VirErr> {
-    if state.boxed_params {
-        match &exp.x {
-            ExpX::Call(..)
-            | ExpX::CallLambda(..)
-            | ExpX::UnaryOpr(UnaryOpr::Field { .. }, _)
-            | ExpX::UnaryOpr(UnaryOpr::IsVariant { .. }, _)
-            | ExpX::Unary(UnaryOp::Trigger(_) | UnaryOp::HeightTrigger, _) => {}
-            // allow triggers for bitvector operators
-            ExpX::Binary(BinaryOp::Bitwise(_, _), _, _) | ExpX::Unary(UnaryOp::BitNot, _) => {}
-            ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), _, _) => {}
-            _ => {
-                return error(
-                    &exp.span,
-                    "trigger must be a function call, a field access, or a bitwise operator",
-                );
-            }
-        }
-    } else {
-        match &exp.x {
-            ExpX::Unary(UnaryOp::Trigger(_), _)
-            | ExpX::Unary(UnaryOp::Clip { .. }, _)
-            | ExpX::Binary(BinaryOp::Arith(..), _, _) => {}
-            _ => {
-                return error(
-                    &exp.span,
-                    "trigger in forall_arith must be an integer arithmetic operator",
-                );
-            }
+    match &exp.x {
+        ExpX::Call(..)
+        | ExpX::CallLambda(..)
+        | ExpX::UnaryOpr(UnaryOpr::Field { .. }, _)
+        | ExpX::UnaryOpr(UnaryOpr::IsVariant { .. }, _)
+        | ExpX::Unary(UnaryOp::Trigger(_) | UnaryOp::HeightTrigger, _) => {}
+        ExpX::Binary(BinaryOp::Bitwise(_, _), _, _) | ExpX::Unary(UnaryOp::BitNot, _) => {}
+        ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), _, _) => {}
+        ExpX::Unary(UnaryOp::Clip { .. }, _) | ExpX::Binary(BinaryOp::Arith(..), _, _) => {}
+        _ => {
+            return error(
+                &exp.span,
+                "trigger must be a function call, a field access, or arithmetic operator",
+            );
         }
     }
 
     let mut scope_map = ScopeMap::new();
-    if state.boxed_params {
-        let ft = |free_vars: &mut HashSet<Ident>, t: &Typ| match &**t {
-            TypX::TypParam(x) => {
-                free_vars.insert(crate::def::suffix_typ_param_id(x));
-                Ok(t.clone())
-            }
-            _ => Ok(t.clone()),
-        };
-        crate::sst_visitor::exp_visitor_check(
-            exp,
-            &mut scope_map,
-            &mut |exp, _scope_map| match &exp.x {
-                ExpX::Const(_)
-                | ExpX::CallLambda(..)
-                | ExpX::Ctor(..)
-                | ExpX::Loc(..)
-                | ExpX::VarLoc(..) => Ok(()),
-                ExpX::Call(_, typs, _) => {
-                    for typ in typs.iter() {
-                        crate::ast_visitor::map_typ_visitor_env(typ, free_vars, &ft).unwrap();
-                    }
-                    Ok(())
+    let ft = |free_vars: &mut HashSet<Ident>, t: &Typ| match &**t {
+        TypX::TypParam(x) => {
+            free_vars.insert(crate::def::suffix_typ_param_id(x));
+            Ok(t.clone())
+        }
+        _ => Ok(t.clone()),
+    };
+    crate::sst_visitor::exp_visitor_check(
+        exp,
+        &mut scope_map,
+        &mut |exp, _scope_map| match &exp.x {
+            ExpX::Const(_) => Ok(()),
+            ExpX::CallLambda(_, _, args) => check_trigger_expr_args(state, true, args),
+            ExpX::Ctor(_, _, bs) => {
+                for b in bs.iter() {
+                    check_trigger_expr_arg(state, true, &b.a)?;
                 }
-                ExpX::Var(UniqueIdent { name: x, local: None }) => {
-                    if lets.contains(x) {
-                        return error(
-                            &exp.span,
-                            "let variables in triggers not supported, use #![trigger ...] instead",
-                        );
-                    }
-                    free_vars.insert(x.clone());
-                    Ok(())
-                }
-                ExpX::Var(UniqueIdent { name: _, local: Some(_) }) => Ok(()),
-                ExpX::VarAt(_, VarAt::Pre) => Ok(()),
-                ExpX::Old(_, _) => panic!("internal error: Old"),
-                ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => Ok(()),
-                ExpX::Unary(op, _) => match op {
-                    UnaryOp::Trigger(_)
-                    | UnaryOp::Clip { .. }
-                    | UnaryOp::BitNot
-                    | UnaryOp::HeightTrigger
-                    | UnaryOp::StrLen
-                    | UnaryOp::StrIsAscii
-                    | UnaryOp::CharToInt => Ok(()),
-                    UnaryOp::CoerceMode { .. } => Ok(()),
-                    UnaryOp::MustBeFinalized => Ok(()),
-                    UnaryOp::Not => error(&exp.span, "triggers cannot contain boolean operators"),
-                },
-                ExpX::UnaryOpr(op, _) => match op {
-                    UnaryOpr::Box(_)
-                    | UnaryOpr::Unbox(_)
-                    | UnaryOpr::IsVariant { .. }
-                    | UnaryOpr::TupleField { .. }
-                    | UnaryOpr::Field { .. }
-                    | UnaryOpr::CustomErr(_)
-                    | UnaryOpr::IntegerTypeBound(
-                        IntegerTypeBoundKind::SignedMin | IntegerTypeBoundKind::ArchWordBits,
-                        _,
-                    ) => Ok(()),
-                    UnaryOpr::IntegerTypeBound(_, _) => {
-                        // UnsignedMax and SignedMax both have arithmetic in them
-                        // so they can't be triggers
-                        error(&exp.span, "triggers cannot contain this operator")
-                    }
-                    UnaryOpr::HasType(_) => panic!("internal error: trigger on HasType"),
-                },
-                ExpX::Binary(op, _, _) => {
-                    use BinaryOp::*;
-                    match op {
-                        And | Or | Xor | Implies | Eq(_) | Ne => {
-                            error(&exp.span, "triggers cannot contain boolean operators")
-                        }
-                        HeightCompare { .. } => error(
-                            &exp.span,
-                            "triggers cannot contain interior is_smaller_than expressions",
-                        ),
-                        Inequality(_) => Ok(()),
-                        Arith(..) => error(
-                            &exp.span,
-                            "triggers cannot contain integer arithmetic\nuse forall_arith for quantifiers on integer arithmetic",
-                        ),
-                        Bitwise(..) => Ok(()),
-                        StrGetChar => Ok(()),
-                    }
-                }
-                ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(_, typ), _, _) => {
-                    crate::ast_visitor::map_typ_visitor_env(typ, free_vars, &ft).unwrap();
-                    Ok(())
-                }
-                ExpX::If(_, _, _) => error(&exp.span, "triggers cannot contain if/else"),
-                ExpX::WithTriggers(..) => {
-                    error(&exp.span, "triggers cannot contain #![trigger ...]")
-                }
-                ExpX::Bind(_, _) => {
-                    error(&exp.span, "triggers cannot contain let/forall/exists/lambda/choose")
-                }
-                ExpX::Interp(_) => {
-                    panic!("Found an interpreter expression {:?} outside the interpreter", exp)
-                }
-            },
-        )
-    } else {
-        crate::sst_visitor::exp_visitor_check(exp, &mut scope_map, &mut |exp, _scope_map| {
-            if match &exp.x {
-                ExpX::Const(_) | ExpX::Loc(..) | ExpX::VarLoc(..) => true,
-                ExpX::Var(UniqueIdent { name: x, local: None }) => {
-                    if lets.contains(x) {
-                        return error(
-                            &exp.span,
-                            "let variables in triggers not supported, use #![trigger ...] instead",
-                        );
-                    }
-                    free_vars.insert(x.clone());
-                    true
-                }
-                ExpX::Var(UniqueIdent { name: _, local: Some(_) }) => true,
-                ExpX::VarAt(_, VarAt::Pre) => true,
-                ExpX::Old(_, _) => panic!("internal error: Old"),
-                ExpX::Unary(op, _) => match op {
-                    UnaryOp::Trigger(_)
-                    | UnaryOp::Clip { .. }
-                    | UnaryOp::CoerceMode { .. }
-                    | UnaryOp::CharToInt => true,
-                    UnaryOp::MustBeFinalized => true,
-                    UnaryOp::HeightTrigger => false,
-                    UnaryOp::Not | UnaryOp::BitNot | UnaryOp::StrLen | UnaryOp::StrIsAscii => false,
-                },
-                ExpX::Binary(op, _, _) => {
-                    use BinaryOp::*;
-                    match op {
-                        Arith(..) => true,
-                        _ => false,
-                    }
-                }
-                _ => false,
-            } {
                 Ok(())
-            } else {
-                error(&exp.span, "triggers in forall_arith can only contain arithmetic")
             }
-        })
-    }
+            ExpX::Loc(..) | ExpX::VarLoc(..) => Ok(()),
+            ExpX::Call(_, typs, args) => {
+                for typ in typs.iter() {
+                    crate::ast_visitor::map_typ_visitor_env(typ, free_vars, &ft).unwrap();
+                }
+                check_trigger_expr_args(state, true, args)
+            }
+            ExpX::Var(UniqueIdent { name: x, local: None }) => {
+                if lets.contains(x) {
+                    return error(
+                        &exp.span,
+                        "let variables in triggers not supported, use #![trigger ...] instead",
+                    );
+                }
+                free_vars.insert(x.clone());
+                Ok(())
+            }
+            ExpX::Var(UniqueIdent { name: _, local: Some(_) }) => Ok(()),
+            ExpX::VarAt(_, VarAt::Pre) => Ok(()),
+            ExpX::Old(_, _) => panic!("internal error: Old"),
+            ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => Ok(()),
+            ExpX::Unary(op, arg) => match op {
+                UnaryOp::StrLen | UnaryOp::StrIsAscii => check_trigger_expr_arg(state, true, arg),
+                UnaryOp::Clip { .. } | UnaryOp::BitNot | UnaryOp::CharToInt => {
+                    check_trigger_expr_arg(state, false, arg)
+                }
+                UnaryOp::Trigger(_)
+                | UnaryOp::HeightTrigger
+                | UnaryOp::CoerceMode { .. }
+                | UnaryOp::MustBeFinalized => Ok(()),
+                UnaryOp::Not => error(&exp.span, "triggers cannot contain boolean operators"),
+            },
+            ExpX::UnaryOpr(op, arg) => match op {
+                UnaryOpr::Box(_) | UnaryOpr::Unbox(_) | UnaryOpr::CustomErr(_) => Ok(()),
+                UnaryOpr::IsVariant { .. }
+                | UnaryOpr::TupleField { .. }
+                | UnaryOpr::Field { .. } => check_trigger_expr_arg(state, true, arg),
+                UnaryOpr::IntegerTypeBound(..) => check_trigger_expr_arg(state, false, arg),
+                UnaryOpr::HasType(_) => panic!("internal error: trigger on HasType"),
+            },
+            ExpX::Binary(op, arg1, arg2) => {
+                use BinaryOp::*;
+                match op {
+                    And | Or | Xor | Implies | Eq(_) | Ne => {
+                        error(&exp.span, "triggers cannot contain boolean operators")
+                    }
+                    HeightCompare { .. } => error(
+                        &exp.span,
+                        "triggers cannot contain interior is_smaller_than expressions",
+                    ),
+                    Inequality(_) => error(&exp.span, "triggers cannot contain inequalities"),
+                    StrGetChar => {
+                        check_trigger_expr_arg(state, true, arg1)?;
+                        check_trigger_expr_arg(state, true, arg2)
+                    }
+                    Arith(..) | Bitwise(..) => {
+                        check_trigger_expr_arg(state, false, arg1)?;
+                        check_trigger_expr_arg(state, false, arg2)
+                    }
+                }
+            }
+            ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(_, typ), arg1, arg2) => {
+                crate::ast_visitor::map_typ_visitor_env(typ, free_vars, &ft).unwrap();
+                check_trigger_expr_arg(state, true, arg1)?;
+                check_trigger_expr_arg(state, true, arg2)
+            }
+            ExpX::If(_, _, _) => error(&exp.span, "triggers cannot contain if/else"),
+            ExpX::WithTriggers(..) => error(&exp.span, "triggers cannot contain #![trigger ...]"),
+            ExpX::Bind(_, _) => {
+                error(&exp.span, "triggers cannot contain let/forall/exists/lambda/choose")
+            }
+            ExpX::Interp(_) => {
+                panic!("Found an interpreter expression {:?} outside the interpreter", exp)
+            }
+        },
+    )
 }
 
 fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
     let mut map: ScopeMap<Ident, bool> = ScopeMap::new();
     let mut lets: HashSet<Ident> = HashSet::new();
     map.push_scope(false);
-    for x in &state.trigger_vars {
+    for x in state.trigger_vars.keys() {
         map.insert(x.clone(), true).expect("duplicate bound variables");
     }
     crate::sst_visitor::exp_visitor_check(exp, &mut map, &mut |exp, map| {
@@ -248,7 +315,7 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                 let e1 = preprocess_exp(&e1);
                 check_trigger_expr(state, &e1, &mut free_vars, &lets)?;
                 for x in &free_vars {
-                    if map.get(x) == Some(&true) && !state.trigger_vars.contains(x) {
+                    if map.get(x) == Some(&true) && !state.trigger_vars.contains_key(x) {
                         // If the trigger contains variables declared by a nested quantifier,
                         // it must be the nested quantifier's trigger, not ours.
                         return Ok(());
@@ -260,7 +327,7 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                 }
                 state.triggers.get_mut(group).unwrap().push(e1.clone());
                 for x in &free_vars {
-                    if state.trigger_vars.contains(x) {
+                    if state.trigger_vars.contains_key(x) {
                         state.coverage.get_mut(group).unwrap().insert(x.clone());
                     }
                 }
@@ -276,7 +343,7 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                             let mut free_vars: HashSet<Ident> = HashSet::new();
                             check_trigger_expr(state, e, &mut free_vars, &lets)?;
                             for x in free_vars {
-                                if state.trigger_vars.contains(&x) {
+                                if state.trigger_vars.contains_key(&x) {
                                     coverage.insert(x);
                                 }
                             }
@@ -317,14 +384,12 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
 pub(crate) fn build_triggers(
     ctx: &Ctx,
     span: &Span,
-    vars: &Vec<Ident>,
+    vars: &Vec<(Ident, TriggerBoxing)>,
     exp: &Exp,
-    boxed_params: bool,
     allow_empty: bool,
 ) -> Result<Trigs, VirErr> {
     let mut state = State {
         auto_trigger: false,
-        boxed_params,
         trigger_vars: vars.iter().cloned().collect(),
         triggers: BTreeMap::new(),
         coverage: HashMap::new(),
@@ -339,7 +404,7 @@ pub(crate) fn build_triggers(
         }
         let mut trigs: Vec<Trig> = Vec::new();
         for (group, trig) in state.triggers {
-            for x in vars {
+            for (x, _) in vars {
                 if !state.coverage[&group].contains(x) {
                     let group_name = match group {
                         None => "".to_string(),
@@ -358,9 +423,8 @@ pub(crate) fn build_triggers(
             trigs.push(Arc::new(trig.clone()));
         }
         Ok(Arc::new(trigs))
-    } else if boxed_params {
-        crate::triggers_auto::build_triggers(ctx, span, vars, exp, state.auto_trigger)
     } else {
-        return error(span, "manual trigger (#[trigger] or #![trigger ...]) is required");
+        let vars = &vars.iter().cloned().map(|(x, _)| x).collect();
+        crate::triggers_auto::build_triggers(ctx, span, vars, exp, state.auto_trigger)
     }
 }

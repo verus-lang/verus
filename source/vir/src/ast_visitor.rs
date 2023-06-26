@@ -194,6 +194,16 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern) {
     }
 }
 
+pub(crate) fn expr_visitor_traverse<MF>(expr: &Expr, map: &mut VisitorScopeMap, mf: &mut MF)
+where
+    MF: FnMut(&mut VisitorScopeMap, &Expr) -> (),
+{
+    let _ = expr_visitor_dfs::<(), _>(expr, map, &mut |scope_map, expr| {
+        mf(scope_map, expr);
+        VisitorControlFlow::Recurse
+    });
+}
+
 pub(crate) fn expr_visitor_check<E, MF>(expr: &Expr, mf: &mut MF) -> Result<(), E>
 where
     MF: FnMut(&VisitorScopeMap, &Expr) -> Result<(), E>,
@@ -349,7 +359,7 @@ where
                 ExprX::AssertAssume { is_assume: _, expr: e1 } => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
                 }
-                ExprX::Forall { vars, require, ensure, proof } => {
+                ExprX::AssertBy { vars, require, ensure, proof, assumption } => {
                     map.push_scope(true);
                     for binder in vars.iter() {
                         let _ = map.insert(binder.name.clone(), binder.a.clone());
@@ -358,6 +368,7 @@ where
                     expr_visitor_control_flow!(expr_visitor_dfs(ensure, map, mf));
                     expr_visitor_control_flow!(expr_visitor_dfs(proof, map, mf));
                     map.pop_scope();
+                    expr_visitor_control_flow!(expr_visitor_dfs(assumption, map, mf));
                 }
                 ExprX::AssertQuery { requires, ensures, proof, mode: _ } => {
                     for req in requires.iter() {
@@ -761,7 +772,7 @@ where
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             ExprX::AssertAssume { is_assume: *is_assume, expr: expr1 }
         }
-        ExprX::Forall { vars, require, ensure, proof } => {
+        ExprX::AssertBy { vars, require, ensure, proof, assumption } => {
             let vars =
                 vec_map_result(&**vars, |x| x.map_result(|t| map_typ_visitor_env(t, env, ft)))?;
             map.push_scope(true);
@@ -772,7 +783,8 @@ where
             let ensure = map_expr_visitor_env(ensure, map, env, fe, fs, ft)?;
             let proof = map_expr_visitor_env(proof, map, env, fe, fs, ft)?;
             map.pop_scope();
-            ExprX::Forall { vars: Arc::new(vars), require, ensure, proof }
+            let assumption = map_expr_visitor_env(assumption, map, env, fe, fs, ft)?;
+            ExprX::AssertBy { vars: Arc::new(vars), require, ensure, proof, assumption }
         }
         ExprX::AssertQuery { requires, ensures, proof, mode } => {
             let requires = Arc::new(vec_map_result(requires, |e| {

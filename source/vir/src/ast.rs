@@ -341,8 +341,7 @@ pub enum BinaryOp {
     StrGetChar,
 }
 
-/// More complex unary operations (requires Clone rather than Copy)
-/// (Below, "boxed" refers to boxing types in the SMT encoding, not the Rust Box type)
+/// More complex binary operations (requires Clone rather than Copy)
 #[derive(Clone, Debug, Serialize, Deserialize, Hash, ToDebugSNode)]
 pub enum BinaryOpr {
     /// extensional equality ext_equal (true ==> deep extensionality)
@@ -621,8 +620,10 @@ pub enum ExprX {
     Header(HeaderExpr),
     /// Assert or assume
     AssertAssume { is_assume: bool, expr: Expr },
-    /// Forall or assert-by statement; proves "forall vars. ensure" via proof.
-    Forall { vars: Binders<Typ>, require: Expr, ensure: Expr, proof: Expr },
+    /// Assert-forall or assert-by statement; proves "assumption" via proof,
+    /// where "assumption" is "forall vars. require ==> ensure"
+    /// ("assumption" is redundant, but is kept separately because poly.rs treats it differently)
+    AssertBy { vars: Binders<Typ>, require: Expr, ensure: Expr, proof: Expr, assumption: Expr },
     /// If-else
     If(Expr, Expr, Option<Expr>),
     /// Match (Note: ast_simplify replaces Match with other expressions)

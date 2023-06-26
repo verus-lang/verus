@@ -662,7 +662,9 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                 );
                 let ensure = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
                 let proof = expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?;
-                return mk_expr(ExprX::Forall { vars, require, ensure, proof });
+                let implyx = ExprX::Binary(BinaryOp::Implies, require.clone(), ensure.clone());
+                let assumption = bctx.spanned_typed_new(expr.span, &Arc::new(TypX::Bool), implyx);
+                return mk_expr(ExprX::AssertBy { vars, require, ensure, proof, assumption });
             }
             AssertItem::AssertByCompute => {
                 unsupported_err_unless!(len == 1, expr.span, "expected assert_by_compute", &args);
@@ -1443,7 +1445,11 @@ fn extract_assert_forall_by<'tcx>(
                 )
             };
             let ensure = header.ensure[0].clone();
-            let forallx = ExprX::Forall { vars, require, ensure, proof: vir_expr };
+            let implyx = ExprX::Binary(BinaryOp::Implies, require.clone(), ensure.clone());
+            let imply = bctx.spanned_typed_new(span, &Arc::new(TypX::Bool), implyx);
+            let forallx = ExprX::Quant(vir::ast_util::QUANT_FORALL, vars.clone(), imply);
+            let assumption = bctx.spanned_typed_new(span, &Arc::new(TypX::Bool), forallx);
+            let forallx = ExprX::AssertBy { vars, require, ensure, proof: vir_expr, assumption };
             Ok(bctx.spanned_typed_new(span, &typ, forallx))
         }
         _ => err_span(expr.span, "argument to forall/exists must be a closure"),
