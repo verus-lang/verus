@@ -26,7 +26,6 @@ This is a tentative program.
 - Proof actions (Chanhee)
 - Axiom import sets (Andrea / Pranav)
 - Setting up CI that includes other Verus projects (a-la crater) (Andrea)
-
 - Proof stability (discussion)
 
 *Issue/feature request triage (1-2 hours in the afternoon)*
