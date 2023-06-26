@@ -21,13 +21,15 @@ This is a tentative program.
 - State machines (Travis)
 - Simple crash consistency framework (Jay L)
 
-*Issue/feature request triage (1-2 hours in the afternoon)*
-
 *User experience improvements (2 hours in the afternoon)*
 
 - Proof actions (Chanhee)
-- Setting up CI that includes other Verus projects (a-la crater) (Andrea)
 - Axiom import sets (Andrea / Pranav)
+- Setting up CI that includes other Verus projects (a-la crater) (Andrea)
+
+- Proof stability (discussion)
+
+*Issue/feature request triage (1-2 hours in the afternoon)*
 
 *6:00 PM -- Collaboration Dinner at [Union Grill](https://goo.gl/maps/FuDFyREMUxLjNWeC8)*
 
@@ -51,6 +53,7 @@ This is a tentative program.
 - Verus internals overview + Q&A (Chris, Andrea)
 - Math library / Verus standard library (Liz and Alex)
 - Bug fix hack-a-thon
+
 
 ### Wednesday, June 28th
 
