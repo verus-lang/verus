@@ -45,6 +45,7 @@ This is a tentative program.
 * Jialin / Tenzin (Verusplinter)
 * Jay L. / Jon (IronSHT)
 * Jay B. (Serialization)
+* Hayley (Crash-consistent log)
 
 *Afternoon sessions*
 
