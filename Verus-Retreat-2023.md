@@ -10,7 +10,7 @@ Sessions will begin at 9:30 AM.  We will be meeting in the [Collaborative Innova
 
 ## Program
 
-This is a draft program. We plan to re-arrange items and re-allocate time based on interest and feedback from the participants.
+This is a tentative program.
 
 ### Monday, June 26th
 
@@ -21,10 +21,22 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 - State machines (Travis)
 - Simple crash consistency framework (Jay L)
 
-*Experience reports building systems in Verus (2 hours in the afternoon)*
-[We are likely to move this to Tuesday at 11ET to make it easier for remote folks to join.]
+*Issue/feature request triage (1-2 hours in the afternoon)*
 
-(Ask people for 10-minute presentations)
+*User experience improvements (2 hours in the afternoon)*
+
+- Proof actions (Chanhee)
+- Setting up CI that includes other Verus projects (a-la crater) (Andrea)
+- Axiom import sets (Andrea / Pranav)
+
+*6:00 PM -- Collaboration Dinner at [Union Grill](https://goo.gl/maps/FuDFyREMUxLjNWeC8)*
+
+### Tuesday, June 27th
+
+- Documentation write-a-thon  (2-3 hours in the morning)
+
+* (11am) Experience reports building systems in Verus (2 hours in the morning / afternoon) *
+
 - What's working well
 - What isn't working
 
@@ -34,18 +46,6 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 * Jay L. / Jon (IronSHT)
 * Jay B. (Serialization)
 
-*User experience improvements (2 hours in the afternoon)*
-
-- Setting up CI that includes other Verus projects (a-la crater) (Andrea)
-- Proof actions (Chanhee)
-- Axiom import sets (Andrea / Pranav)
-
-*6:00 PM -- Collaboration Dinner at [Union Grill](https://goo.gl/maps/FuDFyREMUxLjNWeC8)*
-
-### Tuesday, June 27th
-
-- Documentation write-a-thon  (2-3 hours in the morning)
-- Issue/feature request triage (1-2 hours in the morning)
 - Verus internals overview + Q&A (afternoon) (Chris, Andrea)
 - Math library / Verus standard library (afternoon) (Liz and Alex)
 - Bug fix hack-a-thon (afternoon)
@@ -67,7 +67,6 @@ This is a draft program. We plan to re-arrange items and re-allocate time based 
 
 - Discuss moving to an open chat channel (Zulip?) (Andrea)
 - [...]
-
 
 *Afternoon: Informal meetings and hacking*
 
