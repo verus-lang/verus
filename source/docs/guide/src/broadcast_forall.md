@@ -43,7 +43,7 @@ Hence, the final version of our example might look like this:
 ```rust
 pub proof fn seq_reverse_len<A>(s: Seq<A>)
     ensures
-        (#[trigger] reverse(s)).len() == s.len(), 
+        #[trigger] reverse(s).len() == s.len(), 
 {
   ...
 }
