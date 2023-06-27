@@ -61,6 +61,7 @@ This is a tentative program.
 - 10:30AM: Brainstorming next big steps for Verus (1-2 hours in the morning)
 
 - Writing specifications for Rust's standard library (2 hours in the afternoon) (Travis, Andrea)
+- C to idiomatic Rust with LLMs and Verus (João)
 - IronFleet hackathon (afternoon) (Jay L)
 
 (Escape Room)
