@@ -48,11 +48,8 @@ This is a tentative program.
 
 *Afternoon sessions*
 
-- Math library / Verus standard library (Liz and Alex)
-- Axiom import sets (Andrea / Pranav)
-- Proof stability (Yi) [candidate]
-- Bug fix hack-a-thon
-
+- Proof stability (Yi + Jessica)
+- Docs writing
 
 ### Wednesday, June 28th
 
@@ -60,25 +57,29 @@ This is a tentative program.
 - 10:30AM: Brainstorming next big steps for Verus (1-2 hours in the morning)
 
 - 1:00PM: Verus internals + Q&A (Chris + Andrea)
-- Writing specifications for Rust's standard library (2 hours in the afternoon) (Travis, Andrea)
+- Bug fix hack-a-thon
+- Math library / Verus standard library (Liz and Alex)
+- Axiom import sets (Andrea / Pranav)
+- Writing specifications for Rust's standard library (intro) (Travis)
 - C to idiomatic Rust with LLMs and Verus (João)
-- IronFleet hackathon (afternoon) (Jay L)
 
 (Escape Room)
 
 ### Thursday, June 29th (till 12pm)
 
-- Benchmarking suite for Verus (1-2 hours in the morning) (Chris)
-- Ghost features for Rust (Andrea)
-- Paper writing (Bryan)
-
-*Community building (1-2 hours in the morning)*
-
+- Benchmarking suite for Verus (1 hours in the morning) (Chris)
+- Recommends (Chris, ...)
 - Discuss moving to an open chat channel (Zulip?) (Andrea)
-- [...]
+- Syntax (Chris, ...)
 
 *Afternoon: Informal meetings and hacking*
 
+- Paper writing (Bryan)
+- Writing specifications for Rust's standard library (hackathon)
+
 ### Friday, June 30th (optional)
+
+- IronFleet hackathon (Jay L)
+- Ghost features for Rust (Andrea)
 
 *Informal meetings and hacking*
