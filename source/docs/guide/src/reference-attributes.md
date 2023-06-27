@@ -68,6 +68,13 @@ reference the given item.
 
 This can have nontrivial implications for the TCB of a verified crate; see [here](./tcb.md).
 
+## `#[verifier::external_body]`
+
+Tells Verus to only consider the function definition but not the function body, trusting that
+it correctly satisfies its specification.
+
+This can have nontrivial implications for the TCB of a verified crate; see [here](./tcb.md).
+
 ## `#[verifier::inline]`
 
 The attribute `#[verifier::inline]` can be applied to any _spec-mode_ function to indicate
