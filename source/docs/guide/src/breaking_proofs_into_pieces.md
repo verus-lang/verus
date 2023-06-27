@@ -22,12 +22,62 @@ establish `S`, and put those as `requires` clauses in the lemma. Those
 `requires` clauses may involve local variables, in which case pass those
 variables to the lemma as parameters.
 
+For instance:
+```
+fn my_long_function(x: u64, ...)
+{
+    let y: int = ...;
+    ... // first part of proof, establishing fact f(x, y)
+    P1; // modest-size proof...
+    P2; //   establishing...
+    P3; //   facts s1 and s2...
+    P4; //   about x and y
+    ... // second part of proof, using facts s1 and s2
+}
+```
+might become
+```
+proof fn my_long_function_helper(x: u64, y: int)
+    requires
+        f(x, y)
+    ensures
+        s1(x),
+        s2(x, y)
+{
+    P1; // modest-size proof...
+    P2; //   establishing...
+    P3; //   facts s1 and s2...
+    P4; //   about x and y
+}
+
+fn my_long_function(x: u64, ...)
+{
+    ... // first part of proof, establishing fact f(x, y)
+    my_long_function_helper(x, y);
+    ... // second part of proof, using facts s1 and s2
+}
+
+```
+
 You may find that, once you've moved `P` into the body of the lemma, you can
 not only remove `P` from the long function but also remove significant
 portions of `P` from the lemma where it was moved to. This is because a lemma
 dedicated solely to establishing `S` will have a smaller context for the
 solver to reason about. So less proof annotation may be necessary to get it to
-successfully and quickly establish `S`.
+successfully and quickly establish `S`. For instance:
+
+```
+proof fn my_long_function_helper(x: u64, y: int)
+    requires
+        f(x, y)
+    ensures
+        s1(x),
+        s2(x, y)
+{
+    P1; // It turns out that P2 and P3 aren't necessary when
+    P4; //    the solver is focused on just f, s1, s2, x, and y.
+}
+```
 
 ## Dividing a proof into parts 1, 2, ..., n
 
@@ -41,3 +91,54 @@ until lemma number `n`, whose `ensures` clauses should be the `ensures`
 clauses of the original function. Finally, replace the original function's
 proof will a sequence of calls to those `n` lemmas in order.
 
+
+For instance:
+```
+proof fn my_long_function(x: u64)
+    requires r(x)
+    ensures  e(x)
+{
+    P1;
+    P2;
+    P3;
+}
+```
+might become
+```
+proof fn my_long_function_part1(x: u64) -> (y: int)
+    requires
+        r(x)
+    ensures
+        mid1(x, y)
+{
+    P1;
+}
+
+proof fn my_long_function_part2(x: u64, y: int)
+    requires
+        mid1(x, y)
+    ensures
+        mid2(x, y)
+{
+    P2;
+}
+
+proof fn my_long_function_part3(x: u64, y: int)
+    requires
+        mid2(x, y)
+    ensures
+        e(x)
+{
+    P3;
+}
+
+proof fn my_long_function(x: u64)
+    requires r(x)
+    ensures  e(x)
+{
+    let y = my_long_function_part1(x);
+	my_long_function_part2(x, y);
+	my_long_function_part3(x, y);
+}
+
+```
