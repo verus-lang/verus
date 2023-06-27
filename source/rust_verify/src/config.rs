@@ -166,7 +166,7 @@ pub fn parse_args_with_imports(
     const OPT_NUM_THREADS: &str = "num-threads";
 
     let default_num_threads: usize = std::thread::available_parallelism()
-        .map(|x| std::cmp::min(usize::from(x) - 1, 1))
+        .map(|x| std::cmp::max(usize::from(x) - 1, 1))
         .unwrap_or(1);
 
     let mut opts = Options::new();
