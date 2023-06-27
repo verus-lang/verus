@@ -89,7 +89,7 @@ lemma's `requires` clauses match the `ensures` clauses of the first lemma, and
 make its `ensures` clauses be a summary of what it establishes. Keep going
 until lemma number `n`, whose `ensures` clauses should be the `ensures`
 clauses of the original function. Finally, replace the original function's
-proof will a sequence of calls to those `n` lemmas in order.
+proof with a sequence of calls to those `n` lemmas in order.
 
 
 For instance:
