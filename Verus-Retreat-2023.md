@@ -60,6 +60,7 @@ This is a tentative program.
 - Issue triage (1 hour)
 - 10:30AM: Brainstorming next big steps for Verus (1-2 hours in the morning)
 
+- 1:00PM: Verus internals + Q&A (Chris + Andrea)
 - Writing specifications for Rust's standard library (2 hours in the afternoon) (Travis, Andrea)
 - C to idiomatic Rust with LLMs and Verus (João)
 - IronFleet hackathon (afternoon) (Jay L)
