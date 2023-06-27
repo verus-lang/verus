@@ -8,8 +8,7 @@ test_verify_one_file! {
     #[test]
     #[cfg_attr(not(feature = "singular"), ignore)]
     test1 verus_code! {
-        #[verifier::integer_ring]
-        proof fn test1(x: int, y: int, z:int, m:int)
+        proof fn test1(x: int, y: int, z:int, m:int) by(integer_ring)
           requires (x-y) % m == 0,
           ensures (x*z- y*z) % m == 0
         {}
@@ -20,8 +19,7 @@ test_verify_one_file! {
     #[test]
     #[cfg_attr(not(feature = "singular"), ignore)]
     test2 verus_code! {
-        #[verifier::integer_ring]
-        proof fn test2(a:int, s:int, R:int, M:int, RR:int, R_INV:int)
+        proof fn test2(a:int, s:int, R:int, M:int, RR:int, R_INV:int) by(integer_ring)
             requires
                 (a * R - RR * s) % M == 0,
                 (R_INV * R - 1) % M == 0,
@@ -36,8 +34,7 @@ test_verify_one_file! {
     #[test]
     #[cfg_attr(not(feature = "singular"), ignore)]
     test3 verus_code! {
-        #[verifier::integer_ring]
-        proof fn test3(p2_full: int, BASE: int, ui: int, m0: int, m0d: int, p1_lh: int, p1_full: int)
+        proof fn test3(p2_full: int, BASE: int, ui: int, m0: int, m0d: int, p1_lh: int, p1_full: int) by(integer_ring)
             requires
                 p2_full == ui * m0 + p1_lh,
                 (p1_full - p1_lh) % BASE == 0,
@@ -53,7 +50,6 @@ test_verify_one_file! {
     #[test]
     #[cfg_attr(not(feature = "singular"), ignore)]
     test4 verus_code! {
-        #[verifier::integer_ring]
         proof fn test4(
             B: int,
             p0: int, p1: int, p2: int, p3: int,
@@ -61,7 +57,7 @@ test_verify_one_file! {
             p8: int, p9: int, p10: int, p11: int,
             p12: int, p13: int, p14: int, p15: int,
             x: int, x_0: int, x_1: int, x_2: int, x_3: int,
-            y: int, y_0: int, y_1: int,y_2: int, y_3: int)
+            y: int, y_0: int, y_1: int,y_2: int, y_3: int) by(integer_ring)
 
             requires
                 x == x_0 + x_1 * B + x_2 * B * B + x_3 * B * B * B,
@@ -99,8 +95,7 @@ test_verify_one_file! {
         spec fn quad(a:int) -> int{
             a*a*a*a
         }
-        #[verifier::integer_ring]
-        proof fn with_uninterpreted_functioins(x:int, y:int, m:int)
+        proof fn with_uninterpreted_functioins(x:int, y:int, m:int) by(integer_ring)
             requires
                 (square(x) - square(y)) % m == 0,
                 square(x) == x*x,
@@ -116,8 +111,7 @@ test_verify_one_file! {
     #[test]
     #[cfg_attr(not(feature = "singular"), ignore)]
     test6 verus_code! {
-        #[verifier::integer_ring]
-        proof fn test6(x: int, y: int, z:int)
+        proof fn test6(x: int, y: int, z:int) by(integer_ring)
             ensures
                 (x+y+z)*(x+y+z) == x*x + y*y + z*z + 2*(x*y + y*z + z*x)
         {}
@@ -129,8 +123,7 @@ test_verify_one_file! {
     #[test]
     #[cfg_attr(not(feature = "singular"), ignore)]
     test1_fails verus_code! {
-        #[verifier::integer_ring]
-        proof fn test1_fails_smoke_test(x: int, y: int, z:int, m:int)
+        proof fn test1_fails_smoke_test(x: int, y: int, z:int, m:int) by(integer_ring)
             requires
                 (x-y) % m == 0
             ensures (x*z + y*z) % m == 0 //FAILS
@@ -143,7 +136,6 @@ test_verify_one_file! {
     #[test]
     #[cfg_attr(not(feature = "singular"), ignore)]
     test2_fails verus_code! {
-        #[verifier::integer_ring]
         proof fn test2_fails_smoke_test(
             B: int,
             p0: int, p1: int, p2: int, p3: int,
@@ -151,7 +143,7 @@ test_verify_one_file! {
             p8: int, p9: int, p10: int, p11: int,
             p12: int, p13: int, p14: int, p15: int,
             x: int, x_0: int, x_1: int, x_2: int, x_3: int,
-            y: int, y_0: int, y_1: int,y_2: int, y_3: int)
+            y: int, y_0: int, y_1: int,y_2: int, y_3: int) by(integer_ring)
 
             requires
                 x == x_0 + x_1 * B + x_2 * B * B + x_3 * B * B * B,
@@ -181,8 +173,7 @@ test_verify_one_file! {
     #[test]
     #[cfg_attr(not(feature = "singular"), ignore)]
     test3_fails verus_code! {
-        #[verifier::integer_ring]
-        proof fn test3_fails_param_type(x: u32, y: u32, z:u32, m:u32) // should be type int
+        proof fn test3_fails_param_type(x: u32, y: u32, z:u32, m:u32) by(integer_ring) // should be type int
             requires
               (x-y) % m == 0
             ensures
@@ -195,8 +186,7 @@ test_verify_one_file! {
     #[test]
     #[cfg_attr(not(feature = "singular"), ignore)]
     test4_fails verus_code! {
-        #[verifier::integer_ring]
-        proof fn test4_fails_modulo_rhs_nonzero(x: int, y: int, z:int, m:int)
+        proof fn test4_fails_modulo_rhs_nonzero(x: int, y: int, z:int, m:int) by(integer_ring)
             requires (x*y) % m == 0
             ensures (x*y) % m == m
         {}
@@ -207,8 +197,7 @@ test_verify_one_file! {
     #[test]
     #[cfg_attr(not(feature = "singular"), ignore)]
     test5_fails_inequality verus_code! {
-        #[verifier::integer_ring]
-        proof fn test1_fails(x: int, y: int, z:int, m:int)
+        proof fn test1_fails(x: int, y: int, z:int, m:int) by(integer_ring)
             requires (x-y) % m > 0  //FAILS
             ensures (x*z + y*z) % m == 0
         {}
@@ -219,10 +208,26 @@ test_verify_one_file! {
     #[test]
     #[cfg_attr(not(feature = "singular"), ignore)]
     test6_reserved_keyword_is_hygenic verus_code! {
-        #[verifier::integer_ring]
-        proof fn test1(singular_tmp_1 : int, y: int, z:int, m:int)
+        proof fn test1(singular_tmp_1 : int, y: int, z:int, m:int) by(integer_ring)
             requires (singular_tmp_1 - y) % m == 0
             ensures (singular_tmp_1 * z- y*z) % m == 0
         {}
     } => Ok(())
 }
+
+// test_verify_one_file! {
+//     #[test]
+//     #[cfg_attr(not(feature = "singular"), ignore)]
+//     test7_div_by_zero verus_code! {
+//         #[verifier::integer_ring]
+//         proof fn may_div_zero(x : int)
+//             ensures x % x == 0
+//         {}
+
+//         proof fn test1() {
+//             let a = 0int;
+//             may_div_zero(a); // FAILS , `x` shouldn't be zero
+//             assert(a % a == 0);
+//         }
+//     } => Err(_)
+// }
