@@ -21,7 +21,7 @@ that `Q` holds from the prior proof context.
 
 The expressions `P` and `Q` may only contain expressions that the bit solver understands.
 The only types allowed are booleans and fixed-width unsigned integer types.
-The allowed operations are bitwise (`&`, `|`, `^`, `!`) and arithmetic
+The allowed operations are bitwise (`&`, `|`, `^`, `!`, `<<`, `>>`) and arithmetic
 (`add`, `sub`, `mul`, `/`, and `%`).
 
 Note that `+`, `-`, and `*` return `int` or `nat` types when they are used as spec expressions.
