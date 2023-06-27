@@ -20,7 +20,8 @@ prepared to ask for help by filing GitHub issues.
 
 ## Try Verus
 
-Please follow our [installation instructions](INSTALL.md).
+To try Verus in your browser, please visit the [Verus Playground](https://play.verus-lang.org/).
+For more involved development, please follow our [installation instructions](INSTALL.md).
 Then you can dive into the documentation below, starting
 with the [📖 Tutorial and reference](https://verus-lang.github.io/verus/guide/).
 
