@@ -103,4 +103,5 @@
 
 - [Verus syntax reference]()
 - [Supported and unsupported features](./features.md)
+- [Attributes](./attributes.md)
 - [Planned future work]()
