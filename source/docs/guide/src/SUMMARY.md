@@ -40,7 +40,7 @@
     - [Proofs about forall and exists](quantproofs.md)
     - [Example: binary search](binary_search.md)
     - [spec closures]() <!--- Chris --->
-    - [broadcast_forall]() <!--- Chris --->
+    - [broadcast_forall](broadcast_forall.md) <!--- Chris --->
 - [Runtime `exec` Features]()
     - [Exec closures]()
 - [SMT solving, automation, and where automation fails]() <!--- Chris --->
