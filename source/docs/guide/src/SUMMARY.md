@@ -53,7 +53,7 @@
 - [Improving SMT performance]() <!--- Chris --->
     - [Modules, hiding, opaque, reveal]() <!--- Chris --->
     - [Quantifier profiling](profiling.md) <!--- Bryan --->
-    - [assert-by]() <!--- Chris --->
+    - [Hiding local proofs with `assert (...) by { ... }`](assert_by.md)
     - [Proof by computation](assert_by_compute.md) <!--- Bryan --->
     - [Spinning off separate SMT queries]()
     - [Breaking proofs into smaller pieces]() <!--- Chris --->
