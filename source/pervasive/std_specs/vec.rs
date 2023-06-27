@@ -235,6 +235,15 @@ pub fn ex_vec_split_off<T, A: Allocator+ std::clone::Clone>(vec: &mut Vec<T, A>,
     vec.split_off(at)
 }
 
+#[verifier::external_fn_specification]
+pub fn ex_vec_truncate<T, A: Allocator>(vec: &mut Vec<T, A>, len: usize)
+    ensures
+        len <= vec.len() ==> vec@ == old(vec)@.subrange(0,len as int),
+        len > vec.len() ==> vec@ == old(vec)@,
+{
+    vec.truncate(len)
+}
+
 // #[verifier::external_fn_specification]
 // pub fn ex_vec_to_vec<T: std::clone::Clone, A: Allocator>(vec: &mut Vec<T, A>) -> (return_value: Vec<T, ExGlobal>)
 //     ensures
