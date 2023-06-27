@@ -75,9 +75,9 @@ but asserting equality fails:
 ```
 
 To convince the SMT solver that `s1`, `s2`, and `s3` are equal,
-we have to explicitly assert the *extensional* equality method `.ext_equal`,
+we have to explicitly assert the *extensional* equality via the `=~=` operator,
 rather than just the ordinary equality operator `===`.
-Calling `.ext_equal` forces the SMT solver
+Using `=~=` forces the SMT solver
 to check that all the elements of the collections are equal,
 which it would not ordinarily do.
 Once we've explicitly proven extensional equality,
@@ -136,7 +136,7 @@ The two crucial steps requiring extensional equality are:
 - "Therefore, s1.intersect(s2) is also empty."
 - Replacing `(s1 - {a}).intersect(s2)` with `s1.intersect(s2) - {a}`
 
-For these, we need to explicitly invoke `ext_equal`:
+For these, we need to explicitly invoke `=~=`:
 
 ```rust
 {{#include ../../../rust_verify/example/guide/lib_examples.rs:lemma_len_intersect}}
@@ -144,12 +144,12 @@ For these, we need to explicitly invoke `ext_equal`:
 
 With this, Verus and the SMT solver successfully complete the proof.
 However, Verus and the SMT solver aren't the only audience for this proof.
-Anyone maintaining this code might want to know why we invoked `ext_equal`,
+Anyone maintaining this code might want to know why we invoked `=~=`,
 and we probably shouldn't force them to work out the entire hand-written proof above
 to rediscover this.
 So although it's not strictly necessary,
 it's probably polite to wrap the assertions in `assert...by` to indicate
-the purpose of the `ext_equal`:
+the purpose of the `=~=`:
 
 ```rust
 {{#include ../../../rust_verify/example/guide/lib_examples.rs:lemma_len_intersect_commented}}

@@ -31,3 +31,6 @@ Verus defines `==` in ghost code to be true when:
 - for two structs or enums, the types are the same and the fields are equal
 - for two Box values, two Rc values, or two Arc values, the pointed-to values are the same
 - for two RefCell values or two Cell values, the pointers to the interior data are equal (not the interior contents)
+
+Note that for collection datatypes, `=~=` is needed for extensional equality. 
+You can find out more under [specification libraries](spec_lib.md) and [extensional equality](extensional_equality.md).

@@ -48,7 +48,7 @@
     - [integers: nonlinear arithmetic and bit vectors]() <!--- Chris and Chanhee --->
     - [forall and exists: writing and using triggers, inline functions]() <!--- Chris --->
     - [recursive functions]() <!--- Chris --->
-    - [extensional equality]() <!--- Chris --->
+    - [extensional equality](extensional_equality.md)
     - [libraries: incomplete axioms for Seq, Set, Map]() <!--- Chris --->
 - [Improving SMT performance]() <!--- Chris --->
     - [Modules, hiding, opaque, reveal]() <!--- Chris --->
