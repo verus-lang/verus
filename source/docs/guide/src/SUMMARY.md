@@ -102,5 +102,12 @@
 # Reference
 
 - [Verus syntax reference]()
-- [Supported and unsupported features](./features.md)
+- [Proof features]()
+  - [assert and assume]()
+  - [assert ... by](./reference-assert-by.md)
+  - [assert forall ... by](./reference-assert-forall-by.md)
+  - [assert ... by(bit_vector)](./reference-assert-by-bit-vector.md)
+  - [assert ... by(nonlinear_arith)]()
+  - [assert ... by(compute) / by(compute_only)]()
+- [Supported and unsupported Rust features](./features.md)
 - [Planned future work]()
