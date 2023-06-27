@@ -61,10 +61,61 @@ Using this proof technique requires a bit of additional configuration of your Ve
 - Division is not yet supported.
 
 #### Workarounds for limitations
-(TODO: Please add inline source code examples)
 
-- Since these proofs only support `int`, you need to include explicit bounds when you want to prove properties about bounded integers. One example of this is at `source/rust_verify/examples/integer_ring/integer_ring_bound_check.rs`.
-- To work around the lack of support for inequalities and division, you can sometimes add additional variables to the formulas. One example of this is at `source/rust_verify/examples/integer_ring/integer_ring.rs, line 115: multiple_offsed_mod_gt_0_int`.
+- Since these proofs only support `int`, you need to include explicit bounds when you want to prove properties about bounded integers. For example, in order to use the proof `lemma_mod_after_mul` on `u32`s, `lemma_mod_after_mul_u32` must ensure that all arguments are within the proper bounds before passing them to `lemma_mod_after_mul`.  
+
+```rust
+proof fn lemma_mod_after_mul(x: int, y: int, z: int, m: int) by (integer_ring)
+    requires (x-y) % m == 0
+    ensures (x*z - y*z) % m == 0
+{}
+
+proof fn lemma_mod_after_mul_u32(x: u32, y: u32 , z: u32, m: u32)
+    requires
+        m > 0,
+        (x-y) % (m as int) == 0,
+        x >= y,
+        x <= 0xffff,
+        y <= 0xffff,
+        z <= 0xffff,
+        m <= 0xffff,
+    ensures (x*z - y*z) % (m as int) == 0
+{ 
+  ModAfterMul(x as int, y as int, z as int, m as int);
+  // rest of proof body omitted for space
+}
+```
+If a necessary bound (e.g., `m > 0`) is not included, Verus will fail to verify the proof.
+
+- To work around the lack of support for inequalities and division, you can often write a helper proof discharged with `integer_ring` and use it to prove properties that are not directly supported by `integer_ring`. For example:
+
+```rust
+pub proof fn multiple_offsed_mod_gt_0_helper(a: int, b: int, c: int, ac: int, bc: int, abc: int) by (integer_ring)
+    requires
+        ac == a % c,
+        bc == b % c,
+        abc == (a - b) % c,
+    ensures (ac - bc - abc) % c == 0
+{}
+
+pub proof fn multiple_offsed_mod_gt_0(a: nat, b: nat, c: nat) by (nonlinear_arith) 
+    requires
+        a > b,
+        c > 0,
+        b % c == 0,
+        a % c > 0,
+    ensures (a - b) % (c as int) > 0
+{
+    multiple_offsed_mod_gt_0_helper(
+      a as int, 
+      b as int, 
+      c as int, 
+      (a % c) as int, 
+      (b % c) as int, 
+      ((a - b) % (c as int)) as int
+    );
+}
+```
    
 
 ### Examining the encoding
