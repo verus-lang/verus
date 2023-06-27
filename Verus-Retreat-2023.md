@@ -48,7 +48,6 @@ This is a tentative program.
 
 *Afternoon sessions*
 
-- Verus internals overview + Q&A (Chris, Andrea)
 - Math library / Verus standard library (Liz and Alex)
 - Axiom import sets (Andrea / Pranav)
 - Proof stability (Yi) [candidate]
