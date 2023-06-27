@@ -29,17 +29,17 @@
     - [Defining datatypes]() <!--- Andrea --->
     - [Querying the discriminant (`#[is_variant]`)]() <!--- Andrea --->
     - [Proving properties of fields]() <!--- Andrea --->
-- [Basic libraries](pervasive.md)
+- [Basic libraries and spec closures](pervasive.md)
     - [Specification libraries: Seq, Set, Map](spec_lib.md)
     - [INTERLUDE: using assert and assume to develop proofs](develop_proofs.md)
+    - [Spec closures](spec_closures.md)
     - [Executable libraries: Vec](exec_lib.md)
-- [Quantifiers and spec closures](quants.md)
+- [Quantifiers](quants.md)
     - [forall and triggers](forall.md)
     - [Multiple variables, multiple triggers, matching loops](multitriggers.md)
     - [exists and choose](exists.md)
     - [Proofs about forall and exists](quantproofs.md)
     - [Example: binary search](binary_search.md)
-    - [spec closures]() <!--- Chris --->
     - [broadcast_forall]() <!--- Chris --->
 - [Runtime `exec` Features]()
     - [Exec closures]()

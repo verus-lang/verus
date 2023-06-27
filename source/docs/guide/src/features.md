@@ -23,7 +23,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Const functions</td>
-    <td>Partial support</td>
+    <td>Partially supported</td>
   </tr>
   <tr>
     <td>Async functions</td>
@@ -39,7 +39,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Const items</td>
-    <td>Partial support</td>
+    <td>Partially supported</td>
   </tr>
   <tr>
     <td>Static items</td>
@@ -74,7 +74,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>public / private fields</td>
-    <td>Partial support</td>
+    <td>Partially supported</td>
   </tr>
   </tbody>
   <thead><tr><th colspan="2"><strong>Expressions and Statements</strong></th></tr></thead>
@@ -129,7 +129,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td><code>&mut</code>, place expressions</td>
-    <td>Partial support</td>
+    <td>Partially supported</td>
   </tr>
   <tr>
     <td><code>==</code>, <code>!=</code></td>
@@ -137,7 +137,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Type cast (<code>as</code>)</td>
-    <td>Partial support</td>
+    <td>Partially supported</td>
   </tr>
   <tr>
     <td>Compound assigments (<code>+=</code>, etc.)</td>
@@ -243,7 +243,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Pointers</td>
-    <td>Partial support</td>
+    <td>Partially supported</td>
   </tr>
   <tr>
     <td>References (<code>&</code>)</td>
@@ -251,7 +251,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Mutable references (<code>&mut</code>)</td>
-    <td>Partial support</td>
+    <td>Partially supported</td>
   </tr>
   <tr>
     <td>Never type</td>
@@ -271,7 +271,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>impl types</td>
-    <td>Partial support</td>
+    <td>Partially supported</td>
   </tr>
   <tr>
     <td>Cell, RefCell</td>
@@ -314,7 +314,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Traits with type arguments</td>
-    <td>Partial support</td>
+    <td>Partially supported</td>
   </tr>
   <tr>
     <td>Associated types</td>
@@ -390,11 +390,11 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   <thead><tr><th colspan="2"><strong>Crates and code organization</strong></th></tr></thead>
   <tr>
     <td>Multi-crate projects</td>
-    <td>Partial support</td>
+    <td>Partially supported</td>
   </tr>
   <tr>
     <td>Verified crate + unverified crates</td>
-    <td>Partial support</td>
+    <td>Partially supported</td>
   </tr>
   <tr>
     <td>Modules</td>
