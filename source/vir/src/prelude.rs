@@ -113,6 +113,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let uint_shr = str_to_node(UINT_SHR);
     let uint_shl = str_to_node(UINT_SHL);
     let uint_not = str_to_node(UINT_NOT);
+    let singular_mod = str_to_node(SINGULAR_MOD);
 
     let strslice = str_to_node(STRSLICE);
     #[allow(non_snake_case)]
@@ -581,6 +582,17 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [uint_shr] (Int [Poly] [Poly]) Int)
         (declare-fun [uint_shl] (Int [Poly] [Poly]) Int)
         (declare-fun [uint_not] (Int [Poly]) Int)
+
+        (declare-fun [singular_mod] (Int Int) Int)
+        (axiom (forall ((x Int) (y Int)) (!
+            (=>
+                (not (= y 0))
+                (= ([EucMod] x y) ([singular_mod] x y)
+            ))
+            :pattern (([singular_mod] x y))
+            :qid prelude_singularmod
+            :skolemid skolem_prelude_singularmod
+        )))
 
         // closure-related
 

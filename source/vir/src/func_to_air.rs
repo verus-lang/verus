@@ -352,6 +352,7 @@ pub fn req_ens_to_air(
     typs: &air::ast::Typs,
     name: &Ident,
     msg: &Option<String>,
+    is_singular: bool,
 ) -> Result<bool, VirErr> {
     if specs.len() + typing_invs.len() > 0 {
         let mut all_typs = (**typs).clone();
@@ -368,7 +369,12 @@ pub fn req_ens_to_air(
         }
         for e in specs.iter() {
             let exp = crate::ast_to_sst::expr_to_exp(ctx, diagnostics, fun_ssts, params, e)?;
-            let expr = exp_to_expr(ctx, &exp, &ExprCtxt::new_mode(ExprMode::Spec))?;
+            let expr_ctxt = if is_singular {
+                ExprCtxt::new_mode_singular(ExprMode::Spec, true)
+            } else {
+                ExprCtxt::new_mode(ExprMode::Spec)
+            };
+            let expr = exp_to_expr(ctx, &exp, &expr_ctxt)?;
             let loc_expr = match msg {
                 None => expr,
                 Some(msg) => {
@@ -523,6 +529,7 @@ pub fn func_decl_to_air(
             &req_typs,
             &prefix_requires(&fun_to_air_ident(&function.x.name)),
             &msg,
+            function.x.attrs.integer_ring,
         )?;
     }
     Ok(Arc::new(decl_commands))
@@ -548,6 +555,7 @@ pub fn func_axioms_to_air(
     let mut decl_commands: Vec<Command> = Vec::new();
     let mut check_commands: Vec<Command> = Vec::new();
     let mut new_fun_ssts = fun_ssts;
+    let is_singular = function.x.attrs.integer_ring;
     match function.x.mode {
         Mode::Spec => {
             // Body
@@ -652,6 +660,7 @@ pub fn func_axioms_to_air(
                 &Arc::new(ens_typs),
                 &prefix_ensures(&fun_to_air_ident(&function.x.name)),
                 &None,
+                is_singular,
             )?;
             if has_ens_pred {
                 ctx.funcs_with_ensure_predicate.insert(function.x.name.clone());
@@ -689,8 +698,14 @@ pub fn func_axioms_to_air(
                     crate::triggers::build_triggers(ctx, span, &vars, &exp, true, false)?;
                 let bndx = BndX::Quant(QUANT_FORALL, Arc::new(binders), triggers);
                 let forallx = ExpX::Bind(Spanned::new(span.clone(), bndx), exp);
-                let forall = SpannedTyped::new(&span, &Arc::new(TypX::Bool), forallx);
-                let expr = exp_to_expr(ctx, &forall, &ExprCtxt::new_mode(ExprMode::Spec))?;
+                let forall: Arc<SpannedTyped<ExpX>> =
+                    SpannedTyped::new(&span, &Arc::new(TypX::Bool), forallx);
+                let expr_ctxt = if is_singular {
+                    ExprCtxt::new_mode_singular(ExprMode::Spec, true)
+                } else {
+                    ExprCtxt::new_mode(ExprMode::Spec)
+                };
+                let expr = exp_to_expr(ctx, &forall, &expr_ctxt)?;
                 let axiom = Arc::new(DeclX::Axiom(expr));
                 decl_commands.push(Arc::new(CommandX::Global(axiom)));
             }

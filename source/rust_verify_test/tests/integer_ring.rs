@@ -215,19 +215,18 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-// test_verify_one_file! {
-//     #[test]
-//     #[cfg_attr(not(feature = "singular"), ignore)]
-//     test7_div_by_zero verus_code! {
-//         #[verifier::integer_ring]
-//         proof fn may_div_zero(x : int)
-//             ensures x % x == 0
-//         {}
+test_verify_one_file! {
+    #[test]
+    #[cfg_attr(not(feature = "singular"), ignore)]
+    test7_div_by_zero_fails verus_code! {
+        proof fn may_div_zero(x : int) by(integer_ring)
+            ensures x % x == 0
+        {}
 
-//         proof fn test1() {
-//             let a = 0int;
-//             may_div_zero(a); // FAILS , `x` shouldn't be zero
-//             assert(a % a == 0);
-//         }
-//     } => Err(_)
-// }
+        proof fn test1() {
+            let a = 0int;
+            may_div_zero(a);
+            assert(a % a == 0); // FAILS , `x` shouldn't be zero
+        }
+    } => Err(_)
+}
