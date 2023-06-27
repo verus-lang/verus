@@ -104,7 +104,7 @@
 - [Supported and unsupported Rust features](./features.md)
 - [Modes]()
   - [Function modes]()
-  - [Variable modes]()
+  - [Variable modes](./reference-var-modes.md)
 - [Spec expressions]()
   - [Rust subset]()
   - [Arithmetic]()
