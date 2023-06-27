@@ -57,8 +57,9 @@ This is a tentative program.
 
 ### Wednesday, June 28th
 
-- Brainstorming next big steps for Verus (1-2 hours in the morning)
-- Telemetry design and brainstorming (Liz and Alex)
+- Issue triage (1 hour)
+- 10:30AM: Brainstorming next big steps for Verus (1-2 hours in the morning)
+
 - Writing specifications for Rust's standard library (2 hours in the afternoon) (Travis, Andrea)
 - IronFleet hackathon (afternoon) (Jay L)
 
