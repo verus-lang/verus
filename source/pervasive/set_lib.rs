@@ -46,6 +46,12 @@ impl<A> Set<A> {
             arbitrary()
         }
     }
+
+    /// A singleton set has at least one element and any two elements are equal.
+    pub open spec fn is_singleton(self) -> bool{
+        &&& self.len()>0
+        &&& (forall |x: A, y: A| self.contains(x) && self.contains(y) ==> x==y)
+    }
 }
 
 pub proof fn lemma_len0_is_empty<A>(s: Set<A>)

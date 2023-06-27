@@ -36,13 +36,13 @@ impl<A> Seq<A> {
     /// Is true if the calling sequence is a prefix of the given sequence 'other'.
     pub open spec fn is_prefix_of(self, other: Self) ->bool
     {
-        self.len() <= other.len() && self == other.subrange(0,self.len() as int)
+        self.len() <= other.len() && self =~= other.subrange(0,self.len() as int)
     }
 
     /// Is true if the calling sequence is a suffix of the given sequence 'other'.
     pub open spec fn is_suffix_of(self, other: Self) ->bool
     {
-        self.len() <= other.len() && self == 
+        self.len() <= other.len() && self =~= 
             other.subrange((other.len() - self.len()) as int, other.len() as int)
     }
 
@@ -229,9 +229,15 @@ impl<A> Seq<A> {
     /// Recursive helper function for first_index_of
     pub closed spec fn first_index_helper(self, needle: A, index: int) -> int
         decreases self.len(),
-    {   if self.len() <= 0 {-1}
-        else if self[0] == needle {index}
-        else {self.subrange(1,self.len() as int).first_index_helper(needle, index+1)}
+    {   if self.len() <= 0 {
+            -1
+        }
+        else if self[0] == needle {
+            index
+        }
+        else {
+            self.subrange(1,self.len() as int).first_index_helper(needle, index+1)
+        }
     }
 
     /// For an element that occurs at least once in a sequence, if its first occurence
@@ -251,9 +257,15 @@ impl<A> Seq<A> {
     /// Recursive helper function for last_index_of
     pub closed spec fn last_index_helper(self, needle: A, index: int) -> int
         decreases self.len(),
-    {   if self.len() <= 0 {-1}
-        else if self.last() == needle {index}
-        else {self.subrange(0,self.len()-1 as int).last_index_helper(needle, index-1)}
+    {   if self.len() <= 0 {
+            -1
+        }
+        else if self.last() == needle {
+            index
+        }
+        else {
+            self.subrange(0,self.len()-1 as int).last_index_helper(needle, index-1)
+        }
     }
 
     /// For an element that occurs at least once in a sequence, if its last occurence

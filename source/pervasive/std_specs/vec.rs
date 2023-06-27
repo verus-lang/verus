@@ -79,6 +79,7 @@ impl<T, A: Allocator> VecAdditionalExecFns<T> for Vec<T, A> {
 // It's not ideal, but I think it's better than the alternative, which would
 // be to have users call some function with a nonstandard name to perform indexing.
 
+/// This is a specification for the indexing operator `vec[i]`
 #[verifier::external_body]
 pub fn vec_index<T, A: Allocator>(vec: &Vec<T, A>, i: usize) -> (element: &T)
     requires i < vec.view().len(),
@@ -160,7 +161,7 @@ pub fn ex_vec_pop<T, A: Allocator>(vec: &mut Vec<T, A>) -> (value: Option<T>)
 }
 
 #[verifier::external_fn_specification]
-pub fn ex_append<T, A: Allocator>(vec: &mut Vec<T, A>, other: &mut Vec<T, A>)
+pub fn ex_vec_append<T, A: Allocator>(vec: &mut Vec<T, A>, other: &mut Vec<T, A>)
     ensures
         vec@ == old(vec)@ + old(other)@,
         other@ == Seq::<T>::empty(),
