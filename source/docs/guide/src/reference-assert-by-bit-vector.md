@@ -24,7 +24,7 @@ The only types allowed are booleans and fixed-width unsigned integer types.
 The allowed operations are bitwise (`&`, `|`, `^`, `!`) and arithmetic
 (`add`, `sub`, `mul`, `/`, and `%`).
 
-(Note that `+`, `-`, and `*` return `int` or `nat` types when they are used as spec expressions.
+Note that `+`, `-`, and `*` return `int` or `nat` types when they are used as spec expressions.
 Since the bit vector solver does not handle the infinite-width type `int`, it cannot
 handle `+`, `-`, or `*`.
 Function calls are also disallowed.
