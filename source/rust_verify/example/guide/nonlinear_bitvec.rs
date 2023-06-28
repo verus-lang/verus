@@ -26,8 +26,7 @@ proof fn bound_check(x: u32, y: u32, z: u32)
 // ANCHOR_END: bound_checking
 
 // ANCHOR: de_morgan
-proof fn de_morgan_auto()
-by(bit_vector)
+proof fn de_morgan_auto() by(bit_vector)
 ensures
     forall |a: u32, b: u32| #[trigger] (!(a & b)) == !a | !b,
     forall |a: u32, b: u32| #[trigger] (!(a | b)) == !a & !b,

@@ -10,12 +10,37 @@ Nonlinear arithmetic involves equations that multiply, divide, or take the remai
 is undecideable in general, meaning that general-purpose SMT solvers like Z3 can only make a best-effort attempt
 to solve them.  These attempts rely on heuristics that can be unpredictable.  Hence, by default, Verus 
 disables Z3's nonlinear arithmetic heuristics.  When you need to prove such properties, Verus offers the two dedicated
-proof strategies described below.  The first can reliably prove a limited subset of nonlinear properties.  For properties
+proof strategies described below.  First, `integer_ring` feature can reliably prove a limited subset of nonlinear properties.  For properties
 outside that subset, Verus offers a way to invoke Z3's nonlinear heuristics in a way that will hopefully provide
 better reliability.
 
-## 1. Proving Ring-based Properties with Singular (optional)
-***WARNING: This feature is currently under maintenance; this feature might be broken.***
+## 1. Proving General Properties with Z3 
+To prove a nonlinear formula that cannot be solved using `integer_ring` feature,
+you can selectively turn on Z3's nonlinear reasoning heuristics.
+As described below, you can do this either inline in the midst of a larger
+function, or in a dedicated proof function.
+
+### Inline Proofs with `assert(...) by(nonlinear_arith)`
+To prove a nonlinear property in the midst of a larger function,
+you can write `assert(...) by(nonlinear_arith)`.  This creates
+a separate Z3 query just to prove the asserted property,
+and for this query, Z3 runs with its nonlinear heuristics enabled.
+The query does not include ambient facts (e.g., knowledge that stems
+from the surrounding function's `requires` clause
+or from preceding variable assignments) other than each variable's type invariants
+(e.g., the fact that a `nat` is non-negative).  To include additional
+context in the query, you can specify it in a `requires` clause for the `assert`,
+as shown below.
+```rust
+{{#include ../../../rust_verify/example/guide/nonlinear_bitvec.rs:bound_checking}}
+```
+
+### Modular Proofs with `proof fn ... by(nonlinear_arith)`
+You can also use `by(nonlinear_arith)` in a proof function's signature. By including `by(nonlinear_arith)`, the query for this function runs with nonlinear arithmetic reasoning enabled.
+
+
+
+## 2. Proving Ring-based Properties with Singular
 
 While general nonlinear formulas cannot be solved consistently, certain
 sub-classes of nonlinear formulas can be.  For example, nonlinear formulas that
@@ -25,9 +50,8 @@ divisor `n`).  As a simple example, we might like to show that `a % n == b % n
 
 Verus offers a deterministic proof strategy to discharge such obligations.
 As shown below, to use this strategy, you must state the desired property
-as a proof function annotated with `#[verifier(integer_ring)]`.
+as a proof function annotated with `by(integer_ring)`.
 
-(TODO: add example based on the equations above)
 
 Verus will then discharge the proof obligation using a dedicated algebra solver
 called [Singular](https://www.singular.uni-kl.de/).  As hinted at by the
@@ -54,15 +78,92 @@ Using this proof technique requires a bit of additional configuration of your Ve
     - The `integer_ring` functionality is conditionally compiled when the `singular` feature is set.
       To add this feature, add the `--features singular` flag when you invoke `vargo build` to compile Verus.
 
+
+
+
 ### Details/Limitations
 - This can be used only with **int** parameters.
 - Formulas that involve inequalities are not supported.   
+- Division is not supported.
 - Function calls in the formulas are treated as uninterpreted functions.  If a function definition is important for the proof, you should unfold the definition of the function in the proof function's `requires` clause.
-- Division is not yet supported.
+- When using `integer_ring` lemma, the divisor of `%` operator must not be zero. If a divisor can be zero in the ensures clause of the `integer_ring` lemma, the fact in ensures clause will not be available in the callsite.
 
-#### Workarounds for limitations
+### Using `integer_ring` as a helper lemma for nonlinear proofs
+As `integer_ring` feature has several limitations, it is not possible to get an arbitary nonlinear property only with `integer_ring` feature. Instead, it is a common pattern to have `by(nonlinear_arith)` function as a main lemma for the desired property, and use `integer_ring` lemma as a helper function.
 
-- Since these proofs only support `int`, you need to include explicit bounds when you want to prove properties about bounded integers. For example, in order to use the proof `lemma_mod_after_mul` on `u32`s, `lemma_mod_after_mul_u32` must ensure that all arguments are within the proper bounds before passing them to `lemma_mod_after_mul`.  
+To work around the lack of support for inequalities and division, you can often write a helper proof discharged with `integer_ring` and use it to prove properties that are not directly supported by `integer_ring`. Furthermore, you can also add additional variables to the formulas. For example, to workaround division, one can introduce `c` where `b = a * c`, instead of `b/a`. Experiences indicate that introducing many additional variables can help with the proof.
+
+#### Example 1: `integer_ring` as a helper lemma to provide facts on modular arithmetic
+In this below `lemma_mod_difference_equal` function, we have four inequalities inside the requires clauses, which cannot be encoded into `integer_ring`. In the ensures clause, we want to prove `y % d - x % d == y - x`. The helper lemma `lemma_mod_difference_equal_helper` simply provides that `y % d - x % d` is equal to `(y - x)` modulo `d`. The rest of the proof is done by `by(nonlinear_arith)`.
+
+```rust
+pub proof fn lemma_mod_difference_equal_helper(x: int, y:int, d:int, small_x:int, small_y:int, tmp1:int, tmp2:int) by(integer_ring)
+    requires
+        small_x == x % d,
+        small_y == y % d,
+        tmp1 == (small_y - small_x) % d,
+        tmp2 == (y - x) % d,
+    ensures
+        (tmp1 - tmp2) % d == 0
+{}
+pub proof fn lemma_mod_difference_equal(x: int, y: int, d: int) by(nonlinear_arith)
+    requires
+        d > 0,
+        x <= y,
+        x % d <= y % d,
+        y - x < d
+    ensures
+        y % d - x % d == y - x
+{
+    let small_x = x % d;
+    let small_y = y % d;
+    let tmp1 = (small_y - small_x) % d;
+    let tmp2 = (y - x) % d;
+    lemma_mod_difference_equal_helper(x,y,d, small_x, small_y, tmp1, tmp2);
+}
+```
+
+In the below `lemma_mod_between`, we want to prove that `x % d <= z % d < y % d`. However, `integer_ring` only supports equalities, so we need cannot prove `lemma_mod_between` directly. Instead, we provide facts that can help assist the proof. The helper lemma provides 1) `x % d - y % d == x - y  (mod d)` and 2) ` y % d - z % d == y - z  (mod d)`. The rest of the proof is done by `by(nonlinear_arith)`.
+
+```rust
+pub proof fn lemma_mod_between_helper(x: int, y: int, d: int, small_x:int, small_y:int, tmp1:int) by(integer_ring)
+    requires
+        small_x == x % d,
+        small_y == y % d,
+        tmp1 == (small_x - small_y) % d,
+    ensures
+        (tmp1 - (x-y)) % d == 0
+{}
+
+// note that below two facts are from the helper function, and the rest are done by `by(nonlinear_arith)`.
+// x % d - y % d == x - y  (mod d)
+// y % d - z % d == y - z  (mod d)
+pub proof fn lemma_mod_between(d: int, x: int, y: int, z: int) by(nonlinear_arith)
+    requires
+        d > 0,
+        x % d < y % d,
+        y - x <= d,
+        x <= z < y
+    ensures
+        x % d <= z % d < y % d
+{
+    let small_x = x % d;
+    let small_y = y % d;
+    let small_z = z % d;
+    let tmp1 = (small_x - small_z) % d;
+    lemma_mod_between_helper(x,z,d, small_x, small_z, tmp1);
+
+    let tmp2 = (small_z - small_y) % d;
+    lemma_mod_between_helper(z,y,d, small_z, small_y, tmp2);    
+}
+```
+
+
+#### Example 2: Proving properties on bounded integers with the help of `integer_ring`
+
+Since `integer_ring` proofs only support `int`, you need to include explicit bounds when you want to prove properties about bounded integers. For example, in order to use the proof `lemma_mod_after_mul` on `u32`s, `lemma_mod_after_mul_u32` must ensure that all arguments are within the proper bounds before passing them to `lemma_mod_after_mul`.  
+
+If a necessary bound (e.g., `m > 0`) is not included, Verus will fail to verify the proof.
 
 ```rust
 proof fn lemma_mod_after_mul(x: int, y: int, z: int, m: int) by (integer_ring)
@@ -70,7 +171,7 @@ proof fn lemma_mod_after_mul(x: int, y: int, z: int, m: int) by (integer_ring)
     ensures (x*z - y*z) % m == 0
 {}
 
-proof fn lemma_mod_after_mul_u32(x: u32, y: u32 , z: u32, m: u32)
+proof fn lemma_mod_after_mul_u32(x: u32, y: u32 , z: u32, m: u32)   
     requires
         m > 0,
         (x-y) % (m as int) == 0,
@@ -81,13 +182,12 @@ proof fn lemma_mod_after_mul_u32(x: u32, y: u32 , z: u32, m: u32)
         m <= 0xffff,
     ensures (x*z - y*z) % (m as int) == 0
 { 
-  ModAfterMul(x as int, y as int, z as int, m as int);
+  lemma_mod_after_mul(x as int, y as int, z as int, m as int);
   // rest of proof body omitted for space
 }
 ```
-If a necessary bound (e.g., `m > 0`) is not included, Verus will fail to verify the proof.
 
-- To work around the lack of support for inequalities and division, you can often write a helper proof discharged with `integer_ring` and use it to prove properties that are not directly supported by `integer_ring`. For example:
+The desired property for `nat` can be proved similarly. Note that we introduce several additional variables(`ab`, `bc`, and `abc`) to help with the `integer_ring` proof. 
 
 ```rust
 pub proof fn multiple_offsed_mod_gt_0_helper(a: int, b: int, c: int, ac: int, bc: int, abc: int) by (integer_ring)
@@ -116,36 +216,13 @@ pub proof fn multiple_offsed_mod_gt_0(a: nat, b: nat, c: nat) by (nonlinear_arit
     );
 }
 ```
-   
+
+More `integer_ring` examples can be found in [this folder](https://github.com/verus-lang/verus/tree/main/source/rust_verify/example/integer_ring), and this [testcase file](https://github.com/verus-lang/verus/blob/main/source/rust_verify_test/tests/integer_ring.rs).
 
 ### Examining the encoding
 Singular queries will be logged to the directory specified with `--log-dir` (which defaults to `.verus-log`) in a separate file with a `.singular` suffix. You can directly run Singular on this file. For example, `Singular .verus-log/root.singular --q`. 
 The output is `0` when Singular successsfully verifies the query.
 
-
-## 2. Proving General Properties with Z3 
-To prove a nonlinear formula that cannot be solved using Singular,
-you can selectively turn on Z3's nonlinear reasoning heuristics.
-As described below, you can do this either inline in the midst of a larger
-function, or in a dedicated proof function.
-
-### Inline Proofs with `assert(...) by(nonlinear_arith)`
-To prove a nonlinear property in the midst of a larger function,
-you can write `assert(...) by(nonlinear_arith)`.  This creates
-a separate Z3 query just to prove the asserted property,
-and for this query, Z3 runs with its nonlinear heuristics enabled.
-The query does not include ambient facts (e.g., knowledge that stems
-from the surrounding function's `requires` clause
-or from preceding variable assignments) other than each variable's type invariants
-(e.g., the fact that a `nat` is non-negative).  To include additional
-context in the query, you can specify it in a `requires` clause for the `assert`,
-as shown below.
-```rust
-{{#include ../../../rust_verify/example/guide/nonlinear_bitvec.rs:bound_checking}}
-```
-
-### Modular Proofs with `proof fn ... by(nonlinear_arith)`
-You can also use `by(nonlinear_arith)` in a proof function's signature. By including `by(nonlinear_arith)`, the query for this function runs with nonlinear arithmetic reasoning enabled.
 
 
 ---
@@ -183,8 +260,6 @@ For example:
 ```rust
 {{#include ../../../rust_verify/example/guide/nonlinear_bitvec.rs:de_morgan}}
 ```
-
-For more examples, please refer to the bit-manipulation examples at the bottom.
 
 ## Limitations
 
