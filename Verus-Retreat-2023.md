@@ -63,7 +63,7 @@ This is a tentative program.
 - Writing specifications for Rust's standard library (intro) (Travis)
 - C to idiomatic Rust with LLMs and Verus (João)
 
-(Escape Room)
+(Escape Room -- Arrive by 6:45 pm at [145 E 8th Ave. Homestead, PA 15120](https://goo.gl/maps/33vqyYG5MsLq5mzv5))
 
 ### Thursday, June 29th (till 12pm)
 
