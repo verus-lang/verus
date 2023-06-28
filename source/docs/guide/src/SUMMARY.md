@@ -40,7 +40,7 @@
     - [Proofs about forall and exists](quantproofs.md)
     - [Example: binary search](binary_search.md)
     - [spec closures]() <!--- Chris --->
-    - [broadcast_forall]() <!--- Chris --->
+    - [broadcast_forall](broadcast_forall.md) <!--- Chris --->
 - [Runtime `exec` Features]()
     - [Exec closures]()
 - [SMT solving, automation, and where automation fails]() <!--- Chris --->
@@ -53,7 +53,7 @@
 - [Improving SMT performance]() <!--- Chris --->
     - [Modules, hiding, opaque, reveal]() <!--- Chris --->
     - [Quantifier profiling](profiling.md) <!--- Bryan --->
-    - [assert-by]() <!--- Chris --->
+    - [Hiding local proofs with `assert (...) by { ... }`](assert_by.md)
     - [Proof by computation](assert_by_compute.md) <!--- Bryan --->
     - [Spinning off separate SMT queries]()
     - [Breaking proofs into smaller pieces]() <!--- Chris --->
@@ -101,6 +101,47 @@
 
 # Reference
 
-- [Verus syntax reference](syntax.md)
-- [Supported and unsupported features](./features.md)
+- [Supported and unsupported Rust features](./features.md)
+- [Verus syntax overview](syntax.md)
+- [Modes]()
+  - [Function modes]()
+  - [Variable modes](./reference-var-modes.md)
+- [Spec expressions]()
+  - [Rust subset]()
+  - [Arithmetic]()
+  - [Spec equality ==]()
+  - [Extensional equality `=~=` and `=~~=`]()
+  - [&&& and |||]()
+  - [Chained inequalities](./reference-chained-ineq.md)
+  - [Implication (`==>`, `<==`, and `<==>`)](./reference-implication.md)
+  - [`forall`, `exists`]()
+  - [`choose`]()
+  - [Function expressions]()
+  - [Trigger annotations]()
+  - [The view function `@`](./reference-at-sign.md)
+  - [Spec index operator `[]`](./reference-spec-index.md)
+- [Proof features]()
+  - [assert and assume]()
+  - [assert ... by](./reference-assert-by.md)
+  - [assert forall ... by](./reference-assert-forall-by.md)
+  - [assert ... by(bit_vector)](./reference-assert-by-bit-vector.md)
+  - [assert ... by(nonlinear_arith)]()
+  - [assert ... by(compute) / by(compute_only)]()
+  - [reveal]()
+  - [fuel]()
+- [Function specifications]()
+  - [requires / ensures]()
+  - [opens_invariants](./reference-opens-invariants.md)
+  - [recommends]()
+- [Loop specifications]()
+  - [invariant]()
+  - [ensures / invariant_ensures]()
+- [Recursion and termination]()
+  - [decreases ...]()
+  - [decreases ... when ...]()
+  - [decreases ... via ...]()
+  - [Datatype ordering]()
+  - [Cyclic definitions]()
+- [Command line]()
+  - [--arch-word-bits]()
 - [Planned future work]()
