@@ -68,7 +68,7 @@ This is a tentative program.
 ### Thursday, June 29th (till 12pm)
 
 - Benchmarking suite for Verus (1 hours in the morning) (Chris)
-- Recommends (Chris, ...)
+- ~~Recommends (Chris, ...)~~
 - Discuss moving to an open chat channel (Zulip?) (Andrea)
 - Syntax (Chris, ...)
 
