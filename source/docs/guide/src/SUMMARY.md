@@ -101,6 +101,6 @@
 
 # Reference
 
-- [Verus syntax reference]()
+- [Verus syntax reference](syntax.md)
 - [Supported and unsupported features](./features.md)
 - [Planned future work]()
