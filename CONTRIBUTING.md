@@ -100,3 +100,6 @@ vargo test --vstd-no-verify -p rust_verify_test --test <test file> <test name>
 ```
 
 
+## Automatically minimizing an issue/error example
+
+If you have a large file that produces some sort of error in Verus, you can automatically minimize it to a smaller/simpler file that produces the same error. See [source/tools/minimizers/README.md](./source/tools/minimizers/README.md) for more details.
