@@ -69,6 +69,8 @@ You can run a single test file and a specific test within with the following:
 vargo test -p rust_verify_test --test <test file> <test name>
 ```
 
+`vargo nextest run` is also supported. To install `nextest`, see [https://nexte.st/book/installation.html](https://nexte.st/book/installation.html).
+
 See the cargo help for more info on the test flags.
 
 If you need to pass additional command-line arguments to the verifier in tests, for example to print the
