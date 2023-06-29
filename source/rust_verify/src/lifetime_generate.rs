@@ -1159,10 +1159,12 @@ fn erase_expr<'tcx>(
                 let exp2 = erase_expr(ctxt, state, true, e2);
                 erase_spec_exps(ctxt, state, expr, vec![exp1, exp2])
             } else {
+                // TODO: do not replicate exp1; may cause wrong failures when performing borrow-checking
                 let exp1 = erase_expr(ctxt, state, false, e1);
                 let exp2 = erase_expr(ctxt, state, false, e2);
-                let exp2 = erase_spec_exps(ctxt, state, expr, vec![exp2]);
-                mk_exp(ExpX::Assign(exp1.expect("expr"), exp2.expect("expr")))
+                let expr_typ = |state: &mut State| erase_ty(ctxt, state, &ctxt.types().node_type(e1.hir_id));
+                let exp3 = erase_spec_exps_typ(ctxt, state, expr.span, expr_typ, vec![exp1.clone(), exp2], false);
+                mk_exp(ExpX::Assign(exp1.expect("expr"), exp3.expect("expr")))
             }
         }
         ExprKind::If(cond, lhs, rhs) => {

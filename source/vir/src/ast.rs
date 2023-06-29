@@ -606,7 +606,7 @@ pub enum ExprX {
     WithTriggers { triggers: Arc<Vec<Exprs>>, body: Expr },
     /// Assign to local variable
     /// init_not_mut = true ==> a delayed initialization of a non-mutable variable
-    Assign { init_not_mut: bool, lhs: Expr, rhs: Expr },
+    Assign { init_not_mut: bool, lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
     /// Reveal definition of an opaque function with some integer fuel amount
     Fuel(Fun, u32),
     /// Header, which must appear at the beginning of a function or while loop.

@@ -856,7 +856,7 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(typing, Mode::Spec, body, Mode::Spec)?;
             Ok(Mode::Spec)
         }
-        ExprX::Assign { init_not_mut, lhs, rhs } => {
+        ExprX::Assign { init_not_mut, lhs, rhs, op: _ } => {
             if typing.in_forall_stmt {
                 return error(&expr.span, "assignment is not allowed in 'assert ... by' statement");
             }

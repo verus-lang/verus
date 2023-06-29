@@ -436,6 +436,31 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
                 },
             ))
         }
+        ExprX::Assign { init_not_mut, lhs, rhs, op: Some(op) } => {
+            match &lhs.x {
+                ExprX::Var(_) | ExprX::VarLoc(_) => {
+                    Ok(
+                        SpannedTyped::new(
+                            &expr.span,
+                            &expr.typ,
+                            ExprX::Assign {
+                                init_not_mut: *init_not_mut,
+                                lhs: lhs.clone(),
+                                rhs: SpannedTyped::new(
+                                    &expr.span,
+                                    &lhs.typ,
+                                    ExprX::Binary(op.clone(), lhs.clone(), rhs.clone())
+                                ),
+                                op: None,
+                            }
+                        )
+                    )
+                },
+                _ => {
+                    unimplemented!("assign to non-small expr {:#?}", lhs) // TODO: change error msg
+                }
+            }
+        },
         _ => Ok(expr.clone()),
     }
 }

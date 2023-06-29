@@ -334,7 +334,7 @@ where
                     }
                     expr_visitor_control_flow!(expr_visitor_dfs(body, map, mf));
                 }
-                ExprX::Assign { init_not_mut: _, lhs: e1, rhs: e2 } => {
+                ExprX::Assign { init_not_mut: _, lhs: e1, rhs: e2, op: _ } => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
                     expr_visitor_control_flow!(expr_visitor_dfs(e2, map, mf));
                 }
@@ -741,10 +741,10 @@ where
             let body = map_expr_visitor_env(body, map, env, fe, fs, ft)?;
             ExprX::WithTriggers { triggers, body }
         }
-        ExprX::Assign { init_not_mut, lhs: e1, rhs: e2 } => {
+        ExprX::Assign { init_not_mut, lhs: e1, rhs: e2, op } => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             let expr2 = map_expr_visitor_env(e2, map, env, fe, fs, ft)?;
-            ExprX::Assign { init_not_mut: *init_not_mut, lhs: expr1, rhs: expr2 }
+            ExprX::Assign { init_not_mut: *init_not_mut, lhs: expr1, rhs: expr2, op: *op }
         }
         ExprX::Fuel(path, fuel) => ExprX::Fuel(path.clone(), *fuel),
         ExprX::RevealString(path) => ExprX::RevealString(path.clone()),

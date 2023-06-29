@@ -553,14 +553,17 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let body = poly_expr(ctx, state, body);
             mk_expr(ExprX::WithTriggers { triggers, body })
         }
-        ExprX::Assign { init_not_mut, lhs: e1, rhs: e2 } => {
+        ExprX::Assign { init_not_mut, lhs: e1, rhs: e2, op } => {
+            if op.is_some() {
+                panic!("op should already be removed");
+            }
             let e1 = poly_expr(ctx, state, e1);
             let e2 = if typ_is_poly(ctx, &e1.typ) {
                 coerce_expr_to_poly(ctx, &poly_expr(ctx, state, e2))
             } else {
                 coerce_expr_to_native(ctx, &poly_expr(ctx, state, e2))
             };
-            mk_expr(ExprX::Assign { init_not_mut: *init_not_mut, lhs: e1, rhs: e2 })
+            mk_expr(ExprX::Assign { init_not_mut: *init_not_mut, lhs: e1, rhs: e2, op: *op })
         }
         ExprX::AssertCompute(e, m) => mk_expr(ExprX::AssertCompute(poly_expr(ctx, state, e), *m)),
         ExprX::Fuel(..) => expr.clone(),

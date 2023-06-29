@@ -429,3 +429,15 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_rust_error_msg(e, "cannot find value `i`")
 }
+
+test_verify_one_file! {
+    #[test] test_compound_assign verus_code! {
+        fn test(y: &mut i32) {
+            let mut x: i32 = 1;
+            x += 2;
+            assert({ x == 3 as i32 });
+            //*y /= 2;
+            //assert({ *y == *old(y)/2 });
+        }
+    } => Ok(())
+}

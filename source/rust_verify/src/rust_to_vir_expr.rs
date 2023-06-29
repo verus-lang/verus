@@ -1244,15 +1244,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 _ => Ok(e),
             }
         }
-        ExprKind::AssignOp(Spanned { node: BinOpKind::Shr, .. }, lhs, rhs) => {
-            let vlhs = expr_to_vir(bctx, lhs, modifier)?;
-            let vrhs = expr_to_vir(bctx, rhs, modifier)?;
-            if matches!(*vlhs.typ, TypX::Bool) {
-                mk_expr(ExprX::Binary(BinaryOp::Implies, vlhs, vrhs))
-            } else {
-                unsupported_err!(expr.span, "assignment operators")
-            }
-        }
         ExprKind::Path(qpath) => {
             let res = bctx.types.qpath_res(&qpath, expr.hir_id);
             match res {
@@ -1322,59 +1313,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
         }
         ExprKind::Assign(lhs, rhs, _) => {
-            fn init_not_mut<'tcx>(bctx: &BodyCtxt<'tcx>, lhs: &Expr) -> Result<bool, VirErr> {
-                Ok(match lhs.kind {
-                    ExprKind::Path(QPath::Resolved(
-                        None,
-                        rustc_hir::Path { res: Res::Local(id), .. },
-                    )) => {
-                        let not_mut = if let Node::Pat(pat) = bctx.ctxt.tcx.hir().get(*id) {
-                            let (mutable, _) = pat_to_mut_var(pat)?;
-                            let ty = bctx.types.node_type(*id);
-                            !(mutable || ty.ref_mutability() == Some(Mutability::Mut))
-                        } else {
-                            panic!("assignment to non-local");
-                        };
-                        if not_mut {
-                            match bctx.ctxt.tcx.hir().get_parent(*id) {
-                                Node::Param(_) => {
-                                    err_span(lhs.span, "cannot assign to non-mut parameter")?
-                                }
-                                Node::Local(_) => (),
-                                other => unsupported_err!(lhs.span, "assignee node", other),
-                            }
-                        }
-                        not_mut
-                    }
-                    ExprKind::Field(lhs, _) => {
-                        let deref_ghost = mid_ty_to_vir_ghost(
-                            bctx.ctxt.tcx,
-                            &bctx.ctxt.verus_items,
-                            lhs.span,
-                            &bctx.types.node_type(lhs.hir_id),
-                            false,
-                            true,
-                        )?
-                        .1;
-                        unsupported_err_unless!(
-                            !deref_ghost,
-                            lhs.span,
-                            "assignment through Ghost/Tracked"
-                        );
-                        init_not_mut(bctx, lhs)?
-                    }
-                    ExprKind::Unary(UnOp::Deref, _) => false,
-                    _ => {
-                        unsupported_err!(lhs.span, format!("assign lhs {:?}", lhs))
-                    }
-                })
-            }
-            let init_not_mut = init_not_mut(bctx, lhs)?;
-            mk_expr(ExprX::Assign {
-                init_not_mut,
-                lhs: expr_to_vir(bctx, lhs, ExprModifier::ADDR_OF)?,
-                rhs: expr_to_vir(bctx, rhs, modifier)?,
-            })
+            expr_assign_to_vir_innermost(bctx, lhs, mk_expr, rhs, modifier, None)
         }
         ExprKind::Field(lhs, name) => {
             let lhs_modifier = is_expr_typ_mut_ref(bctx, lhs, modifier)?;
@@ -1797,8 +1736,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         }
         ExprKind::Loop(..) => unsupported_err!(expr.span, format!("complex loop expressions")),
         ExprKind::Break(..) => unsupported_err!(expr.span, format!("complex break expressions")),
-        ExprKind::AssignOp(..) => {
-            unsupported_err!(expr.span, format!("complex assignment expressions"))
+        ExprKind::AssignOp(Spanned { node, .. }, lhs, rhs) => {
+            expr_assign_to_vir_innermost(bctx, lhs, mk_expr, rhs, modifier, Some(*node))
         }
         ExprKind::ConstBlock(..) => unsupported_err!(expr.span, format!("const block expressions")),
         ExprKind::Array(..) => unsupported_err!(expr.span, format!("array expressions")),
@@ -1810,6 +1749,80 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::InlineAsm(..) => unsupported_err!(expr.span, format!("inline-asm expressions")),
         ExprKind::Err => unsupported_err!(expr.span, format!("Err expressions")),
     }
+}
+
+// TODO: fmt, give better names to lifetime parameters, cleanup types and double references
+fn expr_assign_to_vir_innermost<'a>(
+    bctx: &BodyCtxt<'a>,
+    lhs: &Expr<'a>,
+    mk_expr: impl Fn(ExprX) -> Result<Arc<SpannedTyped<ExprX>>, Arc<air::messages::MessageX>>,
+    rhs: &Expr<'a>,
+    modifier: ExprModifier,
+    op_kind: Option<BinOpKind>,
+) -> Result<Arc<SpannedTyped<ExprX>>, Arc<air::messages::MessageX>> {
+    fn init_not_mut<'tcx>(bctx: &BodyCtxt<'tcx>, lhs: &Expr) -> Result<bool, VirErr> {
+        Ok(match lhs.kind {
+            ExprKind::Path(QPath::Resolved(None, rustc_hir::Path { res: Res::Local(id), .. })) => {
+                let not_mut = if let Node::Pat(pat) = bctx.ctxt.tcx.hir().get(*id) {
+                    let (mutable, _) = pat_to_mut_var(pat)?;
+                    let ty = bctx.types.node_type(*id);
+                    !(mutable || ty.ref_mutability() == Some(Mutability::Mut))
+                } else {
+                    panic!("assignment to non-local");
+                };
+                if not_mut {
+                    match bctx.ctxt.tcx.hir().get_parent(*id) {
+                        Node::Param(_) => err_span(lhs.span, "cannot assign to non-mut parameter")?,
+                        Node::Local(_) => (),
+                        other => unsupported_err!(lhs.span, "assignee node", other),
+                    }
+                }
+                not_mut
+            }
+            ExprKind::Field(lhs, _) => {
+                let deref_ghost = mid_ty_to_vir_ghost(
+                    bctx.ctxt.tcx,
+                    &bctx.ctxt.verus_items,
+                    lhs.span,
+                    &bctx.types.node_type(lhs.hir_id),
+                    false,
+                    true,
+                )?
+                .1;
+                unsupported_err_unless!(!deref_ghost, lhs.span, "assignment through Ghost/Tracked");
+                init_not_mut(bctx, lhs)?
+            }
+            ExprKind::Unary(UnOp::Deref, _) => false,
+            _ => {
+                unsupported_err!(lhs.span, format!("assign lhs {:?}", lhs))
+            }
+        })
+    }
+    let op = op_kind.map(|op| match op {
+        BinOpKind::Add => BinaryOp::Arith(ArithOp::Add, None),
+        BinOpKind::Sub => BinaryOp::Arith(ArithOp::Sub, None),
+        BinOpKind::Mul => BinaryOp::Arith(ArithOp::Mul, None),
+        BinOpKind::Div => BinaryOp::Arith(ArithOp::EuclideanDiv, None),
+        BinOpKind::Rem => BinaryOp::Arith(ArithOp::EuclideanMod, None),
+        BinOpKind::BitAnd => {
+            panic!("rewrite away")
+            // BinaryOp::Bitwise(BitwiseOp::BitAnd, mode)
+        }
+        BinOpKind::BitOr | BinOpKind::BitXor | BinOpKind::Shl | BinOpKind::Shr => {
+            panic!("rewrite away")
+        }
+        _ => {
+            panic!("TODO: error for now")
+            // unsupported_err!(lhs.span, "assign op"), // TODO: use better span here, improve message
+        }
+    });
+    let init_not_mut = init_not_mut(bctx, lhs)?;
+    mk_expr(ExprX::Assign {
+        init_not_mut,
+        lhs: expr_to_vir(bctx, lhs, ExprModifier::ADDR_OF)?,
+        rhs: expr_to_vir(bctx, rhs, modifier)?,
+        op: op,
+    })
 }
 
 pub(crate) fn let_stmt_to_vir<'tcx>(
