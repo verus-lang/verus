@@ -171,5 +171,5 @@ pub fn main() {
         let profiler = Profiler::new(&reporter);
         profiler.print_raw_stats(&reporter);
     }
-    println!("Verification results:: verified: {} errors: {}", count_verified, count_errors);
+    println!("Verification results:: {} verified, {} errors", count_verified, count_errors);
 }
