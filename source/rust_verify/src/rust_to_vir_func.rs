@@ -273,6 +273,11 @@ pub(crate) fn handle_external_fn<'tcx>(
     }
     // trait bounds aren't part of the type signature - we have to check those separately
     if !predicates_match_by_id(ctxt.tcx, id, external_id, substs1) {
+        println!("Proxy function trait bounds: {:#?}", &all_predicates(ctxt.tcx, id, substs1));
+        println!(
+            "External function trait bounds: {:#?}",
+            &all_predicates(ctxt.tcx, external_id, substs1)
+        );
         return err_span(
             sig.span,
             format!(
