@@ -57,10 +57,9 @@ This is a tentative program.
 - 10:30AM: Brainstorming next big steps for Verus (1-2 hours in the morning)
 
 - 1:00PM: Verus internals + Q&A (Chris + Andrea)
-- Bug fix hack-a-thon
 - Math library / Verus standard library (Liz and Alex)
 - Axiom import sets (Andrea / Pranav)
-
+- Recommends (Chris, ...)
 
 (Escape Room -- Arrive by 6:45 pm at [145 E 8th Ave. Homestead, PA 15120](https://goo.gl/maps/33vqyYG5MsLq5mzv5))
 
@@ -68,13 +67,13 @@ This is a tentative program.
 - C to idiomatic Rust with LLMs and Verus (João)
 - Writing specifications for Rust's standard library (intro) (Travis)
 - Benchmarking suite for Verus (1 hours in the morning) (Chris)
-
 - Discuss moving to an open chat channel (Zulip?) (Andrea)
 - Syntax (Chris, ...)
 
 *Afternoon: Informal meetings and hacking*
 
 - Paper writing (Bryan)
+- Bug fix hack-a-thon
 - Writing specifications for Rust's standard library (hackathon)
 
 ### Friday, June 30th (optional)
