@@ -60,15 +60,15 @@ This is a tentative program.
 - Bug fix hack-a-thon
 - Math library / Verus standard library (Liz and Alex)
 - Axiom import sets (Andrea / Pranav)
-- Writing specifications for Rust's standard library (intro) (Travis)
-- C to idiomatic Rust with LLMs and Verus (João)
+
 
 (Escape Room -- Arrive by 6:45 pm at [145 E 8th Ave. Homestead, PA 15120](https://goo.gl/maps/33vqyYG5MsLq5mzv5))
 
 ### Thursday, June 29th (till 12pm)
-
+- C to idiomatic Rust with LLMs and Verus (João)
+- Writing specifications for Rust's standard library (intro) (Travis)
 - Benchmarking suite for Verus (1 hours in the morning) (Chris)
-- ~~Recommends (Chris, ...)~~
+
 - Discuss moving to an open chat channel (Zulip?) (Andrea)
 - Syntax (Chris, ...)
 
