@@ -112,7 +112,20 @@ pub fn swap<A>(x: &mut A, y: &mut A)
     core::mem::swap(x, y)
 }
 
+#[verifier::external_body]
+pub fn runtime_assert(b: bool)
+    requires b,
+{
+    runtime_assert_internal(b);
+}
+
 } // verus!
+
+#[inline(always)]
+#[verifier::external]
+fn runtime_assert_internal(b: bool) {
+    assert!(b);
+}
 
 /// Allows you to prove a boolean predicate by assuming its negation and proving
 /// a contradiction.
