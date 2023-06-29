@@ -457,7 +457,7 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
                     )
                 },
                 _ => {
-                    unimplemented!("assign to non-small expr {:#?}", lhs) // TODO: change error msg
+                    error(&lhs.span, "not yet implemented: lhs of compound assignment")
                 }
             }
         },

@@ -1159,7 +1159,12 @@ fn erase_expr<'tcx>(
                 let exp2 = erase_expr(ctxt, state, true, e2);
                 erase_spec_exps(ctxt, state, expr, vec![exp1, exp2])
             } else {
-                // TODO: do not replicate exp1; may cause wrong failures when performing borrow-checking
+                // REVIEW:
+                // Right now, we duplicate exp1; this is ok because we only consider two kinds of
+                // variables for the lhs: ExprX::Var(_) | ExprX::VarLoc(_). When we add support
+                // for more kinds, this may cause the borrow-checker to report errors in places
+                // where it shouldn't (borrow-checking is still sound, but innacurate for these
+                // expressions).
                 let exp1 = erase_expr(ctxt, state, false, e1);
                 let exp2 = erase_expr(ctxt, state, false, e2);
                 let expr_typ = |state: &mut State| erase_ty(ctxt, state, &ctxt.types().node_type(e1.hir_id));

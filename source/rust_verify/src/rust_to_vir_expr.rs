@@ -1751,16 +1751,15 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
     }
 }
 
-// TODO: fmt, give better names to lifetime parameters, cleanup types and double references
-fn expr_assign_to_vir_innermost<'a>(
-    bctx: &BodyCtxt<'a>,
-    lhs: &Expr<'a>,
+fn expr_assign_to_vir_innermost<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    lhs: &Expr<'tcx>,
     mk_expr: impl Fn(ExprX) -> Result<Arc<SpannedTyped<ExprX>>, Arc<air::messages::MessageX>>,
-    rhs: &Expr<'a>,
+    rhs: &Expr<'tcx>,
     modifier: ExprModifier,
     op_kind: Option<BinOpKind>,
 ) -> Result<Arc<SpannedTyped<ExprX>>, Arc<air::messages::MessageX>> {
-    fn init_not_mut<'tcx>(bctx: &BodyCtxt<'tcx>, lhs: &Expr) -> Result<bool, VirErr> {
+    fn init_not_mut(bctx: &BodyCtxt, lhs: &Expr) -> Result<bool, VirErr> {
         Ok(match lhs.kind {
             ExprKind::Path(QPath::Resolved(None, rustc_hir::Path { res: Res::Local(id), .. })) => {
                 let not_mut = if let Node::Pat(pat) = bctx.ctxt.tcx.hir().get(*id) {
@@ -1798,6 +1797,7 @@ fn expr_assign_to_vir_innermost<'a>(
             }
         })
     }
+    //let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
     let op = op_kind.map(|op| match op {
         BinOpKind::Add => BinaryOp::Arith(ArithOp::Add, None),
         BinOpKind::Sub => BinaryOp::Arith(ArithOp::Sub, None),
