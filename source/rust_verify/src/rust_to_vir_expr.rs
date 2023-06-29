@@ -1159,71 +1159,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 _ => (),
             }
             let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
-            let vop = match op.node {
-                BinOpKind::And => BinaryOp::And,
-                BinOpKind::Or => BinaryOp::Or,
-                BinOpKind::Eq => BinaryOp::Eq(Mode::Exec),
-                BinOpKind::Ne => BinaryOp::Ne,
-                BinOpKind::Le => BinaryOp::Inequality(InequalityOp::Le),
-                BinOpKind::Ge => BinaryOp::Inequality(InequalityOp::Ge),
-                BinOpKind::Lt => BinaryOp::Inequality(InequalityOp::Lt),
-                BinOpKind::Gt => BinaryOp::Inequality(InequalityOp::Gt),
-                BinOpKind::Add => BinaryOp::Arith(ArithOp::Add, Some(bctx.ctxt.infer_mode())),
-                BinOpKind::Sub => BinaryOp::Arith(ArithOp::Sub, Some(bctx.ctxt.infer_mode())),
-                BinOpKind::Mul => BinaryOp::Arith(ArithOp::Mul, Some(bctx.ctxt.infer_mode())),
-                BinOpKind::Div => {
-                    BinaryOp::Arith(ArithOp::EuclideanDiv, Some(bctx.ctxt.infer_mode()))
-                }
-                BinOpKind::Rem => {
-                    BinaryOp::Arith(ArithOp::EuclideanMod, Some(bctx.ctxt.infer_mode()))
-                }
-                BinOpKind::BitXor => {
-                    match ((tc.node_type(lhs.hir_id)).kind(), (tc.node_type(rhs.hir_id)).kind()) {
-                        (TyKind::Bool, TyKind::Bool) => BinaryOp::Xor,
-                        (TyKind::Int(_), TyKind::Int(_)) => {
-                            BinaryOp::Bitwise(BitwiseOp::BitXor, mode_for_ghostness)
-                        }
-                        (TyKind::Uint(_), TyKind::Uint(_)) => {
-                            BinaryOp::Bitwise(BitwiseOp::BitXor, mode_for_ghostness)
-                        }
-                        _ => panic!("bitwise XOR for this type not supported"),
-                    }
-                }
-                BinOpKind::BitAnd => {
-                    match ((tc.node_type(lhs.hir_id)).kind(), (tc.node_type(rhs.hir_id)).kind()) {
-                        (TyKind::Bool, TyKind::Bool) => {
-                            panic!(
-                                "bitwise AND for bools (i.e., the not-short-circuited version) not supported"
-                            );
-                        }
-                        (TyKind::Int(_), TyKind::Int(_)) => {
-                            BinaryOp::Bitwise(BitwiseOp::BitAnd, mode_for_ghostness)
-                        }
-                        (TyKind::Uint(_), TyKind::Uint(_)) => {
-                            BinaryOp::Bitwise(BitwiseOp::BitAnd, mode_for_ghostness)
-                        }
-                        t => panic!("bitwise AND for this type not supported {:#?}", t),
-                    }
-                }
-                BinOpKind::BitOr => {
-                    match ((tc.node_type(lhs.hir_id)).kind(), (tc.node_type(rhs.hir_id)).kind()) {
-                        (TyKind::Bool, TyKind::Bool) => {
-                            panic!(
-                                "bitwise OR for bools (i.e., the not-short-circuited version) not supported"
-                            );
-                        }
-                        (TyKind::Int(_), TyKind::Int(_)) => {
-                            BinaryOp::Bitwise(BitwiseOp::BitOr, mode_for_ghostness)
-                        }
-                        (TyKind::Uint(_), TyKind::Uint(_)) => {
-                            BinaryOp::Bitwise(BitwiseOp::BitOr, mode_for_ghostness)
-                        }
-                        _ => panic!("bitwise OR for this type not supported"),
-                    }
-                }
-                BinOpKind::Shr => BinaryOp::Bitwise(BitwiseOp::Shr, mode_for_ghostness),
-                BinOpKind::Shl => BinaryOp::Bitwise(BitwiseOp::Shl, mode_for_ghostness),
-            };
+            let vop = binopkind_to_binaryop(op, bctx, tc, lhs, rhs, mode_for_ghostness);
             let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs))?;
             match op.node {
                 BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => {
@@ -1313,7 +1249,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
         }
         ExprKind::Assign(lhs, rhs, _) => {
-            expr_assign_to_vir_innermost(bctx, lhs, mk_expr, rhs, modifier, None)
+            expr_assign_to_vir_innermost(bctx, tc, lhs, mk_expr, rhs, modifier, None)
         }
         ExprKind::Field(lhs, name) => {
             let lhs_modifier = is_expr_typ_mut_ref(bctx, lhs, modifier)?;
@@ -1736,8 +1672,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         }
         ExprKind::Loop(..) => unsupported_err!(expr.span, format!("complex loop expressions")),
         ExprKind::Break(..) => unsupported_err!(expr.span, format!("complex break expressions")),
-        ExprKind::AssignOp(Spanned { node, .. }, lhs, rhs) => {
-            expr_assign_to_vir_innermost(bctx, lhs, mk_expr, rhs, modifier, Some(*node))
+        ExprKind::AssignOp(spanned_node, lhs, rhs) => {
+            expr_assign_to_vir_innermost(bctx, tc, lhs, mk_expr, rhs, modifier, Some(spanned_node))
         }
         ExprKind::ConstBlock(..) => unsupported_err!(expr.span, format!("const block expressions")),
         ExprKind::Array(..) => unsupported_err!(expr.span, format!("array expressions")),
@@ -1751,13 +1687,90 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
     }
 }
 
-fn expr_assign_to_vir_innermost<'tcx>(
+fn binopkind_to_binaryop(
+    op: &Spanned<BinOpKind>,
+    bctx: &BodyCtxt<'_>,
+    tc: &rustc_middle::ty::TypeckResults<'_>,
+    lhs: &Expr<'_>,
+    rhs: &Expr<'_>,
+    mode_for_ghostness: Mode
+) -> BinaryOp {
+    let vop = match op.node {
+        BinOpKind::And => BinaryOp::And,
+        BinOpKind::Or => BinaryOp::Or,
+        BinOpKind::Eq => BinaryOp::Eq(Mode::Exec),
+        BinOpKind::Ne => BinaryOp::Ne,
+        BinOpKind::Le => BinaryOp::Inequality(InequalityOp::Le),
+        BinOpKind::Ge => BinaryOp::Inequality(InequalityOp::Ge),
+        BinOpKind::Lt => BinaryOp::Inequality(InequalityOp::Lt),
+        BinOpKind::Gt => BinaryOp::Inequality(InequalityOp::Gt),
+        BinOpKind::Add => BinaryOp::Arith(ArithOp::Add, Some(bctx.ctxt.infer_mode())),
+        BinOpKind::Sub => BinaryOp::Arith(ArithOp::Sub, Some(bctx.ctxt.infer_mode())),
+        BinOpKind::Mul => BinaryOp::Arith(ArithOp::Mul, Some(bctx.ctxt.infer_mode())),
+        BinOpKind::Div => {
+            BinaryOp::Arith(ArithOp::EuclideanDiv, Some(bctx.ctxt.infer_mode()))
+        }
+        BinOpKind::Rem => {
+            BinaryOp::Arith(ArithOp::EuclideanMod, Some(bctx.ctxt.infer_mode()))
+        }
+        BinOpKind::BitXor => {
+            match ((tc.node_type(lhs.hir_id)).kind(), (tc.node_type(rhs.hir_id)).kind()) {
+                (TyKind::Bool, TyKind::Bool) => BinaryOp::Xor,
+                (TyKind::Int(_), TyKind::Int(_)) => {
+                    BinaryOp::Bitwise(BitwiseOp::BitXor, mode_for_ghostness)
+                }
+                (TyKind::Uint(_), TyKind::Uint(_)) => {
+                    BinaryOp::Bitwise(BitwiseOp::BitXor, mode_for_ghostness)
+                }
+                _ => panic!("bitwise XOR for this type not supported"),
+            }
+        }
+        BinOpKind::BitAnd => {
+            match ((tc.node_type(lhs.hir_id)).kind(), (tc.node_type(rhs.hir_id)).kind()) {
+                (TyKind::Bool, TyKind::Bool) => {
+                    panic!(
+                        "bitwise AND for bools (i.e., the not-short-circuited version) not supported"
+                    );
+                }
+                (TyKind::Int(_), TyKind::Int(_)) => {
+                    BinaryOp::Bitwise(BitwiseOp::BitAnd, mode_for_ghostness)
+                }
+                (TyKind::Uint(_), TyKind::Uint(_)) => {
+                    BinaryOp::Bitwise(BitwiseOp::BitAnd, mode_for_ghostness)
+                }
+                t => panic!("bitwise AND for this type not supported {:#?}", t),
+            }
+        }
+        BinOpKind::BitOr => {
+            match ((tc.node_type(lhs.hir_id)).kind(), (tc.node_type(rhs.hir_id)).kind()) {
+                (TyKind::Bool, TyKind::Bool) => {
+                    panic!(
+                        "bitwise OR for bools (i.e., the not-short-circuited version) not supported"
+                    );
+                }
+                (TyKind::Int(_), TyKind::Int(_)) => {
+                    BinaryOp::Bitwise(BitwiseOp::BitOr, mode_for_ghostness)
+                }
+                (TyKind::Uint(_), TyKind::Uint(_)) => {
+                    BinaryOp::Bitwise(BitwiseOp::BitOr, mode_for_ghostness)
+                }
+                _ => panic!("bitwise OR for this type not supported"),
+            }
+        }
+        BinOpKind::Shr => BinaryOp::Bitwise(BitwiseOp::Shr, mode_for_ghostness),
+        BinOpKind::Shl => BinaryOp::Bitwise(BitwiseOp::Shl, mode_for_ghostness),
+    };
+    vop
+}
+
+fn expr_assign_to_vir_innermost<'tcx, 'o>(
     bctx: &BodyCtxt<'tcx>,
+    tc: &rustc_middle::ty::TypeckResults<'_>,
     lhs: &Expr<'tcx>,
     mk_expr: impl Fn(ExprX) -> Result<Arc<SpannedTyped<ExprX>>, Arc<air::messages::MessageX>>,
     rhs: &Expr<'tcx>,
     modifier: ExprModifier,
-    op_kind: Option<BinOpKind>,
+    op_kind: Option<&'o Spanned<BinOpKind>>,
 ) -> Result<Arc<SpannedTyped<ExprX>>, Arc<air::messages::MessageX>> {
     fn init_not_mut(bctx: &BodyCtxt, lhs: &Expr) -> Result<bool, VirErr> {
         Ok(match lhs.kind {
@@ -1797,25 +1810,14 @@ fn expr_assign_to_vir_innermost<'tcx>(
             }
         })
     }
-    //let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
-    let op = op_kind.map(|op| match op {
-        BinOpKind::Add => BinaryOp::Arith(ArithOp::Add, None),
-        BinOpKind::Sub => BinaryOp::Arith(ArithOp::Sub, None),
-        BinOpKind::Mul => BinaryOp::Arith(ArithOp::Mul, None),
-        BinOpKind::Div => BinaryOp::Arith(ArithOp::EuclideanDiv, None),
-        BinOpKind::Rem => BinaryOp::Arith(ArithOp::EuclideanMod, None),
-        BinOpKind::BitAnd => {
-            panic!("rewrite away")
-            // BinaryOp::Bitwise(BitwiseOp::BitAnd, mode)
+    let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
+    let op = match op_kind {
+        None => None,
+        Some(op_kind) => {
+            Some(binopkind_to_binaryop(op_kind, bctx, tc, lhs, rhs, mode_for_ghostness))
         }
-        BinOpKind::BitOr | BinOpKind::BitXor | BinOpKind::Shl | BinOpKind::Shr => {
-            panic!("rewrite away")
-        }
-        _ => {
-            panic!("TODO: error for now")
-            // unsupported_err!(lhs.span, "assign op"), // TODO: use better span here, improve message
-        }
-    });
+    };
+    // TODO: check that the generated op is allowed in compound op
     let init_not_mut = init_not_mut(bctx, lhs)?;
     mk_expr(ExprX::Assign {
         init_not_mut,

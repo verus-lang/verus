@@ -441,3 +441,11 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_compound_assign_fail verus_code! {
+        exec fn test(x: &mut i32, y: i32) {
+            *x /= y;
+        }
+    } => Ok(())
+}
