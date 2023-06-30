@@ -480,6 +480,7 @@ fn run() -> Result<(), String> {
                 let cargo = cargo
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VARGO_TARGET_DIR", target_verus_dir_absolute)
+                    .env("RUSTFLAGS", "--cfg proc_macro_span")
                     .args(&args);
                 log_command(&cargo, verbose);
                 let status = cargo
@@ -517,6 +518,7 @@ fn run() -> Result<(), String> {
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VARGO_IN_NEXTEST", "1")
                     .env("VERUS_IN_VARGO", "1")
+                    .env("RUSTFLAGS", "--cfg proc_macro_span")
                     .env("CARGO", current_exe)
                     .args(&args);
                 log_command(&cargo, verbose);
@@ -529,6 +531,7 @@ fn run() -> Result<(), String> {
                 let cargo = cargo
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VERUS_IN_VARGO", "1")
+                    .env("RUSTFLAGS", "--cfg proc_macro_span")
                     .args(&args);
                 log_command(&cargo, verbose);
                 let status = cargo
@@ -542,6 +545,7 @@ fn run() -> Result<(), String> {
             let cargo = cargo
                 .env("RUSTC_BOOTSTRAP", "1")
                 .env("VERUS_IN_VARGO", "1")
+                .env("RUSTFLAGS", "--cfg proc_macro_span")
                 .args(&args);
             log_command(&cargo, verbose);
             cargo
@@ -560,6 +564,7 @@ fn run() -> Result<(), String> {
             let cargo = cargo
                 .env("RUSTC_BOOTSTRAP", "1")
                 .env("VERUS_IN_VARGO", "1")
+                .env("RUSTFLAGS", "--cfg proc_macro_span")
                 .args(args);
             log_command(&cargo, verbose);
             let status = cargo
@@ -580,7 +585,6 @@ fn run() -> Result<(), String> {
                 release: bool,
                 target: &str,
                 extra_args: &[String],
-                env_args: &[(&str, &str)],
                 package: Option<&str>,
                 exclude: &[String],
                 verbose: bool,
@@ -593,12 +597,10 @@ fn run() -> Result<(), String> {
                     let mut cmd = cmd
                         .env("RUSTC_BOOTSTRAP", "1")
                         .env("VERUS_IN_VARGO", "1")
+                        .env("RUSTFLAGS", "--cfg proc_macro_span")
                         .arg("build")
                         .arg("-p")
                         .arg(target);
-                    for (k, v) in env_args {
-                        cmd.env(k, v);
-                    }
                     if release {
                         cmd = cmd.arg("--release");
                     }
@@ -653,16 +655,10 @@ fn run() -> Result<(), String> {
                 } else {
                     &cargo_forward_args
                 };
-                let env_args = if p == &"builtin_macros" {
-                    vec![("RUSTFLAGS", "--cfg proc_macro_span")]
-                } else {
-                    vec![]
-                };
                 build_target(
                     release,
                     p,
                     &extra_args[..],
-                    &env_args[..],
                     package,
                     &exclude[..],
                     verbose,
@@ -779,6 +775,7 @@ fn run() -> Result<(), String> {
                         let mut vstd_build = vstd_build
                             .env("RUSTC_BOOTSTRAP", "1")
                             .env("VERUS_IN_VARGO", "1")
+                            .env("RUSTFLAGS", "--cfg proc_macro_span")
                             .arg("run")
                             .arg("-p")
                             .arg("vstd_build")
