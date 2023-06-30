@@ -303,7 +303,11 @@ pub enum InequalityOp {
     Lt,
     /// IntRange::Int >
     Gt,
-    /// IntRange::Int ==
+}
+
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum ChainedOp {
+    CmpOp(InequalityOp),
     MultiEq,
 }
 
@@ -353,7 +357,7 @@ pub enum BinaryOpr {
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum MultiOp {
-    Chained(Arc<Vec<InequalityOp>>),
+    Chained(Arc<Vec<ChainedOp>>),
 }
 
 /// Use Ghost(x) or Tracked(x) to unwrap an argument

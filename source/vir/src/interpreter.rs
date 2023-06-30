@@ -1200,7 +1200,6 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 Ge => i1 >= i2,
                                 Lt => i1 < i2,
                                 Gt => i1 > i2,
-                                MultiEq => i1 == i2,
                             };
                             bool_new(b)
                         }

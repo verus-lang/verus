@@ -27,10 +27,10 @@ use rustc_span::source_map::Spanned;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ComputeMode,
-    Constant, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, Ident, InequalityOp, IntRange,
-    IntegerTypeBoundKind, Mode, ModeCoercion, MultiOp, Quant, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
-    VirErr,
+    ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ChainedOp,
+    ComputeMode, Constant, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, Ident, InequalityOp,
+    IntRange, IntegerTypeBoundKind, Mode, ModeCoercion, MultiOp, Quant, Typ, TypX, UnaryOp,
+    UnaryOpr, VarAt, VirErr,
 };
 use vir::ast_util::{const_int_from_string, types_equal, undecorate_typ};
 use vir::def::positional_field_ident;
@@ -1054,7 +1054,12 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                 unsupported_err_unless!(len == 1, expr.span, "spec_chained_cmp", args);
                 Ok(vir_args[0].clone())
             }
-            ChainedItem::Le | ChainedItem::Lt | ChainedItem::Ge | ChainedItem::Gt | ChainedItem::Eq => {
+
+            ChainedItem::Le
+            | ChainedItem::Lt
+            | ChainedItem::Ge
+            | ChainedItem::Gt
+            | ChainedItem::Eq => {
                 unsupported_err_unless!(len == 2, expr.span, "chained inequality", &args);
                 unsupported_err_unless!(
                     matches!(&vir_args[0].x, ExprX::Multi(MultiOp::Chained(_), _)),
@@ -1069,11 +1074,11 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                     &args
                 );
                 let op = match chained_item {
-                    ChainedItem::Le => InequalityOp::Le,
-                    ChainedItem::Lt => InequalityOp::Lt,
-                    ChainedItem::Ge => InequalityOp::Ge,
-                    ChainedItem::Gt => InequalityOp::Gt,
-                    ChainedItem::Eq => InequalityOp::MultiEq,
+                    ChainedItem::Le => ChainedOp::CmpOp(InequalityOp::Le),
+                    ChainedItem::Lt => ChainedOp::CmpOp(InequalityOp::Lt),
+                    ChainedItem::Ge => ChainedOp::CmpOp(InequalityOp::Ge),
+                    ChainedItem::Gt => ChainedOp::CmpOp(InequalityOp::Gt),
+                    ChainedItem::Eq => ChainedOp::MultiEq,
                     ChainedItem::Value | ChainedItem::Cmp => unreachable!(),
                 };
                 if let ExprX::Multi(MultiOp::Chained(ops), es) = &vir_args[0].x {
