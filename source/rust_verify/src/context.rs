@@ -1,4 +1,4 @@
-use crate::erase::ResolvedCall;
+use crate::{erase::ResolvedCall, verus_items::VerusItems};
 use air::ast::AstId;
 use rustc_hir::{Crate, HirId};
 use rustc_middle::ty::{TyCtxt, TypeckResults};
@@ -33,6 +33,7 @@ pub struct ContextX<'tcx> {
     pub(crate) spans: crate::spans::SpanContext,
     pub(crate) vstd_crate_name: Option<Ident>,
     pub(crate) arch: ArchContext,
+    pub(crate) verus_items: Arc<VerusItems>,
 }
 
 #[derive(Clone)]
@@ -50,5 +51,9 @@ impl<'tcx> ContextX<'tcx> {
         let id = self.unique_id.get();
         self.unique_id.set(id + 1);
         id
+    }
+
+    pub(crate) fn get_verus_item(&self, def_id: DefId) -> Option<&crate::verus_items::VerusItem> {
+        self.verus_items.id_to_name.get(&def_id)
     }
 }

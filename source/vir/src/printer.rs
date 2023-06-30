@@ -338,6 +338,7 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
         datatypes,
         functions,
         traits,
+        trait_impls,
         assoc_type_impls,
         module_ids,
         external_fns,
@@ -362,6 +363,10 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
     }
     for t in traits.iter() {
         let t = nodes!(trait {path_to_node(&t.x.name)});
+        writeln!(&mut write, "{}\n", nw.node_to_string(&t)).expect("cannot write to vir write");
+    }
+    for t in trait_impls.iter() {
+        let t = nodes!(trait_impl {path_to_node(&t.x.impl_path)} {path_to_node(&t.x.trait_path)});
         writeln!(&mut write, "{}\n", nw.node_to_string(&t)).expect("cannot write to vir write");
     }
     for assoc in assoc_type_impls.iter() {

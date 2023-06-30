@@ -473,7 +473,7 @@ fn expr_get_call(
             CallTarget::FnSpec(..) => {
                 panic!("internal error: CallTarget::FnSpec");
             }
-            CallTarget::Fun(kind, x, typs, autospec_usage) => {
+            CallTarget::Fun(kind, x, typs, _impl_paths, autospec_usage) => {
                 if *autospec_usage != AutospecUsage::Final {
                     return internal_error(&expr.span, "autospec not discharged");
                 }
@@ -517,7 +517,7 @@ fn expr_must_be_call_stm(
     expr: &Expr,
 ) -> Result<Option<(Vec<Stm>, ReturnedCall)>, VirErr> {
     match &expr.x {
-        ExprX::Call(CallTarget::Fun(_, x, _, _), _)
+        ExprX::Call(CallTarget::Fun(_, x, _, _, _), _)
             if !function_can_be_exp(ctx, state, expr, x)? =>
         {
             expr_get_call(ctx, state, expr)
@@ -1405,7 +1405,9 @@ fn expr_to_stm_opt(
         }
         ExprX::AssertAssume { is_assume: false, expr: e } => {
             if state.checking_recommends(ctx) {
-                let stms = check_pure_expr(ctx, state, &e)?;
+                let (mut stms, exp) = expr_to_stm_or_error(ctx, state, e)?;
+                let stm = Spanned::new(expr.span.clone(), StmX::Assume(exp));
+                stms.push(stm);
                 Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
             } else {
                 let mut stms: Vec<Stm> = Vec::new();
@@ -1650,7 +1652,7 @@ fn expr_to_stm_opt(
                 ctx.global.rlimit,
                 ctx.global.arch,
                 *mode,
-                &mut ctx.global.interpreter_log.borrow_mut(),
+                &mut ctx.global.interpreter_log.lock().unwrap(),
             )?;
             let err = error_with_label(
                 "assertion failed",
