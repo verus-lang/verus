@@ -178,12 +178,6 @@ fn attrs_to_trees(attrs: &[Attribute]) -> Result<Vec<(AttrPrefix, Span, AttrTree
     Ok(attr_trees)
 }
 
-#[derive(Debug)]
-pub(crate) enum GetVariantField {
-    Named(String),
-    Unnamed(usize),
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GhostBlockAttr {
     Proof,
@@ -246,10 +240,6 @@ pub(crate) enum Attr {
     Atomic,
     // specifies an invariant block
     InvariantBlock,
-    // an enum variant is_Variant
-    IsVariant(String),
-    // an enum variant get_Variant
-    GetVariant(String, GetVariantField),
     // this proof function is a termination proof
     DecreasesBy,
     // in a spec function, check the body for violations of recommends
@@ -497,27 +487,6 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                             _ => return err_span(span, "invalid prover"),
                         }
                     }
-                    AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
-                        if arg == "is_variant" =>
-                    {
-                        v.push(Attr::IsVariant(ident.clone()))
-                    }
-                    AttrTree::Fun(
-                        _,
-                        arg,
-                        Some(
-                            box [
-                                AttrTree::Fun(_, variant_ident, None),
-                                AttrTree::Fun(_, field_ident, None),
-                            ],
-                        ),
-                    ) if arg == "get_variant" => {
-                        let field_ident = match field_ident.parse::<usize>().ok() {
-                            Some(i) => GetVariantField::Unnamed(i),
-                            None => GetVariantField::Named(field_ident.clone()),
-                        };
-                        v.push(Attr::GetVariant(variant_ident.clone(), field_ident))
-                    }
                     AttrTree::Fun(_, arg, None) if arg == "via" => v.push(Attr::DecreasesBy),
                     _ => {
                         return err_span(span, "unrecognized internal attribute");
@@ -636,8 +605,6 @@ pub(crate) struct VerifierAttrs {
     pub(crate) bit_vector: bool,
     pub(crate) atomic: bool,
     pub(crate) integer_ring: bool,
-    pub(crate) is_variant: Option<String>,
-    pub(crate) get_variant: Option<(String, GetVariantField)>,
     pub(crate) decreases_by: bool,
     pub(crate) check_recommends: bool,
     pub(crate) nonlinear: bool,
@@ -669,8 +636,6 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         bit_vector: false,
         atomic: false,
         integer_ring: false,
-        is_variant: None,
-        get_variant: None,
         decreases_by: false,
         check_recommends: false,
         nonlinear: false,
@@ -713,10 +678,6 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::BitVector => vs.bit_vector = true,
             Attr::Atomic => vs.atomic = true,
             Attr::IntegerRing => vs.integer_ring = true,
-            Attr::IsVariant(variant_ident) => vs.is_variant = Some(variant_ident),
-            Attr::GetVariant(variant_ident, field_ident) => {
-                vs.get_variant = Some((variant_ident, field_ident))
-            }
             Attr::DecreasesBy => vs.decreases_by = true,
             Attr::CheckRecommends => vs.check_recommends = true,
             Attr::NonLinear => vs.nonlinear = true,

@@ -1787,9 +1787,6 @@ fn erase_impl<'tcx>(
                 if vattrs.external {
                     continue;
                 }
-                if vattrs.is_variant.is_some() || vattrs.get_variant.is_some() {
-                    continue;
-                }
                 match &kind {
                     ImplItemKind::Fn(sig, body_id) => {
                         erase_fn(
@@ -2131,9 +2128,6 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                     let attrs = tcx.hir().attrs(item.hir_id());
                     let vattrs = get_verifier_attrs(attrs).expect("get_verifier_attrs");
                     if vattrs.external {
-                        continue;
-                    }
-                    if vattrs.is_variant.is_some() || vattrs.get_variant.is_some() {
                         continue;
                     }
                     let id = item.owner_id.to_def_id();

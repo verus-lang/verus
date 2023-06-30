@@ -149,8 +149,8 @@ test_verify_one_file! {
             x
         }
         proof fn test<A>(tracked x: A) {
-            let s = id(Option::Some(x)).is_None();
-            let s = id(Option::Some(x)).is_None();
+            let s = builtin::is_variant(id(Option::Some(x)), "None");
+            let s = builtin::is_variant(id(Option::Some(x)), "None");
         }
     } => Err(err) => assert_vir_error_msg(err, "use of moved value")
 }
@@ -166,8 +166,8 @@ test_verify_one_file! {
             x
         }
         proof fn test<A>(tracked x: A) {
-            let s = id(Option::Some(x)).get_Some_0();
-            let s = id(Option::Some(x)).get_Some_0();
+            let s = builtin::get_variant_field::<_, A>(id(Option::Some(x)), "Some", "0");
+            let s = builtin::get_variant_field::<_, A>(id(Option::Some(x)), "Some", "0");
         }
     } => Err(err) => assert_vir_error_msg(err, "use of moved value")
 }
