@@ -1160,8 +1160,8 @@ fn erase_expr<'tcx>(
                 erase_spec_exps(ctxt, state, expr, vec![exp1, exp2])
             } else {
                 // REVIEW:
-                // Right now, we duplicate exp1; this is ok because we only consider two kinds of
-                // variables for the lhs: ExprX::Var(_) | ExprX::VarLoc(_). When we add support
+                // Right now, we duplicate exp1; this is ok because we only consider one kind of
+                // expressions on the lhs: ExprX::VarLoc(_). When we add support
                 // for more kinds, this may cause the borrow-checker to report errors in places
                 // where it shouldn't (borrow-checking is still sound, but innacurate for these
                 // expressions).

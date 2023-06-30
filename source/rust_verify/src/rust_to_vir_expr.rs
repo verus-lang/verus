@@ -1672,8 +1672,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         }
         ExprKind::Loop(..) => unsupported_err!(expr.span, format!("complex loop expressions")),
         ExprKind::Break(..) => unsupported_err!(expr.span, format!("complex break expressions")),
-        ExprKind::AssignOp(spanned_node, lhs, rhs) => {
-            expr_assign_to_vir_innermost(bctx, tc, lhs, mk_expr, rhs, modifier, Some(spanned_node))
+        ExprKind::AssignOp(op, lhs, rhs) => {
+            expr_assign_to_vir_innermost(bctx, tc, lhs, mk_expr, rhs, modifier, Some(op))
         }
         ExprKind::ConstBlock(..) => unsupported_err!(expr.span, format!("const block expressions")),
         ExprKind::Array(..) => unsupported_err!(expr.span, format!("array expressions")),
@@ -1689,10 +1689,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
 
 fn binopkind_to_binaryop(
     op: &Spanned<BinOpKind>,
-    bctx: &BodyCtxt<'_>,
-    tc: &rustc_middle::ty::TypeckResults<'_>,
-    lhs: &Expr<'_>,
-    rhs: &Expr<'_>,
+    bctx: &BodyCtxt,
+    tc: &rustc_middle::ty::TypeckResults,
+    lhs: &Expr,
+    rhs: &Expr,
     mode_for_ghostness: Mode
 ) -> BinaryOp {
     let vop = match op.node {
@@ -1763,14 +1763,14 @@ fn binopkind_to_binaryop(
     vop
 }
 
-fn expr_assign_to_vir_innermost<'tcx, 'o>(
+fn expr_assign_to_vir_innermost<'tcx>(
     bctx: &BodyCtxt<'tcx>,
-    tc: &rustc_middle::ty::TypeckResults<'_>,
+    tc: &rustc_middle::ty::TypeckResults,
     lhs: &Expr<'tcx>,
     mk_expr: impl Fn(ExprX) -> Result<Arc<SpannedTyped<ExprX>>, Arc<air::messages::MessageX>>,
     rhs: &Expr<'tcx>,
     modifier: ExprModifier,
-    op_kind: Option<&'o Spanned<BinOpKind>>,
+    op_kind: Option<&Spanned<BinOpKind>>,
 ) -> Result<Arc<SpannedTyped<ExprX>>, Arc<air::messages::MessageX>> {
     fn init_not_mut(bctx: &BodyCtxt, lhs: &Expr) -> Result<bool, VirErr> {
         Ok(match lhs.kind {

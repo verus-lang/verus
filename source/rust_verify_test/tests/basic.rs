@@ -436,8 +436,8 @@ test_verify_one_file! {
             let mut x: i32 = 1;
             x += 2;
             assert({ x == 3 as i32 });
-            //*y /= 2;
-            //assert({ *y == *old(y)/2 });
+            *y /= 2;
+            assert({ *y == *old(y)/2 });
         }
     } => Ok(())
 }
@@ -445,7 +445,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_compound_assign_fail verus_code! {
         exec fn test(x: &mut i32, y: i32) {
-            *x /= y;
+            *x /= y; // FAILS
         }
-    } => Ok(())
+    } => Err(_)
 }
