@@ -440,33 +440,25 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
             match &lhs.x {
                 ExprX::VarLoc(id) => {
                     // convert VarLoc to Var to be used on the RHS
-                    let var = SpannedTyped::new(
-                        &lhs.span,
-                        &lhs.typ,
-                        ExprX::Var(id.clone()),
-                    );
-                    Ok(
-                        SpannedTyped::new(
-                            &expr.span,
-                            &expr.typ,
-                            ExprX::Assign {
-                                init_not_mut: *init_not_mut,
-                                lhs: lhs.clone(),
-                                rhs: SpannedTyped::new(
-                                    &expr.span,
-                                    &lhs.typ,
-                                    ExprX::Binary(op.clone(), var, rhs.clone())
-                                ),
-                                op: None,
-                            }
-                        )
-                    )
-                },
-                _ => {
-                    error(&lhs.span, "not yet implemented: lhs of compound assignment")
+                    let var = SpannedTyped::new(&lhs.span, &lhs.typ, ExprX::Var(id.clone()));
+                    Ok(SpannedTyped::new(
+                        &expr.span,
+                        &expr.typ,
+                        ExprX::Assign {
+                            init_not_mut: *init_not_mut,
+                            lhs: lhs.clone(),
+                            rhs: SpannedTyped::new(
+                                &expr.span,
+                                &lhs.typ,
+                                ExprX::Binary(op.clone(), var, rhs.clone()),
+                            ),
+                            op: None,
+                        },
+                    ))
                 }
+                _ => error(&lhs.span, "not yet implemented: lhs of compound assignment"),
             }
-        },
+        }
         _ => Ok(expr.clone()),
     }
 }

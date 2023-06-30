@@ -1693,7 +1693,7 @@ fn binopkind_to_binaryop(
     tc: &rustc_middle::ty::TypeckResults,
     lhs: &Expr,
     rhs: &Expr,
-    mode_for_ghostness: Mode
+    mode_for_ghostness: Mode,
 ) -> BinaryOp {
     let vop = match op.node {
         BinOpKind::And => BinaryOp::And,
@@ -1707,12 +1707,8 @@ fn binopkind_to_binaryop(
         BinOpKind::Add => BinaryOp::Arith(ArithOp::Add, Some(bctx.ctxt.infer_mode())),
         BinOpKind::Sub => BinaryOp::Arith(ArithOp::Sub, Some(bctx.ctxt.infer_mode())),
         BinOpKind::Mul => BinaryOp::Arith(ArithOp::Mul, Some(bctx.ctxt.infer_mode())),
-        BinOpKind::Div => {
-            BinaryOp::Arith(ArithOp::EuclideanDiv, Some(bctx.ctxt.infer_mode()))
-        }
-        BinOpKind::Rem => {
-            BinaryOp::Arith(ArithOp::EuclideanMod, Some(bctx.ctxt.infer_mode()))
-        }
+        BinOpKind::Div => BinaryOp::Arith(ArithOp::EuclideanDiv, Some(bctx.ctxt.infer_mode())),
+        BinOpKind::Rem => BinaryOp::Arith(ArithOp::EuclideanMod, Some(bctx.ctxt.infer_mode())),
         BinOpKind::BitXor => {
             match ((tc.node_type(lhs.hir_id)).kind(), (tc.node_type(rhs.hir_id)).kind()) {
                 (TyKind::Bool, TyKind::Bool) => BinaryOp::Xor,
