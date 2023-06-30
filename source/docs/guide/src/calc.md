@@ -31,13 +31,29 @@ calc! {
 }
 ```
 
-Notice that you mention of `a_1`, `a_2`, ... `a_n` only once each. Additionally,
-the proofs for each of the steps is localized, and restricted to only its
-particular step, ensuring that proof context is not polluted.
+For example,
+
+```rust
+let a: int = 2;
+calc! {
+    (<=)
+    a; {}
+    a + 3; {}
+    5;
+}
+```
+
+which is equivalent to proving `a <= 5` using `a <= b <= 5`. In this case, each
+of the intermediate proofs are trivial, thus have an empty `{}` block, but in
+general, can have arbitrary proofs inside their blocks.
+
+Notice that you mention `a_1`, `a_2`, ... `a_n` only once each. Additionally,
+the proof for each of the steps is localized, and restricted to only its
+particular step, ensuring that proof-context is not polluted.
 
 The body of the function where this `calc` statement is written only gets to see
 `a_1 R a_n`, and not any of the intermediate steps (or their proofs), further
-limiting proof context pollution.
+limiting proof-context pollution.
 
 Currently, the `calc!` macro supports common transitive relations for `R` (such
 as `==` and `<=`). This set of relations may be extended in the future.
