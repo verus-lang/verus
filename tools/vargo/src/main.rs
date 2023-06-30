@@ -655,14 +655,7 @@ fn run() -> Result<(), String> {
                 } else {
                     &cargo_forward_args
                 };
-                build_target(
-                    release,
-                    p,
-                    &extra_args[..],
-                    package,
-                    &exclude[..],
-                    verbose,
-                )?;
+                build_target(release, p, &extra_args[..], package, &exclude[..], verbose)?;
             }
 
             let mut dependencies_mtime = None;
