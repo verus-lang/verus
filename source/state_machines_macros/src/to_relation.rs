@@ -260,9 +260,12 @@ fn annotate_extractions_stmt(sop: &mut SimplStmt, used_ids: &mut IndexSet<String
 
 fn simpl_conjunct_vec(sops: &Vec<SimplStmt>, p: Option<TokenStream>) -> Option<TokenStream> {
     let let_skip_brace = sops.len() == 1;
+
     let mut p = p;
-    for e in sops.iter().rev() {
-        p = simpl_conjunct_stmt(e, p, let_skip_brace);
+    for i in (0..sops.len()).rev() {
+        let e = &sops[i];
+        let assign_skip_brace = i == 0 || matches!(sops[i - 1], SimplStmt::Assign(..));
+        p = simpl_conjunct_stmt(e, p, let_skip_brace, assign_skip_brace);
     }
     p
 }
@@ -271,11 +274,18 @@ fn simpl_conjunct_stmt(
     sop: &SimplStmt,
     p: Option<TokenStream>,
     let_skip_brace: bool,
+    assign_skip_brace: bool,
 ) -> Option<TokenStream> {
     match sop {
         SimplStmt::Assign(_span, ident, ty, e, _prelude) => match p {
             None => None,
-            Some(r) => Some(quote! { { let #ident : #ty = #e; #r } }),
+            Some(r) => {
+                if assign_skip_brace {
+                    Some(quote! { let #ident : #ty = #e; #r })
+                } else {
+                    Some(quote! { { let #ident : #ty = #e; #r } })
+                }
+            }
         },
         SimplStmt::Let(span, pat, ty, e, child, _) => {
             let x = simpl_conjunct_vec(child, None);
