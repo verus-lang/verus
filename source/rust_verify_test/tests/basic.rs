@@ -432,7 +432,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_compound_assign verus_code! {
-        fn test(y: &mut i32) {
+        fn test(y: &mut u32) {
             let mut x: i32 = 1;
             x += 2;
             assert({ x == 3 as i32 });
@@ -444,8 +444,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_compound_assign_fail verus_code! {
-        exec fn test(x: &mut i32, y: i32) {
+        fn test(x: &mut u32, y: u32) {
             *x /= y; // FAILS
         }
-    } => Err(_)
+    } => Err(err) => assert_one_fails(err)
 }

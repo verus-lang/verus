@@ -1673,6 +1673,13 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Loop(..) => unsupported_err!(expr.span, format!("complex loop expressions")),
         ExprKind::Break(..) => unsupported_err!(expr.span, format!("complex break expressions")),
         ExprKind::AssignOp(op, lhs, rhs) => {
+            if matches!(op.node, BinOpKind::Div | BinOpKind::Rem) {
+                let range = mk_range(&bctx.ctxt.verus_items, &tc.node_type(lhs.hir_id));
+                if matches!(range, IntRange::I(_) | IntRange::ISize) {
+                    // Non-Euclidean division, which will need more encoding
+                    return unsupported_err!(expr.span, "div/mod on signed finite-width integers");
+                }
+            }
             expr_assign_to_vir_innermost(bctx, tc, lhs, mk_expr, rhs, modifier, Some(op))
         }
         ExprKind::ConstBlock(..) => unsupported_err!(expr.span, format!("const block expressions")),
@@ -1813,7 +1820,6 @@ fn expr_assign_to_vir_innermost<'tcx>(
             Some(binopkind_to_binaryop(op_kind, bctx, tc, lhs, rhs, mode_for_ghostness))
         }
     };
-    // TODO: check that the generated op is allowed in compound op
     let init_not_mut = init_not_mut(bctx, lhs)?;
     mk_expr(ExprX::Assign {
         init_not_mut,
