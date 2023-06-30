@@ -80,5 +80,6 @@ This is a tentative program.
 
 - IronFleet hackathon (Jay L)
 - Ghost features for Rust (Andrea)
+- Writing specifications for Rust's standard library (hackathon)
 
 *Informal meetings and hacking*
