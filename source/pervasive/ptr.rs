@@ -253,6 +253,7 @@ impl<V> PointsTo<V> {
         ensures
             points_to_raw@.pptr === self@.pptr,
             points_to_raw@.size === size_of::<V>(),
+            is_sized::<V>(),
     {
         unimplemented!();
     }
@@ -264,6 +265,7 @@ impl<V> PointsTo<V> {
         ensures
             points_to_raw@.pptr === self@.pptr,
             points_to_raw@.size === size_of::<V>(),
+            is_sized::<V>(),
     {
         unimplemented!();
     }
@@ -301,6 +303,7 @@ impl PointsToRaw {
         ensures
             points_to@.pptr === self@.pptr,
             points_to@.value === None,
+            is_sized::<V>(),
     {
         unimplemented!();
     }
@@ -313,6 +316,7 @@ impl PointsToRaw {
         ensures
             points_to@.pptr === self@.pptr,
             points_to@.value === None,
+            is_sized::<V>(),
     {
         unimplemented!();
     }
@@ -384,6 +388,7 @@ impl<V> Dealloc<V> {
             dealloc_raw@.pptr === self@.pptr,
             dealloc_raw@.size === size_of::<V>(),
             dealloc_raw@.align === align_of::<V>(),
+            is_sized::<V>(),
     {
         unimplemented!();
     }
@@ -394,6 +399,7 @@ impl<V> Dealloc<V> {
             dealloc_raw@.pptr === self@.pptr,
             dealloc_raw@.size === size_of::<V>(),
             dealloc_raw@.align === align_of::<V>(),
+            is_sized::<V>(),
     {
         unimplemented!();
     }
@@ -416,6 +422,7 @@ impl DeallocRaw {
             self@.align === align_of::<V>(),
         ensures
             dealloc@.pptr === self@.pptr,
+            is_sized::<V>(),
     {
         unimplemented!();
     }
@@ -427,6 +434,7 @@ impl DeallocRaw {
             self@.align === align_of::<V>(),
         ensures
             dealloc@.pptr === self@.pptr,
+            is_sized::<V>(),
     {
         unimplemented!();
     }
