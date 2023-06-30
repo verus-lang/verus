@@ -48,7 +48,7 @@ error: assertion failed
    |                ^^^^^^^^^^^^^^^^^ assertion failed
 ```
 
-After the call to `lemma_min`, the assertion that `min(10, 20) <= 10` succeeds because `lemma_min` is marked `pub`, and thus can be seen by `M2`.
+After the call to `lemma_min`, the assertion that `min(10, 20) <= 10` succeeds because `lemma_min` exposes `min(x,y) <= x` as a post-condition. `lemma_min` can prove because this postcondition because it can see the body of `min` despite `min` being `closed`, as `lemma_min` and `min` are in the same module.
 
 You can think of `pub open spec` functions as defining abbreviations
 and `pub closed spec` functions as defining abstractions.
