@@ -234,33 +234,6 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     let is_spec_allow_proof_args = is_spec_allow_proof_args_pre || is_get_variant.is_some();
     let autospec_usage = if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
 
-    let mk_typ_args =
-        |substs: &rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>| -> Result<_, VirErr> {
-            let mut typ_args: Vec<Typ> = Vec::new();
-            for typ_arg in substs {
-                match typ_arg.unpack() {
-                    GenericArgKind::Type(ty) => {
-                        typ_args.push(mid_ty_to_vir(
-                            tcx,
-                            &bctx.ctxt.verus_items,
-                            expr.span,
-                            &ty,
-                            false,
-                        )?);
-                    }
-                    GenericArgKind::Lifetime(_) => {}
-                    GenericArgKind::Const(cnst) => {
-                        typ_args.push(crate::rust_to_vir_base::mid_ty_const_to_vir(
-                            tcx,
-                            Some(expr.span),
-                            &cnst,
-                        )?);
-                    }
-                }
-            }
-            Ok(Arc::new(typ_args))
-        };
-
     // Compute the 'target_kind'.
     //
     // If the target is a "trait function" then we try to resolve it to a statically known
@@ -280,7 +253,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         if let Ok(Some(inst)) = inst {
             if let rustc_middle::ty::InstanceDef::Item(item) = inst.def {
                 if let rustc_middle::ty::WithOptConstParam { did, const_param_did: None } = item {
-                    let typs = mk_typ_args(&inst.substs)?;
+                    let typs = mk_typ_args(bctx, &inst.substs, expr.span)?;
                     let f = Arc::new(FunX {
                         path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, did),
                     });
@@ -1266,7 +1239,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
             }
         }
 
-        let typ_args = mk_typ_args(node_substs)?;
+        let typ_args = mk_typ_args(bctx, node_substs, expr.span)?;
         let impl_paths = get_impl_paths(bctx, f, node_substs);
         let target = CallTarget::Fun(target_kind, name, typ_args, impl_paths, autospec_usage);
         Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, ExprX::Call(target, Arc::new(vir_args))))
@@ -1625,4 +1598,29 @@ fn variant_fn_get_datatype<'tcx>(
     }
 
     return err_span(span, "invalid is_variant call (possibly a bug with is_variant macro)");
+}
+
+fn mk_typ_args<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    substs: &rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
+    span: Span,
+) -> Result<vir::ast::Typs, VirErr> {
+    let tcx = bctx.ctxt.tcx;
+    let mut typ_args: Vec<Typ> = Vec::new();
+    for typ_arg in substs {
+        match typ_arg.unpack() {
+            GenericArgKind::Type(ty) => {
+                typ_args.push(mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, span, &ty, false)?);
+            }
+            GenericArgKind::Lifetime(_) => {}
+            GenericArgKind::Const(cnst) => {
+                typ_args.push(crate::rust_to_vir_base::mid_ty_const_to_vir(
+                    tcx,
+                    Some(span),
+                    &cnst,
+                )?);
+            }
+        }
+    }
+    Ok(Arc::new(typ_args))
 }
