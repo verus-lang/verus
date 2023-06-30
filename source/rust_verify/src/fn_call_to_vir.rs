@@ -131,6 +131,9 @@ pub(crate) fn fn_call_to_vir<'tcx>(
             ),
         );
     }
+    if matches!(rust_item, Some(RustItem::TryTraitBranch)) {
+        return err_span(expr.span, "Verus does not yet support the ? operator");
+    }
 
     unsupported_err_unless!(
         bctx.ctxt
