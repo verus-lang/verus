@@ -336,6 +336,7 @@ impl ExpX {
                         Ge => ">=",
                         Lt => "<",
                         Gt => ">",
+                        MultiEq => "==",
                     },
                     Arith(o, _) => match o {
                         Add => "+",

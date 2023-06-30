@@ -1054,7 +1054,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                 unsupported_err_unless!(len == 1, expr.span, "spec_chained_cmp", args);
                 Ok(vir_args[0].clone())
             }
-            ChainedItem::Le | ChainedItem::Lt | ChainedItem::Ge | ChainedItem::Gt => {
+            ChainedItem::Le | ChainedItem::Lt | ChainedItem::Ge | ChainedItem::Gt | ChainedItem::Eq => {
                 unsupported_err_unless!(len == 2, expr.span, "chained inequality", &args);
                 unsupported_err_unless!(
                     matches!(&vir_args[0].x, ExprX::Multi(MultiOp::Chained(_), _)),
@@ -1073,6 +1073,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                     ChainedItem::Lt => InequalityOp::Lt,
                     ChainedItem::Ge => InequalityOp::Ge,
                     ChainedItem::Gt => InequalityOp::Gt,
+                    ChainedItem::Eq => InequalityOp::MultiEq,
                     ChainedItem::Value | ChainedItem::Cmp => unreachable!(),
                 };
                 if let ExprX::Multi(MultiOp::Chained(ops), es) = &vir_args[0].x {

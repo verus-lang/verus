@@ -303,6 +303,8 @@ pub enum InequalityOp {
     Lt,
     /// IntRange::Int >
     Gt,
+    /// IntRange::Int ==
+    MultiEq,
 }
 
 /// Primitive binary operations
