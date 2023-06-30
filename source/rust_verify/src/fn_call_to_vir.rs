@@ -761,44 +761,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         return Ok(arg);
     }
 
-    // TODO(main_new) is calling `subst` still correct with the new API?
-    let raw_inputs =
-        EarlyBinder(bctx.ctxt.tcx.fn_sig(f)).subst(tcx, node_substs).skip_binder().inputs();
-    assert!(raw_inputs.len() == args.len());
-    let vir_args = args
-        .iter()
-        .zip(raw_inputs)
-        .map(|(arg, raw_param)| {
-            let is_mut_ref_param = match raw_param.kind() {
-                TyKind::Ref(_, _, rustc_hir::Mutability::Mut) => true,
-                _ => false,
-            };
-            if matches!(
-                verus_item,
-                Some(
-                    VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrowMut)
-                        | VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(
-                            SpecGhostTrackedItem::GhostBorrowMut
-                        ))
-                )
-            ) {
-                expr_to_vir(bctx, arg, is_expr_typ_mut_ref(bctx, arg, outer_modifier)?)
-            } else if is_mut_ref_param {
-                let arg_x = match &arg.kind {
-                    ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => e,
-                    _ => arg,
-                };
-                let deref_mut = match bctx.types.node_type(arg_x.hir_id).ref_mutability() {
-                    Some(Mutability::Mut) => true,
-                    _ => false,
-                };
-                let expr = expr_to_vir(bctx, arg_x, ExprModifier { addr_of: true, deref_mut })?;
-                Ok(bctx.spanned_typed_new(arg.span, &expr.typ.clone(), ExprX::Loc(expr)))
-            } else {
-                expr_to_vir(bctx, arg, is_expr_typ_mut_ref(bctx, arg, ExprModifier::REGULAR)?)
-            }
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    let vir_args = mk_vir_args(bctx, node_substs, f, &args, verus_item, outer_modifier)?;
 
     match is_get_variant {
         Some((variant_name, None)) => {
@@ -1623,4 +1586,52 @@ fn mk_typ_args<'tcx>(
         }
     }
     Ok(Arc::new(typ_args))
+}
+
+fn mk_vir_args<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    node_substs: &rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
+    f: DefId,
+    args: &Vec<&'tcx Expr<'tcx>>,
+    verus_item: Option<&VerusItem>,
+    outer_modifier: ExprModifier,
+) -> Result<Vec<vir::ast::Expr>, VirErr> {
+    // TODO(main_new) is calling `subst` still correct with the new API?
+    let tcx = bctx.ctxt.tcx;
+    let raw_inputs =
+        EarlyBinder(bctx.ctxt.tcx.fn_sig(f)).subst(tcx, node_substs).skip_binder().inputs();
+    assert!(raw_inputs.len() == args.len());
+    args.iter()
+        .zip(raw_inputs)
+        .map(|(arg, raw_param)| {
+            let is_mut_ref_param = match raw_param.kind() {
+                TyKind::Ref(_, _, rustc_hir::Mutability::Mut) => true,
+                _ => false,
+            };
+            if matches!(
+                verus_item,
+                Some(
+                    VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrowMut)
+                        | VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(
+                            SpecGhostTrackedItem::GhostBorrowMut
+                        ))
+                )
+            ) {
+                expr_to_vir(bctx, arg, is_expr_typ_mut_ref(bctx, arg, outer_modifier)?)
+            } else if is_mut_ref_param {
+                let arg_x = match &arg.kind {
+                    ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => e,
+                    _ => arg,
+                };
+                let deref_mut = match bctx.types.node_type(arg_x.hir_id).ref_mutability() {
+                    Some(Mutability::Mut) => true,
+                    _ => false,
+                };
+                let expr = expr_to_vir(bctx, arg_x, ExprModifier { addr_of: true, deref_mut })?;
+                Ok(bctx.spanned_typed_new(arg.span, &expr.typ.clone(), ExprX::Loc(expr)))
+            } else {
+                expr_to_vir(bctx, arg, is_expr_typ_mut_ref(bctx, arg, ExprModifier::REGULAR)?)
+            }
+        })
+        .collect::<Result<Vec<_>, _>>()
 }
