@@ -53,6 +53,8 @@ source ../tools/activate.fish  # for fish
 
 This command builds (or re-builds) `vargo`, our cargo wrapper, and adds it to the `PATH` for the current shell.
 
+If you use [direnv](https://direnv.net/), then this activation is performed automatically (i.e., you don't need to `source ../tools/activate`; instead, `vargo` will automatically be in your `PATH` as long as you are in the `source` subdirectory or any directory under it).
+
 Now, simply run,
 
 ```
