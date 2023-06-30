@@ -124,10 +124,10 @@ pub fn ex_u32_checked_rem_euclid(lhs: u32, rhs: u32) -> (result: Option<u32>)
 #[verifier::external_fn_specification]
 pub fn ex_i32_checked_add(lhs: i32, rhs: i32) -> (result: Option<i32>)
     ensures 
-        rhs + lhs > i32::MAX || rhs + lhs < i32::MIN ==> result.is_None(),
-        i32::MIN <= rhs + lhs <= i32::MAX ==> {
+        lhs + rhs > i32::MAX || lhs + rhs < i32::MIN ==> result.is_None(),
+        i32::MIN <= lhs + rhs <= i32::MAX ==> {
             match result {
-                Some(result) => result == rhs + lhs,
+                Some(result) => result == lhs + rhs,
                 None => false
             }
         }
@@ -135,6 +135,45 @@ pub fn ex_i32_checked_add(lhs: i32, rhs: i32) -> (result: Option<i32>)
     lhs.checked_add(rhs)
 }
 
+#[verifier::external_fn_specification]
+pub fn ex_i32_checked_add_unsigned(lhs: i32, rhs: u32) -> (result: Option<i32>)
+    ensures 
+        lhs + rhs > i32::MAX ==> result.is_None(),
+        lhs + rhs <= i32::MAX ==> {
+            match result {
+                Some(result) => result == lhs + rhs,
+                None => false
+            }
+        }
+{
+    lhs.checked_add_unsigned(rhs)
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_i32_checked_sub(lhs: i32, rhs: i32) -> (result: Option<i32>)
+    ensures 
+        lhs - rhs > i32::MAX || lhs - rhs < i32::MIN ==> result.is_None(),
+        i32::MIN <= lhs - rhs <= i32::MAX ==>
+            match result {
+                Some(result) => result == lhs - rhs,
+                None => false
+            }
+{
+    lhs.checked_sub(rhs)
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_i32_checked_sub_unsigned(lhs: i32, rhs: u32) -> (result: Option<i32>)
+    ensures
+        lhs - rhs < i32::MIN ==> result.is_None(),
+        i32::MIN <= lhs - rhs ==> 
+            match result {
+                Some(result) => result == lhs - rhs,
+                None => false
+            }
+{
+    lhs.checked_sub_unsigned(rhs)
+}
 // spec checked euclidean operations for signed ints as well. 
 // test well with prime numbers to make sure you don't mess it up
 

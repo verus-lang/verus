@@ -74,6 +74,25 @@ fn test_i32_checked_add() {
     runtime_assert(neg_ten.checked_add(neg_five).unwrap() == neg_fifteen);
 }
 
+fn test_i32_checked_add_unsigned() {
+    let neg_five: i32 = -5;
+    let neg_ten: i32 = -10;
+    runtime_assert(i32::MAX.checked_add_unsigned(1).is_none());
+    runtime_assert((i32::MAX - 1).checked_add_unsigned(1).unwrap() == i32::MAX);
+    runtime_assert(i32::MIN.checked_add_unsigned(10).unwrap() == i32::MIN + 10);
+    runtime_assert(i32::MIN.checked_add_unsigned(u32::MAX).unwrap() == i32::MAX);
+    runtime_assert(neg_ten.checked_add_unsigned(5).unwrap() == neg_five);
+}
+
+fn test_i32_checked_sub() {
+    runtime_assert((i32::MIN + 2).checked_sub(1).unwrap() == i32::MIN + 1);
+    runtime_assert((i32::MIN + 2).checked_sub(3).is_none());
+    runtime_assert(i32::MIN.checked_sub(i32::MIN).unwrap() == 0);
+    runtime_assert(i32::MIN.checked_sub(i32::MAX).is_none());
+    runtime_assert(0i32.checked_sub(i32::MIN).is_none());
+    runtime_assert(0i32.checked_sub(i32::MAX).unwrap() == i32::MIN + 1);
+}
+
 fn main() {}
 
 }
