@@ -153,4 +153,17 @@ pub fn unwrap_err<T: core::fmt::Debug, E>(result: Result<T, E>) -> (e: E)
     result.unwrap_err()
 }
 
+// map
+
+#[verifier::external_fn_specification]
+pub fn map<T, E, U, F: FnOnce(T) -> U>(result: Result<T, E>, op: F) -> (mapped_result: Result<U, E>)
+    requires
+        result.is_ok() ==> op.requires((result.get_Ok_0(),))
+    ensures
+        result.is_ok() ==> mapped_result.is_ok() && op.ensures((result.get_Ok_0(),), mapped_result.get_Ok_0()),
+        result.is_err() ==> mapped_result == Result::<U, E>::Err(result.get_Err_0())
+{
+    result.map(op)
+}
+
 }
