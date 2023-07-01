@@ -1770,11 +1770,11 @@ fn expr_assign_to_vir_innermost<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     tc: &rustc_middle::ty::TypeckResults,
     lhs: &Expr<'tcx>,
-    mk_expr: impl Fn(ExprX) -> Result<Arc<SpannedTyped<ExprX>>, Arc<air::messages::MessageX>>,
+    mk_expr: impl Fn(ExprX) -> Result<vir::ast::Expr, air::messages::Message>,
     rhs: &Expr<'tcx>,
     modifier: ExprModifier,
     op_kind: Option<&Spanned<BinOpKind>>,
-) -> Result<Arc<SpannedTyped<ExprX>>, Arc<air::messages::MessageX>> {
+) -> Result<vir::ast::Expr, air::messages::Message> {
     fn init_not_mut(bctx: &BodyCtxt, lhs: &Expr) -> Result<bool, VirErr> {
         Ok(match lhs.kind {
             ExprKind::Path(QPath::Resolved(None, rustc_hir::Path { res: Res::Local(id), .. })) => {
@@ -1814,12 +1814,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
         })
     }
     let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
-    let op = match op_kind {
-        None => None,
-        Some(op_kind) => {
-            Some(binopkind_to_binaryop(op_kind, bctx, tc, lhs, rhs, mode_for_ghostness))
-        }
-    };
+    let op = op_kind.map(|op| binopkind_to_binaryop(op, bctx, tc, lhs, rhs, mode_for_ghostness));
     let init_not_mut = init_not_mut(bctx, lhs)?;
     mk_expr(ExprX::Assign {
         init_not_mut,
