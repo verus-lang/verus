@@ -131,6 +131,9 @@ pub(crate) fn fn_call_to_vir<'tcx>(
             ),
         );
     }
+    if matches!(rust_item, Some(RustItem::TryTraitBranch)) {
+        return err_span(expr.span, "Verus does not yet support the ? operator");
+    }
 
     unsupported_err_unless!(
         bctx.ctxt
@@ -1188,25 +1191,6 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         Ok(bctx.spanned_typed_new(expr.span, &typ, ExprX::Unary(op, vir_args[0].clone())))
     } else {
         let name = name.expect("not builtin");
-
-        // filter out the Fn type parameters
-        let mut fn_params: Vec<Ident> = Vec::new();
-        for (x, _) in tcx.predicates_of(f).predicates {
-            if let PredicateKind::Clause(Clause::Trait(t)) = x.kind().skip_binder() {
-                let trait_ref_def_id = t.trait_ref.def_id;
-                if let Some(RustItem::Fn) = verus_items::get_rust_item(tcx, trait_ref_def_id) {
-                    for s in t.trait_ref.substs {
-                        if let GenericArgKind::Type(ty) = s.unpack() {
-                            if let TypX::TypParam(x) =
-                                &*mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, expr.span, &ty, false)?
-                            {
-                                fn_params.push(x.clone());
-                            }
-                        }
-                    }
-                }
-            }
-        }
 
         let typ_args = mk_typ_args(bctx, node_substs, expr.span)?;
         let impl_paths = get_impl_paths(bctx, f, node_substs);
