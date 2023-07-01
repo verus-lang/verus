@@ -102,6 +102,7 @@
 # Reference
 
 - [Supported and unsupported Rust features](./features.md)
+- [Verus syntax overview](syntax.md)
 - [Modes]()
   - [Function modes]()
   - [Variable modes](./reference-var-modes.md)
@@ -143,3 +144,4 @@
   - [Cyclic definitions]()
 - [Command line]()
   - [--arch-word-bits]()
+- [Planned future work]()
