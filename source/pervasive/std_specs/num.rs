@@ -174,7 +174,108 @@ pub fn ex_i32_checked_sub_unsigned(lhs: i32, rhs: u32) -> (result: Option<i32>)
 {
     lhs.checked_sub_unsigned(rhs)
 }
-// spec checked euclidean operations for signed ints as well. 
-// test well with prime numbers to make sure you don't mess it up
+
+#[verifier::external_fn_specification]
+pub fn ex_i32_checked_mul(lhs: i32, rhs: i32) -> (result: Option<i32>)
+    ensures 
+        lhs * rhs < i32::MIN || lhs * rhs > i32::MAX ==> result.is_None(),
+        i32::MIN <= lhs * rhs <= i32::MAX ==>
+            match result {
+                Some(result) => result == lhs * rhs,
+                None => false 
+            }
+{
+    lhs.checked_mul(rhs)
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_i32_checked_div(lhs: i32, rhs: i32) -> (result: Option<i32>)
+    ensures 
+        rhs == 0 ==> result.is_None(),
+        ({
+            let x = lhs as int;
+            let d = rhs as int;
+            let output = if x == 0 {
+                0
+            } else if x > 0 && d > 0 {
+                x / d
+            } else if x < 0 && d < 0 {
+                ((x * -1) / (d * -1))
+            } else if x < 0 {
+                ((x * -1) / d) * -1
+            } else { // d < 0
+                (x / (d * -1)) * -1
+            };
+            if output < i32::MIN || output > i32::MAX {
+                result.is_None()
+            } else {
+                match result {
+                    Some(result) => result == output,
+                    None => false
+                }
+            }
+        })
+{
+    lhs.checked_div(rhs)
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_i32_checked_div_euclid(lhs: i32, rhs: i32) -> (result: Option<i32>)
+    ensures
+        rhs == 0 ==> result.is_None(), 
+        lhs / rhs < i32::MIN || lhs / rhs > i32::MAX ==> result.is_None(),
+        i32::MIN <= lhs / rhs <= i32::MAX ==> 
+            match result {
+                Some(result) => result == lhs / rhs,
+                None => false
+            }
+{
+    lhs.checked_div_euclid(rhs)
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_i32_checked_rem(lhs: i32, rhs: i32) -> (result: Option<i32>)
+    ensures 
+        rhs == 0 ==> result.is_None(),
+        ({
+            let x = lhs as int;
+            let d = rhs as int;
+            let output = if x == 0  {
+                0
+            } else if x > 0 && d > 0 {
+                x % d
+            } else if x < 0 && d < 0 {
+                ((x * -1) % (d * -1)) * -1
+            } else if x < 0 {
+                ((x * -1) % d) * -1
+            } else { // d < 0
+                x % (d * -1)
+            };
+            if output < i32::MIN || output > i32::MAX {
+                result.is_None()
+            } else {
+                match result {
+                    Some(result) => result == output,
+                    None => false
+                }
+            }
+        })
+{
+    lhs.checked_rem(rhs)
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_i32_checked_rem_euclid(lhs: i32, rhs: i32) -> (result: Option<i32>)
+    ensures 
+        rhs == 0 ==> result.is_None(),
+        lhs % rhs < i32::MIN || lhs % rhs > i32::MAX ==> result.is_None(),
+        i32::MIN <= lhs % rhs <= i32::MAX ==> 
+            match result {
+                Some(result) => result == lhs % rhs,
+                None => false
+            }
+{
+    lhs.checked_rem_euclid(rhs)
+}
 
 } // verus!
