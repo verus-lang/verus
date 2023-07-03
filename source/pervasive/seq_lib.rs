@@ -301,7 +301,7 @@ impl<A> Seq<A> {
         self.subrange(1, self.len() as int)
     }
 
-    /// returns `true` if the sequequence has no duplicate elements
+    /// returns `true` if the sequence has no duplicate elements
     pub open spec fn no_duplicates(self) -> bool {
         forall|i, j| 0 <= i < self.len() && 0 <= j < self.len() && i != j
             ==> self[i] != self[j]
@@ -526,8 +526,7 @@ impl<A,B> Seq<(A,B)>{
         if self.len() == 0 {(Seq::empty(), Seq::empty())}
         else{
             let (a,b) = self.drop_last().unzip();
-            let (s0, s1) = self.last();
-            (a.push(s0),b.push(s1))
+            (a.push(self.last().0),b.push(self.last().1))
         }
     }
 
@@ -589,46 +588,49 @@ pub proof fn lemma_concat_associative<A>(s1 : Seq<A>, s2 :Seq<A>, s3 :Seq<A>)
 {}
 
 /* could not figure out triggers for these two */
-// /// If a predicate is true at every index of a sequence,
-// /// it is true for every member of the sequence as a collection.
-// /// Useful for converting quantifiers between the two forms
-// /// to satisfy a precondition in the latter form.
-// #[verifier(external_body)]
+/// If a predicate is true at every index of a sequence,
+/// it is true for every member of the sequence as a collection.
+/// Useful for converting quantifiers between the two forms
+/// to satisfy a precondition in the latter form.
 // #[verifier(broadcast_forall)]
-// pub proof fn lemma_indexing_implies_membership<A>(f: FnSpec(A)->bool, s: Seq<A>)
-//     requires
-//         forall |i: int| 0<= i < #[trigger] s.len() ==> #[trigger] f(#[trigger] s[i]),
-//     ensures
-//         forall |x: A| #[trigger] s.contains(x) ==> #[trigger] f(x),
-// {}
+pub proof fn lemma_indexing_implies_membership<A>(f: FnSpec(A)->bool, s: Seq<A>)
+    requires
+        forall |i: int| 0<= i < s.len() ==> #[trigger] f(#[trigger] s[i]),
+    ensures
+        forall |x: A| #[trigger] s.contains(x) ==> #[trigger] f(x),
+{
+    assert(forall |i: int| 0<= i < s.len() ==> #[trigger] s.contains(s[i]));
+}
 
-// /// If a predicate is true for every member of a sequence as a collection,
-// /// it is true at every index of the sequence.
-// /// Useful for converting quantifiers between the two forms
-// /// to satisfy a precondition in the latter form.
-// #[verifier(external_body)]
-// #[verifier(broadcast_forall)]
-// pub proof fn lemma_membership_implies_indexing<A>(f: FnSpec(A)->bool, s: Seq<A>)
-//     requires
-//         forall |x: A| #[trigger] s.contains(x) ==> #[trigger] f(x),
-//     ensures
-//         forall |i: int| 0<= i < #[trigger] s.len() ==> #[trigger] f(s[i]),
-        
-// {}
+/// If a predicate is true for every member of a sequence as a collection,
+/// it is true at every index of the sequence.
+/// Useful for converting quantifiers between the two forms
+/// to satisfy a precondition in the latter form.
+//#[verifier(broadcast_forall)]
+pub proof fn lemma_membership_implies_indexing<A>(f: FnSpec(A)->bool, s: Seq<A>)
+    requires
+        forall |x: A| #[trigger] s.contains(x) ==> #[trigger] f(x),
+    ensures
+        forall |i: int| 0<= i < s.len() ==> #[trigger] f(s[i]),   
+{
+    assert forall |i: int| 0<= i < s.len() implies #[trigger] f(s[i]) by {
+        assert(#[trigger] s.contains(s[i]));
+    }
+}
 
 /// A sequence that is sliced at the pos-th element, concatenated 
-///  with that same sequence sliced from the pos-th element, is equal to the 
-///  original unsliced sequence.
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+/// with that same sequence sliced from the pos-th element, is equal to the 
+/// original unsliced sequence.
+//#[verifier(broadcast_forall)]
 pub proof fn lemma_split_at<A>(s: Seq<A>, pos: int)
-    requires pos < s.len(),
-    ensures #[trigger] s.subrange(0,pos) + #[trigger] s.subrange(pos,s.len() as int) == s
+    requires 
+        0 <= pos <= s.len(),
+    ensures 
+        #[trigger] s.subrange(0,pos) + #[trigger] s.subrange(pos,s.len() as int) =~= s
 {}
 
 /// Any element in a slice is included in the original sequence.
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+//#[verifier(broadcast_forall)]
 pub proof fn lemma_element_from_slice<A>(old: Seq<A>, new: Seq<A>, a: int, b:int, pos: int)
     requires
         0 <= a <= b <= #[trigger] old.len(),
@@ -636,19 +638,18 @@ pub proof fn lemma_element_from_slice<A>(old: Seq<A>, new: Seq<A>, a: int, b:int
         a <= pos < b
     ensures
         pos - a < #[trigger] new.len(),
-        new[pos-a] == #[trigger] new[pos],
+        new[pos-a] == #[trigger] old[pos],
 {}
 
 /// A slice (from s2..e2) of a slice (from s1..e1) of a sequence is equal to just a 
 /// slice (s1+s2..s1+e2) of the original sequence.
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+//#[verifier(broadcast_forall)]
 pub proof fn lemma_slice_of_slice<A>(original: Seq<A>, s1 :int, e1: int, s2: int, e2: int)
     requires 
         0 <= s1 <= e1 <= original.len(),
         0 <= s2 <= e2 <= e1 - s1,
     ensures
-        original.subrange(s1,e1).subrange(s2,e2) == original.subrange(s1+s2,s1+e2),
+        original.subrange(s1,e1).subrange(s2,e2) =~= original.subrange(s1+s2,s1+e2),
 {}
 
 /// Returns a constant sequence of a given length
@@ -760,27 +761,184 @@ pub proof fn unique_seq_to_set<A>(seq:Seq<A>)
     }
 }
 
+/// The cardinality of a set of elements is always less than or 
+/// equal to that of the full sequence of elements.
+pub proof fn lemma_cardinality_of_set<A>(s: Seq<A>)
+    ensures s.to_set().len() <= s.len(),
+    decreases s.len(),
+{
+    if (s.no_duplicates()) {
+        assert(s.to_set().len() == s.len()) by {
+            unique_seq_to_set(s)
+        }
+    }
+    else if s.len() > 0 {
+        assert(forall |x: A| #[trigger] s.contains(x) ==> #[trigger] s.drop_last().contains(x) || s.last() == x) by {
+            lemma_add_last_back(s)
+        }
+        if s.drop_last().contains(s.last()) {
+            // the last element is duplicated somewhere else.
+            assert(s.drop_last().to_set() =~= s.to_set());
+            lemma_cardinality_of_set(s.drop_last());
+        } else {
+           // the last element appears only once
+            assert(s.drop_last().to_set().insert(s.last()) =~= s.to_set());
+            lemma_cardinality_of_set(s.drop_last());
+        }
+    }
+}
+
+/// A sequence is of length 0 if and only if its conversion to
+/// a set results in the empty set.
+pub proof fn lemma_cardinality_of_empty_set_is_0<A>(s: Seq<A>)
+    ensures
+        s.to_set().len() == 0 <==> s.len() == 0,
+{
+    assert(s.len() == 0 ==> s.to_set().len() == 0) by {
+        lemma_cardinality_of_set(s)
+    }
+    assert(!(s.len() == 0) ==> !(s.to_set().len() == 0)) by {
+        if s.len() > 0 {
+            assert(s.to_set().contains(s[0]));
+            assert(s.to_set().remove(s[0]).len() <= s.to_set().len());
+        }
+    }
+}
+
+pub proof fn lemma_insert_properties<A>(s: Seq<A>, pos: int, elt:A)
+    requires 
+        0 <= pos <= s.len(),
+    ensures
+        s.insert(pos, elt).len() == s.len() +1,
+        forall |i: int| 0<= i < pos ==> #[trigger] s.insert(pos, elt)[i] == #[trigger] s[i],
+        forall |i: int| pos <= i < s.len() ==> s.insert(pos, elt)[i+1] == s[i],
+        s.insert(pos, elt)[pos] == elt,
+{}
+
+//TODO
+// pub proof fn lemma_unzip_properties<A,B>(s: Seq<(A,B)>)
+//     ensures
+//         s.unzip().0.len() == s.unzip().1.len(),
+//         s.unzip().0.len() == s.len(),
+//         s.unzip().1.len() == s.len(),
+//         forall |i: int| 0<= i < s.len() 
+//                 ==> (#[trigger] s.unzip().0[i], #[trigger] s.unzip().1[i]) == s[i],
+//     decreases
+//         s.len(),
+// {
+//     // unzip:
+//     // if self.len() == 0 {(Seq::empty(), Seq::empty())}
+//     // else{
+//     //         let (a,b) = self.drop_last().unzip();
+//     //       
+//     //         (a.push(self.last().0),b.push(self.last().1))
+//     // }
+//     if s.len() == 0 {
+//         assert(s.unzip().0.len() == 0);
+//         assert(s.unzip().1.len() == 0);
+//     } else {
+
+//         assume((s.unzip().0[0], s.unzip().1[0]) == s[0]); //fails
+//         lemma_unzip_properties(s.drop_first());
+//     }
+// }
+// pub proof fn lemma_zip_of_unzip<A,B>(s: Seq<(A,B)>)
+//     ensures s.unzip().0.zip_with(s.unzip().1) =~= s,
+// {
+//     assert(s.unzip().0.len() == s.unzip().1.len());
+// }
+
+// /// The maximum of the concatenation of two non-empty sequences is greater than or 
+// /// equal to the maxima of its two non-empty subsequences.
+// pub proof fn lemma_max_of_concat<A>(x: Seq<A>, y: Seq<A>, leq: FnSpec(A,A) ->bool)
+//     requires
+//         0 < x.len() && 0 < y.len(),
+//         // forall |a: A, b: A| leq(a,b) == a || leq(a,b) == b,
+//     ensures
+//         leq(x.max(leq), (x + y).max(leq)),
+//         leq(y.max(leq), (x + y).max(leq)),
+//         forall |elt: A| (x+y).contains(elt) ==> leq(elt, (x + y).max(leq)),
+//     decreases
+//         x.len(),
+// {
+//     if x.len() == 1 {
+//         assert((x+y).contains(x[0]));
+//         assert(x.max(leq) == x[0]);
+//         assert(forall |i: int| 0<=i<(x+y).len() ==> (x+y).contains((x+y)[i]));
+//         assert((x+y).contains((x + y).max(leq)));
+//         assert(leq(x[0], (x + y).max(leq)));
+//         assume(leq(y.max(leq), (x + y).max(leq)));
+//         assume(forall |elt: A| (x+y).contains(elt) ==> leq(elt, (x + y).max(leq)));
+//     } else {
+//         assert(leq(x.max(leq), (x + y).max(leq)));
+//         assert(x.subrange(1,x.len() as int) + y =~= (x+y).subrange(1,(x+y).len() as int));
+//         lemma_max_of_concat(x.subrange(1,x.len() as int),y,leq)
+//     }
+// }
+
+/// The concatenation of two sequences contains only the elements
+/// of the two sequences
+pub proof fn lemma_concat_elts<A>(x: Seq<A>, y: Seq<A>)
+    ensures
+        forall |elt: A| #[trigger] x.contains(elt) ==> #[trigger] (x+y).contains(elt),
+        forall |elt: A| #[trigger] y.contains(elt) ==> #[trigger] (x+y).contains(elt),
+    decreases
+        x.len(),
+{
+    if x.len() == 0 {
+        if y.len() == 0 {
+            assert((x+y) =~= Seq::empty());
+        } else {
+            assert((x+y) =~= y);
+        }
+    } else {
+        if y.len() == 0 {
+            assert((x+y) =~= x);
+        } else {
+            assert(x[0] == (x+y)[0]);
+            assert(x.first() == (x+y).first());    
+            lemma_concat_elts(x.drop_first(),y);
+        }
+    }
+}
+
 /// A sequence with cardinality equal to its set has no duplicates.
 /// Inverse of the above function unique_seq_to_set
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+//#[verifier(broadcast_forall)]
 pub proof fn lemma_no_dup_set_cardinality<A>(s: Seq<A>)
     requires 
         s.to_set().len() == #[trigger] s.len(),
     ensures
-        #[trigger] s.no_duplicates()
-{}
+        #[trigger] s.no_duplicates(),
+    decreases s.len(),
+{
+    if s.len() > 0 {
+        assert(s =~= Seq::empty().push(s.first()).add(s.drop_first()));
+        if s.drop_first().contains(s.first()){
+            // If there is a duplicate, then we show that |s.to_set()| == |s| cannot hold.
+            assert(s.to_set() =~= s.drop_first().to_set());
+            assert(s.to_set().len() <= s.drop_first().len()) by {
+                lemma_cardinality_of_set(s.drop_first())
+            }
+        } else {
+            assert(s.to_set().len() == 1 + s.drop_first().to_set().len()) by {
+                assert(s.drop_first().to_set().insert(s.first()) =~= s.to_set());
+            }
+            lemma_no_dup_set_cardinality(s.drop_first());
+        }
+    }
+}
 
 /// If sequences a and b don't have duplicates and there are no 
 /// elements in common between them, then the concatenated sequence 
 /// a + b will not contain duplicates either.
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+//#[verifier(broadcast_forall)]
 pub proof fn lemma_no_dup_in_concat<A>(a: Seq<A>, b: Seq<A>)
     requires
         a.no_duplicates(),
         b.no_duplicates(),
-        forall |x: A| a.contains(x) ==> !b.contains(x),
+        forall |i: int, j: int| 0 <= i < a.len() && 0 <= j < b.len()
+            ==> a[i] != b[j]
     ensures
         #[trigger] (a+b).no_duplicates(),
 {}
