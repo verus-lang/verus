@@ -215,32 +215,6 @@ pub(crate) fn expr_to_vir<'tcx>(
     Ok(vir_expr)
 }
 
-pub(crate) fn record_fun(
-    ctxt: &crate::context::Context,
-    hir_id: HirId,
-    span: Span,
-    name: &Option<vir::ast::Fun>,
-    f_name: &String,
-    is_spec: bool,
-    is_spec_allow_proof_args: bool,
-    is_compilable_operator: Option<CompilableOperator>,
-    autospec_usage: AutospecUsage,
-) {
-    let mut erasure_info = ctxt.erasure_info.borrow_mut();
-    let resolved_call = if is_spec {
-        ResolvedCall::Spec
-    } else if is_spec_allow_proof_args {
-        ResolvedCall::SpecAllowProofArgs
-    } else if let Some(op) = is_compilable_operator {
-        ResolvedCall::CompilableOperator(op)
-    } else if let Some(name) = name {
-        ResolvedCall::Call(name.clone(), autospec_usage)
-    } else {
-        panic!("internal error: failed to record function {}", f_name);
-    };
-    erasure_info.resolved_calls.push((hir_id, span.data(), resolved_call));
-}
-
 pub(crate) fn get_fn_path<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
