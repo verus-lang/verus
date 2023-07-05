@@ -434,6 +434,36 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_termination_1b verus_code! {
+        trait T<A> {
+            spec fn f() -> int;
+        }
+
+        struct S<B>(B);
+        impl<A> T<A> for S<A> {
+            spec fn f() -> int {
+                h() + 1
+            }
+        }
+
+        spec fn g<X, Y: T<X>>() -> int {
+            Y::f() + 1
+        }
+
+        spec fn h() -> int {
+            g::<bool, S<bool>>() + 1
+        }
+
+        proof fn test()
+            ensures false
+        {
+            assert(h() == g::<bool, S<bool>>() + 1);
+            assert(h() == h() + 3);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
     #[test] test_termination_2 verus_code! {
         trait T {
             spec fn f<A: T>(&self, x: &A);

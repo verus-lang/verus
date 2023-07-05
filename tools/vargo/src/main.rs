@@ -580,6 +580,7 @@ fn run() -> Result<(), String> {
                 release: bool,
                 target: &str,
                 extra_args: &[String],
+                env_args: &[(&str, &str)],
                 package: Option<&str>,
                 exclude: &[String],
                 verbose: bool,
@@ -595,6 +596,9 @@ fn run() -> Result<(), String> {
                         .arg("build")
                         .arg("-p")
                         .arg(target);
+                    for (k, v) in env_args {
+                        cmd.env(k, v);
+                    }
                     if release {
                         cmd = cmd.arg("--release");
                     }
@@ -650,7 +654,20 @@ fn run() -> Result<(), String> {
                 } else {
                     &cargo_forward_args
                 };
-                build_target(release, p, &extra_args[..], package, &exclude[..], verbose)?;
+                let env_args = if p == &"builtin_macros" {
+                    vec![("RUSTFLAGS", "--cfg proc_macro_span")]
+                } else {
+                    vec![]
+                };
+                build_target(
+                    release,
+                    p,
+                    &extra_args[..],
+                    &env_args[..],
+                    package,
+                    &exclude[..],
+                    verbose,
+                )?;
             }
 
             let mut dependencies_mtime = None;

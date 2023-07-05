@@ -729,6 +729,7 @@ pub fn func_def_to_air(
             // we generate an exec check for them here to catch any arithmetic overflows.
             let (trait_typ_substs, req_ens_function) = if let FunctionKind::TraitMethodImpl {
                 method,
+                impl_path: _,
                 trait_path,
                 trait_typ_args,
                 self_typ,

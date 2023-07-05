@@ -1,4 +1,5 @@
 use getopts::Options;
+use std::sync::Arc;
 use vir::printer::ToDebugSNodeOpts as VirLogOption;
 
 pub const DEFAULT_RLIMIT_SECS: u32 = 10;
@@ -29,7 +30,7 @@ pub const SINGULAR_FILE_SUFFIX: &str = ".singular";
 pub const TRIGGERS_FILE_SUFFIX: &str = ".triggers";
 
 #[derive(Debug, Default)]
-pub struct Args {
+pub struct ArgsX {
     pub pervasive_path: Option<String>,
     pub export: Option<String>,
     pub import: Vec<(String, String)>,
@@ -42,6 +43,7 @@ pub struct Args {
     pub no_auto_recommends_check: bool,
     pub arch_word_bits: vir::prelude::ArchWordBits,
     pub time: bool,
+    pub time_expanded: bool,
     pub output_json: bool,
     pub rlimit: u32,
     pub smt_options: Vec<(String, String)>,
@@ -71,7 +73,10 @@ pub struct Args {
     pub solver_version_check: bool,
     pub error_report: bool,
     pub version: bool,
+    pub num_threads: usize,
 }
+
+pub type Args = Arc<ArgsX>;
 
 pub fn enable_default_features_and_verus_attr(
     rustc_args: &mut Vec<String>,
@@ -110,7 +115,11 @@ pub fn enable_default_features_and_verus_attr(
     rustc_args.push("-Zcrate-attr=register_tool(verifier)".to_string());
 }
 
-pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args, Vec<String>) {
+pub fn parse_args_with_imports(
+    program: &String,
+    args: impl Iterator<Item = String>,
+    vstd: Option<(String, String)>,
+) -> (Args, Vec<String>) {
     const OPT_PERVASIVE_PATH: &str = "pervasive-path";
     const OPT_EXPORT: &str = "export";
     const OPT_IMPORT: &str = "import";
@@ -123,6 +132,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_NO_AUTO_RECOMMENDS_CHECK: &str = "no-auto-recommends-check";
     const OPT_ARCH_WORD_BITS: &str = "arch-word-bits";
     const OPT_TIME: &str = "time";
+    const OPT_TIME_EXPANDED: &str = "time-expanded";
     const OPT_OUTPUT_JSON: &str = "output-json";
     const OPT_RLIMIT: &str = "rlimit";
     const OPT_SMT_OPTION: &str = "smt-option";
@@ -155,6 +165,11 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_NO_SOLVER_VERSION_CHECK: &str = "no-solver-version-check";
     const OPT_VERSION: &str = "version";
     const OPT_ERROR_REPORT: &str = "error-report";
+    const OPT_NUM_THREADS: &str = "num-threads";
+
+    let default_num_threads: usize = std::thread::available_parallelism()
+        .map(|x| std::cmp::max(usize::from(x) - 1, 1))
+        .unwrap_or(1);
 
     let mut opts = Options::new();
     opts.optflag("", OPT_VERSION, "Print version information");
@@ -184,11 +199,12 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     );
     opts.optopt("", OPT_ARCH_WORD_BITS, "Size in bits for usize/isize: valid options are either '32', '64', or '32,64'. (default: 32,64)\nWARNING: this flag is a temporary workaround and will be removed in the near future", "BITS");
     opts.optflag("", OPT_TIME, "Measure and report time taken");
+    opts.optflag("", OPT_TIME_EXPANDED, "Measure and report time taken with module breakdown");
     opts.optflag("", OPT_OUTPUT_JSON, "Emit verification results and timing as json");
     opts.optopt(
         "",
         OPT_RLIMIT,
-        format!("Set SMT resource limit (roughly in seconds). Default: {}.", DEFAULT_RLIMIT_SECS)
+        format!("Set SMT resource limit (roughly in seconds). Default: {} (available parallelism on this system).", DEFAULT_RLIMIT_SECS)
             .as_str(),
         "INTEGER",
     );
@@ -238,6 +254,14 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     opts.optflag("", OPT_PROFILE_ALL, "Always collect and report prover performance data");
     opts.optflag("", OPT_COMPILE, "Run Rustc compiler after verification");
     opts.optflag("", OPT_NO_SOLVER_VERSION_CHECK, "Skip the check that the solver has the expected version (useful to experiment with different versions of z3)");
+    opts.optopt(
+        "",
+        OPT_NUM_THREADS,
+        format!("Number of threads to use for verification. Default: {}.", default_num_threads)
+            .as_str(),
+        "INTEGER",
+    );
+
     opts.optflag("h", "help", "print this help menu");
     opts.optflag(
         "",
@@ -281,11 +305,21 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         }
     };
 
-    let args = Args {
+    let no_vstd = matches.opt_present(OPT_NO_VSTD);
+
+    let mut import =
+        matches.opt_strs(OPT_IMPORT).iter().map(split_pair_eq).collect::<Vec<(String, String)>>();
+    if let Some(vstd) = vstd {
+        if !no_vstd {
+            import.push(vstd);
+        }
+    }
+
+    let args = ArgsX {
         pervasive_path: matches.opt_str(OPT_PERVASIVE_PATH),
         verify_root: matches.opt_present(OPT_VERIFY_ROOT),
         export: matches.opt_str(OPT_EXPORT),
-        import: matches.opt_strs(OPT_IMPORT).iter().map(split_pair_eq).collect(),
+        import: import,
         verify_module: matches.opt_strs(OPT_VERIFY_MODULE),
         verify_function: matches.opt_str(OPT_VERIFY_FUNCTION),
         verify_pervasive: matches.opt_present(OPT_VERIFY_PERVASIVE),
@@ -307,7 +341,8 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
                 }
             })
             .unwrap_or(vir::prelude::ArchWordBits::Either32Or64),
-        time: matches.opt_present(OPT_TIME),
+        time: matches.opt_present(OPT_TIME) || matches.opt_present(OPT_TIME_EXPANDED),
+        time_expanded: matches.opt_present(OPT_TIME_EXPANDED),
         output_json: matches.opt_present(OPT_OUTPUT_JSON),
         rlimit: matches
             .opt_get::<u32>(OPT_RLIMIT)
@@ -368,11 +403,15 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         profile: matches.opt_present(OPT_PROFILE),
         profile_all: matches.opt_present(OPT_PROFILE_ALL),
         compile: matches.opt_present(OPT_COMPILE),
-        no_vstd: matches.opt_present(OPT_NO_VSTD),
+        no_vstd,
         solver_version_check: !matches.opt_present(OPT_NO_SOLVER_VERSION_CHECK),
         error_report: matches.opt_present(OPT_ERROR_REPORT),
         version: matches.opt_present(OPT_VERSION),
+        num_threads: matches
+            .opt_get::<usize>(OPT_NUM_THREADS)
+            .unwrap_or_else(|_| error("expected integer after num_threads".to_string()))
+            .unwrap_or(default_num_threads),
     };
 
-    (args, unmatched)
+    (Arc::new(args), unmatched)
 }

@@ -40,6 +40,7 @@ pub proof fn affirm(b: bool)
 #[verifier(custom_req_err("Call to non-static function fails to satisfy `callee.requires(args)`"))]
 #[doc(hidden)]
 #[verifier(external_body)]
+#[rustc_diagnostic_item = "verus::pervasive::pervasive::exec_nonstatic_call"]
 fn exec_nonstatic_call<Args: std::marker::Tuple, Output, F>(f: F, args: Args) -> (output: Output)
     where F: FnOnce<Args, Output=Output>
     requires f.requires(args)
@@ -111,7 +112,20 @@ pub fn swap<A>(x: &mut A, y: &mut A)
     core::mem::swap(x, y)
 }
 
+#[verifier::external_body]
+pub fn runtime_assert(b: bool)
+    requires b,
+{
+    runtime_assert_internal(b);
+}
+
 } // verus!
+
+#[inline(always)]
+#[verifier::external]
+fn runtime_assert_internal(b: bool) {
+    assert!(b);
+}
 
 /// Allows you to prove a boolean predicate by assuming its negation and proving
 /// a contradiction.

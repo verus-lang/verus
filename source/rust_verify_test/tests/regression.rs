@@ -490,3 +490,19 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_trait_impl_for_same_name_issue314 verus_code! {
+        pub trait Foo {
+            spec fn foo(&self) -> bool;
+        }
+
+        pub type MyType<T> = FnSpec(T) -> bool;
+
+        impl<T> Foo for MyType<T> {
+            spec fn foo(&self) -> bool {
+                true
+            }
+        }
+    } => Ok(())
+}

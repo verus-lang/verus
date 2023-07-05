@@ -4,7 +4,7 @@ use rustc_span::source_map::SourceMap;
 use rustc_span::{BytePos, ExternalSource, FileName, RealFileName, Span, SpanData};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use vir::ast::{SpannedTyped, Typ};
 use vir::def::Spanned;
 
@@ -37,7 +37,7 @@ enum ExternSourceInfo {
 struct ExternSourceFile {
     original_start_pos: BytePos,
     original_end_pos: BytePos,
-    info: Arc<std::cell::RefCell<ExternSourceInfo>>,
+    info: Arc<Mutex<ExternSourceInfo>>,
 }
 
 #[derive(Debug)]
@@ -61,7 +61,7 @@ pub(crate) struct SpanContextX {
     pub(crate) local_crate: StableCrateId,
     // Map StableCrateId.to_u64() to CrateInfo
     imported_crates: HashMap<u64, CrateInfo>,
-    next_span_id: std::cell::Cell<u64>,
+    next_span_id: std::sync::atomic::AtomicU64,
     pub(crate) local_files: HashMap<Vec<u8>, FileStartEndPos>,
 }
 
@@ -103,7 +103,7 @@ impl SpanContextX {
                         let file = ExternSourceFile {
                             original_start_pos: BytePos(original.start_pos),
                             original_end_pos: BytePos(original.end_pos),
-                            info: Arc::new(std::cell::RefCell::new(info)),
+                            info: Arc::new(Mutex::new(info)),
                         };
                         if !imported_crates.contains_key(&imported_crate) {
                             imported_crates.insert(imported_crate, CrateInfo { files: Vec::new() });
@@ -126,7 +126,7 @@ impl SpanContextX {
                 let file = ExternSourceFile {
                     original_start_pos: BytePos(original.start_pos),
                     original_end_pos: BytePos(original.end_pos),
-                    info: Arc::new(std::cell::RefCell::new(info)),
+                    info: Arc::new(Mutex::new(info)),
                 };
                 imported_crates.get_mut(&imported_crate).unwrap().files.push(file);
             }
@@ -136,7 +136,7 @@ impl SpanContextX {
             info.files.sort_by_key(|f| f.original_start_pos);
         }
 
-        let next_span_id = std::cell::Cell::new(1);
+        let next_span_id = std::sync::atomic::AtomicU64::new(1);
         Arc::new(SpanContextX { local_crate, imported_crates, next_span_id, local_files })
     }
 
@@ -173,7 +173,7 @@ impl SpanContextX {
         if let Some(source_map) = source_map {
             // If rustc didn't originally load the file into the source_map,
             // we can try to request that it load the file on demand.
-            let mut info = info.borrow_mut();
+            let mut info = info.lock().unwrap();
             let filename = if let ExternSourceInfo::Delayed { filename, hash } = &*info {
                 Some((filename.clone(), hash.clone()))
             } else {
@@ -190,7 +190,7 @@ impl SpanContextX {
                 }
             }
         }
-        let locs = match &*info.borrow() {
+        let locs = match &*info.lock().unwrap() {
             ExternSourceInfo::Loaded { start_pos, end_pos } => {
                 Some((original_start_pos, original_end_pos, *start_pos, *end_pos))
             }
@@ -228,8 +228,8 @@ impl SpanContextX {
 
     pub(crate) fn to_air_span(&self, span: Span) -> air::ast::Span {
         let raw_span = to_raw_span(span);
-        let id = self.next_span_id.get();
-        self.next_span_id.set(id + 1);
+
+        let id = self.next_span_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let data = self.pack_span(span);
         let as_string = format!("{:?}", span);
         air::ast::Span { raw_span, id, data, as_string }

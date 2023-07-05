@@ -189,7 +189,7 @@ impl IntRange {
     }
 }
 
-fn path_as_rust_name_inner(path: &Path) -> String {
+fn path_as_friendly_rust_name_inner(path: &Path) -> String {
     let krate = match &path.krate {
         None => "crate".to_string(),
         Some(krate) => krate.to_string(),
@@ -212,7 +212,7 @@ pub fn set_path_as_rust_name(path: &Path, friendly: &Path) {
         if map_opt.as_mut().unwrap().contains_key(path) {
             return;
         }
-        let name = path_as_rust_name_inner(friendly);
+        let name = path_as_friendly_rust_name_inner(friendly);
         map_opt.as_mut().unwrap().insert(path.clone(), name);
     }
 }
@@ -232,7 +232,7 @@ pub fn get_path_as_rust_names_for_krate(krate: &Option<Ident>) -> Vec<(Path, Str
     v
 }
 
-pub fn path_as_rust_name(path: &Path) -> String {
+pub fn path_as_friendly_rust_name(path: &Path) -> String {
     if let Ok(guard) = PATH_AS_RUST_NAME_MAP.lock() {
         if let Some(map) = &*guard {
             if let Some(name) = map.get(path) {
@@ -240,21 +240,21 @@ pub fn path_as_rust_name(path: &Path) -> String {
             }
         }
     }
-    path_as_rust_name_inner(path)
+    path_as_friendly_rust_name_inner(path)
 }
 
 pub fn path_as_vstd_name(path: &Path) -> Option<String> {
-    crate::def::name_as_vstd_name(&path_as_rust_name(path))
+    crate::def::name_as_vstd_name(&path_as_friendly_rust_name(path))
 }
 
-pub fn fun_as_rust_dbg(fun: &Fun) -> String {
+pub fn fun_as_friendly_rust_name(fun: &Fun) -> String {
     let FunX { path } = &**fun;
-    path_as_rust_name(path)
+    path_as_friendly_rust_name(path)
 }
 
-pub fn fun_name_crate_relative(module: &Path, fun: &Fun) -> String {
-    let full_name = fun_as_rust_dbg(fun);
-    let module_prefix = path_as_rust_name(module) + "::";
+pub fn friendly_fun_name_crate_relative(module: &Path, fun: &Fun) -> String {
+    let full_name = fun_as_friendly_rust_name(fun);
+    let module_prefix = path_as_friendly_rust_name(module) + "::";
     if full_name.starts_with(&module_prefix) {
         full_name[module_prefix.len()..].to_string()
     } else {
@@ -399,7 +399,8 @@ impl crate::ast::CallTargetKind {
     pub(crate) fn resolved(&self) -> Option<(Fun, Typs)> {
         match self {
             crate::ast::CallTargetKind::Static => None,
-            crate::ast::CallTargetKind::Method(resolved) => resolved.clone(),
+            crate::ast::CallTargetKind::Method(None) => None,
+            crate::ast::CallTargetKind::Method(Some((f, ts, _))) => Some((f.clone(), ts.clone())),
         }
     }
 }

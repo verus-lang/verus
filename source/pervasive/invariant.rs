@@ -182,7 +182,7 @@ macro_rules! declare_invariant_impl {
             pub spec fn constant(&self) -> K;
 
             /// Namespace the invariant was declared in.
-            #[rustc_diagnostic_item = concat!("vstd::invariant::", stringify!($invariant), "::namespace")]
+            #[rustc_diagnostic_item = concat!("verus::pervasive::invariant::", stringify!($invariant), "::namespace")]
             pub spec fn namespace(&self) -> int;
 
             /// Returns `true` if it is possible to store the value `v` into the `
@@ -191,7 +191,7 @@ macro_rules! declare_invariant_impl {
             ///
             /// This is equivalent to `Pred::inv(self.constant(), v)`.
 
-            #[rustc_diagnostic_item = concat!("vstd::invariant::", stringify!($invariant), "::inv")]
+            #[rustc_diagnostic_item = concat!("verus::pervasive::invariant::", stringify!($invariant), "::inv")]
             pub open spec fn inv(&self, v: V) -> bool {
                 Pred::inv(self.constant(), v)
             }
@@ -253,18 +253,22 @@ pub struct InvariantBlockGuard;
 //  The purpose of the `guard` object, used below, is to ensure the borrow on `i` will
 //  last the entire block.
 
+
+#[rustc_diagnostic_item = "verus::pervasive::invariant::open_atomic_invariant_begin"]
 #[doc(hidden)]
 #[verifier::external] /* vattr */
 pub fn open_atomic_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(_inv: &'a AtomicInvariant<K, V, Pred>) -> (&'a InvariantBlockGuard, V) {
     unimplemented!();
 }
 
+#[rustc_diagnostic_item = "verus::pervasive::invariant::open_local_invariant_begin"]
 #[doc(hidden)]
 #[verifier::external] /* vattr */
 pub fn open_local_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(_inv: &'a LocalInvariant<K, V, Pred>) -> (&'a InvariantBlockGuard, V) {
     unimplemented!();
 }
 
+#[rustc_diagnostic_item = "verus::pervasive::invariant::open_invariant_end"]
 #[doc(hidden)]
 #[verifier::external] /* vattr */
 pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {

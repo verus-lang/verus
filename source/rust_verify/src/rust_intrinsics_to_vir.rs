@@ -1,4 +1,8 @@
-use crate::context::Context;
+use crate::{
+    context::Context,
+    verus_items::{self, RustIntConst, RustIntIntrinsicItem, RustIntType},
+};
+use rustc_span::def_id::DefId;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{Expr, ExprX, IntRange, IntegerTypeBoundKind, Mode, Typ, TypX, UnaryOpr};
@@ -7,7 +11,7 @@ pub(crate) fn int_intrinsic_constant_to_vir(
     ctxt: &Context,
     span: Span,
     typ: &Typ,
-    f_name: &str,
+    id: DefId,
 ) -> Option<Expr> {
     let mk_expr = |x: ExprX| ctxt.spanned_typed_new(span, &typ, x);
 
@@ -34,51 +38,100 @@ pub(crate) fn int_intrinsic_constant_to_vir(
         )));
     };
 
-    match f_name {
+    let rust_item = verus_items::get_rust_item(ctxt.tcx, id);
+    use verus_items::RustItem::IntIntrinsic;
+    use RustIntConst::*;
+    match rust_item {
         // MIN
-        "core::num::<impl u8>::MIN" => lit_expr(0),
-        "core::num::<impl u16>::MIN" => lit_expr(0),
-        "core::num::<impl u32>::MIN" => lit_expr(0),
-        "core::num::<impl u64>::MIN" => lit_expr(0),
-        "core::num::<impl u128>::MIN" => lit_expr(0),
-        "core::num::<impl usize>::MIN" => lit_expr(0),
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::U8, Min))) => lit_expr(0),
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::U16, Min))) => lit_expr(0),
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::U32, Min))) => lit_expr(0),
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::U64, Min))) => lit_expr(0),
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::U128, Min))) => lit_expr(0),
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::USize, Min))) => lit_expr(0),
 
-        "core::num::<impl i8>::MIN" => lit_expr_i(i8::MIN.into()),
-        "core::num::<impl i16>::MIN" => lit_expr_i(i16::MIN.into()),
-        "core::num::<impl i32>::MIN" => lit_expr_i(i32::MIN.into()),
-        "core::num::<impl i64>::MIN" => lit_expr_i(i64::MIN.into()),
-        "core::num::<impl i128>::MIN" => lit_expr_i(i128::MIN),
-        "core::num::<impl isize>::MIN" => arch_bound(IntegerTypeBoundKind::SignedMin),
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::I8, Min))) => {
+            lit_expr_i(i8::MIN.into())
+        }
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::I16, Min))) => {
+            lit_expr_i(i16::MIN.into())
+        }
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::I32, Min))) => {
+            lit_expr_i(i32::MIN.into())
+        }
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::I64, Min))) => {
+            lit_expr_i(i64::MIN.into())
+        }
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::I128, Min))) => lit_expr_i(i128::MIN),
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::ISize, Min))) => {
+            arch_bound(IntegerTypeBoundKind::SignedMin)
+        }
 
-        // MAX
-        "core::num::<impl u8>::MAX" => lit_expr(u8::MAX.into()),
-        "core::num::<impl u16>::MAX" => lit_expr(u16::MAX.into()),
-        "core::num::<impl u32>::MAX" => lit_expr(u32::MAX.into()),
-        "core::num::<impl u64>::MAX" => lit_expr(u64::MAX.into()),
-        "core::num::<impl u128>::MAX" => lit_expr(u128::MAX),
-        "core::num::<impl usize>::MAX" => arch_bound(IntegerTypeBoundKind::UnsignedMax),
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::U8, Max))) => lit_expr(u8::MAX.into()),
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::U16, Max))) => {
+            lit_expr(u16::MAX.into())
+        }
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::U32, Max))) => {
+            lit_expr(u32::MAX.into())
+        }
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::U64, Max))) => {
+            lit_expr(u64::MAX.into())
+        }
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::U128, Max))) => lit_expr(u128::MAX),
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::USize, Max))) => {
+            arch_bound(IntegerTypeBoundKind::UnsignedMax)
+        }
 
-        "core::num::<impl i8>::MAX" => lit_expr_i(i8::MAX.into()),
-        "core::num::<impl i16>::MAX" => lit_expr_i(i16::MAX.into()),
-        "core::num::<impl i32>::MAX" => lit_expr_i(i32::MAX.into()),
-        "core::num::<impl i64>::MAX" => lit_expr_i(i64::MAX.into()),
-        "core::num::<impl i128>::MAX" => lit_expr_i(i128::MAX),
-        "core::num::<impl isize>::MAX" => arch_bound(IntegerTypeBoundKind::SignedMax),
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::I8, Max))) => {
+            lit_expr_i(i8::MAX.into())
+        }
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::I16, Max))) => {
+            lit_expr_i(i16::MAX.into())
+        }
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::I32, Max))) => {
+            lit_expr_i(i32::MAX.into())
+        }
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::I64, Max))) => {
+            lit_expr_i(i64::MAX.into())
+        }
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::I128, Max))) => lit_expr_i(i128::MAX),
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::ISize, Max))) => {
+            arch_bound(IntegerTypeBoundKind::SignedMax)
+        }
 
-        // BITS
-        "core::num::<impl u8>::BITS" => lit_expr(u8::BITS.into()),
-        "core::num::<impl u16>::BITS" => lit_expr(u16::BITS.into()),
-        "core::num::<impl u32>::BITS" => lit_expr(u32::BITS.into()),
-        "core::num::<impl u64>::BITS" => lit_expr(u64::BITS.into()),
-        "core::num::<impl u128>::BITS" => lit_expr(u128::BITS.into()),
-        "core::num::<impl usize>::BITS" => Some(arch_bits()),
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::U8, Bits))) => {
+            lit_expr(u8::BITS.into())
+        }
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::U16, Bits))) => {
+            lit_expr(u16::BITS.into())
+        }
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::U32, Bits))) => {
+            lit_expr(u32::BITS.into())
+        }
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::U64, Bits))) => {
+            lit_expr(u64::BITS.into())
+        }
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::U128, Bits))) => {
+            lit_expr(u128::BITS.into())
+        }
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::USize, Bits))) => Some(arch_bits()),
 
-        "core::num::<impl i8>::BITS" => lit_expr_i(i8::BITS.into()),
-        "core::num::<impl i16>::BITS" => lit_expr_i(i16::BITS.into()),
-        "core::num::<impl i32>::BITS" => lit_expr_i(i32::BITS.into()),
-        "core::num::<impl i64>::BITS" => lit_expr_i(i64::BITS.into()),
-        "core::num::<impl i128>::BITS" => lit_expr_i(i128::BITS.into()),
-        "core::num::<impl isize>::BITS" => Some(arch_bits()),
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::I8, Bits))) => {
+            lit_expr_i(i8::BITS.into())
+        }
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::I16, Bits))) => {
+            lit_expr_i(i16::BITS.into())
+        }
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::I32, Bits))) => {
+            lit_expr_i(i32::BITS.into())
+        }
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::I64, Bits))) => {
+            lit_expr_i(i64::BITS.into())
+        }
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::I128, Bits))) => {
+            lit_expr_i(i128::BITS.into())
+        }
+        Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::ISize, Bits))) => Some(arch_bits()),
 
         _ => None,
     }

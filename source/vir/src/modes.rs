@@ -508,7 +508,7 @@ fn check_expr_handle_mut_arg(
         ExprX::ConstVar(x) => {
             let function = match typing.funs.get(x) {
                 None => {
-                    let name = crate::ast_util::path_as_rust_name(&x.path);
+                    let name = crate::ast_util::path_as_friendly_rust_name(&x.path);
                     return error(&expr.span, format!("cannot find constant {}", name));
                 }
                 Some(f) => f.clone(),
@@ -522,12 +522,12 @@ fn check_expr_handle_mut_arg(
             typing.erasure_modes.var_modes.push((expr.span.clone(), mode));
             Ok(mode)
         }
-        ExprX::Call(CallTarget::Fun(_, x, _, autospec_usage), es) => {
+        ExprX::Call(CallTarget::Fun(_, x, _, _, autospec_usage), es) => {
             assert!(*autospec_usage == AutospecUsage::Final);
 
             let function = match typing.funs.get(x) {
                 None => {
-                    let name = crate::ast_util::path_as_rust_name(&x.path);
+                    let name = crate::ast_util::path_as_friendly_rust_name(&x.path);
                     return error(&expr.span, format!("cannot find function {}", name));
                 }
                 Some(f) => f.clone(),

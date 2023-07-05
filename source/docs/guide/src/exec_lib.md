@@ -2,22 +2,15 @@
 
 The previous section discussed the mathematical collection types
 `Seq`, `Set`, and `Map`.
-This section will discuss `Vec`, an executable implementation of `Seq`.
-
-UNDER CONSTRUCTION:
-Currently, Verus's `pervasive::vec::Vec` is a wrapper around Rust's `std::vec::Vec` type.
-In the long run, it would probably be better to use `std::vec::Vec` directly,
-but Verus doesn't yet have a way to attach specifications to existing code in other crates.
+This section will discuss `Vec`, an executable implementation of `Seq`. 
+Verus supports some functionality of Rust's `std::vec::Vec` type. To use 
+`Vec`, include `use std::vec::Vec;` in your code.
 
 You can allocate `Vec` using `Vec::new` and then push elements into it:
 
 ```rust
 {{#include ../../../rust_verify/example/guide/lib_examples.rs:test_vec1}}
 ```
-
-UNDER CONSTRUCTION:
-Verus doesn't yet support `Vec` updates using Rust's `v[2] = 21;` syntax.
-Instead, there's a special `.set` method to update an element of a `Vec`.
 
 The code above is able to make assertions directly about the `Vec` value `v`.
 You could also write more compilicated specifications and proofs about `Vec` values.
@@ -43,3 +36,11 @@ For example, `v@` returns a `Seq` of all the elements in the vector `v`:
 Using the `Seq` view of the `Vec` allows us to use the various features of `Seq`,
 such as concatenation and subsequences,
 when writing specifications about the `Vec` contents.
+
+Verus support for `std::vec::Vec` is currently being expanded. For up-to-date
+documentation, visit [this link](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/vec/index.html).
+Note that these functions provide specifications for `std::vec::Vec` functions. Thus,
+for example, `ex_vec_insert` represents support for the `Vec` function `insert`. Code written 
+in Verus should use `insert` rather than `ex_vec_insert`.
+
+Documentation for `std::vec::Vec` functionality can be found [here](https://doc.rust-lang.org/std/vec/struct.Vec.html).

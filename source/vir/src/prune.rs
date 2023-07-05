@@ -201,10 +201,11 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             let fe = |state: &mut State, _: &mut ScopeMap<Ident, Typ>, e: &Expr| {
                 // note: the visitor automatically reaches e.typ
                 match &e.x {
-                    ExprX::Call(CallTarget::Fun(kind, name, _, autospec), _) => {
+                    ExprX::Call(CallTarget::Fun(kind, name, _, _impl_paths, autospec), _) => {
+                        // REVIEW: maybe we can be more precise if we use impl_paths here
                         assert!(*autospec == AutospecUsage::Final);
                         reach_function(ctxt, state, name);
-                        if let crate::ast::CallTargetKind::Method(Some((resolved, _))) = kind {
+                        if let crate::ast::CallTargetKind::Method(Some((resolved, _, _))) = kind {
                             reach_function(ctxt, state, resolved);
                         }
                     }
@@ -475,6 +476,7 @@ pub fn prune_krate_for_module(
             .cloned()
             .collect(),
         traits,
+        trait_impls: krate.trait_impls.clone(),
         module_ids: krate.module_ids.clone(),
         external_fns: krate.external_fns.clone(),
         external_types: krate.external_types.clone(),
