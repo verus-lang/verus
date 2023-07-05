@@ -132,8 +132,10 @@ pub fn main() {
         args.remove(index);
 
         // error_report binary will always add --time flag
-        let index = args.iter().position(|x| *x == "--time").unwrap();
-        args.remove(index);
+        if let Some(index) = args.iter().position(|x| *x == "--time")
+        {
+            args.remove(index);
+        }
 
         let verus_path = std::env::current_exe().unwrap();
         let exe: std::path::PathBuf;

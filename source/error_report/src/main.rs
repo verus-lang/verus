@@ -1,4 +1,5 @@
 use chrono::{prelude::*, DateTime};
+use std::time::{Duration, Instant};
 use std::{
     env,
     fs::{self, File},
@@ -42,6 +43,7 @@ fn main() {
     let verus_version_output =
         Command::new(&verus_path).arg("--version").output().expect("failed to execute process");
 
+    let start_time = Instant::now();
     let child = Command::new(verus_path)
         .stdin(Stdio::null())
         .args(our_args)
@@ -53,11 +55,12 @@ fn main() {
         .expect("failed to execute process");
     let verus_output: std::process::Output =
         child.wait_with_output().expect("Failed to read stdout");
-
+    let verus_duration = start_time.elapsed();
+    
     // The following method calls do the actual work of writing a toml file
     // with relevant information and saving the toml file and relevant files
     // to a zip file
-    toml_setup_and_write(verus_call, z3_version_output, verus_version_output, verus_output);
+    toml_setup_and_write(verus_call, z3_version_output, verus_version_output, verus_output, verus_duration);
     let (d_file_name, zip_file_name) = zip_setup(file_path);
     println!("Stored error report to {}\n", zip_file_name);
 
@@ -77,6 +80,7 @@ fn toml_setup_and_write(
     z3_version_output: std::process::Output,
     verus_version_output: std::process::Output,
     verus_output: std::process::Output,
+    verus_duration: Duration,
 ) {
     let z3_version = str::from_utf8(&z3_version_output.stdout)
         .expect("got non UTF-8 data from z3 version output")
@@ -84,14 +88,14 @@ fn toml_setup_and_write(
     let verus_version = str::from_utf8(&verus_version_output.stdout)
         .expect("got non UTF-8 data from verus version output")
         .to_string();
-
+    let verus_time = verus_duration.as_secs_f64();
     let stdout =
         str::from_utf8(&verus_output.stdout).expect("got non UTF-8 data from stdout").to_string();
     let stderr =
         str::from_utf8(&verus_output.stderr).expect("got non UTF-8 data from stderr").to_string();
 
     let toml_string =
-        toml::to_string(&create_toml(args, z3_version, verus_version, stdout, stderr))
+        toml::to_string(&create_toml(args, z3_version, verus_version, verus_time, stdout, stderr))
             .expect("Could not encode TOML value");
     fs::write("error_report.toml", toml_string).expect("Could not write to file!");
 }
@@ -110,6 +114,7 @@ fn create_toml(
     args: Vec<String>,
     z3_version: String,
     verus_version: String,
+    verus_time: f64,
     stdout: String,
     stderr: String,
 ) -> Value {
@@ -119,9 +124,14 @@ fn create_toml(
     let mut versions = Map::new();
     versions.insert("z3-version".to_string(), Value::String(z3_version));
     versions.insert("verus-version".to_string(), Value::String(verus_version));
+    
+    let mut time = Map::new();
+    time.insert("verus-time".to_string(), Value::Float(verus_time));
+    
     let mut output = Map::new();
     output.insert("stdout".to_string(), Value::String(stdout));
     output.insert("stderr".to_string(), Value::String(stderr));
+    
     let mut map = Map::new();
     map.insert(
         "title".to_string(),
@@ -129,6 +139,7 @@ fn create_toml(
     );
     map.insert("report-schema-version".into(), Value::String("1".to_string()));
     map.insert("command-line-arguments".into(), Value::Table(command_line_arguments));
+    map.insert("verus-time".into(), Value::Table(time));
     map.insert("versions".into(), Value::Table(versions));
     map.insert("verus-output".into(), Value::Table(output));
     Value::Table(map)
