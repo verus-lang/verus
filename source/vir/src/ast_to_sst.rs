@@ -1178,11 +1178,12 @@ fn expr_to_stm_opt(
                         };
 
                         match (
+                            arith_mode,
                             state.checking_bounds_for_mode(ctx, arith_mode),
                             &*undecorate_typ(&expr.typ),
                         ) {
-                            (false, _) => {}
-                            (true, TypX::Int(ir)) if ir.is_bounded() => {
+                            (_, false, _) => {}
+                            (Mode::Exec, true, TypX::Int(ir)) if ir.is_bounded() => {
                                 let (assert_exp, msg) = match arith {
                                     ArithOp::Add | ArithOp::Sub | ArithOp::Mul => {
                                         let unary = UnaryOpr::HasType(expr.typ.clone());

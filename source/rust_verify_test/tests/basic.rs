@@ -445,19 +445,19 @@ test_verify_one_file! {
             x = (x + 100u8) as u8;
             assert(x < 256);
         }
-        
+
         proof fn test2b() {
             let mut x: u8 = 200;
             x += 100u8;
             assert(x < 256);
         }
-        
+
         fn test3a() {
             let mut x: u8 = 200;
             x = x / (x + 1);
             assert(x < 256);
         }
-        
+
         fn test3b() {
             let mut x: u8 = 200;
             x /= (x + 1);
@@ -483,7 +483,7 @@ test_verify_one_file! {
             x = x + 100u8; // FAILS
             assert(x < 256);
         }
-        
+
         fn test3b() {
             let mut x: u8 = 200;
             x += 100u8; // FAILS

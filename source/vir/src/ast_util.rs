@@ -123,6 +123,14 @@ pub fn is_integer_type(typ: &Typ) -> bool {
     }
 }
 
+pub fn int_range_from_type(typ: &Typ) -> Option<IntRange> {
+    match &*undecorate_typ(typ) {
+        TypX::Int(range) => Some(*range),
+        TypX::Boxed(typ) => int_range_from_type(typ),
+        _ => None,
+    }
+}
+
 #[derive(PartialEq, Eq, Debug)]
 pub enum IntegerTypeBitwidth {
     Width(u32),
