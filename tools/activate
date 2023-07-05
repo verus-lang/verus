@@ -11,7 +11,7 @@ fi
 echo "building vargo"
 (
     cd "$SCRIPT_DIR/vargo" || exit 1
-    cargo build --release
-)
+    cargo build --release || exit 1
+) || return 1
 
 export PATH="$SCRIPT_DIR/vargo/target/release:$PATH"
