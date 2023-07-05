@@ -46,13 +46,13 @@ fn main() {
         .stdin(Stdio::null())
         .args(our_args)
         .arg("--emit=dep-info")
-        .arg("--time")              // TODO: two --time flags into an error
+        .arg("--time")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .expect("failed to execute process");
     let verus_output: std::process::Output =
-    child.wait_with_output().expect("Failed to read stdout");
+        child.wait_with_output().expect("Failed to read stdout");
 
     // The following method calls do the actual work of writing a toml file
     // with relevant information and saving the toml file and relevant files
