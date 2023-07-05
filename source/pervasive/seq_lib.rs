@@ -181,9 +181,10 @@ impl<A> Seq<A> {
        decreases self.len(),
     {
         if self.len() > 1 {
-            let subseq = self.subrange(1,self.len() as int);
-            let elt = subseq.max(leq);
-            if leq(self[0],elt) {elt}
+            //let elt = self.subrange(1,self.len() as int).max(leq);
+            if leq(self[0],self.subrange(1,self.len() as int).max(leq)) {
+                self.subrange(1,self.len() as int).max(leq)
+            }
             else {self[0]}
         } else {self[0]}
     }
@@ -848,33 +849,133 @@ pub proof fn lemma_insert_properties<A>(s: Seq<A>, pos: int, elt:A)
 //     assert(s.unzip().0.len() == s.unzip().1.len());
 // }
 
-// /// The maximum of the concatenation of two non-empty sequences is greater than or 
-// /// equal to the maxima of its two non-empty subsequences.
-// pub proof fn lemma_max_of_concat<A>(x: Seq<A>, y: Seq<A>, leq: FnSpec(A,A) ->bool)
-//     requires
-//         0 < x.len() && 0 < y.len(),
-//         // forall |a: A, b: A| leq(a,b) == a || leq(a,b) == b,
-//     ensures
-//         leq(x.max(leq), (x + y).max(leq)),
-//         leq(y.max(leq), (x + y).max(leq)),
-//         forall |elt: A| (x+y).contains(elt) ==> leq(elt, (x + y).max(leq)),
-//     decreases
-//         x.len(),
-// {
-//     if x.len() == 1 {
-//         assert((x+y).contains(x[0]));
-//         assert(x.max(leq) == x[0]);
-//         assert(forall |i: int| 0<=i<(x+y).len() ==> (x+y).contains((x+y)[i]));
-//         assert((x+y).contains((x + y).max(leq)));
-//         assert(leq(x[0], (x + y).max(leq)));
-//         assume(leq(y.max(leq), (x + y).max(leq)));
-//         assume(forall |elt: A| (x+y).contains(elt) ==> leq(elt, (x + y).max(leq)));
-//     } else {
-//         assert(leq(x.max(leq), (x + y).max(leq)));
-//         assert(x.subrange(1,x.len() as int) + y =~= (x+y).subrange(1,(x+y).len() as int));
-//         lemma_max_of_concat(x.subrange(1,x.len() as int),y,leq)
-//     }
-// }
+pub proof fn lemma_max_properties<A>(s: Seq<A>, leq: FnSpec(A,A) ->bool)
+    requires
+        forall |x: A| #[trigger] leq(x,x),
+        forall |x: A, y: A| !(#[trigger] leq(x,y)) ==> #[trigger] leq(y,x),
+        forall |x: A, y: A| #[trigger] leq(x,y) ==> x==y || !(#[trigger] leq(y,x)),
+        forall |x: A, y: A, z: A| #[trigger] leq(x,y) && #[trigger] leq(y,z) ==> #[trigger] leq(x,z),
+    ensures
+        forall |x: A| s.contains(x) ==> leq(x,s.max(leq)),
+        forall |i: int| 0<= i < s.len() ==> leq(s[i],s.max(leq)),
+        s.len() == 0 || s.contains(s.max(leq)),
+    decreases 
+        s.len(),
+{
+    if s.len() <=1 {}
+    else {
+        let elt = s.subrange(1,s.len() as int).max(leq);
+        assert(!leq(s[0], elt) ==> leq(elt, s[0]));
+        assert(s.subrange(1,s.len() as int).contains(elt)) by {
+            lemma_max_properties(s.subrange(1,s.len() as int), leq)
+        }
+        assert forall |i: int| 0<= i <s.len() implies leq(s[i],s.max(leq)) by {
+            assert(i==0 || s[i] == s.drop_first()[i-1]);
+            assert(forall |j: int| 0<= j < s.drop_first().len() 
+                    ==> leq(s.drop_first()[j],s.drop_first().max(leq))) by {
+                lemma_max_properties(s.drop_first(), leq)
+            }
+        }
+    }
+}
+
+pub proof fn lemma_min_properties<A>(s: Seq<A>, leq: FnSpec(A,A) ->bool)
+    requires
+        forall |x: A| #[trigger] leq(x,x),
+        forall |x: A, y: A| !(#[trigger] leq(x,y)) ==> #[trigger] leq(y,x),
+        forall |x: A, y: A| #[trigger] leq(x,y) ==> x==y || !(#[trigger] leq(y,x)),
+        forall |x: A, y: A, z: A| #[trigger] leq(x,y) && #[trigger] leq(y,z) ==> #[trigger] leq(x,z),
+    ensures
+        forall |x: A| s.contains(x) ==> leq(s.min(leq),x),
+        forall |i: int| 0<= i < s.len() ==> leq(s.min(leq),s[i]),
+        s.len() == 0 || s.contains(s.min(leq)),
+    decreases 
+        s.len(),
+{
+    if s.len() <=1 {}
+    else {
+        let elt = s.drop_first().min(leq);
+        assert(!leq(s[0], elt) ==> leq(elt, s[0]));
+        assert(s.subrange(1,s.len() as int).contains(elt)) by {
+            lemma_min_properties(s.drop_first(), leq)
+        }
+        assert forall |i: int| 0<= i <s.len() implies leq(s.min(leq), s[i]) by {
+            assert(i==0 || s[i] == s.drop_first()[i-1]);
+            assert(forall |j: int| 0<= j < s.drop_first().len() 
+                    ==> leq(s.drop_first().min(leq),s.drop_first()[j])) by {
+                lemma_min_properties(s.drop_first(), leq)
+            }
+        }
+    }
+}
+
+/// The maximum of the concatenation of two non-empty sequences is greater than or 
+/// equal to the maxima of its two non-empty subsequences.
+pub proof fn lemma_max_of_concat<A>(x: Seq<A>, y: Seq<A>, leq: FnSpec(A,A) ->bool)
+    requires
+        0 < x.len() && 0 < y.len(),
+        //Properties of an leq function:
+        forall |x: A| #[trigger] leq(x,x),
+        forall |x: A, y: A| !(#[trigger] leq(x,y)) ==> #[trigger] leq(y,x),
+        forall |x: A, y: A| #[trigger] leq(x,y) ==> x==y || !(#[trigger] leq(y,x)),
+        forall |x: A, y: A, z: A| #[trigger] leq(x,y) && #[trigger] leq(y,z) ==> #[trigger] leq(x,z),
+    ensures
+        leq(x.max(leq), (x + y).max(leq)),
+        leq(y.max(leq), (x + y).max(leq)),
+        forall |elt: A| (x+y).contains(elt) ==> leq(elt, (x + y).max(leq)),
+    decreases
+        x.len(),
+{
+    lemma_max_properties(x,leq);
+    lemma_max_properties(y,leq);
+    lemma_max_properties((x+y),leq);
+    lemma_concat_elts(x,y);
+    if x.len() == 1 {
+        assert(leq(y.max(leq), (x + y).max(leq))) by {
+            assert((x+y).contains(y.max(leq)));
+        }
+    } else {
+        assert(leq(x.max(leq), (x + y).max(leq))) by {
+            assert((x+y).contains(x.max(leq)));
+        }
+        assert(x.drop_first() + y =~= (x+y).drop_first());
+        lemma_max_of_concat(x.drop_first(),y,leq)
+    }
+}
+
+/// The minimum of the concatenation of two non-empty sequences is less than or 
+/// equal to the minimum of its two non-empty subsequences.
+pub proof fn lemma_min_of_concat<A>(x: Seq<A>, y: Seq<A>, leq: FnSpec(A,A) ->bool)
+    requires
+        0 < x.len() && 0 < y.len(),
+        //Properties of an leq function:
+        forall |x: A| #[trigger] leq(x,x),
+        forall |x: A, y: A| !(#[trigger] leq(x,y)) ==> #[trigger] leq(y,x),
+        forall |x: A, y: A| #[trigger] leq(x,y) ==> x==y || !(#[trigger] leq(y,x)),
+        forall |x: A, y: A, z: A| #[trigger] leq(x,y) && #[trigger] leq(y,z) ==> #[trigger] leq(x,z),
+    ensures
+        leq((x + y).min(leq),x.min(leq)),
+        leq((x + y).min(leq), y.min(leq)),
+        forall |elt: A| (x+y).contains(elt) ==> leq((x + y).min(leq),elt),
+    decreases
+        x.len(),
+{
+    lemma_min_properties(x,leq);
+    lemma_min_properties(y,leq);
+    lemma_min_properties((x+y),leq);
+    lemma_concat_elts(x,y);
+    if x.len() == 1 {
+        assert(leq((x + y).min(leq),y.min(leq))) by {
+            assert((x+y).contains(y.min(leq)));
+        }
+    } else {
+        assert(leq((x + y).min(leq),x.min(leq))) by {
+            assert((x+y).contains(x.min(leq)));
+        }
+        assert(x.drop_first() + y =~= (x+y).drop_first());
+        lemma_max_of_concat(x.drop_first(),y,leq)
+    }
+}
 
 /// The concatenation of two sequences contains only the elements
 /// of the two sequences
@@ -882,22 +983,22 @@ pub proof fn lemma_concat_elts<A>(x: Seq<A>, y: Seq<A>)
     ensures
         forall |elt: A| #[trigger] x.contains(elt) ==> #[trigger] (x+y).contains(elt),
         forall |elt: A| #[trigger] y.contains(elt) ==> #[trigger] (x+y).contains(elt),
+        forall |elt: A| #[trigger] (x+y).contains(elt) ==> #[trigger] x.contains(elt) || #[trigger] y.contains(elt),
     decreases
         x.len(),
 {
-    if x.len() == 0 {
-        if y.len() == 0 {
-            assert((x+y) =~= Seq::empty());
-        } else {
-            assert((x+y) =~= y);
-        }
+    if x.len() == 0 && y.len() >0 {
+        assert((x+y) =~= y);
     } else {
-        if y.len() == 0 {
-            assert((x+y) =~= x);
-        } else {
-            assert(x[0] == (x+y)[0]);
-            assert(x.first() == (x+y).first());    
-            lemma_concat_elts(x.drop_first(),y);
+        assert forall |elt: A| #[trigger] x.contains(elt) implies #[trigger] (x+y).contains(elt)
+        by {
+            let index = choose |i: int| 0 <= i < x.len() && x[i] == elt;
+            assert((x+y)[index] == elt);
+        }
+        assert forall |elt: A| #[trigger] y.contains(elt) implies #[trigger] (x+y).contains(elt)
+        by {
+            let index = choose |i: int| 0 <= i < y.len() && y[i] == elt;
+            assert((x+y)[index+x.len()] == elt);
         }
     }
 }
