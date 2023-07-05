@@ -34,6 +34,9 @@ fn main() {
     let z3_path = Path::new(&program_dir).join("z3");
     let verus_path = Path::new(&program_dir).join("verus");
 
+    let mut verus_call = args[2..].to_vec();
+    verus_call.insert(0, verus_path.to_string_lossy().to_string());
+
     let z3_version_output =
         Command::new(z3_path).arg("--version").output().expect("failed to execute process");
     let verus_version_output =
@@ -43,17 +46,18 @@ fn main() {
         .stdin(Stdio::null())
         .args(our_args)
         .arg("--emit=dep-info")
+        .arg("--time")              // TODO: two --time flags into an error
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .expect("failed to execute process");
     let verus_output: std::process::Output =
-        child.wait_with_output().expect("Failed to read stdout");
+    child.wait_with_output().expect("Failed to read stdout");
 
     // The following method calls do the actual work of writing a toml file
     // with relevant information and saving the toml file and relevant files
     // to a zip file
-    toml_setup_and_write(args, z3_version_output, verus_version_output, verus_output);
+    toml_setup_and_write(verus_call, z3_version_output, verus_version_output, verus_output);
     let (d_file_name, zip_file_name) = zip_setup(file_path);
     println!("Stored error report to {}\n", zip_file_name);
 
@@ -80,6 +84,7 @@ fn toml_setup_and_write(
     let verus_version = str::from_utf8(&verus_version_output.stdout)
         .expect("got non UTF-8 data from verus version output")
         .to_string();
+
     let stdout =
         str::from_utf8(&verus_output.stdout).expect("got non UTF-8 data from stdout").to_string();
     let stderr =

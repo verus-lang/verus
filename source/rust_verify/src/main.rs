@@ -117,6 +117,10 @@ pub fn main() {
         let index = args.iter().position(|x| *x == "--error-report").unwrap();
         args.remove(index);
 
+        // error_report binary will always add --time flag
+        let index = args.iter().position(|x| *x == "--time").unwrap();
+        args.remove(index);
+
         let verus_path = std::env::current_exe().unwrap();
         let exe: std::path::PathBuf;
         let release_exe = verus_path.parent().unwrap().join("../../target/release/error_report");
