@@ -103,7 +103,7 @@ test_verify_one_file! {
             assert(0 <= n as int + 1 < n < n as int + 2); // FAILS
             assert(n as int == n as int + 0 == 0 + n as int);
             assert(1 + n as int == n as int + 1 == 1); // FAILS
-            assert(2 == 1 + 1 == 3 - 1); 
+            assert(2 == 1 + 1 == 3 - 1);
             assert(n as int == (n as int) * 1 == (n as int) * 1 == 1 * (n as int));
         }
     } => Err(err) => assert_one_fails(err)
