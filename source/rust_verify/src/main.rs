@@ -132,8 +132,7 @@ pub fn main() {
         args.remove(index);
 
         // error_report binary will always add --time flag
-        if let Some(index) = args.iter().position(|x| *x == "--time")
-        {
+        if let Some(index) = args.iter().position(|x| *x == "--time") {
             args.remove(index);
         }
 

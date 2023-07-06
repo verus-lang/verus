@@ -26,16 +26,17 @@ fn main() {
         }
         our_args = args[2..].to_vec();
     } else {
-        println!("Usage: error_report <file_name>");
+        println!("Usage: verus --error-report <args..>");
         return;
     }
 
+    // assumption: when verus is invoking error_report, the dir of verus path should be put in the first argument
     let program_dir = args[1].clone();
 
     let z3_path = Path::new(&program_dir).join("z3");
     let verus_path = Path::new(&program_dir).join("verus");
 
-    let mut verus_call = args[2..].to_vec();
+    let mut verus_call = our_args.clone();
     verus_call.insert(0, verus_path.to_string_lossy().to_string());
 
     let z3_version_output =
@@ -56,16 +57,22 @@ fn main() {
     let verus_output: std::process::Output =
         child.wait_with_output().expect("Failed to read stdout");
     let verus_duration = start_time.elapsed();
-    
+
     // The following method calls do the actual work of writing a toml file
     // with relevant information and saving the toml file and relevant files
     // to a zip file
-    toml_setup_and_write(verus_call, z3_version_output, verus_version_output, verus_output, verus_duration);
-    let (d_file_name, zip_file_name) = zip_setup(file_path);
-    println!("Stored error report to {}\n", zip_file_name);
+    toml_setup_and_write(
+        verus_call,
+        z3_version_output,
+        verus_version_output,
+        verus_output,
+        verus_duration,
+    );
+    let (dependencies_path, zip_path) = zip_setup(file_path);
+    println!("Stored error report to {}\n", zip_path);
 
     fs::remove_file("error_report.toml").expect("failed to delete toml file\n");
-    fs::remove_file(d_file_name).expect("failed to delete .d file\n");
+    fs::remove_file(dependencies_path).expect("failed to delete .d file\n");
 }
 
 /// Transforms data from the input file into the proper data structure for
@@ -124,14 +131,14 @@ fn create_toml(
     let mut versions = Map::new();
     versions.insert("z3-version".to_string(), Value::String(z3_version));
     versions.insert("verus-version".to_string(), Value::String(verus_version));
-    
+
     let mut time = Map::new();
     time.insert("verus-time".to_string(), Value::Float(verus_time));
-    
+
     let mut output = Map::new();
     output.insert("stdout".to_string(), Value::String(stdout));
     output.insert("stderr".to_string(), Value::String(stderr));
-    
+
     let mut map = Map::new();
     map.insert(
         "title".to_string(),
@@ -154,15 +161,11 @@ fn create_toml(
 pub fn zip_setup(file_path: String) -> (String, String) {
     let file_name_path = Path::new(&file_path);
     let temp_file_name =
-        &file_name_path.with_extension(".d").file_name().unwrap().to_string_lossy().to_string();
-    let mut d_file_name = String::new();
-    d_file_name.push_str(&temp_file_name.to_string()[..]);
-    d_file_name = d_file_name[..d_file_name.len() - 2].to_string();
-    d_file_name.push('d');
-    let mut deps = d_to_vec(d_file_name.to_string());
+        file_name_path.with_extension("d").file_name().unwrap().to_string_lossy().to_string();
+    let mut deps = get_dependencies(&temp_file_name);
     deps.push("error_report.toml".to_string());
     let zip_file_name = write_zip_archive(deps);
-    (d_file_name, zip_file_name)
+    (temp_file_name, zip_file_name)
 }
 
 /// Turns the .d file that lists each of the input files' dependencies
@@ -172,7 +175,7 @@ pub fn zip_setup(file_path: String) -> (String, String) {
 ///
 /// Returns:    a vector containing each dependency of the input file as an
 ///             individual string
-fn d_to_vec(file_name: String) -> Vec<String> {
+fn get_dependencies(file_name: &String) -> Vec<String> {
     let file = File::open(file_name).expect("Couldn't open file!");
     let mut reader = BufReader::new(file);
     let mut dependencies = String::new();

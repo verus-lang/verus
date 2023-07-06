@@ -266,7 +266,7 @@ pub fn parse_args_with_imports(
     opts.optflag(
         "",
         OPT_ERROR_REPORT,
-        "Create zip file to reproduce verus error (with version info)",
+        "Zip relevant files triggering a Verus error to aid in reporting it",
     );
 
     let print_usage = || {
