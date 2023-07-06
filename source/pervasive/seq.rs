@@ -349,6 +349,43 @@ pub proof fn axiom_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int)
 {
 }
 
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_contains<A>(s: Seq<A>, x: A)
+    ensures
+        s.contains(x) <==> exists |i: int| 0<= i < s.len() && #[trigger] s[i]==x,
+{}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_empty_contains_nothing<A>(s: Seq<A>, x: A)
+    ensures
+        s =~= Seq::empty() ==> !s.contains(x),
+{}
+
+//I have proven in seq_lib
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_concat_contains_all_elements<A>(x: Seq<A>, y: Seq<A>, elt: A)
+    ensures
+        #[trigger] (x+y).contains(elt) <==> x.contains(elt) ||  y.contains(elt),
+{}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_contains_after_push<A>(s: Seq<A>, v: A, x: A)
+    ensures #[trigger] s.push(v).contains(x) <==> v==x || s.contains(x),
+{}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_subrange_elements<A>(s: Seq<A>, start: int, stop: int, x: A)
+    ensures #[trigger] s.subrange(start,stop).contains(x) <==> 
+        exists |i: int| 0 <= start <= i < stop <= s.len() && #[trigger] s[i] == x,
+{}
+
+// TODO: take and drop axioms -- no equivalent in verus? Should I add them?
+// Take and drop take or drop the first n elements
 #[doc(hidden)]
 #[macro_export]
 macro_rules! seq_internal {

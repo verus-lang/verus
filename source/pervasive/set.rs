@@ -210,6 +210,22 @@ pub proof fn axiom_set_union<A>(s1: Set<A>, s2: Set<A>, a: A)
 {
 }
 
+// TODO: Could probably be easily proven as a lemma rather than an axiom...
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_set_union_again1<A>(a: Set<A>, b: Set<A>)
+    ensures
+        #[trigger] a.union(b).union(b) == a.union(b),
+{}
+
+// TODO: Could probably be easily proven as a lemma rather than an axiom...
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_set_union_again2<A>(a: Set<A>, b: Set<A>)
+    ensures
+        #[trigger] a.union(b).union(a) == a.union(b),
+{}
+
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_set_intersect<A>(s1: Set<A>, s2: Set<A>, a: A)
@@ -218,6 +234,22 @@ pub proof fn axiom_set_intersect<A>(s1: Set<A>, s2: Set<A>, a: A)
 {
 }
 
+// TODO: Could probably be easily proven as a lemma rather than an axiom...
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_set_intersect_again1<A>(a: Set<A>, b: Set<A>)
+    ensures
+        #[trigger] (a.intersect(b)).intersect(b) == a.intersect(b),
+{}
+
+// TODO: Could probably be easily proven as a lemma rather than an axiom...
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_set_intersect_again2<A>(a: Set<A>, b: Set<A>)
+    ensures
+        #[trigger] (a.intersect(b)).intersect(a) == a.intersect(b),
+{}
+
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_set_difference<A>(s1: Set<A>, s2: Set<A>, a: A)
@@ -225,6 +257,21 @@ pub proof fn axiom_set_difference<A>(s1: Set<A>, s2: Set<A>, a: A)
         s1.difference(s2).contains(a) == (s1.contains(a) && !s2.contains(a)),
 {
 }
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_set_difference2<A>(s1: Set<A>, s2: Set<A>, a: A)
+    ensures
+        s2.contains(a) ==> !s1.difference(s2).contains(a),
+{
+}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_set_disjoint<A>(a: Set<A>, b: Set<A>)
+    ensures
+        a.disjoint(b) ==> (#[trigger](a+b)).difference(a) == b && (a+b).difference(b) == a
+{}
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
@@ -382,6 +429,29 @@ pub proof fn axiom_set_choose_len<A>(s: Set<A>)
         #[trigger] s.contains(s.choose()),
 {
 }
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_set_disjoint_lens<A>(a: Set<A>, b: Set<A>)
+    ensures
+        a.disjoint(b) ==> #[trigger] (a+b).len() == a.len() + b.len(),
+{}
+
+// TODO: This axiom seems extraneous and unnecessary
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_set_intersect_union_lens<A>(a: Set<A>, b: Set<A>)
+    ensures
+        #[trigger] (a+b).len() + #[trigger] a.intersect(b).len() == a.len() + b.len(),
+{}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_set_difference_len<A>(a: Set<A>, b: Set<A>)
+    ensures
+        #[trigger] a.difference(b).len() + b.difference(a).len() + a.intersect(b).len() == (a+b).len() 
+            && a.difference(b).len() == a.len() - a.intersect(b).len()
+{}
 
 // Macros
 
