@@ -758,35 +758,15 @@ pub proof fn lemma_cardinality_of_set<A>(s: Seq<A>)
     ensures s.to_set().len() <= s.len(),
     decreases s.len(),
 {
-    // if (s.no_duplicates()) {
-    //     assert(s.to_set().len() == s.len()) by {
-    //         unique_seq_to_set(s)
-    //     }
-    // }
-    // else if s.len() > 0 {
-    //     assert(forall |x: A| #[trigger] s.contains(x) 
-    //         ==> #[trigger] s.drop_last().contains(x) || s.last() == x) by {
-    //         lemma_add_last_back(s)
-    //     }
-    //     if s.drop_last().contains(s.last()) {
-    //         // the last element is duplicated somewhere else.
-    //         assert(s.drop_last().to_set() =~= s.to_set());
-    //         lemma_cardinality_of_set(s.drop_last());
-    //     } else {
-    //        // the last element appears only once
-    //         assert(s.drop_last().to_set().insert(s.last()) =~= s.to_set());
-    //         lemma_cardinality_of_set(s.drop_last());
-    //     }
-    // }
-    // if s.len() == 0 {}
-    // else {
-    //     // lemma_concat_elts(s.drop_last(), seq![s.last()]);
-    //     // lemma_add_last_back(s);
-    //     // assert(s.drop_last().push(s.last()) =~= s.drop_last() + seq![s.last()]);
-    //     // assert(s.drop_last().to_set().insert(s.last()) =~= s.to_set());
-    //      lemma_cardinality_of_set(s.drop_last());
-    //     // assert(s.drop_last().to_set().len() <= s.drop_last().len());
-    // }
+    if s.len() == 0 {}
+    else {
+        // lemma_concat_elts(s.drop_last(), seq![s.last()]);
+        // lemma_add_last_back(s);
+        // assert(s.drop_last().push(s.last()) =~= s.drop_last() + seq![s.last()]);
+        assert(s.drop_last().to_set().insert(s.last()) =~= s.to_set());
+        lemma_cardinality_of_set(s.drop_last());
+        // assert(s.drop_last().to_set().len() <= s.drop_last().len());
+    }
 }
 
 /// A sequence is of length 0 if and only if its conversion to
