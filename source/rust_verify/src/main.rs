@@ -131,11 +131,6 @@ pub fn main() {
         let index = args.iter().position(|x| *x == "--error-report").unwrap();
         args.remove(index);
 
-        // error_report binary will always add --time flag
-        if let Some(index) = args.iter().position(|x| *x == "--time") {
-            args.remove(index);
-        }
-
         let verus_path = std::env::current_exe().unwrap();
         let exe: std::path::PathBuf;
         let release_exe = verus_path.parent().unwrap().join("../../target/release/error_report");
@@ -145,9 +140,7 @@ pub fn main() {
         } else if debug_exe.exists() {
             exe = debug_exe;
         } else {
-            panic!(
-                "error_report not found, try running `cargo build --release` in source/error_report"
-            );
+            panic!("error_report executable not found; try running `vargo build --release`?");
         }
 
         // verus path is the first argument, we assume z3 is under the same directory

@@ -44,6 +44,11 @@ fn main() {
     let verus_version_output =
         Command::new(&verus_path).arg("--version").output().expect("failed to execute process");
 
+    // mandating --time flag, we remove --time flag here to prevent two --time flags that panic verus
+    if our_args.contains(&"--time".to_string()) {
+        our_args.retain(|x| x != "--time");
+    }
+
     let start_time = Instant::now();
     let child = Command::new(verus_path)
         .stdin(Stdio::null())
