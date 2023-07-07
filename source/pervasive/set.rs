@@ -154,7 +154,7 @@ impl<A> Set<A> {
 #[verifier(broadcast_forall)]
 pub proof fn axiom_set_empty<A>(a: A)
     ensures
-        !Set::empty().contains(a),
+        !(#[trigger] Set::empty().contains(a)),
 {
 }
 
@@ -186,6 +186,13 @@ pub proof fn axiom_set_insert_different<A>(s: Set<A>, a1: A, a2: A)
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
+pub proof fn axiom_set_insert_contains<A>(s: Set<A>, a1: A, a2: A)
+    ensures
+        #[trigger] s.insert(a1).contains(a2) <==> a1 == a2 || s.contains(a2),
+{}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
 pub proof fn axiom_set_remove_same<A>(s: Set<A>, a: A)
     ensures
         !(#[trigger] s.remove(a).contains(a)),
@@ -206,7 +213,7 @@ pub proof fn axiom_set_remove_different<A>(s: Set<A>, a1: A, a2: A)
 #[verifier(broadcast_forall)]
 pub proof fn axiom_set_union<A>(s1: Set<A>, s2: Set<A>, a: A)
     ensures
-        s1.union(s2).contains(a) == (s1.contains(a) || s2.contains(a)),
+        #[trigger] s1.union(s2).contains(a) <==> (s1.contains(a) || s2.contains(a)),
 {
 }
 
@@ -399,6 +406,16 @@ pub proof fn axiom_set_empty_len<A>()
 {
 }
 
+// Dafny encodes the second clause with a single directional, although
+// it should be fine with both directions?
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_set_empty_equivalency_len<A>(s: Set<A>)
+    ensures
+        #[trigger] s.len() == 0 <==> s =~= Set::empty() 
+        && s.len() != 0 ==> exists |x: A| s.contains(x),
+{}
+
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_set_insert_len<A>(s: Set<A>, a: A)
@@ -408,6 +425,20 @@ pub proof fn axiom_set_insert_len<A>(s: Set<A>, a: A)
         #[trigger] s.insert(a).len() == s.len() + (if s.contains(a) { 0int } else { 1 }),
 {
 }
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_set_insert_same_len(s: Set<A>, a: A)
+    ensures
+        s.contains(a) ==> #[trigger] s.insert(a).len() == s.len(),
+{}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_set_insert_diff_len(s: Set<A>, a: A)
+    ensures
+        !s.contains(a) ==> #[trigger] s.insert(a).len() == s.len() + 1,
+{}
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
@@ -437,7 +468,7 @@ pub proof fn axiom_set_disjoint_lens<A>(a: Set<A>, b: Set<A>)
         a.disjoint(b) ==> #[trigger] (a+b).len() == a.len() + b.len(),
 {}
 
-// TODO: This axiom seems extraneous and unnecessary
+// TODO: This axiom seems extraneous and unnecessary (actually nvm dafny uses it for lemma cardinality of sets)
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_set_intersect_union_lens<A>(a: Set<A>, b: Set<A>)

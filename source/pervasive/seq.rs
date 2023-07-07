@@ -46,6 +46,11 @@ impl<A> Seq<A> {
     #[rustc_diagnostic_item = "verus::pervasive::seq::Seq::new"]
     pub spec fn new(len: nat, f: impl Fn(int) -> A) -> Seq<A>;
 
+    #[verifier(inline)]
+    pub open spec fn singleton(elt: A) -> Seq<A> {
+        Self::empty().push(elt)
+    }
+
     /// The length of a sequence.
 
     #[rustc_diagnostic_item = "verus::pervasive::seq::Seq::len"]
@@ -137,6 +142,18 @@ impl<A> Seq<A> {
     #[rustc_diagnostic_item = "verus::pervasive::seq::Seq::subrange"]
     pub spec fn subrange(self, start_inclusive: int, end_exclusive: int) -> Seq<A>
         recommends 0 <= start_inclusive <= end_exclusive <= self.len();
+
+    /// Returns a sequence containing only the first n elements of the original sequence
+    #[verifier(inline)]
+    pub open spec fn take(self, n: int) -> Seq<A>{
+        self.subrange(0,n)
+    } 
+
+    /// Returns a sequence that drops the first n elements of the original sequence
+    #[verifier(inline)]
+    pub open spec fn drop(self, n: int) -> Seq<A>{
+        self.subrange(n,self.len() as int)
+    }
 
     /// Concatenates the sequences.
     ///
@@ -358,9 +375,17 @@ pub proof fn axiom_seq_contains<A>(s: Seq<A>, x: A)
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub proof fn axiom_seq_empty_contains_nothing<A>(s: Seq<A>, x: A)
+pub proof fn axiom_seq_empty_contains_nothing<A>(x: A)
     ensures
-        s =~= Seq::empty() ==> !s.contains(x),
+        !(#[trigger] Seq::<A>::empty().contains(x)),
+{}
+
+// Note: Dafny only does one way implication, but theoretically it could go both ways
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_empty_equality<A>(s: Seq<A>)
+    ensures
+        #[trigger] s.len() == 0 ==> s=~= Seq::<A>::empty(),
 {}
 
 //I have proven in seq_lib
@@ -384,8 +409,140 @@ pub proof fn axiom_seq_subrange_elements<A>(s: Seq<A>, start: int, stop: int, x:
         exists |i: int| 0 <= start <= i < stop <= s.len() && #[trigger] s[i] == x,
 {}
 
-// TODO: take and drop axioms -- no equivalent in verus? Should I add them?
-// Take and drop take or drop the first n elements
+// ----------------optional singleton axioms? ------------------- //
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_singleton_length<A>(elt: A)
+    ensures
+        #[trigger] Seq::<A>::singleton(elt).len() == 1
+{}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_singleton_index<A>(elt: A)
+    ensures
+        #[trigger] Seq::<A>::singleton(elt)[0] == elt,
+{}
+
+// ----------------optional Take/Drop axioms? ------------------- //
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_take_len<A>(s: Seq<A>, n: int)
+    ensures
+        0 <= n <= s.len() ==> #[trigger] s.take(n).len() == n,
+{}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_take_contains<A>(s: Seq<A>, n: int, x: A)
+    ensures
+        #[trigger] s.take(n).contains(x) <==> exists |i: int| 0<= i < n && i < s.len() && #[trigger] s[i] == x,
+{}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_take_index<A>(s: Seq<A>, n: int, j: int)
+    ensures
+        0<= j < n && j < s.len() ==> #[trigger] s.take(n)[j] == s[j],
+{}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_drop_len<A>(s: Seq<A>, n: int)
+    ensures
+        0 <= n <= s.len() ==> #[trigger] s.drop(n).len() == s.len() - n,
+{}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_drop_contains<A>(s: Seq<A>, n: int, x: A)
+    ensures
+        #[trigger] s.drop(n).contains(x) <==> exists |i: int| 0<= i < s.len() && n <= i && #[trigger] s[i] == x,
+{}
+
+// PROBLEMATIC, made a proof in seq_lib fail (lemma_max_of_concat postcondition that leq(y.max(leq), (x + y).max(leq)))
+// #[verifier(external_body)]
+// #[verifier(broadcast_forall)]
+// pub proof fn axiom_seq_drop_index<A>(s: Seq<A>, n: int, j: int)
+//     ensures
+//         0 <=n && 0<= j < (s.len() - n) ==> #[trigger] s.drop(n)[j] == s[j+n],
+// {}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_drop_index2<A>(s: Seq<A>, n: int, k: int, diff: int)
+    ensures 
+        0 <= n <= k < s.len() && diff == k-n ==> #[trigger] s.drop(n)[diff] == #[trigger] s[k]
+{}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_append_take_drop<A>(a: Seq<A>, b: Seq<A>, n: int)
+    ensures
+        n == a.len() ==> #[trigger] (a+b).take(n) == a && #[trigger] (a+b).drop(n) == b,
+{}
+
+// Commutability of Take and Drop with Update.
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_take_update_commut1<A>(s: Seq<A>, i: int, v: A, n: int)
+    ensures
+        0 <= i < n <= s.len() ==> #[trigger] s.update(i,v).take(n) =~= s.take(n).update(i,v),
+{}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_take_update_commut2<A>(s: Seq<A>, i: int, v: A, n: int)
+    ensures
+        n <= i < s.len() ==> #[trigger] s.update(i,v).take(n) =~= s.take(n),
+{}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_drop_update_commut1<A>(s: Seq<A>, i: int, v: A, n: int)
+    ensures
+        0 <= n <= i < s.len() ==> #[trigger] s.update(i,v).drop(n) =~= s.drop(n).update(i-n,v),
+{}
+
+// PROBLEMATIC, breaks pervasive/bytes.rs lemma_auto_spec_u64_to_from_le_bytes
+// postcondition forall |x: u64| #![trigger spec_u64_to_le_bytes(x)]
+// #[verifier(external_body)]
+// #[verifier(broadcast_forall)]
+// pub proof fn axiom_seq_drop_update_commut2<A>(s: Seq<A>, i: int, v: A, n: int)
+//     ensures
+//         0 <= i < n <= s.len() ==> #[trigger] s.update(i,v).drop(n) =~= s.drop(n),
+// {}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_drop_build_commut<A>(s: Seq<A>, v: A, n: int)
+    ensures
+        0<= n <= s.len() ==> #[trigger] s.push(v).drop(n) == s.drop(n).push(v), 
+{}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_drop_nothing<A>(s: Seq<A>, n: int)
+    ensures
+        n==0 ==> #[trigger] s.drop(n) == s,
+{}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_take_nothing<A>(s: Seq<A>, n: int)
+    ensures
+        n==0 ==> #[trigger] s.take(n) == Seq::<A>::empty(),
+{}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_drop_of_drop<A>(s: Seq<A>, m: int, n: int)
+    ensures
+        0 <= m && 0 <= n && m+n <= s.len() ==> s.drop(m).drop(n) == s.drop(m+n),
+{}
+
+// ------------- Macros ---------------- //
+
 #[doc(hidden)]
 #[macro_export]
 macro_rules! seq_internal {
