@@ -460,7 +460,7 @@ pub proof fn axiom_seq_drop_contains<A>(s: Seq<A>, n: int, x: A)
         #[trigger] s.drop(n).contains(x) <==> exists |i: int| 0<= i < s.len() && n <= i && #[trigger] s[i] == x,
 {}
 
-// PROBLEMATIC, made a proof in seq_lib fail (lemma_max_of_concat postcondition that leq(y.max(leq), (x + y).max(leq)))
+// PROBLEMATIC, made a proof in pervasive/bytes fail
 // #[verifier(external_body)]
 // #[verifier(broadcast_forall)]
 // pub proof fn axiom_seq_drop_index<A>(s: Seq<A>, n: int, j: int)
@@ -504,14 +504,12 @@ pub proof fn axiom_seq_drop_update_commut1<A>(s: Seq<A>, i: int, v: A, n: int)
         0 <= n <= i < s.len() ==> #[trigger] s.update(i,v).drop(n) =~= s.drop(n).update(i-n,v),
 {}
 
-// PROBLEMATIC, breaks pervasive/bytes.rs lemma_auto_spec_u64_to_from_le_bytes
-// postcondition forall |x: u64| #![trigger spec_u64_to_le_bytes(x)]
-// #[verifier(external_body)]
-// #[verifier(broadcast_forall)]
-// pub proof fn axiom_seq_drop_update_commut2<A>(s: Seq<A>, i: int, v: A, n: int)
-//     ensures
-//         0 <= i < n <= s.len() ==> #[trigger] s.update(i,v).drop(n) =~= s.drop(n),
-// {}
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_drop_update_commut2<A>(s: Seq<A>, i: int, v: A, n: int)
+    ensures
+        0 <= i < n <= s.len() ==> #[trigger] s.update(i,v).drop(n) =~= s.drop(n),
+{}
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]

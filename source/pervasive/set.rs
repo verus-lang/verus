@@ -428,14 +428,14 @@ pub proof fn axiom_set_insert_len<A>(s: Set<A>, a: A)
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub proof fn axiom_set_insert_same_len(s: Set<A>, a: A)
+pub proof fn axiom_set_insert_same_len<A>(s: Set<A>, a: A)
     ensures
         s.contains(a) ==> #[trigger] s.insert(a).len() == s.len(),
 {}
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub proof fn axiom_set_insert_diff_len(s: Set<A>, a: A)
+pub proof fn axiom_set_insert_diff_len<A>(s: Set<A>, a: A)
     ensures
         !s.contains(a) ==> #[trigger] s.insert(a).len() == s.len() + 1,
 {}

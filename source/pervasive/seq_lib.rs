@@ -9,11 +9,6 @@ use crate::seq::*;
 #[allow(unused_imports)]
 use crate::set::Set;
 
-//TODO: need to prove the proofs myself or can I just use 
-//external body specification?
-
-
-
 verus! {
 
 impl<A> Seq<A> {
@@ -560,19 +555,15 @@ impl<A> Seq<Seq<A>>{
 /// The concatenation of two subsequences of a non-empty sequence, the first obtained 
 /// from dropping the last element, the second consisting only of the last 
 /// element, is the original sequence.
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
 pub proof fn lemma_add_last_back<A>(s: Seq<A>)
     requires 
-        0 < #[trigger] s.len(),
+        0 < s.len(),
     ensures
-        #[trigger] s.drop_last().push(#[trigger] s.last()) == s,
+        #[trigger] s.drop_last().push(s.last()) =~= s,
 {}
 
 /// The last element of two concatenated sequences, the second one being non-empty, will be the 
 /// last element of the latter sequence.
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
 pub proof fn lemma_append_last<A>(s1 :Seq<A>, s2 :Seq<A>)
     requires
         0 < s2.len(),
@@ -581,11 +572,10 @@ pub proof fn lemma_append_last<A>(s1 :Seq<A>, s2 :Seq<A>)
 {}
 
 /// The concatenation of sequences is associative
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+//#[verifier(broadcast_forall)]
 pub proof fn lemma_concat_associative<A>(s1 : Seq<A>, s2 :Seq<A>, s3 :Seq<A>)
     ensures
-        #[trigger] s1.add(s2.add(s3)) == #[trigger] s1.add(s2).add(s3),
+        #[trigger] s1.add(s2.add(s3)) =~= #[trigger] s1.add(s2).add(s3),
 {}
 
 /* could not figure out triggers for these two */
@@ -768,25 +758,35 @@ pub proof fn lemma_cardinality_of_set<A>(s: Seq<A>)
     ensures s.to_set().len() <= s.len(),
     decreases s.len(),
 {
-    if (s.no_duplicates()) {
-        assert(s.to_set().len() == s.len()) by {
-            unique_seq_to_set(s)
-        }
-    }
-    else if s.len() > 0 {
-        assert(forall |x: A| #[trigger] s.contains(x) ==> #[trigger] s.drop_last().contains(x) || s.last() == x) by {
-            lemma_add_last_back(s)
-        }
-        if s.drop_last().contains(s.last()) {
-            // the last element is duplicated somewhere else.
-            assert(s.drop_last().to_set() =~= s.to_set());
-            lemma_cardinality_of_set(s.drop_last());
-        } else {
-           // the last element appears only once
-            assert(s.drop_last().to_set().insert(s.last()) =~= s.to_set());
-            lemma_cardinality_of_set(s.drop_last());
-        }
-    }
+    // if (s.no_duplicates()) {
+    //     assert(s.to_set().len() == s.len()) by {
+    //         unique_seq_to_set(s)
+    //     }
+    // }
+    // else if s.len() > 0 {
+    //     assert(forall |x: A| #[trigger] s.contains(x) 
+    //         ==> #[trigger] s.drop_last().contains(x) || s.last() == x) by {
+    //         lemma_add_last_back(s)
+    //     }
+    //     if s.drop_last().contains(s.last()) {
+    //         // the last element is duplicated somewhere else.
+    //         assert(s.drop_last().to_set() =~= s.to_set());
+    //         lemma_cardinality_of_set(s.drop_last());
+    //     } else {
+    //        // the last element appears only once
+    //         assert(s.drop_last().to_set().insert(s.last()) =~= s.to_set());
+    //         lemma_cardinality_of_set(s.drop_last());
+    //     }
+    // }
+    // if s.len() == 0 {}
+    // else {
+    //     // lemma_concat_elts(s.drop_last(), seq![s.last()]);
+    //     // lemma_add_last_back(s);
+    //     // assert(s.drop_last().push(s.last()) =~= s.drop_last() + seq![s.last()]);
+    //     // assert(s.drop_last().to_set().insert(s.last()) =~= s.to_set());
+    //      lemma_cardinality_of_set(s.drop_last());
+    //     // assert(s.drop_last().to_set().len() <= s.drop_last().len());
+    // }
 }
 
 /// A sequence is of length 0 if and only if its conversion to
@@ -816,37 +816,42 @@ pub proof fn lemma_insert_properties<A>(s: Seq<A>, pos: int, elt:A)
         s.insert(pos, elt)[pos] == elt,
 {}
 
-//TODO
-// pub proof fn lemma_unzip_properties<A,B>(s: Seq<(A,B)>)
-//     ensures
-//         s.unzip().0.len() == s.unzip().1.len(),
-//         s.unzip().0.len() == s.len(),
-//         s.unzip().1.len() == s.len(),
-//         forall |i: int| 0<= i < s.len() 
-//                 ==> (#[trigger] s.unzip().0[i], #[trigger] s.unzip().1[i]) == s[i],
-//     decreases
-//         s.len(),
-// {
-//     // unzip:
-//     // if self.len() == 0 {(Seq::empty(), Seq::empty())}
-//     // else{
-//     //         let (a,b) = self.drop_last().unzip();
-//     //       
-//     //         (a.push(self.last().0),b.push(self.last().1))
-//     // }
-//     if s.len() == 0 {
-//         assert(s.unzip().0.len() == 0);
-//         assert(s.unzip().1.len() == 0);
-//     } else {
+pub proof fn lemma_unzip_properties<A,B>(s: Seq<(A,B)>)
+    ensures
+        s.unzip().0.len() == s.unzip().1.len(),
+        s.unzip().0.len() == s.len(),
+        s.unzip().1.len() == s.len(),
+        forall |i: int| 0<= i < s.len() 
+                ==> (#[trigger] s.unzip().0[i], #[trigger] s.unzip().1[i]) == s[i],
+    decreases
+        s.len(),
+{
+    if s.len() > 0 {
+        lemma_unzip_properties(s.drop_last());
+    }
+}
 
-//         assume((s.unzip().0[0], s.unzip().1[0]) == s[0]); //fails
-//         lemma_unzip_properties(s.drop_first());
-//     }
-// }
 // pub proof fn lemma_zip_of_unzip<A,B>(s: Seq<(A,B)>)
 //     ensures s.unzip().0.zip_with(s.unzip().1) =~= s,
+//     decreases s.len(),
 // {
-//     assert(s.unzip().0.len() == s.unzip().1.len());
+//     if s.len() <= 0 {}
+//     else {
+//         lemma_unzip_properties(s);
+//         assert(s.len() > 0);
+//         assert(s.unzip().0.len() == s.unzip().1.len());
+//         assert(s.unzip().0.last() == s.last().0);
+//         assert(s.unzip().1.last() == s.last().1);
+//         lemma_zip_of_unzip(s.drop_last());
+//         assert(s.drop_last().unzip().0.zip_with(s.drop_last().unzip().1) =~= s.drop_last());
+//         assert((s.unzip().0.last(),s.unzip().1.last()) == s.last());
+//         assert(s.drop_last().unzip().0.push(s.unzip().0.last()) =~= s.unzip().0);
+//         assert(s.drop_last().unzip().1.push(s.unzip().1.last()) =~= s.unzip().1);
+//         assert((s.unzip().0, s.unzip().1) == s.unzip());
+//         assert(s.unzip().0.zip_with(s.unzip().1) =~= s);
+
+//     }
+    
 // }
 
 pub proof fn lemma_max_properties<A>(s: Seq<A>, leq: FnSpec(A,A) ->bool)
@@ -939,7 +944,7 @@ pub proof fn lemma_max_of_concat<A>(x: Seq<A>, y: Seq<A>, leq: FnSpec(A,A) ->boo
             assert((x+y).contains(x.max(leq)));
         }
         assert(x.drop_first() + y =~= (x+y).drop_first());
-        lemma_max_of_concat(x.drop_first(),y,leq)
+        lemma_max_of_concat(x.drop_first(),y,leq);
     }
 }
 
@@ -979,11 +984,10 @@ pub proof fn lemma_min_of_concat<A>(x: Seq<A>, y: Seq<A>, leq: FnSpec(A,A) ->boo
 
 /// The concatenation of two sequences contains only the elements
 /// of the two sequences
+// TODO: broadcast forall for dafny-level automation since dafny includes as an axiom
 pub proof fn lemma_concat_elts<A>(x: Seq<A>, y: Seq<A>)
     ensures
-        forall |elt: A| #[trigger] x.contains(elt) ==> #[trigger] (x+y).contains(elt),
-        forall |elt: A| #[trigger] y.contains(elt) ==> #[trigger] (x+y).contains(elt),
-        forall |elt: A| #[trigger] (x+y).contains(elt) ==> #[trigger] x.contains(elt) || #[trigger] y.contains(elt),
+        forall |elt: A| #[trigger] (x+y).contains(elt) <==> x.contains(elt) ||  y.contains(elt),
     decreases
         x.len(),
 {
