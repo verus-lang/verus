@@ -64,8 +64,7 @@ fn main() {
     // Step 1: check if there's a verus/reports/.git file in the XDG cache,
     // if not so, create verus/ directory
     // https://docs.rs/dirs/latest/dirs/
-    let cache_dir = dirs::cache_dir().expect("cache dir invalid");
-    // println!("cache_dir: {:?}", cache_dir());
+    let cache_dir = dirs::data_local_dir().expect("cache dir invalid");
     let repo_dir = cache_dir.join("verus").join("reports");
     if !repo_dir.clone().join(".git").is_file() {
         // create verus/reports/ directory
