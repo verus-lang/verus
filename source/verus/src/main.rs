@@ -126,7 +126,13 @@ fn main() {
     // normalzed path to whatever the .rs file is
     let project_name =
         sha256::digest(input_file_path.into_os_string().into_string().unwrap().as_bytes());
-    println!("project_name: {:?}", project_name);
+    // println!("project_name: {:?}", project_name);
+
+    let project_dir = repo_dir.join(project_name);
+    if !project_dir.is_dir() {
+        // create project dir
+        std::fs::create_dir_all(project_dir.clone()).expect("failed to create project directory");
+    }
 
     let mut cmd = Command::new("rustup");
     if std::env::var("VERUS_Z3_PATH").ok().is_none() {
