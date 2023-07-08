@@ -104,7 +104,9 @@ fn main() {
                 "{}: No input file, Usage: <verus_path> INPUT [options]\n",
                 nu_ansi_term::Color::Red.bold().paint("error")
             );
-            std::process::exit(2);
+            // std::process::exit(2);
+            // if I still want it to use rust_verify, I want some default value
+            "a".to_string()
         }
     };
 
@@ -117,7 +119,8 @@ fn main() {
                 nu_ansi_term::Color::Red.bold().paint("error"),
                 input_file
             );
-            std::process::exit(2);
+            // std::process::exit(2);
+            std::path::Path::new("a").to_path_buf()
         }
     };
 
