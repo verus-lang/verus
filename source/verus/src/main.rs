@@ -1,5 +1,4 @@
 use std::process::Command;
-
 mod platform {
     pub struct ExitCode(pub i32);
 
@@ -61,6 +60,73 @@ fn main() {
         eprintln!("error: did not find a valid verusroot");
         std::process::exit(128);
     };
+
+    // Step 1: check if there's a verus/reports/.git file in the XDG cache,
+    // if not so, create verus/ directory
+    // https://docs.rs/dirs/latest/dirs/
+    let cache_dir = dirs::cache_dir().expect("cache dir invalid");
+    // println!("cache_dir: {:?}", cache_dir());
+    let repo_dir = cache_dir.join("verus").join("reports");
+    if !repo_dir.clone().join(".git").is_file() {
+        // create verus/reports/ directory
+        std::fs::create_dir_all(repo_dir.clone()).expect("failed to create verus/ directory");
+
+        // create verus/reports/.git file
+        std::process::Command::new("git")
+            .current_dir(&repo_dir)
+            .arg("init")
+            .output()
+            .expect("failed to init git in user's cache directory.");
+    }
+
+    // Step 2: check if file verus/reports/userid exists, if not so, create it
+    // https://docs.rs/uuid/latest/uuid/
+
+    // at this point, there must be a .git file in cache_dir/verus/reports
+    // we check if there's a uuid file
+    if !repo_dir.clone().join("uuid").is_file() {
+        // create uuid file
+        let uuid = uuid::Uuid::new_v4();
+        std::fs::write(repo_dir.join("uuid"), uuid.to_string()).expect("failed to write uuid file");
+    }
+
+    // Step 3: project dir check/create (project = SHA256((normalized/absolute)path to foo.rs)
+    // note that we need the convention that verus should be run like
+    // verus INPUT [options]
+
+    // clone is not implemented for Args, so i grabbed the arguments here again
+    let new_args = std::env::args().into_iter();
+
+    // this step assumes the input_file is the first file that has .rs extension
+    let input_file = match new_args.filter(|arg| arg.ends_with(".rs")).next() {
+        Some(file) => file,
+        None => {
+            eprintln!(
+                "{}: No input file, Usage: <verus_path> INPUT [options]\n",
+                nu_ansi_term::Color::Red.bold().paint("error")
+            );
+            std::process::exit(2);
+        }
+    };
+
+    // I probably want rustc like error message of this rather than a panic
+    let input_file_path = match std::fs::canonicalize(input_file.clone()) {
+        Ok(path) => path,
+        Err(_) => {
+            eprintln!(
+                "{}: could't canonicalize input file {}, No such file or directory\n",
+                nu_ansi_term::Color::Red.bold().paint("error"),
+                input_file
+            );
+            std::process::exit(2);
+        }
+    };
+
+    // in the prototype, the assumption is that the project file will be the
+    // normalzed path to whatever the .rs file is
+    let project_name =
+        sha256::digest(input_file_path.into_os_string().into_string().unwrap().as_bytes());
+    println!("project_name: {:?}", project_name);
 
     let mut cmd = Command::new("rustup");
     if std::env::var("VERUS_Z3_PATH").ok().is_none() {
