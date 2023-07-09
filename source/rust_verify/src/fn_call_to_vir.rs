@@ -21,7 +21,7 @@ use rustc_ast::{BorrowKind, LitKind, Mutability};
 use rustc_hir::def::Res;
 use rustc_hir::{Expr, ExprKind, Node, QPath};
 use rustc_middle::ty::subst::GenericArgKind;
-use rustc_middle::ty::{Clause, EarlyBinder, PredicateKind, TyCtxt, TyKind};
+use rustc_middle::ty::{EarlyBinder, TyCtxt, TyKind};
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use rustc_span::Span;
@@ -1197,56 +1197,18 @@ fn get_impl_paths<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     f: DefId,
     node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::subst::GenericArg<'tcx>>,
-) -> vir::ast::BoundImplPaths {
-    let tcx = bctx.ctxt.tcx;
-    let mut impl_paths = Vec::new();
-    if let rustc_middle::ty::FnDef(fid, _fsubsts) = tcx.type_of(f).kind() {
-        let param_env = tcx.param_env(bctx.fun_id);
-        // REVIEW: do we need this?
-        // let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
-        let mut cur_id = Some(*fid);
-        while let Some(id) = cur_id {
-            let preds = tcx.predicates_of(id);
-            // It would be nice to use preds.instantiate(tcx, node_substs).predicates,
-            // but that loses track of the relationship between the bounds and the type parameters,
-            // so we use subst instead.
-            for (pred, _) in preds.predicates {
-                if let PredicateKind::Clause(Clause::Trait(t)) = pred.kind().skip_binder() {
-                    let lhs = t.trait_ref.substs.types().next().expect("expect lhs of trait bound");
-                    let param = match lhs.kind() {
-                        TyKind::Param(param) if param.name == rustc_span::symbol::kw::SelfUpper => {
-                            vir::def::trait_self_type_param()
-                        }
-                        TyKind::Param(param) => {
-                            Arc::new(crate::rust_to_vir_base::param_ty_to_vir_name(&param))
-                        }
-                        kind => {
-                            panic!("non-type-parameter trait bound {:?} {:?}", kind, t);
-                        }
-                    };
-
-                    let spred = EarlyBinder(*pred).subst(tcx, node_substs);
-                    let poly_trait_refs = spred.kind().map_bound(|p| {
-                        if let PredicateKind::Clause(Clause::Trait(tp)) = &p {
-                            tp.trait_ref
-                        } else {
-                            unreachable!()
-                        }
-                    });
-                    let candidate = tcx.codegen_select_candidate((param_env, poly_trait_refs));
-                    if let Ok(impl_source) = candidate {
-                        if let rustc_middle::traits::ImplSource::UserDefined(u) = impl_source {
-                            let impl_path =
-                                def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, u.impl_def_id);
-                            impl_paths.push((param, impl_path));
-                        }
-                    }
-                }
-            }
-            cur_id = preds.parent;
-        }
+) -> vir::ast::ImplPaths {
+    if let rustc_middle::ty::FnDef(fid, _fsubsts) = bctx.ctxt.tcx.type_of(f).kind() {
+        crate::rust_to_vir_base::get_impl_paths(
+            bctx.ctxt.tcx,
+            &bctx.ctxt.verus_items,
+            bctx.fun_id,
+            *fid,
+            node_substs,
+        )
+    } else {
+        panic!("unexpected function {:?}", f)
     }
-    Arc::new(impl_paths)
 }
 
 fn extract_ensures<'tcx>(
@@ -1537,7 +1499,7 @@ fn variant_fn_get_datatype<'tcx>(
             _ => vir_ty,
         };
         match &*vir_ty {
-            TypX::Datatype(path, _typs) => {
+            TypX::Datatype(path, _typs, _impl_paths) => {
                 return Ok(path.clone());
             }
             _ => {}
