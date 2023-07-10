@@ -8,6 +8,8 @@ use crate::pervasive::*;
 use crate::seq::*;
 #[allow(unused_imports)]
 use crate::set::Set;
+#[allow(unused_imports)]
+use crate::multiset::Multiset;
 
 verus! {
 
@@ -313,6 +315,17 @@ impl<A> Seq<A> {
         Set::new(|a: A| self.contains(a))
     }
 
+    // /// Converts a sequence into a multiset
+    // pub open spec fn to_multiset(self) -> Multiset<A> 
+    //     decreases self.len()
+    // {
+    //     if self.len() == 0 {
+    //         Multiset::<A>::empty()
+    //     } else {
+    //         Multiset::<A>::empty().insert(self.first()).add(self.drop_first().to_multiset())
+    //     }
+    // }
+
     /// Insert item a at index i, shifting remaining elements (if any) to the right
     pub open spec fn insert(self, i: int, a:A) -> Seq<A>
         recommends 0 <= i <= self.len()
@@ -342,9 +355,7 @@ impl<A> Seq<A> {
     {
         if self.len() == 0 {Seq::empty()}
         else {
-            let mut result = Seq::empty().push(self[self.len()-1]);
-            let tail = self.subrange(0, self.len()-1 as int).reverse();
-            result.add(tail)
+            Seq::new(self.len(), |i: int| self[self.len()-1-i])
         }
     }
 
@@ -357,7 +368,7 @@ impl<A> Seq<A> {
         if self.len() != other.len() {Seq::empty()}
         else if self.len() == 0 {Seq::empty()}
         else{
-            self.drop_last().zip_with(other.drop_last()).push((self.last(),other.last()))
+            Seq::new(self.len(), |i: int| (self[i],other[i]))
         }
     }
         
@@ -521,8 +532,9 @@ impl<A,B> Seq<(A,B)>{
     {
         if self.len() == 0 {(Seq::empty(), Seq::empty())}
         else{
-            let (a,b) = self.drop_last().unzip();
-            (a.push(self.last().0),b.push(self.last().1))
+            let s0 = Seq::new(self.len(), |i: int| self[i].0);
+            let s1 = Seq::new(self.len(), |i: int| self[i].1);
+            (s0,s1)
         }
     }
 
@@ -643,19 +655,6 @@ pub proof fn lemma_slice_of_slice<A>(original: Seq<A>, s1 :int, e1: int, s2: int
         original.subrange(s1,e1).subrange(s2,e2) =~= original.subrange(s1+s2,s1+e2),
 {}
 
-/// Returns a constant sequence of a given length
-/// TODO: should this go in seq.rs since it is basically a constructor?
-spec fn repeat<A>(val: A, length: int) -> Seq<A>
-    decreases length
-{
-    if length <= 0 {Seq::empty()}
-    else {
-        let mut result = Seq::empty().push(val);
-        let tail = repeat(val,length-1);
-        result.add(tail)
-    }
-}
-
 /// recursive definition of seq to set conversion
 spec fn seq_to_set_rec<A>(seq: Seq<A>) -> Set<A>
     decreases seq.len()
@@ -758,6 +757,26 @@ pub proof fn lemma_cardinality_of_set<A>(s: Seq<A>)
     ensures s.to_set().len() <= s.len(),
     decreases s.len(),
 {
+    // if (s.no_duplicates()) {
+    //     assert(s.to_set().len() == s.len()) by {
+    //         unique_seq_to_set(s)
+    //     }
+    // }
+    // else if s.len() > 0 {
+    //     assert(forall |x: A| #[trigger] s.contains(x) 
+    //         ==> #[trigger] s.drop_last().contains(x) || s.last() == x) by {
+    //         lemma_add_last_back(s)
+    //     }
+    //     if s.drop_last().contains(s.last()) {
+    //         // the last element is duplicated somewhere else.
+    //         assert(s.drop_last().to_set() =~= s.to_set());
+    //         lemma_cardinality_of_set(s.drop_last());
+    //     } else {
+    //        // the last element appears only once
+    //         assert(s.drop_last().to_set().insert(s.last()) =~= s.to_set());
+    //         lemma_cardinality_of_set(s.drop_last());
+    //     }
+    // }
     if s.len() == 0 {}
     else {
         // lemma_concat_elts(s.drop_last(), seq![s.last()]);

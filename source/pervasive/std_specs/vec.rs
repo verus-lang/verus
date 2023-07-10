@@ -142,7 +142,6 @@ pub fn ex_vec_reserve<T, A: Allocator>(vec: &mut Vec<T, A>, additional: usize)
 pub fn ex_vec_push<T, A: Allocator>(vec: &mut Vec<T, A>, value: T)
     ensures
         vec@ == old(vec)@.push(value),
-        vec@.contains(value),
 {
     vec.push(value)
 }
@@ -164,9 +163,6 @@ pub fn ex_vec_pop<T, A: Allocator>(vec: &mut Vec<T, A>) -> (value: Option<T>)
 pub fn ex_vec_append<T, A: Allocator>(vec: &mut Vec<T, A>, other: &mut Vec<T, A>)
     ensures
         vec@ == old(vec)@ + old(other)@,
-        other@ == Seq::<T>::empty(),
-        forall|x: T| old(other)@.contains(x) ==> vec@.contains(x),
-        forall|x: T| vec@.contains(x) <==> old(vec)@.contains(x) || old(other)@.contains(x),
 {
     vec.append(other)
 }

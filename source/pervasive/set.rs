@@ -277,7 +277,7 @@ pub proof fn axiom_set_difference2<A>(s1: Set<A>, s2: Set<A>, a: A)
 #[verifier(broadcast_forall)]
 pub proof fn axiom_set_disjoint<A>(a: Set<A>, b: Set<A>)
     ensures
-        a.disjoint(b) ==> (#[trigger](a+b)).difference(a) == b && (a+b).difference(b) == a
+        a.disjoint(b) ==> ((#[trigger](a+b)).difference(a) == b && (a+b).difference(b) == a)
 {}
 
 #[verifier(external_body)]
@@ -480,8 +480,8 @@ pub proof fn axiom_set_intersect_union_lens<A>(a: Set<A>, b: Set<A>)
 #[verifier(broadcast_forall)]
 pub proof fn axiom_set_difference_len<A>(a: Set<A>, b: Set<A>)
     ensures
-        #[trigger] a.difference(b).len() + b.difference(a).len() + a.intersect(b).len() == (a+b).len() 
-            && a.difference(b).len() == a.len() - a.intersect(b).len()
+        (#[trigger] a.difference(b).len() + b.difference(a).len() + a.intersect(b).len() == (a+b).len()) 
+            && (a.difference(b).len() == a.len() - a.intersect(b).len())
 {}
 
 // Macros

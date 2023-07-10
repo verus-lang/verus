@@ -480,7 +480,7 @@ pub proof fn axiom_seq_drop_index2<A>(s: Seq<A>, n: int, k: int, diff: int)
 #[verifier(broadcast_forall)]
 pub proof fn axiom_seq_append_take_drop<A>(a: Seq<A>, b: Seq<A>, n: int)
     ensures
-        n == a.len() ==> #[trigger] (a+b).take(n) == a && #[trigger] (a+b).drop(n) == b,
+        n == a.len() ==> (#[trigger] (a+b).take(n) == a && #[trigger] (a+b).drop(n) == b),
 {}
 
 // Commutability of Take and Drop with Update.
@@ -537,7 +537,7 @@ pub proof fn axiom_seq_take_nothing<A>(s: Seq<A>, n: int)
 #[verifier(broadcast_forall)]
 pub proof fn axiom_seq_drop_of_drop<A>(s: Seq<A>, m: int, n: int)
     ensures
-        0 <= m && 0 <= n && m+n <= s.len() ==> s.drop(m).drop(n) == s.drop(m+n),
+        (0 <= m && 0 <= n && m+n <= s.len()) ==> s.drop(m).drop(n) == s.drop(m+n),
 {}
 
 // ------------- Macros ---------------- //
