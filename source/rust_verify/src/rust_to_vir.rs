@@ -31,7 +31,7 @@ use rustc_hir::{
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::Typ;
-use vir::ast::{Fun, FunX, FunctionKind, GenericBoundX, Krate, KrateX, Mode, Path, VirErr};
+use vir::ast::{Fun, FunX, FunctionKind, Krate, KrateX, Mode, Path, VirErr};
 
 fn check_item<'tcx>(
     ctxt: &Context<'tcx>,
@@ -174,6 +174,7 @@ fn check_item<'tcx>(
         }
         ItemKind::Impl(impll) => {
             let impl_def_id = item.owner_id.to_def_id();
+            let impl_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, impl_def_id);
 
             if vattrs.external {
                 return Ok(());
@@ -258,16 +259,13 @@ fn check_item<'tcx>(
                 }
             }
 
-            let self_ty = ctxt.tcx.type_of(item.owner_id.to_def_id());
-            let self_typ = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, item.span, &self_ty, false)?;
-
             let trait_path_typ_args = if let Some(TraitRef { path, .. }) = &impll.of_trait {
                 let trait_ref =
                     ctxt.tcx.impl_trait_ref(item.owner_id.to_def_id()).expect("impl_trait_ref");
                 // If we have `impl X for Z<A, B, C>` then the list of types is [X, A, B, C].
-                // So to get the type args, we strip off the first element.
+                // We keep this full list, with the first element being the Self type X
                 let mut types: Vec<Typ> = Vec::new();
-                for ty in trait_ref.0.substs.types().skip(1) {
+                for ty in trait_ref.0.substs.types() {
                     types.push(mid_ty_to_vir(
                         ctxt.tcx,
                         &ctxt.verus_items,
@@ -277,6 +275,9 @@ fn check_item<'tcx>(
                     )?);
                 }
                 let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, path.res.def_id());
+                let trait_impl =
+                    vir::ast::TraitImplX { impl_path: impl_path.clone(), trait_path: path.clone() };
+                vir.trait_impls.push(ctxt.spanned_new(item.span, trait_impl));
                 Some((path, Arc::new(types)))
             } else {
                 None
@@ -318,9 +319,9 @@ fn check_item<'tcx>(
                                         let method = Arc::new(fun);
                                         FunctionKind::TraitMethodImpl {
                                             method,
+                                            impl_path: impl_path.clone(),
                                             trait_path,
                                             trait_typ_args,
-                                            self_typ: self_typ.clone(),
                                         }
                                     } else {
                                         FunctionKind::Static
@@ -371,7 +372,7 @@ fn check_item<'tcx>(
                             )?;
                             if let Some((trait_path, trait_typ_args)) = trait_path_typ_args.clone()
                             {
-                                let typ_params =
+                                let (typ_params, typ_bounds) =
                                     crate::rust_to_vir_base::check_generics_bounds_fun(
                                         ctxt.tcx,
                                         &ctxt.verus_items,
@@ -380,8 +381,9 @@ fn check_item<'tcx>(
                                     )?;
                                 let assocx = vir::ast::AssocTypeImplX {
                                     name,
+                                    impl_path: impl_path.clone(),
                                     typ_params,
-                                    self_typ: self_typ.clone(),
+                                    typ_bounds,
                                     trait_path,
                                     trait_typ_args,
                                     typ,
@@ -453,15 +455,16 @@ fn check_item<'tcx>(
                 if let Some(r) = bound.trait_ref() {
                     if let Some(id) = r.trait_def_id() {
                         // allow marker types
-                        match &*check_generic_bound(ctxt.tcx, &ctxt.verus_items, id, &vec![])? {
-                            GenericBoundX::Traits(bnds) if bnds.len() == 0 => continue,
+                        let span = item.span;
+                        match check_generic_bound(ctxt.tcx, &ctxt.verus_items, span, id, &vec![])? {
+                            None => continue,
                             _ => {}
                         }
                     }
                 }
                 unsupported_err!(item.span, "trait generic bounds");
             }
-            let generics_bnds = check_generics_bounds(
+            let (generics_params, generics_bnds) = check_generics_bounds(
                 ctxt.tcx,
                 &ctxt.verus_items,
                 trait_generics,
@@ -483,7 +486,7 @@ fn check_item<'tcx>(
                     span,
                     defaultness: _,
                 } = trait_item;
-                let generics_bnds = check_generics_bounds(
+                let (generics_params, generics_bnds) = check_generics_bounds(
                     ctxt.tcx,
                     &ctxt.verus_items,
                     item_generics,
@@ -491,6 +494,7 @@ fn check_item<'tcx>(
                     owner_id.to_def_id(),
                     None,
                 )?;
+                unsupported_err_unless!(generics_params.len() == 0, *span, "trait generics");
                 unsupported_err_unless!(generics_bnds.len() == 0, *span, "trait generics");
                 match kind {
                     TraitItemKind::Fn(sig, fun) => {
@@ -532,7 +536,8 @@ fn check_item<'tcx>(
                 name: trait_path,
                 methods: Arc::new(method_names),
                 assoc_typs: Arc::new(assoc_typs),
-                typ_params: Arc::new(generics_bnds),
+                typ_params: generics_params,
+                typ_bounds: generics_bnds,
             };
             vir.traits.push(ctxt.spanned_new(item.span, traitx));
         }

@@ -1,6 +1,6 @@
 use crate::ast::{
-    CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, GenericBoundX, Ident,
-    Krate, Mode, Path, Typ, VirErr,
+    CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, Ident, Krate, Mode, Path,
+    Typ, VirErr,
 };
 use crate::ast_util::error;
 use crate::def::Spanned;
@@ -18,21 +18,25 @@ pub fn demote_foreign_traits(krate: &Krate) -> Result<Krate, VirErr> {
 
     let mut kratex = (**krate).clone();
     for function in &mut kratex.functions {
-        for (_, bounds) in function.x.typ_bounds.iter() {
-            let GenericBoundX::Traits(traits) = &**bounds;
-            for trait_path in traits {
-                let our_trait = traits.contains(trait_path);
-                if !our_trait {
-                    return error(
-                        &function.span,
-                        format!(
-                            "cannot use trait {} from another crate as a bound",
-                            crate::ast_util::path_as_friendly_rust_name(trait_path)
-                        ),
-                    );
-                }
+        /* TODO: this check was broken in earlier versions of this code, and fixing would break
+         * some std_specs declarations (for bounds X: Allocator and X: Debug).
+         * In the long run, we should probably reenable this check
+         * and allow users to declare external traits in order to satisfy this check.
+         * In the meantime, omitting this check doesn't cause any soundness issues.
+        for bounds in function.x.typ_bounds.iter() {
+            let GenericBoundX::Trait(trait_path, _) = &**bounds;
+            let our_trait = traits.contains(trait_path);
+           if !our_trait {
+                return error(
+                    &function.span,
+                    format!(
+                        "cannot use trait {} from another crate as a bound",
+                        crate::ast_util::path_as_friendly_rust_name(trait_path)
+                    ),
+                );
             }
         }
+        */
 
         if let FunctionKind::TraitMethodImpl { method, trait_path, .. } = &function.x.kind {
             let our_trait = traits.contains(trait_path);
@@ -107,16 +111,22 @@ fn demote_one_expr(traits: &HashSet<Path>, expr: &Expr) -> Result<Expr, VirErr> 
     match &expr.x {
         ExprX::Call(
             CallTarget::Fun(
-                CallTargetKind::Method(Some((resolved_fun, resolved_typs))),
+                CallTargetKind::Method(Some((resolved_fun, resolved_typs, impl_paths))),
                 fun,
                 _typs,
+                _impl_paths,
                 autospec_usage,
             ),
             args,
         ) if !traits.contains(&get_trait(fun)) => {
             let kind = CallTargetKind::Static;
-            let ct =
-                CallTarget::Fun(kind, resolved_fun.clone(), resolved_typs.clone(), *autospec_usage);
+            let ct = CallTarget::Fun(
+                kind,
+                resolved_fun.clone(),
+                resolved_typs.clone(),
+                impl_paths.clone(),
+                *autospec_usage,
+            );
             Ok(expr.new_x(ExprX::Call(ct, args.clone())))
         }
         _ => Ok(expr.clone()),

@@ -1034,6 +1034,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 vir::ast::CallTargetKind::Static,
                                 fun,
                                 typ_args,
+                                Arc::new(vec![]),
                                 AutospecUsage::Final,
                             ),
                             vec![vir_fun, tup],
@@ -1624,7 +1625,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 _ => t1,
             };
             let typ_args = match &**t1 {
-                TypX::Datatype(p, typ_args)
+                TypX::Datatype(p, typ_args, _impl_paths)
                     if p == &Arc::new(vir::ast::PathX {
                         krate: Some(Arc::new("alloc".to_string())),
                         segments: Arc::new(vec![
@@ -1662,6 +1663,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     }),
                 }),
                 typ_args,
+                // arbitrary impl_path
+                Arc::new(vec![vir::def::prefix_lambda_type(0)]),
                 AutospecUsage::Final,
             );
             let args = Arc::new(vec![tgt_vir.clone(), idx_vir.clone()]);
@@ -1798,6 +1801,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
                 let deref_ghost = mid_ty_to_vir_ghost(
                     bctx.ctxt.tcx,
                     &bctx.ctxt.verus_items,
+                    None,
                     lhs.span,
                     &bctx.types.node_type(lhs.hir_id),
                     false,

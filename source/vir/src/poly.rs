@@ -103,7 +103,7 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
         TypX::Bool => Some(Arc::new(MonoTypX::Bool)),
         TypX::Int(range) => Some(Arc::new(MonoTypX::Int(*range))),
         TypX::StrSlice => Some(Arc::new(MonoTypX::StrSlice)),
-        TypX::Datatype(path, typs) => {
+        TypX::Datatype(path, typs, _) => {
             let mut monotyps: Vec<MonoTyp> = Vec::new();
             for typ in typs.iter() {
                 if let Some(monotyp) = typ_as_mono(typ) {
@@ -125,9 +125,21 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
         MonoTypX::Int(range) => Arc::new(TypX::Int(*range)),
         MonoTypX::Datatype(path, typs) => {
             let typs = vec_map(&**typs, monotyp_to_typ);
-            Arc::new(TypX::Datatype(path.clone(), Arc::new(typs)))
+            Arc::new(TypX::Datatype(path.clone(), Arc::new(typs), Arc::new(vec![])))
         }
         MonoTypX::StrSlice => Arc::new(TypX::StrSlice),
+    }
+}
+
+// HACK: for the moment, only support projections whose Self is a type variable,
+// treating these as Poly.
+// TODO: replace this with more precise and general distinction between
+// projections that are normalized to native types and projections that are treated as Poly
+pub(crate) fn rooted_in_typ_param(typ: &Typ) -> bool {
+    match &**typ {
+        TypX::TypParam(_) => true,
+        TypX::Projection { trait_typ_args, .. } => rooted_in_typ_param(&trait_typ_args[0]),
+        _ => false,
     }
 }
 
@@ -138,7 +150,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
         TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
-        TypX::Datatype(path, _) => {
+        TypX::Datatype(path, _, _) => {
             if ctx.datatype_is_transparent[path] {
                 false
             } else {
@@ -160,7 +172,7 @@ fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
         TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
-        TypX::Datatype(path, _) => {
+        TypX::Datatype(path, _, _) => {
             if ctx.datatype_is_transparent[path] {
                 typ.clone()
             } else {
@@ -175,7 +187,7 @@ fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
         TypX::Boxed(_) | TypX::TypParam(_) => typ.clone(),
         TypX::Projection { .. } => {
             // In the non-rooted_in_typ_param case, we need typ to be normalized to a non-projection:
-            assert!(crate::recursive_types::rooted_in_typ_param(typ));
+            assert!(rooted_in_typ_param(typ));
             typ.clone()
         }
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
@@ -229,7 +241,7 @@ pub(crate) fn coerce_expr_to_native(ctx: &Ctx, expr: &Expr) -> Expr {
         TypX::TypParam(_) => expr.clone(),
         TypX::Projection { .. } => {
             // In the non-rooted_in_typ_param case, we need typ to be normalized to a non-projection:
-            assert!(crate::recursive_types::rooted_in_typ_param(&expr.typ));
+            assert!(rooted_in_typ_param(&expr.typ));
             expr.clone()
         }
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
@@ -240,7 +252,7 @@ pub(crate) fn coerce_expr_to_native(ctx: &Ctx, expr: &Expr) -> Expr {
 
 fn coerce_expr_to_poly(ctx: &Ctx, expr: &Expr) -> Expr {
     match &*crate::ast_util::undecorate_typ(&expr.typ) {
-        TypX::Datatype(path, _)
+        TypX::Datatype(path, _, _)
             if !ctx.datatype_is_transparent[path] && typ_as_mono(&expr.typ).is_none() =>
         {
             expr.clone()
@@ -293,7 +305,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         }
         ExprX::ConstVar(..) => panic!("ConstVar should already be removed"),
         ExprX::Call(target, exprs) => match target {
-            CallTarget::Fun(_, name, _, _) => {
+            CallTarget::Fun(_, name, _, _, _) => {
                 let function = &ctx.func_map[name].x;
                 let is_spec = function.mode == Mode::Spec;
                 let is_trait = !matches!(function.kind, FunctionKind::Static);
@@ -713,6 +725,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         owning_module,
         mode: mut function_mode,
         fuel,
+        typ_params,
         typ_bounds,
         params,
         ret,
@@ -852,6 +865,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         owning_module: owning_module.clone(),
         mode: function_mode,
         fuel: *fuel,
+        typ_params: typ_params.clone(),
         typ_bounds: typ_bounds.clone(),
         params,
         ret,
@@ -896,6 +910,7 @@ pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &Krate) -> Krate {
         functions,
         datatypes,
         traits,
+        trait_impls,
         assoc_type_impls,
         module_ids,
         external_fns,
@@ -906,6 +921,7 @@ pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &Krate) -> Krate {
         functions: functions.iter().map(|f| poly_function(ctx, f)).collect(),
         datatypes: datatypes.iter().map(|d| poly_datatype(ctx, d)).collect(),
         traits: traits.clone(),
+        trait_impls: trait_impls.clone(),
         assoc_type_impls: assoc_type_impls.iter().map(|a| poly_assoc_type_impl(ctx, a)).collect(),
         module_ids: module_ids.clone(),
         external_fns: external_fns.clone(),

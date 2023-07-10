@@ -15,14 +15,14 @@ use verus_rustc_interface::interface::Compiler;
 use num_format::{Locale, ToFormattedString};
 use rustc_error_messages::MultiSpan;
 use rustc_middle::ty::TyCtxt;
+use rustc_span::source_map::SourceMap;
 use rustc_span::Span;
-use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::Write;
-use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use vir::context::GlobalCtx;
 
 use vir::ast::{Fun, Function, Ident, InferMode, Krate, Mode, VirErr, Visibility};
 use vir::ast_util::{friendly_fun_name_crate_relative, fun_as_friendly_rust_name, is_visible_to};
@@ -108,18 +108,78 @@ impl Diagnostics for Reporter<'_> {
     }
 }
 
+/// A reporter message that is being collected by the main thread
+pub(crate) enum ReporterMessage {
+    Message(usize, Message, MessageLevel, bool),
+    // Debugger(),
+    Done(usize),
+}
+
+/// A reporter that forwards messages on an mpsc channel
+pub(crate) struct QueuedReporter {
+    module_id: usize,
+    queue: std::sync::mpsc::Sender<ReporterMessage>,
+}
+
+impl QueuedReporter {
+    pub(crate) fn new(module_id: usize, queue: std::sync::mpsc::Sender<ReporterMessage>) -> Self {
+        Self { module_id, queue }
+    }
+
+    pub(crate) fn done(&self) {
+        self.queue.send(ReporterMessage::Done(self.module_id)).expect("could not send!");
+    }
+}
+
+impl Diagnostics for QueuedReporter {
+    fn report_as(&self, msg: &Message, level: MessageLevel) {
+        self.queue
+            .send(ReporterMessage::Message(self.module_id, msg.clone(), level, false))
+            .expect("could not send the message!");
+    }
+
+    fn report_as_now(&self, msg: &Message, level: MessageLevel) {
+        self.queue
+            .send(ReporterMessage::Message(self.module_id, msg.clone(), level, true))
+            .expect("could not send the message!");
+    }
+}
+
+#[derive(Default)]
+pub struct ModuleStats {
+    /// cummulative time in AIR to verify the module (this includes SMT solver time)
+    pub time_air: Duration,
+    /// time to initialize the SMT solver
+    pub time_smt_init: Duration,
+    /// cummulative time of all SMT queries
+    pub time_smt_run: Duration,
+    /// total time to verify the module
+    pub time_verify: Duration,
+}
+
 pub struct Verifier {
+    /// this is the actual number of threads used for verification. This will be set to the
+    /// minimum of the requested threads and the number of modules to verify
+    pub num_threads: usize,
     pub encountered_vir_error: bool,
     pub count_verified: u64,
     pub count_errors: u64,
     pub args: Args,
     pub erasure_hints: Option<crate::erase::ErasureHints>,
+
+    /// total real time to verify all activated modules of the crate, including real time for
+    /// the parallel module verification
+    pub time_verify_crate: Duration,
+    /// sequential part of the crate verification before parallel verification
+    pub time_verify_crate_sequential: Duration,
+    /// total sequantial time spent constructing teh VIR
     pub time_vir: Duration,
+    /// the time it took convert the VIR from rust AST
     pub time_vir_rust_to_vir: Duration,
-    pub time_vir_verify: Duration,
-    pub time_air: Duration,
-    pub time_smt_init: Duration,
-    pub time_smt_run: Duration,
+    /// time spent in hir when creating the VIR for the crate
+    pub time_hir: Duration,
+    /// execution times for each module run in parallel
+    pub module_times: HashMap<vir::ast::Path, ModuleStats>,
 
     // If we've already created the log directory, this is the path to it:
     created_log_dir: Option<String>,
@@ -150,24 +210,26 @@ pub(crate) fn io_vir_err(msg: String, err: std::io::Error) -> VirErr {
     error(format!("{msg}: {err}"))
 }
 
-fn module_name(module: &vir::ast::Path) -> String {
+pub fn module_name(module: &vir::ast::Path) -> String {
     module.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("::")
 }
 
 impl Verifier {
     pub fn new(args: Args) -> Verifier {
         Verifier {
+            num_threads: 1,
             encountered_vir_error: false,
             count_verified: 0,
             count_errors: 0,
             args,
             erasure_hints: None,
+            time_verify_crate: Duration::new(0, 0),
+            time_verify_crate_sequential: Duration::new(0, 0),
+            time_hir: Duration::new(0, 0),
             time_vir: Duration::new(0, 0),
             time_vir_rust_to_vir: Duration::new(0, 0),
-            time_vir_verify: Duration::new(0, 0),
-            time_air: Duration::new(0, 0),
-            time_smt_init: Duration::new(0, 0),
-            time_smt_run: Duration::new(0, 0),
+
+            module_times: HashMap::new(),
 
             created_log_dir: None,
             vir_crate: None,
@@ -179,6 +241,41 @@ impl Verifier {
             expand_flag: false,
             expand_targets: vec![],
         }
+    }
+
+    pub fn from_self(&self) -> Verifier {
+        Verifier {
+            num_threads: 1,
+            encountered_vir_error: false,
+            count_verified: 0,
+            count_errors: 0,
+            args: self.args.clone(),
+            erasure_hints: self.erasure_hints.clone(),
+
+            time_verify_crate: Duration::new(0, 0),
+            time_verify_crate_sequential: Duration::new(0, 0),
+            time_hir: Duration::new(0, 0),
+            time_vir: Duration::new(0, 0),
+            time_vir_rust_to_vir: Duration::new(0, 0),
+            module_times: HashMap::new(),
+            created_log_dir: self.created_log_dir.clone(),
+            vir_crate: self.vir_crate.clone(),
+            crate_names: self.crate_names.clone(),
+            vstd_crate_name: self.vstd_crate_name.clone(),
+            air_no_span: self.air_no_span.clone(),
+            inferred_modes: self.inferred_modes.clone(),
+            expand_flag: self.expand_flag,
+            expand_targets: self.expand_targets.clone(),
+        }
+    }
+
+    /// merges two verifiers by summing up times and verified stats from other into self.
+    pub fn merge(&mut self, other: Self) {
+        self.count_verified += other.count_verified;
+        self.count_errors += other.count_errors;
+        self.time_vir += other.time_vir;
+        self.time_vir_rust_to_vir += other.time_vir_rust_to_vir;
+        self.module_times.extend(other.module_times);
     }
 
     fn create_log_file(
@@ -288,8 +385,9 @@ impl Verifier {
     /// Returns true if there was at least one Invalid resulting in an error.
     fn check_result_validity(
         &mut self,
-        compiler: &Compiler,
-        spans: &SpanContext,
+        module_path: &vir::ast::Path,
+        reporter: &impl Diagnostics,
+        source_map: Option<&SourceMap>,
         level: MessageLevel,
         air_context: &mut air::context::Context,
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<std::string::String>>>,
@@ -304,23 +402,18 @@ impl Verifier {
             let report_fn: Box<dyn FnMut(std::time::Duration) -> ()> = Box::new(move |elapsed| {
                 let msg =
                     format!("{} has been running for {} seconds", context.1, elapsed.as_secs());
-                let reporter = Reporter::new(spans, compiler);
-                if counter % 5 == 0 {
-                    reporter.report(&note(msg, &context.0));
-                } else {
-                    reporter.report(&note_bare(msg));
-                }
+                let msg = if counter % 5 == 0 { note(msg, &context.0) } else { note_bare(msg) };
+                reporter.report_now(&msg);
                 counter += 1;
             });
             (std::time::Duration::from_secs(2), report_fn)
         };
-        let reporter = Reporter::new(spans, compiler);
         let is_check_valid = matches!(**command, CommandX::CheckValid(_));
         let time0 = Instant::now();
         #[cfg(feature = "singular")]
         let mut result = if !is_singular {
             air_context.command(
-                &reporter,
+                reporter,
                 &command,
                 QueryContext { report_long_running: Some(&mut report_long_running()) },
             )
@@ -335,13 +428,15 @@ impl Verifier {
 
         #[cfg(not(feature = "singular"))]
         let mut result = air_context.command(
-            &reporter,
+            reporter,
             &command,
             QueryContext { report_long_running: Some(&mut report_long_running()) },
         );
 
         let time1 = Instant::now();
-        self.time_air += time1 - time0;
+        let module_time = self.module_times.get_mut(module_path).expect("module time not found");
+        module_time.time_air += time1 - time0;
+
         let mut is_first_check = true;
         let mut checks_remaining = self.args.multiple_errors;
         let mut only_check_earlier = false;
@@ -370,8 +465,8 @@ impl Verifier {
                     }
                     reporter.report(&message(level, msg, &context.0));
                     if self.args.profile {
-                        let profiler = Profiler::new(&reporter);
-                        self.print_profile_stats(&reporter, profiler, qid_map);
+                        let profiler = Profiler::new(reporter);
+                        self.print_profile_stats(reporter, profiler, qid_map);
                     }
                     break;
                 }
@@ -399,13 +494,17 @@ impl Verifier {
                         }
 
                         if self.args.debug {
-                            let mut debugger = Debugger::new(
-                                air_model,
-                                assign_map,
-                                snap_map,
-                                compiler.session().source_map(),
-                            );
-                            debugger.start_shell(air_context);
+                            if let Some(source_map) = source_map {
+                                let mut debugger =
+                                    Debugger::new(air_model, assign_map, snap_map, source_map);
+                                debugger.start_shell(air_context);
+                            } else {
+                                reporter.report(&message(
+                                    MessageLevel::Warning,
+                                    "no source map available for debugger. Try running single threaded.",
+                                    &context.0,
+                                ));
+                            }
                         }
                     }
 
@@ -422,12 +521,15 @@ impl Verifier {
 
                     let time0 = Instant::now();
                     result = air_context.check_valid_again(
-                        &reporter,
+                        reporter,
                         only_check_earlier,
                         QueryContext { report_long_running: Some(&mut report_long_running()) },
                     );
                     let time1 = Instant::now();
-                    self.time_air += time1 - time0;
+
+                    let module_time =
+                        self.module_times.get_mut(module_path).expect("module time not found");
+                    module_time.time_air += time1 - time0;
                 }
                 ValidityResult::UnexpectedOutput(err) => {
                     panic!("unexpected output from solver: {}", err);
@@ -451,6 +553,7 @@ impl Verifier {
 
     fn run_commands(
         &mut self,
+        module_path: &vir::ast::Path,
         diagnostics: &impl Diagnostics,
         air_context: &mut air::context::Context,
         commands: &Vec<Command>,
@@ -468,15 +571,18 @@ impl Verifier {
                 Default::default(),
             ));
             let time1 = Instant::now();
-            self.time_air += time1 - time0;
+
+            let module_time =
+                self.module_times.get_mut(module_path).expect("module time not found");
+            module_time.time_air += time1 - time0;
         }
     }
 
     /// Returns true if there was at least one Invalid resulting in an error.
     fn run_commands_queries(
         &mut self,
-        compiler: &Compiler,
-        spans: &SpanContext,
+        reporter: &impl Diagnostics,
+        source_map: Option<&SourceMap>,
         level: MessageLevel,
         air_context: &mut air::context::Context,
         commands_with_context: CommandsWithContext,
@@ -508,8 +614,9 @@ impl Verifier {
         let desc = desc_prefix.unwrap_or("").to_string() + desc;
         for command in commands.iter() {
             let result_invalidity = self.check_result_validity(
-                compiler,
-                spans,
+                module,
+                reporter,
+                source_map,
                 level,
                 air_context,
                 assign_map,
@@ -656,31 +763,34 @@ impl Verifier {
 
         // set up module context
         self.run_commands(
+            module_path,
             diagnostics,
             &mut air_context,
             &datatype_commands,
             &("Datatypes".to_string()),
         );
         self.run_commands(
+            module_path,
             diagnostics,
             &mut air_context,
             &assoc_type_decl_commands,
             &("Associated-Type-Decls".to_string()),
         );
         self.run_commands(
+            module_path,
             diagnostics,
             &mut air_context,
             &assoc_type_impl_commands,
             &("Associated-Type-Impls".to_string()),
         );
         for commands in &*function_decl_commands {
-            self.run_commands(diagnostics, &mut air_context, &commands.0, &commands.1);
+            self.run_commands(module_path, diagnostics, &mut air_context, &commands.0, &commands.1);
         }
         for commands in &*function_spec_commands {
-            self.run_commands(diagnostics, &mut air_context, &commands.0, &commands.1);
+            self.run_commands(module_path, diagnostics, &mut air_context, &commands.0, &commands.1);
         }
         for commands in &*function_axiom_commands {
-            self.run_commands(diagnostics, &mut air_context, &commands.0, &commands.1);
+            self.run_commands(module_path, diagnostics, &mut air_context, &commands.0, &commands.1);
         }
         Ok(air_context)
     }
@@ -688,15 +798,14 @@ impl Verifier {
     // Verify a single module
     fn verify_module(
         &mut self,
-        compiler: &Compiler,
+        reporter: &impl Diagnostics,
         krate: &Krate,
-        spans: &SpanContext,
+        source_map: Option<&SourceMap>,
         module: &vir::ast::Path,
         ctx: &mut vir::context::Ctx,
     ) -> Result<(Duration, Duration), VirErr> {
-        let reporter = Reporter::new(spans, compiler);
         let mut air_context = self.new_air_context_with_prelude(
-            &reporter,
+            reporter,
             module,
             None,
             false,
@@ -715,7 +824,7 @@ impl Verifier {
         air_context.comment("Fuel");
         for command in ctx.fuel().iter() {
             Self::check_internal_result(air_context.command(
-                &reporter,
+                reporter,
                 &command,
                 Default::default(),
             ));
@@ -731,7 +840,8 @@ impl Verifier {
                 .collect(),
         );
         self.run_commands(
-            &reporter,
+            module,
+            reporter,
             &mut air_context,
             &datatype_commands,
             &("Datatypes".to_string()),
@@ -740,7 +850,8 @@ impl Verifier {
         let assoc_type_decl_commands =
             vir::assoc_types_to_air::assoc_type_decls_to_air(ctx, &krate.traits);
         self.run_commands(
-            &reporter,
+            module,
+            reporter,
             &mut air_context,
             &assoc_type_decl_commands,
             &("Associated-Type-Decls".to_string()),
@@ -749,7 +860,8 @@ impl Verifier {
         let assoc_type_impl_commands =
             vir::assoc_types_to_air::assoc_type_impls_to_air(ctx, &krate.assoc_type_impls);
         self.run_commands(
-            &reporter,
+            module,
+            reporter,
             &mut air_context,
             &assoc_type_impl_commands,
             &("Associated-Type-Impls".to_string()),
@@ -774,10 +886,10 @@ impl Verifier {
             if !is_visible_to(&function.x.visibility, module) || function.x.attrs.is_decrease_by {
                 continue;
             }
-            let commands = vir::func_to_air::func_name_to_air(ctx, &reporter, &function)?;
+            let commands = vir::func_to_air::func_name_to_air(ctx, reporter, &function)?;
             let comment =
                 "Function-Decl ".to_string() + &fun_as_friendly_rust_name(&function.x.name);
-            self.run_commands(&reporter, &mut air_context, &commands, &comment);
+            self.run_commands(module, reporter, &mut air_context, &commands, &comment);
             function_decl_commands.push((commands.clone(), comment.clone()));
         }
         ctx.fun = None;
@@ -830,7 +942,7 @@ impl Verifier {
         // termination checking precedes consequence axioms for each SCC.
         let mut fun_axioms: HashMap<Fun, Commands> = HashMap::new();
         let mut fun_ssts = UpdateCell::new(HashMap::new());
-        for scc in &ctx.global.func_call_sccs.clone() {
+        for scc in &ctx.global.func_call_sccs.as_ref().clone() {
             let scc_nodes = ctx.global.func_call_graph.get_scc_nodes(scc);
             let mut scc_fun_nodes: Vec<Fun> = Vec::new();
             for node in scc_nodes.into_iter() {
@@ -848,10 +960,10 @@ impl Verifier {
 
                 ctx.fun = mk_fun_ctx(&function, false);
                 let decl_commands =
-                    vir::func_to_air::func_decl_to_air(ctx, &reporter, &fun_ssts, &function)?;
+                    vir::func_to_air::func_decl_to_air(ctx, reporter, &fun_ssts, &function)?;
                 ctx.fun = None;
                 let comment = "Function-Specs ".to_string() + &fun_as_friendly_rust_name(f);
-                self.run_commands(&reporter, &mut air_context, &decl_commands, &comment);
+                self.run_commands(module, reporter, &mut air_context, &decl_commands, &comment);
                 function_spec_commands.push((decl_commands.clone(), comment.clone()));
             }
             // Check termination
@@ -866,7 +978,7 @@ impl Verifier {
                 let (decl_commands, check_commands, new_fun_ssts) =
                     vir::func_to_air::func_axioms_to_air(
                         ctx,
-                        &reporter,
+                        reporter,
                         fun_ssts,
                         &function,
                         is_visible_to(&vis_abs, module),
@@ -880,8 +992,8 @@ impl Verifier {
                     continue;
                 }
                 let invalidity = self.run_commands_queries(
-                    compiler,
-                    spans,
+                    reporter,
+                    source_map,
                     MessageLevel::Error,
                     &mut air_context,
                     Arc::new(CommandsWithContextX {
@@ -906,7 +1018,7 @@ impl Verifier {
                     ctx.fun = mk_fun_ctx(&function, true);
                     let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
                         ctx,
-                        &reporter,
+                        reporter,
                         fun_ssts,
                         &function,
                         vir::func_to_air::FuncDefPhase::CheckingSpecs,
@@ -918,8 +1030,8 @@ impl Verifier {
                     let s = "Function-Decl-Check-Recommends ";
                     for command in commands.iter().map(|x| &*x) {
                         self.run_commands_queries(
-                            compiler,
-                            spans,
+                            reporter,
+                            source_map,
                             level,
                             &mut air_context,
                             command.clone(),
@@ -942,7 +1054,7 @@ impl Verifier {
                 }
                 let decl_commands = &fun_axioms[f];
                 let comment = "Function-Axioms ".to_string() + &fun_as_friendly_rust_name(f);
-                self.run_commands(&reporter, &mut air_context, &decl_commands, &comment);
+                self.run_commands(module, reporter, &mut air_context, &decl_commands, &comment);
                 function_axiom_commands.push((decl_commands.clone(), comment.clone()));
                 funs.remove(f);
             }
@@ -973,7 +1085,7 @@ impl Verifier {
                 }
                 let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
                     ctx,
-                    &reporter,
+                    reporter,
                     fun_ssts,
                     &function,
                     vir::func_to_air::FuncDefPhase::CheckingProofExec,
@@ -1022,7 +1134,7 @@ impl Verifier {
                     let query_air_context = if do_spinoff {
                         spinoff_z3_context = self.new_air_context_with_module_context(
                             ctx,
-                            &reporter,
+                            reporter,
                             module,
                             &(function.x.name).path,
                             datatype_commands.clone(),
@@ -1046,8 +1158,8 @@ impl Verifier {
                     };
                     let desc_prefix = recommends_rerun.then(|| "recommends check: ");
                     let command_invalidity = self.run_commands_queries(
-                        compiler,
-                        spans,
+                        reporter,
+                        source_map,
                         level,
                         query_air_context,
                         command.clone(),
@@ -1087,18 +1199,30 @@ impl Verifier {
 
     fn verify_module_outer(
         &mut self,
-        compiler: &Compiler,
+        reporter: &impl Diagnostics,
         krate: &Krate,
-        spans: &SpanContext,
+        source_map: Option<&SourceMap>,
         module: &vir::ast::Path,
         mut global_ctx: vir::context::GlobalCtx,
+        multithreaded: bool,
     ) -> Result<vir::context::GlobalCtx, VirErr> {
-        let reporter = Reporter::new(spans, compiler);
+        let time_verify_start = Instant::now();
+
+        self.module_times.insert(module.clone(), Default::default());
+
         let module_name = module_name(module);
         if module.segments.len() == 0 {
             reporter.report(&note_bare("verifying root module"));
         } else {
-            reporter.report(&note_bare(&format!("verifying module {}", &module_name)));
+            reporter.report(&note_bare(&format!(
+                "{} {}",
+                if !multithreaded {
+                    "verifying module"
+                } else {
+                    "reporting diagnostics for module"
+                },
+                &module_name
+            )));
         }
 
         let (pruned_krate, mono_abstract_datatypes, lambda_types) =
@@ -1119,12 +1243,16 @@ impl Verifier {
         }
 
         let (time_smt_init, time_smt_run) =
-            self.verify_module(compiler, &poly_krate, spans, module, &mut ctx)?;
+            self.verify_module(reporter, &poly_krate, source_map, module, &mut ctx)?;
 
         global_ctx = ctx.free();
 
-        self.time_smt_init += time_smt_init;
-        self.time_smt_run += time_smt_run;
+        let time_verify_end = Instant::now();
+
+        let mut time_module = self.module_times.get_mut(module).expect("module should exist");
+        time_module.time_smt_init = time_smt_init;
+        time_module.time_smt_run = time_smt_run;
+        time_module.time_verify = time_verify_end - time_verify_start;
 
         Ok(global_ctx)
     }
@@ -1135,6 +1263,8 @@ impl Verifier {
         compiler: &Compiler,
         spans: &SpanContext,
     ) -> Result<(), VirErr> {
+        let time_verify_sequential_start = Instant::now();
+
         let reporter = Reporter::new(spans, compiler);
         let krate = self.vir_crate.clone().expect("vir_crate should be initialized");
         let air_no_span = self.air_no_span.clone().expect("air_no_span should be initialized");
@@ -1145,7 +1275,7 @@ impl Verifier {
         vir::check_ast_flavor::check_krate(&krate);
 
         let interpreter_log_file =
-            Rc::new(RefCell::new(if self.args.log_all || self.args.log_interpreter {
+            Arc::new(std::sync::Mutex::new(if self.args.log_all || self.args.log_interpreter {
                 Some(self.create_log_file(None, None, crate::config::INTERPRETER_FILE_SUFFIX)?)
             } else {
                 None
@@ -1234,8 +1364,201 @@ impl Verifier {
             module_ids_to_verify
         };
 
-        for module in &module_ids_to_verify {
-            global_ctx = self.verify_module_outer(compiler, &krate, spans, module, global_ctx)?;
+        let time_verify_sequential_end = Instant::now();
+        self.time_verify_crate_sequential =
+            time_verify_sequential_end - time_verify_sequential_start;
+
+        let source_map = compiler.session().source_map();
+
+        self.num_threads = std::cmp::min(self.args.num_threads, module_ids_to_verify.len());
+        if self.num_threads > 1 {
+            // create the multiple producers, single consumer queue
+            let (sender, receiver) = std::sync::mpsc::channel();
+
+            // collect the modules and create the task queueu
+            let mut tasks = VecDeque::with_capacity(module_ids_to_verify.len());
+            let mut messages: Vec<(bool, Vec<(Message, MessageLevel)>)> = Vec::new();
+            for (i, module) in module_ids_to_verify.iter().enumerate() {
+                // give each module its own log file
+                let interpreter_log_file = Arc::new(std::sync::Mutex::new(
+                    if self.args.log_all || self.args.log_vir_simple {
+                        Some(self.create_log_file(
+                            Some(module),
+                            None,
+                            crate::config::INTERPRETER_FILE_SUFFIX,
+                        )?)
+                    } else {
+                        None
+                    },
+                ));
+
+                // give each task a queued reporter to identify the module that is sending messages
+                let reporter = QueuedReporter::new(i, sender.clone());
+
+                tasks.push_back((
+                    module.clone(),
+                    global_ctx.from_self_with_log(interpreter_log_file),
+                    reporter,
+                ));
+                messages.push((false, Vec::new()));
+            }
+
+            // protect the taskq with a mutex
+            let taskq = std::sync::Arc::new(std::sync::Mutex::new(tasks));
+
+            // create the worker threads
+            let mut workers = Vec::new();
+            for _tid in 0..self.num_threads {
+                // we create a clone of the verifier here to pass each thread its own local
+                // copy as we modify fields in the verifier struct. later, we merge the results
+                let mut thread_verifier = self.from_self();
+                let thread_taskq = taskq.clone();
+                let thread_krate = krate.clone(); // is an Arc<T>
+
+                let worker = std::thread::spawn(move || {
+                    let mut completed_tasks: Vec<GlobalCtx> = Vec::new();
+                    loop {
+                        let mut tq = thread_taskq.lock().unwrap();
+                        let elm = tq.pop_front();
+                        drop(tq);
+                        if let Some((module, task, reporter)) = elm {
+                            let res = thread_verifier.verify_module_outer(
+                                &reporter,
+                                &thread_krate,
+                                None,
+                                &module,
+                                task,
+                                true,
+                            );
+                            reporter.done(); // we've verified the module, send the done message
+                            match res {
+                                Ok(res) => {
+                                    completed_tasks.push(res);
+                                }
+                                Err(e) => return Err(e),
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    Ok::<(Verifier, Vec<GlobalCtx>), VirErr>((thread_verifier, completed_tasks))
+                });
+                workers.push(worker);
+            }
+
+            // start handling messages, we keep track of the current active module for which we
+            // print messages immediately, while buffering other messages from the other modules
+            let mut active_module = None;
+            let mut num_done = 0;
+            let reporter = Reporter::new(spans, compiler);
+            loop {
+                let msg = receiver.recv().expect("receiving message failed");
+                match msg {
+                    ReporterMessage::Message(id, msg, level, now) => {
+                        if now {
+                            // if the message should be reported immediately, do so
+                            // this is used for printing notices for long running queries
+                            reporter.report_as(&msg, level);
+                            continue;
+                        }
+
+                        if let Some(m) = active_module {
+                            // if it's the active module, print the message
+                            if id == m {
+                                reporter.report_as(&msg, level);
+                            } else {
+                                let msgs = messages.get_mut(id).expect("message id out of range");
+                                msgs.1.push((msg, level));
+                            }
+                        } else {
+                            // no active module, print this message and set the module as the
+                            // active one
+                            active_module = Some(id);
+                            reporter.report_as(&msg, level);
+                        }
+                    }
+                    ReporterMessage::Done(id) => {
+                        // the done message is sent by the thread whenever it is done with verifying
+                        // a module, we mark the module as done here.
+                        {
+                            // record that the module is done
+                            let msgs = messages.get_mut(id).expect("message id out of range");
+                            msgs.0 = true;
+                        }
+
+                        // if it is the active module, mark it as done, and reset the active module
+                        if let Some(m) = active_module {
+                            if m == id {
+                                assert!(
+                                    messages
+                                        .get_mut(id)
+                                        .expect("message id out of range")
+                                        .1
+                                        .is_empty()
+                                );
+                                active_module = None;
+                            }
+                        }
+
+                        // try to pick a new active module here, the first one that has any messages
+                        if active_module.is_none() {
+                            for (i, msgs) in messages.iter_mut().enumerate() {
+                                if msgs.1.is_empty() {
+                                    continue;
+                                }
+                                // drain and print all messages of the module
+                                for (msg, level) in msgs.1.drain(..) {
+                                    reporter.report_as(&msg, level);
+                                }
+                                // if the module wasn't done, make it active and handle next message
+                                if !msgs.0 {
+                                    active_module = Some(i);
+                                    break;
+                                }
+                            }
+                        }
+
+                        num_done = num_done + 1;
+                    }
+                }
+
+                if num_done == module_ids_to_verify.len() {
+                    break;
+                }
+            }
+
+            // join with all worker threads, theys should all have exited by now.
+            // merge the verifier and global contexts
+            for worker in workers {
+                let res = worker.join().unwrap();
+                match res {
+                    Ok((verifier, res)) => {
+                        for r in res {
+                            global_ctx.merge(r);
+                        }
+                        self.merge(verifier);
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+
+            // print remaining messages
+            for msgs in messages.drain(..) {
+                for (msg, level) in msgs.1 {
+                    reporter.report_as(&msg, level);
+                }
+            }
+        } else {
+            for module in &module_ids_to_verify {
+                global_ctx = self.verify_module_outer(
+                    &reporter,
+                    &krate,
+                    Some(source_map),
+                    module,
+                    global_ctx,
+                    false,
+                )?;
+            }
         }
 
         let verified_modules: HashSet<_> = module_ids_to_verify.iter().collect();
@@ -1296,13 +1619,14 @@ impl Verifier {
         spans: &SpanContext,
     ) -> Result<(), VirErr> {
         // Verify crate
-        let time3 = Instant::now();
+        let time_verify_crate_start = Instant::now();
+
         let result =
             if !self.args.no_verify { self.verify_crate_inner(&compiler, spans) } else { Ok(()) };
-        let time4 = Instant::now();
 
-        self.time_vir_verify = time4 - time3;
-        self.time_vir += self.time_vir_verify;
+        let time_verify_crate_end = Instant::now();
+        self.time_verify_crate = time_verify_crate_end - time_verify_crate_start;
+
         result
     }
 
@@ -1316,6 +1640,8 @@ impl Verifier {
         diagnostics: &impl Diagnostics,
         crate_name: String,
     ) -> Result<bool, VirErr> {
+        let time0 = Instant::now();
+
         match rustc_hir_analysis::check_crate(tcx) {
             Ok(()) => {}
             Err(_) => {
@@ -1354,6 +1680,9 @@ impl Verifier {
             })
         };
 
+        let time1 = Instant::now();
+        self.time_hir = time1 - time0;
+
         let time0 = Instant::now();
 
         let mut crate_names: Vec<String> = vec![crate_name];
@@ -1372,7 +1701,8 @@ impl Verifier {
             ignored_functions: vec![],
         };
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
-        let vstd_crate_name = if self.args.import.len() > 0 || self.args.export.is_some() {
+        let import_len = self.args.import.len();
+        let vstd_crate_name = if import_len > 0 || self.args.export.is_some() {
             Some(Arc::new(vir::def::VERUSLIB.to_string()))
         } else {
             None
@@ -1387,7 +1717,7 @@ impl Verifier {
             arch: Arc::new(ArchContextX { word_bits: self.args.arch_word_bits }),
             verus_items,
         });
-        let multi_crate = self.args.export.is_some() || self.args.import.len() > 0;
+        let multi_crate = self.args.export.is_some() || import_len > 0;
         crate::rust_to_vir_base::MULTI_CRATE
             .with(|m| m.store(multi_crate, std::sync::atomic::Ordering::Relaxed));
 
@@ -1479,7 +1809,13 @@ impl Verifier {
 // TODO: move the callbacks into a different file, like driver.rs
 pub(crate) struct VerifierCallbacksEraseMacro {
     pub(crate) verifier: Verifier,
+    /// start time of the rustc compilation
+    pub(crate) rust_start_time: Instant,
+    /// time when entered the `after_expansion` callback
+    pub(crate) rust_end_time: Option<Instant>,
+    /// start time of lifetime analysys
     pub(crate) lifetime_start_time: Option<Instant>,
+    /// end time of lifetime analysys
     pub(crate) lifetime_end_time: Option<Instant>,
     pub(crate) rustc_args: Vec<String>,
     pub(crate) file_loader:
@@ -1493,6 +1829,8 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         compiler: &Compiler,
         queries: &'tcx verus_rustc_interface::Queries<'tcx>,
     ) -> verus_rustc_driver::Compilation {
+        self.rust_end_time = Some(Instant::now());
+
         if !compiler.session().compile_status().is_ok() {
             return verus_rustc_driver::Compilation::Stop;
         }

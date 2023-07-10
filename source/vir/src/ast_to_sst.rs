@@ -220,11 +220,11 @@ impl<'a> State<'a> {
                     fun_ssts.borrow().get(fun)
                 {
                     if inline.do_inline {
-                        let typ_bounds = &inline.typ_bounds;
+                        let typ_params = &inline.typ_params;
                         let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
                         let mut substs: HashMap<UniqueIdent, Exp> = HashMap::new();
-                        assert!(typ_bounds.len() == typs.len());
-                        for ((name, _), typ) in typ_bounds.iter().zip(typs.iter()) {
+                        assert!(typ_params.len() == typs.len());
+                        for (name, typ) in typ_params.iter().zip(typs.iter()) {
                             assert!(!typ_substs.contains_key(name));
                             let typ = crate::poly::coerce_typ_to_poly(ctx, typ);
                             typ_substs.insert(name.clone(), typ.clone());
@@ -473,7 +473,7 @@ fn expr_get_call(
             CallTarget::FnSpec(..) => {
                 panic!("internal error: CallTarget::FnSpec");
             }
-            CallTarget::Fun(kind, x, typs, autospec_usage) => {
+            CallTarget::Fun(kind, x, typs, _impl_paths, autospec_usage) => {
                 if *autospec_usage != AutospecUsage::Final {
                     return internal_error(&expr.span, "autospec not discharged");
                 }
@@ -517,7 +517,7 @@ fn expr_must_be_call_stm(
     expr: &Expr,
 ) -> Result<Option<(Vec<Stm>, ReturnedCall)>, VirErr> {
     match &expr.x {
-        ExprX::Call(CallTarget::Fun(_, x, _, _), _)
+        ExprX::Call(CallTarget::Fun(_, x, _, _, _), _)
             if !function_can_be_exp(ctx, state, expr, x)? =>
         {
             expr_get_call(ctx, state, expr)
@@ -668,7 +668,7 @@ pub(crate) fn expr_to_stm_or_error(
 /// Unit type, in the lowered form that ast_simplify produces
 fn lowered_unit_typ() -> Typ {
     let path = crate::def::prefix_tuple_type(0);
-    Arc::new(TypX::Datatype(path, Arc::new(vec![])))
+    Arc::new(TypX::Datatype(path, Arc::new(vec![]), Arc::new(vec![])))
 }
 
 /// Unit value, in the lowered form that ast_simplify produces
@@ -1659,7 +1659,7 @@ fn expr_to_stm_opt(
                 ctx.global.rlimit,
                 ctx.global.arch,
                 *mode,
-                &mut ctx.global.interpreter_log.borrow_mut(),
+                &mut ctx.global.interpreter_log.lock().unwrap(),
             )?;
             let err = error_with_label(
                 "assertion failed",

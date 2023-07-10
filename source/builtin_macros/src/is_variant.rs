@@ -67,7 +67,7 @@ pub fn attribute_is_variant(
             };
 
             quote! {
-                verus! {
+                ::builtin_macros::verus! {
                     #[verus::internal(is_variant(#variant_ident_str))]
                     #[allow(non_snake_case)]
                     #[verus::internal(spec)]

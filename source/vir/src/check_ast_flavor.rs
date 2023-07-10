@@ -29,6 +29,7 @@ pub fn check_krate_simplified(krate: &Krate) {
         functions,
         datatypes,
         traits: _,
+        trait_impls: _,
         assoc_type_impls: _,
         module_ids: _,
         external_fns: _,
@@ -47,9 +48,15 @@ pub fn check_krate_simplified(krate: &Krate) {
                 .expect("function AST expression uses node that should have been simplified");
         }
 
-        for (_, bound) in typ_bounds.iter() {
+        for bound in typ_bounds.iter() {
             match &**bound {
-                GenericBoundX::Traits(_) => {}
+                GenericBoundX::Trait(_, ts) => {
+                    for t in ts.iter() {
+                        typ_visitor_check(t, &mut check_typ_simplified).expect(
+                            "function param bound uses node that should have been simplified",
+                        );
+                    }
+                }
             }
         }
 
@@ -108,6 +115,7 @@ pub fn check_krate(krate: &Krate) {
         functions,
         datatypes: _,
         traits: _,
+        trait_impls: _,
         assoc_type_impls: _,
         module_ids: _,
         external_fns: _,

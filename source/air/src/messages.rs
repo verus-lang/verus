@@ -54,8 +54,18 @@ pub trait Diagnostics {
         self.report_as(msg, msg.level)
     }
 
+    /// Immediately display the message, regardless of which module is currently printing
+    fn report_now(&self, msg: &Message) {
+        self.report_as_now(msg, msg.level);
+    }
+
     /// Override the msg's reporting level
     fn report_as(&self, msg: &Message, msg_as: MessageLevel);
+
+    /// Override the msg's reporting level and immediately display the message
+    fn report_as_now(&self, msg: &Message, msg_as: MessageLevel) {
+        self.report_as(msg, msg_as);
+    }
 }
 
 /// Very simple implementation of Diagnostics for use in AIR

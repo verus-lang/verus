@@ -1,5 +1,5 @@
 use crate::ast::{
-    Datatype, Fun, Function, GenericBound, Ident, InferMode, IntRange, Krate, Mode, Path, Trait,
+    Datatype, Fun, Function, GenericBounds, Ident, InferMode, IntRange, Krate, Mode, Path, Trait,
     TypX, Variants, VirErr,
 };
 use crate::datatype_to_air::is_datatype_transparent;
@@ -10,7 +10,6 @@ use crate::recursion::Node;
 use crate::scc::Graph;
 use crate::sst::BndInfo;
 use crate::sst_to_air::fun_to_air_ident;
-use crate::util::vec_map;
 use air::ast::{Command, CommandX, Commands, DeclX, MultiOp, Span};
 use air::ast_util::str_typ;
 use num_bigint::BigUint;
@@ -18,7 +17,6 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
-use std::rc::Rc;
 use std::sync::Arc;
 
 // Use decorated types in addition to undecorated types (see sst_to_air::typ_to_id)
@@ -36,19 +34,19 @@ pub struct ChosenTriggers {
 /// Context for across all modules
 pub struct GlobalCtx {
     pub(crate) chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>>, // diagnostics
-    pub(crate) datatypes: HashMap<Path, Variants>,
-    pub(crate) fun_bounds: HashMap<Fun, Vec<GenericBound>>,
+    pub(crate) datatypes: Arc<HashMap<Path, Variants>>,
+    pub(crate) fun_bounds: Arc<HashMap<Fun, GenericBounds>>,
     /// Used for synthesized AST nodes that have no relation to any location in the original code:
     pub(crate) no_span: Span,
-    pub func_call_graph: Graph<Node>,
-    pub func_call_sccs: Vec<Node>,
-    pub datatype_graph: Graph<Path>,
+    pub func_call_graph: Arc<Graph<Node>>,
+    pub func_call_sccs: Arc<Vec<Node>>,
+    pub(crate) datatype_graph: Arc<Graph<crate::recursive_types::TypNode>>,
     /// Connects quantifier identifiers to the original expression
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
-    pub(crate) inferred_modes: HashMap<InferMode, Mode>,
+    pub(crate) inferred_modes: Arc<HashMap<InferMode, Mode>>,
     pub(crate) rlimit: u32,
-    pub(crate) interpreter_log: Rc<RefCell<Option<File>>>,
-    pub(crate) vstd_crate_name: Option<Ident>,
+    pub(crate) interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
+    pub(crate) vstd_crate_name: Option<Ident>, // already an arc
     pub arch: ArchWordBits,
 }
 
@@ -145,7 +143,7 @@ fn datatypes_invs(
                         TypX::Lambda(..) => {
                             roots.insert(container_path.clone());
                         }
-                        TypX::Datatype(field_path, _) => {
+                        TypX::Datatype(field_path, _, _) => {
                             if datatype_is_transparent[field_path] {
                                 back_pointers
                                     .get_mut(field_path)
@@ -180,12 +178,13 @@ impl GlobalCtx {
         no_span: Span,
         inferred_modes: HashMap<InferMode, Mode>,
         rlimit: u32,
-        interpreter_log: Rc<RefCell<Option<File>>>,
+        interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
         vstd_crate_name: Option<Ident>,
         arch: ArchWordBits,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
             std::cell::RefCell::new(Vec::new());
+
         let datatypes: HashMap<Path, Variants> =
             krate.datatypes.iter().map(|d| (d.x.path.clone(), d.x.variants.clone())).collect();
         let mut func_map: HashMap<Fun, Function> = HashMap::new();
@@ -193,14 +192,13 @@ impl GlobalCtx {
             assert!(!func_map.contains_key(&function.x.name));
             func_map.insert(function.x.name.clone(), function.clone());
         }
-        let mut fun_bounds: HashMap<Fun, Vec<GenericBound>> = HashMap::new();
+        let mut fun_bounds: HashMap<Fun, GenericBounds> = HashMap::new();
         let mut func_call_graph: Graph<Node> = Graph::new();
         for t in &krate.traits {
             crate::recursive_types::add_trait_to_graph(&mut func_call_graph, t);
         }
         for f in &krate.functions {
-            let bounds = vec_map(&f.x.typ_bounds, |(_, bound)| bound.clone());
-            fun_bounds.insert(f.x.name.clone(), bounds);
+            fun_bounds.insert(f.x.name.clone(), f.x.typ_bounds.clone());
             func_call_graph.add_node(Node::Fun(f.x.name.clone()));
             crate::recursion::expand_call_graph(&func_map, &mut func_call_graph, f)?;
         }
@@ -229,19 +227,46 @@ impl GlobalCtx {
 
         Ok(GlobalCtx {
             chosen_triggers,
-            datatypes,
-            fun_bounds,
+            datatypes: Arc::new(datatypes),
+            fun_bounds: Arc::new(fun_bounds),
             no_span,
-            func_call_graph,
-            func_call_sccs,
-            datatype_graph,
+            func_call_graph: Arc::new(func_call_graph),
+            func_call_sccs: Arc::new(func_call_sccs),
+            datatype_graph: Arc::new(datatype_graph),
             qid_map,
-            inferred_modes,
+            inferred_modes: Arc::new(inferred_modes),
             rlimit,
             interpreter_log,
             vstd_crate_name,
             arch,
         })
+    }
+
+    pub fn from_self_with_log(&self, interpreter_log: Arc<std::sync::Mutex<Option<File>>>) -> Self {
+        let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
+            std::cell::RefCell::new(Vec::new());
+        let qid_map = RefCell::new(HashMap::new());
+
+        GlobalCtx {
+            chosen_triggers,
+            datatypes: self.datatypes.clone(),
+            fun_bounds: self.fun_bounds.clone(),
+            no_span: self.no_span.clone(),
+            func_call_graph: self.func_call_graph.clone(),
+            datatype_graph: self.datatype_graph.clone(),
+            func_call_sccs: self.func_call_sccs.clone(),
+            qid_map,
+            inferred_modes: self.inferred_modes.clone(),
+            rlimit: self.rlimit,
+            interpreter_log,
+            vstd_crate_name: self.vstd_crate_name.clone(),
+            arch: self.arch,
+        }
+    }
+
+    pub fn merge(&mut self, other: Self) {
+        self.qid_map.borrow_mut().extend(other.qid_map.into_inner());
+        self.chosen_triggers.borrow_mut().extend(other.chosen_triggers.into_inner());
     }
 
     // Report chosen triggers as strings for printing diagnostics

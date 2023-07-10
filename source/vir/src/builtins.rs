@@ -1,4 +1,4 @@
-use crate::ast::{DatatypeTransparency, DatatypeX, GenericBoundX, Krate, KrateX, Mode, Visibility};
+use crate::ast::{DatatypeTransparency, DatatypeX, Krate, KrateX, Mode, Visibility};
 use crate::def::Spanned;
 use air::ast::Span;
 use air::ast_util::ident_binder;
@@ -17,14 +17,14 @@ pub fn krate_add_builtins(no_span: &Span, krate: &mut KrateX) {
     let variant = ident_binder(&Arc::new("DummySliceVariant".to_string()), &fields);
     let variants = Arc::new(vec![variant]);
 
-    let bound = Arc::new(GenericBoundX::Traits(vec![]));
     let accept_rec = crate::ast::AcceptRecursiveType::Accept;
-    let typ_params = Arc::new(vec![(crate::def::slice_param(), bound, accept_rec)]);
+    let typ_params = Arc::new(vec![(crate::def::slice_param(), accept_rec)]);
     let datatypex = DatatypeX {
         path,
         visibility,
         transparency,
         typ_params,
+        typ_bounds: Arc::new(vec![]),
         variants,
         mode: Mode::Exec,
         owning_module,
@@ -39,6 +39,7 @@ pub fn builtin_krate(no_span: &Span) -> Krate {
         functions: Vec::new(),
         datatypes: Vec::new(),
         traits: Vec::new(),
+        trait_impls: Vec::new(),
         assoc_type_impls: Vec::new(),
         module_ids: Vec::new(),
         external_fns: Vec::new(),

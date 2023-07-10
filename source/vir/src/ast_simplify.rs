@@ -5,8 +5,8 @@ use crate::ast::Typs;
 use crate::ast::{
     AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BuiltinSpecFun, CallTarget, Constant, Datatype,
     DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Field, FieldOpr, Function, FunctionKind,
-    GenericBound, GenericBoundX, Ident, IntRange, Krate, KrateX, Mode, MultiOp, Path, Pattern,
-    PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
+    Ident, IntRange, Krate, KrateX, Mode, MultiOp, Path, Pattern, PatternX, SpannedTyped, Stmt,
+    StmtX, Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
 };
 use crate::ast_util::int_range_from_type;
 use crate::ast_util::is_integer_type;
@@ -64,7 +64,6 @@ impl State {
 struct LocalCtxt {
     span: Span,
     typ_params: Vec<Ident>,
-    bounds: HashMap<Ident, GenericBound>,
 }
 
 fn is_small_expr(expr: &Expr) -> bool {
@@ -94,14 +93,6 @@ fn small_or_temp(state: &mut State, expr: &Expr) -> (Vec<Stmt>, Expr) {
     } else {
         let (ts, te) = temp_expr(state, expr);
         (vec![ts], te)
-    }
-}
-
-// TODO this can probably be simplified away now
-fn keep_bound(bound: &GenericBound) -> bool {
-    // Remove FnSpec type bounds
-    match &**bound {
-        GenericBoundX::Traits(_) => true,
     }
 }
 
@@ -238,23 +229,16 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
                     CallTargetKind::Static,
                     x.clone(),
                     Arc::new(vec![]),
+                    Arc::new(vec![]),
                     AutospecUsage::Final,
                 ),
                 Arc::new(vec![]),
             );
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
-        ExprX::Call(CallTarget::Fun(kind, tgt, typs, autospec_usage), args) => {
+        ExprX::Call(CallTarget::Fun(kind, tgt, typs, impl_paths, autospec_usage), args) => {
             assert!(*autospec_usage == AutospecUsage::Final);
 
-            // Remove FnSpec type arguments
-            let bounds = &ctx.fun_bounds[tgt];
-            let typs: Vec<Typ> = typs
-                .iter()
-                .zip(bounds.iter())
-                .filter(|(_, bound)| keep_bound(bound))
-                .map(|(t, _)| t.clone())
-                .collect();
             let is_trait_impl = matches!(kind, CallTargetKind::Method(..));
             let args = if typs.len() == 0 && args.len() == 0 && !is_trait_impl {
                 // To simplify the AIR/SMT encoding, add a dummy argument to any function with 0 arguments
@@ -267,7 +251,13 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
                 args.clone()
             };
             let call = ExprX::Call(
-                CallTarget::Fun(kind.clone(), tgt.clone(), Arc::new(typs), *autospec_usage),
+                CallTarget::Fun(
+                    kind.clone(),
+                    tgt.clone(),
+                    typs.clone(),
+                    impl_paths.clone(),
+                    *autospec_usage,
+                ),
                 args,
             );
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
@@ -528,22 +518,20 @@ fn simplify_one_typ(local: &LocalCtxt, state: &mut State, typ: &Typ) -> Result<T
     match &**typ {
         TypX::Tuple(typs) => {
             let path = state.tuple_type_name(typs.len());
-            Ok(Arc::new(TypX::Datatype(path, typs.clone())))
+            Ok(Arc::new(TypX::Datatype(path, typs.clone(), Arc::new(vec![]))))
         }
         TypX::AnonymousClosure(_typs, _typ, id) => {
             let path = state.closure_type_name(*id);
-            Ok(Arc::new(TypX::Datatype(path, Arc::new(vec![]))))
+            Ok(Arc::new(TypX::Datatype(path, Arc::new(vec![]), Arc::new(vec![]))))
         }
         TypX::TypParam(x) => {
-            if !local.bounds.contains_key(x) {
+            if !local.typ_params.contains(x) {
                 return error(
                     &local.span,
                     format!("type parameter {} used before being declared", x),
                 );
             }
-            match &*local.bounds[x] {
-                GenericBoundX::Traits(_) => Ok(typ.clone()),
-            }
+            Ok(typ.clone())
         }
         _ => Ok(typ.clone()),
     }
@@ -553,7 +541,7 @@ fn closure_trait_call_typ_args(state: &mut State, fn_val: &Expr, params: &Binder
     let path = state.tuple_type_name(params.len());
 
     let param_typs: Vec<Typ> = params.iter().map(|p| p.a.clone()).collect();
-    let tup_typ = Arc::new(TypX::Datatype(path, Arc::new(param_typs)));
+    let tup_typ = Arc::new(TypX::Datatype(path, Arc::new(param_typs), Arc::new(vec![])));
 
     Arc::new(vec![fn_val.typ.clone(), tup_typ])
 }
@@ -623,7 +611,7 @@ fn exec_closure_spec_requires(
 
     let param_typs: Vec<Typ> = params.iter().map(|p| p.a.clone()).collect();
     let tuple_path = state.tuple_type_name(params.len());
-    let tuple_typ = Arc::new(TypX::Datatype(tuple_path, Arc::new(param_typs)));
+    let tuple_typ = Arc::new(TypX::Datatype(tuple_path, Arc::new(param_typs), Arc::new(vec![])));
     let tuple_ident = state.next_temp();
     let tuple_var = SpannedTyped::new(span, &tuple_typ, ExprX::Var(tuple_ident.clone()));
 
@@ -680,7 +668,7 @@ fn exec_closure_spec_ensures(
 
     let param_typs: Vec<Typ> = params.iter().map(|p| p.a.clone()).collect();
     let tuple_path = state.tuple_type_name(params.len());
-    let tuple_typ = Arc::new(TypX::Datatype(tuple_path, Arc::new(param_typs)));
+    let tuple_typ = Arc::new(TypX::Datatype(tuple_path, Arc::new(param_typs), Arc::new(vec![])));
     let tuple_ident = state.next_temp();
     let tuple_var = SpannedTyped::new(span, &tuple_typ, ExprX::Var(tuple_ident.clone()));
 
@@ -754,33 +742,13 @@ fn simplify_function(
 ) -> Result<Function, VirErr> {
     state.reset_for_function();
     let mut functionx = function.x.clone();
-    let mut local =
-        LocalCtxt { span: function.span.clone(), typ_params: Vec::new(), bounds: HashMap::new() };
-    for (x, bound) in functionx.typ_bounds.iter() {
-        match &**bound {
-            GenericBoundX::Traits(_) => local.typ_params.push(x.clone()),
-        }
-        // simplify types in bounds and disallow recursive bounds like F: FnSpec(F, F) -> F
-        let bound = crate::ast_visitor::map_generic_bound_visitor(bound, state, &|state, typ| {
-            simplify_one_typ(&local, state, typ)
-        })?;
-        local.bounds.insert(x.clone(), bound.clone());
-    }
-
-    // remove FnSpec from typ_params
-    functionx.typ_bounds = Arc::new(
-        functionx
-            .typ_bounds
-            .iter()
-            .filter(|(_, bound)| keep_bound(bound))
-            .map(|x| x.clone())
-            .collect(),
-    );
+    let local =
+        LocalCtxt { span: function.span.clone(), typ_params: (*functionx.typ_params).clone() };
 
     let is_trait_impl = matches!(functionx.kind, FunctionKind::TraitMethodImpl { .. });
 
     // To simplify the AIR/SMT encoding, add a dummy argument to any function with 0 arguments
-    if functionx.typ_bounds.len() == 0
+    if functionx.typ_params.len() == 0
         && functionx.params.len() == 0
         && !functionx.is_const
         && !functionx.attrs.broadcast_forall
@@ -810,11 +778,9 @@ fn simplify_function(
 }
 
 fn simplify_datatype(state: &mut State, datatype: &Datatype) -> Result<Datatype, VirErr> {
-    let mut local =
-        LocalCtxt { span: datatype.span.clone(), typ_params: Vec::new(), bounds: HashMap::new() };
-    for (x, bound, _strict_pos) in datatype.x.typ_params.iter() {
+    let mut local = LocalCtxt { span: datatype.span.clone(), typ_params: Vec::new() };
+    for (x, _strict_pos) in datatype.x.typ_params.iter() {
         local.typ_params.push(x.clone());
-        local.bounds.insert(x.clone(), bound.clone());
     }
     crate::ast_visitor::map_datatype_visitor_env(datatype, state, &|state, typ| {
         simplify_one_typ(&local, state, typ)
@@ -825,11 +791,9 @@ fn simplify_assoc_type_impl(
     state: &mut State,
     assoc: &AssocTypeImpl,
 ) -> Result<AssocTypeImpl, VirErr> {
-    let mut local =
-        LocalCtxt { span: assoc.span.clone(), typ_params: Vec::new(), bounds: HashMap::new() };
-    for (x, bound) in assoc.x.typ_params.iter() {
+    let mut local = LocalCtxt { span: assoc.span.clone(), typ_params: Vec::new() };
+    for x in assoc.x.typ_params.iter() {
         local.typ_params.push(x.clone());
-        local.bounds.insert(x.clone(), bound.clone());
     }
     crate::ast_visitor::map_assoc_type_impl_visitor_env(assoc, state, &|state, typ| {
         simplify_one_typ(&local, state, typ)
@@ -853,9 +817,8 @@ fn mk_fun_decl(
             visibility: Visibility { owning_module: None, restricted_to: None },
             mode: Mode::Spec,
             fuel: 0,
-            typ_bounds: Arc::new(vec_map(typ_params, |x| {
-                (x.clone(), Arc::new(GenericBoundX::None))
-            })),
+            typ_params: typ_params.clone(),
+            typ_bounds: Arc::new(vec![]),
             params: params.clone(),
             ret: ret.clone(),
             require: Arc::new(vec![]),
@@ -875,6 +838,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         functions,
         datatypes,
         traits,
+        trait_impls,
         assoc_type_impls,
         module_ids,
         external_fns,
@@ -898,10 +862,8 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     for (arity, path) in tuples {
         let visibility = Visibility { restricted_to: None };
         let transparency = DatatypeTransparency::WhenVisible(visibility.clone());
-        let bound = Arc::new(GenericBoundX::Traits(vec![]));
         let acc = crate::ast::AcceptRecursiveType::RejectInGround;
-        let typ_params =
-            Arc::new((0..arity).map(|i| (prefix_tuple_param(i), bound.clone(), acc)).collect());
+        let typ_params = Arc::new((0..arity).map(|i| (prefix_tuple_param(i), acc)).collect());
         let mut fields: Vec<Field> = Vec::new();
         for i in 0..arity {
             let typ = Arc::new(TypX::TypParam(prefix_tuple_param(i)));
@@ -918,6 +880,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
             owning_module: None,
             transparency,
             typ_params,
+            typ_bounds: Arc::new(vec![]),
             variants,
             mode: Mode::Exec,
             ext_equal: arity > 0,
@@ -968,6 +931,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
             owning_module: None,
             transparency,
             typ_params,
+            typ_bounds: Arc::new(vec![]),
             variants,
             mode: Mode::Exec,
             ext_equal: false,
@@ -983,6 +947,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         functions,
         datatypes,
         traits,
+        trait_impls: trait_impls.clone(),
         assoc_type_impls,
         module_ids,
         external_fns,
@@ -992,7 +957,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     *ctx = crate::context::GlobalCtx::new(
         &krate,
         ctx.no_span.clone(),
-        ctx.inferred_modes.clone(),
+        ctx.inferred_modes.as_ref().clone(),
         ctx.rlimit,
         ctx.interpreter_log.clone(),
         ctx.vstd_crate_name.clone(),
@@ -1006,6 +971,7 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
         functions: Vec::new(),
         datatypes: Vec::new(),
         traits: Vec::new(),
+        trait_impls: Vec::new(),
         assoc_type_impls: Vec::new(),
         module_ids: Vec::new(),
         external_fns: Vec::new(),
@@ -1016,6 +982,7 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
         kratex.functions.extend(k.functions.clone());
         kratex.datatypes.extend(k.datatypes.clone());
         kratex.traits.extend(k.traits.clone());
+        kratex.trait_impls.extend(k.trait_impls.clone());
         kratex.assoc_type_impls.extend(k.assoc_type_impls.clone());
         kratex.module_ids.extend(k.module_ids.clone());
         kratex.external_fns.extend(k.external_fns.clone());

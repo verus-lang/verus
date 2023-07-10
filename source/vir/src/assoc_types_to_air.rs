@@ -51,19 +51,24 @@ pub fn assoc_type_decls_to_air(_ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
 pub fn assoc_type_impls_to_air(ctx: &Ctx, assocs: &Vec<AssocTypeImpl>) -> Commands {
     let mut commands: Vec<Command> = Vec::new();
     for assoc in assocs {
-        let AssocTypeImplX { name, typ_params, self_typ, trait_path, trait_typ_args, typ } =
-            &assoc.x;
-        let typ_params = Arc::new(typ_params.iter().map(|(x, _)| x.clone()).collect());
-        // forall typ_params. trait_path/name(decorate, self_typ, trait_typ_args) == typ
-        // Note: we assume here that the typ_params appear in self_typ,
-        // so that trait_path/name(decorate, self_typ, trait_typ_args) works as a trigger.
+        let AssocTypeImplX {
+            name,
+            impl_path: _,
+            typ_params,
+            typ_bounds: _,
+            trait_path,
+            trait_typ_args,
+            typ,
+        } = &assoc.x;
+        // forall typ_params. trait_path/name(decorate, trait_typ_args) == typ
+        // Note: we assume here that the typ_params appear in trait_typ_args,
+        // so that trait_path/name(decorate, trait_typ_args) works as a trigger.
         // Example:
         //   impl<A> T<u8, u16> for S<A> { type X = bool; }
         //   forall A. T/X(decorate, S<A>, u8, u16) == bool
         let mut push_command = |decorated: bool| {
             let projector = crate::def::projection(decorated, trait_path, name);
             let mut args: Vec<Expr> = Vec::new();
-            args.extend(typ_to_ids_if_undecorated(decorated, self_typ));
             for arg in trait_typ_args.iter() {
                 args.extend(typ_to_ids_if_undecorated(decorated, arg));
             }

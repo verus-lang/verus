@@ -490,3 +490,37 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_trait_impl_for_same_name_issue314 verus_code! {
+        pub trait Foo {
+            spec fn foo(&self) -> bool;
+        }
+
+        pub type MyType<T> = FnSpec(T) -> bool;
+
+        impl<T> Foo for MyType<T> {
+            spec fn foo(&self) -> bool {
+                true
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_broadcast_forall_import_issue471 ["no-auto-import-builtin"] => code! {
+        use builtin_macros::*;
+        #[allow(unused_imports)]
+        use vstd::{seq::*, seq_lib::*};
+
+        verus! {
+
+        proof fn weird_broadcast_failure(seq:Seq<usize>)
+        {
+            //seq_to_set_is_finite_broadcast::<usize>(seq);
+            assert(seq.to_set().finite());
+        }
+
+        }
+    } => Ok(())
+}

@@ -36,5 +36,18 @@ pub struct ExDuration(core::time::Duration);
 #[verifier::reject_recursive_types_in_ground_variants(V)]
 pub struct ExPhantomData<V: ?Sized>(core::marker::PhantomData<V>);
 
+#[verifier::external_fn_specification]
+pub fn ex_intrinsics_likely(b: bool) -> (c: bool)
+    ensures c == b
+{
+    core::intrinsics::likely(b)
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_intrinsics_unlikely(b: bool) -> (c: bool)
+    ensures c == b
+{
+    core::intrinsics::unlikely(b)
+}
 
 }

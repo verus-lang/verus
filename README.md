@@ -20,7 +20,8 @@ prepared to ask for help by filing GitHub issues.
 
 ## Try Verus
 
-Please follow our [installation instructions](INSTALL.md).
+To try Verus in your browser, please visit the [Verus Playground](https://play.verus-lang.org/).
+For more involved development, please follow our [installation instructions](INSTALL.md).
 Then you can dive into the documentation below, starting
 with the [📖 Tutorial and reference](https://verus-lang.github.io/verus/guide/).
 
@@ -40,7 +41,7 @@ Thanks for contributing to Verus! Please report issues or start discussions here
 We use GitHub discussions for feature requests and more open-ended conversations about
 upcoming features, and we reserve GitHub issues for actionable issues (bugs) with
 existing features. Don't worry though: if we think an issue should be a discussion (or
-viceversa) we can always move it later.
+vice versa) we can always move it later.
 
 We welcome contributions! If you'd like to contribute code, have a look at the tips in
 [Contributing to Verus](CONTRIBUTING.md).
