@@ -492,3 +492,54 @@ test_verify_one_file! {
 
     } => Err(err) => assert_fails(err, 4)
 }
+
+fn assert_spec_eq_type_err(err: TestErr, typ1: &str, typ2: &str) {
+    assert_eq!(err.errors.len(), 1);
+    let err0 = &err.errors[0];
+    assert!(err0.code.is_none());
+    assert!(err0.message.contains("mismatched types; types must be compatible to use == or !="));
+    assert_eq!(err0.spans.len(), 3);
+    assert_spans_contain(err0, typ1);
+    assert_spans_contain(err0, typ2);
+}
+
+test_verify_one_file! {
+    #[test] test_spec_eq_type_error_1 verus_code! {
+        fn test(a: u64, b: Option<u64>)
+            requires a == b { }
+    } => Err(err) => assert_spec_eq_type_err(err, "u64", "::Option<u64>")
+}
+
+test_verify_one_file! {
+    #[test] test_spec_eq_type_error_2 verus_code! {
+        fn test(a: u64, b: std::sync::Arc<Option<u64>>)
+            requires a == b { }
+    } => Err(err) => assert_spec_eq_type_err(err, "u64", "::Option<u64>")
+}
+
+test_verify_one_file! {
+    #[test] test_spec_eq_type_error_3 verus_code! {
+        fn test(a: u64, b: FnSpec(u64)->nat)
+            requires a == b { }
+    } => Err(err) => assert_spec_eq_type_err(err, "u64", "FnSpec(u64) -> nat")
+}
+
+test_verify_one_file! {
+    #[test] test_spec_eq_type_error_4 verus_code! {
+        trait A {
+            type AT;
+        }
+
+        fn test<X: A>(a: (u64, nat), b: <X as A>::AT)
+            requires a == b { }
+    } => Err(err) => assert_spec_eq_type_err(err, "(u64, nat)", "<X as crate::A>::AT")
+}
+
+test_verify_one_file! {
+    #[test] test_spec_eq_type_error_5 verus_code! {
+        fn test() {
+            let a = |x: i32| x + 3;
+            assert(a == 5);
+        }
+    } => Err(err) => assert_spec_eq_type_err(err, "nat", "AnonymousClosure(i32) -> i32")
+}

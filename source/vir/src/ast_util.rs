@@ -539,3 +539,60 @@ pub fn wrap_in_trigger(expr: &Expr) -> Expr {
         ExprX::Unary(UnaryOp::Trigger(TriggerAnnotation::Trigger(None)), expr.clone()),
     )
 }
+
+pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
+    fn typs_to_comma_separated_str(typs: &[Arc<TypX>]) -> String {
+        typs.iter().map(|t| typ_to_diagnostic_str(t)).collect::<Vec<_>>().join(", ")
+    }
+    match &**typ {
+        TypX::Bool => "bool".to_owned(),
+        TypX::Int(IntRange::Nat) => "nat".to_owned(),
+        TypX::Int(IntRange::Int) => "nat".to_owned(),
+        TypX::Int(IntRange::ISize) => "isize".to_owned(),
+        TypX::Int(IntRange::USize) => "usize".to_owned(),
+        TypX::Int(IntRange::U(n)) => format!("u{n}"),
+        TypX::Int(IntRange::I(n)) => format!("i{n}"),
+        TypX::Tuple(typs) => format!("({})", typs_to_comma_separated_str(typs)),
+        TypX::Lambda(atyps, rtyp) => format!(
+            "FnSpec({}) -> {}",
+            typs_to_comma_separated_str(atyps),
+            typ_to_diagnostic_str(rtyp)
+        ),
+        TypX::AnonymousClosure(atyps, rtyp, _) => format!(
+            "AnonymousClosure({}) -> {}",
+            typs_to_comma_separated_str(atyps),
+            typ_to_diagnostic_str(rtyp)
+        ),
+        TypX::Datatype(path, typs, _) => format!(
+            "{}{}",
+            path_as_friendly_rust_name(path),
+            if typs.len() > 0 {
+                format!("<{}>", typs_to_comma_separated_str(typs))
+            } else {
+                format!("")
+            }
+        ),
+        TypX::Decorate(decoration, typ) => {
+            format!("{:?}{}", decoration, typ_to_diagnostic_str(typ))
+        }
+        TypX::Boxed(typ) => typ_to_diagnostic_str(typ),
+        TypX::TypParam(ident) => (**ident).clone(),
+        TypX::Projection { trait_typ_args, trait_path, name } => {
+            let self_typ = typ_to_diagnostic_str(&trait_typ_args[0]);
+            format!(
+                "<{self_typ} as {}{}>::{name}",
+                path_as_friendly_rust_name(trait_path),
+                if trait_typ_args.len() > 1 {
+                    format!("<{}>", typs_to_comma_separated_str(&trait_typ_args[1..]))
+                } else {
+                    format!("")
+                }
+            )
+        }
+        TypX::TypeId => format!("typeid"),
+        TypX::ConstInt(_) => format!("constint"),
+        TypX::Air(_) => panic!("unexpected air type here"),
+        TypX::StrSlice => format!("StrSlice"),
+        TypX::Char => format!("char"),
+    }
+}
