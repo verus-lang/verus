@@ -8,7 +8,7 @@ use crate::rust_to_vir_expr::{
     check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir, extract_array, extract_tuple,
     get_fn_path, is_expr_typ_mut_ref, mk_ty_clip, pat_to_var, record_fun, ExprModifier,
 };
-use crate::util::{err_span, unsupported_err_span, vec_map, vec_map_result};
+use crate::util::{err_span, unsupported_err_span, vec_map, vec_map_result, vir_err_span_str};
 use crate::verus_items::{
     self, ArithItem, AssertItem, BinaryOpItem, ChainedItem, CompilableOprItem, DirectiveItem,
     EqualityItem, ExprItem, QuantItem, RustItem, SpecArithItem, SpecGhostTrackedItem, SpecItem,
@@ -32,7 +32,7 @@ use vir::ast::{
     IntegerTypeBoundKind, Mode, ModeCoercion, MultiOp, Quant, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
     VirErr,
 };
-use vir::ast_util::{const_int_from_string, types_equal, undecorate_typ};
+use vir::ast_util::{const_int_from_string, typ_to_diagnostic_str, types_equal, undecorate_typ};
 use vir::def::positional_field_ident;
 
 pub(crate) fn fn_call_to_vir<'tcx>(
@@ -825,7 +825,10 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                 {
                     true
                 } else {
-                    return err_span(expr.span, "types must be compatible to use == or !=");
+                    return Err(vir_err_span_str(expr.span, "mismatched types; types must be compatible to use == or !=")
+                        .secondary_label(&crate::spans::err_air_span(args[0].span), format!("this is `{}`", typ_to_diagnostic_str(&t1)))
+                        .secondary_label(&crate::spans::err_air_span(args[1].span), format!("this is `{}`", typ_to_diagnostic_str(&t2)))
+                        .help("decorations (like &,&mut,Ghost,Tracked,Box,Rc,...) are transparent for == or != in spec code"));
                 }
             }
             VerusItem::CompilableOpr(CompilableOprItem::Implies)

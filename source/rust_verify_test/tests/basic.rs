@@ -492,3 +492,20 @@ test_verify_one_file! {
 
     } => Err(err) => assert_fails(err, 4)
 }
+
+test_verify_one_file! {
+    #[test] test_spec_eq_type_error verus_code! {
+        fn test(a: u64, b: Option<u64>)
+            requires a == b
+        {
+        }
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 1);
+        let err0 = &err.errors[0];
+        assert!(err0.code.is_none());
+        assert!(err0.message.contains("mismatched types; types must be compatible to use == or !="));
+        assert_eq!(err0.spans.len(), 3);
+        assert!(err0.spans.iter().find(|s| s.label.is_some() && s.label.as_ref().unwrap().contains("u64")).is_some());
+        assert!(err0.spans.iter().find(|s| s.label.is_some() && s.label.as_ref().unwrap().contains("Option<u64>")).is_some());
+    }
+}
