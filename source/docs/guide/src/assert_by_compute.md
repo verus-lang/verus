@@ -98,5 +98,5 @@ with the naive definition of Fibonacci).  Such functions can be annotated with
 
 ## See Also
 
-1. The [test suite](../../../rust_verify/tests/assert_by_compute.rs) has a variety of small examples.
-2. We also have several [more complex examples](../../../rust_verify/example/assert_by_compute.rs).
+1. The [test suite](https://github.com/verus-lang/verus/blob/main/source/rust_verify_test/tests/assert_by_compute.rs) has a variety of small examples.
+2. We also have several [more complex examples](https://github.com/verus-lang/verus/blob/main/source/rust_verify/example/assert_by_compute.rs).

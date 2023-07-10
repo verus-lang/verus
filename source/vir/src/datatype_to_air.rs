@@ -65,7 +65,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
         }
-        TypX::Datatype(path, _) => ctx.datatype_map[path].x.ext_equal,
+        TypX::Datatype(path, _, _) => ctx.datatype_map[path].x.ext_equal,
         TypX::Decorate(_, t) => uses_ext_equal(ctx, t),
         TypX::Boxed(typ) => uses_ext_equal(ctx, typ),
         TypX::TypParam(_) => true,
@@ -147,7 +147,7 @@ fn datatype_or_fun_to_air_commands(
     let datatyp = if let Some(datatyp) = &datatyp {
         datatyp.clone()
     } else {
-        Arc::new(TypX::Datatype(dpath.clone(), typ_args.clone()))
+        Arc::new(TypX::Datatype(dpath.clone(), typ_args.clone(), Arc::new(vec![])))
     };
     let box_x = ident_apply(&prefix_box(&dpath), &vec![x_var.clone()]);
     let unbox_x = ident_apply(&prefix_unbox(&dpath), &vec![x_var.clone()]);
@@ -388,10 +388,14 @@ fn datatype_or_fun_to_air_commands(
     if add_height {
         for variant in variants.iter() {
             for field in variant.a.iter() {
+                use crate::recursive_types::TypNode;
                 let typ = &field.a.0;
                 let mut recursion_or_tparam = |t: &Typ| match &**t {
-                    TypX::Datatype(path, _)
-                        if ctx.global.datatype_graph.in_same_scc(path, dpath) =>
+                    TypX::Datatype(path, _, _)
+                        if ctx.global.datatype_graph.in_same_scc(
+                            &TypNode::Datatype(path.clone()),
+                            &TypNode::Datatype(dpath.clone()),
+                        ) =>
                     {
                         Err(())
                     }
@@ -415,7 +419,7 @@ fn datatype_or_fun_to_air_commands(
                 let fun_or_map_ret = {
                     match unboxed {
                         TypX::Lambda(_, ret) => Some(ret),
-                        TypX::Datatype(d, targs)
+                        TypX::Datatype(d, targs, _)
                             if crate::ast_util::path_as_vstd_name(d)
                                 == Some("map::Map".to_string())
                                 && targs.len() == 2 =>
@@ -447,7 +451,8 @@ fn datatype_or_fun_to_air_commands(
                     //   struct MyFun<A, B>(FnSpec(A) -> B);
                     // TODO: allow recursive_function_field across mutually recursive datatypes
                     // that have type parameters (e.g. by inlining the recursive types).
-                    let our_typ = Arc::new(TypX::Datatype(dpath.clone(), typ_args.clone()));
+                    let our_typ =
+                        Arc::new(TypX::Datatype(dpath.clone(), typ_args.clone(), Arc::new(vec![])));
                     use crate::visitor::VisitorControlFlow;
                     let mut visitor = |t: &Typ| -> VisitorControlFlow<()> {
                         if crate::ast_util::types_equal(t, &our_typ) {
@@ -523,10 +528,14 @@ fn datatype_or_fun_to_air_commands(
                 pre.push(ident_apply(&vid, &vec![unbox_y.clone()]));
             }
             for field in variant.a.iter() {
+                use crate::recursive_types::TypNode;
                 let (typ, _, _) = &field.a;
                 let mut is_recursive = |t: &Typ| match &**t {
-                    TypX::Datatype(path, _)
-                        if ctx.global.datatype_graph.in_same_scc(path, dpath) =>
+                    TypX::Datatype(path, _, _)
+                        if ctx.global.datatype_graph.in_same_scc(
+                            &TypNode::Datatype(path.clone()),
+                            &TypNode::Datatype(dpath.clone()),
+                        ) =>
                     {
                         Err(())
                     }
@@ -662,7 +671,7 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
         }
 
         let mut tparams: Vec<Ident> = Vec::new();
-        for (name, _bound, _strict_pos) in datatype.x.typ_params.iter() {
+        for (name, _strict_pos) in datatype.x.typ_params.iter() {
             tparams.push(name.clone());
         }
 

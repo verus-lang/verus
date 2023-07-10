@@ -206,7 +206,7 @@ fn run() -> Result<(), String> {
             return Err(format!("rustup failed"));
         }
         let active_toolchain_re = Regex::new(
-            r"^(([A-Za-z0-9.]+)-[A-Za-z0-9_]+-[A-Za-z0-9]+-[A-Za-z0-9-]+) \(overridden by '(.*)'\)",
+            r"^(([A-Za-z0-9.-]+)-[A-Za-z0-9_]+-[A-Za-z0-9]+-[A-Za-z0-9-]+) \(overridden by '(.*)'\)",
         )
         .unwrap();
         let stdout = std::str::from_utf8(&output.stdout)
@@ -480,6 +480,7 @@ fn run() -> Result<(), String> {
                 let cargo = cargo
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VARGO_TARGET_DIR", target_verus_dir_absolute)
+                    .env("RUSTFLAGS", "--cfg proc_macro_span")
                     .args(&args);
                 log_command(&cargo, verbose);
                 let status = cargo
@@ -517,6 +518,7 @@ fn run() -> Result<(), String> {
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VARGO_IN_NEXTEST", "1")
                     .env("VERUS_IN_VARGO", "1")
+                    .env("RUSTFLAGS", "--cfg proc_macro_span")
                     .env("CARGO", current_exe)
                     .args(&args);
                 log_command(&cargo, verbose);
@@ -529,6 +531,7 @@ fn run() -> Result<(), String> {
                 let cargo = cargo
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VERUS_IN_VARGO", "1")
+                    .env("RUSTFLAGS", "--cfg proc_macro_span")
                     .args(&args);
                 log_command(&cargo, verbose);
                 let status = cargo
@@ -542,6 +545,7 @@ fn run() -> Result<(), String> {
             let cargo = cargo
                 .env("RUSTC_BOOTSTRAP", "1")
                 .env("VERUS_IN_VARGO", "1")
+                .env("RUSTFLAGS", "--cfg proc_macro_span")
                 .args(&args);
             log_command(&cargo, verbose);
             cargo
@@ -560,6 +564,7 @@ fn run() -> Result<(), String> {
             let cargo = cargo
                 .env("RUSTC_BOOTSTRAP", "1")
                 .env("VERUS_IN_VARGO", "1")
+                .env("RUSTFLAGS", "--cfg proc_macro_span")
                 .args(args);
             log_command(&cargo, verbose);
             let status = cargo
@@ -592,6 +597,7 @@ fn run() -> Result<(), String> {
                     let mut cmd = cmd
                         .env("RUSTC_BOOTSTRAP", "1")
                         .env("VERUS_IN_VARGO", "1")
+                        .env("RUSTFLAGS", "--cfg proc_macro_span")
                         .arg("build")
                         .arg("-p")
                         .arg(target);
@@ -762,6 +768,7 @@ fn run() -> Result<(), String> {
                         let mut vstd_build = vstd_build
                             .env("RUSTC_BOOTSTRAP", "1")
                             .env("VERUS_IN_VARGO", "1")
+                            .env("RUSTFLAGS", "--cfg proc_macro_span")
                             .arg("run")
                             .arg("-p")
                             .arg("vstd_build")

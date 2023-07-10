@@ -41,7 +41,7 @@ Thanks for contributing to Verus! Please report issues or start discussions here
 We use GitHub discussions for feature requests and more open-ended conversations about
 upcoming features, and we reserve GitHub issues for actionable issues (bugs) with
 existing features. Don't worry though: if we think an issue should be a discussion (or
-viceversa) we can always move it later.
+vice versa) we can always move it later.
 
 We welcome contributions! If you'd like to contribute code, have a look at the tips in
 [Contributing to Verus](CONTRIBUTING.md).

@@ -122,7 +122,9 @@ pub exec fn u64_from_le_bytes(s: &[u8]) -> (x:u64)
 
 #[verifier(external_body)]
 pub exec fn u64_to_le_bytes(x: u64) -> (s: Vec<u8>)
-  ensures s@ == spec_u64_to_le_bytes(x),
+  ensures 
+    s@ == spec_u64_to_le_bytes(x),
+    s@.len() == 8,
 {
   x.to_le_bytes().to_vec()
 }

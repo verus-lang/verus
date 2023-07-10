@@ -2,10 +2,6 @@ name: ci
 
 on:
   push:
-    paths-ignore:
-      - 'README.md'
-      - 'source/CODE.md'
-      - 'source/docs/**'
 
   workflow_dispatch:
 
