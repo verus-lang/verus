@@ -1,4 +1,4 @@
-**NOTE: if you area a Verus user, refer to https://verus-lang.github.io/verus/guide/features.html instead.**
+**NOTE: if you are a Verus user, refer to https://verus-lang.github.io/verus/guide/features.html instead.**
 
 This document describes which features of Rust are currently supported by the verifier,
 relative to the full set of Rust features described in [The Rust Reference](https://doc.rust-lang.org/reference/).
