@@ -482,6 +482,7 @@ fn output_step_datatype(
 
     root_stream.extend(quote! {
         #[allow(non_camel_case_types)]
+        #[::builtin_macros::is_variant]
         pub enum #type_ident#generics {
             #(#variants,)*
             // We add this extra variant with the self_ty in order to avoid
