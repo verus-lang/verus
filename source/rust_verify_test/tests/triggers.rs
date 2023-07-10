@@ -134,6 +134,21 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_arith_with_inline verus_code! {
+        #[verifier(inline)]
+        spec fn some_arith(a: nat, b: nat) -> nat {
+            a + b
+        }
+
+        proof fn quant()
+            ensures forall|a: nat, b: nat| (#[trigger] some_arith(a, b)) == 0
+        {
+            assume(false)
+        }
+    } => Err(err) => assert_vir_error_msg(err, "variable `a` in trigger cannot appear in both arithmetic and non-arithmetic positions")
+}
+
+test_verify_one_file! {
     #[test] test_arith_and_ord verus_code! {
         proof fn quant()
             ensures forall_arith(|a: nat, b: nat, c: nat| #[trigger] (a + b <= c))

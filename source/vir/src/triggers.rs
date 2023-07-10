@@ -59,6 +59,8 @@ fn preprocess_exp(exp: &Exp) -> Exp {
 // in AST which quantifier variables are Poly and which are native,
 // and only later in SST do we have all the information (e.g. inlining results)
 // to tell whether this decision was correct.
+// See test test_arith_with_inline in triggers.rs for an example of a case
+// in which this prediction is incorrect.
 pub(crate) fn predict_native_quant_vars(
     bs: &Binders<Typ>,
     body: &crate::ast::Expr,
