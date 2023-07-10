@@ -461,12 +461,13 @@ pub proof fn axiom_seq_drop_contains<A>(s: Seq<A>, n: int, x: A)
 {}
 
 // PROBLEMATIC, made a proof in pervasive/bytes fail
-// #[verifier(external_body)]
-// #[verifier(broadcast_forall)]
-// pub proof fn axiom_seq_drop_index<A>(s: Seq<A>, n: int, j: int)
-//     ensures
-//         0 <=n && 0<= j < (s.len() - n) ==> #[trigger] s.drop(n)[j] == s[j+n],
-// {}
+// fixed with making spec functions in bytes.rs opaque
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_drop_index<A>(s: Seq<A>, n: int, j: int)
+    ensures
+        0 <=n && 0<= j < (s.len() - n) ==> #[trigger] s.drop(n)[j] == s[j+n],
+{}
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]

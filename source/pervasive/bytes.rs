@@ -13,6 +13,7 @@ use crate::slice::*;
 
 verus! {
 
+#[verifier(opaque)]
 pub closed spec fn spec_u64_to_le_bytes(x: u64) -> Seq<u8>
 {
   seq![
@@ -27,6 +28,7 @@ pub closed spec fn spec_u64_to_le_bytes(x: u64) -> Seq<u8>
   ]
 }
 
+#[verifier(opaque)]
 pub closed spec fn spec_u64_from_le_bytes(s: Seq<u8>) -> u64
   recommends s.len() == 8
 {
@@ -53,6 +55,8 @@ pub proof fn lemma_auto_spec_u64_to_from_le_bytes()
       #![trigger spec_u64_to_le_bytes(spec_u64_from_le_bytes(s))]
       s.len() == 8 ==> spec_u64_to_le_bytes(spec_u64_from_le_bytes(s)) == s,
 {
+  reveal(spec_u64_to_le_bytes);
+  reveal(spec_u64_from_le_bytes);
   assert forall |x: u64|  {
     &&& #[trigger] spec_u64_to_le_bytes(x).len() == 8
     &&& spec_u64_from_le_bytes(spec_u64_to_le_bytes(x)) == x
