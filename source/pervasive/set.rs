@@ -412,8 +412,8 @@ pub proof fn axiom_set_empty_len<A>()
 #[verifier(broadcast_forall)]
 pub proof fn axiom_set_empty_equivalency_len<A>(s: Set<A>)
     ensures
-        (#[trigger] s.len() == 0 <==> s =~= Set::empty())
-        && s.len() != 0 ==> exists |x: A| s.contains(x),
+        #[trigger] s.len() == 0 <==> s =~= Set::empty(),
+        s.len() != 0 ==> exists |x: A| s.contains(x)
 {}
 
 #[verifier(external_body)]

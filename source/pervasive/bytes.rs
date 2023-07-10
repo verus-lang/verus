@@ -40,6 +40,7 @@ pub closed spec fn spec_u64_from_le_bytes(s: Seq<u8>) -> u64
   (s[7] as u64) << 56
 }
 
+#[verifier(spinoff_prover)]
 pub proof fn lemma_auto_spec_u64_to_from_le_bytes()
   ensures
     forall |x: u64|
