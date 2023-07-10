@@ -1,3 +1,5 @@
+unset -f cargo
+
 # Determine the directory that this script is in
 if [ "$BASH_VERSION" ]; then
   SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
@@ -15,3 +17,8 @@ echo "building vargo"
 ) || return 1
 
 export PATH="$SCRIPT_DIR/vargo/target/release:$PATH"
+
+function cargo {
+  echo "when working on Verus do not use cargo directly, use vargo instead"
+  echo "if you need to, you can still access cargo directly by starting a new shell without running the activate command"
+}
