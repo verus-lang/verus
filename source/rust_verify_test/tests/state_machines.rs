@@ -7037,3 +7037,43 @@ test_verify_one_file! {
 
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] step_is_variant verus_code! {
+        use state_machines_macros::state_machine;
+
+        state_machine! { X {
+            fields {
+                pub number: int,
+            }
+
+            init!{
+                initialize() {
+                    init number = 0;
+                }
+            }
+
+            transition!{
+                add(n: int) {
+                    update number = pre.number + 2*n;
+                }
+            }
+
+            transition!{
+                sub(n: int) {
+                    update number = pre.number - 2*n;
+                }
+            }
+        }}
+
+        proof fn test(s: X::Step)
+            requires s.is_add(),
+        {
+            match s {
+                X::Step::add(_) => assert(true),
+                X::Step::sub(_) => assert(false),
+                _ => {},
+            }
+        }
+    } => Ok(())
+}
