@@ -549,7 +549,7 @@ impl<A> Seq<Seq<A>>{
     {
         if self.len() == 0 {Seq::empty()}
         else {
-            self[0].add(self.subrange(1,self.len() as int).flatten())
+            self[0].add(self.drop_first().flatten())
         }
     }
 
@@ -559,9 +559,11 @@ impl<A> Seq<Seq<A>>{
         decreases self.len()
     {
         if self.len() == 0 {Seq::empty()}
-        else {self.drop_last().flatten_reverse().add(self.last())}
+        else {
+            self.drop_last().flatten_reverse().add(self.last())
+            //self.reverse().flatten()}
+        }
     }
-
 }
 
 /// The concatenation of two subsequences of a non-empty sequence, the first obtained 
@@ -830,28 +832,10 @@ pub proof fn lemma_unzip_properties<A,B>(s: Seq<(A,B)>)
     }
 }
 
-// pub proof fn lemma_zip_of_unzip<A,B>(s: Seq<(A,B)>)
-//     ensures s.unzip().0.zip_with(s.unzip().1) =~= s,
-//     decreases s.len(),
-// {
-//     if s.len() <= 0 {}
-//     else {
-//         lemma_unzip_properties(s);
-//         assert(s.len() > 0);
-//         assert(s.unzip().0.len() == s.unzip().1.len());
-//         assert(s.unzip().0.last() == s.last().0);
-//         assert(s.unzip().1.last() == s.last().1);
-//         lemma_zip_of_unzip(s.drop_last());
-//         assert(s.drop_last().unzip().0.zip_with(s.drop_last().unzip().1) =~= s.drop_last());
-//         assert((s.unzip().0.last(),s.unzip().1.last()) == s.last());
-//         assert(s.drop_last().unzip().0.push(s.unzip().0.last()) =~= s.unzip().0);
-//         assert(s.drop_last().unzip().1.push(s.unzip().1.last()) =~= s.unzip().1);
-//         assert((s.unzip().0, s.unzip().1) == s.unzip());
-//         assert(s.unzip().0.zip_with(s.unzip().1) =~= s);
-
-//     }
-    
-// }
+pub proof fn lemma_zip_of_unzip<A,B>(s: Seq<(A,B)>)
+    ensures s.unzip().0.zip_with(s.unzip().1) =~= s,
+    decreases s.len(),
+{}
 
 pub proof fn lemma_max_properties<A>(s: Seq<A>, leq: FnSpec(A,A) ->bool)
     requires
@@ -1046,6 +1030,29 @@ pub proof fn lemma_no_dup_in_concat<A>(a: Seq<A>, b: Seq<A>)
     ensures
         #[trigger] (a+b).no_duplicates(),
 {}
+
+/// Flattening sequences of sequences in reverse order is distributive over concatentation. 
+/// That is, concatenating the flattening of two sequences of sequences in reverse 
+/// order is the same as flattening the concatenation of two sequences of sequences
+/// in reverse order.
+pub proof fn lemma_flatten_reverse_concat<A>(x: Seq<Seq<A>>, y: Seq<Seq<A>>)
+    ensures (x+y).flatten_reverse() =~= x.flatten_reverse() + y.flatten_reverse()
+{
+    if y.len() == 0 {
+        assert(y.flatten_reverse() == Seq::<A>::empty());
+        assert(x+y =~= x);
+    } else {
+        assert((x+y).last() == y.last());
+        lemma_append_last(x,y);
+        lemma_add_last_back(x+y);
+        assert((x+y).drop_last() =~= x + y.drop_last());
+        assert((x+y).flatten_reverse() =~= (x + y.drop_last()).flatten_reverse() + y.last());
+        assert((x + y.drop_last()).flatten_reverse() + y.last() =~= 
+            x.flatten_reverse() + y.drop_last().flatten_reverse() + y.last());
+        assert(x.flatten_reverse() + y.drop_last().flatten_reverse() + y.last() 
+                =~= x.flatten_reverse() + y.flatten_reverse());
+    }
+}
 
 #[doc(hidden)]
 #[verifier(inline)]

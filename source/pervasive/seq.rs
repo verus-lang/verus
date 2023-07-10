@@ -51,6 +51,15 @@ impl<A> Seq<A> {
         Self::empty().push(elt)
     }
 
+    /// Returns a constant sequence of a given length
+    spec fn fill(val: A, length: nat) -> Seq<A>
+    {
+        if length <= 0 {Self::empty()}
+        else {
+           Self::new(length, |i: int| val)
+        }
+    }
+
     /// The length of a sequence.
 
     #[rustc_diagnostic_item = "verus::pervasive::seq::Seq::len"]
@@ -399,7 +408,9 @@ pub proof fn axiom_seq_concat_contains_all_elements<A>(x: Seq<A>, y: Seq<A>, elt
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_seq_contains_after_push<A>(s: Seq<A>, v: A, x: A)
-    ensures #[trigger] s.push(v).contains(x) <==> v==x || s.contains(x),
+    ensures 
+        #[trigger] s.push(v).contains(x) <==> v==x || s.contains(x),
+        #[trigger] s.push(v).contains(v),
 {}
 
 #[verifier(external_body)]
