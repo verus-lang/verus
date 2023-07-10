@@ -24,7 +24,7 @@ verification results.
 **Quantifiers:** Proving theorems with quantifiers (`exists` and `forall`) is
 in general undecidable. For Verus, we rely on Z3's pattern-based instantiation
 of quantifiers ("triggers") to use and prove formulas with quantifiers. See the
-section on [triggers](triggers.md) for more details.
+section on [forall and triggers](forall.md) for more details.
 
 **Opaque and closed functions:** Verification conditions by default hide the
 bodies of opaque and closed functions; revealing those bodies might make
@@ -44,12 +44,16 @@ infinitely many _not_ in the program at all) and because each proof involves
 quantifiers and is reasonably expensive. The result is that a proof may start
 working if you add an equality assertion: the assertion explicitly asks Z3 to
 prove and use an equality.
+See [extensional equality](extensional_equality.md) for how to use the
+extensional equality operators `=~=` and `=~~=`.
 
 **Incomplete axioms:** The standard library includes datatypes like `Map` and
 `Seq` that are implemented using axioms that describe their expected
 properties. These axioms might be incomplete; there may be a property that you
 intuitively expect a map or sequence to satisfy but which isn't implied by the
 axioms, or which is implied but requires a proof by induction.
+If you think this is the case, please open an issue or a pull request adding
+the missing axiom.
 
 **Slow proofs:** Z3 may be able to find a proof but it would simply take too
 long. We limit how long Z3 runs (using its resource limit or "rlimit" feature
