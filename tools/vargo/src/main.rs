@@ -298,7 +298,10 @@ fn run() -> Result<(), String> {
         .is_some();
 
     match util::version_info(&repo_root) {
-        Ok(version_info) => std::env::set_var("VARGO_BUILD_VERSION", version_info),
+        Ok(version_info) => {
+            std::env::set_var("VARGO_BUILD_VERSION", version_info.version);
+            std::env::set_var("VARGO_BUILD_SHA", version_info.sha);
+        }
         Err(err) => {
             warn(
                 format!("could not obtain version info from git, this will result in a binary with an unknown version: {}", err).as_str()

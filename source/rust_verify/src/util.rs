@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use rustc_span::Span;
 use vir::ast::VirErr;
 use vir::ast_util::error as vir_error;
@@ -124,7 +126,13 @@ const fn verus_build_profile() -> VerusBuildProfile {
 pub struct VerusBuildInfo {
     pub profile: VerusBuildProfile,
     pub version: &'static str,
+    pub platform_os: &'static str,
+    pub platform_arch: &'static str,
+    pub toolchain: &'static str,
+    pub sha: &'static str,
 }
+
+const VARGO_TOOLCHAIN: Option<&'static str> = option_env!("VARGO_TOOLCHAIN");
 
 pub const fn verus_build_info() -> VerusBuildInfo {
     let profile = verus_build_profile();
@@ -132,7 +140,45 @@ pub const fn verus_build_info() -> VerusBuildInfo {
         Some(v) => v,
         None => "Unknown",
     };
-    VerusBuildInfo { profile, version }
+    let platform_os = std::env::consts::OS;
+    let platform_arch = std::env::consts::ARCH;
+    let toolchain = match VARGO_TOOLCHAIN {
+        Some(toolchain) => toolchain,
+        None => "unkown",
+    };
+    let sha = match option_env!("VARGO_BUILD_SHA") {
+        Some(v) => v,
+        None => "Unknown",
+    };
+    VerusBuildInfo { profile, version, platform_os, platform_arch, toolchain, sha }
+}
+
+impl Display for VerusBuildInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Verus")?;
+        writeln!(f, "  Version: {}", self.version)?;
+        writeln!(f, "  Profile: {}", self.profile)?;
+        writeln!(f, "  Platform: {}_{}", self.platform_os, self.platform_arch)?;
+        writeln!(f, "  Toolchain: {}", self.toolchain)?;
+        Ok(())
+    }
+}
+
+impl VerusBuildInfo {
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "verus": {
+                "profile": self.profile.to_string(),
+                "version": self.version.to_string(),
+                "platform": {
+                    "os": self.platform_os.to_string(),
+                    "arch": self.platform_arch.to_string(),
+                },
+                "toolchain": self.toolchain.to_string(),
+                "commit": self.sha,
+            }
+        })
+    }
 }
 
 // ==================================================================================================
