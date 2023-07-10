@@ -63,6 +63,7 @@ enum Ghost {
 //     so when we first reach e + 1, we don't yet know that "<"'s right side is spec
 // Therefore, we use Cell to delay the decision about the erasure expected mode of e + 1.
 type ErasureMode = std::rc::Rc<ErasureModeX>;
+#[derive(Debug)]
 enum ErasureModeX {
     Mode(std::cell::Cell<Option<Mode>>),
     Join(ErasureMode, ErasureMode),
@@ -836,7 +837,7 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(typing, Mode::Spec, body, Mode::Spec)?;
             Ok(Mode::Spec)
         }
-        ExprX::Assign { init_not_mut, lhs, rhs } => {
+        ExprX::Assign { init_not_mut, lhs, rhs, op } => {
             if typing.in_forall_stmt {
                 return error(&expr.span, "assignment is not allowed in 'assert ... by' statement");
             }
@@ -848,6 +849,10 @@ fn check_expr_handle_mut_arg(
                 );
             }
             check_expr_has_mode(typing, outer_mode, rhs, x_mode)?;
+            if let Some(BinaryOp::Arith(_, Some(id))) = op {
+                assert!(!typing.inferred_modes.contains_key(id));
+                typing.inferred_modes.insert(*id, erasure_mode.clone());
+            }
             Ok(x_mode)
         }
         ExprX::Fuel(_, _) => {

@@ -8,6 +8,8 @@ use crate::ast::{
     Ident, IntRange, Krate, KrateX, Mode, MultiOp, Path, Pattern, PatternX, SpannedTyped, Stmt,
     StmtX, Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
 };
+use crate::ast_util::int_range_from_type;
+use crate::ast_util::is_integer_type;
 use crate::ast_util::{conjoin, disjoin, if_then_else};
 use crate::ast_util::{error, wrap_in_trigger};
 use crate::context::GlobalCtx;
@@ -425,6 +427,53 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
                     external_spec,
                 },
             ))
+        }
+        ExprX::Assign { init_not_mut, lhs, rhs, op: Some(op) } => {
+            match &lhs.x {
+                ExprX::VarLoc(id) => {
+                    // convert VarLoc to Var to be used on the RHS
+                    let var = SpannedTyped::new(&lhs.span, &lhs.typ, ExprX::Var(id.clone()));
+                    // insert clipping if the lhs is an integer
+                    let new_rhs = if is_integer_type(&lhs.typ) {
+                        let range = int_range_from_type(&lhs.typ)
+                            .expect("integer types are expected to have a range");
+                        SpannedTyped::new(
+                            &expr.span,
+                            &lhs.typ,
+                            ExprX::Unary(
+                                // REVIEW:
+                                // right now, we are not taking into accound any "verifier(truncate)" annotations
+                                // that may be present in this expression; instead, we always truncate. In the future,
+                                // we may want to revisit this and make it consistent with what happens in regular
+                                // binary expressions.
+                                UnaryOp::Clip { range: range, truncate: true },
+                                SpannedTyped::new(
+                                    &expr.span,
+                                    &lhs.typ,
+                                    ExprX::Binary(op.clone(), var, rhs.clone()),
+                                ),
+                            ),
+                        )
+                    } else {
+                        SpannedTyped::new(
+                            &expr.span,
+                            &lhs.typ,
+                            ExprX::Binary(op.clone(), var, rhs.clone()),
+                        )
+                    };
+                    Ok(SpannedTyped::new(
+                        &expr.span,
+                        &expr.typ,
+                        ExprX::Assign {
+                            init_not_mut: *init_not_mut,
+                            lhs: lhs.clone(),
+                            rhs: new_rhs,
+                            op: None,
+                        },
+                    ))
+                }
+                _ => error(&lhs.span, "not yet implemented: lhs of compound assignment"),
+            }
         }
         _ => Ok(expr.clone()),
     }

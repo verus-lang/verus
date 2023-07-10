@@ -429,3 +429,66 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_rust_error_msg(e, "cannot find value `i`")
 }
+
+test_verify_one_file! {
+    #[test] test_compound_assign verus_code! {
+        fn test1(y: &mut u32) {
+            let mut x: i32 = 1;
+            x += 2;
+            assert({ x == 3 as i32 });
+            *y /= 2;
+            assert({ *y == *old(y)/2 });
+        }
+
+        proof fn test2a() {
+            let mut x: u8 = 200;
+            x = (x + 100u8) as u8;
+            assert(x < 256);
+        }
+
+        proof fn test2b() {
+            let mut x: u8 = 200;
+            x += 100u8;
+            assert(x < 256);
+        }
+
+        fn test3a() {
+            let mut x: u8 = 200;
+            x = x / (x + 1);
+            assert(x < 256);
+        }
+
+        fn test3b() {
+            let mut x: u8 = 200;
+            x /= (x + 1);
+            assert(x < 256);
+        }
+
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_compound_assign_fail verus_code! {
+        fn test1(x: &mut u32, y: u32) {
+            *x /= y; // FAILS
+        }
+
+        fn test2(x: i8) {
+            let mut x = x;
+            x += 1; // FAILS
+        }
+
+        fn test3a() {
+            let mut x: u8 = 200;
+            x = x + 100u8; // FAILS
+            assert(x < 256);
+        }
+
+        fn test3b() {
+            let mut x: u8 = 200;
+            x += 100u8; // FAILS
+            assert(x < 256);
+        }
+
+    } => Err(err) => assert_fails(err, 4)
+}
