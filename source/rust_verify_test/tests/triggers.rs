@@ -118,7 +118,7 @@ test_verify_one_file! {
                 forall|a: nat, b: nat, c: nat| #[trigger] ((a + b + f(c)) * c) == a * c + b * c
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "variable c in trigger cannot appear in both arithmetic and non-arithmetic positions")
+    } => Err(err) => assert_vir_error_msg(err, "variable `c` in trigger cannot appear in both arithmetic and non-arithmetic positions")
 }
 
 test_verify_one_file! {
@@ -130,7 +130,7 @@ test_verify_one_file! {
                 forall|a: nat, b: nat, c: nat| #[trigger] t(c) ==> #[trigger] ((a + b) * c) == a * c + b * c
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "variable c in trigger cannot appear in both arithmetic and non-arithmetic positions")
+    } => Err(err) => assert_vir_error_msg(err, "variable `c` in trigger cannot appear in both arithmetic and non-arithmetic positions")
 }
 
 test_verify_one_file! {

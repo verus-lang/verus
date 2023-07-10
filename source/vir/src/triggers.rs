@@ -126,7 +126,7 @@ fn check_trigger_expr_arg(state: &State, expect_boxed: bool, arg: &Exp) -> Resul
                         error(
                             &arg.span,
                             format!(
-                                "variable {} in trigger cannot appear in both arithmetic and non-arithmetic positions",
+                                "variable `{}` in trigger cannot appear in both arithmetic and non-arithmetic positions",
                                 crate::def::user_local_name(&x.name)
                             ),
                         )
