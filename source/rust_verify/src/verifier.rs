@@ -766,15 +766,15 @@ impl Verifier {
             module_path,
             diagnostics,
             &mut air_context,
-            &datatype_commands,
-            &("Datatypes".to_string()),
+            &assoc_type_decl_commands,
+            &("Associated-Type-Decls".to_string()),
         );
         self.run_commands(
             module_path,
             diagnostics,
             &mut air_context,
-            &assoc_type_decl_commands,
-            &("Associated-Type-Decls".to_string()),
+            &datatype_commands,
+            &("Datatypes".to_string()),
         );
         self.run_commands(
             module_path,
@@ -830,6 +830,16 @@ impl Verifier {
             ));
         }
 
+        let assoc_type_decl_commands =
+            vir::assoc_types_to_air::assoc_type_decls_to_air(ctx, &krate.traits);
+        self.run_commands(
+            module,
+            reporter,
+            &mut air_context,
+            &assoc_type_decl_commands,
+            &("Associated-Type-Decls".to_string()),
+        );
+
         let datatype_commands = vir::datatype_to_air::datatypes_to_air(
             ctx,
             &krate
@@ -845,16 +855,6 @@ impl Verifier {
             &mut air_context,
             &datatype_commands,
             &("Datatypes".to_string()),
-        );
-
-        let assoc_type_decl_commands =
-            vir::assoc_types_to_air::assoc_type_decls_to_air(ctx, &krate.traits);
-        self.run_commands(
-            module,
-            reporter,
-            &mut air_context,
-            &assoc_type_decl_commands,
-            &("Associated-Type-Decls".to_string()),
         );
 
         let assoc_type_impl_commands =
