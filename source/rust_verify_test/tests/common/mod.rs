@@ -439,3 +439,13 @@ pub fn assert_rust_error_msg(err: TestErr, expected_msg: &str) {
     assert!(err.errors[0].code.as_ref().map(|x| error_re.is_match(&x.code)) == Some(true)); // thus a Rust error
     assert!(err.errors[0].message.contains(expected_msg));
 }
+
+#[allow(dead_code)]
+pub fn assert_spans_contain(err: &Diagnostic, needle: &str) {
+    assert!(
+        err.spans
+            .iter()
+            .find(|s| s.label.is_some() && s.label.as_ref().unwrap().contains(needle))
+            .is_some()
+    );
+}

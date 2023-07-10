@@ -541,7 +541,7 @@ pub fn wrap_in_trigger(expr: &Expr) -> Expr {
 }
 
 pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
-    fn typs_to_comma_separated_str(typs: &Typs) -> String {
+    fn typs_to_comma_separated_str(typs: &[Arc<TypX>]) -> String {
         typs.iter().map(|t| typ_to_diagnostic_str(t)).collect::<Vec<_>>().join(", ")
     }
     match &**typ {
@@ -577,15 +577,18 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         }
         TypX::Boxed(typ) => typ_to_diagnostic_str(typ),
         TypX::TypParam(ident) => (**ident).clone(),
-        TypX::Projection { trait_typ_args, trait_path, name } => format!(
-            "{name} as {}{}",
-            path_as_friendly_rust_name(trait_path),
-            if trait_typ_args.len() > 0 {
-                format!("<{}>", typs_to_comma_separated_str(trait_typ_args))
-            } else {
-                format!("")
-            }
-        ),
+        TypX::Projection { trait_typ_args, trait_path, name } => {
+            let self_typ = typ_to_diagnostic_str(&trait_typ_args[0]);
+            format!(
+                "<{self_typ} as {}{}>::{name}",
+                path_as_friendly_rust_name(trait_path),
+                if trait_typ_args.len() > 1 {
+                    format!("<{}>", typs_to_comma_separated_str(&trait_typ_args[1..]))
+                } else {
+                    format!("")
+                }
+            )
+        }
         TypX::TypeId => format!("typeid"),
         TypX::ConstInt(_) => format!("constint"),
         TypX::Air(_) => panic!("unexpected air type here"),
