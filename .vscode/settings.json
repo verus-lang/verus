@@ -1,7 +1,8 @@
 {
     "rust-analyzer.cargo.buildScripts.enable": true,
     "rust-analyzer.cargo.extraEnv": {
-        "RUSTC_BOOTSTRAP": "1"
+        "RUSTC_BOOTSTRAP": "1",
+        "RUSTFLAGS": "--cfg proc_macro_span"
     },
     "rust-analyzer.runnableEnv": {
         "RUSTC_BOOTSTRAP": "1"
