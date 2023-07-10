@@ -1,4 +1,4 @@
-NOTE: this page should be replaced by section "Supported rust features" in the [guide](https://verus-lang.github.io/verus/guide/getting_started.html).
+**NOTE: this page should be replaced by section "Supported rust features" in the [guide](https://verus-lang.github.io/verus/guide/getting_started.html).**
 
 This document describes which features of Rust are currently supported by the verifier,
 relative to the full set of Rust features described in [The Rust Reference](https://doc.rust-lang.org/reference/).
