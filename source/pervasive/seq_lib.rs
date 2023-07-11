@@ -176,27 +176,26 @@ impl<A> Seq<A> {
     }
 
     /// Returns the maximum value in a non-empty sequence, given sorting function leq
-    pub open spec fn max(self, leq: FnSpec(A,A) ->bool) -> A
+    pub open spec fn max_general(self, leq: FnSpec(A,A) ->bool) -> A
        recommends self.len() > 0,
        decreases self.len(),
     {
         if self.len() > 1 {
-            //let elt = self.subrange(1,self.len() as int).max(leq);
-            if leq(self[0],self.subrange(1,self.len() as int).max(leq)) {
-                self.subrange(1,self.len() as int).max(leq)
+            if leq(self[0],self.subrange(1,self.len() as int).max_general(leq)) {
+                self.subrange(1,self.len() as int).max_general(leq)
             }
             else {self[0]}
         } else {self[0]}
     }
 
     /// Returns the minimum value in a non-empty sequence, given sorting function leq
-    pub open spec fn min(self, leq: FnSpec(A,A) ->bool) -> A
+    pub open spec fn min_general(self, leq: FnSpec(A,A) ->bool) -> A
        recommends self.len() > 0,
        decreases self.len(),
     {
         if self.len() > 1 {
             let subseq = self.subrange(1,self.len() as int);
-            let elt = subseq.min(leq);
+            let elt = subseq.min_general(leq);
             if leq(elt,self[0]) {elt}
             else {self[0]}
         } else {self[0]}
@@ -569,6 +568,150 @@ impl<A> Seq<Seq<A>>{
     }
 }
 
+/********************************* Extrema in Sequences *********************************/
+
+impl Seq<int> {
+    /// Returns the maximum integer value in a non-empty sequence of integers.
+    pub open spec fn max(self) -> int
+        recommends 
+            0 < self.len(),
+        decreases self.len()
+    {
+        if self.len() == 1 {self[0]} 
+        else if self.len() == 0 {0}
+        else {
+            let later_max = self.drop_first().max();
+            if self[0] >= later_max {self[0]}
+            else {later_max}
+        }
+    }
+
+    /// Returns the maximum integer value in a non-empty sequence of integers.
+    pub open spec fn min(self) -> int
+        recommends 
+            0 < self.len(),
+        decreases self.len()
+    {
+        if self.len() == 1 {self[0]} 
+        else if self.len() == 0 {0}
+        else {
+            let later_min = self.drop_first().min();
+            if self[0] <= later_min {self[0]}
+            else {later_min}
+        }
+    }
+}
+
+pub proof fn lemma_max_properties(s: Seq<int>)
+    ensures
+        forall |x: int| s.contains(x) ==> x <= s.max(),
+        forall |i: int| 0<= i < s.len() ==> s[i] <= s.max(),
+        s.len() == 0 || s.contains(s.max()),
+    decreases 
+        s.len(),
+{
+    if s.len() <=1 {}
+    else {
+        let elt = s.drop_first().max();
+        //assert(!(s[0] <= elt) ==> elt <= s[0]);
+        assert(s.drop_first().contains(elt)) by {
+            lemma_max_properties(s.drop_first())
+        }
+        assert forall |i: int| 0<= i <s.len() implies s[i] <= s.max() by {
+            assert(i==0 || s[i] == s.drop_first()[i-1]);
+            assert(forall |j: int| 0<= j < s.drop_first().len() 
+                    ==> s.drop_first()[j] <= s.drop_first().max()) by {
+                lemma_max_properties(s.drop_first())
+            }
+        }
+    }
+}
+
+/// The maximum of the concatenation of two non-empty sequences is greater than or 
+/// equal to the maxima of its two non-empty subsequences.
+pub proof fn lemma_max_of_concat(x: Seq<int>, y: Seq<int>)
+    requires
+        0 < x.len() && 0 < y.len(),
+    ensures
+        x.max() <= (x + y).max(),
+        y.max() <= (x + y).max(),
+        forall |elt: int| (x+y).contains(elt) ==> elt <= (x + y).max(),
+    decreases
+        x.len(),
+{
+    lemma_max_properties(x);
+    lemma_max_properties(y);
+    lemma_max_properties(x+y);
+    assert(x.drop_first().len() == x.len() -1);
+    if x.len() == 1 {
+        assert(y.max() <= (x + y).max()) by {
+            assert((x+y).contains(y.max()));
+        }
+    } else {
+        assert(x.max() <= (x + y).max()) by {
+            assert(x.contains(x.max()));
+            assert((x+y).contains(x.max()));
+        }
+        assert(x.drop_first() + y =~= (x+y).drop_first());
+        lemma_max_of_concat(x.drop_first(),y);
+    }
+}
+
+pub proof fn lemma_min_properties(s: Seq<int>)
+    ensures
+        forall |x: int| s.contains(x) ==> s.min() <= x,
+        forall |i: int| 0<= i < s.len() ==> s.min() <= s[i],
+        s.len() == 0 || s.contains(s.min()),
+    decreases 
+        s.len(),
+{
+    if s.len() <=1 {}
+    else {
+        let elt = s.drop_first().min();
+        assert(s.subrange(1,s.len() as int).contains(elt)) by {
+            lemma_min_properties(s.drop_first())
+        }
+        assert forall |i: int| 0<= i <s.len() implies s.min() <= s[i] by {
+            assert(i==0 || s[i] == s.drop_first()[i-1]);
+            assert(forall |j: int| 0<= j < s.drop_first().len() 
+                    ==> s.drop_first().min() <= s.drop_first()[j]) by {
+                lemma_min_properties(s.drop_first())
+            }
+        }
+    }
+}
+
+/// The minimum of the concatenation of two non-empty sequences is less than or 
+/// equal to the minimum of its two non-empty subsequences.
+pub proof fn lemma_min_of_concat(x: Seq<int>, y: Seq<int>)
+    requires
+        0 < x.len() && 0 < y.len(),
+    ensures
+        (x + y).min() <= x.min(),
+        (x + y).min() <= y.min(),
+        forall |elt: int| (x+y).contains(elt) ==> (x + y).min() <= elt,
+    decreases
+        x.len(),
+{
+    lemma_min_properties(x);
+    lemma_min_properties(y);
+    lemma_min_properties(x+y);
+    lemma_concat_elts(x,y);
+    if x.len() == 1 {
+        assert((x + y).min() <= y.min()) by {
+            assert((x+y).contains(y.min()));
+        }
+    } else {
+        assert((x + y).min() <= x.min()) by {
+            assert((x+y).contains(x.min()));
+        }
+        assert(x.drop_first() + y =~= (x+y).drop_first());
+        lemma_max_of_concat(x.drop_first(),y)
+    }
+}
+
+/****************************************************************************************/
+
 /// The concatenation of two subsequences of a non-empty sequence, the first obtained 
 /// from dropping the last element, the second consisting only of the last 
 /// element, is the original sequence.
@@ -840,134 +983,6 @@ pub proof fn lemma_zip_of_unzip<A,B>(s: Seq<(A,B)>)
     decreases s.len(),
 {}
 
-pub proof fn lemma_max_properties<A>(s: Seq<A>, leq: FnSpec(A,A) ->bool)
-    requires
-        forall |x: A| #[trigger] leq(x,x),
-        forall |x: A, y: A| !(#[trigger] leq(x,y)) ==> #[trigger] leq(y,x),
-        forall |x: A, y: A| #[trigger] leq(x,y) ==> x==y || !(#[trigger] leq(y,x)),
-        forall |x: A, y: A, z: A| #[trigger] leq(x,y) && #[trigger] leq(y,z) ==> #[trigger] leq(x,z),
-    ensures
-        forall |x: A| s.contains(x) ==> leq(x,s.max(leq)),
-        forall |i: int| 0<= i < s.len() ==> leq(s[i],s.max(leq)),
-        s.len() == 0 || s.contains(s.max(leq)),
-    decreases 
-        s.len(),
-{
-    if s.len() <=1 {}
-    else {
-        let elt = s.subrange(1,s.len() as int).max(leq);
-        assert(!leq(s[0], elt) ==> leq(elt, s[0]));
-        assert(s.subrange(1,s.len() as int).contains(elt)) by {
-            lemma_max_properties(s.subrange(1,s.len() as int), leq)
-        }
-        assert forall |i: int| 0<= i <s.len() implies leq(s[i],s.max(leq)) by {
-            assert(i==0 || s[i] == s.drop_first()[i-1]);
-            assert(forall |j: int| 0<= j < s.drop_first().len() 
-                    ==> leq(s.drop_first()[j],s.drop_first().max(leq))) by {
-                lemma_max_properties(s.drop_first(), leq)
-            }
-        }
-    }
-}
-
-pub proof fn lemma_min_properties<A>(s: Seq<A>, leq: FnSpec(A,A) ->bool)
-    requires
-        forall |x: A| #[trigger] leq(x,x),
-        forall |x: A, y: A| !(#[trigger] leq(x,y)) ==> #[trigger] leq(y,x),
-        forall |x: A, y: A| #[trigger] leq(x,y) ==> x==y || !(#[trigger] leq(y,x)),
-        forall |x: A, y: A, z: A| #[trigger] leq(x,y) && #[trigger] leq(y,z) ==> #[trigger] leq(x,z),
-    ensures
-        forall |x: A| s.contains(x) ==> leq(s.min(leq),x),
-        forall |i: int| 0<= i < s.len() ==> leq(s.min(leq),s[i]),
-        s.len() == 0 || s.contains(s.min(leq)),
-    decreases 
-        s.len(),
-{
-    if s.len() <=1 {}
-    else {
-        let elt = s.drop_first().min(leq);
-        assert(!leq(s[0], elt) ==> leq(elt, s[0]));
-        assert(s.subrange(1,s.len() as int).contains(elt)) by {
-            lemma_min_properties(s.drop_first(), leq)
-        }
-        assert forall |i: int| 0<= i <s.len() implies leq(s.min(leq), s[i]) by {
-            assert(i==0 || s[i] == s.drop_first()[i-1]);
-            assert(forall |j: int| 0<= j < s.drop_first().len() 
-                    ==> leq(s.drop_first().min(leq),s.drop_first()[j])) by {
-                lemma_min_properties(s.drop_first(), leq)
-            }
-        }
-    }
-}
-
-/// The maximum of the concatenation of two non-empty sequences is greater than or 
-/// equal to the maxima of its two non-empty subsequences.
-pub proof fn lemma_max_of_concat<A>(x: Seq<A>, y: Seq<A>, leq: FnSpec(A,A) ->bool)
-    requires
-        0 < x.len() && 0 < y.len(),
-        //Properties of an leq function:
-        forall |x: A| #[trigger] leq(x,x),
-        forall |x: A, y: A| !(#[trigger] leq(x,y)) ==> #[trigger] leq(y,x),
-        forall |x: A, y: A| #[trigger] leq(x,y) ==> x==y || !(#[trigger] leq(y,x)),
-        forall |x: A, y: A, z: A| #[trigger] leq(x,y) && #[trigger] leq(y,z) ==> #[trigger] leq(x,z),
-    ensures
-        leq(x.max(leq), (x + y).max(leq)),
-        leq(y.max(leq), (x + y).max(leq)),
-        forall |elt: A| (x+y).contains(elt) ==> leq(elt, (x + y).max(leq)),
-    decreases
-        x.len(),
-{
-    lemma_max_properties(x,leq);
-    lemma_max_properties(y,leq);
-    lemma_max_properties((x+y),leq);
-    lemma_concat_elts(x,y);
-    if x.len() == 1 {
-        assert(leq(y.max(leq), (x + y).max(leq))) by {
-            assert((x+y).contains(y.max(leq)));
-        }
-    } else {
-        assert(leq(x.max(leq), (x + y).max(leq))) by {
-            assert((x+y).contains(x.max(leq)));
-        }
-        assert(x.drop_first() + y =~= (x+y).drop_first());
-        lemma_max_of_concat(x.drop_first(),y,leq);
-    }
-}
-
-/// The minimum of the concatenation of two non-empty sequences is less than or 
-/// equal to the minimum of its two non-empty subsequences.
-pub proof fn lemma_min_of_concat<A>(x: Seq<A>, y: Seq<A>, leq: FnSpec(A,A) ->bool)
-    requires
-        0 < x.len() && 0 < y.len(),
-        //Properties of an leq function:
-        forall |x: A| #[trigger] leq(x,x),
-        forall |x: A, y: A| !(#[trigger] leq(x,y)) ==> #[trigger] leq(y,x),
-        forall |x: A, y: A| #[trigger] leq(x,y) ==> x==y || !(#[trigger] leq(y,x)),
-        forall |x: A, y: A, z: A| #[trigger] leq(x,y) && #[trigger] leq(y,z) ==> #[trigger] leq(x,z),
-    ensures
-        leq((x + y).min(leq),x.min(leq)),
-        leq((x + y).min(leq), y.min(leq)),
-        forall |elt: A| (x+y).contains(elt) ==> leq((x + y).min(leq),elt),
-    decreases
-        x.len(),
-{
-    lemma_min_properties(x,leq);
-    lemma_min_properties(y,leq);
-    lemma_min_properties((x+y),leq);
-    lemma_concat_elts(x,y);
-    if x.len() == 1 {
-        assert(leq((x + y).min(leq),y.min(leq))) by {
-            assert((x+y).contains(y.min(leq)));
-        }
-    } else {
-        assert(leq((x + y).min(leq),x.min(leq))) by {
-            assert((x+y).contains(x.min(leq)));
-        }
-        assert(x.drop_first() + y =~= (x+y).drop_first());
-        lemma_max_of_concat(x.drop_first(),y,leq)
-    }
-}
-
 /// The concatenation of two sequences contains only the elements
 /// of the two sequences
 // TODO: broadcast forall for dafny-level automation since dafny includes as an axiom
@@ -1141,23 +1156,23 @@ pub proof fn lemma_flatten_length_ge_single_element_length<A>(x: Seq<Seq<A>>, i:
     }
 }
 
-/// The length of a flattened sequence of sequences x is less than or equal 
-/// to the length of x multiplied by a number greater than or equal to the
-/// length of the longest sequence in x.
-pub proof fn lemma_flatten_length_le_mul<A>(x: Seq<Seq<A>>, j: int)
-    requires
-        forall |i: int| 0 <= i < x.len() ==> (#[trigger] x[i]).len() <= j,
-    ensures
-        x.flatten_reverse().len() <= x.len() * j,
-    decreases
-        x.len(),
-{
-    if x.len() == 0 {}
-    else {
-        lemma_flatten_length_le_mul(x.drop_last(), j);
-        assert(x.drop_last().flatten_reverse().len() <= (x.len() -1) *j);
-    }
-}
+// /// The length of a flattened sequence of sequences x is less than or equal 
+// /// to the length of x multiplied by a number greater than or equal to the
+// /// length of the longest sequence in x.
+// pub proof fn lemma_flatten_length_le_mul<A>(x: Seq<Seq<A>>, j: int)
+//     requires
+//         forall |i: int| 0 <= i < x.len() ==> (#[trigger] x[i]).len() <= j,
+//     ensures
+//         x.flatten_reverse().len() <= x.len() * j,
+//     decreases
+//         x.len(),
+// {
+//     if x.len() == 0 {}
+//     else {
+//         lemma_flatten_length_le_mul(x.drop_last(), j);
+//         assert(x.drop_last().flatten_reverse().len() <= (x.len() -1) *j);
+//     }
+// }
 
 /// Flattening sequences of sequences in order (starting from the beginning)
 /// and in reverse order (starting from the end) results in the same sequence.
