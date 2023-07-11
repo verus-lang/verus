@@ -164,6 +164,8 @@ impl<A> Seq<A> {
         self.subrange(n,self.len() as int)
     }
 
+    pub open spec fn rank(self) -> int;
+
     /// Concatenates the sequences.
     ///
     /// ## Example
@@ -549,6 +551,28 @@ pub proof fn axiom_seq_take_nothing<A>(s: Seq<A>, n: int)
 pub proof fn axiom_seq_drop_of_drop<A>(s: Seq<A>, m: int, n: int)
     ensures
         (0 <= m && 0 <= n && m+n <= s.len()) ==> s.drop(m).drop(n) == s.drop(m+n),
+{}
+
+// ----------Rank function specifications-------- //
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_rank_take<A>(s: Seq<A>, i: int)
+    ensures 
+        0 <= i < s.len() ==> #[trigger] s.take(i).rank() < s.rank()
+{}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_rank_drop<A>(s: Seq<A>, i: int)
+    ensures 
+        0 < i <= s.len() ==> #[trigger] s.drop(i).rank() < s.rank()
+{}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_rank_append_take_drop<A>(s: Seq<A>, i: int, j: int)
+    ensures 
+        0 <= i < j <= s.len() ==> #[trigger] (s.take(i) + s.drop(j)).rank() < s.rank()
 {}
 
 // ------------- Macros ---------------- //

@@ -552,7 +552,7 @@ impl<A> Seq<Seq<A>>{
     {
         if self.len() == 0 {Seq::empty()}
         else {
-            self[0].add(self.drop_first().flatten())
+            self.first().add(self.drop_first().flatten())
         }
     }
 
@@ -564,7 +564,7 @@ impl<A> Seq<Seq<A>>{
         if self.len() == 0 {Seq::empty()}
         else {
             self.drop_last().flatten_reverse().add(self.last())
-            //self.reverse().flatten()}
+            //self.reverse().flatten()
         }
     }
 }
@@ -1034,6 +1034,39 @@ pub proof fn lemma_no_dup_in_concat<A>(a: Seq<A>, b: Seq<A>)
         #[trigger] (a+b).no_duplicates(),
 {}
 
+
+/**********************************************/
+/*           Lemmas about Flattening          */
+/**********************************************/
+
+/// Flattening sequences of sequences is distributive over concatenation. That is, concatenating
+/// the flattening of two sequences of sequences is the same as flattening the 
+/// concatenation of two sequences of sequences.
+pub proof fn lemma_flatten_concat<A>(x: Seq<Seq<A>>, y: Seq<Seq<A>>)
+    ensures 
+        (x+y).flatten() =~= x.flatten() + y.flatten()
+    decreases 
+        x.len()
+{
+    if x.len() == 0 {
+        assert(x.flatten() == Seq::<A>::empty());
+        assert(x+y =~= y);
+    } else {
+        assert((x+y).first() == x.first());
+        assert((x+y).drop_first() =~= x.drop_first() + y); // OBSERVE
+        // step 1 - 2
+        assert((x+y).flatten() =~= x.first() + (x.drop_first() + y).flatten());
+        // step 2 - 3
+        assert(x.first() + (x.drop_first() + y).flatten() =~= x.first() + x.drop_first().flatten() + y.flatten()) by {
+            lemma_flatten_concat(x.drop_first(), y);
+        } // OBSERVE
+        // step 3 - 4
+        assert(x.first() + x.drop_first().flatten() =~= x.flatten());
+        assert(x.first() + x.drop_first().flatten() + y.flatten()
+                =~= x.flatten() + y.flatten());
+    }
+}
+
 /// Flattening sequences of sequences in reverse order is distributive over concatentation. 
 /// That is, concatenating the flattening of two sequences of sequences in reverse 
 /// order is the same as flattening the concatenation of two sequences of sequences
@@ -1061,8 +1094,6 @@ pub proof fn lemma_flatten_reverse_concat<A>(x: Seq<Seq<A>>, y: Seq<Seq<A>>)
         //     x.flatten_reverse() + y.flatten_reverse();   // 4
         //     }
         assert((x+y).last() == y.last());
-        lemma_append_last(x,y);
-        lemma_add_last_back(x+y);
         assert((x+y).drop_last() =~= x + y.drop_last()); // OBSERVE
         // step 1 - 2
         assert((x+y).flatten_reverse() =~= (x + y.drop_last()).flatten_reverse() + y.last());
@@ -1074,9 +1105,63 @@ pub proof fn lemma_flatten_reverse_concat<A>(x: Seq<Seq<A>>, y: Seq<Seq<A>>)
         assert(y.drop_last().flatten_reverse() + y.last() =~= y.flatten_reverse());
         assert(x.flatten_reverse() + y.drop_last().flatten_reverse() + y.last() 
                 =~= x.flatten_reverse() + y.flatten_reverse());
-
     }
 }
+
+/// Flattening a sequence of a sequence x, where x has length 1, 
+/// results in a sequence equivalent to the single element of x
+pub proof fn lemma_flatten_one_element<A>(x: Seq<Seq<A>>)
+    ensures
+        x.len() == 1 ==> x.flatten() == x.first(),
+{
+    if x.len() == 1
+    {
+        assert(x.flatten() =~= x.first().add(x.drop_first().flatten()));
+    }
+}
+
+// /// The length of a flattened sequence of sequences x is greater than or 
+// /// equal to any of the lengths of the elements of x.
+// pub proof fn lemma_flatten_length_ge_single_element_length<A>(x: Seq<Seq<A>>, i: int)
+//     requires
+//         0<= i < x.len(),
+//     ensures
+//         x.flatten_reverse().len() >= x[i].len()
+//     decreases
+//         x.len()
+// {
+//     if x.len() == 1 {
+//         assert(i == 0);
+//         lemma_flatten_one_element(x);
+//         lemma_flatten_and_flatten_reverse_are_equivalent(x);
+//         assert(x.flatten_reverse() =~= x.first());
+//         assert(x.flatten_reverse().len() == x.first().len());
+//         assert(x.first() == x[0]);
+//         assert(x[0] == x[i]);
+//     }
+//     if i < x.len() -1 {
+//         lemma_flatten_length_ge_single_element_length(x.drop_last(), i);
+//     }
+// }
+
+/// Flattening sequences of sequences in order (starting from the beginning)
+/// and in reverse order (starting from the end) results in the same sequence.
+pub proof fn lemma_flatten_and_flatten_reverse_are_equivalent<A>(x: Seq<Seq<A>>)
+    ensures
+        x.flatten() == x.flatten_reverse(),
+    decreases
+        x.len(),
+{
+    if x.len() == 0 {}
+    else {
+        lemma_flatten_and_flatten_reverse_are_equivalent(x.drop_last());
+        lemma_flatten_one_element(seq![x.last()]);
+        lemma_flatten_concat(x.drop_last(), seq![x.last()]);
+        assert(x =~= x.drop_last().push(x.last()));
+    }
+}
+
+
 
 #[doc(hidden)]
 #[verifier(inline)]
