@@ -219,7 +219,6 @@ fn check_one_expr(
                     _ => false,
                 };
                 if !is_ok {
-                    println!("arg: {:#?}", arg);
                     return error(
                         &arg.span,
                         "complex arguments to &mut parameters are currently unsupported",

@@ -1082,9 +1082,6 @@ pub(crate) fn auto_deref_supported_for_ty<'tcx>(
     match ty.kind() {
         TyKind::Adt(AdtDef(adt_def_data), _args) => {
             let did = adt_def_data.did;
-            if Some(did) == tcx.lang_items().owned_box() {
-                return true;
-            }
             let rust_item = verus_items::get_rust_item(tcx, did);
             return matches!(rust_item, Some(RustItem::Box | RustItem::Rc | RustItem::Arc));
         }
