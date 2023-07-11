@@ -11,6 +11,9 @@ use crate::set::Set;
 #[allow(unused_imports)]
 use crate::multiset::Multiset;
 
+#[allow(unused_imports)]
+use crate::calc_macro::*;
+
 verus! {
 
 impl<A> Seq<A> {
@@ -1036,21 +1039,42 @@ pub proof fn lemma_no_dup_in_concat<A>(a: Seq<A>, b: Seq<A>)
 /// order is the same as flattening the concatenation of two sequences of sequences
 /// in reverse order.
 pub proof fn lemma_flatten_reverse_concat<A>(x: Seq<Seq<A>>, y: Seq<Seq<A>>)
-    ensures (x+y).flatten_reverse() =~= x.flatten_reverse() + y.flatten_reverse()
+    ensures 
+        (x+y).flatten_reverse() =~= x.flatten_reverse() + y.flatten_reverse()
+    decreases 
+        y.len()
 {
     if y.len() == 0 {
         assert(y.flatten_reverse() == Seq::<A>::empty());
         assert(x+y =~= x);
     } else {
+        // the original dafny uses a calculational proof, we might want to update
+        // the calc! macro to support extensional equality
+        // calc!{
+        //     (=~=)
+        //     (x+y).flatten_reverse;    // 1
+        //     { assert((x+y).last() == y.last()); assert((x+y).drop_last() =~= x + y.drop_last()); }
+        //     (x + y.drop_last()).flatten_reverse() + y.last();   // 2
+        //     { }
+        //     x.flatten_reverse() + y.drop_last().flatten_reverse() + y.last();   // 3
+        //     { }
+        //     x.flatten_reverse() + y.flatten_reverse();   // 4
+        //     }
         assert((x+y).last() == y.last());
         lemma_append_last(x,y);
         lemma_add_last_back(x+y);
-        assert((x+y).drop_last() =~= x + y.drop_last());
+        assert((x+y).drop_last() =~= x + y.drop_last()); // OBSERVE
+        // step 1 - 2
         assert((x+y).flatten_reverse() =~= (x + y.drop_last()).flatten_reverse() + y.last());
-        assert((x + y.drop_last()).flatten_reverse() + y.last() =~= 
-            x.flatten_reverse() + y.drop_last().flatten_reverse() + y.last());
+        // step 2 - 3
+        assert((x + y.drop_last()).flatten_reverse() + y.last() =~= x.flatten_reverse() + y.drop_last().flatten_reverse() + y.last()) by {
+            lemma_flatten_reverse_concat(x, y.drop_last());
+        } // OBSERVE
+        // step 3 - 4
+        assert(y.drop_last().flatten_reverse() + y.last() =~= y.flatten_reverse());
         assert(x.flatten_reverse() + y.drop_last().flatten_reverse() + y.last() 
                 =~= x.flatten_reverse() + y.flatten_reverse());
+
     }
 }
 
