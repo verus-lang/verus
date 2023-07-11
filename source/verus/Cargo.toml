@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 dirs = "5.0.1"
 sha256 = "1.1.4"
-nu-ansi-term = "0.47"
+yansi = "0.5"
 
 [dependencies.uuid]
 version = "1.4.0"
