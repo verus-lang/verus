@@ -317,16 +317,16 @@ impl<A> Seq<A> {
         Set::new(|a: A| self.contains(a))
     }
 
-    // /// Converts a sequence into a multiset
-    // pub open spec fn to_multiset(self) -> Multiset<A> 
-    //     decreases self.len()
-    // {
-    //     if self.len() == 0 {
-    //         Multiset::<A>::empty()
-    //     } else {
-    //         Multiset::<A>::empty().insert(self.first()).add(self.drop_first().to_multiset())
-    //     }
-    // }
+    /// Converts a sequence into a multiset
+    pub open spec fn to_multiset(self) -> Multiset<A> 
+        decreases self.len()
+    {
+        if self.len() == 0 {
+            Multiset::<A>::empty()
+        } else {
+            Multiset::<A>::empty().insert(self.first()).add(self.drop_first().to_multiset())
+        }
+    }
 
     /// Insert item a at index i, shifting remaining elements (if any) to the right
     pub open spec fn insert(self, i: int, a:A) -> Seq<A>
