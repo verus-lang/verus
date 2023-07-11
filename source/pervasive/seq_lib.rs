@@ -1120,29 +1120,44 @@ pub proof fn lemma_flatten_one_element<A>(x: Seq<Seq<A>>)
     }
 }
 
-// /// The length of a flattened sequence of sequences x is greater than or 
-// /// equal to any of the lengths of the elements of x.
-// pub proof fn lemma_flatten_length_ge_single_element_length<A>(x: Seq<Seq<A>>, i: int)
-//     requires
-//         0<= i < x.len(),
-//     ensures
-//         x.flatten_reverse().len() >= x[i].len()
-//     decreases
-//         x.len()
-// {
-//     if x.len() == 1 {
-//         assert(i == 0);
-//         lemma_flatten_one_element(x);
-//         lemma_flatten_and_flatten_reverse_are_equivalent(x);
-//         assert(x.flatten_reverse() =~= x.first());
-//         assert(x.flatten_reverse().len() == x.first().len());
-//         assert(x.first() == x[0]);
-//         assert(x[0] == x[i]);
-//     }
-//     if i < x.len() -1 {
-//         lemma_flatten_length_ge_single_element_length(x.drop_last(), i);
-//     }
-// }
+/// The length of a flattened sequence of sequences x is greater than or 
+/// equal to any of the lengths of the elements of x.
+pub proof fn lemma_flatten_length_ge_single_element_length<A>(x: Seq<Seq<A>>, i: int)
+    requires
+        0<= i < x.len(),
+    ensures
+        x.flatten_reverse().len() >= x[i].len()
+    decreases
+        x.len()
+{
+    if x.len() == 1 {
+        lemma_flatten_one_element(x);
+        lemma_flatten_and_flatten_reverse_are_equivalent(x);
+    }
+    else if i < x.len() -1 {
+        lemma_flatten_length_ge_single_element_length(x.drop_last(), i);
+    } else {
+        assert(x.flatten_reverse() == x.drop_last().flatten_reverse().add(x.last()));
+    }
+}
+
+/// The length of a flattened sequence of sequences x is less than or equal 
+/// to the length of x multiplied by a number greater than or equal to the
+/// length of the longest sequence in x.
+pub proof fn lemma_flatten_length_le_mul<A>(x: Seq<Seq<A>>, j: int)
+    requires
+        forall |i: int| 0 <= i < x.len() ==> (#[trigger] x[i]).len() <= j,
+    ensures
+        x.flatten_reverse().len() <= x.len() * j,
+    decreases
+        x.len(),
+{
+    if x.len() == 0 {}
+    else {
+        lemma_flatten_length_le_mul(x.drop_last(), j);
+        assert(x.drop_last().flatten_reverse().len() <= (x.len() -1) *j);
+    }
+}
 
 /// Flattening sequences of sequences in order (starting from the beginning)
 /// and in reverse order (starting from the end) results in the same sequence.
