@@ -19,7 +19,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::sync::Arc;
 
-// Use decorated types in addition to undecorated types (see sst_to_air::typ_to_id)
+// Use decorated types in addition to undecorated types (see sst_to_air::typ_to_ids)
 pub(crate) const DECORATE: bool = true;
 
 pub type ChosenTrigger = Vec<(Span, String)>;

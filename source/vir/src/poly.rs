@@ -88,8 +88,10 @@ pub type MonoTyps = Arc<Vec<MonoTyp>>;
 pub enum MonoTypX {
     Bool,
     Int(IntRange),
-    Datatype(Path, MonoTyps),
+    Char,
     StrSlice,
+    Datatype(Path, MonoTyps),
+    Decorate(crate::ast::TypDecoration, MonoTyp),
 }
 
 struct State {
@@ -102,6 +104,7 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
     match &**typ {
         TypX::Bool => Some(Arc::new(MonoTypX::Bool)),
         TypX::Int(range) => Some(Arc::new(MonoTypX::Int(*range))),
+        TypX::Char => Some(Arc::new(MonoTypX::Char)),
         TypX::StrSlice => Some(Arc::new(MonoTypX::StrSlice)),
         TypX::Datatype(path, typs, _) => {
             let mut monotyps: Vec<MonoTyp> = Vec::new();
@@ -114,7 +117,7 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
             }
             Some(Arc::new(MonoTypX::Datatype(path.clone(), Arc::new(monotyps))))
         }
-        TypX::Decorate(_, t) => typ_as_mono(t),
+        TypX::Decorate(d, t) => typ_as_mono(t).map(|m| Arc::new(MonoTypX::Decorate(*d, m))),
         _ => None,
     }
 }
@@ -123,11 +126,13 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
     match &**monotyp {
         MonoTypX::Bool => Arc::new(TypX::Bool),
         MonoTypX::Int(range) => Arc::new(TypX::Int(*range)),
+        MonoTypX::Char => Arc::new(TypX::Char),
+        MonoTypX::StrSlice => Arc::new(TypX::StrSlice),
         MonoTypX::Datatype(path, typs) => {
             let typs = vec_map(&**typs, monotyp_to_typ);
             Arc::new(TypX::Datatype(path.clone(), Arc::new(typs), Arc::new(vec![])))
         }
-        MonoTypX::StrSlice => Arc::new(TypX::StrSlice),
+        MonoTypX::Decorate(d, typ) => Arc::new(TypX::Decorate(*d, monotyp_to_typ(typ))),
     }
 }
 

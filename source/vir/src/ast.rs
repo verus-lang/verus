@@ -97,7 +97,19 @@ pub enum IntRange {
 
 /// Type information relevant to Rust but generally not relevant to the SMT encoding.
 /// This information is relevant for resolving traits.
-#[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode, Clone, Copy, PartialEq, Eq)]
+#[derive(
+    Debug,
+    Serialize,
+    Deserialize,
+    Hash,
+    ToDebugSNode,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord
+)]
 pub enum TypDecoration {
     /// &T
     Ref,
