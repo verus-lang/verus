@@ -140,7 +140,7 @@ const Z3_FILE_NAME: &str = if cfg!(target_os = "windows") {
 };
 
 fn run() -> Result<(), String> {
-    let _vargo_nest = {
+    let vargo_nest = {
         let vargo_nest = std::env::var("VARGO_NEST")
             .ok()
             .and_then(|x| x.parse().ok().map(|x: u64| x + 1))
@@ -232,8 +232,11 @@ fn run() -> Result<(), String> {
 
     let z3_path = std::path::Path::new(Z3_FILE_NAME);
 
-    if !z3_path.is_file() && std::env::var("VERUS_Z3_PATH").is_err() {
-        warn("z3 not found -- this is likely to cause errors; run `tools/get-z3.sh`, or set VERUS_Z3_PATH");
+    if !z3_path.is_file() && vargo_nest == 0 {
+        warn(format!("{Z3_FILE_NAME} not found -- this is likely to cause errors or a broken build\nrun `tools/get-z3.(sh|ps1)` first").as_str());
+    }
+    if std::env::var("VERUS_Z3_PATH").is_err() && z3_path.is_file() {
+        std::env::set_var("VERUS_Z3_PATH", z3_path);
     }
 
     let cargo_toml = toml::from_str::<toml::Value>(
