@@ -8,8 +8,8 @@ use crate::pervasive::*;
 use crate::set::*;
 #[allow(unused_imports)]
 use crate::multiset::Multiset;
-#[allow(unused_imports)]
-use crate::relations::*;
+// #[allow(unused_imports)]
+// use crate::relations::*;
 
 
 verus! {
@@ -223,30 +223,42 @@ pub proof fn lemma_subset_equality<A>(x: Set<A>, y: Set<A>)
         x.len() == y.len(),
     ensures
         x =~= y,
-    decreases x.len()
+    decreases 
+        x.len()
 {
-    if x =~= Set::<A>::empty() {}
-    else {
-        let e = choose |e: A| x.contains(e);
+    if x =~= Set::<A>::empty() {
+    } else {
+        let e = x.choose();
         lemma_subset_equality(x.remove(e), y.remove(e));
+        assert (x =~= x.remove(e).insert(e)); // OBSERVE, this hint is not needed in dafny
+        assert (x =~= y);
     }
 }
 
-pub proof fn lemma_map_size<A,B>(x: Set<A>, y: Set<B>, f: FnSpec(A) ->B)
+/// If an injective function is applied to each element of a set to construct
+/// another set, the two sets have the same size.
+// the dafny original lemma reasons with partial function f
+pub proof fn lemma_map_size<A,B>(x: Set<A>, y: Set<B>, f: FnSpec(A) -> B)
     requires
-        forall |a: A| #[trigger] f.requires((a,)),
         injective(f),
         forall |a: A| x.contains(a) ==> y.contains(#[trigger] f(a)),
-        forall |b: B| #[trigger] y.contains(b) ==> exists |a: A| x.contains(a) && f(a) == b,
+        forall |b: B| (#[trigger] y.contains(b)) ==> exists |a: A| x.contains(a) && f(a) == b,
         x.finite(),
         y.finite(),
     ensures
         x.len() == y.len(), 
     decreases x.len(),
 {
-    if x.len() > 0 {
-        let a = choose |a: A| x.contains(a);
-        lemma_map_size(x.remove(a), y.remove(f(a)), f);
+    if x.len() != 0 {
+        let a = x.choose();
+        let x_ = x.remove(a);
+        let y_ = y.remove(f(a));
+        // need to verify one more precondition than dafny
+        assert forall |b_: B| (#[trigger] y_.contains(b_)) implies exists |a_: A| x_.contains(a_) && f(a_) == b_ by {
+            let a2 = choose|a: A| (x.contains(a) && f(a) == b_);
+            assert(x_.contains(a2));
+        };
+        lemma_map_size(x_, y_, f);
     }
 }
 
