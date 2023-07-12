@@ -80,7 +80,7 @@ fn run_example_for_file(file_path: &str) {
         run_verus(&[], relative_path.parent().expect("no parent dir"), &relative_path, true, false);
 
     use regex::Regex;
-    let re = Regex::new(r"verification results:: verified: (\d+) errors: (\d+)").unwrap();
+    let re = Regex::new(r"verification results:: (\d+) verified, (\d+) errors").unwrap();
     let stdout = std::str::from_utf8(&output.stdout).expect("invalid stdout encoding");
     let verifier_output: Option<(u64, u64)> = re.captures_iter(stdout).next().map(|x| {
         (
