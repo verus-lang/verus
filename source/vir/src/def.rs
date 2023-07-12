@@ -158,6 +158,7 @@ pub const UINT_OR: &str = "uintor";
 pub const UINT_SHR: &str = "uintshr";
 pub const UINT_SHL: &str = "uintshl";
 pub const UINT_NOT: &str = "uintnot";
+pub const SINGULAR_MOD: &str = "singular_mod";
 
 // List of QID suffixes we add to internally generated quantifiers
 pub const QID_BOX_AXIOM: &str = "box_axiom";

@@ -660,6 +660,16 @@ fn check_function(
             crate::ast_visitor::expr_visitor_check(req, &mut |_scope_map, expr| {
                 match *undecorate_typ(&expr.typ) {
                     TypX::Int(crate::ast::IntRange::Int) => {}
+                    TypX::Int(_) => {
+                        if let ExprX::Const(..) = &expr.x {
+                            return Ok(());
+                        } else {
+                            return error(
+                                &req.span,
+                                "integer_ring mode's expressions should be int/bool type",
+                            );
+                        }
+                    }
                     TypX::Bool => {}
                     TypX::Boxed(_) => {}
                     _ => {
@@ -676,6 +686,16 @@ fn check_function(
             crate::ast_visitor::expr_visitor_check(ens, &mut |_scope_map, expr| {
                 match *undecorate_typ(&expr.typ) {
                     TypX::Int(crate::ast::IntRange::Int) => {}
+                    TypX::Int(_) => {
+                        if let ExprX::Const(..) = &expr.x {
+                            return Ok(());
+                        } else {
+                            return error(
+                                &ens.span,
+                                "integer_ring mode's expressions should be int/bool type",
+                            );
+                        }
+                    }
                     TypX::Bool => {}
                     TypX::Boxed(_) => {}
                     _ => {

@@ -537,20 +537,34 @@ pub(crate) struct ExprCtxt {
     pub mode: ExprMode,
     pub is_bit_vector: bool,
     pub bit_vector_typ_hint: Option<Typ>,
+    pub is_singular: bool,
 }
 
 impl ExprCtxt {
     pub(crate) fn new() -> Self {
-        ExprCtxt { mode: ExprMode::Body, is_bit_vector: false, bit_vector_typ_hint: None }
+        ExprCtxt {
+            mode: ExprMode::Body,
+            is_bit_vector: false,
+            bit_vector_typ_hint: None,
+            is_singular: false,
+        }
     }
     pub(crate) fn new_mode(mode: ExprMode) -> Self {
-        ExprCtxt { mode, is_bit_vector: false, bit_vector_typ_hint: None }
+        ExprCtxt { mode, is_bit_vector: false, bit_vector_typ_hint: None, is_singular: false }
     }
     pub(crate) fn new_mode_bv(mode: ExprMode, is_bit_vector: bool) -> Self {
-        ExprCtxt { mode, is_bit_vector, bit_vector_typ_hint: None }
+        ExprCtxt { mode, is_bit_vector, bit_vector_typ_hint: None, is_singular: false }
     }
     fn set_bit_vector_typ_hint(&self, bit_vector_typ_hint: Option<Typ>) -> Self {
-        ExprCtxt { mode: self.mode, is_bit_vector: self.is_bit_vector, bit_vector_typ_hint }
+        ExprCtxt {
+            mode: self.mode,
+            is_bit_vector: self.is_bit_vector,
+            bit_vector_typ_hint,
+            is_singular: self.is_singular,
+        }
+    }
+    pub(crate) fn new_mode_singular(mode: ExprMode, is_singular: bool) -> Self {
+        ExprCtxt { mode, is_bit_vector: false, bit_vector_typ_hint: None, is_singular }
     }
 }
 
@@ -1061,6 +1075,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 }
                 BinaryOp::Arith(ArithOp::EuclideanDiv, _) if !has_const => {
                     return Ok(str_apply(crate::def::EUC_DIV, &vec![lh, rh]));
+                }
+                // REVIEW: consider introducing singular_mod more earlier pipeline (e.g. from syntax macro?)
+                BinaryOp::Arith(ArithOp::EuclideanMod, _) if expr_ctxt.is_singular => {
+                    return Ok(str_apply(crate::def::SINGULAR_MOD, &vec![lh, rh]));
                 }
                 BinaryOp::Arith(ArithOp::EuclideanMod, _) if !has_const => {
                     return Ok(str_apply(crate::def::EUC_MOD, &vec![lh, rh]));
