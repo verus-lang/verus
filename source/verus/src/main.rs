@@ -2,15 +2,90 @@ use std::fs::create_dir_all;
 use std::io::BufRead;
 use std::path::PathBuf;
 use std::process::Command;
+
 mod platform {
     pub struct ExitCode(pub i32);
 
+    use crate::ReportsPath;
     use std::process::Command;
 
     #[cfg(unix)]
-    pub fn exec(cmd: &mut Command) -> std::io::Result<ExitCode> {
+    pub fn exec(cmd: &mut Command, reports: ReportsPath) -> std::io::Result<ExitCode> {
+        use std::io::Write;
+        use std::io::{BufRead, BufReader};
+        use std::process::Stdio;
+        use std::sync::{Arc, Mutex};
+        use std::thread;
+
         // is it okay to execute this as child process?
-        let status = cmd.status()?;
+
+        if let None = reports {
+            // need to keep running rust_verify to get the rustc error message
+            let status = cmd.status()?;
+            return Ok(ExitCode(status.code().unwrap()));
+        }
+
+        let toml_path = reports.unwrap().proj_path.join("reports.toml");
+        eprintln!("toml_path: {:?}", toml_path);
+
+        let file =
+            Arc::new(Mutex::new(std::fs::File::create(toml_path).expect("creating reports.toml")));
+
+        // let status = cmd.status()?;
+        let mut child = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+
+        let out = BufReader::new(child.stdout.take().unwrap());
+        let err = BufReader::new(child.stderr.take().unwrap());
+
+        // my interpretation of spin up a thread: https://stackoverflow.com/questions/49062707/capture-both-stdout-stderr-via-pipe
+        // but I don't see how this thread will help
+        let thread_err = thread::spawn(move || {
+            let mut file = file.lock().unwrap();
+            err.lines().for_each(|line| {
+                // let counter = Arc::clone(&counter);
+
+                let line = line.unwrap();
+                println!("{}", line);
+                // also write to reports.toml
+                writeln!(file, "{}", anstream::adapter::strip_str(&line)).unwrap();
+            });
+            // I'm not sure where should the printing/writing of stdout should go
+            out.lines().for_each(|line| {
+                let line = line.unwrap();
+                println!("{}", line);
+                // also write to reports.toml
+                writeln!(file, "{}", anstream::adapter::strip_str(&line)).unwrap();
+            });
+        });
+
+        // // not sure how to share the `file` between threads
+        // // online tutorials normally have every thread doing the same thing
+        // // https://doc.rust-lang.org/book/ch16-03-shared-state.html
+        // // https://stackoverflow.com/questions/65235821/how-do-i-write-to-a-file-from-different-threads-in-rust
+
+        // let thread_out = thread::spawn(move || {
+        //     out.lines().for_each(|line| {
+        //         // let counter = Arc::clone(&counter);
+        //         let mut file = file.lock().unwrap();
+
+        //         let line = line.unwrap();
+        //         println!("{}", line);
+        //         // also write to reports.toml
+        //         writeln!(file, "{}", anstream::adapter::strip_str(&line)).unwrap();
+        //     });
+        // });
+
+        // out.lines().for_each(|line| {
+        //     let mut file = file.lock().unwrap();
+        //     let line = line.unwrap();
+        //     println!("{}", line);
+        //     writeln!(file, "{}", anstream::adapter::strip_str(&line)).unwrap();
+        // });
+
+        thread_err.join().unwrap();
+
+        let status = child.wait()?;
+
         Ok(ExitCode(status.code().unwrap()))
     }
 
@@ -80,38 +155,24 @@ fn main() {
         }
     }
 
-    match report_path.clone() {
-        Some(reports) => {
-            std::env::set_var("VERUS_REPORT_PATH", reports.path);
-            std::env::set_var("VERUS_CRATE_ROOT", reports.crate_root);
-            // std::fs::remove_file(std::env::current_dir().unwrap().join(reports.crate_root.with_extension(".d"))).ok();
-        }
-        None => {}
-    }
-
-    // let color_arg = if is_tty() { "--color=always" } else { "--color=never" };
-
     cmd.arg("run")
         .arg(TOOLCHAIN)
         .arg("--")
         .arg(verusroot_path.join(RUST_VERIFY_FILE_NAME))
         .arg("--emit=dep-info")
         // .arg(color_arg)
+        .arg("--color=always")
         .args(args)
         .stdin(std::process::Stdio::inherit());
-    // piped stdout/stderr
-    // .stdout(std::process::Stdio::piped())
-    // .stderr(std::process::Stdio::piped());
-    // pseudo-tty see the color_arg function defined before this run
 
-    match platform::exec(&mut cmd) {
+    match platform::exec(&mut cmd, report_path.clone()) {
         Err(e) => {
             eprintln!("error: failed to execute rust_verify {e:?}");
             std::process::exit(128);
         }
         Ok(code) => {
             if let Some(reports) = report_path {
-                let repo_path = reports.path.clone();
+                let repo_path = reports.proj_path.clone();
 
                 let dep_file_rel_path = reports
                     .crate_root
@@ -128,7 +189,13 @@ fn main() {
 
                 // copy files to repo_path
                 for dep in deps.iter() {
-                    println!("copying {} into {}", dep.display(), repo_path.join(dep).display());
+                    println!(
+                        "\n{} {} {} {}",
+                        yansi::Paint::blue("copying"),
+                        dep.display(),
+                        yansi::Paint::blue("into"),
+                        repo_path.join(dep).display()
+                    );
                     // copy cnannt create non-existing directories
                     create_dir_all(repo_path.join(dep.parent().unwrap())).unwrap();
                     std::fs::copy(dep, repo_path.join(dep)).unwrap();
@@ -141,17 +208,17 @@ fn main() {
     }
 }
 
-type ReportsPath = Option<Reports>;
+pub type ReportsPath = Option<Reports>;
 #[derive(Debug)]
-struct Reports {
-    path: PathBuf,
+pub struct Reports {
+    proj_path: PathBuf,
     crate_root: PathBuf,
 }
 
 // is it easier to impl the copy trait? I'm not sure about the paradigm here
 impl Clone for Reports {
     fn clone(&self) -> Self {
-        Self { path: self.path.clone(), crate_root: self.crate_root.clone() }
+        Self { proj_path: self.proj_path.clone(), crate_root: self.crate_root.clone() }
     }
 }
 
@@ -216,14 +283,18 @@ fn repo_path() -> ReportsPath {
 
     match (input_file_path, proj_dir) {
         (Some(crate_root_path), Some(proj_dir)) => {
-            Some(Reports { path: proj_dir, crate_root: crate_root_path })
+            Some(Reports { proj_path: proj_dir, crate_root: crate_root_path })
         }
         _ => None,
     }
 }
 
 fn clean_up(file: PathBuf) {
-    println!("removing {}", std::env::current_dir().unwrap().join(file.clone()).display());
+    println!(
+        "\n{} {}",
+        yansi::Paint::blue("removing:"),
+        std::env::current_dir().unwrap().join(file.clone()).display()
+    );
     std::fs::remove_file(file).expect("remove crate root dependency file");
 }
 
@@ -233,6 +304,6 @@ fn get_dependencies(file_name: PathBuf) -> Vec<PathBuf> {
     let mut dependencies = String::new();
     reader.read_line(&mut dependencies).expect("Could not read the first line");
     let dep: Vec<String> = dependencies.split_whitespace().skip(1).map(|x| x.to_string()).collect();
-    println!("dependencies: {:?}", dep);
+    println!("\n{} {:?}", yansi::Paint::blue("dependencies:"), dep);
     return dep.into_iter().map(|x| PathBuf::from(x)).collect();
 }
