@@ -71,7 +71,7 @@ fn log_command(cmd: &std::process::Command, verbose: bool) {
 }
 
 const SUPPORTED_COMMANDS: &[&str] = &[
-    "build", "test", "nextest", "run", "clean", "fmt", "metadata", "cmd",
+    "build", "test", "nextest", "run", "clean", "fmt", "metadata", "cmd", "update",
 ];
 
 // Arguments that cause vargo to be verbose.
@@ -92,6 +92,7 @@ enum Task {
     Metadata,
     Fmt,
     Cmd,
+    Update,
 }
 
 #[cfg(target_os = "macos")]
@@ -273,6 +274,7 @@ fn run() -> Result<(), String> {
         "metadata" => Task::Metadata,
         "fmt" => Task::Fmt,
         "cmd" => Task::Cmd,
+        "update" => Task::Update,
         _ => panic!("unexpected command"),
     };
 
@@ -453,7 +455,7 @@ fn run() -> Result<(), String> {
         std::path::PathBuf::from("target").join(if release { "release" } else { "debug" });
 
     let dashdash_pos =
-        (!in_nextest && (cmd == "test" || cmd == "nextest" || cmd == "fmt")).then(|| {
+        (!in_nextest && matches!(task, Task::Test { nextest: _ } | Task::Fmt)).then(|| {
             args.iter().position(|x| x == "--").unwrap_or_else(|| {
                 args.push("--".to_string());
                 args.len() - 1
@@ -462,13 +464,17 @@ fn run() -> Result<(), String> {
 
     if let Some(pos) = dashdash_pos {
         args.insert(
-            if cmd == "nextest" { pos } else { pos + 1 },
+            if task == (Task::Test { nextest: true }) {
+                pos
+            } else {
+                pos + 1
+            },
             "--color=always".to_string(),
         );
     }
 
     match (task, package.as_ref().map(|x| x.as_str()), in_nextest) {
-        (Task::Clean | Task::Fmt | Task::Run | Task::Metadata, package, false) => {
+        (Task::Clean | Task::Fmt | Task::Run | Task::Metadata | Task::Update, package, false) => {
             if let Task::Fmt = task {
                 let pos = dashdash_pos.unwrap();
 
