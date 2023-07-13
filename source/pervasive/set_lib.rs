@@ -58,6 +58,40 @@ impl<A> Set<A> {
         &&& (forall |x: A, y: A| self.contains(x) && self.contains(y) ==> x==y)
     }
 
+    /// Any totally-ordered set contains a unique minimal (equivalently, least) element.
+    /// Returns an arbitrary value if r is not a total ordering
+    pub open spec fn find_unique_minimal(self, r: FnSpec(A,A) -> bool) -> A 
+        recommends 
+            total_ordering(r),
+            self.len() >0,
+        decreases
+            self.len(),
+    {
+        if self.len() == 1 {self.choose()}
+        else {
+            let x = choose |x: A| self.contains(x);
+            let min = self.remove(x).find_unique_minimal(r);
+            if r(min,x) {min} else {x}
+        }
+    }
+
+    /// Any totally-ordered set contains a unique maximal (equivalently, greatest) element.
+    /// Returns an arbitrary value if r is not a total ordering
+    pub open spec fn find_unique_maximal(self, r: FnSpec(A,A) -> bool) -> A 
+        recommends 
+            total_ordering(r),
+            self.len() >0,
+        decreases
+            self.len(),
+    {
+        if self.len() == 1 {self.choose()}
+        else {
+            let x = choose |x: A| self.contains(x);
+            let max = self.remove(x).find_unique_maximal(r);
+            if r(x,max) {max} else {x}
+        }
+    }
+
     // pub open spec fn to_multiset(self) -> Multiset<A> {
     //     Multiset::<A>::empty().insert(self.choose()).add(self.remove(self.choose()).to_multiset())
     // }
@@ -330,6 +364,75 @@ pub proof fn lemma_maximal_is_unique<A>(r: FnSpec(A,A) -> bool, s: Set<A>)
         lemma_greatest_is_unique(r,s);
    }
 }  
+
+pub proof fn find_unique_minimal_ensures<A>(s: Set<A>, r: FnSpec(A,A) -> bool)
+    requires
+        s.len() >0,
+        total_ordering(r),
+    ensures
+        is_minimal(r, s.find_unique_minimal(r),s) && (forall |min: A| is_minimal(r, min, s) ==> s.find_unique_minimal(r) == min),
+    decreases
+        s.len(),
+{
+    if s.len() == 1 {
+        let x = choose |x: A| s.contains(x);
+        assert(s.remove(x) =~= Set::<A>::empty());
+        assert(s.remove(x).insert(x) =~= s);
+    }
+    else {
+        let x = choose |x: A| s.contains(x);
+        find_unique_minimal_ensures(s.remove(x),r);
+        assert(is_minimal(r, s.remove(x).find_unique_minimal(r),s.remove(x)));
+        let y = s.remove(x).find_unique_minimal(r);
+        let min_updated = s.find_unique_minimal(r); 
+        assert(min_updated == x || min_updated == y);
+        assert(!r(y,x) ==> min_updated == x);
+        assert forall |elt: A| s.contains(elt) && #[trigger] r(elt,min_updated) implies #[trigger] r(min_updated,elt) by {
+            if s.remove(x).contains(elt) && min_updated != y {
+                assert(r(elt,y) ==> r(y,elt));
+            }
+        }
+        assert forall |min_poss: A| is_minimal(r, min_poss, s) implies s.find_unique_minimal(r) == min_poss by {
+            assert(is_minimal(r, min_poss, s.remove(x)) || x == min_poss);                
+            assert(r(s.find_unique_minimal(r), min_poss));
+            assert(r(min_poss, s.find_unique_minimal(r)));
+        }
+    }
+}
+
+
+pub proof fn find_unique_maximal_ensures<A>(s: Set<A>, r: FnSpec(A,A) -> bool)
+    requires
+        s.len() >0,
+        total_ordering(r),
+    ensures
+        is_maximal(r, s.find_unique_maximal(r),s) && (forall |max: A| is_maximal(r, max, s) ==> s.find_unique_maximal(r) == max),
+    decreases
+        s.len(),
+{
+    if s.len() == 1 {
+        let x = choose |x: A| s.contains(x);
+        assert(s.remove(x).insert(x) =~= s);
+    }
+    else {
+        let x = choose |x: A| s.contains(x);
+        find_unique_maximal_ensures(s.remove(x),r);
+        assert(s.remove(x).insert(x) =~= s);
+        let y = s.remove(x).find_unique_maximal(r);
+        let max_updated = s.find_unique_maximal(r); 
+        assert forall |elt: A| s.contains(elt) && #[trigger] r(max_updated,elt) implies #[trigger] r(elt,max_updated) by {
+            if s.remove(x).contains(elt) && max_updated != y {
+                assert(r(y,elt) ==> r(elt,y));
+            }
+        }
+        assert forall |max_poss: A| is_maximal(r, max_poss, s) implies s.find_unique_maximal(r) == max_poss by {
+            assert(forall|elt: A| s.contains(elt) && #[trigger] r(max_poss,elt) ==> #[trigger] r(elt,max_poss));
+            assert(is_maximal(r, max_poss, s.remove(x)) || x == max_poss);
+            assert(r(max_poss,s.find_unique_maximal(r)));
+            assert(r(s.find_unique_maximal(r),max_poss));
+        }
+    }
+}
 
 // pub proof fn lemma_multiset_from_set<A>()
 //     ensures
