@@ -39,13 +39,15 @@ mod platform {
 
         // my interpretation of spin up a thread: https://stackoverflow.com/questions/49062707/capture-both-stdout-stderr-via-pipe
         // but I don't see how this thread will help
+
+        // let two process communicate via a String return type (that gets into the join handle) then write it to file
         let thread_err = thread::spawn(move || {
             let mut file = file.lock().unwrap();
             err.lines().for_each(|line| {
                 // let counter = Arc::clone(&counter);
 
                 let line = line.unwrap();
-                println!("{}", line);
+                eprintln!("{}", line);
                 // also write to reports.toml
                 writeln!(file, "{}", anstream::adapter::strip_str(&line)).unwrap();
             });
@@ -158,6 +160,9 @@ fn main() {
         }
     }
 
+    // check if --color-arg in env::args, that is priuoritized
+    // then use is_terminal, if yes, then use --color=always, else --color=never
+
     cmd.arg("run")
         .arg(TOOLCHAIN)
         .arg("--")
@@ -168,6 +173,7 @@ fn main() {
         .args(args)
         .stdin(std::process::Stdio::inherit());
 
+    // change it to return Child process and do all the operations here
     match platform::exec(&mut cmd, report_path.clone()) {
         Err(e) => {
             eprintln!("error: failed to execute rust_verify {e:?}");
