@@ -302,6 +302,7 @@ impl<A> Seq<A> {
     }
 
     /// returns `true` if the sequence has no duplicate elements
+    // #[verifier::opaque]
     pub open spec fn no_duplicates(self) -> bool {
         forall|i, j| 0 <= i < self.len() && 0 <= j < self.len() && i != j
             ==> self[i] != self[j]
@@ -933,6 +934,7 @@ pub proof fn unique_seq_to_set<A>(seq:Seq<A>)
     ensures seq.len() == seq.to_set().len()
     decreases seq.len(),
 {
+    // reveal(Seq::<A>::no_duplicates);
     seq_to_set_equal_rec::<A>(seq);
     if seq.len() == 0 {
     } else {
@@ -1034,6 +1036,7 @@ pub proof fn lemma_concat_elts<A>(x: Seq<A>, y: Seq<A>)
 // SOMETIMES RUNS INFINITELY
 /// A sequence with cardinality equal to its set has no duplicates.
 /// Inverse of the above function unique_seq_to_set
+// #[verifier(spinoff_prover)]
 pub proof fn lemma_no_dup_set_cardinality<A>(s: Seq<A>)
     requires 
         s.to_set().len() == s.len(),
@@ -1041,6 +1044,7 @@ pub proof fn lemma_no_dup_set_cardinality<A>(s: Seq<A>)
         s.no_duplicates(),
     decreases s.len(),
 {
+    // reveal(Seq::<A>::no_duplicates);
     if s.len() == 0 {}
     else {
         assert(s =~= Seq::empty().push(s.first()).add(s.drop_first()));
@@ -1071,7 +1075,9 @@ pub proof fn lemma_no_dup_in_concat<A>(a: Seq<A>, b: Seq<A>)
             ==> a[i] != b[j]
     ensures
         #[trigger] (a+b).no_duplicates(),
-{}
+{
+    // reveal(Seq::<A>::no_duplicates);
+}
 
 
 /**********************************************/
