@@ -452,6 +452,13 @@ pub proof fn axiom_seq_take_contains<A>(s: Seq<A>, n: int, x: A)
         #[trigger] s.take(n).contains(x) <==> exists |i: int| 0<= i < n && i < s.len() && #[trigger] s[i] == x,
 {}
 
+// // auto style axiom bundle
+// pub proof fn magic() 
+//     ensures
+//         forall |s: Seq<A>, n: int| axiom_seq_take_len(s, n),
+// {
+// }
+
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_seq_take_index<A>(s: Seq<A>, n: int, j: int)

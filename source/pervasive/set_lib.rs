@@ -230,8 +230,6 @@ pub proof fn lemma_subset_equality<A>(x: Set<A>, y: Set<A>)
     } else {
         let e = x.choose();
         lemma_subset_equality(x.remove(e), y.remove(e));
-        assert (x =~= x.remove(e).insert(e)); // OBSERVE, this hint is not needed in dafny
-        assert (x =~= y);
     }
 }
 
@@ -251,14 +249,7 @@ pub proof fn lemma_map_size<A,B>(x: Set<A>, y: Set<B>, f: FnSpec(A) -> B)
 {
     if x.len() != 0 {
         let a = x.choose();
-        let x_ = x.remove(a);
-        let y_ = y.remove(f(a));
-        // need to verify one more precondition than dafny
-        assert forall |b_: B| (#[trigger] y_.contains(b_)) implies exists |a_: A| x_.contains(a_) && f(a_) == b_ by {
-            let a2 = choose|a: A| (x.contains(a) && f(a) == b_);
-            assert(x_.contains(a2));
-        };
-        lemma_map_size(x_, y_, f);
+        lemma_map_size(x.remove(a), y.remove(f(a)), f);
     }
 }
 

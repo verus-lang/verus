@@ -342,6 +342,15 @@ impl<A> Seq<A> {
         self.subrange(0, i) + self.subrange(i + 1, self.len() as int)
     }
 
+    pub proof fn remove_ensures(self, i: int)
+        requires 
+            0<= i < self.len(),
+        ensures
+            self.remove(i).len() == self.len()-1,
+            forall |index: int| 0<= index < i ==> #[trigger] self.remove(i)[index] == #[trigger] self[index],
+            forall |index: int| i <= index < self.len() -1 ==> #[trigger] self.remove(i)[index] == self[index+1],
+    {}
+
     /// If a given element occurs at least once in a sequence, the sequence without
     /// its first occurrence is returned. Otherwise the same sequence is returned.
     pub open spec fn remove_value(self, val :A) -> Seq<A>
@@ -350,6 +359,16 @@ impl<A> Seq<A> {
         if index >= 0 {self.remove(index)}
         else {self}
     }
+
+    // WIP
+    // pub proof fn remove_value_ensures(self, val: A)
+    //     ensures
+    //         !self.contains(val) ==> self.remove_value(val) == self,
+    //         self.contains(val) ==> self.remove_value(val).to_multiset().len() == self.to_multiset().len() -1,
+    //         self.contains(val) ==> self.remove_value(val).to_multiset().count(val) == self.to_multiset().count(val) -1,
+    //         self.no_duplicates() ==> self.remove_value(val).no_duplicates()
+    //              && self.remove_value(val).to_set() == self.to_set().remove(val),
+    // {}
 
     /// Returns the sequence that is in reverse order to a given sequence.
     pub open spec fn reverse(self) -> Seq<A>
@@ -705,9 +724,36 @@ pub proof fn lemma_min_of_concat(x: Seq<int>, y: Seq<int>)
         assert((x + y).min() <= x.min()) by {
             assert((x+y).contains(x.min()));
         }
+        assert((x + y).min() <= y.min()) by {
+            assert((x+y).contains(y.min()));
+        }
         assert(x.drop_first() + y =~= (x+y).drop_first());
         lemma_max_of_concat(x.drop_first(),y)
     }
+}
+
+/// The maximum element in a non-empty sequence is greater than or equal to
+/// the maxima of its non-empty subsequences.
+pub proof fn lemma_subseq_max(s: Seq<int>, from: int, to: int)
+    requires
+        0 <= from < to <= s.len(),
+    ensures
+        s.subrange(from, to).max() <= s.max(),
+{
+    lemma_max_properties(s);
+    lemma_max_properties(s.subrange(from, to));
+}
+
+/// The minimum element in a non-empty sequence is less than or equal to
+/// the minima of its non-empty subsequences.
+pub proof fn lemma_subseq_min(s: Seq<int>, from: int, to: int)
+    requires
+        0 <= from < to <= s.len(),
+    ensures
+        s.subrange(from, to).min() >= s.min(),
+{
+    lemma_min_properties(s);
+    lemma_min_properties(s.subrange(from, to));
 }
 
 /****************************************************************************************/
@@ -905,34 +951,10 @@ pub proof fn lemma_cardinality_of_set<A>(s: Seq<A>)
     ensures s.to_set().len() <= s.len(),
     decreases s.len(),
 {
-    // if (s.no_duplicates()) {
-    //     assert(s.to_set().len() == s.len()) by {
-    //         unique_seq_to_set(s)
-    //     }
-    // }
-    // else if s.len() > 0 {
-    //     assert(forall |x: A| #[trigger] s.contains(x) 
-    //         ==> #[trigger] s.drop_last().contains(x) || s.last() == x) by {
-    //         lemma_add_last_back(s)
-    //     }
-    //     if s.drop_last().contains(s.last()) {
-    //         // the last element is duplicated somewhere else.
-    //         assert(s.drop_last().to_set() =~= s.to_set());
-    //         lemma_cardinality_of_set(s.drop_last());
-    //     } else {
-    //        // the last element appears only once
-    //         assert(s.drop_last().to_set().insert(s.last()) =~= s.to_set());
-    //         lemma_cardinality_of_set(s.drop_last());
-    //     }
-    // }
     if s.len() == 0 {}
     else {
-        // lemma_concat_elts(s.drop_last(), seq![s.last()]);
-        // lemma_add_last_back(s);
-        // assert(s.drop_last().push(s.last()) =~= s.drop_last() + seq![s.last()]);
         assert(s.drop_last().to_set().insert(s.last()) =~= s.to_set());
         lemma_cardinality_of_set(s.drop_last());
-        // assert(s.drop_last().to_set().len() <= s.drop_last().len());
     }
 }
 
@@ -1008,17 +1030,19 @@ pub proof fn lemma_concat_elts<A>(x: Seq<A>, y: Seq<A>)
     }
 }
 
+// TODO: quantifier profiling
+// SOMETIMES RUNS INFINITELY
 /// A sequence with cardinality equal to its set has no duplicates.
 /// Inverse of the above function unique_seq_to_set
-//#[verifier(broadcast_forall)]
 pub proof fn lemma_no_dup_set_cardinality<A>(s: Seq<A>)
     requires 
-        s.to_set().len() == #[trigger] s.len(),
+        s.to_set().len() == s.len(),
     ensures
-        #[trigger] s.no_duplicates(),
+        s.no_duplicates(),
     decreases s.len(),
 {
-    if s.len() > 0 {
+    if s.len() == 0 {}
+    else {
         assert(s =~= Seq::empty().push(s.first()).add(s.drop_first()));
         if s.drop_first().contains(s.first()){
             // If there is a duplicate, then we show that |s.to_set()| == |s| cannot hold.
@@ -1064,21 +1088,12 @@ pub proof fn lemma_flatten_concat<A>(x: Seq<Seq<A>>, y: Seq<Seq<A>>)
         x.len()
 {
     if x.len() == 0 {
-        assert(x.flatten() == Seq::<A>::empty());
         assert(x+y =~= y);
     } else {
-        assert((x+y).first() == x.first());
-        assert((x+y).drop_first() =~= x.drop_first() + y); // OBSERVE
-        // step 1 - 2
-        assert((x+y).flatten() =~= x.first() + (x.drop_first() + y).flatten());
-        // step 2 - 3
+        assert((x+y).drop_first() =~= x.drop_first() + y); 
         assert(x.first() + (x.drop_first() + y).flatten() =~= x.first() + x.drop_first().flatten() + y.flatten()) by {
             lemma_flatten_concat(x.drop_first(), y);
-        } // OBSERVE
-        // step 3 - 4
-        assert(x.first() + x.drop_first().flatten() =~= x.flatten());
-        assert(x.first() + x.drop_first().flatten() + y.flatten()
-                =~= x.flatten() + y.flatten());
+        }
     }
 }
 
@@ -1093,33 +1108,12 @@ pub proof fn lemma_flatten_reverse_concat<A>(x: Seq<Seq<A>>, y: Seq<Seq<A>>)
         y.len()
 {
     if y.len() == 0 {
-        assert(y.flatten_reverse() == Seq::<A>::empty());
         assert(x+y =~= x);
     } else {
-        // the original dafny uses a calculational proof, we might want to update
-        // the calc! macro to support extensional equality
-        // calc!{
-        //     (=~=)
-        //     (x+y).flatten_reverse;    // 1
-        //     { assert((x+y).last() == y.last()); assert((x+y).drop_last() =~= x + y.drop_last()); }
-        //     (x + y.drop_last()).flatten_reverse() + y.last();   // 2
-        //     { }
-        //     x.flatten_reverse() + y.drop_last().flatten_reverse() + y.last();   // 3
-        //     { }
-        //     x.flatten_reverse() + y.flatten_reverse();   // 4
-        //     }
-        assert((x+y).last() == y.last());
-        assert((x+y).drop_last() =~= x + y.drop_last()); // OBSERVE
-        // step 1 - 2
-        assert((x+y).flatten_reverse() =~= (x + y.drop_last()).flatten_reverse() + y.last());
-        // step 2 - 3
+        assert((x+y).drop_last() =~= x + y.drop_last());
         assert((x + y.drop_last()).flatten_reverse() + y.last() =~= x.flatten_reverse() + y.drop_last().flatten_reverse() + y.last()) by {
             lemma_flatten_reverse_concat(x, y.drop_last());
-        } // OBSERVE
-        // step 3 - 4
-        assert(y.drop_last().flatten_reverse() + y.last() =~= y.flatten_reverse());
-        assert(x.flatten_reverse() + y.drop_last().flatten_reverse() + y.last() 
-                =~= x.flatten_reverse() + y.flatten_reverse());
+        } 
     }
 }
 
@@ -1156,23 +1150,23 @@ pub proof fn lemma_flatten_length_ge_single_element_length<A>(x: Seq<Seq<A>>, i:
     }
 }
 
-// /// The length of a flattened sequence of sequences x is less than or equal 
-// /// to the length of x multiplied by a number greater than or equal to the
-// /// length of the longest sequence in x.
-// pub proof fn lemma_flatten_length_le_mul<A>(x: Seq<Seq<A>>, j: int)
-//     requires
-//         forall |i: int| 0 <= i < x.len() ==> (#[trigger] x[i]).len() <= j,
-//     ensures
-//         x.flatten_reverse().len() <= x.len() * j,
-//     decreases
-//         x.len(),
-// {
-//     if x.len() == 0 {}
-//     else {
-//         lemma_flatten_length_le_mul(x.drop_last(), j);
-//         assert(x.drop_last().flatten_reverse().len() <= (x.len() -1) *j);
-//     }
-// }
+/// The length of a flattened sequence of sequences x is less than or equal 
+/// to the length of x multiplied by a number greater than or equal to the
+/// length of the longest sequence in x.
+pub proof fn lemma_flatten_length_le_mul<A>(x: Seq<Seq<A>>, j: int)
+    requires
+        forall |i: int| 0 <= i < x.len() ==> (#[trigger] x[i]).len() <= j,
+    ensures
+        x.flatten_reverse().len() <= x.len() * j,
+    decreases
+        x.len(),
+{
+    if x.len() == 0 {}
+    else {
+        lemma_flatten_length_le_mul(x.drop_last(), j);
+        assert(x.drop_last().flatten_reverse().len() <= (x.len() -1) *j);
+    }
+}
 
 /// Flattening sequences of sequences in order (starting from the beginning)
 /// and in reverse order (starting from the end) results in the same sequence.

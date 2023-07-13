@@ -201,6 +201,14 @@ pub proof fn axiom_set_remove_same<A>(s: Set<A>, a: A)
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
+pub proof fn axiom_set_remove_insert<A>(s: Set<A>, a: A)
+    ensures
+        (#[trigger] s.remove(a)).insert(a) == s,
+{
+}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
 pub proof fn axiom_set_remove_different<A>(s: Set<A>, a1: A, a2: A)
     requires
         a1 != a2,
@@ -449,6 +457,17 @@ pub proof fn axiom_set_remove_len<A>(s: Set<A>, a: A)
         s.len() == #[trigger] s.remove(a).len() + (if s.contains(a) { 1int } else { 0 }),
 {
 }
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_set_remove_len_contains<A>(s: Set<A>, a: A)
+    requires
+        s.finite(),
+    ensures
+        s.contains(a) ==> (#[trigger] (s.remove(a).len()) == s.len() -1),
+        !s.contains(a) ==> s.len() == s.remove(a).len(),
+{}
+
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
