@@ -93,7 +93,7 @@ mod platform {
     // which also forks the process to create a child process (unlike exec)
 
     #[cfg(windows)]
-    pub fn exec(cmd: &mut Command) -> std::io::Result<ExitCode> {
+    pub fn exec(cmd: &mut Command, _reports: ReportsPath) -> std::io::Result<ExitCode> {
         // Configure Windows to kill the child SMT process if the parent is killed
         let job = win32job::Job::create().map_err(|_| std::io::Error::last_os_error())?;
         let mut info =
@@ -102,6 +102,9 @@ mod platform {
         job.set_extended_limit_info(&mut info).map_err(|_| std::io::Error::last_os_error())?;
         job.assign_current_process().map_err(|_| std::io::Error::last_os_error())?;
         std::mem::forget(job);
+        // I think I may be able to just copy the unix code here
+        // I will probably make an if branch for windows for setting up
+        // like if cfg!(window) { ... } else { ... }
         let status = cmd.status()?;
         Ok(ExitCode(status.code().unwrap()))
     }
