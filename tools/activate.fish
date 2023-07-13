@@ -13,6 +13,7 @@ popd
 set -x PATH $SCRIPT_DIR/vargo/target/release $PATH
 
 function cargo
-  echo "when working on Verus do not use cargo directly, use vargo instead"
-  echo "if you need to, you can still access cargo directly by starting a new shell without running the activate command"
+  echo "when working on Verus do not use cargo directly, use vargo instead" 1>&2
+  echo "if you need to, you can still access cargo directly by starting a new shell without running the activate command" 1>&2
+  return 1
 end
