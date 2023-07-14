@@ -73,6 +73,7 @@ pub struct ArgsX {
     pub solver_version_check: bool,
     pub version: bool,
     pub num_threads: usize,
+    pub trace: bool,
 }
 
 pub type Args = Arc<ArgsX>;
@@ -164,6 +165,7 @@ pub fn parse_args_with_imports(
     const OPT_NO_SOLVER_VERSION_CHECK: &str = "no-solver-version-check";
     const OPT_VERSION: &str = "version";
     const OPT_NUM_THREADS: &str = "num-threads";
+    const OPT_TRACE: &str = "trace";
 
     let default_num_threads: usize = std::thread::available_parallelism()
         .map(|x| std::cmp::max(usize::from(x) - 1, 1))
@@ -263,6 +265,7 @@ pub fn parse_args_with_imports(
             .as_str(),
         "INTEGER",
     );
+    opts.optflag("", OPT_TRACE, "Print progress information");
 
     opts.optflag("h", "help", "print this help menu");
 
@@ -407,6 +410,7 @@ pub fn parse_args_with_imports(
             .opt_get::<usize>(OPT_NUM_THREADS)
             .unwrap_or_else(|_| error("expected integer after num_threads".to_string()))
             .unwrap_or(default_num_threads),
+        trace: matches.opt_present(OPT_TRACE),
     };
 
     (Arc::new(args), unmatched)
