@@ -17,9 +17,4 @@ Spec Closures have the [same restrictions](modes.md) as normal sepc functions.
 
 ## FnSpec is a type
 
-It is worth noticing that `FnSpec` is not a trait as Rust does for `Fn`. Therefore, ghost code can return a spec closure without [a lot of trouble](https://doc.rust-lang.org/book/ch19-05-advanced-functions-and-closures.html#:~:text=clearer%20to%20you.-,Returning%20Closures,return%20value%20of%20the%20function.).
-
-
-<!--https://github.com/verus-lang/verus/wiki/Status%3A-currently-supported-Rust-features>
-
-<!--https://github.com/verus-lang/verus/blob/main/CONTRIBUTING.md>
+It is worth noticing that `FnSpec` is not a trait as Rust does for `Fn`, `FnOnce`, and `FnMut`. Therefore, ghost code can return a spec closure without [the need for a dynamic or anonymous return type (dyn or impl)](https://doc.rust-lang.org/book/ch19-05-advanced-functions-and-closures.html#:~:text=clearer%20to%20you.-,Returning%20Closures,return%20value%20of%20the%20function.).
