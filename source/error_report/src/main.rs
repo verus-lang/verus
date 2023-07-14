@@ -67,7 +67,14 @@ fn run() -> Result<(), String> {
     let verus_path = Path::new(&program_dir).join("verus");
 
     let mut verus_call = our_args.clone();
-    verus_call.insert(0, verus_path.to_string_lossy().to_string());
+    verus_call.insert(
+        0,
+        verus_path
+            .file_name()
+            .ok_or("Cannot get file name of verus path")?
+            .to_string_lossy()
+            .to_string(),
+    );
 
     let z3_version_output =
         Command::new(z3_path.clone()).arg("--version").output().map_err(|x| {
@@ -159,13 +166,14 @@ fn toml_setup_and_write(
             .map_err(|x| format!("Could not parse stdout as json with error message: {}", x))?;
 
     // get version
-    let version_info = toml::to_string_pretty(&stdout_json["verus"]).map_err(|x| {
-        format!("failed to pretty oprint version info to toml file with error message {}", x)
-    })?;
+    let version_info: toml::Value = serde_json::from_str(&stdout_json["verus"].to_string())
+        .map_err(|x| {
+            format!("failed to parse version info to toml file with error message {}", x)
+        })?;
 
     // get verification result
-    let verification_result = toml::to_string_pretty(&stdout_json["verification-results"])
-        .map_err(|x| {
+    let verification_result: toml::map::Map<String, Value> =
+        serde_json::from_str(&stdout_json["verification-results"].to_string()).map_err(|x| {
             format!(
                 "failed to pretty print verification result to toml file with error message {}",
                 x
@@ -173,7 +181,7 @@ fn toml_setup_and_write(
         })?;
 
     // the serde_json stdout is pretty bad
-    let stdout_toml_text = toml::to_string_pretty(&stdout_json).map_err(|x| {
+    let stdout_toml_text = serde_json::from_str(&stdout_json.to_string()).map_err(|x| {
         format!("failed to pretty print stdout to toml file with error message {}", x)
     })?;
 
@@ -209,10 +217,10 @@ fn toml_setup_and_write(
 fn create_toml(
     args: Vec<String>,
     z3_version: String,
-    verus_version: String,
-    verification_result: String,
+    verus_version: toml::Value,
+    verification_result: toml::map::Map<String, Value>,
     verus_time: f64,
-    stdout: String,
+    stdout: toml::Value,
     stderr: String,
 ) -> Value {
     let mut command_line_arguments = Map::new();
@@ -220,17 +228,14 @@ fn create_toml(
 
     let mut versions = Map::new();
     versions.insert("z3-version".to_string(), Value::String(z3_version));
-    versions.insert("verus-version".to_string(), Value::String(verus_version));
+    versions.insert("verus-version".to_string(), verus_version);
 
     let mut time = Map::new();
     time.insert("verus-time".to_string(), Value::Float(verus_time));
 
     let mut output = Map::new();
-    output.insert("stdout".to_string(), Value::String(stdout));
+    output.insert("stdout".to_string(), stdout);
     output.insert("stderr".to_string(), Value::String(stderr));
-
-    let mut verification_res = Map::new();
-    verification_res.insert("verification result".to_string(), Value::String(verification_result));
 
     let mut map = Map::new();
     map.insert(
@@ -242,7 +247,7 @@ fn create_toml(
     map.insert("verus-time".into(), Value::Table(time));
     map.insert("versions".into(), Value::Table(versions));
     map.insert("verus-output".into(), Value::Table(output));
-    map.insert("verification-results".into(), Value::Table(verification_res));
+    map.insert("verification-results".into(), Value::Table(verification_result));
     Value::Table(map)
 }
 
