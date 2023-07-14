@@ -3,7 +3,7 @@
 To get started with Verus, use `git clone` to fetch the Verus source code from
 the [Verus GitHub page](https://github.com/verus-lang/verus),
 and then follow the directions on
-the [Verus GitHub page](https://github.com/verus-lang/verus)
+the [Verus GitHub page](https://github.com/verus-lang/verus/blob/main/INSTALL.md)
 to build Verus.
 
 Let's try running Verus on the following sample Rust program,
@@ -16,7 +16,7 @@ found at [getting_started.rs](https://github.com/verus-lang/verus/tree/main/sour
 To run Verus on this code, change to the `source` directory and type the following in Unix:
 
 ```
-./tools/rust-verify.sh rust_verify/example/guide/getting_started.rs
+./target-verus/release/verus rust_verify/example/guide/getting_started.rs
 ```
 
 or the following in Windows:
@@ -30,7 +30,7 @@ You should see the following output:
 ```
 note: verifying root module
 
-verification results:: verified: 1 errors: 0
+verification results:: 1 verified, 0 errors
 ```
 
 This indicates that Verus successfully verified 1 function (the `main` function).
@@ -48,14 +48,14 @@ you will see an error message:
 note: verifying root module
 
 error: assertion failed
-  --> rust_verify/example/guide/getting_started.rs:23:12
+  --> example/guide/getting_started.rs:19:12
    |
-23 |     assert(forall|i: int, j: int| min(i, j) == min(i, i));
-   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+19 |     assert(forall|i: int, j: int| min(i, j) == min(i, i));
+   |            ^^^^^^ assertion failed
 
 error: aborting due to previous error
 
-verification results:: verified: 0 errors: 1
+verification results:: 0 verified, 1 errors
 ```
 
 ## Using Verus in Rust files
@@ -81,7 +81,7 @@ To both verify and compile a Rust file, add the `--compile` command-line option.
 For example:
 
 ```
-./tools/rust-verify.sh --compile rust_verify/example/guide/getting_started.rs
+./target-verus/release/verus --compile rust_verify/example/guide/getting_started.rs
 ```
 
 This will generate an executable for `getting_started.rs`.

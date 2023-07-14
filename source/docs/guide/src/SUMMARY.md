@@ -43,7 +43,7 @@
     - [broadcast_forall](broadcast_forall.md) <!--- Chris --->
 - [Runtime `exec` Features]()
     - [Exec closures]()
-- [SMT solving, automation, and where automation fails]() <!--- Chris --->
+- [SMT solving, automation, and where automation fails](smt_failures.md) <!--- Chris --->
     - [What's decidable, what's undecidable, what's fast, what's slow]() <!--- Chris --->
     - [integers: nonlinear arithmetic and bit vectors]() <!--- Chris and Chanhee --->
     - [forall and exists: writing and using triggers, inline functions]() <!--- Chris --->
@@ -102,6 +102,7 @@
 # Reference
 
 - [Supported and unsupported Rust features](./features.md)
+- [Verus syntax overview](syntax.md)
 - [Modes]()
   - [Function modes]()
   - [Variable modes](./reference-var-modes.md)
@@ -143,3 +144,4 @@
   - [Cyclic definitions]()
 - [Command line]()
   - [--arch-word-bits]()
+- [Planned future work]()
