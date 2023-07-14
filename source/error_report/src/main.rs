@@ -93,7 +93,6 @@ fn run() -> Result<(), String> {
         .to_string_lossy()
         .to_string();
 
-    // TODO: --time output can be json, which can be parsed then output as json again
     eprintln!(
         "{}",
         yansi::Paint::blue("Rerunning verus to create zip archive (verus outputs are blocked)")
