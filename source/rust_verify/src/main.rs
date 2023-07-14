@@ -22,6 +22,8 @@ fn os_setup() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+const VARGO_TOOLCHAIN: Option<&'static str> = option_env!("VARGO_TOOLCHAIN");
+
 pub fn main() {
     let mut internal_args = std::env::args();
     let internal_program = internal_args.next().unwrap();
@@ -106,7 +108,7 @@ pub fn main() {
         println!("  Platform: {}_{}", std::env::consts::OS, std::env::consts::ARCH);
         println!("  Version: {}", build_info.version);
         println!("  Profile: {}", build_info.profile.to_string());
-
+        println!("  Toolchain: {}", VARGO_TOOLCHAIN.unwrap_or("unkown"));
         return;
     }
 

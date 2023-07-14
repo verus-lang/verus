@@ -99,7 +99,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
         }
-        TypX::Datatype(path, _) => {
+        TypX::Datatype(path, _, _) => {
             if ctx.datatype_is_transparent[path] {
                 ident_typ(&path_to_air_ident(path))
             } else {
@@ -177,7 +177,7 @@ pub fn typ_to_id(typ: &Typ, decorated: bool) -> Expr {
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
         }
-        TypX::Datatype(path, typs) => datatype_id(path, typs, decorated),
+        TypX::Datatype(path, typs, _) => datatype_id(path, typs, decorated),
         TypX::Decorate(d, typ) => {
             let undecorated = typ_to_id(typ, decorated);
             if decorated {
@@ -200,9 +200,8 @@ pub fn typ_to_id(typ: &Typ, decorated: bool) -> Expr {
         TypX::Boxed(typ) => typ_to_id(typ, decorated),
         TypX::TypParam(x) if decorated => ident_var(&suffix_decorate_typ_param_id(x)),
         TypX::TypParam(x) => ident_var(&suffix_typ_param_id(x)),
-        TypX::Projection { self_typ, trait_typ_args, trait_path, name } => {
+        TypX::Projection { trait_typ_args, trait_path, name } => {
             let mut args = Vec::new();
-            args.extend(typ_to_ids_if_undecorated(decorated, self_typ));
             for typ_arg in trait_typ_args.iter() {
                 args.extend(typ_to_ids_if_undecorated(decorated, typ_arg));
             }
@@ -278,7 +277,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
             crate::def::HAS_TYPE,
             &vec![try_box(ctx, expr.clone(), typ).expect("try_box lambda"), typ_to_id(typ, false)],
         )),
-        TypX::Datatype(path, typs) => {
+        TypX::Datatype(path, typs, _) => {
             if ctx.datatype_is_transparent[path] {
                 if ctx.datatypes_with_invariant.contains(path) {
                     let box_expr = ident_apply(&prefix_box(&path), &vec![expr.clone()]);
@@ -317,7 +316,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
 
 pub(crate) fn datatype_box_prefix(ctx: &Ctx, typ: &Typ) -> Option<Path> {
     match &**typ {
-        TypX::Datatype(path, _) => {
+        TypX::Datatype(path, _, _) => {
             if ctx.datatype_is_transparent[path] {
                 Some(path.clone())
             } else {
@@ -367,7 +366,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
     let f_name = match &**typ {
         TypX::Bool => Some(str_ident(crate::def::UNBOX_BOOL)),
         TypX::Int(_) => Some(str_ident(crate::def::UNBOX_INT)),
-        TypX::Datatype(path, _) => {
+        TypX::Datatype(path, _, _) => {
             if ctx.datatype_is_transparent[path] {
                 Some(prefix_unbox(&path))
             } else {
@@ -397,7 +396,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
 
 fn get_inv_typ_args(typ: &Typ) -> Typs {
     match &**typ {
-        TypX::Datatype(_, typs) => typs.clone(),
+        TypX::Datatype(_, typs, _) => typs.clone(),
         TypX::Decorate(_, typ) | TypX::Boxed(typ) => get_inv_typ_args(typ),
         _ => {
             panic!("get_inv_typ_args failed, expected some Invariant type");

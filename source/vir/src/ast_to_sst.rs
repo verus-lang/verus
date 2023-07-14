@@ -220,11 +220,11 @@ impl<'a> State<'a> {
                     fun_ssts.borrow().get(fun)
                 {
                     if inline.do_inline {
-                        let typ_bounds = &inline.typ_bounds;
+                        let typ_params = &inline.typ_params;
                         let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
                         let mut substs: HashMap<UniqueIdent, Exp> = HashMap::new();
-                        assert!(typ_bounds.len() == typs.len());
-                        for ((name, _), typ) in typ_bounds.iter().zip(typs.iter()) {
+                        assert!(typ_params.len() == typs.len());
+                        for (name, typ) in typ_params.iter().zip(typs.iter()) {
                             assert!(!typ_substs.contains_key(name));
                             let typ = crate::poly::coerce_typ_to_poly(ctx, typ);
                             typ_substs.insert(name.clone(), typ.clone());
@@ -668,7 +668,7 @@ pub(crate) fn expr_to_stm_or_error(
 /// Unit type, in the lowered form that ast_simplify produces
 fn lowered_unit_typ() -> Typ {
     let path = crate::def::prefix_tuple_type(0);
-    Arc::new(TypX::Datatype(path, Arc::new(vec![])))
+    Arc::new(TypX::Datatype(path, Arc::new(vec![]), Arc::new(vec![])))
 }
 
 /// Unit value, in the lowered form that ast_simplify produces

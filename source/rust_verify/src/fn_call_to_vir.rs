@@ -21,14 +21,14 @@ use rustc_ast::{BorrowKind, LitKind, Mutability};
 use rustc_hir::def::Res;
 use rustc_hir::{Expr, ExprKind, Node, QPath};
 use rustc_middle::ty::subst::GenericArgKind;
-use rustc_middle::ty::{Clause, EarlyBinder, PredicateKind, TyCtxt, TyKind};
+use rustc_middle::ty::{EarlyBinder, TyCtxt, TyKind};
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ComputeMode,
-    Constant, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, Ident, InequalityOp, IntRange,
+    Constant, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange,
     IntegerTypeBoundKind, Mode, ModeCoercion, MultiOp, Quant, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
     VirErr,
 };
@@ -130,6 +130,9 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                 "panic is not supported (if you used Rust's `assert!` macro, you may have meant to use Verus's `assert` function)"
             ),
         );
+    }
+    if matches!(rust_item, Some(RustItem::TryTraitBranch)) {
+        return err_span(expr.span, "Verus does not yet support the ? operator");
     }
 
     unsupported_err_unless!(
@@ -234,33 +237,6 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     let is_spec_allow_proof_args = is_spec_allow_proof_args_pre || is_get_variant.is_some();
     let autospec_usage = if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
 
-    let mk_typ_args =
-        |substs: &rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>| -> Result<_, VirErr> {
-            let mut typ_args: Vec<Typ> = Vec::new();
-            for typ_arg in substs {
-                match typ_arg.unpack() {
-                    GenericArgKind::Type(ty) => {
-                        typ_args.push(mid_ty_to_vir(
-                            tcx,
-                            &bctx.ctxt.verus_items,
-                            expr.span,
-                            &ty,
-                            false,
-                        )?);
-                    }
-                    GenericArgKind::Lifetime(_) => {}
-                    GenericArgKind::Const(cnst) => {
-                        typ_args.push(crate::rust_to_vir_base::mid_ty_const_to_vir(
-                            tcx,
-                            Some(expr.span),
-                            &cnst,
-                        )?);
-                    }
-                }
-            }
-            Ok(Arc::new(typ_args))
-        };
-
     // Compute the 'target_kind'.
     //
     // If the target is a "trait function" then we try to resolve it to a statically known
@@ -280,7 +256,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         if let Ok(Some(inst)) = inst {
             if let rustc_middle::ty::InstanceDef::Item(item) = inst.def {
                 if let rustc_middle::ty::WithOptConstParam { did, const_param_did: None } = item {
-                    let typs = mk_typ_args(&inst.substs)?;
+                    let typs = mk_typ_args(bctx, &inst.substs, expr.span)?;
                     let f = Arc::new(FunX {
                         path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, did),
                     });
@@ -788,44 +764,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         return Ok(arg);
     }
 
-    // TODO(main_new) is calling `subst` still correct with the new API?
-    let raw_inputs =
-        EarlyBinder(bctx.ctxt.tcx.fn_sig(f)).subst(tcx, node_substs).skip_binder().inputs();
-    assert!(raw_inputs.len() == args.len());
-    let vir_args = args
-        .iter()
-        .zip(raw_inputs)
-        .map(|(arg, raw_param)| {
-            let is_mut_ref_param = match raw_param.kind() {
-                TyKind::Ref(_, _, rustc_hir::Mutability::Mut) => true,
-                _ => false,
-            };
-            if matches!(
-                verus_item,
-                Some(
-                    VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrowMut)
-                        | VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(
-                            SpecGhostTrackedItem::GhostBorrowMut
-                        ))
-                )
-            ) {
-                expr_to_vir(bctx, arg, is_expr_typ_mut_ref(bctx, arg, outer_modifier)?)
-            } else if is_mut_ref_param {
-                let arg_x = match &arg.kind {
-                    ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => e,
-                    _ => arg,
-                };
-                let deref_mut = match bctx.types.node_type(arg_x.hir_id).ref_mutability() {
-                    Some(Mutability::Mut) => true,
-                    _ => false,
-                };
-                let expr = expr_to_vir(bctx, arg_x, ExprModifier { addr_of: true, deref_mut })?;
-                Ok(bctx.spanned_typed_new(arg.span, &expr.typ.clone(), ExprX::Loc(expr)))
-            } else {
-                expr_to_vir(bctx, arg, is_expr_typ_mut_ref(bctx, arg, ExprModifier::REGULAR)?)
-            }
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    let vir_args = mk_vir_args(bctx, node_substs, f, &args, verus_item, outer_modifier)?;
 
     match is_get_variant {
         Some((variant_name, None)) => {
@@ -1247,26 +1186,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     } else {
         let name = name.expect("not builtin");
 
-        // filter out the Fn type parameters
-        let mut fn_params: Vec<Ident> = Vec::new();
-        for (x, _) in tcx.predicates_of(f).predicates {
-            if let PredicateKind::Clause(Clause::Trait(t)) = x.kind().skip_binder() {
-                let trait_ref_def_id = t.trait_ref.def_id;
-                if let Some(RustItem::Fn) = verus_items::get_rust_item(tcx, trait_ref_def_id) {
-                    for s in t.trait_ref.substs {
-                        if let GenericArgKind::Type(ty) = s.unpack() {
-                            if let TypX::TypParam(x) =
-                                &*mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, expr.span, &ty, false)?
-                            {
-                                fn_params.push(x.clone());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        let typ_args = mk_typ_args(node_substs)?;
+        let typ_args = mk_typ_args(bctx, node_substs, expr.span)?;
         let impl_paths = get_impl_paths(bctx, f, node_substs);
         let target = CallTarget::Fun(target_kind, name, typ_args, impl_paths, autospec_usage);
         Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, ExprX::Call(target, Arc::new(vir_args))))
@@ -1277,56 +1197,18 @@ fn get_impl_paths<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     f: DefId,
     node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::subst::GenericArg<'tcx>>,
-) -> vir::ast::BoundImplPaths {
-    let tcx = bctx.ctxt.tcx;
-    let mut impl_paths = Vec::new();
-    if let rustc_middle::ty::FnDef(fid, _fsubsts) = tcx.type_of(f).kind() {
-        let param_env = tcx.param_env(bctx.fun_id);
-        // REVIEW: do we need this?
-        // let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
-        let mut cur_id = Some(*fid);
-        while let Some(id) = cur_id {
-            let preds = tcx.predicates_of(id);
-            // It would be nice to use preds.instantiate(tcx, node_substs).predicates,
-            // but that loses track of the relationship between the bounds and the type parameters,
-            // so we use subst instead.
-            for (pred, _) in preds.predicates {
-                if let PredicateKind::Clause(Clause::Trait(t)) = pred.kind().skip_binder() {
-                    let lhs = t.trait_ref.substs.types().next().expect("expect lhs of trait bound");
-                    let param = match lhs.kind() {
-                        TyKind::Param(param) if param.name == rustc_span::symbol::kw::SelfUpper => {
-                            vir::def::trait_self_type_param()
-                        }
-                        TyKind::Param(param) => {
-                            Arc::new(crate::rust_to_vir_base::param_ty_to_vir_name(&param))
-                        }
-                        kind => {
-                            panic!("non-type-parameter trait bound {:?} {:?}", kind, t);
-                        }
-                    };
-
-                    let spred = EarlyBinder(*pred).subst(tcx, node_substs);
-                    let poly_trait_refs = spred.kind().map_bound(|p| {
-                        if let PredicateKind::Clause(Clause::Trait(tp)) = &p {
-                            tp.trait_ref
-                        } else {
-                            unreachable!()
-                        }
-                    });
-                    let candidate = tcx.codegen_select_candidate((param_env, poly_trait_refs));
-                    if let Ok(impl_source) = candidate {
-                        if let rustc_middle::traits::ImplSource::UserDefined(u) = impl_source {
-                            let impl_path =
-                                def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, u.impl_def_id);
-                            impl_paths.push((param, impl_path));
-                        }
-                    }
-                }
-            }
-            cur_id = preds.parent;
-        }
+) -> vir::ast::ImplPaths {
+    if let rustc_middle::ty::FnDef(fid, _fsubsts) = bctx.ctxt.tcx.type_of(f).kind() {
+        crate::rust_to_vir_base::get_impl_paths(
+            bctx.ctxt.tcx,
+            &bctx.ctxt.verus_items,
+            bctx.fun_id,
+            *fid,
+            node_substs,
+        )
+    } else {
+        panic!("unexpected function {:?}", f)
     }
-    Arc::new(impl_paths)
 }
 
 fn extract_ensures<'tcx>(
@@ -1617,7 +1499,7 @@ fn variant_fn_get_datatype<'tcx>(
             _ => vir_ty,
         };
         match &*vir_ty {
-            TypX::Datatype(path, _typs) => {
+            TypX::Datatype(path, _typs, _impl_paths) => {
                 return Ok(path.clone());
             }
             _ => {}
@@ -1625,4 +1507,77 @@ fn variant_fn_get_datatype<'tcx>(
     }
 
     return err_span(span, "invalid is_variant call (possibly a bug with is_variant macro)");
+}
+
+fn mk_typ_args<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    substs: &rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
+    span: Span,
+) -> Result<vir::ast::Typs, VirErr> {
+    let tcx = bctx.ctxt.tcx;
+    let mut typ_args: Vec<Typ> = Vec::new();
+    for typ_arg in substs {
+        match typ_arg.unpack() {
+            GenericArgKind::Type(ty) => {
+                typ_args.push(mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, span, &ty, false)?);
+            }
+            GenericArgKind::Lifetime(_) => {}
+            GenericArgKind::Const(cnst) => {
+                typ_args.push(crate::rust_to_vir_base::mid_ty_const_to_vir(
+                    tcx,
+                    Some(span),
+                    &cnst,
+                )?);
+            }
+        }
+    }
+    Ok(Arc::new(typ_args))
+}
+
+fn mk_vir_args<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    node_substs: &rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
+    f: DefId,
+    args: &Vec<&'tcx Expr<'tcx>>,
+    verus_item: Option<&VerusItem>,
+    outer_modifier: ExprModifier,
+) -> Result<Vec<vir::ast::Expr>, VirErr> {
+    // TODO(main_new) is calling `subst` still correct with the new API?
+    let tcx = bctx.ctxt.tcx;
+    let raw_inputs =
+        EarlyBinder(bctx.ctxt.tcx.fn_sig(f)).subst(tcx, node_substs).skip_binder().inputs();
+    assert!(raw_inputs.len() == args.len());
+    args.iter()
+        .zip(raw_inputs)
+        .map(|(arg, raw_param)| {
+            let is_mut_ref_param = match raw_param.kind() {
+                TyKind::Ref(_, _, rustc_hir::Mutability::Mut) => true,
+                _ => false,
+            };
+            if matches!(
+                verus_item,
+                Some(
+                    VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrowMut)
+                        | VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(
+                            SpecGhostTrackedItem::GhostBorrowMut
+                        ))
+                )
+            ) {
+                expr_to_vir(bctx, arg, is_expr_typ_mut_ref(bctx, arg, outer_modifier)?)
+            } else if is_mut_ref_param {
+                let arg_x = match &arg.kind {
+                    ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => e,
+                    _ => arg,
+                };
+                let deref_mut = match bctx.types.node_type(arg_x.hir_id).ref_mutability() {
+                    Some(Mutability::Mut) => true,
+                    _ => false,
+                };
+                let expr = expr_to_vir(bctx, arg_x, ExprModifier { addr_of: true, deref_mut })?;
+                Ok(bctx.spanned_typed_new(arg.span, &expr.typ.clone(), ExprX::Loc(expr)))
+            } else {
+                expr_to_vir(bctx, arg, is_expr_typ_mut_ref(bctx, arg, ExprModifier::REGULAR)?)
+            }
+        })
+        .collect::<Result<Vec<_>, _>>()
 }
