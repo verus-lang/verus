@@ -1,101 +1,84 @@
 use std::fs::create_dir_all;
 use std::io::BufRead;
+use std::io::BufReader;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
+use std::thread;
 
 mod platform {
     pub struct ExitCode(pub i32);
 
-    use crate::ReportsPath;
     use std::process::Command;
 
     #[cfg(unix)]
-    pub fn exec(cmd: &mut Command, reports: ReportsPath) -> std::io::Result<ExitCode> {
-        use std::io::Write;
-        use std::io::{BufRead, BufReader};
+    // don't now how to return  Result<&mut std::process::Child, std::io::Error>
+    pub fn exec(cmd: &mut Command) -> &mut std::process::Child {
+        // use std::io::Write;
+        // use std::io::{BufRead, BufReader};
         use std::process::Stdio;
-        use std::sync::{Arc, Mutex};
-        use std::thread;
+        // use std::thread;
 
-        // is it okay to execute this as child process?
+        // // is it okay to execute this as child process?
 
-        if let None = reports {
-            // need to keep running rust_verify to get the rustc error message
-            let status = cmd.status()?;
-            return Ok(ExitCode(status.code().unwrap()));
-        }
+        // if let None = reports {
+        //     // need to keep running rust_verify to get the rustc error message
+        //     let status = cmd.status()?;
+        //     return Ok(ExitCode(status.code().unwrap()));
+        // }
 
-        let toml_path = reports.unwrap().proj_path.join("reports.toml");
-        eprintln!("toml_path: {:?}", toml_path);
+        // let toml_path = reports.unwrap().proj_path.join("reports.toml");
+        // eprintln!("toml_path: {:?}", toml_path);
 
-        let file =
-            Arc::new(Mutex::new(std::fs::File::create(toml_path).expect("creating reports.toml")));
+        // let mut file = std::fs::File::create(toml_path).expect("creating reports.toml");
 
-        // let status = cmd.status()?;
-        let mut child = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+        // &mut cmd
+        //     .stdout(Stdio::piped())
+        //     .stderr(Stdio::piped())
+        //     .spawn()
+        //     .expect("cannot run rust_verify")
 
-        let out = BufReader::new(child.stdout.take().unwrap());
-        let err = BufReader::new(child.stderr.take().unwrap());
+        // let out = BufReader::new(child.stdout.take().unwrap());
+        // let err = BufReader::new(child.stderr.take().unwrap());
 
-        // my interpretation of spin up a thread: https://stackoverflow.com/questions/49062707/capture-both-stdout-stderr-via-pipe
-        // but I don't see how this thread will help
-
-        // let two process communicate via a String return type (that gets into the join handle) then write it to file
-        let thread_err = thread::spawn(move || {
-            let mut file = file.lock().unwrap();
-            err.lines().for_each(|line| {
-                // let counter = Arc::clone(&counter);
-
-                let line = line.unwrap();
-                eprintln!("{}", line);
-                // also write to reports.toml
-                writeln!(file, "{}", anstream::adapter::strip_str(&line)).unwrap();
-            });
-            // I'm not sure where should the printing/writing of stdout should go
-            out.lines().for_each(|line| {
-                let line = line.unwrap();
-                println!("{}", line);
-                // also write to reports.toml
-                writeln!(file, "{}", anstream::adapter::strip_str(&line)).unwrap();
-            });
-        });
-
-        // // not sure how to share the `file` between threads
-        // // online tutorials normally have every thread doing the same thing
-        // // https://doc.rust-lang.org/book/ch16-03-shared-state.html
-        // // https://stackoverflow.com/questions/65235821/how-do-i-write-to-a-file-from-different-threads-in-rust
+        // let thread_err = thread::spawn(move || {
+        //     let mut tmpstr = String::new();
+        //     err.lines().for_each(|line| {
+        //         let line = line.unwrap();
+        //         eprintln!("{}", line);
+        //         let to_push = anstream::adapter::strip_str(&line).to_string() + "\n";
+        //         tmpstr.push_str(&to_push);
+        //     });
+        //     return tmpstr;
+        // });
 
         // let thread_out = thread::spawn(move || {
+        //     let mut tmpstr = String::new();
         //     out.lines().for_each(|line| {
-        //         // let counter = Arc::clone(&counter);
-        //         let mut file = file.lock().unwrap();
-
         //         let line = line.unwrap();
         //         println!("{}", line);
-        //         // also write to reports.toml
-        //         writeln!(file, "{}", anstream::adapter::strip_str(&line)).unwrap();
+        //         let to_push = anstream::adapter::strip_str(&line).to_string() + "\n";
+        //         tmpstr.push_str(&to_push);
         //     });
+        //     return tmpstr;
         // });
 
-        // out.lines().for_each(|line| {
-        //     let mut file = file.lock().unwrap();
-        //     let line = line.unwrap();
-        //     println!("{}", line);
-        //     writeln!(file, "{}", anstream::adapter::strip_str(&line)).unwrap();
-        // });
+        // let err_string = thread_err.join().unwrap();
+        // let out_string = thread_out.join().unwrap();
 
-        thread_err.join().unwrap();
+        // writeln!(file, "{}", err_string).unwrap();
+        // writeln!(file, "{}", out_string).unwrap();
 
-        let status = child.wait()?;
+        // let status = child.wait()?;
 
-        Ok(ExitCode(status.code().unwrap()))
+        // Ok(ExitCode(status.code().unwrap()))
     }
 
     // thew windows version seems to use cmd.status() to execute the command
     // which also forks the process to create a child process (unlike exec)
 
     #[cfg(windows)]
-    pub fn exec(cmd: &mut Command, _reports: ReportsPath) -> std::io::Result<ExitCode> {
+    pub fn exec(cmd: &mut Command) -> Result<std::process::Child, std::io::Error> {
         // Configure Windows to kill the child SMT process if the parent is killed
         let job = win32job::Job::create().map_err(|_| std::io::Error::last_os_error())?;
         let mut info =
@@ -107,8 +90,9 @@ mod platform {
         // I think I may be able to just copy the unix code here
         // I will probably make an if branch for windows for setting up
         // like if cfg!(window) { ... } else { ... }
-        let status = cmd.status()?;
-        Ok(ExitCode(status.code().unwrap()))
+        // let status = cmd.status()?;
+        // Ok(ExitCode(status.code().unwrap()))
+        cmd.spawn()
     }
 }
 
@@ -174,47 +158,86 @@ fn main() {
         .stdin(std::process::Stdio::inherit());
 
     // change it to return Child process and do all the operations here
-    match platform::exec(&mut cmd, report_path.clone()) {
-        Err(e) => {
-            eprintln!("error: failed to execute rust_verify {e:?}");
-            std::process::exit(128);
-        }
-        Ok(code) => {
-            if let Some(reports) = report_path {
-                let repo_path = reports.proj_path.clone();
+    let child = platform::exec(&mut cmd);
 
-                let dep_file_rel_path = reports
-                    .crate_root
-                    .with_extension("d")
-                    .file_name()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .to_string();
-
-                let dep_file_path = std::env::current_dir().unwrap().join(dep_file_rel_path);
-
-                let deps = get_dependencies(dep_file_path.clone());
-
-                // copy files to repo_path
-                for dep in deps.iter() {
-                    println!(
-                        "\n{} {} {} {}",
-                        yansi::Paint::blue("copying"),
-                        dep.display(),
-                        yansi::Paint::blue("into"),
-                        repo_path.join(dep).display()
-                    );
-                    // copy cnannt create non-existing directories
-                    create_dir_all(repo_path.join(dep.parent().unwrap())).unwrap();
-                    std::fs::copy(dep, repo_path.join(dep)).unwrap();
-                }
-
-                clean_up(dep_file_path);
-            }
-            std::process::exit(code.0);
-        }
+    if let None = report_path {
+        // if no report path is given, then just run the command
+        // and exit
+        let status = child.wait().expect("failed to wait on child");
+        std::process::exit(status.code().unwrap_or(1));
     }
+
+    // let toml_path = report_path.clone().unwrap().proj_path.join("reports.toml");
+    // eprintln!("toml_path: {:?}", toml_path);
+
+    // let mut file = std::fs::File::create(toml_path).expect("creating reports.toml");
+
+    // let out = BufReader::new(child.stdout.take().unwrap());
+    // let err = BufReader::new(child.stderr.take().unwrap());
+    // let thread_err = thread::spawn(move || {
+    //     let mut tmpstr = String::new();
+    //     err.lines().for_each(|line| {
+    //         let line = line.unwrap();
+    //         eprintln!("{}", line);
+    //         let to_push = anstream::adapter::strip_str(&line).to_string() + "\n";
+    //         tmpstr.push_str(&to_push);
+    //     });
+    //     return tmpstr;
+    // });
+
+    // let thread_out = thread::spawn(move || {
+    //     let mut tmpstr = String::new();
+    //     out.lines().for_each(|line| {
+    //         let line = line.unwrap();
+    //         println!("{}", line);
+    //         let to_push = anstream::adapter::strip_str(&line).to_string() + "\n";
+    //         tmpstr.push_str(&to_push);
+    //     });
+    //     return tmpstr;
+    // });
+
+    // let err_string = thread_err.join().unwrap();
+    // let out_string = thread_out.join().unwrap();
+
+    // writeln!(file, "{}", err_string).unwrap();
+    // writeln!(file, "{}", out_string).unwrap();
+
+    // let _status = child.wait().expect("child failed to exec");
+
+    // Copying and cleanning up
+    if let Some(reports) = report_path {
+        let repo_path = reports.proj_path.clone();
+
+        let dep_file_rel_path = reports
+            .crate_root
+            .with_extension("d")
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        let dep_file_path = std::env::current_dir().unwrap().join(dep_file_rel_path);
+
+        let deps = get_dependencies(dep_file_path.clone());
+
+        // copy files to repo_path
+        for dep in deps.iter() {
+            println!(
+                "\n{} {} {} {}",
+                yansi::Paint::blue("copying"),
+                dep.display(),
+                yansi::Paint::blue("into"),
+                repo_path.join(dep).display()
+            );
+            // copy cnannt create non-existing directories
+            create_dir_all(repo_path.join(dep.parent().unwrap())).unwrap();
+            std::fs::copy(dep, repo_path.join(dep)).unwrap();
+        }
+
+        clean_up(dep_file_path);
+    }
+    std::process::exit(0);
 }
 
 pub type ReportsPath = Option<Reports>;
