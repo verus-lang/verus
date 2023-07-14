@@ -6,7 +6,7 @@ For soundness's sake, be as defensive as possible:
 - explicitly match all fields of the Rust AST so we catch any features added in the future
 */
 
-use crate::attributes::{get_verifier_attrs};
+use crate::attributes::get_verifier_attrs;
 use crate::context::Context;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
 use crate::rust_to_vir_base::{
@@ -287,8 +287,7 @@ fn check_item<'tcx>(
                                     );
                                     let ident = impl_item_ref.ident.to_string();
                                     let ident = Arc::new(ident);
-                                    let path =
-                                        typ_path_and_ident_to_vir_path(&trait_path, ident);
+                                    let path = typ_path_and_ident_to_vir_path(&trait_path, ident);
                                     let fun = FunX { path };
                                     let method = Arc::new(fun);
                                     FunctionKind::TraitMethodImpl {
