@@ -835,6 +835,12 @@ pub fn spec_chained_cmp(_chain: SpecChain) -> bool {
     unimplemented!()
 }
 
+#[rustc_diagnostic_item = "verus::builtin::spec_chained_eq"]
+#[verifier::spec]
+pub fn spec_chained_eq<IntegerType: Integer>(_left: SpecChain, _right: IntegerType) -> SpecChain {
+    unimplemented!()
+}
+
 macro_rules! impl_ord {
     ([$($t:ty)*]) => {
         $(

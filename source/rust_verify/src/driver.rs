@@ -266,16 +266,7 @@ where
             let externs = VerusExterns { path: &verusroot, has_vstd: !verifier.args.no_vstd };
             rustc_args.extend(externs.to_args());
             if in_vargo && !std::env::var("VERUS_Z3_PATH").is_ok() {
-                std::env::set_var(
-                    "VERUS_Z3_PATH",
-                    verusroot
-                        .parent()
-                        .and_then(|x| x.parent())
-                        .unwrap()
-                        .join(if cfg!(windows) { "z3.exe" } else { "z3" })
-                        .to_str()
-                        .unwrap(),
-                );
+                panic!("we are in vargo, but VERUS_Z3_PATH is not set; this is a bug");
             }
         }
     } else if verifier.args.no_vstd {
@@ -313,7 +304,7 @@ where
     } = verifier_callbacks;
     if !verifier.args.output_json && !verifier.encountered_vir_error {
         println!(
-            "verification results:: verified: {} errors: {}{}",
+            "verification results:: {} verified, {} errors{}",
             verifier.count_verified,
             verifier.count_errors,
             if !is_verifying_entire_crate(&verifier) {

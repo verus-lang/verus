@@ -42,7 +42,7 @@ process does not expect.
 
 You should be in the `source` subdirectory.
 
-First, activate the development environment with one of the following:
+First, activate the development environment with one of the following: (This is automatic for [direnv](https://direnv.net/) users[^1])
 
 ```
 source ../tools/activate       # for bash and zsh
@@ -127,3 +127,4 @@ directory, which is useful when verifying and compiling a project elsewhere on y
 Once you have built Verus, you can use it in IDE clients (such as Visual Studio
 Code, Emacs, or Vim) that support the LSP protocol.  Follow [these instructions](https://verus-lang.github.io/verus/guide/ide_support.html).
 
+[^1]: If you are a [direnv](https://direnv.net/) user this activation is performed automatically, i.e. you don't need to `source ../tools/activate`; instead, `vargo` will automatically be in your `PATH` as long as you are in the `source` subdirectory.

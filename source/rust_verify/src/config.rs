@@ -172,7 +172,11 @@ pub fn parse_args_with_imports(
         .unwrap_or(1);
 
     let mut opts = Options::new();
-    opts.optflag("", OPT_VERSION, "Print version information");
+    opts.optflag(
+        "",
+        OPT_VERSION,
+        "Print version information (add `--output-json` to print as json) ",
+    );
     opts.optopt("", OPT_PERVASIVE_PATH, "Path of the pervasive module", "PATH");
     opts.optopt("", OPT_EXPORT, "Export Verus metadata for library crate", "CRATENAME=PATH");
     opts.optmulti("", OPT_IMPORT, "Import Verus metadata from library crate", "CRATENAME=PATH");

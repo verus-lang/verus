@@ -226,11 +226,11 @@ fn test_vec2() {
     v.push(30);
     v.push(40);
     v.set(2, 21);
-    assert(v@.ext_equal(seq![0, 10, 21, 30, 40]));
-    assert(v@.ext_equal(seq![0, 10] + seq![21] + seq![30, 40]));
+    assert(v@ =~= (seq![0, 10, 21, 30, 40]));
+    assert(v@ =~= (seq![0, 10] + seq![21] + seq![30, 40]));
     assert(v@[2] == 21);
     assert(v@[3] == 30);
-    assert(v@.subrange(2, 4).ext_equal(seq![21, 30]));
+    assert(v@.subrange(2, 4) =~= (seq![21, 30]));
     assert(has_five_sorted_numbers(v@));
 }
 // ANCHOR_END: test_vec2

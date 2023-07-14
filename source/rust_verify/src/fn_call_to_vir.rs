@@ -8,7 +8,7 @@ use crate::rust_to_vir_expr::{
     check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir, extract_array, extract_tuple,
     get_fn_path, is_expr_typ_mut_ref, mk_ty_clip, pat_to_var, record_fun, ExprModifier,
 };
-use crate::util::{err_span, unsupported_err_span, vec_map, vec_map_result};
+use crate::util::{err_span, unsupported_err_span, vec_map, vec_map_result, vir_err_span_str};
 use crate::verus_items::{
     self, ArithItem, AssertItem, BinaryOpItem, ChainedItem, CompilableOprItem, DirectiveItem,
     EqualityItem, ExprItem, QuantItem, RustItem, SpecArithItem, SpecGhostTrackedItem, SpecItem,
@@ -21,18 +21,18 @@ use rustc_ast::{BorrowKind, LitKind, Mutability};
 use rustc_hir::def::Res;
 use rustc_hir::{Expr, ExprKind, Node, QPath};
 use rustc_middle::ty::subst::GenericArgKind;
-use rustc_middle::ty::{Clause, EarlyBinder, PredicateKind, TyCtxt, TyKind};
+use rustc_middle::ty::{EarlyBinder, TyCtxt, TyKind};
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ComputeMode,
-    Constant, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange,
+    ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ChainedOp,
+    ComputeMode, Constant, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange,
     IntegerTypeBoundKind, Mode, ModeCoercion, MultiOp, Quant, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
     VirErr,
 };
-use vir::ast_util::{const_int_from_string, types_equal, undecorate_typ};
+use vir::ast_util::{const_int_from_string, typ_to_diagnostic_str, types_equal, undecorate_typ};
 use vir::def::positional_field_ident;
 
 pub(crate) fn fn_call_to_vir<'tcx>(
@@ -825,7 +825,10 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                 {
                     true
                 } else {
-                    return err_span(expr.span, "types must be compatible to use == or !=");
+                    return Err(vir_err_span_str(expr.span, "mismatched types; types must be compatible to use == or !=")
+                        .secondary_label(&crate::spans::err_air_span(args[0].span), format!("this is `{}`", typ_to_diagnostic_str(&t1)))
+                        .secondary_label(&crate::spans::err_air_span(args[1].span), format!("this is `{}`", typ_to_diagnostic_str(&t2)))
+                        .help("decorations (like &,&mut,Ghost,Tracked,Box,Rc,...) are transparent for == or != in spec code"));
                 }
             }
             VerusItem::CompilableOpr(CompilableOprItem::Implies)
@@ -1057,7 +1060,12 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                 unsupported_err_unless!(len == 1, expr.span, "spec_chained_cmp", args);
                 Ok(vir_args[0].clone())
             }
-            ChainedItem::Le | ChainedItem::Lt | ChainedItem::Ge | ChainedItem::Gt => {
+
+            ChainedItem::Le
+            | ChainedItem::Lt
+            | ChainedItem::Ge
+            | ChainedItem::Gt
+            | ChainedItem::Eq => {
                 unsupported_err_unless!(len == 2, expr.span, "chained inequality", &args);
                 unsupported_err_unless!(
                     matches!(&vir_args[0].x, ExprX::Multi(MultiOp::Chained(_), _)),
@@ -1072,10 +1080,11 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                     &args
                 );
                 let op = match chained_item {
-                    ChainedItem::Le => InequalityOp::Le,
-                    ChainedItem::Lt => InequalityOp::Lt,
-                    ChainedItem::Ge => InequalityOp::Ge,
-                    ChainedItem::Gt => InequalityOp::Gt,
+                    ChainedItem::Le => ChainedOp::Inequality(InequalityOp::Le),
+                    ChainedItem::Lt => ChainedOp::Inequality(InequalityOp::Lt),
+                    ChainedItem::Ge => ChainedOp::Inequality(InequalityOp::Ge),
+                    ChainedItem::Gt => ChainedOp::Inequality(InequalityOp::Gt),
+                    ChainedItem::Eq => ChainedOp::MultiEq,
                     ChainedItem::Value | ChainedItem::Cmp => unreachable!(),
                 };
                 if let ExprX::Multi(MultiOp::Chained(ops), es) = &vir_args[0].x {
@@ -1197,56 +1206,18 @@ fn get_impl_paths<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     f: DefId,
     node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::subst::GenericArg<'tcx>>,
-) -> vir::ast::BoundImplPaths {
-    let tcx = bctx.ctxt.tcx;
-    let mut impl_paths = Vec::new();
-    if let rustc_middle::ty::FnDef(fid, _fsubsts) = tcx.type_of(f).kind() {
-        let param_env = tcx.param_env(bctx.fun_id);
-        // REVIEW: do we need this?
-        // let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
-        let mut cur_id = Some(*fid);
-        while let Some(id) = cur_id {
-            let preds = tcx.predicates_of(id);
-            // It would be nice to use preds.instantiate(tcx, node_substs).predicates,
-            // but that loses track of the relationship between the bounds and the type parameters,
-            // so we use subst instead.
-            for (pred, _) in preds.predicates {
-                if let PredicateKind::Clause(Clause::Trait(t)) = pred.kind().skip_binder() {
-                    let lhs = t.trait_ref.substs.types().next().expect("expect lhs of trait bound");
-                    let param = match lhs.kind() {
-                        TyKind::Param(param) if param.name == rustc_span::symbol::kw::SelfUpper => {
-                            vir::def::trait_self_type_param()
-                        }
-                        TyKind::Param(param) => {
-                            Arc::new(crate::rust_to_vir_base::param_ty_to_vir_name(&param))
-                        }
-                        kind => {
-                            panic!("non-type-parameter trait bound {:?} {:?}", kind, t);
-                        }
-                    };
-
-                    let spred = EarlyBinder(*pred).subst(tcx, node_substs);
-                    let poly_trait_refs = spred.kind().map_bound(|p| {
-                        if let PredicateKind::Clause(Clause::Trait(tp)) = &p {
-                            tp.trait_ref
-                        } else {
-                            unreachable!()
-                        }
-                    });
-                    let candidate = tcx.codegen_select_candidate((param_env, poly_trait_refs));
-                    if let Ok(impl_source) = candidate {
-                        if let rustc_middle::traits::ImplSource::UserDefined(u) = impl_source {
-                            let impl_path =
-                                def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, u.impl_def_id);
-                            impl_paths.push((param, impl_path));
-                        }
-                    }
-                }
-            }
-            cur_id = preds.parent;
-        }
+) -> vir::ast::ImplPaths {
+    if let rustc_middle::ty::FnDef(fid, _fsubsts) = bctx.ctxt.tcx.type_of(f).kind() {
+        crate::rust_to_vir_base::get_impl_paths(
+            bctx.ctxt.tcx,
+            &bctx.ctxt.verus_items,
+            bctx.fun_id,
+            *fid,
+            node_substs,
+        )
+    } else {
+        panic!("unexpected function {:?}", f)
     }
-    Arc::new(impl_paths)
 }
 
 fn extract_ensures<'tcx>(
@@ -1537,7 +1508,7 @@ fn variant_fn_get_datatype<'tcx>(
             _ => vir_ty,
         };
         match &*vir_ty {
-            TypX::Datatype(path, _typs) => {
+            TypX::Datatype(path, _typs, _impl_paths) => {
                 return Ok(path.clone());
             }
             _ => {}
