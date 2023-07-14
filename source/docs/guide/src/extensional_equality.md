@@ -8,7 +8,7 @@ Suppose that a `struct` or `enum` datatype has a field containing `Seq`, `Set`, 
 and suppose that we'd like to prove that two values of the datatype are equal.
 We could do this by using `=~=` on each field individually:
 
-```
+```rust
 {{#include ../../../rust_verify/example/guide/ext_equal.rs:ext_eq_struct_fields}}
 ```
 

@@ -45,11 +45,11 @@
     - [Exec closures]()
 - [SMT solving, automation, and where automation fails](smt_failures.md) <!--- Chris --->
     - [What's decidable, what's undecidable, what's fast, what's slow]() <!--- Chris --->
-    - [integers: nonlinear arithmetic and bit vectors]() <!--- Chris and Chanhee --->
+    - [Integers: nonlinear arithmetic and bit vectors]() <!--- Chris and Chanhee --->
     - [forall and exists: writing and using triggers, inline functions]() <!--- Chris --->
-    - [recursive functions]() <!--- Chris --->
-    - [extensional equality](extensional_equality.md)
-    - [libraries: incomplete axioms for Seq, Set, Map]() <!--- Chris --->
+    - [Recursive functions]() <!--- Chris --->
+    - [Extensional equality](extensional_equality.md)
+    - [Libraries: incomplete axioms for Seq, Set, Map]() <!--- Chris --->
 - [Improving SMT performance]() <!--- Chris --->
     - [Modules, hiding, opaque, reveal]() <!--- Chris --->
     - [Quantifier profiling](profiling.md) <!--- Bryan --->

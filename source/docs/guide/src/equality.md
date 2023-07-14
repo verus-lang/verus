@@ -29,7 +29,7 @@ In ghost code, by contrast, the `==` operator is always an equivalence relation
 Verus defines `==` in ghost code to be true when:
 - for two integers or booleans, the values are equal
 - for two structs or enums, the types are the same and the fields are equal
-- for two `&` references, Box values, two Rc values, or two Arc values, the pointed-to values are the same
+- for two `&` references, two Box values, two Rc values, or two Arc values, the pointed-to values are the same
 - for two RefCell values or two Cell values, the pointers to the interior data are equal (not the interior contents)
 
 In addition, collection dataypes such as `Seq<T>`, `Set<T>`, and `Map<Key, Value>`
