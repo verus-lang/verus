@@ -1077,10 +1077,10 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                     &args
                 );
                 let op = match chained_item {
-                    ChainedItem::Le => ChainedOp::CmpOp(InequalityOp::Le),
-                    ChainedItem::Lt => ChainedOp::CmpOp(InequalityOp::Lt),
-                    ChainedItem::Ge => ChainedOp::CmpOp(InequalityOp::Ge),
-                    ChainedItem::Gt => ChainedOp::CmpOp(InequalityOp::Gt),
+                    ChainedItem::Le => ChainedOp::Inequality(InequalityOp::Le),
+                    ChainedItem::Lt => ChainedOp::Inequality(InequalityOp::Lt),
+                    ChainedItem::Ge => ChainedOp::Inequality(InequalityOp::Ge),
+                    ChainedItem::Gt => ChainedOp::Inequality(InequalityOp::Gt),
                     ChainedItem::Eq => ChainedOp::MultiEq,
                     ChainedItem::Value | ChainedItem::Cmp => unreachable!(),
                 };

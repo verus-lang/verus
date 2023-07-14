@@ -355,12 +355,10 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
             }
             let mut conjunction: Expr = es[0].clone();
             for i in 0..ops.len() {
-                let op: BinaryOp;
-                if let ChainedOp::CmpOp(a) = ops[i] {
-                    op = BinaryOp::Inequality(a);
-                } else {
-                    op = BinaryOp::Eq(Mode::Spec);
-                }
+                let op = match ops[i] {
+                    ChainedOp::Inequality(a) => BinaryOp::Inequality(a),
+                    ChainedOp::MultiEq => BinaryOp::Eq(Mode::Spec),
+                };
                 let left = es[i].clone();
                 let right = es[i + 1].clone();
                 let span = left.span.clone();

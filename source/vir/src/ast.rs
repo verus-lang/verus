@@ -307,7 +307,7 @@ pub enum InequalityOp {
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum ChainedOp {
-    CmpOp(InequalityOp),
+    Inequality(InequalityOp),
     MultiEq,
 }
 
