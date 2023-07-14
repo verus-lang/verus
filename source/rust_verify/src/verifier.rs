@@ -1204,25 +1204,18 @@ impl Verifier {
         source_map: Option<&SourceMap>,
         module: &vir::ast::Path,
         mut global_ctx: vir::context::GlobalCtx,
-        multithreaded: bool,
     ) -> Result<vir::context::GlobalCtx, VirErr> {
         let time_verify_start = Instant::now();
 
         self.module_times.insert(module.clone(), Default::default());
 
         let module_name = module_name(module);
-        if module.segments.len() == 0 {
-            reporter.report(&note_bare("verifying root module"));
-        } else {
-            reporter.report(&note_bare(&format!(
-                "{} {}",
-                if !multithreaded {
-                    "verifying module"
-                } else {
-                    "reporting diagnostics for module"
-                },
-                &module_name
-            )));
+        if self.args.trace || (self.args.verify_module.len() > 0 || self.args.verify_root) {
+            if module.segments.len() == 0 {
+                reporter.report_now(&note_bare("verifying root module"));
+            } else {
+                reporter.report_now(&note_bare(&format!("verifying module {}", &module_name)));
+            }
         }
 
         let (pruned_krate, mono_abstract_datatypes, lambda_types) =
@@ -1253,6 +1246,14 @@ impl Verifier {
         time_module.time_smt_init = time_smt_init;
         time_module.time_smt_run = time_smt_run;
         time_module.time_verify = time_verify_end - time_verify_start;
+
+        if self.args.trace {
+            if module.segments.len() == 0 {
+                reporter.report_now(&note_bare("done with root module"));
+            } else {
+                reporter.report_now(&note_bare(&format!("done with module {}", &module_name)));
+            }
+        }
 
         Ok(global_ctx)
     }
@@ -1428,7 +1429,6 @@ impl Verifier {
                                 None,
                                 &module,
                                 task,
-                                true,
                             );
                             reporter.done(); // we've verified the module, send the done message
                             match res {
@@ -1556,7 +1556,6 @@ impl Verifier {
                     Some(source_map),
                     module,
                     global_ctx,
-                    false,
                 )?;
             }
         }
@@ -1858,6 +1857,9 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             );
             {
                 let reporter = Reporter::new(&spans, compiler);
+                if self.verifier.args.trace {
+                    reporter.report_now(&note_bare("preparing crate for verification"));
+                }
                 if let Err(err) = self.verifier.construct_vir_crate(
                     tcx,
                     verus_items.clone(),
