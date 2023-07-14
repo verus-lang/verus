@@ -34,13 +34,7 @@ calc! {
 For example,
 
 ```rust
-let a: int = 2;
-calc! {
-    (<=)
-    a; {}
-    a + 3; {}
-    5;
-}
+{{#include ../../../rust_verify/example/guide/calc.rs:simple}}
 ```
 
 which is equivalent to proving `a <= 5` using `a <= b <= 5`. In this case, each
@@ -75,18 +69,7 @@ reported with a helpful message).
 A simple example of using intermediate relations looks like the following:
 
 ```rust
-let x: int = 2;
-let y: int = 5;
-calc! {
-  (<=)
-  x; (==) {}
-  5 - 3; (<) {}
-  5; {} // Notice that no intermediate relation 
-        // is specified here, so `calc!` will 
-        // consider the top-level relation 
-        // `R`; here `<=`.
-  y;
-}
+{{#include ../../../rust_verify/example/guide/calc.rs:transitive}}
 ```
 
 This example is equivalent to saying `x <= y` using `x == 5 - 3 < 5 <= y`.
