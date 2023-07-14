@@ -1,24 +1,44 @@
-# Extensional Equality
+# Equality via extensionality
 
-In the [specification libraries](spec_lib.md) section, we introduced the extensional equality operator `=~=` to check equivalence for `Seq`, `Set`, and `Map`.
+In the [specification libraries](spec_lib.md) section,
+we introduced the extensional equality operator `=~=`
+to check equivalence for `Seq`, `Set`, and `Map`.
 
-For a datatype containing these collections, it would be rather painful to use `=~=` on each field every time to check for equivalence. 
-To help with this, we introduce the `#[verifier::ext_equal]` attribute to mark datatypes if they need extensionality on `Seq`, `Set`, `Map`, `Multiset`, `FnSpec` 
-fields or fields of other `#[verifier::ext_equal]` datatypes. This does not change the meaning of `==`. See:
+Suppose that a `struct` or `enum` datatype has a field containing `Seq`, `Set`, and `Map`,
+and suppose that we'd like to prove that two values of the datatype are equal.
+We could do this by using `=~=` on each field individually:
+
+```
+{{#include ../../../rust_verify/example/guide/ext_equal.rs:ext_eq_struct_fields}}
+```
+
+However, it's rather painful to use `=~=` on each field every time to check for equivalence.
+To help with this, Verus supports the `#[verifier::ext_equal]` attribute
+to mark datatypes that need extensionality on `Seq`, `Set`, `Map`, `Multiset`, `FnSpec`
+fields or fields of other `#[verifier::ext_equal]` datatypes.  For example:
 
 ```rust
 {{#include ../../../rust_verify/example/guide/ext_equal.rs:ext_eq_struct}}
 ```
 
-Since collection datatypes are parameterized, they can contain other collections as a result.
-To check extensional equality on nested collections, it is not enough to just use `=~=`, but requires a "deep" extensional equality operator `=~~=`. 
-Don't worry, the number of `~` does not grow infinitely! `=~~=` handles arbitrary nesting of collections, `FnSpec`, and datatypes. See:
+(Note: adding `#[verifier::ext_equal]` does not change the meaning of `==`;
+it just makes it more convenient to use `=~=` to prove `==` on datatypes.)
+
+Collection datatypes like sequences and sets can contain other collection datatypes as elements
+(for example, a sequence of sequences, or set of sequences).
+The `=~=` operator only applies extensionality to the top-level collection,
+not to the nested elements of the collection.
+To also apply extensionality to the elements,
+Verus provides a "deep" extensional equality operator `=~~=`
+that handles arbitrary nesting of collections, `FnSpec`, and datatypes.
+For example:
 
 ```rust
 {{#include ../../../rust_verify/example/guide/ext_equal.rs:ext_eq_nested}}
 ```
 
-The same applies to `FnSpec`, see:
+The same applies to `FnSpec`, as in:
+
 ```rust
 {{#include ../../../rust_verify/example/guide/ext_equal.rs:ext_eq_fnspec}}
 ```
