@@ -3,10 +3,10 @@
 use crate::ast::Quant;
 use crate::ast::Typs;
 use crate::ast::{
-    AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BuiltinSpecFun, CallTarget, Constant, Datatype,
-    DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Field, FieldOpr, Function, FunctionKind,
-    Ident, IntRange, Krate, KrateX, Mode, MultiOp, Path, Pattern, PatternX, SpannedTyped, Stmt,
-    StmtX, Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
+    AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BuiltinSpecFun, CallTarget, ChainedOp,
+    Constant, Datatype, DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Field, FieldOpr,
+    Function, FunctionKind, Ident, IntRange, Krate, KrateX, Mode, MultiOp, Path, Pattern, PatternX,
+    SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
 };
 use crate::ast_util::int_range_from_type;
 use crate::ast_util::is_integer_type;
@@ -339,7 +339,10 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
             }
             let mut conjunction: Expr = es[0].clone();
             for i in 0..ops.len() {
-                let op = BinaryOp::Inequality(ops[i]);
+                let op = match ops[i] {
+                    ChainedOp::Inequality(a) => BinaryOp::Inequality(a),
+                    ChainedOp::MultiEq => BinaryOp::Eq(Mode::Spec),
+                };
                 let left = es[i].clone();
                 let right = es[i + 1].clone();
                 let span = left.span.clone();

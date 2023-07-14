@@ -213,6 +213,7 @@ pub(crate) enum ChainedItem {
     Ge,
     Gt,
     Cmp,
+    Eq,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -402,6 +403,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::spec_chained_ge",         VerusItem::Chained(ChainedItem::Ge)),
         ("verus::builtin::spec_chained_gt",         VerusItem::Chained(ChainedItem::Gt)),
         ("verus::builtin::spec_chained_cmp",        VerusItem::Chained(ChainedItem::Cmp)),
+        ("verus::builtin::spec_chained_eq",         VerusItem::Chained(ChainedItem::Eq)),
 
         ("verus::builtin::assert_",                 VerusItem::Assert(AssertItem::Assert)),
         ("verus::builtin::assert_by",               VerusItem::Assert(AssertItem::AssertBy)),

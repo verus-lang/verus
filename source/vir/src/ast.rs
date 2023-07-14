@@ -319,6 +319,12 @@ pub enum InequalityOp {
     Gt,
 }
 
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum ChainedOp {
+    Inequality(InequalityOp),
+    MultiEq,
+}
+
 /// Primitive binary operations
 /// (not arbitrary user-defined functions -- these are represented by ExprX::Call)
 /// Note that all integer operations are on mathematic integers (IntRange::Int),
@@ -365,7 +371,7 @@ pub enum BinaryOpr {
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum MultiOp {
-    Chained(Arc<Vec<InequalityOp>>),
+    Chained(Arc<Vec<ChainedOp>>),
 }
 
 /// Use Ghost(x) or Tracked(x) to unwrap an argument

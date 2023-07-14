@@ -831,7 +831,7 @@ impl Visitor {
 fn chain_count(expr: &Expr) -> u32 {
     if let Expr::Binary(binary) = expr {
         match binary.op {
-            BinOp::Le(_) | BinOp::Lt(_) | BinOp::Ge(_) | BinOp::Gt(_) => {
+            BinOp::Le(_) | BinOp::Lt(_) | BinOp::Ge(_) | BinOp::Gt(_) | BinOp::Eq(_) => {
                 1 + chain_count(&binary.left)
             }
             _ => 0,
@@ -864,6 +864,7 @@ impl Visitor {
                     BinOp::Lt(_) => "spec_chained_lt",
                     BinOp::Ge(_) => "spec_chained_ge",
                     BinOp::Gt(_) => "spec_chained_gt",
+                    BinOp::Eq(_) => "spec_chained_eq",
                     _ => panic!("chain_operators"),
                 };
                 let left = *binary.left;
