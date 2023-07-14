@@ -135,7 +135,11 @@ pub fn main() {
         args.remove(index);
 
         if let Some(verusroot) = &verus_root {
-            let exe = verusroot.path.join("error_report");
+            let exe = verusroot.path.join(if cfg!(windows) {
+                "error_report.exe"
+            } else {
+                "error_report"
+            });
             if exe.exists() {
                 let mut res = std::process::Command::new(exe)
                     .arg(&verusroot.path)
