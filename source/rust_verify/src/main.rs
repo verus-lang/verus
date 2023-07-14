@@ -131,27 +131,19 @@ pub fn main() {
         let index = args.iter().position(|x| *x == "--error-report").unwrap();
         args.remove(index);
 
-        let verus_path = std::env::current_exe().unwrap();
-        let exe: std::path::PathBuf;
-        let release_exe = verus_path.parent().unwrap().join("../../target/release/error_report");
-        let debug_exe = verus_path.parent().unwrap().join("../../target/debug/error_report");
-        if release_exe.exists() {
-            exe = release_exe;
-        } else if debug_exe.exists() {
-            exe = debug_exe;
-        } else {
-            panic!("error_report executable not found; try running `vargo build --release`?");
+        if let Some(verusroot) = &verus_root {
+            let exe = verusroot.path.join("error_report");
+            if exe.exists() {
+                let mut res = std::process::Command::new(exe)
+                    .arg(&verusroot.path)
+                    .args(args)
+                    .spawn()
+                    .expect("running error_report");
+
+                res.wait().expect("error_report failed to run");
+                return;
+            }
         }
-
-        // verus path is the first argument, we assume z3 is under the same directory
-        let mut res = std::process::Command::new(exe)
-            .arg(verus_path.parent().unwrap())
-            .args(args)
-            .spawn()
-            .expect("error_report failed to start");
-
-        res.wait().expect("error_report failed to run");
-
         return;
     }
 

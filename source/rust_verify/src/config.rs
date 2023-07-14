@@ -266,7 +266,7 @@ pub fn parse_args_with_imports(
     opts.optflag(
         "",
         OPT_ERROR_REPORT,
-        "Zip relevant files triggering a Verus error to aid in reporting it",
+        "Rerun verus that zip relevant files of the crate to the current directory. The file will be named YYYY-MM-DD-HH-MM-SS.zip. If you are reporting an error, please keep the original arguments in addition to this flag",
     );
 
     let print_usage = || {

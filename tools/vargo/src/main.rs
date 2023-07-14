@@ -679,6 +679,7 @@ fn run() -> Result<(), String> {
                 format!("{}state_machines_macros.{}", LIB_PRE, LIB_DL),
                 format!("rust_verify{}", EXE),
                 format!("verus{}", EXE),
+                format!("error_report{}", EXE),
             ]
             .into_iter()
             {
