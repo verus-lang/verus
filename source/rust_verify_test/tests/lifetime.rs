@@ -149,6 +149,8 @@ test_verify_one_file! {
             x
         }
         proof fn test<A>(tracked x: A) {
+            // Note that builtin::is_variant is a spec function but
+            // allows proof arguments
             let s = builtin::is_variant(id(Option::Some(x)), "None");
             let s = builtin::is_variant(id(Option::Some(x)), "None");
         }
