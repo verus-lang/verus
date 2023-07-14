@@ -61,6 +61,12 @@ impl<K, V> Map<K, V> {
 
     pub spec fn dom(self) -> Set<K>;
 
+    /// The set of keys mapped to by the domain of the map
+ 
+    pub open spec fn values(self) -> Set<V> {
+        Set::<V>::new(|v: V| self.contains_value(v))
+    }
+
     /// Gets the value that the given key `key` maps to.
     /// For keys not in the domain, the result is meaningless and arbitrary.
 
@@ -88,6 +94,12 @@ impl<K, V> Map<K, V> {
     /// If the key is already absent from the map, then the map is left unchanged.
 
     pub spec fn remove(self, key: K) -> Map<K, V>;
+
+    // Returns the number of key-value pairs in the map
+
+    pub open spec fn len(self) -> nat {
+        self.dom().len()
+    }
 
     /// DEPRECATED: use =~= or =~~= instead.
     /// Returns true if the two maps are pointwise equal, i.e.,
@@ -201,6 +213,14 @@ impl<K, V> Map<K, V> {
         )
     }
 
+    /// Returns `true` if and only if the given key maps to the same value or does not exist in self and m2.
+    
+    pub open spec fn equal_on_key(self, m2: Self, key: K) ->bool
+    {
+        ||| (!self.dom().contains(key) && !m2.dom().contains(key))
+        ||| (self.dom().contains(key) && m2.dom().contains(key) && self[key] == m2[key])
+    }
+
     /// Returns `true` if the two given maps agree on all keys that their domains
     /// share in common.
 
@@ -296,7 +316,134 @@ impl<K, V> Map<K, V> {
     pub open spec fn map_values<W>(self, f: FnSpec(V) -> W) -> Map<K, W> {
         Map::new(|k: K| self.contains_key(k), |k: K| f(self[k]))
     }
+
+    /// Returns `true` if and only if a map is injective
+    pub open spec fn injective(self) -> bool {
+        forall |x: K, y: K| x != y && self.dom().contains(x) && self.dom().contains(y) ==> #[trigger] self[x] != #[trigger] self[y]
+    }
+
+    /// Swaps map keys and values. Values are not required to be unique; no
+    /// promises on which key is chosen on the intersection.
+    pub open spec fn invert(self) -> Map<V,K> 
+    {
+        Map::<V,K>::new(
+            |v: V| self.contains_value(v),
+            |v: V| choose |k: K| self.contains_pair(k,v)
+        )
+    }
 }
+
+impl Map<int,int> {
+
+    /// Returns `true` if a map is monotonic -- that is, if the mapping between ordered sets 
+    /// preserves the given order 
+    pub open spec fn monotonic(self) -> bool {
+        forall |x: int, y: int| self.dom().contains(x) && self.dom().contains(y) && x <= y 
+            ==> #[trigger] self[x] <= #[trigger] self[y]
+    }
+
+    /// Returns `true` if and only if a map is monotonic, only considering keys greater than
+    /// or equal to start
+    pub open spec fn monotonic_from(self, start: int) -> bool {
+        forall |x: int, y: int| self.dom().contains(x) && self.dom().contains(y) && start <= x <= y 
+            ==> #[trigger] self[x] <= #[trigger] self[y]
+    }
+
+}
+
+// Proven lemmas
+
+pub proof fn lemma_remove_key_len<K,V>(m: Map<K,V>, key: K)
+    requires
+        m.dom().contains(key),
+        m.dom().finite(),
+    ensures
+        m.dom().len() == 1 + m.remove(key).dom().len(),
+{}
+
+pub proof fn lemma_remove_equivalency<K,V>(m: Map<K,V>, key: K)
+    ensures
+        m.remove(key).dom() == m.dom().remove(key),
+{}
+
+/// Removing a set of n keys from a map that previously contained all n keys
+/// results in a domain of size n less than the original domain.
+
+pub proof fn lemma_remove_keys_len<K,V>(m: Map<K,V>, keys: Set<K>)
+    requires
+        forall |k: K| #[trigger] keys.contains(k) ==> m.contains_key(k),
+    ensures 
+        m.remove_keys(keys).dom().len() == m.dom().len() - keys.len(),
+    decreases
+        keys.len(),
+{
+    if keys.len() > 0 {
+        let key = keys.choose();
+        //assert(keys.contains(key));
+        //assert(m.dom().contains(key));
+        let val = m[key];
+       // assert(m.remove(key).insert(key,val) =~= m);
+        //assert(keys.remove(key).insert(key) =~= keys);
+        //assert(m.remove(key).dom() =~= m.dom().remove(key));
+        //assert(m.dom().len() == 1 + m.dom().remove(key).len());
+        lemma_remove_keys_len(m.remove(key),keys.remove(key));
+        //assert(m.remove(key).remove_keys(keys.remove(key)).dom().len() == m.remove(key).dom().len() - keys.remove(key).len());
+        
+       // assert(m.remove(key).remove_keys(keys.remove(key)).insert(key,val).dom().len() == m.remove(key).remove_keys(keys.remove(key)).dom().len() + 1);
+        
+        //assert(m.remove_keys(keys).dom().len() == m.remove(key).remove_keys(keys.remove(key)).dom().len());
+        //assert(m.remove(key).insert(key, val).dom().len() == m.remove(key).dom().len() + 1);
+        //assert(keys.remove(key).insert(key).len() == keys.remove(key).len() +1);
+        
+        assert(m.remove_keys(keys).remove(key) =~= m.remove_keys(keys));
+       // assert(m.remove(key).remove_keys(keys) =~= m.remove_keys(keys));
+    }
+    else {
+        assert(m.remove_keys(keys) =~= m);
+    }
+}
+
+pub proof fn lemma_disjoint_union_size<K,V>(m1: Map<K,V>, m2: Map<K,V>)
+    requires
+        m1.dom().disjoint(m2.dom()),
+    ensures
+        m1.union_prefer_right(m2).dom().len() == m1.dom().len() + m2.dom().len(),
+{
+    let u = m1.union_prefer_right(m2);
+    //assert((m1.dom()+m2.dom()).difference(m1.dom()) == m2.dom() && ((m1.dom()+m2.dom())).difference(m2.dom()) == m1.dom());
+    //assert(forall |k: K| m1.dom().contains(k) || m2.dom().contains(k) ==> u.dom().contains(k));
+    //assert(forall |k: K| m1.dom().contains(k) ==> !m2.dom().contains(k));
+    //assert(forall |k: K| m2.dom().contains(k) ==> !m1.dom().contains(k));
+    //assert(forall |k: K| !(m1.dom().contains(k) && m2.dom().contains(k)));
+   // assert(forall |k: K| !m1.dom().contains(k) || !m2.dom().contains(k));
+    assert(u.remove_keys(m1.dom()).dom() =~= m2.dom());
+    //assert(u.remove_keys(m2.dom()).dom() =~= m1.dom());
+    assert(u.remove_keys(m1.dom()).dom().len() == u.dom().len() - m1.dom().len()) by {
+        lemma_remove_keys_len(u, m1.dom());
+    }
+}
+
+// pub proof fn lemma_invert_is_injective<K,V>(m: Map<K,V>)
+//     ensures
+//         m.invert().injective(),
+// {
+//     assert(m.invert().dom() =~= m.values());
+//     //assert(forall |v: V| exists |k: K| #[trigger] m.invert().contains_value(k) ==> #[trigger] m.contains_pair(k,v));
+//     assert(forall |k: K| #[trigger] m.invert().values().contains(k) ==> exists |v: V| m.contains_pair(k,v));
+//     //assert(forall |x: V| #[trigger] m.invert().dom().contains(x) <==> m.values().contains(x));
+    
+//     let inv = m.invert();
+//     assert(forall |x: V, y: V| x != y && inv.dom().contains(x) && inv.dom().contains(y) ==> #[trigger] m.invert()[x] != #[trigger] m.invert()[y]);
+
+//     // invert:
+//     //  Map::<V,K>::new(
+//     //     |v: V| self.contains_value(v),
+//     //     |v: V| choose |k: K| self.contains_pair(k,v)
+//     // )
+//     // injective: 
+//     //forall |x: K, y: K| x != y && self.dom().contains(x) && self.dom().contains(y) ==> #[trigger] self[x] != #[trigger] self[y]
+        
+// }
 
 // Trusted axioms
 
@@ -388,6 +535,22 @@ pub proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
         m.remove(key2)[key1] == m[key1],
 {
 }
+
+// TODO: might not have brought this over correctly
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_map_new_domain<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V)
+    ensures
+        #[trigger] Map::<K,V>::new(fk,fv).dom() == Set::<K>::new(|k: K| fk(k))
+{}
+
+// TODO: might not have brought this over correctly
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_map_new_values<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V)
+    ensures
+        #[trigger] Map::<K,V>::new(fk,fv).values() == Set::<V>::new(|v: V| exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),
+{}
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
