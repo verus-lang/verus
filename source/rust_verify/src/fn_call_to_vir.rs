@@ -1,4 +1,4 @@
-use crate::attributes::{get_ghost_block_opt, get_verifier_attrs, GetVariantField, GhostBlockAttr};
+use crate::attributes::{get_ghost_block_opt, get_verifier_attrs, GhostBlockAttr};
 use crate::context::BodyCtxt;
 use crate::erase::CompilableOperator;
 use crate::rust_to_vir_base::{
@@ -21,7 +21,7 @@ use rustc_ast::{BorrowKind, LitKind, Mutability};
 use rustc_hir::def::Res;
 use rustc_hir::{Expr, ExprKind, Node, QPath};
 use rustc_middle::ty::subst::GenericArgKind;
-use rustc_middle::ty::{EarlyBinder, TyCtxt, TyKind};
+use rustc_middle::ty::{EarlyBinder, TyKind};
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use rustc_span::Span;
@@ -200,41 +200,15 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     let path =
         if !needs_name { None } else { Some(def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, f)) };
 
-    let is_get_variant = {
-        let fn_attrs = if f.as_local().is_some() {
-            match tcx.hir().get_if_local(f) {
-                Some(rustc_hir::Node::ImplItem(
-                    impl_item @ rustc_hir::ImplItem {
-                        kind: rustc_hir::ImplItemKind::Fn(..), ..
-                    },
-                )) => Some(bctx.ctxt.tcx.hir().attrs(impl_item.hir_id())),
-                Some(rustc_hir::Node::Item(
-                    item @ rustc_hir::Item { kind: rustc_hir::ItemKind::Fn(..), .. },
-                )) => Some(bctx.ctxt.tcx.hir().attrs(item.hir_id())),
-                _ => None,
-            }
-        } else {
-            Some(bctx.ctxt.tcx.item_attrs(f))
-        };
-        if let Some(fn_attrs) = fn_attrs {
-            let fn_vattrs = get_verifier_attrs(fn_attrs)?;
-            let is_get_variant = if let Some(variant_ident) = fn_vattrs.is_variant {
-                Some((variant_ident, None))
-            } else if let Some((variant_ident, field_ident)) = fn_vattrs.get_variant {
-                Some((variant_ident, Some(field_ident)))
-            } else {
-                None
-            };
-            is_get_variant
-        } else {
-            None
-        }
-    };
+    let is_get_variant = matches!(
+        verus_item,
+        Some(VerusItem::Expr(ExprItem::IsVariant | ExprItem::GetVariantField))
+    );
 
     let name =
         if let Some(path) = &path { Some(Arc::new(FunX { path: path.clone() })) } else { None };
 
-    let is_spec_allow_proof_args = is_spec_allow_proof_args_pre || is_get_variant.is_some();
+    let is_spec_allow_proof_args = is_spec_allow_proof_args_pre || is_get_variant;
     let autospec_usage = if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
 
     // Compute the 'target_kind'.
@@ -294,28 +268,24 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         Some(VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(spec_literal_item))) => {
             unsupported_err_unless!(len == 1, expr.span, "expected spec_literal_*", &args);
             let arg = &args[0];
-            let is_num = |s: &String| s.chars().count() > 0 && s.chars().all(|c| c.is_digit(10));
-            match &args[0] {
-                Expr { kind: ExprKind::Lit(Spanned { node: LitKind::Str(s, _), .. }), .. }
-                    if is_num(&s.to_string()) =>
-                {
-                    // TODO: negative literals for is_spec_literal_int and is_spec_literal_integer
-                    if spec_literal_item == &SpecLiteralItem::Integer {
-                        // TODO: big integers for int, nat
-                        let i: u128 = match s.to_string().parse() {
-                            Ok(i) => i,
-                            Err(err) => {
-                                return err_span(arg.span, format!("integer out of range {}", err));
-                            }
-                        };
-                        let in_negative_literal = false;
-                        check_lit_int(&bctx.ctxt, expr.span, in_negative_literal, i, &expr_typ()?)?
-                    }
-                    return mk_expr(ExprX::Const(const_int_from_string(s.to_string())));
+            let s = get_string_lit_arg(&args[0], &f_name)?;
+            let is_num = s.chars().count() > 0 && s.chars().all(|c| c.is_digit(10));
+            if is_num {
+                // TODO: negative literals for is_spec_literal_int and is_spec_literal_integer
+                if spec_literal_item == &SpecLiteralItem::Integer {
+                    // TODO: big integers for int, nat
+                    let i: u128 = match s.to_string().parse() {
+                        Ok(i) => i,
+                        Err(err) => {
+                            return err_span(arg.span, format!("integer out of range {}", err));
+                        }
+                    };
+                    let in_negative_literal = false;
+                    check_lit_int(&bctx.ctxt, expr.span, in_negative_literal, i, &expr_typ()?)?
                 }
-                _ => {
-                    return err_span(arg.span, "spec_literal_* requires a string literal");
-                }
+                return mk_expr(ExprX::Const(const_int_from_string(s.to_string())));
+            } else {
+                return err_span(arg.span, "spec_literal_* requires a string literal");
             }
         }
         Some(VerusItem::UnaryOp(
@@ -599,6 +569,43 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                     expr_item == &ExprItem::IsSmallerThanRecursiveFunctionField,
                 );
             }
+            ExprItem::IsVariant => {
+                assert!(args.len() == 2);
+                let adt_arg = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+                let variant_name = get_string_lit_arg(&args[1], &f_name)?;
+
+                let (adt_path, _) =
+                    check_variant_field(bctx, expr.span, args[0], &variant_name, None)?;
+
+                return mk_expr(ExprX::UnaryOpr(
+                    UnaryOpr::IsVariant { datatype: adt_path, variant: str_ident(&variant_name) },
+                    adt_arg,
+                ));
+            }
+            ExprItem::GetVariantField => {
+                assert!(args.len() == 3);
+                let adt_arg = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+                let variant_name = get_string_lit_arg(&args[1], &f_name)?;
+                let field_name = get_string_lit_arg(&args[2], &f_name)?;
+
+                let (adt_path, variant_field) = check_variant_field(
+                    bctx,
+                    expr.span,
+                    args[0],
+                    &variant_name,
+                    Some((field_name, &bctx.types.expr_ty(expr))),
+                )?;
+
+                return mk_expr(ExprX::UnaryOpr(
+                    UnaryOpr::Field(FieldOpr {
+                        datatype: adt_path,
+                        variant: str_ident(&variant_name),
+                        field: variant_field.unwrap(),
+                        get_variant: true,
+                    }),
+                    adt_arg,
+                ));
+            }
         },
         Some(VerusItem::CompilableOpr(compilable_opr)) => match compilable_opr {
             CompilableOprItem::NewStrLit => {
@@ -765,34 +772,6 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     }
 
     let vir_args = mk_vir_args(bctx, node_substs, f, &args, verus_item, outer_modifier)?;
-
-    match is_get_variant {
-        Some((variant_name, None)) => {
-            return mk_expr(ExprX::UnaryOpr(
-                UnaryOpr::IsVariant {
-                    datatype: variant_fn_get_datatype(tcx, &bctx.ctxt.verus_items, f, expr.span)?,
-                    variant: str_ident(&variant_name),
-                },
-                vir_args.into_iter().next().expect("missing arg for is_variant"),
-            ));
-        }
-        Some((variant_name, Some(variant_field))) => {
-            let variant_name_ident = str_ident(&variant_name);
-            return mk_expr(ExprX::UnaryOpr(
-                UnaryOpr::Field(FieldOpr {
-                    datatype: variant_fn_get_datatype(tcx, &bctx.ctxt.verus_items, f, expr.span)?,
-                    variant: variant_name_ident.clone(),
-                    field: match variant_field {
-                        GetVariantField::Named(n) => str_ident(&n),
-                        GetVariantField::Unnamed(i) => positional_field_ident(i),
-                    },
-                    get_variant: true,
-                }),
-                vir_args.into_iter().next().expect("missing arg for is_variant"),
-            ));
-        }
-        None => {}
-    }
 
     let is_smt_unary = if verus_item == Some(&VerusItem::UnaryOp(UnaryOpItem::SpecNeg)) {
         match *undecorate_typ(&typ_of_node(bctx, args[0].span, &args[0].hir_id, false)?) {
@@ -1492,32 +1471,6 @@ fn mk_is_smaller_than<'tcx>(
     return Ok(dec_exp);
 }
 
-fn variant_fn_get_datatype<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    verus_items: &crate::verus_items::VerusItems,
-    f: DefId,
-    span: Span,
-) -> Result<vir::ast::Path, VirErr> {
-    let fn_sig = tcx.fn_sig(f);
-    let fn_sig = fn_sig.skip_binder();
-    let inputs = fn_sig.inputs();
-    if inputs.len() == 1 {
-        let vir_ty = &*mid_ty_to_vir(tcx, verus_items, span, &inputs[0], false)?;
-        let vir_ty = match &*vir_ty {
-            TypX::Decorate(_, ty) => ty,
-            _ => vir_ty,
-        };
-        match &*vir_ty {
-            TypX::Datatype(path, _typs, _impl_paths) => {
-                return Ok(path.clone());
-            }
-            _ => {}
-        }
-    }
-
-    return err_span(span, "invalid is_variant call (possibly a bug with is_variant macro)");
-}
-
 fn mk_typ_args<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     substs: &rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
@@ -1589,4 +1542,81 @@ fn mk_vir_args<'tcx>(
             }
         })
         .collect::<Result<Vec<_>, _>>()
+}
+
+fn get_string_lit_arg<'tcx>(
+    arg: &'tcx Expr<'tcx>,
+    fn_name_for_error_msg: &str,
+) -> Result<String, VirErr> {
+    match arg {
+        Expr { kind: ExprKind::Lit(Spanned { node: LitKind::Str(s, _), .. }), .. } => {
+            Ok(s.to_string())
+        }
+        _ => err_span(
+            arg.span,
+            format!("Verus builtin `{fn_name_for_error_msg:}` requires a string literal"),
+        ),
+    }
+}
+
+fn check_variant_field<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    adt_arg: &'tcx Expr<'tcx>,
+    variant_name: &String,
+    field_name_typ: Option<(String, &rustc_middle::ty::Ty<'tcx>)>,
+) -> Result<(vir::ast::Path, Option<vir::ast::Ident>), VirErr> {
+    let tcx = bctx.ctxt.tcx;
+
+    let ty = bctx.types.expr_ty_adjusted(adt_arg);
+    let ty = match ty.kind() {
+        rustc_middle::ty::TyKind::Ref(_, t, rustc_ast::Mutability::Not) => t,
+        _ => &ty,
+    };
+    let (adt, substs) = match ty.kind() {
+        rustc_middle::ty::TyKind::Adt(adt, substs) => (adt, substs),
+        _ => {
+            return err_span(span, format!("expected type to be datatype"));
+        }
+    };
+
+    let variant_opt = adt.variants().iter().find(|v| v.ident(tcx).as_str() == variant_name);
+    let Some(variant) = variant_opt else {
+        return err_span(span, format!("no variant `{variant_name:}` for this datatype"));
+    };
+
+    let vir_adt_ty = mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, span, &ty, false)?;
+    let adt_path = match &*vir_adt_ty {
+        TypX::Datatype(path, _, _) => path.clone(),
+        _ => {
+            return err_span(span, format!("expected type to be datatype"));
+        }
+    };
+
+    match field_name_typ {
+        None => Ok((adt_path, None)),
+        Some((field_name, expected_field_typ)) => {
+            let field_opt = variant.fields.iter().find(|f| f.ident(tcx).as_str() == field_name);
+            let Some(field) = field_opt else {
+                return err_span(span, format!("no field `{field_name:}` for this variant"));
+            };
+
+            let field_ty = field.ty(tcx, substs);
+            let vir_field_ty = mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, span, &field_ty, false)?;
+            let vir_expected_field_ty =
+                mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, span, &expected_field_typ, false)?;
+            if !types_equal(&vir_field_ty, &vir_expected_field_ty) {
+                return err_span(span, "field has the wrong type");
+            }
+
+            let field_ident = if field_name.as_str().bytes().nth(0).unwrap().is_ascii_digit() {
+                let i = field_name.parse::<usize>().unwrap();
+                positional_field_ident(i)
+            } else {
+                str_ident(&field_name)
+            };
+
+            Ok((adt_path, Some(field_ident)))
+        }
+    }
 }

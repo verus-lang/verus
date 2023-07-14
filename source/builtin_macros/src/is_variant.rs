@@ -10,6 +10,14 @@ pub fn attribute_is_variant(
         _ => return quote! { compile_error!("#[is_variant] is only allowed on enums"); },
     }
     let struct_name = &s.ast().ident;
+    let vis = &ast.vis;
+    let publish = if matches!(vis, syn::Visibility::Inherited) {
+        quote! {}
+    } else {
+        quote! {
+            #[verifier::publish]
+        }
+    };
     let is_impls = s
         .variants()
         .iter()
@@ -28,13 +36,15 @@ pub fn attribute_is_variant(
                             &format!("get_{}_{}", variant_ident_str, field_ident.to_string()),
                             v.ast().ident.span(),
                         );
+                        let field_str = field_ident.to_string();
 
                         quote! {
                             #[allow(non_snake_case)]
-                            #[verus::internal(get_variant(#variant_ident, #field_ident))]
                             #[verus::internal(spec)]
-                            pub fn #get_ident(self) -> #field_ty {
-                                unimplemented!()
+                            #[verifier::inline]
+                            #publish
+                            #vis fn #get_ident(self) -> #field_ty {
+                                ::builtin::get_variant_field(self, #variant_ident_str, #field_str)
                             }
                         }
                     })
@@ -44,10 +54,7 @@ pub fn attribute_is_variant(
                     .zip(0..)
                     .map(|(f, i)| {
                         let field_ty = &f.ty;
-                        let field_lit = syn::Lit::Int(syn::LitInt::new(
-                            &format!("{}", i),
-                            v.ast().ident.span(),
-                        ));
+                        let field_lit = format!("{}", i);
                         let get_ident = syn::Ident::new(
                             &format!("get_{}_{}", variant_ident, i),
                             v.ast().ident.span(),
@@ -55,10 +62,11 @@ pub fn attribute_is_variant(
 
                         quote! {
                             #[allow(non_snake_case)]
-                            #[verus::internal(get_variant(#variant_ident_str, #field_lit))]
                             #[verus::internal(spec)]
-                            pub fn #get_ident(self) -> #field_ty {
-                                unimplemented!()
+                            #[verifier::inline]
+                            #publish
+                            #vis fn #get_ident(self) -> #field_ty {
+                                ::builtin::get_variant_field(self, #variant_ident_str, #field_lit)
                             }
                         }
                     })
@@ -68,10 +76,13 @@ pub fn attribute_is_variant(
 
             quote! {
                 ::builtin_macros::verus! {
-                    #[verus::internal(is_variant(#variant_ident_str))]
                     #[allow(non_snake_case)]
                     #[verus::internal(spec)]
-                    pub fn #fun_ident(&self) -> bool { unimplemented!() }
+                    #[verifier::inline]
+                    #publish
+                    #vis fn #fun_ident(&self) -> bool {
+                        ::builtin::is_variant(self, #variant_ident_str)
+                    }
 
                     #get_fns
                 }

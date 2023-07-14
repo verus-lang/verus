@@ -223,6 +223,18 @@ pub fn old<A>(_: A) -> A {
     unimplemented!();
 }
 
+#[rustc_diagnostic_item = "verus::builtin::is_variant"]
+#[verifier::spec]
+pub fn is_variant<Adt>(_a: Adt, _variant: &str) -> bool {
+    unimplemented!();
+}
+
+#[rustc_diagnostic_item = "verus::builtin::get_variant_field"]
+#[verifier::spec]
+pub fn get_variant_field<Adt, Field>(_a: Adt, _variant: &str, _field: &str) -> Field {
+    unimplemented!();
+}
+
 #[rustc_diagnostic_item = "verus::builtin::assume_"]
 #[verifier::proof]
 pub fn assume_(_: bool) {
