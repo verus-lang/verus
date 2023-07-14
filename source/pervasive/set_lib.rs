@@ -8,8 +8,8 @@ use crate::pervasive::*;
 use crate::set::*;
 #[allow(unused_imports)]
 use crate::multiset::Multiset;
-// #[allow(unused_imports)]
-// use crate::relations::*;
+#[allow(unused_imports)]
+use crate::relations::*;
 
 
 verus! {
@@ -376,29 +376,56 @@ pub proof fn find_unique_minimal_ensures<A>(s: Set<A>, r: FnSpec(A,A) -> bool)
 {
     if s.len() == 1 {
         let x = choose |x: A| s.contains(x);
+        assert(s.remove(x) =~= Set::<A>::empty());
         assert(s.remove(x).insert(x) =~= s);
+        assert(s.contains(s.find_unique_minimal(r)));
+        assert(r(x,x));
+        assert(is_minimal(r, s.find_unique_minimal(r),s));
+        
+        assert((forall |min_poss: A| is_minimal(r, min_poss, s) ==> s.find_unique_minimal(r) == min_poss));
     }
     else {
         let x = choose |x: A| s.contains(x);
         find_unique_minimal_ensures(s.remove(x),r);
         assert(is_minimal(r, s.remove(x).find_unique_minimal(r),s.remove(x)));
         assert(s.remove(x).insert(x) =~= s);
-        let old_min = s.remove(x).find_unique_minimal(r);
+        let y = s.remove(x).find_unique_minimal(r);
         let min_updated = s.find_unique_minimal(r); 
+        assert(min_updated == x || min_updated == y);
+        assert(r(y,x) ==> min_updated == y);
+        assert(!r(y,x) ==> min_updated == x);
+        assert(!r(y,x) ==> r(x,y));
+        assert(forall |elt: A| s.remove(x).contains(elt) && #[trigger] r(elt,y) ==> #[trigger] r(y,elt));
+        assert(s.contains(min_updated));
         assert forall |elt: A| s.contains(elt) && #[trigger] r(elt,min_updated) implies #[trigger] r(min_updated,elt) by {
-            assert(r(min_updated,x) || r(min_updated,old_min));
-            if min_updated == old_min {} // Case where the new min is the old min
-            else { //Case where the new min is the newest element
+            assert(r(min_updated,x) || r(min_updated,y));
+            if min_updated == y { // Case where the new min is the old min
+                assert(r(min_updated,elt));
+                assert(r(min_updated,x));
+                assert(is_minimal(r, s.find_unique_minimal(r),s));
+            } else { //Case where the new min is the newest element
+                assert(s.remove(x).contains(elt) || elt ==x);
                 assert(min_updated == x);
+                assert(r(x,y) || r(y,x));
+                assert(!r(x,y) || !r(y,x));
+                assert(!(min_updated == y) ==> !r(y,x));
+                assert(r(x,y));
                 if (s.remove(x).contains(elt)) {
-                    assert(r(elt,old_min) ==> r(old_min,elt));
+                    assert(r(elt,y) ==> r(y,elt));
+                    assert(r(elt,y) && r(y,elt) ==> elt == y); 
                     assert(r(x,elt));
                     assert(r(min_updated,elt))
                 } else {
-                    assert(r(x,old_min));
+                    assert(elt == x);
+                    assert(r(x,y));
+                    assert(r(elt,y));
+                    assert(r(min_updated,y));
+                    assert(r(min_updated,elt));
                 }
             }
         }
+        assert(is_minimal(r, s.find_unique_minimal(r),s));
+        assert(antisymmetric(r));
         assert forall |min_poss: A| is_minimal(r, min_poss, s) implies s.find_unique_minimal(r) == min_poss by {
             assert(is_minimal(r, min_poss, s.remove(x)) || x == min_poss);                
             assert(r(s.find_unique_minimal(r), min_poss));
@@ -406,7 +433,6 @@ pub proof fn find_unique_minimal_ensures<A>(s: Set<A>, r: FnSpec(A,A) -> bool)
         }
     }
 }
-
 
 pub proof fn find_unique_maximal_ensures<A>(s: Set<A>, r: FnSpec(A,A) -> bool)
     requires
@@ -419,27 +445,64 @@ pub proof fn find_unique_maximal_ensures<A>(s: Set<A>, r: FnSpec(A,A) -> bool)
 {
     if s.len() == 1 {
         let x = choose |x: A| s.contains(x);
+        assert(s.remove(x) =~= Set::<A>::empty());
         assert(s.remove(x).insert(x) =~= s);
+        assert(s.contains(s.find_unique_maximal(r)));
+        assert(r(x,x));
+        assert(is_maximal(r, s.find_unique_maximal(r),s));
+        
+        assert((forall |max_poss: A| is_maximal(r, max_poss, s) ==> s.find_unique_maximal(r) == max_poss));
     }
     else {
         let x = choose |x: A| s.contains(x);
         find_unique_maximal_ensures(s.remove(x),r);
+        assert(is_maximal(r, s.remove(x).find_unique_maximal(r),s.remove(x)));
         assert(s.remove(x).insert(x) =~= s);
-        let old_min = s.remove(x).find_unique_maximal(r);
+        let y = s.remove(x).find_unique_maximal(r);
         let max_updated = s.find_unique_maximal(r); 
+        assert(max_updated == x || max_updated == y);
+        assert(r(x,y) ==> max_updated == y);
+        assert(!r(x,y) ==> max_updated == x);
+        assert(!r(x,y) ==> r(y,x));
+        assert(forall |elt: A| s.remove(x).contains(elt) && #[trigger] r(y,elt) ==> #[trigger] r(elt,y));
+        assert(s.contains(max_updated));
         assert forall |elt: A| s.contains(elt) && #[trigger] r(max_updated,elt) implies #[trigger] r(elt,max_updated) by {
-            if s.remove(x).contains(elt) && max_updated != old_min {
-                assert(r(old_min,elt) ==> r(elt,old_min));
+            assert(r(x,max_updated) || r(y,max_updated));
+            if max_updated == y { // Case where the new max is the old max
+                assert(r(elt,max_updated));
+                assert(r(x,max_updated));
+                assert(is_maximal(r, s.find_unique_maximal(r),s));
+            } else { //Case where the new max is the newest element
+                assert(s.remove(x).contains(elt) || elt ==x);
+                assert(max_updated == x);
+                assert(r(x,y) || r(y,x));
+                assert(!r(x,y) || !r(y,x));
+                assert(!(max_updated == y) ==> !r(x,y));
+                assert(r(y,x));
+                if (s.remove(x).contains(elt)) {
+                    assert(r(y,elt) ==> r(elt,y));
+                    assert(r(y,elt) && r(elt,y) ==> elt == y); 
+                    assert(r(elt,x));
+                    assert(r(elt,max_updated))
+                } else {
+                    assert(elt == x);
+                    assert(r(y,x));
+                    assert(r(y,elt));
+                    assert(r(y,max_updated));
+                    assert(r(elt, max_updated));
+                }
             }
         }
+        assert(is_maximal(r, s.find_unique_maximal(r),s));
+        assert(antisymmetric(r));
         assert forall |max_poss: A| is_maximal(r, max_poss, s) implies s.find_unique_maximal(r) == max_poss by {
-            assert(forall|elt: A| s.contains(elt) && #[trigger] r(max_poss,elt) ==> #[trigger] r(elt,max_poss));
-            assert(is_maximal(r, max_poss, s.remove(x)) || x == max_poss);
-            assert(r(max_poss,s.find_unique_maximal(r)));
-            assert(r(s.find_unique_maximal(r),max_poss));
+            assert(is_maximal(r, max_poss, s.remove(x)) || x == max_poss);     
+            assert(r(max_poss, s.find_unique_maximal(r)));           
+            assert(r(s.find_unique_maximal(r), max_poss));
         }
     }
 }
+
 
 // pub proof fn lemma_multiset_from_set<A>()
 //     ensures
@@ -447,117 +510,6 @@ pub proof fn find_unique_maximal_ensures<A>(s: Set<A>, r: FnSpec(A,A) -> bool)
 //             (#[trigger] s.to_multiset().count(a) == 0 <==> (!s.contains(a)))
 //             && (s.to_multiset().count(a) == 1 <==> s.contains(a)),
 // {}
-
-
-
-
-/***************** Relations *********************/
-
-/// An injective function maps distinct elements of its domain to distinct elements of its codomain.
-/// In other words, a function that is one-to-one.
-pub open spec fn injective<A, B>(f: FnSpec(A) -> B) -> bool
-{
-    forall|x1: A, x2: A| #[trigger] f(x1) == #[trigger] f(x2) ==> x1 == x2
-}
-
-pub open spec fn commutative<T,U>(r: FnSpec(T,T) -> U) ->bool
-{
-    forall|x: T, y: T| #[trigger] r(x,y)== #[trigger] r(y,x)
-}
-
-pub open spec fn associative<T>(r: FnSpec(T,T) -> T) -> bool{
-    forall|x: T, y: T, z: T| #[trigger] r(x,r(y,z)) ==  #[trigger] r(r(x,y),z)
-}
-
-pub open spec fn reflexive<T>(r: FnSpec(T,T) -> bool) ->bool{
-    forall |x: T| #[trigger] r(x,x)
-}
-
-pub open spec fn irreflexive<T>(r: FnSpec(T,T) -> bool) ->bool{
-    forall |x: T| #[trigger] r(x,x) == false
-}
-
-pub open spec fn antisymmetric<T>(r: FnSpec(T,T) -> bool) ->bool{
-    forall|x: T, y: T| #[trigger] r(x,y) && #[trigger] r(y,x) ==> x == y
-}
-
-pub open spec fn asymmetric<T>(r: FnSpec(T,T) -> bool) ->bool{
-    forall|x: T, y: T| #[trigger] r(x,y) ==> #[trigger] r(y,x) == false
-}
-
-pub open spec fn symmetric<T>(r: FnSpec(T,T) -> bool) ->bool{
-    forall|x: T, y: T| #[trigger] r(x,y) <==> #[trigger] r(y,x)
-}
-
-pub open spec fn connected<T>(r: FnSpec(T,T) -> bool) ->bool{
-    forall|x: T, y: T| x != y ==> #[trigger] r(x,y) || #[trigger] r(y,x)
-}
-
-pub open spec fn strongly_connected<T>(r: FnSpec(T,T) -> bool) ->bool{
-    forall|x: T, y: T| #[trigger] r(x,y) || #[trigger] r(y,x)
-}
-
-pub open spec fn transitive<T>(r: FnSpec(T,T) -> bool) -> bool{
-    forall|x: T, y: T, z: T| #[trigger] r(x,y) && #[trigger] r(y,z) ==>  #[trigger] r(x,z)
-}
-
-pub open spec fn total_ordering<T>(r: FnSpec(T,T) ->bool) ->bool{
-    &&& reflexive(r)
-    &&& antisymmetric(r)
-    &&& transitive(r)
-    &&& strongly_connected(r)
-}
-
-pub open spec fn strict_total_ordering<T>(r: FnSpec(T,T) ->bool) ->bool{
-    &&& irreflexive(r)
-    &&& antisymmetric(r)
-    &&& transitive(r)
-    &&& connected(r)
-}
-
-pub open spec fn pre_ordering<T>(r: FnSpec(T,T) ->bool) ->bool{
-    &&& reflexive(r)
-    &&& transitive(r)
-}
-
-pub open spec fn partial_ordering<T>(r: FnSpec(T,T) ->bool) ->bool{
-    &&& reflexive(r)
-    &&& transitive(r)
-    &&& antisymmetric(r)
-}
-
-pub open spec fn equivalence_relation<T>(r: FnSpec(T,T) ->bool) ->bool{
-    &&& reflexive(r)
-    &&& symmetric(r)
-    &&& transitive(r)
-}
-
-/// An element in an ordered set is called a least element (or a minimum), if it is less than 
-/// every other element of the set.
-/// 
-/// change f to leq bc it is a relation. also these are an ordering relation
-pub open spec fn is_least<T>(leq: FnSpec(T,T) ->bool, min: T, s: Set<T>) ->bool{
-    s.contains(min) && forall|x: T| s.contains(x) ==> #[trigger] leq(min,x)
-}
-
-/// An element in an ordered set is called a minimal element, if no other element is less than it.
-pub open spec fn is_minimal<T>(leq: FnSpec(T,T) ->bool, min: T, s: Set<T>) ->bool{
-    s.contains(min) && forall|x: T| s.contains(x) && #[trigger] leq(x,min) ==> #[trigger] leq(min,x)
-}
-
-/// An element in an ordered set is called a greatest element (or a maximum), if it is greater than 
-///every other element of the set.
-pub open spec fn is_greatest<T>(leq: FnSpec(T,T) ->bool, max: T, s: Set<T>) ->bool{
-    s.contains(max) && forall|x: T| s.contains(x) ==> #[trigger] leq(x,max)
-}
-
-/// An element in an ordered set is called a maximal element, if no other element is greater than it.
-pub open spec fn is_maximal<T>(leq: FnSpec(T,T) ->bool, max: T, s: Set<T>) ->bool{
-    s.contains(max) && forall|x: T| s.contains(x) && #[trigger] leq(max,x) ==> #[trigger] leq(x,max)
-}
-
-
-
 
 
 #[doc(hidden)]
