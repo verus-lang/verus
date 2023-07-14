@@ -40,12 +40,12 @@ fn run() -> Result<(), String> {
         }
         our_args = args[2..].to_vec();
     } else {
-        eprintln!("Usage: verus --error-report <args..>");
+        eprintln!("Usage: verus INPUT --record <args..>");
         Err("no arguments provided")?;
     }
 
     if file_path.is_empty() {
-        Err("no INPUT provided, Usage: verus INPUT --error-report [options]")?;
+        Err("no INPUT provided, Usage: verus INPUT --record [options]")?;
     }
 
     // add this error message because verus output is blocked
@@ -73,18 +73,10 @@ fn run() -> Result<(), String> {
         Command::new(z3_path.clone()).arg("--version").output().map_err(|x| {
             format!("failed to execute z3 with error message {}, path is at {:?}", x, z3_path)
         })?;
-    // TODO: --version output can be json, which can be parsed then output as json again
-    let verus_version_output =
-        Command::new(&verus_path).arg("--version").output().map_err(|x| {
-            format!(
-                "failed to execute verus with error message {}, verus path is at {:?}",
-                x, verus_path
-            )
-        })?;
 
-    // mandating --time flag, we remove --time flag here to prevent two --time flags that panic verus
-    if our_args.contains(&"--time".to_string()) {
-        our_args.retain(|x| x != "--time");
+    // mandating --time and --output-json flag, we remove both flags here to prevent verus two many options
+    if our_args.contains(&"--time".to_string()) || our_args.contains(&"--output-json".to_string()) {
+        our_args.retain(|x| x != "--time" && x != "--output-json");
     }
 
     let temp_dep_file = Path::new(&file_path)
@@ -125,13 +117,7 @@ fn run() -> Result<(), String> {
 
     let verus_duration = start_time.elapsed();
 
-    match toml_setup_and_write(
-        verus_call,
-        z3_version_output,
-        verus_version_output,
-        verus_output,
-        verus_duration,
-    ) {
+    match toml_setup_and_write(verus_call, z3_version_output, verus_output, verus_duration) {
         Ok(()) => (),
         Err(err) => {
             // remove temp file if created
@@ -146,6 +132,7 @@ fn run() -> Result<(), String> {
 
     fs::remove_file("error_report.toml")
         .map_err(|x| format!("failed to delete toml file with this error message: {}", x))?;
+    // TODO: in some bugs where the main.d file is not created, the following error will be reported, rather than the error of zip_zetup
     fs::remove_file(temp_dep_file.clone()).map_err(|x| format!("failed to delete dependencies file with this error message: {}, path to dependency file is {}", x, temp_dep_file))?;
 
     println!(
@@ -156,33 +143,56 @@ fn run() -> Result<(), String> {
     Ok(())
 }
 
-/// Transforms data from the input file into the proper data structure for
-/// toml creation, and then calls a function to write the toml
-///
-/// Parameters: args: The command line arguments given to call the input file
-///             z3_version_output: Information regarding the user's current z3 version
-///             verus_version_output: Information regarding the user's current verus version
-///             verus_output: The resulting output from the input file
 fn toml_setup_and_write(
     args: Vec<String>,
     z3_version_output: std::process::Output,
-    verus_version_output: std::process::Output,
     verus_output: std::process::Output,
     verus_duration: Duration,
 ) -> Result<(), String> {
     let z3_version =
         str::from_utf8(&z3_version_output.stdout).map_err(|x| format!("{}", x))?.to_string();
-    let verus_version =
-        str::from_utf8(&verus_version_output.stdout).map_err(|x| format!("{}", x))?.to_string();
-    let verus_time = verus_duration.as_secs_f64();
-    let stdout = str::from_utf8(&verus_output.stdout).map_err(|x| format!("{}", x))?.to_string();
-    let stderr = str::from_utf8(&verus_output.stderr).map_err(|x| format!("{}", x))?.to_string();
 
-    let toml_string =
-        toml::to_string(&create_toml(args, z3_version, verus_version, verus_time, stdout, stderr))
-            .map_err(|x| format!("Could not encode TOML value with error message: {}", x))?;
+    let verus_time = verus_duration.as_secs_f64();
+
+    let stdout_json =
+        serde_json::from_str::<serde_json::Value>(&String::from_utf8_lossy(&verus_output.stdout))
+            .map_err(|x| format!("Could not parse stdout as json with error message: {}", x))?;
+
+    // get version
+    let version_info = toml::to_string_pretty(&stdout_json["verus"]).map_err(|x| {
+        format!("failed to pretty oprint version info to toml file with error message {}", x)
+    })?;
+
+    // get verification result
+    let verification_result = toml::to_string_pretty(&stdout_json["verification-results"])
+        .map_err(|x| {
+            format!(
+                "failed to pretty print verification result to toml file with error message {}",
+                x
+            )
+        })?;
+
+    // the serde_json stdout is pretty bad
+    let stdout_toml_text = toml::to_string_pretty(&stdout_json).map_err(|x| {
+        format!("failed to pretty print stdout to toml file with error message {}", x)
+    })?;
+
+    let stderr = String::from_utf8_lossy(&verus_output.stderr).to_string();
+
+    let toml_string = toml::to_string(&create_toml(
+        args,
+        z3_version,
+        version_info,
+        verification_result,
+        verus_time,
+        stdout_toml_text,
+        stderr,
+    ))
+    .map_err(|x| format!("Could not encode TOML value with error message: {}", x))?;
+
     fs::write("error_report.toml", toml_string)
         .map_err(|x| format!("Could not write to toml file with error message: {}", x))?;
+
     Ok(())
 }
 
@@ -200,6 +210,7 @@ fn create_toml(
     args: Vec<String>,
     z3_version: String,
     verus_version: String,
+    verification_result: String,
     verus_time: f64,
     stdout: String,
     stderr: String,
@@ -218,6 +229,9 @@ fn create_toml(
     output.insert("stdout".to_string(), Value::String(stdout));
     output.insert("stderr".to_string(), Value::String(stderr));
 
+    let mut verification_res = Map::new();
+    verification_res.insert("verification result".to_string(), Value::String(verification_result));
+
     let mut map = Map::new();
     map.insert(
         "title".to_string(),
@@ -228,6 +242,7 @@ fn create_toml(
     map.insert("verus-time".into(), Value::Table(time));
     map.insert("versions".into(), Value::Table(versions));
     map.insert("verus-output".into(), Value::Table(output));
+    map.insert("verification-results".into(), Value::Table(verification_res));
     Value::Table(map)
 }
 
@@ -235,7 +250,12 @@ fn create_toml(
 pub fn zip_setup(dep_file_name: String) -> Result<String, String> {
     let dep_path = Path::new(&dep_file_name);
     if !dep_path.exists() {
-        return Err(format!("file {} does not exist", dep_file_name));
+        // how to report this error before the remove file error?
+        Err(format!(
+            "file {} does not exist in zip_zetup, {}",
+            dep_file_name,
+            yansi::Paint::red("INTERNAL ERROR").bold()
+        ))?;
     }
 
     let mut deps = get_dependencies(dep_path)?;

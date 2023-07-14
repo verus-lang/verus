@@ -164,7 +164,7 @@ pub fn parse_args_with_imports(
     const OPT_COMPILE: &str = "compile";
     const OPT_NO_SOLVER_VERSION_CHECK: &str = "no-solver-version-check";
     const OPT_VERSION: &str = "version";
-    const OPT_ERROR_REPORT: &str = "error-report";
+    const OPT_ERROR_REPORT: &str = "record";
     const OPT_NUM_THREADS: &str = "num-threads";
 
     let default_num_threads: usize = std::thread::available_parallelism()

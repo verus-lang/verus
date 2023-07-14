@@ -131,7 +131,7 @@ pub fn main() {
         let mut args: Vec<String> = std::env::args().collect();
         args.remove(0);
 
-        let index = args.iter().position(|x| *x == "--error-report").unwrap();
+        let index = args.iter().position(|x| *x == "--record").unwrap();
         args.remove(index);
 
         if let Some(verusroot) = &verus_root {
