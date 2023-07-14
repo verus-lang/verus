@@ -1,5 +1,5 @@
 use crate::ast::{
-    Datatype, Fun, Function, GenericBound, Ident, InferMode, IntRange, Krate, Mode, Path, Trait,
+    Datatype, Fun, Function, GenericBounds, Ident, InferMode, IntRange, Krate, Mode, Path, Trait,
     TypX, Variants, VirErr,
 };
 use crate::datatype_to_air::is_datatype_transparent;
@@ -10,7 +10,6 @@ use crate::recursion::Node;
 use crate::scc::Graph;
 use crate::sst::BndInfo;
 use crate::sst_to_air::fun_to_air_ident;
-use crate::util::vec_map;
 use air::ast::{Command, CommandX, Commands, DeclX, MultiOp, Span};
 use air::ast_util::str_typ;
 use num_bigint::BigUint;
@@ -20,7 +19,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::sync::Arc;
 
-// Use decorated types in addition to undecorated types (see sst_to_air::typ_to_id)
+// Use decorated types in addition to undecorated types (see sst_to_air::typ_to_ids)
 pub(crate) const DECORATE: bool = true;
 
 pub type ChosenTrigger = Vec<(Span, String)>;
@@ -36,12 +35,12 @@ pub struct ChosenTriggers {
 pub struct GlobalCtx {
     pub(crate) chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>>, // diagnostics
     pub(crate) datatypes: Arc<HashMap<Path, Variants>>,
-    pub(crate) fun_bounds: Arc<HashMap<Fun, Vec<GenericBound>>>,
+    pub(crate) fun_bounds: Arc<HashMap<Fun, GenericBounds>>,
     /// Used for synthesized AST nodes that have no relation to any location in the original code:
     pub(crate) no_span: Span,
     pub func_call_graph: Arc<Graph<Node>>,
     pub func_call_sccs: Arc<Vec<Node>>,
-    pub datatype_graph: Arc<Graph<Path>>,
+    pub(crate) datatype_graph: Arc<Graph<crate::recursive_types::TypNode>>,
     /// Connects quantifier identifiers to the original expression
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
     pub(crate) inferred_modes: Arc<HashMap<InferMode, Mode>>,
@@ -144,7 +143,7 @@ fn datatypes_invs(
                         TypX::Lambda(..) => {
                             roots.insert(container_path.clone());
                         }
-                        TypX::Datatype(field_path, _) => {
+                        TypX::Datatype(field_path, _, _) => {
                             if datatype_is_transparent[field_path] {
                                 back_pointers
                                     .get_mut(field_path)
@@ -193,14 +192,13 @@ impl GlobalCtx {
             assert!(!func_map.contains_key(&function.x.name));
             func_map.insert(function.x.name.clone(), function.clone());
         }
-        let mut fun_bounds: HashMap<Fun, Vec<GenericBound>> = HashMap::new();
+        let mut fun_bounds: HashMap<Fun, GenericBounds> = HashMap::new();
         let mut func_call_graph: Graph<Node> = Graph::new();
         for t in &krate.traits {
             crate::recursive_types::add_trait_to_graph(&mut func_call_graph, t);
         }
         for f in &krate.functions {
-            let bounds = vec_map(&f.x.typ_bounds, |(_, bound)| bound.clone());
-            fun_bounds.insert(f.x.name.clone(), bounds);
+            fun_bounds.insert(f.x.name.clone(), f.x.typ_bounds.clone());
             func_call_graph.add_node(Node::Fun(f.x.name.clone()));
             crate::recursion::expand_call_graph(&func_map, &mut func_call_graph, f)?;
         }

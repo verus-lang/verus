@@ -102,6 +102,11 @@ mod M1 {
             y
         }
     }
+
+    pub proof fn lemma_min(x: int, y: int)
+        ensures
+            min(x,y) <= x && min(x,y) <= y,
+    {}
 }
 
 mod M2 {
@@ -111,6 +116,10 @@ mod M2 {
     fn test() {
         assert(min(10, 20) == min(10, 20)); // succeeds
         assert(min(10, 20) == 10); // FAILS
+        proof {
+            lemma_min(10,20);
+        }
+        assert(min(10, 20) <= 10); // succeeds
     }
 }
 // ANCHOR_END: spec_fun_mod2

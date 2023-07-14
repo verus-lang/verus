@@ -12,18 +12,16 @@ use vstd::{*, pervasive::*};
 #[allow(unused_imports)]
 use builtin_macros::*;
 
-#[verifier(integer_ring)]
-#[verifier::proof]
-fn ModAfterMul(x: int, y: int, z:int, m:int){
-    requires( (x-y) % m == 0);
-    ensures( (x*z - y*z) % m == 0);
-}
+verus!{
+
+proof fn ModAfterMul(x: int, y: int, z:int, m:int) by(integer_ring)
+    requires (x-y) % m == 0
+    ensures (x*z - y*z) % m == 0
+{}
 
 // bound check lemmas
-#[verifier(nonlinear)]  
 #[verifier(external_body)]
-#[verifier::proof]
-fn LemmaMulUpperBound(x: int, XBound: int, y: int, YBound: int) {
+proof fn LemmaMulUpperBound(x: int, XBound: int, y: int, YBound: int) by(nonlinear_arith) {
     requires([
         x <= XBound,
         y <= YBound,
@@ -33,68 +31,58 @@ fn LemmaMulUpperBound(x: int, XBound: int, y: int, YBound: int) {
     ensures (x * y <= XBound * YBound);
 }
 
-#[verifier(nonlinear)] 
-#[verifier::proof]
-fn LemmaMulStayPositive(x: int, y: int) {
-    requires([
+proof fn LemmaMulStayPositive(x: int, y: int) by(nonlinear_arith) 
+    requires
         0 <= x,
         0 <= y,
-    ]);
-    ensures (0 <= x * y);
-}
+    ensures 0 <= x * y
+{}
 
-#[verifier(nonlinear)] 
-#[verifier::proof]
-fn LemmaInequalityAfterMul(x: int, y: int, z: int) {
-    requires([
+proof fn LemmaInequalityAfterMul(x: int, y: int, z: int) by(nonlinear_arith) 
+    requires
         x <= y,
         0 <= z,
-    ]);
-    ensures (x*z <= y*z);
-}
+    ensures x*z <= y*z
+{}
 
-#[verifier::proof]
-fn ModAfterMul_u32(x: u32, y:u32 , z:u32, m:u32){
-    requires([
+proof fn ModAfterMul_u32(x: u32, y:u32 , z:u32, m:u32)
+    requires
         m > 0,
-        (x-y) % m == 0,
+        (x-y) % (m as int) == 0,
         x >= y,
         x <= 0xffff,
         y <= 0xffff,
         z <= 0xffff,
         m <= 0xffff,
-    ]);
-    ensures((x*z - y*z) % m == 0);
-
+    ensures (x*z - y*z) % (m as int) == 0
+{
     ModAfterMul(x as int,y as int,z as int,m as int);
 
     // below are for bound checks
     // every single operation is in bound: x*z, y*z, (x*z - y*z)
-    LemmaMulUpperBound(x, 0xffff, z, 0xffff);
-    LemmaMulStayPositive(x,z);
+    LemmaMulUpperBound(x as int, 0xffff as int, z as int, 0xffff as int);
+    LemmaMulStayPositive(x as int,z as int);
     // assert( (x as int) * (z as int) == ( (x*z) as int));
 
-    LemmaMulUpperBound(y, 0xffff, z, 0xffff);
-    LemmaMulStayPositive(y,z);
+    LemmaMulUpperBound(y as int, 0xffff as int, z as int, 0xffff as int);
+    LemmaMulStayPositive(y as int,z as int);
     // assert( (y as int) * (z as int) == ( (y*z) as int));
 
-    LemmaInequalityAfterMul(y,x,z);
+    LemmaInequalityAfterMul(y as int,x as int,z as int);
     // assert( (((x*z - y*z) as int) % (m as int)) ==  (((x*z) as int) - ((y*z) as int)) % (m as int));
 }
 
-#[verifier::proof]
-fn ModAfterMul_u32_with_assert_by_nonlinear(x: u32, y:u32 , z:u32, m:u32){
-    requires([
+proof fn ModAfterMul_u32_with_assert_by_nonlinear(x: u32, y:u32 , z:u32, m:u32)
+    requires
         m > 0,
-        (x-y) % m == 0,
+        (x-y) % (m as int) == 0,
         x >= y,
         x <= 0xffff,
         y <= 0xffff,
         z <= 0xffff,
         m <= 0xffff,
-    ]);
-    ensures((x*z - y*z) % m == 0);
-
+    ensures (x*z - y*z) % (m as int) == 0
+{
     ModAfterMul(x as int,y as int,z as int,m as int);
     
     assert_nonlinear_by({
@@ -132,8 +120,9 @@ fn ModAfterMul_u32_with_assert_by_nonlinear(x: u32, y:u32 , z:u32, m:u32){
     //     ]);
     //     ensures(y*z <= x*z);
     // });
-    LemmaInequalityAfterMul(y,x,z);
+    LemmaInequalityAfterMul(y as int,x as int,z as int);
     assert(y*z <= x*z);
 }
 
 fn main() {}
+}

@@ -250,6 +250,7 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         owning_module: _,
         mode: _,
         fuel,
+        typ_params,
         typ_bounds,
         params,
         ret,
@@ -267,17 +268,30 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         extra_dependencies,
     } = spec_method.x.clone();
     let mut methodx = method.x.clone();
-    if methodx.typ_bounds.len() != typ_bounds.len() {
+    if methodx.typ_params.len() != typ_params.len() {
         return error(
             &spec_method.span,
             "method specification has different number of type parameters from method",
         );
     }
+    if methodx.typ_bounds.len() != typ_bounds.len() {
+        return error(
+            &spec_method.span,
+            "method specification has different number of type bounds from method",
+        );
+    }
+    for (x1, x2) in methodx.typ_params.iter().zip(typ_params.iter()) {
+        if x1 != x2 {
+            return error(
+                &spec_method.span,
+                "method specification has different type parameters from method",
+            );
+        }
+    }
     for (b1, b2) in methodx.typ_bounds.iter().zip(typ_bounds.iter()) {
-        let ((x1, g1), (x2, g2)) = (b1, b2);
-        match (&**g1, &**g2) {
-            (GenericBoundX::Traits(ps1), GenericBoundX::Traits(ps2)) => {
-                if x1 != x2 || ps1 != ps2 {
+        match (&**b1, &**b2) {
+            (GenericBoundX::Trait(x1, ps1), GenericBoundX::Trait(x2, ps2)) => {
+                if x1 != x2 || !crate::ast_util::n_types_equal(ps1, ps2) {
                     return error(
                         &spec_method.span,
                         "method specification has different type parameters or bounds from method",
