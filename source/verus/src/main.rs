@@ -184,6 +184,31 @@ fn main() {
                 }
 
                 clean_up(dep_file_path);
+
+                // step 5, git commiting
+                // git add
+                std::process::Command::new("git")
+                .current_dir(&repo_path)
+                .arg("add")
+                .args(deps)
+                .output()
+                .expect("commiting");
+    
+                // git commit
+                println!(
+                    "\n{} {}",
+                    yansi::Paint::blue("commiting"),
+                    repo_path.display()
+                );
+                std::process::Command::new("git")
+                    .current_dir(&repo_path)
+                    .arg("commit")
+                    .arg("-m")
+                    .arg("\"verus telemtry\"")
+                    .output()
+                    .expect("commiting");
+                
+
             }
             std::process::exit(code.0);
         }
