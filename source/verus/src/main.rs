@@ -73,19 +73,21 @@ fn main() {
     // change it to return Child process and do all the operations here
     match exec(&mut cmd, report_path.clone()) {
         Err(e) => {
-            eprintln!("{}", yansi::Paint::red(format!("error: failed to execute rust_verify: {}", e)));
+            eprintln!(
+                "{}",
+                yansi::Paint::red(format!("error: failed to execute rust_verify: {}", e))
+            );
             std::process::exit(128);
         }
         Ok(_) => {
-
             std::process::exit(0);
         }
     }
 }
 
 pub fn exec(cmd: &mut Command, reports: ReportsPath) -> Result<(), String> {
-    use std::io::Write;
     use std::io::BufReader;
+    use std::io::Write;
     use std::process::Stdio;
     use std::thread;
 
@@ -114,7 +116,11 @@ pub fn exec(cmd: &mut Command, reports: ReportsPath) -> Result<(), String> {
 
     let mut file = std::fs::File::create(toml_path).expect("creating reports.toml");
 
-    let mut child = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|x| format!("verus failed to run with error: {}", x))?;
+    let mut child = cmd
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|x| format!("verus failed to run with error: {}", x))?;
 
     let out = BufReader::new(child.stdout.take().unwrap());
     let err = BufReader::new(child.stderr.take().unwrap());
@@ -149,58 +155,59 @@ pub fn exec(cmd: &mut Command, reports: ReportsPath) -> Result<(), String> {
 
     child.wait().map_err(|x| format!("verus failed to run with error: {}", x))?;
 
-    
-        let repo_path = proj_path.clone();
+    let repo_path = proj_path.clone();
 
-        let dep_file_rel_path = reports.unwrap()
-            .crate_root
-            .with_extension("d")
-            .file_name()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_string();
+    let dep_file_rel_path = reports
+        .unwrap()
+        .crate_root
+        .with_extension("d")
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
 
-        let dep_file_path = std::env::current_dir().unwrap().join(dep_file_rel_path);
+    let dep_file_path = std::env::current_dir().unwrap().join(dep_file_rel_path);
 
-        let deps = get_dependencies(&dep_file_path)?;
+    let deps = get_dependencies(&dep_file_path)?;
 
-        // clean all files in repo_path
-        std::fs::remove_dir_all(&repo_path).expect("failed to remove repo_path");
+    // clean all files in repo_path
+    std::fs::remove_dir_all(&repo_path).expect("failed to remove repo_path");
 
-        // copy files to repo_path
-        for dep in deps.iter() {
-            println!(
-                "\n{} {} {} {}",
-                yansi::Paint::blue("copying"),
-                dep.display(),
-                yansi::Paint::blue("into"),
-                repo_path.join(dep).display()
-            );
-            // copy cnannt create non-existing directories
-            create_dir_all(repo_path.join(dep.parent().unwrap())).unwrap();
-            std::fs::copy(dep, repo_path.join(dep)).unwrap();
-        }
+    // copy files to repo_path
+    for dep in deps.iter() {
+        println!(
+            "\n{} {} {} {}",
+            yansi::Paint::blue("copying"),
+            dep.display(),
+            yansi::Paint::blue("into"),
+            repo_path.join(dep).display()
+        );
+        // copy cnannt create non-existing directories
+        create_dir_all(repo_path.join(dep.parent().unwrap())).unwrap();
+        std::fs::copy(dep, repo_path.join(dep)).unwrap();
+    }
 
-        clean_up(dep_file_path);
+    clean_up(dep_file_path);
 
-        // step 5, git commiting
-        // git add
-        std::process::Command::new("git")
-            .current_dir(&repo_path)
-            .arg("add")
-            .args(deps)
-            .output().map_err(|x| format!("Telemetry: failed to git add with error message: {}", x))?;
+    // step 5, git commiting
+    // git add
+    std::process::Command::new("git")
+        .current_dir(&repo_path)
+        .arg("add")
+        .args(deps)
+        .output()
+        .map_err(|x| format!("Telemetry: failed to git add with error message: {}", x))?;
 
-        // git commit
-        println!("\n{} {}", yansi::Paint::blue("commiting"), repo_path.display());
-        std::process::Command::new("git")
-            .current_dir(&repo_path)
-            .arg("commit")
-            .arg("-m")
-            .arg("\"verus telemtry\"")
-            .output().map_err(|x| format!("Telemetry: failed to git commit with error message: {}", x))?;
-
+    // git commit
+    println!("\n{} {}", yansi::Paint::blue("commiting"), repo_path.display());
+    std::process::Command::new("git")
+        .current_dir(&repo_path)
+        .arg("commit")
+        .arg("-m")
+        .arg("\"verus telemtry\"")
+        .output()
+        .map_err(|x| format!("Telemetry: failed to git commit with error message: {}", x))?;
 
     Ok(())
 }
