@@ -8,6 +8,7 @@ dirs = "5.0.1"
 sha256 = "1.1.4"
 yansi = "0.5"
 anstream = "0.3.2"
+is-terminal = "0.4.9"
 
 [dependencies.uuid]
 version = "1.4.0"
