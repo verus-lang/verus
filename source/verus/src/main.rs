@@ -94,12 +94,16 @@ pub fn exec(cmd: &mut Command, reports: ReportsPath) -> Result<(), String> {
     #[cfg(windows)]
     {
         // Configure Windows to kill the child SMT process if the parent is killed
-        let job = win32job::Job::create().map_err(|_| std::io::Error::last_os_error())?;
-        let mut info =
-            job.query_extended_limit_info().map_err(|_| std::io::Error::last_os_error())?;
+        let job = win32job::Job::create()
+            .map_err(|_| format!("last os error: {}", std::io::Error::last_os_error()))?;
+        let mut info = job
+            .query_extended_limit_info()
+            .map_err(|_| format!("last os error: {}", std::io::Error::last_os_error()))?;
         info.limit_kill_on_job_close();
-        job.set_extended_limit_info(&mut info).map_err(|_| std::io::Error::last_os_error())?;
-        job.assign_current_process().map_err(|_| std::io::Error::last_os_error())?;
+        job.set_extended_limit_info(&mut info)
+            .map_err(|_| format!("last os error: {}", std::io::Error::last_os_error()))?;
+        job.assign_current_process()
+            .map_err(|_| format!("last os error: {}", std::io::Error::last_os_error()))?;
         std::mem::forget(job);
     }
 
