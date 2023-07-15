@@ -3,79 +3,6 @@ use std::io::BufRead;
 use std::path::PathBuf;
 use std::process::Command;
 
-mod platform {
-    pub struct ExitCode(pub i32);
-    use crate::ReportsPath;
-    use std::process::Command;
-
-    pub fn exec(cmd: &mut Command, reports: ReportsPath) -> std::io::Result<ExitCode> {
-        use std::io::Write;
-        use std::io::{BufRead, BufReader};
-        use std::process::Stdio;
-        use std::thread;
-
-        #[cfg(windows)]
-        {
-            // Configure Windows to kill the child SMT process if the parent is killed
-            let job = win32job::Job::create().map_err(|_| std::io::Error::last_os_error())?;
-            let mut info =
-                job.query_extended_limit_info().map_err(|_| std::io::Error::last_os_error())?;
-            info.limit_kill_on_job_close();
-            job.set_extended_limit_info(&mut info).map_err(|_| std::io::Error::last_os_error())?;
-            job.assign_current_process().map_err(|_| std::io::Error::last_os_error())?;
-            std::mem::forget(job);
-        }
-
-        if let None = reports {
-            // need to keep running rust_verify to get the rustc error message
-            let status = cmd.status()?;
-            return Ok(ExitCode(status.code().unwrap()));
-        }
-
-        let toml_path = reports.unwrap().proj_path.join("reports.toml");
-        eprintln!("toml_path: {:?}", toml_path);
-
-        let mut file = std::fs::File::create(toml_path).expect("creating reports.toml");
-
-        let mut child = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
-
-        let out = BufReader::new(child.stdout.take().unwrap());
-        let err = BufReader::new(child.stderr.take().unwrap());
-
-        let thread_err = thread::spawn(move || {
-            let mut tmpstr = String::new();
-            err.lines().for_each(|line| {
-                let line = line.unwrap();
-                eprintln!("{}", line);
-                let to_push = anstream::adapter::strip_str(&line).to_string() + "\n";
-                tmpstr.push_str(&to_push);
-            });
-            return tmpstr;
-        });
-
-        let thread_out = thread::spawn(move || {
-            let mut tmpstr = String::new();
-            out.lines().for_each(|line| {
-                let line = line.unwrap();
-                println!("{}", line);
-                let to_push = anstream::adapter::strip_str(&line).to_string() + "\n";
-                tmpstr.push_str(&to_push);
-            });
-            return tmpstr;
-        });
-
-        let err_string = thread_err.join().unwrap();
-        let out_string = thread_out.join().unwrap();
-
-        writeln!(file, "{}", err_string).unwrap();
-        writeln!(file, "{}", out_string).unwrap();
-
-        let status = child.wait()?;
-
-        Ok(ExitCode(status.code().unwrap()))
-    }
-}
-
 const TOOLCHAIN: &str = env!("VERUS_TOOLCHAIN");
 
 const RUST_VERIFY_FILE_NAME: &str =
@@ -144,75 +71,138 @@ fn main() {
         .stdin(std::process::Stdio::inherit());
 
     // change it to return Child process and do all the operations here
-    match platform::exec(&mut cmd, report_path.clone()) {
+    match exec(&mut cmd, report_path.clone()) {
         Err(e) => {
-            eprintln!("error: failed to execute rust_verify {e:?}");
+            eprintln!("{}", yansi::Paint::red(format!("error: failed to execute rust_verify: {}", e)));
             std::process::exit(128);
         }
-        Ok(code) => {
-            if let Some(reports) = report_path {
-                let repo_path = reports.proj_path.clone();
+        Ok(_) => {
 
-                let dep_file_rel_path = reports
-                    .crate_root
-                    .with_extension("d")
-                    .file_name()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .to_string();
-
-                let dep_file_path = std::env::current_dir().unwrap().join(dep_file_rel_path);
-
-                let deps = get_dependencies(dep_file_path.clone());
-
-                // clean all files in repo_path
-                std::fs::remove_dir_all(&repo_path).expect("failed to remove repo_path");
-
-                // copy files to repo_path
-                for dep in deps.iter() {
-                    println!(
-                        "\n{} {} {} {}",
-                        yansi::Paint::blue("copying"),
-                        dep.display(),
-                        yansi::Paint::blue("into"),
-                        repo_path.join(dep).display()
-                    );
-                    // copy cnannt create non-existing directories
-                    create_dir_all(repo_path.join(dep.parent().unwrap())).unwrap();
-                    std::fs::copy(dep, repo_path.join(dep)).unwrap();
-                }
-
-                clean_up(dep_file_path);
-
-                // step 5, git commiting
-                // git add
-                std::process::Command::new("git")
-                .current_dir(&repo_path)
-                .arg("add")
-                .args(deps)
-                .output()
-                .expect("commiting");
-    
-                // git commit
-                println!(
-                    "\n{} {}",
-                    yansi::Paint::blue("commiting"),
-                    repo_path.display()
-                );
-                std::process::Command::new("git")
-                    .current_dir(&repo_path)
-                    .arg("commit")
-                    .arg("-m")
-                    .arg("\"verus telemtry\"")
-                    .output()
-                    .expect("commiting");
-                
-
-            }
-            std::process::exit(code.0);
+            std::process::exit(0);
         }
     }
+}
+
+pub fn exec(cmd: &mut Command, reports: ReportsPath) -> Result<(), String> {
+    use std::io::Write;
+    use std::io::BufReader;
+    use std::process::Stdio;
+    use std::thread;
+
+    #[cfg(windows)]
+    {
+        // Configure Windows to kill the child SMT process if the parent is killed
+        let job = win32job::Job::create().map_err(|_| std::io::Error::last_os_error())?;
+        let mut info =
+            job.query_extended_limit_info().map_err(|_| std::io::Error::last_os_error())?;
+        info.limit_kill_on_job_close();
+        job.set_extended_limit_info(&mut info).map_err(|_| std::io::Error::last_os_error())?;
+        job.assign_current_process().map_err(|_| std::io::Error::last_os_error())?;
+        std::mem::forget(job);
+    }
+
+    if let None = reports {
+        // need to keep running rust_verify to get the rustc error message
+        cmd.status().map_err(|x| format!("verus failed to run with error: {}", x))?;
+        return Ok(());
+    }
+
+    let proj_path = reports.clone().unwrap().proj_path.clone();
+
+    let toml_path = proj_path.join("reports.toml");
+    eprintln!("toml_path: {:?}", toml_path);
+
+    let mut file = std::fs::File::create(toml_path).expect("creating reports.toml");
+
+    let mut child = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|x| format!("verus failed to run with error: {}", x))?;
+
+    let out = BufReader::new(child.stdout.take().unwrap());
+    let err = BufReader::new(child.stderr.take().unwrap());
+
+    let thread_err = thread::spawn(move || {
+        let mut tmpstr = String::new();
+        err.lines().for_each(|line| {
+            let line = line.unwrap();
+            eprintln!("{}", line);
+            let to_push = anstream::adapter::strip_str(&line).to_string() + "\n";
+            tmpstr.push_str(&to_push);
+        });
+        return tmpstr;
+    });
+
+    let thread_out = thread::spawn(move || {
+        let mut tmpstr = String::new();
+        out.lines().for_each(|line| {
+            let line = line.unwrap();
+            println!("{}", line);
+            let to_push = anstream::adapter::strip_str(&line).to_string() + "\n";
+            tmpstr.push_str(&to_push);
+        });
+        return tmpstr;
+    });
+
+    let err_string = thread_err.join().unwrap();
+    let out_string = thread_out.join().unwrap();
+
+    writeln!(file, "{}", err_string).unwrap();
+    writeln!(file, "{}", out_string).unwrap();
+
+    child.wait().map_err(|x| format!("verus failed to run with error: {}", x))?;
+
+    
+        let repo_path = proj_path.clone();
+
+        let dep_file_rel_path = reports.unwrap()
+            .crate_root
+            .with_extension("d")
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        let dep_file_path = std::env::current_dir().unwrap().join(dep_file_rel_path);
+
+        let deps = get_dependencies(&dep_file_path)?;
+
+        // clean all files in repo_path
+        std::fs::remove_dir_all(&repo_path).expect("failed to remove repo_path");
+
+        // copy files to repo_path
+        for dep in deps.iter() {
+            println!(
+                "\n{} {} {} {}",
+                yansi::Paint::blue("copying"),
+                dep.display(),
+                yansi::Paint::blue("into"),
+                repo_path.join(dep).display()
+            );
+            // copy cnannt create non-existing directories
+            create_dir_all(repo_path.join(dep.parent().unwrap())).unwrap();
+            std::fs::copy(dep, repo_path.join(dep)).unwrap();
+        }
+
+        clean_up(dep_file_path);
+
+        // step 5, git commiting
+        // git add
+        std::process::Command::new("git")
+            .current_dir(&repo_path)
+            .arg("add")
+            .args(deps)
+            .output().map_err(|x| format!("Telemetry: failed to git add with error message: {}", x))?;
+
+        // git commit
+        println!("\n{} {}", yansi::Paint::blue("commiting"), repo_path.display());
+        std::process::Command::new("git")
+            .current_dir(&repo_path)
+            .arg("commit")
+            .arg("-m")
+            .arg("\"verus telemtry\"")
+            .output().map_err(|x| format!("Telemetry: failed to git commit with error message: {}", x))?;
+
+
+    Ok(())
 }
 
 pub type ReportsPath = Option<Reports>;
@@ -232,7 +222,7 @@ impl Clone for Reports {
 fn repo_path() -> ReportsPath {
     // Step 1: check if there's a verus/reports/.git file in the XDG cache,
     // if not so, create verus/ directory
-    let cache_dir = dirs::data_local_dir().expect("cache dir invalid");
+    let cache_dir = dirs::data_local_dir()?;
     let repo_dir = cache_dir.join("verus").join("reports");
     if !repo_dir.clone().join(".git").is_file() {
         std::fs::create_dir_all(repo_dir.clone())
@@ -305,12 +295,17 @@ fn clean_up(file: PathBuf) {
     std::fs::remove_file(file).expect("remove crate root dependency file");
 }
 
-fn get_dependencies(file_name: PathBuf) -> Vec<PathBuf> {
-    let file = std::fs::File::open(file_name).expect("Couldn't open file!");
+fn get_dependencies(dep_file_path: &std::path::Path) -> Result<Vec<PathBuf>, String> {
+    // update to better error message
+    let file = std::fs::File::open(dep_file_path)
+        .map_err(|x| format!("{}, dependency file name: {:?}", x, dep_file_path))?;
     let mut reader = std::io::BufReader::new(file);
     let mut dependencies = String::new();
-    reader.read_line(&mut dependencies).expect("Could not read the first line");
+    reader.read_line(&mut dependencies).map_err(|x| {
+        format!("Could not read the first line of the dependency file with message: {}", x)
+    })?;
     let dep: Vec<String> = dependencies.split_whitespace().skip(1).map(|x| x.to_string()).collect();
     println!("\n{} {:?}", yansi::Paint::blue("dependencies:"), dep);
-    return dep.into_iter().map(|x| PathBuf::from(x)).collect();
+    let result = dep.into_iter().map(|x| PathBuf::from(x)).collect();
+    Ok(result)
 }
