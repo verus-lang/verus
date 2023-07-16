@@ -245,6 +245,18 @@ fn test_vec2() {
 }
 // ANCHOR_END: test_vec2
 
+// ANCHOR: ret_spec_fn
+spec fn adder(x: int) -> FnSpec(int) -> int {
+    |y: int| x + y
+}
+
+proof fn test_adder() {
+    let f = adder(10);
+    assert(f(20) == 30);
+    assert(f(60) == 70);
+}
+// ANCHOR_END: ret_spec_fn
+
 fn main() {
 }
 

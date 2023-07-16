@@ -24,3 +24,9 @@ using a return value of type `FnSpec(t1, ..., tn) -> tret`,
 without having to use 
 [dyn or impl](https://doc.rust-lang.org/book/ch19-05-advanced-functions-and-closures.html#returning-closures),
 as with standard executable Rust closures.
+For example, the `spec` function `adder`, shown below,
+can return an anonymous function that adds `x` to `y`:
+
+```rust
+{{#include ../../../rust_verify/example/guide/lib_examples.rs:ret_spec_fn}}
+```
