@@ -1,20 +1,26 @@
 # Spec Closures
 
-Verus supports anonymous funcitons in ghost code.
+Verus supports anonymous functions (known as "closures" in Rust) in ghost code.
+For example, the following code from earlier in [this chapter](spec_lib.md)
+uses an anonymous function `|i: int| 10 * i`,
+to initialize a sequence with the values 0, 10, 20, 30, 40:
 
-In the examples for `Set` in the [specification libraries](spec_lib.md):
+```rust
+{{#include ../../../rust_verify/example/guide/lib_examples.rs:new0}}
 ```
-proof fn test_seq2() {
-    let s: Seq<int> = Seq::new(5, |i: int| 10 * i);
-    assert(s.len() == 5);
-    assert(s[2] == 20);
-    assert(s[3] == 30);
-}
-```
-Since ghost code can only contain ghost code, the closure `|i: int| 10 * i` passed into `Seq::new` is a spec closures, which has type `FnSpec(int -> bool)`. You can declare these closures as normal rust Code.
 
-Spec Closures have the [same restrictions](modes.md) as normal sepc functions.
+The anonymous function `|i: int| 10 * i` has type `FnSpec(int) -> int`
+and has mode `spec`.
+Because it has mode `spec`,
+the anonymous function is subject to the [same restrictions](modes.md) as named `spec` functions.
+(For example, it can call other `spec` functions but not `proof` functions or `exec` functions.)
 
-## FnSpec is a type
-
-It is worth noticing that `FnSpec` is not a trait as Rust does for `Fn`, `FnOnce`, and `FnMut`. Therefore, ghost code can return a spec closure without [the need for a dynamic or anonymous return type (dyn or impl)](https://doc.rust-lang.org/book/ch19-05-advanced-functions-and-closures.html#:~:text=clearer%20to%20you.-,Returning%20Closures,return%20value%20of%20the%20function.).
+Note that in contrast to standard executable
+[Rust closures](https://doc.rust-lang.org/book/ch13-01-closures.html),
+where `Fn`, `FnOnce`, and `FnMut` are traits,
+`FnSpec(int) -> int` is a type, not a trait.
+Therefore, ghost code can return a spec closure directly,
+using a return value of type `FnSpec(t1, ..., tn) -> tret`,
+without having to use 
+[(dyn or impl)](https://doc.rust-lang.org/book/ch19-05-advanced-functions-and-closures.html#returning-closures),
+as with standard executable Rust closures.

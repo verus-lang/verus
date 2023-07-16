@@ -1,6 +1,4 @@
 #![allow(unused_imports)]
-use builtin_macros::*;
-use builtin::*;
 use vstd::{seq::*, set::*, map::*, prelude::*};
 
 verus! {
@@ -30,6 +28,18 @@ proof fn test_map1() {
     assert(m[30] == 300);
 }
 // ANCHOR_END: macro
+
+mod m0 {
+use vstd::{seq::*, prelude::*};
+// ANCHOR: new0
+proof fn test_seq2() {
+    let s: Seq<int> = Seq::new(5, |i: int| 10 * i);
+    assert(s.len() == 5);
+    assert(s[2] == 20);
+    assert(s[3] == 30);
+}
+// ANCHOR_END: new0
+}
 
 // ANCHOR: new
 proof fn test_seq2() {
