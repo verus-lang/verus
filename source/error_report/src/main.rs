@@ -23,8 +23,8 @@ fn main() {
 }
 
 fn run() -> Result<(), String> {
-    let mut file_path = String::new();
-    #[allow(unused_assignments)]
+    let mut file_path: Option<String> = None;
+
     let mut our_args = Vec::new();
 
     let args: Vec<String> = env::args().collect();
@@ -32,7 +32,7 @@ fn run() -> Result<(), String> {
     if args.len() > 1 {
         for argument in &args {
             if argument.ends_with(".rs") {
-                file_path = argument.clone();
+                file_path = Some(argument.clone());
             }
             if argument.starts_with("-o") || argument.starts_with("--out-dir") {
                 Err("error report does not support `-o` or `--out-dir` flag")?;
@@ -44,13 +44,11 @@ fn run() -> Result<(), String> {
         Err("no arguments provided")?;
     }
 
-    if file_path.is_empty() {
-        Err("no INPUT provided, Usage: verus INPUT --record [options]")?;
-    }
+    let Some(file_path) = file_path else { return Err("no INPUT provided, Usage: verus INPUT --record [options]")?; };
 
     // add this error message because verus output is blocked
     // though normally user should make sure simple error like this does not happen
-    // since they add error-report flag after they meet something wierd
+    // since they add record flag after they meet something wierd
     if !Path::new(&file_path).exists() {
         Err(format!("couldn't find crate root: {}", file_path))?;
     }
@@ -81,7 +79,7 @@ fn run() -> Result<(), String> {
             format!("failed to execute z3 with error message {}, path is at {:?}", x, z3_path)
         })?;
 
-    // mandating --time and --output-json flag, we remove both flags here to prevent verus two many options
+    // mandating --time and --output-json flag, we remove both flags here to prevent passing duplicates to verus
     if our_args.contains(&"--time".to_string()) || our_args.contains(&"--output-json".to_string()) {
         our_args.retain(|x| x != "--time" && x != "--output-json");
     }
@@ -138,7 +136,7 @@ fn run() -> Result<(), String> {
 
     fs::remove_file("error_report.toml")
         .map_err(|x| format!("failed to delete toml file with this error message: {}", x))?;
-    // TODO: in some bugs where the main.d file is not created, the following error will be reported, rather than the error of zip_zetup
+    // TODO: in some cases where the main.d file is not created, the following error will be reported, rather than the error of zip_zetup
     fs::remove_file(temp_dep_file.clone()).map_err(|x| format!("failed to delete dependencies file with this error message: {}, path to dependency file is {}", x, temp_dep_file))?;
 
     println!(
@@ -164,25 +162,18 @@ fn toml_setup_and_write(
         serde_json::from_str::<serde_json::Value>(&String::from_utf8_lossy(&verus_output.stdout))
             .map_err(|x| format!("Could not parse stdout as json with error message: {}", x))?;
 
-    // get version
     let version_info: toml::Value = serde_json::from_str(&stdout_json["verus"].to_string())
         .map_err(|x| {
             format!("failed to parse version info to toml file with error message {}", x)
         })?;
 
-    // get verification result
     let verification_result: toml::map::Map<String, Value> =
         serde_json::from_str(&stdout_json["verification-results"].to_string()).map_err(|x| {
-            format!(
-                "failed to pretty print verification result to toml file with error message {}",
-                x
-            )
+            format!("failed to parse verification results with error message {}", x)
         })?;
 
-    // the serde_json stdout is pretty bad
-    let stdout_toml_text = serde_json::from_str(&stdout_json.to_string()).map_err(|x| {
-        format!("failed to pretty print stdout to toml file with error message {}", x)
-    })?;
+    let stdout_toml_text = serde_json::from_str(&stdout_json.to_string())
+        .map_err(|x| format!("failed to parse stdout (json) with error message {}", x))?;
 
     let stderr = String::from_utf8_lossy(&verus_output.stderr).to_string();
 
@@ -203,16 +194,8 @@ fn toml_setup_and_write(
     Ok(())
 }
 
-/// Creates a toml file and writes relevant information to this file, including
-/// the command-line arguments, versions, and output.
-///
-/// Parameters: args: The command line arguments given to call the input file
-///             z3_version: Information regarding the user's current z3 version
-///             verus_version: Information regarding the user's current verus version
-///             stdout: The resulting output from the input file to stdout
-///             stderr: The resulting output from the input file to stderr
-///  
-/// Returns:    A Table data structure used to write a toml file
+// Creates a toml file and writes relevant information to this file, including
+// the command-line arguments, versions, rough time info, and verus output.
 fn create_toml(
     args: Vec<String>,
     z3_version: String,
@@ -254,7 +237,6 @@ fn create_toml(
 pub fn zip_setup(dep_file_name: String) -> Result<String, String> {
     let dep_path = Path::new(&dep_file_name);
     if !dep_path.exists() {
-        // how to report this error before the remove file error?
         Err(format!(
             "file {} does not exist in zip_zetup, {}",
             dep_file_name,
@@ -284,12 +266,12 @@ fn get_dependencies(dep_file_path: &std::path::Path) -> Result<Vec<String>, Stri
     Ok(result)
 }
 
-/// Creates a zip file from a given list of files to compress
-///
-/// Parameters: deps: A vector of strings representing files to be compressed
-///                    (in this context, each file is a dependency of the input)
-///
-/// Returns:    The name of the created zip file
+// Creates a zip file from a given list of files to compress
+//
+// Parameters: deps: A vector of strings representing files to be compressed
+//                    (in this context, each file is a dependency of the input)
+//
+// Returns:    The name of the created zip file
 fn write_zip_archive(deps: Vec<String>) -> Result<String, String> {
     let local: DateTime<Local> = Local::now();
     let formatted = local.format("%Y-%m-%d-%H-%M-%S");

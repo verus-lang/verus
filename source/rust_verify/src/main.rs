@@ -127,7 +127,7 @@ pub fn main() {
 
     let pervasive_path = our_args.pervasive_path.clone();
 
-    if our_args.error_report {
+    if our_args.record {
         let mut args: Vec<String> = std::env::args().collect();
         args.remove(0);
 
@@ -140,16 +140,16 @@ pub fn main() {
             } else {
                 "error_report"
             });
-            if exe.exists() {
-                let mut res = std::process::Command::new(exe)
-                    .arg(&verusroot.path)
-                    .args(args)
-                    .spawn()
-                    .expect("running error_report");
-
-                res.wait().expect("error_report failed to run");
-                return;
+            if !exe.exists() {
+                panic!("error_report binary not found");
             }
+            let mut res = std::process::Command::new(exe)
+                .arg(&verusroot.path)
+                .args(args)
+                .spawn()
+                .expect("running error_report");
+
+            res.wait().expect("error_report failed to run");
         }
         return;
     }

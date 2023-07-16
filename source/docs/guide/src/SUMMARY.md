@@ -144,4 +144,5 @@
   - [Cyclic definitions]()
 - [Command line]()
   - [--arch-word-bits]()
+  - [--record](./reference-flag-record.md)
 - [Planned future work]()
