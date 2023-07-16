@@ -2,7 +2,7 @@
 
 Verus supports anonymous functions (known as "closures" in Rust) in ghost code.
 For example, the following code from earlier in [this chapter](spec_lib.md)
-uses an anonymous function `|i: int| 10 * i`,
+uses an anonymous function `|i: int| 10 * i`
 to initialize a sequence with the values 0, 10, 20, 30, 40:
 
 ```rust
@@ -22,5 +22,5 @@ where `Fn`, `FnOnce`, and `FnMut` are traits,
 Therefore, ghost code can return a spec closure directly,
 using a return value of type `FnSpec(t1, ..., tn) -> tret`,
 without having to use 
-[(dyn or impl)](https://doc.rust-lang.org/book/ch19-05-advanced-functions-and-closures.html#returning-closures),
+[dyn or impl](https://doc.rust-lang.org/book/ch19-05-advanced-functions-and-closures.html#returning-closures),
 as with standard executable Rust closures.
