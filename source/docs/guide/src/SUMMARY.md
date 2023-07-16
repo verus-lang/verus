@@ -112,7 +112,7 @@
   - [Spec equality ==]()
   - [Extensional equality `=~=` and `=~~=`]()
   - [&&& and |||]()
-  - [Chained inequalities](./reference-chained-ineq.md)
+  - [Chained operators](./reference-chained-op.md)
   - [Implication (`==>`, `<==`, and `<==>`)](./reference-implication.md)
   - [`forall`, `exists`]()
   - [`choose`]()
