@@ -17,7 +17,7 @@ use crate::verus_items::{
 use crate::{unsupported_err, unsupported_err_unless};
 use air::ast::{Binder, BinderX};
 use air::ast_util::str_ident;
-use rustc_ast::{BorrowKind, LitKind, Mutability};
+use rustc_ast::LitKind;
 use rustc_hir::def::Res;
 use rustc_hir::{Expr, ExprKind, Node, QPath};
 use rustc_middle::ty::subst::GenericArgKind;
@@ -302,7 +302,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                 let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
                 let subargs = extract_array(args[0]);
                 for arg in &subargs {
-                    if !matches!(bctx.types.node_type(arg.hir_id).kind(), TyKind::Bool) {
+                    if !matches!(bctx.types.expr_ty_adjusted(arg).kind(), TyKind::Bool) {
                         return err_span(arg.span, "requires/recommends needs a bool expression");
                     }
                 }
@@ -350,7 +350,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                 unsupported_err_unless!(len == 1, expr.span, "expected invariant", &args);
                 let subargs = extract_array(args[0]);
                 for arg in &subargs {
-                    if !matches!(bctx.types.node_type(arg.hir_id).kind(), TyKind::Bool) {
+                    if !matches!(bctx.types.expr_ty_adjusted(arg).kind(), TyKind::Bool) {
                         return err_span(arg.span, "invariant needs a bool expression");
                     }
                 }
@@ -1253,7 +1253,7 @@ fn extract_quant<'tcx>(
                 return err_span(expr.span, "forall/ensures cannot have requires/ensures");
             }
             let typ = Arc::new(TypX::Bool);
-            if !matches!(bctx.types.node_type(expr.hir_id).kind(), TyKind::Bool) {
+            if !matches!(bctx.types.expr_ty_adjusted(expr).kind(), TyKind::Bool) {
                 return err_span(expr.span, "forall/ensures needs a bool expression");
             }
             Ok(bctx.spanned_typed_new(span, &typ, ExprX::Quant(quant, Arc::new(binders), vir_expr)))
@@ -1266,7 +1266,7 @@ fn get_ensures_arg<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
 ) -> Result<vir::ast::Expr, VirErr> {
-    if matches!(bctx.types.node_type(expr.hir_id).kind(), TyKind::Bool) {
+    if matches!(bctx.types.expr_ty_adjusted(expr).kind(), TyKind::Bool) {
         expr_to_vir(bctx, expr, ExprModifier::REGULAR)
     } else {
         err_span(expr.span, "ensures needs a bool expression")
@@ -1525,20 +1525,20 @@ fn mk_vir_args<'tcx>(
                         ))
                 )
             ) {
-                expr_to_vir(bctx, arg, is_expr_typ_mut_ref(bctx, arg, outer_modifier)?)
+                expr_to_vir(
+                    bctx,
+                    arg,
+                    is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(arg), outer_modifier)?,
+                )
             } else if is_mut_ref_param {
-                let arg_x = match &arg.kind {
-                    ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => e,
-                    _ => arg,
-                };
-                let deref_mut = match bctx.types.node_type(arg_x.hir_id).ref_mutability() {
-                    Some(Mutability::Mut) => true,
-                    _ => false,
-                };
-                let expr = expr_to_vir(bctx, arg_x, ExprModifier { addr_of: true, deref_mut })?;
+                let expr = crate::rust_to_vir_expr::expr_to_vir_for_mutref_arg(bctx, arg)?;
                 Ok(bctx.spanned_typed_new(arg.span, &expr.typ.clone(), ExprX::Loc(expr)))
             } else {
-                expr_to_vir(bctx, arg, is_expr_typ_mut_ref(bctx, arg, ExprModifier::REGULAR)?)
+                expr_to_vir(
+                    bctx,
+                    arg,
+                    is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(arg), ExprModifier::REGULAR)?,
+                )
             }
         })
         .collect::<Result<Vec<_>, _>>()
