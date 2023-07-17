@@ -67,7 +67,7 @@ test_verify_one_file! {
         #[verifier(nonlinear)]
         proof fn mul_distributive_auto()
             ensures
-                forall_arith(|a: nat, b: nat, c: nat| #[trigger] ((a + b) * c) == a * c + b * c),
+                forall|a: nat, b: nat, c: nat| #[trigger] ((a + b) * c) == a * c + b * c,
         {
         }
 
@@ -151,7 +151,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_arith_and_ord verus_code! {
         proof fn quant()
-            ensures forall_arith(|a: nat, b: nat, c: nat| #[trigger] (a + b <= c))
+            ensures forall|a: nat, b: nat, c: nat| #[trigger] (a + b <= c)
         {
             assume(false)
         }
@@ -171,14 +171,14 @@ test_verify_one_file! {
 
         proof fn test(w: int, x: int, y: int, z: int)
         {
-            assert((((w * x) * y) * z) == w * (x * (y * z))) by {
+            assert(((w * x) * y) * z == w * (x * (y * z))) by {
                 assoc();
             }
         }
 
         proof fn test_fail(w: int, x: int, y: int, z: int)
         {
-            assert((((w * x) * y) * z) == w * (x * (y * z))) by { // FAILS
+            assert(((w * x) * y) * z == w * (x * (y * z))) by { // FAILS
             }
         }
     } => Err(e) => assert_one_fails(e)
@@ -197,14 +197,14 @@ test_verify_one_file! {
 
         proof fn test(w: nat, x: nat, y: nat, z: nat)
         {
-            assert((((w * x) * y) * z) == w * (x * (y * z))) by {
+            assert(((w * x) * y) * z == w * (x * (y * z))) by {
                 assoc();
             }
         }
 
         proof fn test_fail(w: nat, x: nat, y: nat, z: nat)
         {
-            assert((((w * x) * y) * z) == w * (x * (y * z))) by { // FAILS
+            assert(((w * x) * y) * z == w * (x * (y * z))) by { // FAILS
             }
         }
     } => Err(e) => assert_one_fails(e)
@@ -216,7 +216,7 @@ test_verify_one_file! {
 
         proof fn p()
             ensures
-                forall_arith(|a: int, b: int| #[trigger] (a * b) == b * a),
+                forall|a: int, b: int| #[trigger] (a * b) == b * a,
                 forall|a: int| some_fn(a), // FAILS
         {
         }
