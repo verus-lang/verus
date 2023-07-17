@@ -159,6 +159,58 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_arith_assert_by verus_code! {
+        proof fn assoc()
+            ensures
+                forall|x: int, y: int, z: int| #[trigger] ((x * y) * z) == x * (y * z),
+        {
+            assert forall|x: int, y: int, z: int| #[trigger] ((x * y) * z) == x * (y * z) by {
+                assert((x * y) * z == x * (y * z)) by(nonlinear_arith);
+            }
+        }
+
+        proof fn test(w: int, x: int, y: int, z: int)
+        {
+            assert((((w * x) * y) * z) == w * (x * (y * z))) by {
+                assoc();
+            }
+        }
+
+        proof fn test_fail(w: int, x: int, y: int, z: int)
+        {
+            assert((((w * x) * y) * z) == w * (x * (y * z))) by { // FAILS
+            }
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_arith_assert_by_nat verus_code! {
+        proof fn assoc()
+            ensures
+                forall|x: nat, y: nat, z: nat| #[trigger] ((x * y) * z) == x * (y * z),
+        {
+            assert forall|x: nat, y: nat, z: nat| #[trigger] ((x * y) * z) == x * (y * z) by {
+                assert((x * y) * z == x * (y * z)) by(nonlinear_arith);
+            }
+        }
+
+        proof fn test(w: nat, x: nat, y: nat, z: nat)
+        {
+            assert((((w * x) * y) * z) == w * (x * (y * z))) by {
+                assoc();
+            }
+        }
+
+        proof fn test_fail(w: nat, x: nat, y: nat, z: nat)
+        {
+            assert((((w * x) * y) * z) == w * (x * (y * z))) by { // FAILS
+            }
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
     #[test] test_recommends_regression_163 verus_code! {
         spec fn some_fn(a: int) -> bool;
 

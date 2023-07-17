@@ -359,7 +359,7 @@ where
                 ExprX::AssertAssume { is_assume: _, expr: e1 } => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
                 }
-                ExprX::AssertBy { vars, require, ensure, proof, assumption } => {
+                ExprX::AssertBy { vars, require, ensure, proof } => {
                     map.push_scope(true);
                     for binder in vars.iter() {
                         let _ = map.insert(binder.name.clone(), binder.a.clone());
@@ -368,7 +368,6 @@ where
                     expr_visitor_control_flow!(expr_visitor_dfs(ensure, map, mf));
                     expr_visitor_control_flow!(expr_visitor_dfs(proof, map, mf));
                     map.pop_scope();
-                    expr_visitor_control_flow!(expr_visitor_dfs(assumption, map, mf));
                 }
                 ExprX::AssertQuery { requires, ensures, proof, mode: _ } => {
                     for req in requires.iter() {
@@ -772,7 +771,7 @@ where
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             ExprX::AssertAssume { is_assume: *is_assume, expr: expr1 }
         }
-        ExprX::AssertBy { vars, require, ensure, proof, assumption } => {
+        ExprX::AssertBy { vars, require, ensure, proof } => {
             let vars =
                 vec_map_result(&**vars, |x| x.map_result(|t| map_typ_visitor_env(t, env, ft)))?;
             map.push_scope(true);
@@ -783,8 +782,7 @@ where
             let ensure = map_expr_visitor_env(ensure, map, env, fe, fs, ft)?;
             let proof = map_expr_visitor_env(proof, map, env, fe, fs, ft)?;
             map.pop_scope();
-            let assumption = map_expr_visitor_env(assumption, map, env, fe, fs, ft)?;
-            ExprX::AssertBy { vars: Arc::new(vars), require, ensure, proof, assumption }
+            ExprX::AssertBy { vars: Arc::new(vars), require, ensure, proof }
         }
         ExprX::AssertQuery { requires, ensures, proof, mode } => {
             let requires = Arc::new(vec_map_result(requires, |e| {

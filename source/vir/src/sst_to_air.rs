@@ -879,7 +879,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             UnaryOpr::HasType(typ) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
-                typ_invariant(ctx, typ, &expr).expect("HasType")
+                if let Some(inv) = typ_invariant(ctx, typ, &expr) {
+                    inv
+                } else {
+                    air::ast_util::mk_true()
+                }
             }
             UnaryOpr::IsVariant { datatype, variant } => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;

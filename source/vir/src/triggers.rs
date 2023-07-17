@@ -63,7 +63,7 @@ fn preprocess_exp(exp: &Exp) -> Exp {
 // in which this prediction is incorrect.
 pub(crate) fn predict_native_quant_vars(
     bs: &Binders<Typ>,
-    body: &crate::ast::Expr,
+    bodies: &Vec<&crate::ast::Expr>,
 ) -> HashSet<Ident> {
     use crate::ast::ExprX;
     let mut natives: HashSet<Ident> = HashSet::new();
@@ -111,7 +111,9 @@ pub(crate) fn predict_native_quant_vars(
             _ => {}
         }
     };
-    crate::ast_visitor::expr_visitor_traverse(body, &mut scope_map, &mut fbody);
+    for body in bodies {
+        crate::ast_visitor::expr_visitor_traverse(body, &mut scope_map, &mut fbody);
+    }
     natives
 }
 

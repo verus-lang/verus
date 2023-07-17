@@ -460,7 +460,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             mk_expr(ExprX::Multi(MultiOp::Chained(ops.clone()), Arc::new(es)))
         }
         ExprX::Quant(quant, binders, e1) => {
-            let natives = crate::triggers::predict_native_quant_vars(binders, e1);
+            let natives = crate::triggers::predict_native_quant_vars(binders, &vec![e1]);
             let mut bs: Vec<Binder<Typ>> = Vec::new();
             state.types.push_scope(true);
             for binder in binders.iter() {
@@ -578,11 +578,17 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let e1 = coerce_expr_to_native(ctx, &poly_expr(ctx, state, e1));
             mk_expr(ExprX::AssertAssume { is_assume: *is_assume, expr: e1 })
         }
-        ExprX::AssertBy { vars, require, ensure, proof, assumption } => {
+        ExprX::AssertBy { vars, require, ensure, proof } => {
             let mut bs: Vec<Binder<Typ>> = Vec::new();
             state.types.push_scope(true);
+            let natives = crate::triggers::predict_native_quant_vars(vars, &vec![require, ensure]);
             for binder in vars.iter() {
-                let typ = coerce_typ_to_poly(ctx, &binder.a);
+                let native = natives.contains(&binder.name);
+                let typ = if native {
+                    coerce_typ_to_native(ctx, &binder.a)
+                } else {
+                    coerce_typ_to_poly(ctx, &binder.a)
+                };
                 let _ = state.types.insert(binder.name.clone(), typ.clone());
                 bs.push(binder.new_a(typ));
             }
@@ -590,9 +596,8 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let ensure = coerce_expr_to_native(ctx, &poly_expr(ctx, state, ensure));
             let proof = poly_expr(ctx, state, proof);
             state.types.pop_scope();
-            let assumption = coerce_expr_to_native(ctx, &poly_expr(ctx, state, assumption));
             let vars = Arc::new(bs);
-            mk_expr(ExprX::AssertBy { vars, require, ensure, proof, assumption })
+            mk_expr(ExprX::AssertBy { vars, require, ensure, proof })
         }
         ExprX::AssertQuery { requires, ensures, proof, mode } => {
             state.types.push_scope(true);

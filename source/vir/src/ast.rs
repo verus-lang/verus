@@ -620,10 +620,8 @@ pub enum ExprX {
     Header(HeaderExpr),
     /// Assert or assume
     AssertAssume { is_assume: bool, expr: Expr },
-    /// Assert-forall or assert-by statement; proves "assumption" via proof,
-    /// where "assumption" is "forall vars. require ==> ensure"
-    /// ("assumption" is redundant, but is kept separately because poly.rs treats it differently)
-    AssertBy { vars: Binders<Typ>, require: Expr, ensure: Expr, proof: Expr, assumption: Expr },
+    /// Assert-forall or assert-by statement
+    AssertBy { vars: Binders<Typ>, require: Expr, ensure: Expr, proof: Expr },
     /// If-else
     If(Expr, Expr, Option<Expr>),
     /// Match (Note: ast_simplify replaces Match with other expressions)

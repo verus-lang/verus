@@ -4,7 +4,7 @@ use crate::ast::{
     Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
-use crate::ast_util::{error, internal_error, types_equal};
+use crate::ast_util::{error, internal_error, types_equal, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{unique_bound, unique_local, Spanned};
 use crate::func_to_air::{SstInfo, SstMap};
@@ -1430,7 +1430,7 @@ fn expr_to_stm_opt(
             let stm = Spanned::new(expr.span.clone(), StmX::Assume(exp));
             Ok((vec![stm], ReturnValue::ImplicitUnit(expr.span.clone())))
         }
-        ExprX::AssertBy { vars, require, ensure, proof, assumption } => {
+        ExprX::AssertBy { vars, require, ensure, proof } => {
             // deadend {
             //   assume(require)
             //   proof
@@ -1468,8 +1468,12 @@ fn expr_to_stm_opt(
             state.pop_scope();
 
             // Translate ensure into an assume
-            let assumption_exp = expr_to_pure_exp(ctx, state, assumption)?;
-            let assume = Spanned::new(assumption.span.clone(), StmX::Assume(assumption_exp));
+            let implyx = ExprX::Binary(BinaryOp::Implies, require.clone(), ensure.clone());
+            let imply = SpannedTyped::new(&ensure.span, &Arc::new(TypX::Bool), implyx);
+            let forallx = ExprX::Quant(QUANT_FORALL, vars.clone(), imply);
+            let forall = SpannedTyped::new(&ensure.span, &Arc::new(TypX::Bool), forallx);
+            let forall_exp = expr_to_pure_exp(ctx, state, &forall)?;
+            let assume = Spanned::new(ensure.span.clone(), StmX::Assume(forall_exp));
             stms.push(assume);
             Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
         }
