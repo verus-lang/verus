@@ -13,6 +13,9 @@ use toml::{map::Map, value::Value};
 use zip::write::FileOptions;
 
 fn main() {
+    if cfg!(windows) && !yansi::Paint::enable_windows_ascii() {
+        yansi::Paint::disable();
+    }
     match run() {
         Ok(()) => (),
         Err(err) => {
@@ -32,10 +35,13 @@ fn run() -> Result<(), String> {
     if args.len() > 1 {
         for argument in &args {
             if argument.ends_with(".rs") {
+                if file_path.is_some() {
+                    Err("multiple .rs files passed, unsupported by the --record flag")?;
+                }
                 file_path = Some(argument.clone());
             }
             if argument.starts_with("-o") || argument.starts_with("--out-dir") {
-                Err("error report does not support `-o` or `--out-dir` flag")?;
+                Err("--record does not support `-o` or `--out-dir` flag")?;
             }
         }
         our_args = args[2..].to_vec();
@@ -110,7 +116,7 @@ fn run() -> Result<(), String> {
         Err(err) => {
             // remove temp file if created
             fs::remove_file(&temp_dep_file).map_err(|x| {
-                format!("failed to delete toml file with this error message: {}", x)
+                format!("failed to delete `.d` file with this error message: {}", x)
             })?;
             Err(format!(
                 "failed to execute verus with error message {}, verus path is at {:?}, args are {:?}",
@@ -126,7 +132,7 @@ fn run() -> Result<(), String> {
         Err(err) => {
             // remove temp file if created
             fs::remove_file(&temp_dep_file).map_err(|x| {
-                format!("failed to delete toml file with this error message: {}", x)
+                format!("failed to delete `.d` file with this error message: {}", x)
             })?;
             Err(err)?
         }
