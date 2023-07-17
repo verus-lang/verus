@@ -883,7 +883,7 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(typing, Mode::Spec, e, Mode::Spec)?;
             Ok(outer_mode)
         }
-        ExprX::Forall { vars, require, ensure, proof } => {
+        ExprX::AssertBy { vars, require, ensure, proof } => {
             if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return error_with_help(
                     &expr.span,

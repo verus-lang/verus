@@ -18,6 +18,7 @@ use crate::sst_util::{
     sst_lt,
 };
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
+use crate::triggers::{typ_boxing, TriggerBoxing};
 use crate::util::{vec_map, vec_map_result};
 use crate::visitor::VisitorControlFlow;
 use air::ast::{Binder, BinderX, Binders, Span};
@@ -246,30 +247,27 @@ impl<'a> State<'a> {
             ExpX::Bind(bnd, body) => match &bnd.x {
                 BndX::Quant(quant, bs, trigs) => {
                     assert!(trigs.len() == 0);
-                    let mut vars: Vec<Ident> = Vec::new();
+                    let mut vars: Vec<(Ident, TriggerBoxing)> = Vec::new();
                     for b in bs.iter() {
                         match &*b.a {
-                            TypX::TypeId => vars.push(crate::def::suffix_typ_param_id(&b.name)),
-                            _ => vars.push(b.name.clone()),
+                            TypX::TypeId => vars.push((
+                                crate::def::suffix_typ_param_id(&b.name),
+                                TriggerBoxing::TypeId,
+                            )),
+                            _ => vars.push((b.name.clone(), typ_boxing(ctx, &b.a))),
                         }
                     }
-                    let trigs = crate::triggers::build_triggers(
-                        ctx,
-                        &exp.span,
-                        &vars,
-                        &body,
-                        quant.boxed_params,
-                        false,
-                    )?;
+                    let trigs =
+                        crate::triggers::build_triggers(ctx, &exp.span, &vars, &body, false)?;
                     let bnd =
                         Spanned::new(bnd.span.clone(), BndX::Quant(*quant, bs.clone(), trigs));
                     Ok(SpannedTyped::new(&exp.span, &exp.typ, ExpX::Bind(bnd, body.clone())))
                 }
                 BndX::Choose(bs, trigs, cond) => {
                     assert!(trigs.len() == 0);
-                    let vars = vec_map(bs, |b| b.name.clone());
+                    let vars = vec_map(bs, |b| (b.name.clone(), typ_boxing(ctx, &b.a)));
                     let trigs =
-                        crate::triggers::build_triggers(ctx, &exp.span, &vars, &cond, true, false)?;
+                        crate::triggers::build_triggers(ctx, &exp.span, &vars, &cond, false)?;
                     let bnd = Spanned::new(
                         bnd.span.clone(),
                         BndX::Choose(bs.clone(), trigs, cond.clone()),
@@ -278,9 +276,9 @@ impl<'a> State<'a> {
                 }
                 BndX::Lambda(bs, trigs) => {
                     assert!(trigs.len() == 0);
-                    let vars = vec_map(bs, |b| b.name.clone());
+                    let vars = vec_map(bs, |b| (b.name.clone(), typ_boxing(ctx, &b.a)));
                     let trigs =
-                        crate::triggers::build_triggers(ctx, &exp.span, &vars, &body, true, true)?;
+                        crate::triggers::build_triggers(ctx, &exp.span, &vars, &body, true)?;
                     let bnd = Spanned::new(bnd.span.clone(), BndX::Lambda(bs.clone(), trigs));
                     Ok(SpannedTyped::new(&exp.span, &exp.typ, ExpX::Bind(bnd, body.clone())))
                 }
@@ -572,7 +570,6 @@ pub(crate) fn check_pure_expr_bind(
     ctx: &Ctx,
     state: &mut State,
     binders: &Binders<Typ>,
-    binders_has_typ: bool,
     expr: &Expr,
 ) -> Result<Vec<Stm>, VirErr> {
     if state.checking_recommends(ctx) {
@@ -580,7 +577,7 @@ pub(crate) fn check_pure_expr_bind(
         let mut stms: Vec<Stm> = Vec::new();
         for binder in binders.iter() {
             let x = state.declare_new_var(&binder.name, &binder.a, false, true);
-            if binders_has_typ {
+            if crate::poly::typ_is_poly(ctx, &binder.a) {
                 stms.push(assume_has_typ(&x, &binder.a, &expr.span));
             }
         }
@@ -1268,8 +1265,7 @@ fn expr_to_stm_opt(
             panic!("internal error: Multi should have been simplified by ast_simplify")
         }
         ExprX::Quant(quant, binders, body) => {
-            let check_recommends_stms =
-                check_pure_expr_bind(ctx, state, binders, quant.boxed_params, body)?;
+            let check_recommends_stms = check_pure_expr_bind(ctx, state, binders, body)?;
             state.push_scope();
             state.declare_binders(binders);
             let exp = expr_to_pure_exp(ctx, state, body)?;
@@ -1355,8 +1351,8 @@ fn expr_to_stm_opt(
             Ok((all_stms, ReturnValue::Some(v)))
         }
         ExprX::Choose { params, cond, body } => {
-            let mut check_recommends_stms = check_pure_expr_bind(ctx, state, params, true, cond)?;
-            check_recommends_stms.extend(check_pure_expr_bind(ctx, state, params, true, body)?);
+            let mut check_recommends_stms = check_pure_expr_bind(ctx, state, params, cond)?;
+            check_recommends_stms.extend(check_pure_expr_bind(ctx, state, params, body)?);
             state.push_scope();
             state.declare_binders(&params);
             let cond_exp = expr_to_pure_exp(ctx, state, cond)?;
@@ -1441,7 +1437,7 @@ fn expr_to_stm_opt(
             let stm = Spanned::new(expr.span.clone(), StmX::Assume(exp));
             Ok((vec![stm], ReturnValue::ImplicitUnit(expr.span.clone())))
         }
-        ExprX::Forall { vars, require, ensure, proof } => {
+        ExprX::AssertBy { vars, require, ensure, proof } => {
             // deadend {
             //   assume(require)
             //   proof

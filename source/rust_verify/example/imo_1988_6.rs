@@ -14,7 +14,7 @@ use builtin::*;
 
 verus!{
 
-proof fn vieta_jump(b: int, c: int, x: int)
+proof fn vieta_jump(b: int, c: int, x: int) by(nonlinear_arith)
     requires x*x - b*x + c == 0,
     ensures ({
         let y = b - x;
@@ -102,14 +102,14 @@ proof fn is_perfect_square(a: int, b: int, q: int) -> (sqrt: int)
         return 1;
     }
     else if q == 2 {
-        assert((a - b) * (a - b) == 2);
+        assert((a - b) * (a - b) == 2) by(nonlinear_arith) requires a * a + b * b == (a * b + 1) * 2;
         sqrt2_contradiction(a - b);
         return 0;
     }
     else {
         assert(q > 2);
         if a == b {
-            assert(2 * a * a == (a * a + 1) * q);
+            assert(2 * a * a == a * a + a * a) by(nonlinear_arith);
             assert(q > 2 ==>
                 (a * a + 1) * q >= (a * a + 1) * 2) by (nonlinear_arith);
             assert(false);

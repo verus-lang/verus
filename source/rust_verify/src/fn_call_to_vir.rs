@@ -675,7 +675,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     );
                     let ensure = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
                     let proof = expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?;
-                    mk_expr(ExprX::Forall { vars, require, ensure, proof })
+                    mk_expr(ExprX::AssertBy { vars, require, ensure, proof })
                 }
                 AssertItem::AssertByCompute => {
                     unsupported_err_unless!(
@@ -1277,7 +1277,7 @@ fn extract_assert_forall_by<'tcx>(
                 )
             };
             let ensure = header.ensure[0].clone();
-            let forallx = ExprX::Forall { vars, require, ensure, proof: vir_expr };
+            let forallx = ExprX::AssertBy { vars, require, ensure, proof: vir_expr };
             Ok(bctx.spanned_typed_new(span, &typ, forallx))
         }
         _ => err_span(expr.span, "argument to forall/exists must be a closure"),

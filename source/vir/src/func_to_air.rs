@@ -643,23 +643,23 @@ pub fn func_axioms_to_air(
                     &params,
                     req_ens,
                 )?;
-                let mut vars: Vec<Ident> = Vec::new();
+                use crate::triggers::{typ_boxing, TriggerBoxing};
+                let mut vars: Vec<(Ident, TriggerBoxing)> = Vec::new();
                 let mut binders: Vec<Binder<Typ>> = Vec::new();
                 if function.x.typ_bounds.len() != 0 {
                     todo!()
                 }
                 for name in function.x.typ_params.iter() {
-                    vars.push(suffix_typ_param_id(&name));
+                    vars.push((suffix_typ_param_id(&name), TriggerBoxing::TypeId));
                     let typ = Arc::new(TypX::TypeId);
                     let bind = BinderX { name: name.clone(), a: typ };
                     binders.push(Arc::new(bind));
                 }
                 for param in params.iter() {
-                    vars.push(param.x.name.clone());
+                    vars.push((param.x.name.clone(), typ_boxing(ctx, &param.x.typ)));
                     binders.push(crate::ast_util::par_to_binder(&param));
                 }
-                let triggers =
-                    crate::triggers::build_triggers(ctx, span, &vars, &exp, true, false)?;
+                let triggers = crate::triggers::build_triggers(ctx, span, &vars, &exp, false)?;
                 let bndx = BndX::Quant(QUANT_FORALL, Arc::new(binders), triggers);
                 let forallx = ExpX::Bind(Spanned::new(span.clone(), bndx), exp);
                 let forall: Arc<SpannedTyped<ExpX>> =

@@ -131,7 +131,19 @@ pub(crate) fn expr_to_singular(
             format!("({})", ss.join(sop))
         }
         ExprX::Apply(fname, exprs) => {
-            if vir::def::MUL == (**fname).as_str() {
+            if vir::def::ADD == (**fname).as_str() {
+                return expr_to_singular(
+                    &Arc::new(ExprX::Multi(MultiOp::Add, exprs.clone())),
+                    tmp_idx,
+                    node_map,
+                );
+            } else if vir::def::SUB == (**fname).as_str() {
+                return expr_to_singular(
+                    &Arc::new(ExprX::Multi(MultiOp::Sub, exprs.clone())),
+                    tmp_idx,
+                    node_map,
+                );
+            } else if vir::def::MUL == (**fname).as_str() {
                 return expr_to_singular(
                     &Arc::new(ExprX::Multi(MultiOp::Mul, exprs.clone())),
                     tmp_idx,
