@@ -1034,7 +1034,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             return error(&exp.span, "error: cannot use extensional equality in bit vector proof");
         }
         (ExpX::Binary(op, lhs, rhs), false) => {
-            let wrap_arith = false; // use Add, Sub, etc. wrappers to allow triggers on +, -, etc.
+            let wrap_arith = true; // use Add, Sub, etc. wrappers to allow triggers on +, -, etc.
             let has_const = match (&lhs.x, &rhs.x) {
                 (ExpX::Const(..), _) => true,
                 (_, ExpX::Const(..)) => true,
