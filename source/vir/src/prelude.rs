@@ -57,6 +57,10 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let i_inv = str_to_node(I_INV);
     let arch_size = str_to_node(ARCH_SIZE);
     #[allow(non_snake_case)]
+    let Add = str_to_node(ADD);
+    #[allow(non_snake_case)]
+    let Sub = str_to_node(SUB);
+    #[allow(non_snake_case)]
     let Mul = str_to_node(MUL);
     #[allow(non_snake_case)]
     let EucDiv = str_to_node(EUC_DIV);
@@ -479,9 +483,23 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         // With smt.arith.nl=false, Z3 sometimes fails to prove obvious formulas
         // that happen to contain *, div, or mod (e.g. failing to prove P ==> P).
         // So wrap nonlinear occurrences of *, div, mod in a function for better stability:
+        (declare-fun [Add] (Int Int) Int)
+        (declare-fun [Sub] (Int Int) Int)
         (declare-fun [Mul] (Int Int) Int)
         (declare-fun [EucDiv] (Int Int) Int)
         (declare-fun [EucMod] (Int Int) Int)
+        (axiom (forall ((x Int) (y Int)) (!
+            (= ([Add] x y) (+ x y))
+            :pattern (([Add] x y))
+            :qid prelude_add
+            :skolemid skolem_prelude_add
+        )))
+        (axiom (forall ((x Int) (y Int)) (!
+            (= ([Sub] x y) (- x y))
+            :pattern (([Sub] x y))
+            :qid prelude_sub
+            :skolemid skolem_prelude_sub
+        )))
         (axiom (forall ((x Int) (y Int)) (!
             (= ([Mul] x y) (* x y))
             :pattern (([Mul] x y))

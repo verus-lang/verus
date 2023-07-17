@@ -1001,6 +1001,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             return error(&exp.span, "error: cannot use extensional equality in bit vector proof");
         }
         (ExpX::Binary(op, lhs, rhs), false) => {
+            let wrap_arith = true; // use Add, Sub, etc. wrappers to allow triggers on +, -, etc.
             let has_const = match (&lhs.x, &rhs.x) {
                 (ExpX::Const(..), _) => true,
                 (_, ExpX::Const(..)) => true,
@@ -1035,19 +1036,25 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         return Ok(mk_eq(&lhh, &rhh));
                     }
                 }
+                BinaryOp::Arith(ArithOp::Add, _) if wrap_arith => {
+                    return Ok(str_apply(crate::def::ADD, &vec![lh, rh]));
+                }
+                BinaryOp::Arith(ArithOp::Sub, _) if wrap_arith => {
+                    return Ok(str_apply(crate::def::SUB, &vec![lh, rh]));
+                }
                 BinaryOp::Arith(ArithOp::Add, _) => {
                     ExprX::Multi(MultiOp::Add, Arc::new(vec![lh, rh]))
                 }
                 BinaryOp::Arith(ArithOp::Sub, _) => {
                     ExprX::Multi(MultiOp::Sub, Arc::new(vec![lh, rh]))
                 }
-                BinaryOp::Arith(ArithOp::Mul, _) if !has_const => {
+                BinaryOp::Arith(ArithOp::Mul, _) if wrap_arith || !has_const => {
                     return Ok(str_apply(crate::def::MUL, &vec![lh, rh]));
                 }
-                BinaryOp::Arith(ArithOp::EuclideanDiv, _) if !has_const => {
+                BinaryOp::Arith(ArithOp::EuclideanDiv, _) if wrap_arith || !has_const => {
                     return Ok(str_apply(crate::def::EUC_DIV, &vec![lh, rh]));
                 }
-                BinaryOp::Arith(ArithOp::EuclideanMod, _) if !has_const => {
+                BinaryOp::Arith(ArithOp::EuclideanMod, _) if wrap_arith || !has_const => {
                     return Ok(str_apply(crate::def::EUC_MOD, &vec![lh, rh]));
                 }
                 BinaryOp::Arith(ArithOp::Mul, _) => {
