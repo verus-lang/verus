@@ -1,8 +1,8 @@
+use ring::digest;
 use std::fs::create_dir_all;
 use std::io::BufRead;
 use std::path::PathBuf;
 use std::process::Command;
-use ring::digest;
 
 const TOOLCHAIN: &str = env!("VERUS_TOOLCHAIN");
 
@@ -274,7 +274,17 @@ fn repo_path() -> ReportsPath {
     };
 
     let project_name = match input_file_path.clone() {
-        Some(path) => Some(String::from_utf8(digest::digest(&digest::SHA256, path.into_os_string().into_string().unwrap().as_bytes()).as_ref().to_vec()).unwrap()),
+        Some(path) => Some(
+            String::from_utf8(
+                digest::digest(
+                    &digest::SHA256,
+                    path.into_os_string().into_string().unwrap().as_bytes(),
+                )
+                .as_ref()
+                .to_vec(),
+            )
+            .unwrap(),
+        ),
         None => None,
     };
 
