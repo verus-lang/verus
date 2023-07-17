@@ -423,27 +423,21 @@ pub proof fn lemma_disjoint_union_size<K,V>(m1: Map<K,V>, m2: Map<K,V>)
     }
 }
 
-// pub proof fn lemma_invert_is_injective<K,V>(m: Map<K,V>)
-//     ensures
-//         m.invert().injective(),
-// {
-//     assert(m.invert().dom() =~= m.values());
-//     //assert(forall |v: V| exists |k: K| #[trigger] m.invert().contains_value(k) ==> #[trigger] m.contains_pair(k,v));
-//     assert(forall |k: K| #[trigger] m.invert().values().contains(k) ==> exists |v: V| m.contains_pair(k,v));
-//     //assert(forall |x: V| #[trigger] m.invert().dom().contains(x) <==> m.values().contains(x));
-    
-//     let inv = m.invert();
-//     assert(forall |x: V, y: V| x != y && inv.dom().contains(x) && inv.dom().contains(y) ==> #[trigger] m.invert()[x] != #[trigger] m.invert()[y]);
+pub proof fn lemma_invert_is_injective<K,V>(m: Map<K,V>)
+    ensures
+        m.invert().injective(),
+{
+    assert forall |x: V, y: V| x != y && m.invert().dom().contains(x) && m.invert().dom().contains(y) 
+                implies #[trigger] m.invert()[x] != #[trigger] m.invert()[y] by {
+        let i = choose |i: K| #[trigger] m.dom().contains(i) && m[i] == x;
+        assert(m.contains_pair(i,x));
+        let j = choose |j: K| m.contains_pair(j,x) && m.invert()[x] == j;
 
-//     // invert:
-//     //  Map::<V,K>::new(
-//     //     |v: V| self.contains_value(v),
-//     //     |v: V| choose |k: K| self.contains_pair(k,v)
-//     // )
-//     // injective: 
-//     //forall |x: K, y: K| x != y && self.dom().contains(x) && self.dom().contains(y) ==> #[trigger] self[x] != #[trigger] self[y]
-        
-// }
+        let k = choose |k: K| #[trigger] m.dom().contains(k) && m[k] == y;
+        assert(m.contains_pair(k,y));
+        let l = choose |l: K| m.contains_pair(l,y) && m.invert()[y] == l && l != j;
+    }   
+}
 
 // Trusted axioms
 
