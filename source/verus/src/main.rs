@@ -1,4 +1,4 @@
-use ring::digest;
+use sha2::Digest;
 use std::fs::create_dir_all;
 use std::io::BufRead;
 use std::path::PathBuf;
@@ -116,9 +116,13 @@ pub fn exec(cmd: &mut Command, reports: ReportsPath) -> Result<(), String> {
 
     let proj_path = reports.clone().unwrap().proj_path.clone();
 
+    // clean all files in proj_path
+    std::fs::remove_dir_all(&proj_path).expect("failed to remove repo_path");
+
     let toml_path = proj_path.join("reports.toml");
     eprintln!("toml_path: {:?}", toml_path);
 
+    create_dir_all(&proj_path).expect("creating reports.toml");
     let mut file = std::fs::File::create(toml_path).expect("creating reports.toml");
 
     let mut child = cmd
@@ -155,12 +159,12 @@ pub fn exec(cmd: &mut Command, reports: ReportsPath) -> Result<(), String> {
     let err_string = thread_err.join().unwrap();
     let out_string = thread_out.join().unwrap();
 
-    writeln!(file, "{}", err_string).unwrap();
-    writeln!(file, "{}", out_string).unwrap();
-
     child.wait().map_err(|x| format!("verus failed to run with error: {}", x))?;
 
     let repo_path = proj_path.clone();
+
+    writeln!(file, "{}", err_string).unwrap();
+    writeln!(file, "{}", out_string).unwrap();
 
     let dep_file_rel_path = reports
         .unwrap()
@@ -175,9 +179,6 @@ pub fn exec(cmd: &mut Command, reports: ReportsPath) -> Result<(), String> {
     let dep_file_path = std::env::current_dir().unwrap().join(dep_file_rel_path);
 
     let deps = get_dependencies(&dep_file_path)?;
-
-    // clean all files in repo_path
-    std::fs::remove_dir_all(&repo_path).expect("failed to remove repo_path");
 
     // copy files to repo_path
     for dep in deps.iter() {
@@ -201,6 +202,7 @@ pub fn exec(cmd: &mut Command, reports: ReportsPath) -> Result<(), String> {
         .current_dir(&repo_path)
         .arg("add")
         .args(deps)
+        .arg("reports.toml")
         .output()
         .map_err(|x| format!("Telemetry: failed to git add with error message: {}", x))?;
 
@@ -274,17 +276,9 @@ fn repo_path() -> ReportsPath {
     };
 
     let project_name = match input_file_path.clone() {
-        Some(path) => Some(
-            String::from_utf8(
-                digest::digest(
-                    &digest::SHA256,
-                    path.into_os_string().into_string().unwrap().as_bytes(),
-                )
-                .as_ref()
-                .to_vec(),
-            )
-            .unwrap(),
-        ),
+        Some(path) => {
+            Some(format!("{:x}", sha2::Sha256::digest(path.to_str().unwrap().as_bytes())))
+        }
         None => None,
     };
 

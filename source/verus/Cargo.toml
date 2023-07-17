@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 dirs = "5.0.1"
-ring = "0.16.20"
+sha2 = "0.10.2"
 yansi = "0.5"
 anstream = "0.3.2"
 is-terminal = "0.4.9"
