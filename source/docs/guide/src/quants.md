@@ -1,4 +1,4 @@
-# Quantifiers and spec closures
+# Quantifiers
 
 Suppose that we want to specify that all the elements of a sequence are even.
 If the sequence has a small, fixed size,

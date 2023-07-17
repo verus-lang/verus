@@ -13,40 +13,6 @@ verus!{
 
 ////// Add is_variant-style spec functions
 
-mod getters {
-    #[verus::internal(is_variant("Ok"))]
-    #[allow(non_snake_case)]
-    #[verus::internal(spec)]
-    #[verus::internal(verus_macro)]
-    pub fn is_Ok<T, E>(res: &Result<T, E>) -> bool {
-        unimplemented!()
-    }
-
-    #[allow(non_snake_case)]
-    #[verus::internal(get_variant("Ok", 0))]
-    #[verus::internal(spec)]
-    #[verus::internal(verus_macro)]
-    pub fn get_Ok_0<T, E>(res: Result<T, E>) -> T {
-        unimplemented!()
-    }
-
-    #[verus::internal(is_variant("Err"))]
-    #[allow(non_snake_case)]
-    #[verus::internal(spec)]
-    #[verus::internal(verus_macro)]
-    pub fn is_Err<T, E>(res: &Result<T, E>) -> bool {
-        unimplemented!()
-    }
-
-    #[allow(non_snake_case)]
-    #[verus::internal(get_variant("Err", 0))]
-    #[verus::internal(spec)]
-    #[verus::internal(verus_macro)]
-    pub fn get_Err_0<T, E>(res: Result<T, E>) -> E {
-        unimplemented!()
-    }
-}
-
 pub trait ResultAdditionalSpecFns<T, E> {
     #[allow(non_snake_case)] spec fn is_Ok(&self) -> bool;
     #[allow(non_snake_case)] spec fn get_Ok_0(&self) -> T;
@@ -56,16 +22,24 @@ pub trait ResultAdditionalSpecFns<T, E> {
 
 impl<T, E> ResultAdditionalSpecFns<T, E> for Result<T, E> {
     #[verifier(inline)]
-    open spec fn is_Ok(&self) -> bool { getters::is_Ok(self) }
+    open spec fn is_Ok(&self) -> bool {
+        builtin::is_variant(self, "Ok")
+    }
 
     #[verifier(inline)]
-    open spec fn get_Ok_0(&self) -> T { getters::get_Ok_0(*self) }
+    open spec fn get_Ok_0(&self) -> T {
+        builtin::get_variant_field(self, "Ok", "0")
+    }
 
     #[verifier(inline)]
-    open spec fn is_Err(&self) -> bool { getters::is_Err(self) }
+    open spec fn is_Err(&self) -> bool {
+        builtin::is_variant(self, "Err")
+    }
 
     #[verifier(inline)]
-    open spec fn get_Err_0(&self) -> E { getters::get_Err_0(*self) }
+    open spec fn get_Err_0(&self) -> E {
+        builtin::get_variant_field(self, "Err", "0")
+    }
 }
 
 ////// Specs for std methods
@@ -74,7 +48,7 @@ impl<T, E> ResultAdditionalSpecFns<T, E> for Result<T, E> {
 
 #[verifier(inline)]
 pub open spec fn is_ok<T, E>(result: &Result<T, E>) -> bool {
-    getters::is_Ok(result)
+    builtin::is_variant(result, "Ok")
 }
 
 #[verifier::external_fn_specification]
@@ -89,7 +63,7 @@ pub fn ex_result_is_ok<T, E>(result: &Result<T, E>) -> (b: bool)
 
 #[verifier(inline)]
 pub open spec fn is_err<T, E>(result: &Result<T, E>) -> bool {
-    getters::is_Err(result)
+    builtin::is_variant(result, "Err")
 }
 
 #[verifier::external_fn_specification]
@@ -151,6 +125,19 @@ pub fn unwrap_err<T: core::fmt::Debug, E>(result: Result<T, E>) -> (e: E)
         e == result.get_Err_0(),
 {
     result.unwrap_err()
+}
+
+// map
+
+#[verifier::external_fn_specification]
+pub fn map<T, E, U, F: FnOnce(T) -> U>(result: Result<T, E>, op: F) -> (mapped_result: Result<U, E>)
+    requires
+        result.is_ok() ==> op.requires((result.get_Ok_0(),))
+    ensures
+        result.is_ok() ==> mapped_result.is_ok() && op.ensures((result.get_Ok_0(),), mapped_result.get_Ok_0()),
+        result.is_err() ==> mapped_result == Result::<U, E>::Err(result.get_Err_0())
+{
+    result.map(op)
 }
 
 }

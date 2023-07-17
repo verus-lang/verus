@@ -125,6 +125,8 @@ pub(crate) enum ExprItem {
     Choose,
     ChooseTuple,
     Old,
+    GetVariantField,
+    IsVariant,
     StrSliceLen,
     StrSliceGetChar,
     StrSliceIsAscii,
@@ -213,6 +215,7 @@ pub(crate) enum ChainedItem {
     Ge,
     Gt,
     Cmp,
+    Eq,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -345,6 +348,8 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::choose",                  VerusItem::Expr(ExprItem::Choose)),
         ("verus::builtin::choose_tuple",            VerusItem::Expr(ExprItem::ChooseTuple)),
         ("verus::builtin::old",                     VerusItem::Expr(ExprItem::Old)),
+        ("verus::builtin::get_variant_field",       VerusItem::Expr(ExprItem::GetVariantField)),
+        ("verus::builtin::is_variant",              VerusItem::Expr(ExprItem::IsVariant)),
         ("verus::builtin::strslice_len",            VerusItem::Expr(ExprItem::StrSliceLen)),
         ("verus::builtin::strslice_get_char",       VerusItem::Expr(ExprItem::StrSliceGetChar)),
         ("verus::builtin::strslice_is_ascii",       VerusItem::Expr(ExprItem::StrSliceIsAscii)),
@@ -402,6 +407,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::spec_chained_ge",         VerusItem::Chained(ChainedItem::Ge)),
         ("verus::builtin::spec_chained_gt",         VerusItem::Chained(ChainedItem::Gt)),
         ("verus::builtin::spec_chained_cmp",        VerusItem::Chained(ChainedItem::Cmp)),
+        ("verus::builtin::spec_chained_eq",         VerusItem::Chained(ChainedItem::Eq)),
 
         ("verus::builtin::assert_",                 VerusItem::Assert(AssertItem::Assert)),
         ("verus::builtin::assert_by",               VerusItem::Assert(AssertItem::AssertBy)),
@@ -530,6 +536,7 @@ pub(crate) enum RustItem {
     Clone,
     IntIntrinsic(RustIntIntrinsicItem),
     AllocGlobal,
+    TryTraitBranch,
 }
 
 pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<RustItem> {
@@ -551,6 +558,9 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     }
     if tcx.lang_items().eq_trait() == Some(def_id) {
         return Some(RustItem::PartialEq);
+    }
+    if tcx.lang_items().branch_fn() == Some(def_id) {
+        return Some(RustItem::TryTraitBranch);
     }
 
     let rust_path = def_id_to_stable_rust_path(tcx, def_id);

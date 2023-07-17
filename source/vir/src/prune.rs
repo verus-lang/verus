@@ -68,11 +68,11 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::Tuple(_) => panic!("unexpected TypX::Tuple"),
         TypX::Lambda(ts, _) => ReachedType::Lambda(ts.len()),
         TypX::AnonymousClosure(..) => panic!("unexpected TypX::AnonymousClosure"),
-        TypX::Datatype(path, _) => ReachedType::Datatype(path.clone()),
+        TypX::Datatype(path, _, _) => ReachedType::Datatype(path.clone()),
         TypX::Decorate(_, t) => typ_to_reached_type(t),
         TypX::Boxed(t) => typ_to_reached_type(t),
         TypX::TypParam(_) => ReachedType::None,
-        TypX::Projection { self_typ, .. } => typ_to_reached_type(self_typ),
+        TypX::Projection { trait_typ_args, .. } => typ_to_reached_type(&trait_typ_args[0]),
         TypX::TypeId => ReachedType::None,
         TypX::ConstInt(_) => ReachedType::None,
         TypX::Air(_) => panic!("unexpected TypX::Air"),
@@ -149,7 +149,7 @@ fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
         }
         TypX::Decorate(_, _t) | TypX::Boxed(_t) => {} // let visitor handle _t
         TypX::TypParam(_) | TypX::TypeId | TypX::ConstInt(_) => {}
-        TypX::Projection { self_typ: _, trait_typ_args: _, trait_path, name, .. } => {
+        TypX::Projection { trait_typ_args: _, trait_path, name, .. } => {
             reach_assoc_type_decl(ctxt, state, &(trait_path.clone(), name.clone()));
             // let visitor handle self_typ, trait_typ_args
         }
@@ -185,7 +185,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
     loop {
         let ft = |state: &mut State, t: &Typ| {
             reach_typ(ctxt, state, t);
-            if let TypX::Datatype(path, _) = &**t {
+            if let TypX::Datatype(path, _, _) = &**t {
                 record_datatype(ctxt, state, t, path);
             }
             Ok(t.clone())
@@ -303,7 +303,8 @@ impl TraitX {
 
 impl AssocTypeImplX {
     fn prune_name(&self) -> AssocTypeGroup {
-        (typ_to_reached_type(&self.self_typ), (self.trait_path.clone(), self.name.clone()))
+        let self_typ = &self.trait_typ_args[0];
+        (typ_to_reached_type(self_typ), (self.trait_path.clone(), self.name.clone()))
     }
 }
 
@@ -413,7 +414,8 @@ pub fn prune_krate_for_module(
     let mut all_functions_in_each_module: HashMap<Path, Vec<Fun>> = HashMap::new();
     for f in &functions {
         function_map.insert(f.x.name.clone(), f.clone());
-        if let FunctionKind::TraitMethodImpl { method, self_typ, .. } = &f.x.kind {
+        if let FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } = &f.x.kind {
+            let self_typ = &trait_typ_args[0];
             let key = (typ_to_reached_type(self_typ), method.clone());
             if !method_map.contains_key(&key) {
                 method_map.insert(key.clone(), Vec::new());

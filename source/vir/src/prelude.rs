@@ -97,6 +97,8 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let type_id_uint = str_to_node(TYPE_ID_UINT);
     let type_id_sint = str_to_node(TYPE_ID_SINT);
     let type_id_const_int = str_to_node(TYPE_ID_CONST_INT);
+    let decoration = str_to_node(DECORATION);
+    let decorate_nil = str_to_node(DECORATE_NIL);
     let decorate_ref = str_to_node(DECORATE_REF);
     let decorate_mut_ref = str_to_node(DECORATE_MUT_REF);
     let decorate_box = str_to_node(DECORATE_BOX);
@@ -117,6 +119,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let uint_shr = str_to_node(UINT_SHR);
     let uint_shl = str_to_node(UINT_SHL);
     let uint_not = str_to_node(UINT_NOT);
+    let singular_mod = str_to_node(SINGULAR_MOD);
 
     let strslice = str_to_node(STRSLICE);
     #[allow(non_snake_case)]
@@ -183,21 +186,32 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [type_id_uint] (Int) [typ])
         (declare-fun [type_id_sint] (Int) [typ])
         (declare-fun [type_id_const_int] (Int) [typ])
-        (declare-fun [decorate_ref] ([typ]) [typ])
-        (declare-fun [decorate_mut_ref] ([typ]) [typ])
-        (declare-fun [decorate_box] ([typ]) [typ])
-        (declare-fun [decorate_rc] ([typ]) [typ])
-        (declare-fun [decorate_arc] ([typ]) [typ])
-        (declare-fun [decorate_ghost] ([typ]) [typ])
-        (declare-fun [decorate_tracked] ([typ]) [typ])
-        (declare-fun [decorate_never] ([typ]) [typ])
+        (declare-sort [decoration] 0)
+        (declare-const [decorate_nil] [decoration])
+        (declare-fun [decorate_ref] ([decoration]) [decoration])
+        (declare-fun [decorate_mut_ref] ([decoration]) [decoration])
+        (declare-fun [decorate_box] ([decoration]) [decoration])
+        (declare-fun [decorate_rc] ([decoration]) [decoration])
+        (declare-fun [decorate_arc] ([decoration]) [decoration])
+        (declare-fun [decorate_ghost] ([decoration]) [decoration])
+        (declare-fun [decorate_tracked] ([decoration]) [decoration])
+        (declare-fun [decorate_never] ([decoration]) [decoration])
         (declare-fun [has_type] ([Poly] [typ]) Bool)
         (declare-fun [as_type] ([Poly] [typ]) [Poly])
         (declare-fun [mk_fun] (Fun) Fun)
         (declare-fun [const_int] ([typ]) Int)
-        (axiom (forall ((i Int)) (= i ([const_int] ([type_id_const_int] i)))))
-        (axiom ([has_type] ([box_bool] true) BOOL))
-        (axiom ([has_type] ([box_bool] false) BOOL))
+        (axiom (forall ((i Int)) (!
+            (= i ([const_int] ([type_id_const_int] i)))
+            :pattern (([type_id_const_int] i))
+            :qid prelude_type_id_const_int
+            :skolemid skolem_prelude_type_id_const_int
+        )))
+        (axiom (forall ((b Bool)) (!
+            ([has_type] ([box_bool] b) [type_id_bool])
+            :pattern (([has_type] ([box_bool] b) [type_id_bool]))
+            :qid prelude_has_type_bool
+            :skolemid skolem_prelude_has_type_bool
+        )))
         (axiom (forall ((x [Poly]) (t [typ])) (!
             (and
                 ([has_type] ([as_type] x t) t)
@@ -305,34 +319,13 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         )))
 
         // Extensional equality
-        {
-            if crate::context::DECORATE {
-                nodes!(declare-fun [ext_eq] (Bool [typ] [typ] [Poly] [Poly]) Bool)
-            } else {
-                nodes!(declare-fun [ext_eq] (Bool [typ] [Poly] [Poly]) Bool)
-            }
-        }
-        {
-            if crate::context::DECORATE {
-                nodes!(
-                    axiom (forall ((deep Bool) (t [typ]) (td [typ]) (x [Poly]) (y [Poly])) (!
-                        (= (= x y) ([ext_eq] deep t td x y))
-                        :pattern (([ext_eq] deep t td x y))
-                        :qid prelude_ext_eq
-                        :skolemid skolem_prelude_ext_eq
-                    ))
-                )
-            } else {
-                nodes!(
-                    axiom (forall ((deep Bool) (t [typ]) (x [Poly]) (y [Poly])) (!
-                        (= (= x y) ([ext_eq] deep t x y))
-                        :pattern (([ext_eq] deep t x y))
-                        :qid prelude_ext_eq
-                        :skolemid skolem_prelude_ext_eq
-                    ))
-                )
-            }
-        }
+        (declare-fun [ext_eq] (Bool [typ] [Poly] [Poly]) Bool)
+        (axiom (forall ((deep Bool) (t [typ]) (x [Poly]) (y [Poly])) (!
+            (= (= x y) ([ext_eq] deep t x y))
+            :pattern (([ext_eq] deep t x y))
+            :qid prelude_ext_eq
+            :skolemid skolem_prelude_ext_eq
+        )))
 
         // Integers
         // TODO: make this more configurable via options or HeaderExpr directives
@@ -600,6 +593,17 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [uint_shl] (Int [Poly] [Poly]) Int)
         (declare-fun [uint_not] (Int [Poly]) Int)
 
+        (declare-fun [singular_mod] (Int Int) Int)
+        (axiom (forall ((x Int) (y Int)) (!
+            (=>
+                (not (= y 0))
+                (= ([EucMod] x y) ([singular_mod] x y)
+            ))
+            :pattern (([singular_mod] x y))
+            :qid prelude_singularmod
+            :skolemid skolem_prelude_singularmod
+        )))
+
         // closure-related
 
         // Each takes 2 type params:
@@ -613,26 +617,8 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         //  - param value (as tuple)
         //  - ret value (for closure_ens only)
 
-        (declare-fun [closure_req]
-            {
-                if crate::context::DECORATE {
-                    nodes!([typ] [typ] [typ] [typ] [Poly] [Poly])
-                } else {
-                    nodes!([typ] [typ] [Poly] [Poly])
-                }
-            }
-            Bool
-        )
-        (declare-fun [closure_ens]
-            {
-                if crate::context::DECORATE {
-                    nodes!([typ] [typ] [typ] [typ] [Poly] [Poly] [Poly])
-                } else {
-                    nodes!([typ] [typ] [Poly] [Poly] [Poly])
-                }
-            }
-            Bool
-        )
+        (declare-fun [closure_req] ([decoration] [typ] [decoration] [typ] [Poly] [Poly]) Bool)
+        (declare-fun [closure_ens] ([decoration] [typ] [decoration] [typ] [Poly] [Poly] [Poly]) Bool)
     )
 }
 

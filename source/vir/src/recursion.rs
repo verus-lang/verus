@@ -31,6 +31,7 @@ use std::sync::Arc;
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Node {
     Fun(Fun),
+    Datatype(Path),
     Trait(Path),
     TraitImpl(Path),
 }
@@ -432,7 +433,7 @@ pub(crate) fn check_termination_exp(
         ctx,
         &function.span,
         &HashMap::new(),
-        &function.x.typ_params(),
+        &function.x.typ_params,
         &function.x.params,
         &Arc::new(local_decls),
         &Arc::new(vec![]),
@@ -540,12 +541,19 @@ pub(crate) fn expand_call_graph(
         call_graph.add_edge(impl_node, f_node.clone());
     }
 
-    // Add f --> T for any function f<A: T> with type parameter A: T
-    for (_, tbound) in function.x.typ_bounds.iter() {
-        let GenericBoundX::Traits(traits) = &**tbound;
-        for tr in traits {
-            call_graph.add_edge(f_node.clone(), Node::Trait(tr.clone()));
+    // Add f --> T for any function f with "where ...: T(...)"
+    for bound in function.x.typ_bounds.iter() {
+        if let FunctionKind::TraitMethodDecl { trait_path } = &function.x.kind {
+            if crate::recursive_types::suppress_bound_in_trait_decl(
+                &trait_path,
+                &function.x.typ_params,
+                bound,
+            ) {
+                continue;
+            }
         }
+        let GenericBoundX::Trait(tr, _) = &**bound;
+        call_graph.add_edge(f_node.clone(), Node::Trait(tr.clone()));
     }
 
     // Add f --> fd if fd is the decreases proof for f's definition
@@ -558,122 +566,42 @@ pub(crate) fn expand_call_graph(
     // Add T --> f2 if the requires/ensures of T's method declarations call f2
     crate::ast_visitor::function_visitor_check::<VirErr, _>(function, &mut |expr| {
         match &expr.x {
-            ExprX::Call(CallTarget::Fun(kind, x, ts, impl_paths, autospec), _) => {
+            ExprX::Call(CallTarget::Fun(kind, x, _ts, impl_paths, autospec), _) => {
                 assert!(*autospec == AutospecUsage::Final);
-
                 use crate::ast::CallTargetKind;
-                let f2 = &func_map[x];
-                assert!(f2.x.typ_bounds.len() == ts.len());
-                let mut t_param_args = f2.x.typ_bounds.iter().zip(ts.iter());
-                let callee =
-                    if let FunctionKind::TraitMethodDecl { trait_path: trait_path2 } = &f2.x.kind {
-                        let (tparam, t_self_arg) = t_param_args.next().expect("method Self type");
-                        assert!(tparam.0 == crate::def::trait_self_type_param());
-                        match (kind, &**t_self_arg) {
-                            (CallTargetKind::Static, _) => panic!("expected Method"),
-                            // If the Self type argument is a concrete type,
-                            // then we should know concretely which function we're calling.
-                            // We rely on rustc to resolve this case to Method(Some(x)):
-                            (CallTargetKind::Method(Some((x, _, _))), _) => Some(x),
-                            // By contrast, if the Self type argument is a type parameter,
-                            // then we don't know concretely which function we're calling;
-                            // conceptually, we're looking up the function dynamically in
-                            // a dictionary.
-                            // (Note that the dictionary is passed in with the type parameter;
-                            // if there's no type parameter, there's no dictionary,
-                            // so we can only use the dictionary in the type parameter case.)
-                            (_, TypX::TypParam(p)) if p == &crate::def::trait_self_type_param() => {
-                                match &function.x.kind {
-                                    FunctionKind::TraitMethodDecl { trait_path: trait_path1 }
-                                        if trait_path1 == trait_path2 =>
-                                    {
-                                        // Call to self within trait, T.f --> T.f2
-                                        // (We can't use the dictionary in case, because the
-                                        // dictionary is still under construction.)
-                                        Some(x)
-                                    }
-                                    _ => {
-                                        return error(&expr.span, "unsupported use of Self type");
-                                    }
-                                }
-                            }
-                            (_, TypX::TypParam(p)) => {
-                                // no f --> f2 edge for calls via a type parameter A: T,
-                                // because we (conceptually) get f2 from the dictionary passed for A: T.
-                                let bound = function.x.typ_bounds.iter().find(|(q, _)| q == p);
-                                let bound = bound.expect("missing type parameter");
-                                let GenericBoundX::Traits(ts) = &*bound.1;
-                                assert!(ts.iter().any(|t| t == trait_path2));
-                                None
-                            }
-                            _ => panic!("unexpected Self type instantiation"),
-                        }
-                    } else {
-                        assert!(matches!(kind, CallTargetKind::Static));
-                        Some(x)
-                    };
+                let callee = if let CallTargetKind::Method(Some((x_resolved, _, _))) = kind {
+                    x_resolved
+                } else {
+                    x
+                };
+                let f2 = &func_map[callee];
 
-                for (tparam, _) in impl_paths.iter() {
-                    // See note about Self below.
-                    if tparam != &crate::def::trait_self_type_param() {
-                        if !f2.x.typ_bounds.iter().any(|(p, _)| p == tparam) {
-                            panic!(
-                                "missing typ param {} {:?} {:?} {:?}",
-                                tparam, &f2.x.typ_bounds, impl_paths, expr.span
-                            );
+                for impl_path in impl_paths.iter() {
+                    // f --> D: T
+                    // (However: if we can directly resolve a call from f1 inside impl to f2 inside
+                    // the same impl, then we don't try to pass a dictionary for impl from f1 to f2.
+                    // This is a useful special case where we can avoid a spurious cyclic dependency
+                    // error.)
+                    if let (
+                        FunctionKind::TraitMethodImpl { impl_path: caller_impl, .. },
+                        FunctionKind::TraitMethodImpl { impl_path: callee_impl, .. },
+                    ) = (&function.x.kind, &f2.x.kind)
+                    {
+                        if caller_impl == impl_path && callee_impl == impl_path {
+                            continue;
                         }
                     }
-                }
-                for ((tparam, tbound), targ) in t_param_args {
-                    // For each instantiation of a callee type parameter,
-                    // if the type parameter has a bound,
-                    // we need to pass in the right dictionary.
-                    // (Note: we don't need to consider the Self instantiation here,
-                    // because if the Self argument is a type parameter X,
-                    // there's nothing to do (see TypParam case below),
-                    // and if Self is concrete, we conceptually make a direct call with no
-                    // need for a Self argument (see the callee selection code above).)
-                    match &**tbound {
-                        GenericBoundX::Traits(traits) => {
-                            for tr in traits {
-                                match &**targ {
-                                    // REVIEW: TypX::Projection
-                                    TypX::TypParam(..) => {
-                                        // We already have the dictionaries for type parameters,
-                                        // so nothing else needs to happen here.
-                                    }
-                                    _ => {
-                                        let x_impl = impl_paths.iter().find(|(p, _)| p == tparam);
-                                        if let Some((_, impl_path)) = x_impl {
-                                            // f --> D: T
-                                            let impl_node = Node::TraitImpl(impl_path.clone());
-                                            call_graph.add_edge(f_node.clone(), impl_node);
-                                        } else {
-                                            panic!(
-                                                "missing impl for {} {:?} {:?} {:?}",
-                                                tparam, tr, expr.span, impl_paths
-                                            );
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    call_graph.add_edge(f_node.clone(), Node::TraitImpl(impl_path.clone()));
                 }
 
                 if let FunctionKind::TraitMethodDecl { trait_path } = &function.x.kind {
                     // T --> f2
                     call_graph.add_edge(Node::Trait(trait_path.clone()), Node::Fun(x.clone()));
-                    if let Some(callee) = callee {
-                        call_graph
-                            .add_edge(Node::Trait(trait_path.clone()), Node::Fun(callee.clone()));
-                    }
+                    call_graph.add_edge(Node::Trait(trait_path.clone()), Node::Fun(callee.clone()));
                 }
 
                 // f --> f2
-                if let Some(callee) = callee {
-                    call_graph.add_edge(f_node.clone(), Node::Fun(callee.clone()))
-                }
+                call_graph.add_edge(f_node.clone(), Node::Fun(callee.clone()))
             }
             _ => {}
         }

@@ -278,7 +278,7 @@ test_verify_one_file! {
             let lock = opt_lock.get_SomeX_0();   // This line triggers panic
             true
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot get variant in exec mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode spec")
 }
 
 test_verify_one_file! {
@@ -487,6 +487,40 @@ test_verify_one_file! {
             assume(a(page_id));
             assume(forall |page_id| #[trigger] a(page_id) ==> b(page_id));
             assert(b(page_id));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_trait_impl_for_same_name_issue314 verus_code! {
+        pub trait Foo {
+            spec fn foo(&self) -> bool;
+        }
+
+        pub type MyType<T> = FnSpec(T) -> bool;
+
+        impl<T> Foo for MyType<T> {
+            spec fn foo(&self) -> bool {
+                true
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_broadcast_forall_import_issue471 ["no-auto-import-builtin"] => code! {
+        use builtin_macros::*;
+        #[allow(unused_imports)]
+        use vstd::{seq::*, seq_lib::*};
+
+        verus! {
+
+        proof fn weird_broadcast_failure(seq:Seq<usize>)
+        {
+            //seq_to_set_is_finite_broadcast::<usize>(seq);
+            assert(seq.to_set().finite());
+        }
+
         }
     } => Ok(())
 }

@@ -22,11 +22,11 @@ struct Ctxt {
 #[warn(unused_must_use)]
 fn check_typ(ctxt: &Ctxt, typ: &Arc<TypX>, span: &air::ast::Span) -> Result<(), VirErr> {
     crate::ast_visitor::typ_visitor_check(typ, &mut |t| {
-        if let TypX::Datatype(path, _) = &**t {
+        if let TypX::Datatype(path, _, _) = &**t {
             check_path_and_get_datatype(ctxt, path, span)?;
             Ok(())
         } else if let TypX::Projection { .. } = &**t {
-            if crate::recursive_types::rooted_in_typ_param(t) {
+            if crate::poly::rooted_in_typ_param(t) {
                 // Types rooted in type parameters are handled with type Poly.
                 Ok(())
             } else {
@@ -660,6 +660,16 @@ fn check_function(
             crate::ast_visitor::expr_visitor_check(req, &mut |_scope_map, expr| {
                 match *undecorate_typ(&expr.typ) {
                     TypX::Int(crate::ast::IntRange::Int) => {}
+                    TypX::Int(_) => {
+                        if let ExprX::Const(..) = &expr.x {
+                            return Ok(());
+                        } else {
+                            return error(
+                                &req.span,
+                                "integer_ring mode's expressions should be int/bool type",
+                            );
+                        }
+                    }
                     TypX::Bool => {}
                     TypX::Boxed(_) => {}
                     _ => {
@@ -676,6 +686,16 @@ fn check_function(
             crate::ast_visitor::expr_visitor_check(ens, &mut |_scope_map, expr| {
                 match *undecorate_typ(&expr.typ) {
                     TypX::Int(crate::ast::IntRange::Int) => {}
+                    TypX::Int(_) => {
+                        if let ExprX::Const(..) = &expr.x {
+                            return Ok(());
+                        } else {
+                            return error(
+                                &ens.span,
+                                "integer_ring mode's expressions should be int/bool type",
+                            );
+                        }
+                    }
                     TypX::Bool => {}
                     TypX::Boxed(_) => {}
                     _ => {
@@ -809,6 +829,13 @@ fn check_functions_match(
     f1: &Function,
     f2: &Function,
 ) -> Result<(), VirErr> {
+    if f1.x.typ_params.len() != f2.x.typ_params.len() {
+        return Err(air::messages::error(
+            format!("{msg} function should have the same type parameters"),
+            &f1.span,
+        )
+        .secondary_span(&f2.span));
+    }
     if f1.x.typ_bounds.len() != f2.x.typ_bounds.len() {
         return Err(air::messages::error(
             format!("{msg} function should have the same type bounds"),
@@ -816,8 +843,17 @@ fn check_functions_match(
         )
         .secondary_span(&f2.span));
     }
-    for ((px, pb), (fx, fb)) in f1.x.typ_bounds.iter().zip(f2.x.typ_bounds.iter()) {
-        if px != fx || !crate::ast_util::generic_bounds_equal(&pb, &fb) {
+    for (x1, x2) in f1.x.typ_params.iter().zip(f2.x.typ_params.iter()) {
+        if x1 != x2 {
+            return Err(air::messages::error(
+                format!("{msg} function should have the same type bounds"),
+                &f1.span,
+            )
+            .secondary_span(&f2.span));
+        }
+    }
+    for (b1, b2) in f1.x.typ_bounds.iter().zip(f2.x.typ_bounds.iter()) {
+        if !crate::ast_util::generic_bounds_equal(&b1, &b2) {
             return Err(air::messages::error(
                 format!("{msg} function should have the same type bounds"),
                 &f1.span,

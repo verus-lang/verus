@@ -97,7 +97,19 @@ pub enum IntRange {
 
 /// Type information relevant to Rust but generally not relevant to the SMT encoding.
 /// This information is relevant for resolving traits.
-#[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode, Clone, Copy, PartialEq, Eq)]
+#[derive(
+    Debug,
+    Serialize,
+    Deserialize,
+    Hash,
+    ToDebugSNode,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord
+)]
 pub enum TypDecoration {
     /// &T
     Ref,
@@ -120,7 +132,9 @@ pub enum TypDecoration {
 /// Rust type, but without Box, Rc, Arc, etc.
 pub type Typ = Arc<TypX>;
 pub type Typs = Arc<Vec<Typ>>;
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+// Because of ImplPaths in TypX::Datatype, TypX should not implement PartialEq, Eq
+// See ast_util::types_equal instead
+#[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode)]
 pub enum TypX {
     /// Bool, Int, Datatype are translated directly into corresponding SMT types (they are not SMT-boxed)
     Bool,
@@ -133,7 +147,7 @@ pub enum TypX {
     /// Executable function types (with a requires and ensures)
     AnonymousClosure(Typs, Typ, usize),
     /// Datatype (concrete or abstract) applied to type arguments
-    Datatype(Path, Typs),
+    Datatype(Path, Typs, ImplPaths),
     /// Wrap type with extra information relevant to Rust but usually irrelevant to SMT encoding
     /// (though needed sometimes to encode trait resolution)
     Decorate(TypDecoration, Typ),
@@ -143,7 +157,7 @@ pub enum TypX {
     TypParam(Ident),
     /// Projection such as <D as T<S>>::X or <A as T>::X (SMT-boxed, and can sometimes be unboxed)
     Projection {
-        self_typ: Typ,
+        // trait_typ_args[0] is Self type
         trait_typ_args: Typs,
         trait_path: Path,
         name: Ident,
@@ -305,6 +319,12 @@ pub enum InequalityOp {
     Gt,
 }
 
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum ChainedOp {
+    Inequality(InequalityOp),
+    MultiEq,
+}
+
 /// Primitive binary operations
 /// (not arbitrary user-defined functions -- these are represented by ExprX::Call)
 /// Note that all integer operations are on mathematic integers (IntRange::Int),
@@ -350,7 +370,7 @@ pub enum BinaryOpr {
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum MultiOp {
-    Chained(Arc<Vec<InequalityOp>>),
+    Chained(Arc<Vec<ChainedOp>>),
 }
 
 /// Use Ghost(x) or Tracked(x) to unwrap an argument
@@ -483,24 +503,24 @@ pub enum BuiltinSpecFun {
     ClosureEns,
 }
 
-/// Name of each type parameter and path of each impl that is used to satisfy
-/// a trait bound when instantiating the type parameter
+/// Path of each impl that is used to satisfy a trait bound when instantiating the type parameter
 /// This is used to name the "dictionary" that is (conceptually) passed along with the
 /// type argument (see recursive_types.rs)
-pub type BoundImplPaths = Arc<Vec<(Ident, Path)>>;
+// REVIEW: should trait_typ_args also have ImplPaths?
+pub type ImplPaths = Arc<Vec<Path>>;
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum CallTargetKind {
     /// Statically known function
     Static,
     /// Dynamically dispatched method.  Optionally specify the statically resolved target if known.
-    Method(Option<(Fun, Typs, BoundImplPaths)>),
+    Method(Option<(Fun, Typs, ImplPaths)>),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum CallTarget {
     /// Regular function, passing some type arguments
-    Fun(CallTargetKind, Fun, Typs, BoundImplPaths, AutospecUsage),
+    Fun(CallTargetKind, Fun, Typs, ImplPaths, AutospecUsage),
     /// Call a dynamically computed FnSpec (no type arguments allowed),
     /// where the function type is specified by the GenericBound of typ_param.
     FnSpec(Expr),
@@ -611,7 +631,7 @@ pub enum ExprX {
     WithTriggers { triggers: Arc<Vec<Exprs>>, body: Expr },
     /// Assign to local variable
     /// init_not_mut = true ==> a delayed initialization of a non-mutable variable
-    Assign { init_not_mut: bool, lhs: Expr, rhs: Expr },
+    Assign { init_not_mut: bool, lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
     /// Reveal definition of an opaque function with some integer fuel amount
     Fuel(Fun, u32),
     /// Header, which must appear at the beginning of a function or while loop.
@@ -680,13 +700,14 @@ pub struct ParamX {
 }
 
 pub type GenericBound = Arc<GenericBoundX>;
+pub type GenericBounds = Arc<Vec<GenericBound>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum GenericBoundX {
-    /// List of implemented traits
-    Traits(Vec<Path>),
+    /// Implemented trait T(t1, ..., tn) where t1...tn usually contain some type parameters
+    // REVIEW: add ImplPaths here?
+    Trait(Path, Typs),
 }
 
-pub type TypBounds = Arc<Vec<(Ident, GenericBound)>>;
 /// When instantiating type S<A> with A = T in a recursive type definition,
 /// is T allowed to include the one of recursively defined types?
 /// Example:
@@ -708,7 +729,7 @@ pub enum AcceptRecursiveType {
     Accept,
 }
 /// Each type parameter is (name: Ident, GenericBound, AcceptRecursiveType)
-pub type TypPositiveBounds = Arc<Vec<(Ident, GenericBound, AcceptRecursiveType)>>;
+pub type TypPositives = Arc<Vec<(Ident, AcceptRecursiveType)>>;
 
 pub type FunctionAttrs = Arc<FunctionAttrsX>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Default, Clone)]
@@ -760,14 +781,13 @@ pub enum FunctionKind {
     TraitMethodDecl {
         trait_path: Path,
     },
-    /// Method implementation inside an impl, implementing a trait method for a trait for a datatype
+    /// Method implementation inside an impl, implementing a trait method for a trait for a type
     TraitMethodImpl {
         method: Fun,
         /// Path of the impl (e.g. "impl2") that contains the method implementation
         impl_path: Path,
         trait_path: Path,
         trait_typ_args: Typs,
-        self_typ: Typ,
     },
     /// These should get demoted into Static functions in `demote_foreign_traits`.
     /// This really only exists so that we can check the trait really is foreign.
@@ -798,7 +818,9 @@ pub struct FunctionX {
     /// For recursive functions, fuel determines the number of unfoldings that the SMT solver sees
     pub fuel: u32,
     /// Type parameters to generic functions
-    pub typ_bounds: TypBounds,
+    pub typ_params: Idents,
+    /// Type bounds of generic functions
+    pub typ_bounds: GenericBounds,
     /// Function parameters
     pub params: Params,
     /// Return value (unit return type is treated specially; see FunctionX::has_return in ast_util)
@@ -869,7 +891,8 @@ pub struct DatatypeX {
     pub owning_module: Option<Path>,
     pub visibility: Visibility,
     pub transparency: DatatypeTransparency,
-    pub typ_params: TypPositiveBounds,
+    pub typ_params: TypPositives,
+    pub typ_bounds: GenericBounds,
     pub variants: Variants,
     pub mode: Mode,
     /// Generate ext_equal lemmas for datatype
@@ -882,20 +905,22 @@ pub type Trait = Arc<Spanned<TraitX>>;
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct TraitX {
     pub name: Path,
-    pub typ_params: TypPositiveBounds,
+    // REVIEW: typ_params does not yet explicitly include Self (right now, Self is implicit)
+    pub typ_params: TypPositives,
+    pub typ_bounds: GenericBounds,
     pub assoc_typs: Arc<Vec<Ident>>,
     pub methods: Arc<Vec<Fun>>,
 }
 
-/// impl<typ_params> trait_name<trait_args> for self_typ { type name = typ; }
+/// impl<typ_params> trait_name<trait_typ_args[1..]> for trait_typ_args[0] { type name = typ; }
 pub type AssocTypeImpl = Arc<Spanned<AssocTypeImplX>>;
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct AssocTypeImplX {
     pub name: Ident,
     /// Path of the impl (e.g. "impl2") that contains "type name = typ;"
     pub impl_path: Path,
-    pub typ_params: TypBounds,
-    pub self_typ: Typ,
+    pub typ_params: Idents,
+    pub typ_bounds: GenericBounds,
     pub trait_path: Path,
     pub trait_typ_args: Arc<Vec<Typ>>,
     pub typ: Typ,

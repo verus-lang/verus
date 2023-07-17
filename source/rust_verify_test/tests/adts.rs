@@ -316,6 +316,36 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_builtin_is_variant_invalid IS_VARIANT_MAYBE.to_string() + verus_code_str! {
+        proof fn foo(a: Maybe<nat>)
+            requires a.is_None()
+        {
+            assert(builtin::is_variant(a, "Null"));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "no variant `Null` for this datatype")
+}
+
+test_verify_one_file! {
+    #[test] test_builtin_get_variant_field_invalid_1 IS_VARIANT_MAYBE.to_string() + verus_code_str! {
+        proof fn foo(a: Maybe<nat>)
+            requires a == Maybe::Some(10nat),
+        {
+            assert(builtin::get_variant_field::<_, u64>(a, "Some", "0") == 10);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "field has the wrong type")
+}
+
+test_verify_one_file! {
+    #[test] test_builtin_get_variant_field_invalid_2 IS_VARIANT_MAYBE.to_string() + verus_code_str! {
+        proof fn foo(a: Maybe<nat>)
+            requires a == Maybe::Some(10nat),
+        {
+            assert(builtin::get_variant_field::<_, nat>(a, "Some", "1") == 10);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "no field `1` for this variant")
+}
+
+test_verify_one_file! {
     #[test] test_is_variant_not_enum verus_code! {
         #[is_variant]
         pub struct Maybe<T> {

@@ -429,3 +429,117 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_rust_error_msg(e, "cannot find value `i`")
 }
+
+test_verify_one_file! {
+    #[test] test_compound_assign verus_code! {
+        fn test1(y: &mut u32) {
+            let mut x: i32 = 1;
+            x += 2;
+            assert({ x == 3 as i32 });
+            *y /= 2;
+            assert({ *y == *old(y)/2 });
+        }
+
+        proof fn test2a() {
+            let mut x: u8 = 200;
+            x = (x + 100u8) as u8;
+            assert(x < 256);
+        }
+
+        proof fn test2b() {
+            let mut x: u8 = 200;
+            x += 100u8;
+            assert(x < 256);
+        }
+
+        fn test3a() {
+            let mut x: u8 = 200;
+            x = x / (x + 1);
+            assert(x < 256);
+        }
+
+        fn test3b() {
+            let mut x: u8 = 200;
+            x /= (x + 1);
+            assert(x < 256);
+        }
+
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_compound_assign_fail verus_code! {
+        fn test1(x: &mut u32, y: u32) {
+            *x /= y; // FAILS
+        }
+
+        fn test2(x: i8) {
+            let mut x = x;
+            x += 1; // FAILS
+        }
+
+        fn test3a() {
+            let mut x: u8 = 200;
+            x = x + 100u8; // FAILS
+            assert(x < 256);
+        }
+
+        fn test3b() {
+            let mut x: u8 = 200;
+            x += 100u8; // FAILS
+            assert(x < 256);
+        }
+
+    } => Err(err) => assert_fails(err, 4)
+}
+
+fn assert_spec_eq_type_err(err: TestErr, typ1: &str, typ2: &str) {
+    assert_eq!(err.errors.len(), 1);
+    let err0 = &err.errors[0];
+    assert!(err0.code.is_none());
+    assert!(err0.message.contains("mismatched types; types must be compatible to use == or !="));
+    assert!(err0.spans.len() == 2 || err0.spans.len() == 3);
+    assert_spans_contain(err0, typ1);
+    assert_spans_contain(err0, typ2);
+}
+
+test_verify_one_file! {
+    #[test] test_spec_eq_type_error_1 verus_code! {
+        fn test(a: u64, b: Option<u64>)
+            requires a == b { }
+    } => Err(err) => assert_spec_eq_type_err(err, "u64", "::Option<u64>")
+}
+
+test_verify_one_file! {
+    #[test] test_spec_eq_type_error_2 verus_code! {
+        fn test(a: u64, b: std::sync::Arc<Option<u64>>)
+            requires a == b { }
+    } => Err(err) => assert_spec_eq_type_err(err, "u64", "::Option<u64>")
+}
+
+test_verify_one_file! {
+    #[test] test_spec_eq_type_error_3 verus_code! {
+        fn test(a: u64, b: FnSpec(u64)->nat)
+            requires a == b { }
+    } => Err(err) => assert_spec_eq_type_err(err, "u64", "FnSpec(u64) -> nat")
+}
+
+test_verify_one_file! {
+    #[test] test_spec_eq_type_error_4 verus_code! {
+        trait A {
+            type AT;
+        }
+
+        fn test<X: A>(a: (u64, nat), b: <X as A>::AT)
+            requires a == b { }
+    } => Err(err) => assert_spec_eq_type_err(err, "(u64, nat)", "<X as crate::A>::AT")
+}
+
+test_verify_one_file! {
+    #[test] test_spec_eq_type_error_5 verus_code! {
+        fn test() {
+            let a = |x: i32| x + 3;
+            assert(a == 5);
+        }
+    } => Err(err) => assert_spec_eq_type_err(err, "nat", "AnonymousClosure(i32) -> i32")
+}

@@ -2,7 +2,7 @@ use crate::ast::{
     ArithOp, BinaryOp, BitwiseOp, Constant, InequalityOp, IntRange, IntegerTypeBoundKind, Mode,
     Quant, SpannedTyped, Typ, TypX, UnaryOp, UnaryOpr,
 };
-use crate::def::{unique_bound, Spanned};
+use crate::def::{unique_bound, user_local_name, Spanned};
 use crate::interpreter::InterpExp;
 use crate::prelude::ArchWordBits;
 use crate::sst::{BndX, CallFun, Exp, ExpX, Stm, Trig, Trigs, UniqueIdent};
@@ -275,8 +275,8 @@ impl ExpX {
                 Constant::StrSlice(s) => (format!("\"{}\"", s), 99),
                 Constant::Char(c) => (format!("'{}'", c), 99),
             },
-            Var(id) | VarLoc(id) => (format!("{}", id.name), 99),
-            VarAt(id, _at) => (format!("old({})", id.name), 99),
+            Var(id) | VarLoc(id) => (format!("{}", user_local_name(&id.name)), 99),
+            VarAt(id, _at) => (format!("old({})", user_local_name(&id.name)), 99),
             Loc(exp) => (format!("{}", exp), 99), // REVIEW: Additional decoration required?
             Call(CallFun::Fun(fun, _) | CallFun::CheckTermination(fun), _, exps) => {
                 let args = exps.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
@@ -370,7 +370,7 @@ impl ExpX {
                     BndX::Let(bnds) => {
                         let assigns = bnds
                             .iter()
-                            .map(|b| format!("{} = {}", b.name, b.a))
+                            .map(|b| format!("{} = {}", user_local_name(&b.name), b.a))
                             .collect::<Vec<_>>()
                             .join(", ");
                         format!("let {} in {}", assigns, exp)
@@ -382,7 +382,7 @@ impl ExpX {
                         };
                         let vars = bnds
                             .iter()
-                            .map(|b| format!("{}", b.name))
+                            .map(|b| format!("{}", user_local_name(&b.name)))
                             .collect::<Vec<_>>()
                             .join(", ");
 
@@ -391,7 +391,7 @@ impl ExpX {
                     BndX::Lambda(bnds, _trigs) => {
                         let assigns = bnds
                             .iter()
-                            .map(|b| format!("{}", b.name))
+                            .map(|b| format!("{}", user_local_name(&b.name)))
                             .collect::<Vec<_>>()
                             .join(", ");
                         format!("(|{}| {})", assigns, exp)
@@ -399,7 +399,7 @@ impl ExpX {
                     BndX::Choose(bnds, _trigs, cond) => {
                         let vars = bnds
                             .iter()
-                            .map(|b| format!("{}", b.name))
+                            .map(|b| format!("{}", user_local_name(&b.name)))
                             .collect::<Vec<_>>()
                             .join(", ");
                         format!("(choose |{}| {}, {})", vars, cond, exp)
@@ -418,7 +418,7 @@ impl ExpX {
             Interp(e) => {
                 use InterpExp::*;
                 match e {
-                    FreeVar(id) => (format!("{}", id.name), 99),
+                    FreeVar(id) => (format!("{}", user_local_name(&id.name)), 99),
                     Seq(s) => {
                         let v = s.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
                         (format!("[{}]", v), 99)

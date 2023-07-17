@@ -485,3 +485,33 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] deref_not_allowed verus_code! {
+        struct X { a: u8 }
+
+        #[verifier::external]
+        impl core::ops::Deref for X {
+            type Target = u8;
+            fn deref(&self) -> &Self::Target {
+                &self.a
+            }
+        }
+
+        fn test(a: &X)
+        {
+            let t: &u8 = &a;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "overloaded deref (`X` is implicity converted to `u8`)")
+}
+
+test_verify_one_file! {
+    #[test] mutref_arg_ref_unsupported verus_code! {
+        fn stuff(x: &mut &u8) { }
+
+        fn test() {
+            let mut y: u8 = 0;
+            stuff(&mut &y); // this does NOT modify y
+        }
+    } => Err(err) => assert_vir_error_msg(err, "complex arguments to &mut parameters are currently unsupported")
+}
