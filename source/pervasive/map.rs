@@ -531,6 +531,7 @@ pub proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
 }
 
 // TODO: might not have brought this over correctly
+// Ported from Dafny prelude
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_new_domain<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V)
@@ -539,6 +540,7 @@ pub proof fn axiom_map_new_domain<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V
 {}
 
 // TODO: might not have brought this over correctly
+// Ported from Dafny prelude
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_new_values<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V)

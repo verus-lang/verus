@@ -178,6 +178,7 @@ pub proof fn axiom_multiset_empty<V>(v: V)
     ensures Multiset::empty().count(v) == 0,
 { }
 
+// Ported from Dafny prelude
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_multiset_empty_len<V>(m: Multiset<V>)
@@ -210,6 +211,7 @@ pub proof fn axiom_multiset_singleton_different<V>(v: V, w: V)
 
 // Specification of `add`
 
+// Added trigger to match Dafny prelude version
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_multiset_add<V>(m1: Multiset<V>, m2: Multiset<V>, v: V)
@@ -295,6 +297,7 @@ pub proof fn axiom_choose_count<V>(m: Multiset<V>)
 
 // Specifications of `insert`
 
+// Ported from Dafny prelude
 /// If you insert element x into multiset m, then element y maps
 /// to a count greater than 0 if and only if x==y or y already
 /// mapped to a count greater than 0 before the insertion of x.
@@ -305,6 +308,7 @@ pub proof fn axiom_insert_containment<V>(m: Multiset<V>, x: V, y: V)
         0 < #[trigger] m.insert(x).count(y) <==> x == y || 0 < m.count(y)
 {}
 
+// Ported from Dafny prelude
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_insert_increases_count_by_1<V>(m: Multiset<V>, x: V)
@@ -312,6 +316,7 @@ pub proof fn axiom_insert_increases_count_by_1<V>(m: Multiset<V>, x: V)
         #[trigger] m.insert(x).count(x) == m.count(x) + 1
 {}
 
+// Ported from Dafny prelude
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_insert_non_decreasing<V>(m: Multiset<V>, x: V, y: V)
@@ -319,6 +324,7 @@ pub proof fn axiom_insert_non_decreasing<V>(m: Multiset<V>, x: V, y: V)
         0 < m.count(y) ==> 0 < #[trigger] m.insert(x).count(y),
 {}
 
+// Ported from Dafny prelude
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_insert_other_elements_unchanged<V>(m: Multiset<V>, x: V, y: V)
@@ -326,6 +332,7 @@ pub proof fn axiom_insert_other_elements_unchanged<V>(m: Multiset<V>, x: V, y: V
         x != y ==> #[trigger] m.count(y) == #[trigger] m.insert(x).count(y),
 {}
 
+// Ported from Dafny prelude
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_insert_len<V>(m: Multiset<V>, x: V)
@@ -335,6 +342,7 @@ pub proof fn axiom_insert_len<V>(m: Multiset<V>, x: V)
 
 // Specifications of `intersection_with`
 
+// Ported from Dafny prelude
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_intersection_count<V>(a: Multiset<V>, b: Multiset<V>, x: V)
@@ -342,6 +350,7 @@ pub proof fn axiom_intersection_count<V>(a: Multiset<V>, b: Multiset<V>, x: V)
         #[trigger] a.intersection_with(b).count(x) == Multiset::<V>::min(a.count(x),b.count(x))
 {}
 
+// Ported from Dafny prelude
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_left_pseudo_idempotence<V>(a: Multiset<V>, b: Multiset<V>)
@@ -349,6 +358,7 @@ pub proof fn axiom_left_pseudo_idempotence<V>(a: Multiset<V>, b: Multiset<V>)
         #[trigger] a.intersection_with(b).intersection_with(b) == a.intersection_with(b),
 {}
 
+// Ported from Dafny prelude
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_right_pseudo_idempotence<V>(a: Multiset<V>, b: Multiset<V>)
@@ -358,6 +368,7 @@ pub proof fn axiom_right_pseudo_idempotence<V>(a: Multiset<V>, b: Multiset<V>)
 
 // Specification of `difference_with`
 
+// Ported from Dafny prelude
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_difference_count<V>(a: Multiset<V>, b: Multiset<V>, x: V)
@@ -365,6 +376,7 @@ pub proof fn axiom_difference_count<V>(a: Multiset<V>, b: Multiset<V>, x: V)
         #[trigger] a.difference_with(b).count(x) == Multiset::<V>::clip(a.count(x) - b.count(x))
 {}
 
+// Ported from Dafny prelude
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_difference_bottoms_out<V>(a: Multiset<V>, b: Multiset<V>, x: V)
@@ -375,6 +387,7 @@ pub proof fn axiom_difference_bottoms_out<V>(a: Multiset<V>, b: Multiset<V>, x: 
 
 // Specification of `subset_of`
 
+// Ported from Dafny prelude
 /// Multiset subset means a must have at most as many of each element as b
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
@@ -384,23 +397,25 @@ pub proof fn axiom_subset_of_specs<V>(a: Multiset<V>, b: Multiset<V>, x:V)
 {}
 
 // Specification of `disjoint_with`
-// PROBLEMATIC: causes lemma_no_dup_set_cardinality in seq_lib to run forever
-// #[verifier(external_body)]
-// #[verifier(broadcast_forall)]
-// pub proof fn axiom_disjointness<V>(a: Multiset<V>, b: Multiset<V>, x:V)
-//     ensures
-//         #[trigger] a.disjoint_with(b) <==> 
-//             (#[trigger] a.count(x) == 0 || #[trigger] b.count(x) == 0)
-// {}
+// PROBLEMATIC: may cause lemma_no_dup_set_cardinality in seq_lib to run forever
+// Ported from Dafny prelude
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_disjointness<V>(a: Multiset<V>, b: Multiset<V>, x:V)
+    ensures
+        #[trigger] a.disjoint_with(b) <==> 
+            (#[trigger] a.count(x) == 0 || #[trigger] b.count(x) == 0)
+{}
 
 // Specification of `is_valid`
-// PROBLEMATIC: causes lemma_min_of_concat to fail
-// #[verifier(external_body)]
-// #[verifier(broadcast_forall)]
-// pub proof fn axiom_is_valid<V>(m: Multiset<V>, bx: V)
-//     ensures
-//         m.is_valid() <==> 0 <= #[trigger] m.count(bx) <= m.len(),
-// {}
+// PROBLEMATIC: may cause lemma_min_of_concat to fail
+// Ported from Dafny prelude
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_is_valid<V>(m: Multiset<V>, bx: V)
+    ensures
+        m.is_valid() <==> 0 <= #[trigger] m.count(bx) <= m.len(),
+{}
 
 #[macro_export]
 macro_rules! assert_multisets_equal {
