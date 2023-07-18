@@ -120,7 +120,6 @@ pub fn exec(cmd: &mut Command, reports: ReportsPath) -> Result<(), String> {
     std::fs::remove_dir_all(&proj_path).expect("failed to remove repo_path");
 
     let toml_path = proj_path.join("reports.toml");
-    eprintln!("toml_path: {:?}", toml_path);
 
     create_dir_all(&proj_path).expect("creating reports.toml");
     let mut file = std::fs::File::create(toml_path).expect("creating reports.toml");
@@ -161,8 +160,6 @@ pub fn exec(cmd: &mut Command, reports: ReportsPath) -> Result<(), String> {
 
     child.wait().map_err(|x| format!("verus failed to run with error: {}", x))?;
 
-    let repo_path = proj_path.clone();
-
     writeln!(file, "{}", err_string).unwrap();
     writeln!(file, "{}", out_string).unwrap();
 
@@ -182,34 +179,30 @@ pub fn exec(cmd: &mut Command, reports: ReportsPath) -> Result<(), String> {
 
     // copy files to repo_path
     for dep in deps.iter() {
-        println!(
-            "\n{} {} {} {}",
-            yansi::Paint::blue("copying"),
-            dep.display(),
-            yansi::Paint::blue("into"),
-            repo_path.join(dep).display()
-        );
-        // copy cnannt create non-existing directories
-        create_dir_all(repo_path.join(dep.parent().unwrap())).unwrap();
-        std::fs::copy(dep, repo_path.join(dep)).unwrap();
+        // copy might create non-existing directories
+        create_dir_all(proj_path.join(dep.parent().unwrap())).unwrap();
+        std::fs::copy(dep, proj_path.join(dep)).unwrap();
     }
 
-    clean_up(dep_file_path);
+    println!(
+        "\n{} {}",
+        yansi::Paint::blue("removing:"),
+        std::env::current_dir().unwrap().join(dep_file_path.clone()).display()
+    );
+    std::fs::remove_file(dep_file_path).expect("remove crate root dependency file");
 
     // step 5, git commiting
-    // git add
+    println!("\n{} {}", yansi::Paint::blue("commiting"), proj_path.display());
     std::process::Command::new("git")
-        .current_dir(&repo_path)
+        .current_dir(&proj_path)
         .arg("add")
         .args(deps)
         .arg("reports.toml")
         .output()
         .map_err(|x| format!("Telemetry: failed to git add with error message: {}", x))?;
 
-    // git commit
-    println!("\n{} {}", yansi::Paint::blue("commiting"), repo_path.display());
     std::process::Command::new("git")
-        .current_dir(&repo_path)
+        .current_dir(&proj_path)
         .arg("commit")
         .arg("-m")
         .arg("\"verus telemtry\"")
@@ -234,7 +227,7 @@ impl Clone for Reports {
 }
 
 fn repo_path() -> ReportsPath {
-    // Step 1: check if there's a verus/reports/.git file in the XDG cache,
+    // Step 1: check if there's a verus/reports/.git file in the user's local data lib
     // if not so, create verus/ directory
     let cache_dir = dirs::data_local_dir()?;
     let reports_dir = cache_dir.join("verus").join("reports");
@@ -302,15 +295,6 @@ fn repo_path() -> ReportsPath {
         }
         _ => None,
     }
-}
-
-fn clean_up(file: PathBuf) {
-    println!(
-        "\n{} {}",
-        yansi::Paint::blue("removing:"),
-        std::env::current_dir().unwrap().join(file.clone()).display()
-    );
-    std::fs::remove_file(file).expect("remove crate root dependency file");
 }
 
 fn get_dependencies(dep_file_path: &std::path::Path) -> Result<Vec<PathBuf>, String> {
