@@ -5,10 +5,10 @@
 If you write a long function with a lot of proof code, Verus will
 correspondingly give the SMT solver a long and difficult problem to solve. So
 one can improve solver performance by breaking that function down into smaller
-pieces. This performance improvement can be dramatic because solver
-performance typically increases nonlinearly as proof size increases. After
-all, having twice as many facts in scope gives the solver far more than twice
-as many possible paths to search for a proof. As a consequence, breaking
+pieces. This performance improvement can be dramatic because solver response
+time typically increases nonlinearly as proof size increases. After all,
+having twice as many facts in scope gives the solver far more than twice as
+many possible paths to search for a proof. As a consequence, breaking
 functions down can even make the difference between the solver timing out and
 the solver succeeding quickly.
 
@@ -142,3 +142,6 @@ proof fn my_long_function(x: u64)
 }
 
 ```
+Since the expressions `r(x)`, `mid1(x, y)`, `mid2(x, y)`, and `e(x)` are each
+repeated twice, it may be helpful to factor each out as a spec function and
+thereby avoid repetition.
