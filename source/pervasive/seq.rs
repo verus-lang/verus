@@ -378,7 +378,7 @@ pub proof fn axiom_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int)
 }
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_seq_contains<A>(s: Seq<A>, x: A)
     ensures
@@ -386,8 +386,8 @@ pub proof fn axiom_seq_contains<A>(s: Seq<A>, x: A)
 {}
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
+//#[verifier(external_body)]
+//#[verifier(broadcast_forall)]
 pub proof fn axiom_seq_empty_contains_nothing<A>(x: A)
     ensures
         !(#[trigger] Seq::<A>::empty().contains(x)),
@@ -395,7 +395,7 @@ pub proof fn axiom_seq_empty_contains_nothing<A>(x: A)
 
 // Ported from Dafny prelude
 // Note: Dafny only does one way implication, but theoretically it could go both ways
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_seq_empty_equality<A>(s: Seq<A>)
     ensures
@@ -403,30 +403,68 @@ pub proof fn axiom_seq_empty_equality<A>(s: Seq<A>)
 {}
 
 // Ported from Dafny prelude
-// I have proven in seq_lib
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
+/// The concatenation of two sequences contains only the elements
+/// of the two sequences
 pub proof fn axiom_seq_concat_contains_all_elements<A>(x: Seq<A>, y: Seq<A>, elt: A)
     ensures
         #[trigger] (x+y).contains(elt) <==> x.contains(elt) ||  y.contains(elt),
-{}
+    decreases
+        x.len(),
+{
+    if x.len() == 0 && y.len() >0 {
+        assert((x+y) =~= y);
+    } else {
+        assert forall |elt: A| #[trigger] x.contains(elt) implies #[trigger] (x+y).contains(elt)
+        by {
+            let index = choose |i: int| 0 <= i < x.len() && x[i] == elt;
+            assert((x+y)[index] == elt);
+        }
+        assert forall |elt: A| #[trigger] y.contains(elt) implies #[trigger] (x+y).contains(elt)
+        by {
+            let index = choose |i: int| 0 <= i < y.len() && y[i] == elt;
+            assert((x+y)[index+x.len()] == elt);
+        }
+    }
+}
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
+/// After pushing an element onto a sequence, the sequence contains that element
 pub proof fn axiom_seq_contains_after_push<A>(s: Seq<A>, v: A, x: A)
     ensures 
         (#[trigger] s.push(v).contains(x) <==> v==x || s.contains(x))
             && #[trigger] s.push(v).contains(v),
-{}
+{
+    assert forall |elt: A| #[trigger] s.contains(elt) implies #[trigger] s.push(v).contains(elt)
+    by {
+        let index = choose |i: int| 0 <= i < s.len() && s[i] == elt;
+        assert(s.push(v)[index] == elt);
+    }
+    assert(s.push(v)[s.len() as int] == v);
+}
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_seq_subrange_elements<A>(s: Seq<A>, start: int, stop: int, x: A)
-    ensures #[trigger] s.subrange(start,stop).contains(x) <==> 
-        exists |i: int| 0 <= start <= i < stop <= s.len() && #[trigger] s[i] == x,
-{}
+    requires
+        0 <= start <= stop <= s.len(),
+    ensures s.subrange(start,stop).contains(x) <==> 
+        (exists |i: int| 0 <= start <= i < stop <= s.len() && s[i] == x),
+{
+    assert((exists |i: int| 0 <= start <= i < stop <= s.len() && s[i] == x) ==> s.subrange(start,stop).contains(x)) by {
+        if exists |i: int| 0 <= start <= i < stop <= s.len() && s[i] == x
+        {
+            let index = choose |i: int| 0 <= start <= i < stop <= s.len() && s[i] == x;
+            assert(s.subrange(start,stop)[index - start] == s[index]);
+        }
+        
+    }
+    
+}
 
 // ----------------optional singleton axioms? ------------------- //
 
@@ -645,7 +683,7 @@ pub proof fn seq_magic<A>()
         forall |x: Seq<A>, y: Seq<A>, elt: A| #[trigger] (x+y).contains(elt) <==> x.contains(elt) ||  y.contains(elt),//axiom_seq_concat_contains_all_elements(x, y, elt),
         forall |s: Seq<A>, v: A, x: A| (#[trigger] s.push(v).contains(x) <==> v==x || s.contains(x))
                 && #[trigger] s.push(v).contains(v),//axiom_seq_contains_after_push(s, v, x)
-        forall |s: Seq<A>, start: int, stop: int, x: A| 0<=start<=stop<=s.len() && #[trigger] s.subrange(start,stop).contains(x) <==> 
+        forall |s: Seq<A>, start: int, stop: int, x: A| (0<=start<=stop<=s.len() && #[trigger] s.subrange(start,stop).contains(x)) <==> 
                (exists |i: int| 0 <= start <= i < stop <= s.len() && #[trigger] s[i] == x),//axiom_seq_subrange_elements(s, start, stop, x),
         forall |elt: A| #[trigger] Seq::<A>::singleton(elt).len() == 1, //axiom_seq_singleton_length(elt),
         forall |elt: A| #[trigger] Seq::<A>::singleton(elt)[0] == elt, //axiom_seq_singleton_index(elt),

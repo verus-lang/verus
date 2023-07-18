@@ -716,7 +716,7 @@ pub proof fn lemma_min_of_concat(x: Seq<int>, y: Seq<int>)
     lemma_min_properties(x);
     lemma_min_properties(y);
     lemma_min_properties(x+y);
-    lemma_concat_elts(x,y);
+    seq_magic::<int>();
     if x.len() == 1 {
         assert((x + y).min() <= y.min()) by {
             assert((x+y).contains(y.min()));
@@ -1008,31 +1008,6 @@ pub proof fn lemma_zip_of_unzip<A,B>(s: Seq<(A,B)>)
     ensures s.unzip().0.zip_with(s.unzip().1) =~= s,
     decreases s.len(),
 {}
-
-/// The concatenation of two sequences contains only the elements
-/// of the two sequences
-// TODO: broadcast forall for dafny-level automation since dafny includes as an axiom
-pub proof fn lemma_concat_elts<A>(x: Seq<A>, y: Seq<A>)
-    ensures
-        forall |elt: A| #[trigger] (x+y).contains(elt) <==> x.contains(elt) ||  y.contains(elt),
-    decreases
-        x.len(),
-{
-    if x.len() == 0 && y.len() >0 {
-        assert((x+y) =~= y);
-    } else {
-        assert forall |elt: A| #[trigger] x.contains(elt) implies #[trigger] (x+y).contains(elt)
-        by {
-            let index = choose |i: int| 0 <= i < x.len() && x[i] == elt;
-            assert((x+y)[index] == elt);
-        }
-        assert forall |elt: A| #[trigger] y.contains(elt) implies #[trigger] (x+y).contains(elt)
-        by {
-            let index = choose |i: int| 0 <= i < y.len() && y[i] == elt;
-            assert((x+y)[index+x.len()] == elt);
-        }
-    }
-}
 
 // TODO: quantifier profiling
 // SOMETIMES RUNS INFINITELY
