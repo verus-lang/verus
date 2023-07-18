@@ -1,158 +1,75 @@
-# Adding IDE Support for Verus Using a Custom Version of rust-analyzer
+# IDE Support for Verus
 
+Verus currently has IDE support for VS Code, and Emacs. Here, we describe the steps for using Verus with both these editors.
 
-## Quickstart
-The steps below walk you through compiling a Verus-specific version of rust-analyzer and installing it in VS Code. After following the below steps, when you save a file, this custom rust-analyzer will run Verus for that file and display Verus results. It also provides Verus syntax support, IDE functionalities, and Verus-specific code actions.
+For VS Code, we require verus-analyzer, our Verus-specific fork of rust-analyzer. For Emacs, we have stand-alone support for Verus.
 
+We describe the steps to get started with [VS Code](#quickstart-vs-code) and [Emacs](#quickstart-emacs) below.
 
-#### 1. Compile custom rust-analyzer
+## Quickstart VS Code
+The steps below walk you through compiling a Verus-specific version of rust-analyzer and using it in VS Code. It provides Verus syntax support and several IDE functionalities.
 
-1. Clone the repository: `git clone https://github.com/verus-lang/rust-analyzer.git`  
-2. `cd rust-analyzer`
+For more details and latest updates, please check out the [README for verus-analyzer](https://github.com/verus-lang/verus-analyzer)
+### 1. Compile binary
+
+1. Clone the repository: `git clone https://github.com/verus-lang/verus-analyzer.git`  
+2. `cd verus-analyzer`
 3. Compile the rust-analyzer binary: `cargo xtask dist`
-4. Unzip the generated file (e.g. `gunzip ./dist/rust-analyzer-x86_64-apple-darwin.gz`)
-5. Make it executable (e.g. `chmod +x ./dist/rust-analyzer-x86_64-apple-darwin`)
+4. Unzip the generated file (e.g., `gunzip ./dist/verus-analyzer-x86_64-apple-darwin.gz`)
+5. Make it executable (e.g., `chmod +x ./dist/verus-analyzer-x86_64-apple-darwin`)
 
 
 
-#### 2. VS Code
+### 2. VS Code
+Before starting, please install the original rust-analyzer extension in VS Code's extensions tab.
 
-1. Please install the rust-analyzer extension in VS Code's extensions tab.
-2. We need to change the configuration inside `settings.json`. Specifically, we need to set the two variables below.
-- `rust-analyzer.server.path` should be set to the path of the custom rust-analyzer binary produced in step 1 above (e.g., the full path to `./dist/rust-analyzer-x86_64-apple-darwin`)
-- `"rust-analyzer.checkOnSave.overrideCommand"` to the command to run Verus. 
+#### 2.1. Adding a separate [VS Code Workspace](https://code.visualstudio.com/docs/editor/workspaces)
+Suppose you have a new project with `cargo new`. After you open this project in VS Code, use `File > Save Workspace As...` to generate `{project_name}.code-workspace` file. The file will look similar to this. 
 
-For `rust-analyzer.checkOnSave.overrideCommand`, the first argument needs to be the absolute path to the `verus/source/tools/rust-verify.sh` script. The second argument needs to be `${file}`, which will be replaced with the filename when the user hits the save button. After these two, you could add additional Verus flags. For example, setting a low `rlimit` prevents long waits from Verus. Most importantly, please include `-- --error-format=json` as the last argument to make Verus output readable to rust-analyzer.
-
-For example:
-```
-"rust-analyzer.server.path": "/Users/chanhee/Works/secure-foundations/rust-analyzer/dist/rust-analyzer-x86_64-apple-darwin", 
-
-"rust-analyzer.checkOnSave.overrideCommand": [
-    "/Users/chanhee/Works/secure-foundations/verus/source/tools/rust-verify.sh", 
-    "${file}",   
-    // add additional flags of choice here, e.g. "--expand-errors",
-    "--rlimit",        // low rlimit is recommended to avoid long wait
-    "3",
-    "--", 
-    "--error-format=json",
-],
+```json
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {}
+}
 ```
 
-For VS Code running in WSL, the `rust-analyzer-server.path` and
-`rust-analyzer.checkOnSave.overrideCommand` settings described above
-have to be set in two different files. The `rust-analyzer-server.path`
-setting needs to be in `~/.vscode-server/data/Machine/settings.json`,
-which you can open in VS Code by pressing F1 and running the command
-`Preferences: Open Remote Settings (JSON)`.  The
-`rust-analyzer.checkOnSave.overrideCommand` setting needs to be in
-your local settings file, named something like
-`/C:/Users/lorch/AppData/Roaming/Code/User/settings.json`. You can
-open this file in VS Code by pressing F1 and running the command
-`Preferences: Open User Settings (JSON)`.
 
+#### 2.2. Adding settings variables
+We will modify the "settings" section of the `.code-workspace` file. To be specific, we will add two entries in the "settings" section of the file. These are `rust-analyzer.server.path` and `rust-analyzer.checkOnSave`.
 
-#### 3. Other IDEs
+- `rust-analyzer.server.path` should be set to the path of the verus-analyzer binary produced in step 1 above (e.g., the full path to `./dist/rust-analyzer-x86_64-apple-darwin`)
+- `rust-analyzer.checkOnSave` to disable `cargo check`.
 
-Rust-analyzer's manual might be helpful (`https://rust-analyzer.github.io/manual.html`)
-When you connect Verus' rust-analyzer with another IDE, please share how to do so on this document :)
+For example, the "settings" in the `.code-workspace` file could look the following:
+```json
+"settings": {
+        "rust-analyzer.server.path": "ABSOLUTE-PATH-TO-THE-VERUS-ANALYZER-BINARY",
+        "rust-analyzer.checkOnSave": false,
+}
+```
 
-  
+When you modify and save this file, VS Code will ask you if you want to reload the rust-analyzer server. It will replace the rust-analyzer binary with this custom one.
 
-
+By opening this workspace, the rust-analyzer plugin will use the custom binary. If you open your project without that workspace setting(e.g., open this project by "open folder"), it will use the original rust-analyzer binary.
 
 
 
+## Quickstart Emacs
+We support for Verus programming in Emacs through [verus-mode.el](https://github.com/verus-lang/verus-mode.el), a major mode that supports syntax highlighting, verification-on-save, jump-to-definition, and more.
 
+To use verus-mode, the setup can be as simple as configuring `.emacs` to (i) set `verus-home` to the path to Verus, and then (ii) load up `verus-mode`.
 
+For example, if you use `use-package`, you can clone [verus-mode.el](https://github.com/verus-lang/verus-mode.el) into a location that Emacs can load from, and add the following snippet:
+```
+(use-package verus-mode
+  :init
+  (setq verus-home "PATH_TO_VERUS_DIR"))   ; Path to where you've cloned https://github.com/verus-lang/verus
+```
 
+Depending on your specific Emacs setup, your exact installation process for verus-mode.el could vary. Detailed installation steps for various Emacs setups are documented in the [Install section on verus-mode.el's README](https://github.com/verus-lang/verus-mode.el#install).
 
-## Functionalities and Details
-
-#### 1.Syntax
-We extended rust-analyzer's grammar for Verus-specific syntax. This custom rust-analyzer highlights reserved Verus keywords (e.g. `spec`, `proof`, `requires`, `ensures`). If a user types `prooof` instead of `proof`, a syntax error will be generated for it. It parses most of the Verus syntax, but there are currently a few limitations. For more details, please see the limitation section below.
-
-
-#### 2.IDE functionalities
-To use IDE functionalities, please make a new project using `cargo new`, and generate a local symlink `pervasive` which points to `verus/source/pervasive`. For example, at the `src` directory of the new project, `ln -s /Users/chanhee/Works/secure-foundations/verus/source/pervasive/ pervasive`. Also, please insert `mod pervasive` at the top of the `main.rs`. 
-
-Rust-analyzer scans the project root and all files that are reachable from the root. If the file you are working on is not reachable from the project root, most of the IDE functionalities like "goto definition" might not work. For example, if you open the `verus` repository and open up one of the examples, these functionalities might not work. 
-
-You can find more documents for IDE functionalities on the following links.
-- `Go to Definition` (https://rust-analyzer.github.io/manual.html#go-to-definition)
-- `Go to Type Declaration` (https://rust-analyzer.github.io/manual.html#go-to-type-definition)
-- `Find all References` (https://rust-analyzer.github.io/manual.html#find-all-references)
-- `Hover` (https://rust-analyzer.github.io/manual.html#hover)
-
-
-#### 3.Running Verus inside the editor
-By default, rust-analyzer uses `cargo check` to get diagnostics, but we intercept that and make the rust-analyzer use Verus by setting `rust-analyzer.checkOnSave.overrideCommand` in the plugin's VS code configuration settings. 
-
-The propagated verification error will generate red squiggles at the corresponding code location. In VS Code, the `View > Problems` tab will list the entire set of diagnostics generated by Verus. Error messages that are not from diagnostic will be appended to the Verus result notification.
-
-#### 4.Verus code actions
-Code actions try to automate common code rewrites. When a user puts the cursor on a certain location, rust-analyzer calculates the list of applicable code actions. After the user clicks the lightbulb icon, the user can apply one of the actions in the list. If the lightbulb does not show up, it means that there are no applicable code actions at that code location. 
-
-If the action includes invoking Verus, it is may take a few seconds after you apply the code action.
-
-
-##### 4.1. `Add proof block for this assert`
-This action is applicable when the cursor is on `assert`.
-It introduces `by` keyword and proof block. It also copies the assertion inside the new proof block. This rewrite action is not applicable when the assertion already has a `by` keyword.
-
-
-##### 4.2. `Check if this assertion is essential`
-This action is applicable when the cursor is on `assert`.
-
-It checks if this function still verifies without that assertion. It tries to verify the surrounding function after removing that assertion. To be specific, it runs with `--verify-function` flag. If it fails, it will add `// OBSERVE` comment to indicate that this assertion matters. If the function still verifies, the assertion will be commented out. 
-
-This code action assumes that the surrounding function is already verified. Hence when the surrounding function is not verified, it will mark that assertion is important even if it is purely redundant. Ideally, this action could first verify the surrounding function and then try out without that assertion, but it will increase response time significantly.
-
-
-##### 4.3. `Copy ensures clauses to the end`
-This action is applicable when the cursor is on `ensures`.
-It copies the ensures clauses to the end of the function. If the function has a return value, that value will be let-binded using the identifier of the return value.  
-
-
-##### 4.4. `Insert requires clauses of this function call`
-This action is applicable when the cursor is on a function call that has requires clauses.
-It inserts the requires clauses and inlines the arguments.
-
-
-##### 4.5. `Inline function`
-This action is applicable when the cursor is on a function call.
-This is already implemented in the original rust-analyzer. Although this is not Verus-specific, it is worth noting that this could be handy for debugging proofs.
-
-
-
-
-
-
-
-## Limitations 
-General limitations are the following:
-1. This is currently experimental, and only tested using VS Code on macOS.  
-2. It is currently intended to be used only for Verus code. It could potentially produce syntax errors for correct normal Rust code.  
-
-
-#### 1.Syntax
-It can generate Verus syntax errors when the code is indeed correct. It could produce several false alarms as red squiggles. 
-
-1.1. `tracked` and `ghost` keywords are not currently handled.   
-1.2. `&&&`, `|||` is assumed to be wrapped within a pair of curly braces, and either &&& or ||| is assumed to be the outmost operator.   
-1.3. Currently, some trigger attributes are not properly handled when inside of `assume` clauses.   
-
-
-#### 2.IDE functionalities
-Information of `builtin` is currently not known to this custom rust-analyzer. For example, the builtin types like `int` and `nat` could be shown as `unknown`.
-
-
-#### 3.Running Verus inside the editor
-When it runs with `expand-errors`, on `View > Problems` tab of VS Code, the localized errors and the original errors are not grouped.
-
-
-#### 4.Verus code actions
-4.1. It may take a few seconds for the lightbulb to be generated.   
-4.2.`Check if this assertion is essential`. It currently works inside the root module only.   
-4.3. `Insert requires clauses of this function call`. Inlining arguments are not fully implemented. Only arguments with a single variable will be inlined, and the other arguments will produce let-binding.   
-4.4. `Inline function`. `&&&` and `|||` are not converted to `&&` and `||`.    
+For more details on latest features, key-bindings, and troubleshooting tips, do check out the [README for verus-mode.el](https://github.com/verus-lang/verus-mode.el/blob/main/README.md).
