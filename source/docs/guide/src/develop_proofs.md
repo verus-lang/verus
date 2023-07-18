@@ -190,7 +190,7 @@ So we can add the extensionality assertion:
 ```rust
 {
     if s1.is_empty() {
-        assert(s1.intersect(s2).ext_equal(Set::empty()));
+        assert(s1.intersect(s2) =~= Set::empty());
         assert(s1.intersect(s2) === Set::empty());
         assert(s1.intersect(s2).len() == 0);
         assert(s1.intersect(s2).len() <= s1.len());
@@ -427,7 +427,7 @@ And again, the first thing to try is to assert extensional equality:
         assert(s1.remove(a).intersect(s2).len() + 1 <= s1.len());
 
         assert(s1.intersect(s2).len() <= s1.intersect(s2).remove(a).len() + 1);
-        assert(s1.intersect(s2).remove(a).ext_equal(s1.remove(a).intersect(s2)));
+        assert(s1.intersect(s2).remove(a) =~= s1.remove(a).intersect(s2));
         assert(s1.intersect(s2).remove(a) === s1.remove(a).intersect(s2));
         assert(s1.intersect(s2).len() <= s1.remove(a).intersect(s2).len() + 1);
 
@@ -452,7 +452,7 @@ pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
         s1.len(),
 {
     if s1.is_empty() {
-        assert(s1.intersect(s2).ext_equal(Set::empty()));
+        assert(s1.intersect(s2) =~= Set::empty());
         assert(s1.intersect(s2) === Set::empty());
         assert(s1.intersect(s2).len() == 0);
         assert(s1.intersect(s2).len() <= s1.len());
@@ -464,7 +464,7 @@ pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
         assert(s1.remove(a).intersect(s2).len() + 1 <= s1.len());
 
         assert(s1.intersect(s2).len() <= s1.intersect(s2).remove(a).len() + 1);
-        assert(s1.intersect(s2).remove(a).ext_equal(s1.remove(a).intersect(s2)));
+        assert(s1.intersect(s2).remove(a) =~= s1.remove(a).intersect(s2));
         assert(s1.intersect(s2).remove(a) === s1.remove(a).intersect(s2));
         assert(s1.intersect(s2).len() <= s1.remove(a).intersect(s2).len() + 1);
 

@@ -6,9 +6,8 @@ For soundness's sake, be as defensive as possible:
 - explicitly match all fields of the Rust AST so we catch any features added in the future
 */
 
-use crate::attributes::{get_mode, get_verifier_attrs, GetVariantField};
+use crate::attributes::get_verifier_attrs;
 use crate::context::Context;
-use crate::def::{get_variant_fn_name, is_variant_fn_name};
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
 use crate::rust_to_vir_base::{
     check_generic_bound, check_generics_bounds, def_id_to_vir_path, mid_ty_to_vir, mk_visibility,
@@ -18,9 +17,7 @@ use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn, CheckItemFnE
 use crate::util::{err_span, unsupported_err_span};
 use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
 use crate::{err_unless, unsupported_err, unsupported_err_unless};
-use rustc_ast::Attribute;
 
-use crate::attributes::VerifierAttrs;
 use rustc_ast::IsAuto;
 use rustc_hir::{
     AssocItemKind, ForeignItem, ForeignItemId, ForeignItemKind, ImplItemKind, Item, ItemId,
@@ -31,7 +28,7 @@ use rustc_hir::{
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::Typ;
-use vir::ast::{Fun, FunX, FunctionKind, GenericBoundX, Krate, KrateX, Mode, Path, VirErr};
+use vir::ast::{Fun, FunX, FunctionKind, Krate, KrateX, Path, VirErr};
 
 fn check_item<'tcx>(
     ctxt: &Context<'tcx>,
@@ -76,30 +73,19 @@ fn check_item<'tcx>(
     let visibility = || mk_visibility(ctxt, item.owner_id.to_def_id());
     match &item.kind {
         ItemKind::Fn(sig, generics, body_id) => {
-            if vattrs.is_variant.is_some() || vattrs.get_variant.is_some() {
-                check_fn_variant(
-                    ctxt,
-                    attrs,
-                    &vattrs,
-                    item.owner_id.to_def_id(),
-                    item.ident.as_str(),
-                    sig.span,
-                )?;
-            } else {
-                check_item_fn(
-                    ctxt,
-                    &mut vir.functions,
-                    item.owner_id.to_def_id(),
-                    FunctionKind::Static,
-                    visibility(),
-                    &module_path(),
-                    ctxt.tcx.hir().attrs(item.hir_id()),
-                    sig,
-                    None,
-                    generics,
-                    CheckItemFnEither::BodyId(body_id),
-                )?;
-            }
+            check_item_fn(
+                ctxt,
+                &mut vir.functions,
+                item.owner_id.to_def_id(),
+                FunctionKind::Static,
+                visibility(),
+                &module_path(),
+                ctxt.tcx.hir().attrs(item.hir_id()),
+                sig,
+                None,
+                generics,
+                CheckItemFnEither::BodyId(body_id),
+            )?;
         }
         ItemKind::Use { .. } => {}
         ItemKind::ExternCrate { .. } => {}
@@ -259,16 +245,13 @@ fn check_item<'tcx>(
                 }
             }
 
-            let self_ty = ctxt.tcx.type_of(item.owner_id.to_def_id());
-            let self_typ = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, item.span, &self_ty, false)?;
-
             let trait_path_typ_args = if let Some(TraitRef { path, .. }) = &impll.of_trait {
                 let trait_ref =
                     ctxt.tcx.impl_trait_ref(item.owner_id.to_def_id()).expect("impl_trait_ref");
                 // If we have `impl X for Z<A, B, C>` then the list of types is [X, A, B, C].
-                // So to get the type args, we strip off the first element.
+                // We keep this full list, with the first element being the Self type X
                 let mut types: Vec<Typ> = Vec::new();
-                for ty in trait_ref.0.substs.types().skip(1) {
+                for ty in trait_ref.0.substs.types() {
                     types.push(mid_ty_to_vir(
                         ctxt.tcx,
                         &ctxt.verus_items,
@@ -295,55 +278,40 @@ fn check_item<'tcx>(
                         match &impl_item.kind {
                             ImplItemKind::Fn(sig, body_id) => {
                                 let fn_attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
-                                let fn_vattrs = get_verifier_attrs(fn_attrs)?;
-                                if fn_vattrs.is_variant.is_some() || fn_vattrs.get_variant.is_some()
+                                let kind = if let Some((trait_path, trait_typ_args)) =
+                                    trait_path_typ_args.clone()
                                 {
-                                    check_fn_variant(
-                                        ctxt,
-                                        fn_attrs,
-                                        &fn_vattrs,
-                                        impl_item.owner_id.to_def_id(),
-                                        impl_item.ident.as_str(),
-                                        sig.span,
-                                    )?;
+                                    impl_item_visibility = mk_visibility(
+                                        &ctxt,
+                                        impl_item.owner_id.to_def_id(), // TODO(main_new) correct?
+                                    );
+                                    let ident = impl_item_ref.ident.to_string();
+                                    let ident = Arc::new(ident);
+                                    let path = typ_path_and_ident_to_vir_path(&trait_path, ident);
+                                    let fun = FunX { path };
+                                    let method = Arc::new(fun);
+                                    FunctionKind::TraitMethodImpl {
+                                        method,
+                                        impl_path: impl_path.clone(),
+                                        trait_path,
+                                        trait_typ_args,
+                                    }
                                 } else {
-                                    let kind = if let Some((trait_path, trait_typ_args)) =
-                                        trait_path_typ_args.clone()
-                                    {
-                                        impl_item_visibility = mk_visibility(
-                                            &ctxt,
-                                            impl_item.owner_id.to_def_id(), // TODO(main_new) correct?
-                                        );
-                                        let ident = impl_item_ref.ident.to_string();
-                                        let ident = Arc::new(ident);
-                                        let path =
-                                            typ_path_and_ident_to_vir_path(&trait_path, ident);
-                                        let fun = FunX { path };
-                                        let method = Arc::new(fun);
-                                        FunctionKind::TraitMethodImpl {
-                                            method,
-                                            impl_path: impl_path.clone(),
-                                            trait_path,
-                                            trait_typ_args,
-                                            self_typ: self_typ.clone(),
-                                        }
-                                    } else {
-                                        FunctionKind::Static
-                                    };
-                                    check_item_fn(
-                                        ctxt,
-                                        &mut vir.functions,
-                                        impl_item.owner_id.to_def_id(),
-                                        kind,
-                                        impl_item_visibility,
-                                        &module_path(),
-                                        fn_attrs,
-                                        sig,
-                                        Some((&impll.generics, impl_def_id)),
-                                        &impl_item.generics,
-                                        CheckItemFnEither::BodyId(body_id),
-                                    )?;
-                                }
+                                    FunctionKind::Static
+                                };
+                                check_item_fn(
+                                    ctxt,
+                                    &mut vir.functions,
+                                    impl_item.owner_id.to_def_id(),
+                                    kind,
+                                    impl_item_visibility,
+                                    &module_path(),
+                                    fn_attrs,
+                                    sig,
+                                    Some((&impll.generics, impl_def_id)),
+                                    &impl_item.generics,
+                                    CheckItemFnEither::BodyId(body_id),
+                                )?;
                             }
                             _ => unsupported_err!(
                                 item.span,
@@ -376,7 +344,7 @@ fn check_item<'tcx>(
                             )?;
                             if let Some((trait_path, trait_typ_args)) = trait_path_typ_args.clone()
                             {
-                                let typ_params =
+                                let (typ_params, typ_bounds) =
                                     crate::rust_to_vir_base::check_generics_bounds_fun(
                                         ctxt.tcx,
                                         &ctxt.verus_items,
@@ -387,7 +355,7 @@ fn check_item<'tcx>(
                                     name,
                                     impl_path: impl_path.clone(),
                                     typ_params,
-                                    self_typ: self_typ.clone(),
+                                    typ_bounds,
                                     trait_path,
                                     trait_typ_args,
                                     typ,
@@ -459,15 +427,16 @@ fn check_item<'tcx>(
                 if let Some(r) = bound.trait_ref() {
                     if let Some(id) = r.trait_def_id() {
                         // allow marker types
-                        match &*check_generic_bound(ctxt.tcx, &ctxt.verus_items, id, &vec![])? {
-                            GenericBoundX::Traits(bnds) if bnds.len() == 0 => continue,
+                        let span = item.span;
+                        match check_generic_bound(ctxt.tcx, &ctxt.verus_items, span, id, &vec![])? {
+                            None => continue,
                             _ => {}
                         }
                     }
                 }
                 unsupported_err!(item.span, "trait generic bounds");
             }
-            let generics_bnds = check_generics_bounds(
+            let (generics_params, generics_bnds) = check_generics_bounds(
                 ctxt.tcx,
                 &ctxt.verus_items,
                 trait_generics,
@@ -489,7 +458,7 @@ fn check_item<'tcx>(
                     span,
                     defaultness: _,
                 } = trait_item;
-                let generics_bnds = check_generics_bounds(
+                let (generics_params, generics_bnds) = check_generics_bounds(
                     ctxt.tcx,
                     &ctxt.verus_items,
                     item_generics,
@@ -497,6 +466,7 @@ fn check_item<'tcx>(
                     owner_id.to_def_id(),
                     None,
                 )?;
+                unsupported_err_unless!(generics_params.len() == 0, *span, "trait generics");
                 unsupported_err_unless!(generics_bnds.len() == 0, *span, "trait generics");
                 match kind {
                     TraitItemKind::Fn(sig, fun) => {
@@ -538,7 +508,8 @@ fn check_item<'tcx>(
                 name: trait_path,
                 methods: Arc::new(method_names),
                 assoc_typs: Arc::new(assoc_typs),
-                typ_params: Arc::new(generics_bnds),
+                typ_params: generics_params,
+                typ_bounds: generics_bnds,
             };
             vir.traits.push(ctxt.spanned_new(item.span, traitx));
         }
@@ -563,63 +534,6 @@ fn check_item<'tcx>(
             unsupported_err!(item.span, "unsupported item", item);
         }
     }
-    Ok(())
-}
-
-fn check_fn_variant<'tcx>(
-    ctxt: &Context<'tcx>,
-    fn_attrs: &[Attribute],
-    fn_vattrs: &VerifierAttrs,
-    item_id: rustc_hir::def_id::DefId,
-    item_ident: &str,
-    span: rustc_span::Span,
-) -> Result<(), VirErr> {
-    let find_variant = |variant_name: &str| {
-        let fn_sig = ctxt.tcx.fn_sig(item_id);
-        let fn_sig = fn_sig.skip_binder();
-        let inputs = fn_sig.inputs();
-        if inputs.len() != 1 {
-            None
-        } else {
-            let ty = inputs[0];
-            let ty = match ty.kind() {
-                rustc_middle::ty::TyKind::Ref(_, t, rustc_ast::Mutability::Not) => t,
-                _ => &ty,
-            };
-            match ty.kind() {
-                rustc_middle::ty::TyKind::Adt(adt, _) => {
-                    adt.variants().iter().find(|v| v.ident(ctxt.tcx).as_str() == variant_name)
-                }
-                _ => None,
-            }
-        }
-    };
-    let valid = if let Some(variant_name) = &fn_vattrs.is_variant {
-        find_variant(&variant_name).is_some() && item_ident == is_variant_fn_name(&variant_name)
-    } else if let Some((variant_name, field_name)) = &fn_vattrs.get_variant {
-        let field_name_str = match field_name {
-            GetVariantField::Unnamed(i) => format!("{}", i),
-            GetVariantField::Named(n) => n.to_string(),
-        };
-        find_variant(&variant_name)
-            .and_then(|variant| {
-                variant
-                    .fields
-                    .iter()
-                    .find(|f| f.ident(ctxt.tcx).as_str() == field_name_str.as_str())
-            })
-            .is_some()
-            && item_ident == get_variant_fn_name(&variant_name, &field_name_str)
-    } else {
-        unreachable!()
-    };
-    if !valid || get_mode(Mode::Exec, fn_attrs) != Mode::Spec {
-        return err_span(
-            span,
-            "invalid is_variant function, do not use #[verifier(is_variant)] directly, use the #[is_variant] macro instead",
-        );
-    }
-
     Ok(())
 }
 

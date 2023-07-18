@@ -2,6 +2,9 @@
 
 set -e
 
+echo -e "\033[31mwarning (rust-verify.sh): rust-verify.sh is deprecated and will be removed soon, use ./target-verus/release/verus or ./target-verus/debug/verus directly instead\033[0m"
+echo
+
 DIR="$( cd "$( dirname $(readlink -f "${BASH_SOURCE[0]}") )" >/dev/null 2>&1 && pwd )"
 SOURCE="$DIR/.."
 

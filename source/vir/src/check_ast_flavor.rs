@@ -48,9 +48,15 @@ pub fn check_krate_simplified(krate: &Krate) {
                 .expect("function AST expression uses node that should have been simplified");
         }
 
-        for (_, bound) in typ_bounds.iter() {
+        for bound in typ_bounds.iter() {
             match &**bound {
-                GenericBoundX::Traits(_) => {}
+                GenericBoundX::Trait(_, ts) => {
+                    for t in ts.iter() {
+                        typ_visitor_check(t, &mut check_typ_simplified).expect(
+                            "function param bound uses node that should have been simplified",
+                        );
+                    }
+                }
             }
         }
 
@@ -91,7 +97,7 @@ fn expr_no_loc_in_spec(
         ExprX::Choose { params: _, cond, body } => {
             recurse_in_spec(cond).and_then(|_| recurse_in_spec(body))
         }
-        ExprX::Forall { vars: _, require, ensure, proof: _ } => {
+        ExprX::AssertBy { vars: _, require, ensure, proof: _ } => {
             recurse_in_spec(require).and_then(|_| recurse_in_spec(ensure))
         }
         ExprX::VarLoc(_) | ExprX::Loc(_) if in_spec => Err(()),

@@ -111,7 +111,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_12 verus_code!{
+    #[test] test_supported_12 verus_code!{
         struct Abc<T> {
             t: T,
         }
@@ -127,7 +127,7 @@ test_verify_one_file! {
                 assert(self.t.f() == self.t.f());
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "could not find this type parameter")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -578,9 +578,12 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => {
-        assert_eq!(err.errors.len(), 2);
-        assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
-        assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+        // TODO: we could make the recursion rules more precise to allow decreases checking in this example:
+        //assert_eq!(err.errors.len(), 2);
+        //assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+        //assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+        // For now, we just reject the code as having a cycle:
+        assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition");
     }
 }
 
@@ -622,6 +625,55 @@ test_verify_one_file! {
         assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
         assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
     }
+}
+
+test_verify_one_file! {
+    #[test] test_termination_5_fail_1 verus_code! {
+        trait T { type X; }
+        struct Q<A: T>(A::X);
+        struct R;
+        impl T for R { type X = S; }
+        struct S(FnSpec(Q<R>) -> int);
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
+    #[test] test_termination_5_fail_2 verus_code! {
+        trait T { type X; }
+        struct Q<A: T>(A::X);
+        struct R;
+        impl T for R { type X = FnSpec(S) -> int; }
+        struct S(Q<R>);
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
+    #[test] test_termination_5_fail_3 verus_code! {
+        trait T { type X; }
+        struct Q<A: T>(FnSpec(A::X) -> int);
+        struct R;
+        impl T for R { type X = S; }
+        struct S(Q<R>);
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
+    #[test] test_termination_5_fail_4 verus_code! {
+        trait T { type X; }
+        struct Q<A: T>(A::X);
+        struct R;
+        impl T for R { type X = S; }
+        struct S(Q<R>);
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
+    #[test] test_termination_5_fail_5 verus_code! {
+        trait T { type X; }
+        struct Q<A: T>(FnSpec(A::X) -> int);
+        struct S(Q<S>);
+        impl T for S { type X = int; }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
 }
 
 test_verify_one_file! {

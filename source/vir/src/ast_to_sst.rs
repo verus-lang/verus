@@ -4,7 +4,7 @@ use crate::ast::{
     Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
-use crate::ast_util::{error, internal_error, types_equal, QUANT_FORALL};
+use crate::ast_util::{error, internal_error, types_equal, undecorate_typ, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{unique_bound, unique_local, Spanned};
 use crate::func_to_air::{SstInfo, SstMap};
@@ -18,6 +18,7 @@ use crate::sst_util::{
     sst_lt,
 };
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
+use crate::triggers::{typ_boxing, TriggerBoxing};
 use crate::util::{vec_map, vec_map_result};
 use crate::visitor::VisitorControlFlow;
 use air::ast::{Binder, BinderX, Binders, Span};
@@ -220,11 +221,11 @@ impl<'a> State<'a> {
                     fun_ssts.borrow().get(fun)
                 {
                     if inline.do_inline {
-                        let typ_bounds = &inline.typ_bounds;
+                        let typ_params = &inline.typ_params;
                         let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
                         let mut substs: HashMap<UniqueIdent, Exp> = HashMap::new();
-                        assert!(typ_bounds.len() == typs.len());
-                        for ((name, _), typ) in typ_bounds.iter().zip(typs.iter()) {
+                        assert!(typ_params.len() == typs.len());
+                        for (name, typ) in typ_params.iter().zip(typs.iter()) {
                             assert!(!typ_substs.contains_key(name));
                             let typ = crate::poly::coerce_typ_to_poly(ctx, typ);
                             typ_substs.insert(name.clone(), typ.clone());
@@ -246,30 +247,27 @@ impl<'a> State<'a> {
             ExpX::Bind(bnd, body) => match &bnd.x {
                 BndX::Quant(quant, bs, trigs) => {
                     assert!(trigs.len() == 0);
-                    let mut vars: Vec<Ident> = Vec::new();
+                    let mut vars: Vec<(Ident, TriggerBoxing)> = Vec::new();
                     for b in bs.iter() {
                         match &*b.a {
-                            TypX::TypeId => vars.push(crate::def::suffix_typ_param_id(&b.name)),
-                            _ => vars.push(b.name.clone()),
+                            TypX::TypeId => vars.push((
+                                crate::def::suffix_typ_param_id(&b.name),
+                                TriggerBoxing::TypeId,
+                            )),
+                            _ => vars.push((b.name.clone(), typ_boxing(ctx, &b.a))),
                         }
                     }
-                    let trigs = crate::triggers::build_triggers(
-                        ctx,
-                        &exp.span,
-                        &vars,
-                        &body,
-                        quant.boxed_params,
-                        false,
-                    )?;
+                    let trigs =
+                        crate::triggers::build_triggers(ctx, &exp.span, &vars, &body, false)?;
                     let bnd =
                         Spanned::new(bnd.span.clone(), BndX::Quant(*quant, bs.clone(), trigs));
                     Ok(SpannedTyped::new(&exp.span, &exp.typ, ExpX::Bind(bnd, body.clone())))
                 }
                 BndX::Choose(bs, trigs, cond) => {
                     assert!(trigs.len() == 0);
-                    let vars = vec_map(bs, |b| b.name.clone());
+                    let vars = vec_map(bs, |b| (b.name.clone(), typ_boxing(ctx, &b.a)));
                     let trigs =
-                        crate::triggers::build_triggers(ctx, &exp.span, &vars, &cond, true, false)?;
+                        crate::triggers::build_triggers(ctx, &exp.span, &vars, &cond, false)?;
                     let bnd = Spanned::new(
                         bnd.span.clone(),
                         BndX::Choose(bs.clone(), trigs, cond.clone()),
@@ -278,9 +276,9 @@ impl<'a> State<'a> {
                 }
                 BndX::Lambda(bs, trigs) => {
                     assert!(trigs.len() == 0);
-                    let vars = vec_map(bs, |b| b.name.clone());
+                    let vars = vec_map(bs, |b| (b.name.clone(), typ_boxing(ctx, &b.a)));
                     let trigs =
-                        crate::triggers::build_triggers(ctx, &exp.span, &vars, &body, true, true)?;
+                        crate::triggers::build_triggers(ctx, &exp.span, &vars, &body, true)?;
                     let bnd = Spanned::new(bnd.span.clone(), BndX::Lambda(bs.clone(), trigs));
                     Ok(SpannedTyped::new(&exp.span, &exp.typ, ExpX::Bind(bnd, body.clone())))
                 }
@@ -572,7 +570,6 @@ pub(crate) fn check_pure_expr_bind(
     ctx: &Ctx,
     state: &mut State,
     binders: &Binders<Typ>,
-    binders_has_typ: bool,
     expr: &Expr,
 ) -> Result<Vec<Stm>, VirErr> {
     if state.checking_recommends(ctx) {
@@ -580,7 +577,7 @@ pub(crate) fn check_pure_expr_bind(
         let mut stms: Vec<Stm> = Vec::new();
         for binder in binders.iter() {
             let x = state.declare_new_var(&binder.name, &binder.a, false, true);
-            if binders_has_typ {
+            if crate::poly::typ_is_poly(ctx, &binder.a) {
                 stms.push(assume_has_typ(&x, &binder.a, &expr.span));
             }
         }
@@ -668,7 +665,7 @@ pub(crate) fn expr_to_stm_or_error(
 /// Unit type, in the lowered form that ast_simplify produces
 fn lowered_unit_typ() -> Typ {
     let path = crate::def::prefix_tuple_type(0);
-    Arc::new(TypX::Datatype(path, Arc::new(vec![])))
+    Arc::new(TypX::Datatype(path, Arc::new(vec![]), Arc::new(vec![])))
 }
 
 /// Unit value, in the lowered form that ast_simplify produces
@@ -931,7 +928,10 @@ fn expr_to_stm_opt(
             let e0 = unwrap_or_return_never!(e0, stms);
             Ok((stms, ReturnValue::Some(mk_exp(ExpX::Loc(e0)))))
         }
-        ExprX::Assign { init_not_mut, lhs: lhs_expr, rhs: expr2 } => {
+        ExprX::Assign { init_not_mut, lhs: lhs_expr, rhs: expr2, op } => {
+            if op.is_some() {
+                panic!("op should already be removed")
+            }
             let (mut stms, lhs_exp) = expr_to_stm_opt(ctx, state, lhs_expr)?;
             let lhs_exp = lhs_exp.expect_value();
             match expr_must_be_call_stm(ctx, state, expr2)? {
@@ -1174,9 +1174,13 @@ fn expr_to_stm_opt(
                             Mode::Spec
                         };
 
-                        match (state.checking_bounds_for_mode(ctx, arith_mode), &*expr.typ) {
-                            (false, _) => {}
-                            (true, TypX::Int(ir)) if ir.is_bounded() => {
+                        match (
+                            arith_mode,
+                            state.checking_bounds_for_mode(ctx, arith_mode),
+                            &*undecorate_typ(&expr.typ),
+                        ) {
+                            (_, false, _) => {}
+                            (Mode::Exec, true, TypX::Int(ir)) if ir.is_bounded() => {
                                 let (assert_exp, msg) = match arith {
                                     ArithOp::Add | ArithOp::Sub | ArithOp::Mul => {
                                         let unary = UnaryOpr::HasType(expr.typ.clone());
@@ -1261,8 +1265,7 @@ fn expr_to_stm_opt(
             panic!("internal error: Multi should have been simplified by ast_simplify")
         }
         ExprX::Quant(quant, binders, body) => {
-            let check_recommends_stms =
-                check_pure_expr_bind(ctx, state, binders, quant.boxed_params, body)?;
+            let check_recommends_stms = check_pure_expr_bind(ctx, state, binders, body)?;
             state.push_scope();
             state.declare_binders(binders);
             let exp = expr_to_pure_exp(ctx, state, body)?;
@@ -1348,8 +1351,8 @@ fn expr_to_stm_opt(
             Ok((all_stms, ReturnValue::Some(v)))
         }
         ExprX::Choose { params, cond, body } => {
-            let mut check_recommends_stms = check_pure_expr_bind(ctx, state, params, true, cond)?;
-            check_recommends_stms.extend(check_pure_expr_bind(ctx, state, params, true, body)?);
+            let mut check_recommends_stms = check_pure_expr_bind(ctx, state, params, cond)?;
+            check_recommends_stms.extend(check_pure_expr_bind(ctx, state, params, body)?);
             state.push_scope();
             state.declare_binders(&params);
             let cond_exp = expr_to_pure_exp(ctx, state, cond)?;
@@ -1434,7 +1437,7 @@ fn expr_to_stm_opt(
             let stm = Spanned::new(expr.span.clone(), StmX::Assume(exp));
             Ok((vec![stm], ReturnValue::ImplicitUnit(expr.span.clone())))
         }
-        ExprX::Forall { vars, require, ensure, proof } => {
+        ExprX::AssertBy { vars, require, ensure, proof } => {
             // deadend {
             //   assume(require)
             //   proof

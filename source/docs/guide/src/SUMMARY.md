@@ -29,31 +29,32 @@
     - [Defining datatypes]() <!--- Andrea --->
     - [Querying the discriminant (`#[is_variant]`)]() <!--- Andrea --->
     - [Proving properties of fields]() <!--- Andrea --->
-- [Basic libraries](pervasive.md)
+- [Basic libraries and spec closures](pervasive.md)
     - [Specification libraries: Seq, Set, Map](spec_lib.md)
     - [INTERLUDE: using assert and assume to develop proofs](develop_proofs.md)
+    - [Spec closures](spec_closures.md)
     - [Executable libraries: Vec](exec_lib.md)
-- [Quantifiers and spec closures](quants.md)
+- [Quantifiers](quants.md)
     - [forall and triggers](forall.md)
     - [Multiple variables, multiple triggers, matching loops](multitriggers.md)
     - [exists and choose](exists.md)
     - [Proofs about forall and exists](quantproofs.md)
     - [Example: binary search](binary_search.md)
-    - [spec closures]() <!--- Chris --->
     - [broadcast_forall]() <!--- Chris --->
 - [Runtime `exec` Features]()
     - [Exec closures]()
-- [SMT solving, automation, and where automation fails]() <!--- Chris --->
+- [SMT solving, automation, and where automation fails](smt_failures.md) <!--- Chris --->
     - [What's decidable, what's undecidable, what's fast, what's slow]() <!--- Chris --->
-    - [integers: nonlinear arithmetic and bit vectors]() <!--- Chris and Chanhee --->
+    - [Integers: nonlinear arithmetic and bit vectors]() <!--- Chris and Chanhee --->
     - [forall and exists: writing and using triggers, inline functions]() <!--- Chris --->
-    - [recursive functions]() <!--- Chris --->
-    - [extensional equality]() <!--- Chris --->
-    - [libraries: incomplete axioms for Seq, Set, Map]() <!--- Chris --->
+    - [Recursive functions]() <!--- Chris --->
+    - [Extensional equality](extensional_equality.md)
+    - [Libraries: incomplete axioms for Seq, Set, Map]() <!--- Chris --->
 - [Improving SMT performance]() <!--- Chris --->
     - [Modules, hiding, opaque, reveal]() <!--- Chris --->
     - [Quantifier profiling](profiling.md) <!--- Bryan --->
     - [Hiding local proofs with `assert (...) by { ... }`](assert_by.md)
+    - [Structured proof by calculation](calc.md) <!--- JayB --->
     - [Proof by computation](assert_by_compute.md) <!--- Bryan --->
     - [Spinning off separate SMT queries]()
     - [Breaking proofs into smaller pieces](breaking_proofs_into_pieces.md)
@@ -102,23 +103,24 @@
 # Reference
 
 - [Supported and unsupported Rust features](./features.md)
+- [Verus syntax overview](syntax.md)
 - [Modes]()
   - [Function modes]()
-  - [Variable modes]()
+  - [Variable modes](./reference-var-modes.md)
 - [Spec expressions]()
   - [Rust subset]()
   - [Arithmetic]()
   - [Spec equality ==]()
   - [Extensional equality `=~=` and `=~~=`]()
   - [&&& and |||]()
-  - [Chained inequalities]()
-  - [Implication (`==>`, `<==`, and `<==>`)]()
+  - [Chained operators](./reference-chained-op.md)
+  - [Implication (`==>`, `<==`, and `<==>`)](./reference-implication.md)
   - [`forall`, `exists`]()
   - [`choose`]()
   - [Function expressions]()
   - [Trigger annotations]()
-  - [The view function `@`]()
-  - [Spec index operator `[]`]()
+  - [The view function `@`](./reference-at-sign.md)
+  - [Spec index operator `[]`](./reference-spec-index.md)
 - [Proof features]()
   - [assert and assume]()
   - [assert ... by](./reference-assert-by.md)
@@ -130,7 +132,7 @@
   - [fuel]()
 - [Function specifications]()
   - [requires / ensures]()
-  - [opens_invariants]()
+  - [opens_invariants](./reference-opens-invariants.md)
   - [recommends]()
 - [Loop specifications]()
   - [invariant]()
@@ -143,3 +145,5 @@
   - [Cyclic definitions]()
 - [Command line]()
   - [--arch-word-bits]()
+  - [--record](./reference-flag-record.md)
+- [Planned future work]()
