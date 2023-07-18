@@ -255,6 +255,7 @@ fn check_item<'tcx>(
                     types.push(mid_ty_to_vir(
                         ctxt.tcx,
                         &ctxt.verus_items,
+                        impl_def_id,
                         impll.generics.span,
                         &ty,
                         false,
@@ -338,6 +339,7 @@ fn check_item<'tcx>(
                             let typ = mid_ty_to_vir(
                                 ctxt.tcx,
                                 &ctxt.verus_items,
+                                impl_item.owner_id.to_def_id(),
                                 impl_item.span,
                                 &ty,
                                 false,
@@ -402,7 +404,8 @@ fn check_item<'tcx>(
             }
 
             let mid_ty = ctxt.tcx.type_of(def_id);
-            let vir_ty = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, item.span, &mid_ty, false)?;
+            let vir_ty =
+                mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, def_id, item.span, &mid_ty, false)?;
 
             crate::rust_to_vir_func::check_item_const(
                 ctxt,
@@ -428,7 +431,14 @@ fn check_item<'tcx>(
                     if let Some(id) = r.trait_def_id() {
                         // allow marker types
                         let span = item.span;
-                        match check_generic_bound(ctxt.tcx, &ctxt.verus_items, span, id, &vec![])? {
+                        match check_generic_bound(
+                            ctxt.tcx,
+                            &ctxt.verus_items,
+                            trait_def_id,
+                            span,
+                            id,
+                            &vec![],
+                        )? {
                             None => continue,
                             _ => {}
                         }

@@ -1,8 +1,7 @@
 use crate::attributes::{get_mode, get_verifier_attrs, VerifierAttrs};
 use crate::context::Context;
 use crate::rust_to_vir_base::{
-    check_generics_bounds, def_id_to_vir_path, mid_ty_to_vir_param_env, mk_visibility,
-    mk_visibility_from_vis,
+    check_generics_bounds, def_id_to_vir_path, mid_ty_to_vir, mk_visibility, mk_visibility_from_vis,
 };
 use crate::unsupported_err_unless;
 use crate::util::{err_span, unsupported_err_span};
@@ -82,7 +81,7 @@ where
             str_ident(&field_def_ident.as_str())
         };
 
-        let typ = mid_ty_to_vir_param_env(
+        let typ = mid_ty_to_vir(
             ctxt.tcx,
             &ctxt.verus_items,
             item_id.owner_id.to_def_id(),

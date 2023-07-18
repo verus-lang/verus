@@ -695,7 +695,7 @@ fn erase_call<'tcx>(
             let mut node_substs = node_substs;
             let mut fn_def_id = fn_def_id.expect("call id");
 
-            let param_env = ctxt.tcx.param_env(state.enclosing_fun_id.unwrap());
+            let param_env = ctxt.tcx.param_env(state.enclosing_fun_id.expect("enclosing_fun_id"));
             let normalized_substs = ctxt.tcx.normalize_erasing_regions(param_env, node_substs);
             let inst = rustc_middle::ty::Instance::resolve(
                 ctxt.tcx,
@@ -1015,6 +1015,7 @@ fn erase_expr<'tcx>(
             let rcvr_typ = mid_ty_to_vir_datatype(
                 ctxt.tcx,
                 &ctxt.verus_items,
+                state.enclosing_fun_id.expect("enclosing_fun_id"),
                 receiver.span,
                 ctxt.types().node_type(receiver.hir_id),
                 true,

@@ -142,18 +142,6 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
     }
 }
 
-// HACK: for the moment, only support projections whose Self is a type variable,
-// treating these as Poly.
-// TODO: replace this with more precise and general distinction between
-// projections that are normalized to native types and projections that are treated as Poly
-pub(crate) fn rooted_in_typ_param(typ: &Typ) -> bool {
-    match &**typ {
-        TypX::TypParam(_) => true,
-        TypX::Projection { trait_typ_args, .. } => rooted_in_typ_param(&trait_typ_args[0]),
-        _ => false,
-    }
-}
-
 pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
     match &**typ {
         TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::StrSlice | TypX::Char => false,
@@ -169,6 +157,9 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
             }
         }
         TypX::Decorate(_, t) => typ_is_poly(ctx, t),
+        // Note: we rely on rust_to_vir_base normalizing TypX::Projection { .. }.
+        // If it normalized to a projection, it is poly; otherwise it is handled by
+        // one of the other TypX::* cases.
         TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } => true,
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
@@ -195,12 +186,7 @@ fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
             }
         }
         TypX::Decorate(d, t) => Arc::new(TypX::Decorate(*d, coerce_typ_to_native(ctx, t))),
-        TypX::Boxed(_) | TypX::TypParam(_) => typ.clone(),
-        TypX::Projection { .. } => {
-            // In the non-rooted_in_typ_param case, we need typ to be normalized to a non-projection:
-            assert!(rooted_in_typ_param(typ));
-            typ.clone()
-        }
+        TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } => typ.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
@@ -249,12 +235,7 @@ pub(crate) fn coerce_expr_to_native(ctx: &Ctx, expr: &Expr) -> Expr {
                 SpannedTyped::new(&expr.span, typ, exprx)
             }
         }
-        TypX::TypParam(_) => expr.clone(),
-        TypX::Projection { .. } => {
-            // In the non-rooted_in_typ_param case, we need typ to be normalized to a non-projection:
-            assert!(rooted_in_typ_param(&expr.typ));
-            expr.clone()
-        }
+        TypX::TypParam(_) | TypX::Projection { .. } => expr.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),

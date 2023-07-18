@@ -64,12 +64,7 @@ pub(crate) fn typ_path_and_ident_to_vir_path<'tcx>(path: &Path, ident: vir::ast:
 
 // Register an alternative "friendly" paths for printing better error messages
 // or for the command-line --verify-function arguments.
-fn register_friendly_path_as_rust_name<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    verus_items: &crate::verus_items::VerusItems,
-    def_id: DefId,
-    path: &Path,
-) {
+fn register_friendly_path_as_rust_name<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId, path: &Path) {
     let hir_id = if let Some(local_id) = def_id.as_local() {
         tcx.hir().local_def_id_to_hir_id(local_id)
     } else {
@@ -100,24 +95,9 @@ fn register_friendly_path_as_rust_name<'tcx>(
             _ => {
                 // To handle cases like [T] which are not syntactically datatypes
                 // but converted into VIR datatypes.
-
                 let self_ty = tcx.type_of(owner_id.to_def_id());
-                let vir_ty = mid_ty_to_vir_ghost(
-                    tcx,
-                    verus_items,
-                    None,
-                    impll.self_ty.span,
-                    &self_ty,
-                    true,
-                    false,
-                );
-                let vir_ty = if let Ok(t) = vir_ty {
-                    t
-                } else {
-                    return;
-                };
-                match &*vir_ty.0 {
-                    TypX::Datatype(p, _typ_args, _) => Some(p.clone()),
+                match self_ty.kind() {
+                    TyKind::Slice(_) => Some(vir::def::slice_type()),
                     _ => None,
                 }
             }
@@ -154,7 +134,7 @@ pub(crate) fn def_id_to_vir_path_option<'tcx>(
     }
     let path = def_path_to_vir_path(tcx, tcx.def_path(def_id));
     if let Some(path) = &path {
-        register_friendly_path_as_rust_name(tcx, verus_items, def_id, path);
+        register_friendly_path_as_rust_name(tcx, def_id, path);
     }
     path
 }
@@ -355,7 +335,7 @@ pub(crate) fn mid_ty_simplify<'tcx>(
 pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: &crate::verus_items::VerusItems,
-    param_env_src: Option<DefId>,
+    param_env_src: DefId,
     span: Span,
     ty: &rustc_middle::ty::Ty<'tcx>,
     as_datatype: bool,
@@ -481,11 +461,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     return Ok((Arc::new(TypX::Lambda(param_typs, ret_typ)), false));
                 }
                 let typ_args = typ_args.into_iter().map(|(t, _)| t).collect();
-                let impl_paths = if let Some(param_env_src) = param_env_src {
-                    get_impl_paths(tcx, verus_items, param_env_src, did, args)
-                } else {
-                    Arc::new(vec![])
-                };
+                let impl_paths = get_impl_paths(tcx, verus_items, param_env_src, did, args);
                 let datatypex =
                     def_id_to_datatype(tcx, verus_items, did, Arc::new(typ_args), impl_paths);
                 (Arc::new(datatypex), false)
@@ -508,14 +484,20 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             (Arc::new(TypX::AnonymousClosure(args, ret, id)), false)
         }
         TyKind::Alias(rustc_middle::ty::AliasKind::Projection, t) => {
-            // Note: we could allow more uses of projection types by trying to normalize the type
-            // to a non-projection type.  Here's sketch of how this could work:
-            //   use crate::rustc_trait_selection::infer::TyCtxtInferExt;
-            //   use crate::rustc_trait_selection::traits::NormalizeExt;
-            //   let infcx = ctxt.tcx.infer_ctxt().ignoring_regions().build();
-            //   let cause = rustc_infer::traits::ObligationCause::dummy();
-            //   let at = infcx.at(&cause, rustc_middle::ty::ParamEnv::empty()); // or tcx.param_env
-            //   let norm = at.normalize(ty);
+            // First, try to normalize to a non-projection type.
+            // This can enable concrete operations on the type (e.g.
+            // arithmetic if the normalized type is int) that
+            // wouldn't be allowed if the type were left in an unnormalized form.
+            use crate::rustc_trait_selection::traits::NormalizeExt;
+            let param_env = tcx.param_env(param_env_src);
+            let infcx = tcx.infer_ctxt().ignoring_regions().build();
+            let cause = rustc_infer::traits::ObligationCause::dummy();
+            let at = infcx.at(&cause, param_env);
+            let norm = at.normalize(*ty);
+            if norm.value != *ty {
+                return t_rec(&norm.value);
+            }
+            // If normalization isn't possible, return a projection type:
             let assoc_item = tcx.associated_item(t.def_id);
             let name = Arc::new(assoc_item.name.to_string());
             // Note: this looks like it would work, but trait_item_def_id is sometimes None:
@@ -567,14 +549,16 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
 pub(crate) fn mid_ty_to_vir_datatype<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: &crate::verus_items::VerusItems,
+    param_env_src: DefId,
     span: Span,
     ty: rustc_middle::ty::Ty<'tcx>,
     allow_mut_ref: bool,
 ) -> Result<Typ, VirErr> {
-    Ok(mid_ty_to_vir_ghost(tcx, verus_items, None, span, &ty, true, allow_mut_ref)?.0)
+    Ok(mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, &ty, true, allow_mut_ref)?.0)
 }
 
-pub(crate) fn mid_ty_to_vir_param_env<'tcx>(
+// TODO: rename this back to mid_ty_to_vir
+pub(crate) fn mid_ty_to_vir<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: &crate::verus_items::VerusItems,
     param_env_src: DefId,
@@ -582,18 +566,7 @@ pub(crate) fn mid_ty_to_vir_param_env<'tcx>(
     ty: &rustc_middle::ty::Ty<'tcx>,
     allow_mut_ref: bool,
 ) -> Result<Typ, VirErr> {
-    Ok(mid_ty_to_vir_ghost(tcx, verus_items, Some(param_env_src), span, ty, false, allow_mut_ref)?
-        .0)
-}
-
-pub(crate) fn mid_ty_to_vir<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    verus_items: &crate::verus_items::VerusItems,
-    span: Span,
-    ty: &rustc_middle::ty::Ty<'tcx>,
-    allow_mut_ref: bool,
-) -> Result<Typ, VirErr> {
-    Ok(mid_ty_to_vir_ghost(tcx, verus_items, None, span, ty, false, allow_mut_ref)?.0)
+    Ok(mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, ty, false, allow_mut_ref)?.0)
 }
 
 pub(crate) fn mid_ty_const_to_vir<'tcx>(
@@ -663,6 +636,7 @@ pub(crate) fn typ_of_node<'tcx>(
     mid_ty_to_vir(
         bctx.ctxt.tcx,
         &bctx.ctxt.verus_items,
+        bctx.fun_id,
         span,
         &bctx.types.node_type(*id),
         allow_mut_ref,
@@ -676,7 +650,7 @@ pub(crate) fn typ_of_node_expect_mut_ref<'tcx>(
 ) -> Result<Typ, VirErr> {
     let ty = bctx.types.node_type(*id);
     if let TyKind::Ref(_, _tys, rustc_ast::Mutability::Mut) = ty.kind() {
-        mid_ty_to_vir(bctx.ctxt.tcx, &bctx.ctxt.verus_items, span, &ty, true)
+        mid_ty_to_vir(bctx.ctxt.tcx, &bctx.ctxt.verus_items, bctx.fun_id, span, &ty, true)
     } else {
         err_span(span, "a mutable reference is expected here")
     }
@@ -748,6 +722,7 @@ pub(crate) fn is_smt_arith<'tcx>(
 pub(crate) fn check_generic_bound<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: &crate::verus_items::VerusItems,
+    param_env_src: DefId,
     span: Span,
     trait_def_id: DefId,
     args: &Vec<rustc_middle::ty::Ty<'tcx>>,
@@ -764,7 +739,7 @@ pub(crate) fn check_generic_bound<'tcx>(
     } else {
         let vir_args = args
             .iter()
-            .map(|arg| mid_ty_to_vir(tcx, verus_items, span, arg, false))
+            .map(|arg| mid_ty_to_vir(tcx, verus_items, param_env_src, span, arg, false))
             .collect::<Result<Vec<_>, _>>()?;
         let trait_name = def_id_to_vir_path(tcx, verus_items, trait_def_id);
         Ok(Some(Arc::new(GenericBoundX::Trait(trait_name, Arc::new(vir_args)))))
@@ -886,10 +861,6 @@ pub(crate) fn check_generics_bounds<'tcx>(
 
                 let trait_def_id = trait_ref.def_id;
 
-                let mut iter = substs.types();
-                let lhs = iter.next().expect("expect lhs of trait bound");
-                let trait_params: Vec<rustc_middle::ty::Ty> = substs.types().collect();
-
                 if Some(trait_def_id) == tcx.lang_items().fn_trait()
                     || Some(trait_def_id) == tcx.lang_items().fn_mut_trait()
                     || Some(trait_def_id) == tcx.lang_items().fn_once_trait()
@@ -898,41 +869,15 @@ pub(crate) fn check_generics_bounds<'tcx>(
                     continue;
                 }
 
-                let generic_bound =
-                    check_generic_bound(tcx, verus_items, *span, trait_def_id, &trait_params)?;
-
-                match lhs.kind() {
-                    TyKind::Param(param) => {
-                        if param.name == kw::SelfUpper {
-                            // trait definitions might have more trait bounds on Self
-                            // for example `trait X : Y` might have the trait bound Y
-                            // which looks like a bound `Self: Y` here.
-                            // We currently don't support this.
-                            //
-                            // On the other hand, any functions inside a trait definition
-                            // will all have a trait bound `Self: X`. We _do_ need to support
-                            // this - that's fundamental to how traits work.
-                            if trait_def_id != def_id && Some(trait_def_id) != predicates.parent {
-                                match &generic_bound {
-                                    None => {}
-                                    _ => {
-                                        return err_span(
-                                            *span,
-                                            "Verus does not yet support trait bounds on Self",
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    _ => {
-                        return err_span(
-                            *span,
-                            "Verus does yet not support trait bounds on types that are not type parameters",
-                        );
-                    }
-                };
-
+                let trait_params: Vec<rustc_middle::ty::Ty> = substs.types().collect();
+                let generic_bound = check_generic_bound(
+                    tcx,
+                    verus_items,
+                    def_id,
+                    *span,
+                    trait_def_id,
+                    &trait_params,
+                )?;
                 if let Some(bound) = generic_bound {
                     bounds.push(bound);
                 }

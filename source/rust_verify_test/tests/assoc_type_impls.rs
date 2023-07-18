@@ -166,3 +166,17 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] assoc_normalize verus_code! {
+        trait T { type X; }
+        struct S;
+        impl T for S { type X = u8; }
+        proof fn test1(x: <S as T>::X) {
+            assert(x < 256);
+        }
+        proof fn test2(x: <S as T>::X) {
+            assert(x < 255); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
