@@ -60,12 +60,6 @@ pub proof fn lemma_auto_spec_u64_to_from_le_bytes()
 {
   reveal(spec_u64_to_le_bytes);
   reveal(spec_u64_from_le_bytes);
-  seq_magic::<u64>();
-  seq_magic::<u8>();
-  set_magic::<u64>();
-  set_magic::<u8>();
-  //TODO: Note that the one postcondition in this lemma is also present in set_magic
-  magic_isolated::<u64>();
 
   //The following assertions should be brought in by the magic lemma, yet are ignored
   assert(forall |s: Seq<u64>, n: int| 0 <= n <= s.len() ==> #[trigger] s.drop(n).len() == s.len() - n); //axiom_seq_drop_len(s, n),
