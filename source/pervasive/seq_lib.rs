@@ -659,6 +659,7 @@ pub proof fn lemma_max_of_concat(x: Seq<int>, y: Seq<int>)
     decreases
         x.len(),
 {
+    seq_magic::<int>();
     lemma_max_properties(x);
     lemma_max_properties(y);
     lemma_max_properties(x+y);
@@ -953,6 +954,7 @@ pub proof fn lemma_cardinality_of_set<A>(s: Seq<A>)
     ensures s.to_set().len() <= s.len(),
     decreases s.len(),
 {
+    seq_magic::<A>();
     if s.len() == 0 {}
     else {
         assert(s.drop_last().to_set().insert(s.last()) =~= s.to_set());
@@ -1045,6 +1047,7 @@ pub proof fn lemma_no_dup_set_cardinality<A>(s: Seq<A>)
     decreases s.len(),
 {
     // reveal(Seq::<A>::no_duplicates);
+    seq_magic::<A>();
     if s.len() == 0 {}
     else {
         assert(s =~= Seq::empty().push(s.first()).add(s.drop_first()));
@@ -1156,23 +1159,33 @@ pub proof fn lemma_flatten_length_ge_single_element_length<A>(x: Seq<Seq<A>>, i:
     }
 }
 
-/// The length of a flattened sequence of sequences x is less than or equal 
-/// to the length of x multiplied by a number greater than or equal to the
-/// length of the longest sequence in x.
-pub proof fn lemma_flatten_length_le_mul<A>(x: Seq<Seq<A>>, j: int)
-    requires
-        forall |i: int| 0 <= i < x.len() ==> (#[trigger] x[i]).len() <= j,
-    ensures
-        x.flatten_reverse().len() <= x.len() * j,
-    decreases
-        x.len(),
-{
-    if x.len() == 0 {}
-    else {
-        lemma_flatten_length_le_mul(x.drop_last(), j);
-        assert(x.drop_last().flatten_reverse().len() <= (x.len() -1) *j);
-    }
-}
+// /// The length of a flattened sequence of sequences x is less than or equal 
+// /// to the length of x multiplied by a number greater than or equal to the
+// /// length of the longest sequence in x.
+// pub proof fn lemma_flatten_length_le_mul<A>(x: Seq<Seq<A>>, j: int)
+//     requires
+//         forall |i: int| 0 <= i < x.len() ==> (#[trigger] x[i]).len() <= j,
+//     ensures
+//         x.flatten_reverse().len() <= x.len() * j,
+//     decreases
+//         x.len(),
+// {
+//     // seq_magic::<A>();
+//     // seq_magic::<Seq<A>>();
+//     // magic_isolated::<A>();
+//     // magic_isolated::<Seq<A>>();
+//     // These are already proven in seq_magic, so why do we need to spell it out here?
+//     // assert forall |s: Seq<A>, i: int, v: A, n: int|  0 <= i < n <= s.len() implies #[trigger] s.update(i,v).drop(n) == s.drop(n) by {
+//     //     axiom_seq_drop_update_commut2(s, i, v, n);
+//     // }
+//    // assert(forall |s: Seq<A>, v: A, n: int| 0 <= n <= s.len() ==> #[trigger] s.push(v).drop(n) == s.drop(n).push(v));//axiom_seq_drop_build_commut(s, v, n),
+    
+//     if x.len() == 0 {}
+//     else {
+//         lemma_flatten_length_le_mul(x.drop_last(), j);
+//         assert(x.drop_last().flatten_reverse().len() <= (x.len() -1) *j);
+//     }
+// }
 
 /// Flattening sequences of sequences in order (starting from the beginning)
 /// and in reverse order (starting from the end) results in the same sequence.

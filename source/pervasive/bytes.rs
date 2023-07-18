@@ -57,6 +57,12 @@ pub proof fn lemma_auto_spec_u64_to_from_le_bytes()
 {
   reveal(spec_u64_to_le_bytes);
   reveal(spec_u64_from_le_bytes);
+  seq_magic::<u64>();
+  seq_magic::<u8>();
+  //The following assertions should be brought in by the magic lemma, yet are ignored
+  assert(forall |s: Seq<u64>, n: int| 0 <= n <= s.len() ==> #[trigger] s.drop(n).len() == s.len() - n); //axiom_seq_drop_len(s, n),
+  assert(forall |s: Seq<u8>, n: int| 0 <= n <= s.len() ==> #[trigger] s.drop(n).len() == s.len() - n); //axiom_seq_drop_len(s, n),
+
   assert forall |x: u64|  {
     &&& #[trigger] spec_u64_to_le_bytes(x).len() == 8
     &&& spec_u64_from_le_bytes(spec_u64_to_le_bytes(x)) == x
@@ -109,7 +115,6 @@ pub proof fn lemma_auto_spec_u64_to_from_le_bytes()
       ) ==>
       s0 == (x & 0xff) && s1 == ((x >> 8) & 0xff) && s2 == ((x >> 16) & 0xff) && s3 == ((x >> 24) & 0xff) && s4 == ((x >> 32) & 0xff) && s5 == ((x >> 40) & 0xff) && s6 == ((x >> 48) & 0xff) && s7 == ((x >> 56) & 0xff)
     ) by (bit_vector);
-
     assert_seqs_equal!(spec_u64_to_le_bytes(spec_u64_from_le_bytes(s)) == s);
   }
 }
