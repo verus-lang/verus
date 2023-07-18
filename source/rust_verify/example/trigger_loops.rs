@@ -9,8 +9,8 @@ verus! {
 // ANCHOR: def_f_g
 spec fn f(x: nat, y: nat) -> bool;
 spec fn g(x: nat) -> bool;
-// ANCHOR_END: def_f_g
 spec fn h(x:nat, y: nat) -> bool;
+// ANCHOR_END: def_f_g
 spec fn j(x: nat) -> bool;
 
 proof fn quantifier_example()
