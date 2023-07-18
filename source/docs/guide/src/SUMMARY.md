@@ -57,7 +57,7 @@
     - [Structured proof by calculation](calc.md) <!--- JayB --->
     - [Proof by computation](assert_by_compute.md) <!--- Bryan --->
     - [Spinning off separate SMT queries]()
-    - [Breaking proofs into smaller pieces]() <!--- Chris --->
+    - [Breaking proofs into smaller pieces](breaking_proofs_into_pieces.md)
 - [Mutation, references, and borrowing]() <!--- Andrea --->
     - [Requires and ensures with mutable references]() <!--- Andrea --->
     - [Assertions containing mutable references]() <!--- Andrea --->
