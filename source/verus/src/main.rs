@@ -237,27 +237,29 @@ fn repo_path() -> ReportsPath {
     // Step 1: check if there's a verus/reports/.git file in the XDG cache,
     // if not so, create verus/ directory
     let cache_dir = dirs::data_local_dir()?;
-    let repo_dir = cache_dir.join("verus").join("reports");
-    if !repo_dir.clone().join(".git").is_file() {
-        std::fs::create_dir_all(repo_dir.clone())
+    let reports_dir = cache_dir.join("verus").join("reports");
+    if !reports_dir.clone().join(".git").is_file() {
+        std::fs::create_dir_all(reports_dir.clone())
             .expect("Creating verus/ directory in local data cache");
 
         std::process::Command::new("git")
-            .current_dir(&repo_dir)
+            .current_dir(&reports_dir)
             .arg("init")
             .output()
             .expect("Initializing git in local data cache");
     }
 
-    let uuid_file = repo_dir.join("userid");
+    let uuid_file = reports_dir.join("userid");
     if !uuid_file.is_file() {
         let uuid = uuid::Uuid::new_v4();
-        std::fs::write(uuid_file, uuid.to_string()).expect("Writing user id file");
+        std::fs::write(uuid_file.clone(), uuid.to_string()).expect("Writing user id file");
     }
+
+    let uuid = std::fs::read_to_string(uuid_file).expect("Reading user id file");
 
     // Step 3: project dir check/create (project = SHA256((normalized/absolute)path to root.rs)
 
-    // clone is not implemented for Args, so i grabbed the arguments here again
+    // clone is not implemented for Args, so I grabbed the arguments here again
     let new_args = std::env::args().into_iter();
 
     let rs_files = new_args.filter(|arg| arg.ends_with(".rs")).collect::<Vec<_>>();
@@ -284,7 +286,7 @@ fn repo_path() -> ReportsPath {
 
     let proj_dir = match project_name {
         Some(name) => {
-            let project_dir = repo_dir.join(name);
+            let project_dir = reports_dir.join(uuid).join(name);
             if !project_dir.is_dir() {
                 std::fs::create_dir_all(project_dir.clone())
                     .expect("failed to create project directory");
