@@ -450,11 +450,10 @@ pub proof fn axiom_set_insert_same_len<A>(s: Set<A>, a: A)
         s.contains(a) ==> #[trigger] s.insert(a).len() == s.len(),
 {}
 
-//TODO: several spec fns use this to prove termination. Can't call
 // magic lemma from spec function
 // Ported from Dafny prelude
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
+//#[verifier(broadcast_forall)]
 pub proof fn axiom_set_insert_diff_len<A>(s: Set<A>, a: A)
     ensures
         !s.contains(a) ==> #[trigger] s.insert(a).len() == s.len() + 1,
@@ -501,7 +500,6 @@ pub proof fn axiom_set_disjoint_lens<A>(a: Set<A>, b: Set<A>)
         a.disjoint(b) ==> #[trigger] (a+b).len() == a.len() + b.len(),
 {}
 
-// TODO: This axiom seems extraneous and unnecessary (actually nvm dafny uses it for lemma cardinality of sets)
 // Ported from Dafny prelude
 #[verifier(external_body)]
 //#[verifier(broadcast_forall)]
@@ -549,7 +547,7 @@ pub proof fn set_magic<A>()
         forall |s: Set<A>| (#[trigger] s.len() == 0 <==> s =~= Set::empty())
                 && (s.len() != 0 ==> exists |x: A| s.contains(x)), //axiom_set_empty_equivalency_len
         forall |s: Set<A>, a: A| s.contains(a) ==> #[trigger] s.insert(a).len() == s.len(), //axiom_set_insert_same_len
-        //forall |s: Set<A>, a: A| !(s.contains(a)) ==> #[trigger] s.insert(a).len() == s.len() + 1, //axiom_set_insert_diff_len
+        forall |s: Set<A>, a: A| !(s.contains(a)) ==> #[trigger] s.insert(a).len() == s.len() + 1, //axiom_set_insert_diff_len 
         forall |s: Set<A>, a: A| (s.contains(a) ==> (#[trigger] (s.remove(a).len()) == s.len() -1))
                 && (!s.contains(a) ==> s.len() == s.remove(a).len()), //axiom_set_remove_len_contains
         forall |a: Set<A>, b: Set<A>| a.disjoint(b) ==> #[trigger] (a+b).len() == a.len() + b.len(), //axiom_set_disjoint_lens
@@ -578,9 +576,9 @@ pub proof fn set_magic<A>()
     assert forall |s: Set<A>, a: A| s.contains(a) implies #[trigger] s.insert(a).len() == s.len() by {
         axiom_set_insert_same_len(s, a);
     }
-    // assert forall |s: Set<A>, a: A| !(s.contains(a)) implies #[trigger] s.insert(a).len() == s.len() + 1 by {
-    //     axiom_set_insert_diff_len(s,a);
-    // }
+    assert forall |s: Set<A>, a: A| !(s.contains(a)) implies #[trigger] s.insert(a).len() == s.len() + 1 by {
+        axiom_set_insert_diff_len(s,a);
+    }
     assert forall |a: Set<A>, b: Set<A>| a.disjoint(b) ==> #[trigger] (a+b).len() == a.len() + b.len() by {
         axiom_set_disjoint_lens(a, b);
     }
@@ -592,15 +590,6 @@ pub proof fn set_magic<A>()
     }
     assert forall |a: Set<A>, b: Set<A>| #[trigger] a.difference(b).len() == a.len() - a.intersect(b).len() by {
         axiom_set_difference_len(a,b);
-    }
-}
-
-pub proof fn magic_isolated<A>()
-    ensures
-        forall |a: Set<A>, b: Set<A>| a.disjoint(b) ==> #[trigger] (a+b).len() == a.len() + b.len(), //axiom_set_disjoint_lens
-{
-    assert forall |a: Set<A>, b: Set<A>| a.disjoint(b) ==> #[trigger] (a+b).len() == a.len() + b.len() by {
-        axiom_set_disjoint_lens(a, b);
     }
 }
 

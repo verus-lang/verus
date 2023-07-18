@@ -66,7 +66,8 @@ impl<A> Set<A> {
             total_ordering(r),
             self.len() >0,
         decreases
-            self.len(),
+            self.len()
+        via Self::prove_decrease_min_unique
     {
         if self.len() == 1 {self.choose()}
         else {
@@ -76,6 +77,12 @@ impl<A> Set<A> {
         }
     }
 
+    #[via_fn]
+    proof fn prove_decrease_min_unique(self, r: FnSpec(A,A) -> bool) {
+        set_magic::<A>();
+    }
+
+
     /// Any totally-ordered set contains a unique maximal (equivalently, greatest) element.
     /// Returns an arbitrary value if r is not a total ordering
     pub open spec fn find_unique_maximal(self, r: FnSpec(A,A) -> bool) -> A 
@@ -83,7 +90,7 @@ impl<A> Set<A> {
             total_ordering(r),
             self.len() >0,
         decreases
-            self.len(),
+            self.len() via Self::prove_decrease_max_unique
     {
         if self.len() == 1 {self.choose()}
         else {
@@ -91,6 +98,11 @@ impl<A> Set<A> {
             let max = self.remove(x).find_unique_maximal(r);
             if r(x,max) {max} else {x}
         }
+    }
+
+    #[via_fn]
+    proof fn prove_decrease_max_unique(self, r: FnSpec(A,A) -> bool) {
+        set_magic::<A>();
     }
 
     // pub open spec fn to_multiset(self) -> Multiset<A> {
@@ -121,6 +133,8 @@ pub proof fn lemma_singleton_size<A>(s: Set<A>)
     set_magic::<A>();
     let elt = choose |elt: A| s.contains(elt);
     assert(s.remove(elt).insert(elt) =~= s);
+    assert(s.remove(elt) =~= Set::empty());
+    
 }
 
 /// The size of a union of two sets is less than or equal to the size of
