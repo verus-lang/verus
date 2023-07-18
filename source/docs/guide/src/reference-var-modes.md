@@ -121,9 +121,6 @@ fn test() {
 
     // From a proof block:
     proof { example(x, y); }
-
-    // Or outside a proof block:
-    example(Tracked(x), Ghost(y));
 }
 ```
 

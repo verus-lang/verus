@@ -198,6 +198,16 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern) {
     }
 }
 
+pub(crate) fn expr_visitor_traverse<MF>(expr: &Expr, map: &mut VisitorScopeMap, mf: &mut MF)
+where
+    MF: FnMut(&mut VisitorScopeMap, &Expr) -> (),
+{
+    let _ = expr_visitor_dfs::<(), _>(expr, map, &mut |scope_map, expr| {
+        mf(scope_map, expr);
+        VisitorControlFlow::Recurse
+    });
+}
+
 pub(crate) fn expr_visitor_check<E, MF>(expr: &Expr, mf: &mut MF) -> Result<(), E>
 where
     MF: FnMut(&VisitorScopeMap, &Expr) -> Result<(), E>,
@@ -338,7 +348,7 @@ where
                     }
                     expr_visitor_control_flow!(expr_visitor_dfs(body, map, mf));
                 }
-                ExprX::Assign { init_not_mut: _, lhs: e1, rhs: e2 } => {
+                ExprX::Assign { init_not_mut: _, lhs: e1, rhs: e2, op: _ } => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
                     expr_visitor_control_flow!(expr_visitor_dfs(e2, map, mf));
                 }
@@ -353,7 +363,7 @@ where
                 ExprX::AssertAssume { is_assume: _, expr: e1 } => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
                 }
-                ExprX::Forall { vars, require, ensure, proof } => {
+                ExprX::AssertBy { vars, require, ensure, proof } => {
                     map.push_scope(true);
                     for binder in vars.iter() {
                         let _ = map.insert(binder.name.clone(), binder.a.clone());
@@ -750,10 +760,10 @@ where
             let body = map_expr_visitor_env(body, map, env, fe, fs, ft)?;
             ExprX::WithTriggers { triggers, body }
         }
-        ExprX::Assign { init_not_mut, lhs: e1, rhs: e2 } => {
+        ExprX::Assign { init_not_mut, lhs: e1, rhs: e2, op } => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             let expr2 = map_expr_visitor_env(e2, map, env, fe, fs, ft)?;
-            ExprX::Assign { init_not_mut: *init_not_mut, lhs: expr1, rhs: expr2 }
+            ExprX::Assign { init_not_mut: *init_not_mut, lhs: expr1, rhs: expr2, op: *op }
         }
         ExprX::Fuel(path, fuel) => ExprX::Fuel(path.clone(), *fuel),
         ExprX::RevealString(path) => ExprX::RevealString(path.clone()),
@@ -764,7 +774,7 @@ where
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             ExprX::AssertAssume { is_assume: *is_assume, expr: expr1 }
         }
-        ExprX::Forall { vars, require, ensure, proof } => {
+        ExprX::AssertBy { vars, require, ensure, proof } => {
             let vars =
                 vec_map_result(&**vars, |x| x.map_result(|t| map_typ_visitor_env(t, env, ft)))?;
             map.push_scope(true);
@@ -775,7 +785,7 @@ where
             let ensure = map_expr_visitor_env(ensure, map, env, fe, fs, ft)?;
             let proof = map_expr_visitor_env(proof, map, env, fe, fs, ft)?;
             map.pop_scope();
-            ExprX::Forall { vars: Arc::new(vars), require, ensure, proof }
+            ExprX::AssertBy { vars: Arc::new(vars), require, ensure, proof }
         }
         ExprX::AssertQuery { requires, ensures, proof, mode } => {
             let requires = Arc::new(vec_map_result(requires, |e| {

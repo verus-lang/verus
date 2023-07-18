@@ -151,3 +151,18 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] assoc_poly_struct_member verus_code! {
+        trait T { type X; }
+        struct S<A: T>(A::X);
+        struct Q;
+        impl T for Q { type X = u8; }
+        proof fn test1(s: S<Q>) {
+            assert(s.0 < 256);
+        }
+        proof fn test2(s: S<Q>) {
+            assert(s.0 < 255); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

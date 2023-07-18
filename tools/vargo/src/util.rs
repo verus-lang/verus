@@ -1,4 +1,4 @@
-// The code in this file is copied from https://github.com/rust-lang/cargo/blob/cee088b0db01076deb11c037fe8b64b238b005a2/src/cargo/util/paths.rs#L183-L217
+// Some of the code in this file is copied from https://github.com/rust-lang/cargo/blob/cee088b0db01076deb11c037fe8b64b238b005a2/src/cargo/util/paths.rs#L183-L217
 // Cargo is primarily distributed under the terms of both the MIT license and the Apache License (Version 2.0).
 // See https://github.com/rust-lang/cargo/blob/cee088b0db01076deb11c037fe8b64b238b005a2/LICENSE-APACHE
 // and https://github.com/rust-lang/cargo/blob/cee088b0db01076deb11c037fe8b64b238b005a2/LICENSE-MIT
@@ -67,28 +67,43 @@ pub fn mtime_recursive(path: &Path) -> Result<FileTime, String> {
     Ok(max_meta)
 }
 
-pub fn version_info(root: &std::path::PathBuf) -> Result<String, String> {
+// ============================================================================
+
+pub struct VersionInfo {
+    pub version: String,
+    pub sha: String,
+}
+
+pub fn version_info(root: &std::path::PathBuf) -> Result<VersionInfo, String> {
     fn io_err_to_string(err: std::io::Error) -> String {
         format!("cannot obtain version info from git ({})", err)
     }
 
     // assumes the verus executable gets the .git file for verus repo
-    let rev_parse_output = std::process::Command::new("git")
-        .current_dir(&root)
-        .args(&["rev-parse", "--short=7", "HEAD"])
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .map_err(io_err_to_string)?
-        .wait_with_output()
-        .map_err(io_err_to_string)?;
-    rev_parse_output
-        .status
-        .success()
-        .then(|| ())
-        .ok_or(format!("git returned error code"))?;
-    let sha = String::from_utf8(rev_parse_output.stdout)
-        .map_err(|x| format!("commit sha is invalid utf8, {}", x))?;
-    let sha = sha.trim();
+    fn rev_parse(root: &std::path::PathBuf, short: bool) -> Result<String, String> {
+        let mut rev_parse_cmd = std::process::Command::new("git");
+        rev_parse_cmd.current_dir(root).args(&["rev-parse"]);
+        if short {
+            rev_parse_cmd.args(&["--short=7"]);
+        }
+        rev_parse_cmd.args(&["HEAD"]);
+        let rev_parse_output = rev_parse_cmd
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .map_err(io_err_to_string)?
+            .wait_with_output()
+            .map_err(io_err_to_string)?;
+        rev_parse_output
+            .status
+            .success()
+            .then(|| ())
+            .ok_or(format!("git returned error code"))?;
+        let sha = String::from_utf8(rev_parse_output.stdout)
+            .map_err(|x| format!("commit sha is invalid utf8, {}", x))?;
+        Ok(sha.trim().to_owned())
+    }
+    let sha_short = rev_parse(&root, true)?;
+    let sha_full = rev_parse(&root, false)?;
 
     let date_info_output = std::process::Command::new("git")
         .current_dir(&root)
@@ -128,5 +143,8 @@ pub fn version_info(root: &std::path::PathBuf) -> Result<String, String> {
     } else {
         ".dirty"
     };
-    Ok(format!("0.{year}.{month}.{day}.{sha}{dirty}"))
+    Ok(VersionInfo {
+        version: format!("0.{year}.{month}.{day}.{sha_short}{dirty}"),
+        sha: sha_full,
+    })
 }

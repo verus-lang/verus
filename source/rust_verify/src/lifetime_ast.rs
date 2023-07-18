@@ -50,7 +50,7 @@ pub(crate) enum TypX {
 }
 
 pub(crate) type Pattern = Box<(Span, PatternX)>;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) enum PatternX {
     Wildcard,
     Binding(Id, Mutability),
@@ -65,7 +65,7 @@ pub(crate) enum PatternX {
 // and primitive types are uninteresting.
 // So we don't need most Unary, Binary operators.
 pub(crate) type Exp = Box<(Span, ExpX)>;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) enum ExpX {
     Panic,
     Var(Id),
@@ -94,7 +94,7 @@ pub(crate) enum ExpX {
 }
 
 pub(crate) type Stm = Box<(Span, StmX)>;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) enum StmX {
     Expr(Exp),
     Let(Pattern, Typ, Option<Exp>),

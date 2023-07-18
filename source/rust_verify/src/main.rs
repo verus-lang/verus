@@ -22,8 +22,6 @@ fn os_setup() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-const VARGO_TOOLCHAIN: Option<&'static str> = option_env!("VARGO_TOOLCHAIN");
-
 pub fn main() {
     let mut internal_args = std::env::args();
     let internal_program = internal_args.next().unwrap();
@@ -104,11 +102,14 @@ pub fn main() {
     let (our_args, rustc_args) = rust_verify::config::parse_args_with_imports(&program, args, vstd);
 
     if our_args.version {
-        println!("Verus");
-        println!("  Platform: {}_{}", std::env::consts::OS, std::env::consts::ARCH);
-        println!("  Version: {}", build_info.version);
-        println!("  Profile: {}", build_info.profile.to_string());
-        println!("  Toolchain: {}", VARGO_TOOLCHAIN.unwrap_or("unkown"));
+        if our_args.output_json {
+            println!(
+                "{}",
+                serde_json::ser::to_string_pretty(&build_info.to_json()).expect("invalid json")
+            );
+        } else {
+            println!("{}", build_info);
+        }
         return;
     }
 
@@ -125,6 +126,33 @@ pub fn main() {
     }
 
     let pervasive_path = our_args.pervasive_path.clone();
+
+    if our_args.record {
+        let mut args: Vec<String> = std::env::args().collect();
+        args.remove(0);
+
+        let index = args.iter().position(|x| *x == "--record").unwrap();
+        args.remove(index);
+
+        if let Some(verusroot) = &verus_root {
+            let exe = verusroot.path.join(if cfg!(windows) {
+                "error_report.exe"
+            } else {
+                "error_report"
+            });
+            if !exe.exists() {
+                panic!("error_report binary not found");
+            }
+            let mut res = std::process::Command::new(exe)
+                .arg(&verusroot.path)
+                .args(args)
+                .spawn()
+                .expect("running error_report");
+
+            res.wait().expect("error_report failed to run");
+        }
+        return;
+    }
 
     std::env::set_var("RUSTC_BOOTSTRAP", "1");
 
@@ -200,7 +228,10 @@ pub fn main() {
 
         if verifier.args.output_json {
             let mut times = serde_json::json!({
-                "verus-build-profile" : build_info.profile.to_string(),
+                "verus-build": {
+                    "profile": build_info.profile.to_string(),
+                    "version": build_info.version.to_string(),
+                },
                 "num-threads": verifier.num_threads,
                 "total": total_time.as_millis(),
                 "estimated-cpu-time": if verifier.num_threads > 1 {total_cpu_time} else {total_time.as_millis()},
@@ -260,9 +291,8 @@ pub fn main() {
 
             Some(times)
         } else {
-            println!("verus-build-profile: {}", build_info.profile);
-            println!("verus-build-version: {}", build_info.version);
-            println!("num-threads: {}", verifier.num_threads);
+            println!("(use --output-json for machine-readable output)");
+            println!("verus-build-info\n{}", build_info);
             print!("total-time:      {:>10} ms", total_time.as_millis());
             if verifier.num_threads > 1 {
                 println!("    (estimated total cpu time {} ms)", total_cpu_time);
@@ -375,14 +405,7 @@ pub fn main() {
         if let Some(times_ms) = times_ms_json_data {
             out.insert("times-ms".to_string(), times_ms);
         }
-        out.insert(
-            "verus-build-profile".to_string(),
-            serde_json::Value::String(build_info.profile.to_string()),
-        );
-        out.insert(
-            "verus-build-version".to_string(),
-            serde_json::Value::String(build_info.version.to_string()),
-        );
+        out.append(&mut build_info.to_json().as_object_mut().unwrap());
         println!("{}", serde_json::ser::to_string_pretty(&out).expect("invalid json"));
     }
 
