@@ -8,7 +8,7 @@ written too liberally (i.e., they trigger too often), then the SMT solver may ge
 facts to sort through efficiently.  To determine if this is the case for your Verus code, you
 can use the built-in quantifier profiler.
 
-As a concrete example, suppose we have the following two functions defined:
+As a concrete example, suppose we have the following three functions defined:
 
 ```rust
 {{#include ../../../rust_verify/example/trigger_loops.rs:def_f_g}}
