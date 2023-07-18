@@ -398,14 +398,7 @@ pub proof fn lemma_disjoint_union_size<K,V>(m1: Map<K,V>, m2: Map<K,V>)
         m1.union_prefer_right(m2).dom().len() == m1.dom().len() + m2.dom().len(),
 {
     let u = m1.union_prefer_right(m2);
-    //assert((m1.dom()+m2.dom()).difference(m1.dom()) == m2.dom() && ((m1.dom()+m2.dom())).difference(m2.dom()) == m1.dom());
-    //assert(forall |k: K| m1.dom().contains(k) || m2.dom().contains(k) ==> u.dom().contains(k));
-    //assert(forall |k: K| m1.dom().contains(k) ==> !m2.dom().contains(k));
-    //assert(forall |k: K| m2.dom().contains(k) ==> !m1.dom().contains(k));
-    //assert(forall |k: K| !(m1.dom().contains(k) && m2.dom().contains(k)));
-   // assert(forall |k: K| !m1.dom().contains(k) || !m2.dom().contains(k));
     assert(u.remove_keys(m1.dom()).dom() =~= m2.dom());
-    //assert(u.remove_keys(m2.dom()).dom() =~= m1.dom());
     assert(u.remove_keys(m1.dom()).dom().len() == u.dom().len() - m1.dom().len()) by {
         lemma_remove_keys_len(u, m1.dom());
     }
@@ -521,7 +514,7 @@ pub proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
 // TODO: might not have brought this over correctly
 // Ported from Dafny prelude
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
+//#[verifier(broadcast_forall)]
 pub proof fn axiom_map_new_domain<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V)
     ensures
         #[trigger] Map::<K,V>::new(fk,fv).dom() == Set::<K>::new(|k: K| fk(k))
@@ -530,7 +523,7 @@ pub proof fn axiom_map_new_domain<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V
 // TODO: might not have brought this over correctly
 // Ported from Dafny prelude
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
+//#[verifier(broadcast_forall)]
 pub proof fn axiom_map_new_values<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V)
     ensures
         #[trigger] Map::<K,V>::new(fk,fv).values() == Set::<V>::new(|v: V| exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),
@@ -674,6 +667,24 @@ macro_rules! assert_maps_equal_internal {
             ::builtin::assert_(::builtin::ext_equal(m1, m2));
         });
     }
+}
+
+// auto style axiom bundle
+pub proof fn map_magic<K,V>()
+    ensures
+    forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| #[trigger] Map::<K,V>::new(fk,fv).dom()
+            == Set::<K>::new(|k: K| fk(k)), //axiom_map_new_domain
+    forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| #[trigger] Map::<K,V>::new(fk,fv).values() 
+            == Set::<V>::new(|v: V| exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),  //axiom_map_new_values
+{
+    assert forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| 
+        #[trigger] Map::<K,V>::new(fk,fv).dom() == Set::<K>::new(|k: K| fk(k)) by {
+            axiom_map_new_domain(fk, fv);
+        }
+    assert forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| #[trigger] Map::<K,V>::new(fk,fv).values() 
+        == Set::<V>::new(|v: V| exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v) by {
+            axiom_map_new_values(fk, fv);
+        }
 }
 
 #[doc(hidden)]
