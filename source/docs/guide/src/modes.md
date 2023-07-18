@@ -32,6 +32,6 @@ the three modes:
 
 |                        | spec code      | proof code       | exec code        |
 |------------------------|----------------|------------------|------------------|
-| can call `spec` code   | yes            | yes              | yes              |
-| can call `proof` code  | no             | yes              | yes              |
-| can call `exec` code   | no             | no               | yes              |
+| can contain `spec` code, call `spec` functions   | yes            | yes              | yes              |
+| can contain `proof` code, call `proof` functions | no             | yes              | yes              |
+| can contain `exec` code, call `exec` functions   | no             | no               | yes              |
