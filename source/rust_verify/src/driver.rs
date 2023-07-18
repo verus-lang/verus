@@ -124,7 +124,6 @@ pub(crate) fn run_with_erase_macro_compile(
     build_test_mode: bool,
 ) -> Result<(), ErrorGuaranteed> {
     let mut callbacks = CompilerCallbacksEraseMacro { do_compile: compile };
-    rustc_args.extend(["--cfg", "verus_macro_erase_ghost"].map(|s| s.to_string()));
     let allow = &[
         "unused_imports",
         "unused_variables",
@@ -274,7 +273,8 @@ where
     }
 
     let time0 = Instant::now();
-
+    let mut rustc_args_verify = rustc_args.clone();
+    rustc_args_verify.extend(["--cfg", "verus_macro_keep_ghost"].map(|s| s.to_string()));
     // Build VIR and run verification
     let mut verifier_callbacks = VerifierCallbacksEraseMacro {
         verifier,
@@ -282,12 +282,12 @@ where
         rust_end_time: None,
         lifetime_start_time: None,
         lifetime_end_time: None,
-        rustc_args: rustc_args.clone(),
+        rustc_args: rustc_args_verify.clone(),
         file_loader: Some(Box::new(file_loader.clone())),
         build_test_mode,
     };
     let status = run_compiler(
-        rustc_args.clone(),
+        rustc_args_verify.clone(),
         true,
         false,
         &mut verifier_callbacks,
