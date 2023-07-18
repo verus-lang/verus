@@ -150,7 +150,7 @@ impl Visitor {
         let mut stmts: Vec<Stmt> = Vec::new();
         let mut unwrap_ghost_tracked: Vec<Stmt> = Vec::new();
 
-        attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
+        // attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
 
         for arg in &mut sig.inputs {
             match (arg.tracked, &mut arg.kind) {
@@ -412,7 +412,7 @@ impl Visitor {
         publish: &mut Publish,
         mode: &mut FnMode,
     ) {
-        attrs.push(mk_verus_attr(span, quote! { verus_macro }));
+        // attrs.push(mk_verus_attr(span, quote! { verus_macro }));
 
         let publish_attrs = match (vis, &publish) {
             (Some(Visibility::Inherited), _) => vec![],
@@ -2404,7 +2404,7 @@ fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let adjacent = |s1: Span, s2: Span| {
         let l1 = s1.end();
         let l2 = s2.start();
-        s1.source_file() == s2.source_file() && l1 == l2
+        s1.source_file() == s2.source_file() && l1.eq(&l2)
     };
     for i in 0..(if tokens.len() >= 2 { tokens.len() - 2 } else { 0 }) {
         let t0 = pun(&tokens[i]);
