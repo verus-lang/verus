@@ -10,13 +10,9 @@ use crate::view::*;
 use crate::seq::*;
 use crate::seq_lib::*;
 use crate::slice::*;
-use crate::set::set_magic;
-use crate::set::magic_isolated;
-
 
 verus! {
 
-#[verifier(opaque)]
 pub closed spec fn spec_u64_to_le_bytes(x: u64) -> Seq<u8>
 {
   seq![
@@ -31,7 +27,6 @@ pub closed spec fn spec_u64_to_le_bytes(x: u64) -> Seq<u8>
   ]
 }
 
-#[verifier(opaque)]
 pub closed spec fn spec_u64_from_le_bytes(s: Seq<u8>) -> u64
   recommends s.len() == 8
 {
@@ -45,7 +40,6 @@ pub closed spec fn spec_u64_from_le_bytes(s: Seq<u8>) -> u64
   (s[7] as u64) << 56
 }
 
-#[verifier(spinoff_prover)]
 pub proof fn lemma_auto_spec_u64_to_from_le_bytes()
   ensures
     forall |x: u64|
@@ -58,18 +52,10 @@ pub proof fn lemma_auto_spec_u64_to_from_le_bytes()
       #![trigger spec_u64_to_le_bytes(spec_u64_from_le_bytes(s))]
       s.len() == 8 ==> spec_u64_to_le_bytes(spec_u64_from_le_bytes(s)) == s,
 {
-  reveal(spec_u64_to_le_bytes);
-  reveal(spec_u64_from_le_bytes);
-
-  //The following assertions should be brought in by the magic lemma, yet are ignored
-  assert(forall |s: Seq<u64>, n: int| 0 <= n <= s.len() ==> #[trigger] s.drop(n).len() == s.len() - n); //axiom_seq_drop_len(s, n),
-  assert(forall |s: Seq<u8>, n: int| 0 <= n <= s.len() ==> #[trigger] s.drop(n).len() == s.len() - n); //axiom_seq_drop_len(s, n),
-
   assert forall |x: u64|  {
     &&& #[trigger] spec_u64_to_le_bytes(x).len() == 8
     &&& spec_u64_from_le_bytes(spec_u64_to_le_bytes(x)) == x
   } by {
-    magic_isolated::<u64>();
     let s = spec_u64_to_le_bytes(x);
     assert({
       &&& x & 0xff < 256
@@ -118,6 +104,7 @@ pub proof fn lemma_auto_spec_u64_to_from_le_bytes()
       ) ==>
       s0 == (x & 0xff) && s1 == ((x >> 8) & 0xff) && s2 == ((x >> 16) & 0xff) && s3 == ((x >> 24) & 0xff) && s4 == ((x >> 32) & 0xff) && s5 == ((x >> 40) & 0xff) && s6 == ((x >> 48) & 0xff) && s7 == ((x >> 56) & 0xff)
     ) by (bit_vector);
+
     assert_seqs_equal!(spec_u64_to_le_bytes(spec_u64_from_le_bytes(s)) == s);
   }
 }
