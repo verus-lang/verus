@@ -75,6 +75,7 @@ pub proof fn lemma_auto_spec_u64_to_from_le_bytes()
     &&& #[trigger] spec_u64_to_le_bytes(x).len() == 8
     &&& spec_u64_from_le_bytes(spec_u64_to_le_bytes(x)) == x
   } by {
+    magic_isolated::<u64>();
     let s = spec_u64_to_le_bytes(x);
     assert({
       &&& x & 0xff < 256
