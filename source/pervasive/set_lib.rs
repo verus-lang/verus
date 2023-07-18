@@ -10,6 +10,7 @@ use crate::set::*;
 use crate::multiset::Multiset;
 #[allow(unused_imports)]
 use crate::relations::*;
+//use crate::set::set_magic;
 
 
 verus! {
@@ -117,8 +118,9 @@ pub proof fn lemma_singleton_size<A>(s: Set<A>)
     ensures
         s.len() == 1
 {
-     let elt = choose |elt: A| s.contains(elt);
-     assert(s.remove(elt).insert(elt) =~= s);
+    set_magic::<A>();
+    let elt = choose |elt: A| s.contains(elt);
+    assert(s.remove(elt).insert(elt) =~= s);
 }
 
 /// The size of a union of two sets is less than or equal to the size of
@@ -155,6 +157,7 @@ pub proof fn lemma_len_union_ind<A>(s1: Set<A>, s2: Set<A>)
     decreases
         s2.len(),
 {
+    set_magic::<A>();
     if s2.len() == 0 {}
     else {
         let y = choose |y: A| s2.contains(y);
@@ -260,6 +263,7 @@ pub proof fn lemma_subset_equality<A>(x: Set<A>, y: Set<A>)
     decreases 
         x.len()
 {
+    set_magic::<A>();
     if x =~= Set::<A>::empty() {
     } else {
         let e = x.choose();
@@ -281,6 +285,8 @@ pub proof fn lemma_map_size<A,B>(x: Set<A>, y: Set<B>, f: FnSpec(A) -> B)
         x.len() == y.len(), 
     decreases x.len(),
 {
+    set_magic::<A>();
+    set_magic::<B>();
     if x.len() != 0 {
         let a = x.choose();
         lemma_map_size(x.remove(a), y.remove(f(a)), f);
@@ -374,6 +380,7 @@ pub proof fn find_unique_minimal_ensures<A>(s: Set<A>, r: FnSpec(A,A) -> bool)
     decreases
         s.len(),
 {
+    set_magic::<A>();
     if s.len() == 1 {
         let x = choose |x: A| s.contains(x);
         assert(s.remove(x) =~= Set::<A>::empty());
@@ -443,6 +450,7 @@ pub proof fn find_unique_maximal_ensures<A>(s: Set<A>, r: FnSpec(A,A) -> bool)
     decreases
         s.len(),
 {
+    set_magic::<A>();
     if s.len() == 1 {
         let x = choose |x: A| s.contains(x);
         assert(s.remove(x) =~= Set::<A>::empty());

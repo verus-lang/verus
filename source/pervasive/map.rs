@@ -6,6 +6,8 @@ use builtin_macros::*;
 use crate::pervasive::*;
 use crate::set::*;
 use core::marker;
+use crate::set::set_magic;
+
 
 verus! {
 
@@ -377,26 +379,12 @@ pub proof fn lemma_remove_keys_len<K,V>(m: Map<K,V>, keys: Set<K>)
     decreases
         keys.len(),
 {
+    set_magic::<K>();
     if keys.len() > 0 {
         let key = keys.choose();
-        //assert(keys.contains(key));
-        //assert(m.dom().contains(key));
         let val = m[key];
-       // assert(m.remove(key).insert(key,val) =~= m);
-        //assert(keys.remove(key).insert(key) =~= keys);
-        //assert(m.remove(key).dom() =~= m.dom().remove(key));
-        //assert(m.dom().len() == 1 + m.dom().remove(key).len());
         lemma_remove_keys_len(m.remove(key),keys.remove(key));
-        //assert(m.remove(key).remove_keys(keys.remove(key)).dom().len() == m.remove(key).dom().len() - keys.remove(key).len());
-        
-       // assert(m.remove(key).remove_keys(keys.remove(key)).insert(key,val).dom().len() == m.remove(key).remove_keys(keys.remove(key)).dom().len() + 1);
-        
-        //assert(m.remove_keys(keys).dom().len() == m.remove(key).remove_keys(keys.remove(key)).dom().len());
-        //assert(m.remove(key).insert(key, val).dom().len() == m.remove(key).dom().len() + 1);
-        //assert(keys.remove(key).insert(key).len() == keys.remove(key).len() +1);
-        
         assert(m.remove_keys(keys).remove(key) =~= m.remove_keys(keys));
-       // assert(m.remove(key).remove_keys(keys) =~= m.remove_keys(keys));
     }
     else {
         assert(m.remove_keys(keys) =~= m);

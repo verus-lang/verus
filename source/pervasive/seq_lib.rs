@@ -10,9 +10,8 @@ use crate::seq::*;
 use crate::set::Set;
 #[allow(unused_imports)]
 use crate::multiset::Multiset;
+use crate::set::set_magic;
 
-#[allow(unused_imports)]
-use crate::calc_macro::*;
 
 verus! {
 
@@ -955,6 +954,7 @@ pub proof fn lemma_cardinality_of_set<A>(s: Seq<A>)
     decreases s.len(),
 {
     seq_magic::<A>();
+    set_magic::<A>();
     if s.len() == 0 {}
     else {
         assert(s.drop_last().to_set().insert(s.last()) =~= s.to_set());

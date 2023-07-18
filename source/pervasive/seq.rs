@@ -751,14 +751,6 @@ pub proof fn seq_magic<A>()
     }
 }
 
-// pub proof fn magic_isolated<A>()
-//     ensures
-//         forall |s: Seq<A>, n: int| n==0 ==> #[trigger] s.drop(n) == s,//axiom_seq_drop_nothing(s, n),
-// {
-   
-// }
-
-
 #[doc(hidden)]
 pub use seq_internal;
 pub use seq;
