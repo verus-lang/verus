@@ -67,6 +67,12 @@ while the latter assumes that f's parameters are int (as is the case for datatyp
 Note that the latter two cases lead to triggers involving "Unbox(x)", not just x.
 This can lead to the completeness problems of (3).
 Therefore, the expression Unbox(Box(1)) explicitly introduces a superfluous Unbox to handle (3).
+
+Note: in some cases, we can also support int quantifier variables x,
+for the purpose of triggering on arithmetic expressions,
+as long as *all* the expressions in all the triggers use x for arithmetic.
+For example, #[trigger] g(f(x), x + 1) would not be allowed,
+because x is used both for f and for +.
 */
 
 use crate::ast::{
@@ -88,8 +94,10 @@ pub type MonoTyps = Arc<Vec<MonoTyp>>;
 pub enum MonoTypX {
     Bool,
     Int(IntRange),
-    Datatype(Path, MonoTyps),
+    Char,
     StrSlice,
+    Datatype(Path, MonoTyps),
+    Decorate(crate::ast::TypDecoration, MonoTyp),
 }
 
 struct State {
@@ -102,6 +110,7 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
     match &**typ {
         TypX::Bool => Some(Arc::new(MonoTypX::Bool)),
         TypX::Int(range) => Some(Arc::new(MonoTypX::Int(*range))),
+        TypX::Char => Some(Arc::new(MonoTypX::Char)),
         TypX::StrSlice => Some(Arc::new(MonoTypX::StrSlice)),
         TypX::Datatype(path, typs, _) => {
             let mut monotyps: Vec<MonoTyp> = Vec::new();
@@ -114,7 +123,7 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
             }
             Some(Arc::new(MonoTypX::Datatype(path.clone(), Arc::new(monotyps))))
         }
-        TypX::Decorate(_, t) => typ_as_mono(t),
+        TypX::Decorate(d, t) => typ_as_mono(t).map(|m| Arc::new(MonoTypX::Decorate(*d, m))),
         _ => None,
     }
 }
@@ -123,11 +132,13 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
     match &**monotyp {
         MonoTypX::Bool => Arc::new(TypX::Bool),
         MonoTypX::Int(range) => Arc::new(TypX::Int(*range)),
+        MonoTypX::Char => Arc::new(TypX::Char),
+        MonoTypX::StrSlice => Arc::new(TypX::StrSlice),
         MonoTypX::Datatype(path, typs) => {
             let typs = vec_map(&**typs, monotyp_to_typ);
             Arc::new(TypX::Datatype(path.clone(), Arc::new(typs), Arc::new(vec![])))
         }
-        MonoTypX::StrSlice => Arc::new(TypX::StrSlice),
+        MonoTypX::Decorate(d, typ) => Arc::new(TypX::Decorate(*d, monotyp_to_typ(typ))),
     }
 }
 
@@ -466,13 +477,15 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             mk_expr(ExprX::Multi(MultiOp::Chained(ops.clone()), Arc::new(es)))
         }
         ExprX::Quant(quant, binders, e1) => {
+            let natives = crate::triggers::predict_native_quant_vars(binders, &vec![e1]);
             let mut bs: Vec<Binder<Typ>> = Vec::new();
             state.types.push_scope(true);
             for binder in binders.iter() {
-                let typ = if quant.boxed_params {
-                    coerce_typ_to_poly(ctx, &binder.a)
-                } else {
+                let native = natives.contains(&binder.name);
+                let typ = if native || !quant.boxed_params {
                     coerce_typ_to_native(ctx, &binder.a)
+                } else {
+                    coerce_typ_to_poly(ctx, &binder.a)
                 };
                 let _ = state.types.insert(binder.name.clone(), typ.clone());
                 bs.push(binder.new_a(typ));
@@ -565,14 +578,17 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let body = poly_expr(ctx, state, body);
             mk_expr(ExprX::WithTriggers { triggers, body })
         }
-        ExprX::Assign { init_not_mut, lhs: e1, rhs: e2 } => {
+        ExprX::Assign { init_not_mut, lhs: e1, rhs: e2, op } => {
+            if op.is_some() {
+                panic!("op should already be removed");
+            }
             let e1 = poly_expr(ctx, state, e1);
             let e2 = if typ_is_poly(ctx, &e1.typ) {
                 coerce_expr_to_poly(ctx, &poly_expr(ctx, state, e2))
             } else {
                 coerce_expr_to_native(ctx, &poly_expr(ctx, state, e2))
             };
-            mk_expr(ExprX::Assign { init_not_mut: *init_not_mut, lhs: e1, rhs: e2 })
+            mk_expr(ExprX::Assign { init_not_mut: *init_not_mut, lhs: e1, rhs: e2, op: *op })
         }
         ExprX::AssertCompute(e, m) => mk_expr(ExprX::AssertCompute(poly_expr(ctx, state, e), *m)),
         ExprX::Fuel(..) => expr.clone(),
@@ -582,11 +598,17 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let e1 = coerce_expr_to_native(ctx, &poly_expr(ctx, state, e1));
             mk_expr(ExprX::AssertAssume { is_assume: *is_assume, expr: e1 })
         }
-        ExprX::Forall { vars, require, ensure, proof } => {
+        ExprX::AssertBy { vars, require, ensure, proof } => {
             let mut bs: Vec<Binder<Typ>> = Vec::new();
             state.types.push_scope(true);
+            let natives = crate::triggers::predict_native_quant_vars(vars, &vec![require, ensure]);
             for binder in vars.iter() {
-                let typ = coerce_typ_to_poly(ctx, &binder.a);
+                let native = natives.contains(&binder.name);
+                let typ = if native {
+                    coerce_typ_to_native(ctx, &binder.a)
+                } else {
+                    coerce_typ_to_poly(ctx, &binder.a)
+                };
                 let _ = state.types.insert(binder.name.clone(), typ.clone());
                 bs.push(binder.new_a(typ));
             }
@@ -595,7 +617,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let proof = poly_expr(ctx, state, proof);
             state.types.pop_scope();
             let vars = Arc::new(bs);
-            mk_expr(ExprX::Forall { vars, require, ensure, proof })
+            mk_expr(ExprX::AssertBy { vars, require, ensure, proof })
         }
         ExprX::AssertQuery { requires, ensures, proof, mode } => {
             state.types.push_scope(true);

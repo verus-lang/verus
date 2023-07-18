@@ -9,32 +9,6 @@ verus!{
 
 ////// Add is_variant-style spec functions
 
-mod getters {
-    #[verus::internal(is_variant("Some"))]
-    #[allow(non_snake_case)]
-    #[verus::internal(spec)]
-    #[verus::internal(verus_macro)]
-    pub fn is_Some<T>(res: &Option<T>) -> bool {
-        unimplemented!()
-    }
-
-    #[allow(non_snake_case)]
-    #[verus::internal(get_variant("Some", 0))]
-    #[verus::internal(spec)]
-    #[verus::internal(verus_macro)]
-    pub fn get_Some_0<T>(res: Option<T>) -> T {
-        unimplemented!()
-    }
-
-    #[verus::internal(is_variant("None"))]
-    #[allow(non_snake_case)]
-    #[verus::internal(spec)]
-    #[verus::internal(verus_macro)]
-    pub fn is_None<T>(res: &Option<T>) -> bool {
-        unimplemented!()
-    }
-}
-
 pub trait OptionAdditionalFns<T> : Sized {
     #[allow(non_snake_case)] spec fn is_Some(&self) -> bool;
     #[allow(non_snake_case)] spec fn get_Some_0(&self) -> T;
@@ -49,13 +23,19 @@ pub trait OptionAdditionalFns<T> : Sized {
 
 impl<T> OptionAdditionalFns<T> for Option<T> {
     #[verifier(inline)]
-    open spec fn is_Some(&self) -> bool { getters::is_Some(self) }
+    open spec fn is_Some(&self) -> bool {
+        builtin::is_variant(self, "Some")
+    }
 
     #[verifier(inline)]
-    open spec fn get_Some_0(&self) -> T { getters::get_Some_0(*self) }
+    open spec fn get_Some_0(&self) -> T {
+        builtin::get_variant_field(self, "Some", "0")
+    }
 
     #[verifier(inline)]
-    open spec fn is_None(&self) -> bool { getters::is_None(self) }
+    open spec fn is_None(&self) -> bool {
+        builtin::is_variant(self, "None")
+    }
 
     proof fn tracked_unwrap(tracked self) -> (tracked t: T) {
         match self {
@@ -71,7 +51,7 @@ impl<T> OptionAdditionalFns<T> for Option<T> {
 
 #[verifier(inline)]
 pub open spec fn is_some<T>(option: &Option<T>) -> bool {
-    getters::is_Some(option)
+    builtin::is_variant(option, "Some")
 }
 
 #[verifier::external_fn_specification]
@@ -86,7 +66,7 @@ pub fn ex_option_is_some<T>(option: &Option<T>) -> (b: bool)
 
 #[verifier(inline)]
 pub open spec fn is_none<T>(option: &Option<T>) -> bool {
-    getters::is_None(option)
+    builtin::is_variant(option, "None")
 }
 
 #[verifier::external_fn_specification]

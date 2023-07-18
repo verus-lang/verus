@@ -1,6 +1,4 @@
 #![allow(unused_imports)]
-use builtin_macros::*;
-use builtin::*;
 use vstd::{seq::*, set::*, map::*, prelude::*};
 
 verus! {
@@ -30,6 +28,18 @@ proof fn test_map1() {
     assert(m[30] == 300);
 }
 // ANCHOR_END: macro
+
+mod m0 {
+use vstd::{seq::*, prelude::*};
+// ANCHOR: new0
+proof fn test_seq2() {
+    let s: Seq<int> = Seq::new(5, |i: int| 10 * i);
+    assert(s.len() == 5);
+    assert(s[2] == 20);
+    assert(s[3] == 30);
+}
+// ANCHOR_END: new0
+}
 
 // ANCHOR: new
 proof fn test_seq2() {
@@ -86,8 +96,8 @@ proof fn test_eq() {
     let s1: Seq<int> = seq![0, 10, 20, 30, 40];
     let s2: Seq<int> = seq![0, 10] + seq![20] + seq![30, 40];
     let s3: Seq<int> = Seq::new(5, |i: int| 10 * i);
-    assert(s1.ext_equal(s2));
-    assert(s1.ext_equal(s3));
+    assert(s1 =~= s2);
+    assert(s1 =~= s3);
     assert(s1 === s2); // succeeds
     assert(s1 === s3); // succeeds
 }
@@ -161,10 +171,10 @@ pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
         s1.len(),
 {
     if s1.is_empty() {
-        assert(s1.intersect(s2).ext_equal(s1));
+        assert(s1.intersect(s2) =~= s1);
     } else {
         let a = s1.choose();
-        assert(s1.intersect(s2).remove(a).ext_equal(s1.remove(a).intersect(s2)));
+        assert(s1.intersect(s2).remove(a) =~= s1.remove(a).intersect(s2));
         lemma_len_intersect::<A>(s1.remove(a), s2);
     }
 }
@@ -182,14 +192,14 @@ pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
 {
     if s1.is_empty() {
         assert(s1.intersect(s2).len() == 0) by {
-            assert(s1.intersect(s2).ext_equal(s1));
+            assert(s1.intersect(s2) =~= s1);
         }
     } else {
         let a = s1.choose();
         lemma_len_intersect::<A>(s1.remove(a), s2);
         // by induction: s1.remove(a).intersect(s2).len() <= s1.remove(a).len()
         assert(s1.intersect(s2).remove(a).len() <= s1.remove(a).len()) by {
-            assert(s1.intersect(s2).remove(a).ext_equal(s1.remove(a).intersect(s2)));
+            assert(s1.intersect(s2).remove(a) =~= s1.remove(a).intersect(s2));
         }
         // simplifying ".remove(a).len()" yields s1.intersect(s2).len() <= s1.len())
     }
@@ -226,14 +236,26 @@ fn test_vec2() {
     v.push(30);
     v.push(40);
     v.set(2, 21);
-    assert(v@ =~= (seq![0, 10, 21, 30, 40]));
-    assert(v@ =~= (seq![0, 10] + seq![21] + seq![30, 40]));
+    assert(v@ =~= seq![0, 10, 21, 30, 40]);
+    assert(v@ =~= seq![0, 10] + seq![21] + seq![30, 40]);
     assert(v@[2] == 21);
     assert(v@[3] == 30);
-    assert(v@.subrange(2, 4) =~= (seq![21, 30]));
+    assert(v@.subrange(2, 4) =~= seq![21, 30]);
     assert(has_five_sorted_numbers(v@));
 }
 // ANCHOR_END: test_vec2
+
+// ANCHOR: ret_spec_fn
+spec fn adder(x: int) -> FnSpec(int) -> int {
+    |y: int| x + y
+}
+
+proof fn test_adder() {
+    let f = adder(10);
+    assert(f(20) == 30);
+    assert(f(60) == 70);
+}
+// ANCHOR_END: ret_spec_fn
 
 fn main() {
 }

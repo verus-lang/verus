@@ -106,6 +106,17 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_chained1 verus_code! {
+        proof fn test1(n: nat) {
+            assert(n as int == n as int + 0 == 0 + n as int);
+            assert(2 == 1 + 1 == 3 - 1 < 4);
+            assert(n as int == (n as int) * 1 == (n as int) * 1 == 1 * (n as int));
+            assert(1 + n as int == n as int + 1 == 1); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] test4 verus_code! {
         proof fn typing(u: u64, i: int, n: nat) -> int {
             let u2 = i as u64;

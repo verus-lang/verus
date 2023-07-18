@@ -56,8 +56,8 @@ const PREFIX_TUPLE_PARAM: &str = "T%";
 const PREFIX_TUPLE_FIELD: &str = "field%";
 const PREFIX_LAMBDA_TYPE: &str = "fun%";
 const PREFIX_IMPL_IDENT: &str = "impl&%";
-const PREFIX_PROJECT_UNDECORATED: &str = "proj%";
-const PREFIX_PROJECT_DECORATED: &str = "proj%%";
+const PREFIX_PROJECT: &str = "proj%";
+const PREFIX_PROJECT_DECORATION: &str = "proj%%";
 const SLICE_TYPE: &str = "slice%";
 const SLICE_PARAM: &str = "sliceT%";
 const PREFIX_SNAPSHOT: &str = "snap%";
@@ -103,6 +103,8 @@ pub const NAT_CLIP: &str = "nClip";
 pub const U_INV: &str = "uInv";
 pub const I_INV: &str = "iInv";
 pub const ARCH_SIZE: &str = "SZ";
+pub const ADD: &str = "Add";
+pub const SUB: &str = "Sub";
 pub const MUL: &str = "Mul";
 pub const EUC_DIV: &str = "EucDiv";
 pub const EUC_MOD: &str = "EucMod";
@@ -128,6 +130,8 @@ pub const TYPE_ID_NAT: &str = "NAT";
 pub const TYPE_ID_UINT: &str = "UINT";
 pub const TYPE_ID_SINT: &str = "SINT";
 pub const TYPE_ID_CONST_INT: &str = "CONST_INT";
+pub const DECORATION: &str = "Dcr";
+pub const DECORATE_NIL: &str = "$";
 pub const DECORATE_REF: &str = "REF";
 pub const DECORATE_MUT_REF: &str = "MUT_REF";
 pub const DECORATE_BOX: &str = "BOX";
@@ -156,6 +160,7 @@ pub const UINT_OR: &str = "uintor";
 pub const UINT_SHR: &str = "uintshr";
 pub const UINT_SHL: &str = "uintshl";
 pub const UINT_NOT: &str = "uintnot";
+pub const SINGULAR_MOD: &str = "singular_mod";
 
 // List of QID suffixes we add to internally generated quantifiers
 pub const QID_BOX_AXIOM: &str = "box_axiom";
@@ -271,24 +276,32 @@ pub fn subst_rename_ident(x: &Ident, n: u64) -> Ident {
     Arc::new(format!("{}{}{}", x.to_string(), SUBST_RENAME_SEPARATOR, n))
 }
 
-pub fn suffix_typ_param_id(ident: &Ident) -> Ident {
+pub(crate) fn suffix_typ_param_id(ident: &Ident) -> Ident {
     Arc::new(ident.to_string() + SUFFIX_TYPE_PARAM)
 }
 
-pub fn suffix_decorate_typ_param_id(ident: &Ident) -> Ident {
+pub(crate) fn suffix_decorate_typ_param_id(ident: &Ident) -> Ident {
     Arc::new(ident.to_string() + SUFFIX_DECORATE_TYPE_PARAM)
 }
 
-pub fn suffix_typ_param_ids(ident: &Ident) -> Vec<Ident> {
-    let mut ids = vec![suffix_typ_param_id(ident)];
+pub(crate) fn suffix_typ_param_ids(ident: &Ident) -> Vec<Ident> {
     if crate::context::DECORATE {
-        ids.push(suffix_decorate_typ_param_id(ident));
+        vec![suffix_decorate_typ_param_id(ident), suffix_typ_param_id(ident)]
+    } else {
+        vec![suffix_typ_param_id(ident)]
     }
-    ids
+}
+
+pub(crate) fn suffix_typ_param_ids_types(ident: &Ident) -> Vec<(Ident, &'static str)> {
+    if crate::context::DECORATE {
+        vec![(suffix_decorate_typ_param_id(ident), DECORATION), (suffix_typ_param_id(ident), TYPE)]
+    } else {
+        vec![(suffix_typ_param_id(ident), TYPE)]
+    }
 }
 
 pub(crate) fn types() -> Vec<&'static str> {
-    if crate::context::DECORATE { vec![TYPE, TYPE] } else { vec![TYPE] }
+    if crate::context::DECORATE { vec![DECORATION, TYPE] } else { vec![TYPE] }
 }
 
 pub fn suffix_rename(ident: &Ident) -> Ident {
@@ -339,12 +352,8 @@ pub fn impl_ident(disambiguator: u32) -> Ident {
     Arc::new(format!("{}{}", PREFIX_IMPL_IDENT, disambiguator))
 }
 
-pub fn projection(decorated: bool, trait_path: &Path, name: &Ident) -> Ident {
-    let proj = if decorated && crate::context::DECORATE {
-        PREFIX_PROJECT_DECORATED
-    } else {
-        PREFIX_PROJECT_UNDECORATED
-    };
+pub fn projection(decoration: bool, trait_path: &Path, name: &Ident) -> Ident {
+    let proj = if decoration { PREFIX_PROJECT_DECORATION } else { PREFIX_PROJECT };
     Arc::new(format!(
         "{}{}{}{}",
         proj,

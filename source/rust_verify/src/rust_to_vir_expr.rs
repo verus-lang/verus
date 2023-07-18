@@ -6,9 +6,9 @@ use crate::context::{BodyCtxt, Context};
 use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::rust_intrinsics_to_vir::int_intrinsic_constant_to_vir;
 use crate::rust_to_vir_base::{
-    def_id_to_vir_path, def_id_to_vir_path_option, get_range, is_smt_arith, is_smt_equality,
-    is_type_std_rc_or_arc_or_ref, local_to_var, mid_ty_simplify, mid_ty_to_vir,
-    mid_ty_to_vir_ghost, mk_range, typ_of_node, typ_of_node_expect_mut_ref,
+    auto_deref_supported_for_ty, def_id_to_vir_path, def_id_to_vir_path_option, get_range,
+    is_smt_arith, is_smt_equality, is_type_std_rc_or_arc_or_ref, local_to_var, mid_ty_simplify,
+    mid_ty_to_vir, mid_ty_to_vir_ghost, mk_range, typ_of_node, typ_of_node_expect_mut_ref,
 };
 use crate::util::{err_span, slice_vec_map_result, unsupported_err_span, vec_map_result};
 use crate::verus_items::{
@@ -24,6 +24,7 @@ use rustc_hir::{
     BinOpKind, BindingAnnotation, Block, Closure, Destination, Expr, ExprKind, Guard, HirId, Let,
     Local, LoopSource, Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
 };
+use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow, AutoBorrowMutability};
 use rustc_middle::ty::subst::GenericArgKind;
 use rustc_middle::ty::DefIdTree;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind, VariantDef};
@@ -187,7 +188,11 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
     modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
     let expr = expr.peel_drop_temps();
-    let vir_expr = expr_to_vir_innermost(bctx, expr, modifier)?;
+    let adjustments = bctx.types.expr_adjustments(expr);
+
+    let vir_expr =
+        expr_to_vir_with_adjustments(bctx, expr, modifier, adjustments, adjustments.len())?;
+
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
     erasure_info.hir_vir_ids.push((expr.hir_id, vir_expr.span.id));
     Ok(vir_expr)
@@ -208,32 +213,6 @@ pub(crate) fn expr_to_vir<'tcx>(
             .new_x(ExprX::UnaryOpr(UnaryOpr::CustomErr(Arc::new(err_msg)), vir_expr.clone()));
     }
     Ok(vir_expr)
-}
-
-pub(crate) fn record_fun(
-    ctxt: &crate::context::Context,
-    hir_id: HirId,
-    span: Span,
-    name: &Option<vir::ast::Fun>,
-    f_name: &String,
-    is_spec: bool,
-    is_spec_allow_proof_args: bool,
-    is_compilable_operator: Option<CompilableOperator>,
-    autospec_usage: AutospecUsage,
-) {
-    let mut erasure_info = ctxt.erasure_info.borrow_mut();
-    let resolved_call = if is_spec {
-        ResolvedCall::Spec
-    } else if is_spec_allow_proof_args {
-        ResolvedCall::SpecAllowProofArgs
-    } else if let Some(op) = is_compilable_operator {
-        ResolvedCall::CompilableOperator(op)
-    } else if let Some(name) = name {
-        ResolvedCall::Call(name.clone(), autospec_usage)
-    } else {
-        panic!("internal error: failed to record function {}", f_name);
-    };
-    erasure_info.resolved_calls.push((hir_id, span.data(), resolved_call));
 }
 
 pub(crate) fn get_fn_path<'tcx>(
@@ -807,11 +786,10 @@ impl ExprModifier {
 }
 
 pub(crate) fn is_expr_typ_mut_ref<'tcx>(
-    bctx: &BodyCtxt<'tcx>,
-    expr: &Expr<'tcx>,
+    ty: rustc_middle::ty::Ty<'tcx>,
     modifier: ExprModifier,
 ) -> Result<ExprModifier, VirErr> {
-    match bctx.types.node_type(expr.hir_id).kind() {
+    match ty.kind() {
         TyKind::Ref(_, _tys, rustc_ast::Mutability::Not) => Ok(modifier),
         TyKind::Ref(_, _tys, rustc_ast::Mutability::Mut) => {
             Ok(ExprModifier { deref_mut: true, ..modifier })
@@ -840,6 +818,149 @@ pub(crate) fn call_self_path(
                 panic!("failed to look up def_id for impl");
             }
         },
+    }
+}
+
+pub(crate) fn expr_to_vir_for_mutref_arg<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    arg: &Expr<'tcx>,
+) -> Result<vir::ast::Expr, VirErr> {
+    expr_to_vir(bctx, arg, ExprModifier { deref_mut: true, addr_of: true })
+}
+
+pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
+    current_modifier: ExprModifier,
+    adjustments: &[Adjustment<'tcx>],
+    adjustment_idx: usize,
+) -> Result<vir::ast::Expr, VirErr> {
+    // Implicit conversions are stored in the "adjustments" for each node
+    // See: https://doc.rust-lang.org/stable/nightly-rustc/rustc_middle/ty/adjustment/struct.Adjustment.html
+    //
+    // For example, suppose the user writes the expression `v` but Rust
+    // inserts a borrow a deref so that we have to treat the node like `&*v`.
+    //
+    // Then we'd have:
+    //
+    //    adjustments[0] = Deref (*)
+    //    adjustments[1] = Borrow (&)
+    //
+    // That is, the higher indices mean adjustments that are farther on the outside.
+    //
+    // The adjustment objects also have the type after each is applied, e.g.,
+    //
+    //    expr_ty(expr)                                    type of `v`
+    //    adjustments[0].target                            type of `*v`
+    //    adjumstmens[1].target = expr_ty_adjusted(expr)   type of `&*v`
+    //
+    // Since we're recursing inwards, we start with adjustment_idx = adjustments.len()
+    // and decrement to recurse.
+    // Specifically, the node (expr, i) means expr with the first i adjustments
+    // applied. So (expr, i) has child node (expr, i - 1) which is obtained by
+    // peeling off the adjustment (i-1).
+    // Whereas the node (expr, 0) is just expr by itself.
+
+    if adjustment_idx == 0 {
+        return expr_to_vir_innermost(bctx, expr, current_modifier);
+    }
+
+    // Gets the type of the *child* of the current node
+    //
+    // The `target` field gives the type *after* adjustment, so we need to get the
+    // target of the previous adjustment. If this is already the first adjustment,
+    // Use `expr_ty` which is the type of the expression with no adjustments applied.
+    let get_inner_ty = || {
+        if adjustment_idx == 1 {
+            bctx.types.expr_ty(expr)
+        } else {
+            adjustments[adjustment_idx - 2].target
+        }
+    };
+
+    let adjustment = &adjustments[adjustment_idx - 1];
+
+    match &adjustment.kind {
+        Adjust::NeverToAny => expr_to_vir_with_adjustments(
+            bctx,
+            expr,
+            current_modifier,
+            adjustments,
+            adjustment_idx - 1,
+        ),
+        Adjust::Deref(None) => {
+            // handle same way as the UnOp::Deref case
+            let new_modifier = is_expr_typ_mut_ref(get_inner_ty(), current_modifier)?;
+            expr_to_vir_with_adjustments(bctx, expr, new_modifier, adjustments, adjustment_idx - 1)
+        }
+        Adjust::Deref(Some(_)) => {
+            // note: deref has signature (&self) -> &Self::Target
+            // and deref_mut has signature (&mut self) -> &mut Self::Target
+            // The adjustment, though, goes from self -> Self::Target
+            // without the refs.
+            if auto_deref_supported_for_ty(bctx.ctxt.tcx, &get_inner_ty()) {
+                expr_to_vir_with_adjustments(
+                    bctx,
+                    expr,
+                    current_modifier,
+                    adjustments,
+                    adjustment_idx - 1,
+                )
+            } else {
+                unsupported_err!(
+                    expr.span,
+                    &format!(
+                        "overloaded deref (`{:}` is implicity converted to `{:}`)",
+                        get_inner_ty(),
+                        adjustment.target
+                    )
+                )
+            }
+        }
+        Adjust::Borrow(AutoBorrow::Ref(_region, AutoBorrowMutability::Not)) => {
+            // Similar to ExprKind::AddrOf
+            expr_to_vir_with_adjustments(
+                bctx,
+                expr,
+                ExprModifier::REGULAR,
+                adjustments,
+                adjustment_idx - 1,
+            )
+        }
+        Adjust::Borrow(AutoBorrow::Ref(_region, AutoBorrowMutability::Mut { .. })) => {
+            if current_modifier.deref_mut {
+                // * &mut cancels out
+                let mut new_modifier = current_modifier;
+                new_modifier.deref_mut = false;
+                expr_to_vir_with_adjustments(
+                    bctx,
+                    expr,
+                    new_modifier,
+                    adjustments,
+                    adjustment_idx - 1,
+                )
+            } else {
+                unsupported_err!(
+                    expr.span,
+                    format!(
+                        "&mut dereference in this position (note: &mut dereference is implicit here)"
+                    )
+                )
+            }
+        }
+        Adjust::Borrow(AutoBorrow::RawPtr(_)) => {
+            // Despite the name 'borrow', the docs seem to indicate this is a dereference
+            unsupported_err!(
+                expr.span,
+                "dereferencing a pointer (here the dereference is implicit)"
+            )
+        }
+        Adjust::Pointer(_cast) => {
+            unsupported_err!(expr.span, "casting a pointer (here the cast is implicit)")
+        }
+        Adjust::DynStar => {
+            unsupported_err!(expr.span, "dyn cast (here the cast is implicit)")
+        }
     }
 }
 
@@ -995,7 +1116,20 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     if bctx.external_body {
                         return mk_expr(ExprX::Block(Arc::new(vec![]), None));
                     }
-                    let vir_fun = expr_to_vir(bctx, fun, modifier)?;
+
+                    // For FnMut, Rust automatically inserts a mutable reference, e.g.,
+                    // (&mut f).call(...)
+                    // We currently don't encode this as a mutation on the caller's side, though.
+                    // So here, we pretend to dereference the object if it's a mut reference.
+                    let fun_ty = bctx.types.expr_ty_adjusted(fun);
+                    let is_mut = match fun_ty.kind() {
+                        TyKind::Ref(_, _, Mutability::Mut) => true,
+                        _ => false,
+                    };
+                    let fun_modifier =
+                        if is_mut { ExprModifier::DEREF_MUT } else { ExprModifier::REGULAR };
+                    let vir_fun = expr_to_vir(bctx, fun, fun_modifier)?;
+
                     let args: Vec<&'tcx Expr<'tcx>> = args_slice.iter().collect();
                     let vir_args = vec_map_result(&args, |arg| expr_to_vir(bctx, arg, modifier))?;
                     let expr_typ = typ_of_node(bctx, expr.span, &expr.hir_id, false)?;
@@ -1104,10 +1238,23 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Not, e) => {
             expr_to_vir_inner(bctx, e, ExprModifier::REGULAR)
         }
+        ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => {
+            if current_modifier.deref_mut {
+                // * &mut cancels out
+                let mut new_modifier = current_modifier;
+                new_modifier.deref_mut = false;
+                expr_to_vir_inner(bctx, e, new_modifier)
+            } else {
+                unsupported_err!(expr.span, format!("&mut dereference in this position"))
+            }
+        }
+        ExprKind::AddrOf(BorrowKind::Raw, _, _) => {
+            unsupported_err!(expr.span, format!("raw borrows"))
+        }
         ExprKind::Box(e) => expr_to_vir_inner(bctx, e, ExprModifier::REGULAR),
         ExprKind::Unary(op, arg) => match op {
             UnOp::Not => {
-                let not_op = match (tc.node_type(expr.hir_id)).kind() {
+                let not_op = match (tc.expr_ty_adjusted(arg)).kind() {
                     TyKind::Adt(_, _) | TyKind::Uint(_) | TyKind::Int(_) => UnaryOp::BitNot,
                     TyKind::Bool => UnaryOp::Not,
                     _ => panic!("Internal error on UnOp::Not translation"),
@@ -1131,8 +1278,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 ))
             }
             UnOp::Deref => {
-                let inner =
-                    expr_to_vir_inner(bctx, arg, is_expr_typ_mut_ref(bctx, arg, modifier)?)?;
+                let inner = expr_to_vir_inner(
+                    bctx,
+                    arg,
+                    is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(arg), modifier)?,
+                )?;
                 Ok(inner)
             }
         },
@@ -1160,71 +1310,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 _ => (),
             }
             let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
-            let vop = match op.node {
-                BinOpKind::And => BinaryOp::And,
-                BinOpKind::Or => BinaryOp::Or,
-                BinOpKind::Eq => BinaryOp::Eq(Mode::Exec),
-                BinOpKind::Ne => BinaryOp::Ne,
-                BinOpKind::Le => BinaryOp::Inequality(InequalityOp::Le),
-                BinOpKind::Ge => BinaryOp::Inequality(InequalityOp::Ge),
-                BinOpKind::Lt => BinaryOp::Inequality(InequalityOp::Lt),
-                BinOpKind::Gt => BinaryOp::Inequality(InequalityOp::Gt),
-                BinOpKind::Add => BinaryOp::Arith(ArithOp::Add, Some(bctx.ctxt.infer_mode())),
-                BinOpKind::Sub => BinaryOp::Arith(ArithOp::Sub, Some(bctx.ctxt.infer_mode())),
-                BinOpKind::Mul => BinaryOp::Arith(ArithOp::Mul, Some(bctx.ctxt.infer_mode())),
-                BinOpKind::Div => {
-                    BinaryOp::Arith(ArithOp::EuclideanDiv, Some(bctx.ctxt.infer_mode()))
-                }
-                BinOpKind::Rem => {
-                    BinaryOp::Arith(ArithOp::EuclideanMod, Some(bctx.ctxt.infer_mode()))
-                }
-                BinOpKind::BitXor => {
-                    match ((tc.node_type(lhs.hir_id)).kind(), (tc.node_type(rhs.hir_id)).kind()) {
-                        (TyKind::Bool, TyKind::Bool) => BinaryOp::Xor,
-                        (TyKind::Int(_), TyKind::Int(_)) => {
-                            BinaryOp::Bitwise(BitwiseOp::BitXor, mode_for_ghostness)
-                        }
-                        (TyKind::Uint(_), TyKind::Uint(_)) => {
-                            BinaryOp::Bitwise(BitwiseOp::BitXor, mode_for_ghostness)
-                        }
-                        _ => panic!("bitwise XOR for this type not supported"),
-                    }
-                }
-                BinOpKind::BitAnd => {
-                    match ((tc.node_type(lhs.hir_id)).kind(), (tc.node_type(rhs.hir_id)).kind()) {
-                        (TyKind::Bool, TyKind::Bool) => {
-                            panic!(
-                                "bitwise AND for bools (i.e., the not-short-circuited version) not supported"
-                            );
-                        }
-                        (TyKind::Int(_), TyKind::Int(_)) => {
-                            BinaryOp::Bitwise(BitwiseOp::BitAnd, mode_for_ghostness)
-                        }
-                        (TyKind::Uint(_), TyKind::Uint(_)) => {
-                            BinaryOp::Bitwise(BitwiseOp::BitAnd, mode_for_ghostness)
-                        }
-                        t => panic!("bitwise AND for this type not supported {:#?}", t),
-                    }
-                }
-                BinOpKind::BitOr => {
-                    match ((tc.node_type(lhs.hir_id)).kind(), (tc.node_type(rhs.hir_id)).kind()) {
-                        (TyKind::Bool, TyKind::Bool) => {
-                            panic!(
-                                "bitwise OR for bools (i.e., the not-short-circuited version) not supported"
-                            );
-                        }
-                        (TyKind::Int(_), TyKind::Int(_)) => {
-                            BinaryOp::Bitwise(BitwiseOp::BitOr, mode_for_ghostness)
-                        }
-                        (TyKind::Uint(_), TyKind::Uint(_)) => {
-                            BinaryOp::Bitwise(BitwiseOp::BitOr, mode_for_ghostness)
-                        }
-                        _ => panic!("bitwise OR for this type not supported"),
-                    }
-                }
-                BinOpKind::Shr => BinaryOp::Bitwise(BitwiseOp::Shr, mode_for_ghostness),
-                BinOpKind::Shl => BinaryOp::Bitwise(BitwiseOp::Shl, mode_for_ghostness),
-            };
+            let vop = binopkind_to_binaryop(op, bctx, tc, lhs, rhs, mode_for_ghostness);
             let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs))?;
             match op.node {
                 BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => {
@@ -1243,15 +1329,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     }
                 }
                 _ => Ok(e),
-            }
-        }
-        ExprKind::AssignOp(Spanned { node: BinOpKind::Shr, .. }, lhs, rhs) => {
-            let vlhs = expr_to_vir(bctx, lhs, modifier)?;
-            let vrhs = expr_to_vir(bctx, rhs, modifier)?;
-            if matches!(*vlhs.typ, TypX::Bool) {
-                mk_expr(ExprX::Binary(BinaryOp::Implies, vlhs, vrhs))
-            } else {
-                unsupported_err!(expr.span, "assignment operators")
             }
         }
         ExprKind::Path(qpath) => {
@@ -1323,65 +1400,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
         }
         ExprKind::Assign(lhs, rhs, _) => {
-            fn init_not_mut<'tcx>(bctx: &BodyCtxt<'tcx>, lhs: &Expr) -> Result<bool, VirErr> {
-                Ok(match lhs.kind {
-                    ExprKind::Path(QPath::Resolved(
-                        None,
-                        rustc_hir::Path { res: Res::Local(id), .. },
-                    )) => {
-                        let not_mut = if let Node::Pat(pat) = bctx.ctxt.tcx.hir().get(*id) {
-                            let (mutable, _) = pat_to_mut_var(pat)?;
-                            let ty = bctx.types.node_type(*id);
-                            !(mutable || ty.ref_mutability() == Some(Mutability::Mut))
-                        } else {
-                            panic!("assignment to non-local");
-                        };
-                        if not_mut {
-                            match bctx.ctxt.tcx.hir().get_parent(*id) {
-                                Node::Param(_) => {
-                                    err_span(lhs.span, "cannot assign to non-mut parameter")?
-                                }
-                                Node::Local(_) => (),
-                                other => unsupported_err!(lhs.span, "assignee node", other),
-                            }
-                        }
-                        not_mut
-                    }
-                    ExprKind::Field(lhs, _) => {
-                        let deref_ghost = mid_ty_to_vir_ghost(
-                            bctx.ctxt.tcx,
-                            &bctx.ctxt.verus_items,
-                            None,
-                            lhs.span,
-                            &bctx.types.node_type(lhs.hir_id),
-                            false,
-                            true,
-                        )?
-                        .1;
-                        unsupported_err_unless!(
-                            !deref_ghost,
-                            lhs.span,
-                            "assignment through Ghost/Tracked"
-                        );
-                        init_not_mut(bctx, lhs)?
-                    }
-                    ExprKind::Unary(UnOp::Deref, _) => false,
-                    _ => {
-                        unsupported_err!(lhs.span, format!("assign lhs {:?}", lhs))
-                    }
-                })
-            }
-            let init_not_mut = init_not_mut(bctx, lhs)?;
-            mk_expr(ExprX::Assign {
-                init_not_mut,
-                lhs: expr_to_vir(bctx, lhs, ExprModifier::ADDR_OF)?,
-                rhs: expr_to_vir(bctx, rhs, modifier)?,
-            })
+            expr_assign_to_vir_innermost(bctx, tc, lhs, mk_expr, rhs, modifier, None)
         }
         ExprKind::Field(lhs, name) => {
-            let lhs_modifier = is_expr_typ_mut_ref(bctx, lhs, modifier)?;
+            let lhs_modifier = is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(lhs), modifier)?;
             let vir_lhs = expr_to_vir(bctx, lhs, lhs_modifier)?;
-            let lhs_ty = tc.node_type(lhs.hir_id);
+            let lhs_ty = tc.expr_ty_adjusted(lhs);
             let lhs_ty = mid_ty_simplify(tcx, &bctx.ctxt.verus_items, &lhs_ty, true);
             let (datatype, variant_name, field_name) = if let Some(adt_def) = lhs_ty.ty_adt_def() {
                 unsupported_err_unless!(
@@ -1729,19 +1753,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 unsupported_err!(expr.span, "index for &mut not supported")
             }
 
-            // Account for the case where `a[b]` where the unadjusted type of `a`
-            // is `&mut T` but we're calling Index.
-            let adjust_mut_ref = {
-                let tgt_ty = bctx.types.expr_ty(tgt_expr);
-                let unadjusted_mutbl = match tgt_ty.kind() {
-                    TyKind::Ref(_, _, Mutability::Mut) => true,
-                    _ => false,
-                };
-                unadjusted_mutbl
-            };
-            let tgt_modifier = if adjust_mut_ref { ExprModifier::DEREF_MUT } else { modifier };
-
-            let tgt_vir = expr_to_vir(bctx, tgt_expr, tgt_modifier)?;
+            let tgt_vir = expr_to_vir(bctx, tgt_expr, modifier)?;
             let idx_vir = expr_to_vir(bctx, idx_expr, ExprModifier::REGULAR)?;
 
             // We only support for the special case of (Vec, usize) arguments
@@ -1796,13 +1808,17 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let args = Arc::new(vec![tgt_vir.clone(), idx_vir.clone()]);
             mk_expr(ExprX::Call(call_target, args))
         }
-        ExprKind::AddrOf(..) => {
-            unsupported_err!(expr.span, format!("complex address-of expressions"))
-        }
         ExprKind::Loop(..) => unsupported_err!(expr.span, format!("complex loop expressions")),
         ExprKind::Break(..) => unsupported_err!(expr.span, format!("complex break expressions")),
-        ExprKind::AssignOp(..) => {
-            unsupported_err!(expr.span, format!("complex assignment expressions"))
+        ExprKind::AssignOp(op, lhs, rhs) => {
+            if matches!(op.node, BinOpKind::Div | BinOpKind::Rem) {
+                let range = mk_range(&bctx.ctxt.verus_items, &tc.expr_ty_adjusted(lhs));
+                if matches!(range, IntRange::I(_) | IntRange::ISize) {
+                    // Non-Euclidean division, which will need more encoding
+                    return unsupported_err!(expr.span, "div/mod on signed finite-width integers");
+                }
+            }
+            expr_assign_to_vir_innermost(bctx, tc, lhs, mk_expr, rhs, modifier, Some(op))
         }
         ExprKind::ConstBlock(..) => unsupported_err!(expr.span, format!("const block expressions")),
         ExprKind::Array(..) => unsupported_err!(expr.span, format!("array expressions")),
@@ -1814,6 +1830,137 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::InlineAsm(..) => unsupported_err!(expr.span, format!("inline-asm expressions")),
         ExprKind::Err => unsupported_err!(expr.span, format!("Err expressions")),
     }
+}
+
+fn binopkind_to_binaryop(
+    op: &Spanned<BinOpKind>,
+    bctx: &BodyCtxt,
+    tc: &rustc_middle::ty::TypeckResults,
+    lhs: &Expr,
+    rhs: &Expr,
+    mode_for_ghostness: Mode,
+) -> BinaryOp {
+    let vop = match op.node {
+        BinOpKind::And => BinaryOp::And,
+        BinOpKind::Or => BinaryOp::Or,
+        BinOpKind::Eq => BinaryOp::Eq(Mode::Exec),
+        BinOpKind::Ne => BinaryOp::Ne,
+        BinOpKind::Le => BinaryOp::Inequality(InequalityOp::Le),
+        BinOpKind::Ge => BinaryOp::Inequality(InequalityOp::Ge),
+        BinOpKind::Lt => BinaryOp::Inequality(InequalityOp::Lt),
+        BinOpKind::Gt => BinaryOp::Inequality(InequalityOp::Gt),
+        BinOpKind::Add => BinaryOp::Arith(ArithOp::Add, Some(bctx.ctxt.infer_mode())),
+        BinOpKind::Sub => BinaryOp::Arith(ArithOp::Sub, Some(bctx.ctxt.infer_mode())),
+        BinOpKind::Mul => BinaryOp::Arith(ArithOp::Mul, Some(bctx.ctxt.infer_mode())),
+        BinOpKind::Div => BinaryOp::Arith(ArithOp::EuclideanDiv, Some(bctx.ctxt.infer_mode())),
+        BinOpKind::Rem => BinaryOp::Arith(ArithOp::EuclideanMod, Some(bctx.ctxt.infer_mode())),
+        BinOpKind::BitXor => {
+            match ((tc.expr_ty_adjusted(lhs)).kind(), (tc.expr_ty_adjusted(rhs)).kind()) {
+                (TyKind::Bool, TyKind::Bool) => BinaryOp::Xor,
+                (TyKind::Int(_), TyKind::Int(_)) => {
+                    BinaryOp::Bitwise(BitwiseOp::BitXor, mode_for_ghostness)
+                }
+                (TyKind::Uint(_), TyKind::Uint(_)) => {
+                    BinaryOp::Bitwise(BitwiseOp::BitXor, mode_for_ghostness)
+                }
+                _ => panic!("bitwise XOR for this type not supported"),
+            }
+        }
+        BinOpKind::BitAnd => {
+            match ((tc.expr_ty_adjusted(lhs)).kind(), (tc.expr_ty_adjusted(rhs)).kind()) {
+                (TyKind::Bool, TyKind::Bool) => {
+                    panic!(
+                        "bitwise AND for bools (i.e., the not-short-circuited version) not supported"
+                    );
+                }
+                (TyKind::Int(_), TyKind::Int(_)) => {
+                    BinaryOp::Bitwise(BitwiseOp::BitAnd, mode_for_ghostness)
+                }
+                (TyKind::Uint(_), TyKind::Uint(_)) => {
+                    BinaryOp::Bitwise(BitwiseOp::BitAnd, mode_for_ghostness)
+                }
+                t => panic!("bitwise AND for this type not supported {:#?}", t),
+            }
+        }
+        BinOpKind::BitOr => {
+            match ((tc.expr_ty_adjusted(lhs)).kind(), (tc.expr_ty_adjusted(rhs)).kind()) {
+                (TyKind::Bool, TyKind::Bool) => {
+                    panic!(
+                        "bitwise OR for bools (i.e., the not-short-circuited version) not supported"
+                    );
+                }
+                (TyKind::Int(_), TyKind::Int(_)) => {
+                    BinaryOp::Bitwise(BitwiseOp::BitOr, mode_for_ghostness)
+                }
+                (TyKind::Uint(_), TyKind::Uint(_)) => {
+                    BinaryOp::Bitwise(BitwiseOp::BitOr, mode_for_ghostness)
+                }
+                _ => panic!("bitwise OR for this type not supported"),
+            }
+        }
+        BinOpKind::Shr => BinaryOp::Bitwise(BitwiseOp::Shr, mode_for_ghostness),
+        BinOpKind::Shl => BinaryOp::Bitwise(BitwiseOp::Shl, mode_for_ghostness),
+    };
+    vop
+}
+
+fn expr_assign_to_vir_innermost<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    tc: &rustc_middle::ty::TypeckResults,
+    lhs: &Expr<'tcx>,
+    mk_expr: impl Fn(ExprX) -> Result<vir::ast::Expr, air::messages::Message>,
+    rhs: &Expr<'tcx>,
+    modifier: ExprModifier,
+    op_kind: Option<&Spanned<BinOpKind>>,
+) -> Result<vir::ast::Expr, air::messages::Message> {
+    fn init_not_mut(bctx: &BodyCtxt, lhs: &Expr) -> Result<bool, VirErr> {
+        Ok(match lhs.kind {
+            ExprKind::Path(QPath::Resolved(None, rustc_hir::Path { res: Res::Local(id), .. })) => {
+                let not_mut = if let Node::Pat(pat) = bctx.ctxt.tcx.hir().get(*id) {
+                    let (mutable, _) = pat_to_mut_var(pat)?;
+                    let ty = bctx.types.node_type(*id);
+                    !(mutable || ty.ref_mutability() == Some(Mutability::Mut))
+                } else {
+                    panic!("assignment to non-local");
+                };
+                if not_mut {
+                    match bctx.ctxt.tcx.hir().get_parent(*id) {
+                        Node::Param(_) => err_span(lhs.span, "cannot assign to non-mut parameter")?,
+                        Node::Local(_) => (),
+                        other => unsupported_err!(lhs.span, "assignee node", other),
+                    }
+                }
+                not_mut
+            }
+            ExprKind::Field(lhs, _) => {
+                let deref_ghost = mid_ty_to_vir_ghost(
+                    bctx.ctxt.tcx,
+                    &bctx.ctxt.verus_items,
+                    None,
+                    lhs.span,
+                    &bctx.types.expr_ty_adjusted(lhs),
+                    false,
+                    true,
+                )?
+                .1;
+                unsupported_err_unless!(!deref_ghost, lhs.span, "assignment through Ghost/Tracked");
+                init_not_mut(bctx, lhs)?
+            }
+            ExprKind::Unary(UnOp::Deref, _) => false,
+            _ => {
+                unsupported_err!(lhs.span, format!("assign lhs {:?}", lhs))
+            }
+        })
+    }
+    let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
+    let op = op_kind.map(|op| binopkind_to_binaryop(op, bctx, tc, lhs, rhs, mode_for_ghostness));
+    let init_not_mut = init_not_mut(bctx, lhs)?;
+    mk_expr(ExprX::Assign {
+        init_not_mut,
+        lhs: expr_to_vir(bctx, lhs, ExprModifier::ADDR_OF)?,
+        rhs: expr_to_vir(bctx, rhs, modifier)?,
+        op: op,
+    })
 }
 
 pub(crate) fn let_stmt_to_vir<'tcx>(

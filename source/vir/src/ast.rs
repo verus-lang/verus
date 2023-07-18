@@ -97,7 +97,19 @@ pub enum IntRange {
 
 /// Type information relevant to Rust but generally not relevant to the SMT encoding.
 /// This information is relevant for resolving traits.
-#[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode, Clone, Copy, PartialEq, Eq)]
+#[derive(
+    Debug,
+    Serialize,
+    Deserialize,
+    Hash,
+    ToDebugSNode,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord
+)]
 pub enum TypDecoration {
     /// &T
     Ref,
@@ -307,6 +319,12 @@ pub enum InequalityOp {
     Gt,
 }
 
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum ChainedOp {
+    Inequality(InequalityOp),
+    MultiEq,
+}
+
 /// Primitive binary operations
 /// (not arbitrary user-defined functions -- these are represented by ExprX::Call)
 /// Note that all integer operations are on mathematic integers (IntRange::Int),
@@ -343,8 +361,7 @@ pub enum BinaryOp {
     StrGetChar,
 }
 
-/// More complex unary operations (requires Clone rather than Copy)
-/// (Below, "boxed" refers to boxing types in the SMT encoding, not the Rust Box type)
+/// More complex binary operations (requires Clone rather than Copy)
 #[derive(Clone, Debug, Serialize, Deserialize, Hash, ToDebugSNode)]
 pub enum BinaryOpr {
     /// extensional equality ext_equal (true ==> deep extensionality)
@@ -353,7 +370,7 @@ pub enum BinaryOpr {
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum MultiOp {
-    Chained(Arc<Vec<InequalityOp>>),
+    Chained(Arc<Vec<ChainedOp>>),
 }
 
 /// Use Ghost(x) or Tracked(x) to unwrap an argument
@@ -614,7 +631,7 @@ pub enum ExprX {
     WithTriggers { triggers: Arc<Vec<Exprs>>, body: Expr },
     /// Assign to local variable
     /// init_not_mut = true ==> a delayed initialization of a non-mutable variable
-    Assign { init_not_mut: bool, lhs: Expr, rhs: Expr },
+    Assign { init_not_mut: bool, lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
     /// Reveal definition of an opaque function with some integer fuel amount
     Fuel(Fun, u32),
     /// Header, which must appear at the beginning of a function or while loop.
@@ -623,8 +640,8 @@ pub enum ExprX {
     Header(HeaderExpr),
     /// Assert or assume
     AssertAssume { is_assume: bool, expr: Expr },
-    /// Forall or assert-by statement; proves "forall vars. ensure" via proof.
-    Forall { vars: Binders<Typ>, require: Expr, ensure: Expr, proof: Expr },
+    /// Assert-forall or assert-by statement
+    AssertBy { vars: Binders<Typ>, require: Expr, ensure: Expr, proof: Expr },
     /// If-else
     If(Expr, Expr, Option<Expr>),
     /// Match (Note: ast_simplify replaces Match with other expressions)

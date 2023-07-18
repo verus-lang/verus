@@ -1168,10 +1168,25 @@ fn erase_expr<'tcx>(
                 let exp2 = erase_expr(ctxt, state, true, e2);
                 erase_spec_exps(ctxt, state, expr, vec![exp1, exp2])
             } else {
+                // REVIEW:
+                // Right now, we duplicate exp1; this is ok because we only consider one kind of
+                // expressions on the lhs: ExprX::VarLoc(_). When we add support
+                // for more kinds, this may cause the borrow-checker to report errors in places
+                // where it shouldn't (borrow-checking is still sound, but innacurate for these
+                // expressions).
                 let exp1 = erase_expr(ctxt, state, false, e1);
                 let exp2 = erase_expr(ctxt, state, false, e2);
-                let exp2 = erase_spec_exps(ctxt, state, expr, vec![exp2]);
-                mk_exp(ExpX::Assign(exp1.expect("expr"), exp2.expect("expr")))
+                let expr_typ =
+                    |state: &mut State| erase_ty(ctxt, state, &ctxt.types().node_type(e1.hir_id));
+                let exp3 = erase_spec_exps_typ(
+                    ctxt,
+                    state,
+                    expr.span,
+                    expr_typ,
+                    vec![exp1.clone(), exp2],
+                    false,
+                );
+                mk_exp(ExpX::Assign(exp1.expect("expr"), exp3.expect("expr")))
             }
         }
         ExprKind::If(cond, lhs, rhs) => {
@@ -1772,9 +1787,6 @@ fn erase_impl<'tcx>(
                 if vattrs.external {
                     continue;
                 }
-                if vattrs.is_variant.is_some() || vattrs.get_variant.is_some() {
-                    continue;
-                }
                 match &kind {
                     ImplItemKind::Fn(sig, body_id) => {
                         erase_fn(
@@ -2116,9 +2128,6 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                     let attrs = tcx.hir().attrs(item.hir_id());
                     let vattrs = get_verifier_attrs(attrs).expect("get_verifier_attrs");
                     if vattrs.external {
-                        continue;
-                    }
-                    if vattrs.is_variant.is_some() || vattrs.get_variant.is_some() {
                         continue;
                     }
                     let id = item.owner_id.to_def_id();

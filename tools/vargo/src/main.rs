@@ -71,7 +71,7 @@ fn log_command(cmd: &std::process::Command, verbose: bool) {
 }
 
 const SUPPORTED_COMMANDS: &[&str] = &[
-    "build", "test", "nextest", "run", "clean", "fmt", "metadata", "cmd",
+    "build", "test", "nextest", "run", "clean", "fmt", "metadata", "cmd", "update",
 ];
 
 // Arguments that cause vargo to be verbose.
@@ -92,6 +92,7 @@ enum Task {
     Metadata,
     Fmt,
     Cmd,
+    Update,
 }
 
 #[cfg(target_os = "macos")]
@@ -140,7 +141,7 @@ const Z3_FILE_NAME: &str = if cfg!(target_os = "windows") {
 };
 
 fn run() -> Result<(), String> {
-    let _vargo_nest = {
+    let vargo_nest = {
         let vargo_nest = std::env::var("VARGO_NEST")
             .ok()
             .and_then(|x| x.parse().ok().map(|x: u64| x + 1))
@@ -232,8 +233,11 @@ fn run() -> Result<(), String> {
 
     let z3_path = std::path::Path::new(Z3_FILE_NAME);
 
-    if !z3_path.is_file() && std::env::var("VERUS_Z3_PATH").is_err() {
-        warn("z3 not found -- this is likely to cause errors; run `tools/get-z3.sh`, or set VERUS_Z3_PATH");
+    if !z3_path.is_file() && vargo_nest == 0 {
+        warn(format!("{Z3_FILE_NAME} not found -- this is likely to cause errors or a broken build\nrun `tools/get-z3.(sh|ps1)` first").as_str());
+    }
+    if std::env::var("VERUS_Z3_PATH").is_err() && z3_path.is_file() {
+        std::env::set_var("VERUS_Z3_PATH", z3_path);
     }
 
     let cargo_toml = toml::from_str::<toml::Value>(
@@ -270,6 +274,7 @@ fn run() -> Result<(), String> {
         "metadata" => Task::Metadata,
         "fmt" => Task::Fmt,
         "cmd" => Task::Cmd,
+        "update" => Task::Update,
         _ => panic!("unexpected command"),
     };
 
@@ -298,7 +303,10 @@ fn run() -> Result<(), String> {
         .is_some();
 
     match util::version_info(&repo_root) {
-        Ok(version_info) => std::env::set_var("VARGO_BUILD_VERSION", version_info),
+        Ok(version_info) => {
+            std::env::set_var("VARGO_BUILD_VERSION", version_info.version);
+            std::env::set_var("VARGO_BUILD_SHA", version_info.sha);
+        }
         Err(err) => {
             warn(
                 format!("could not obtain version info from git, this will result in a binary with an unknown version: {}", err).as_str()
@@ -447,7 +455,7 @@ fn run() -> Result<(), String> {
         std::path::PathBuf::from("target").join(if release { "release" } else { "debug" });
 
     let dashdash_pos =
-        (!in_nextest && (cmd == "test" || cmd == "nextest" || cmd == "fmt")).then(|| {
+        (!in_nextest && matches!(task, Task::Test { nextest: _ } | Task::Fmt)).then(|| {
             args.iter().position(|x| x == "--").unwrap_or_else(|| {
                 args.push("--".to_string());
                 args.len() - 1
@@ -456,13 +464,17 @@ fn run() -> Result<(), String> {
 
     if let Some(pos) = dashdash_pos {
         args.insert(
-            if cmd == "nextest" { pos } else { pos + 1 },
+            if task == (Task::Test { nextest: true }) {
+                pos
+            } else {
+                pos + 1
+            },
             "--color=always".to_string(),
         );
     }
 
     match (task, package.as_ref().map(|x| x.as_str()), in_nextest) {
-        (Task::Clean | Task::Fmt | Task::Run | Task::Metadata, package, false) => {
+        (Task::Clean | Task::Fmt | Task::Run | Task::Metadata | Task::Update, package, false) => {
             if let Task::Fmt = task {
                 let pos = dashdash_pos.unwrap();
 
@@ -627,6 +639,7 @@ fn run() -> Result<(), String> {
                 "state_machines_macros",
                 "vstd_build",
                 "verus",
+                "error_report",
             ];
 
             let build_vstd = {
@@ -667,6 +680,7 @@ fn run() -> Result<(), String> {
                 format!("{}state_machines_macros.{}", LIB_PRE, LIB_DL),
                 format!("rust_verify{}", EXE),
                 format!("verus{}", EXE),
+                format!("error_report{}", EXE),
             ]
             .into_iter()
             {
