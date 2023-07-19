@@ -166,34 +166,54 @@ fn toml_setup_and_write(
 
     let stdout_string = String::from_utf8_lossy(&verus_output.stdout).to_string();
 
-    let stdout_json = match stdout_string.len() {
-        0 => {
-            eprintln!("{}: verus did not generate stdout", yansi::Paint::yellow("warning"));
+    let stdout_json = match serde_json::from_str::<serde_json::Value>(&stdout_string) {
+        Ok(json) => json,
+        Err(err) => {
+            eprintln!(
+                "{}: failed to parse stdout to json with error message:\n {}",
+                yansi::Paint::yellow("warning"),
+                err
+            );
             serde_json::Value::Null
         }
-        _ => serde_json::from_str::<serde_json::Value>(&stdout_string)
-            .map_err(|x| format!("failed to parse stdout to json file with error message {}", x))?,
     };
 
-    let version_info: toml::Value = match stdout_json {
-        serde_json::Value::Null => toml::Value::String("".to_string()),
-        _ => serde_json::from_str(&stdout_json["version-info"].to_string()).map_err(|x| {
-            format!("failed to parse version info to toml file with error message {}", x)
-        })?,
+    let version_info: toml::Value = match serde_json::from_str(&stdout_json["verus"].to_string())
+    {
+        Ok(json) => json,
+        Err(err) => {
+            eprintln!(
+                "{}: failed to parse version info to toml with error message:\n {}",
+                yansi::Paint::yellow("warning"),
+                err
+            );
+            toml::Value::String("".to_string())
+        }
     };
 
-    let verification_result: toml::map::Map<String, Value> =
-        match stdout_json {
-            serde_json::Value::Null => toml::map::Map::new(),
-            _ => serde_json::from_str(&stdout_json["verification-results"].to_string()).map_err(
-                |x| format!("failed to parse verification results with error message {}", x),
-            )?,
-        };
+    let verification_result: toml::map::Map<String, Value> = match serde_json::from_str(&stdout_json["verification-results"].to_string())
+    {
+        Ok(json) => json,
+        Err(err) => {
+            eprintln!(
+                "{}: failed to parse verification results to toml with error message:\n {}",
+                yansi::Paint::yellow("warning"),
+                err
+            );
+            toml::map::Map::new()
+        }
+    };
 
-    let stdout_toml_text = match stdout_json {
-        serde_json::Value::Null => toml::Value::String("".to_string()),
-        _ => serde_json::from_str(&stdout_json.to_string())
-            .map_err(|x| format!("failed to parse stdout (json) with error message {}", x))?,
+    let stdout_toml_text = match serde_json::from_str::<toml::Value>(&stdout_string) {
+        Ok(json) => json,
+        Err(err) => {
+            eprintln!(
+                "{}: failed to parse stdout to toml with error message:\n {}",
+                yansi::Paint::yellow("warning"),
+                err
+            );
+            toml::Value::String("".to_string())
+        }
     };
 
     let stderr = String::from_utf8_lossy(&verus_output.stderr).to_string();
