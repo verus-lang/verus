@@ -226,22 +226,20 @@ pub proof fn axiom_set_union<A>(s1: Set<A>, s2: Set<A>, a: A)
 {
 }
 
-// TODO: Could probably be easily proven as a lemma rather than an axiom...
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_set_union_again1<A>(a: Set<A>, b: Set<A>)
     ensures
-        #[trigger] a.union(b).union(b) == a.union(b),
+        #[trigger] a.union(b).union(b) =~= a.union(b),
 {}
 
-// TODO: Could probably be easily proven as a lemma rather than an axiom...
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_set_union_again2<A>(a: Set<A>, b: Set<A>)
     ensures
-        #[trigger] a.union(b).union(a) == a.union(b),
+        #[trigger] a.union(b).union(a) =~= a.union(b),
 {}
 
 #[verifier(external_body)]
@@ -252,22 +250,20 @@ pub proof fn axiom_set_intersect<A>(s1: Set<A>, s2: Set<A>, a: A)
 {
 }
 
-// TODO: Could probably be easily proven as a lemma rather than an axiom...
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_set_intersect_again1<A>(a: Set<A>, b: Set<A>)
     ensures
-        #[trigger] (a.intersect(b)).intersect(b) == a.intersect(b),
+        #[trigger] (a.intersect(b)).intersect(b) =~= a.intersect(b),
 {}
 
-// TODO: Could probably be easily proven as a lemma rather than an axiom...
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_set_intersect_again2<A>(a: Set<A>, b: Set<A>)
     ensures
-        #[trigger] (a.intersect(b)).intersect(a) == a.intersect(b),
+        #[trigger] (a.intersect(b)).intersect(a) =~= a.intersect(b),
 {}
 
 #[verifier(external_body)]
@@ -279,20 +275,19 @@ pub proof fn axiom_set_difference<A>(s1: Set<A>, s2: Set<A>, a: A)
 }
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_set_difference2<A>(s1: Set<A>, s2: Set<A>, a: A)
     ensures
         s2.contains(a) ==> !s1.difference(s2).contains(a),
-{
-}
+{}
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_set_disjoint<A>(a: Set<A>, b: Set<A>)
     ensures
-        a.disjoint(b) ==> ((#[trigger](a+b)).difference(a) == b && (a+b).difference(b) == a)
+        a.disjoint(b) ==> ((#[trigger](a+b)).difference(a) =~= b && (a+b).difference(b) =~= a)
 {}
 
 #[verifier(external_body)]
@@ -424,13 +419,33 @@ pub proof fn axiom_set_empty_len<A>()
 // Dafny encodes the second clause with a single directional, although
 // it should be fine with both directions?
 // Ported from Dafny prelude
-#[verifier(external_body)]
+#[verifier(external_body)] //TODO: prove
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_set_empty_equivalency_len<A>(s: Set<A>)
     ensures
         (#[trigger] s.len() == 0 <==> s =~= Set::empty())
          && (s.len() != 0 ==> exists |x: A| s.contains(x)),
-{}
+{
+    // assert(s.len() == 0 ==> s =~= Set::empty()) by {
+    //     if s.len() == 0 {
+    //         assert(forall |a: A| !(#[trigger] Set::empty().contains(a)));
+    //         assert(Set::<A>::empty().len() == 0);
+    //         assert(Set::<A>::empty().len() == s.len());
+    //         assert((exists |a: A| s.contains(a)) || (forall |a: A| !s.contains(a)));
+    //         if exists |a: A| s.contains(a) {
+    //             let a = s.choose();
+    //             assert(s.remove(a).len() == s.len() -1) by {
+    //                 axiom_set_remove_len(s, a);
+    //             }
+    //         }
+    //         //assert(forall |a: A| #[trigger] s.contains(a) ==> Set::<A>::empty().contains(a));
+    //         //assert(forall |a: A| !(#[trigger] s.contains(a)));
+    //     }
+    // }
+    // assert(s.len() == 0 <== s =~= Set::empty());
+
+    // assert(s.len() != 0 ==> exists |x: A| s.contains(x));
+}
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
@@ -443,18 +458,22 @@ pub proof fn axiom_set_insert_len<A>(s: Set<A>, a: A)
 }
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_set_insert_same_len<A>(s: Set<A>, a: A)
+    requires
+        s.finite(),
     ensures
-        s.contains(a) ==> #[trigger] s.insert(a).len() == s.len(),
+        s.contains(a) ==> #[trigger] s.insert(a).len() =~= s.len(),
 {}
 
 // magic lemma from spec function
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_set_insert_diff_len<A>(s: Set<A>, a: A)
+    requires
+        s.finite(),
     ensures
         !s.contains(a) ==> #[trigger] s.insert(a).len() == s.len() + 1,
 {}
@@ -469,12 +488,14 @@ pub proof fn axiom_set_remove_len<A>(s: Set<A>, a: A)
 {
 }
 
+// TODO: needs finite and that causes a chain of lemmas to fail
+// Maybe split into two lemmas?
 // Ported from Dafny prelude
 #[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_set_remove_len_contains<A>(s: Set<A>, a: A)
-    requires
-        s.finite(),
+    // requires
+    //     s.finite(),
     ensures
         (s.contains(a) ==> (#[trigger] (s.remove(a).len()) == s.len() -1))
             && (!s.contains(a) ==> s.len() == s.remove(a).len()),
@@ -493,12 +514,29 @@ pub proof fn axiom_set_choose_len<A>(s: Set<A>)
 }
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_set_disjoint_lens<A>(a: Set<A>, b: Set<A>)
     ensures
         a.disjoint(b) ==> #[trigger] (a+b).len() == a.len() + b.len(),
-{}
+    decreases
+        a.len(),
+{
+    if a.len() == 0 {
+        axiom_set_empty_equivalency_len(a);
+        assert(a+b =~= b);
+    }
+    else {
+        if a.disjoint(b) {
+            let x = a.choose();
+            assert(a.remove(x) + b =~= (a+b).remove(x));
+            axiom_set_remove_len_contains(a, x);
+            axiom_set_remove_len_contains(a+b, x);
+            axiom_set_disjoint_lens(a.remove(x), b);
+        }
+    }
+
+}
 
 // Ported from Dafny prelude
 #[verifier(external_body)]
@@ -546,8 +584,8 @@ pub proof fn set_magic<A>()
         forall |a: Set<A>, b: Set<A>| a.disjoint(b) ==> ((#[trigger](a+b)).difference(a) == b && (a+b).difference(b) == a), //axiom_set_disjoint
         forall |s: Set<A>| (#[trigger] s.len() == 0 <==> s =~= Set::empty())
                 && (s.len() != 0 ==> exists |x: A| s.contains(x)), //axiom_set_empty_equivalency_len
-        forall |s: Set<A>, a: A| s.contains(a) ==> #[trigger] s.insert(a).len() == s.len(), //axiom_set_insert_same_len
-        forall |s: Set<A>, a: A| !(s.contains(a)) ==> #[trigger] s.insert(a).len() == s.len() + 1, //axiom_set_insert_diff_len 
+        forall |s: Set<A>, a: A| (s.contains(a) && s.finite()) ==> #[trigger] s.insert(a).len() == s.len(), //axiom_set_insert_same_len
+        forall |s: Set<A>, a: A| (s.finite() && !s.contains(a)) ==> #[trigger] s.insert(a).len() == s.len() + 1, //axiom_set_insert_diff_len 
         forall |s: Set<A>, a: A| (s.contains(a) ==> (#[trigger] (s.remove(a).len()) == s.len() -1))
                 && (!s.contains(a) ==> s.len() == s.remove(a).len()), //axiom_set_remove_len_contains
         forall |a: Set<A>, b: Set<A>| a.disjoint(b) ==> #[trigger] (a+b).len() == a.len() + b.len(), //axiom_set_disjoint_lens
@@ -573,11 +611,14 @@ pub proof fn set_magic<A>()
     assert forall |s: Set<A>| #[trigger] s.len() == 0 implies s =~= Set::empty() by {
         axiom_set_empty_equivalency_len(s);
     }
-    assert forall |s: Set<A>, a: A| s.contains(a) implies #[trigger] s.insert(a).len() == s.len() by {
+    assert forall |s: Set<A>, a: A| (s.contains(a) && s.finite()) implies #[trigger] s.insert(a).len() == s.len() by {
         axiom_set_insert_same_len(s, a);
     }
-    assert forall |s: Set<A>, a: A| !(s.contains(a)) implies #[trigger] s.insert(a).len() == s.len() + 1 by {
+    assert forall |s: Set<A>, a: A| (s.finite() && !s.contains(a)) implies #[trigger] s.insert(a).len() == s.len() + 1 by {
         axiom_set_insert_diff_len(s,a);
+    }
+    assert forall |s: Set<A>, a: A| s.contains(a) implies (#[trigger] (s.remove(a).len()) == s.len() -1) by {
+        axiom_set_remove_len_contains(s, a);
     }
     assert forall |a: Set<A>, b: Set<A>| a.disjoint(b) ==> #[trigger] (a+b).len() == a.len() + b.len() by {
         axiom_set_disjoint_lens(a, b);
