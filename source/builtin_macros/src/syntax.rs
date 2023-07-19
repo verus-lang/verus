@@ -151,6 +151,9 @@ impl Visitor {
         let mut unwrap_ghost_tracked: Vec<Stmt> = Vec::new();
 
         // attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
+        if !self.erase_ghost {
+            attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
+        }
 
         for arg in &mut sig.inputs {
             match (arg.tracked, &mut arg.kind) {
@@ -412,7 +415,9 @@ impl Visitor {
         publish: &mut Publish,
         mode: &mut FnMode,
     ) {
-        // attrs.push(mk_verus_attr(span, quote! { verus_macro }));
+        if !self.erase_ghost {
+            attrs.push(mk_verus_attr(span, quote! { verus_macro }));
+        }
 
         let publish_attrs = match (vis, &publish) {
             (Some(Visibility::Inherited), _) => vec![],

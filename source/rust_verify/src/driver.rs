@@ -282,7 +282,7 @@ where
         rust_end_time: None,
         lifetime_start_time: None,
         lifetime_end_time: None,
-        rustc_args: rustc_args_verify.clone(),
+        rustc_args: rustc_args.clone(),
         file_loader: Some(Box::new(file_loader.clone())),
         build_test_mode,
     };
