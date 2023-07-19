@@ -469,7 +469,7 @@ pub proof fn axiom_seq_subrange_elements<A>(s: Seq<A>, start: int, stop: int, x:
 // ----------------optional singleton axioms? ------------------- //
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_seq_singleton_length<A>(elt: A)
     ensures
@@ -477,7 +477,7 @@ pub proof fn axiom_seq_singleton_length<A>(elt: A)
 {}
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_seq_singleton_index<A>(elt: A)
     ensures
@@ -487,7 +487,7 @@ pub proof fn axiom_seq_singleton_index<A>(elt: A)
 // ----------------optional Take/Drop axioms? ------------------- //
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_seq_take_len<A>(s: Seq<A>, n: int)
     ensures
@@ -495,15 +495,24 @@ pub proof fn axiom_seq_take_len<A>(s: Seq<A>, n: int)
 {}
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_seq_take_contains<A>(s: Seq<A>, n: int, x: A)
+    requires
+        0 <= n <= s.len(),
     ensures
-        #[trigger] s.take(n).contains(x) <==> (exists |i: int| 0<= i < n && i < s.len() && #[trigger] s[i] == x),
-{}
+        #[trigger] s.take(n).contains(x) <==> (exists |i: int| 0<= i < n <= s.len() && #[trigger] s[i] == x),
+{
+    assert ((exists |i: int| 0<= i < n <= s.len() && #[trigger] s[i] == x) ==> s.take(n).contains(x)) by {
+        if exists |i: int| 0<= i < n <= s.len() && #[trigger] s[i] == x  {
+            let index = choose |i: int| 0<= i < n <= s.len() && #[trigger] s[i] == x;
+            assert(s.take(n)[index] == s[index]);
+        }
+    }
+}
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_seq_take_index<A>(s: Seq<A>, n: int, j: int)
     ensures
@@ -511,7 +520,7 @@ pub proof fn axiom_seq_take_index<A>(s: Seq<A>, n: int, j: int)
 {}
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_seq_drop_len<A>(s: Seq<A>, n: int)
     ensures
@@ -519,17 +528,22 @@ pub proof fn axiom_seq_drop_len<A>(s: Seq<A>, n: int)
 {}
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_seq_drop_contains<A>(s: Seq<A>, n: int, x: A)
+    requires
+        0 <= n <= s.len(),
     ensures
-        #[trigger] s.drop(n).contains(x) <==> (exists |i: int| 0<= i < s.len() && n <= i && #[trigger] s[i] == x),
-{}
+        #[trigger] s.drop(n).contains(x) <==> (exists |i: int| 0<= n <= i < s.len() && #[trigger] s[i] == x),
+{
+    assert((exists |i: int| 0<= n <= i < s.len() && #[trigger] s[i] == x) ==> s.drop(n).contains(x)) by {
+        let index = choose |i: int| 0<= n <= i < s.len() && #[trigger] s[i] == x;
+        axiom_seq_drop_index(s, n, index-n);
+    }
+}
 
-// PROBLEMATIC, made a proof in pervasive/bytes fail
-// fixed with making spec functions in bytes.rs opaque
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_seq_drop_index<A>(s: Seq<A>, n: int, j: int)
     ensures
@@ -537,110 +551,86 @@ pub proof fn axiom_seq_drop_index<A>(s: Seq<A>, n: int, j: int)
 {}
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_seq_drop_index2<A>(s: Seq<A>, n: int, k: int)
     ensures 
         0 <= n <= k < s.len() ==> (#[trigger] s.drop(n))[k-n] == #[trigger] s[k]
 {}
 
-// // Ported from Dafny prelude
-// #[verifier(external_body)]
-// #[verifier(broadcast_forall)]
-// pub proof fn axiom_seq_append_take_drop<A>(a: Seq<A>, b: Seq<A>, n: int)
-//     ensures
-//         n == a.len() ==> (#[trigger] (a+b).take(n) == a && #[trigger] (a+b).drop(n) == b),
-// {}
-
-// Commutability of Take and Drop with Update.
+// TODO: hard to prove in magic lemma, even when assuming it true
 // Ported from Dafny prelude
 #[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_seq_append_take_drop<A>(a: Seq<A>, b: Seq<A>, n: int)
+    ensures
+        n == a.len() ==> (#[trigger] (a+b).take(n) == a && #[trigger] (a+b).drop(n) == b),
+{}
+
+// Commutability of Take and Drop with Update.
+
+// Ported from Dafny prelude
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_seq_take_update_commut1<A>(s: Seq<A>, i: int, v: A, n: int)
     ensures
-        0 <= i < n <= s.len() ==> #[trigger] s.update(i,v).take(n) == s.take(n).update(i,v),
+        0 <= i < n <= s.len() ==> #[trigger] s.update(i,v).take(n) =~= s.take(n).update(i,v),
 {}
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_seq_take_update_commut2<A>(s: Seq<A>, i: int, v: A, n: int)
     ensures
-        0 <= n <= i < s.len() ==> #[trigger] s.update(i,v).take(n) == s.take(n),
+        0 <= n <= i < s.len() ==> #[trigger] s.update(i,v).take(n) =~= s.take(n),
 {}
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_seq_drop_update_commut1<A>(s: Seq<A>, i: int, v: A, n: int)
     ensures
-        0 <= n <= i < s.len() ==> #[trigger] s.update(i,v).drop(n) == s.drop(n).update(i-n,v),
+        0 <= n <= i < s.len() ==> #[trigger] s.update(i,v).drop(n) =~= s.drop(n).update(i-n,v),
 {}
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_seq_drop_update_commut2<A>(s: Seq<A>, i: int, v: A, n: int)
     ensures
-        0 <= i < n <= s.len() ==> #[trigger] s.update(i,v).drop(n) == s.drop(n),
+        0 <= i < n <= s.len() ==> #[trigger] s.update(i,v).drop(n) =~= s.drop(n),
 {}
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_seq_drop_build_commut<A>(s: Seq<A>, v: A, n: int)
     ensures
-        0<= n <= s.len() ==> #[trigger] s.push(v).drop(n) == s.drop(n).push(v), 
+        0<= n <= s.len() ==> #[trigger] s.push(v).drop(n) =~= s.drop(n).push(v), 
 {}
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_seq_drop_nothing<A>(s: Seq<A>, n: int)
     ensures
-        n==0 ==> #[trigger] s.drop(n) == s,
+        n==0 ==> #[trigger] s.drop(n) =~= s,
 {}
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_seq_take_nothing<A>(s: Seq<A>, n: int)
     ensures
-        n==0 ==> #[trigger] s.take(n) == Seq::<A>::empty(),
+        n==0 ==> #[trigger] s.take(n) =~= Seq::<A>::empty(),
 {}
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_seq_drop_of_drop<A>(s: Seq<A>, m: int, n: int)
     ensures
-        (0 <= m && 0 <= n && m+n <= s.len()) ==> s.drop(m).drop(n) == s.drop(m+n),
-{}
-
-// ----------Rank function specifications-------- //
-
-// Ported from Dafny prelude
-#[verifier(external_body)]
-//#[verifier(broadcast_forall)]
-pub proof fn axiom_seq_rank_take<A>(s: Seq<A>, i: int)
-    ensures 
-        0 <= i < s.len() ==> #[trigger] s.take(i).rank() < s.rank()
-{}
-
-// Ported from Dafny prelude
-#[verifier(external_body)]
-//#[verifier(broadcast_forall)]
-pub proof fn axiom_seq_rank_drop<A>(s: Seq<A>, i: int)
-    ensures 
-        0 < i <= s.len() ==> #[trigger] s.drop(i).rank() < s.rank()
-{}
-
-// Ported from Dafny prelude
-#[verifier(external_body)]
-//#[verifier(broadcast_forall)]
-pub proof fn axiom_seq_rank_append_take_drop<A>(s: Seq<A>, i: int, j: int)
-    ensures 
-        0 <= i < j <= s.len() ==> #[trigger] (s.take(i) + s.drop(j)).rank() < s.rank()
+        (0 <= m && 0 <= n && m+n <= s.len()) ==> s.drop(m).drop(n) =~= s.drop(m+n),
 {}
 
 // ------------- Macros ---------------- //
@@ -688,14 +678,14 @@ pub proof fn seq_magic<A>()
         forall |elt: A| #[trigger] Seq::<A>::singleton(elt).len() == 1, //axiom_seq_singleton_length(elt),
         forall |elt: A| #[trigger] Seq::<A>::singleton(elt)[0] == elt, //axiom_seq_singleton_index(elt),
         forall |s: Seq<A>, n: int| 0 <= n <= s.len() ==> #[trigger] s.take(n).len() == n, //axiom_seq_take_len(s, n)
-        forall |s: Seq<A>, n: int, x: A| #[trigger] s.take(n).contains(x) 
-                <==> (exists |i: int| 0<= i < n && i < s.len() && #[trigger] s[i] == x),//axiom_seq_take_contains(s, n, x),
+        forall |s: Seq<A>, n: int, x: A| (#[trigger] s.take(n).contains(x) && 0<=n<=s.len())
+                <==> (exists |i: int| 0<= i < n <= s.len() && #[trigger] s[i] == x),//axiom_seq_take_contains(s, n, x),
         forall |s: Seq<A>, n: int, j: int|  0<= j < n <= s.len() ==> #[trigger] s.take(n)[j] == s[j],//axiom_seq_take_index(s, n, j),
         forall |s: Seq<A>, n: int| 0 <= n <= s.len() ==> #[trigger] s.drop(n).len() == s.len() - n, //axiom_seq_drop_len(s, n),
-        forall |s: Seq<A>, n: int, x: A| #[trigger] s.drop(n).contains(x) 
-                <==> (exists |i: int| 0<= i < s.len() && n <= i && #[trigger] s[i] == x),//axiom_seq_drop_contains(s, n, x),
+        forall |s: Seq<A>, n: int, x: A| (#[trigger] s.drop(n).contains(x) && 0<=n<=s.len())
+                <==> (exists |i: int| 0<= n <= i < s.len() && #[trigger] s[i] == x),//axiom_seq_drop_contains(s, n, x),
         forall |s: Seq<A>, n: int, j: int| 0 <=n && 0<= j < (s.len() - n) ==> #[trigger] s.drop(n)[j] == s[j+n],//axiom_seq_drop_index(s, n, j),
-       // forall |a: Seq<A>, b: Seq<A>, n: int| n == a.len() ==> (#[trigger] (a+b).take(n) == a && #[trigger] (a+b).drop(n) == b),//axiom_seq_append_take_drop(a, b, n),
+        //forall |a: Seq<A>, b: Seq<A>, n: int| n == a.len() ==> (#[trigger] (a+b).take(n) == a && #[trigger] (a+b).drop(n) == b),//axiom_seq_append_take_drop(a, b, n),
         forall |s: Seq<A>, i: int, v: A, n: int| 0 <= i < n <= s.len() ==> #[trigger] s.update(i,v).take(n) == s.take(n).update(i,v),//axiom_seq_take_update_commut1(s, i, v, n),
         forall |s: Seq<A>, i: int, v: A, n: int| 0 <= n <= i < s.len() ==> #[trigger] s.update(i,v).take(n) == s.take(n),//axiom_seq_take_update_commut2(s, i, v, n),
         forall |s: Seq<A>, i: int, v: A, n: int| 0 <= n <= i < s.len() ==> #[trigger] s.update(i,v).drop(n) == s.drop(n).update(i-n,v),//axiom_seq_drop_update_commut1(s, i, v, n),
@@ -704,9 +694,6 @@ pub proof fn seq_magic<A>()
         forall |s: Seq<A>, n: int| n==0 ==> #[trigger] s.drop(n) == s,//axiom_seq_drop_nothing(s, n),
         forall |s: Seq<A>, n: int| n==0 ==> #[trigger] s.take(n) == Seq::<A>::empty(), //axiom_seq_take_nothing(s, n),
         forall |s: Seq<A>, m: int, n: int| (0 <= m && 0 <= n && m+n <= s.len()) ==> s.drop(m).drop(n) == s.drop(m+n),//axiom_seq_drop_of_drop(s, m, n),
-        forall |s: Seq<A>, i: int| 0 <= i < s.len() ==> #[trigger] s.take(i).rank() < s.rank(),//axiom_seq_rank_take(s, i),
-        forall |s: Seq<A>, i: int|  0 < i <= s.len() ==> #[trigger] s.drop(i).rank() < s.rank(),//axiom_seq_rank_drop(s, i),
-        forall |s: Seq<A>, i: int, j: int| 0 <= i < j <= s.len() ==> #[trigger] (s.take(i) + s.drop(j)).rank() < s.rank(),//axiom_seq_rank_append_take_drop(s, i, j),
 {
     assert forall |x: Seq<A>, y: Seq<A>, elt: A| #[trigger] (x+y).contains(elt) implies x.contains(elt) ||  y.contains(elt) by {
         axiom_seq_concat_contains_all_elements(x, y, elt);
@@ -728,11 +715,11 @@ pub proof fn seq_magic<A>()
             implies #[trigger] s.subrange(start,stop).contains(x) by {
         axiom_seq_subrange_elements(s, start, stop, x);
     }
-    assert forall |s: Seq<A>, n: int, x: A| #[trigger] s.take(n).contains(x) 
-            implies (exists |i: int| 0<= i < n && i < s.len() && #[trigger] s[i] == x) by {
+    assert forall |s: Seq<A>, n: int, x: A| #[trigger] s.take(n).contains(x) && 0<=n<=s.len() 
+            implies (exists |i: int| 0<= i < n <= s.len() && #[trigger] s[i] == x) by {
         axiom_seq_take_contains(s, n, x);
     }
-    assert forall |s: Seq<A>, n: int, x: A| (exists |i: int| 0<= i < n && i < s.len() && #[trigger] s[i] == x) 
+    assert forall |s: Seq<A>, n: int, x: A| (exists |i: int| 0<= i < n <= s.len() && #[trigger] s[i] == x) 
             implies #[trigger] s.take(n).contains(x) by {
         axiom_seq_take_contains(s, n, x);
     }
@@ -743,17 +730,21 @@ pub proof fn seq_magic<A>()
         assert(s.take(n).len() == n);
         axiom_seq_take_index(s, n, j);
     }
-    assert forall |s: Seq<A>, n: int, x: A| #[trigger] s.drop(n).contains(x) 
-            implies (exists |i: int| 0<= i < s.len() && n <= i && #[trigger] s[i] == x) by {
+    assert forall |s: Seq<A>, n: int, x: A| #[trigger] s.drop(n).contains(x) && 0<=n<=s.len()
+            implies (exists |i: int| 0<= n <= i < s.len() && #[trigger] s[i] == x) by {
         axiom_seq_drop_contains(s, n, x);
     }
-    assert forall |s: Seq<A>, n: int, x: A| (exists |i: int| 0<= i < s.len() && n <= i && #[trigger] s[i] == x) 
-            implies #[trigger] s.drop(n).contains(x) by {
+    assert forall |s: Seq<A>, n: int, x: A| (exists |i: int| 0<= n<= i < s.len() && #[trigger] s[i] == x) 
+            implies #[trigger] s.drop(n).contains(x) && 0 <= n <= s.len() by {
         axiom_seq_drop_contains(s, n, x);
     }
     // assert forall |a: Seq<A>, b: Seq<A>, n: int| n == a.len() implies (#[trigger] (a+b).take(n) == a && #[trigger] (a+b).drop(n) == b) by {
     //     axiom_seq_append_take_drop(a, b, n);
+    //     assert((a+b).take(n) == a);
+    //     assert((a+b).drop(n) == b);
     // }
+    // assume(forall |a: Seq<A>, b: Seq<A>, n: int| n == a.len() ==> (#[trigger] (a+b).take(n) == a && #[trigger] (a+b).drop(n) == b));//axiom_seq_append_take_drop(a, b, n),
+
     assert forall |s: Seq<A>, i: int, v: A, n: int| 0 <= i < n <= s.len() implies #[trigger] s.update(i,v).take(n) == s.take(n).update(i,v) by {
         axiom_seq_take_update_commut1(s, i, v, n);
     }
@@ -777,15 +768,6 @@ pub proof fn seq_magic<A>()
     }
     assert forall |s: Seq<A>, m: int, n: int| (0 <= m && 0 <= n && m+n <= s.len()) implies s.drop(m).drop(n) == s.drop(m+n) by {
         axiom_seq_drop_of_drop(s, m, n);
-    }
-    assert forall |s: Seq<A>, i: int| 0 <= i < s.len() implies #[trigger] s.take(i).rank() < s.rank() by {
-        axiom_seq_rank_take(s, i);
-    }
-    assert forall |s: Seq<A>, i: int|  0 < i <= s.len() implies #[trigger] s.drop(i).rank() < s.rank() by {
-        axiom_seq_rank_drop(s, i);
-    }
-    assert forall |s: Seq<A>, i: int, j: int| 0 <= i < j <= s.len() implies #[trigger] (s.take(i) + s.drop(j)).rank() < s.rank() by {
-        axiom_seq_rank_append_take_drop(s, i, j);
     }
 }
 
