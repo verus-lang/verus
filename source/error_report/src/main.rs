@@ -178,8 +178,7 @@ fn toml_setup_and_write(
         }
     };
 
-    let version_info: toml::Value = match serde_json::from_str(&stdout_json["verus"].to_string())
-    {
+    let version_info: toml::Value = match serde_json::from_str(&stdout_json["verus"].to_string()) {
         Ok(json) => json,
         Err(err) => {
             eprintln!(
@@ -191,18 +190,18 @@ fn toml_setup_and_write(
         }
     };
 
-    let verification_result: toml::map::Map<String, Value> = match serde_json::from_str(&stdout_json["verification-results"].to_string())
-    {
-        Ok(json) => json,
-        Err(err) => {
-            eprintln!(
-                "{}: failed to parse verification results to toml with error message:\n {}",
-                yansi::Paint::yellow("warning"),
-                err
-            );
-            toml::map::Map::new()
-        }
-    };
+    let verification_result: toml::map::Map<String, Value> =
+        match serde_json::from_str(&stdout_json["verification-results"].to_string()) {
+            Ok(json) => json,
+            Err(err) => {
+                eprintln!(
+                    "{}: failed to parse verification results to toml with error message:\n {}",
+                    yansi::Paint::yellow("warning"),
+                    err
+                );
+                toml::map::Map::new()
+            }
+        };
 
     let stdout_toml_text = match serde_json::from_str::<toml::Value>(&stdout_string) {
         Ok(json) => json,
