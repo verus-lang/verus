@@ -387,6 +387,7 @@ pub proof fn lemma_maximal_is_unique<A>(r: FnSpec(A,A) -> bool, s: Set<A>)
 
 pub proof fn find_unique_minimal_ensures<A>(s: Set<A>, r: FnSpec(A,A) -> bool)
     requires
+        s.finite(),
         s.len() >0,
         total_ordering(r),
     ensures
@@ -397,6 +398,7 @@ pub proof fn find_unique_minimal_ensures<A>(s: Set<A>, r: FnSpec(A,A) -> bool)
     set_magic::<A>();
     if s.len() == 1 {
         let x = choose |x: A| s.contains(x);
+        assert(s.finite());
         assert(s.remove(x) =~= Set::<A>::empty());
         assert(s.remove(x).insert(x) =~= s);
         assert(s.contains(s.find_unique_minimal(r)));
