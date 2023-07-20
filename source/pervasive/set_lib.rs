@@ -459,6 +459,7 @@ pub proof fn find_unique_minimal_ensures<A>(s: Set<A>, r: FnSpec(A,A) -> bool)
 
 pub proof fn find_unique_maximal_ensures<A>(s: Set<A>, r: FnSpec(A,A) -> bool)
     requires
+        s.finite(),
         s.len() >0,
         total_ordering(r),
     ensures

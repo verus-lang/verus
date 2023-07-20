@@ -374,6 +374,7 @@ pub proof fn lemma_remove_equivalency<K,V>(m: Map<K,V>, key: K)
 pub proof fn lemma_remove_keys_len<K,V>(m: Map<K,V>, keys: Set<K>)
     requires
         forall |k: K| #[trigger] keys.contains(k) ==> m.contains_key(k),
+        keys.finite(),
     ensures 
         m.remove_keys(keys).dom().len() == m.dom().len() - keys.len(),
     decreases
@@ -387,6 +388,8 @@ pub proof fn lemma_remove_keys_len<K,V>(m: Map<K,V>, keys: Set<K>)
         assert(m.remove_keys(keys).remove(key) =~= m.remove_keys(keys));
     }
     else {
+        assert(keys.len() == 0);
+        assert(keys =~= Set::empty());
         assert(m.remove_keys(keys) =~= m);
     }
 }
@@ -394,6 +397,8 @@ pub proof fn lemma_remove_keys_len<K,V>(m: Map<K,V>, keys: Set<K>)
 pub proof fn lemma_disjoint_union_size<K,V>(m1: Map<K,V>, m2: Map<K,V>)
     requires
         m1.dom().disjoint(m2.dom()),
+        m1.dom().finite(),
+        m2.dom().finite(),
     ensures
         m1.union_prefer_right(m2).dom().len() == m1.dom().len() + m2.dom().len(),
 {
