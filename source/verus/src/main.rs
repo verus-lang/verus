@@ -278,6 +278,7 @@ fn repo_path() -> Option<Reports> {
     let project_name = input_file_path
         .as_ref()
         .map(|path| format!("{:x}", sha2::Sha256::digest(path.to_str().unwrap().as_bytes())));
+        // not sure how to write a ? to replace unwrap
 
     let proj_dir = project_name.map(|name| {
         let project_dir = reports_dir.join(uuid).join(name);
