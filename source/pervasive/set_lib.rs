@@ -65,9 +65,13 @@ impl<A> Set<A> {
         recommends 
             total_ordering(r),
             self.len() >0,
+            self.finite(),
         decreases
             self.len()
-        via Self::prove_decrease_min_unique
+        when
+            self.finite()
+        via 
+            Self::prove_decrease_min_unique
     {
         if self.len() == 1 {self.choose()}
         else {
@@ -78,7 +82,8 @@ impl<A> Set<A> {
     }
 
     #[via_fn]
-    proof fn prove_decrease_min_unique(self, r: FnSpec(A,A) -> bool) {
+    proof fn prove_decrease_min_unique(self, r: FnSpec(A,A) -> bool)
+    {
         set_magic::<A>();
     }
 
@@ -90,7 +95,11 @@ impl<A> Set<A> {
             total_ordering(r),
             self.len() >0,
         decreases
-            self.len() via Self::prove_decrease_max_unique
+            self.len() 
+        when
+            self.finite()
+        via 
+            Self::prove_decrease_max_unique
     {
         if self.len() == 1 {self.choose()}
         else {
@@ -374,6 +383,7 @@ pub proof fn lemma_minimal_is_unique<A>(r: FnSpec(A,A) -> bool, s: Set<A>)
 /// In a totally-ordered set, there exists at most one maximal element.
 pub proof fn lemma_maximal_is_unique<A>(r: FnSpec(A,A) -> bool, s: Set<A>)
     requires
+        s.finite(),
         total_ordering(r),
     ensures
         forall |max: A, max_prime: A| is_maximal(r, max, s) && is_maximal(r, max_prime, s) ==> max == max_prime,

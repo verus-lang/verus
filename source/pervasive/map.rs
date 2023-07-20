@@ -375,6 +375,7 @@ pub proof fn lemma_remove_keys_len<K,V>(m: Map<K,V>, keys: Set<K>)
     requires
         forall |k: K| #[trigger] keys.contains(k) ==> m.contains_key(k),
         keys.finite(),
+        m.dom().finite(),
     ensures 
         m.remove_keys(keys).dom().len() == m.dom().len() - keys.len(),
     decreases
@@ -385,11 +386,9 @@ pub proof fn lemma_remove_keys_len<K,V>(m: Map<K,V>, keys: Set<K>)
         let key = keys.choose();
         let val = m[key];
         lemma_remove_keys_len(m.remove(key),keys.remove(key));
-        assert(m.remove_keys(keys).remove(key) =~= m.remove_keys(keys));
+        assert(m.remove(key).remove_keys(keys.remove(key)) =~= m.remove_keys(keys));
     }
     else {
-        assert(keys.len() == 0);
-        assert(keys =~= Set::empty());
         assert(m.remove_keys(keys) =~= m);
     }
 }
@@ -403,6 +402,7 @@ pub proof fn lemma_disjoint_union_size<K,V>(m1: Map<K,V>, m2: Map<K,V>)
         m1.union_prefer_right(m2).dom().len() == m1.dom().len() + m2.dom().len(),
 {
     let u = m1.union_prefer_right(m2);
+    assert(u.dom() =~= m1.dom() + m2.dom()); //proves u.dom() is finite
     assert(u.remove_keys(m1.dom()).dom() =~= m2.dom());
     assert(u.remove_keys(m1.dom()).dom().len() == u.dom().len() - m1.dom().len()) by {
         lemma_remove_keys_len(u, m1.dom());
