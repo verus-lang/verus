@@ -840,7 +840,7 @@ impl Verifier {
             &("Associated-Type-Decls".to_string()),
         );
 
-        let datatype_commands = vir::datatype_to_air::datatypes_to_air(
+        let datatype_commands = vir::datatype_to_air::datatypes_and_primitives_to_air(
             ctx,
             &krate
                 .datatypes
@@ -1686,9 +1686,8 @@ impl Verifier {
 
         let mut crate_names: Vec<String> = vec![crate_name];
         crate_names.extend(other_crate_names.into_iter());
-        let mut vir_crates: Vec<Krate> =
-            vec![vir::builtins::builtin_krate(&self.air_no_span.clone().unwrap())];
-        vir_crates.extend(other_vir_crates.into_iter());
+        let mut vir_crates: Vec<Krate> = other_vir_crates;
+        // TODO vec![vir::builtins::builtin_krate(&self.air_no_span.clone().unwrap())];
 
         let erasure_info = ErasureInfo {
             hir_vir_ids: vec![],

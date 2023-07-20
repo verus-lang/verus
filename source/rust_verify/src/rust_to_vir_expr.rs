@@ -24,7 +24,9 @@ use rustc_hir::{
     BinOpKind, BindingAnnotation, Block, Closure, Destination, Expr, ExprKind, Guard, HirId, Let,
     Local, LoopSource, Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
 };
-use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow, AutoBorrowMutability};
+use rustc_middle::ty::adjustment::{
+    Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, PointerCast,
+};
 use rustc_middle::ty::subst::GenericArgKind;
 use rustc_middle::ty::DefIdTree;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind, VariantDef};
@@ -97,6 +99,7 @@ pub(crate) fn closure_param_typs<'tcx>(
                 args.push(mid_ty_to_vir(
                     bctx.ctxt.tcx,
                     &bctx.ctxt.verus_items,
+                    bctx.fun_id,
                     expr.span,
                     t,
                     false, /* allow_mut_ref */
@@ -121,6 +124,7 @@ fn closure_ret_typ<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<Typ
             mid_ty_to_vir(
                 bctx.ctxt.tcx,
                 &bctx.ctxt.verus_items,
+                bctx.fun_id,
                 expr.span,
                 &t,
                 false, /* allow_mut_ref */
@@ -437,6 +441,7 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
                     let vir_typ = mid_ty_to_vir(
                         bctx.ctxt.tcx,
                         &bctx.ctxt.verus_items,
+                        bctx.fun_id,
                         pat.span,
                         &typ,
                         false,
@@ -955,6 +960,16 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 "dereferencing a pointer (here the dereference is implicit)"
             )
         }
+        Adjust::Pointer(PointerCast::Unsize) => {
+            // REVIEW Should we track the size of the array as a fact about the resulting slice?
+            expr_to_vir_with_adjustments(
+                bctx,
+                expr,
+                current_modifier,
+                adjustments,
+                adjustment_idx - 1,
+            )
+        }
         Adjust::Pointer(_cast) => {
             unsupported_err!(expr.span, "casting a pointer (here the cast is implicit)")
         }
@@ -1155,6 +1170,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             arg_typs.push(mid_ty_to_vir(
                                 tcx,
                                 &bctx.ctxt.verus_items,
+                                bctx.fun_id,
                                 arg.span,
                                 &bctx.types.expr_ty_adjusted(arg),
                                 false,
@@ -1700,6 +1716,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                     typ_args.push(mid_ty_to_vir(
                                         tcx,
                                         &bctx.ctxt.verus_items,
+                                        bctx.fun_id,
                                         expr.span,
                                         &ty,
                                         false,
@@ -1936,7 +1953,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
                 let deref_ghost = mid_ty_to_vir_ghost(
                     bctx.ctxt.tcx,
                     &bctx.ctxt.verus_items,
-                    None,
+                    bctx.fun_id,
                     lhs.span,
                     &bctx.types.expr_ty_adjusted(lhs),
                     false,
