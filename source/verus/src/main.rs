@@ -165,8 +165,10 @@ pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<(), String> {
 
     child.wait().map_err(|x| format!("verus failed to run with error: {}", x))?;
 
-    writeln!(file, "{}", err_string).unwrap();
-    writeln!(file, "{}", out_string).unwrap();
+    writeln!(file, "{}", err_string)
+        .map_err(|x| format!("failed to write to reports.toml: {}", x))?;
+    writeln!(file, "{}", out_string)
+        .map_err(|x| format!("failed to write to reports.toml: {}", x))?;
 
     // TODO: going to change after using --emit-dep-info=PATH
     let dep_file_rel_path =
@@ -178,12 +180,31 @@ pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<(), String> {
 
     // copy files to repo_path
     for dep in deps.iter() {
-        // copy might create non-existing directories
-        create_dir_all(proj_path.join(dep.parent().unwrap())).unwrap();
-        std::fs::copy(dep, proj_path.join(dep)).unwrap();
+        // change path to relative path, since adjoining a relative path will overwrite the caller path
+        let rel_path = if dep.is_absolute() {
+            if cfg!(windows) {
+                dep.strip_prefix(r"C:\")
+                    .map_err(|err| format!("failed to strip absolute path {}", err))?
+            } else {
+                dep.strip_prefix("/")
+                    .map_err(|err| format!("failed to strip absolute path {}", err))?
+            }
+        } else {
+            &dep
+        };
+        create_dir_all(proj_path.join(rel_path.parent().unwrap())).unwrap();
+
+        std::fs::copy(dep, proj_path.join(rel_path))
+            .map_err(|err| format!("failed to copy file {} to repo_path {}", dep.display(), err))?;
     }
 
-    std::fs::remove_file(dep_file_path).expect("remove crate root dependency file");
+    std::fs::remove_file(&dep_file_path).map_err(|err| {
+        format!(
+            "failed to remove dependency file {} in local data cache with error message: {}",
+            dep_file_path.display(),
+            err
+        )
+    })?;
 
     Command::new("git")
         .current_dir(&proj_path)
