@@ -294,7 +294,6 @@ pub fn zip_setup(dep_file_name: String) -> Result<String, String> {
 
 // parse the .d file and returns a vector of files names required to generate the crate
 fn get_dependencies(dep_file_path: &std::path::Path) -> Result<Vec<String>, String> {
-    // update to better error message
     let file = File::open(dep_file_path)
         .map_err(|x| format!("{}, dependency file name: {:?}", x, dep_file_path))?;
     let mut reader = BufReader::new(file);
