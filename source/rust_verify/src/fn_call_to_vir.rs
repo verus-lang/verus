@@ -1040,9 +1040,14 @@ fn verus_item_to_vir<'tcx, 'a>(
             if matches!(equ_item, EqualityItem::ExtEqual | EqualityItem::ExtEqualDeep) {
                 assert!(node_substs.len() == 1);
                 let t = match node_substs[0].unpack() {
-                    GenericArgKind::Type(ty) => {
-                        mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, expr.span, &ty, false)?
-                    }
+                    GenericArgKind::Type(ty) => mid_ty_to_vir(
+                        tcx,
+                        &bctx.ctxt.verus_items,
+                        bctx.fun_id,
+                        expr.span,
+                        &ty,
+                        false,
+                    )?,
                     _ => panic!("unexpected ext_equal type argument"),
                 };
                 let vop = vir::ast::BinaryOpr::ExtEq(equ_item == &EqualityItem::ExtEqualDeep, t);
@@ -1445,7 +1450,14 @@ fn mk_typ_args<'tcx>(
     for typ_arg in substs {
         match typ_arg.unpack() {
             GenericArgKind::Type(ty) => {
-                typ_args.push(mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, span, &ty, false)?);
+                typ_args.push(mid_ty_to_vir(
+                    tcx,
+                    &bctx.ctxt.verus_items,
+                    bctx.fun_id,
+                    span,
+                    &ty,
+                    false,
+                )?);
             }
             GenericArgKind::Lifetime(_) => {}
             GenericArgKind::Const(cnst) => {
@@ -1553,7 +1565,7 @@ fn check_variant_field<'tcx>(
         return err_span(span, format!("no variant `{variant_name:}` for this datatype"));
     };
 
-    let vir_adt_ty = mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, span, &ty, false)?;
+    let vir_adt_ty = mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, bctx.fun_id, span, &ty, false)?;
     let adt_path = match &*vir_adt_ty {
         TypX::Datatype(path, _, _) => path.clone(),
         _ => {
@@ -1570,9 +1582,16 @@ fn check_variant_field<'tcx>(
             };
 
             let field_ty = field.ty(tcx, substs);
-            let vir_field_ty = mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, span, &field_ty, false)?;
-            let vir_expected_field_ty =
-                mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, span, &expected_field_typ, false)?;
+            let vir_field_ty =
+                mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, bctx.fun_id, span, &field_ty, false)?;
+            let vir_expected_field_ty = mid_ty_to_vir(
+                tcx,
+                &bctx.ctxt.verus_items,
+                bctx.fun_id,
+                span,
+                &expected_field_typ,
+                false,
+            )?;
             if !types_equal(&vir_field_ty, &vir_expected_field_ty) {
                 return err_span(span, "field has the wrong type");
             }

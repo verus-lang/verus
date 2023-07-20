@@ -135,6 +135,9 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let from_unicode = str_to_node(CHAR_FROM_UNICODE);
     let to_unicode = str_to_node(CHAR_TO_UNICODE);
 
+    let type_id_array = str_to_node(TYPE_ID_ARRAY);
+    let type_id_slice = str_to_node(TYPE_ID_SLICE);
+
     nodes_vec!(
         // Fuel
         (declare-sort [FuelId] 0)
@@ -196,6 +199,8 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [decorate_ghost] ([decoration]) [decoration])
         (declare-fun [decorate_tracked] ([decoration]) [decoration])
         (declare-fun [decorate_never] ([decoration]) [decoration])
+        (declare-fun [type_id_array] ([decoration] [typ] [decoration] [typ]) [typ])
+        (declare-fun [type_id_slice] ([decoration] [typ]) [typ])
         (declare-fun [has_type] ([Poly] [typ]) Bool)
         (declare-fun [as_type] ([Poly] [typ]) [Poly])
         (declare-fun [mk_fun] (Fun) Fun)

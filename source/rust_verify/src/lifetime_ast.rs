@@ -30,7 +30,7 @@ impl Id {
 }
 
 pub(crate) type Typ = Box<TypX>;
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum TypX {
     Primitive(String),
     TypParam(Id),
@@ -38,6 +38,7 @@ pub(crate) enum TypX {
     Ref(Typ, Option<Id>, Mutability),
     Phantom(Typ),
     Slice(Typ),
+    Array(Typ, Typ),
     Tuple(Vec<Typ>),
     Datatype(Id, Vec<Typ>),
     Projection {
@@ -135,28 +136,36 @@ pub(crate) enum Bound {
     Fn(ClosureKind, Typ, Typ),
 }
 
+// where typ: bound
+#[derive(Debug, Clone)]
+pub(crate) struct GenericBound {
+    pub(crate) typ: Typ,
+    pub(crate) bound: Bound,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct GenericParam {
     pub(crate) name: Id,
     pub(crate) const_typ: Option<Typ>,
-    pub(crate) bounds: Vec<Bound>,
 }
 
 #[derive(Debug)]
 pub(crate) struct TraitDecl {
     pub(crate) name: Id,
-    pub(crate) generics: Vec<GenericParam>,
+    pub(crate) generic_params: Vec<GenericParam>,
+    pub(crate) generic_bounds: Vec<GenericBound>,
     pub(crate) assoc_typs: Vec<Id>,
 }
 
 #[derive(Debug)]
 pub(crate) struct AssocTypeImpl {
-    pub name: Id,
-    pub generics: Vec<GenericParam>,
-    pub self_typ: Typ,
+    pub(crate) name: Id,
+    pub(crate) generic_params: Vec<GenericParam>,
+    pub(crate) generic_bounds: Vec<GenericBound>,
+    pub(crate) self_typ: Typ,
     // use Datatype(Id, Vec<Typ>) to represent (trait_path, trait_typ_args)
-    pub trait_as_datatype: Typ,
-    pub typ: Typ,
+    pub(crate) trait_as_datatype: Typ,
+    pub(crate) typ: Typ,
 }
 
 #[derive(Debug)]
@@ -166,7 +175,8 @@ pub(crate) struct DatatypeDecl {
     // Does the type implement the Copy trait? (e.g. impl<A: Copy> Copy for S<A> {})
     // If so, for each GenericParam A say whether clone and copy require A: Clone and A: Copy
     pub(crate) implements_copy: Option<Vec<bool>>,
-    pub(crate) generics: Vec<GenericParam>,
+    pub(crate) generic_params: Vec<GenericParam>,
+    pub(crate) generic_bounds: Vec<GenericBound>,
     pub(crate) datatype: Box<Datatype>,
 }
 
@@ -175,7 +185,8 @@ pub(crate) struct FunDecl {
     pub(crate) sig_span: Span,
     pub(crate) name_span: Span,
     pub(crate) name: Id,
-    pub(crate) generics: Vec<GenericParam>,
+    pub(crate) generic_params: Vec<GenericParam>,
+    pub(crate) generic_bounds: Vec<GenericBound>,
     pub(crate) params: Vec<(Option<Span>, Id, Typ)>,
     pub(crate) ret: Option<(Option<Span>, Typ)>,
     pub(crate) body: Exp,
