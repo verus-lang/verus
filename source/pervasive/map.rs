@@ -556,6 +556,24 @@ pub proof fn axiom_map_ext_equal_deep<K, V>(m1: Map<K, V>, m2: Map<K, V>)
 {
 }
 
+// auto style axiom bundle
+pub proof fn map_magic<K,V>()
+    ensures
+    forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| #[trigger] Map::<K,V>::new(fk,fv).dom()
+            == Set::<K>::new(|k: K| fk(k)), //axiom_map_new_domain
+    forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| #[trigger] Map::<K,V>::new(fk,fv).values() 
+            == Set::<V>::new(|v: V| exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),  //axiom_map_new_values
+{
+    assert forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| 
+        #[trigger] Map::<K,V>::new(fk,fv).dom() == Set::<K>::new(|k: K| fk(k)) by {
+            axiom_map_new_domain(fk, fv);
+        }
+    assert forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| #[trigger] Map::<K,V>::new(fk,fv).values() 
+        == Set::<V>::new(|v: V| exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v) by {
+            axiom_map_new_values(fk, fv);
+        }
+}
+
 // Macros
 
 #[doc(hidden)]
@@ -673,24 +691,6 @@ macro_rules! assert_maps_equal_internal {
         });
     }
 }
-
-// // auto style axiom bundle
-// pub proof fn map_magic<K,V>()
-//     ensures
-//     forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| #[trigger] Map::<K,V>::new(fk,fv).dom()
-//             == Set::<K>::new(|k: K| fk(k)), //axiom_map_new_domain
-//     forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| #[trigger] Map::<K,V>::new(fk,fv).values() 
-//             == Set::<V>::new(|v: V| exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),  //axiom_map_new_values
-// {
-//     assert forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| 
-//         #[trigger] Map::<K,V>::new(fk,fv).dom() == Set::<K>::new(|k: K| fk(k)) by {
-//             axiom_map_new_domain(fk, fv);
-//         }
-//     assert forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| #[trigger] Map::<K,V>::new(fk,fv).values() 
-//         == Set::<V>::new(|v: V| exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v) by {
-//             axiom_map_new_values(fk, fv);
-//         }
-// }
 
 #[doc(hidden)]
 pub use assert_maps_equal_internal;
