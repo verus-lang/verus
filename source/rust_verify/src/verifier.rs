@@ -766,15 +766,15 @@ impl Verifier {
             module_path,
             diagnostics,
             &mut air_context,
-            &datatype_commands,
-            &("Datatypes".to_string()),
+            &assoc_type_decl_commands,
+            &("Associated-Type-Decls".to_string()),
         );
         self.run_commands(
             module_path,
             diagnostics,
             &mut air_context,
-            &assoc_type_decl_commands,
-            &("Associated-Type-Decls".to_string()),
+            &datatype_commands,
+            &("Datatypes".to_string()),
         );
         self.run_commands(
             module_path,
@@ -830,7 +830,17 @@ impl Verifier {
             ));
         }
 
-        let datatype_commands = vir::datatype_to_air::datatypes_to_air(
+        let assoc_type_decl_commands =
+            vir::assoc_types_to_air::assoc_type_decls_to_air(ctx, &krate.traits);
+        self.run_commands(
+            module,
+            reporter,
+            &mut air_context,
+            &assoc_type_decl_commands,
+            &("Associated-Type-Decls".to_string()),
+        );
+
+        let datatype_commands = vir::datatype_to_air::datatypes_and_primitives_to_air(
             ctx,
             &krate
                 .datatypes
@@ -845,16 +855,6 @@ impl Verifier {
             &mut air_context,
             &datatype_commands,
             &("Datatypes".to_string()),
-        );
-
-        let assoc_type_decl_commands =
-            vir::assoc_types_to_air::assoc_type_decls_to_air(ctx, &krate.traits);
-        self.run_commands(
-            module,
-            reporter,
-            &mut air_context,
-            &assoc_type_decl_commands,
-            &("Associated-Type-Decls".to_string()),
         );
 
         let assoc_type_impl_commands =
@@ -1204,25 +1204,18 @@ impl Verifier {
         source_map: Option<&SourceMap>,
         module: &vir::ast::Path,
         mut global_ctx: vir::context::GlobalCtx,
-        multithreaded: bool,
     ) -> Result<vir::context::GlobalCtx, VirErr> {
         let time_verify_start = Instant::now();
 
         self.module_times.insert(module.clone(), Default::default());
 
         let module_name = module_name(module);
-        if module.segments.len() == 0 {
-            reporter.report(&note_bare("verifying root module"));
-        } else {
-            reporter.report(&note_bare(&format!(
-                "{} {}",
-                if !multithreaded {
-                    "verifying module"
-                } else {
-                    "reporting diagnostics for module"
-                },
-                &module_name
-            )));
+        if self.args.trace || (self.args.verify_module.len() > 0 || self.args.verify_root) {
+            if module.segments.len() == 0 {
+                reporter.report_now(&note_bare("verifying root module"));
+            } else {
+                reporter.report_now(&note_bare(&format!("verifying module {}", &module_name)));
+            }
         }
 
         let (pruned_krate, mono_abstract_datatypes, lambda_types) =
@@ -1253,6 +1246,14 @@ impl Verifier {
         time_module.time_smt_init = time_smt_init;
         time_module.time_smt_run = time_smt_run;
         time_module.time_verify = time_verify_end - time_verify_start;
+
+        if self.args.trace {
+            if module.segments.len() == 0 {
+                reporter.report_now(&note_bare("done with root module"));
+            } else {
+                reporter.report_now(&note_bare(&format!("done with module {}", &module_name)));
+            }
+        }
 
         Ok(global_ctx)
     }
@@ -1428,7 +1429,6 @@ impl Verifier {
                                 None,
                                 &module,
                                 task,
-                                true,
                             );
                             reporter.done(); // we've verified the module, send the done message
                             match res {
@@ -1556,7 +1556,6 @@ impl Verifier {
                     Some(source_map),
                     module,
                     global_ctx,
-                    false,
                 )?;
             }
         }
@@ -1687,9 +1686,8 @@ impl Verifier {
 
         let mut crate_names: Vec<String> = vec![crate_name];
         crate_names.extend(other_crate_names.into_iter());
-        let mut vir_crates: Vec<Krate> =
-            vec![vir::builtins::builtin_krate(&self.air_no_span.clone().unwrap())];
-        vir_crates.extend(other_vir_crates.into_iter());
+        let mut vir_crates: Vec<Krate> = other_vir_crates;
+        // TODO vec![vir::builtins::builtin_krate(&self.air_no_span.clone().unwrap())];
 
         let erasure_info = ErasureInfo {
             hir_vir_ids: vec![],
@@ -1858,6 +1856,9 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             );
             {
                 let reporter = Reporter::new(&spans, compiler);
+                if self.verifier.args.trace {
+                    reporter.report_now(&note_bare("preparing crate for verification"));
+                }
                 if let Err(err) = self.verifier.construct_vir_crate(
                     tcx,
                     verus_items.clone(),

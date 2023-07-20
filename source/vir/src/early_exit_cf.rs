@@ -80,7 +80,7 @@ fn expr_get_early_exits_rec(
             | ExprX::Fuel(..)
             | ExprX::Header(..)
             | ExprX::AssertAssume { .. }
-            | ExprX::Forall { .. }
+            | ExprX::AssertBy { .. }
             | ExprX::RevealString(_) => VisitorControlFlow::Return,
             ExprX::AssertQuery { .. } => VisitorControlFlow::Return,
             ExprX::Loop { label: _, cond, body, invs: _ } => {

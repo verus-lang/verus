@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, Exprs, Fun, Function, Ident, Params, Quant, SpannedTyped, Typ, TypBounds, TypX, Typs,
-    UnaryOp, UnaryOpr, VirErr,
+    BinaryOp, Exprs, Fun, Function, Ident, Params, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp,
+    UnaryOpr, VirErr,
 };
 use crate::ast_to_sst::get_function;
 use crate::context::Ctx;
@@ -79,14 +79,14 @@ fn inline_expression(
     args: &Exps,
     typs: &Typs,
     params: &Params,
-    typ_bounds: &TypBounds,
+    typ_params: &crate::ast::Idents,
     body: &Exp,
 ) -> Result<Exp, (Span, String)> {
     // code copied from crate::ast_to_sst::finalized_exp
     let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
     let mut substs: HashMap<UniqueIdent, Exp> = HashMap::new();
-    assert!(typ_bounds.len() == typs.len());
-    for ((name, _), typ) in typ_bounds.iter().zip(typs.iter()) {
+    assert!(typ_params.len() == typs.len());
+    for (name, typ) in typ_params.iter().zip(typs.iter()) {
         assert!(!typ_substs.contains_key(name));
         let typ = crate::poly::coerce_typ_to_poly(ctx, typ);
         typ_substs.insert(name.clone(), typ.clone());
@@ -196,7 +196,7 @@ fn tr_inline_function(
         let fun = &fun_to_inline.x.name;
         let fun_ssts = &state.fun_ssts;
         if let Some(SstInfo { inline, params, body, .. }) = fun_ssts.borrow().get(fun) {
-            return inline_expression(ctx, args, typs, params, &inline.typ_bounds, body);
+            return inline_expression(ctx, args, typs, params, &inline.typ_params, body);
         } else {
             return Err((fun_to_inline.span.clone(), format!("Note: not found on SstMap")));
         }
@@ -522,7 +522,7 @@ fn split_call(
     // Also, note that pervasive::assert consists of `requires` and `ensures`,
     // so we are also splitting pervasive::assert here.
     let params = &fun.x.params;
-    let typ_bounds = &fun.x.typ_bounds;
+    let typ_params = &fun.x.typ_params;
     for e in &**fun.x.require {
         let exp = crate::ast_to_sst::expr_to_exp_as_spec(
             &ctx,
@@ -539,7 +539,7 @@ fn split_call(
             _ => e.clone(),
         };
         let exp = crate::sst_visitor::map_exp_visitor(&exp, &mut f_var_at);
-        let exp_subsituted = inline_expression(ctx, args, typs, params, typ_bounds, &exp);
+        let exp_subsituted = inline_expression(ctx, args, typs, params, typ_params, &exp);
         if exp_subsituted.is_err() {
             continue;
         }

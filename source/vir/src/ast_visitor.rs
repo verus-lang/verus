@@ -1,7 +1,7 @@
 use crate::ast::{
     Arm, ArmX, AssocTypeImpl, AssocTypeImplX, CallTarget, Datatype, DatatypeX, Expr, ExprX, Field,
     Function, FunctionKind, FunctionX, GenericBound, GenericBoundX, Ident, MaskSpec, Param, ParamX,
-    Pattern, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOpr, Variant, VirErr,
+    Pattern, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOpr, Variant, VirErr,
 };
 use crate::ast_util::error;
 use crate::def::Spanned;
@@ -61,13 +61,12 @@ where
                     }
                     expr_visitor_control_flow!(typ_visitor_dfs(tr, ft));
                 }
-                TypX::Datatype(_path, ts) => {
+                TypX::Datatype(_path, ts, _impl_paths) => {
                     for t in ts.iter() {
                         expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
                     }
                 }
-                TypX::Projection { self_typ, trait_typ_args, trait_path: _, name: _ } => {
-                    expr_visitor_control_flow!(typ_visitor_dfs(self_typ, ft));
+                TypX::Projection { trait_typ_args, trait_path: _, name: _ } => {
                     for t in trait_typ_args.iter() {
                         expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
                     }
@@ -77,6 +76,11 @@ where
                 }
                 TypX::Boxed(t) => {
                     expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
+                }
+                TypX::Primitive(_, ts) => {
+                    for t in ts.iter() {
+                        expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
+                    }
                 }
             }
             VisitorControlFlow::Recurse
@@ -98,30 +102,28 @@ where
         | TypX::ConstInt(_)
         | TypX::Air(_) => ft(env, typ),
         TypX::Tuple(ts) => {
-            let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
-            ft(env, &Arc::new(TypX::Tuple(Arc::new(ts))))
+            let ts = map_typs_visitor_env(ts, env, ft)?;
+            ft(env, &Arc::new(TypX::Tuple(ts)))
         }
         TypX::Lambda(ts, tr) => {
-            let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
+            let ts = map_typs_visitor_env(ts, env, ft)?;
             let tr = map_typ_visitor_env(tr, env, ft)?;
-            ft(env, &Arc::new(TypX::Lambda(Arc::new(ts), tr)))
+            ft(env, &Arc::new(TypX::Lambda(ts, tr)))
         }
         TypX::AnonymousClosure(ts, tr, id) => {
-            let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
+            let ts = map_typs_visitor_env(ts, env, ft)?;
             let tr = map_typ_visitor_env(tr, env, ft)?;
-            ft(env, &Arc::new(TypX::AnonymousClosure(Arc::new(ts), tr, *id)))
+            ft(env, &Arc::new(TypX::AnonymousClosure(ts, tr, *id)))
         }
-        TypX::Datatype(path, ts) => {
-            let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
-            ft(env, &Arc::new(TypX::Datatype(path.clone(), Arc::new(ts))))
+        TypX::Datatype(path, ts, impl_paths) => {
+            let ts = map_typs_visitor_env(ts, env, ft)?;
+            ft(env, &Arc::new(TypX::Datatype(path.clone(), ts, impl_paths.clone())))
         }
-        TypX::Projection { self_typ, trait_typ_args, trait_path, name } => {
-            let self_typ = map_typ_visitor_env(self_typ, env, ft)?;
-            let trait_typ_args =
-                Arc::new(vec_map_result(&**trait_typ_args, |t| map_typ_visitor_env(t, env, ft))?);
+        TypX::Projection { trait_typ_args, trait_path, name } => {
+            let trait_typ_args = map_typs_visitor_env(trait_typ_args, env, ft)?;
             let trait_path = trait_path.clone();
             let name = name.clone();
-            ft(env, &Arc::new(TypX::Projection { self_typ, trait_typ_args, trait_path, name }))
+            ft(env, &Arc::new(TypX::Projection { trait_typ_args, trait_path, name }))
         }
         TypX::Decorate(d, t) => {
             let t = map_typ_visitor_env(t, env, ft)?;
@@ -131,7 +133,18 @@ where
             let t = map_typ_visitor_env(t, env, ft)?;
             ft(env, &Arc::new(TypX::Boxed(t)))
         }
+        TypX::Primitive(name, ts) => {
+            let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
+            ft(env, &Arc::new(TypX::Primitive(name.clone(), Arc::new(ts))))
+        }
     }
+}
+
+pub(crate) fn map_typs_visitor_env<E, FT>(typs: &Typs, env: &mut E, ft: &FT) -> Result<Typs, VirErr>
+where
+    FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
+{
+    Ok(Arc::new(vec_map_result(&**typs, |t| (map_typ_visitor_env(t, env, ft)))?))
 }
 
 pub(crate) fn map_typ_visitor<FT>(typ: &Typ, ft: &FT) -> Result<Typ, VirErr>
@@ -192,6 +205,16 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern) {
             // pat2 should bind an identical set of variables
         }
     }
+}
+
+pub(crate) fn expr_visitor_traverse<MF>(expr: &Expr, map: &mut VisitorScopeMap, mf: &mut MF)
+where
+    MF: FnMut(&mut VisitorScopeMap, &Expr) -> (),
+{
+    let _ = expr_visitor_dfs::<(), _>(expr, map, &mut |scope_map, expr| {
+        mf(scope_map, expr);
+        VisitorControlFlow::Recurse
+    });
 }
 
 pub(crate) fn expr_visitor_check<E, MF>(expr: &Expr, mf: &mut MF) -> Result<(), E>
@@ -334,7 +357,7 @@ where
                     }
                     expr_visitor_control_flow!(expr_visitor_dfs(body, map, mf));
                 }
-                ExprX::Assign { init_not_mut: _, lhs: e1, rhs: e2 } => {
+                ExprX::Assign { init_not_mut: _, lhs: e1, rhs: e2, op: _ } => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
                     expr_visitor_control_flow!(expr_visitor_dfs(e2, map, mf));
                 }
@@ -349,7 +372,7 @@ where
                 ExprX::AssertAssume { is_assume: _, expr: e1 } => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
                 }
-                ExprX::Forall { vars, require, ensure, proof } => {
+                ExprX::AssertBy { vars, require, ensure, proof } => {
                     map.push_scope(true);
                     for binder in vars.iter() {
                         let _ = map.insert(binder.name.clone(), binder.a.clone());
@@ -477,6 +500,7 @@ where
         owning_module: _,
         mode: _,
         fuel: _,
+        typ_params: _,
         typ_bounds: _,
         params,
         ret: _,
@@ -576,22 +600,20 @@ where
                     let kind = match kind {
                         CallTargetKind::Static | CallTargetKind::Method(None) => kind.clone(),
                         CallTargetKind::Method(Some((f, ts, ips))) => {
-                            let ts = vec_map_result(&**ts, |t| (map_typ_visitor_env(t, env, ft)))?;
-                            CallTargetKind::Method(Some((f.clone(), Arc::new(ts), ips.clone())))
+                            let ts = map_typs_visitor_env(ts, env, ft)?;
+                            CallTargetKind::Method(Some((f.clone(), ts, ips.clone())))
                         }
                     };
-                    let typs = vec_map_result(&**typs, |t| (map_typ_visitor_env(t, env, ft)))?;
                     CallTarget::Fun(
                         kind.clone(),
                         x.clone(),
-                        Arc::new(typs),
+                        map_typs_visitor_env(typs, env, ft)?,
                         impl_paths.clone(),
                         *autospec_usage,
                     )
                 }
                 CallTarget::BuiltinSpecFun(x, typs) => {
-                    let typs = vec_map_result(&**typs, |t| (map_typ_visitor_env(t, env, ft)))?;
-                    CallTarget::BuiltinSpecFun(x.clone(), Arc::new(typs))
+                    CallTarget::BuiltinSpecFun(x.clone(), map_typs_visitor_env(typs, env, ft)?)
                 }
                 CallTarget::FnSpec(fun) => {
                     let fun = map_expr_visitor_env(fun, map, env, fe, fs, ft)?;
@@ -747,10 +769,10 @@ where
             let body = map_expr_visitor_env(body, map, env, fe, fs, ft)?;
             ExprX::WithTriggers { triggers, body }
         }
-        ExprX::Assign { init_not_mut, lhs: e1, rhs: e2 } => {
+        ExprX::Assign { init_not_mut, lhs: e1, rhs: e2, op } => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             let expr2 = map_expr_visitor_env(e2, map, env, fe, fs, ft)?;
-            ExprX::Assign { init_not_mut: *init_not_mut, lhs: expr1, rhs: expr2 }
+            ExprX::Assign { init_not_mut: *init_not_mut, lhs: expr1, rhs: expr2, op: *op }
         }
         ExprX::Fuel(path, fuel) => ExprX::Fuel(path.clone(), *fuel),
         ExprX::RevealString(path) => ExprX::RevealString(path.clone()),
@@ -761,7 +783,7 @@ where
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             ExprX::AssertAssume { is_assume: *is_assume, expr: expr1 }
         }
-        ExprX::Forall { vars, require, ensure, proof } => {
+        ExprX::AssertBy { vars, require, ensure, proof } => {
             let vars =
                 vec_map_result(&**vars, |x| x.map_result(|t| map_typ_visitor_env(t, env, ft)))?;
             map.push_scope(true);
@@ -772,7 +794,7 @@ where
             let ensure = map_expr_visitor_env(ensure, map, env, fe, fs, ft)?;
             let proof = map_expr_visitor_env(proof, map, env, fe, fs, ft)?;
             map.pop_scope();
-            ExprX::Forall { vars: Arc::new(vars), require, ensure, proof }
+            ExprX::AssertBy { vars: Arc::new(vars), require, ensure, proof }
         }
         ExprX::AssertQuery { requires, ensures, proof, mode } => {
             let requires = Arc::new(vec_map_result(requires, |e| {
@@ -914,15 +936,29 @@ where
 
 pub(crate) fn map_generic_bound_visitor<E, FT>(
     bound: &GenericBound,
-    _env: &mut E,
-    _ft: &FT,
+    env: &mut E,
+    ft: &FT,
 ) -> Result<GenericBound, VirErr>
 where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
     match &**bound {
-        GenericBoundX::Traits(_) => Ok(bound.clone()),
+        GenericBoundX::Trait(trait_path, ts) => {
+            let ts = map_typs_visitor_env(ts, env, ft)?;
+            Ok(Arc::new(GenericBoundX::Trait(trait_path.clone(), ts)))
+        }
     }
+}
+
+pub(crate) fn map_generic_bounds_visitor<E, FT>(
+    bounds: &crate::ast::GenericBounds,
+    env: &mut E,
+    ft: &FT,
+) -> Result<crate::ast::GenericBounds, VirErr>
+where
+    FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
+{
+    Ok(Arc::new(vec_map_result(&**bounds, |b| map_generic_bound_visitor(b, env, ft))?))
 }
 
 pub(crate) fn map_function_visitor_env<E, FE, FS, FT>(
@@ -946,6 +982,7 @@ where
         owning_module,
         mode,
         fuel,
+        typ_params,
         typ_bounds,
         params,
         ret,
@@ -968,21 +1005,12 @@ where
         FunctionKind::Static
         | FunctionKind::TraitMethodDecl { trait_path: _ }
         | FunctionKind::ForeignTraitMethodImpl(_) => kind.clone(),
-        FunctionKind::TraitMethodImpl {
-            method,
-            impl_path,
-            trait_path,
-            trait_typ_args,
-            self_typ,
-        } => {
-            let trait_typ_args =
-                Arc::new(vec_map_result(&**trait_typ_args, |t| map_typ_visitor_env(t, env, ft))?);
+        FunctionKind::TraitMethodImpl { method, impl_path, trait_path, trait_typ_args } => {
             FunctionKind::TraitMethodImpl {
                 method: method.clone(),
                 impl_path: impl_path.clone(),
                 trait_path: trait_path.clone(),
-                trait_typ_args,
-                self_typ: map_typ_visitor_env(self_typ, env, ft)?,
+                trait_typ_args: map_typs_visitor_env(trait_typ_args, env, ft)?,
             }
         }
     };
@@ -990,10 +1018,7 @@ where
     let owning_module = owning_module.clone();
     let mode = *mode;
     let fuel = *fuel;
-    let mut type_bounds: Vec<(Ident, GenericBound)> = Vec::new();
-    for (x, bound) in typ_bounds.iter() {
-        type_bounds.push((x.clone(), map_generic_bound_visitor(bound, env, ft)?));
-    }
+    let typ_bounds = map_generic_bounds_visitor(typ_bounds, env, ft)?;
     map.push_scope(true);
     let params = Arc::new(vec_map_result(params, |p| map_param_visitor(p, env, ft))?);
     for p in params.iter() {
@@ -1060,7 +1085,8 @@ where
         owning_module,
         mode,
         fuel,
-        typ_bounds: Arc::new(type_bounds),
+        typ_params: typ_params.clone(),
+        typ_bounds,
         params,
         ret,
         require,
@@ -1088,6 +1114,7 @@ where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
     let datatypex = datatype.x.clone();
+    let typ_bounds = map_generic_bounds_visitor(&datatypex.typ_bounds, env, ft)?;
     let mut variants: Vec<Variant> = Vec::new();
     for variant in datatypex.variants.iter() {
         let mut fields: Vec<Field> = Vec::new();
@@ -1099,7 +1126,7 @@ where
         variants.push(variant.new_a(Arc::new(fields)));
     }
     let variants = Arc::new(variants);
-    Ok(Spanned::new(datatype.span.clone(), DatatypeX { variants, ..datatypex }))
+    Ok(Spanned::new(datatype.span.clone(), DatatypeX { variants, typ_bounds, ..datatypex }))
 }
 
 pub(crate) fn map_assoc_type_impl_visitor_env<E, FT>(
@@ -1110,18 +1137,16 @@ pub(crate) fn map_assoc_type_impl_visitor_env<E, FT>(
 where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
-    let AssocTypeImplX { name, impl_path, typ_params, self_typ, trait_path, trait_typ_args, typ } =
+    let AssocTypeImplX { name, impl_path, typ_params, typ_bounds, trait_path, trait_typ_args, typ } =
         &assoc.x;
-    let self_typ = map_typ_visitor_env(self_typ, env, ft)?;
-    let trait_typ_args = vec_map_result(&**trait_typ_args, |t| map_typ_visitor_env(t, env, ft))?;
     let typ = map_typ_visitor_env(typ, env, ft)?;
     let assocx = AssocTypeImplX {
         name: name.clone(),
         impl_path: impl_path.clone(),
         typ_params: typ_params.clone(),
-        self_typ,
+        typ_bounds: map_generic_bounds_visitor(typ_bounds, env, ft)?,
         trait_path: trait_path.clone(),
-        trait_typ_args: Arc::new(trait_typ_args),
+        trait_typ_args: map_typs_visitor_env(trait_typ_args, env, ft)?,
         typ,
     };
     Ok(Spanned::new(assoc.span.clone(), assocx))

@@ -52,8 +52,8 @@ jobs:
           vargo clean
           if [ "${{ matrix.features }}" == "singular" ]; then
             vargo build --features singular
-            VERUS_Z3_PATH="$(pwd)/z3" vargo test -p air --features singular
-            VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test --features singular
+            VERUS_Z3_PATH="$(pwd)/z3" VERUS_SINGULAR_PATH="/usr/bin/Singular" vargo test -p air --features singular
+            VERUS_Z3_PATH="$(pwd)/z3" VERUS_SINGULAR_PATH="/usr/bin/Singular" vargo test -p rust_verify_test --features singular
           else
             vargo build
             VERUS_Z3_PATH="$(pwd)/z3" vargo test -p air

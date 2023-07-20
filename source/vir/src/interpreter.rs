@@ -254,7 +254,7 @@ impl SyntacticEquality for Typ {
             (Lambda(formals_l, res_l), Lambda(formals_r, res_r)) => {
                 Some(formals_l.syntactic_eq(formals_r)? && res_l.syntactic_eq(res_r)?)
             }
-            (Datatype(path_l, typs_l), Datatype(path_r, typs_r)) => {
+            (Datatype(path_l, typs_l, _), Datatype(path_r, typs_r, _)) => {
                 Some(path_l == path_r && typs_l.syntactic_eq(typs_r)?)
             }
             (Boxed(l), Boxed(r)) => l.syntactic_eq(r),
@@ -1572,7 +1572,7 @@ fn eval_expr_launch(
                     }
                     ExpX::Interp(InterpExp::Seq(v)) => {
                         match &*e.typ {
-                            TypX::Datatype(_, typs) => {
+                            TypX::Datatype(_, typs, _) => {
                                 // Grab the type the sequence holds
                                 let inner_type = typs[0].clone();
                                 let s = seq_to_sst(&e.span, inner_type.clone(), v);

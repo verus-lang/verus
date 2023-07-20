@@ -1,8 +1,7 @@
-use crate::ast::TypX;
 use crate::ast::{
     AutospecUsage, BinaryOp, CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, Function,
     FunctionKind, Ident, InferMode, InvAtomicity, Krate, Mode, ModeCoercion, MultiOp, Path,
-    Pattern, PatternX, Stmt, StmtX, Typ, UnaryOp, UnaryOpr, VirErr,
+    Pattern, PatternX, Stmt, StmtX, UnaryOp, UnaryOpr, VirErr,
 };
 use crate::ast_util::{error, error_with_help, get_field, msg_error, path_as_vstd_name};
 use crate::def::user_local_name;
@@ -64,6 +63,7 @@ enum Ghost {
 //     so when we first reach e + 1, we don't yet know that "<"'s right side is spec
 // Therefore, we use Cell to delay the decision about the erasure expected mode of e + 1.
 type ErasureMode = std::rc::Rc<ErasureModeX>;
+#[derive(Debug)]
 enum ErasureModeX {
     Mode(std::cell::Cell<Option<Mode>>),
     Join(ErasureMode, ErasureMode),
@@ -144,25 +144,6 @@ impl Typing {
 
     fn insert(&mut self, _span: &Span, x: &Ident, mutable: bool, mode: Mode) {
         self.vars.insert(x.clone(), (mutable, mode)).expect("internal error: Typing insert");
-    }
-
-    // REVIEW: the purpose of this is to extract datatype.x.mode,
-    // which I think ultimately derives from https://github.com/verus-lang/verus/pull/6 ,
-    // which was an early trick to try to use the Index trait from spec mode.
-    // But we don't use this trick anymore, so maybe we should reconsider this.
-    fn trait_impl_self_typ_mode(&self, span: &Span, typ: &Typ) -> Result<Mode, VirErr> {
-        match &**typ {
-            TypX::Bool | TypX::Int(_) | TypX::Char | TypX::StrSlice => Ok(Mode::Exec),
-            TypX::TypParam(_) => Ok(Mode::Exec),
-            TypX::Lambda(_, _) => Ok(Mode::Spec),
-            TypX::Datatype(datatype, _typ_args) => Ok(self.datatypes[datatype].x.mode),
-            TypX::Decorate(_, t) | TypX::Boxed(t) => self.trait_impl_self_typ_mode(span, t),
-            TypX::Projection { .. } => {
-                error(span, "trait implemention self type cannot be a projection")
-            }
-            TypX::Tuple(..) | TypX::AnonymousClosure(..) => Ok(Mode::Exec),
-            TypX::TypeId | TypX::ConstInt(..) | TypX::Air(..) => Ok(Mode::Exec),
-        }
     }
 }
 
@@ -856,7 +837,7 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(typing, Mode::Spec, body, Mode::Spec)?;
             Ok(Mode::Spec)
         }
-        ExprX::Assign { init_not_mut, lhs, rhs } => {
+        ExprX::Assign { init_not_mut, lhs, rhs, op } => {
             if typing.in_forall_stmt {
                 return error(&expr.span, "assignment is not allowed in 'assert ... by' statement");
             }
@@ -868,6 +849,10 @@ fn check_expr_handle_mut_arg(
                 );
             }
             check_expr_has_mode(typing, outer_mode, rhs, x_mode)?;
+            if let Some(BinaryOp::Arith(_, Some(id))) = op {
+                assert!(!typing.inferred_modes.contains_key(id));
+                typing.inferred_modes.insert(*id, erasure_mode.clone());
+            }
             Ok(x_mode)
         }
         ExprX::Fuel(_, _) => {
@@ -898,7 +883,7 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(typing, Mode::Spec, e, Mode::Spec)?;
             Ok(outer_mode)
         }
-        ExprX::Forall { vars, require, ensure, proof } => {
+        ExprX::AssertBy { vars, require, ensure, proof } => {
             if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return error_with_help(
                     &expr.span,
@@ -1226,12 +1211,11 @@ fn check_stmt(
 fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr> {
     typing.vars.push_scope(true);
 
-    if let FunctionKind::TraitMethodImpl { method, trait_path, self_typ, .. } = &function.x.kind {
-        let self_typ_mode = typing.trait_impl_self_typ_mode(&function.span, &self_typ)?;
+    if let FunctionKind::TraitMethodImpl { method, trait_path, .. } = &function.x.kind {
         let our_trait = typing.traits.contains(trait_path);
         let (expected_params, expected_ret_mode): (Vec<Mode>, Mode) = if our_trait {
             let trait_method = &typing.funs[method];
-            let expect_mode = mode_join(trait_method.x.mode, self_typ_mode);
+            let expect_mode = trait_method.x.mode;
             if function.x.mode != expect_mode {
                 return error(&function.span, format!("function must have mode {}", expect_mode));
             }
@@ -1241,12 +1225,12 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
         };
         assert!(expected_params.len() == function.x.params.len());
         for (param, expect) in function.x.params.iter().zip(expected_params.iter()) {
-            let expect_mode = mode_join(*expect, self_typ_mode);
+            let expect_mode = *expect;
             if param.x.mode != expect_mode {
                 return error(&param.span, format!("parameter must have mode {}", expect_mode));
             }
         }
-        if function.x.ret.x.mode != mode_join(expected_ret_mode, self_typ_mode) {
+        if function.x.ret.x.mode != expected_ret_mode {
             return error(
                 &function.span,
                 format!("function return value must have mode {}", expected_ret_mode),

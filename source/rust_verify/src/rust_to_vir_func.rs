@@ -24,8 +24,8 @@ use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
-    Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, KrateX, MaskSpec, Mode,
-    ParamX, Typ, TypX, VirErr,
+    Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, KrateX, MaskSpec, Mode, ParamX, Typ, TypX,
+    VirErr,
 };
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
 
@@ -69,6 +69,7 @@ pub(crate) fn body_to_vir<'tcx>(
 fn check_fn_decl<'tcx>(
     span: Span,
     ctxt: &Context<'tcx>,
+    id: DefId,
     decl: &'tcx FnDecl<'tcx>,
     attrs: &[Attribute],
     mode: Mode,
@@ -89,7 +90,7 @@ fn check_fn_decl<'tcx>(
         // so we always return the default mode.
         // The current workaround is to return a struct if the default doesn't work.
         rustc_hir::FnRetTy::Return(_ty) => {
-            let typ = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, span, &output_ty, false)?;
+            let typ = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, id, span, &output_ty, false)?;
             Ok(Some((typ, get_ret_mode(mode, attrs))))
         }
     }
@@ -379,7 +380,7 @@ pub(crate) fn check_item_fn<'tcx>(
             span: _,
         } => {
             unsupported_err_unless!(*unsafety == Unsafety::Normal, sig.span, "unsafe");
-            check_fn_decl(sig.span, ctxt, decl, attrs, mode, fn_sig.output())?
+            check_fn_decl(sig.span, ctxt, id, decl, attrs, mode, fn_sig.output())?
         }
     };
 
@@ -400,7 +401,8 @@ pub(crate) fn check_item_fn<'tcx>(
         return Ok(None);
     }
 
-    let sig_typ_bounds = check_generics_bounds_fun(ctxt.tcx, &ctxt.verus_items, generics, id)?;
+    let (sig_typ_params, sig_typ_bounds) =
+        check_generics_bounds_fun(ctxt.tcx, &ctxt.verus_items, generics, id)?;
     let fuel = get_fuel(&vattrs);
 
     let (vir_body, header, params): (_, _, Vec<(String, Span, Option<HirId>)>) = match body_id {
@@ -463,6 +465,7 @@ pub(crate) fn check_item_fn<'tcx>(
         let typ = mid_ty_to_vir(
             ctxt.tcx,
             &ctxt.verus_items,
+            id,
             span,
             is_ref_mut.map(|(t, _)| t).unwrap_or(input),
             false,
@@ -597,17 +600,19 @@ pub(crate) fn check_item_fn<'tcx>(
             unwrapped_info: None,
         },
     );
-    let typ_bounds = {
-        let mut typ_bounds: Vec<(vir::ast::Ident, vir::ast::GenericBound)> = Vec::new();
+    let (typ_params, typ_bounds) = {
+        let mut typ_params: Vec<vir::ast::Ident> = Vec::new();
+        let mut typ_bounds: Vec<vir::ast::GenericBound> = Vec::new();
         if let FunctionKind::TraitMethodDecl { .. } = kind {
-            let bound = GenericBoundX::Traits(vec![]);
-            typ_bounds.push((vir::def::trait_self_type_param(), Arc::new(bound)));
+            typ_params.push(vir::def::trait_self_type_param());
         }
-        if let Some(self_typ_params) = self_typ_params {
-            typ_bounds.append(&mut (*self_typ_params).clone());
+        if let Some((self_typ_params, self_typ_bounds)) = self_typ_params {
+            typ_params.append(&mut (*self_typ_params).clone());
+            typ_bounds.append(&mut (*self_typ_bounds).clone());
         }
+        typ_params.extend_from_slice(&sig_typ_params[..]);
         typ_bounds.extend_from_slice(&sig_typ_bounds[..]);
-        Arc::new(typ_bounds)
+        (Arc::new(typ_params), Arc::new(typ_bounds))
     };
     let publish = get_publish(&vattrs);
     let autospec = vattrs.autospec.map(|method_name| {
@@ -661,6 +666,7 @@ pub(crate) fn check_item_fn<'tcx>(
         owning_module: Some(module_path.clone()),
         mode,
         fuel,
+        typ_params,
         typ_bounds,
         params,
         ret,
@@ -908,6 +914,7 @@ pub(crate) fn check_item_const<'tcx>(
         owning_module: Some(module_path.clone()),
         mode: Mode::Spec, // the function has mode spec; the mode attribute goes into ret.x.mode
         fuel,
+        typ_params: Arc::new(vec![]),
         typ_bounds: Arc::new(vec![]),
         params: Arc::new(vec![]),
         ret,
@@ -947,8 +954,9 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let fn_sig = fn_sig.skip_binder();
     let inputs = fn_sig.inputs();
 
-    let ret_typ_mode = check_fn_decl(span, ctxt, decl, attrs, mode, fn_sig.output())?;
-    let typ_bounds = check_generics_bounds_fun(ctxt.tcx, &ctxt.verus_items, generics, id)?;
+    let ret_typ_mode = check_fn_decl(span, ctxt, id, decl, attrs, mode, fn_sig.output())?;
+    let (typ_params, typ_bounds) =
+        check_generics_bounds_fun(ctxt.tcx, &ctxt.verus_items, generics, id)?;
     let vattrs = get_verifier_attrs(attrs)?;
     let fuel = get_fuel(&vattrs);
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
@@ -967,6 +975,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         let typ = mid_ty_to_vir(
             ctxt.tcx,
             &ctxt.verus_items,
+            id,
             param.span,
             is_mut.map(|(t, _)| t).unwrap_or(input),
             false,
@@ -1001,6 +1010,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         owning_module: None,
         fuel,
         mode,
+        typ_params,
         typ_bounds,
         params,
         ret,

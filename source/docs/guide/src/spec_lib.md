@@ -63,7 +63,7 @@ or may require proofs by induction.
 
 If two collections (`Seq`, `Set`, or `Map`) have the same elements,
 Verus considers them to be equal.
-This is known as [extensional equality](https://en.wikipedia.org/wiki/Extensionality).
+This is known as equality via [extensionality](https://en.wikipedia.org/wiki/Extensionality).
 However, the SMT solver will in general not automatically recognize that
 the two collections are equal
 if the collections were constructed in different ways.
@@ -75,17 +75,19 @@ but asserting equality fails:
 ```
 
 To convince the SMT solver that `s1`, `s2`, and `s3` are equal,
-we have to explicitly assert the *extensional* equality method `.ext_equal`,
-rather than just the ordinary equality operator `===`.
-Calling `.ext_equal` forces the SMT solver
+we have to explicitly assert the equality via the *extensional* equality operator `=~=`,
+rather than just the ordinary equality operator `==`.
+Using `=~=` forces the SMT solver
 to check that all the elements of the collections are equal,
 which it would not ordinarily do.
-Once we've explicitly proven extensional equality,
-we can then successfully assert `===`:
+Once we've explicitly proven equality via extensionality,
+we can then successfully assert `==`:
 
 ```rust
 {{#include ../../../rust_verify/example/guide/lib_examples.rs:test_eq}}
 ```
+
+(See the [Equality via extensionality](extensional_equality.md) section for more details.)
 
 Proofs about set cardinality (`Set::len`) and set finiteness (`Set::finite`)
 often require inductive proofs.
@@ -130,13 +132,13 @@ let's think about what a fully explicit proof might look like if we wrote it out
 
 For such a simple property, this is a surprisingly long proof!
 Fortunately, the SMT solver can automatically prove most of the steps written above.
-What it will not automatically prove, though, is any step requiring extensional equality,
+What it will not automatically prove, though, is any step requiring equality via extensionality,
 as discussed earlier.
-The two crucial steps requiring extensional equality are:
+The two crucial steps requiring equality via extensionality are:
 - "Therefore, s1.intersect(s2) is also empty."
 - Replacing `(s1 - {a}).intersect(s2)` with `s1.intersect(s2) - {a}`
 
-For these, we need to explicitly invoke `ext_equal`:
+For these, we need to explicitly invoke `=~=`:
 
 ```rust
 {{#include ../../../rust_verify/example/guide/lib_examples.rs:lemma_len_intersect}}
@@ -144,12 +146,12 @@ For these, we need to explicitly invoke `ext_equal`:
 
 With this, Verus and the SMT solver successfully complete the proof.
 However, Verus and the SMT solver aren't the only audience for this proof.
-Anyone maintaining this code might want to know why we invoked `ext_equal`,
+Anyone maintaining this code might want to know why we invoked `=~=`,
 and we probably shouldn't force them to work out the entire hand-written proof above
 to rediscover this.
 So although it's not strictly necessary,
 it's probably polite to wrap the assertions in `assert...by` to indicate
-the purpose of the `ext_equal`:
+the purpose of the `=~=`:
 
 ```rust
 {{#include ../../../rust_verify/example/guide/lib_examples.rs:lemma_len_intersect_commented}}

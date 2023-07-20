@@ -1,8 +1,7 @@
 use crate::ast::{
     BinaryOp, Constant, DatatypeX, Expr, ExprX, Exprs, Fun, FunX, FunctionX, GenericBound,
-    GenericBoundX, Ident, Idents, IntRange, Mode, Param, ParamX, Params, Path, PathX, Quant,
-    SpannedTyped, TriggerAnnotation, Typ, TypX, Typs, UnaryOp, Variant, Variants, VirErr,
-    Visibility,
+    GenericBoundX, Ident, IntRange, Mode, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped,
+    TriggerAnnotation, Typ, TypX, Typs, UnaryOp, Variant, Variants, VirErr, Visibility,
 };
 use crate::prelude::ArchWordBits;
 use crate::sst::{Par, Pars};
@@ -64,12 +63,68 @@ pub fn type_is_bool(typ: &Typ) -> bool {
     matches!(&**typ, TypX::Bool)
 }
 
+// ImplPaths is ignored in types_equal
 pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
-    typ1 == typ2
+    match (&**typ1, &**typ2) {
+        (TypX::Bool, TypX::Bool) => true,
+        (TypX::Int(r1), TypX::Int(r2)) => r1 == r2,
+        (TypX::Tuple(t1), TypX::Tuple(t2)) => n_types_equal(t1, t2),
+        (TypX::Lambda(ts1, t1), TypX::Lambda(ts2, t2)) => {
+            n_types_equal(ts1, ts2) && types_equal(t1, t2)
+        }
+        (TypX::AnonymousClosure(ts1, t1, id1), TypX::AnonymousClosure(ts2, t2, id2)) => {
+            n_types_equal(ts1, ts2) && types_equal(t1, t2) && id1 == id2
+        }
+        (TypX::Datatype(path1, ts1, _), TypX::Datatype(path2, ts2, _)) => {
+            path1 == path2 && n_types_equal(ts1, ts2)
+        }
+        (TypX::Primitive(p1, ts1), TypX::Primitive(p2, ts2)) => p1 == p2 && n_types_equal(ts1, ts2),
+        (TypX::Decorate(d1, t1), TypX::Decorate(d2, t2)) => d1 == d2 && types_equal(t1, t2),
+        (TypX::Boxed(t1), TypX::Boxed(t2)) => types_equal(t1, t2),
+        (TypX::TypParam(x1), TypX::TypParam(x2)) => x1 == x2,
+        (
+            TypX::Projection {
+                trait_typ_args: trait_typ_args1,
+                trait_path: trait_path1,
+                name: name1,
+            },
+            TypX::Projection {
+                trait_typ_args: trait_typ_args2,
+                trait_path: trait_path2,
+                name: name2,
+            },
+        ) => {
+            n_types_equal(trait_typ_args1, trait_typ_args2)
+                && trait_path1 == trait_path2
+                && name1 == name2
+        }
+        (TypX::TypeId, TypX::TypeId) => true,
+        (TypX::ConstInt(i1), TypX::ConstInt(i2)) => i1 == i2,
+        (TypX::Air(a1), TypX::Air(a2)) => a1 == a2,
+        (TypX::StrSlice, TypX::StrSlice) => true,
+        (TypX::Char, TypX::Char) => true,
+        // rather than matching on _, repeat all the cases to catch any new variants added to TypX:
+        (TypX::Bool, _) => false,
+        (TypX::Int(_), _) => false,
+        (TypX::Tuple(_), _) => false,
+        (TypX::Lambda(_, _), _) => false,
+        (TypX::AnonymousClosure(_, _, _), _) => false,
+        (TypX::Datatype(_, _, _), _) => false,
+        (TypX::Primitive(_, _), _) => false,
+        (TypX::Decorate(_, _), _) => false,
+        (TypX::Boxed(_), _) => false,
+        (TypX::TypParam(_), _) => false,
+        (TypX::Projection { .. }, _) => false,
+        (TypX::TypeId, _) => false,
+        (TypX::ConstInt(_), _) => false,
+        (TypX::Air(_), _) => false,
+        (TypX::StrSlice, _) => false,
+        (TypX::Char, _) => false,
+    }
 }
 
 pub fn n_types_equal(typs1: &Typs, typs2: &Typs) -> bool {
-    typs1 == typs2
+    typs1.len() == typs2.len() && typs1.iter().zip(typs2.iter()).all(|(t1, t2)| types_equal(t1, t2))
 }
 
 pub const QUANT_FORALL: Quant = Quant { quant: air::ast::Quant::Forall, boxed_params: true };
@@ -98,7 +153,9 @@ pub fn params_equal(param1: &Param, param2: &Param) -> bool {
 
 pub fn generic_bounds_equal(b1: &GenericBound, b2: &GenericBound) -> bool {
     match (&**b1, &**b2) {
-        (GenericBoundX::Traits(t1), GenericBoundX::Traits(t2)) => t1 == t2,
+        (GenericBoundX::Trait(x1, ts1), GenericBoundX::Trait(x2, ts2)) => {
+            x1 == x2 && n_types_equal(ts1, ts2)
+        }
     }
 }
 
@@ -120,6 +177,14 @@ pub fn is_integer_type(typ: &Typ) -> bool {
         TypX::Int(_) => true,
         TypX::Boxed(typ) => is_integer_type(typ),
         _ => false,
+    }
+}
+
+pub fn int_range_from_type(typ: &Typ) -> Option<IntRange> {
+    match &*undecorate_typ(typ) {
+        TypX::Int(range) => Some(*range),
+        TypX::Boxed(typ) => int_range_from_type(typ),
+        _ => None,
     }
 }
 
@@ -410,13 +475,9 @@ impl FunctionX {
     pub fn has_return(&self) -> bool {
         match &*self.ret.x.typ {
             TypX::Tuple(ts) if ts.len() == 0 => false,
-            TypX::Datatype(path, _) if path == &crate::def::prefix_tuple_type(0) => false,
+            TypX::Datatype(path, _, _) if path == &crate::def::prefix_tuple_type(0) => false,
             _ => true,
         }
-    }
-
-    pub fn typ_params(&self) -> Idents {
-        Arc::new(vec_map(&self.typ_bounds, |(x, _)| x.clone()))
     }
 
     pub fn is_main(&self) -> bool {
@@ -479,4 +540,68 @@ pub fn wrap_in_trigger(expr: &Expr) -> Expr {
         &expr.typ,
         ExprX::Unary(UnaryOp::Trigger(TriggerAnnotation::Trigger(None)), expr.clone()),
     )
+}
+
+pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
+    fn typs_to_comma_separated_str(typs: &[Arc<TypX>]) -> String {
+        typs.iter().map(|t| typ_to_diagnostic_str(t)).collect::<Vec<_>>().join(", ")
+    }
+    match &**typ {
+        TypX::Bool => "bool".to_owned(),
+        TypX::Int(IntRange::Nat) => "nat".to_owned(),
+        TypX::Int(IntRange::Int) => "nat".to_owned(),
+        TypX::Int(IntRange::ISize) => "isize".to_owned(),
+        TypX::Int(IntRange::USize) => "usize".to_owned(),
+        TypX::Int(IntRange::U(n)) => format!("u{n}"),
+        TypX::Int(IntRange::I(n)) => format!("i{n}"),
+        TypX::Tuple(typs) => format!("({})", typs_to_comma_separated_str(typs)),
+        TypX::Lambda(atyps, rtyp) => format!(
+            "FnSpec({}) -> {}",
+            typs_to_comma_separated_str(atyps),
+            typ_to_diagnostic_str(rtyp)
+        ),
+        TypX::AnonymousClosure(atyps, rtyp, _) => format!(
+            "AnonymousClosure({}) -> {}",
+            typs_to_comma_separated_str(atyps),
+            typ_to_diagnostic_str(rtyp)
+        ),
+        TypX::Primitive(prim, typs) => {
+            let typs_str = typs_to_comma_separated_str(typs);
+            match prim {
+                crate::ast::Primitive::Array => format!("[{typs_str}; N]"),
+                crate::ast::Primitive::Slice => format!("[{typs_str}]"),
+            }
+        }
+        TypX::Datatype(path, typs, _) => format!(
+            "{}{}",
+            path_as_friendly_rust_name(path),
+            if typs.len() > 0 {
+                format!("<{}>", typs_to_comma_separated_str(typs))
+            } else {
+                format!("")
+            }
+        ),
+        TypX::Decorate(decoration, typ) => {
+            format!("{:?}{}", decoration, typ_to_diagnostic_str(typ))
+        }
+        TypX::Boxed(typ) => typ_to_diagnostic_str(typ),
+        TypX::TypParam(ident) => (**ident).clone(),
+        TypX::Projection { trait_typ_args, trait_path, name } => {
+            let self_typ = typ_to_diagnostic_str(&trait_typ_args[0]);
+            format!(
+                "<{self_typ} as {}{}>::{name}",
+                path_as_friendly_rust_name(trait_path),
+                if trait_typ_args.len() > 1 {
+                    format!("<{}>", typs_to_comma_separated_str(&trait_typ_args[1..]))
+                } else {
+                    format!("")
+                }
+            )
+        }
+        TypX::TypeId => format!("typeid"),
+        TypX::ConstInt(_) => format!("constint"),
+        TypX::Air(_) => panic!("unexpected air type here"),
+        TypX::StrSlice => format!("StrSlice"),
+        TypX::Char => format!("char"),
+    }
 }
