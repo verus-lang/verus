@@ -637,38 +637,6 @@ fn emit_generic_param(param: &GenericParam) -> String {
     if let Some(typ) = &param.const_typ {
         buf += ": ";
         buf += &typ.to_string();
-        assert!(param.bounds.len() == 0);
-    }
-    for i in 0..param.bounds.len() {
-        if i == 0 {
-            buf += ": ";
-        } else {
-            buf += " + ";
-        }
-        match &param.bounds[i] {
-            Bound::Copy => {
-                buf += "Copy";
-            }
-            Bound::Clone => {
-                buf += "Clone";
-            }
-            Bound::Id(x) => {
-                buf += &x.to_string();
-            }
-            Bound::Trait(x) => {
-                buf += &x.to_string();
-            }
-            Bound::Fn(kind, params, ret) => {
-                buf += match kind {
-                    ClosureKind::Fn => "Fn",
-                    ClosureKind::FnMut => "FnMut",
-                    ClosureKind::FnOnce => "FnOnce",
-                };
-                buf += &params.to_string();
-                buf += " -> ";
-                buf += &ret.to_string();
-            }
-        }
     }
     buf
 }
@@ -684,13 +652,54 @@ fn emit_generic_params(state: &mut EmitState, generics: &Vec<GenericParam>) {
     }
 }
 
+fn emit_generic_bound(bound: &GenericBound) -> String {
+    let mut buf = String::new();
+    buf += &bound.typ.to_string();
+    buf += ": ";
+    match &bound.bound {
+        Bound::Copy => {
+            buf += "Copy";
+        }
+        Bound::Clone => {
+            buf += "Clone";
+        }
+        Bound::Id(x) => {
+            buf += &x.to_string();
+        }
+        Bound::Trait(x) => {
+            buf += &x.to_string();
+        }
+        Bound::Fn(kind, params, ret) => {
+            buf += match kind {
+                ClosureKind::Fn => "Fn",
+                ClosureKind::FnMut => "FnMut",
+                ClosureKind::FnOnce => "FnOnce",
+            };
+            buf += &params.to_string();
+            buf += " -> ";
+            buf += &ret.to_string();
+        }
+    }
+    buf
+}
+
+fn emit_generic_bounds(state: &mut EmitState, bounds: &Vec<GenericBound>) {
+    if bounds.len() > 0 {
+        state.write(" where ");
+        for bound in bounds.iter() {
+            state.write(emit_generic_bound(bound));
+            state.write(", ");
+        }
+    }
+}
+
 pub(crate) fn emit_fun_decl(state: &mut EmitState, f: &FunDecl) {
     state.newline();
     state.newline();
     state.begin_span(f.sig_span);
     state.write("fn ");
     state.write_spanned(f.name.to_string(), f.name_span);
-    emit_generic_params(state, &f.generics);
+    emit_generic_params(state, &f.generic_params);
     state.write("(");
     state.push_indent();
     for (span, x, typ) in f.params.iter() {
@@ -715,6 +724,7 @@ pub(crate) fn emit_fun_decl(state: &mut EmitState, f: &FunDecl) {
         }
     }
     state.end_span(f.sig_span);
+    emit_generic_bounds(state, &f.generic_bounds);
     match &*f.body {
         (_, ExpX::Block(..)) => {
             emit_exp(state, &f.body);
@@ -765,21 +775,26 @@ fn emit_copy_clone(
 ) {
     // impl<A: Clone, B> Clone for S<A, B> { fn clone(&self) -> Self { panic!() } }
     // impl<A: Copy, B> Copy for S<A, B> {}
-    assert!(d.generics.len() == copy_bounds.len());
+    assert!(d.generic_params.len() == copy_bounds.len());
     state.newline();
     state.write("impl");
     let mut copy_generics: Vec<GenericParam> = Vec::new();
     let mut generic_args: Vec<GenericParam> = Vec::new();
-    for (gparam, copy_bound) in d.generics.iter().zip(copy_bounds.iter()) {
-        let bounds = if *copy_bound { vec![bound.clone()] } else { vec![] };
-        let name = gparam.name.clone();
-        copy_generics.push(GenericParam { bounds, ..gparam.clone() });
-        generic_args.push(GenericParam { name, const_typ: None, bounds: vec![] });
+    let mut generic_bounds: Vec<GenericBound> = Vec::new();
+    for (gparam, copy_bound) in d.generic_params.iter().zip(copy_bounds.iter()) {
+        if *copy_bound {
+            let typ = Box::new(TypX::TypParam(gparam.name.clone()));
+            let generic_bound = GenericBound { typ, bound: bound.clone() };
+            generic_bounds.push(generic_bound);
+        }
+        copy_generics.push(gparam.clone());
+        generic_args.push(GenericParam { name: gparam.name.clone(), const_typ: None });
     }
     emit_generic_params(state, &copy_generics);
     state.write(format!(" {bound_name} for "));
     state.write(d.name.to_string());
     emit_generic_params(state, &generic_args);
+    emit_generic_bounds(state, &generic_bounds);
     state.write(" ");
     state.write(body);
 }
@@ -789,7 +804,8 @@ pub(crate) fn emit_trait_decl(state: &mut EmitState, t: &TraitDecl) {
     state.newline();
     state.write("trait ");
     state.write(&t.name.to_string());
-    emit_generic_params(state, &t.generics);
+    emit_generic_params(state, &t.generic_params);
+    emit_generic_bounds(state, &t.generic_bounds);
     state.write(" {");
     state.push_indent();
     for a in &t.assoc_typs {
@@ -811,10 +827,22 @@ pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
     state.newline();
     state.write_spanned(d_keyword, d.span);
     state.write(&d.name.to_string());
-    emit_generic_params(state, &d.generics);
+    emit_generic_params(state, &d.generic_params);
+    let suffix_where = match &*d.datatype {
+        Datatype::Struct(Fields::Pos(..)) => d.generic_bounds.len() > 0,
+        _ => {
+            emit_generic_bounds(state, &d.generic_bounds);
+            false
+        }
+    };
     match &*d.datatype {
         Datatype::Struct(fields) => {
-            emit_fields(state, fields, ";");
+            let suffix = if suffix_where { "" } else { ";" };
+            emit_fields(state, fields, suffix);
+            if suffix_where {
+                emit_generic_bounds(state, &d.generic_bounds);
+                state.write(";");
+            }
         }
         Datatype::Enum(variants) => {
             state.write(" {");
@@ -837,15 +865,17 @@ pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
 }
 
 pub(crate) fn emit_assoc_type_impl(state: &mut EmitState, a: &AssocTypeImpl) {
-    let AssocTypeImpl { name, generics, self_typ, trait_as_datatype, typ } = a;
+    let AssocTypeImpl { name, generic_params, generic_bounds, self_typ, trait_as_datatype, typ } =
+        a;
     state.newline();
     state.newline();
     state.write("impl");
-    emit_generic_params(state, &generics);
+    emit_generic_params(state, &generic_params);
     state.write(" ");
     state.write(&trait_as_datatype.to_string());
     state.write(" for ");
     state.write(&self_typ.to_string());
+    emit_generic_bounds(state, &generic_bounds);
     state.write(" { type ");
     state.write(&name.to_string());
     state.write(" = ");
