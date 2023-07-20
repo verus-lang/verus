@@ -516,23 +516,31 @@ pub proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
 {
 }
 
-// TODO: might not have brought this over correctly
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_map_new_domain<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V)
     ensures
         #[trigger] Map::<K,V>::new(fk,fv).dom() == Set::<K>::new(|k: K| fk(k))
-{}
+{
+    assert(Set::new(fk) =~= Set::<K>::new(|k: K| fk(k)));
+}
 
-// TODO: might not have brought this over correctly
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_map_new_values<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V)
     ensures
-        #[trigger] Map::<K,V>::new(fk,fv).values() == Set::<V>::new(|v: V| exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),
-{}
+        #[trigger] Map::<K,V>::new(fk,fv).values() == Set::<V>::new(|v: V| (exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v)),
+{
+    let keys = Set::<K>::new(fk);
+    let values = Map::<K,V>::new(fk,fv).values();
+    let map = Map::<K,V>::new(fk,fv);
+
+    assert(map.dom() =~= keys);
+    assert(forall |k: K| #[trigger] fk(k) ==> keys.contains(k));
+    assert(values =~= Set::<V>::new(|v: V| (exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v)));
+}
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]

@@ -664,6 +664,9 @@ macro_rules! seq {
     };
 }
 
+//TODO: change all names from axiom to lemma
+// change seq_magic to lemma_seq_properties or something
+//TODO: move as much as you can to seq_lib
 // auto style axiom bundle
 pub proof fn seq_magic<A>() 
     ensures

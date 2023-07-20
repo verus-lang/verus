@@ -1,3 +1,7 @@
+// TODO: make a table of every Dafny lemma/axiom and the verus equivalent
+// include notes of any skipped lemmas
+// include this in PR description
+
 use core::marker;
 
 #[allow(unused_imports)]
@@ -649,6 +653,8 @@ macro_rules! set {
     };
 }
 
+//TODO: change all names from axiom to lemma (and magic to properties????)
+//TODO: move as much as you can to set_lib
 // auto style axiom bundle
 pub proof fn set_magic<A>()
     ensures
