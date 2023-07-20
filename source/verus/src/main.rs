@@ -192,8 +192,8 @@ pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<(), String> {
         } else {
             &dep
         };
-        create_dir_all(proj_path.join(rel_path.parent().unwrap())).unwrap();
 
+        create_dir_all(proj_path.join(rel_path.parent().unwrap())).unwrap();
         std::fs::copy(dep, proj_path.join(rel_path))
             .map_err(|err| format!("failed to copy file {} to repo_path {}", dep.display(), err))?;
     }
@@ -206,15 +206,9 @@ pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<(), String> {
         )
     })?;
 
-    Command::new("git")
-        .current_dir(&proj_path)
-        .arg("add")
-        .args(deps)
-        .arg("reports.toml")
-        .output()
-        .map_err(|x| {
-            format!("localstorage: failed to stage current project with error message: {}", x)
-        })?;
+    Command::new("git").current_dir(&proj_path).arg("add").arg(".").output().map_err(|x| {
+        format!("localstorage: failed to stage current project with error message: {}", x)
+    })?;
 
     std::process::Command::new("git")
         .current_dir(&proj_path)
