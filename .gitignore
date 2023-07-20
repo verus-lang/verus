@@ -1,2 +1,4 @@
 /rust
 *.swp
+*.exe
+*.pdb

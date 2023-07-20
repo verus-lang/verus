@@ -694,6 +694,11 @@ pub(crate) fn emit_fun_decl(state: &mut EmitState, f: &FunDecl) {
     state.push_indent();
     for (span, x, typ) in f.params.iter() {
         state.newline();
+        // REVIEW
+        // For checking lifetimes, we make all function parameters mutable.
+        // This way, we do not have to closely track which parameters are
+        // mutable and which are not.
+        state.write("mut ");
         if let Some(span) = span {
             state.write_spanned(x.to_string(), *span);
         } else {

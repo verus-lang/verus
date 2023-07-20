@@ -24,8 +24,8 @@ use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
-    Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, KrateX, MaskSpec, Mode, ParamX, Typ, TypX,
-    VirErr,
+    Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, KrateX, MaskSpec, Mode, ParamX,
+    SpannedTyped, Typ, TypX, VirErr,
 };
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
 
@@ -404,7 +404,8 @@ pub(crate) fn check_item_fn<'tcx>(
         check_generics_bounds_fun(ctxt.tcx, &ctxt.verus_items, generics, id)?;
     let fuel = get_fuel(&vattrs);
 
-    let (vir_body, header, params): (_, _, Vec<(String, Span, Option<HirId>)>) = match body_id {
+    let (vir_body, header, params): (_, _, Vec<(String, Span, Option<HirId>, bool)>) = match body_id
+    {
         CheckItemFnEither::BodyId(body_id) => {
             let body = find_body(ctxt, body_id);
             let Body { params, value: _, generator_kind } = body;
@@ -419,15 +420,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 let (is_mut_var, name) = pat_to_mut_var(pat)?;
                 // is_mut_var: means a parameter is like `mut x: X` (unsupported)
                 // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
-                if is_mut_var {
-                    return err_span(
-                        *span,
-                        format!(
-                            "Verus does not support `mut` arguments (try writing `let mut param = param;` in the body of the function)"
-                        ),
-                    );
-                }
-                ps.push((name, *span, Some(*hir_id)));
+                ps.push((name, *span, Some(*hir_id), is_mut_var));
             }
             let external_body = vattrs.external_body || vattrs.external_fn_specification;
             let mut vir_body = body_to_vir(ctxt, id, body_id, body, mode, external_body)?;
@@ -435,15 +428,17 @@ pub(crate) fn check_item_fn<'tcx>(
             (Some(vir_body), header, ps)
         }
         CheckItemFnEither::ParamNames(params) => {
-            let params = params.iter().map(|p| (p.to_string(), p.span, None)).collect();
+            let params = params.iter().map(|p| (p.to_string(), p.span, None, false)).collect();
             let header = vir::headers::read_header_block(&mut vec![])?;
             (None, header, params)
         }
     };
 
+    let mut vir_mut_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
     let mut vir_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
+    let mut mut_params_redecl: Vec<vir::ast::Stmt> = Vec::new();
     assert!(params.len() == inputs.len());
-    for ((name, span, hir_id), input) in params.into_iter().zip(inputs.iter()) {
+    for ((name, span, hir_id, is_mut_var), input) in params.into_iter().zip(inputs.iter()) {
         let name = Arc::new(name);
         let param_mode = if let Some(hir_id) = hir_id {
             get_var_mode(mode, ctxt.tcx.hir().attrs(hir_id))
@@ -474,8 +469,34 @@ pub(crate) fn check_item_fn<'tcx>(
 
         let vir_param = ctxt.spanned_new(
             span,
-            ParamX { name, typ, mode: param_mode, is_mut, unwrapped_info: None },
+            ParamX {
+                name: name.clone(),
+                typ: typ.clone(),
+                mode: param_mode,
+                is_mut,
+                unwrapped_info: None,
+            },
         );
+        if is_mut_var {
+            vir_mut_params.push((vir_param.clone(), is_ref_mut.map(|(_, m)| m).flatten()));
+            let redecl = ctxt.spanned_new(
+                span,
+                vir::ast::StmtX::Decl {
+                    pattern: ctxt.spanned_typed_new(
+                        span,
+                        &typ,
+                        vir::ast::PatternX::Var { name: name.clone(), mutable: true },
+                    ),
+                    mode: mode,
+                    init: Some(ctxt.spanned_typed_new(
+                        span,
+                        &typ,
+                        vir::ast::ExprX::Var(name.clone()),
+                    )),
+                },
+            );
+            mut_params_redecl.push(redecl);
+        }
         vir_params.push((vir_param, is_ref_mut.map(|(_, m)| m).flatten()));
     }
 
@@ -656,6 +677,20 @@ pub(crate) fn check_item_fn<'tcx>(
         visibility.restricted_to = None;
     }
 
+    // Given a func named 'f' which has mut parameters 'x_0', ..., 'x_n' and body
+    // 'f_body', we rewrite it to a function without mut params and body
+    // 'let mut x_0 = x_0; ...; let mut x_n = x_n; f_body'.
+    let body_with_mut_redecls = if vir_mut_params.is_empty() {
+        vir_body
+    } else {
+        vir_body.map(move |body| {
+            SpannedTyped::new(
+                &body.span.clone(),
+                &body.typ.clone(),
+                vir::ast::ExprX::Block(Arc::new(mut_params_redecl), Some(body)),
+            )
+        })
+    };
     let func = FunctionX {
         name: name.clone(),
         proxy,
@@ -681,7 +716,7 @@ pub(crate) fn check_item_fn<'tcx>(
         body: if vattrs.external_body || vattrs.external_fn_specification || header.no_method_body {
             None
         } else {
-            vir_body
+            body_with_mut_redecls
         },
         extra_dependencies: header.extra_dependencies,
     };
