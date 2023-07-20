@@ -1,6 +1,7 @@
 use sha2::Digest;
-use std::fs::create_dir_all;
-use std::io::BufRead;
+use std::fs::{create_dir_all, read_to_string, remove_dir_all, write, File};
+use std::io::Write;
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -12,6 +13,9 @@ const RUST_VERIFY_FILE_NAME: &str =
 const Z3_FILE_NAME: &str = if cfg!(target_os = "windows") { ".\\z3.exe" } else { "./z3" };
 
 fn main() {
+    if cfg!(windows) && !yansi::Paint::enable_windows_ascii() {
+        yansi::Paint::disable();
+    }
     let mut args = std::env::args().into_iter();
     let _bin = args.next().expect("executable in args");
 
@@ -52,6 +56,10 @@ fn main() {
         }
     }
 
+    // This unfortunately isn't a sufficient check; if the user specifies it as --color=never, but they are on a terminal, then it will still give color.
+
+    // Also it doesn't account for users passing the always/never argument as the next parameter, rather than using = (eg: verus --color always foo.rs).
+
     let color_arg = if std::env::args().any(|arg| arg == "--color=always") {
         "--color=always"
     } else if is_terminal::is_terminal(&std::io::stderr())
@@ -71,8 +79,7 @@ fn main() {
         .args(args)
         .stdin(std::process::Stdio::inherit());
 
-    // change it to return Child process and do all the operations here
-    match exec(&mut cmd, report_path.clone()) {
+    match exec(&mut cmd, report_path) {
         Err(e) => {
             eprintln!(
                 "{}",
@@ -86,14 +93,9 @@ fn main() {
     }
 }
 
-pub fn exec(cmd: &mut Command, reports: ReportsPath) -> Result<(), String> {
-    use std::io::BufReader;
-    use std::io::Write;
-    use std::process::Stdio;
-    use std::thread;
-
+pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<(), String> {
     #[cfg(windows)]
-    {
+    if cfg!(windows) {
         // Configure Windows to kill the child SMT process if the parent is killed
         let job = win32job::Job::create()
             .map_err(|_| format!("last os error: {}", std::io::Error::last_os_error()))?;
@@ -108,51 +110,54 @@ pub fn exec(cmd: &mut Command, reports: ReportsPath) -> Result<(), String> {
         std::mem::forget(job);
     }
 
-    if let None = reports {
-        // need to keep running rust_verify to get the rustc error message
-        cmd.status().map_err(|x| format!("verus failed to run with error: {}", x))?;
-        return Ok(());
-    }
+    let reports = match reports {
+        Some(reports) => reports,
+        None => {
+            // need to keep running rust_verify to get the rustc error message
+            cmd.status().map_err(|x| format!("verus failed to run with error: {}", x))?;
+            return Ok(());
+        }
+    };
 
-    let proj_path = reports.clone().unwrap().proj_path.clone();
+    let proj_path = reports.proj_path;
 
     // clean all files in proj_path
-    std::fs::remove_dir_all(&proj_path).expect("failed to remove repo_path");
+    remove_dir_all(&proj_path).expect("failed to remove repo_path");
 
     let toml_path = proj_path.join("reports.toml");
 
     create_dir_all(&proj_path).expect("creating reports.toml");
-    let mut file = std::fs::File::create(toml_path).expect("creating reports.toml");
+    let mut file = File::create(toml_path).expect("creating reports.toml");
 
     let mut child = cmd
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|x| format!("verus failed to run with error: {}", x))?;
 
-    let out = BufReader::new(child.stdout.take().unwrap());
-    let err = BufReader::new(child.stderr.take().unwrap());
+    let out = BufReader::new(child.stdout.take().expect("create BufReader for stdout"));
+    let err = BufReader::new(child.stderr.take().expect("create BufReader for stderr"));
 
-    let thread_err = thread::spawn(move || {
-        let mut tmpstr = String::new();
+    let thread_err = std::thread::spawn(move || {
+        let mut stderr_output = String::new();
         err.lines().for_each(|line| {
             let line = line.unwrap();
             eprintln!("{}", line);
             let to_push = anstream::adapter::strip_str(&line).to_string() + "\n";
-            tmpstr.push_str(&to_push);
+            stderr_output.push_str(&to_push);
         });
-        return tmpstr;
+        return stderr_output;
     });
 
-    let thread_out = thread::spawn(move || {
-        let mut tmpstr = String::new();
+    let thread_out = std::thread::spawn(move || {
+        let mut stdout_output = String::new();
         out.lines().for_each(|line| {
             let line = line.unwrap();
             println!("{}", line);
             let to_push = anstream::adapter::strip_str(&line).to_string() + "\n";
-            tmpstr.push_str(&to_push);
+            stdout_output.push_str(&to_push);
         });
-        return tmpstr;
+        return stdout_output;
     });
 
     let err_string = thread_err.join().unwrap();
@@ -163,15 +168,9 @@ pub fn exec(cmd: &mut Command, reports: ReportsPath) -> Result<(), String> {
     writeln!(file, "{}", err_string).unwrap();
     writeln!(file, "{}", out_string).unwrap();
 
-    let dep_file_rel_path = reports
-        .unwrap()
-        .crate_root
-        .with_extension("d")
-        .file_name()
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .to_string();
+    // TODO: going to change after using --emit-dep-info=PATH
+    let dep_file_rel_path =
+        reports.crate_root.with_extension("d").file_name().unwrap().to_str().unwrap().to_string();
 
     let dep_file_path = std::env::current_dir().unwrap().join(dep_file_rel_path);
 
@@ -184,75 +183,63 @@ pub fn exec(cmd: &mut Command, reports: ReportsPath) -> Result<(), String> {
         std::fs::copy(dep, proj_path.join(dep)).unwrap();
     }
 
-    println!(
-        "\n{} {}",
-        yansi::Paint::blue("removing:"),
-        std::env::current_dir().unwrap().join(dep_file_path.clone()).display()
-    );
     std::fs::remove_file(dep_file_path).expect("remove crate root dependency file");
 
-    // step 5, git commiting
-    println!("\n{} {}", yansi::Paint::blue("commiting"), proj_path.display());
-    std::process::Command::new("git")
+    Command::new("git")
         .current_dir(&proj_path)
         .arg("add")
         .args(deps)
         .arg("reports.toml")
         .output()
-        .map_err(|x| format!("Telemetry: failed to git add with error message: {}", x))?;
+        .map_err(|x| {
+            format!("localstorage: failed to stage current project with error message: {}", x)
+        })?;
 
     std::process::Command::new("git")
         .current_dir(&proj_path)
         .arg("commit")
         .arg("-m")
-        .arg("\"verus telemtry\"")
+        .arg("\"verus\"")
+        .env("GIT_AUTHOR_NAME", "nobody")
+        .env("GIT_AUTHOR_EMAIL", "nobody@nobody.nobody")
+        .env("GIT_COMMITTER_NAME", "nobody")
+        .env("GIT_COMMITTER_EMAIL", "nobody@nobody.nobody")
         .output()
-        .map_err(|x| format!("Telemetry: failed to git commit with error message: {}", x))?;
+        .map_err(|x| format!("localstorage: failed to git commit with error message: {}", x))?;
 
     Ok(())
 }
 
-pub type ReportsPath = Option<Reports>;
 #[derive(Debug)]
 pub struct Reports {
     proj_path: PathBuf,
     crate_root: PathBuf,
 }
 
-// is it easier to impl the copy trait? I'm not sure about the paradigm here
-impl Clone for Reports {
-    fn clone(&self) -> Self {
-        Self { proj_path: self.proj_path.clone(), crate_root: self.crate_root.clone() }
-    }
-}
-
-fn repo_path() -> ReportsPath {
-    // Step 1: check if there's a verus/reports/.git file in the user's local data lib
+fn repo_path() -> Option<Reports> {
+    // Check if there's a verus/reports/.git file in the user's local data lib
     // if not so, create verus/ directory
-    let cache_dir = dirs::data_local_dir()?;
-    let reports_dir = cache_dir.join("verus").join("reports");
-    if !reports_dir.clone().join(".git").is_file() {
-        std::fs::create_dir_all(reports_dir.clone())
-            .expect("Creating verus/ directory in local data cache");
+    let reports_dir = dirs::data_local_dir()?.join("verus").join("reports");
 
-        std::process::Command::new("git")
+    if !reports_dir.join(".git").is_file() {
+        create_dir_all(&reports_dir).expect("Creating verus/ directory in local data dir");
+
+        Command::new("git")
             .current_dir(&reports_dir)
             .arg("init")
             .output()
-            .expect("Initializing git in local data cache");
+            .expect("Initializing git in local data dir");
     }
 
     let uuid_file = reports_dir.join("userid");
     if !uuid_file.is_file() {
         let uuid = uuid::Uuid::new_v4();
-        std::fs::write(uuid_file.clone(), uuid.to_string()).expect("Writing user id file");
+        write(&uuid_file, uuid.to_string()).expect("Writing user id file");
     }
 
-    let uuid = std::fs::read_to_string(uuid_file).expect("Reading user id file");
+    let uuid = read_to_string(&uuid_file).expect("Reading user id file");
 
-    // Step 3: project dir check/create (project = SHA256((normalized/absolute)path to root.rs)
-
-    // clone is not implemented for Args, so I grabbed the arguments here again
+    // Project dir check/create (project = SHA256((normalized/absolute)path to root.rs)
     let new_args = std::env::args().into_iter();
 
     let rs_files = new_args.filter(|arg| arg.ends_with(".rs")).collect::<Vec<_>>();
@@ -265,29 +252,19 @@ fn repo_path() -> ReportsPath {
         }
     };
 
-    let input_file_path = match input_file.clone() {
-        Some(input_file_name) => std::fs::canonicalize(input_file_name).ok(),
-        None => None,
-    };
+    let input_file_path = input_file.and_then(|f| std::fs::canonicalize(f).ok());
 
-    let project_name = match input_file_path.clone() {
-        Some(path) => {
-            Some(format!("{:x}", sha2::Sha256::digest(path.to_str().unwrap().as_bytes())))
-        }
-        None => None,
-    };
+    let project_name = input_file_path
+        .as_ref()
+        .map(|path| format!("{:x}", sha2::Sha256::digest(path.to_str().unwrap().as_bytes())));
 
-    let proj_dir = match project_name {
-        Some(name) => {
-            let project_dir = reports_dir.join(uuid).join(name);
-            if !project_dir.is_dir() {
-                std::fs::create_dir_all(project_dir.clone())
-                    .expect("failed to create project directory");
-            }
-            Some(project_dir)
+    let proj_dir = project_name.map(|name| {
+        let project_dir = reports_dir.join(uuid).join(name);
+        if !project_dir.is_dir() {
+            create_dir_all(&project_dir).expect("failed to create project directory");
         }
-        None => None,
-    };
+        project_dir
+    });
 
     match (input_file_path, proj_dir) {
         (Some(crate_root_path), Some(proj_dir)) => {
@@ -298,8 +275,7 @@ fn repo_path() -> ReportsPath {
 }
 
 fn get_dependencies(dep_file_path: &std::path::Path) -> Result<Vec<PathBuf>, String> {
-    // update to better error message
-    let file = std::fs::File::open(dep_file_path)
+    let file = File::open(dep_file_path)
         .map_err(|x| format!("{}, dependency file name: {:?}", x, dep_file_path))?;
     let mut reader = std::io::BufReader::new(file);
     let mut dependencies = String::new();
@@ -307,7 +283,6 @@ fn get_dependencies(dep_file_path: &std::path::Path) -> Result<Vec<PathBuf>, Str
         format!("Could not read the first line of the dependency file with message: {}", x)
     })?;
     let dep: Vec<String> = dependencies.split_whitespace().skip(1).map(|x| x.to_string()).collect();
-    println!("\n{} {:?}", yansi::Paint::blue("dependencies:"), dep);
     let result = dep.into_iter().map(|x| PathBuf::from(x)).collect();
     Ok(result)
 }
