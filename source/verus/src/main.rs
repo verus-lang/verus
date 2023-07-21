@@ -2,7 +2,7 @@ use sha2::Digest;
 use std::fs::{create_dir_all, read_to_string, remove_dir_all, write, File};
 use std::io::Write;
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const TOOLCHAIN: &str = env!("VERUS_TOOLCHAIN");
@@ -56,34 +56,26 @@ fn main() {
         }
     }
 
-    // This unfortunately isn't a sufficient check; if the user specifies it as --color=never, but they are on a terminal, then it will still give color.
-
-    // Also it doesn't account for users passing the always/never argument as the next parameter, rather than using = (eg: verus --color always foo.rs).
-
-    let color_arg = if std::env::args().any(|arg| arg == "--color=always") {
-        "--color=always"
-    } else if is_terminal::is_terminal(&std::io::stderr())
-        && is_terminal::is_terminal(&std::io::stdout())
-    {
-        "--color=always"
-    } else {
-        "--color=never"
-    };
-
     cmd.arg("run")
         .arg(TOOLCHAIN)
         .arg("--")
         .arg(verusroot_path.join(RUST_VERIFY_FILE_NAME))
-        .arg(color_arg)
         .args(args)
         .stdin(std::process::Stdio::inherit());
 
+    if !std::env::args().any(|arg| arg.starts_with("--color")) {
+        if is_terminal::is_terminal(&std::io::stderr())
+            || is_terminal::is_terminal(&std::io::stdout())
+        {
+            cmd.arg("--color=always");
+        } else {
+            cmd.arg("--color=never");
+        }
+    }
+
     match exec(&mut cmd, report_path) {
         Err(e) => {
-            eprintln!(
-                "{}",
-                yansi::Paint::red(format!("error: failed to execute rust_verify: {}", e))
-            );
+            eprintln!("{}: failed to execute rust_verify: {}", yansi::Paint::red("error"), e);
             std::process::exit(128);
         }
         Ok(_) => {
@@ -144,8 +136,8 @@ pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<(), String> {
         err.lines().for_each(|line| {
             let line = line.unwrap();
             eprintln!("{}", line);
-            let to_push = anstream::adapter::strip_str(&line).to_string() + "\n";
-            stderr_output.push_str(&to_push);
+            let x = anstream::adapter::strip_str(&line).to_string() + "\n";
+            stderr_output.push_str(&x);
         });
         return stderr_output;
     });
@@ -155,8 +147,8 @@ pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<(), String> {
         out.lines().for_each(|line| {
             let line = line.unwrap();
             println!("{}", line);
-            let to_push = anstream::adapter::strip_str(&line).to_string() + "\n";
-            stdout_output.push_str(&to_push);
+            let x = anstream::adapter::strip_str(&line).to_string() + "\n";
+            stdout_output.push_str(&x);
         });
         return stdout_output;
     });
@@ -175,25 +167,39 @@ pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<(), String> {
 
     let deps = get_dependencies(&dep_file_path)?;
 
-    // copy files to repo_path
-    for dep in deps.iter() {
-        // change path to relative path, since adjoining a relative path will overwrite the caller path
-        let rel_path = if dep.is_absolute() {
-            if cfg!(windows) {
-                dep.strip_prefix(r"C:\")
-                    .map_err(|err| format!("failed to strip absolute path {}", err))?
-            } else {
-                dep.strip_prefix("/")
-                    .map_err(|err| format!("failed to strip absolute path {}", err))?
-            }
-        } else {
-            &dep
-        };
+    let deps_path = deps.iter().map(|x| Path::new(x)).collect::<Vec<_>>();
 
-        create_dir_all(proj_path.join(rel_path.parent().unwrap())).unwrap();
-        println!("copying {} to {}", dep.display(), proj_path.join(rel_path).display());
-        std::fs::copy(dep, proj_path.join(rel_path))
-            .map_err(|err| format!("failed to copy file {} to repo_path {}", dep.display(), err))?;
+    // compute common ancester
+    let common = match common_path::common_path_all(deps_path) {
+        Some(common) => common,
+        None => PathBuf::from(""),
+    };
+
+    if deps.clone().into_iter().any(|dep| dep.is_absolute()) {
+        // copy files to repo_path
+        for dep in deps.iter() {
+            let rel_dest = dep.clone().strip_prefix(&common).unwrap().to_path_buf();
+            create_dir_all(proj_path.join(&rel_dest.parent().unwrap())).unwrap();
+            std::fs::copy(dep, proj_path.join(&rel_dest)).map_err(|err| {
+                format!(
+                    "failed to copy file {} to repo_path with error message: {}",
+                    dep.display(),
+                    err
+                )
+            })?;
+        }
+    } else {
+        // copy files to repo_path, none of dep should be absolute path at thsi point
+        for dep in deps.iter() {
+            create_dir_all(proj_path.join(dep.parent().unwrap())).unwrap();
+            std::fs::copy(dep, proj_path.join(dep)).map_err(|err| {
+                format!(
+                    "failed to copy file {} to repo_path with error message: {}",
+                    dep.display(),
+                    err
+                )
+            })?;
+        }
     }
 
     std::fs::remove_file(&dep_file_path).map_err(|err| {
