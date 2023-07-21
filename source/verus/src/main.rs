@@ -40,7 +40,6 @@ fn main() {
         std::process::exit(128);
     };
 
-
     let report_path = repo_path();
 
     let mut cmd = Command::new("rustup");
@@ -285,9 +284,7 @@ fn repo_path() -> Option<Reports> {
     let temp_file = dir.join("verus-dep-info");
 
     match (input_file_path, proj_dir) {
-        (Some(_), Some(proj_dir)) => {
-            Some(Reports { proj_path: proj_dir, dep_path: temp_file })
-        }
+        (Some(_), Some(proj_dir)) => Some(Reports { proj_path: proj_dir, dep_path: temp_file }),
         _ => None,
     }
 }
