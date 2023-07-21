@@ -10,7 +10,6 @@ yansi = "0.5"
 anstream = "0.3.2"
 is-terminal = "0.4.9"
 uuid = { version = "1.4.0", features = [ "v4" ] }
-tempfile = "3.6.0"
 
 [target."cfg(windows)".dependencies]
 win32job = "1"

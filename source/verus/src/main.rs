@@ -40,6 +40,7 @@ fn main() {
         std::process::exit(128);
     };
 
+
     let report_path = repo_path();
 
     let mut cmd = Command::new("rustup");
@@ -74,7 +75,6 @@ fn main() {
         .arg(TOOLCHAIN)
         .arg("--")
         .arg(verusroot_path.join(RUST_VERIFY_FILE_NAME))
-        .arg("--emit=dep-info")
         .arg(color_arg)
         .args(args)
         .stdin(std::process::Stdio::inherit());
@@ -120,6 +120,8 @@ pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<(), String> {
     };
 
     let proj_path = reports.proj_path;
+
+    cmd.arg(format!("--emit=dep-info={}", reports.dep_path.display()));
 
     // clean all files in proj_path
     remove_dir_all(&proj_path).expect("failed to remove repo_path");
@@ -170,11 +172,7 @@ pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<(), String> {
     writeln!(file, "{}", out_string)
         .map_err(|x| format!("failed to write to reports.toml: {}", x))?;
 
-    // TODO: going to change after using --emit-dep-info=PATH
-    let dep_file_rel_path =
-        reports.crate_root.with_extension("d").file_name().unwrap().to_str().unwrap().to_string();
-
-    let dep_file_path = std::env::current_dir().unwrap().join(dep_file_rel_path);
+    let dep_file_path = reports.dep_path;
 
     let deps = get_dependencies(&dep_file_path)?;
 
@@ -194,6 +192,7 @@ pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<(), String> {
         };
 
         create_dir_all(proj_path.join(rel_path.parent().unwrap())).unwrap();
+        println!("copying {} to {}", dep.display(), proj_path.join(rel_path).display());
         std::fs::copy(dep, proj_path.join(rel_path))
             .map_err(|err| format!("failed to copy file {} to repo_path {}", dep.display(), err))?;
     }
@@ -228,7 +227,7 @@ pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<(), String> {
 #[derive(Debug)]
 pub struct Reports {
     proj_path: PathBuf,
-    crate_root: PathBuf,
+    dep_path: PathBuf,
 }
 
 fn repo_path() -> Option<Reports> {
@@ -282,9 +281,12 @@ fn repo_path() -> Option<Reports> {
         project_dir
     });
 
+    let dir = std::env::temp_dir();
+    let temp_file = dir.join("verus-dep-info");
+
     match (input_file_path, proj_dir) {
-        (Some(crate_root_path), Some(proj_dir)) => {
-            Some(Reports { proj_path: proj_dir, crate_root: crate_root_path })
+        (Some(_), Some(proj_dir)) => {
+            Some(Reports { proj_path: proj_dir, dep_path: temp_file })
         }
         _ => None,
     }
