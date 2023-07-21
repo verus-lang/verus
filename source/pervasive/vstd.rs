@@ -39,6 +39,7 @@ pub mod vec;
 pub mod view;
 pub mod std_specs;
 pub mod relations;
+pub mod seq_merge_sort;
 
 // Re-exports all pervasive types, traits, and functions that are commonly used or replace
 // regular `core` or `std` definitions.

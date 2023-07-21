@@ -120,7 +120,7 @@ verus! {
         s.contains(max) && forall|x: T| s.contains(x) && #[trigger] leq(max,x) ==> #[trigger] leq(x,max)
     }
 
-    proof fn lemma_new_first_element_still_sorted_by<T>(x: T, s: Seq<T>, less_than: FnSpec(T, T) -> bool)
+    pub proof fn lemma_new_first_element_still_sorted_by<T>(x: T, s: Seq<T>, less_than: FnSpec(T, T) -> bool)
         requires 
             sorted_by(s, less_than),
             s.len() == 0 || less_than(x, s[0]),
@@ -134,6 +134,11 @@ verus! {
                 assert(less_than(s[0], s[index]));
             } ;
         }
+    }
+
+    pub open spec fn merge_sort_by<A>(s: Seq<A>, leq: FnSpec(A,A) -> bool) -> Seq<A>
+    {
+        s
     }
 
 }

@@ -11,6 +11,10 @@ use crate::set::Set;
 #[allow(unused_imports)]
 use crate::multiset::Multiset;
 use crate::set_lib::lemma_set_properties;
+use crate::relations::total_ordering;
+use crate::seq_merge_sort::merge_sort_by;
+use crate::relations::sorted_by;
+use crate::seq_merge_sort::lemma_merge_sort_by_ensures;
 
 
 verus! {
@@ -43,6 +47,23 @@ impl<A> Seq<A> {
     {
         self.len() <= other.len() && self =~= 
             other.subrange((other.len() - self.len()) as int, other.len() as int)
+    }
+
+    pub open spec fn sort_by(self, leq: FnSpec(A,A) -> bool) -> Self
+        recommends
+            total_ordering(leq),
+    {
+        merge_sort_by(self, leq)
+    }
+
+    pub proof fn lemma_sort_by_ensures(self, leq: FnSpec(A,A) -> bool)
+        requires
+            total_ordering(leq),
+        ensures
+            self.to_multiset() =~= self.sort_by(leq).to_multiset(),
+            sorted_by(self.sort_by(leq), leq),
+    {
+        lemma_merge_sort_by_ensures(self, leq)
     }
 
     #[verifier::opaque]
@@ -618,6 +639,19 @@ impl Seq<int> {
             else {later_min}
         }
     }
+
+    pub open spec fn sort(self) -> Self
+    {
+        merge_sort_by(self, |x: int,y: int| x <= y)
+    }
+
+    pub proof fn lemma_sort_ensures(self)
+        ensures
+            self.to_multiset() =~= self.sort().to_multiset(),
+            sorted_by(self.sort(), |x: int,y: int| x <= y),
+    {
+        lemma_merge_sort_by_ensures(self, |x: int,y: int| x <= y);
+    }
 }
 
 pub proof fn lemma_max_properties(s: Seq<int>)
@@ -1130,6 +1164,29 @@ pub proof fn lemma_flatten_length_ge_single_element_length<A>(x: Seq<Seq<A>>, i:
         lemma_flatten_length_ge_single_element_length(x.drop_last(), i);
     } else {
         assert(x.flatten_reverse() == x.drop_last().flatten_reverse().add(x.last()));
+    }
+}
+
+pub proof fn lemma_seq_union_to_multiset_commutative<A>(a: Seq<A>, b: Seq<A>)
+    ensures
+        (a+b).to_multiset() =~= (b+a).to_multiset(),
+{
+    lemma_multiset_commutative(a,b);
+    lemma_multiset_commutative(b,a);
+}
+
+pub proof fn lemma_multiset_commutative<A>(a: Seq<A>, b: Seq<A>)
+    ensures
+        (a+b).to_multiset() =~= a.to_multiset().add(b.to_multiset()),
+    decreases
+        a.len(),
+{
+    if a.len() == 0 {
+        assert(a+b =~= b);
+    }
+    else {
+        lemma_multiset_commutative(a.drop_first(),b);
+        assert(a.drop_first() + b =~= (a+b).drop_first());
     }
 }
 
