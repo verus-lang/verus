@@ -236,7 +236,6 @@ pub struct Reports {
 }
 
 fn repo_path() -> Option<Reports> {
-
     // check if user has git as executable
     if Command::new("git").arg("--version").output().is_err() {
         return None;
@@ -277,7 +276,6 @@ fn repo_path() -> Option<Reports> {
     let input_file: Option<String> = match rs_files.len() {
         1 => Some(rs_files[0].clone()),
         _ => {
-            eprintln!("{}: cannot find input file", yansi::Paint::red("error"));
             None // passed down to rust_verify for error message
         }
     };
