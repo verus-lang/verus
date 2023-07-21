@@ -236,6 +236,17 @@ pub struct Reports {
 }
 
 fn repo_path() -> Option<Reports> {
+
+    // check if user has git as executable
+    if Command::new("git").arg("--version").output().is_err() {
+        return None;
+    }
+
+    // check if user has local storage enabled during vargo build
+    if option_env!("VERUS_LOCAL_STORE").is_none() {
+        return None;
+    }
+
     // Check if there's a verus/reports/.git file in the user's local data lib
     // if not so, create verus/ directory
     let reports_dir = dirs::data_local_dir()?.join("verus").join("reports");
