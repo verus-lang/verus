@@ -10,6 +10,7 @@ use crate::set::*;
 use crate::multiset::Multiset;
 #[allow(unused_imports)]
 use crate::relations::*;
+use crate::prelude::Seq;
 
 
 verus! {
@@ -50,6 +51,34 @@ impl<A> Set<A> {
         } else {
             arbitrary()
         }
+    }
+
+    pub open spec fn to_seq(self) -> Seq<A> 
+        // recommends
+        //     self.finite()
+        decreases
+            self.len()
+        when
+            self.finite()
+        via
+            Self::decreases_proof
+    {
+        if self.len() == 0 {Seq::<A>::empty()}
+        else {
+            let x = self.choose();
+            Seq::<A>::empty().push(x) + self.remove(x).to_seq()
+        }
+    }
+
+    #[via_fn]
+    pub proof fn decreases_proof(self) {
+        lemma_set_properties::<A>();
+        let x = self.choose();
+        assert(self.remove(x).len() < self.len());
+    }
+
+    pub open spec fn to_sorted_seq(self, leq: FnSpec(A,A) -> bool) -> Seq<A> {
+        self.to_seq().sort_by(leq)
     }
 
     /// A singleton set has at least one element and any two elements are equal.
@@ -732,8 +761,17 @@ pub proof fn lemma_set_difference_len<A>(a: Set<A>, b: Set<A>)
             assert(!b.contains(x));
             assert(!a.remove(x).difference(b).contains(x));
             assert(a.remove(x).len() == a.len() - 1);
-            assert(a.remove(x).difference(b).len() == a.difference(b).len() -1); //failed test
-            assert(a.difference(b).len() + b.difference(a).len() + a.intersect(b).len() == (a+b).len()); //failed test
+            assert(!a.remove(x).contains(x));
+            assert(!(a.remove(x)+b).contains(x));
+            assert(a.remove(x) + b =~= (a+b).remove(x));
+            assert((a.remove(x)+b).len() == (a+b).len() -1);
+            assert(a.remove(x).difference(b) =~= a.difference(b).remove(x));
+            assert(a.remove(x).difference(b).len() == a.difference(b).len() -1);
+            assert(!b.difference(a).contains(x));
+            assert(!b.difference(a.remove(x)).contains(x));
+            assert(b.difference(a).len() == b.difference(a.remove(x)).len());
+            assert(a.remove(x).intersect(b).len() == a.intersect(b).len());
+            assert(a.difference(b).len() + b.difference(a).len() + a.intersect(b).len() == (a+b).len());
         }
         assert(a.difference(b).len() == a.len() - a.intersect(b).len());
     }

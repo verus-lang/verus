@@ -407,7 +407,6 @@ pub proof fn axiom_disjointness<V>(a: Multiset<V>, b: Multiset<V>, x:V)
 {}
 
 // Specification of `is_valid`
-// PROBLEMATIC: may cause lemma_min_of_concat to fail
 // Ported from Dafny prelude
 #[verifier(external_body)]
 //#[verifier(broadcast_forall)]
@@ -442,8 +441,8 @@ macro_rules! assert_multisets_equal {
     }
 }
 
-// auto style axiom bundle
-pub proof fn multiset_magic<V>()
+// magic auto style bundle of lemmas that Dafny considers when proving properties of multisets
+pub proof fn lemma_multiset_properties<V>()
     ensures
         forall |m: Multiset<V>| (#[trigger] m.len() == 0 <==> m =~= Multiset::empty())
             && (#[trigger] m.len() > 0 ==> exists |v: V| 0 < m.count(v)), //axiom_multiset_empty_len
