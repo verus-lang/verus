@@ -478,21 +478,28 @@ pub(crate) fn check_item_fn<'tcx>(
             },
         );
         if is_mut_var {
+            if mode == Mode::Spec {
+                return err_span(span, format!("mut argument not allowed for spec functions"));
+            }
             vir_mut_params.push((vir_param.clone(), is_ref_mut.map(|(_, m)| m).flatten()));
+            let new_binding_pat = ctxt.spanned_typed_new(
+                span,
+                &typ,
+                vir::ast::PatternX::Var { name: name.clone(), mutable: true },
+            );
+            let new_init_expr =
+                ctxt.spanned_typed_new(span, &typ, vir::ast::ExprX::Var(name.clone()));
+            // TODO: doc
+            if let Some(hir_id) = hir_id {
+                ctxt.erasure_info.borrow_mut().hir_vir_ids.push((hir_id, new_binding_pat.span.id));
+                ctxt.erasure_info.borrow_mut().hir_vir_ids.push((hir_id, new_init_expr.span.id));
+            }
             let redecl = ctxt.spanned_new(
                 span,
                 vir::ast::StmtX::Decl {
-                    pattern: ctxt.spanned_typed_new(
-                        span,
-                        &typ,
-                        vir::ast::PatternX::Var { name: name.clone(), mutable: true },
-                    ),
+                    pattern: new_binding_pat,
                     mode: mode,
-                    init: Some(ctxt.spanned_typed_new(
-                        span,
-                        &typ,
-                        vir::ast::ExprX::Var(name.clone()),
-                    )),
+                    init: Some(new_init_expr),
                 },
             );
             mut_params_redecl.push(redecl);
