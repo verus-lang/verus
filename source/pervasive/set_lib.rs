@@ -729,9 +729,11 @@ pub proof fn lemma_set_difference_len<A>(a: Set<A>, b: Set<A>)
             assert(a.difference(b).len() + b.difference(a).len() + a.intersect(b).len() == (a+b).len());
         }
         else {
+            assert(!b.contains(x));
             assert(!a.remove(x).difference(b).contains(x));
-            assert(a.remove(x).difference(b).len() == a.difference(b).len() -1);
-            assert(a.difference(b).len() + b.difference(a).len() + a.intersect(b).len() == (a+b).len());
+            assert(a.remove(x).len() == a.len() - 1);
+            assert(a.remove(x).difference(b).len() == a.difference(b).len() -1); //failed test
+            assert(a.difference(b).len() + b.difference(a).len() + a.intersect(b).len() == (a+b).len()); //failed test
         }
         assert(a.difference(b).len() == a.len() - a.intersect(b).len());
     }
