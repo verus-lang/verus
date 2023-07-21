@@ -10,7 +10,7 @@ use crate::seq::*;
 use crate::set::Set;
 #[allow(unused_imports)]
 use crate::multiset::Multiset;
-use crate::set::set_magic;
+use crate::set_lib::lemma_set_properties;
 
 
 verus! {
@@ -544,7 +544,6 @@ impl<A> Seq<A> {
     }
 }
 
-//TODO: Should this be its own impl block, or somehow fit it into the previous one?
 impl<A,B> Seq<(A,B)>{
 
     /// Unzips a sequence that contains pairs into two separate sequences.
@@ -658,7 +657,7 @@ pub proof fn lemma_max_of_concat(x: Seq<int>, y: Seq<int>)
     decreases
         x.len(),
 {
-    seq_magic::<int>();
+    lemma_seq_properties::<int>();
     lemma_max_properties(x);
     lemma_max_properties(y);
     lemma_max_properties(x+y);
@@ -716,7 +715,7 @@ pub proof fn lemma_min_of_concat(x: Seq<int>, y: Seq<int>)
     lemma_min_properties(x);
     lemma_min_properties(y);
     lemma_min_properties(x+y);
-    seq_magic::<int>();
+    lemma_seq_properties::<int>();
     if x.len() == 1 {
         assert((x + y).min() <= y.min()) by {
             assert((x+y).contains(y.min()));
@@ -953,8 +952,8 @@ pub proof fn lemma_cardinality_of_set<A>(s: Seq<A>)
     ensures s.to_set().len() <= s.len(),
     decreases s.len(),
 {
-    seq_magic::<A>();
-    set_magic::<A>();
+    lemma_seq_properties::<A>();
+    lemma_set_properties::<A>();
     if s.len() == 0 {}
     else {
         assert(s.drop_last().to_set().insert(s.last()) =~= s.to_set());
@@ -1022,7 +1021,7 @@ pub proof fn lemma_no_dup_set_cardinality<A>(s: Seq<A>)
     decreases s.len(),
 {
     // reveal(Seq::<A>::no_duplicates);
-    seq_magic::<A>();
+    lemma_seq_properties::<A>();
     if s.len() == 0 {}
     else {
         assert(s =~= Seq::empty().push(s.first()).add(s.drop_first()));
@@ -1134,6 +1133,7 @@ pub proof fn lemma_flatten_length_ge_single_element_length<A>(x: Seq<Seq<A>>, i:
     }
 }
 
+//TODO(Liz): prove
 // /// The length of a flattened sequence of sequences x is less than or equal 
 // /// to the length of x multiplied by a number greater than or equal to the
 // /// length of the longest sequence in x.
@@ -1145,15 +1145,13 @@ pub proof fn lemma_flatten_length_ge_single_element_length<A>(x: Seq<Seq<A>>, i:
 //     decreases
 //         x.len(),
 // {
-//     // seq_magic::<A>();
-//     // seq_magic::<Seq<A>>();
-//     // magic_isolated::<A>();
-//     // magic_isolated::<Seq<A>>();
-//     // These are already proven in seq_magic, so why do we need to spell it out here?
-//     // assert forall |s: Seq<A>, i: int, v: A, n: int|  0 <= i < n <= s.len() implies #[trigger] s.update(i,v).drop(n) == s.drop(n) by {
-//     //     axiom_seq_drop_update_commut2(s, i, v, n);
-//     // }
-//    // assert(forall |s: Seq<A>, v: A, n: int| 0 <= n <= s.len() ==> #[trigger] s.push(v).drop(n) == s.drop(n).push(v));//axiom_seq_drop_build_commut(s, v, n),
+//     lemma_seq_properties::<A>();
+//     lemma_seq_properties::<Seq<A>>();
+//     // These are already proven in lemma_seq_properties, so why do we need to spell it out here?
+//     assert forall |s: Seq<A>, i: int, v: A, n: int|  0 <= i < n <= s.len() implies #[trigger] s.update(i,v).drop(n) == s.drop(n) by {
+//         lemma_seq_drop_update_commut2(s, i, v, n);
+//     }
+//    assert(forall |s: Seq<A>, v: A, n: int| 0 <= n <= s.len() ==> #[trigger] s.push(v).drop(n) == s.drop(n).push(v));//axiom_seq_drop_build_commut(s, v, n),
     
 //     if x.len() == 0 {}
 //     else {
@@ -1179,7 +1177,315 @@ pub proof fn lemma_flatten_and_flatten_reverse_are_equivalent<A>(x: Seq<Seq<A>>)
     }
 }
 
+// Ported from Dafny prelude
+pub proof fn lemma_seq_contains<A>(s: Seq<A>, x: A)
+    ensures
+        s.contains(x) <==> exists |i: int| 0<= i < s.len() && #[trigger] s[i]==x,
+{}
 
+// Ported from Dafny prelude
+pub proof fn lemma_seq_empty_contains_nothing<A>(x: A)
+    ensures
+        !(#[trigger] Seq::<A>::empty().contains(x)),
+{}
+
+// Ported from Dafny prelude
+// Note: Dafny only does one way implication, but theoretically it could go both ways
+pub proof fn lemma_seq_empty_equality<A>(s: Seq<A>)
+    ensures
+        #[trigger] s.len() == 0 ==> s=~= Seq::<A>::empty(),
+{}
+
+// Ported from Dafny prelude
+/// The concatenation of two sequences contains only the elements
+/// of the two sequences
+pub proof fn lemma_seq_concat_contains_all_elements<A>(x: Seq<A>, y: Seq<A>, elt: A)
+    ensures
+        #[trigger] (x+y).contains(elt) <==> x.contains(elt) ||  y.contains(elt),
+    decreases
+        x.len(),
+{
+    if x.len() == 0 && y.len() >0 {
+        assert((x+y) =~= y);
+    } else {
+        assert forall |elt: A| #[trigger] x.contains(elt) implies #[trigger] (x+y).contains(elt)
+        by {
+            let index = choose |i: int| 0 <= i < x.len() && x[i] == elt;
+            assert((x+y)[index] == elt);
+        }
+        assert forall |elt: A| #[trigger] y.contains(elt) implies #[trigger] (x+y).contains(elt)
+        by {
+            let index = choose |i: int| 0 <= i < y.len() && y[i] == elt;
+            assert((x+y)[index+x.len()] == elt);
+        }
+    }
+}
+
+// Ported from Dafny prelude
+/// After pushing an element onto a sequence, the sequence contains that element
+pub proof fn lemma_seq_contains_after_push<A>(s: Seq<A>, v: A, x: A)
+    ensures 
+        (#[trigger] s.push(v).contains(x) <==> v==x || s.contains(x))
+            && #[trigger] s.push(v).contains(v),
+{
+    assert forall |elt: A| #[trigger] s.contains(elt) implies #[trigger] s.push(v).contains(elt)
+    by {
+        let index = choose |i: int| 0 <= i < s.len() && s[i] == elt;
+        assert(s.push(v)[index] == elt);
+    }
+    assert(s.push(v)[s.len() as int] == v);
+}
+
+// Ported from Dafny prelude
+pub proof fn lemma_seq_subrange_elements<A>(s: Seq<A>, start: int, stop: int, x: A)
+    requires
+        0 <= start <= stop <= s.len(),
+    ensures s.subrange(start,stop).contains(x) <==> 
+        (exists |i: int| 0 <= start <= i < stop <= s.len() && s[i] == x),
+{
+    assert((exists |i: int| 0 <= start <= i < stop <= s.len() && s[i] == x) ==> s.subrange(start,stop).contains(x)) by {
+        if exists |i: int| 0 <= start <= i < stop <= s.len() && s[i] == x
+        {
+            let index = choose |i: int| 0 <= start <= i < stop <= s.len() && s[i] == x;
+            assert(s.subrange(start,stop)[index - start] == s[index]);
+        }
+        
+    }
+    
+}
+
+// ---------------- lemmas about singletons ------------------- //
+
+// Ported from Dafny prelude
+pub proof fn lemma_seq_singleton_length<A>(elt: A)
+    ensures
+        #[trigger] Seq::<A>::singleton(elt).len() == 1
+{}
+
+// Ported from Dafny prelude
+pub proof fn lemma_seq_singleton_index<A>(elt: A)
+    ensures
+        #[trigger] Seq::<A>::singleton(elt)[0] == elt,
+{}
+
+// ---------------- lemmas about Take/Drop ------------------- //
+
+// Ported from Dafny prelude
+pub proof fn lemma_seq_take_len<A>(s: Seq<A>, n: int)
+    ensures
+        0 <= n <= s.len() ==> #[trigger] s.take(n).len() == n,
+{}
+
+// Ported from Dafny prelude
+pub proof fn lemma_seq_take_contains<A>(s: Seq<A>, n: int, x: A)
+    requires
+        0 <= n <= s.len(),
+    ensures
+        #[trigger] s.take(n).contains(x) <==> (exists |i: int| 0<= i < n <= s.len() && #[trigger] s[i] == x),
+{
+    assert ((exists |i: int| 0<= i < n <= s.len() && #[trigger] s[i] == x) ==> s.take(n).contains(x)) by {
+        if exists |i: int| 0<= i < n <= s.len() && #[trigger] s[i] == x  {
+            let index = choose |i: int| 0<= i < n <= s.len() && #[trigger] s[i] == x;
+            assert(s.take(n)[index] == s[index]);
+        }
+    }
+}
+
+// Ported from Dafny prelude
+pub proof fn lemma_seq_take_index<A>(s: Seq<A>, n: int, j: int)
+    ensures
+        0<= j < n <= s.len() ==> #[trigger] s.take(n)[j] == s[j],
+{}
+
+// Ported from Dafny prelude
+pub proof fn lemma_seq_drop_len<A>(s: Seq<A>, n: int)
+    ensures
+        0 <= n <= s.len() ==> #[trigger] s.drop(n).len() == s.len() - n,
+{}
+
+// Ported from Dafny prelude
+pub proof fn lemma_seq_drop_contains<A>(s: Seq<A>, n: int, x: A)
+    requires
+        0 <= n <= s.len(),
+    ensures
+        #[trigger] s.drop(n).contains(x) <==> (exists |i: int| 0<= n <= i < s.len() && #[trigger] s[i] == x),
+{
+    assert((exists |i: int| 0<= n <= i < s.len() && #[trigger] s[i] == x) ==> s.drop(n).contains(x)) by {
+        let index = choose |i: int| 0<= n <= i < s.len() && #[trigger] s[i] == x;
+        lemma_seq_drop_index(s, n, index-n);
+    }
+}
+
+// Ported from Dafny prelude
+pub proof fn lemma_seq_drop_index<A>(s: Seq<A>, n: int, j: int)
+    ensures
+        0 <=n && 0<= j < (s.len() - n) ==> #[trigger] s.drop(n)[j] == s[j+n],
+{}
+
+// Ported from Dafny prelude
+pub proof fn lemma_seq_drop_index2<A>(s: Seq<A>, n: int, k: int)
+    ensures 
+        0 <= n <= k < s.len() ==> (#[trigger] s.drop(n))[k-n] == #[trigger] s[k]
+{}
+
+// Ported from Dafny prelude
+pub proof fn lemma_seq_append_take_drop<A>(a: Seq<A>, b: Seq<A>, n: int)
+    ensures
+        n == a.len() ==> ((a+b).take(n) =~= a && (a+b).drop(n) =~= b),
+{}
+
+// Commutability of Take and Drop with Update.
+
+// Ported from Dafny prelude
+pub proof fn lemma_seq_take_update_commut1<A>(s: Seq<A>, i: int, v: A, n: int)
+    ensures
+        0 <= i < n <= s.len() ==> #[trigger] s.update(i,v).take(n) =~= s.take(n).update(i,v),
+{}
+
+// Ported from Dafny prelude
+pub proof fn lemma_seq_take_update_commut2<A>(s: Seq<A>, i: int, v: A, n: int)
+    ensures
+        0 <= n <= i < s.len() ==> #[trigger] s.update(i,v).take(n) =~= s.take(n),
+{}
+
+// Ported from Dafny prelude
+pub proof fn lemma_seq_drop_update_commut1<A>(s: Seq<A>, i: int, v: A, n: int)
+    ensures
+        0 <= n <= i < s.len() ==> #[trigger] s.update(i,v).drop(n) =~= s.drop(n).update(i-n,v),
+{}
+
+// Ported from Dafny prelude
+pub proof fn lemma_seq_drop_update_commut2<A>(s: Seq<A>, i: int, v: A, n: int)
+    ensures
+        0 <= i < n <= s.len() ==> #[trigger] s.update(i,v).drop(n) =~= s.drop(n),
+{}
+
+// Ported from Dafny prelude
+pub proof fn lemma_seq_drop_build_commut<A>(s: Seq<A>, v: A, n: int)
+    ensures
+        0<= n <= s.len() ==> #[trigger] s.push(v).drop(n) =~= s.drop(n).push(v), 
+{}
+
+// Ported from Dafny prelude
+pub proof fn lemma_seq_drop_nothing<A>(s: Seq<A>, n: int)
+    ensures
+        n==0 ==> #[trigger] s.drop(n) =~= s,
+{}
+
+// Ported from Dafny prelude
+pub proof fn lemma_seq_take_nothing<A>(s: Seq<A>, n: int)
+    ensures
+        n==0 ==> #[trigger] s.take(n) =~= Seq::<A>::empty(),
+{}
+
+// Ported from Dafny prelude
+pub proof fn lemma_seq_drop_of_drop<A>(s: Seq<A>, m: int, n: int)
+    ensures
+        (0 <= m && 0 <= n && m+n <= s.len()) ==> s.drop(m).drop(n) =~= s.drop(m+n),
+{}
+
+// magic auto style bundle of lemmas that Dafny considers when proving properties of sequences
+pub proof fn lemma_seq_properties<A>() 
+    ensures
+        forall |s: Seq<A>, x: A| s.contains(x) <==> exists |i: int| 0<= i < s.len() && #[trigger] s[i]==x, //lemma_seq_contains(s, x),
+        forall |x: A| !(#[trigger] Seq::<A>::empty().contains(x)), //lemma_seq_empty_contains_nothing(x),
+        forall |s: Seq<A>| #[trigger] s.len() == 0 ==> s=~= Seq::<A>::empty(),//lemma_seq_empty_equality(s),
+        forall |x: Seq<A>, y: Seq<A>, elt: A| #[trigger] (x+y).contains(elt) <==> x.contains(elt) ||  y.contains(elt),//lemma_seq_concat_contains_all_elements(x, y, elt),
+        forall |s: Seq<A>, v: A, x: A| (#[trigger] s.push(v).contains(x) <==> v==x || s.contains(x))
+                && #[trigger] s.push(v).contains(v),//lemma_seq_contains_after_push(s, v, x)
+        forall |s: Seq<A>, start: int, stop: int, x: A| (0<=start<=stop<=s.len() && #[trigger] s.subrange(start,stop).contains(x)) <==> 
+               (exists |i: int| 0 <= start <= i < stop <= s.len() && #[trigger] s[i] == x),//lemma_seq_subrange_elements(s, start, stop, x),
+        forall |elt: A| #[trigger] Seq::<A>::singleton(elt).len() == 1, //lemma_seq_singleton_length(elt),
+        forall |elt: A| #[trigger] Seq::<A>::singleton(elt)[0] == elt, //lemma_seq_singleton_index(elt),
+        forall |s: Seq<A>, n: int| 0 <= n <= s.len() ==> #[trigger] s.take(n).len() == n, //lemma_seq_take_len(s, n)
+        forall |s: Seq<A>, n: int, x: A| (#[trigger] s.take(n).contains(x) && 0<=n<=s.len())
+                <==> (exists |i: int| 0<= i < n <= s.len() && #[trigger] s[i] == x),//lemma_seq_take_contains(s, n, x),
+        forall |s: Seq<A>, n: int, j: int|  0<= j < n <= s.len() ==> #[trigger] s.take(n)[j] == s[j],//lemma_seq_take_index(s, n, j),
+        forall |s: Seq<A>, n: int| 0 <= n <= s.len() ==> #[trigger] s.drop(n).len() == s.len() - n, //lemma_seq_drop_len(s, n),
+        forall |s: Seq<A>, n: int, x: A| (#[trigger] s.drop(n).contains(x) && 0<=n<=s.len())
+                <==> (exists |i: int| 0<= n <= i < s.len() && #[trigger] s[i] == x),//lemma_seq_drop_contains(s, n, x),
+        forall |s: Seq<A>, n: int, j: int| 0 <=n && 0<= j < (s.len() - n) ==> #[trigger] s.drop(n)[j] == s[j+n],//lemma_seq_drop_index(s, n, j),
+        forall |a: Seq<A>, b: Seq<A>, n: int| 
+                #![trigger (a+b).take(n)]
+                #![trigger (a+b).drop(n)]
+            n == a.len() ==> ((a+b).take(n) =~= a && (a+b).drop(n) =~= b),//lemma_seq_append_take_drop(a, b, n),
+        forall |s: Seq<A>, i: int, v: A, n: int| 0 <= i < n <= s.len() ==> #[trigger] s.update(i,v).take(n) == s.take(n).update(i,v),//lemma_seq_take_update_commut1(s, i, v, n),
+        forall |s: Seq<A>, i: int, v: A, n: int| 0 <= n <= i < s.len() ==> #[trigger] s.update(i,v).take(n) == s.take(n),//lemma_seq_take_update_commut2(s, i, v, n),
+        forall |s: Seq<A>, i: int, v: A, n: int| 0 <= n <= i < s.len() ==> #[trigger] s.update(i,v).drop(n) == s.drop(n).update(i-n,v),//lemma_seq_drop_update_commut1(s, i, v, n),
+        forall |s: Seq<A>, i: int, v: A, n: int| 0 <= i < n <= s.len() ==> #[trigger] s.update(i,v).drop(n) == s.drop(n),//lemma_seq_drop_update_commut2(s, i, v, n),
+        forall |s: Seq<A>, v: A, n: int| 0 <= n <= s.len() ==> #[trigger] s.push(v).drop(n) == s.drop(n).push(v),//lemma_seq_drop_build_commut(s, v, n),
+        forall |s: Seq<A>, n: int| n==0 ==> #[trigger] s.drop(n) == s,//lemma_seq_drop_nothing(s, n),
+        forall |s: Seq<A>, n: int| n==0 ==> #[trigger] s.take(n) == Seq::<A>::empty(), //lemma_seq_take_nothing(s, n),
+        forall |s: Seq<A>, m: int, n: int| (0 <= m && 0 <= n && m+n <= s.len()) ==> s.drop(m).drop(n) == s.drop(m+n),//lemma_seq_drop_of_drop(s, m, n),
+{
+    assert forall |x: Seq<A>, y: Seq<A>, elt: A| #[trigger] (x+y).contains(elt) implies x.contains(elt) ||  y.contains(elt) by {
+        lemma_seq_concat_contains_all_elements(x, y, elt);
+    }
+    assert forall |x: Seq<A>, y: Seq<A>, elt: A| x.contains(elt) ||  y.contains(elt) implies #[trigger] (x+y).contains(elt) by {
+        lemma_seq_concat_contains_all_elements(x, y, elt);
+    }
+    assert forall |s: Seq<A>, v: A, x: A| #[trigger] s.push(v).contains(x) implies v==x || s.contains(x) by {
+        lemma_seq_contains_after_push(s, v, x);
+    }
+    assert forall |s: Seq<A>, v: A, x: A| v==x || s.contains(x) implies #[trigger] s.push(v).contains(x) by {
+        lemma_seq_contains_after_push(s, v, x);
+    }
+    assert forall |s: Seq<A>, start: int, stop: int, x: A| 0<=start<=stop<=s.len() && #[trigger] s.subrange(start,stop).contains(x) implies 
+            exists |i: int| 0 <= start <= i < stop <= s.len() && #[trigger] s[i] == x by {
+        lemma_seq_subrange_elements(s, start, stop, x);
+    }
+    assert forall |s: Seq<A>, start: int, stop: int, x: A| exists |i: int| 0 <= start <= i < stop <= s.len() && #[trigger] s[i] == x 
+            implies #[trigger] s.subrange(start,stop).contains(x) by {
+        lemma_seq_subrange_elements(s, start, stop, x);
+    }
+    assert forall |s: Seq<A>, n: int, x: A| #[trigger] s.take(n).contains(x) && 0<=n<=s.len() 
+            implies (exists |i: int| 0<= i < n <= s.len() && #[trigger] s[i] == x) by {
+        lemma_seq_take_contains(s, n, x);
+    }
+    assert forall |s: Seq<A>, n: int, x: A| (exists |i: int| 0<= i < n <= s.len() && #[trigger] s[i] == x) 
+            implies #[trigger] s.take(n).contains(x) by {
+        lemma_seq_take_contains(s, n, x);
+    }
+    assert forall |s: Seq<A>, n: int, j: int| 0<= j < n <= s.len() implies #[trigger] s.take(n)[j] == s[j] by {
+        lemma_seq_take_len(s,n);
+        assert(0 <= n <= s.len() ==> s.take(n).len() == n);
+        assert(0 <= n <= s.len());
+        assert(s.take(n).len() == n);
+        lemma_seq_take_index(s, n, j);
+    }
+    assert forall |s: Seq<A>, n: int, x: A| #[trigger] s.drop(n).contains(x) && 0<=n<=s.len()
+            implies (exists |i: int| 0<= n <= i < s.len() && #[trigger] s[i] == x) by {
+        lemma_seq_drop_contains(s, n, x);
+    }
+    assert forall |s: Seq<A>, n: int, x: A| (exists |i: int| 0<= n<= i < s.len() && #[trigger] s[i] == x) 
+            implies #[trigger] s.drop(n).contains(x) && 0 <= n <= s.len() by {
+        lemma_seq_drop_contains(s, n, x);
+    }
+    assert forall |s: Seq<A>, i: int, v: A, n: int| 0 <= i < n <= s.len() implies #[trigger] s.update(i,v).take(n) == s.take(n).update(i,v) by {
+        lemma_seq_take_update_commut1(s, i, v, n);
+    }
+    assert forall |s: Seq<A>, i: int, v: A, n: int| 0 <= n <= i < s.len() implies #[trigger] s.update(i,v).take(n) == s.take(n) by {
+        lemma_seq_take_update_commut2(s, i, v, n);
+    }
+    assert forall |s: Seq<A>, i: int, v: A, n: int| 0 <= n <= i < s.len() implies #[trigger] s.update(i,v).drop(n) == s.drop(n).update(i-n,v) by {
+        lemma_seq_drop_update_commut1(s, i, v, n);
+    }
+    assert forall |s: Seq<A>, i: int, v: A, n: int|  0 <= i < n <= s.len() implies #[trigger] s.update(i,v).drop(n) == s.drop(n) by {
+        lemma_seq_drop_update_commut2(s, i, v, n);
+    }
+    assert forall |s: Seq<A>, v: A, n: int| 0 <= n <= s.len() implies #[trigger] s.push(v).drop(n) == s.drop(n).push(v) by {
+        lemma_seq_drop_build_commut(s, v, n);
+    }
+    assert forall |s: Seq<A>, n: int| n==0 implies #[trigger] s.drop(n) == s by {
+        lemma_seq_drop_nothing(s, n);
+    }
+    assert forall |s: Seq<A>, n: int| n==0 implies #[trigger] s.take(n) == Seq::<A>::empty() by {
+        lemma_seq_take_nothing(s, n);
+    }
+    assert forall |s: Seq<A>, m: int, n: int| (0 <= m && 0 <= n && m+n <= s.len()) implies s.drop(m).drop(n) == s.drop(m+n) by {
+        lemma_seq_drop_of_drop(s, m, n);
+    }
+}
 
 #[doc(hidden)]
 #[verifier(inline)]

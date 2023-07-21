@@ -6,7 +6,7 @@ use builtin_macros::*;
 use crate::pervasive::*;
 use crate::set::*;
 use core::marker;
-use crate::set::set_magic;
+use crate::set_lib::lemma_set_properties;
 
 
 verus! {
@@ -381,7 +381,7 @@ pub proof fn lemma_remove_keys_len<K,V>(m: Map<K,V>, keys: Set<K>)
     decreases
         keys.len(),
 {
-    set_magic::<K>();
+    lemma_set_properties::<K>();
     if keys.len() > 0 {
         let key = keys.choose();
         let val = m[key];
@@ -519,7 +519,7 @@ pub proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
 // Ported from Dafny prelude
 //#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
-pub proof fn axiom_map_new_domain<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V)
+pub proof fn lemma_map_new_domain<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V)
     ensures
         #[trigger] Map::<K,V>::new(fk,fv).dom() == Set::<K>::new(|k: K| fk(k))
 {
@@ -529,7 +529,7 @@ pub proof fn axiom_map_new_domain<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V
 // Ported from Dafny prelude
 //#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
-pub proof fn axiom_map_new_values<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V)
+pub proof fn lemma_map_new_values<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V)
     ensures
         #[trigger] Map::<K,V>::new(fk,fv).values() == Set::<V>::new(|v: V| (exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v)),
 {
@@ -564,21 +564,21 @@ pub proof fn axiom_map_ext_equal_deep<K, V>(m1: Map<K, V>, m2: Map<K, V>)
 {
 }
 
-// auto style axiom bundle
-pub proof fn map_magic<K,V>()
+// magic auto style bundle of lemmas that Dafny considers when proving properties of maps
+pub proof fn lemma_map_properties<K,V>()
     ensures
     forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| #[trigger] Map::<K,V>::new(fk,fv).dom()
-            == Set::<K>::new(|k: K| fk(k)), //axiom_map_new_domain
+            == Set::<K>::new(|k: K| fk(k)), //lemma_map_new_domain
     forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| #[trigger] Map::<K,V>::new(fk,fv).values() 
-            == Set::<V>::new(|v: V| exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),  //axiom_map_new_values
+            == Set::<V>::new(|v: V| exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),  //lemma_map_new_values
 {
     assert forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| 
         #[trigger] Map::<K,V>::new(fk,fv).dom() == Set::<K>::new(|k: K| fk(k)) by {
-            axiom_map_new_domain(fk, fv);
+            lemma_map_new_domain(fk, fv);
         }
     assert forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| #[trigger] Map::<K,V>::new(fk,fv).values() 
         == Set::<V>::new(|v: V| exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v) by {
-            axiom_map_new_values(fk, fv);
+            lemma_map_new_values(fk, fv);
         }
 }
 

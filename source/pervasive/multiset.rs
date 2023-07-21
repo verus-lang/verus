@@ -179,7 +179,7 @@ pub proof fn axiom_multiset_empty<V>(v: V)
 { }
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_multiset_empty_len<V>(m: Multiset<V>)
     ensures
@@ -301,7 +301,7 @@ pub proof fn axiom_choose_count<V>(m: Multiset<V>)
 /// If you insert element x into multiset m, then element y maps
 /// to a count greater than 0 if and only if x==y or y already
 /// mapped to a count greater than 0 before the insertion of x.
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_insert_containment<V>(m: Multiset<V>, x: V, y: V)
     ensures
@@ -309,7 +309,7 @@ pub proof fn axiom_insert_containment<V>(m: Multiset<V>, x: V, y: V)
 {}
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_insert_increases_count_by_1<V>(m: Multiset<V>, x: V)
     ensures 
@@ -317,7 +317,7 @@ pub proof fn axiom_insert_increases_count_by_1<V>(m: Multiset<V>, x: V)
 {}
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_insert_non_decreasing<V>(m: Multiset<V>, x: V, y: V)
     ensures
@@ -325,7 +325,7 @@ pub proof fn axiom_insert_non_decreasing<V>(m: Multiset<V>, x: V, y: V)
 {}
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_insert_other_elements_unchanged<V>(m: Multiset<V>, x: V, y: V)
     ensures
@@ -333,7 +333,7 @@ pub proof fn axiom_insert_other_elements_unchanged<V>(m: Multiset<V>, x: V, y: V
 {}
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_insert_len<V>(m: Multiset<V>, x: V)
     ensures
