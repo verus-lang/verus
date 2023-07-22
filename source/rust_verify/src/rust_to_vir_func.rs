@@ -485,7 +485,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 // REVIEW
                 // For all mut params, we introduce a new variable that shadows the original mut
                 // param and assign the value of the param to the new variable. This does not
-                // work properly when the type of the param is a mutable reference, because
+                // work properly when the type of the param is a mutable reference because
                 // declaring and assigning to a variable of type `&mut T` is not implemented yet.
                 unsupported_err!(span, "mut parameters of &mut types")
             }
