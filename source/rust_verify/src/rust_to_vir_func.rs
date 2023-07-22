@@ -481,6 +481,14 @@ pub(crate) fn check_item_fn<'tcx>(
             if mode == Mode::Spec {
                 return err_span(span, format!("mut argument not allowed for spec functions"));
             }
+            if is_mut {
+                // REVIEW
+                // For all mut params, we introduce a new variable that shadows the original mut
+                // param and assign the value of the param to the new variable. This does not
+                // work properly when the type of the param is a mutable reference, because
+                // declaring and assigning to a variable of type `&mut T` is not implemented yet.
+                unsupported_err!(span, "mut parameters of &mut types")
+            }
             vir_mut_params.push((vir_param.clone(), is_ref_mut.map(|(_, m)| m).flatten()));
             let new_binding_pat = ctxt.spanned_typed_new(
                 span,
@@ -489,7 +497,6 @@ pub(crate) fn check_item_fn<'tcx>(
             );
             let new_init_expr =
                 ctxt.spanned_typed_new(span, &typ, vir::ast::ExprX::Var(name.clone()));
-            // TODO: doc
             if let Some(hir_id) = hir_id {
                 ctxt.erasure_info.borrow_mut().hir_vir_ids.push((hir_id, new_binding_pat.span.id));
                 ctxt.erasure_info.borrow_mut().hir_vir_ids.push((hir_id, new_init_expr.span.id));
