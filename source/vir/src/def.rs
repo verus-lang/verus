@@ -55,7 +55,7 @@ const PREFIX_CLOSURE_TYPE: &str = "anonymous_closure%";
 const PREFIX_TUPLE_PARAM: &str = "T%";
 const PREFIX_TUPLE_FIELD: &str = "field%";
 const PREFIX_LAMBDA_TYPE: &str = "fun%";
-const PREFIX_IMPL_IDENT: &str = "impl&%";
+const PREFIX_IMPL_IDENT: &str = "&%";
 const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
 const SLICE_TYPE: &str = "slice%";
@@ -66,6 +66,7 @@ const SUBST_RENAME_SEPARATOR: &str = "$$";
 const KRATE_SEPARATOR: &str = "!";
 const PATH_SEPARATOR: &str = ".";
 const PATHS_SEPARATOR: &str = "/";
+const IMPL_SEPARATOR: &str = "/";
 const VARIANT_SEPARATOR: &str = "/";
 const VARIANT_FIELD_SEPARATOR: &str = "/";
 const VARIANT_FIELD_INTERNAL_SEPARATOR: &str = "/?";
@@ -350,6 +351,22 @@ pub fn prefix_lambda_type(i: usize) -> Path {
 
 pub fn impl_ident(disambiguator: u32) -> Ident {
     Arc::new(format!("{}{}", PREFIX_IMPL_IDENT, disambiguator))
+}
+
+pub fn impl_name(self_name: String, trait_name: Option<String>, disambiguator: u64) -> Ident {
+    let disambiguate = if disambiguator == 0 {
+        "".to_string()
+    } else {
+        format!("{IMPL_SEPARATOR}{disambiguator}")
+    };
+    if let Some(trait_name) = trait_name {
+        Arc::new(format!(
+            "{}{}{}{}{}",
+            PREFIX_IMPL_IDENT, self_name, IMPL_SEPARATOR, trait_name, disambiguate
+        ))
+    } else {
+        Arc::new(format!("{}{}{}", PREFIX_IMPL_IDENT, self_name, disambiguate))
+    }
 }
 
 pub fn projection(decoration: bool, trait_path: &Path, name: &Ident) -> Ident {
