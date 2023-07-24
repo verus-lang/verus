@@ -350,14 +350,14 @@ fn test(s: S) {
 */
 
 // ANCHOR: const1
-spec const spec_one: int = 1;
+spec const SPEC_ONE: int = 1;
 
 spec fn spec_add_one(x: int) -> int {
     x + spec_one
 }
 
 
-const one: u8 = 1;
+const ONE: u8 = 1;
 
 fn add_one(x: u8) -> (ret: u8)
     requires
