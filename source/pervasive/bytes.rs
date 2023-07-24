@@ -128,5 +128,4 @@ pub exec fn u64_to_le_bytes(x: u64) -> (s: Vec<u8>)
   x.to_le_bytes().to_vec()
 }
 
-
 } // verus!

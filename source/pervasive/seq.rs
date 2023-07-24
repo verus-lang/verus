@@ -46,12 +46,16 @@ impl<A> Seq<A> {
     #[rustc_diagnostic_item = "verus::pervasive::seq::Seq::new"]
     pub spec fn new(len: nat, f: impl Fn(int) -> A) -> Seq<A>;
 
+    /// Constructs a sequence of length 1 containing only the given element.
+
     #[verifier(inline)]
     pub open spec fn singleton(elt: A) -> Seq<A> {
         Self::empty().push(elt)
     }
 
-    /// Returns a constant sequence of a given length
+    /// Constructs a sequence of length `length` where every element in the sequence
+    /// is equivalent to `val`.
+    
     spec fn fill(val: A, length: nat) -> Seq<A>
     {
         if length <= 0 {Self::empty()}
@@ -153,18 +157,18 @@ impl<A> Seq<A> {
         recommends 0 <= start_inclusive <= end_exclusive <= self.len();
 
     /// Returns a sequence containing only the first n elements of the original sequence
+    
     #[verifier(inline)]
     pub open spec fn take(self, n: int) -> Seq<A>{
         self.subrange(0,n)
     } 
 
-    /// Returns a sequence that drops the first n elements of the original sequence
+    /// Returns a sequence without the first n elements of the original sequence
+    
     #[verifier(inline)]
     pub open spec fn drop(self, n: int) -> Seq<A>{
         self.subrange(n,self.len() as int)
     }
-
-    pub open spec fn rank(self) -> int;
 
     /// Concatenates the sequences.
     ///
@@ -173,7 +177,7 @@ impl<A> Seq<A> {
     /// ```rust
     /// proof fn add_test() {
     ///     assert_seqs_equal!(
-    ///         seq![10, 11].push(seq![12, 13, 14]),
+    ///         seq![10int, 11].add(seq![12, 13, 14]),
     ///         seq![10, 11, 12, 13, 14],
     ///     );
     /// }
