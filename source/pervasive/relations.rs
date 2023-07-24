@@ -135,10 +135,4 @@ verus! {
             } ;
         }
     }
-
-    pub open spec fn merge_sort_by<A>(s: Seq<A>, leq: FnSpec(A,A) -> bool) -> Seq<A>
-    {
-        s
-    }
-
 }
