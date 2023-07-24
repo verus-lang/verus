@@ -8,14 +8,13 @@ use crate::pervasive::*;
 use crate::seq::*;
 #[allow(unused_imports)]
 use crate::set::Set;
+use crate::set_lib::lemma_set_properties;
 #[allow(unused_imports)]
 use crate::multiset::Multiset;
-use crate::set_lib::lemma_set_properties;
-use crate::relations::total_ordering;
+#[allow(unused_imports)]
+use crate::relations::*;
 use crate::seq_merge_sort::merge_sort_by;
-use crate::relations::sorted_by;
 use crate::seq_merge_sort::lemma_merge_sort_by_ensures;
-//use crate::multiset::lemma_multiset_properties;
 
 
 verus! {
@@ -325,7 +324,7 @@ impl<A> Seq<A> {
     /// returns `true` if the sequence has no duplicate elements
     // #[verifier::opaque]
     pub open spec fn no_duplicates(self) -> bool {
-        forall|i, j| 0 <= i < self.len() && 0 <= j < self.len() && i != j
+        forall|i, j| (0 <= i < self.len() && 0 <= j < self.len() && i != j)
             ==> self[i] != self[j]
     }
 
@@ -353,12 +352,46 @@ impl<A> Seq<A> {
     pub proof fn to_multiset_properties(self)
         ensures
             forall |a: A| self.contains(a) <==> #[trigger] self.to_multiset().count(a) > 0,
-            forall |a: A| self.contains(a) && self.no_duplicates() <==> #[trigger] self.to_multiset().count(a) == 1,
+            self.len() == self.to_multiset().len(),
+        decreases
+            self.len()
     {
-        assume(forall |a: A| self.contains(a) ==> #[trigger] self.to_multiset().count(a) > 0);
-        assume(forall |a: A| self.contains(a) <== #[trigger] self.to_multiset().count(a) > 0);
-        assume(forall |a: A| self.contains(a) && self.no_duplicates() ==> #[trigger] self.to_multiset().count(a) == 1);
-        assume(forall |a: A| self.contains(a) && self.no_duplicates() <== #[trigger] self.to_multiset().count(a) == 1);
+        if self.len() == 0 {
+            assert(self.to_multiset().len() == 0);
+            assert(self.to_multiset() =~= Multiset::<A>::empty());
+            assert(forall |a: A| !self.contains(a));
+            assert(forall |a: A| self.to_multiset().count(a) == 0);
+            assert(forall |a: A| self.contains(a) ==> #[trigger] self.to_multiset().count(a) > 0);
+            assert(forall |a: A| self.contains(a) <== #[trigger] self.to_multiset().count(a) > 0);
+        }
+        else {
+            lemma_set_properties::<A>();
+            self.drop_first().to_multiset_properties();
+            assert forall |a: A| self.contains(a) implies #[trigger] self.to_multiset().count(a) > 0 by {
+                if self.first() == a {
+                    assert(self.to_multiset().count(a) == self.drop_first().to_multiset().count(a) + 1);
+                    assert(self.drop_first().to_multiset().count(a) >= 0);
+                    assert(self.to_multiset().count(a) > 0);
+                } else {
+                    assert(self.contains(a));
+                    assert(exists |i: int| 0 <= i < self.len() && #[trigger] self[i] == a); //definition of contains
+                    assert(self[0] != a);
+                    assert(exists |i: int| 0 < i < self.len() && #[trigger] self[i] == a); 
+                    assert(self.drop(1) =~= self.drop_first());
+                    lemma_seq_drop_contains(self,1,a);
+                    assert(self.drop_first().contains(a));
+                    assert(self.to_multiset().count(a) == self.drop_first().to_multiset().count(a));
+                    assert(self.drop_first().to_multiset().count(a) > 0);
+                    assert(self.to_multiset().count(a) > 0);
+                }
+            }
+            assert forall |a: A| #[trigger] self.to_multiset().count(a) > 0 implies self.contains(a) by {
+                if self.first() == a {} 
+                else {
+                    assert(self.drop_first().to_multiset().count(a) > 0);
+                }
+            }
+        }
     }
 
             
@@ -1250,75 +1283,115 @@ pub proof fn lemma_flatten_and_flatten_reverse_are_equivalent<A>(x: Seq<Seq<A>>)
 
 
 // TODO
-// /// Proves that any two sequences that are sorted by a total order and that have the same elements are equal.
-// pub proof fn lemma_sorted_unique<A>(x: Seq<A>, y: Seq<A>, leq: FnSpec(A,A) ->bool)
-//     requires
-//         sorted_by(x,leq),
-//         sorted_by(y,leq),
-//         total_ordering(leq),
-//         x.to_multiset() == y.to_multiset(),
-//     ensures
-//         x =~= y,
-//     decreases
-//         x.len(), y.len()
-// {
-//     // assume(x.len() == x.to_multiset().len());
-//     // assert(x.to_multiset().len() == y.to_multiset().len());
-//     // assume(y.len() == y.to_multiset().len());
-//     // assert(x.len() == y.len());
+/// Proves that any two sequences that are sorted by a total order and that have the same elements are equal.
+pub proof fn lemma_sorted_unique<A>(x: Seq<A>, y: Seq<A>, leq: FnSpec(A,A) ->bool)
+requires
+    sorted_by(x,leq),
+    sorted_by(y,leq),
+    total_ordering(leq),
+    x.to_multiset() == y.to_multiset(),
+ensures
+    x =~= y,
+decreases
+    x.len(), y.len()
+{
+x.to_multiset_properties();
+y.to_multiset_properties();
+if x.len() == 0 {
+    assert(x.to_multiset().len() == 0);
+    assert(y.to_multiset().len() == 0);
+    assert(y.len() == 0);
+    assert(x =~= y);
+}
+else if y.len() == 0 {
+    assert(x.to_multiset().len() == 0);
+    assert(y.to_multiset().len() == 0);
+    assert(x.len() == 0);
+    assert(x =~= y);
+}
+else {
+    let x0 = x[0];
+    let y0 = y[0];
+    assert(x.to_multiset().contains(x0));
+    assert(x.to_multiset().contains(y0));
+    assert(y.to_multiset().contains(x0));
+    assert(x.contains(y0));
+    assert(y.contains(x0));
 
-//     // if x.len() == 0 || y.len() == 0 {}
-//     // else {
-//     //     assert(x =~= Seq::empty().push(x.first()) + (x.drop_first()));
-//     //     assert(y =~= Seq::empty().push(y.first()) + (y.drop_first()));
-//     //     assert(x.drop_first().to_multiset() =~= x.to_multiset().remove(x.first()));
-//     //     assert(y.drop_first().to_multiset() =~= y.to_multiset().remove(y.first()));
-//     //     if x.first() == y.first() {
-//     //         assert(x.drop_first().to_multiset() =~= y.drop_first().to_multiset());
-//     //         lemma_sorted_unique(x.drop_first(), y.drop_first(), leq);
-//     //     }
-//     //     else {
+    assert(forall|i: int| 0 < i < x.len() ==> #[trigger] leq(x[0], x[i]));
+    assert(forall|i: int| 0 < i < y.len() ==> #[trigger] leq(y[0], y[i]));
 
-//     //     }
-//     // }
+    assert(forall |i: int| 0 < i < y.len() ==> #[trigger] x.to_multiset().contains(y[i]));
+    assert(forall |i: int| 0 < i < x.len() ==> #[trigger] y.to_multiset().contains(x[i]));
 
-//     lemma_multiset_properties::<A>();
-//     x.to_multiset_properties();
-//     y.to_multiset_properties();
+    assert(forall |i: int| 0 < i < y.len() ==>  x.to_multiset().contains(y[i]) && #[trigger] x.contains(y[i]));
+    assert(forall |i: int| 0 < i < x.len() ==>  y.to_multiset().contains(x[i]) && #[trigger] y.contains(x[i]));
 
-//     assert(x != y ==> x.to_multiset() != y.to_multiset()) by {
-//         if x != y {
-//             assert(!(x=~=y));
-//             assert(x.len() != y.len() || exists |i: int| 0 <= i < x.len() && #[trigger] x[i] != y[i]);
-//             if x.len() != y.len() {
-//                 assume(x.to_multiset().len() != y.to_multiset().len());
-//             }
-//             else {
-//                 assert(exists |i: int| 0 <= i < x.len() && #[trigger] x[i] != y[i]);
-//                 let index = choose |i: int| 0 <= i < x.len() && #[trigger] x[i] != y[i];
-//                 assert(#[trigger] x[index] != y[index]);
-//                 if y.contains(x[index]){
-//                     assert(y.to_multiset().remove(x[index]) =~= x.to_multiset().remove(x[index]));
-//                     assume(y.remove_value(x[index]).to_multiset() =~= y.to_multiset().remove(x[index]));
-//                     assume(x.remove(index).to_multiset() =~= x.to_multiset().remove(x[index]));
-//                     lemma_sorted_unique(x.remove(index),y.remove_value(x[index]),leq);
-//                     assert(exists |elt: A| #[trigger] x.remove(index).to_multiset().count(elt) != y.remove_value(x[index]).to_multiset().count(elt));
-//                     assert(exists |elt: A| #[trigger] x.to_multiset().count(elt) != y.to_multiset().count(elt));
-//                 }
-//                 else {
-//                     assert(y.to_multiset().count(x[index]) == 0);
-//                     assert(x.to_multiset().count(x[index]) != y.to_multiset().count(x[index]));
-//                 }
-//                 assert(exists |elt: A| #[trigger] x.to_multiset().count(elt) != y.to_multiset().count(elt));
-//             }
-//             assert(exists |elt: A| #[trigger] x.to_multiset().count(elt) != y.to_multiset().count(elt));
+    assert(forall |i: int| 0 < i < y.len() ==> #[trigger] x.contains(y[i]));
+    assert(forall |i: int| 0 < i < x.len() ==> #[trigger] y.contains(x[i]));
 
-//         }
-//     }
+    //assert forall |i: int| 0 < i < y.len() implies (exists |j: int| 0<= j < x.len() && #[trigger] x[j] == #[trigger] y[i]) by {
+    assert forall |i: int| 0 < i < y.len() implies (#[trigger] y[i] == y[i]) && exists |j: int| #![trigger x.spec_index(j) ] 0<= j < x.len() && x[j] == y[i] by {
+        assert(x.contains(y[i]));
+        let needle = y[i];
+        assert(x.contains(needle));
+        assert(exists|j: int| 0 <= j < x.len() && #[trigger] x[j] == needle);
+        let j = choose |j: int| 0 <= j < x.len() && x[j] == needle;
+        assert(0 <= j < x.len() && x[j] == y[i]);
+        
+        assert(exists |j: int| 0<= j < x.len() && x[j] == y[i]);
+    }
 
-    
+    assert forall |i: int| 0 < i < x.len() implies (#[trigger] x[i] == x[i]) && exists |j: int| #![trigger y.spec_index(j) ] 0<= j < y.len() && y[j] == x[i] by {
+        assert(y.contains(x[i]));
+        let needle = x[i];
+        assert(y.contains(needle));
+        assert(exists|j: int| 0 <= j < y.len() && #[trigger] y[j] == needle);
+        let j = choose |j: int| 0 <= j < y.len() && y[j] == needle;
+        assert(0 <= j < y.len() && y[j] == x[i]);
+        
+        assert(exists |j: int| 0<= j < y.len() && y[j] == x[i]);
+    }
+    //assert(forall |i: int| 0 < i < x.len() ==> exists |j: int| 0<= j < y.len() && #[trigger] x[i] == #[trigger] y[j]);
 
-//}
+    assert(forall|i: int| 0 < i < y.len() ==> #[trigger] leq(x[0], y[i]));
+    assert(forall|i: int| 0 < i < x.len() ==> #[trigger] leq(y[0], x[i]));
+
+    assert(forall|i: int| 0 < i < x.len() ==> #[trigger] leq(x[0], x[i]));
+    assert(forall|i: int| 0 < i < y.len() ==> #[trigger] leq(y[0], y[i]));
+
+
+    assert(forall|i: int| 0 <= i < y.len() ==> #[trigger] leq(x[0], y[i]));
+    assert(forall|i: int| 0 <= i < x.len() ==> #[trigger] leq(y[0], x[i]));
+
+    let i = choose |i: int| #![trigger x.spec_index(i) ] 0<= i < x.len() && x[i] == y[0];
+    let j = choose |j: int| #![trigger y.spec_index(j) ] 0<= j < y.len() && y[j] == x[0];
+
+    assert(x[i]==y[0]);
+    assert(y[j]==x[0]);
+
+    assert(leq(x[i],x[0]));
+    assert(leq(x[0],x[i]));
+    assert(antisymmetric(leq));
+    assert(x[i]==x[0]);
+    assert(x[0]==y[0]);
+
+    assert(x.to_multiset().remove(x[0]) =~= y.to_multiset().remove(x[0]));
+    assert(x.drop_first().to_multiset() =~= x.to_multiset().remove(x[0]));  
+    assert(y.to_multiset().remove(y[0]) =~= x.to_multiset().remove(y[0]));
+    assert(y.drop_first().to_multiset() =~= y.to_multiset().remove(y[0]));  
+
+    assert(x.drop_first().to_multiset() =~= y.drop_first().to_multiset());
+
+    lemma_sorted_unique(x.drop_first(), y.drop_first(), leq);
+    assert(x.drop_first() =~= y.drop_first());
+    assert(x.first() == y.first());
+    assert(x =~= Seq::<A>::empty().push(x.first()).add(x.drop_first()));
+    assert(y =~= Seq::<A>::empty().push(y.first()).add(y.drop_first()));
+    assert(y =~= Seq::<A>::empty().push(x.first()).add(x.drop_first()));
+    assert(x =~= y);
+}
+}
 
 // Ported from Dafny prelude
 pub proof fn lemma_seq_contains<A>(s: Seq<A>, x: A)
