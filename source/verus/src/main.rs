@@ -117,7 +117,7 @@ pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<(), String> {
                 return Ok(());
             }
             reports
-        },
+        }
         None => {
             cmd.status().map_err(|x| format!("verus failed to run with error: {}", x))?;
             return Ok(());
@@ -259,7 +259,7 @@ fn repo_path(store: bool) -> Option<Reports> {
     if option_env!("VERUS_LOCAL_STORE").is_none() {
         return None;
     }
-    
+
     // Check if there's a verus/reports/.git file in the user's local data lib
     // if not so, create verus/ directory
     let reports_dir = dirs::data_local_dir()?.join("verus").join("reports");
@@ -302,7 +302,7 @@ fn repo_path(store: bool) -> Option<Reports> {
     // not sure how to write a ? to replace unwrap
 
     let proj_dir = project_name.map(|name| {
-        let project_dir = reports_dir.join(uuid).join(name);        
+        let project_dir = reports_dir.join(uuid).join(name);
         if !project_dir.is_dir() && store {
             create_dir_all(&project_dir).expect("failed to create project directory");
         }
