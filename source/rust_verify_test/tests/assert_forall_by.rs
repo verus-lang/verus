@@ -87,7 +87,7 @@ test_verify_one_file! {
         proof fn no_consume(x: bool) {
         }
 
-        fn forallstmt_proof_var_allowed_as_spec(#[verifier::proof] x: bool) {
+        fn forallstmt_proof_var_allowed_as_spec(tracked x: bool) {
             assert forall|i: int| f1(i) == f1(i) by {
                 no_consume(x);
             }

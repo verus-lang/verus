@@ -275,9 +275,9 @@ pub fn output_primary_stuff(
                 let args = post_params(&trans.params);
                 rel_fn = quote! {
                     #[cfg(verus_macro_keep_ghost)]
-                    #[verus::internal(verus_macro)]
-                    #[verifier::spec]
-                    #[verifier::publish] /* vattr */
+                    #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+                    #[cfg_attr(verus_macro_keep_ghost, verifier::spec)]
+                    #[cfg_attr(verus_macro_keep_ghost, verifier::publish)] /* vattr */
                     pub fn #name (#args) -> ::core::primitive::bool {
                         ::builtin_macros::verus_proof_expr!({ #f })
                     }
@@ -286,9 +286,9 @@ pub fn output_primary_stuff(
                 let args = pre_post_params(&trans.params);
                 rel_fn = quote! {
                     #[cfg(verus_macro_keep_ghost)]
-                    #[verus::internal(verus_macro)]
-                    #[verifier::spec]
-                    #[verifier::publish] /* vattr */
+                    #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+                    #[cfg_attr(verus_macro_keep_ghost, verifier::spec)]
+                    #[cfg_attr(verus_macro_keep_ghost, verifier::publish)] /* vattr */
                     pub fn #name (#args) -> ::core::primitive::bool {
                         ::builtin_macros::verus_proof_expr!({ #f })
                     }
@@ -309,9 +309,9 @@ pub fn output_primary_stuff(
 
             let rel_fn = quote! {
                 #[cfg(verus_macro_keep_ghost)]
-                #[verus::internal(verus_macro)]
-                #[verifier::spec]
-                #[verifier::publish] /* vattr */
+                #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+                #[cfg_attr(verus_macro_keep_ghost, verifier::spec)]
+                #[cfg_attr(verus_macro_keep_ghost, verifier::publish)] /* vattr */
                 pub fn #name (#params) -> ::core::primitive::bool {
                     ::builtin_macros::verus_proof_expr!({ #f })
                 }
@@ -329,9 +329,9 @@ pub fn output_primary_stuff(
 
             let rel_fn = quote! {
                 #[cfg(verus_macro_keep_ghost)]
-                #[verus::internal(verus_macro)]
-                #[verifier::spec]
-                #[verifier::publish] /* vattr */
+                #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+                #[cfg_attr(verus_macro_keep_ghost, verifier::spec)]
+                #[cfg_attr(verus_macro_keep_ghost, verifier::publish)] /* vattr */
                 pub fn #name (#params) -> ::core::primitive::bool {
                     ::builtin_macros::verus_proof_expr!({ #f })
                 }
@@ -355,8 +355,8 @@ pub fn output_primary_stuff(
             };
             impl_stream.extend(quote! {
                 #[cfg(verus_macro_keep_ghost)]
-                #[verus::internal(verus_macro)]
-                #[verifier::proof]
+                #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+                #[cfg_attr(verus_macro_keep_ghost, verifier::proof)]
                 pub fn #name(#params) {
                     builtin::assume_(pre.invariant());
                     ::builtin_macros::verus_proof_expr!({
@@ -425,9 +425,9 @@ fn output_take_step_fns(
             //let step_args = just_args(&trans.params);
             stream.extend(quote! {
                 #[cfg(verus_macro_keep_ghost)]
-                #[verus::internal(verus_macro)]
-                #[verifier::external_body] /* vattr */
-                #[verifier::proof]
+                #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+                #[cfg_attr(verus_macro_keep_ghost, verifier::external_body)] /* vattr */
+                #[cfg_attr(verus_macro_keep_ghost, verifier::proof)]
                 pub fn #tr_name#gen1(#params) -> #super_self_ty #gen2 {
                     ::builtin::requires(
                         super::State::#tr_name_enabled(#args) && pre.invariant()
@@ -529,10 +529,10 @@ fn output_step_datatype(
     if is_init {
         impl_stream.extend(quote! {
             #[cfg(verus_macro_keep_ghost)]
-            #[verifier::opaque] /* vattr */
-            #[verifier::publish] /* vattr */
-            #[verus::internal(verus_macro)]
-            #[verifier::spec]
+            #[cfg_attr(verus_macro_keep_ghost, verifier::opaque)] /* vattr */
+            #[cfg_attr(verus_macro_keep_ghost, verifier::publish)] /* vattr */
+            #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)]
             pub fn init_by(post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
                 match step {
                     #(#arms)*
@@ -542,10 +542,10 @@ fn output_step_datatype(
             }
 
             #[cfg(verus_macro_keep_ghost)]
-            #[verifier::opaque] /* vattr */
-            #[verifier::publish] /* vattr */
-            #[verus::internal(verus_macro)]
-            #[verifier::spec]
+            #[cfg_attr(verus_macro_keep_ghost, verifier::opaque)] /* vattr */
+            #[cfg_attr(verus_macro_keep_ghost, verifier::publish)] /* vattr */
+            #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)]
             pub fn init(post: #self_ty, #label_param) -> ::core::primitive::bool {
                 ::builtin::exists(|step: #step_ty| Self::init_by(post, #label_arg step))
             }
@@ -573,10 +573,10 @@ fn output_step_datatype(
 
         impl_stream.extend(quote!{
             #[cfg(verus_macro_keep_ghost)]
-            #[verifier::opaque] /* vattr */
-            #[verifier::publish] /* vattr */
-            #[verus::internal(verus_macro)]
-            #[verifier::spec]
+            #[cfg_attr(verus_macro_keep_ghost, verifier::opaque)] /* vattr */
+            #[cfg_attr(verus_macro_keep_ghost, verifier::publish)] /* vattr */
+            #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)]
             pub fn next_by(pre: #self_ty, post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
                 match step {
                     #(#arms)*
@@ -585,19 +585,19 @@ fn output_step_datatype(
             }
 
             #[cfg(verus_macro_keep_ghost)]
-            #[verifier::opaque] /* vattr */
-            #[verifier::publish] /* vattr */
-            #[verus::internal(verus_macro)]
-            #[verifier::spec]
+            #[cfg_attr(verus_macro_keep_ghost, verifier::opaque)] /* vattr */
+            #[cfg_attr(verus_macro_keep_ghost, verifier::publish)] /* vattr */
+            #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)]
             pub fn next(pre: #self_ty, post: #self_ty, #label_param) -> ::core::primitive::bool {
                 ::builtin::exists(|step: #step_ty| Self::next_by(pre, post, #label_arg step))
             }
 
             #[cfg(verus_macro_keep_ghost)]
-            #[verifier::opaque] /* vattr */
-            #[verifier::publish] /* vattr */
-            #[verus::internal(verus_macro)]
-            #[verifier::spec]
+            #[cfg_attr(verus_macro_keep_ghost, verifier::opaque)] /* vattr */
+            #[cfg_attr(verus_macro_keep_ghost, verifier::publish)] /* vattr */
+            #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)]
             pub fn next_strong_by(pre: #self_ty, post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
                 match step {
                     #(#arms_strong)*
@@ -606,10 +606,10 @@ fn output_step_datatype(
             }
 
             #[cfg(verus_macro_keep_ghost)]
-            #[verifier::opaque] /* vattr */
-            #[verifier::publish] /* vattr */
-            #[verus::internal(verus_macro)]
-            #[verifier::spec]
+            #[cfg_attr(verus_macro_keep_ghost, verifier::opaque)] /* vattr */
+            #[cfg_attr(verus_macro_keep_ghost, verifier::publish)] /* vattr */
+            #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)]
             pub fn next_strong(pre: #self_ty, post: #self_ty, #label_param) -> ::core::primitive::bool {
                 ::builtin::exists(|step: #step_ty| Self::next_strong_by(pre, post, #label_arg step))
             }
@@ -637,9 +637,9 @@ fn output_step_datatype(
                 //let step_args = just_args(&trans.params);
                 show_stream.extend(quote! {
                     #[cfg(verus_macro_keep_ghost)]
-                    #[verus::internal(verus_macro)]
-                    #[verifier::external_body] /* vattr */
-                    #[verifier::proof]
+                    #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+                    #[cfg_attr(verus_macro_keep_ghost, verifier::external_body)] /* vattr */
+                    #[cfg_attr(verus_macro_keep_ghost, verifier::proof)]
                     pub fn #tr_name#gen1(#params) #gen2 {
                         ::builtin::requires(super::State::#tr_name(#args));
                         ::builtin::ensures(super::State::init(post #label_arg));
@@ -659,9 +659,9 @@ fn output_step_datatype(
                 //let step_args = just_args(&trans.params);
                 show_stream.extend(quote! {
                     #[cfg(verus_macro_keep_ghost)]
-                    #[verus::internal(verus_macro)]
-                    #[verifier::external_body] /* vattr */
-                    #[verifier::proof]
+                    #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+                    #[cfg_attr(verus_macro_keep_ghost, verifier::external_body)] /* vattr */
+                    #[cfg_attr(verus_macro_keep_ghost, verifier::proof)]
                     pub fn #tr_name#gen1(#params) #gen2 {
                         ::builtin::requires(super::State::#tr_name(#args));
                         ::builtin::ensures(super::State::next(pre, post #label_arg));
@@ -945,9 +945,9 @@ fn output_other_fns(
     };
     impl_stream.extend(quote! {
         #[cfg(verus_macro_keep_ghost)]
-        #[verifier::spec]
-        #[verus::internal(verus_macro)]
-        #[verifier::publish] /* vattr */
+        #[cfg_attr(verus_macro_keep_ghost, verifier::spec)]
+        #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+        #[cfg_attr(verus_macro_keep_ghost, verifier::publish)] /* vattr */
         pub fn invariant(&self) -> ::core::primitive::bool {
             #conj
         }
@@ -971,10 +971,10 @@ fn output_other_fns(
         let self_ty = get_self_ty(&bundle.sm);
         impl_stream.extend(quote! {
             #[cfg(verus_macro_keep_ghost)]
-            #[verifier::custom_req_err(#error_msg)] /* vattr */
-            #[verifier::external_body] /* vattr */
-            #[verus::internal(verus_macro)]
-            #[verifier::proof]
+            #[cfg_attr(verus_macro_keep_ghost, verifier::custom_req_err(#error_msg))] /* vattr */
+            #[cfg_attr(verus_macro_keep_ghost, verifier::external_body)] /* vattr */
+            #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+            #[cfg_attr(verus_macro_keep_ghost, verifier::proof)]
             fn #lemma_msg_ident(s: #self_ty) {
                 ::builtin::requires(s.#inv_ident());
                 ::builtin::ensures(s.#inv_ident());

@@ -10,7 +10,7 @@ use state_machines_macros::tokenized_state_machine;
 
 verus!{
 
-#[verifier::reject_recursive_types(V)]
+#[cfg_attr(verus_macro_keep_ghost, verifier::reject_recursive_types(V))]
 pub struct DirectedGraph<V> {
     pub edges: Set<(V, V)>,
 }
@@ -37,7 +37,7 @@ impl<V> DirectedGraph<V> {
 }
 
 tokenized_state_machine!{
-    TopSort<#[verifier::reject_recursive_types] /* vattr */ V> {
+    TopSort<#[cfg_attr(verus_macro_keep_ghost, verifier::reject_recursive_types)] /* vattr */ V> {
         fields {
             #[sharding(constant)]
             pub graph: DirectedGraph<V>,

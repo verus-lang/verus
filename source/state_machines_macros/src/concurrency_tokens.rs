@@ -3,7 +3,7 @@
 //!
 //!  * The Instance type
 //!  * All the Token types for shardable fields
-//!  * #[verifier::proof] methods for each transition (including init and readonly transitions)
+//!  * #[cfg_attr(verus_macro_keep_ghost, verifier::proof)] methods for each transition (including init and readonly transitions)
 
 use crate::ast::{
     Arm, Field, Lemma, LetKind, MonoidElt, MonoidStmtType, ShardableType, SpecialOp, SplitKind,
@@ -215,7 +215,7 @@ fn instance_struct_stream(sm: &SM) -> TokenStream {
     let storage_types = get_storage_type_tuple(sm);
 
     return quote! {
-        #[verifier::proof]
+        #[cfg_attr(verus_macro_keep_ghost, verifier::proof)]
         #[allow(non_camel_case_types)]
         pub struct #insttype #gen {
             // This is not marked external_body, but the fields are private, so the
@@ -225,9 +225,9 @@ fn instance_struct_stream(sm: &SM) -> TokenStream {
             // However, since it's not marked external_body,
             // Verus will still look at the fields when doing its type hierarchy analysis.
 
-            #[verifier::spec] send_sync: ::vstd::state_machine_internal::SyncSendIfSyncSend<#storage_types>,
-            #[verifier::spec] state: #self_ty,
-            #[verifier::spec] location: ::builtin::int,
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] send_sync: ::vstd::state_machine_internal::SyncSendIfSyncSend<#storage_types>,
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] state: #self_ty,
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] location: ::builtin::int,
         }
     };
 }
@@ -257,11 +257,11 @@ fn get_storage_type_tuple(sm: &SM) -> Type {
 fn trusted_clone() -> TokenStream {
     return quote! {
         #[cfg(verus_macro_keep_ghost)]
-        #[verus::internal(verus_macro)]
-        #[verifier::proof]
-        #[verifier::external_body] /* vattr */
-        #[verifier::returns(proof)] /* vattr */
-        pub fn clone(#[verifier::proof] &self) -> Self {
+        #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+        #[cfg_attr(verus_macro_keep_ghost, verifier::proof)]
+        #[cfg_attr(verus_macro_keep_ghost, verifier::external_body)] /* vattr */
+        #[cfg_attr(verus_macro_keep_ghost, verifier::returns(proof))] /* vattr */
+        pub fn clone(#[cfg_attr(verus_macro_keep_ghost, verifier::proof)] &self) -> Self {
             ensures(|s: Self| ::builtin::equal(*self, s));
             ::std::unimplemented!();
         }
@@ -309,23 +309,27 @@ fn token_struct_stream(
     }
 
     let key_field = match key_ty {
-        Some(key_ty) => quote! { #[verifier::spec] pub key: #key_ty, },
+        Some(key_ty) => {
+            quote! { #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] pub key: #key_ty, }
+        }
         None => TokenStream::new(),
     };
 
     let value_field = match value_ty {
-        Some(value_ty) => quote! { #[verifier::spec] pub value: #value_ty, },
+        Some(value_ty) => {
+            quote! { #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] pub value: #value_ty, }
+        }
         None => TokenStream::new(),
     };
 
     let count_field = if count {
-        quote! { #[verifier::spec] pub count: ::builtin::nat }
+        quote! { #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] pub count: ::builtin::nat }
     } else {
         TokenStream::new()
     };
 
     return quote! {
-        #[verifier::proof]
+        #[cfg_attr(verus_macro_keep_ghost, verifier::proof)]
         #[allow(non_camel_case_types)]
         pub struct #tokenname#gen {
             // These are private so they can't be accessed outside this module.
@@ -333,14 +337,14 @@ fn token_struct_stream(
             // VIR knows about the dummy_instance field. It is important for
             // the type well-foundedness checks.
 
-            #[verifier::proof] dummy_instance: #insttype,
+            #[cfg_attr(verus_macro_keep_ghost, verifier::proof)] dummy_instance: #insttype,
             no_copy: ::vstd::state_machine_internal::NoCopy,
         }
 
-        #[verifier::spec]
+        #[cfg_attr(verus_macro_keep_ghost, verifier::spec)]
         #[allow(non_camel_case_types)]
         pub struct #tokenname_data#gen {
-            #[verifier::spec] pub instance: #insttype,
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] pub instance: #insttype,
             #key_field
             #value_field
             #count_field
@@ -348,10 +352,10 @@ fn token_struct_stream(
 
         #impldecl {
             #[cfg(verus_macro_keep_ghost)]
-            #[verus::internal(verus_macro)]
-            #[verifier::publish] /* vattr */
-            #[verifier::external_body] /* vattr */
-            #[verifier::spec]
+            #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+            #[cfg_attr(verus_macro_keep_ghost, verifier::publish)] /* vattr */
+            #[cfg_attr(verus_macro_keep_ghost, verifier::external_body)] /* vattr */
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)]
             pub fn view(self) -> #token_data_ty { ::std::unimplemented!() }
 
             #impl_token_stream
@@ -360,7 +364,7 @@ fn token_struct_stream(
 }
 
 /// For a given sharding(constant) field, add that constant
-/// as a #[verifier::spec] fn on the Instance type. (The field is constant
+/// as a #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] fn on the Instance type. (The field is constant
 /// for the entire instance.)
 
 fn const_fn_stream(field: &Field) -> TokenStream {
@@ -680,7 +684,7 @@ pub fn exchange_stream(
         let itn = inst_type(sm);
         out_params.push((quote! { instance }, quote! { #itn }, Mode::Tracked));
     } else {
-        in_params.push(quote! { #[verifier::proof] &self });
+        in_params.push(quote! { #[cfg_attr(verus_macro_keep_ghost, verifier::proof)] &self });
     }
 
     // Take the transition parameters (the normal parameters defined in the transition)
@@ -689,7 +693,7 @@ pub fn exchange_stream(
     for param in &tr.params {
         let id = &param.name;
         let ty = &param.ty;
-        in_params.push(quote! { #[verifier::spec] #id: #ty });
+        in_params.push(quote! { #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] #id: #ty });
     }
 
     // We need some pre/post conditions that the input/output
@@ -1018,7 +1022,9 @@ pub fn exchange_stream(
         };
 
         let ret_value_mode = match param_mode {
-            Mode::Tracked => quote! { #[verifier::returns(proof)] /* vattr */ },
+            Mode::Tracked => {
+                quote! { #[cfg_attr(verus_macro_keep_ghost, verifier::returns(proof))] /* vattr */ }
+            }
             Mode::Ghost => TokenStream::new(),
         };
 
@@ -1074,7 +1080,8 @@ pub fn exchange_stream(
             TokenStream::new()
         };
 
-        let ret_value_mode = quote! { #[verifier::returns(proof)] /* vattr */ };
+        let ret_value_mode =
+            quote! { #[cfg_attr(verus_macro_keep_ghost, verifier::returns(proof))] /* vattr */ };
 
         (quote! { -> #tup_typ }, ens_stream, ret_value_mode)
     };
@@ -1091,10 +1098,10 @@ pub fn exchange_stream(
 
     return Ok(quote! {
         #[cfg(verus_macro_keep_ghost)]
-        #[verus::internal(verus_macro)]
+        #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
         #ret_value_mode
-        #[verifier::external_body] /* vattr */
-        #[verifier::proof]
+        #[cfg_attr(verus_macro_keep_ghost, verifier::external_body)] /* vattr */
+        #[cfg_attr(verus_macro_keep_ghost, verifier::proof)]
         pub fn #exch_name#gen(#(#in_params),*) #out_params_ret {
             #req_stream
             #ens_stream
@@ -1291,19 +1298,19 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
 
             quote! {
                 #[cfg(verus_macro_keep_ghost)]
-                #[verus::internal(verus_macro)]
-                #[verifier::inline] /* vattr */
-                #[verifier::publish] /* vattr */
-                #[verifier::spec]
+                #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+                #[cfg_attr(verus_macro_keep_ghost, verifier::inline)] /* vattr */
+                #[cfg_attr(verus_macro_keep_ghost, verifier::publish)] /* vattr */
+                #[cfg_attr(verus_macro_keep_ghost, verifier::spec)]
                 pub fn #fn_name_strict(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
                     Self::#fn_name(token_opt, opt, instance)
                     && ::builtin::imply(opt.is_None(), token_opt.is_None())
                 }
 
                 #[cfg(verus_macro_keep_ghost)]
-                #[verus::internal(verus_macro)]
-                #[verifier::publish] /* vattr */
-                #[verifier::spec]
+                #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+                #[cfg_attr(verus_macro_keep_ghost, verifier::publish)] /* vattr */
+                #[cfg_attr(verus_macro_keep_ghost, verifier::spec)]
                 pub fn #fn_name(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::imply(
                         opt.is_Some(),
@@ -1334,9 +1341,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
 
             quote! {
                 #[cfg(verus_macro_keep_ghost)]
-                #[verus::internal(verus_macro)]
-                #[verifier::publish] /* vattr */
-                #[verifier::spec]
+                #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+                #[cfg_attr(verus_macro_keep_ghost, verifier::publish)] /* vattr */
+                #[cfg_attr(verus_macro_keep_ghost, verifier::spec)]
                 pub fn #fn_name(token_map: #set_token_ty, set: #set_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|elem: #ty| {
                         ::builtin::with_triggers(
@@ -1346,7 +1353,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                             ),
                             ::builtin::imply(
                                 set.contains(elem),
-                                (#[verifier::trigger] token_map.dom().contains(elem))
+                                (#[cfg_attr(verus_macro_keep_ghost, verifier::trigger)] token_map.dom().contains(elem))
                                 && ::builtin::equal(token_map.index(elem).view(),
                                     #constructor_name {
                                         instance: instance,
@@ -1359,10 +1366,10 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 }
 
                 #[cfg(verus_macro_keep_ghost)]
-                #[verus::internal(verus_macro)]
-                #[verifier::inline] /* vattr */
-                #[verifier::publish] /* vattr */
-                #[verifier::spec]
+                #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+                #[cfg_attr(verus_macro_keep_ghost, verifier::inline)] /* vattr */
+                #[cfg_attr(verus_macro_keep_ghost, verifier::publish)] /* vattr */
+                #[cfg_attr(verus_macro_keep_ghost, verifier::spec)]
                 pub fn #fn_name_strict(token_map: #set_token_ty, set: #set_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::equal(token_map.dom(), set)
                       && Self::#fn_name(token_map, set, instance)
@@ -1386,9 +1393,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
 
             quote! {
                 #[cfg(verus_macro_keep_ghost)]
-                #[verus::internal(verus_macro)]
-                #[verifier::publish] /* vattr */
-                #[verifier::spec]
+                #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+                #[cfg_attr(verus_macro_keep_ghost, verifier::publish)] /* vattr */
+                #[cfg_attr(verus_macro_keep_ghost, verifier::spec)]
                 pub fn #fn_name(token_opt: #option_token_ty, b: ::std::primitive::bool, instance: #inst_ty) -> bool {
                     ::builtin::imply(b,
                         token_opt.is_Some()
@@ -1397,10 +1404,10 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 }
 
                 #[cfg(verus_macro_keep_ghost)]
-                #[verus::internal(verus_macro)]
-                #[verifier::inline] /* vattr */
-                #[verifier::publish] /* vattr */
-                #[verifier::spec]
+                #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+                #[cfg_attr(verus_macro_keep_ghost, verifier::inline)] /* vattr */
+                #[cfg_attr(verus_macro_keep_ghost, verifier::publish)] /* vattr */
+                #[cfg_attr(verus_macro_keep_ghost, verifier::spec)]
                 pub fn #fn_name_strict(token_opt: #option_token_ty, b: ::std::primitive::bool, instance: #inst_ty) -> bool {
                     Self::#fn_name(token_opt, b, instance)
                     && ::builtin::imply(!b, token_opt.is_None())
@@ -1431,9 +1438,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
 
             quote! {
                 #[cfg(verus_macro_keep_ghost)]
-                #[verus::internal(verus_macro)]
-                #[verifier::publish] /* vattr */
-                #[verifier::spec]
+                #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+                #[cfg_attr(verus_macro_keep_ghost, verifier::publish)] /* vattr */
+                #[cfg_attr(verus_macro_keep_ghost, verifier::spec)]
                 pub fn #fn_name(token_map: #map_token_ty, m: #map_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|key: #key|
                         ::builtin::with_triggers(
@@ -1452,9 +1459,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 }
 
                 #[cfg(verus_macro_keep_ghost)]
-                #[verus::internal(verus_macro)]
-                #[verifier::publish] /* vattr */
-                #[verifier::spec]
+                #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+                #[cfg_attr(verus_macro_keep_ghost, verifier::publish)] /* vattr */
+                #[cfg_attr(verus_macro_keep_ghost, verifier::spec)]
                 pub fn #fn_name_strict(token_map: #map_token_ty, m: #map_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::equal(token_map.dom(), m.dom())
                     && Self::#fn_name(token_map, m, instance)
@@ -1486,14 +1493,14 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
 
             quote! {
                 #[cfg(verus_macro_keep_ghost)]
-                #[verus::internal(verus_macro)]
-                #[verifier::publish] /* vattr */
-                #[verifier::spec]
+                #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+                #[cfg_attr(verus_macro_keep_ghost, verifier::publish)] /* vattr */
+                #[cfg_attr(verus_macro_keep_ghost, verifier::spec)]
                 pub fn #fn_name(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|x: #ty|
                         ::builtin::imply(
                             m.count(x) > ::builtin::spec_literal_nat("0"),
-                            (#[verifier::trigger] tokens.dom().contains(x))
+                            (#[cfg_attr(verus_macro_keep_ghost, verifier::trigger)] tokens.dom().contains(x))
                             && ::builtin::equal(tokens.index(x).view().instance, instance)
                             && tokens.index(x).view().count >= m.count(x)
                             && ::builtin::equal(tokens.index(x).view().key, x)
@@ -1502,9 +1509,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 }
 
                 #[cfg(verus_macro_keep_ghost)]
-                #[verus::internal(verus_macro)]
-                #[verifier::publish] /* vattr */
-                #[verifier::spec]
+                #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+                #[cfg_attr(verus_macro_keep_ghost, verifier::publish)] /* vattr */
+                #[cfg_attr(verus_macro_keep_ghost, verifier::spec)]
                 pub fn #fn_name_strict(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|x: #ty| {
                         ::builtin::with_triggers(
@@ -1521,11 +1528,11 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 }
 
                 #[cfg(verus_macro_keep_ghost)]
-                #[verus::internal(verus_macro)]
-                #[verifier::proof]
-                #[verifier::returns(proof)] /* vattr */
-                #[verifier::external_body] /* vattr */
-                pub fn join(#[verifier::proof] self, #[verifier::proof] other: Self) -> Self {
+                #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+                #[cfg_attr(verus_macro_keep_ghost, verifier::proof)]
+                #[cfg_attr(verus_macro_keep_ghost, verifier::returns(proof))] /* vattr */
+                #[cfg_attr(verus_macro_keep_ghost, verifier::external_body)] /* vattr */
+                pub fn join(#[cfg_attr(verus_macro_keep_ghost, verifier::proof)] self, #[cfg_attr(verus_macro_keep_ghost, verifier::proof)] other: Self) -> Self {
                     ::builtin::requires(::builtin::equal(self.view().instance, other.view().instance) && ::builtin::equal(self.view().key, other.view().key));
                     ::builtin::ensures(|s: Self|
                         ::builtin::equal(s.view().instance, self.view().instance)
@@ -1536,11 +1543,11 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 }
 
                 #[cfg(verus_macro_keep_ghost)]
-                #[verus::internal(verus_macro)]
-                #[verifier::external_body] /* vattr */
-                #[verifier::returns(proof)] /* vattr */
-                #[verifier::proof]
-                pub fn split(#[verifier::proof] self, i: nat) -> (::builtin::Tracked<Self>, ::builtin::Tracked<Self>) {
+                #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+                #[cfg_attr(verus_macro_keep_ghost, verifier::external_body)] /* vattr */
+                #[cfg_attr(verus_macro_keep_ghost, verifier::returns(proof))] /* vattr */
+                #[cfg_attr(verus_macro_keep_ghost, verifier::proof)]
+                pub fn split(#[cfg_attr(verus_macro_keep_ghost, verifier::proof)] self, i: nat) -> (::builtin::Tracked<Self>, ::builtin::Tracked<Self>) {
                     ::builtin::requires(i <= self.view().count);
                     ::builtin::ensures(|s: (::builtin::Tracked<Self>, ::builtin::Tracked<Self>)| {
                         let x = s.0.view();
@@ -1562,11 +1569,11 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
         ShardableType::Count => {
             quote! {
                 #[cfg(verus_macro_keep_ghost)]
-                #[verus::internal(verus_macro)]
-                #[verifier::proof]
-                #[verifier::returns(proof)] /* vattr */
-                #[verifier::external_body] /* vattr */
-                pub fn join(#[verifier::proof] self, #[verifier::proof] other: Self) -> Self {
+                #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+                #[cfg_attr(verus_macro_keep_ghost, verifier::proof)]
+                #[cfg_attr(verus_macro_keep_ghost, verifier::returns(proof))] /* vattr */
+                #[cfg_attr(verus_macro_keep_ghost, verifier::external_body)] /* vattr */
+                pub fn join(#[cfg_attr(verus_macro_keep_ghost, verifier::proof)] self, #[cfg_attr(verus_macro_keep_ghost, verifier::proof)] other: Self) -> Self {
                     ::builtin::requires(::builtin::equal(self.view().instance, other.view().instance));
                     ::builtin::ensures(|s: Self|
                         ::builtin::equal(s.view().instance, self.view().instance)
@@ -1576,11 +1583,11 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 }
 
                 #[cfg(verus_macro_keep_ghost)]
-                #[verus::internal(verus_macro)]
-                #[verifier::external_body] /* vattr */
-                #[verifier::returns(proof)] /* vattr */
-                #[verifier::proof]
-                pub fn split(#[verifier::proof] self, i: nat) -> (::builtin::Tracked<Self>, ::builtin::Tracked<Self>) {
+                #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+                #[cfg_attr(verus_macro_keep_ghost, verifier::external_body)] /* vattr */
+                #[cfg_attr(verus_macro_keep_ghost, verifier::returns(proof))] /* vattr */
+                #[cfg_attr(verus_macro_keep_ghost, verifier::proof)]
+                pub fn split(#[cfg_attr(verus_macro_keep_ghost, verifier::proof)] self, i: nat) -> (::builtin::Tracked<Self>, ::builtin::Tracked<Self>) {
                     ::builtin::requires(i <= self.view().count);
                     ::builtin::ensures(|s: (::builtin::Tracked<Self>, ::builtin::Tracked<Self>)| {
                         let x = s.0.view();
@@ -1600,11 +1607,11 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
         ShardableType::PersistentCount => {
             quote! {
                 #[cfg(verus_macro_keep_ghost)]
-                #[verus::internal(verus_macro)]
-                #[verifier::external_body] /* vattr */
-                #[verifier::returns(proof)] /* vattr */
-                #[verifier::proof]
-                pub fn weaken(#[verifier::proof] self, i: nat) -> Self {
+                #[cfg_attr(verus_macro_keep_ghost, verus::internal(verus_macro))]
+                #[cfg_attr(verus_macro_keep_ghost, verifier::external_body)] /* vattr */
+                #[cfg_attr(verus_macro_keep_ghost, verifier::returns(proof))] /* vattr */
+                #[cfg_attr(verus_macro_keep_ghost, verifier::proof)]
+                pub fn weaken(#[cfg_attr(verus_macro_keep_ghost, verifier::proof)] self, i: nat) -> Self {
                     ::builtin::requires(i <= self.view().count);
                     ::builtin::ensures(|s: Self|
                         ::builtin::equal(s.view().instance, self.view().instance)
@@ -1643,7 +1650,7 @@ fn add_token_param_in_out(
     let (is_input, is_output) = match inout_type {
         InoutType::In => {
             assert!(!use_explicit_lifetime);
-            in_params.push(quote! { #[verifier::proof] #param_name: #param_type });
+            in_params.push(quote! { #[cfg_attr(verus_macro_keep_ghost, verifier::proof)] #param_name: #param_type });
             (true, false)
         }
         InoutType::Out => {
@@ -1653,14 +1660,14 @@ fn add_token_param_in_out(
         }
         InoutType::InOut => {
             assert!(!use_explicit_lifetime);
-            in_params.push(quote! { #[verifier::proof] #param_name: &mut #param_type });
+            in_params.push(quote! { #[cfg_attr(verus_macro_keep_ghost, verifier::proof)] #param_name: &mut #param_type });
             (true, true)
         }
         InoutType::BorrowIn => {
             if use_explicit_lifetime {
-                in_params.push(quote! { #[verifier::proof] #param_name: &'a #param_type });
+                in_params.push(quote! { #[cfg_attr(verus_macro_keep_ghost, verifier::proof)] #param_name: &'a #param_type });
             } else {
-                in_params.push(quote! { #[verifier::proof] #param_name: &#param_type });
+                in_params.push(quote! { #[cfg_attr(verus_macro_keep_ghost, verifier::proof)] #param_name: &#param_type });
             }
             (true, false)
         }

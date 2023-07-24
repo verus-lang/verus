@@ -6,18 +6,18 @@ use common::*;
 test_verify_one_file! {
     #[test] struct1 code! {
         struct S {
-            #[verifier::spec] i: bool,
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] i: bool,
             j: bool,
         }
         fn test1(i: bool, j: bool) {
             let s = S { i, j };
         }
-        fn test2(#[verifier::spec] i: bool, j: bool) {
+        fn test2(#[cfg_attr(verus_macro_keep_ghost, verifier::spec)] i: bool, j: bool) {
             let s = S { i, j };
         }
-        fn test3(i: bool, #[verifier::spec] j: bool) {
-            #[verifier::spec] let s = S { i, j };
-            #[verifier::spec] let jj = s.j;
+        fn test3(i: bool, #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] j: bool) {
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] let s = S { i, j };
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] let jj = s.j;
         }
     } => Ok(())
 }
@@ -45,10 +45,10 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] struct_fails1 code! {
         struct S {
-            #[verifier::spec] i: bool,
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] i: bool,
             j: bool,
         }
-        fn test(i: bool, #[verifier::spec] j: bool) {
+        fn test(i: bool, #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] j: bool) {
             let s = S { i, j };
         }
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
@@ -70,10 +70,10 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] struct_fails1b code! {
         struct S {
-            #[verifier::spec] i: bool,
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] i: bool,
             j: bool,
         }
-        fn test(i: bool, #[verifier::spec] j: bool) {
+        fn test(i: bool, #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] j: bool) {
             let s = S { j, i };
         }
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
@@ -82,7 +82,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] struct_fails2 code! {
         struct S {
-            #[verifier::spec] i: bool,
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] i: bool,
             j: bool,
         }
         fn test(i: bool, j: bool) {
@@ -95,11 +95,11 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] struct_fails3 code! {
         struct S {
-            #[verifier::spec] i: bool,
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] i: bool,
             j: bool,
         }
-        fn test(i: bool, #[verifier::spec] j: bool) {
-            #[verifier::spec] let s = S { i, j };
+        fn test(i: bool, #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] j: bool) {
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] let s = S { i, j };
             let jj = s.j;
         }
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
@@ -197,17 +197,17 @@ test_verify_one_file! {
         fn test1(i: bool, j: bool) {
             let s = (i, j);
         }
-        fn test3(i: bool, #[verifier::spec] j: bool) {
-            #[verifier::spec] let s = (i, j);
-            #[verifier::spec] let ii = s.0;
-            #[verifier::spec] let jj = s.1;
+        fn test3(i: bool, #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] j: bool) {
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] let s = (i, j);
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] let ii = s.0;
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] let jj = s.1;
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
     #[test] tuple_fails1 code! {
-        fn test(i: bool, #[verifier::spec] j: bool) {
+        fn test(i: bool, #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] j: bool) {
             let s = (i, j);
         }
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
@@ -216,7 +216,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] tuple_fails2 code! {
         fn test(i: bool, j: bool) {
-            #[verifier::spec] let s = (i, j);
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] let s = (i, j);
             let ii = s.0;
         }
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
@@ -224,8 +224,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] tuple_fails3 code! {
-        fn test(i: bool, #[verifier::spec] j: bool) {
-            #[verifier::spec] let s = (i, j);
+        fn test(i: bool, #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] j: bool) {
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] let s = (i, j);
             let jj = s.0;
         }
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
@@ -258,15 +258,15 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] eq_mode code! {
-        fn eq_mode(#[verifier::spec] i: u128) {
-            #[verifier::spec] let b: bool = i == 13;
+        fn eq_mode(#[cfg_attr(verus_macro_keep_ghost, verifier::spec)] i: u128) {
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] let b: bool = i == 13;
         }
     } => Ok(_)
 }
 
 test_verify_one_file! {
     #[test] if_spec_cond code! {
-        fn if_spec_cond(#[verifier::spec] i: u128) -> u64 {
+        fn if_spec_cond(#[cfg_attr(verus_macro_keep_ghost, verifier::spec)] i: u128) -> u64 {
             let mut a: u64 = 2;
             if i == 3 {
                 a = a + 1; // ERROR
@@ -278,7 +278,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] if_spec_cond_proof code! {
-        #[verifier::proof]
+        #[cfg_attr(verus_macro_keep_ghost, verifier::proof)]
         fn if_spec_cond_proof(i: u128) -> u64 {
             let mut a: u64 = 2;
             if i == 3 {
@@ -293,13 +293,13 @@ test_verify_one_file! {
     #[test] regression_int_if code! {
         use vstd::pervasive::*;
         fn int_if() {
-            #[verifier::spec] let a: u128 = 3;
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] let a: u128 = 3;
             if a == 4 {
                 assert(false);
             }; // TODO not require the semicolon here?
         }
 
-        #[verifier::spec]
+        #[cfg_attr(verus_macro_keep_ghost, verifier::spec)]
         fn int_if_2(a: u128) -> u128 {
             if a == 2 {
                 3
@@ -314,15 +314,15 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] ret_mode code! {
-        #[verifier::returns(spec)] /* vattr */
+        #[cfg_attr(verus_macro_keep_ghost, verifier::returns(spec))] /* vattr */
         fn ret_spec() -> u128 {
             ensures(|i: u128| i == 3);
-            #[verifier::spec] let a: u128 = 3;
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] let a: u128 = 3;
             a
         }
 
         fn test_ret() {
-            #[verifier::spec] let x = ret_spec();
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] let x = ret_spec();
             builtin::assert_(x == 3);
         }
     } => Ok(())
@@ -330,10 +330,10 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] ret_mode_fail2 code! {
-        #[verifier::returns(spec)] /* vattr */
+        #[cfg_attr(verus_macro_keep_ghost, verifier::returns(spec))] /* vattr */
         fn ret_spec() -> u128 {
             ensures(|i: u128| i == 3);
-            #[verifier::spec] let a: u128 = 3;
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] let a: u128 = 3;
             a
         }
 
@@ -354,7 +354,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] spec_let_decl_init_fail code! {
-        #[verifier::spec]
+        #[cfg_attr(verus_macro_keep_ghost, verifier::spec)]
         fn test1() -> u64 {
             let x: u64;
             x = 23;
@@ -366,7 +366,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] let_spec_pass code! {
         fn test1() {
-            #[verifier::spec] let x: u64 = 2;
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] let x: u64 = 2;
             builtin::assert_(x == 2);
         }
     } => Ok(())
@@ -375,7 +375,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] decl_init_let_spec_fail code! {
         fn test1() {
-            #[verifier::spec] let x: u64;
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] let x: u64;
             x = 2;
             x = 3;
             builtin::assert_(false); // FAILS
@@ -386,7 +386,7 @@ test_verify_one_file! {
 const FIELD_UPDATE: &str = code_str! {
     #[derive(PartialEq, Eq, Structural)]
     struct S {
-        #[verifier::spec] a: u64,
+        #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] a: u64,
         b: bool,
     }
 };
@@ -395,7 +395,7 @@ test_verify_one_file! {
     #[test] test_field_update_fail FIELD_UPDATE.to_string() + code_str! {
         fn test() {
             let mut s = S { a: 5, b: false };
-            #[verifier::spec] let b = true;
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] let b = true;
             s.b = b;
         }
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
@@ -417,7 +417,7 @@ test_verify_one_file! {
 }
 
 const PROOF_FN_COMMON: &str = code_str! {
-    #[verifier::proof]
+    #[cfg_attr(verus_macro_keep_ghost, verifier::proof)]
     struct Node {
         v: u32,
     }
@@ -425,18 +425,18 @@ const PROOF_FN_COMMON: &str = code_str! {
 
 test_verify_one_file! {
     #[test] test_mut_arg_fail1 code! {
-        #[verifier::proof]
-        fn f(#[verifier::proof] x: &mut bool, #[verifier::proof] b: bool) {
+        #[cfg_attr(verus_macro_keep_ghost, verifier::proof)]
+        fn f(#[cfg_attr(verus_macro_keep_ghost, verifier::proof)] x: &mut bool, #[cfg_attr(verus_macro_keep_ghost, verifier::proof)] b: bool) {
             requires(b);
             ensures(*x);
 
             *x = b;
         }
 
-        fn g(#[verifier::proof] b: bool) {
+        fn g(#[cfg_attr(verus_macro_keep_ghost, verifier::proof)] b: bool) {
             requires(b);
 
-            #[verifier::spec] let tr = true;
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] let tr = true;
             let mut e = false;
             if tr {
                 f(&mut e, b); // should fail: exec <- proof out assign
@@ -532,14 +532,14 @@ test_verify_one_file! {
     // TODO (erasure-todo)
     // This needs to be ported to verus_code
     #[ignore] #[test] test_proof_fn_call_fail PROOF_FN_COMMON.to_string() + code_str! {
-        #[verifier::proof]
-        fn lemma(#[verifier::proof] node: Node) {
+        #[cfg_attr(verus_macro_keep_ghost, verifier::proof)]
+        fn lemma(#[cfg_attr(verus_macro_keep_ghost, verifier::proof)] node: Node) {
             requires(node.v < 10);
             ensures(node.v * 2 < 20);
         }
 
-        #[verifier::proof]
-        fn other(#[verifier::proof] node: Node) {
+        #[cfg_attr(verus_macro_keep_ghost, verifier::proof)]
+        fn other(#[cfg_attr(verus_macro_keep_ghost, verifier::proof)] node: Node) {
             builtin::assume_(node.v < 10);
             lemma(node);
             lemma(node);
@@ -550,13 +550,13 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_associated_proof_fn_call_pass PROOF_FN_COMMON.to_string() + code_str! {
         impl Node {
-            #[verifier::proof]
+            #[cfg_attr(verus_macro_keep_ghost, verifier::proof)]
             fn lemma(&self) {
                 requires(self.v < 10);
                 ensures(self.v * 2 < 20);
             }
 
-            #[verifier::proof]
+            #[cfg_attr(verus_macro_keep_ghost, verifier::proof)]
             fn other(&self, other_node: Node) {
                 builtin::assume_(other_node.v < 10);
                 other_node.lemma();
@@ -599,7 +599,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] assign_from_proof code! {
-        fn myfun(#[verifier::spec] a: bool) -> bool {
+        fn myfun(#[cfg_attr(verus_macro_keep_ghost, verifier::spec)] a: bool) -> bool {
             let mut b = false;
             if a {
                 b = true;
@@ -927,12 +927,12 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_or_pattern_mode_inconsistent verus_code! {
         enum Foo {
-            Bar(#[verifier::spec] u64),
-            Qux(#[verifier::proof] u64),
+            Bar(#[cfg_attr(verus_macro_keep_ghost, verifier::spec)] u64),
+            Qux(#[cfg_attr(verus_macro_keep_ghost, verifier::proof)] u64),
         }
 
         proof fn blah(foo: Foo) {
-            #[verifier::proof] let (Foo::Bar(x) | Foo::Qux(x)) = foo;
+            #[cfg_attr(verus_macro_keep_ghost, verifier::proof)] let (Foo::Bar(x) | Foo::Qux(x)) = foo;
         }
     } => Err(err) => assert_vir_error_msg(err, "variable `x` has different modes across alternatives")
 }
@@ -940,11 +940,11 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_or_pattern_mode_inconsistent2 verus_code! {
         enum Foo {
-            Bar(#[verifier::spec] u64, #[verifier::proof] u64),
+            Bar(#[cfg_attr(verus_macro_keep_ghost, verifier::spec)] u64, #[cfg_attr(verus_macro_keep_ghost, verifier::proof)] u64),
         }
 
         proof fn blah(foo: Foo) {
-            #[verifier::proof] let (Foo::Bar(x, y) | Foo::Bar(y, x)) = foo;
+            #[cfg_attr(verus_macro_keep_ghost, verifier::proof)] let (Foo::Bar(x, y) | Foo::Bar(y, x)) = foo;
         }
     } => Err(err) => assert_vir_error_msg(err, "variable `x` has different modes across alternatives")
 }
@@ -957,7 +957,7 @@ test_verify_one_file! {
             tracked b: u64,
         }
 
-        proof fn some_call(#[verifier::proof] y: u64) { }
+        proof fn some_call(#[cfg_attr(verus_macro_keep_ghost, verifier::proof)] y: u64) { }
 
         proof fn t() {
             let tracked foo = Foo { a: 5, b: 6 };
@@ -976,15 +976,15 @@ test_verify_one_file! {
         struct X { }
 
         struct Foo {
-            #[verifier::spec] a: u64,
-            #[verifier::proof] b: X,
+            #[cfg_attr(verus_macro_keep_ghost, verifier::spec)] a: u64,
+            #[cfg_attr(verus_macro_keep_ghost, verifier::proof)] b: X,
         }
 
-        proof fn some_call(#[verifier::proof] y: X) { }
+        proof fn some_call(#[cfg_attr(verus_macro_keep_ghost, verifier::proof)] y: X) { }
 
-        proof fn t(#[verifier::proof] x: X) {
-            #[verifier::proof] let foo = Foo { a: 5, b: x };
-            #[verifier::proof] let Foo { b, a } = foo;
+        proof fn t(#[cfg_attr(verus_macro_keep_ghost, verifier::proof)] x: X) {
+            #[cfg_attr(verus_macro_keep_ghost, verifier::proof)] let foo = Foo { a: 5, b: x };
+            #[cfg_attr(verus_macro_keep_ghost, verifier::proof)] let Foo { b, a } = foo;
 
             // This should succeed, 'b' has mode 'proof'
             some_call(b);
@@ -1216,8 +1216,8 @@ test_verify_one_file! {
         struct S(int);
 
         fn test1(tmp_g: Ghost<&mut int>) {
-            #[verus::internal(header_unwrap_parameter)] let g;
-            #[verifier(proof_block)] { g = tmp_g.view() };
+            #[cfg_attr(verus_macro_keep_ghost, verus::internal(header_unwrap_parameter))] let g;
+            #[cfg_attr(verus_macro_keep_ghost, verifier::proof_block)] { g = tmp_g.view() };
         }
     } => Ok(())
 }
@@ -1227,8 +1227,8 @@ test_verify_one_file! {
         struct S(int);
 
         fn test1(tmp_g: Ghost<&mut int>, tmp_h: Ghost<&mut int>) {
-            #[verus::internal(header_unwrap_parameter)] let g;
-            #[verifier(proof_block)] { g = tmp_g.view() };
+            #[cfg_attr(verus_macro_keep_ghost, verus::internal(header_unwrap_parameter))] let g;
+            #[cfg_attr(verus_macro_keep_ghost, verifier::proof_block)] { g = tmp_g.view() };
             // fails to unwrap h
         }
     } => Err(err) => assert_vir_error_msg(err, "must be unwrapped")
@@ -1239,10 +1239,10 @@ test_verify_one_file! {
         struct S(int);
 
         fn test1(tmp_g: Ghost<&mut int>, tmp_h: Ghost<&mut int>) {
-            #[verus::internal(header_unwrap_parameter)] let g;
-            #[verifier(proof_block)] { g = tmp_g.view() };
-            #[verus::internal(header_unwrap_parameter)] let h;
-            #[verifier(proof_block)] { h = g }; // should be tmp_h.view()
+            #[cfg_attr(verus_macro_keep_ghost, verus::internal(header_unwrap_parameter))] let g;
+            #[cfg_attr(verus_macro_keep_ghost, verifier::proof_block)] { g = tmp_g.view() };
+            #[cfg_attr(verus_macro_keep_ghost, verus::internal(header_unwrap_parameter))] let h;
+            #[cfg_attr(verus_macro_keep_ghost, verifier::proof_block)] { h = g }; // should be tmp_h.view()
         }
     } => Err(err) => assert_vir_error_msg(err, "ill-formed unwrap_parameter header")
 }

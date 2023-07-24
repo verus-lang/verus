@@ -535,7 +535,7 @@ pub use assert_maps_equal;
 
 impl<K, V> Map<K, V> {
     pub proof fn tracked_map_keys_in_place(
-        #[verifier::proof] &mut self,
+        tracked &mut self,
         key_map: Map<K, K>
     )
     requires

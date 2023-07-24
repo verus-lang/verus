@@ -4,7 +4,7 @@ use vstd::{*, pervasive::*};
 
 use state_machines_macros::tokenized_state_machine;
 
-#[verifier::spec]
+#[cfg_attr(verus_macro_keep_ghost, verifier::spec)]
 pub enum Foo {
     Bar(int),
     Qax(int),

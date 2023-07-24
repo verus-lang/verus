@@ -122,7 +122,7 @@ pub fn runtime_assert(b: bool)
 } // verus!
 
 #[inline(always)]
-#[verifier::external]
+#[cfg_attr(verus_macro_keep_ghost, verifier::external)]
 fn runtime_assert_internal(b: bool) {
     assert!(b);
 }

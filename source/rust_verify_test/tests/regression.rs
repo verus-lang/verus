@@ -36,7 +36,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_verifier_truncate_allowed_on_cast verus_code! {
         fn test(a: u64) -> u8 {
-            #[verifier(truncate)] (a as u8)
+            #[cfg_attr(verus_macro_keep_ghost, verifier::truncate)] (a as u8)
         }
     } => Ok(())
 }

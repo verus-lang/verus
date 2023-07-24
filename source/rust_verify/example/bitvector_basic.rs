@@ -86,7 +86,7 @@ proof fn test9(b1: u32, b2:u32, b3:u32) {
     assert(zero & b3 == 0u32);
 }
 
+#[verifier::external]
+fn main() {}
 
 } // verus!
-#[verifier::external_body]
-fn main() {}

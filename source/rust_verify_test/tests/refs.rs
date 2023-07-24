@@ -335,10 +335,10 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_regression_115_mut_ref_pattern_case_1 code! {
-        #[verifier::proof]
-        #[verifier::external_body] /* vattr */
-        #[verifier::returns(proof)] /* vattr */
-        fn foo(#[verifier::proof] x: &mut int) -> (int, int)
+        #[cfg_attr(verus_macro_keep_ghost, verifier::proof)]
+        #[cfg_attr(verus_macro_keep_ghost, verifier::external_body)] /* vattr */
+        #[cfg_attr(verus_macro_keep_ghost, verifier::returns(proof))] /* vattr */
+        fn foo(#[cfg_attr(verus_macro_keep_ghost, verifier::proof)] x: &mut int) -> (int, int)
         {
             ensures(|ret: (int, int)|
                 { let (a, b) = ret;
@@ -348,9 +348,9 @@ test_verify_one_file! {
             unimplemented!();
         }
 
-        fn bar(#[verifier::proof] x: int) {
-            #[verifier::proof] let mut x = x;
-            #[verifier::proof] let (a, b) = foo(&mut x);
+        fn bar(#[cfg_attr(verus_macro_keep_ghost, verifier::proof)] x: int) {
+            #[cfg_attr(verus_macro_keep_ghost, verifier::proof)] let mut x = x;
+            #[cfg_attr(verus_macro_keep_ghost, verifier::proof)] let (a, b) = foo(&mut x);
             builtin::assert_(a + b == x); // THIS LINE FAILS
         }
     } => Ok(())

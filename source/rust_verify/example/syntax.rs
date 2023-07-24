@@ -3,11 +3,11 @@ use builtin_macros::*;
 use builtin::*;
 use vstd::{*, prelude::*, seq::*, modes::*};
 
+verus! {
+
 #[verifier::external]
 fn main() {
 }
-
-verus! {
 
 /// functions may be declared exec (default), proof, or spec, which contain
 /// exec code, proof code, and spec code, respectively.

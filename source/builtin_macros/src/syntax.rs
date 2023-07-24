@@ -139,6 +139,17 @@ impl Visitor {
         if self.erase_ghost { Expr::Verbatim(quote_spanned!(span => {})) } else { e }
     }
 
+    fn filter_attrs(&mut self, attrs: &mut Vec<Attribute>) {
+        if self.erase_ghost {
+            // Remove verus:: and verifier:: attributes to make it easier for
+            // standard rustc to compile the code
+            attrs.retain(|attr| {
+                let prefix = attr.path.segments[0].ident.to_string();
+                prefix != "verus" && prefix != "verifier"
+            });
+        }
+    }
+
     fn visit_fn(
         &mut self,
         attrs: &mut Vec<Attribute>,
@@ -157,6 +168,7 @@ impl Visitor {
 
         for arg in &mut sig.inputs {
             match (arg.tracked, &mut arg.kind) {
+                _ if self.erase_ghost => {}
                 (None, _) => {}
                 (Some(token), FnArgKind::Receiver(receiver)) => {
                     receiver.attrs.push(mk_verus_attr(token.span, quote! { proof }));
@@ -212,7 +224,9 @@ impl Visitor {
             ReturnType::Default => None,
             ReturnType::Type(_, ref mut tracked, ref mut ret_opt, ty) => {
                 if let Some(token) = tracked {
-                    attrs.push(mk_verus_attr(token.span, quote! { returns(proof) }));
+                    if !self.erase_ghost {
+                        attrs.push(mk_verus_attr(token.span, quote! { returns(proof) }));
+                    }
                     *tracked = None;
                 }
                 match std::mem::take(ret_opt) {
@@ -401,6 +415,7 @@ impl Visitor {
         attrs.extend(mode_attrs);
         attrs.extend(prover_attr.into_iter());
         attrs.extend(ext_attrs);
+        self.filter_attrs(attrs);
         // unwrap_ghost_tracked must go first so that unwrapped vars are in scope in other headers
         stmts.splice(0..0, unwrap_ghost_tracked);
         stmts.extend(unimpl);
@@ -449,6 +464,7 @@ impl Visitor {
         *mode = FnMode::Default;
         attrs.extend(publish_attrs);
         attrs.extend(mode_attrs);
+        self.filter_attrs(attrs);
     }
 }
 
@@ -741,7 +757,7 @@ impl Visitor {
             };
             if let Some((name, vis)) = erase_fn {
                 *item = Item::Verbatim(quote_spanned! {
-                    span => #[allow(unused_imports)] #vis use bool as #name;
+                    span => #[allow(unused_imports)] #vis use core::primitive::bool as #name;
                 });
             }
         }
@@ -1905,6 +1921,11 @@ impl VisitMut for Visitor {
         visit_block_mut(self, block);
     }
 
+    fn visit_type_param_mut(&mut self, p: &mut syn_verus::TypeParam) {
+        self.filter_attrs(&mut p.attrs);
+        syn_verus::visit_mut::visit_type_param_mut(self, p);
+    }
+
     fn visit_item_fn_mut(&mut self, fun: &mut ItemFn) {
         // Process rustdoc before processing the ItemFn itself.
         // That way, the generated rustdoc gets the prettier syntax instead of the
@@ -1975,18 +1996,21 @@ impl VisitMut for Visitor {
         visit_field_mut(self, field);
         field.attrs.extend(data_mode_attrs(&field.mode));
         field.mode = DataMode::Default;
+        self.filter_attrs(&mut field.attrs);
     }
 
     fn visit_item_enum_mut(&mut self, item: &mut ItemEnum) {
         visit_item_enum_mut(self, item);
         item.attrs.extend(data_mode_attrs(&item.mode));
         item.mode = DataMode::Default;
+        self.filter_attrs(&mut item.attrs);
     }
 
     fn visit_item_struct_mut(&mut self, item: &mut ItemStruct) {
         visit_item_struct_mut(self, item);
         item.attrs.extend(data_mode_attrs(&item.mode));
         item.mode = DataMode::Default;
+        self.filter_attrs(&mut item.attrs);
     }
 
     fn visit_type_mut(&mut self, ty: &mut Type) {
@@ -2065,16 +2089,19 @@ impl VisitMut for Visitor {
         if let Some((_, items)) = &mut item.content {
             self.visit_items_prefilter(items);
         }
+        self.filter_attrs(&mut item.attrs);
         syn_verus::visit_mut::visit_item_mod_mut(self, item);
     }
 
     fn visit_item_impl_mut(&mut self, imp: &mut ItemImpl) {
         self.visit_impl_items_prefilter(&mut imp.items, imp.trait_.is_some());
+        self.filter_attrs(&mut imp.attrs);
         syn_verus::visit_mut::visit_item_impl_mut(self, imp);
     }
 
     fn visit_item_trait_mut(&mut self, tr: &mut ItemTrait) {
         self.visit_trait_items_prefilter(&mut tr.items);
+        self.filter_attrs(&mut tr.attrs);
         syn_verus::visit_mut::visit_item_trait_mut(self, tr);
     }
 }

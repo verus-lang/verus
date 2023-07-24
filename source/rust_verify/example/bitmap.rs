@@ -168,8 +168,8 @@ impl BitMap {
     }
 }
 
-} // verus!
-
 #[verifier::external]
 fn main(){
 }       
+
+} // verus!
