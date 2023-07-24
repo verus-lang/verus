@@ -40,7 +40,15 @@ fn main() {
         std::process::exit(128);
     };
 
-    let report_path = repo_path();
+    let mut args_bucket = args.collect::<Vec<_>>();
+
+    let local_store = args_bucket
+        .iter()
+        .position(|x| x.as_str() == "--local-store")
+        .map(|p| args_bucket.remove(p))
+        .is_some();
+
+    let report_path = repo_path(local_store);
 
     let mut cmd = Command::new("rustup");
     if std::env::var("VERUS_Z3_PATH").ok().is_none() {
@@ -60,7 +68,7 @@ fn main() {
         .arg(TOOLCHAIN)
         .arg("--")
         .arg(verusroot_path.join(RUST_VERIFY_FILE_NAME))
-        .args(args)
+        .args(args_bucket)
         .stdin(std::process::Stdio::inherit());
 
     if !std::env::args().any(|arg| arg.starts_with("--color")) {
@@ -102,9 +110,15 @@ pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<(), String> {
     }
 
     let reports = match reports {
-        Some(reports) => reports,
+        Some(reports) => {
+            // proj path is only created after the project has --local-store flag
+            if !reports.proj_path.is_dir() {
+                cmd.status().map_err(|x| format!("verus failed to run with error: {}", x))?;
+                return Ok(());
+            }
+            reports
+        },
         None => {
-            // need to keep running rust_verify to get the rustc error message
             cmd.status().map_err(|x| format!("verus failed to run with error: {}", x))?;
             return Ok(());
         }
@@ -235,7 +249,7 @@ pub struct Reports {
     dep_path: PathBuf,
 }
 
-fn repo_path() -> Option<Reports> {
+fn repo_path(store: bool) -> Option<Reports> {
     // check if user has git as executable
     if Command::new("git").arg("--version").output().is_err() {
         return None;
@@ -245,7 +259,7 @@ fn repo_path() -> Option<Reports> {
     if option_env!("VERUS_LOCAL_STORE").is_none() {
         return None;
     }
-
+    
     // Check if there's a verus/reports/.git file in the user's local data lib
     // if not so, create verus/ directory
     let reports_dir = dirs::data_local_dir()?.join("verus").join("reports");
@@ -288,8 +302,8 @@ fn repo_path() -> Option<Reports> {
     // not sure how to write a ? to replace unwrap
 
     let proj_dir = project_name.map(|name| {
-        let project_dir = reports_dir.join(uuid).join(name);
-        if !project_dir.is_dir() {
+        let project_dir = reports_dir.join(uuid).join(name);        
+        if !project_dir.is_dir() && store {
             create_dir_all(&project_dir).expect("failed to create project directory");
         }
         project_dir

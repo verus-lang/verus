@@ -75,6 +75,7 @@ pub struct ArgsX {
     pub version: bool,
     pub num_threads: usize,
     pub trace: bool,
+    pub local_store: bool,
 }
 
 pub type Args = Arc<ArgsX>;
@@ -168,6 +169,7 @@ pub fn parse_args_with_imports(
     const OPT_RECORD: &str = "record";
     const OPT_NUM_THREADS: &str = "num-threads";
     const OPT_TRACE: &str = "trace";
+    const OPT_LOCAL_STORE: &str = "local-store";
 
     let default_num_threads: usize = std::thread::available_parallelism()
         .map(|x| std::cmp::max(usize::from(x) - 1, 1))
@@ -274,6 +276,11 @@ pub fn parse_args_with_imports(
         "",
         OPT_RECORD,
         "Rerun verus and package source files of the current crate to the current directory, alongside with output and version information. The file will be named YYYY-MM-DD-HH-MM-SS.zip. If you are reporting an error, please keep the original arguments in addition to this flag",
+    );
+    opts.optflag(
+        "",
+        OPT_LOCAL_STORE,
+        "Record your changes to a specific crate (and its dependencies) everytime it invokes verus.",
     );
 
     let print_usage = || {
@@ -419,6 +426,7 @@ pub fn parse_args_with_imports(
             .unwrap_or_else(|_| error("expected integer after num_threads".to_string()))
             .unwrap_or(default_num_threads),
         trace: matches.opt_present(OPT_TRACE),
+        local_store: matches.opt_present(OPT_LOCAL_STORE),
     };
 
     (Arc::new(args), unmatched)
