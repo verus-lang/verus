@@ -176,7 +176,7 @@ pub(crate) struct FunDecl {
     pub(crate) name_span: Span,
     pub(crate) name: Id,
     pub(crate) generics: Vec<GenericParam>,
-    pub(crate) params: Vec<(Option<Span>, Id, Typ)>,
+    pub(crate) params: Vec<(Option<Span>, Id, Typ, bool)>,
     pub(crate) ret: Option<(Option<Span>, Typ)>,
     pub(crate) body: Exp,
 }
