@@ -1609,7 +1609,7 @@ fn erase_fn_common<'tcx>(
                         PatKind::Binding(rustc_hir::BindingAnnotation(_, mutability), _, _, _) => {
                             mutability == rustc_hir::Mutability::Mut
                         }
-                        _ => panic!("unexpected pat"),
+                        _ => panic!("expected binding pattern"),
                     };
                     (Some(p.pat.span), is_mut_var)
                 })
