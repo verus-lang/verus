@@ -1632,7 +1632,9 @@ fn erase_fn_common<'tcx>(
             &mut generic_bounds,
         );
         let mut params: Vec<(Option<Span>, Id, Typ, bool)> = Vec::new();
-        for ((input, param), param_info) in inputs.iter().zip(f_vir.x.params.iter()).zip(params_info.iter()) {
+        for ((input, param), param_info) in
+            inputs.iter().zip(f_vir.x.params.iter()).zip(params_info.iter())
+        {
             let name = if let Some((_, name)) = &param.x.unwrapped_info {
                 name.to_string()
             } else {
