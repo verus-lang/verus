@@ -1,3 +1,4 @@
+// TODO: add example of Multiset::new() usage
 use core::{marker};
 
 #[allow(unused_imports)]
@@ -8,6 +9,8 @@ use builtin_macros::*;
 use crate::pervasive::*;
 #[allow(unused_imports)]
 use crate::set::*;
+#[allow(unused_imports)]
+use crate::map::*;
 
 verus!{
 
@@ -18,6 +21,8 @@ verus!{
 ///
 /// Multisets can be constructed in a few different ways:
 ///  * [`Multiset::empty()`] constructs an empty multiset.
+///  * [`Multiset::singleton`] constructs a multiset that contains a single element with multiplicity 1.
+///  * [`Multiset::new`] constructs a multiset from a map of elements to multiplicities.
 ///  * By manipulating existings multisets with [`Multiset::add`], [`Multiset::insert`],
 ///    [`Multiset::sub`], [`Multiset::remove`], or [`Multiset::filter`].
 ///  * TODO: `multiset!` constructor macro, multiset from set, from map, etc.
@@ -53,6 +58,11 @@ impl<V> Multiset<V> {
 
     /// An empty multiset.
     pub spec fn empty() -> Self;
+
+    /// Gives a multiset whose elements are given by the domain of the map `m` and multiplicities
+    /// are given by the corresponding values of `m[element]`. The map `m` must be finite, or else
+    /// this multiset is arbitrary.
+    pub spec fn new(m: Map<V, nat>) -> Self;
 
     /// A singleton multiset, i.e., a multiset with a single element of multiplicity 1.
     pub spec fn singleton(v: V) -> Self;
@@ -95,12 +105,6 @@ impl<V> Multiset<V> {
         forall |v: V| self.count(v) <= m2.count(v)
     }
 
-    /// Returns `true` if every element in the multiset maps to a valid value
-    /// i.e. a value greater than or equal to 0 and less than or equal to the
-    /// cardinality of the multiset.
-
-    pub open spec fn is_valid(self) ->bool;
-
     /// DEPRECATED: use =~= or =~~= instead.
     /// Returns true if the two multisets are pointwise equal, i.e.,
     /// for every value `v: V`, the counts are the same in each multiset.
@@ -140,33 +144,31 @@ impl<V> Multiset<V> {
     /// between the two sets. In other words, returns a multiset with only
     /// the elements that "overlap".
 
-    pub open spec fn intersection_with(self, other: Self) -> Self;
+    pub open spec fn intersection_with(self, other: Self) -> Self {
+        let m = Map::<V, nat>::new(|v: V| self.contains(v), |v: V| min(self.count(v), other.count(v)));
+        Self::new(m)
+    }
 
     /// Returns a multiset containing the difference between the count of a
     /// given element of the two sets.
 
-    pub open spec fn difference_with(self, other: Self) -> Self;
-
-    /// Returns true if the count for any given element in the calling multiset
-    /// is less than or equal to the count for the corresponding element
-    /// in the argument multiset.
-
-    pub open spec fn subset_of(self, other: Self) -> bool;
+    pub open spec fn difference_with(self, other: Self) -> Self {
+        let m = Map::<V, nat>:: new(|v: V| self.contains(v), |v: V| clip(self.count(v) - other.count(v)));
+        Self::new(m)
+    }
 
     /// Returns true if there exist no elements that have a count greater 
     /// than 0 in both multisets. In other words, returns true if the two
     /// multisets have no elements in common.
 
-    pub open spec fn disjoint_with(self, other: Self) -> bool;
-
-    pub open spec fn min(x: nat, y: nat) -> nat {
-        if x <= y {x}
-        else {y}
+    pub open spec fn disjoint_with(self, other: Self) -> bool {
+        forall |x: V| self.count(x) == 0 || other.count(x) == 0
     }
 
-    pub open spec fn clip(x: int) -> nat {
-        if x < 0 {0}
-        else {x as nat}
+    /// Returns the set of all elements that have a count greater than 0
+    
+    pub open spec fn dom(self) -> Set<V> {
+        Set::new(|v: V| self.count(v) > 0)
     }
 }
 
@@ -186,6 +188,28 @@ pub proof fn axiom_multiset_empty_len<V>(m: Multiset<V>)
         (#[trigger] m.len() == 0 <==> m =~= Multiset::empty())
         && (#[trigger] m.len() > 0 ==> exists |v: V| 0 < m.count(v)),
 {}      
+
+// Specifications of `new`
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_multiset_new1<V>(m: Map<V, nat>, v: V)
+    requires
+        m.dom().finite(),
+        m.dom().contains(v),
+    ensures 
+        #[trigger] Multiset::new(m).count(v) == m[v],
+{}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_multiset_new2<V>(m: Map<V, nat>, v: V)
+    requires
+        m.dom().finite(),
+        !m.dom().contains(v),
+    ensures 
+        Multiset::new(m).count(v) == 0,
+{}
 
 // Specification of `singleton`
 
@@ -343,15 +367,35 @@ pub proof fn axiom_insert_len<V>(m: Multiset<V>, x: V)
 // Specifications of `intersection_with`
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_intersection_count<V>(a: Multiset<V>, b: Multiset<V>, x: V)
     ensures
-        #[trigger] a.intersection_with(b).count(x) == Multiset::<V>::min(a.count(x),b.count(x))
-{}
+        #[trigger] a.intersection_with(b).count(x) == min(a.count(x),b.count(x))
+{
+    assert(a.dom().finite());
+    let m = Map::<V, nat>::new(|v: V| a.contains(v), |v: V| min(a.count(v), b.count(v)));  
+    assert(m.dom() =~= a.dom());
+    assert(a.intersection_with(b) =~= Multiset::<V>::new(m));
+    if a.contains(x) {
+        assert(a.count(x) > 0);
+        assert(m[x] == min(a.count(x), b.count(x)));
+        assert(m.dom().contains(x));
+        assert(Multiset::<V>::new(m).count(x) == m[x]); //definition of new
+        assert(Multiset::<V>::new(m).count(x) == min(a.count(x), b.count(x)));
+        assert(a.intersection_with(b).count(x) == min(a.count(x), b.count(x)));
+    } else {
+        assert(a.count(x) == 0);
+        assert(!m.dom().contains(x));
+        assert(m.dom().finite());
+        assert(!m.dom().contains(x));
+        assert(Multiset::<V>::new(m).count(x) == 0);
+        assert(a.intersection_with(b).count(x) == 0);
+    }
+}
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+#[verifier(external_body)] //TODO
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_left_pseudo_idempotence<V>(a: Multiset<V>, b: Multiset<V>)
     ensures
@@ -359,7 +403,7 @@ pub proof fn axiom_left_pseudo_idempotence<V>(a: Multiset<V>, b: Multiset<V>)
 {}
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+#[verifier(external_body)] //TODO
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_right_pseudo_idempotence<V>(a: Multiset<V>, b: Multiset<V>)
     ensures
@@ -369,15 +413,34 @@ pub proof fn axiom_right_pseudo_idempotence<V>(a: Multiset<V>, b: Multiset<V>)
 // Specification of `difference_with`
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_difference_count<V>(a: Multiset<V>, b: Multiset<V>, x: V)
     ensures
-        #[trigger] a.difference_with(b).count(x) == Multiset::<V>::clip(a.count(x) - b.count(x))
-{}
+        #[trigger] a.difference_with(b).count(x) == clip(a.count(x) - b.count(x))
+{
+    let m = Map::<V, nat>:: new(|v: V| a.contains(v), |v: V| clip(a.count(v) - b.count(v)));
+    assert(Multiset::<V>::new(m) =~= a.difference_with(b));
+    assert(m.dom() =~= a.dom());
+    if a.contains(x) {
+        assert(a.count(x) > 0);
+        assert(m[x] == clip(a.count(x) - b.count(x)));
+        assert(m.dom().contains(x));
+        assert(Multiset::<V>::new(m).count(x) == m[x]); //definition of new
+        assert(Multiset::<V>::new(m).count(x) == clip(a.count(x) - b.count(x)));
+        assert(a.difference_with(b).count(x) == clip(a.count(x) - b.count(x)));
+    } else {
+        assert(a.count(x) == 0);
+        assert(!m.dom().contains(x));
+        assert(m.dom().finite());
+        assert(!m.dom().contains(x));
+        assert(Multiset::<V>::new(m).count(x) == 0);
+        assert(a.difference_with(b).count(x) == 0);
+    }
+}
 
 // Ported from Dafny prelude
-#[verifier(external_body)]
+#[verifier(external_body)] //TODO
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_difference_bottoms_out<V>(a: Multiset<V>, b: Multiset<V>, x: V)
     ensures
@@ -385,34 +448,13 @@ pub proof fn axiom_difference_bottoms_out<V>(a: Multiset<V>, b: Multiset<V>, x: 
             ==> (#[trigger] a.difference_with(b)).count(x) == 0
 {}
 
-// Specification of `subset_of`
+// Axiom about finiteness
 
-// Ported from Dafny prelude
-/// Multiset subset means a must have at most as many of each element as b
 #[verifier(external_body)]
-//#[verifier(broadcast_forall)]
-pub proof fn axiom_subset_of_specs<V>(a: Multiset<V>, b: Multiset<V>, x:V)
+#[verifier(broadcast_forall)]
+pub proof fn axiom_multiset_always_finite<V>(m: Multiset<V>)
     ensures
-        #[trigger] a.subset_of(b) <==> #[trigger] a.count(x) <= #[trigger] b.count(x)
-{}
-
-// Specification of `disjoint_with`
-// Ported from Dafny prelude
-#[verifier(external_body)]
-//#[verifier(broadcast_forall)]
-pub proof fn axiom_disjointness<V>(a: Multiset<V>, b: Multiset<V>, x:V)
-    ensures
-        #[trigger] a.disjoint_with(b) <==> 
-            (#[trigger] a.count(x) == 0 || #[trigger] b.count(x) == 0)
-{}
-
-// Specification of `is_valid`
-// Ported from Dafny prelude
-#[verifier(external_body)]
-//#[verifier(broadcast_forall)]
-pub proof fn axiom_is_valid<V>(m: Multiset<V>, bx: V)
-    ensures
-        m.is_valid() <==> 0 <= #[trigger] m.count(bx) <= m.len(),
+        #[trigger] m.dom().finite()
 {}
 
 #[macro_export]
@@ -452,21 +494,15 @@ pub proof fn lemma_multiset_properties<V>()
         forall |m: Multiset<V>, x: V, y: V| x != y ==> #[trigger] m.count(y) == #[trigger] m.insert(x).count(y), //axiom_insert_other_elements_unchanged
         forall |m: Multiset<V>, x: V| #[trigger] m.insert(x).len() == m.len() +1, //axiom_insert_len
         forall |a: Multiset<V>, b: Multiset<V>, x: V| 
-                #[trigger] a.intersection_with(b).count(x) == Multiset::<V>::min(a.count(x),b.count(x)), //axiom_intersection_count
+                #[trigger] a.intersection_with(b).count(x) == min(a.count(x),b.count(x)), //axiom_intersection_count
         forall |a: Multiset<V>, b: Multiset<V>| #[trigger] a.intersection_with(b).intersection_with(b) == a.intersection_with(b), //axiom_left_pseudo_idempotence
         forall |a: Multiset<V>, b: Multiset<V>| #[trigger] a.intersection_with(a.intersection_with(b)) == a.intersection_with(b), //axiom_right_pseudo_idempotence
-        forall |a: Multiset<V>, b: Multiset<V>, x: V| #[trigger] a.difference_with(b).count(x) == Multiset::<V>::clip(a.count(x) - b.count(x)), //axiom_difference_count
+        forall |a: Multiset<V>, b: Multiset<V>, x: V| #[trigger] a.difference_with(b).count(x) == clip(a.count(x) - b.count(x)), //axiom_difference_count
         forall |a: Multiset<V>, b: Multiset<V>, x: V| #[trigger] a.count(x) <= #[trigger] b.count(x) 
                 ==> (#[trigger] a.difference_with(b)).count(x) == 0, //axiom_difference_bottoms_out
-        forall |a: Multiset<V>, b: Multiset<V>, x: V| #[trigger] a.subset_of(b) <==> #[trigger] a.count(x) <= #[trigger] b.count(x), //axiom_subset_of_specs
-        // forall |a: Multiset<V>, b: Multiset<V>, x: V| #[trigger] a.disjoint_with(b) 
-        //         <==> (#[trigger] a.count(x) == 0 || #[trigger] b.count(x) == 0), //axiom_disjointness
-        forall |m: Multiset<V>, bx: V|  m.is_valid() <==> 0 <= #[trigger] m.count(bx) <= m.len(), //axiom_is_valid
-        
-   
 {
     assert forall |a: Multiset<V>, b: Multiset<V>, x: V| 
-        #[trigger] a.intersection_with(b).count(x) == Multiset::<V>::min(a.count(x),b.count(x)) by {
+        #[trigger] a.intersection_with(b).count(x) == min(a.count(x),b.count(x)) by {
             axiom_intersection_count(a, b, x);
     } 
     assert forall |a: Multiset<V>, b: Multiset<V>| #[trigger] a.intersection_with(b).intersection_with(b) == a.intersection_with(b) by {
@@ -475,27 +511,19 @@ pub proof fn lemma_multiset_properties<V>()
     assert forall |a: Multiset<V>, b: Multiset<V>| #[trigger] a.intersection_with(a.intersection_with(b)) == a.intersection_with(b) by {
         axiom_right_pseudo_idempotence(a, b);
     }
-    assert forall |a: Multiset<V>, b: Multiset<V>, x: V| #[trigger] a.difference_with(b).count(x) == Multiset::<V>::clip(a.count(x) - b.count(x)) by {
+    assert forall |a: Multiset<V>, b: Multiset<V>, x: V| #[trigger] a.difference_with(b).count(x) == clip(a.count(x) - b.count(x)) by {
         axiom_difference_count(a, b, x);
     }
-    assert forall |a: Multiset<V>, b: Multiset<V>, x: V| #[trigger] a.subset_of(b) implies #[trigger] a.count(x) <= #[trigger] b.count(x) by {
-        axiom_subset_of_specs(a, b, x);
-    }
-    assert forall |a: Multiset<V>, b: Multiset<V>, x: V| #[trigger] a.count(x) <= #[trigger] b.count(x) implies #[trigger] a.subset_of(b) by {
-        axiom_subset_of_specs(a, b, x);
-    }
+}
 
-    // assert forall |a: Multiset<V>, b: Multiset<V>, x: V| #[trigger] a.disjoint_with(b) 
-    // implies (#[trigger] a.count(x) == 0 || #[trigger] b.count(x) == 0) by {
-    //     axiom_disjointness(a,b,x);
-    // }
-    // assert forall |a: Multiset<V>, b: Multiset<V>, x: V| #[trigger] a.count(x) == 0 || #[trigger] b.count(x) == 0
-    //     implies #[trigger] a.disjoint_with(b) by {
-    //         axiom_disjointness(a,b,x);   
-    // }
-    assert forall |m: Multiset<V>, bx: V| 0 <= #[trigger] m.count(bx) <= m.len() implies m.is_valid() by {
-        axiom_is_valid(m, bx);
-    }
+pub open spec fn min(x: nat, y: nat) -> nat {
+    if x <= y {x}
+    else {y}
+}
+
+pub open spec fn clip(x: int) -> nat {
+    if x < 0 {0}
+    else {x as nat}
 }
 
 pub use assert_multisets_equal;
