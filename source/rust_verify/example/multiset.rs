@@ -24,26 +24,26 @@ proof fn multiset_ext_eq2() {
 }
 
 proof fn sorted_by_eg() {
+    //Provides the verifier with important lemmas about sequences
+    lemma_seq_properties::<int>();
 
     let leq = |x: int, y: int| x <= y;
 
-    let unsorted = seq![3, 1, 2];
+    let unsorted = seq![3, 1, 5, 2, 4];
     let sorted = unsorted.sort_by(leq);
-    
-    let result: Seq<int> = seq![1, 2, 3];
-    
-    lemma_sort_by_ensures::<int>(unsorted, leq);
-    lemma_sort_by_ensures::<int>(result, leq);
-    lemma_seq_properties::<int>();
-    
-    assert(sorted_by(result,leq));
 
-    assert(result =~= (unsorted.sort_by(leq))) by {
-        assert(result.to_multiset() =~= unsorted.to_multiset());
-        lemma_sorted_unique(result, unsorted.sort_by(leq), leq);
-    };
-        
-    assert(sorted =~= result);
+    //Tells the verifier what the sort_by function ensures to be true
+    lemma_sort_by_ensures::<int>(unsorted, leq); 
+
+    let expected_result: Seq<int> = seq![1, 2, 3, 4, 5];
+    assert(sorted_by(expected_result,leq));
+
+    assert(expected_result.to_multiset() =~= unsorted.to_multiset());
+
+    //Proves that any two sequences that are sorted and have the same elements are equal.
+    lemma_sorted_unique(expected_result, unsorted.sort_by(leq), leq);
+    
+    assert(sorted =~= expected_result);
 }
 
 }

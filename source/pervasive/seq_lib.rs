@@ -13,8 +13,6 @@ use crate::set_lib::lemma_set_properties;
 use crate::multiset::Multiset;
 #[allow(unused_imports)]
 use crate::relations::*;
-// use crate::seq_merge_sort::lemma_merge_sorted_with_ensures;
-// use crate::seq_merge_sort::merge_sorted_with;
 
 verus! {
 
@@ -69,6 +67,12 @@ impl<A> Seq<A> {
     }
 
     /// Sorts the sequence according to the given leq function
+    /// 
+    /// ## Example
+    /// 
+    /// ```rust
+    /// {{#include ../../../rust_verify/example/multiset.rs:sorted_by_eg}}
+    /// ```
     pub open spec fn sort_by(self, leq: FnSpec(A,A) ->bool) -> Seq<A>
         recommends
             total_ordering(leq),
