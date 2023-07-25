@@ -355,6 +355,8 @@ impl Map<int,int> {
 
 // Proven lemmas
 
+/// Removing a key from a map that previously contained that key results
+/// in a length that is one less than the original length.
 pub proof fn lemma_remove_key_len<K,V>(m: Map<K,V>, key: K)
     requires
         m.dom().contains(key),
@@ -363,6 +365,8 @@ pub proof fn lemma_remove_key_len<K,V>(m: Map<K,V>, key: K)
         m.dom().len() == 1 + m.remove(key).dom().len(),
 {}
 
+/// The domain of a map after removing a key is equivalent to removing the key from 
+/// the domain of the original map.
 pub proof fn lemma_remove_equivalency<K,V>(m: Map<K,V>, key: K)
     ensures
         m.remove(key).dom() == m.dom().remove(key),
@@ -370,7 +374,6 @@ pub proof fn lemma_remove_equivalency<K,V>(m: Map<K,V>, key: K)
 
 /// Removing a set of n keys from a map that previously contained all n keys
 /// results in a domain of size n less than the original domain.
-
 pub proof fn lemma_remove_keys_len<K,V>(m: Map<K,V>, keys: Set<K>)
     requires
         forall |k: K| #[trigger] keys.contains(k) ==> m.contains_key(k),
@@ -393,6 +396,7 @@ pub proof fn lemma_remove_keys_len<K,V>(m: Map<K,V>, keys: Set<K>)
     }
 }
 
+/// The size of the union of two maps is equal to the sum of the sizes of the individual maps
 pub proof fn lemma_disjoint_union_size<K,V>(m1: Map<K,V>, m2: Map<K,V>)
     requires
         m1.dom().disjoint(m2.dom()),
@@ -409,6 +413,7 @@ pub proof fn lemma_disjoint_union_size<K,V>(m1: Map<K,V>, m2: Map<K,V>)
     }
 }
 
+/// The function `invert` results in an injective map
 pub proof fn lemma_invert_is_injective<K,V>(m: Map<K,V>)
     ensures
         m.invert().injective(),
@@ -462,6 +467,7 @@ pub proof fn axiom_map_index_decreases_infinite<K, V>(m: Map<K, V>, key: K)
 {
 }
 
+/// The domain of the empty map is the empty set
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_empty<K, V>()
@@ -470,6 +476,8 @@ pub proof fn axiom_map_empty<K, V>()
 {
 }
 
+/// The domain of a map after inserting a key-value pair is equivalent to inserting the key into
+/// the original map's domain set.
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_insert_domain<K, V>(m: Map<K, V>, key: K, value: V)
@@ -478,6 +486,7 @@ pub proof fn axiom_map_insert_domain<K, V>(m: Map<K, V>, key: K, value: V)
 {
 }
 
+/// Inserting `value` at `key` in `m` results in a map that maps `key` to `value`
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_insert_same<K, V>(m: Map<K, V>, key: K, value: V)
@@ -486,6 +495,7 @@ pub proof fn axiom_map_insert_same<K, V>(m: Map<K, V>, key: K, value: V)
 {
 }
 
+/// Inserting `value` at `key2` does not change the value mapped to by any other keys in `m`
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, value: V)
@@ -497,6 +507,8 @@ pub proof fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, va
 {
 }
 
+/// The domain of a map after inserting a key-value pair is equivalent to inserting the key into
+/// the original map's domain set.
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_remove_domain<K, V>(m: Map<K, V>, key: K)
@@ -505,6 +517,8 @@ pub proof fn axiom_map_remove_domain<K, V>(m: Map<K, V>, key: K)
 {
 }
 
+/// The domain of a map after removing a key-value pair is equivalent to removing the key from
+/// the original map's domain set.
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
@@ -517,8 +531,7 @@ pub proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
 }
 
 // Ported from Dafny prelude
-//#[verifier(external_body)]
-//#[verifier(broadcast_forall)]
+/// The domain of a map constructed with `Map::new(fk, fv)` is equivalent to the set constructed with `Set::new(fk)`.
 pub proof fn lemma_map_new_domain<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V)
     ensures
         #[trigger] Map::<K,V>::new(fk,fv).dom() == Set::<K>::new(|k: K| fk(k))
@@ -527,8 +540,9 @@ pub proof fn lemma_map_new_domain<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V
 }
 
 // Ported from Dafny prelude
-//#[verifier(external_body)]
-//#[verifier(broadcast_forall)]
+/// The set of values of a map constructed with `Map::new(fk, fv)` is equivalent to 
+/// the set constructed with `Set::new(|v: V| (exists |k: K| fk(k) && fv(k) == v)`. In other words,
+/// the set of all values fv(k) where fk(k) is true.
 pub proof fn lemma_map_new_values<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V)
     ensures
         #[trigger] Map::<K,V>::new(fk,fv).values() == Set::<V>::new(|v: V| (exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v)),
@@ -542,6 +556,7 @@ pub proof fn lemma_map_new_values<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V
     assert(values =~= Set::<V>::new(|v: V| (exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v)));
 }
 
+/// Two maps are equivalent if their domains are equivalent and every key in their domains map to the same value.
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
