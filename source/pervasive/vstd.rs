@@ -8,6 +8,16 @@
 
 #![feature(core_intrinsics)]
 
+#![cfg_attr(
+    not(verus_build),
+    feature(allocator_api),
+    feature(rustc_attrs),
+    feature(negative_impls),
+    feature(tuple_trait),
+    feature(unboxed_closures),
+    allow(unused)
+)]
+
 pub mod pervasive;
 pub mod bytes;
 pub mod calc_macro;

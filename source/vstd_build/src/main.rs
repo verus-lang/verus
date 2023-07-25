@@ -81,6 +81,8 @@ fn main() {
         "--edition=2018".to_string(),
         "--cfg".to_string(),
         "erasure_macro_todo".to_string(),
+        "--cfg".to_string(),
+        "verus_build".to_string(),
         "--crate-type=lib".to_string(),
         "--out-dir".to_string(),
         verus_target_path.to_str().expect("invalid path").to_string(),
