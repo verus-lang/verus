@@ -118,7 +118,7 @@ pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
     } else {
         let a = s1.choose();
 
-        lemma_len_intersect::<A>(s1.remove(a), s2);
+        lemma_len_intersect(s1.remove(a), s2);
     }
 }
 // ANCHOR_END: lemma_len_intersect_fail
@@ -175,7 +175,7 @@ pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
     } else {
         let a = s1.choose();
         assert(s1.intersect(s2).remove(a) =~= s1.remove(a).intersect(s2));
-        lemma_len_intersect::<A>(s1.remove(a), s2);
+        lemma_len_intersect(s1.remove(a), s2);
     }
 }
 // ANCHOR_END: lemma_len_intersect
