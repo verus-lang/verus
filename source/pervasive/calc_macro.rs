@@ -27,6 +27,8 @@ macro_rules! calc_internal {
     (__internal expr (<=) ($a:expr) ($b:expr)) => { ($a <= $b) };
     (__internal expr (>) ($a:expr) ($b:expr)) => { ($a > $b) };
     (__internal expr (>=) ($a:expr) ($b:expr)) => { ($a >= $b) };
+    (__internal expr (==>) ($a:expr) ($b:expr)) => { ::builtin::imply($a, $b) };
+    (__internal expr (<==>) ($a:expr) ($b:expr)) => { ::builtin::imply($a, $b) && ::builtin::imply($b, $a) };
     (__internal expr ($($reln:tt)+) ($a:expr) ($b:expr)) => {
         compile_error!(concat!("INTERNAL ERROR\nUnexpected ", stringify!(($($reln)+, $a, $b)))); }; // Fallthrough
 
@@ -81,6 +83,8 @@ macro_rules! calc_aux {
     (confirm_allowed_relation (<=)) => { }; // Allowed
     (confirm_allowed_relation (>)) => { }; // Allowed
     (confirm_allowed_relation (>=)) => { }; // Allowed
+    (confirm_allowed_relation (==>)) => { }; // Allowed
+    (confirm_allowed_relation (<==>)) => { }; // Allowed
     (confirm_allowed_relation ($($t:tt)+)) => { compile_error!(concat!("Currently unsupported relation `", stringify!($($t)*), "` in calc")); }; // Fallthrough
 
     // Confirm that an middle relation is consistent with the main relation
@@ -97,6 +101,11 @@ macro_rules! calc_aux {
     (confirm_middle_relation (>) (>)) => { }; // Strictly-greater-than, similar to less-than-or-equal
     (confirm_middle_relation (>) (>=)) => { }; //
     (confirm_middle_relation (>) (==)) => { }; //
+    (confirm_middle_relation (==>) (==>)) => { }; // Implication is consistent with itself, equality, and if-and-only-if
+    (confirm_middle_relation (==>) (==)) => { }; //
+    (confirm_middle_relation (==>) (<==>)) => { }; //
+    (confirm_middle_relation (<==>) (<==>)) => { }; // If-and-only-if is consistent with itself, and equality
+    (confirm_middle_relation (<==>) (==)) => { }; //
     (confirm_middle_relation ($($main:tt)+) ($($middle:tt)+)) => {
         compile_error!(concat!("Potentially inconsistent relation `", stringify!($($middle)*), "` with `", stringify!($($main)*), "`")); }; // Fallthrough
 
