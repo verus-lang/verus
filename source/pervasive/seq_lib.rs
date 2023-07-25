@@ -386,49 +386,83 @@ impl<A> Seq<A> {
         }
     }
 
-    /// Proof of function to_multiset() correctness
-    pub proof fn to_multiset_properties(self)
+    // Ported from Dafn\y prelude
+    /// push(a) o to_multiset = to_multiset o insert(a)
+    pub proof fn to_multiset_build(self, a: A)
         ensures
-            forall |a: A| self.contains(a) <==> #[trigger] self.to_multiset().count(a) > 0,
-            self.len() == self.to_multiset().len(),
+            self.push(a).to_multiset() =~= self.to_multiset().insert(a)
+        decreases 
+            self.len()
+    {
+        if self.len() == 0 {
+            assert(self.to_multiset() =~= Multiset::<A>::empty());
+            assert(self.push(a).drop_first() =~= Seq::<A>::empty());
+            assert(self.push(a).to_multiset() =~= Multiset::<A>::empty().insert(a).add(Seq::<A>::empty().to_multiset()));
+            
+        } else {
+            self.drop_first().to_multiset_build(a);
+            assert(self.drop_first().push(a).to_multiset() =~= self.drop_first().to_multiset().insert(a));
+            assert(self.push(a).drop_first() =~= self.drop_first().push(a));
+        }
+    }
+
+    // Ported from Dafny prelude
+    /// to_multiset() preserves length
+    pub proof fn to_multiset_len(self)
+        ensures
+            self.len() == self.to_multiset().len()
         decreases
             self.len()
     {
         if self.len() == 0 {
-            assert(self.to_multiset().len() == 0);
             assert(self.to_multiset() =~= Multiset::<A>::empty());
-            assert(forall |a: A| !self.contains(a));
-            assert(forall |a: A| self.to_multiset().count(a) == 0);
-            assert(forall |a: A| self.contains(a) ==> #[trigger] self.to_multiset().count(a) > 0);
-            assert(forall |a: A| self.contains(a) <== #[trigger] self.to_multiset().count(a) > 0);
+            assert(self.len() == 0);
+        } else {
+            (self.drop_first()).to_multiset_len();
+            self.drop_first().to_multiset_len();
+            assert(self.len() == self.drop_first().len() + 1);
+            assert(self.to_multiset().len() == self.drop_first().to_multiset().len() + 1);
         }
-        else {
-            lemma_set_properties::<A>();
-            self.drop_first().to_multiset_properties();
-            assert forall |a: A| self.contains(a) implies #[trigger] self.to_multiset().count(a) > 0 by {
-                if self.first() == a {
-                    assert(self.to_multiset().count(a) == self.drop_first().to_multiset().count(a) + 1);
-                    assert(self.drop_first().to_multiset().count(a) >= 0);
-                    assert(self.to_multiset().count(a) > 0);
-                } else {
-                    assert(self.contains(a));
-                    assert(exists |i: int| 0 <= i < self.len() && #[trigger] self[i] == a); //definition of contains
-                    assert(self[0] != a);
-                    assert(exists |i: int| 0 < i < self.len() && #[trigger] self[i] == a); 
-                    assert(self.drop(1) =~= self.drop_first());
-                    lemma_seq_drop_contains(self,1,a);
-                    assert(self.drop_first().contains(a));
-                    assert(self.to_multiset().count(a) == self.drop_first().to_multiset().count(a));
-                    assert(self.drop_first().to_multiset().count(a) > 0);
-                    assert(self.to_multiset().count(a) > 0);
-                }
+    }
+
+    pub proof fn to_multiset_contains(self, a: A)
+        ensures
+            self.contains(a) <==> self.to_multiset().count(a) > 0
+        decreases
+            self.len()
+    {
+
+        if self.len() != 0 {
+            // ==>
+            if self.contains(a) {
+                    if self.first() == a {
+                    } else {
+                        self.drop_first().to_multiset_contains(a);
+                        assert(self.drop(1) =~= self.drop_first());
+                        lemma_seq_drop_contains(self,1,a);
+                        assert(self.to_multiset().count(a) == self.drop_first().to_multiset().count(a));
+                    }
             }
-            assert forall |a: A| #[trigger] self.to_multiset().count(a) > 0 implies self.contains(a) by {
-                if self.first() == a {} 
-                else {
-                    assert(self.drop_first().to_multiset().count(a) > 0);
-                }
+            // <==
+            if self.to_multiset().count(a) > 0 {
+                self.drop_first().to_multiset_contains(a);
             }
+        }
+    }
+
+    /// Proof of function to_multiset() correctness
+    pub proof fn to_multiset_properties(self)
+        ensures
+            forall |a: A| #[trigger](self.push(a).to_multiset()) =~= self.to_multiset().insert(a),
+            self.len() == self.to_multiset().len(),
+            forall |a: A| self.contains(a) <==> #[trigger] self.to_multiset().count(a) > 0,
+    {
+        assert forall |a: A| #[trigger](self.push(a).to_multiset()) =~= self.to_multiset().insert(a) by {
+            self.to_multiset_build(a);
+        }
+        self.to_multiset_len();
+        assert forall |a: A| self.contains(a) <==> #[trigger] self.to_multiset().count(a) > 0 by {
+            self.to_multiset_contains(a);
         }
     }
             
