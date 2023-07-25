@@ -395,20 +395,36 @@ pub proof fn axiom_intersection_count<V>(a: Multiset<V>, b: Multiset<V>, x: V)
 }
 
 // Ported from Dafny prelude
-#[verifier(external_body)] //TODO
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_left_pseudo_idempotence<V>(a: Multiset<V>, b: Multiset<V>)
     ensures
-        #[trigger] a.intersection_with(b).intersection_with(b) == a.intersection_with(b),
-{}
+        #[trigger] a.intersection_with(b).intersection_with(b) =~= a.intersection_with(b),
+{
+    assert forall |x: V| #[trigger] a.intersection_with(b).count(x) == min(a.count(x),b.count(x)) by {
+        axiom_intersection_count(a, b, x);
+    }
+    assert forall |x: V| #[trigger] a.intersection_with(b).intersection_with(b).count(x) == min(a.count(x),b.count(x)) by {
+        axiom_intersection_count(a.intersection_with(b), b, x);
+        assert(min(min(a.count(x),b.count(x)), b.count(x)) == min(a.count(x),b.count(x)));
+    }
+}
 
 // Ported from Dafny prelude
-#[verifier(external_body)] //TODO
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_right_pseudo_idempotence<V>(a: Multiset<V>, b: Multiset<V>)
     ensures
-        #[trigger] a.intersection_with(a.intersection_with(b)) == a.intersection_with(b),
-{}
+        a.intersection_with(a.intersection_with(b)) =~= a.intersection_with(b),
+{
+    assert forall |x: V| #[trigger] a.intersection_with(b).count(x) == min(a.count(x),b.count(x)) by {
+        axiom_intersection_count(a, b, x);
+    }
+    assert forall |x: V| #[trigger] a.intersection_with(a.intersection_with(b)).count(x) == min(a.count(x),b.count(x)) by {
+        axiom_intersection_count(a, a.intersection_with(b), x);
+        assert(min(a.count(x), min(a.count(x),b.count(x))) == min(a.count(x),b.count(x)));
+    }
+}
 
 // Specification of `difference_with`
 
@@ -440,13 +456,15 @@ pub proof fn axiom_difference_count<V>(a: Multiset<V>, b: Multiset<V>, x: V)
 }
 
 // Ported from Dafny prelude
-#[verifier(external_body)] //TODO
+//#[verifier(external_body)]
 //#[verifier(broadcast_forall)]
 pub proof fn axiom_difference_bottoms_out<V>(a: Multiset<V>, b: Multiset<V>, x: V)
     ensures
         #[trigger] a.count(x) <= #[trigger] b.count(x) 
             ==> (#[trigger] a.difference_with(b)).count(x) == 0
-{}
+{
+    axiom_difference_count(a, b, x);
+}
 
 // Axiom about finiteness
 
