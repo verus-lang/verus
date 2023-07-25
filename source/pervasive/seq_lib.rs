@@ -431,21 +431,29 @@ impl<A> Seq<A> {
         decreases
             self.len()
     {
-
         if self.len() != 0 {
             // ==>
             if self.contains(a) {
                     if self.first() == a {
+                        self.to_multiset_build(a);
+                        assert(self.to_multiset() =~= Multiset::<A>::empty().insert(self.first()).add(self.drop_first().to_multiset()));
+                        assert(Multiset::<A>::empty().insert(self.first()).contains(self.first()));
                     } else {
                         self.drop_first().to_multiset_contains(a);
                         assert(self.drop(1) =~= self.drop_first());
                         lemma_seq_drop_contains(self,1,a);
                         assert(self.to_multiset().count(a) == self.drop_first().to_multiset().count(a));
+                        assert(self.contains(a) <==> self.to_multiset().count(a) > 0);
                     }
             }
             // <==
             if self.to_multiset().count(a) > 0 {
                 self.drop_first().to_multiset_contains(a);
+                assert(self.contains(a) <==> self.to_multiset().count(a) > 0);
+
+            } else {
+                assert(self.contains(a) <==> self.to_multiset().count(a) > 0);
+
             }
         }
     }
