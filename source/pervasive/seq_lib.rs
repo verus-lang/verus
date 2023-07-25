@@ -341,6 +341,8 @@ impl<A> Seq<A> {
         self.subrange(0, self.len() as int - 1)
     }
 
+    /// Dropping the last element of a concatenation of `a` and `b` is equivalent
+    /// to dropping the last element of `b` and then concatenating `a` and `b`
     pub proof fn drop_last_distributes_over_add(a: Self, b: Self)
     requires
         0 < b.len(),
@@ -783,6 +785,7 @@ pub proof fn lemma_sort_by_ensures<A>(s: Seq<A>, leq: FnSpec(A,A) ->bool)
     }
 }
 
+/// Helper function to aid with merge sort
 pub closed spec fn merge_sorted_with<A>(left: Seq<A>, right: Seq<A>, leq: FnSpec(A,A) ->bool) -> Seq<A>
     recommends
         sorted_by(left, leq),
@@ -1391,7 +1394,7 @@ pub proof fn lemma_multiset_commutative<A>(a: Seq<A>, b: Seq<A>)
     }
 }
 
-//TODO(Liz): prove
+//TODO(Liz): prove. Needs mul is commutative
 // /// The length of a flattened sequence of sequences x is less than or equal 
 // /// to the length of x multiplied by a number greater than or equal to the
 // /// length of the longest sequence in x.
@@ -1559,12 +1562,14 @@ pub proof fn lemma_seq_subrange_elements<A>(s: Seq<A>, start: int, stop: int, x:
 /************************** Lemmas about singletons **************************/
 
 // Ported from Dafny prelude
+/// The length of a singleton sequence is 1
 pub proof fn lemma_seq_singleton_length<A>(elt: A)
     ensures
         #[trigger] Seq::<A>::singleton(elt).len() == 1
 {}
 
 // Ported from Dafny prelude
+/// A singleton created from element `elt` contains only `elt` at index 0
 pub proof fn lemma_seq_singleton_index<A>(elt: A)
     ensures
         #[trigger] Seq::<A>::singleton(elt)[0] == elt,
@@ -1573,6 +1578,8 @@ pub proof fn lemma_seq_singleton_index<A>(elt: A)
 /************************** Lemmas about Take/Drop ***************************/
 
 // Ported from Dafny prelude
+/// Taking the first `n` elements of a sequence results in a sequence of length `n`,
+/// as long as `n` is within the bounds of the original sequence.
 pub proof fn lemma_seq_take_len<A>(s: Seq<A>, n: int)
     ensures
         0 <= n <= s.len() ==> #[trigger] s.take(n).len() == n,
@@ -1580,7 +1587,7 @@ pub proof fn lemma_seq_take_len<A>(s: Seq<A>, n: int)
 
 // Ported from Dafny prelude
 /// The resulting sequence after taking the first `n` elements from sequence `s` contains
-/// element `x` if and only if `x` is contained in the first `n` elements of `s`
+/// element `x` if and only if `x` is contained in the first `n` elements of `s`.
 pub proof fn lemma_seq_take_contains<A>(s: Seq<A>, n: int, x: A)
     requires
         0 <= n <= s.len(),
@@ -1596,6 +1603,8 @@ pub proof fn lemma_seq_take_contains<A>(s: Seq<A>, n: int, x: A)
 }
 
 // Ported from Dafny prelude
+/// If `j` is a valid index less than `n`, then the `j`th element of the sequence `s`
+/// is the same as `j`th element of the sequence after taking the first `n` elements of `s`.
 pub proof fn lemma_seq_take_index<A>(s: Seq<A>, n: int, j: int)
     ensures
         0<= j < n <= s.len() ==> #[trigger] s.take(n)[j] == s[j],
@@ -1603,7 +1612,7 @@ pub proof fn lemma_seq_take_index<A>(s: Seq<A>, n: int, j: int)
 
 // Ported from Dafny prelude
 /// Dropping the first `n` elements of a sequence gives a sequence of length `n` less than
-/// the original sequence's length
+/// the original sequence's length.
 pub proof fn lemma_seq_drop_len<A>(s: Seq<A>, n: int)
     ensures
         0 <= n <= s.len() ==> #[trigger] s.drop(n).len() == s.len() - n,
@@ -1611,7 +1620,7 @@ pub proof fn lemma_seq_drop_len<A>(s: Seq<A>, n: int)
 
 // Ported from Dafny prelude
 /// The resulting sequence after dropping the first `n` elements from sequence `s` contains
-/// element `x` if and only if `x` is contained in `s` before index `n`
+/// element `x` if and only if `x` is contained in `s` before index `n`.
 pub proof fn lemma_seq_drop_contains<A>(s: Seq<A>, n: int, x: A)
     requires
         0 <= n <= s.len(),
@@ -1625,18 +1634,26 @@ pub proof fn lemma_seq_drop_contains<A>(s: Seq<A>, n: int, x: A)
 }
 
 // Ported from Dafny prelude
+/// If `j` is a valid index less than `s.len() - n`, then the `j`th element of the sequence
+/// `s.drop(n)` is the same as the `j+n`th element of the sequence `s`.
 pub proof fn lemma_seq_drop_index<A>(s: Seq<A>, n: int, j: int)
     ensures
         0 <=n && 0<= j < (s.len() - n) ==> #[trigger] s.drop(n)[j] == s[j+n],
 {}
 
 // Ported from Dafny prelude
+/// If `k` is a valid index between `n` (inclusive) and the length of sequence `s` (exclusive),
+/// then the `k-n`th element of the sequence `s.drop(n)` is the same as the `k`th element of the
+/// original sequence `s`.
 pub proof fn lemma_seq_drop_index2<A>(s: Seq<A>, n: int, k: int)
     ensures 
         0 <= n <= k < s.len() ==> (#[trigger] s.drop(n))[k-n] == #[trigger] s[k]
 {}
 
 // Ported from Dafny prelude
+/// If `n` is the length of sequence `a`, then taking the first `n` elements of the concatenation
+/// `a + b` is equivalent to the sequence `a` and dropping the first `n` elements of the concatenation
+/// `a + b` is equivalent to the sequence `b`.
 pub proof fn lemma_seq_append_take_drop<A>(a: Seq<A>, b: Seq<A>, n: int)
     ensures
         n == a.len() ==> ((a+b).take(n) =~= a && (a+b).drop(n) =~= b),
@@ -1663,36 +1680,49 @@ pub proof fn lemma_seq_take_update_commut2<A>(s: Seq<A>, i: int, v: A, n: int)
 {}
 
 // Ported from Dafny prelude
+/// If `i` is a valid index after the first `n` indices of sequence `s`, updating sequence `s` at
+/// index `i` with value `v` and then dropping the first `n` elements is equivalent to dropping the first `n`
+/// elements of `s` and then updating index `i-n` to value `v`.
 pub proof fn lemma_seq_drop_update_commut1<A>(s: Seq<A>, i: int, v: A, n: int)
     ensures
         0 <= n <= i < s.len() ==> #[trigger] s.update(i,v).drop(n) =~= s.drop(n).update(i-n,v),
 {}
 
 // Ported from Dafny prelude
+/// If `i` is a valid index in the first `n` indices of sequence `s`, updating sequence `s` at
+/// index `i` with value `v` and then dropping the first `n` elements is equivalent to just dropping
+/// the first `n` elements without the update.
 pub proof fn lemma_seq_drop_update_commut2<A>(s: Seq<A>, i: int, v: A, n: int)
     ensures
         0 <= i < n <= s.len() ==> #[trigger] s.update(i,v).drop(n) =~= s.drop(n),
 {}
 
 // Ported from Dafny prelude
+/// Pushing element `v` onto the end of sequence `s` and then dropping the first `n` elements is
+/// equivalent to dropping the first `n` elements of `s` and then pushing `v` onto the end.
 pub proof fn lemma_seq_drop_build_commut<A>(s: Seq<A>, v: A, n: int)
     ensures
         0<= n <= s.len() ==> #[trigger] s.push(v).drop(n) =~= s.drop(n).push(v), 
 {}
 
 // Ported from Dafny prelude
+/// `s.drop(0)` is equivalent to `s`.
 pub proof fn lemma_seq_drop_nothing<A>(s: Seq<A>, n: int)
     ensures
         n==0 ==> #[trigger] s.drop(n) =~= s,
 {}
 
 // Ported from Dafny prelude
+/// `s.take(0)` is equivalent to the empty sequence.
 pub proof fn lemma_seq_take_nothing<A>(s: Seq<A>, n: int)
     ensures
         n==0 ==> #[trigger] s.take(n) =~= Seq::<A>::empty(),
 {}
 
 // Ported from Dafny prelude
+/// If `m + n` is less than or equal to the length of sequence `s`, then dropping the first `m` elements
+/// and then dropping the first `n` elements of the resulting sequence is equivalent to just dropping
+/// the first `m + n` elements.
 pub proof fn lemma_seq_drop_of_drop<A>(s: Seq<A>, m: int, n: int)
     ensures
         (0 <= m && 0 <= n && m+n <= s.len()) ==> s.drop(m).drop(n) =~= s.drop(m+n),

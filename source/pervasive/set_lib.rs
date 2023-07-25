@@ -16,10 +16,13 @@ use crate::prelude::Seq;
 verus! {
 
 impl<A> Set<A> {
+    
+    /// Is `true` if called by a "full" set, i.e., a set containing every element of type `A`.
     pub open spec fn is_full(self) -> bool {
         self == Set::<A>::full()
     }
 
+    /// Is `true` if called by an "empty" set, i.e., a set containing no elements and has length 0
     pub proof fn is_empty(self) -> (b: bool)
         requires
             self.finite(),
@@ -33,10 +36,16 @@ impl<A> Set<A> {
         self =~= Set::empty()
     }
 
+    /// Returns the set contains an element `f(x)` for every element `x` in `self`.
     pub open spec fn map<B>(self, f: FnSpec(A) -> B) -> Set<B> {
         Set::new(|a: B| exists|x: A| self.contains(x) && a == f(x))
     }
 
+    /// Folds the set, applying `f` to perform the fold. The next element for the fold is chosen by
+    /// the choose operator.
+    ///
+    /// Given a set `s = {x0, x1, x2, ..., xn}`, applying this function `s.fold(init, f)`
+    /// returns `f(...f(f(init, x0), x1), ..., xn)`.
     pub open spec fn fold<E>(self, init: E, f: FnSpec(E, A) -> E) -> E
         decreases
             self.len(),
@@ -53,6 +62,7 @@ impl<A> Set<A> {
         }
     }
 
+    /// Converts a set into a sequence with an arbitrary ordering.
     pub open spec fn to_seq(self) -> Seq<A> 
         // recommends
         //     self.finite()
@@ -70,6 +80,7 @@ impl<A> Set<A> {
         }
     }
 
+    /// Helper function to prove termination of function to_seq
     #[via_fn]
     pub proof fn decreases_proof(self) {
         lemma_set_properties::<A>();
@@ -77,6 +88,7 @@ impl<A> Set<A> {
         assert(self.remove(x).len() < self.len());
     }
 
+    /// Converts a set into a sequence sorted by the given ordering function `leq`
     pub open spec fn to_sorted_seq(self, leq: FnSpec(A,A) -> bool) -> Seq<A> {
         self.to_seq().sort_by(leq)
     }
@@ -142,11 +154,19 @@ impl<A> Set<A> {
         lemma_set_properties::<A>();
     }
 
-    // pub open spec fn to_multiset(self) -> Multiset<A> {
-    //     Multiset::<A>::empty().insert(self.choose()).add(self.remove(self.choose()).to_multiset())
-    // }
+    /// Converts a set into a multiset where each element from the set has
+    /// multiplicity 1 and any other element has multiplicity 0.
+    pub open spec fn to_multiset(self) -> Multiset<A> 
+        decreases 
+            self.len()
+        when
+            self.finite()
+    {
+        Multiset::<A>::empty().insert(self.choose()).add(self.remove(self.choose()).to_multiset())
+    }
 }
 
+/// A finite set with length 0 is equivalent to the empty set.
 pub proof fn lemma_len0_is_empty<A>(s: Set<A>)
     requires
         s.finite(),
@@ -161,6 +181,7 @@ pub proof fn lemma_len0_is_empty<A>(s: Set<A>)
     assert(s =~= Set::empty());
 }
 
+/// A singleton set has length 1.
 pub proof fn lemma_singleton_size<A>(s: Set<A>)
     requires
         s.is_singleton(),
@@ -198,6 +219,8 @@ pub proof fn lemma_len_union<A>(s1: Set<A>, s2: Set<A>)
     }
 }
 
+/// The size of a union of two sets is greater than or equal to the size of
+/// both individual sets.
 pub proof fn lemma_len_union_ind<A>(s1: Set<A>, s2: Set<A>)
     requires
         s1.finite(),
@@ -223,6 +246,7 @@ pub proof fn lemma_len_union_ind<A>(s1: Set<A>, s2: Set<A>)
     }
 }
 
+/// The size of the intersection of finite set `s1` and set `s2` is less than or equal to the size of `s1`.
 pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
     requires
         s1.finite(),
@@ -240,6 +264,8 @@ pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
     }
 }
 
+/// If `s1` is a subset of finite set `s2`, then the size of `s1` is less than or equal to 
+/// the size of `s2` and `s1` must be finite.
 pub proof fn lemma_len_subset<A>(s1: Set<A>, s2: Set<A>)
     requires
         s2.finite(),
@@ -252,6 +278,7 @@ pub proof fn lemma_len_subset<A>(s1: Set<A>, s2: Set<A>)
     assert(s2.intersect(s1) =~= s1);
 }
 
+/// The size of the difference of finite set `s1` and set `s2` is less than or equal to the size of `s1`.
 pub proof fn lemma_len_difference<A>(s1: Set<A>, s2: Set<A>)
     requires
         s1.finite(),
@@ -269,6 +296,7 @@ pub proof fn lemma_len_difference<A>(s1: Set<A>, s2: Set<A>)
     }
 }
 
+/// The result of filtering a finite set is finite and has size less than or equal to the original set.
 pub proof fn lemma_len_filter<A>(s: Set<A>, f: FnSpec(A) -> bool)
     requires
         s.finite(),
@@ -281,6 +309,7 @@ pub proof fn lemma_len_filter<A>(s: Set<A>, f: FnSpec(A) -> bool)
     lemma_len_intersect::<A>(s, Set::new(f));
 }
 
+/// Creates a finite set of integers in the range [lo, hi).
 pub open spec fn set_int_range(lo: int, hi: int) -> Set<int> {
     Set::new(|i: int| lo <= i && i < hi)
 }
@@ -423,6 +452,7 @@ pub proof fn lemma_maximal_is_unique<A>(r: FnSpec(A,A) -> bool, s: Set<A>)
    }
 }  
 
+/// Proof of correctness and expected behavior for `Set::find_unique_minimal`.
 pub proof fn find_unique_minimal_ensures<A>(s: Set<A>, r: FnSpec(A,A) -> bool)
     requires
         s.finite(),
@@ -495,6 +525,7 @@ pub proof fn find_unique_minimal_ensures<A>(s: Set<A>, r: FnSpec(A,A) -> bool)
     }
 }
 
+/// Proof of correctness and expected behavior for `Set::find_unique_maximal`.
 pub proof fn find_unique_maximal_ensures<A>(s: Set<A>, r: FnSpec(A,A) -> bool)
     requires
         s.finite(),
@@ -567,36 +598,47 @@ pub proof fn find_unique_maximal_ensures<A>(s: Set<A>, r: FnSpec(A,A) -> bool)
 }
 
 // Ported from Dafny prelude
+/// Taking the set union of sets `a` and `b` and then taking the set union of the result with `b` 
+/// is the same as taking the set union of `a` and `b` once.
 pub proof fn lemma_set_union_again1<A>(a: Set<A>, b: Set<A>)
     ensures
         #[trigger] a.union(b).union(b) =~= a.union(b),
 {}
 
 // Ported from Dafny prelude
+/// Taking the set union of sets `a` and `b` and then taking the set union of the result with `a` 
+/// is the same as taking the set union of `a` and `b` once.
 pub proof fn lemma_set_union_again2<A>(a: Set<A>, b: Set<A>)
     ensures
         #[trigger] a.union(b).union(a) =~= a.union(b),
 {}
 
 // Ported from Dafny prelude
+/// Taking the set intersection of sets `a` and `b` and then taking the set intersection of the result with `b`
+/// is the same as taking the set intersection of `a` and `b` once.
 pub proof fn lemma_set_intersect_again1<A>(a: Set<A>, b: Set<A>)
     ensures
         #[trigger] (a.intersect(b)).intersect(b) =~= a.intersect(b),
 {}
 
 // Ported from Dafny prelude
+/// Taking the set intersection of sets `a` and `b` and then taking the set intersection of the result with `a`
+/// is the same as taking the set intersection of `a` and `b` once.
 pub proof fn lemma_set_intersect_again2<A>(a: Set<A>, b: Set<A>)
     ensures
         #[trigger] (a.intersect(b)).intersect(a) =~= a.intersect(b),
 {}
 
 // Ported from Dafny prelude
+/// If set `s2` contains element `a`, then the set difference of `s1` and `s2` does not contain `a`.
 pub proof fn lemma_set_difference2<A>(s1: Set<A>, s2: Set<A>, a: A)
     ensures
         s2.contains(a) ==> !s1.difference(s2).contains(a),
 {}
 
 // Ported from Dafny prelude
+/// If sets `a` and `b` are disjoint, meaning they have no elements in common, then the set difference
+/// of `a + b` and `b` is equal to `a` and the set difference of `a + b` and `a` is equal to `b`.
 pub proof fn lemma_set_disjoint<A>(a: Set<A>, b: Set<A>)
     ensures
         a.disjoint(b) ==> ((#[trigger](a+b)).difference(a) =~= b && (a+b).difference(b) =~= a)
@@ -605,6 +647,8 @@ pub proof fn lemma_set_disjoint<A>(a: Set<A>, b: Set<A>)
 // Dafny encodes the second clause with a single directional, although
 // it should be fine with both directions?
 // Ported from Dafny prelude
+/// Set `s` has length 0 if and only if it is equal to the empty set. If `s` has length greater than 0,
+/// Then there must exist an element `x` such that `s` contains `x`.
 pub proof fn lemma_set_empty_equivalency_len<A>(s: Set<A>)
     requires
         s.finite()
@@ -630,6 +674,7 @@ pub proof fn lemma_set_empty_equivalency_len<A>(s: Set<A>)
 }
 
 // Ported from Dafny prelude
+/// If set `s` already contains element `a`, the inserting `a` into `s` does not change the length of `s`.
 pub proof fn lemma_set_insert_same_len<A>(s: Set<A>, a: A)
     requires
         s.finite(),
@@ -639,6 +684,7 @@ pub proof fn lemma_set_insert_same_len<A>(s: Set<A>, a: A)
 
 // magic lemma from spec function
 // Ported from Dafny prelude
+/// If set `s` does not contain element `a`, then inserting `a` into `s` increases the length of `s` by 1.
 pub proof fn lemma_set_insert_diff_len<A>(s: Set<A>, a: A)
     requires
         s.finite(),
@@ -647,6 +693,8 @@ pub proof fn lemma_set_insert_diff_len<A>(s: Set<A>, a: A)
 {}
 
 // Ported from Dafny prelude
+/// If set `s` contains element `a`, then removing `a` from `s` decreases the length of `s` by 1.
+/// If set `s` does not contain element `a`, then removing `a` from `s` does not change the length of `s`.
 pub proof fn lemma_set_remove_len_contains<A>(s: Set<A>, a: A)
     requires
         s.finite(),
@@ -656,6 +704,8 @@ pub proof fn lemma_set_remove_len_contains<A>(s: Set<A>, a: A)
 {}
 
 // Ported from Dafny prelude
+/// If sets `a` and `b` are disjoint, meaning they share no elements in common, then the length
+/// of the set union `a + b` is equal to the sum of the lengths of `a` and `b`.
 pub proof fn lemma_set_disjoint_lens<A>(a: Set<A>, b: Set<A>)
     requires
         a.finite(),
@@ -716,6 +766,11 @@ pub proof fn lemma_set_intersect_union_lens<A>(a: Set<A>, b: Set<A>)
 }
 
 // Ported from Dafny prelude
+/// The length of the set difference `A \ B` added to the length of the set difference `B \ A` added to
+/// the length of the intersection `A ∩ B` is equal to the length of the union `A + B`.
+/// 
+/// The length of the set difference `A \ B` is equal to the length of `A` minus the length of the
+/// intersection `A ∩ B`.
 pub proof fn lemma_set_difference_len<A>(a: Set<A>, b: Set<A>)
     requires
         a.finite(),
