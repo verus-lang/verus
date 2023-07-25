@@ -158,5 +158,3 @@ the purpose of the `=~=`:
 ```
 
 ---
-
-TODO: `lemma_len_intersect::<A>(...)` should not need the `::<A>`
