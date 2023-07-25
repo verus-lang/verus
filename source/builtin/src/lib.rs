@@ -1,6 +1,7 @@
+#![no_std]
 #![feature(rustc_attrs)]
 #![feature(negative_impls)]
-#![no_std]
+#![feature(const_trait_impl)]
 #![feature(unboxed_closures)]
 #![feature(fn_traits)]
 #![feature(register_tool)]
@@ -637,48 +638,70 @@ impl<T> SyncSendIfSend<T> {
 // Marker for integer types (i8 ... u128, isize, usize, nat, int)
 // so that we get reasonable type error messages when someone uses a non-Integer type
 // in an arithmetic operation.
-pub trait Integer {}
-impl Integer for u8 {}
-impl Integer for u16 {}
-impl Integer for u32 {}
-impl Integer for u64 {}
-impl Integer for u128 {}
-impl Integer for usize {}
-impl Integer for i8 {}
-impl Integer for i16 {}
-impl Integer for i32 {}
-impl Integer for i64 {}
-impl Integer for i128 {}
-impl Integer for isize {}
-impl Integer for int {}
-impl Integer for nat {}
-impl Integer for char {}
+#[const_trait]
+pub trait Integer {
+    fn integer_default() -> Self;
+}
+
+macro_rules! impl_integer {
+    ([$($t:ty)*]) => {
+        $(
+            impl const Integer for $t {
+                fn integer_default() -> Self {
+                    0
+                }
+            }
+        )*
+    }
+}
+impl_integer!([
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+impl const Integer for int {
+    fn integer_default() -> Self {
+        int {}
+    }
+}
+impl const Integer for nat {
+    fn integer_default() -> Self {
+        nat {}
+    }
+}
+impl const Integer for char {
+    fn integer_default() -> Self {
+        ' '
+    }
+}
 
 // spec literals of the form "33", which could have any Integer type
+// (this is a const fn to allow rustc to handle things like "spec const foo: int = 7")
 #[rustc_diagnostic_item = "verus::builtin::spec_literal_integer"]
 #[allow(non_camel_case_types)]
 #[verifier::spec]
-pub fn spec_literal_integer<
-    hint_please_add_suffix_on_literal_like_100u32_or_100int_or_100nat: Integer,
+pub const fn spec_literal_integer<
+    hint_please_add_suffix_on_literal_like_100u32_or_100int_or_100nat: ~const Integer,
 >(
     _s: &str,
 ) -> hint_please_add_suffix_on_literal_like_100u32_or_100int_or_100nat {
-    unimplemented!()
+    hint_please_add_suffix_on_literal_like_100u32_or_100int_or_100nat::integer_default()
 }
 
 // spec literals of the form "33int",
 // or spec literals in positions syntactically expected to be int (e.g. in "x + 33")
+// (this is a const fn to allow rustc to handle things like "spec const foo: int = 7int")
 #[rustc_diagnostic_item = "verus::builtin::spec_literal_int"]
 #[verifier::spec]
-pub fn spec_literal_int(_s: &str) -> int {
-    unimplemented!()
+pub const fn spec_literal_int(_s: &str) -> int {
+    int {}
 }
 
 // spec literals of the form "33nat"
+// (this is a const fn to allow rustc to handle things like "spec const foo: int = 7nat")
 #[rustc_diagnostic_item = "verus::builtin::spec_literal_nat"]
 #[verifier::spec]
-pub fn spec_literal_nat(_s: &str) -> nat {
-    unimplemented!()
+pub const fn spec_literal_nat(_s: &str) -> nat {
+    nat {}
 }
 
 // Fixed-width add
