@@ -386,92 +386,9 @@ impl<A> Seq<A> {
         }
     }
 
-    // Ported from Dafn\y prelude
-    /// push(a) o to_multiset = to_multiset o insert(a)
-    pub proof fn to_multiset_build(self, a: A)
-        ensures
-            self.push(a).to_multiset() =~= self.to_multiset().insert(a)
-        decreases 
-            self.len()
-    {
-        if self.len() == 0 {
-            assert(self.to_multiset() =~= Multiset::<A>::empty());
-            assert(self.push(a).drop_first() =~= Seq::<A>::empty());
-            assert(self.push(a).to_multiset() =~= Multiset::<A>::empty().insert(a).add(Seq::<A>::empty().to_multiset()));
-            
-        } else {
-            self.drop_first().to_multiset_build(a);
-            assert(self.drop_first().push(a).to_multiset() =~= self.drop_first().to_multiset().insert(a));
-            assert(self.push(a).drop_first() =~= self.drop_first().push(a));
-        }
-    }
-
-    // Ported from Dafny prelude
-    /// to_multiset() preserves length
-    pub proof fn to_multiset_len(self)
-        ensures
-            self.len() == self.to_multiset().len()
-        decreases
-            self.len()
-    {
-        if self.len() == 0 {
-            assert(self.to_multiset() =~= Multiset::<A>::empty());
-            assert(self.len() == 0);
-        } else {
-            (self.drop_first()).to_multiset_len();
-            self.drop_first().to_multiset_len();
-            assert(self.len() == self.drop_first().len() + 1);
-            assert(self.to_multiset().len() == self.drop_first().to_multiset().len() + 1);
-        }
-    }
-
-    pub proof fn to_multiset_contains(self, a: A)
-        ensures
-            self.contains(a) <==> self.to_multiset().count(a) > 0
-        decreases
-            self.len()
-    {
-        if self.len() != 0 {
-            // ==>
-            if self.contains(a) {
-                    if self.first() == a {
-                        self.to_multiset_build(a);
-                        assert(self.to_multiset() =~= Multiset::<A>::empty().insert(self.first()).add(self.drop_first().to_multiset()));
-                        assert(Multiset::<A>::empty().insert(self.first()).contains(self.first()));
-                    } else {
-                        self.drop_first().to_multiset_contains(a);
-                        assert(self.drop(1) =~= self.drop_first());
-                        lemma_seq_drop_contains(self,1,a);
-                        assert(self.to_multiset().count(a) == self.drop_first().to_multiset().count(a));
-                        assert(self.contains(a) <==> self.to_multiset().count(a) > 0);
-                    }
-            }
-            // <==
-            if self.to_multiset().count(a) > 0 {
-                self.drop_first().to_multiset_contains(a);
-                assert(self.contains(a) <==> self.to_multiset().count(a) > 0);
-
-            } else {
-                assert(self.contains(a) <==> self.to_multiset().count(a) > 0);
-
-            }
-        }
-    }
-
-    /// Proof of function to_multiset() correctness
-    pub proof fn to_multiset_properties(self)
-        ensures
-            forall |a: A| #[trigger](self.push(a).to_multiset()) =~= self.to_multiset().insert(a),
-            self.len() == self.to_multiset().len(),
-            forall |a: A| self.contains(a) <==> #[trigger] self.to_multiset().count(a) > 0,
-    {
-        assert forall |a: A| #[trigger](self.push(a).to_multiset()) =~= self.to_multiset().insert(a) by {
-            self.to_multiset_build(a);
-        }
-        self.to_multiset_len();
-        assert forall |a: A| self.contains(a) <==> #[trigger] self.to_multiset().count(a) > 0 by {
-            self.to_multiset_contains(a);
-        }
+    /// Returns the number of times an element occurs in a sequence
+    pub open spec fn multiplicity(self, x: A) -> nat {
+        self.to_multiset().count(x)
     }
             
     /// Insert item a at index i, shifting remaining elements (if any) to the right
@@ -507,7 +424,7 @@ impl<A> Seq<A> {
         else {self}
     }
 
-    // WIP, todo
+    // // WIP, todo
     // pub proof fn remove_value_ensures(self, val: A)
     //     ensures
     //         !self.contains(val) ==> self.remove_value(val) == self,
@@ -515,7 +432,17 @@ impl<A> Seq<A> {
     //         self.contains(val) ==> self.remove_value(val).to_multiset().count(val) == self.to_multiset().count(val) -1,
     //         self.no_duplicates() ==> self.remove_value(val).no_duplicates()
     //              && self.remove_value(val).to_set() == self.to_set().remove(val),
-    // {}
+    // {
+    //     assert(!self.contains(val) ==> self.remove_value(val) == self) by {
+    //         let index = self.first_index_of(val);
+    //         assert(index >= 0 ==> self.contains(val));
+
+    //     }
+    //     assume(self.contains(val) ==> self.remove_value(val).to_multiset().len() == self.to_multiset().len() -1);
+    //     assume(self.contains(val) ==> self.remove_value(val).to_multiset().count(val) == self.to_multiset().count(val) -1);
+    //     assume(self.no_duplicates() ==> self.remove_value(val).no_duplicates()
+    //              && self.remove_value(val).to_set() == self.to_set().remove(val));
+    // }
 
     /// Returns the sequence that is in reverse order to a given sequence.
     pub open spec fn reverse(self) -> Seq<A>
@@ -820,8 +747,8 @@ pub proof fn lemma_sort_by_ensures<A>(s: Seq<A>, leq: FnSpec(A,A) ->bool)
         lemma_multiset_commutative(left_sorted,right_sorted);
 
         assert forall |x: A| !s.contains(x) implies !(#[trigger] s.sort_by(leq).contains(x)) by {
-            s.to_multiset_properties();
-            s.sort_by(leq).to_multiset_properties();
+            to_multiset_properties(s);
+            to_multiset_properties(s.sort_by(leq));
             assert(!s.contains(x) ==> s.to_multiset().count(x) == 0);
         }
     }
@@ -1040,7 +967,93 @@ pub proof fn lemma_subseq_min(s: Seq<int>, from: int, to: int)
     lemma_min_properties(s.subrange(from, to));
 }
 
-/************************* End of Extrema in Sequences section **************************/
+/************************* Sequence to Multiset Conversion **************************/
+
+// Ported from Dafny prelude
+/// push(a) o to_multiset = to_multiset o insert(a)
+pub proof fn to_multiset_build<A>(s: Seq<A>, a: A)
+    ensures
+        s.push(a).to_multiset() =~= s.to_multiset().insert(a)
+    decreases 
+        s.len()
+{
+    if s.len() == 0 {
+        assert(s.to_multiset() =~= Multiset::<A>::empty());
+        assert(s.push(a).drop_first() =~= Seq::<A>::empty());
+        assert(s.push(a).to_multiset() =~= Multiset::<A>::empty().insert(a).add(Seq::<A>::empty().to_multiset()));
+        
+    } else {
+        to_multiset_build(s.drop_first(), a);
+        assert(s.drop_first().push(a).to_multiset() =~= s.drop_first().to_multiset().insert(a));
+        assert(s.push(a).drop_first() =~= s.drop_first().push(a));
+    }
+}
+
+// Ported from Dafny prelude
+/// to_multiset() preserves length
+pub proof fn to_multiset_len<A>(s: Seq<A>)
+    ensures
+        s.len() == s.to_multiset().len()
+    decreases
+        s.len()
+{
+    if s.len() == 0 {
+        assert(s.to_multiset() =~= Multiset::<A>::empty());
+        assert(s.len() == 0);
+    } else {
+        to_multiset_len(s.drop_first());
+        assert(s.len() == s.drop_first().len() + 1);
+        assert(s.to_multiset().len() == s.drop_first().to_multiset().len() + 1);
+    }
+}
+
+pub proof fn to_multiset_contains<A>(s: Seq<A>, a: A)
+    ensures
+        s.contains(a) <==> s.to_multiset().count(a) > 0
+    decreases
+        s.len()
+{
+    if s.len() != 0 {
+        // ==>
+        if s.contains(a) {
+                if s.first() == a {
+                    to_multiset_build(s,a);
+                    assert(s.to_multiset() =~= Multiset::<A>::empty().insert(s.first()).add(s.drop_first().to_multiset()));
+                    assert(Multiset::<A>::empty().insert(s.first()).contains(s.first()));
+                } else {
+                    to_multiset_contains(s.drop_first(), a);
+                    assert(s.drop(1) =~= s.drop_first());
+                    lemma_seq_drop_contains(s,1,a);
+                    assert(s.to_multiset().count(a) == s.drop_first().to_multiset().count(a));
+                    assert(s.contains(a) <==> s.to_multiset().count(a) > 0);
+                }
+        }
+        // <==
+        if s.to_multiset().count(a) > 0 {
+            to_multiset_contains(s.drop_first(), a);
+            assert(s.contains(a) <==> s.to_multiset().count(a) > 0);
+
+        } else {
+            assert(s.contains(a) <==> s.to_multiset().count(a) > 0);
+        }
+    }
+}
+
+/// Proof of function to_multiset() correctness
+pub proof fn to_multiset_properties<A>(s: Seq<A>)
+    ensures
+        forall |a: A| #[trigger](s.push(a).to_multiset()) =~= s.to_multiset().insert(a),
+        s.len() == s.to_multiset().len(),
+        forall |a: A| s.contains(a) <==> #[trigger] s.to_multiset().count(a) > 0,
+{
+    assert forall |a: A| #[trigger](s.push(a).to_multiset()) =~= s.to_multiset().insert(a) by {
+        to_multiset_build(s, a);
+    }
+    to_multiset_len(s);
+    assert forall |a: A| s.contains(a) <==> #[trigger] s.to_multiset().count(a) > 0 by {
+        to_multiset_contains(s,a);
+    }
+}
 
 
 /// The concatenation of two subsequences of a non-empty sequence, the first obtained 
@@ -1436,39 +1449,26 @@ pub proof fn lemma_multiset_commutative<A>(a: Seq<A>, b: Seq<A>)
     }
 }
 
-//TODO(Liz): prove. Needs mul is commutative
-// /// The length of a flattened sequence of sequences x is less than or equal 
-// /// to the length of x multiplied by a number greater than or equal to the
-// /// length of the longest sequence in x.
-// pub proof fn lemma_flatten_length_le_mul<A>(x: Seq<Seq<A>>, j: int)
-//     requires
-//         forall |i: int| 0 <= i < x.len() ==> (#[trigger] x[i]).len() <= j,
-//     ensures
-//         x.flatten_reverse().len() <= x.len() * j,
-//     decreases
-//         x.len(),
-// {
-//     lemma_seq_properties::<A>();
-//     lemma_seq_properties::<Seq<A>>();
-//     // These are already proven in lemma_seq_properties, so why do we need to spell it out here?
-//     assert forall |s: Seq<A>, i: int, v: A, n: int|  0 <= i < n <= s.len() implies #[trigger] s.update(i,v).drop(n) == s.drop(n) by {
-//         lemma_seq_drop_update_commut2(s, i, v, n);
-//     }
-//     assert(forall |s: Seq<A>, v: A, n: int| 0 <= n <= s.len() ==> #[trigger] s.push(v).drop(n) == s.drop(n).push(v));//axiom_seq_drop_build_commut(s, v, n),
+/// The length of a flattened sequence of sequences x is less than or equal 
+/// to the length of x multiplied by a number greater than or equal to the
+/// length of the longest sequence in x.
+pub proof fn lemma_flatten_length_le_mul<A>(x: Seq<Seq<A>>, j: int)
+    requires
+        forall |i: int| 0 <= i < x.len() ==> (#[trigger] x[i]).len() <= j,
+    ensures
+        x.flatten_reverse().len() <= x.len() * j,
+    decreases
+        x.len(),
+{
+    lemma_seq_properties::<A>();
+    lemma_seq_properties::<Seq<A>>();
     
-//     if x.len() == 0 {
-//         assert(x.flatten_reverse().len() <= x.len() * j);
-//     }
-//     else {
-//         lemma_flatten_length_le_mul(x.drop_last(), j);
-//         assert(x.drop_last().flatten_reverse().len() <= (x.len() -1) *j);
-//         assert(x.flatten_reverse().len() == x.drop_last().flatten_reverse().len() + x.last().len());
-//         assert((x.len() - 1) + 1 == x.len());
-//         assert((x.len() - 1) * j == (x.len() * j) - (1*j)); //TODO: tell verus that multiplication is distributive over subtraction
-//         assert(((x.len() -1) * j) <= (x.len() * j) - j);
-//         assert(x.flatten_reverse().len() <= x.len() * j);
-//     }
-// }
+    if x.len() == 0 {}
+    else {
+        lemma_flatten_length_le_mul(x.drop_last(), j);
+        assert((x.len() - 1) * j == (x.len() * j) - (1*j)) by (nonlinear_arith); //TODO: use math library after imported
+    }
+}
 
 /// Flattening sequences of sequences in order (starting from the beginning)
 /// and in reverse order (starting from the end) results in the same sequence.
@@ -1499,8 +1499,8 @@ ensures
 decreases
     x.len(), y.len()
 {
-x.to_multiset_properties();
-y.to_multiset_properties();
+to_multiset_properties(x);
+to_multiset_properties(y);
 if x.len() == 0 || y.len() == 0 {}
 else {
     assert(x.to_multiset().contains(x[0]));
@@ -1775,7 +1775,7 @@ pub proof fn lemma_seq_properties<A>()
     ensures
         forall |s: Seq<A>, x: A| s.contains(x) <==> exists |i: int| 0<= i < s.len() && #[trigger] s[i]==x, //lemma_seq_contains(s, x),
         forall |x: A| !(#[trigger] Seq::<A>::empty().contains(x)), //lemma_seq_empty_contains_nothing(x),
-        forall |s: Seq<A>| #[trigger] s.len() == 0 ==> s=~= Seq::<A>::empty(),//lemma_seq_empty_equality(s),
+        forall |s: Seq<A>| #[trigger] s.len() == 0 ==> s =~= Seq::<A>::empty(),//lemma_seq_empty_equality(s),
         forall |x: Seq<A>, y: Seq<A>, elt: A| #[trigger] (x+y).contains(elt) <==> x.contains(elt) ||  y.contains(elt),//lemma_seq_concat_contains_all_elements(x, y, elt),
         forall |s: Seq<A>, v: A, x: A| (#[trigger] s.push(v).contains(x) <==> v==x || s.contains(x))
                 && #[trigger] s.push(v).contains(v),//lemma_seq_contains_after_push(s, v, x)
@@ -1803,6 +1803,9 @@ pub proof fn lemma_seq_properties<A>()
         forall |s: Seq<A>, n: int| n==0 ==> #[trigger] s.drop(n) == s,//lemma_seq_drop_nothing(s, n),
         forall |s: Seq<A>, n: int| n==0 ==> #[trigger] s.take(n) == Seq::<A>::empty(), //lemma_seq_take_nothing(s, n),
         forall |s: Seq<A>, m: int, n: int| (0 <= m && 0 <= n && m+n <= s.len()) ==> s.drop(m).drop(n) == s.drop(m+n),//lemma_seq_drop_of_drop(s, m, n),
+        forall |s: Seq<A>, a: A| #[trigger](s.push(a).to_multiset()) =~= s.to_multiset().insert(a), //to_multiset_properties
+        forall |s: Seq<A>| s.len() == #[trigger] s.to_multiset().len(),  //to_multiset_properties
+        forall |s: Seq<A>, a: A| s.contains(a) <==> #[trigger] s.to_multiset().count(a) > 0, //to_multiset_properties
 {
     assert forall |x: Seq<A>, y: Seq<A>, elt: A| #[trigger] (x+y).contains(elt) implies x.contains(elt) ||  y.contains(elt) by {
         lemma_seq_concat_contains_all_elements(x, y, elt);
@@ -1870,6 +1873,18 @@ pub proof fn lemma_seq_properties<A>()
     }
     assert forall |s: Seq<A>, m: int, n: int| (0 <= m && 0 <= n && m+n <= s.len()) implies s.drop(m).drop(n) == s.drop(m+n) by {
         lemma_seq_drop_of_drop(s, m, n);
+    }
+    assert forall |s: Seq<A>, a: A| #[trigger](s.push(a).to_multiset()) =~= s.to_multiset().insert(a) by {
+        to_multiset_properties(s);
+    } 
+    assert forall |s: Seq<A>| s.len() == #[trigger] s.to_multiset().len() by {
+        to_multiset_properties(s);
+    } 
+    assert forall |s: Seq<A>, a: A| s.contains(a) implies #[trigger] s.to_multiset().count(a) > 0 by {
+        to_multiset_properties(s);
+    } 
+    assert forall |s: Seq<A>, a: A| #[trigger] s.to_multiset().count(a) > 0 implies s.contains(a) by {
+        to_multiset_properties(s);
     }
 }
 
