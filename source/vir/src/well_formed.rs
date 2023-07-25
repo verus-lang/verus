@@ -25,17 +25,6 @@ fn check_typ(ctxt: &Ctxt, typ: &Arc<TypX>, span: &air::ast::Span) -> Result<(), 
         if let TypX::Datatype(path, _, _) = &**t {
             check_path_and_get_datatype(ctxt, path, span)?;
             Ok(())
-        } else if let TypX::Projection { .. } = &**t {
-            if crate::poly::rooted_in_typ_param(t) {
-                // Types rooted in type parameters are handled with type Poly.
-                Ok(())
-            } else {
-                // Otherwise, we don't have a good way to handle boxing/unboxing.
-                // Probably the best way to handle this would be to normalize the type
-                // to a non-projection type, which could be done by rust_to_vir_base
-                // during MIR-to-VIR type translation (see the comments there).
-                error(span, "type projections on concrete types not yet supported")
-            }
         } else {
             Ok(())
         }

@@ -69,6 +69,7 @@ pub(crate) fn body_to_vir<'tcx>(
 fn check_fn_decl<'tcx>(
     span: Span,
     ctxt: &Context<'tcx>,
+    id: DefId,
     decl: &'tcx FnDecl<'tcx>,
     attrs: &[Attribute],
     mode: Mode,
@@ -89,7 +90,7 @@ fn check_fn_decl<'tcx>(
         // so we always return the default mode.
         // The current workaround is to return a struct if the default doesn't work.
         rustc_hir::FnRetTy::Return(_ty) => {
-            let typ = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, span, &output_ty, false)?;
+            let typ = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, id, span, &output_ty, false)?;
             Ok(Some((typ, get_ret_mode(mode, attrs))))
         }
     }
@@ -379,7 +380,7 @@ pub(crate) fn check_item_fn<'tcx>(
             span: _,
         } => {
             unsupported_err_unless!(*unsafety == Unsafety::Normal, sig.span, "unsafe");
-            check_fn_decl(sig.span, ctxt, decl, attrs, mode, fn_sig.output())?
+            check_fn_decl(sig.span, ctxt, id, decl, attrs, mode, fn_sig.output())?
         }
     };
 
@@ -459,6 +460,7 @@ pub(crate) fn check_item_fn<'tcx>(
         let typ = mid_ty_to_vir(
             ctxt.tcx,
             &ctxt.verus_items,
+            id,
             span,
             is_ref_mut.map(|(t, _)| t).unwrap_or(input),
             false,
@@ -1001,7 +1003,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let fn_sig = fn_sig.skip_binder();
     let inputs = fn_sig.inputs();
 
-    let ret_typ_mode = check_fn_decl(span, ctxt, decl, attrs, mode, fn_sig.output())?;
+    let ret_typ_mode = check_fn_decl(span, ctxt, id, decl, attrs, mode, fn_sig.output())?;
     let (typ_params, typ_bounds) =
         check_generics_bounds_fun(ctxt.tcx, &ctxt.verus_items, generics, id)?;
     let vattrs = get_verifier_attrs(attrs)?;
@@ -1022,6 +1024,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         let typ = mid_ty_to_vir(
             ctxt.tcx,
             &ctxt.verus_items,
+            id,
             param.span,
             is_mut.map(|(t, _)| t).unwrap_or(input),
             false,

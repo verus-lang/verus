@@ -9,6 +9,7 @@
 #![feature(core_intrinsics)]
 
 pub mod pervasive;
+pub mod array;
 pub mod bytes;
 pub mod calc_macro;
 pub mod map;

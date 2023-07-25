@@ -3,9 +3,9 @@ use crate::iter::IterDelimited;
 use crate::INDENT;
 use proc_macro2::TokenStream;
 use syn_verus::{
-    Abi, BareFnArg, ReturnType, Type, TypeArray, TypeBareFn, TypeGroup, TypeImplTrait, TypeInfer,
-    TypeMacro, TypeNever, TypeParen, TypePath, TypePtr, TypeReference, TypeSlice, TypeTraitObject,
-    TypeTuple, Variadic,
+    Abi, BareFnArg, ReturnType, Type, TypeArray, TypeBareFn, TypeFnSpec, TypeGroup, TypeImplTrait,
+    TypeInfer, TypeMacro, TypeNever, TypeParen, TypePath, TypePtr, TypeReference, TypeSlice,
+    TypeTraitObject, TypeTuple, Variadic,
 };
 
 impl Printer {
@@ -26,6 +26,7 @@ impl Printer {
             Type::TraitObject(ty) => self.type_trait_object(ty),
             Type::Tuple(ty) => self.type_tuple(ty),
             Type::Verbatim(ty) => self.type_verbatim(ty),
+            Type::FnSpec(ty) => self.type_spec_fn(ty),
             #[cfg_attr(all(test, exhaustive), deny(non_exhaustive_omitted_patterns))]
             _ => unimplemented!("unknown Type"),
         }
@@ -59,6 +60,20 @@ impl Printer {
         if let Some(variadic) = &ty.variadic {
             self.variadic(variadic);
             self.zerobreak();
+        }
+        self.offset(-INDENT);
+        self.end();
+        self.word(")");
+        self.return_type(&ty.output);
+    }
+
+    fn type_spec_fn(&mut self, ty: &TypeFnSpec) {
+        self.word("FnSpec(");
+        self.cbox(INDENT);
+        self.zerobreak();
+        for bare_fn_arg in ty.inputs.iter().delimited() {
+            self.bare_fn_arg(&bare_fn_arg);
+            self.trailing_comma(bare_fn_arg.is_last);
         }
         self.offset(-INDENT);
         self.end();
