@@ -350,22 +350,22 @@ fn test(s: S) {
 */
 
 // ANCHOR: const1
-spec const spec_one: int = 1;
+spec const SPEC_ONE: int = 1;
 
 spec fn spec_add_one(x: int) -> int {
-    x + spec_one
+    x + SPEC_ONE
 }
 
 
-const one: u8 = 1;
+const ONE: u8 = 1;
 
 fn add_one(x: u8) -> (ret: u8)
     requires
         x < 0xff,
     ensures
-        ret == x + one // use "one" in spec code
+        ret == x + ONE // use "ONE" in spec code
 {
-    x + one // use "one" in exec code
+    x + ONE // use "ONE" in exec code
 }
 // ANCHOR_END: const1
 
