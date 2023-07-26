@@ -591,7 +591,7 @@ impl Verifier {
         qid_map: &HashMap<String, vir::sst::BndInfo>,
         module: &vir::ast::Path,
         function_name: Option<&Fun>,
-        comment: (&str, &str),
+        comment: &str,
         desc_prefix: Option<&str>,
     ) -> bool {
         if let Some(verify_function) = &self.args.verify_function {
@@ -609,8 +609,8 @@ impl Verifier {
             &*commands_with_context;
         if commands.len() > 0 {
             air_context.blank_line();
-            air_context.comment(comment.0);
-            air_context.comment(comment.1);
+            air_context.comment(comment);
+            air_context.comment(&span.as_string);
         }
         let desc = desc_prefix.unwrap_or("").to_string() + desc;
         for command in commands.iter() {
@@ -1008,7 +1008,7 @@ impl Verifier {
                     &ctx.global.qid_map.borrow(),
                     module,
                     Some(&function.x.name),
-                    (&("Function-Termination ".to_string() + &fun_as_friendly_rust_name(f)), &function.span.clone().as_string),
+                    &("Function-Termination ".to_string() + &fun_as_friendly_rust_name(f)),
                     Some("function termination: "),
                 );
                 let check_recommends = function.x.attrs.check_recommends;
@@ -1040,7 +1040,7 @@ impl Verifier {
                             &ctx.global.qid_map.borrow(),
                             module,
                             Some(&function.x.name),
-                            (&(s.to_string() + &fun_as_friendly_rust_name(&function.x.name)), &function.span.clone().as_string),
+                            &(s.to_string() + &fun_as_friendly_rust_name(&function.x.name)),
                             Some("recommends check: "),
                         );
                     }
@@ -1168,7 +1168,7 @@ impl Verifier {
                         &ctx.global.qid_map.borrow(),
                         module,
                         Some(&function.x.name),
-                        (&(s.to_string() + &fun_as_friendly_rust_name(&function.x.name)), &function.span.clone().as_string),
+                        &(s.to_string() + &fun_as_friendly_rust_name(&function.x.name)), 
                         desc_prefix,
                     );
                     if do_spinoff {
