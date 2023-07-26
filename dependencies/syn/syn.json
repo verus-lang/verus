@@ -846,6 +846,11 @@
         "any": []
       },
       "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
         "token": {
           "token": "Ensures"
         },

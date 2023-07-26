@@ -430,6 +430,7 @@ impl Hash for Ensures {
     where
         H: Hasher,
     {
+        self.attrs.hash(state);
         self.exprs.hash(state);
     }
 }

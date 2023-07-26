@@ -277,3 +277,30 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "forall, choose, and exists do not allow parentheses")
 }
+
+test_verify_one_file! {
+    #[test] test_inner_triggers_broadcast_forall verus_code! {
+        mod M {
+            pub struct A {}
+            impl A {
+                pub spec fn f1(&self) -> bool;
+                pub spec fn f2(&self) -> bool;
+                pub spec fn f3(&self) -> bool;
+            }
+
+            #[verifier::external_body]
+            #[verifier::broadcast_forall]
+            pub proof fn ab(a: A)
+                ensures #![trigger a.f1()] (a.f1() ==> a.f2()) && a.f3()
+            {
+            }
+        }
+
+        use M::*;
+        proof fn p(a: A)
+            requires a.f1(),
+            ensures a.f2(),
+        {
+        }
+    } => Ok(())
+}

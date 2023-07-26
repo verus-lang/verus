@@ -120,6 +120,7 @@ ast_struct! {
 
 ast_struct! {
     pub struct Ensures {
+        pub attrs: Vec<Attribute>,
         pub token: Token![ensures],
         pub exprs: Specification,
     }
@@ -428,8 +429,12 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Ensures {
         fn parse(input: ParseStream) -> Result<Self> {
+            let mut attrs = Vec::new();
+            let token = input.parse()?;
+            attr::parsing::parse_inner(input, &mut attrs)?;
             Ok(Ensures {
-                token: input.parse()?,
+                attrs,
+                token,
                 exprs: input.parse()?,
             })
         }
