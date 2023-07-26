@@ -1,7 +1,3 @@
-// TODO: make a table of every Dafny lemma/axiom and the verus equivalent
-// include notes of any skipped lemmas
-// include this in PR description
-
 use core::marker;
 
 #[allow(unused_imports)]
