@@ -212,6 +212,8 @@ pub proof fn axiom_set_remove_same<A>(s: Set<A>, a: A)
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_set_remove_insert<A>(s: Set<A>, a: A)
+    requires
+        s.contains(a),
     ensures
         (#[trigger] s.remove(a)).insert(a) == s,
 {

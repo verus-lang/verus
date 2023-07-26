@@ -84,8 +84,11 @@ impl<A> Set<A> {
     #[via_fn]
     pub proof fn decreases_proof(self) {
         lemma_set_properties::<A>();
-        let x = self.choose();
-        assert(self.remove(x).len() < self.len());
+        if self.len() >0 {
+            let x = self.choose();
+            assert(self.contains(x));
+            assert(self.remove(x).len() < self.len());
+        }
     }
 
     /// Converts a set into a sequence sorted by the given ordering function `leq`
@@ -113,7 +116,7 @@ impl<A> Set<A> {
         via 
             Self::prove_decrease_min_unique
     {
-        if self.len() == 1 {self.choose()}
+        if self.len() <= 1 {self.choose()}
         else {
             let x = choose |x: A| self.contains(x);
             let min = self.remove(x).find_unique_minimal(r);
@@ -125,6 +128,11 @@ impl<A> Set<A> {
     proof fn prove_decrease_min_unique(self, r: FnSpec(A,A) -> bool)
     {
         lemma_set_properties::<A>();
+        if self.len() >0 {
+            let x = self.choose();
+            assert(self.contains(x));
+            assert(self.remove(x).len() < self.len());
+        }
     }
 
 
@@ -141,7 +149,7 @@ impl<A> Set<A> {
         via 
             Self::prove_decrease_max_unique
     {
-        if self.len() == 1 {self.choose()}
+        if self.len() <= 1 {self.choose()}
         else {
             let x = choose |x: A| self.contains(x);
             let max = self.remove(x).find_unique_maximal(r);
@@ -162,7 +170,10 @@ impl<A> Set<A> {
         when
             self.finite()
     {
-        Multiset::<A>::empty().insert(self.choose()).add(self.remove(self.choose()).to_multiset())
+        if self.len() == 0 {Multiset::<A>::empty()}
+        else {
+            Multiset::<A>::empty().insert(self.choose()).add(self.remove(self.choose()).to_multiset())
+        }
     }
 }
 
@@ -798,7 +809,7 @@ pub proof fn lemma_set_difference_len<A>(a: Set<A>, b: Set<A>)
         a.finite(),
         b.finite(),
     ensures
-        (#[trigger] a.difference(b).len() + b.difference(a).len() + a.intersect(b).len() == (a+b).len()) 
+        (a.difference(b).len() + b.difference(a).len() + a.intersect(b).len() == (a+b).len()) 
             && (a.difference(b).len() == a.len() - a.intersect(b).len()),
     decreases
         a.len(),
@@ -846,20 +857,20 @@ pub proof fn lemma_set_difference_len<A>(a: Set<A>, b: Set<A>)
             assert(a.remove(x).difference(b).len() == a.difference(b).len() -1);
             assert(!b.difference(a).contains(x));
             assert(!b.difference(a.remove(x)).contains(x));
+
+            assert(b.difference(a.remove(x)) =~= b.difference(a));
             assert(b.difference(a).len() == b.difference(a.remove(x)).len());
-            assert(a.remove(x).intersect(b).len() == a.intersect(b).len());
+
+            assert(b.remove(x) =~= b);
+            assert(!a.remove(x).intersect(b).contains(x));
+            assert(!a.intersect(b).contains(x));
+            assert(a.remove(x).intersect(b) =~= a.intersect(b));
+            assert(a.remove(x).intersect(b).len() == a.intersect(b).len()); //key
             assert(a.difference(b).len() + b.difference(a).len() + a.intersect(b).len() == (a+b).len());
         }
-        assert(a.difference(b).len() == a.len() - a.intersect(b).len());
+        //assert(a.difference(b).len() == a.len() - a.intersect(b).len());
     }
 }
-
-// pub proof fn lemma_multiset_from_set<A>()
-//     ensures
-//         forall |s: Set<A>, a: A| 
-//             (#[trigger] s.to_multiset().count(a) == 0 <==> (!s.contains(a)))
-//             && (s.to_multiset().count(a) == 1 <==> s.contains(a)),
-// {}
 
 // magic auto style bundle of lemmas that Dafny considers when proving properties of sets
 pub proof fn lemma_set_properties<A>()
@@ -875,7 +886,7 @@ pub proof fn lemma_set_properties<A>()
         forall |s: Set<A>, a: A| (s.contains(a) && s.finite()) ==> #[trigger] s.insert(a).len() == s.len(), //lemma_set_insert_same_len
         forall |s: Set<A>, a: A| (s.finite() && !s.contains(a)) ==> #[trigger] s.insert(a).len() == s.len() + 1, //lemma_set_insert_diff_len 
         forall |s: Set<A>, a: A| ((s.finite() && s.contains(a)) ==> (#[trigger] (s.remove(a).len()) == s.len() -1))
-                && (!s.contains(a) ==> s.len() == s.remove(a).len()), //lemma_set_remove_len_contains
+                && ((s.finite() && !s.contains(a)) ==> s.len() == s.remove(a).len()), //lemma_set_remove_len_contains
         forall |a: Set<A>, b: Set<A>| (a.finite() && b.finite() && a.disjoint(b)) ==> #[trigger] (a+b).len() == a.len() + b.len(), //lemma_set_disjoint_lens
         forall |a: Set<A>, b: Set<A>| (a.finite() && b.finite()) ==> #[trigger] (a+b).len() + #[trigger] a.intersect(b).len() == a.len() + b.len(), //lemma_set_intersect_union_lens
         forall |a: Set<A>, b: Set<A>| (a.finite() && b.finite()) ==> ((#[trigger] a.difference(b).len() + b.difference(a).len() + a.intersect(b).len() == (a+b).len()) 
@@ -904,6 +915,9 @@ pub proof fn lemma_set_properties<A>()
     }
     assert forall |s: Set<A>, a: A| (s.finite() && !s.contains(a)) implies #[trigger] s.insert(a).len() == s.len() + 1 by {
         lemma_set_insert_diff_len(s,a);
+    }
+    assert forall |s: Set<A>, a: A| (s.finite() && !s.contains(a)) implies s.len() == #[trigger] s.remove(a).len() by {
+        lemma_set_remove_len_contains(s, a);
     }
     assert forall |s: Set<A>, a: A| s.contains(a) && s.finite() implies (#[trigger] (s.remove(a).len()) == s.len() -1) by {
         lemma_set_remove_len_contains(s, a);
