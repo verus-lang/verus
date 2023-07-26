@@ -210,7 +210,7 @@ pub fn parse_args_with_imports(
     opts.optopt(
         "",
         OPT_RLIMIT,
-        format!("Set SMT resource limit (roughly in seconds). Default: {} (available parallelism on this system).", DEFAULT_RLIMIT_SECS)
+        format!("Set SMT resource limit (roughly in seconds). Default: {}.", DEFAULT_RLIMIT_SECS)
             .as_str(),
         "INTEGER",
     );
@@ -263,7 +263,7 @@ pub fn parse_args_with_imports(
     opts.optopt(
         "",
         OPT_NUM_THREADS,
-        format!("Number of threads to use for verification. Default: {}.", default_num_threads)
+        format!("Number of threads to use for verification. Default: {} (available parallelism on this system).", default_num_threads)
             .as_str(),
         "INTEGER",
     );
