@@ -393,7 +393,9 @@ pub proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
     ensures
-        #[trigger] (m1 =~= m2) <==> {
+        #![trigger (m1 =~= m2)]
+        #![trigger (m1.dom() =~= m2.dom())]
+        (m1 =~= m2) <==> {
             &&& m1.dom() =~= m2.dom()
             &&& forall|k: K| #![auto] m1.dom().contains(k) ==> m1[k] == m2[k]
         },
