@@ -1017,6 +1017,9 @@ pub fn check_crate(krate: &Krate, diags: &mut Vec<VirErrAs>) -> Result<(), VirEr
                 &function,
             )?;
         }
+        if function.x.body.is_none() && function.x.fuel == 0 {
+            return error(&function.span, "opaque has no effect on a function without a body");
+        }
     }
     for function in krate.functions.iter() {
         if function.x.attrs.is_decrease_by

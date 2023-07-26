@@ -1768,3 +1768,12 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] trait_fn_opaqueness verus_code! {
+        trait Foo {
+            #[verifier::opaque]
+            open spec fn foo(&self) -> bool;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "opaque has no effect on a function without a body")
+}
