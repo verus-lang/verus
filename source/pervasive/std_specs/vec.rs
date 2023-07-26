@@ -202,8 +202,6 @@ pub fn ex_vec_remove<T, A: Allocator>(vec: &mut Vec<T, A>, i: usize) -> (element
     ensures
         element == old(vec)[i as int],
         vec@ == old(vec)@.remove(i as int),
-        forall |i: int| 1<= i < old(vec)@.len() ==> old(vec)[i-1] == vec[i],
-
 {
     vec.remove(i)
 }
