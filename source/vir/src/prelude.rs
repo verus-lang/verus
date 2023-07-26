@@ -621,9 +621,14 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         //  - the closure
         //  - param value (as tuple)
         //  - ret value (for closure_ens only)
+        //
+        // Also for the closure type param, we exclude the decoration.
+        // This is useful because it's pretty easy to write code that instantiates
+        // type parameters with either `F` or `&F` (where F: Fn(...))
+        // So we need to be able to handle both.
 
-        (declare-fun [closure_req] ([decoration] [typ] [decoration] [typ] [Poly] [Poly]) Bool)
-        (declare-fun [closure_ens] ([decoration] [typ] [decoration] [typ] [Poly] [Poly] [Poly]) Bool)
+        (declare-fun [closure_req] (/*[decoration] skipped */ [typ] [decoration] [typ] [Poly] [Poly]) Bool)
+        (declare-fun [closure_ens] (/*[decoration] skipped */ [typ] [decoration] [typ] [Poly] [Poly] [Poly]) Bool)
     )
 }
 

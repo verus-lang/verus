@@ -1141,3 +1141,62 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] ref_decoration_in_type_params_issue619 ["vstd"] => verus_code! {
+        // Sometimes when we instantiate a type parameter,
+        // either when calling a function, or calling foo.requires or foo.ensures,
+        // we end up instantiating it with a reference type &F.
+        // This test makes sure we don't have verification failures as a result
+        // The ref decoration should be ignored
+
+        fn test0<T: Copy, F>(left: T, right: T, leq: &F)
+            where F: Fn(T, T) -> bool
+            requires
+                forall |x, y| #[trigger] leq.requires((x, y))
+        {
+            let x = leq(left, right);
+        }
+
+        fn moo() {
+            let t = || { };
+            t();
+        }
+
+        fn stuff2<T: FnOnce() -> bool>(t: T)
+            requires t.requires(()),
+                !t.ensures((), false),
+        {
+            t();
+        }
+
+        fn moo2() {
+            let t = || -> (b: bool) ensures b == true { true };
+            stuff2(t);
+        }
+
+        fn stuff3<T: Fn() -> bool>(t: T)
+            requires t.requires(()),
+                !t.ensures((), false),
+        {
+            t();
+        }
+
+        fn moo3() {
+            let t = || -> (b: bool) ensures b == true { true };
+            stuff3(t);
+        }
+
+        fn stuff4<T: Fn() -> bool>(t: &T)
+            requires t.requires(()),
+                !t.ensures((), false),
+        {
+            t();
+        }
+
+        fn moo4() {
+            let t = || -> (b: bool) ensures b == true { true };
+            stuff4(&t);
+        }
+    } => Ok(())
+}

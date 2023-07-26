@@ -800,7 +800,17 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             ident_apply(&name, &exprs)
         }
         (ExpX::Call(CallFun::InternalFun(func), typs, args), false) => {
+            // These functions are special-cased to not take a decoration argument for
+            // the first type parameter.
+            let skip_first_decoration = match func {
+                InternalFun::ClosureReq | InternalFun::ClosureEns => true,
+                _ => false,
+            };
+
             let mut exprs: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
+            if crate::context::DECORATE && skip_first_decoration {
+                exprs.remove(0);
+            }
             for arg in args.iter() {
                 exprs.push(exp_to_expr(ctx, arg, expr_ctxt)?);
             }
