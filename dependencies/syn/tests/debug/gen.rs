@@ -642,6 +642,9 @@ impl Debug for Lite<syn::Ensures> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
         let mut formatter = formatter.debug_struct("Ensures");
+        if !_val.attrs.is_empty() {
+            formatter.field("attrs", Lite(&_val.attrs));
+        }
         formatter.field("exprs", Lite(&_val.exprs));
         formatter.finish()
     }

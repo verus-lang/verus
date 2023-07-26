@@ -1318,6 +1318,7 @@ where
     F: Fold + ?Sized,
 {
     Ensures {
+        attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
         token: Token![ensures](tokens_helper(f, &node.token.span)),
         exprs: f.fold_specification(node.exprs),
     }

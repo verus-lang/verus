@@ -501,6 +501,7 @@ impl Debug for DeriveInput {
 impl Debug for Ensures {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("Ensures");
+        formatter.field("attrs", &self.attrs);
         formatter.field("token", &self.token);
         formatter.field("exprs", &self.exprs);
         formatter.finish()

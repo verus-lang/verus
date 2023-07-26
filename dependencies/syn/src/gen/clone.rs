@@ -288,6 +288,7 @@ impl Clone for DeriveInput {
 impl Clone for Ensures {
     fn clone(&self) -> Self {
         Ensures {
+            attrs: self.attrs.clone(),
             token: self.token.clone(),
             exprs: self.exprs.clone(),
         }
