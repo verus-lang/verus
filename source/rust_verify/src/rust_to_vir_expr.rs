@@ -1161,10 +1161,13 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         // `exec_nonstatic_call` which is defined in the pervasive lib.
                         let span = bctx.ctxt.spans.to_air_span(expr.span.clone());
                         let tup = vir::ast_util::mk_tuple(&span, &Arc::new(vir_args));
-                        let fun = vir::def::exec_nonstatic_call_fun(&bctx.ctxt.vstd_crate_name);
+                        let helper_fun =
+                            vir::def::exec_nonstatic_call_fun(&bctx.ctxt.vstd_crate_name);
                         let ret_typ = expr_typ.clone();
 
-                        // We need the tuple type to have the correct decoration:
+                        // Anything that goes in `typ_args` needs to have the correct
+                        // decoration, so call mid_ty_to_vir for these
+                        // Compute `tup_typ` with the correct decoration:
                         let mut arg_typs = vec![];
                         for arg in args {
                             arg_typs.push(mid_ty_to_vir(
@@ -1178,11 +1181,25 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         }
                         let tup_typ = Arc::new(TypX::Tuple(Arc::new(arg_typs)));
 
-                        let typ_args = Arc::new(vec![tup_typ, ret_typ, vir_fun.typ.clone()]);
+                        // Compute fun_typ with the correct decoration
+                        // (technically not needed since the fun_typ decoration gets
+                        // ignored later, but for consistency with other typ_args I
+                        // decided to get the decorated version)
+                        // Also, allow &mut refs here since that can happen for FnMut.
+                        let fun_typ = mid_ty_to_vir(
+                            tcx,
+                            &bctx.ctxt.verus_items,
+                            bctx.fun_id,
+                            fun.span,
+                            &fun_ty,
+                            true,
+                        )?;
+
+                        let typ_args = Arc::new(vec![tup_typ, ret_typ, fun_typ]);
                         (
                             CallTarget::Fun(
                                 vir::ast::CallTargetKind::Static,
-                                fun,
+                                helper_fun,
                                 typ_args,
                                 Arc::new(vec![]),
                                 AutospecUsage::Final,
