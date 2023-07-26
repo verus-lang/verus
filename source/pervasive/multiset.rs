@@ -1,4 +1,3 @@
-// TODO: add example of Multiset::new() usage
 use core::{marker};
 
 #[allow(unused_imports)]
@@ -319,15 +318,7 @@ pub proof fn axiom_len_add<V>(m1: Multiset<V>, m2: Multiset<V>)
 pub proof fn axiom_len_sub<V>(m1: Multiset<V>, m2: Multiset<V>)
     requires m2.le(m1)
     ensures (#[trigger] m1.sub(m2).len()) == m1.len() - m2.len(),
-{
-    // assert(m2.le(m1));
-    // assert(forall |v: V| m2.count(v) <= m1.count(v));
-    // assert(forall |x: V| #[trigger] m1.sub(m2).count(x) == m1.count(x) - m2.count(x));
-    // // Put somehting about len being the sum of counts here.
-    // let temp = m1;
-    // temp
-    // assert(m1.len() == m1.count(v) + m1.sub(Multiset::singleton(v)).len());
-}
+{}
 
 /// The count for any given value `v` in a multiset `m` must be less than or equal to the length of `m`.
 #[verifier(external_body)]

@@ -363,7 +363,6 @@ impl<A> Seq<A> {
     }
 
     /// returns `true` if the sequence has no duplicate elements
-    // #[verifier::opaque]
     pub open spec fn no_duplicates(self) -> bool {
         forall|i, j| (0 <= i < self.len() && 0 <= j < self.len() && i != j)
             ==> self[i] != self[j]
@@ -427,26 +426,6 @@ impl<A> Seq<A> {
         if index >= 0 {self.remove(index)}
         else {self}
     }
-
-    // // WIP, todo
-    // pub proof fn remove_value_ensures(self, val: A)
-    //     ensures
-    //         !self.contains(val) ==> self.remove_value(val) == self,
-    //         self.contains(val) ==> self.remove_value(val).to_multiset().len() == self.to_multiset().len() -1,
-    //         self.contains(val) ==> self.remove_value(val).to_multiset().count(val) == self.to_multiset().count(val) -1,
-    //         self.no_duplicates() ==> self.remove_value(val).no_duplicates()
-    //              && self.remove_value(val).to_set() == self.to_set().remove(val),
-    // {
-    //     assert(!self.contains(val) ==> self.remove_value(val) == self) by {
-    //         let index = self.first_index_of(val);
-    //         assert(index >= 0 ==> self.contains(val));
-
-    //     }
-    //     assume(self.contains(val) ==> self.remove_value(val).to_multiset().len() == self.to_multiset().len() -1);
-    //     assume(self.contains(val) ==> self.remove_value(val).to_multiset().count(val) == self.to_multiset().count(val) -1);
-    //     assume(self.no_duplicates() ==> self.remove_value(val).no_duplicates()
-    //              && self.remove_value(val).to_set() == self.to_set().remove(val));
-    // }
 
     /// Returns the sequence that is in reverse order to a given sequence.
     pub open spec fn reverse(self) -> Seq<A>
@@ -1056,6 +1035,25 @@ pub proof fn to_multiset_properties<A>(s: Seq<A>)
     to_multiset_len(s);
     assert forall |a: A| s.contains(a) <==> #[trigger] s.to_multiset().count(a) > 0 by {
         to_multiset_contains(s,a);
+    }
+}
+
+/// Given a sequence with no duplicates, each element occurs only 
+/// once in its conversion to a multiset
+pub proof fn lemma_multiset_has_no_duplicates<A>(s: Seq<A>)
+    requires
+        s.no_duplicates(),
+    ensures
+        forall |x: A| s.to_multiset().contains(x) ==> s.to_multiset().count(x) == 1,
+    decreases
+        s.len()
+{
+    if s.len() == 0 {
+        assert(forall |x: A| s.to_multiset().contains(x) ==> s.to_multiset().count(x) == 1);
+    } else {
+        lemma_seq_properties::<A>();
+        assert(s.drop_last().push(s.last()) =~= s);
+        lemma_multiset_has_no_duplicates(s.drop_last());
     }
 }
 

@@ -195,6 +195,26 @@ pub proof fn lemma_singleton_size<A>(s: Set<A>)
     
 }
 
+/// A set has exactly one element, if and only if, it has at least one element and any two elements are equal.
+pub proof fn lemma_is_singleton<A>(s: Set<A>)
+    requires
+        s.finite(),
+    ensures
+        s.is_singleton() == (s.len() == 1)
+{
+    if s.is_singleton() {
+        lemma_singleton_size(s);
+    }
+    if s.len() == 1 {
+        assert forall |x: A, y: A| s.contains(x) && s.contains(y) implies x==y by {
+            let x = choose |x: A| s.contains(x);
+            lemma_set_properties::<A>();
+            assert(s.remove(x).len() == 0);
+            assert(s.insert(x) =~= s);
+        }
+    }
+}
+
 /// The size of a union of two sets is less than or equal to the size of
 /// both individual sets combined.
 pub proof fn lemma_len_union<A>(s1: Set<A>, s2: Set<A>)
@@ -314,6 +334,8 @@ pub open spec fn set_int_range(lo: int, hi: int) -> Set<int> {
     Set::new(|i: int| lo <= i && i < hi)
 }
 
+/// If a set solely contains integers in the range [a, b), then its size is
+/// bounded by b - a.
 pub proof fn lemma_int_range(lo: int, hi: int)
     requires
         lo <= hi,
