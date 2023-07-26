@@ -1,4 +1,5 @@
 use chrono::{prelude::*, DateTime};
+use regex::Regex;
 use std::time::{Duration, Instant};
 use std::{
     env,
@@ -80,10 +81,18 @@ fn run() -> Result<(), String> {
             .to_string(),
     );
 
-    let z3_version_output =
-        Command::new(z3_path.clone()).arg("--version").output().map_err(|x| {
-            format!("failed to execute z3 with error message {}, path is at {:?}", x, z3_path)
-        })?;
+    let z3_version_output = match Command::new(z3_path.clone()).arg("--version").output() {
+        Ok(output) => Some(output),
+        Err(err) => {
+            eprintln!(
+                "{}: failed to execute z3 with error message {}, path is at {:?}",
+                yansi::Paint::yellow("warning"),
+                err,
+                z3_path
+            );
+            None
+        }
+    };
 
     // mandating --time and --output-json flag, we remove both flags here to prevent passing duplicates to verus
     if our_args.contains(&"--time".to_string()) || our_args.contains(&"--output-json".to_string()) {
@@ -155,65 +164,86 @@ fn run() -> Result<(), String> {
 
 fn toml_setup_and_write(
     args: Vec<String>,
-    z3_version_output: std::process::Output,
+    z3_version_output: Option<std::process::Output>,
     verus_output: std::process::Output,
     verus_duration: Duration,
 ) -> Result<(), String> {
-    let z3_version =
-        str::from_utf8(&z3_version_output.stdout).map_err(|x| format!("{}", x))?.to_string();
+    let z3_version: Option<toml::Value> = if let Some(z3_version_output) = z3_version_output {
+        let mut z3_version = Map::new();
+        let stdout_str = str::from_utf8(&z3_version_output.stdout)
+            .map_err(|x| format!("z3 version output is not valid utf8 ({})", x))?
+            .to_string();
+        let z3_version_re = Regex::new(r"Z3 version (\d+\.\d+\.\d+) - \d+ bit")
+            .expect("failed to compile z3 version regex");
+        if let Some(captures) = z3_version_re.captures(&stdout_str) {
+            z3_version.insert("version".into(), Value::String(captures[1].into()));
+        } else {
+            eprintln!("{}: failed to parse z3 version stdout", yansi::Paint::yellow("warning"),);
+        }
+        z3_version.insert("stdout".into(), Value::String(stdout_str));
+        Some(Value::Table(z3_version))
+    } else {
+        None
+    };
 
     let verus_time = verus_duration.as_secs_f64();
 
     let stdout_string = String::from_utf8_lossy(&verus_output.stdout).to_string();
 
-    let stdout_json = match serde_json::from_str::<serde_json::Value>(&stdout_string) {
-        Ok(json) => json,
-        Err(err) => {
-            eprintln!(
-                "{}: failed to parse stdout to json with error message:\n {}",
-                yansi::Paint::yellow("warning"),
-                err
-            );
-            serde_json::Value::Null
-        }
-    };
+    let stdout_json: Option<serde_json::Value> =
+        match serde_json::from_str::<serde_json::Value>(&stdout_string) {
+            Ok(json) => Some(json),
+            Err(err) => {
+                eprintln!(
+                    "{}: failed to parse stdout to json with error message:\n {}",
+                    yansi::Paint::yellow("warning"),
+                    err
+                );
+                None
+            }
+        };
 
-    let version_info: toml::Value = match serde_json::from_str(&stdout_json["verus"].to_string()) {
-        Ok(json) => json,
-        Err(err) => {
-            eprintln!(
-                "{}: failed to parse version info to toml with error message:\n {}",
-                yansi::Paint::yellow("warning"),
-                err
-            );
-            toml::Value::String("".to_string())
+    let version_info: Option<toml::Value> = stdout_json.as_ref().and_then(|stdout_json| {
+        match serde_json::from_value(stdout_json["verus"].clone()) {
+            Ok(json) => Some(json),
+            Err(err) => {
+                eprintln!(
+                    "{}: failed to parse version info to toml with error message:\n {}",
+                    yansi::Paint::yellow("warning"),
+                    err
+                );
+                None
+            }
         }
-    };
+    });
 
-    let verification_result: toml::map::Map<String, Value> =
-        match serde_json::from_str(&stdout_json["verification-results"].to_string()) {
-            Ok(json) => json,
+    let verification_result: Option<toml::Value> = stdout_json.as_ref().and_then(|stdout_json| {
+        match serde_json::from_value(stdout_json["verification-results"].clone()) {
+            Ok(json) => Some(json),
             Err(err) => {
                 eprintln!(
                     "{}: failed to parse verification results to toml with error message:\n {}",
                     yansi::Paint::yellow("warning"),
                     err
                 );
-                toml::map::Map::new()
+                None
             }
-        };
-
-    let stdout_toml_text = match serde_json::from_str::<toml::Value>(&stdout_string) {
-        Ok(json) => json,
-        Err(err) => {
-            eprintln!(
-                "{}: failed to parse stdout to toml with error message:\n {}",
-                yansi::Paint::yellow("warning"),
-                err
-            );
-            toml::Value::String("".to_string())
         }
-    };
+    });
+
+    let stdout_toml = stdout_json.and_then(|stdout_json| {
+        match serde_json::from_value::<toml::Value>(stdout_json) {
+            Ok(json) => Some(json),
+            Err(err) => {
+                eprintln!(
+                    "{}: failed to convert stdout to toml with error message:\n {}",
+                    yansi::Paint::yellow("warning"),
+                    err
+                );
+                None
+            }
+        }
+    });
 
     let stderr = String::from_utf8_lossy(&verus_output.stderr).to_string();
 
@@ -223,7 +253,7 @@ fn toml_setup_and_write(
         version_info,
         verification_result,
         verus_time,
-        stdout_toml_text,
+        stdout_toml,
         stderr,
     ))
     .map_err(|x| format!("Could not encode TOML value with error message: {}", x))?;
@@ -238,25 +268,31 @@ fn toml_setup_and_write(
 // the command-line arguments, versions, rough time info, and verus output.
 fn create_toml(
     args: Vec<String>,
-    z3_version: String,
-    verus_version: toml::Value,
-    verification_result: toml::map::Map<String, Value>,
+    z3_version: Option<toml::Value>,
+    verus_version: Option<toml::Value>,
+    verification_results: Option<toml::Value>,
     verus_time: f64,
-    stdout: toml::Value,
+    stdout: Option<toml::Value>,
     stderr: String,
 ) -> Value {
     let mut command_line_arguments = Map::new();
     command_line_arguments.insert("args".to_string(), Value::String(args.join(" ")));
 
     let mut versions = Map::new();
-    versions.insert("z3-version".to_string(), Value::String(z3_version));
-    versions.insert("verus-version".to_string(), verus_version);
+    if let Some(z3_version) = z3_version {
+        versions.insert("z3".to_string(), z3_version);
+    }
+    if let Some(verus_version) = verus_version {
+        versions.insert("verus".to_string(), verus_version);
+    }
 
     let mut time = Map::new();
     time.insert("verus-time".to_string(), Value::Float(verus_time));
 
     let mut output = Map::new();
-    output.insert("stdout".to_string(), stdout);
+    if let Some(stdout) = stdout {
+        output.insert("stdout".to_string(), stdout);
+    }
     output.insert("stderr".to_string(), Value::String(stderr));
 
     let mut map = Map::new();
@@ -264,12 +300,14 @@ fn create_toml(
         "title".to_string(),
         Value::String("Error report file - details and dependencies".to_string()),
     );
-    map.insert("report-schema-version".into(), Value::String("1".to_string()));
+    map.insert("report-schema-version".into(), Value::String("1.1".to_string()));
     map.insert("command-line-arguments".into(), Value::Table(command_line_arguments));
     map.insert("verus-time".into(), Value::Table(time));
     map.insert("versions".into(), Value::Table(versions));
     map.insert("verus-output".into(), Value::Table(output));
-    map.insert("verification-results".into(), Value::Table(verification_result));
+    if let Some(verification_results) = verification_results {
+        map.insert("verification-results".into(), verification_results);
+    }
     Value::Table(map)
 }
 

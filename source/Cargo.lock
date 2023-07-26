@@ -406,6 +406,7 @@ name = "error_report"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "regex",
  "serde_json",
  "toml",
  "yansi",
