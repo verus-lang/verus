@@ -1168,7 +1168,7 @@ impl Verifier {
                         &ctx.global.qid_map.borrow(),
                         module,
                         Some(&function.x.name),
-                        &(s.to_string() + &fun_as_friendly_rust_name(&function.x.name)), 
+                        &(s.to_string() + &fun_as_friendly_rust_name(&function.x.name)),
                         desc_prefix,
                     );
                     if do_spinoff {
