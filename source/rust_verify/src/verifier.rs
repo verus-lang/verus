@@ -1851,15 +1851,6 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     return;
                 }
             };
-            let (impl_name_state, local_impl_names) = crate::names::collect_impls(tcx);
-            let mut impl_names = imported.impl_names;
-            impl_names.extend(local_impl_names);
-            self.impl_name_state = Some(impl_name_state);
-            let verus_items_impl =
-                Arc::new(crate::verus_items::from_diagnostic_items(&tcx.all_diagnostic_items(())));
-            let id_to_name = verus_items_impl.id_to_name.clone();
-            let verus_items =
-                Arc::new(crate::context::TypeCtxt { verus_items_impl, id_to_name, impl_names });
             let spans = SpanContextX::new(
                 tcx,
                 compiler.session().local_stable_crate_id(),
@@ -1871,6 +1862,23 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 if self.verifier.args.trace {
                     reporter.report_now(&note_bare("preparing crate for verification"));
                 }
+                let (impl_name_state, local_impl_names) = match crate::names::collect_impls(tcx) {
+                    Ok(imp) => imp,
+                    Err(err) => {
+                        reporter.report_as(&err, MessageLevel::Error);
+                        self.verifier.encountered_vir_error = true;
+                        return;
+                    }
+                };
+                let mut impl_names = imported.impl_names;
+                impl_names.extend(local_impl_names);
+                self.impl_name_state = Some(impl_name_state);
+                let verus_items_impl = Arc::new(crate::verus_items::from_diagnostic_items(
+                    &tcx.all_diagnostic_items(()),
+                ));
+                let id_to_name = verus_items_impl.id_to_name.clone();
+                let verus_items =
+                    Arc::new(crate::context::TypeCtxt { verus_items_impl, id_to_name, impl_names });
                 if let Err(err) = self.verifier.construct_vir_crate(
                     tcx,
                     verus_items.clone(),

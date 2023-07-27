@@ -1,9 +1,12 @@
+use crate::unsupported_err;
+use crate::util::unsupported_err_span;
 use rustc_hir::definitions::DefPath;
 use rustc_hir::{ItemKind, MaybeOwner, OwnerNode};
 use rustc_middle::ty::{AdtDef, Ty, TyCtxt, TyKind};
+use rustc_span::Span;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use vir::ast::Ident;
+use vir::ast::{Ident, VirErr};
 
 // rustc uses u32 disambiguators to distinguish one DefPathData::Impl from another.
 // However, these u32 values aren't necessarily stable between the erase_ghost and !erase_ghost
@@ -122,9 +125,10 @@ impl TypTree {
     }
 }
 
-fn typ_tree<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty<'tcx>) -> TypTree {
-    let box_rec = |ty: &Ty<'tcx>| -> Box<TypTree> { Box::new(typ_tree(tcx, ty)) };
-    match ty.kind() {
+fn typ_tree<'tcx>(tcx: TyCtxt<'tcx>, span: Span, ty: &Ty<'tcx>) -> Result<TypTree, VirErr> {
+    let box_rec =
+        |ty: &Ty<'tcx>| -> Result<Box<TypTree>, VirErr> { Ok(Box::new(typ_tree(tcx, span, ty)?)) };
+    let t = match ty.kind() {
         TyKind::Bool | TyKind::Char | TyKind::Uint(_) | TyKind::Int(_) | TyKind::Float(_) => {
             TypTree::String(ty.to_string())
         }
@@ -134,7 +138,7 @@ fn typ_tree<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty<'tcx>) -> TypTree {
             for arg in args.iter() {
                 match arg.unpack() {
                     rustc_middle::ty::subst::GenericArgKind::Type(t) => {
-                        typ_args.push(box_rec(&t));
+                        typ_args.push(box_rec(&t)?);
                     }
                     _ => {}
                 }
@@ -143,16 +147,16 @@ fn typ_tree<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty<'tcx>) -> TypTree {
         }
         TyKind::Foreign(did) => TypTree::Path(def_path_to_path(tcx, tcx.def_path(*did))),
         TyKind::Str => TypTree::String("str".to_string()),
-        TyKind::Array(t, _len) => TypTree::Decorate("array".to_string(), box_rec(t)),
-        TyKind::Slice(t) => TypTree::Decorate("slice".to_string(), box_rec(t)),
+        TyKind::Array(t, _len) => TypTree::Decorate("array".to_string(), box_rec(t)?),
+        TyKind::Slice(t) => TypTree::Decorate("slice".to_string(), box_rec(t)?),
         TyKind::RawPtr(tmut) => {
-            TypTree::Decorate(format!("raw{:?}", tmut.mutbl), box_rec(&tmut.ty))
+            TypTree::Decorate(format!("raw{:?}", tmut.mutbl), box_rec(&tmut.ty)?)
         }
-        TyKind::Ref(_region, t, muta) => TypTree::Decorate(format!("ref{:?}", muta), box_rec(t)),
+        TyKind::Ref(_region, t, muta) => TypTree::Decorate(format!("ref{:?}", muta), box_rec(t)?),
         TyKind::Never => TypTree::String("never".to_string()),
         TyKind::Tuple(ts) => {
             let path = vec!["tuple".to_string()];
-            let typ_args = ts.iter().map(|t| box_rec(&t)).collect();
+            let typ_args = ts.iter().map(|t| box_rec(&t)).collect::<Result<_, _>>()?;
             TypTree::Apply(path, typ_args)
         }
         TyKind::Alias(_kind, alias) => {
@@ -160,32 +164,32 @@ fn typ_tree<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty<'tcx>) -> TypTree {
             let mut typ_args: Vec<Box<TypTree>> = Vec::new();
             if let Some(args) = alias.substs.try_as_type_list() {
                 for t in args.iter() {
-                    typ_args.push(box_rec(&t));
+                    typ_args.push(box_rec(&t)?);
                 }
             }
             TypTree::Apply(path, typ_args)
         }
         TyKind::Param(_) => TypTree::String(ty.to_string()),
         TyKind::Bound(..) => TypTree::String(ty.to_string()),
-
-        TyKind::FnDef(..) => TypTree::String("fndef".to_string()),
-        TyKind::FnPtr(..) => TypTree::String("fnptr".to_string()),
-        TyKind::Dynamic(..) => TypTree::String("dyn".to_string()),
         TyKind::Closure(..) => TypTree::String("closure".to_string()),
-        TyKind::Generator(..) => TypTree::String("generator".to_string()),
-        TyKind::GeneratorWitness(..) => TypTree::String("generator_witness".to_string()),
 
-        TyKind::Placeholder(_) => panic!("unexpected placeholder type"),
-        TyKind::Infer(_) => panic!("unexpected infer type"),
-        TyKind::Error(_) => panic!("unexpected error type"),
-    }
+        TyKind::FnDef(..) => unsupported_err!(span, "anonymous function types"),
+        TyKind::FnPtr(..) => unsupported_err!(span, "function pointer types"),
+        TyKind::Dynamic(..) => unsupported_err!(span, "dynamic types"),
+        TyKind::Generator(..) => unsupported_err!(span, "generator types"),
+        TyKind::GeneratorWitness(..) => unsupported_err!(span, "generator witness types"),
+        TyKind::Placeholder(..) => unsupported_err!(span, "type inference placeholder types"),
+        TyKind::Infer(..) => unsupported_err!(span, "type inference placeholder types"),
+        TyKind::Error(..) => unsupported_err!(span, "type inference placeholder error types"),
+    };
+    Ok(t)
 }
 
 fn traverse_impls<'tcx>(
     tcx: TyCtxt<'tcx>,
     state: &mut ImplNameState,
     _export: bool,
-) -> ImplNameCtxt {
+) -> Result<ImplNameCtxt, VirErr> {
     let hir = tcx.hir();
     let krate = hir.krate();
     let mut impl_names = HashMap::new();
@@ -220,7 +224,7 @@ fn traverse_impls<'tcx>(
                                 tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
                             let mut trait_args: Vec<TypTree> = Vec::new();
                             for ty in trait_ref.0.substs.types() {
-                                trait_args.push(typ_tree(tcx, &ty));
+                                trait_args.push(typ_tree(tcx, item.span, &ty)?);
                             }
                             (Some(path), trait_args)
                         } else {
@@ -228,7 +232,7 @@ fn traverse_impls<'tcx>(
                         };
                         let trait_name =
                             trait_path.as_ref().map(|path| path.last().cloned().unwrap());
-                        let self_typ = typ_tree(tcx, &tcx.type_of(impl_def_id));
+                        let self_typ = typ_tree(tcx, item.span, &tcx.type_of(impl_def_id))?;
                         let self_name = self_typ.short_name();
                         let fingerprint = ImplFingerprint {
                             parent: parent.clone(),
@@ -255,18 +259,28 @@ fn traverse_impls<'tcx>(
             }
         }
     }
-    ImplNameCtxt { impl_names }
+    Ok(ImplNameCtxt { impl_names })
 }
 
-pub(crate) fn collect_impls<'tcx>(tcx: TyCtxt<'tcx>) -> (ImplNameState, ImplNameCtxt) {
+pub(crate) fn collect_impls<'tcx>(
+    tcx: TyCtxt<'tcx>,
+) -> Result<(ImplNameState, ImplNameCtxt), VirErr> {
     let mut state = ImplNameState { impl_table: HashMap::new() };
-    let impl_ctxt = traverse_impls(tcx, &mut state, false);
-    (state, impl_ctxt)
+    let impl_ctxt = traverse_impls(tcx, &mut state, false)?;
+    Ok((state, impl_ctxt))
 }
 
 pub(crate) fn export_impls<'tcx>(
     queries: &'tcx verus_rustc_interface::Queries<'tcx>,
     state: &mut ImplNameState,
 ) -> ImplNameCtxt {
-    queries.global_ctxt().expect("global_ctxt").enter(|tcx| traverse_impls(tcx, state, false))
+    queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
+        match traverse_impls(tcx, state, false) {
+            Ok(imp) => imp,
+            Err(err) => {
+                dbg!(err);
+                panic!("internal error: found unsupported feature during export")
+            }
+        }
+    })
 }
