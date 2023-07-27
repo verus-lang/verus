@@ -486,3 +486,18 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] partially_simplified_boxed_sequence_699 verus_code! {
+        #[allow(unused_imports)]
+        use vstd::seq::*;
+
+        // GitHub issue 699: When converting partially simplified
+        // sequences to SST, handle boxed sequence types as well
+        proof fn test() {
+            let s: Seq<int> = seq![1, 2, 3, 4, 5];
+            let even: Seq<int> = s.filter(|x: int| x % 2 == 0);
+            assert(even =~= seq![2, 4]) by (compute);   // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

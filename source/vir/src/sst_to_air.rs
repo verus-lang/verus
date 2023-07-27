@@ -963,7 +963,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             UnaryOpr::Unbox(typ) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
-                try_unbox(ctx, expr, typ).expect("Unbox")
+                try_unbox(ctx, expr.clone(), typ).expect(&format!("Unbox: {:?}", expr).to_owned())
             }
             UnaryOpr::HasType(typ) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
