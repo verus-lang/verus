@@ -271,25 +271,21 @@ impl<A> Seq<A> {
         choose|i: int| 0 <= i < self.len() && self[i] == needle
     }
 
-    /// Returns Some(i), if an element occurs at least once in a sequence and
-    /// occurs at index i. Otherwise the return is None.
-    pub open spec fn index_of_option(self, needle: A) -> (result: Option<int>)
+    /// For an element that occurs at least once in a sequence, if its first occurence
+    /// is at index i, Some(i) is returned. Otherwise, None is returned
+    pub open spec fn find_first(self, needle: A) -> (result: Option<int>)
     {
-        if (self.contains(needle)) {Some(self.index_of(needle))}
+        if (self.contains(needle)) {Some(self.first_index_helper(needle, 0))}
         else {None}
-    }
-
-    /// For an element that occurs at least once in a sequence, the index of its
-    /// first occurence is returned. Otherwise, -1 is returned
-    pub open spec fn first_index_of(self, needle:A) -> int{
-        self.first_index_helper(needle,0)
     }
 
     /// Recursive helper function for first_index_of
     pub closed spec fn first_index_helper(self, needle: A, index: int) -> int
+        recommends self.contains(needle),
         decreases self.len(),
-    {   if self.len() <= 0 {
-            -1
+    {   
+        if self.len() <= 0 {
+            -1 //arbitrary, will never get to this case
         }
         else if self[0] == needle {
             index
@@ -299,25 +295,20 @@ impl<A> Seq<A> {
         }
     }
 
-    /// For an element that occurs at least once in a sequence, if its first occurence
+    /// For an element that occurs at least once in a sequence, if its last occurence
     /// is at index i, Some(i) is returned. Otherwise, None is returned
-    pub open spec fn first_index_of_option(self, needle:A) -> Option<int> {
-        let val = self.first_index_of(needle);
-        if val >= 0 {Some(val)}
+    pub open spec fn find_last(self, needle:A) -> Option<int> {
+        if self.contains(needle) {Some(self.last_index_helper(needle,0))}
         else {None}
     }
 
-    /// For an element that occurs at least once in a sequence, the index of its
-    /// last occurence is returned. Otherwise, -1 is returned
-    pub open spec fn last_index_of(self, needle:A) -> int{
-        self.last_index_helper(needle,self.len()-1 as int)
-    }
-
     /// Recursive helper function for last_index_of
-    pub closed spec fn last_index_helper(self, needle: A, index: int) -> int
+    pub open spec fn last_index_helper(self, needle: A, index: int) -> int
+        recommends self.contains(needle),
         decreases self.len(),
-    {   if self.len() <= 0 {
-            -1
+    {  
+        if self.len() <= 0 {
+            -1 //arbitrary, will never get to this case
         }
         else if self.last() == needle {
             index
@@ -325,14 +316,6 @@ impl<A> Seq<A> {
         else {
             self.subrange(0,self.len()-1 as int).last_index_helper(needle, index-1)
         }
-    }
-
-    /// For an element that occurs at least once in a sequence, if its last occurence
-    /// is at index i, Some(i) is returned. Otherwise, None is returned
-    pub open spec fn last_index_of_option(self, needle:A) -> Option<int> {
-        let val = self.last_index_of(needle);
-        if val >= 0 {Some(val)}
-        else {None}
     }
 
     /// Drops the last element of a sequence and returns a sequence whose length is
@@ -422,9 +405,11 @@ impl<A> Seq<A> {
     /// its first occurrence is returned. Otherwise the same sequence is returned.
     pub open spec fn remove_value(self, val :A) -> Seq<A>
     {
-        let index = self.first_index_of(val);
-        if index >= 0 {self.remove(index)}
-        else {self}
+        let index = self.find_first(val);
+        match index {
+            Some(i) => self.remove(i),
+            None => self
+        }
     }
 
     /// Returns the sequence that is in reverse order to a given sequence.
@@ -1603,22 +1588,6 @@ pub proof fn lemma_seq_subrange_elements<A>(s: Seq<A>, start: int, stop: int, x:
     
 }
 
-/************************** Lemmas about singletons **************************/
-
-// This verified lemma used to be an axiom in the Dafny prelude
-/// The length of a singleton sequence is 1
-pub proof fn lemma_seq_singleton_length<A>(elt: A)
-    ensures
-        #[trigger] Seq::<A>::singleton(elt).len() == 1
-{}
-
-// This verified lemma used to be an axiom in the Dafny prelude
-/// A singleton created from element `elt` contains only `elt` at index 0
-pub proof fn lemma_seq_singleton_index<A>(elt: A)
-    ensures
-        #[trigger] Seq::<A>::singleton(elt)[0] == elt,
-{}
-
 /************************** Lemmas about Take/Drop ***************************/
 
 // This verified lemma used to be an axiom in the Dafny prelude
@@ -1783,8 +1752,6 @@ pub proof fn lemma_seq_properties<A>()
                 && #[trigger] s.push(v).contains(v),//lemma_seq_contains_after_push(s, v, x)
         forall |s: Seq<A>, start: int, stop: int, x: A| (0<=start<=stop<=s.len() && #[trigger] s.subrange(start,stop).contains(x)) <==> 
                (exists |i: int| 0 <= start <= i < stop <= s.len() && #[trigger] s[i] == x),//lemma_seq_subrange_elements(s, start, stop, x),
-        forall |elt: A| #[trigger] Seq::<A>::singleton(elt).len() == 1, //lemma_seq_singleton_length(elt),
-        forall |elt: A| #[trigger] Seq::<A>::singleton(elt)[0] == elt, //lemma_seq_singleton_index(elt),
         forall |s: Seq<A>, n: int| 0 <= n <= s.len() ==> #[trigger] s.take(n).len() == n, //lemma_seq_take_len(s, n)
         forall |s: Seq<A>, n: int, x: A| (#[trigger] s.take(n).contains(x) && 0<=n<=s.len())
                 <==> (exists |i: int| 0<= i < n <= s.len() && #[trigger] s[i] == x),//lemma_seq_take_contains(s, n, x),

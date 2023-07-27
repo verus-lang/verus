@@ -46,13 +46,6 @@ impl<A> Seq<A> {
     #[rustc_diagnostic_item = "verus::pervasive::seq::Seq::new"]
     pub spec fn new(len: nat, f: impl Fn(int) -> A) -> Seq<A>;
 
-    /// Constructs a sequence of length 1 containing only the given element.
-
-    #[verifier(inline)]
-    pub open spec fn singleton(elt: A) -> Seq<A> {
-        Self::empty().push(elt)
-    }
-
     /// Constructs a sequence of length `length` where every element in the sequence
     /// is equivalent to `val`.
     
