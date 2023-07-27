@@ -217,7 +217,7 @@ impl<K, V> Map<K, V> {
 
     /// Returns `true` if and only if the given key maps to the same value or does not exist in self and m2.
     
-    pub open spec fn equal_on_key(self, m2: Self, key: K) ->bool
+    pub open spec fn equal_on_key(self, m2: Self, key: K) -> bool
     {
         ||| (!self.dom().contains(key) && !m2.dom().contains(key))
         ||| (self.dom().contains(key) && m2.dom().contains(key) && self[key] == m2[key])
@@ -320,7 +320,7 @@ impl<K, V> Map<K, V> {
     }
 
     /// Returns `true` if and only if a map is injective
-    pub open spec fn injective(self) -> bool {
+    pub open spec fn is_injective(self) -> bool {
         forall |x: K, y: K| x != y && self.dom().contains(x) && self.dom().contains(y) ==> #[trigger] self[x] != #[trigger] self[y]
     }
 
@@ -339,7 +339,7 @@ impl Map<int,int> {
 
     /// Returns `true` if a map is monotonic -- that is, if the mapping between ordered sets 
     /// preserves the regular `<=` ordering on integers.
-    pub open spec fn monotonic(self) -> bool {
+    pub open spec fn is_monotonic(self) -> bool {
         forall |x: int, y: int| self.dom().contains(x) && self.dom().contains(y) && x <= y 
             ==> #[trigger] self[x] <= #[trigger] self[y]
     }
@@ -416,7 +416,7 @@ pub proof fn lemma_disjoint_union_size<K,V>(m1: Map<K,V>, m2: Map<K,V>)
 /// The function `invert` results in an injective map
 pub proof fn lemma_invert_is_injective<K,V>(m: Map<K,V>)
     ensures
-        m.invert().injective(),
+        m.invert().is_injective(),
 {
     assert forall |x: V, y: V| x != y && m.invert().dom().contains(x) && m.invert().dom().contains(y) 
                 implies #[trigger] m.invert()[x] != #[trigger] m.invert()[y] by {

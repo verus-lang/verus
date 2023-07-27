@@ -44,7 +44,7 @@ impl<A> Seq<A> {
     ///     assert(pre.is_prefix_of(whole));
     /// }
     /// ```
-    pub open spec fn is_prefix_of(self, other: Self) ->bool
+    pub open spec fn is_prefix_of(self, other: Self) -> bool
     {
         self.len() <= other.len() && self =~= other.subrange(0,self.len() as int)
     }
@@ -60,7 +60,7 @@ impl<A> Seq<A> {
     ///     assert(end.is_suffix_of(whole));
     /// }
     /// ```
-    pub open spec fn is_suffix_of(self, other: Self) ->bool
+    pub open spec fn is_suffix_of(self, other: Self) -> bool
     {
         self.len() <= other.len() && self =~= 
             other.subrange((other.len() - self.len()) as int, other.len() as int)
@@ -73,7 +73,7 @@ impl<A> Seq<A> {
     /// ```rust
     /// {{#include ../../../rust_verify/example/multiset.rs:sorted_by_eg}}
     /// ```
-    pub open spec fn sort_by(self, leq: FnSpec(A,A) ->bool) -> Seq<A>
+    pub open spec fn sort_by(self, leq: FnSpec(A,A) -> bool) -> Seq<A>
         recommends
             total_ordering(leq),
         decreases
@@ -235,7 +235,7 @@ impl<A> Seq<A> {
     }
 
     /// Returns the maximum value in a non-empty sequence, given sorting function leq
-    pub open spec fn max_general(self, leq: FnSpec(A,A) ->bool) -> A
+    pub open spec fn max_general(self, leq: FnSpec(A,A) -> bool) -> A
        recommends self.len() > 0,
        decreases self.len(),
     {
@@ -248,7 +248,7 @@ impl<A> Seq<A> {
     }
 
     /// Returns the minimum value in a non-empty sequence, given sorting function leq
-    pub open spec fn min_general(self, leq: FnSpec(A,A) ->bool) -> A
+    pub open spec fn min_general(self, leq: FnSpec(A,A) -> bool) -> A
        recommends self.len() > 0,
        decreases self.len(),
     {
@@ -702,7 +702,7 @@ impl Seq<int> {
     }
 }
 
-pub proof fn lemma_sort_by_ensures<A>(s: Seq<A>, leq: FnSpec(A,A) ->bool)
+pub proof fn lemma_sort_by_ensures<A>(s: Seq<A>, leq: FnSpec(A,A) -> bool)
     requires
         total_ordering(leq),
     ensures
@@ -738,7 +738,7 @@ pub proof fn lemma_sort_by_ensures<A>(s: Seq<A>, leq: FnSpec(A,A) ->bool)
 }
 
 /// Helper function to aid with merge sort
-pub closed spec fn merge_sorted_with<A>(left: Seq<A>, right: Seq<A>, leq: FnSpec(A,A) ->bool) -> Seq<A>
+pub closed spec fn merge_sorted_with<A>(left: Seq<A>, right: Seq<A>, leq: FnSpec(A,A) -> bool) -> Seq<A>
     recommends
         sorted_by(left, leq),
         sorted_by(right, leq),
@@ -755,7 +755,7 @@ pub closed spec fn merge_sorted_with<A>(left: Seq<A>, right: Seq<A>, leq: FnSpec
     }
 }
 
-proof fn lemma_merge_sorted_with_ensures<A>(left: Seq<A>, right: Seq<A>, leq: FnSpec(A,A) ->bool)
+proof fn lemma_merge_sorted_with_ensures<A>(left: Seq<A>, right: Seq<A>, leq: FnSpec(A,A) -> bool)
     requires
         sorted_by(left, leq),
         sorted_by(right, leq),
@@ -1088,7 +1088,7 @@ pub proof fn lemma_concat_associative<A>(s1 : Seq<A>, s2 :Seq<A>, s3 :Seq<A>)
 /// it is true for every member of the sequence as a collection.
 /// Useful for converting quantifiers between the two forms
 /// to satisfy a precondition in the latter form.
-pub proof fn lemma_indexing_implies_membership<A>(f: FnSpec(A)->bool, s: Seq<A>)
+pub proof fn lemma_indexing_implies_membership<A>(f: FnSpec(A) -> bool, s: Seq<A>)
     requires
         forall |i: int| 0<= i < s.len() ==> #[trigger] f(#[trigger] s[i]),
     ensures
@@ -1101,7 +1101,7 @@ pub proof fn lemma_indexing_implies_membership<A>(f: FnSpec(A)->bool, s: Seq<A>)
 /// it is true at every index of the sequence.
 /// Useful for converting quantifiers between the two forms
 /// to satisfy a precondition in the latter form.
-pub proof fn lemma_membership_implies_indexing<A>(f: FnSpec(A)->bool, s: Seq<A>)
+pub proof fn lemma_membership_implies_indexing<A>(f: FnSpec(A) -> bool, s: Seq<A>)
     requires
         forall |x: A| #[trigger] s.contains(x) ==> #[trigger] f(x),
     ensures
@@ -1490,7 +1490,7 @@ pub proof fn lemma_flatten_and_flatten_reverse_are_equivalent<A>(x: Seq<Seq<A>>)
 }
  
 /// Proves that any two sequences that are sorted by a total order and that have the same elements are equal.
-pub proof fn lemma_sorted_unique<A>(x: Seq<A>, y: Seq<A>, leq: FnSpec(A,A) ->bool)
+pub proof fn lemma_sorted_unique<A>(x: Seq<A>, y: Seq<A>, leq: FnSpec(A,A) -> bool)
 requires
     sorted_by(x,leq),
     sorted_by(y,leq),

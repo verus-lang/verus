@@ -167,7 +167,7 @@ impl<V> Multiset<V> {
     /// than 0 in both multisets. In other words, returns true if the two
     /// multisets have no elements in common.
 
-    pub open spec fn disjoint_with(self, other: Self) -> bool {
+    pub open spec fn is_disjoint_from(self, other: Self) -> bool {
         forall |x: V| self.count(x) == 0 || other.count(x) == 0
     }
 
